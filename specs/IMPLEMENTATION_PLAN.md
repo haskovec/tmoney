@@ -32,7 +32,7 @@ This document defines the order in which features should be implemented. Each it
   - File validation (is this a tmoney file?)
 
 ### 1.3 Core Models
-- [ ] **004 - Base model types**
+- [x] **004 - Base model types**
   - UUID handling
   - Decimal type with alpacadecimal
   - Timestamp handling
