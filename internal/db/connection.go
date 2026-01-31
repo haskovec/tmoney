@@ -55,6 +55,12 @@ func Open(path string) (*DB, error) {
 		return nil, err
 	}
 
+	// Run any pending migrations
+	if err := db.Migrate(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
 	return db, nil
 }
 
@@ -97,6 +103,13 @@ func Create(path string) (*DB, error) {
 
 	// Initialize metadata table
 	if err := db.initializeMetadata(); err != nil {
+		conn.Close()
+		os.Remove(path)
+		return nil, err
+	}
+
+	// Run migrations to create schema
+	if err := db.Migrate(); err != nil {
 		conn.Close()
 		os.Remove(path)
 		return nil, err
@@ -189,10 +202,11 @@ func (db *DB) initializeMetadata() error {
 	}
 
 	// Insert required metadata entries
+	// Note: schema_version starts at 0, migrations will update it
 	_, err = tx.Exec(`
 		INSERT INTO _metadata (key, value) VALUES
 			('app_identifier', ?),
-			('schema_version', '1'),
+			('schema_version', '0'),
 			('created_at', CURRENT_TIMESTAMP),
 			('default_currency', 'USD')
 	`, AppIdentifier)
