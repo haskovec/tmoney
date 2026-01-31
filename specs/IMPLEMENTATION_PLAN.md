@@ -42,7 +42,7 @@ This document defines the order in which features should be implemented. Each it
 
 ## Phase 2: Accounts
 
-- [ ] **005 - Account model**
+- [x] **005 - Account model**
   - Account struct with all properties
   - Account type enum
   - Validation methods
