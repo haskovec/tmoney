@@ -12,7 +12,7 @@ This document defines the order in which features should be implemented. Each it
 ## Phase 1: Project Foundation
 
 ### 1.1 Project Structure
-- [ ] **001 - Project scaffold**
+- [x] **001 - Project scaffold**
   - Create directory structure (cmd/, internal/, etc.)
   - Initialize go.mod with dependencies
   - Create main.go entry point
