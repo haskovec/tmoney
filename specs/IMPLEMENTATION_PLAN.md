@@ -19,7 +19,7 @@ This document defines the order in which features should be implemented. Each it
   - Verify build works
 
 ### 1.2 Database Foundation
-- [ ] **002 - Database connection**
+- [x] **002 - Database connection**
   - DuckDB connection wrapper
   - Open/close file handling
   - Connection pooling (if needed)
