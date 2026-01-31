@@ -14,6 +14,18 @@ func TestID(t *testing.T) {
 		}
 	})
 
+	t.Run("NewID generates time-ordered IDs (v7)", func(t *testing.T) {
+		// UUID v7 IDs generated later should sort after earlier ones
+		id1 := NewID()
+		time.Sleep(2 * time.Millisecond) // Small delay to ensure different timestamp
+		id2 := NewID()
+
+		// String comparison works for v7 UUIDs since they're time-ordered
+		if id1.String() >= id2.String() {
+			t.Errorf("UUID v7 IDs should be time-ordered: %s should be < %s", id1.String(), id2.String())
+		}
+	})
+
 	t.Run("NilID is zero value", func(t *testing.T) {
 		if !NilID.IsNil() {
 			t.Error("NilID.IsNil() should return true")

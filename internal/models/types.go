@@ -17,9 +17,15 @@ type ID uuid.UUID
 // NilID is the zero value ID (all zeros).
 var NilID = ID(uuid.Nil)
 
-// NewID generates a new random ID.
+// NewID generates a new time-ordered UUID v7.
+// UUID v7 provides better database index locality than random UUIDs.
 func NewID() ID {
-	return ID(uuid.New())
+	id, err := uuid.NewV7()
+	if err != nil {
+		// Fallback to v4 if v7 fails (e.g., clock issues)
+		return ID(uuid.New())
+	}
+	return ID(id)
 }
 
 // ParseID parses a string into an ID.
