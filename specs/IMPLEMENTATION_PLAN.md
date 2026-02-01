@@ -124,7 +124,7 @@ This document defines the order in which features should be implemented. Each it
   - List by account
   - List by date range
 
-- [ ] **017 - Split transaction repository**
+- [x] **017 - Split transaction repository**
   - Create splits
   - Update splits
   - Delete splits
