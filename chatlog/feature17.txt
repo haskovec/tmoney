@@ -1,0 +1,546 @@
+ study @README.md study @specs/IMPLEMENTATION_PLAN.md study @specs/cli.md study @cmd/tmoney/main.go When I try to test the command
+  line flags we don't have an option to create a new database or file for the first time user. Plan out how to do that and have it run
+  migrations so that I can test the available command line options. Author tests for the work that you do. After making changes compile
+   the code and run teh tests. When the tests pass commit the changes and push. Update documentation where needed and push those
+  changes
+  ⎿  Read README.md (107 lines)
+  ⎿  Read specs/IMPLEMENTATION_PLAN.md (400 lines)
+  ⎿  Read specs/cli.md (386 lines)
+  ⎿  Read cmd/tmoney/main.go (226 lines)
+
+⏺ I'll plan out how to implement a new database creation feature for first-time users. Let me explore the existing database and migration
+  code first.
+
+⏺ Explore(Explore database creation patterns)
+  ⎿  Done (15 tool uses · 33.4k tokens · 34s)
+
+⏺ The codebase already has a db.Create() function that handles creating new databases with migrations. The CLI just doesn't expose it yet.
+  Let me enter plan mode to design the implementation approach.
+
+⏺ Entered plan mode
+  Claude is now exploring and designing an implementation approach.
+
+⏺ Based on the exploration, I already have a clear understanding. The db.Create() function exists and handles everything needed. I just need
+   to add a CLI flag to expose it. Let me write the plan.
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ The plan is complete. The implementation is straightforward since db.Create() already exists and handles all the database creation logic,
+  migrations, and metadata setup. I just need to add a CLI flag to expose it.
+
+⏺ User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/cryptic-snuggling-corbato.md · /plan to edit
+     Plan: Add --create Flag for New Database Creation
+
+     Summary
+
+     Add a --create CLI flag that allows first-time users to create a new TMoney database file with all migrations applied.
+
+     Current State
+
+     - db.Create(path) exists in internal/db/connection.go and handles:
+       - Creating the database file
+       - Adding .tdb extension if missing
+       - Creating parent directories
+       - Running migrations to set up schema
+       - Initializing metadata table
+     - The CLI (cmd/tmoney/main.go) doesn't expose this functionality
+     - Users cannot create a new database from the command line
+
+     Implementation
+
+     1. Add --create Flag to CLI Options
+
+     File: cmd/tmoney/main.go
+
+     Add to cliOptions struct:
+     createDB string  // path for new database to create
+
+     Add to parseArgs():
+     case "--create":
+         if i+1 >= len(args) {
+             return nil, nil, fmt.Errorf("--create requires a path argument")
+         }
+         i++
+         opts.createDB = args[i]
+
+     Also handle --create=path format.
+
+     2. Add runCreateDB Function
+
+     File: cmd/tmoney/main.go
+
+     func runCreateDB(opts *cliOptions, w io.Writer) error {
+         database, err := db.Create(opts.createDB)
+         if err != nil {
+             return fmt.Errorf("failed to create database: %w", err)
+         }
+         defer database.Close()
+
+         fmt.Fprintf(w, "Created database: %s\n", database.Path())
+         return nil
+     }
+
+     3. Add Handler in run() Function
+
+     Add before the --list-accounts check:
+     if opts.createDB != "" {
+         return runCreateDB(opts, stdout)
+     }
+
+     4. Update Help Text
+
+     Add to printHelp():
+     Database Commands:
+       --create <path>    Create a new database file
+
+     5. Write Tests
+
+     File: cmd/tmoney/main_test.go
+
+     Create tests for:
+     - --create /path/to/new.tdb creates database successfully
+     - --create existing.tdb returns appropriate error
+     - --create without path returns error
+     - --create=path format works
+     - Created database can be opened with --list-accounts
+
+     Files to Modify
+
+     1. cmd/tmoney/main.go - Add flag, handler, help text
+     2. cmd/tmoney/main_test.go - Add tests (create new file)
+
+     Verification
+
+     1. Build: go build ./cmd/tmoney
+     2. Run tests: go test ./cmd/tmoney/...
+     3. Manual test:
+     ./tmoney --create /tmp/test.tdb
+     ./tmoney --file /tmp/test.tdb --list-accounts
+     4. Verify error handling:
+     ./tmoney --create  # should error: requires path
+     ./tmoney --create /tmp/test.tdb  # should error: already exists
+
+⏺ I'll implement the plan now. Let me start by modifying the CLI.
+
+⏺ Update(cmd/tmoney/main.go)
+  ⎿  Added 3 lines, removed 2 lines
+      22
+      23  // CLI option flags
+      24  type cliOptions struct {
+      25 -  file         string
+      26 -  listAccounts bool
+      25 +  file          string
+      26 +  listAccounts  bool
+      27    includeClosed bool
+      28 +  createDB      string
+      29  }
+      30
+      31  func main() {
+
+⏺ Update(cmd/tmoney/main.go)
+  ⎿  Added 6 lines
+      86        opts.listAccounts = true
+      87      case "--include-closed":
+      88        opts.includeClosed = true
+      89 +    case "--create":
+      90 +      if i+1 >= len(args) {
+      91 +        return nil, nil, fmt.Errorf("--create requires a path argument")
+      92 +      }
+      93 +      i++
+      94 +      opts.createDB = args[i]
+      95      default:
+      96        // Check for --file=path format
+      97        if strings.HasPrefix(arg, "--file=") {
+
+⏺ Update(cmd/tmoney/main.go)
+  ⎿  Added 3 lines, removed 1 line
+       93        i++
+       94        opts.createDB = args[i]
+       95      default:
+       96 -      // Check for --file=path format
+       96 +      // Check for --flag=value formats
+       97        if strings.HasPrefix(arg, "--file=") {
+       98          opts.file = strings.TrimPrefix(arg, "--file=")
+       99        } else if strings.HasPrefix(arg, "-f=") {
+      100          opts.file = strings.TrimPrefix(arg, "-f=")
+      101 +      } else if strings.HasPrefix(arg, "--create=") {
+      102 +        opts.createDB = strings.TrimPrefix(arg, "--create=")
+      103        } else {
+      104          remaining = append(remaining, arg)
+      105        }
+
+⏺ Update(cmd/tmoney/main.go)
+  ⎿  Added 5 lines
+      41      return err
+      42    }
+      43
+      44 +  // Handle --create
+      45 +  if opts.createDB != "" {
+      46 +    return runCreateDB(opts, stdout)
+      47 +  }
+      48 +
+      49    // Handle --list-accounts
+      50    if opts.listAccounts {
+      51      return runListAccounts(opts, stdout)
+
+⏺ Now let me add the runCreateDB function. First, let me read the current state of the file to find the right place.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Update(cmd/tmoney/main.go)
+  ⎿  Added 12 lines
+      114    return opts, remaining, nil
+      115  }
+      116
+      117 +// runCreateDB creates a new database file.
+      118 +func runCreateDB(opts *cliOptions, w io.Writer) error {
+      119 +  database, err := db.Create(opts.createDB)
+      120 +  if err != nil {
+      121 +    return fmt.Errorf("failed to create database: %w", err)
+      122 +  }
+      123 +  defer database.Close()
+      124 +
+      125 +  fmt.Fprintf(w, "Created database: %s\n", database.Path())
+      126 +  return nil
+      127 +}
+      128 +
+      129  // runListAccounts lists accounts from the database.
+      130  func runListAccounts(opts *cliOptions, w io.Writer) error {
+      131    if opts.file == "" {
+
+⏺ Update(cmd/tmoney/main.go)
+  ⎿  Added 3 lines
+      243    -h, --help           Show this help message
+      244    -v, --version        Show version information
+      245
+      246 +Database Commands:
+      247 +  --create <path>      Create a new database file
+      248 +
+      249  Account Commands:
+      250    --list-accounts      List all accounts
+      251      --include-closed   Include closed accounts in listing
+
+⏺ Now let me check if there's an existing test file.
+
+⏺ Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ I'll add tests for the --create flag to the existing test file.
+
+⏺ Update(cmd/tmoney/main_test.go)
+  ⎿  Added 167 lines
+      291    }
+      292  }
+      293
+      294 +func TestParseArgs_CreateFlag(t *testing.T) {
+      295 +  tests := []struct {
+      296 +    name           string
+      297 +    args           []string
+      298 +    expectedCreate string
+      299 +  }{
+      300 +    {"long flag with space", []string{"--create", "/path/to/new.tdb"}, "/path/to/new.tdb"},
+      301 +    {"long flag with equals", []string{"--create=/path/to/new.tdb"}, "/path/to/new.tdb"},
+      302 +  }
+      303 +
+      304 +  for _, tt := range tests {
+      305 +    t.Run(tt.name, func(t *testing.T) {
+      306 +      opts, _, err := parseArgs(tt.args)
+      307 +      if err != nil {
+      308 +        t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+      309 +        return
+      310 +      }
+      311 +      if opts.createDB != tt.expectedCreate {
+      312 +        t.Errorf("parseArgs(%v) createDB = %q, want %q", tt.args, opts.createDB, tt.expectedCreate)
+      313 +      }
+      314 +    })
+      315 +  }
+      316 +}
+      317 +
+      318 +func TestParseArgs_CreateFlagMissingPath(t *testing.T) {
+      319 +  _, _, err := parseArgs([]string{"--create"})
+      320 +  if err == nil {
+      321 +    t.Error("parseArgs(--create) without path should return error")
+      322 +  }
+      323 +  if !strings.Contains(err.Error(), "requires a path") {
+      324 +    t.Errorf("error should mention path requirement, got: %v", err)
+      325 +  }
+      326 +}
+      327 +
+      328 +func TestRun_CreateDB(t *testing.T) {
+      329 +  tmpDir := t.TempDir()
+      330 +  dbPath := filepath.Join(tmpDir, "newdb.tdb")
+      331 +
+      332 +  stdout := &bytes.Buffer{}
+      333 +  stderr := &bytes.Buffer{}
+      334 +  err := run([]string{"--create", dbPath}, stdout, stderr)
+      335 +  if err != nil {
+      336 +    t.Errorf("run(--create) returned error: %v", err)
+      337 +    return
+      338 +  }
+      339 +
+      340 +  output := stdout.String()
+      341 +  if !strings.Contains(output, "Created database:") {
+      342 +    t.Errorf("output should confirm creation, got: %s", output)
+      343 +  }
+      344 +  if !strings.Contains(output, dbPath) {
+      345 +    t.Errorf("output should contain path, got: %s", output)
+      346 +  }
+      347 +
+      348 +  // Verify the file was created and can be opened
+      349 +  database, err := db.Open(dbPath)
+      350 +  if err != nil {
+      351 +    t.Errorf("failed to open created database: %v", err)
+      352 +    return
+      353 +  }
+      354 +  database.Close()
+      355 +}
+      356 +
+      357 +func TestRun_CreateDBWithEqualsFormat(t *testing.T) {
+      358 +  tmpDir := t.TempDir()
+      359 +  dbPath := filepath.Join(tmpDir, "newdb.tdb")
+      360 +
+      361 +  stdout := &bytes.Buffer{}
+      362 +  stderr := &bytes.Buffer{}
+      363 +  err := run([]string{"--create=" + dbPath}, stdout, stderr)
+      364 +  if err != nil {
+      365 +    t.Errorf("run(--create=path) returned error: %v", err)
+      366 +    return
+      367 +  }
+      368 +
+      369 +  output := stdout.String()
+      370 +  if !strings.Contains(output, "Created database:") {
+      371 +    t.Errorf("output should confirm creation, got: %s", output)
+      372 +  }
+      373 +}
+      374 +
+      375 +func TestRun_CreateDBAlreadyExists(t *testing.T) {
+      376 +  tmpDir := t.TempDir()
+      377 +  dbPath := filepath.Join(tmpDir, "existing.tdb")
+      378 +
+      379 +  // Create the database first
+      380 +  database, err := db.Create(dbPath)
+      381 +  if err != nil {
+      382 +    t.Fatalf("failed to create initial database: %v", err)
+      383 +  }
+      384 +  database.Close()
+      385 +
+      386 +  // Try to create again
+      387 +  stdout := &bytes.Buffer{}
+      388 +  stderr := &bytes.Buffer{}
+      389 +  err = run([]string{"--create", dbPath}, stdout, stderr)
+      390 +  if err == nil {
+      391 +    t.Error("run(--create) on existing file should return error")
+      392 +  }
+      393 +}
+      394 +
+      395 +func TestRun_CreateDBAddsExtension(t *testing.T) {
+      396 +  tmpDir := t.TempDir()
+      397 +  dbPath := filepath.Join(tmpDir, "newdb") // No .tdb extension
+      398 +
+      399 +  stdout := &bytes.Buffer{}
+      400 +  stderr := &bytes.Buffer{}
+      401 +  err := run([]string{"--create", dbPath}, stdout, stderr)
+      402 +  if err != nil {
+      403 +    t.Errorf("run(--create) returned error: %v", err)
+      404 +    return
+      405 +  }
+      406 +
+      407 +  output := stdout.String()
+      408 +  if !strings.Contains(output, ".tdb") {
+      409 +    t.Errorf("output should show .tdb extension was added, got: %s", output)
+      410 +  }
+      411 +
+      412 +  // Verify the file with .tdb extension was created
+      413 +  database, err := db.Open(dbPath + ".tdb")
+      414 +  if err != nil {
+      415 +    t.Errorf("failed to open created database with .tdb extension: %v", err)
+      416 +    return
+      417 +  }
+      418 +  database.Close()
+      419 +}
+      420 +
+      421 +func TestRun_CreateThenListAccounts(t *testing.T) {
+      422 +  tmpDir := t.TempDir()
+      423 +  dbPath := filepath.Join(tmpDir, "test.tdb")
+      424 +
+      425 +  // Create the database
+      426 +  stdout := &bytes.Buffer{}
+      427 +  stderr := &bytes.Buffer{}
+      428 +  err := run([]string{"--create", dbPath}, stdout, stderr)
+      429 +  if err != nil {
+      430 +    t.Fatalf("run(--create) returned error: %v", err)
+      431 +  }
+      432 +
+      433 +  // List accounts (should be empty but work)
+      434 +  stdout.Reset()
+      435 +  stderr.Reset()
+      436 +  err = run([]string{"--list-accounts", "--file", dbPath}, stdout, stderr)
+      437 +  if err != nil {
+      438 +    t.Errorf("run(--list-accounts) after create returned error: %v", err)
+      439 +    return
+      440 +  }
+      441 +
+      442 +  output := stdout.String()
+      443 +  if !strings.Contains(output, "No accounts found") {
+      444 +    t.Errorf("output should say no accounts found, got: %s", output)
+      445 +  }
+      446 +}
+      447 +
+      448 +func TestPrintHelp_IncludesCreate(t *testing.T) {
+      449 +  buf := &bytes.Buffer{}
+      450 +  printHelp(buf)
+      451 +  output := buf.String()
+      452 +
+      453 +  if !strings.Contains(output, "--create") {
+      454 +    t.Error("help output should document --create flag")
+      455 +  }
+      456 +  if !strings.Contains(output, "Create a new database file") {
+      457 +    t.Error("help output should describe --create functionality")
+      458 +  }
+      459 +}
+      460 +
+      461  // TestRun_ListAccountsWithClosedAccount tests that --include-closed shows closed accounts
+      462  func TestRun_ListAccountsWithClosedAccount(t *testing.T) {
+      463    // Create a temporary database
+
+⏺ Now let me build the code and run the tests.
+
+⏺ Bash(go build ./cmd/tmoney)
+  ⎿  (No content)
+
+⏺ Bash(go test -v ./cmd/tmoney/...)
+  ⎿  === RUN   TestParseArgs_FileFlag
+     === RUN   TestParseArgs_FileFlag/short_flag_with_space
+     === RUN   TestParseArgs_FileFlag/long_flag_with_space
+     … +77 lines (ctrl+o to expand)
+
+⏺ All tests pass. Let me run the full test suite to make sure nothing else is broken.
+
+⏺ Bash(go test ./...)
+  ⎿  ok         github.com/haskovec/tmoney/cmd/tmoney   5.361s
+     ok         github.com/haskovec/tmoney/internal/db  (cached)
+     ok         github.com/haskovec/tmoney/internal/models      (cached)
+     … +3 lines (ctrl+o to expand)
+
+⏺ Let me also do a quick manual test.
+
+⏺ Bash(./tmoney --help)
+  ⎿  TMoney - Personal Finance Manager
+
+     Usage:
+     … +16 lines (ctrl+o to expand)
+
+⏺ Bash(./tmoney --create /tmp/test-tmoney.tdb && ./tmoney --file /tmp/test-tmoney.tdb --list-accounts)
+  ⎿  Created database: /tmp/test-tmoney.tdb
+     No accounts found.
+
+⏺ Bash(rm /tmp/test-tmoney.tdb)
+  ⎿  (No content)
+
+⏺ Now let me commit the changes.
+
+⏺ Bash(git status)
+  ⎿  On branch main
+     Your branch is up to date with 'origin/main'.
+     … +14 lines (ctrl+o to expand)
+
+⏺ Bash(git diff cmd/tmoney/main.go)
+  ⎿  diff --git a/cmd/tmoney/main.go b/cmd/tmoney/main.go
+     index 55e84be..e13cc03 100644
+     --- a/cmd/tmoney/main.go
+     … +77 lines (ctrl+o to expand)
+
+⏺ Bash(git log --oneline -5)
+  ⎿  b403040 save chatlog
+     be88ad2 Add Makefile with test coverage targets
+     115b291 Track my app building session for posterity
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(git add cmd/tmoney/main.go cmd/tmoney/main_test.go && git commit -m "Add --create flag for first-time database creation…)
+  ⎿  [main 5177038] Add --create flag for first-time database creation
+      2 files changed, 199 insertions(+), 3 deletions(-)
+
+⏺ Bash(git push)
+  ⎿  To github.com:haskovec/tmoney.git
+        b403040..5177038  main -> main
+
+⏺ Now let me update the CLI specification to document the new --create flag.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Update(specs/cli.md)
+  ⎿  Added 20 lines
+      45  tmoney --file /path/to/file.tdb        # Explicit flag
+      46  ```
+      47
+      48 +## Database Commands
+      49 +
+      50 +### Create Database
+      51 +
+      52 +```bash
+      53 +tmoney --create ~/Documents/TMoney/finances.tdb
+      54 +```
+      55 +
+      56 +Creates a new database file with all tables and default categories initialized.
+      57 +
+      58 +Options:
+      59 +- If the path does not have a `.tdb` extension, it will be added automatically
+      60 +- Parent directories will be created if they don't exist
+      61 +- Returns an error if the file already exists
+      62 +
+      63 +Output:
+      64 +```
+      65 +Created database: /Users/you/Documents/TMoney/finances.tdb
+      66 +```
+      67 +
+      68  ## Account Commands
+      69
+      70  ### List Accounts
+
+⏺ Bash(git add specs/cli.md && git commit -m "Document --create command in CLI specification…)
+  ⎿  [main 0aff56f] Document --create command in CLI specification
+      1 file changed, 20 insertions(+)
+
+⏺ Bash(git push)
+  ⎿  To github.com:haskovec/tmoney.git
+        5177038..0aff56f  main -> main
+
+⏺ Done. Here's a summary of what was implemented:
+
+  Summary
+
+  Added --create flag for first-time database creation
+
+  Changes Made
+
+  1. cmd/tmoney/main.go:
+    - Added createDB field to cliOptions struct
+    - Added --create and --create=path parsing in parseArgs()
+    - Added runCreateDB() function that calls db.Create()
+    - Added handler in run() before --list-accounts
+    - Updated help text with "Database Commands" section
+  2. cmd/tmoney/main_test.go:
+    - Added 8 new tests for --create functionality:
+        - Flag parsing (with space and equals format)
+      - Missing path error handling
+      - Successful database creation
+      - Error when file already exists
+      - Automatic .tdb extension addition
+      - Integration test: create then list accounts
+      - Help text includes --create documentation
+  3. specs/cli.md:
+    - Added "Database Commands" section documenting --create
+
+  Usage
+
+  # Create a new database
+  tmoney --create ~/Documents/TMoney/finances.tdb
+
+  # Then use other CLI commands
+  tmoney --file ~/Documents/TMoney/finances.tdb --list-accounts
+
+  Commits Pushed
+
+  - 5177038 - Add --create flag for first-time database creation
+  - 0aff56f - Document --create command in CLI specification
