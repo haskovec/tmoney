@@ -110,7 +110,7 @@ This document defines the order in which features should be implemented. Each it
 
 ## Phase 5: Transactions
 
-- [ ] **015 - Transaction model**
+- [x] **015 - Transaction model**
   - Transaction struct
   - Split struct
   - Status enum
