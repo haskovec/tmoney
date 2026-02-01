@@ -1,59 +1,366 @@
 package main
 
 import (
+	"bytes"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/repository"
 )
 
-func TestRun_VersionFlag(t *testing.T) {
+func TestParseArgs_FileFlag(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
+		name         string
+		args         []string
+		expectedFile string
 	}{
-		{"short version flag", []string{"-v"}},
-		{"long version flag", []string{"--version"}},
+		{"short flag with space", []string{"-f", "/path/to/file.tdb"}, "/path/to/file.tdb"},
+		{"long flag with space", []string{"--file", "/path/to/file.tdb"}, "/path/to/file.tdb"},
+		{"long flag with equals", []string{"--file=/path/to/file.tdb"}, "/path/to/file.tdb"},
+		{"short flag with equals", []string{"-f=/path/to/file.tdb"}, "/path/to/file.tdb"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := run(tt.args)
+			opts, _, err := parseArgs(tt.args)
 			if err != nil {
-				t.Errorf("run(%v) returned error: %v", tt.args, err)
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.file != tt.expectedFile {
+				t.Errorf("parseArgs(%v) file = %q, want %q", tt.args, opts.file, tt.expectedFile)
 			}
 		})
 	}
 }
 
-func TestRun_HelpFlag(t *testing.T) {
+func TestParseArgs_FileFlagMissingPath(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
 	}{
-		{"short help flag", []string{"-h"}},
-		{"long help flag", []string{"--help"}},
+		{"short flag missing path", []string{"-f"}},
+		{"long flag missing path", []string{"--file"}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := run(tt.args)
-			if err != nil {
-				t.Errorf("run(%v) returned error: %v", tt.args, err)
+			_, _, err := parseArgs(tt.args)
+			if err == nil {
+				t.Errorf("parseArgs(%v) expected error for missing path", tt.args)
 			}
 		})
+	}
+}
+
+func TestParseArgs_ListAccountsFlag(t *testing.T) {
+	opts, _, err := parseArgs([]string{"--list-accounts"})
+	if err != nil {
+		t.Errorf("parseArgs returned error: %v", err)
+		return
+	}
+	if !opts.listAccounts {
+		t.Error("parseArgs did not set listAccounts flag")
+	}
+}
+
+func TestParseArgs_IncludeClosedFlag(t *testing.T) {
+	opts, _, err := parseArgs([]string{"--include-closed"})
+	if err != nil {
+		t.Errorf("parseArgs returned error: %v", err)
+		return
+	}
+	if !opts.includeClosed {
+		t.Error("parseArgs did not set includeClosed flag")
+	}
+}
+
+func TestParseArgs_CombinedFlags(t *testing.T) {
+	opts, remaining, err := parseArgs([]string{"--file", "test.tdb", "--list-accounts", "--include-closed"})
+	if err != nil {
+		t.Errorf("parseArgs returned error: %v", err)
+		return
+	}
+	if opts.file != "test.tdb" {
+		t.Errorf("file = %q, want %q", opts.file, "test.tdb")
+	}
+	if !opts.listAccounts {
+		t.Error("listAccounts flag not set")
+	}
+	if !opts.includeClosed {
+		t.Error("includeClosed flag not set")
+	}
+	if len(remaining) != 0 {
+		t.Errorf("remaining = %v, want empty", remaining)
+	}
+}
+
+func TestParseArgs_RemainingArgs(t *testing.T) {
+	opts, remaining, err := parseArgs([]string{"some-file.tdb", "extra-arg"})
+	if err != nil {
+		t.Errorf("parseArgs returned error: %v", err)
+		return
+	}
+	if len(remaining) != 2 {
+		t.Errorf("remaining = %v, want 2 elements", remaining)
+	}
+	if opts.file != "" {
+		t.Errorf("file should be empty for positional args in parseArgs, got %q", opts.file)
 	}
 }
 
 func TestRun_NoArgs(t *testing.T) {
-	err := run([]string{})
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{}, stdout, stderr)
 	if err != nil {
 		t.Errorf("run([]) returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "TMoney") {
+		t.Error("output should contain TMoney")
 	}
 }
 
 func TestRun_UnknownArgs(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 	// Currently unknown args are silently ignored and we fall through to TUI mode
-	// This tests that behavior doesn't cause errors
-	err := run([]string{"some-file.tdb"})
+	err := run([]string{"some-file.tdb"}, stdout, stderr)
 	if err != nil {
 		t.Errorf("run with file argument returned error: %v", err)
+	}
+}
+
+func TestRun_ListAccountsMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--list-accounts"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--list-accounts) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_ListAccountsFileNotFound(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--list-accounts", "--file", "/nonexistent/path.tdb"}, stdout, stderr)
+	if err == nil {
+		t.Error("run with nonexistent file should return error")
+	}
+}
+
+func TestRun_ListAccountsWithValidFile(t *testing.T) {
+	// Create a temporary database
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	repo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Test Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := repo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	database.Close()
+
+	// Run the list-accounts command
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--list-accounts", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--list-accounts) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "ACCOUNTS") {
+		t.Error("output should contain ACCOUNTS header")
+	}
+	if !strings.Contains(output, "Test Checking") {
+		t.Error("output should contain account name")
+	}
+	if !strings.Contains(output, "Checking") {
+		t.Error("output should contain account type")
+	}
+	if !strings.Contains(output, "USD") {
+		t.Error("output should contain currency")
+	}
+}
+
+func TestRun_ListAccountsNoAccounts(t *testing.T) {
+	// Create a temporary database with no accounts
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "empty.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	// Run the list-accounts command
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--list-accounts", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--list-accounts) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "No accounts found") {
+		t.Errorf("output should say no accounts found, got: %s", output)
+	}
+}
+
+func TestFormatMoney(t *testing.T) {
+	tests := []struct {
+		name     string
+		money    models.Money
+		currency string
+		want     string
+	}{
+		{"positive USD", models.MustNewMoney("100.50"), "USD", "$100.50"},
+		{"negative USD", models.MustNewMoney("-50.25"), "USD", "-$50.25"},
+		{"zero USD", models.MustNewMoney("0"), "USD", "$0.00"},
+		{"positive EUR", models.MustNewMoney("100.50"), "EUR", "€100.50"},
+		{"negative EUR", models.MustNewMoney("-50.25"), "EUR", "-€50.25"},
+		{"positive GBP", models.MustNewMoney("100.50"), "GBP", "£100.50"},
+		{"other currency", models.MustNewMoney("100.50"), "JPY", "JPY 100.50"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatMoney(tt.money, tt.currency)
+			if got != tt.want {
+				t.Errorf("formatMoney(%v, %q) = %q, want %q", tt.money, tt.currency, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrintVersion(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printVersion(buf)
+	output := buf.String()
+
+	if !strings.Contains(output, "tmoney version") {
+		t.Error("version output should contain 'tmoney version'")
+	}
+	if !strings.Contains(output, "Build time") {
+		t.Error("version output should contain 'Build time'")
+	}
+	if !strings.Contains(output, "Git commit") {
+		t.Error("version output should contain 'Git commit'")
+	}
+}
+
+func TestPrintHelp(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printHelp(buf)
+	output := buf.String()
+
+	if !strings.Contains(output, "TMoney") {
+		t.Error("help output should contain 'TMoney'")
+	}
+	if !strings.Contains(output, "--file") {
+		t.Error("help output should document --file flag")
+	}
+	if !strings.Contains(output, "--list-accounts") {
+		t.Error("help output should document --list-accounts flag")
+	}
+	if !strings.Contains(output, "--include-closed") {
+		t.Error("help output should document --include-closed flag")
+	}
+}
+
+// TestRun_ListAccountsWithClosedAccount tests that --include-closed shows closed accounts
+func TestRun_ListAccountsWithClosedAccount(t *testing.T) {
+	// Create a temporary database
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create an active and a closed account
+	repo := repository.NewAccountRepository(database)
+
+	activeAccount := models.NewAccount(
+		"Active Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := repo.Create(activeAccount); err != nil {
+		t.Fatalf("failed to create active account: %v", err)
+	}
+
+	closedAccount := models.NewAccount(
+		"Closed Savings",
+		models.AccountTypeSavings,
+		"USD",
+		models.MustNewMoney("0"),
+		models.Today(),
+	)
+	closedAccount.Close()
+	if err := repo.Create(closedAccount); err != nil {
+		t.Fatalf("failed to create closed account: %v", err)
+	}
+
+	database.Close()
+
+	// Test without --include-closed (should only show active)
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--list-accounts", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--list-accounts) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Active Checking") {
+		t.Error("output should contain active account")
+	}
+	if strings.Contains(output, "Closed Savings") {
+		t.Error("output should NOT contain closed account without --include-closed")
+	}
+
+	// Test with --include-closed (should show both)
+	stdout.Reset()
+	stderr.Reset()
+	err = run([]string{"--list-accounts", "--file", dbPath, "--include-closed"}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--list-accounts --include-closed) returned error: %v", err)
+		return
+	}
+
+	output = stdout.String()
+	if !strings.Contains(output, "Active Checking") {
+		t.Error("output should contain active account")
+	}
+	if !strings.Contains(output, "Closed Savings") {
+		t.Error("output should contain closed account with --include-closed")
 	}
 }
