@@ -47,7 +47,7 @@ This document defines the order in which features should be implemented. Each it
   - Account type enum
   - Validation methods
 
-- [ ] **006 - Account repository**
+- [x] **006 - Account repository**
   - Create account
   - Read account (by ID, by name)
   - Update account
