@@ -76,7 +76,7 @@ This document defines the order in which features should be implemented. Each it
   - List top-level
   - List children of parent
 
-- [ ] **010 - Default categories**
+- [x] **010 - Default categories**
   - Seed default categories
   - System category flag (Transfer)
   - Run on new file creation
