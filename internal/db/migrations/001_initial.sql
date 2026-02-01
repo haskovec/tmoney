@@ -2,9 +2,11 @@
 -- Creates all core tables, indexes, and views
 
 -- Accounts table
+-- Note: UNIQUE constraint removed from name due to DuckDB UPDATE limitations.
+-- Uniqueness is enforced at the repository layer.
 CREATE TABLE accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
     type TEXT NOT NULL CHECK (type IN (
         'checking', 'savings', 'credit_card',
         'investment', 'cash', 'loan', 'asset'
@@ -22,6 +24,7 @@ CREATE TABLE accounts (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX idx_accounts_name ON accounts(name);
 CREATE INDEX idx_accounts_type ON accounts(type);
 CREATE INDEX idx_accounts_active ON accounts(active);
 
@@ -33,17 +36,19 @@ CREATE TABLE categories (
     type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
     system_category BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (name, parent_id)
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    -- Note: UNIQUE(name, parent_id) removed due to DuckDB UPDATE limitations
 );
 
 CREATE INDEX idx_categories_parent ON categories(parent_id);
 CREATE INDEX idx_categories_type ON categories(type);
+CREATE INDEX idx_categories_name_parent ON categories(name, parent_id);
 
 -- Payees table
+-- Note: UNIQUE removed from name due to DuckDB UPDATE limitations
 CREATE TABLE payees (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
     default_category_id UUID REFERENCES categories(id),
     notes TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -53,10 +58,11 @@ CREATE TABLE payees (
 CREATE INDEX idx_payees_name ON payees(name);
 
 -- Payee aliases table
+-- Note: UNIQUE removed from pattern due to DuckDB UPDATE limitations
 CREATE TABLE payee_aliases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     payee_id UUID NOT NULL REFERENCES payees(id),
-    pattern TEXT NOT NULL UNIQUE,
+    pattern TEXT NOT NULL,
     match_type TEXT NOT NULL CHECK (match_type IN (
         'exact', 'contains', 'starts_with', 'regex'
     )),

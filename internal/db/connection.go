@@ -61,6 +61,11 @@ func Open(path string) (*DB, error) {
 		return nil, err
 	}
 
+	// Reconnect after migrations to work around DuckDB index issues
+	if err := db.reconnect(); err != nil {
+		return nil, err
+	}
+
 	return db, nil
 }
 
@@ -115,6 +120,14 @@ func Create(path string) (*DB, error) {
 		return nil, err
 	}
 
+	// Reconnect after migrations to work around DuckDB index issues
+	// DuckDB has issues with UPDATE operations on tables with indexes
+	// when using the same connection that created them
+	if err := db.reconnect(); err != nil {
+		os.Remove(path)
+		return nil, err
+	}
+
 	return db, nil
 }
 
@@ -126,6 +139,28 @@ func (db *DB) Close() error {
 	err := db.conn.Close()
 	db.conn = nil
 	return err
+}
+
+// reconnect closes and reopens the database connection.
+// This is used as a workaround for DuckDB issues with UPDATE operations
+// on tables that have indexes created in the same connection session.
+func (db *DB) reconnect() error {
+	if err := db.conn.Close(); err != nil {
+		return &DatabaseError{Op: "close for reconnect", Err: err}
+	}
+
+	conn, err := sql.Open("duckdb", db.path)
+	if err != nil {
+		return &DatabaseError{Op: "reconnect", Err: err}
+	}
+
+	if err := conn.Ping(); err != nil {
+		conn.Close()
+		return &DatabaseError{Op: "reconnect ping", Err: err}
+	}
+
+	db.conn = conn
+	return nil
 }
 
 // Conn returns the underlying sql.DB connection for direct queries.

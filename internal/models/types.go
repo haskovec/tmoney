@@ -8,6 +8,7 @@ import (
 
 	"github.com/alpacahq/alpacadecimal"
 	"github.com/google/uuid"
+	"github.com/marcboeker/go-duckdb"
 )
 
 // ID represents a unique identifier for model entities.
@@ -77,11 +78,21 @@ func (id *ID) Scan(value interface{}) error {
 		}
 		*id = ID(parsed)
 	case []byte:
-		parsed, err := uuid.Parse(string(v))
-		if err != nil {
-			return fmt.Errorf("failed to parse ID from bytes: %w", err)
+		// DuckDB returns UUIDs as raw 16-byte binary
+		if len(v) == 16 {
+			parsed, err := uuid.FromBytes(v)
+			if err != nil {
+				return fmt.Errorf("failed to parse ID from 16-byte UUID: %w", err)
+			}
+			*id = ID(parsed)
+		} else {
+			// Try parsing as string representation
+			parsed, err := uuid.Parse(string(v))
+			if err != nil {
+				return fmt.Errorf("failed to parse ID from bytes: %w", err)
+			}
+			*id = ID(parsed)
 		}
-		*id = ID(parsed)
 	default:
 		return fmt.Errorf("unsupported type for ID: %T", value)
 	}
@@ -217,6 +228,18 @@ func (m *Money) Scan(value interface{}) error {
 		m.value = alpacadecimal.NewFromFloat(v)
 	case int64:
 		m.value = alpacadecimal.NewFromInt(v)
+	case duckdb.Decimal:
+		d, err := alpacadecimal.NewFromString(v.String())
+		if err != nil {
+			return fmt.Errorf("failed to parse Money from duckdb.Decimal: %w", err)
+		}
+		m.value = d
+	case *duckdb.Decimal:
+		d, err := alpacadecimal.NewFromString(v.String())
+		if err != nil {
+			return fmt.Errorf("failed to parse Money from *duckdb.Decimal: %w", err)
+		}
+		m.value = d
 	default:
 		return fmt.Errorf("unsupported type for Money: %T", value)
 	}
@@ -313,6 +336,18 @@ func (q *Quantity) Scan(value interface{}) error {
 		q.value = d
 	case float64:
 		q.value = alpacadecimal.NewFromFloat(v)
+	case duckdb.Decimal:
+		d, err := alpacadecimal.NewFromString(v.String())
+		if err != nil {
+			return fmt.Errorf("failed to parse Quantity from duckdb.Decimal: %w", err)
+		}
+		q.value = d
+	case *duckdb.Decimal:
+		d, err := alpacadecimal.NewFromString(v.String())
+		if err != nil {
+			return fmt.Errorf("failed to parse Quantity from *duckdb.Decimal: %w", err)
+		}
+		q.value = d
 	default:
 		return fmt.Errorf("unsupported type for Quantity: %T", value)
 	}
