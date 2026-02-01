@@ -42,3 +42,35 @@ type AccountHasBalanceError struct {
 func (e *AccountHasBalanceError) Error() string {
 	return fmt.Sprintf("cannot close account %s: has balance of %s", e.ID, e.Balance.String())
 }
+
+// CategoryIsSystemError is returned when trying to modify or delete a system category.
+type CategoryIsSystemError struct {
+	ID   string
+	Name string
+}
+
+func (e *CategoryIsSystemError) Error() string {
+	return fmt.Sprintf("cannot modify system category %q (%s)", e.Name, e.ID)
+}
+
+// CategoryMergeTypeMismatchError is returned when trying to merge categories of different types.
+type CategoryMergeTypeMismatchError struct {
+	SourceID   string
+	SourceType string
+	TargetID   string
+	TargetType string
+}
+
+func (e *CategoryMergeTypeMismatchError) Error() string {
+	return fmt.Sprintf("cannot merge categories: source %s is %s, target %s is %s",
+		e.SourceID, e.SourceType, e.TargetID, e.TargetType)
+}
+
+// CategoryMergeSameError is returned when trying to merge a category into itself.
+type CategoryMergeSameError struct {
+	ID string
+}
+
+func (e *CategoryMergeSameError) Error() string {
+	return fmt.Sprintf("cannot merge category %s into itself", e.ID)
+}
