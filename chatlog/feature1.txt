@@ -1,0 +1,200 @@
+ read @docs/PROMPT.md and implement the first item 
+  ⎿  Read docs/PROMPT.md (8 lines)
+
+⏺ I'll start by reading the README.md as instructed in the first item.
+
+⏺ Read(README.md)
+  ⎿  Read 107 lines
+
+⏺ Good, TMoney is a Go-based personal finance TUI application. Now let me read the implementation plan to find the most important task.
+
+⏺ Read(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Read 400 lines
+
+⏺ The first item to implement is 001 - Project scaffold. Let me check what currently exists in the project.
+
+⏺ Bash(ls -la /Users/haskovec/work/tmoney)
+  ⎿  total 48                                            
+     drwxr-xr-x@ 12 haskovec  staff   384 Jan 31 13:37 .
+     drwxr-xr-x  93 haskovec  staff  2976 Jan 31 11:49 ..
+     … +10 lines (ctrl+o to expand)
+
+⏺ Read(go.mod)
+  ⎿  Read 44 lines
+
+⏺ Good - go.mod already exists with dependencies. Now I need to create the directory structure and main.go. Let me track my tasks and implement the scaffold.
+
+⏺ Bash(mkdir -p /Users/haskovec/work/tmoney/cmd/tmoney /Users/haskovec/work/tmoney/internal/db /Users/haskovec/work/tmoney/internal/model
+      /Users/haskovec/work/tmoney/i…)
+  ⎿  (No content)
+
+⏺ Search(pattern: "/Users/haskovec/work/tmoney/specs/*.md")
+  ⎿  Found 10 files (ctrl+o to expand)
+
+⏺ Read(specs/database.md)
+  ⎿  Read 344 lines
+
+⏺ Read(specs/cli.md)
+  ⎿  Read 386 lines
+
+⏺ Now let me create the main.go entry point:
+
+⏺ Write(cmd/tmoney/main.go)
+  ⎿  Wrote 63 lines to cmd/tmoney/main.go                              
+     package main
+     import (
+       "fmt"
+       "os"
+     )
+     // Version information - will be set via build flags in production
+     var (
+       Version   = "dev"
+     … +53 lines (ctrl+o to expand)
+
+⏺ Bash(go build -o tmoney ./cmd/tmoney/)
+  ⎿  (No content)
+
+⏺ Bash(./tmoney --version && echo "---" && ./tmoney --help && echo "---" && ./tmoney)
+  ⎿  tmoney version dev            
+     Build time: unknown
+     Git commit: unknown
+     … +17 lines (ctrl+o to expand)
+
+⏺ Write(cmd/tmoney/main_test.go)
+  ⎿  Wrote 60 lines to cmd/tmoney/main_test.go
+     package main
+     import (
+       "testing"
+     )
+     func TestRun_VersionFlag(t *testing.T) {
+       tests := []struct {
+         name string
+         args []string
+     … +50 lines (ctrl+o to expand)
+
+⏺ Bash(go test ./cmd/tmoney/ -v)
+  ⎿  === RUN   TestRun_VersionFlag                   
+     === RUN   TestRun_VersionFlag/short_version_flag
+     tmoney version dev
+     … +51 lines (ctrl+o to expand)
+
+⏺ Bash(rm /Users/haskovec/work/tmoney/tmoney && git -C /Users/haskovec/work/tmoney status)
+  ⎿  On branch main                               
+     Your branch is up to date with 'origin/main'.
+     … +5 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney status --porcelain && ls -la /Users/haskovec/work/tmoney/cmd/tmoney/)
+  ⎿  ?? cmd/tmoney/main_test.go                        
+     total 16
+     drwxr-xr-x@ 4 haskovec  staff   128 Jan 31 13:48 .
+     … +3 lines (ctrl+o to expand)
+
+⏺ Read(.gitignore)
+  ⎿  Read 33 lines
+
+⏺ Bash(git add cmd/tmoney/main.go cmd/tmoney/main_test.go internal/ && git status)
+  ⎿  On branch main                               
+     Your branch is up to date with 'origin/main'.
+     … +3 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney add -v cmd/tmoney/main.go)
+  ⎿  (No content)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney status)
+  ⎿  On branch main                               
+     Your branch is up to date with 'origin/main'.
+     … +3 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney check-ignore -v cmd/tmoney/main.go || echo "Not ignored")
+  ⎿  Not ignored
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney add -f cmd/tmoney/main.go && git status)
+  ⎿  On branch main                               
+     Your branch is up to date with 'origin/main'.
+     … +3 lines (ctrl+o to expand)
+
+⏺ Bash(cat /Users/haskovec/work/tmoney/cmd/tmoney/main.go | head -5)
+  ⎿  package main                 
+
+     import (
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney ls-files --cached cmd/tmoney/)
+  ⎿  cmd/tmoney/main.go     
+     cmd/tmoney/main_test.go
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney diff --cached)
+  ⎿  diff --git a/cmd/tmoney/main_test.go b/cmd/tmoney/main_test.go
+     new file mode 100644
+     index 0000000..ee217df
+     … +62 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney log --oneline -5 && git -C /Users/haskovec/work/tmoney diff HEAD -- cmd/tmoney/main.go)
+  ⎿  cf789de Initial project specs after interview
+     2b3e4ca Initial commit
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney show cf789de --name-only --oneline)
+  ⎿  cf789de Initial project specs after interview
+     .gitignore
+     CLAUDE.md
+     … +15 lines (ctrl+o to expand)
+
+⏺ I see - main.go was already committed previously. The only new file is the test file. Let me commit that and then update the implementation plan:
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney log -1 --format='%an %ae')
+  ⎿  Jeffrey Haskovec haskovec@gmail.com
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney diff HEAD~1..HEAD -- cmd/tmoney/main.go)
+  ⎿  diff --git a/cmd/tmoney/main.go b/cmd/tmoney/main.go
+     new file mode 100644
+     index 0000000..5b38dd1
+     … +65 lines (ctrl+o to expand)
+
+⏺ Good - the main.go and directory structure were already committed. I just need to commit the test file:
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney commit -m "Add unit tests for project scaffold…)
+  ⎿  [main 0dbaf20] Add unit tests for project scaffold
+      1 file changed, 59 insertions(+)
+      create mode 100644 cmd/tmoney/main_test.go
+
+⏺ Update(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Updated specs/IMPLEMENTATION_PLAN.md with 1 addition and 1 removal
+       12    ## Phase 1: Project Foundation
+       13    
+       14    ### 1.1 Project Structure
+       15 -  - [ ] **001 - Project scaffold**
+       15 +  - [x] **001 - Project scaffold**
+       16      - Create directory structure (cmd/, internal/, etc.)
+       17      - Initialize go.mod with dependencies
+       18      - Create main.go entry point
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney add specs/IMPLEMENTATION_PLAN.md && git -C /Users/haskovec/work/tmoney commit -m "Mark 001 -
+      Project scaffold as complete…)
+  ⎿  [main 20a9c01] Mark 001 - Project scaffold as complete
+      1 file changed, 1 insertion(+), 1 deletion(-)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney push)
+  ⎿  To github.com:haskovec/tmoney.git
+        cf789de..20a9c01  main -> main
+
+⏺ Done! I've completed 001 - Project scaffold:
+
+  What was done:
+  1. Directory structure created: cmd/tmoney/, internal/db/, internal/model/, internal/repository/, internal/service/, internal/cli/, internal/tui/
+  2. Main entry point (cmd/tmoney/main.go):
+    - Version info display (-v, --version)
+    - Help message (-h, --help)
+    - Placeholder TUI mode
+    - Clean error handling with exit codes
+  3. Build verified: Compiles successfully with go build
+  4. Unit tests added (cmd/tmoney/main_test.go):
+    - Tests for version flag
+    - Tests for help flag
+    - Tests for no arguments (TUI mode)
+    - Tests for file argument handling
+  5. Commits pushed:
+    - 0dbaf20 - Add unit tests for project scaffold
+    - 20a9c01 - Mark 001 - Project scaffold as complete
+
+  The project now has a working foundation. The next task in the implementation plan is 002 - Database connection.
+

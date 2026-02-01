@@ -1,0 +1,155 @@
+> read @docs/PROMPT.md and implement the first item 
+  ⎿  Read docs/PROMPT.md (8 lines)
+
+⏺ I'll read the README.md and IMPLEMENTATION_PLAN.md files to understand the project and find the next task.
+
+⏺ Read(README.md)
+  ⎿  Read 107 lines
+
+⏺ Read(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Read 400 lines
+
+⏺ Now I understand the project. TMoney is a terminal-based personal finance app. The next task to implement is 008 - Category model. Let me first study existing code patterns and any category specs.
+
+⏺ Search(pattern: "specs/**/*.md")
+  ⎿  Found 10 files (ctrl+o to expand)
+
+⏺ Search(pattern: "internal/models/*.go")
+  ⎿  Found 6 files (ctrl+o to expand)
+
+⏺ Read(specs/categories.md)
+  ⎿  Read 150 lines
+
+⏺ Read(internal/models/account.go)
+  ⎿  Read 261 lines
+
+⏺ Read(internal/models/types.go)
+  ⎿  Read 655 lines
+
+⏺ Let me also read the validation file to understand the patterns:
+
+⏺ Read(internal/models/validation.go)
+  ⎿  Read 280 lines
+
+⏺ Now I understand the patterns. Let me create the Category model following the same conventions.
+
+⏺ Write(internal/models/category.go)
+  ⎿  Wrote 166 lines to internal/models/category.go                          
+     package models
+     import (
+       "database/sql/driver"
+       "fmt"
+       "strings"
+     )
+     // CategoryType represents whether a category is for income or expenses.
+     type CategoryType string
+     … +156 lines (ctrl+o to expand)
+
+⏺ Let me check the existing test patterns:
+
+⏺ Read(internal/models/account_test.go)
+  ⎿  Read 625 lines
+
+⏺ Now I'll create comprehensive tests for the Category model following the same patterns:
+
+⏺ Write(internal/models/category_test.go)
+  ⎿  Wrote 479 lines to internal/models/category_test.go               
+     package models
+     import (
+       "testing"
+     )
+     func TestCategoryType(t *testing.T) {
+       t.Run("AllCategoryTypes returns all types", func(t *testing.T) {
+         types := AllCategoryTypes()
+         expected := 2
+     … +469 lines (ctrl+o to expand)
+
+⏺ Bash(go build ./...)
+  ⎿  (No content)
+
+⏺ Bash(go test ./internal/models/... -v)
+  ⎿  === RUN   TestAccountType                                  
+     === RUN   TestAccountType/AllAccountTypes_returns_all_types
+     === RUN   TestAccountType/String_returns_correct_value
+     … +495 lines (ctrl+o to expand)
+
+⏺ All tests pass. Now let me commit and update the implementation plan.
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney status)
+  ⎿  On branch main                               
+     Your branch is up to date with 'origin/main'.
+     … +6 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney diff --stat)
+  ⎿  (No content)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney log --oneline -5)
+  ⎿  a05d3ca Mark 007 - Account service as complete           
+     e0a5f00 Add Account service with business logic and tests
+     dc9631f Mark 006 - Account repository as complete
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney add internal/models/category.go internal/models/category_test.go && git -C
+      /Users/haskovec/work/tmoney commit -m "Add Categor…)
+  ⎿  [main 4546e1a] Add Category model with type enum and validation
+      2 files changed, 643 insertions(+)
+      create mode 100644 internal/models/category.go
+      create mode 100644 internal/models/category_test.go
+
+⏺ Now let me update the implementation plan:
+
+⏺ Update(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Updated specs/IMPLEMENTATION_PLAN.md with 1 addition and 1 removal
+       64    
+       65    ## Phase 3: Categories
+       66    
+       67 -  - [ ] **008 - Category model**
+       67 +  - [x] **008 - Category model**
+       68      - Category struct
+       69      - Category type enum (income/expense)
+       70      - Parent/child relationship
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney add specs/IMPLEMENTATION_PLAN.md && git -C /Users/haskovec/work/tmoney commit -m "Mark 008 -
+      Category model as complete…)
+  ⎿  [main 8234fb4] Mark 008 - Category model as complete
+      1 file changed, 1 insertion(+), 1 deletion(-)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney push)
+  ⎿  To github.com:haskovec/tmoney.git
+        a05d3ca..8234fb4  main -> main
+
+⏺ Done! I implemented 008 - Category model from the implementation plan.
+
+  Summary
+
+  Created the Category model at internal/models/category.go with:
+
+  CategoryType enum (income, expense):
+  - String(), IsValid(), DisplayName() methods
+  - ParseCategoryType() for string parsing
+  - Value()/Scan() for database storage
+
+  Category struct:
+  - Name - category name (max 255 chars)
+  - ParentID - optional parent for subcategories (nullable)
+  - Type - income or expense
+  - IsSystem - flag for system-managed categories (e.g., Transfer)
+
+  Constructors:
+  - NewCategory() - top-level category
+  - NewSubcategory() - category with parent
+  - NewSystemCategory() - system-managed category
+
+  Methods:
+  - IsTopLevel() / IsSubcategory() - check hierarchy position
+  - SetParent() / ClearParent() - manage parent relationship
+  - Validate() / IsValid() - validation
+
+  Tests (internal/models/category_test.go):
+  - 48 test cases covering all functionality
+  - All tests pass
+
+  Commits:
+  - 4546e1a - Add Category model with type enum and validation
+  - 8234fb4 - Mark 008 - Category model as complete
+

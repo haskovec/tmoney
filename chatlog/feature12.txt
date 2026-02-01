@@ -1,0 +1,172 @@
+> read @docs/PROMPT.md and implement the most important item 
+  ⎿  Read docs/PROMPT.md (8 lines)
+
+⏺ I'll start by studying the README.md and IMPLEMENTATION_PLAN.md to understand the project and pick the most important task.
+
+⏺ Read(README.md)
+  ⎿  Read 107 lines
+
+⏺ Read(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Read 400 lines
+
+⏺ Looking at the IMPLEMENTATION_PLAN.md, the most important next item is 013 - Payee repository. Let me study the existing code patterns first.
+
+⏺ Search(pattern: "**/payee*.go")
+  ⎿  Found 2 files (ctrl+o to expand)
+
+⏺ Search(pattern: "**/repository*.go")
+  ⎿  Found 0 files 
+
+⏺ Search(pattern: "**/*_repository.go")
+  ⎿  Found 0 files 
+
+⏺ Search(pattern: "**/internal/**/*.go")
+  ⎿  Found 22 files (ctrl+o to expand)
+
+⏺ Read(internal/models/payee.go)
+  ⎿  Read 290 lines
+
+⏺ Read(internal/repository/category.go)
+  ⎿  Read 423 lines
+
+⏺ Read(internal/repository/account.go)
+  ⎿  Read 306 lines
+
+⏺ Search(pattern: "**/*.sql")
+  ⎿  Found 1 file (ctrl+o to expand)
+
+⏺ Read(internal/repository/errors.go)
+  ⎿  Read 37 lines
+
+⏺ Read(internal/db/migrations/001_initial.sql)
+  ⎿  Read 184 lines
+
+⏺ Now I have a complete understanding of the patterns. Let me implement the Payee repository.
+
+⏺ Write(internal/repository/payee.go)
+  ⎿  Wrote 525 lines to internal/repository/payee.go
+     package repository
+     import (
+       "database/sql"
+       "fmt"
+       "github.com/haskovec/tmoney/internal/db"
+       "github.com/haskovec/tmoney/internal/models"
+     )
+     … +515 lines (ctrl+o to expand)
+
+⏺ Bash(go build ./...)
+  ⎿  (No content)
+
+⏺ Search(pattern: "**/repository/*_test.go")
+  ⎿  Found 0 files 
+
+⏺ Read(internal/service/category_test.go)
+  ⎿  Read 875 lines
+
+⏺ Now I'll create comprehensive tests for the PayeeRepository.
+
+⏺ Write(internal/repository/payee_test.go)
+  ⎿  Wrote 1033 lines to internal/repository/payee_test.go
+     package repository
+     import (
+       "path/filepath"
+       "testing"
+       "github.com/haskovec/tmoney/internal/db"
+       "github.com/haskovec/tmoney/internal/models"
+     )
+     … +1023 lines (ctrl+o to expand)
+
+⏺ Bash(go build ./...)
+  ⎿  (No content)
+
+⏺ Bash(go test ./... -v 2>&1 | head -200)
+  ⎿  === RUN   TestRun_VersionFlag                   
+     === RUN   TestRun_VersionFlag/short_version_flag
+     tmoney version dev
+     … +197 lines (ctrl+o to expand)
+
+⏺ Bash(go test ./internal/repository/... -v 2>&1)
+  ⎿  === RUN   TestPayeeRepository_Create                                    
+     === RUN   TestPayeeRepository_Create/creates_valid_payee
+     === RUN   TestPayeeRepository_Create/creates_payee_with_default_category
+     … +123 lines (ctrl+o to expand)
+
+⏺ All repository tests pass. Let me run all tests to ensure nothing is broken:
+
+⏺ Bash(go test ./... 2>&1)
+  ⎿  ok         github.com/haskovec/tmoney/cmd/tmoney   (cached) 
+     ok         github.com/haskovec/tmoney/internal/db  (cached)
+     ok         github.com/haskovec/tmoney/internal/models      1.521s
+     … +3 lines (ctrl+o to expand)
+
+⏺ All tests pass. Now let me commit the changes and update the implementation plan.
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney status)
+  ⎿  On branch main                               
+     Your branch is up to date with 'origin/main'.
+     … +6 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney log --oneline -5)
+  ⎿  3ef9184 Mark 012 - Payee model as complete            
+     6b8ecdf Add Payee and Alias models with MatchType enum
+     07dc4f5 Mark 011 - Category service as complete
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney add internal/repository/payee.go internal/repository/payee_test.go)
+  ⎿  (No content)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney commit -m "Add Payee repository with CRUD and pattern matching…)
+  ⎿  [main 3e2ed3a] Add Payee repository with CRUD and pattern matching
+      2 files changed, 1556 insertions(+)
+      create mode 100644 internal/repository/payee.go
+      create mode 100644 internal/repository/payee_test.go
+
+⏺ Now let me update the IMPLEMENTATION_PLAN.md to mark item 013 as complete:
+
+⏺ Update(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Updated specs/IMPLEMENTATION_PLAN.md with 1 addition and 1 removal
+        95      - Alias struct
+        96      - Match type enum
+        97    
+        98 -  - [ ] **013 - Payee repository**
+        98 +  - [x] **013 - Payee repository**
+        99      - Payee CRUD
+       100      - Alias CRUD
+       101      - Find by pattern match
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney add specs/IMPLEMENTATION_PLAN.md && git -C /Users/haskovec/work/tmoney commit -m "Mark 013 - Payee
+       repository as complete…)
+  ⎿  [main ef218d2] Mark 013 - Payee repository as complete
+      1 file changed, 1 insertion(+), 1 deletion(-)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney push)
+  ⎿  To github.com:haskovec/tmoney.git
+        3ef9184..ef218d2  main -> main
+
+⏺ Done! I implemented 013 - Payee repository from the implementation plan. Here's what was completed:
+
+  Summary
+
+  Created internal/repository/payee.go with:
+  - Payee CRUD Operations: Create, GetByID, GetByName, List, Update, Delete
+  - Alias CRUD Operations: CreateAlias, GetAliasByID, GetAliasesByPayee, UpdateAlias, DeleteAlias
+  - Pattern Matching: FindPayeeByPattern, FindAliasMatch (case-insensitive matching)
+
+  Key Features:
+  - Duplicate name/pattern validation
+  - Cascade delete of aliases when payee is deleted
+  - HasDependentsError when trying to delete a payee that has transactions
+  - Supports all MatchType variants (exact, contains, starts_with, regex)
+
+  Created internal/repository/payee_test.go with 16 test functions covering:
+  - All Payee CRUD operations
+  - All Alias CRUD operations
+  - Pattern matching with all match types
+  - Edge cases and error handling
+  - Integration tests for complex scenarios
+
+  All tests pass (70+ individual test cases).
+
+  Commits pushed:
+  - 3e2ed3a - Add Payee repository with CRUD and pattern matching
+  - ef218d2 - Mark 013 - Payee repository as complete

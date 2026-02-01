@@ -1,0 +1,153 @@
+> read @docs/PROMPT.md and implement the most important item 
+  ⎿  Read docs/PROMPT.md (8 lines)
+
+⏺ I'll read the README.md and IMPLEMENTATION_PLAN.md to understand what needs to be done.
+
+⏺ Read(README.md)
+  ⎿  Read 107 lines
+
+⏺ Read(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Read 400 lines
+
+⏺ Based on the IMPLEMENTATION_PLAN.md, the next important item is 012 - Payee model in Phase 4. Let me study the existing code patterns first.
+
+⏺ Search(pattern: "internal/domain/**/*.go")
+  ⎿  Found 0 files 
+
+⏺ Read(specs/PAYEES.md)
+  ⎿  Read 164 lines
+
+⏺ Search(pattern: "internal/**/*.go")
+  ⎿  Found 20 files (ctrl+o to expand)
+
+⏺ Read(internal/models/category.go)
+  ⎿  Read 166 lines
+
+⏺ Read(internal/models/category_test.go)
+  ⎿  Read 479 lines
+
+⏺ Read(internal/models/types.go)
+  ⎿  Read 655 lines
+
+⏺ Read(internal/models/account.go)
+  ⎿  Read 261 lines
+
+⏺ Read(internal/models/validation.go)
+  ⎿  Read 280 lines
+
+⏺ Write(internal/models/payee.go)
+  ⎿  Wrote 290 lines to internal/models/payee.go                            
+     package models
+     import (
+       "database/sql/driver"
+       "fmt"
+       "regexp"
+       "strings"
+     )
+     // MatchType represents the type of pattern matching for payee aliases.
+     … +280 lines (ctrl+o to expand)
+
+⏺ Write(internal/models/payee_test.go)
+  ⎿  Wrote 800 lines to internal/models/payee_test.go               
+     package models
+     import (
+       "testing"
+     )
+     func TestMatchType(t *testing.T) {
+       t.Run("AllMatchTypes returns all types", func(t *testing.T) {
+         types := AllMatchTypes()
+         expected := 4
+     … +790 lines (ctrl+o to expand)
+
+⏺ Bash(go build ./...)
+  ⎿  (No content)
+
+⏺ Bash(go test ./internal/models/... -v)
+  ⎿  === RUN   TestAccountType                                  
+     === RUN   TestAccountType/AllAccountTypes_returns_all_types
+     === RUN   TestAccountType/String_returns_correct_value
+     … +478 lines (ctrl+o to expand)
+
+⏺ All tests pass. Let me run the full test suite to make sure everything works together:
+
+⏺ Bash(go test ./... -count=1)
+  ⎿  ok         github.com/haskovec/tmoney/cmd/tmoney   0.614s   
+     ok         github.com/haskovec/tmoney/internal/db  2.646s
+     ok         github.com/haskovec/tmoney/internal/models      2.028s
+     … +3 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney status)
+  ⎿  On branch main                               
+     Your branch is up to date with 'origin/main'.
+     … +6 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney diff --stat)
+  ⎿  (No content)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney log --oneline -5)
+  ⎿  07dc4f5 Mark 011 - Category service as complete                          
+     557cb25 Add Category service with CRUD operations and merge functionality
+     258c85f Mark 010 - Default categories as complete
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney add internal/models/payee.go internal/models/payee_test.go)
+  ⎿  (No content)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney commit -m "Add Payee and Alias models with MatchType enum…)
+  ⎿  [main 6b8ecdf] Add Payee and Alias models with MatchType enum
+      2 files changed, 1088 insertions(+)
+      create mode 100644 internal/models/payee.go
+      create mode 100644 internal/models/payee_test.go
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney push)
+  ⎿  To github.com:haskovec/tmoney.git
+        07dc4f5..6b8ecdf  main -> main
+
+⏺ Update(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Updated specs/IMPLEMENTATION_PLAN.md with 1 addition and 1 removal
+       90    
+       91    ## Phase 4: Payees
+       92    
+       93 -  - [ ] **012 - Payee model**
+       93 +  - [x] **012 - Payee model**
+       94      - Payee struct
+       95      - Alias struct
+       96      - Match type enum
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney add specs/IMPLEMENTATION_PLAN.md && git -C /Users/haskovec/work/tmoney commit -m "Mark 012 - Payee
+       model as complete…)
+  ⎿  [main 3ef9184] Mark 012 - Payee model as complete
+      1 file changed, 1 insertion(+), 1 deletion(-)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney push)
+  ⎿  To github.com:haskovec/tmoney.git
+        6b8ecdf..3ef9184  main -> main
+
+⏺ Done! I've implemented 012 - Payee model from the IMPLEMENTATION_PLAN.md.
+
+  Summary
+
+  Created two new files:
+
+  internal/models/payee.go - Contains:
+  - MatchType enum with exact, contains, starts_with, regex values
+  - Payee struct with:
+    - Name (required, max 255 chars)
+    - DefaultCategoryID (optional, references Category)
+    - Notes (optional, max 2000 chars)
+    - Validation methods
+  - Alias struct with:
+    - PayeeID (required)
+    - Pattern (required, max 500 chars)
+    - MatchType (required)
+    - Matches() and MatchesCaseInsensitive() methods for pattern matching
+    - Validation including regex pattern validation
+
+  internal/models/payee_test.go - Comprehensive tests covering:
+  - MatchType enum operations
+  - Payee creation and validation
+  - Alias creation, matching, and validation
+  - Case-sensitive and case-insensitive pattern matching
+  - All four match types (exact, contains, starts_with, regex)
+
+  All tests pass and changes have been committed and pushed.

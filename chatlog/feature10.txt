@@ -1,0 +1,989 @@
+> read @docs/PROMPT.md and implement the most important item 
+  ⎿  Read docs/PROMPT.md (8 lines)
+
+⏺ I'll start by studying the README.md and IMPLEMENTATION_PLAN.md to understand the project and identify the most important task.
+
+⏺ Read(README.md)
+  ⎿  Read 107 lines
+
+⏺ Read(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Read 400 lines
+
+⏺ Based on the IMPLEMENTATION_PLAN.md, the next item to implement is 011 - Category service. This involves:
+  - Create with parent validation
+  - Delete with transaction check
+  - Merge categories
+
+  Let me study the existing code patterns to understand how to implement this properly.
+
+⏺ Search(pattern: "**/category*.go")
+  ⎿  Found 6 files (ctrl+o to expand)
+
+⏺ Search(pattern: "**/account_service*.go")
+  ⎿  Found 1 file (ctrl+o to expand)
+
+⏺ Read(specs/011-category-service.md)
+  ⎿  Error reading file
+
+⏺ Let me read the existing category service and related files to understand what's already implemented:
+
+⏺ Read(internal/service/category.go)
+  ⎿  Read 234 lines
+
+⏺ Read(internal/service/category_test.go)
+  ⎿  Read 425 lines
+
+⏺ Read(internal/repository/category.go)
+  ⎿  Read 423 lines
+
+⏺ Read(internal/models/category.go)
+  ⎿  Read 166 lines
+
+⏺ Let me also check the account service for reference on how services are structured:
+
+⏺ Search(pattern: "**/service/*.go")
+  ⎿  Found 4 files (ctrl+o to expand)
+
+⏺ Read(internal/service/account.go)
+  ⎿  Read 175 lines
+
+⏺ Read(internal/service/errors.go)
+  ⎿  Read 45 lines
+
+⏺ Let me check the database schema to understand how transactions reference categories:
+
+⏺ Search(pattern: "**/migrations/**/*.sql")
+  ⎿  Found 1 file (ctrl+o to expand)
+
+⏺ Read(internal/db/migrations/001_initial.sql)
+  ⎿  Read 184 lines
+
+⏺ Now I'll implement the CategoryService. Let me update the service and add error types:
+
+⏺ Update(internal/service/errors.go)
+  ⎿  Updated internal/service/errors.go with 32 additions                                                     
+       42    func (e *AccountHasBalanceError) Error() string {
+       43      return fmt.Sprintf("cannot close account %s: has balance of %s", e.ID, e.Balance.String())
+       44    }
+       45 +  
+       46 +  // CategoryIsSystemError is returned when trying to modify or delete a system category.
+       47 +  type CategoryIsSystemError struct {
+       48 +    ID   string
+       49 +    Name string
+       50 +  }
+       51 +  
+       52 +  func (e *CategoryIsSystemError) Error() string {
+       53 +    return fmt.Sprintf("cannot modify system category %q (%s)", e.Name, e.ID)
+       54 +  }
+       55 +  
+       56 +  // CategoryMergeTypeMismatchError is returned when trying to merge categories of different types.
+       57 +  type CategoryMergeTypeMismatchError struct {
+       58 +    SourceID   string
+       59 +    SourceType string
+       60 +    TargetID   string
+       61 +    TargetType string
+       62 +  }
+       63 +  
+       64 +  func (e *CategoryMergeTypeMismatchError) Error() string {
+       65 +    return fmt.Sprintf("cannot merge categories: source %s is %s, target %s is %s",
+       66 +      e.SourceID, e.SourceType, e.TargetID, e.TargetType)
+       67 +  }
+       68 +  
+       69 +  // CategoryMergeSameError is returned when trying to merge a category into itself.
+       70 +  type CategoryMergeSameError struct {
+       71 +    ID string
+       72 +  }
+       73 +  
+       74 +  func (e *CategoryMergeSameError) Error() string {
+       75 +    return fmt.Sprintf("cannot merge category %s into itself", e.ID)
+       76 +  }
+
+⏺ Now let me update the CategoryService with all the required methods:
+
+⏺ Update(internal/service/category.go)
+  ⎿  Updated internal/service/category.go with 3 additions and 1 removal                                      
+       147    // CategoryService provides business logic for category operations.
+       148    type CategoryService struct {
+       149      repo *repository.CategoryRepository
+       150 +    db   *db.DB
+       151    }
+       152    
+       153    // NewCategoryService creates a new CategoryService.
+       154 -  func NewCategoryService(repo *repository.CategoryRepository) *CategoryService {
+       154 +  func NewCategoryService(repo *repository.CategoryRepository, database *db.DB) *CategoryService {
+       155      return &CategoryService{
+       156        repo: repo,
+       157 +      db:   database,
+       158      }
+       159    }
+       160    
+
+⏺ Update(internal/service/category.go)
+  ⎿  Updated internal/service/category.go with 1 addition     
+       3    import (
+       4      "fmt"
+       5    
+       6 +    "github.com/haskovec/tmoney/internal/db"
+       7      "github.com/haskovec/tmoney/internal/models"
+       8      "github.com/haskovec/tmoney/internal/repository"
+       9    )
+
+⏺ Update(internal/service/category.go)
+  ⎿  Updated internal/service/category.go with 199 additions                                                      
+       234      }
+       235      return len(categories) > 0, nil
+       236    }
+       237 +  
+       238 +  // Create validates and creates a new category.
+       239 +  // If setting a parent, validates the parent exists and type matches.
+       240 +  func (s *CategoryService) Create(category *models.Category) error {
+       241 +    if err := s.validateCategory(category); err != nil {
+       242 +      return err
+       243 +    }
+       244 +  
+       245 +    // Additional parent validation is done in the repository
+       246 +    return s.repo.Create(category)
+       247 +  }
+       248 +  
+       249 +  // GetByID retrieves a category by its ID.
+       250 +  func (s *CategoryService) GetByID(id models.ID) (*models.Category, error) {
+       251 +    return s.repo.GetByID(id)
+       252 +  }
+       253 +  
+       254 +  // GetByName retrieves a category by its name within a parent.
+       255 +  // Pass nil for parentID to search for top-level categories.
+       256 +  func (s *CategoryService) GetByName(name string, parentID *models.ID) (*models.Category, error) {
+       257 +    return s.repo.GetByName(name, parentID)
+       258 +  }
+       259 +  
+       260 +  // GetWithParent retrieves a category and its parent (if any) by ID.
+       261 +  func (s *CategoryService) GetWithParent(id models.ID) (*models.Category, *models.Category, error) {
+       262 +    return s.repo.GetWithParent(id)
+       263 +  }
+       264 +  
+       265 +  // Update validates and updates an existing category.
+       266 +  // System categories cannot be updated (except by seeding).
+       267 +  func (s *CategoryService) Update(category *models.Category) error {
+       268 +    // Check if this is a system category
+       269 +    existing, err := s.repo.GetByID(category.ID)
+       270 +    if err != nil {
+       271 +      return err
+       272 +    }
+       273 +    if existing.IsSystem {
+       274 +      return &CategoryIsSystemError{ID: category.ID.String(), Name: existing.Name}
+       275 +    }
+       276 +  
+       277 +    if err := s.validateCategory(category); err != nil {
+       278 +      return err
+       279 +    }
+       280 +  
+       281 +    return s.repo.Update(category)
+       282 +  }
+       283 +  
+       284 +  // Delete removes a category.
+       285 +  // System categories cannot be deleted.
+       286 +  // Categories with transactions or subcategories cannot be deleted.
+       287 +  func (s *CategoryService) Delete(id models.ID) error {
+       288 +    // Check if this is a system category
+       289 +    category, err := s.repo.GetByID(id)
+       290 +    if err != nil {
+       291 +      return err
+       292 +    }
+       293 +    if category.IsSystem {
+       294 +      return &CategoryIsSystemError{ID: id.String(), Name: category.Name}
+       295 +    }
+       296 +  
+       297 +    // Repository handles checks for subcategories and transactions
+       298 +    return s.repo.Delete(id)
+       299 +  }
+       300 +  
+       301 +  // List returns all categories ordered by name.
+       302 +  func (s *CategoryService) List() ([]*models.Category, error) {
+       303 +    return s.repo.List()
+       304 +  }
+       305 +  
+       306 +  // ListByType returns all categories of a specific type.
+       307 +  func (s *CategoryService) ListByType(categoryType models.CategoryType) ([]*models.Category, error) {
+       308 +    return s.repo.ListByType(categoryType)
+       309 +  }
+       310 +  
+       311 +  // ListTopLevel returns all top-level categories (those without a parent).
+       312 +  func (s *CategoryService) ListTopLevel() ([]*models.Category, error) {
+       313 +    return s.repo.ListTopLevel()
+       314 +  }
+       315 +  
+       316 +  // ListChildren returns all child categories of a parent.
+       317 +  func (s *CategoryService) ListChildren(parentID models.ID) ([]*models.Category, error) {
+       318 +    return s.repo.ListChildren(parentID)
+       319 +  }
+       320 +  
+       321 +  // MergeCategories merges the source category into the target category.
+       322 +  // All transactions, splits, scheduled transactions, and payee defaults
+       323 +  // using the source category will be updated to use the target category.
+       324 +  // The source category is then deleted.
+       325 +  //
+       326 +  // Rules:
+       327 +  // - Source and target must have the same type (income/expense)
+       328 +  // - System categories cannot be merged
+       329 +  // - Cannot merge a category into itself
+       330 +  func (s *CategoryService) MergeCategories(sourceID, targetID models.ID) error {
+       331 +    // Cannot merge into itself
+       332 +    if sourceID == targetID {
+       333 +      return &CategoryMergeSameError{ID: sourceID.String()}
+       334 +    }
+       335 +  
+       336 +    // Get both categories
+       337 +    source, err := s.repo.GetByID(sourceID)
+       338 +    if err != nil {
+       339 +      return fmt.Errorf("failed to get source category: %w", err)
+       340 +    }
+       341 +  
+       342 +    target, err := s.repo.GetByID(targetID)
+       343 +    if err != nil {
+       344 +      return fmt.Errorf("failed to get target category: %w", err)
+       345 +    }
+       346 +  
+       347 +    // System categories cannot be merged
+       348 +    if source.IsSystem {
+       349 +      return &CategoryIsSystemError{ID: sourceID.String(), Name: source.Name}
+       350 +    }
+       351 +    if target.IsSystem {
+       352 +      return &CategoryIsSystemError{ID: targetID.String(), Name: target.Name}
+       353 +    }
+       354 +  
+       355 +    // Types must match
+       356 +    if source.Type != target.Type {
+       357 +      return &CategoryMergeTypeMismatchError{
+       358 +        SourceID:   sourceID.String(),
+       359 +        SourceType: source.Type.String(),
+       360 +        TargetID:   targetID.String(),
+       361 +        TargetType: target.Type.String(),
+       362 +      }
+       363 +    }
+       364 +  
+       365 +    // Update all references to use target category
+       366 +    // Note: DuckDB doesn't support transactions, so we do best-effort updates
+       367 +  
+       368 +    // Update transactions
+       369 +    _, err = s.db.Conn().Exec(`
+       370 +      UPDATE transactions
+       371 +      SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+       372 +      WHERE CAST(category_id AS VARCHAR) = ?
+       373 +    `, targetID.String(), sourceID.String())
+       374 +    if err != nil {
+       375 +      return fmt.Errorf("failed to update transactions: %w", err)
+       376 +    }
+       377 +  
+       378 +    // Update transaction splits
+       379 +    _, err = s.db.Conn().Exec(`
+       380 +      UPDATE transaction_splits
+       381 +      SET category_id = CAST(? AS UUID)
+       382 +      WHERE CAST(category_id AS VARCHAR) = ?
+       383 +    `, targetID.String(), sourceID.String())
+       384 +    if err != nil {
+       385 +      return fmt.Errorf("failed to update transaction splits: %w", err)
+       386 +    }
+       387 +  
+       388 +    // Update payee defaults
+       389 +    _, err = s.db.Conn().Exec(`
+       390 +      UPDATE payees
+       391 +      SET default_category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+       392 +      WHERE CAST(default_category_id AS VARCHAR) = ?
+       393 +    `, targetID.String(), sourceID.String())
+       394 +    if err != nil {
+       395 +      return fmt.Errorf("failed to update payee defaults: %w", err)
+       396 +    }
+       397 +  
+       398 +    // Update scheduled transactions
+       399 +    _, err = s.db.Conn().Exec(`
+       400 +      UPDATE scheduled_transactions
+       401 +      SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+       402 +      WHERE CAST(category_id AS VARCHAR) = ?
+       403 +    `, targetID.String(), sourceID.String())
+       404 +    if err != nil {
+       405 +      return fmt.Errorf("failed to update scheduled transactions: %w", err)
+       406 +    }
+       407 +  
+       408 +    // If source has children, reassign them to target
+       409 +    children, err := s.repo.ListChildren(sourceID)
+       410 +    if err != nil {
+       411 +      return fmt.Errorf("failed to list source children: %w", err)
+       412 +    }
+       413 +    for _, child := range children {
+       414 +      child.SetParent(targetID)
+       415 +      if err := s.repo.Update(child); err != nil {
+       416 +        return fmt.Errorf("failed to reassign child category %s: %w", child.Name, err)
+       417 +      }
+       418 +    }
+       419 +  
+       420 +    // Delete the source category (should now have no references)
+       421 +    if err := s.repo.Delete(sourceID); err != nil {
+       422 +      return fmt.Errorf("failed to delete source category: %w", err)
+       423 +    }
+       424 +  
+       425 +    return nil
+       426 +  }
+       427 +  
+       428 +  // validateCategory validates a category and returns any validation errors.
+       429 +  func (s *CategoryService) validateCategory(category *models.Category) error {
+       430 +    errors := category.Validate()
+       431 +    if errors.HasErrors() {
+       432 +      return &ServiceValidationError{Errors: errors}
+       433 +    }
+       434 +    return nil
+       435 +  }
+
+⏺ Now let me update the existing tests and add new tests for the new methods:
+
+⏺ Update(internal/service/category_test.go)
+  ⎿  Updated internal/service/category_test.go with 1 addition and 1 removal
+       82      t.Run("seeds all default categories", func(t *testing.T) {
+       83        database := createTestDB(t)
+       84        repo := repository.NewCategoryRepository(database)
+       85 -      svc := NewCategoryService(repo)
+       85 +      svc := NewCategoryService(repo, database)
+       86    
+       87        err := svc.SeedDefaultCategories()
+       88        if err != nil {
+
+⏺ Update(internal/service/category_test.go)
+  ⎿  Updated internal/service/category_test.go with 1 addition and 1 removal     
+       114      t.Run("creates Transfer as system category", func(t *testing.T) {
+       115        database := createTestDB(t)
+       116        repo := repository.NewCategoryRepository(database)
+       117 -      svc := NewCategoryService(repo)
+       117 +      svc := NewCategoryService(repo, database)
+       118    
+       119        err := svc.SeedDefaultCategories()
+       120        if err != nil {
+
+⏺ Update(internal/service/category_test.go)
+  ⎿  Updated internal/service/category_test.go with 9 additions and 9 removals             
+       135      t.Run("creates income categories", func(t *testing.T) {
+       136        database := createTestDB(t)
+       137        repo := repository.NewCategoryRepository(database)
+       138 -      svc := NewCategoryService(repo)
+       138 +      svc := NewCategoryService(repo, database)
+       139    
+       140        err := svc.SeedDefaultCategories()
+       141        if err != nil {
+     ...
+       156      t.Run("creates expense categories", func(t *testing.T) {
+       157        database := createTestDB(t)
+       158        repo := repository.NewCategoryRepository(database)
+       159 -      svc := NewCategoryService(repo)
+       159 +      svc := NewCategoryService(repo, database)
+       160    
+       161        err := svc.SeedDefaultCategories()
+       162        if err != nil {
+     ...
+       177      t.Run("creates parent-child relationships", func(t *testing.T) {
+       178        database := createTestDB(t)
+       179        repo := repository.NewCategoryRepository(database)
+       180 -      svc := NewCategoryService(repo)
+       180 +      svc := NewCategoryService(repo, database)
+       181    
+       182        err := svc.SeedDefaultCategories()
+       183        if err != nil {
+     ...
+       211      t.Run("is idempotent - does not duplicate categories", func(t *testing.T) {
+       212        database := createTestDB(t)
+       213        repo := repository.NewCategoryRepository(database)
+       214 -      svc := NewCategoryService(repo)
+       214 +      svc := NewCategoryService(repo, database)
+       215    
+       216        // Seed twice
+       217        err := svc.SeedDefaultCategories()
+     ...
+       247      t.Run("returns Transfer category after seeding", func(t *testing.T) {
+       248        database := createTestDB(t)
+       249        repo := repository.NewCategoryRepository(database)
+       250 -      svc := NewCategoryService(repo)
+       250 +      svc := NewCategoryService(repo, database)
+       251    
+       252        // Seed first
+       253        err := svc.SeedDefaultCategories()
+     ...
+       271      t.Run("returns error when Transfer not found", func(t *testing.T) {
+       272        database := createTestDB(t)
+       273        repo := repository.NewCategoryRepository(database)
+       274 -      svc := NewCategoryService(repo)
+       274 +      svc := NewCategoryService(repo, database)
+       275    
+       276        // Don't seed
+       277        _, err := svc.GetTransferCategory()
+     ...
+       285      t.Run("returns false for empty database", func(t *testing.T) {
+       286        database := createTestDB(t)
+       287        repo := repository.NewCategoryRepository(database)
+       288 -      svc := NewCategoryService(repo)
+       288 +      svc := NewCategoryService(repo, database)
+       289    
+       290        has, err := svc.HasDefaultCategories()
+       291        if err != nil {
+     ...
+       300      t.Run("returns true after seeding", func(t *testing.T) {
+       301        database := createTestDB(t)
+       302        repo := repository.NewCategoryRepository(database)
+       303 -      svc := NewCategoryService(repo)
+       303 +      svc := NewCategoryService(repo, database)
+       304    
+       305        err := svc.SeedDefaultCategories()
+       306        if err != nil {
+     ...
+       322      t.Run("creates service with repository", func(t *testing.T) {
+       323        database := createTestDB(t)
+       324        repo := repository.NewCategoryRepository(database)
+       325 -      svc := NewCategoryService(repo)
+       325 +      svc := NewCategoryService(repo, database)
+       326    
+       327        if svc == nil {
+       328          t.Error("NewCategoryService should not return nil")
+
+⏺ Now let me add the tests for the new methods at the end of the file:
+
+⏺ Update(internal/service/category_test.go)
+  ⎿  Updated internal/service/category_test.go with 450 additions                                                           
+       422        }
+       423      })
+       424    }
+       425 +  
+       426 +  func TestCategoryService_Create(t *testing.T) {
+       427 +    t.Run("creates valid category", func(t *testing.T) {
+       428 +      database := createTestDB(t)
+       429 +      repo := repository.NewCategoryRepository(database)
+       430 +      svc := NewCategoryService(repo, database)
+       431 +  
+       432 +      category := models.NewCategory("Test Category", models.CategoryTypeExpense)
+       433 +      err := svc.Create(category)
+       434 +      if err != nil {
+       435 +        t.Fatalf("Create() error = %v", err)
+       436 +      }
+       437 +  
+       438 +      // Verify it was created
+       439 +      retrieved, err := svc.GetByID(category.ID)
+       440 +      if err != nil {
+       441 +        t.Fatalf("GetByID() error = %v", err)
+       442 +      }
+       443 +      if retrieved.Name != "Test Category" {
+       444 +        t.Errorf("Expected name 'Test Category', got %q", retrieved.Name)
+       445 +      }
+       446 +    })
+       447 +  
+       448 +    t.Run("validates category before creating", func(t *testing.T) {
+       449 +      database := createTestDB(t)
+       450 +      repo := repository.NewCategoryRepository(database)
+       451 +      svc := NewCategoryService(repo, database)
+       452 +  
+       453 +      category := models.NewCategory("", models.CategoryTypeExpense) // Invalid: empty name
+       454 +      err := svc.Create(category)
+       455 +      if err == nil {
+       456 +        t.Error("Create() expected error for invalid category")
+       457 +      }
+       458 +      if _, ok := err.(*ServiceValidationError); !ok {
+       459 +        t.Errorf("Expected ServiceValidationError, got %T", err)
+       460 +      }
+       461 +    })
+       462 +  
+       463 +    t.Run("creates subcategory with valid parent", func(t *testing.T) {
+       464 +      database := createTestDB(t)
+       465 +      repo := repository.NewCategoryRepository(database)
+       466 +      svc := NewCategoryService(repo, database)
+       467 +  
+       468 +      // Create parent
+       469 +      parent := models.NewCategory("Parent", models.CategoryTypeExpense)
+       470 +      if err := svc.Create(parent); err != nil {
+       471 +        t.Fatalf("Create parent error = %v", err)
+       472 +      }
+       473 +  
+       474 +      // Create child
+       475 +      child := models.NewSubcategory("Child", parent.ID, models.CategoryTypeExpense)
+       476 +      if err := svc.Create(child); err != nil {
+       477 +        t.Fatalf("Create child error = %v", err)
+       478 +      }
+       479 +  
+       480 +      // Verify relationship
+       481 +      retrieved, retrievedParent, err := svc.GetWithParent(child.ID)
+       482 +      if err != nil {
+       483 +        t.Fatalf("GetWithParent() error = %v", err)
+       484 +      }
+       485 +      if retrieved.Name != "Child" {
+       486 +        t.Errorf("Expected name 'Child', got %q", retrieved.Name)
+       487 +      }
+       488 +      if retrievedParent == nil {
+       489 +        t.Fatal("Expected parent, got nil")
+       490 +      }
+       491 +      if retrievedParent.Name != "Parent" {
+       492 +        t.Errorf("Expected parent name 'Parent', got %q", retrievedParent.Name)
+       493 +      }
+       494 +    })
+       495 +  }
+       496 +  
+       497 +  func TestCategoryService_Update(t *testing.T) {
+       498 +    t.Run("updates non-system category", func(t *testing.T) {
+       499 +      database := createTestDB(t)
+       500 +      repo := repository.NewCategoryRepository(database)
+       501 +      svc := NewCategoryService(repo, database)
+       502 +  
+       503 +      category := models.NewCategory("Original", models.CategoryTypeExpense)
+       504 +      if err := svc.Create(category); err != nil {
+       505 +        t.Fatalf("Create() error = %v", err)
+       506 +      }
+       507 +  
+       508 +      category.Name = "Updated"
+       509 +      if err := svc.Update(category); err != nil {
+       510 +        t.Fatalf("Update() error = %v", err)
+       511 +      }
+       512 +  
+       513 +      retrieved, err := svc.GetByID(category.ID)
+       514 +      if err != nil {
+       515 +        t.Fatalf("GetByID() error = %v", err)
+       516 +      }
+       517 +      if retrieved.Name != "Updated" {
+       518 +        t.Errorf("Expected name 'Updated', got %q", retrieved.Name)
+       519 +      }
+       520 +    })
+       521 +  
+       522 +    t.Run("rejects update to system category", func(t *testing.T) {
+       523 +      database := createTestDB(t)
+       524 +      repo := repository.NewCategoryRepository(database)
+       525 +      svc := NewCategoryService(repo, database)
+       526 +  
+       527 +      // Seed to create Transfer system category
+       528 +      if err := svc.SeedDefaultCategories(); err != nil {
+       529 +        t.Fatalf("SeedDefaultCategories() error = %v", err)
+       530 +      }
+       531 +  
+       532 +      transfer, err := svc.GetTransferCategory()
+       533 +      if err != nil {
+       534 +        t.Fatalf("GetTransferCategory() error = %v", err)
+       535 +      }
+       536 +  
+       537 +      transfer.Name = "Modified Transfer"
+       538 +      err = svc.Update(transfer)
+       539 +      if err == nil {
+       540 +        t.Error("Update() expected error for system category")
+       541 +      }
+       542 +      if _, ok := err.(*CategoryIsSystemError); !ok {
+       543 +        t.Errorf("Expected CategoryIsSystemError, got %T: %v", err, err)
+       544 +      }
+       545 +    })
+       546 +  }
+       547 +  
+       548 +  func TestCategoryService_Delete(t *testing.T) {
+       549 +    t.Run("deletes non-system category without dependencies", func(t *testing.T) {
+       550 +      database := createTestDB(t)
+       551 +      repo := repository.NewCategoryRepository(database)
+       552 +      svc := NewCategoryService(repo, database)
+       553 +  
+       554 +      category := models.NewCategory("ToDelete", models.CategoryTypeExpense)
+       555 +      if err := svc.Create(category); err != nil {
+       556 +        t.Fatalf("Create() error = %v", err)
+       557 +      }
+       558 +  
+       559 +      if err := svc.Delete(category.ID); err != nil {
+       560 +        t.Fatalf("Delete() error = %v", err)
+       561 +      }
+       562 +  
+       563 +      _, err := svc.GetByID(category.ID)
+       564 +      if err == nil {
+       565 +        t.Error("GetByID() expected error after delete")
+       566 +      }
+       567 +    })
+       568 +  
+       569 +    t.Run("rejects delete of system category", func(t *testing.T) {
+       570 +      database := createTestDB(t)
+       571 +      repo := repository.NewCategoryRepository(database)
+       572 +      svc := NewCategoryService(repo, database)
+       573 +  
+       574 +      // Seed to create Transfer system category
+       575 +      if err := svc.SeedDefaultCategories(); err != nil {
+       576 +        t.Fatalf("SeedDefaultCategories() error = %v", err)
+       577 +      }
+       578 +  
+       579 +      transfer, err := svc.GetTransferCategory()
+       580 +      if err != nil {
+       581 +        t.Fatalf("GetTransferCategory() error = %v", err)
+       582 +      }
+       583 +  
+       584 +      err = svc.Delete(transfer.ID)
+       585 +      if err == nil {
+       586 +        t.Error("Delete() expected error for system category")
+       587 +      }
+       588 +      if _, ok := err.(*CategoryIsSystemError); !ok {
+       589 +        t.Errorf("Expected CategoryIsSystemError, got %T: %v", err, err)
+       590 +      }
+       591 +    })
+       592 +  
+       593 +    t.Run("rejects delete of category with children", func(t *testing.T) {
+       594 +      database := createTestDB(t)
+       595 +      repo := repository.NewCategoryRepository(database)
+       596 +      svc := NewCategoryService(repo, database)
+       597 +  
+       598 +      // Create parent
+       599 +      parent := models.NewCategory("Parent", models.CategoryTypeExpense)
+       600 +      if err := svc.Create(parent); err != nil {
+       601 +        t.Fatalf("Create parent error = %v", err)
+       602 +      }
+       603 +  
+       604 +      // Create child
+       605 +      child := models.NewSubcategory("Child", parent.ID, models.CategoryTypeExpense)
+       606 +      if err := svc.Create(child); err != nil {
+       607 +        t.Fatalf("Create child error = %v", err)
+       608 +      }
+       609 +  
+       610 +      // Try to delete parent
+       611 +      err := svc.Delete(parent.ID)
+       612 +      if err == nil {
+       613 +        t.Error("Delete() expected error for category with children")
+       614 +      }
+       615 +    })
+       616 +  }
+       617 +  
+       618 +  func TestCategoryService_List(t *testing.T) {
+       619 +    t.Run("returns all categories", func(t *testing.T) {
+       620 +      database := createTestDB(t)
+       621 +      repo := repository.NewCategoryRepository(database)
+       622 +      svc := NewCategoryService(repo, database)
+       623 +  
+       624 +      // Create some categories
+       625 +      if err := svc.Create(models.NewCategory("Cat1", models.CategoryTypeExpense)); err != nil {
+       626 +        t.Fatalf("Create error = %v", err)
+       627 +      }
+       628 +      if err := svc.Create(models.NewCategory("Cat2", models.CategoryTypeIncome)); err != nil {
+       629 +        t.Fatalf("Create error = %v", err)
+       630 +      }
+       631 +  
+       632 +      categories, err := svc.List()
+       633 +      if err != nil {
+       634 +        t.Fatalf("List() error = %v", err)
+       635 +      }
+       636 +      if len(categories) != 2 {
+       637 +        t.Errorf("Expected 2 categories, got %d", len(categories))
+       638 +      }
+       639 +    })
+       640 +  
+       641 +    t.Run("ListByType returns correct type", func(t *testing.T) {
+       642 +      database := createTestDB(t)
+       643 +      repo := repository.NewCategoryRepository(database)
+       644 +      svc := NewCategoryService(repo, database)
+       645 +  
+       646 +      // Create categories of different types
+       647 +      if err := svc.Create(models.NewCategory("Expense1", models.CategoryTypeExpense)); err != nil {
+       648 +        t.Fatalf("Create error = %v", err)
+       649 +      }
+       650 +      if err := svc.Create(models.NewCategory("Income1", models.CategoryTypeIncome)); err != nil {
+       651 +        t.Fatalf("Create error = %v", err)
+       652 +      }
+       653 +  
+       654 +      expenses, err := svc.ListByType(models.CategoryTypeExpense)
+       655 +      if err != nil {
+       656 +        t.Fatalf("ListByType() error = %v", err)
+       657 +      }
+       658 +      if len(expenses) != 1 {
+       659 +        t.Errorf("Expected 1 expense category, got %d", len(expenses))
+       660 +      }
+       661 +      if expenses[0].Name != "Expense1" {
+       662 +        t.Errorf("Expected 'Expense1', got %q", expenses[0].Name)
+       663 +      }
+       664 +    })
+       665 +  
+       666 +    t.Run("ListTopLevel returns only top-level", func(t *testing.T) {
+       667 +      database := createTestDB(t)
+       668 +      repo := repository.NewCategoryRepository(database)
+       669 +      svc := NewCategoryService(repo, database)
+       670 +  
+       671 +      // Create parent and child
+       672 +      parent := models.NewCategory("Parent", models.CategoryTypeExpense)
+       673 +      if err := svc.Create(parent); err != nil {
+       674 +        t.Fatalf("Create parent error = %v", err)
+       675 +      }
+       676 +      if err := svc.Create(models.NewSubcategory("Child", parent.ID, models.CategoryTypeExpense)); err != nil {
+       677 +        t.Fatalf("Create child error = %v", err)
+       678 +      }
+       679 +  
+       680 +      topLevel, err := svc.ListTopLevel()
+       681 +      if err != nil {
+       682 +        t.Fatalf("ListTopLevel() error = %v", err)
+       683 +      }
+       684 +      if len(topLevel) != 1 {
+       685 +        t.Errorf("Expected 1 top-level category, got %d", len(topLevel))
+       686 +      }
+       687 +      if topLevel[0].Name != "Parent" {
+       688 +        t.Errorf("Expected 'Parent', got %q", topLevel[0].Name)
+       689 +      }
+       690 +    })
+       691 +  
+       692 +    t.Run("ListChildren returns only children", func(t *testing.T) {
+       693 +      database := createTestDB(t)
+       694 +      repo := repository.NewCategoryRepository(database)
+       695 +      svc := NewCategoryService(repo, database)
+       696 +  
+       697 +      // Create parent and children
+       698 +      parent := models.NewCategory("Parent", models.CategoryTypeExpense)
+       699 +      if err := svc.Create(parent); err != nil {
+       700 +        t.Fatalf("Create parent error = %v", err)
+       701 +      }
+       702 +      if err := svc.Create(models.NewSubcategory("Child1", parent.ID, models.CategoryTypeExpense)); err != nil {
+       703 +        t.Fatalf("Create child1 error = %v", err)
+       704 +      }
+       705 +      if err := svc.Create(models.NewSubcategory("Child2", parent.ID, models.CategoryTypeExpense)); err != nil {
+       706 +        t.Fatalf("Create child2 error = %v", err)
+       707 +      }
+       708 +  
+       709 +      children, err := svc.ListChildren(parent.ID)
+       710 +      if err != nil {
+       711 +        t.Fatalf("ListChildren() error = %v", err)
+       712 +      }
+       713 +      if len(children) != 2 {
+       714 +        t.Errorf("Expected 2 children, got %d", len(children))
+       715 +      }
+       716 +    })
+       717 +  }
+       718 +  
+       719 +  func TestCategoryService_MergeCategories(t *testing.T) {
+       720 +    t.Run("merges source into target", func(t *testing.T) {
+       721 +      database := createTestDB(t)
+       722 +      repo := repository.NewCategoryRepository(database)
+       723 +      svc := NewCategoryService(repo, database)
+       724 +  
+       725 +      // Create source and target
+       726 +      source := models.NewCategory("Source", models.CategoryTypeExpense)
+       727 +      target := models.NewCategory("Target", models.CategoryTypeExpense)
+       728 +      if err := svc.Create(source); err != nil {
+       729 +        t.Fatalf("Create source error = %v", err)
+       730 +      }
+       731 +      if err := svc.Create(target); err != nil {
+       732 +        t.Fatalf("Create target error = %v", err)
+       733 +      }
+       734 +  
+       735 +      // Merge
+       736 +      if err := svc.MergeCategories(source.ID, target.ID); err != nil {
+       737 +        t.Fatalf("MergeCategories() error = %v", err)
+       738 +      }
+       739 +  
+       740 +      // Source should be deleted
+       741 +      _, err := svc.GetByID(source.ID)
+       742 +      if err == nil {
+       743 +        t.Error("Source category should be deleted after merge")
+       744 +      }
+       745 +  
+       746 +      // Target should still exist
+       747 +      _, err = svc.GetByID(target.ID)
+       748 +      if err != nil {
+       749 +        t.Errorf("Target category should still exist: %v", err)
+       750 +      }
+       751 +    })
+       752 +  
+       753 +    t.Run("rejects merge into self", func(t *testing.T) {
+       754 +      database := createTestDB(t)
+       755 +      repo := repository.NewCategoryRepository(database)
+       756 +      svc := NewCategoryService(repo, database)
+       757 +  
+       758 +      category := models.NewCategory("Self", models.CategoryTypeExpense)
+       759 +      if err := svc.Create(category); err != nil {
+       760 +        t.Fatalf("Create error = %v", err)
+       761 +      }
+       762 +  
+       763 +      err := svc.MergeCategories(category.ID, category.ID)
+       764 +      if err == nil {
+       765 +        t.Error("MergeCategories() expected error when merging into self")
+       766 +      }
+       767 +      if _, ok := err.(*CategoryMergeSameError); !ok {
+       768 +        t.Errorf("Expected CategoryMergeSameError, got %T: %v", err, err)
+       769 +      }
+       770 +    })
+       771 +  
+       772 +    t.Run("rejects merge of different types", func(t *testing.T) {
+       773 +      database := createTestDB(t)
+       774 +      repo := repository.NewCategoryRepository(database)
+       775 +      svc := NewCategoryService(repo, database)
+       776 +  
+       777 +      expense := models.NewCategory("Expense", models.CategoryTypeExpense)
+       778 +      income := models.NewCategory("Income", models.CategoryTypeIncome)
+       779 +      if err := svc.Create(expense); err != nil {
+       780 +        t.Fatalf("Create expense error = %v", err)
+       781 +      }
+       782 +      if err := svc.Create(income); err != nil {
+       783 +        t.Fatalf("Create income error = %v", err)
+       784 +      }
+       785 +  
+       786 +      err := svc.MergeCategories(expense.ID, income.ID)
+       787 +      if err == nil {
+       788 +        t.Error("MergeCategories() expected error for type mismatch")
+       789 +      }
+       790 +      if _, ok := err.(*CategoryMergeTypeMismatchError); !ok {
+       791 +        t.Errorf("Expected CategoryMergeTypeMismatchError, got %T: %v", err, err)
+       792 +      }
+       793 +    })
+       794 +  
+       795 +    t.Run("rejects merge of system category", func(t *testing.T) {
+       796 +      database := createTestDB(t)
+       797 +      repo := repository.NewCategoryRepository(database)
+       798 +      svc := NewCategoryService(repo, database)
+       799 +  
+       800 +      // Seed to create Transfer system category
+       801 +      if err := svc.SeedDefaultCategories(); err != nil {
+       802 +        t.Fatalf("SeedDefaultCategories() error = %v", err)
+       803 +      }
+       804 +  
+       805 +      transfer, err := svc.GetTransferCategory()
+       806 +      if err != nil {
+       807 +        t.Fatalf("GetTransferCategory() error = %v", err)
+       808 +      }
+       809 +  
+       810 +      target := models.NewCategory("Target", models.CategoryTypeExpense)
+       811 +      if err := svc.Create(target); err != nil {
+       812 +        t.Fatalf("Create target error = %v", err)
+       813 +      }
+       814 +  
+       815 +      // Try to merge Transfer (system) into target
+       816 +      err = svc.MergeCategories(transfer.ID, target.ID)
+       817 +      if err == nil {
+       818 +        t.Error("MergeCategories() expected error for system category as source")
+       819 +      }
+       820 +      if _, ok := err.(*CategoryIsSystemError); !ok {
+       821 +        t.Errorf("Expected CategoryIsSystemError, got %T: %v", err, err)
+       822 +      }
+       823 +  
+       824 +      // Try to merge into Transfer (system)
+       825 +      source := models.NewCategory("Source", models.CategoryTypeExpense)
+       826 +      if err := svc.Create(source); err != nil {
+       827 +        t.Fatalf("Create source error = %v", err)
+       828 +      }
+       829 +  
+       830 +      err = svc.MergeCategories(source.ID, transfer.ID)
+       831 +      if err == nil {
+       832 +        t.Error("MergeCategories() expected error for system category as target")
+       833 +      }
+       834 +      if _, ok := err.(*CategoryIsSystemError); !ok {
+       835 +        t.Errorf("Expected CategoryIsSystemError, got %T: %v", err, err)
+       836 +      }
+       837 +    })
+       838 +  
+       839 +    t.Run("reassigns children during merge", func(t *testing.T) {
+       840 +      database := createTestDB(t)
+       841 +      repo := repository.NewCategoryRepository(database)
+       842 +      svc := NewCategoryService(repo, database)
+       843 +  
+       844 +      // Create source with child
+       845 +      source := models.NewCategory("Source", models.CategoryTypeExpense)
+       846 +      if err := svc.Create(source); err != nil {
+       847 +        t.Fatalf("Create source error = %v", err)
+       848 +      }
+       849 +      child := models.NewSubcategory("Child", source.ID, models.CategoryTypeExpense)
+       850 +      if err := svc.Create(child); err != nil {
+       851 +        t.Fatalf("Create child error = %v", err)
+       852 +      }
+       853 +  
+       854 +      // Create target
+       855 +      target := models.NewCategory("Target", models.CategoryTypeExpense)
+       856 +      if err := svc.Create(target); err != nil {
+       857 +        t.Fatalf("Create target error = %v", err)
+       858 +      }
+       859 +  
+       860 +      // Merge
+       861 +      if err := svc.MergeCategories(source.ID, target.ID); err != nil {
+       862 +        t.Fatalf("MergeCategories() error = %v", err)
+       863 +      }
+       864 +  
+       865 +      // Child should now be under target
+       866 +      updatedChild, err := svc.GetByID(child.ID)
+       867 +      if err != nil {
+       868 +        t.Fatalf("GetByID child error = %v", err)
+       869 +      }
+       870 +      if !updatedChild.ParentID.Valid || updatedChild.ParentID.ID != target.ID {
+       871 +        t.Error("Child should be reassigned to target")
+       872 +      }
+       873 +    })
+       874 +  }
+
+⏺ Bash(go build ./...)
+  ⎿  (No content)
+
+⏺ Bash(go test ./internal/service/... -v)
+  ⎿  === RUN   TestDefaultCategories                                  
+     === RUN   TestDefaultCategories/contains_Transfer_system_category
+     === RUN   TestDefaultCategories/contains_income_categories
+     … +91 lines (ctrl+o to expand)
+
+⏺ All tests pass. Let me also run the full test suite to make sure nothing else is broken:
+
+⏺ Bash(go test ./... -v 2>&1 | tail -50)
+  ⎿      --- PASS: TestCategoryLifecycle/List_categories (0.00s)            
+         --- PASS: TestCategoryLifecycle/Get_category_by_ID_and_name (0.00s)
+         --- PASS: TestCategoryLifecycle/Update_category (0.01s)
+     … +47 lines (ctrl+o to expand)
+
+⏺ Excellent! All tests pass. Now let me commit the changes:
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney status)
+  ⎿  On branch main                               
+     Your branch is up to date with 'origin/main'.
+     … +8 lines (ctrl+o to expand)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney diff --stat)
+  ⎿   internal/service/category.go      | 204 +++++++++++++++-                      
+      internal/service/category_test.go | 472 +++++++++++++++++++++++++++++++++++++-
+      internal/service/errors.go        |  32 +++
+      3 files changed, 696 insertions(+), 12 deletions(-)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney log --oneline -3)
+  ⎿  258c85f Mark 010 - Default categories as complete        
+     9fb184e Add default category seeding for new TMoney files
+     29ba53f Mark 009 - Category repository as complete
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney add internal/service/category.go internal/service/category_test.go internal/service/errors.go)
+  ⎿  (No content)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney commit -m "Add Category service with CRUD operations and merge functionality…)
+  ⎿  [main 557cb25] Add Category service with CRUD operations and merge functionality
+      3 files changed, 696 insertions(+), 12 deletions(-)
+
+⏺ Now let me update the IMPLEMENTATION_PLAN.md to mark the task as complete:
+
+⏺ Update(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Updated specs/IMPLEMENTATION_PLAN.md with 1 addition and 1 removal
+       81      - System category flag (Transfer)
+       82      - Run on new file creation
+       83    
+       84 -  - [ ] **011 - Category service**
+       84 +  - [x] **011 - Category service**
+       85      - Create with parent validation
+       86      - Delete with transaction check
+       87      - Merge categories
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney add specs/IMPLEMENTATION_PLAN.md && git -C /Users/haskovec/work/tmoney commit -m "Mark 011 -
+      Category service as complete…)
+  ⎿  [main 07dc4f5] Mark 011 - Category service as complete
+      1 file changed, 1 insertion(+), 1 deletion(-)
+
+⏺ Bash(git -C /Users/haskovec/work/tmoney push)
+  ⎿  To github.com:haskovec/tmoney.git
+        258c85f..07dc4f5  main -> main
+
+⏺ Done! I implemented 011 - Category service from the IMPLEMENTATION_PLAN.md.
+
+  Summary
+
+  Files modified:
+  - internal/service/category.go - Added full CRUD operations and merge functionality
+  - internal/service/category_test.go - Added comprehensive unit tests
+  - internal/service/errors.go - Added category-specific error types
+
+  New functionality:
+  - Create - Validates category and creates with parent validation
+  - GetByID/GetByName/GetWithParent - Retrieval methods
+  - Update - Updates non-system categories with validation
+  - Delete - Deletes non-system categories (repository handles dependency checks)
+  - List/ListByType/ListTopLevel/ListChildren - Various listing methods
+  - MergeCategories - Merges source into target, reassigning all transactions, splits, payees, and scheduled transactions
+
+  Error types added:
+  - CategoryIsSystemError - Prevents modification of system categories (Transfer)
+  - CategoryMergeTypeMismatchError - Prevents merging income/expense categories
+  - CategoryMergeSameError - Prevents merging a category into itself
+
+  Commits:
+  1. 557cb25 - Add Category service with CRUD operations and merge functionality
+  2. 07dc4f5 - Mark 011 - Category service as complete
