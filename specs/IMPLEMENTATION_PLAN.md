@@ -54,7 +54,7 @@ This document defines the order in which features should be implemented. Each it
   - Delete account
   - List accounts (with filters)
 
-- [ ] **007 - Account service**
+- [x] **007 - Account service**
   - Business logic layer
   - Balance calculation
   - Account validation
