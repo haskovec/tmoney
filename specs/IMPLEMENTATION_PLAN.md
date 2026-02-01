@@ -95,7 +95,7 @@ This document defines the order in which features should be implemented. Each it
   - Alias struct
   - Match type enum
 
-- [ ] **013 - Payee repository**
+- [x] **013 - Payee repository**
   - Payee CRUD
   - Alias CRUD
   - Find by pattern match
