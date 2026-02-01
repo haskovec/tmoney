@@ -291,6 +291,173 @@ func TestPrintHelp(t *testing.T) {
 	}
 }
 
+func TestParseArgs_CreateFlag(t *testing.T) {
+	tests := []struct {
+		name           string
+		args           []string
+		expectedCreate string
+	}{
+		{"long flag with space", []string{"--create", "/path/to/new.tdb"}, "/path/to/new.tdb"},
+		{"long flag with equals", []string{"--create=/path/to/new.tdb"}, "/path/to/new.tdb"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.createDB != tt.expectedCreate {
+				t.Errorf("parseArgs(%v) createDB = %q, want %q", tt.args, opts.createDB, tt.expectedCreate)
+			}
+		})
+	}
+}
+
+func TestParseArgs_CreateFlagMissingPath(t *testing.T) {
+	_, _, err := parseArgs([]string{"--create"})
+	if err == nil {
+		t.Error("parseArgs(--create) without path should return error")
+	}
+	if !strings.Contains(err.Error(), "requires a path") {
+		t.Errorf("error should mention path requirement, got: %v", err)
+	}
+}
+
+func TestRun_CreateDB(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "newdb.tdb")
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--create", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--create) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Created database:") {
+		t.Errorf("output should confirm creation, got: %s", output)
+	}
+	if !strings.Contains(output, dbPath) {
+		t.Errorf("output should contain path, got: %s", output)
+	}
+
+	// Verify the file was created and can be opened
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Errorf("failed to open created database: %v", err)
+		return
+	}
+	database.Close()
+}
+
+func TestRun_CreateDBWithEqualsFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "newdb.tdb")
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--create=" + dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--create=path) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Created database:") {
+		t.Errorf("output should confirm creation, got: %s", output)
+	}
+}
+
+func TestRun_CreateDBAlreadyExists(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "existing.tdb")
+
+	// Create the database first
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create initial database: %v", err)
+	}
+	database.Close()
+
+	// Try to create again
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--create", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--create) on existing file should return error")
+	}
+}
+
+func TestRun_CreateDBAddsExtension(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "newdb") // No .tdb extension
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--create", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--create) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, ".tdb") {
+		t.Errorf("output should show .tdb extension was added, got: %s", output)
+	}
+
+	// Verify the file with .tdb extension was created
+	database, err := db.Open(dbPath + ".tdb")
+	if err != nil {
+		t.Errorf("failed to open created database with .tdb extension: %v", err)
+		return
+	}
+	database.Close()
+}
+
+func TestRun_CreateThenListAccounts(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	// Create the database
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--create", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("run(--create) returned error: %v", err)
+	}
+
+	// List accounts (should be empty but work)
+	stdout.Reset()
+	stderr.Reset()
+	err = run([]string{"--list-accounts", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--list-accounts) after create returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "No accounts found") {
+		t.Errorf("output should say no accounts found, got: %s", output)
+	}
+}
+
+func TestPrintHelp_IncludesCreate(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printHelp(buf)
+	output := buf.String()
+
+	if !strings.Contains(output, "--create") {
+		t.Error("help output should document --create flag")
+	}
+	if !strings.Contains(output, "Create a new database file") {
+		t.Error("help output should describe --create functionality")
+	}
+}
+
 // TestRun_ListAccountsWithClosedAccount tests that --include-closed shows closed accounts
 func TestRun_ListAccountsWithClosedAccount(t *testing.T) {
 	// Create a temporary database

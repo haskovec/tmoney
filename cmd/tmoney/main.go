@@ -22,9 +22,10 @@ var (
 
 // CLI option flags
 type cliOptions struct {
-	file         string
-	listAccounts bool
+	file          string
+	listAccounts  bool
 	includeClosed bool
+	createDB      string
 }
 
 func main() {
@@ -38,6 +39,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	opts, remaining, err := parseArgs(args)
 	if err != nil {
 		return err
+	}
+
+	// Handle --create
+	if opts.createDB != "" {
+		return runCreateDB(opts, stdout)
 	}
 
 	// Handle --list-accounts
@@ -85,12 +91,20 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.listAccounts = true
 		case "--include-closed":
 			opts.includeClosed = true
+		case "--create":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--create requires a path argument")
+			}
+			i++
+			opts.createDB = args[i]
 		default:
-			// Check for --file=path format
+			// Check for --flag=value formats
 			if strings.HasPrefix(arg, "--file=") {
 				opts.file = strings.TrimPrefix(arg, "--file=")
 			} else if strings.HasPrefix(arg, "-f=") {
 				opts.file = strings.TrimPrefix(arg, "-f=")
+			} else if strings.HasPrefix(arg, "--create=") {
+				opts.createDB = strings.TrimPrefix(arg, "--create=")
 			} else {
 				remaining = append(remaining, arg)
 			}
@@ -98,6 +112,18 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 	}
 
 	return opts, remaining, nil
+}
+
+// runCreateDB creates a new database file.
+func runCreateDB(opts *cliOptions, w io.Writer) error {
+	database, err := db.Create(opts.createDB)
+	if err != nil {
+		return fmt.Errorf("failed to create database: %w", err)
+	}
+	defer database.Close()
+
+	fmt.Fprintf(w, "Created database: %s\n", database.Path())
+	return nil
 }
 
 // runListAccounts lists accounts from the database.
@@ -216,6 +242,9 @@ Global Options:
   -f, --file <path>    Specify database file
   -h, --help           Show this help message
   -v, --version        Show version information
+
+Database Commands:
+  --create <path>      Create a new database file
 
 Account Commands:
   --list-accounts      List all accounts
