@@ -116,7 +116,7 @@ This document defines the order in which features should be implemented. Each it
   - Status enum
   - Transfer fields
 
-- [ ] **016 - Transaction repository**
+- [x] **016 - Transaction repository**
   - Create transaction
   - Read transaction
   - Update transaction
