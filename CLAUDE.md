@@ -69,3 +69,6 @@
 - Learn from existing implementations
 - Stop after 3 failed attempts and reassess
 
+**NEVER**:
+- Read from the chatlog/ directory
+
