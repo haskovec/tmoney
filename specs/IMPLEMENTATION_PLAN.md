@@ -81,7 +81,7 @@ This document defines the order in which features should be implemented. Each it
   - System category flag (Transfer)
   - Run on new file creation
 
-- [ ] **011 - Category service**
+- [x] **011 - Category service**
   - Create with parent validation
   - Delete with transaction check
   - Merge categories
