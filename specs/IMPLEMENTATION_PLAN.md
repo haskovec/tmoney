@@ -90,7 +90,7 @@ This document defines the order in which features should be implemented. Each it
 
 ## Phase 4: Payees
 
-- [ ] **012 - Payee model**
+- [x] **012 - Payee model**
   - Payee struct
   - Alias struct
   - Match type enum
