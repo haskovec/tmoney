@@ -64,7 +64,7 @@ This document defines the order in which features should be implemented. Each it
 
 ## Phase 3: Categories
 
-- [ ] **008 - Category model**
+- [x] **008 - Category model**
   - Category struct
   - Category type enum (income/expense)
   - Parent/child relationship
