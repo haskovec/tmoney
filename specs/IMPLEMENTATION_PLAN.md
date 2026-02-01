@@ -100,7 +100,7 @@ This document defines the order in which features should be implemented. Each it
   - Alias CRUD
   - Find by pattern match
 
-- [ ] **014 - Payee service**
+- [x] **014 - Payee service**
   - Auto-create on new name
   - Alias matching logic
   - Default category assignment
