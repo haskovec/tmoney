@@ -69,7 +69,7 @@ This document defines the order in which features should be implemented. Each it
   - Category type enum (income/expense)
   - Parent/child relationship
 
-- [ ] **009 - Category repository**
+- [x] **009 - Category repository**
   - CRUD operations
   - Get with parent
   - List by type
