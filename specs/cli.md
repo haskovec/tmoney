@@ -45,6 +45,26 @@ tmoney ~/Documents/TMoney/personal.tdb # Absolute path
 tmoney --file /path/to/file.tdb        # Explicit flag
 ```
 
+## Database Commands
+
+### Create Database
+
+```bash
+tmoney --create ~/Documents/TMoney/finances.tdb
+```
+
+Creates a new database file with all tables and default categories initialized.
+
+Options:
+- If the path does not have a `.tdb` extension, it will be added automatically
+- Parent directories will be created if they don't exist
+- Returns an error if the file already exists
+
+Output:
+```
+Created database: /Users/you/Documents/TMoney/finances.tdb
+```
+
 ## Account Commands
 
 ### List Accounts
