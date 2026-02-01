@@ -74,3 +74,12 @@ type CategoryMergeSameError struct {
 func (e *CategoryMergeSameError) Error() string {
 	return fmt.Sprintf("cannot merge category %s into itself", e.ID)
 }
+
+// PayeeMergeSameError is returned when trying to merge a payee into itself.
+type PayeeMergeSameError struct {
+	ID string
+}
+
+func (e *PayeeMergeSameError) Error() string {
+	return fmt.Sprintf("cannot merge payee %s into itself", e.ID)
+}
