@@ -511,3 +511,390 @@ func TestAccountWithTransactionCannotBeDeleted(t *testing.T) {
 		t.Errorf("Expected HasDependentsError, got %T: %v", err, err)
 	}
 }
+
+// TestTransactionSearchByPayee tests searching transactions by payee name.
+func TestTransactionSearchByPayee(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tmoney-search-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer database.Close()
+
+	accountRepo := repository.NewAccountRepository(database)
+	txnRepo := repository.NewTransactionRepository(database)
+	payeeRepo := repository.NewPayeeRepository(database)
+
+	// Create account
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+	if err := accountRepo.Create(account); err != nil {
+		t.Fatalf("Failed to create account: %v", err)
+	}
+
+	// Create payees
+	coffeeShop := models.NewPayee("Coffee Shop")
+	grocery := models.NewPayee("Grocery Store")
+	gasStation := models.NewPayee("Gas Station")
+
+	for _, payee := range []*models.Payee{coffeeShop, grocery, gasStation} {
+		if err := payeeRepo.Create(payee); err != nil {
+			t.Fatalf("Failed to create payee: %v", err)
+		}
+	}
+
+	// Create transactions
+	txn1 := models.NewTransactionWithPayee(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-5.00"), coffeeShop.ID)
+	txn2 := models.NewTransactionWithPayee(account.ID, models.NewDate(2024, 1, 11), models.MustNewMoney("-50.00"), grocery.ID)
+	txn3 := models.NewTransactionWithPayee(account.ID, models.NewDate(2024, 1, 12), models.MustNewMoney("-30.00"), gasStation.ID)
+
+	for _, txn := range []*models.Transaction{txn1, txn2, txn3} {
+		if err := txnRepo.Create(txn); err != nil {
+			t.Fatalf("Failed to create transaction: %v", err)
+		}
+	}
+
+	t.Run("Search by exact payee name", func(t *testing.T) {
+		results, err := txnRepo.SearchByPayee("Coffee Shop")
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result, got %d", len(results))
+		}
+	})
+
+	t.Run("Search by partial payee name", func(t *testing.T) {
+		results, err := txnRepo.SearchByPayee("shop")
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result (Coffee Shop), got %d", len(results))
+		}
+	})
+
+	t.Run("Search is case-insensitive", func(t *testing.T) {
+		results, err := txnRepo.SearchByPayee("COFFEE")
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result, got %d", len(results))
+		}
+	})
+
+	t.Run("Search with no matches", func(t *testing.T) {
+		results, err := txnRepo.SearchByPayee("Restaurant")
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 0 {
+			t.Errorf("Expected 0 results, got %d", len(results))
+		}
+	})
+
+	t.Run("Search matches multiple payees", func(t *testing.T) {
+		results, err := txnRepo.SearchByPayee("store")
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result (Grocery Store), got %d", len(results))
+		}
+	})
+}
+
+// TestTransactionSearchByMemo tests searching transactions by memo.
+func TestTransactionSearchByMemo(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tmoney-search-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer database.Close()
+
+	accountRepo := repository.NewAccountRepository(database)
+	txnRepo := repository.NewTransactionRepository(database)
+
+	// Create account
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+	if err := accountRepo.Create(account); err != nil {
+		t.Fatalf("Failed to create account: %v", err)
+	}
+
+	// Create transactions with different memos
+	txn1 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-5.00"))
+	txn1.SetMemo("Morning coffee")
+
+	txn2 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 11), models.MustNewMoney("-50.00"))
+	txn2.SetMemo("Weekly groceries")
+
+	txn3 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 12), models.MustNewMoney("-3.50"))
+	txn3.SetMemo("Afternoon coffee break")
+
+	for _, txn := range []*models.Transaction{txn1, txn2, txn3} {
+		if err := txnRepo.Create(txn); err != nil {
+			t.Fatalf("Failed to create transaction: %v", err)
+		}
+	}
+
+	t.Run("Search by memo keyword", func(t *testing.T) {
+		results, err := txnRepo.SearchByMemo("coffee")
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 2 {
+			t.Errorf("Expected 2 results (both coffee transactions), got %d", len(results))
+		}
+	})
+
+	t.Run("Search is case-insensitive", func(t *testing.T) {
+		results, err := txnRepo.SearchByMemo("WEEKLY")
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result, got %d", len(results))
+		}
+	})
+
+	t.Run("Search with no matches", func(t *testing.T) {
+		results, err := txnRepo.SearchByMemo("dinner")
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 0 {
+			t.Errorf("Expected 0 results, got %d", len(results))
+		}
+	})
+}
+
+// TestTransactionSearchByCategory tests searching transactions by category name.
+func TestTransactionSearchByCategory(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tmoney-search-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer database.Close()
+
+	accountRepo := repository.NewAccountRepository(database)
+	txnRepo := repository.NewTransactionRepository(database)
+	categoryRepo := repository.NewCategoryRepository(database)
+
+	// Create account
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+	if err := accountRepo.Create(account); err != nil {
+		t.Fatalf("Failed to create account: %v", err)
+	}
+
+	// Create categories
+	food := models.NewCategory("Food & Dining", models.CategoryTypeExpense)
+	transport := models.NewCategory("Transportation", models.CategoryTypeExpense)
+	utilities := models.NewCategory("Utilities", models.CategoryTypeExpense)
+
+	for _, cat := range []*models.Category{food, transport, utilities} {
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+	}
+
+	// Create transactions
+	txn1 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-25.00"))
+	txn1.SetCategory(food.ID)
+
+	txn2 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 11), models.MustNewMoney("-40.00"))
+	txn2.SetCategory(transport.ID)
+
+	txn3 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 12), models.MustNewMoney("-100.00"))
+	txn3.SetCategory(utilities.ID)
+
+	for _, txn := range []*models.Transaction{txn1, txn2, txn3} {
+		if err := txnRepo.Create(txn); err != nil {
+			t.Fatalf("Failed to create transaction: %v", err)
+		}
+	}
+
+	t.Run("Search by category name", func(t *testing.T) {
+		results, err := txnRepo.SearchByCategory("Food")
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result, got %d", len(results))
+		}
+	})
+
+	t.Run("Search is case-insensitive", func(t *testing.T) {
+		results, err := txnRepo.SearchByCategory("transportation")
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result, got %d", len(results))
+		}
+	})
+
+	t.Run("Search by partial category name", func(t *testing.T) {
+		results, err := txnRepo.SearchByCategory("util")
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result, got %d", len(results))
+		}
+	})
+}
+
+// TestTransactionSearchCombinedCriteria tests searching with multiple criteria.
+func TestTransactionSearchCombinedCriteria(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tmoney-search-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer database.Close()
+
+	accountRepo := repository.NewAccountRepository(database)
+	txnRepo := repository.NewTransactionRepository(database)
+	payeeRepo := repository.NewPayeeRepository(database)
+	categoryRepo := repository.NewCategoryRepository(database)
+
+	// Create accounts
+	checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+	savings := models.NewAccount("Savings", models.AccountTypeSavings, "USD", models.ZeroMoney, models.Today())
+
+	for _, acct := range []*models.Account{checking, savings} {
+		if err := accountRepo.Create(acct); err != nil {
+			t.Fatalf("Failed to create account: %v", err)
+		}
+	}
+
+	// Create payees
+	coffeeShop := models.NewPayee("Coffee Shop")
+	if err := payeeRepo.Create(coffeeShop); err != nil {
+		t.Fatalf("Failed to create payee: %v", err)
+	}
+
+	// Create category
+	food := models.NewCategory("Food", models.CategoryTypeExpense)
+	if err := categoryRepo.Create(food); err != nil {
+		t.Fatalf("Failed to create category: %v", err)
+	}
+
+	// Create transactions with various combinations
+	txn1 := models.NewTransactionWithPayee(checking.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-5.00"), coffeeShop.ID)
+	txn1.SetCategory(food.ID)
+	txn1.SetMemo("Morning latte")
+
+	txn2 := models.NewTransactionWithPayee(checking.ID, models.NewDate(2024, 2, 15), models.MustNewMoney("-5.50"), coffeeShop.ID)
+	txn2.SetCategory(food.ID)
+	txn2.SetMemo("Afternoon coffee")
+
+	txn3 := models.NewTransactionWithPayee(savings.ID, models.NewDate(2024, 1, 20), models.MustNewMoney("-4.00"), coffeeShop.ID)
+	txn3.SetCategory(food.ID)
+	txn3.SetMemo("Quick espresso")
+
+	for _, txn := range []*models.Transaction{txn1, txn2, txn3} {
+		if err := txnRepo.Create(txn); err != nil {
+			t.Fatalf("Failed to create transaction: %v", err)
+		}
+	}
+
+	t.Run("Search by payee and date range", func(t *testing.T) {
+		startDate := models.NewDate(2024, 1, 1)
+		endDate := models.NewDate(2024, 1, 31)
+		results, err := txnRepo.Search(repository.TransactionSearchCriteria{
+			PayeeName: "Coffee",
+			StartDate: &startDate,
+			EndDate:   &endDate,
+		})
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 2 {
+			t.Errorf("Expected 2 results (January only), got %d", len(results))
+		}
+	})
+
+	t.Run("Search by account and memo", func(t *testing.T) {
+		results, err := txnRepo.Search(repository.TransactionSearchCriteria{
+			AccountID: &checking.ID,
+			Memo:      "coffee",
+		})
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result (afternoon coffee in checking), got %d", len(results))
+		}
+	})
+
+	t.Run("Search by category, payee, and account", func(t *testing.T) {
+		results, err := txnRepo.Search(repository.TransactionSearchCriteria{
+			CategoryName: "Food",
+			PayeeName:    "Coffee",
+			AccountID:    &savings.ID,
+		})
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Errorf("Expected 1 result (savings account only), got %d", len(results))
+		}
+	})
+
+	t.Run("Search with no matching criteria", func(t *testing.T) {
+		startDate := models.NewDate(2024, 3, 1)
+		endDate := models.NewDate(2024, 3, 31)
+		results, err := txnRepo.Search(repository.TransactionSearchCriteria{
+			PayeeName: "Coffee",
+			StartDate: &startDate,
+			EndDate:   &endDate,
+		})
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 0 {
+			t.Errorf("Expected 0 results, got %d", len(results))
+		}
+	})
+
+	t.Run("Empty criteria returns all transactions", func(t *testing.T) {
+		results, err := txnRepo.Search(repository.TransactionSearchCriteria{})
+		if err != nil {
+			t.Fatalf("Failed to search: %v", err)
+		}
+		if len(results) != 3 {
+			t.Errorf("Expected 3 results (all transactions), got %d", len(results))
+		}
+	})
+}

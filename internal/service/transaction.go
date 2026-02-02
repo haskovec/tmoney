@@ -121,6 +121,27 @@ func (s *TransactionService) ListByAccountAndDateRange(accountID models.ID, star
 	return s.txnRepo.ListByAccountAndDateRange(accountID, startDate, endDate)
 }
 
+// Search finds transactions matching the given criteria.
+// Multiple criteria are combined with AND logic.
+func (s *TransactionService) Search(criteria repository.TransactionSearchCriteria) ([]*models.Transaction, error) {
+	return s.txnRepo.Search(criteria)
+}
+
+// SearchByPayee finds transactions by partial payee name match (case-insensitive).
+func (s *TransactionService) SearchByPayee(payeeName string) ([]*models.Transaction, error) {
+	return s.txnRepo.SearchByPayee(payeeName)
+}
+
+// SearchByMemo finds transactions by partial memo match (case-insensitive).
+func (s *TransactionService) SearchByMemo(memo string) ([]*models.Transaction, error) {
+	return s.txnRepo.SearchByMemo(memo)
+}
+
+// SearchByCategory finds transactions by partial category name match (case-insensitive).
+func (s *TransactionService) SearchByCategory(categoryName string) ([]*models.Transaction, error) {
+	return s.txnRepo.SearchByCategory(categoryName)
+}
+
 // =============================================================================
 // Split Transaction Operations
 // =============================================================================

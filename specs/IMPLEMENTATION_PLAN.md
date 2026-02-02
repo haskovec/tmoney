@@ -142,7 +142,7 @@ This document defines the order in which features should be implemented. Each it
   - Transfer orchestration
   - Balance impact calculation
 
-- [ ] **020 - Transaction search**
+- [x] **020 - Transaction search**
   - Search by payee
   - Search by memo
   - Search by category

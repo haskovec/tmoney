@@ -443,3 +443,116 @@ func (r *TransactionRepository) scanTransactions(rows *sql.Rows) ([]*models.Tran
 
 	return transactions, nil
 }
+
+// TransactionSearchCriteria defines filters for searching transactions.
+type TransactionSearchCriteria struct {
+	// PayeeName filters by partial payee name match (case-insensitive).
+	PayeeName string
+	// Memo filters by partial memo match (case-insensitive).
+	Memo string
+	// CategoryName filters by partial category name match (case-insensitive).
+	CategoryName string
+	// StartDate filters transactions on or after this date.
+	StartDate *models.Date
+	// EndDate filters transactions on or before this date.
+	EndDate *models.Date
+	// AccountID filters by specific account.
+	AccountID *models.ID
+}
+
+// HasFilters returns true if any search criteria is set.
+func (c *TransactionSearchCriteria) HasFilters() bool {
+	return c.PayeeName != "" ||
+		c.Memo != "" ||
+		c.CategoryName != "" ||
+		c.StartDate != nil ||
+		c.EndDate != nil ||
+		c.AccountID != nil
+}
+
+// Search finds transactions matching the given criteria.
+// Multiple criteria are combined with AND logic.
+// Results are ordered by date descending.
+func (r *TransactionRepository) Search(criteria TransactionSearchCriteria) ([]*models.Transaction, error) {
+	// Build the query dynamically based on criteria
+	query := `
+		SELECT DISTINCT t.id, t.account_id, t.date, t.amount, t.payee_id, t.category_id,
+			t.memo, t.check_number, t.status, t.transfer_id, t.transfer_account_id,
+			t.created_at, t.updated_at
+		FROM transactions t
+	`
+
+	var joins []string
+	var conditions []string
+	var args []interface{}
+
+	// Join payees table if filtering by payee name
+	if criteria.PayeeName != "" {
+		joins = append(joins, "LEFT JOIN payees p ON CAST(t.payee_id AS VARCHAR) = CAST(p.id AS VARCHAR)")
+		conditions = append(conditions, "LOWER(p.name) LIKE LOWER(?)")
+		args = append(args, "%"+criteria.PayeeName+"%")
+	}
+
+	// Join categories table if filtering by category name
+	if criteria.CategoryName != "" {
+		joins = append(joins, "LEFT JOIN categories c ON CAST(t.category_id AS VARCHAR) = CAST(c.id AS VARCHAR)")
+		conditions = append(conditions, "LOWER(c.name) LIKE LOWER(?)")
+		args = append(args, "%"+criteria.CategoryName+"%")
+	}
+
+	// Filter by memo
+	if criteria.Memo != "" {
+		conditions = append(conditions, "LOWER(t.memo) LIKE LOWER(?)")
+		args = append(args, "%"+criteria.Memo+"%")
+	}
+
+	// Filter by date range
+	if criteria.StartDate != nil {
+		conditions = append(conditions, "t.date >= ?")
+		args = append(args, criteria.StartDate.Time())
+	}
+	if criteria.EndDate != nil {
+		conditions = append(conditions, "t.date <= ?")
+		args = append(args, criteria.EndDate.Time())
+	}
+
+	// Filter by account
+	if criteria.AccountID != nil {
+		conditions = append(conditions, "CAST(t.account_id AS VARCHAR) = ?")
+		args = append(args, criteria.AccountID.String())
+	}
+
+	// Build final query
+	for _, join := range joins {
+		query += " " + join
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE "
+		for i, cond := range conditions {
+			if i > 0 {
+				query += " AND "
+			}
+			query += cond
+		}
+	}
+
+	query += " ORDER BY t.date DESC, t.created_at DESC"
+
+	return r.queryTransactionsWithArgs(query, args...)
+}
+
+// SearchByPayee finds transactions by partial payee name match (case-insensitive).
+func (r *TransactionRepository) SearchByPayee(payeeName string) ([]*models.Transaction, error) {
+	return r.Search(TransactionSearchCriteria{PayeeName: payeeName})
+}
+
+// SearchByMemo finds transactions by partial memo match (case-insensitive).
+func (r *TransactionRepository) SearchByMemo(memo string) ([]*models.Transaction, error) {
+	return r.Search(TransactionSearchCriteria{Memo: memo})
+}
+
+// SearchByCategory finds transactions by partial category name match (case-insensitive).
+func (r *TransactionRepository) SearchByCategory(categoryName string) ([]*models.Transaction, error) {
+	return r.Search(TransactionSearchCriteria{CategoryName: categoryName})
+}
