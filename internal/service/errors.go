@@ -140,3 +140,21 @@ type CannotDuplicateTransferError struct {
 func (e *CannotDuplicateTransferError) Error() string {
 	return fmt.Sprintf("cannot duplicate transfer transaction %s; use CreateTransfer instead", e.ID)
 }
+
+// ScheduledTransactionCompletedError is returned when trying to post/skip a completed schedule.
+type ScheduledTransactionCompletedError struct {
+	ID string
+}
+
+func (e *ScheduledTransactionCompletedError) Error() string {
+	return fmt.Sprintf("scheduled transaction %s has completed all occurrences", e.ID)
+}
+
+// ScheduledTransactionAmountRequiredError is returned when posting a variable-amount schedule without an amount.
+type ScheduledTransactionAmountRequiredError struct {
+	ID string
+}
+
+func (e *ScheduledTransactionAmountRequiredError) Error() string {
+	return fmt.Sprintf("scheduled transaction %s requires an amount (variable amount with no estimate available)", e.ID)
+}

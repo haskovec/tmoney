@@ -179,6 +179,14 @@ func (m Money) Mul(multiplier alpacadecimal.Decimal) Money {
 	return Money{value: m.value.Mul(multiplier)}
 }
 
+// Div returns the quotient of Money and a divisor.
+func (m Money) Div(divisor int64) Money {
+	if divisor == 0 {
+		return ZeroMoney
+	}
+	return Money{value: m.value.Div(alpacadecimal.NewFromInt(divisor))}
+}
+
 // Neg returns the negated Money value.
 func (m Money) Neg() Money {
 	return Money{value: m.value.Neg()}

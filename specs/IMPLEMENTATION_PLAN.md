@@ -201,7 +201,7 @@ This document defines the order in which features should be implemented. Each it
   - Find due transactions
   - Update next date
 
-- [ ] **029 - Scheduled transaction service**
+- [x] **029 - Scheduled transaction service**
   - Create scheduled
   - Calculate next occurrence
   - Post scheduled (create real transaction)
