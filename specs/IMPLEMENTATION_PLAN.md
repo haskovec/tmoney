@@ -136,7 +136,7 @@ This document defines the order in which features should be implemented. Each it
   - Delete both sides
   - Transfer category assignment
 
-- [ ] **019 - Transaction service**
+- [x] **019 - Transaction service**
   - Full transaction lifecycle
   - Split validation
   - Transfer orchestration

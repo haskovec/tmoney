@@ -83,3 +83,60 @@ type PayeeMergeSameError struct {
 func (e *PayeeMergeSameError) Error() string {
 	return fmt.Sprintf("cannot merge payee %s into itself", e.ID)
 }
+
+// TransactionIsTransferError is returned when trying to update a transfer as a regular transaction.
+type TransactionIsTransferError struct {
+	ID string
+}
+
+func (e *TransactionIsTransferError) Error() string {
+	return fmt.Sprintf("transaction %s is a transfer; use UpdateTransfer instead", e.ID)
+}
+
+// TransactionHasSplitsError is returned when a transaction with splits has a category set.
+type TransactionHasSplitsError struct {
+	ID string
+}
+
+func (e *TransactionHasSplitsError) Error() string {
+	return fmt.Sprintf("transaction %s has splits and cannot have a category set", e.ID)
+}
+
+// TransferCannotHaveSplitsError is returned when trying to add splits to a transfer.
+type TransferCannotHaveSplitsError struct {
+	ID string
+}
+
+func (e *TransferCannotHaveSplitsError) Error() string {
+	return fmt.Sprintf("transfer transaction %s cannot have splits", e.ID)
+}
+
+// SplitTotalMismatchError is returned when splits don't sum to the transaction amount.
+type SplitTotalMismatchError struct {
+	TransactionID     string
+	TransactionAmount models.Money
+	SplitTotal        models.Money
+}
+
+func (e *SplitTotalMismatchError) Error() string {
+	return fmt.Sprintf("split total (%s) does not match transaction amount (%s) for transaction %s",
+		e.SplitTotal.String(), e.TransactionAmount.String(), e.TransactionID)
+}
+
+// InvalidTransferAmountError is returned when a transfer amount is invalid (not positive).
+type InvalidTransferAmountError struct {
+	Amount models.Money
+}
+
+func (e *InvalidTransferAmountError) Error() string {
+	return fmt.Sprintf("transfer amount must be positive, got %s", e.Amount.String())
+}
+
+// CannotDuplicateTransferError is returned when trying to duplicate a transfer.
+type CannotDuplicateTransferError struct {
+	ID string
+}
+
+func (e *CannotDuplicateTransferError) Error() string {
+	return fmt.Sprintf("cannot duplicate transfer transaction %s; use CreateTransfer instead", e.ID)
+}
