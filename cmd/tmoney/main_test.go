@@ -3341,3 +3341,473 @@ func TestPrintHelp_IncludesTransfer(t *testing.T) {
 		t.Error("help output should document --to flag for transfers")
 	}
 }
+
+// Tests for --search command
+func TestParseArgs_SearchFlag(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		expectedTerm string
+	}{
+		{"long flag with space", []string{"--search", "amazon"}, "amazon"},
+		{"long flag with equals", []string{"--search=amazon"}, "amazon"},
+		{"term with spaces", []string{"--search", "coffee shop"}, "coffee shop"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.searchTerm != tt.expectedTerm {
+				t.Errorf("parseArgs(%v) searchTerm = %q, want %q", tt.args, opts.searchTerm, tt.expectedTerm)
+			}
+		})
+	}
+}
+
+func TestParseArgs_SearchFlagMissingTerm(t *testing.T) {
+	_, _, err := parseArgs([]string{"--search"})
+	if err == nil {
+		t.Error("parseArgs(--search) without term should return error")
+	}
+	if !strings.Contains(err.Error(), "requires") {
+		t.Errorf("error should mention requirement, got: %v", err)
+	}
+}
+
+func TestParseArgs_MinMaxFlags(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		expectedMin string
+		expectedMax string
+	}{
+		{"min flag with space", []string{"--min", "10.00"}, "10.00", ""},
+		{"min flag with equals", []string{"--min=10.00"}, "10.00", ""},
+		{"max flag with space", []string{"--max", "100.00"}, "", "100.00"},
+		{"max flag with equals", []string{"--max=100.00"}, "", "100.00"},
+		{"both flags", []string{"--min", "10.00", "--max", "100.00"}, "10.00", "100.00"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.minAmount != tt.expectedMin {
+				t.Errorf("parseArgs(%v) minAmount = %q, want %q", tt.args, opts.minAmount, tt.expectedMin)
+			}
+			if opts.maxAmount != tt.expectedMax {
+				t.Errorf("parseArgs(%v) maxAmount = %q, want %q", tt.args, opts.maxAmount, tt.expectedMax)
+			}
+		})
+	}
+}
+
+func TestParseArgs_MinFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--min"})
+	if err == nil {
+		t.Error("parseArgs(--min) without value should return error")
+	}
+	if !strings.Contains(err.Error(), "requires") {
+		t.Errorf("error should mention requirement, got: %v", err)
+	}
+}
+
+func TestParseArgs_MaxFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--max"})
+	if err == nil {
+		t.Error("parseArgs(--max) without value should return error")
+	}
+	if !strings.Contains(err.Error(), "requires") {
+		t.Errorf("error should mention requirement, got: %v", err)
+	}
+}
+
+func TestRun_SearchMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--search", "amazon"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--search) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_SearchByPayee(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a payee
+	payeeRepo := repository.NewPayeeRepository(database)
+	payee := models.NewPayee("Amazon")
+	if err := payeeRepo.Create(payee); err != nil {
+		t.Fatalf("failed to create payee: %v", err)
+	}
+
+	// Create transactions
+	txnRepo := repository.NewTransactionRepository(database)
+	txn1 := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-50.00"))
+	txn1.SetPayee(payee.ID)
+	if err := txnRepo.Create(txn1); err != nil {
+		t.Fatalf("failed to create transaction 1: %v", err)
+	}
+
+	// Create another transaction without the payee
+	txn2 := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-25.00"))
+	if err := txnRepo.Create(txn2); err != nil {
+		t.Fatalf("failed to create transaction 2: %v", err)
+	}
+
+	database.Close()
+
+	// Run search
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--search", "Amazon", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--search) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "SEARCH RESULTS") {
+		t.Error("output should contain SEARCH RESULTS header")
+	}
+	if !strings.Contains(output, "Amazon") {
+		t.Error("output should contain Amazon payee")
+	}
+	if !strings.Contains(output, "-$50.00") {
+		t.Error("output should contain the amount")
+	}
+	if !strings.Contains(output, "Found 1 transaction(s)") {
+		t.Errorf("output should show 1 result, got: %s", output)
+	}
+}
+
+func TestRun_SearchByMemo(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create transaction with memo
+	txnRepo := repository.NewTransactionRepository(database)
+	txn1 := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-75.00"))
+	txn1.SetMemo("Office supplies from Staples")
+	if err := txnRepo.Create(txn1); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	database.Close()
+
+	// Run search for memo content
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--search", "office", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--search) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Found 1 transaction(s)") {
+		t.Errorf("output should show 1 result for memo search, got: %s", output)
+	}
+}
+
+func TestRun_SearchNoResults(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--search", "nonexistent", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--search) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "No transactions found") {
+		t.Errorf("output should say no transactions found, got: %s", output)
+	}
+}
+
+func TestRun_SearchWithAccountFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create two accounts
+	acctRepo := repository.NewAccountRepository(database)
+	checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000.00"), models.Today())
+	if err := acctRepo.Create(checking); err != nil {
+		t.Fatalf("failed to create checking account: %v", err)
+	}
+	savings := models.NewAccount("Savings", models.AccountTypeSavings, "USD", models.MustNewMoney("5000.00"), models.Today())
+	if err := acctRepo.Create(savings); err != nil {
+		t.Fatalf("failed to create savings account: %v", err)
+	}
+
+	// Create a payee
+	payeeRepo := repository.NewPayeeRepository(database)
+	payee := models.NewPayee("Target")
+	if err := payeeRepo.Create(payee); err != nil {
+		t.Fatalf("failed to create payee: %v", err)
+	}
+
+	// Create transactions in both accounts
+	txnRepo := repository.NewTransactionRepository(database)
+	txn1 := models.NewTransaction(checking.ID, models.Today(), models.MustNewMoney("-50.00"))
+	txn1.SetPayee(payee.ID)
+	if err := txnRepo.Create(txn1); err != nil {
+		t.Fatalf("failed to create checking transaction: %v", err)
+	}
+
+	txn2 := models.NewTransaction(savings.ID, models.Today(), models.MustNewMoney("-30.00"))
+	txn2.SetPayee(payee.ID)
+	if err := txnRepo.Create(txn2); err != nil {
+		t.Fatalf("failed to create savings transaction: %v", err)
+	}
+
+	database.Close()
+
+	// Search with account filter
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--search", "Target", "--account", "Checking", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--search) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Found 1 transaction(s)") {
+		t.Errorf("output should show 1 result with account filter, got: %s", output)
+	}
+	if !strings.Contains(output, "Checking") {
+		t.Error("output should contain Checking account")
+	}
+}
+
+func TestRun_SearchWithMinMaxAmount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000.00"), models.Today())
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a payee
+	payeeRepo := repository.NewPayeeRepository(database)
+	payee := models.NewPayee("Store")
+	if err := payeeRepo.Create(payee); err != nil {
+		t.Fatalf("failed to create payee: %v", err)
+	}
+
+	// Create transactions with different amounts
+	txnRepo := repository.NewTransactionRepository(database)
+	amounts := []string{"-10.00", "-50.00", "-100.00", "-200.00"}
+	for _, amt := range amounts {
+		txn := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney(amt))
+		txn.SetPayee(payee.ID)
+		if err := txnRepo.Create(txn); err != nil {
+			t.Fatalf("failed to create transaction: %v", err)
+		}
+	}
+
+	database.Close()
+
+	// Search with min/max filters (for negative amounts, min means more negative)
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--search", "Store", "--min", "-100.00", "--max", "-50.00", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--search) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Found 2 transaction(s)") {
+		t.Errorf("output should show 2 results with amount filter, got: %s", output)
+	}
+}
+
+func TestRun_SearchInvalidMinAmount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--search", "test", "--min", "invalid", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--search) with invalid --min should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --min") {
+		t.Errorf("error should mention invalid --min, got: %v", err)
+	}
+}
+
+func TestRun_SearchInvalidMaxAmount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--search", "test", "--max", "invalid", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--search) with invalid --max should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --max") {
+		t.Errorf("error should mention invalid --max, got: %v", err)
+	}
+}
+
+func TestRun_SearchWithDateFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000.00"), models.Today())
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a payee
+	payeeRepo := repository.NewPayeeRepository(database)
+	payee := models.NewPayee("Coffee Shop")
+	if err := payeeRepo.Create(payee); err != nil {
+		t.Fatalf("failed to create payee: %v", err)
+	}
+
+	// Create transactions with different dates
+	txnRepo := repository.NewTransactionRepository(database)
+	jan15, _ := models.ParseDate("2024-01-15")
+	feb15, _ := models.ParseDate("2024-02-15")
+	mar15, _ := models.ParseDate("2024-03-15")
+
+	dates := []models.Date{jan15, feb15, mar15}
+	for _, d := range dates {
+		txn := models.NewTransaction(account.ID, d, models.MustNewMoney("-5.00"))
+		txn.SetPayee(payee.ID)
+		if err := txnRepo.Create(txn); err != nil {
+			t.Fatalf("failed to create transaction: %v", err)
+		}
+	}
+
+	database.Close()
+
+	// Search with date filter
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--search", "Coffee", "--from", "2024-02-01", "--to", "2024-02-28", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--search) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Found 1 transaction(s)") {
+		t.Errorf("output should show 1 result with date filter, got: %s", output)
+	}
+	if !strings.Contains(output, "2024-02-15") {
+		t.Error("output should contain February transaction date")
+	}
+}
+
+func TestPrintHelp_IncludesSearch(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printHelp(buf)
+	output := buf.String()
+
+	if !strings.Contains(output, "--search") {
+		t.Error("help output should document --search flag")
+	}
+	if !strings.Contains(output, "--min") {
+		t.Error("help output should document --min flag")
+	}
+	if !strings.Contains(output, "--max") {
+		t.Error("help output should document --max flag")
+	}
+	if !strings.Contains(output, "Search transactions") {
+		t.Error("help output should describe search functionality")
+	}
+}

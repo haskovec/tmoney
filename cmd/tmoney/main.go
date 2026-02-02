@@ -47,6 +47,11 @@ type cliOptions struct {
 	fromAccount string // --from <account> for transfers
 	toAccount   string // --to <account> for transfers
 
+	// Search options
+	searchTerm string // --search <term>
+	minAmount  string // --min <amount>
+	maxAmount  string // --max <amount>
+
 	// Add account options
 	addAccount        bool   // --add-account flag
 	acctName          string // --name <name>
@@ -97,6 +102,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Handle --transfer
 	if opts.transfer {
 		return runTransfer(opts, stdout)
+	}
+
+	// Handle --search
+	if opts.searchTerm != "" {
+		return runSearch(opts, stdout)
 	}
 
 	// Handle --transactions (check before --account since it uses --account as argument)
@@ -201,6 +211,24 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.addTransaction = true
 		case "--transfer":
 			opts.transfer = true
+		case "--search":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--search requires a search term argument")
+			}
+			i++
+			opts.searchTerm = args[i]
+		case "--min":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--min requires an amount argument")
+			}
+			i++
+			opts.minAmount = args[i]
+		case "--max":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--max requires an amount argument")
+			}
+			i++
+			opts.maxAmount = args[i]
 		case "--amount":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--amount requires a value argument")
@@ -351,6 +379,12 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.acctCreditLimit = strings.TrimPrefix(arg, "--credit-limit=")
 			} else if strings.HasPrefix(arg, "--interest-rate=") {
 				opts.acctInterestRate = strings.TrimPrefix(arg, "--interest-rate=")
+			} else if strings.HasPrefix(arg, "--search=") {
+				opts.searchTerm = strings.TrimPrefix(arg, "--search=")
+			} else if strings.HasPrefix(arg, "--min=") {
+				opts.minAmount = strings.TrimPrefix(arg, "--min=")
+			} else if strings.HasPrefix(arg, "--max=") {
+				opts.maxAmount = strings.TrimPrefix(arg, "--max=")
 			} else {
 				remaining = append(remaining, arg)
 			}
@@ -802,6 +836,144 @@ func runTransfer(opts *cliOptions, w io.Writer) error {
 	return nil
 }
 
+// runSearch searches for transactions matching the search term and filters.
+func runSearch(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--search requires --file to specify a database")
+	}
+
+	// Open database
+	database, err := db.Open(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer database.Close()
+
+	// Build search criteria
+	criteria := repository.TransactionSearchCriteria{
+		PayeeName: opts.searchTerm,
+		Memo:      opts.searchTerm,
+	}
+
+	// Parse date filters if provided
+	if opts.fromDate != "" {
+		startDate, err := models.ParseDate(opts.fromDate)
+		if err != nil {
+			return fmt.Errorf("invalid --from date: %w", err)
+		}
+		criteria.StartDate = &startDate
+	}
+
+	if opts.toDate != "" {
+		endDate, err := models.ParseDate(opts.toDate)
+		if err != nil {
+			return fmt.Errorf("invalid --to date: %w", err)
+		}
+		criteria.EndDate = &endDate
+	}
+
+	// Parse account filter if provided
+	if opts.accountName != "" {
+		acctRepo := repository.NewAccountRepository(database)
+		acctSvc := service.NewAccountService(acctRepo, database)
+		account, err := acctSvc.GetByName(opts.accountName)
+		if err != nil {
+			return fmt.Errorf("account %q not found", opts.accountName)
+		}
+		criteria.AccountID = &account.ID
+	}
+
+	// Parse category filter if provided
+	if opts.txCategory != "" {
+		criteria.CategoryName = opts.txCategory
+	}
+
+	// Parse min/max amount filters if provided
+	if opts.minAmount != "" {
+		minAmt, err := models.NewMoney(opts.minAmount)
+		if err != nil {
+			return fmt.Errorf("invalid --min amount: %w", err)
+		}
+		criteria.MinAmount = &minAmt
+	}
+
+	if opts.maxAmount != "" {
+		maxAmt, err := models.NewMoney(opts.maxAmount)
+		if err != nil {
+			return fmt.Errorf("invalid --max amount: %w", err)
+		}
+		criteria.MaxAmount = &maxAmt
+	}
+
+	// Create repositories
+	txnRepo := repository.NewTransactionRepository(database)
+	payeeRepo := repository.NewPayeeRepository(database)
+	categoryRepo := repository.NewCategoryRepository(database)
+	acctRepo := repository.NewAccountRepository(database)
+
+	// Search for transactions - we need to search by payee OR memo
+	// Since the Search method uses AND logic, we'll do two searches and merge
+	var transactions []*models.Transaction
+
+	// Search by payee name
+	payeeCriteria := criteria
+	payeeCriteria.Memo = ""
+	payeeResults, err := txnRepo.Search(payeeCriteria)
+	if err != nil {
+		return fmt.Errorf("failed to search transactions: %w", err)
+	}
+
+	// Search by memo
+	memoCriteria := criteria
+	memoCriteria.PayeeName = ""
+	memoResults, err := txnRepo.Search(memoCriteria)
+	if err != nil {
+		return fmt.Errorf("failed to search transactions: %w", err)
+	}
+
+	// Merge results, avoiding duplicates
+	seen := make(map[string]bool)
+	for _, txn := range payeeResults {
+		if !seen[txn.ID.String()] {
+			seen[txn.ID.String()] = true
+			transactions = append(transactions, txn)
+		}
+	}
+	for _, txn := range memoResults {
+		if !seen[txn.ID.String()] {
+			seen[txn.ID.String()] = true
+			transactions = append(transactions, txn)
+		}
+	}
+
+	// Build lookup maps for display
+	payeeNames := make(map[models.ID]string)
+	categoryNames := make(map[models.ID]string)
+	accountNames := make(map[models.ID]string)
+	accountCurrencies := make(map[models.ID]string)
+
+	payees, _ := payeeRepo.List()
+	for _, p := range payees {
+		payeeNames[p.ID] = p.Name
+	}
+
+	categories, _ := categoryRepo.List()
+	for _, c := range categories {
+		categoryNames[c.ID] = c.Name
+	}
+
+	accounts, _ := acctRepo.List(false)
+	for _, a := range accounts {
+		accountNames[a.ID] = a.Name
+		accountCurrencies[a.ID] = a.Currency
+	}
+
+	// Print search results
+	printSearchResults(w, opts.searchTerm, transactions, accountNames, accountCurrencies, payeeNames, categoryNames)
+
+	return nil
+}
+
 // runAddAccount creates a new account.
 func runAddAccount(opts *cliOptions, w io.Writer) error {
 	if opts.file == "" {
@@ -1094,6 +1266,61 @@ func printTransactionsTable(w io.Writer, account *models.Account, transactions [
 	fmt.Fprintf(w, "\nShowing %d transaction(s)\n", len(transactions))
 }
 
+// printSearchResults prints search results in a formatted table.
+func printSearchResults(w io.Writer, searchTerm string, transactions []*models.Transaction, accountNames map[models.ID]string, accountCurrencies map[models.ID]string, payeeNames map[models.ID]string, categoryNames map[models.ID]string) {
+	fmt.Fprintf(w, "SEARCH RESULTS: %q\n", searchTerm)
+	fmt.Fprintln(w, strings.Repeat("=", len("SEARCH RESULTS: ")+len(searchTerm)+2))
+
+	if len(transactions) == 0 {
+		fmt.Fprintln(w, "No transactions found.")
+		return
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "Account\tDate\tPayee\tCategory\tAmount")
+	fmt.Fprintln(tw, "-------\t----\t-----\t--------\t------")
+
+	for _, txn := range transactions {
+		account := accountNames[txn.AccountID]
+		currency := accountCurrencies[txn.AccountID]
+		if currency == "" {
+			currency = "USD"
+		}
+
+		payee := "-"
+		if txn.PayeeID.Valid {
+			if name, ok := payeeNames[txn.PayeeID.ID]; ok {
+				payee = name
+			}
+		}
+
+		category := "-"
+		if txn.CategoryID.Valid {
+			if name, ok := categoryNames[txn.CategoryID.ID]; ok {
+				category = name
+			}
+		}
+
+		// For transfers, show transfer indicator
+		if txn.IsTransfer() {
+			payee = "[Transfer]"
+			category = "-"
+		}
+
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			account,
+			txn.Date.String(),
+			payee,
+			category,
+			formatMoney(txn.Amount, currency),
+		)
+	}
+
+	tw.Flush()
+
+	fmt.Fprintf(w, "\nFound %d transaction(s)\n", len(transactions))
+}
+
 // formatMoney formats a Money value with currency symbol.
 // Always displays 2 decimal places for currencies.
 func formatMoney(m models.Money, currency string) string {
@@ -1188,6 +1415,14 @@ Transaction Commands:
     --amount <value>   Transfer amount (must be positive)
     --date <date>      Transfer date (YYYY-MM-DD, default: today)
     --memo <text>      Transfer memo/note
+
+  --search <term>      Search transactions by payee name or memo
+    --account <name>   Filter by account
+    --from <date>      Start date filter (YYYY-MM-DD)
+    --to <date>        End date filter (YYYY-MM-DD)
+    --category <name>  Filter by category
+    --min <amount>     Minimum amount filter
+    --max <amount>     Maximum amount filter
 
 For more information, visit: https://github.com/haskovec/tmoney`)
 }

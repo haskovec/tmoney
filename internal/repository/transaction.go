@@ -458,6 +458,10 @@ type TransactionSearchCriteria struct {
 	EndDate *models.Date
 	// AccountID filters by specific account.
 	AccountID *models.ID
+	// MinAmount filters transactions with amount >= this value.
+	MinAmount *models.Money
+	// MaxAmount filters transactions with amount <= this value.
+	MaxAmount *models.Money
 }
 
 // HasFilters returns true if any search criteria is set.
@@ -467,7 +471,9 @@ func (c *TransactionSearchCriteria) HasFilters() bool {
 		c.CategoryName != "" ||
 		c.StartDate != nil ||
 		c.EndDate != nil ||
-		c.AccountID != nil
+		c.AccountID != nil ||
+		c.MinAmount != nil ||
+		c.MaxAmount != nil
 }
 
 // Search finds transactions matching the given criteria.
@@ -520,6 +526,16 @@ func (r *TransactionRepository) Search(criteria TransactionSearchCriteria) ([]*m
 	if criteria.AccountID != nil {
 		conditions = append(conditions, "CAST(t.account_id AS VARCHAR) = ?")
 		args = append(args, criteria.AccountID.String())
+	}
+
+	// Filter by amount range
+	if criteria.MinAmount != nil {
+		conditions = append(conditions, "t.amount >= CAST(? AS DECIMAL)")
+		args = append(args, criteria.MinAmount.String())
+	}
+	if criteria.MaxAmount != nil {
+		conditions = append(conditions, "t.amount <= CAST(? AS DECIMAL)")
+		args = append(args, criteria.MaxAmount.String())
 	}
 
 	// Build final query

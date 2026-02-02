@@ -182,7 +182,7 @@ This document defines the order in which features should be implemented. Each it
   - `--from` and `--to` accounts
   - Amount and date
 
-- [ ] **026 - Search CLI**
+- [x] **026 - Search CLI**
   - `--search <term>`
   - Filter flags
   - Result formatting
