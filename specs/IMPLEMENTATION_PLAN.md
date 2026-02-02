@@ -171,7 +171,7 @@ This document defines the order in which features should be implemented. Each it
   - `--from` and `--to` date flags
   - Transaction table formatting
 
-- [ ] **024 - Add transaction CLI**
+- [x] **024 - Add transaction CLI**
   - `--add-transaction`
   - Required and optional flags
   - Payee auto-creation
