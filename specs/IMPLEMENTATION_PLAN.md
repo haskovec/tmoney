@@ -196,7 +196,7 @@ This document defines the order in which features should be implemented. Each it
   - Frequency enum
   - Next date calculation
 
-- [ ] **028 - Scheduled transaction repository**
+- [x] **028 - Scheduled transaction repository**
   - CRUD operations
   - Find due transactions
   - Update next date
