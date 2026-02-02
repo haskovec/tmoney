@@ -2823,3 +2823,521 @@ func TestPrintHelp_IncludesAddAccount(t *testing.T) {
 		t.Error("help output should document --interest-rate flag")
 	}
 }
+
+// =============================================================================
+// Transfer CLI Tests
+// =============================================================================
+
+func TestParseArgs_TransferFlag(t *testing.T) {
+	opts, _, err := parseArgs([]string{"--transfer"})
+	if err != nil {
+		t.Errorf("parseArgs returned error: %v", err)
+		return
+	}
+	if !opts.transfer {
+		t.Error("parseArgs did not set transfer flag")
+	}
+}
+
+func TestParseArgs_TransferWithFromTo(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		wantFrom    string
+		wantTo      string
+		wantTransfer bool
+	}{
+		{
+			name:        "transfer with from and to",
+			args:        []string{"--transfer", "--from", "Checking", "--to", "Savings"},
+			wantFrom:    "Checking",
+			wantTo:      "Savings",
+			wantTransfer: true,
+		},
+		{
+			name:        "transfer with equals syntax",
+			args:        []string{"--transfer", "--from=Checking", "--to=Savings"},
+			wantFrom:    "Checking",
+			wantTo:      "Savings",
+			wantTransfer: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.transfer != tt.wantTransfer {
+				t.Errorf("transfer = %v, want %v", opts.transfer, tt.wantTransfer)
+			}
+			if opts.fromAccount != tt.wantFrom {
+				t.Errorf("fromAccount = %q, want %q", opts.fromAccount, tt.wantFrom)
+			}
+			if opts.toAccount != tt.wantTo {
+				t.Errorf("toAccount = %q, want %q", opts.toAccount, tt.wantTo)
+			}
+		})
+	}
+}
+
+func TestRun_TransferMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--transfer", "--from", "Checking", "--to", "Savings", "--amount", "100"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transfer) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_TransferMissingFrom(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transfer", "--file", dbPath, "--to", "Savings", "--amount", "100"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transfer) without --from should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --from") {
+		t.Errorf("error should mention --from requirement, got: %v", err)
+	}
+}
+
+func TestRun_TransferMissingTo(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transfer", "--file", dbPath, "--from", "Checking", "--amount", "100"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transfer) without --to should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --to") {
+		t.Errorf("error should mention --to requirement, got: %v", err)
+	}
+}
+
+func TestRun_TransferMissingAmount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transfer", "--file", dbPath, "--from", "Checking", "--to", "Savings"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transfer) without --amount should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --amount") {
+		t.Errorf("error should mention --amount requirement, got: %v", err)
+	}
+}
+
+func TestRun_TransferInvalidAmount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transfer", "--file", dbPath, "--from", "Checking", "--to", "Savings", "--amount", "not-a-number"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transfer) with invalid amount should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --amount") {
+		t.Errorf("error should mention invalid amount, got: %v", err)
+	}
+}
+
+func TestRun_TransferNegativeAmount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transfer", "--file", dbPath, "--from", "Checking", "--to", "Savings", "--amount", "-100"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transfer) with negative amount should return error")
+	}
+	if !strings.Contains(err.Error(), "must be positive") {
+		t.Errorf("error should mention positive amount, got: %v", err)
+	}
+}
+
+func TestRun_TransferSourceAccountNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transfer", "--file", dbPath, "--from", "Nonexistent", "--to", "Savings", "--amount", "100"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transfer) with nonexistent source account should return error")
+	}
+	if !strings.Contains(err.Error(), "source account") && !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention source account not found, got: %v", err)
+	}
+}
+
+func TestRun_TransferDestAccountNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create source account
+	repo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := repo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transfer", "--file", dbPath, "--from", "Checking", "--to", "Nonexistent", "--amount", "100"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transfer) with nonexistent destination account should return error")
+	}
+	if !strings.Contains(err.Error(), "destination account") && !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention destination account not found, got: %v", err)
+	}
+}
+
+func TestRun_TransferBasic(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create source and destination accounts
+	repo := repository.NewAccountRepository(database)
+
+	checking := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := repo.Create(checking); err != nil {
+		t.Fatalf("failed to create checking account: %v", err)
+	}
+
+	savings := models.NewAccount(
+		"Savings",
+		models.AccountTypeSavings,
+		"USD",
+		models.MustNewMoney("500.00"),
+		models.Today(),
+	)
+	if err := repo.Create(savings); err != nil {
+		t.Fatalf("failed to create savings account: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transfer", "--file", dbPath, "--from", "Checking", "--to", "Savings", "--amount", "100.00"}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--transfer) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Transfer created successfully") {
+		t.Error("output should confirm transfer creation")
+	}
+	if !strings.Contains(output, "From:") && !strings.Contains(output, "Checking") {
+		t.Error("output should show source account")
+	}
+	if !strings.Contains(output, "To:") && !strings.Contains(output, "Savings") {
+		t.Error("output should show destination account")
+	}
+	if !strings.Contains(output, "$100.00") {
+		t.Error("output should show transfer amount")
+	}
+}
+
+func TestRun_TransferWithDateAndMemo(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create source and destination accounts
+	repo := repository.NewAccountRepository(database)
+
+	checking := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := repo.Create(checking); err != nil {
+		t.Fatalf("failed to create checking account: %v", err)
+	}
+
+	savings := models.NewAccount(
+		"Savings",
+		models.AccountTypeSavings,
+		"USD",
+		models.MustNewMoney("500.00"),
+		models.Today(),
+	)
+	if err := repo.Create(savings); err != nil {
+		t.Fatalf("failed to create savings account: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--transfer",
+		"--file", dbPath,
+		"--from", "Checking",
+		"--to", "Savings",
+		"--amount", "250.50",
+		"--date", "2024-06-15",
+		"--memo", "Monthly savings",
+	}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--transfer) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Transfer created successfully") {
+		t.Error("output should confirm transfer creation")
+	}
+	if !strings.Contains(output, "2024-06-15") {
+		t.Error("output should show transfer date")
+	}
+	if !strings.Contains(output, "Monthly savings") {
+		t.Error("output should show memo")
+	}
+	if !strings.Contains(output, "$250.50") {
+		t.Error("output should show transfer amount")
+	}
+}
+
+func TestRun_TransferInvalidDate(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create source and destination accounts
+	repo := repository.NewAccountRepository(database)
+
+	checking := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := repo.Create(checking); err != nil {
+		t.Fatalf("failed to create checking account: %v", err)
+	}
+
+	savings := models.NewAccount(
+		"Savings",
+		models.AccountTypeSavings,
+		"USD",
+		models.MustNewMoney("500.00"),
+		models.Today(),
+	)
+	if err := repo.Create(savings); err != nil {
+		t.Fatalf("failed to create savings account: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--transfer",
+		"--file", dbPath,
+		"--from", "Checking",
+		"--to", "Savings",
+		"--amount", "100",
+		"--date", "not-a-date",
+	}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transfer) with invalid date should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --date") {
+		t.Errorf("error should mention invalid date, got: %v", err)
+	}
+}
+
+func TestRun_TransferVerifyTransactions(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create source and destination accounts
+	acctRepo := repository.NewAccountRepository(database)
+
+	checking := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(checking); err != nil {
+		t.Fatalf("failed to create checking account: %v", err)
+	}
+
+	savings := models.NewAccount(
+		"Savings",
+		models.AccountTypeSavings,
+		"USD",
+		models.MustNewMoney("500.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(savings); err != nil {
+		t.Fatalf("failed to create savings account: %v", err)
+	}
+	database.Close()
+
+	// Run transfer
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--transfer",
+		"--file", dbPath,
+		"--from", "Checking",
+		"--to", "Savings",
+		"--amount", "100.00",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("run(--transfer) returned error: %v", err)
+	}
+
+	// Verify transactions were created
+	database, err = db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reopen database: %v", err)
+	}
+	defer database.Close()
+
+	txnRepo := repository.NewTransactionRepository(database)
+
+	// Check checking account transactions
+	checkingTxns, err := txnRepo.ListByAccount(checking.ID)
+	if err != nil {
+		t.Fatalf("failed to list checking transactions: %v", err)
+	}
+	if len(checkingTxns) != 1 {
+		t.Fatalf("expected 1 checking transaction, got %d", len(checkingTxns))
+	}
+	if !checkingTxns[0].Amount.Equal(models.MustNewMoney("-100.00")) {
+		t.Errorf("checking transaction amount = %s, want -$100.00", checkingTxns[0].Amount.String())
+	}
+	if !checkingTxns[0].IsTransfer() {
+		t.Error("checking transaction should be a transfer")
+	}
+
+	// Check savings account transactions
+	savingsTxns, err := txnRepo.ListByAccount(savings.ID)
+	if err != nil {
+		t.Fatalf("failed to list savings transactions: %v", err)
+	}
+	if len(savingsTxns) != 1 {
+		t.Fatalf("expected 1 savings transaction, got %d", len(savingsTxns))
+	}
+	if !savingsTxns[0].Amount.Equal(models.MustNewMoney("100.00")) {
+		t.Errorf("savings transaction amount = %s, want $100.00", savingsTxns[0].Amount.String())
+	}
+	if !savingsTxns[0].IsTransfer() {
+		t.Error("savings transaction should be a transfer")
+	}
+
+	// Verify they have the same transfer ID
+	if checkingTxns[0].TransferID.ID != savingsTxns[0].TransferID.ID {
+		t.Error("both transactions should have the same transfer ID")
+	}
+}
+
+func TestPrintHelp_IncludesTransfer(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printHelp(buf)
+	output := buf.String()
+
+	if !strings.Contains(output, "--transfer") {
+		t.Error("help output should document --transfer flag")
+	}
+	if !strings.Contains(output, "Source account") || !strings.Contains(output, "--from") {
+		t.Error("help output should document --from flag for transfers")
+	}
+	if !strings.Contains(output, "Destination account") || !strings.Contains(output, "--to") {
+		t.Error("help output should document --to flag for transfers")
+	}
+}

@@ -42,6 +42,11 @@ type cliOptions struct {
 	txDate         string // --date <YYYY-MM-DD>
 	txMemo         string // --memo <text>
 
+	// Transfer options
+	transfer    bool   // --transfer flag
+	fromAccount string // --from <account> for transfers
+	toAccount   string // --to <account> for transfers
+
 	// Add account options
 	addAccount        bool   // --add-account flag
 	acctName          string // --name <name>
@@ -87,6 +92,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Handle --add-transaction
 	if opts.addTransaction {
 		return runAddTransaction(opts, stdout)
+	}
+
+	// Handle --transfer
+	if opts.transfer {
+		return runTransfer(opts, stdout)
 	}
 
 	// Handle --transactions (check before --account since it uses --account as argument)
@@ -169,16 +179,18 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.limit = limit
 		case "--from":
 			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--from requires a date argument (YYYY-MM-DD)")
+				return nil, nil, fmt.Errorf("--from requires an argument")
 			}
 			i++
 			opts.fromDate = args[i]
+			opts.fromAccount = args[i] // Also used for transfer source account
 		case "--to":
 			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--to requires a date argument (YYYY-MM-DD)")
+				return nil, nil, fmt.Errorf("--to requires an argument")
 			}
 			i++
 			opts.toDate = args[i]
+			opts.toAccount = args[i] // Also used for transfer destination account
 		case "--create":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--create requires a path argument")
@@ -187,6 +199,8 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.createDB = args[i]
 		case "--add-transaction":
 			opts.addTransaction = true
+		case "--transfer":
+			opts.transfer = true
 		case "--amount":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--amount requires a value argument")
@@ -300,9 +314,13 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				}
 				opts.limit = limit
 			} else if strings.HasPrefix(arg, "--from=") {
-				opts.fromDate = strings.TrimPrefix(arg, "--from=")
+				val := strings.TrimPrefix(arg, "--from=")
+				opts.fromDate = val
+				opts.fromAccount = val
 			} else if strings.HasPrefix(arg, "--to=") {
-				opts.toDate = strings.TrimPrefix(arg, "--to=")
+				val := strings.TrimPrefix(arg, "--to=")
+				opts.toDate = val
+				opts.toAccount = val
 			} else if strings.HasPrefix(arg, "--amount=") {
 				opts.txAmount = strings.TrimPrefix(arg, "--amount=")
 			} else if strings.HasPrefix(arg, "--payee=") {
@@ -691,6 +709,99 @@ func runAddTransaction(opts *cliOptions, w io.Writer) error {
 	return nil
 }
 
+// runTransfer creates a transfer between two accounts.
+func runTransfer(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--transfer requires --file to specify a database")
+	}
+	if opts.fromAccount == "" {
+		return fmt.Errorf("--transfer requires --from to specify the source account")
+	}
+	if opts.toAccount == "" {
+		return fmt.Errorf("--transfer requires --to to specify the destination account")
+	}
+	if opts.txAmount == "" {
+		return fmt.Errorf("--transfer requires --amount to specify the transfer amount")
+	}
+
+	// Parse amount
+	amount, err := models.NewMoney(opts.txAmount)
+	if err != nil {
+		return fmt.Errorf("invalid --amount: %w", err)
+	}
+
+	// Amount must be positive for transfers
+	if !amount.IsPositive() {
+		return fmt.Errorf("--amount must be positive for transfers")
+	}
+
+	// Parse date (default to today)
+	var date models.Date
+	if opts.txDate != "" {
+		date, err = models.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = models.Today()
+	}
+
+	// Open database
+	database, err := db.Open(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer database.Close()
+
+	// Get source account by name
+	acctRepo := repository.NewAccountRepository(database)
+	acctSvc := service.NewAccountService(acctRepo, database)
+
+	fromAcct, err := acctSvc.GetByName(opts.fromAccount)
+	if err != nil {
+		return fmt.Errorf("source account %q not found", opts.fromAccount)
+	}
+
+	// Get destination account by name
+	toAcct, err := acctSvc.GetByName(opts.toAccount)
+	if err != nil {
+		return fmt.Errorf("destination account %q not found", opts.toAccount)
+	}
+
+	// Create transaction service
+	txnRepo := repository.NewTransactionRepository(database)
+	splitRepo := repository.NewSplitRepository(database)
+	transferRepo := repository.NewTransferRepository(database)
+	payeeRepo := repository.NewPayeeRepository(database)
+	txnSvc := service.NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+
+	// Create the transfer
+	pair, err := txnSvc.CreateTransfer(fromAcct.ID, toAcct.ID, date, amount)
+	if err != nil {
+		return fmt.Errorf("failed to create transfer: %w", err)
+	}
+
+	// Set memo if provided
+	if opts.txMemo != "" {
+		err = txnSvc.UpdateTransfer(pair.FromTransaction.TransferID.ID, date, amount, opts.txMemo, models.TransactionStatusPending)
+		if err != nil {
+			return fmt.Errorf("failed to set memo on transfer: %w", err)
+		}
+	}
+
+	// Print confirmation
+	fmt.Fprintln(w, "Transfer created successfully!")
+	fmt.Fprintf(w, "  From:   %s\n", fromAcct.Name)
+	fmt.Fprintf(w, "  To:     %s\n", toAcct.Name)
+	fmt.Fprintf(w, "  Date:   %s\n", date.String())
+	fmt.Fprintf(w, "  Amount: %s\n", formatMoney(amount, fromAcct.Currency))
+	if opts.txMemo != "" {
+		fmt.Fprintf(w, "  Memo:   %s\n", opts.txMemo)
+	}
+
+	return nil
+}
+
 // runAddAccount creates a new account.
 func runAddAccount(opts *cliOptions, w io.Writer) error {
 	if opts.file == "" {
@@ -1070,6 +1181,13 @@ Transaction Commands:
     --category <name>  Category name
     --date <date>      Transaction date (YYYY-MM-DD, default: today)
     --memo <text>      Transaction memo/note
+
+  --transfer           Create a transfer between accounts
+    --from <account>   Source account name
+    --to <account>     Destination account name
+    --amount <value>   Transfer amount (must be positive)
+    --date <date>      Transfer date (YYYY-MM-DD, default: today)
+    --memo <text>      Transfer memo/note
 
 For more information, visit: https://github.com/haskovec/tmoney`)
 }

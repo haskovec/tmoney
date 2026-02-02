@@ -177,7 +177,7 @@ This document defines the order in which features should be implemented. Each it
   - Payee auto-creation
   - Validation and feedback
 
-- [ ] **025 - Transfer CLI**
+- [x] **025 - Transfer CLI**
   - `--transfer`
   - `--from` and `--to` accounts
   - Amount and date
