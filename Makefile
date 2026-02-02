@@ -1,13 +1,18 @@
-.PHONY: test test-coverage coverage-html coverage-func clean help
+.PHONY: build test test-coverage coverage-html coverage-func clean help
 
 # Default target
 help:
 	@echo "Available targets:"
+	@echo "  build          - Build the tmoney executable"
 	@echo "  test           - Run all tests"
 	@echo "  test-coverage  - Run tests with coverage and show summary"
 	@echo "  coverage-html  - Generate HTML coverage report (opens in browser)"
 	@echo "  coverage-func  - Show function-level coverage breakdown"
-	@echo "  clean          - Remove coverage files"
+	@echo "  clean          - Remove coverage files and built executable"
+
+# Build the tmoney executable
+build:
+	go build -o tmoney ./cmd/tmoney
 
 # Run all tests
 test:
@@ -30,6 +35,6 @@ coverage-html: test-coverage
 coverage-func: test-coverage
 	go tool cover -func=coverage.out
 
-# Clean up coverage files
+# Clean up coverage files and built executable
 clean:
-	rm -f coverage.out coverage.html
+	rm -f coverage.out coverage.html tmoney
