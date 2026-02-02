@@ -133,6 +133,49 @@ Investment:        $45,678.90
 Net Worth:         $61,678.90
 ```
 
+### Add Account
+
+```bash
+tmoney --add-account \
+  --name "Chase Checking" \
+  --type checking \
+  --currency USD \
+  --opening-balance 1000.00 \
+  --opening-date 2024-01-15 \
+  --institution "Chase Bank" \
+  --account-number "1234567890" \
+  --notes "Primary checking account"
+```
+
+Required:
+- `--name <name>`: Account name (must be unique)
+- `--type <type>`: Account type (checking, savings, credit_card, investment, cash, loan, asset)
+
+Optional:
+- `--currency <code>`: Currency code (default: USD)
+- `--opening-balance <amount>`: Opening balance (default: 0)
+- `--opening-date <date>`: Opening date YYYY-MM-DD (default: today)
+- `--institution <name>`: Financial institution name
+- `--account-number <number>`: Account number
+- `--notes <text>`: Account notes
+
+Type-specific:
+- `--credit-limit <amount>`: Credit limit (credit_card accounts only)
+- `--interest-rate <rate>`: Interest rate percentage (loan accounts only)
+
+Output:
+```
+Account created successfully!
+  Name:            Chase Checking
+  Type:            Checking
+  Currency:        USD
+  Opening Balance: $1,000.00
+  Opening Date:    2024-01-15
+  Institution:     Chase Bank
+  Account Number:  1234567890
+  Notes:           Primary checking account
+```
+
 ## Transaction Commands
 
 ### List Transactions
