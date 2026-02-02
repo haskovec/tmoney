@@ -191,7 +191,7 @@ This document defines the order in which features should be implemented. Each it
 
 ## Phase 7: Scheduled Transactions
 
-- [ ] **027 - Scheduled transaction model**
+- [x] **027 - Scheduled transaction model**
   - Scheduled transaction struct
   - Frequency enum
   - Next date calculation
