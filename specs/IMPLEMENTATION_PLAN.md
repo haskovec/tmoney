@@ -130,7 +130,7 @@ This document defines the order in which features should be implemented. Each it
   - Delete splits
   - Validate split totals
 
-- [ ] **018 - Transfer handling**
+- [x] **018 - Transfer handling**
   - Create linked transfers
   - Update both sides
   - Delete both sides

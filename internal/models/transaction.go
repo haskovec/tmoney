@@ -462,6 +462,11 @@ func (tp *TransferPair) Validate() ValidationErrors {
 		errors.Add("transfer", "to transaction transfer_account_id must match from transaction account_id")
 	}
 
+	// Accounts must be different
+	if tp.FromTransaction.AccountID == tp.ToTransaction.AccountID {
+		errors.Add("transfer", "from and to accounts must be different")
+	}
+
 	return errors
 }
 
