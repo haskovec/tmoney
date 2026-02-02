@@ -33,6 +33,14 @@ type cliOptions struct {
 	limit         int    // --limit <n> to limit results
 	fromDate      string // --from <YYYY-MM-DD> start date filter
 	toDate        string // --to <YYYY-MM-DD> end date filter
+
+	// Add transaction options
+	addTransaction bool   // --add-transaction flag
+	txAmount       string // --amount <value>
+	txPayee        string // --payee <name>
+	txCategory     string // --category <name>
+	txDate         string // --date <YYYY-MM-DD>
+	txMemo         string // --memo <text>
 }
 
 func main() {
@@ -56,6 +64,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Handle --list-accounts
 	if opts.listAccounts {
 		return runListAccounts(opts, stdout)
+	}
+
+	// Handle --add-transaction
+	if opts.addTransaction {
+		return runAddTransaction(opts, stdout)
 	}
 
 	// Handle --transactions (check before --account since it uses --account as argument)
@@ -154,6 +167,38 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.createDB = args[i]
+		case "--add-transaction":
+			opts.addTransaction = true
+		case "--amount":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--amount requires a value argument")
+			}
+			i++
+			opts.txAmount = args[i]
+		case "--payee":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--payee requires a name argument")
+			}
+			i++
+			opts.txPayee = args[i]
+		case "--category":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--category requires a name argument")
+			}
+			i++
+			opts.txCategory = args[i]
+		case "--date":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--date requires a date argument (YYYY-MM-DD)")
+			}
+			i++
+			opts.txDate = args[i]
+		case "--memo":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--memo requires a text argument")
+			}
+			i++
+			opts.txMemo = args[i]
 		default:
 			// Check for --flag=value formats
 			if strings.HasPrefix(arg, "--file=") {
@@ -178,6 +223,16 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.fromDate = strings.TrimPrefix(arg, "--from=")
 			} else if strings.HasPrefix(arg, "--to=") {
 				opts.toDate = strings.TrimPrefix(arg, "--to=")
+			} else if strings.HasPrefix(arg, "--amount=") {
+				opts.txAmount = strings.TrimPrefix(arg, "--amount=")
+			} else if strings.HasPrefix(arg, "--payee=") {
+				opts.txPayee = strings.TrimPrefix(arg, "--payee=")
+			} else if strings.HasPrefix(arg, "--category=") {
+				opts.txCategory = strings.TrimPrefix(arg, "--category=")
+			} else if strings.HasPrefix(arg, "--date=") {
+				opts.txDate = strings.TrimPrefix(arg, "--date=")
+			} else if strings.HasPrefix(arg, "--memo=") {
+				opts.txMemo = strings.TrimPrefix(arg, "--memo=")
 			} else {
 				remaining = append(remaining, arg)
 			}
@@ -396,6 +451,142 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 
 	// Print transactions table
 	printTransactionsTable(w, account, transactions, payeeNames, categoryNames)
+
+	return nil
+}
+
+// runAddTransaction creates a new transaction.
+func runAddTransaction(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--add-transaction requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--add-transaction requires --account to specify an account")
+	}
+	if opts.txAmount == "" {
+		return fmt.Errorf("--add-transaction requires --amount to specify a value")
+	}
+
+	// Parse amount
+	amount, err := models.NewMoney(opts.txAmount)
+	if err != nil {
+		return fmt.Errorf("invalid --amount: %w", err)
+	}
+
+	// Parse date (default to today)
+	var date models.Date
+	if opts.txDate != "" {
+		date, err = models.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = models.Today()
+	}
+
+	// Open database
+	database, err := db.Open(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer database.Close()
+
+	// Get account by name
+	acctRepo := repository.NewAccountRepository(database)
+	acctSvc := service.NewAccountService(acctRepo, database)
+	account, err := acctSvc.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	// Create transaction service
+	txnRepo := repository.NewTransactionRepository(database)
+	splitRepo := repository.NewSplitRepository(database)
+	transferRepo := repository.NewTransferRepository(database)
+	payeeRepo := repository.NewPayeeRepository(database)
+	txnSvc := service.NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+
+	// Create payee service for auto-creation
+	payeeSvc := service.NewPayeeService(payeeRepo, database)
+
+	// Handle payee (auto-create if needed)
+	var payeeID models.NullableID
+	var payeeName string
+	var payeeCreated bool
+	if opts.txPayee != "" {
+		payee, created, err := payeeSvc.GetOrCreate(opts.txPayee)
+		if err != nil {
+			return fmt.Errorf("failed to resolve payee: %w", err)
+		}
+		payeeID = models.NullableID{Valid: true, ID: payee.ID}
+		payeeName = payee.Name
+		payeeCreated = created
+	}
+
+	// Handle category
+	var categoryID models.NullableID
+	var categoryName string
+	if opts.txCategory != "" {
+		categoryRepo := repository.NewCategoryRepository(database)
+		// First try top-level category, then search all categories
+		category, err := categoryRepo.GetByName(opts.txCategory, nil)
+		if err != nil {
+			// Try finding it as a subcategory (search all categories)
+			categories, listErr := categoryRepo.List()
+			if listErr != nil {
+				return fmt.Errorf("category %q not found", opts.txCategory)
+			}
+			var found *models.Category
+			for _, c := range categories {
+				if c.Name == opts.txCategory {
+					found = c
+					break
+				}
+			}
+			if found == nil {
+				return fmt.Errorf("category %q not found", opts.txCategory)
+			}
+			category = found
+		}
+		categoryID = models.NullableID{Valid: true, ID: category.ID}
+		categoryName = category.Name
+	}
+
+	// Create transaction
+	txn := models.NewTransaction(account.ID, date, amount)
+	if payeeID.Valid {
+		txn.SetPayee(payeeID.ID)
+	}
+	if categoryID.Valid {
+		txn.SetCategory(categoryID.ID)
+	}
+	if opts.txMemo != "" {
+		txn.SetMemo(opts.txMemo)
+	}
+
+	// Save transaction
+	if err := txnSvc.Create(txn); err != nil {
+		return fmt.Errorf("failed to create transaction: %w", err)
+	}
+
+	// Print confirmation
+	fmt.Fprintln(w, "Transaction created successfully!")
+	fmt.Fprintf(w, "  Account:  %s\n", account.Name)
+	fmt.Fprintf(w, "  Date:     %s\n", date.String())
+	fmt.Fprintf(w, "  Amount:   %s\n", formatMoney(amount, account.Currency))
+	if payeeName != "" {
+		if payeeCreated {
+			fmt.Fprintf(w, "  Payee:    %s (new)\n", payeeName)
+		} else {
+			fmt.Fprintf(w, "  Payee:    %s\n", payeeName)
+		}
+	}
+	if categoryName != "" {
+		fmt.Fprintf(w, "  Category: %s\n", categoryName)
+	}
+	if opts.txMemo != "" {
+		fmt.Fprintf(w, "  Memo:     %s\n", opts.txMemo)
+	}
 
 	return nil
 }
@@ -628,6 +819,14 @@ Transaction Commands:
     --limit <n>        Limit number of transactions shown
     --from <date>      Start date filter (YYYY-MM-DD)
     --to <date>        End date filter (YYYY-MM-DD)
+
+  --add-transaction    Add a new transaction (requires --account, --amount)
+    --account <name>   Account for the transaction
+    --amount <value>   Transaction amount (negative for expenses)
+    --payee <name>     Payee name (auto-created if new)
+    --category <name>  Category name
+    --date <date>      Transaction date (YYYY-MM-DD, default: today)
+    --memo <text>      Transaction memo/note
 
 For more information, visit: https://github.com/haskovec/tmoney`)
 }
