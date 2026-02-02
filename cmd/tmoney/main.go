@@ -41,6 +41,19 @@ type cliOptions struct {
 	txCategory     string // --category <name>
 	txDate         string // --date <YYYY-MM-DD>
 	txMemo         string // --memo <text>
+
+	// Add account options
+	addAccount        bool   // --add-account flag
+	acctName          string // --name <name>
+	acctType          string // --type <type>
+	acctCurrency      string // --currency <code>
+	acctOpeningBal    string // --opening-balance <value>
+	acctOpeningDate   string // --opening-date <YYYY-MM-DD>
+	acctInstitution   string // --institution <name>
+	acctNumber        string // --account-number <number>
+	acctNotes         string // --notes <text>
+	acctCreditLimit   string // --credit-limit <value>
+	acctInterestRate  string // --interest-rate <value>
 }
 
 func main() {
@@ -64,6 +77,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Handle --list-accounts
 	if opts.listAccounts {
 		return runListAccounts(opts, stdout)
+	}
+
+	// Handle --add-account
+	if opts.addAccount {
+		return runAddAccount(opts, stdout)
 	}
 
 	// Handle --add-transaction
@@ -199,6 +217,68 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.txMemo = args[i]
+		case "--add-account":
+			opts.addAccount = true
+		case "--name":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--name requires a value argument")
+			}
+			i++
+			opts.acctName = args[i]
+		case "--type":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--type requires a value argument")
+			}
+			i++
+			opts.acctType = args[i]
+		case "--currency":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--currency requires a value argument")
+			}
+			i++
+			opts.acctCurrency = args[i]
+		case "--opening-balance":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--opening-balance requires a value argument")
+			}
+			i++
+			opts.acctOpeningBal = args[i]
+		case "--opening-date":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--opening-date requires a date argument (YYYY-MM-DD)")
+			}
+			i++
+			opts.acctOpeningDate = args[i]
+		case "--institution":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--institution requires a value argument")
+			}
+			i++
+			opts.acctInstitution = args[i]
+		case "--account-number":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--account-number requires a value argument")
+			}
+			i++
+			opts.acctNumber = args[i]
+		case "--notes":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--notes requires a text argument")
+			}
+			i++
+			opts.acctNotes = args[i]
+		case "--credit-limit":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--credit-limit requires a value argument")
+			}
+			i++
+			opts.acctCreditLimit = args[i]
+		case "--interest-rate":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--interest-rate requires a value argument")
+			}
+			i++
+			opts.acctInterestRate = args[i]
 		default:
 			// Check for --flag=value formats
 			if strings.HasPrefix(arg, "--file=") {
@@ -233,6 +313,26 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.txDate = strings.TrimPrefix(arg, "--date=")
 			} else if strings.HasPrefix(arg, "--memo=") {
 				opts.txMemo = strings.TrimPrefix(arg, "--memo=")
+			} else if strings.HasPrefix(arg, "--name=") {
+				opts.acctName = strings.TrimPrefix(arg, "--name=")
+			} else if strings.HasPrefix(arg, "--type=") {
+				opts.acctType = strings.TrimPrefix(arg, "--type=")
+			} else if strings.HasPrefix(arg, "--currency=") {
+				opts.acctCurrency = strings.TrimPrefix(arg, "--currency=")
+			} else if strings.HasPrefix(arg, "--opening-balance=") {
+				opts.acctOpeningBal = strings.TrimPrefix(arg, "--opening-balance=")
+			} else if strings.HasPrefix(arg, "--opening-date=") {
+				opts.acctOpeningDate = strings.TrimPrefix(arg, "--opening-date=")
+			} else if strings.HasPrefix(arg, "--institution=") {
+				opts.acctInstitution = strings.TrimPrefix(arg, "--institution=")
+			} else if strings.HasPrefix(arg, "--account-number=") {
+				opts.acctNumber = strings.TrimPrefix(arg, "--account-number=")
+			} else if strings.HasPrefix(arg, "--notes=") {
+				opts.acctNotes = strings.TrimPrefix(arg, "--notes=")
+			} else if strings.HasPrefix(arg, "--credit-limit=") {
+				opts.acctCreditLimit = strings.TrimPrefix(arg, "--credit-limit=")
+			} else if strings.HasPrefix(arg, "--interest-rate=") {
+				opts.acctInterestRate = strings.TrimPrefix(arg, "--interest-rate=")
 			} else {
 				remaining = append(remaining, arg)
 			}
@@ -591,6 +691,136 @@ func runAddTransaction(opts *cliOptions, w io.Writer) error {
 	return nil
 }
 
+// runAddAccount creates a new account.
+func runAddAccount(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--add-account requires --file to specify a database")
+	}
+	if opts.acctName == "" {
+		return fmt.Errorf("--add-account requires --name to specify an account name")
+	}
+	if opts.acctType == "" {
+		return fmt.Errorf("--add-account requires --type to specify an account type")
+	}
+
+	// Parse account type
+	acctType, err := models.ParseAccountType(opts.acctType)
+	if err != nil {
+		validTypes := []string{}
+		for _, t := range models.AllAccountTypes() {
+			validTypes = append(validTypes, string(t))
+		}
+		return fmt.Errorf("invalid --type %q: valid types are %s", opts.acctType, strings.Join(validTypes, ", "))
+	}
+
+	// Parse currency (default to USD)
+	currency := "USD"
+	if opts.acctCurrency != "" {
+		currency = strings.ToUpper(opts.acctCurrency)
+	}
+
+	// Parse opening balance (default to 0)
+	openingBalance := models.MustNewMoney("0")
+	if opts.acctOpeningBal != "" {
+		openingBalance, err = models.NewMoney(opts.acctOpeningBal)
+		if err != nil {
+			return fmt.Errorf("invalid --opening-balance: %w", err)
+		}
+	}
+
+	// Parse opening date (default to today)
+	openingDate := models.Today()
+	if opts.acctOpeningDate != "" {
+		openingDate, err = models.ParseDate(opts.acctOpeningDate)
+		if err != nil {
+			return fmt.Errorf("invalid --opening-date: %w", err)
+		}
+	}
+
+	// Open database
+	database, err := db.Open(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer database.Close()
+
+	// Create account service
+	acctRepo := repository.NewAccountRepository(database)
+	acctSvc := service.NewAccountService(acctRepo, database)
+
+	// Check if account name already exists
+	if _, err := acctSvc.GetByName(opts.acctName); err == nil {
+		return fmt.Errorf("account %q already exists", opts.acctName)
+	}
+
+	// Create account
+	account := models.NewAccount(opts.acctName, acctType, currency, openingBalance, openingDate)
+
+	// Set optional fields
+	if opts.acctInstitution != "" {
+		account.SetInstitution(opts.acctInstitution)
+	}
+	if opts.acctNumber != "" {
+		account.SetAccountNumber(opts.acctNumber)
+	}
+	if opts.acctNotes != "" {
+		account.SetNotes(opts.acctNotes)
+	}
+
+	// Handle type-specific fields
+	if opts.acctCreditLimit != "" {
+		if acctType != models.AccountTypeCreditCard {
+			return fmt.Errorf("--credit-limit is only valid for credit_card accounts")
+		}
+		creditLimit, err := models.NewMoney(opts.acctCreditLimit)
+		if err != nil {
+			return fmt.Errorf("invalid --credit-limit: %w", err)
+		}
+		account.SetCreditLimit(creditLimit)
+	}
+
+	if opts.acctInterestRate != "" {
+		if acctType != models.AccountTypeLoan {
+			return fmt.Errorf("--interest-rate is only valid for loan accounts")
+		}
+		interestRate, err := models.NewMoney(opts.acctInterestRate)
+		if err != nil {
+			return fmt.Errorf("invalid --interest-rate: %w", err)
+		}
+		account.SetInterestRate(interestRate)
+	}
+
+	// Save account
+	if err := acctSvc.Create(account); err != nil {
+		return fmt.Errorf("failed to create account: %w", err)
+	}
+
+	// Print confirmation
+	fmt.Fprintln(w, "Account created successfully!")
+	fmt.Fprintf(w, "  Name:            %s\n", account.Name)
+	fmt.Fprintf(w, "  Type:            %s\n", account.Type.DisplayName())
+	fmt.Fprintf(w, "  Currency:        %s\n", account.Currency)
+	fmt.Fprintf(w, "  Opening Balance: %s\n", formatMoney(account.OpeningBalance, account.Currency))
+	fmt.Fprintf(w, "  Opening Date:    %s\n", account.OpeningDate.String())
+	if account.Institution.Valid {
+		fmt.Fprintf(w, "  Institution:     %s\n", account.Institution.String)
+	}
+	if account.AccountNumber.Valid {
+		fmt.Fprintf(w, "  Account Number:  %s\n", account.AccountNumber.String)
+	}
+	if account.CreditLimit.Valid {
+		fmt.Fprintf(w, "  Credit Limit:    %s\n", formatMoney(account.CreditLimit.Money, account.Currency))
+	}
+	if account.InterestRate.Valid {
+		fmt.Fprintf(w, "  Interest Rate:   %s%%\n", account.InterestRate.Money.String())
+	}
+	if account.Notes.Valid {
+		fmt.Fprintf(w, "  Notes:           %s\n", account.Notes.String)
+	}
+
+	return nil
+}
+
 // printAccountDetails prints detailed information for a single account.
 func printAccountDetails(w io.Writer, account *models.Account, balance *service.AccountBalance) {
 	fmt.Fprintf(w, "ACCOUNT: %s\n", account.Name)
@@ -812,6 +1042,19 @@ Account Commands:
     --include-closed   Include closed accounts in listing
   --account <name>     Show details for a specific account
   --balance            Show balances for all accounts with net worth
+
+  --add-account        Create a new account (requires --name, --type)
+    --name <name>            Account name
+    --type <type>            Account type (checking, savings, credit_card,
+                             investment, cash, loan, asset)
+    --currency <code>        Currency code (default: USD)
+    --opening-balance <amt>  Opening balance (default: 0)
+    --opening-date <date>    Opening date (YYYY-MM-DD, default: today)
+    --institution <name>     Financial institution name
+    --account-number <num>   Account number
+    --notes <text>           Account notes
+    --credit-limit <amt>     Credit limit (credit_card only)
+    --interest-rate <rate>   Interest rate % (loan only)
 
 Transaction Commands:
   --transactions       List transactions (requires --account)

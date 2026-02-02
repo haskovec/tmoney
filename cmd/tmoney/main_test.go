@@ -1989,3 +1989,837 @@ func TestPrintHelp_IncludesAddTransaction(t *testing.T) {
 		t.Error("help output should document --memo flag")
 	}
 }
+
+// Tests for --add-account command
+func TestParseArgs_AddAccountFlag(t *testing.T) {
+	opts, _, err := parseArgs([]string{"--add-account"})
+	if err != nil {
+		t.Errorf("parseArgs returned error: %v", err)
+		return
+	}
+	if !opts.addAccount {
+		t.Error("parseArgs did not set addAccount flag")
+	}
+}
+
+func TestParseArgs_NameFlag(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		expectedName string
+	}{
+		{"long flag with space", []string{"--name", "My Checking"}, "My Checking"},
+		{"long flag with equals", []string{"--name=My Checking"}, "My Checking"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.acctName != tt.expectedName {
+				t.Errorf("parseArgs(%v) acctName = %q, want %q", tt.args, opts.acctName, tt.expectedName)
+			}
+		})
+	}
+}
+
+func TestParseArgs_NameFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--name"})
+	if err == nil {
+		t.Error("parseArgs(--name) without value should return error")
+	}
+}
+
+func TestParseArgs_TypeFlag(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		expectedType string
+	}{
+		{"long flag with space", []string{"--type", "checking"}, "checking"},
+		{"long flag with equals", []string{"--type=savings"}, "savings"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.acctType != tt.expectedType {
+				t.Errorf("parseArgs(%v) acctType = %q, want %q", tt.args, opts.acctType, tt.expectedType)
+			}
+		})
+	}
+}
+
+func TestParseArgs_TypeFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--type"})
+	if err == nil {
+		t.Error("parseArgs(--type) without value should return error")
+	}
+}
+
+func TestParseArgs_CurrencyFlag(t *testing.T) {
+	tests := []struct {
+		name             string
+		args             []string
+		expectedCurrency string
+	}{
+		{"long flag with space", []string{"--currency", "EUR"}, "EUR"},
+		{"long flag with equals", []string{"--currency=GBP"}, "GBP"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.acctCurrency != tt.expectedCurrency {
+				t.Errorf("parseArgs(%v) acctCurrency = %q, want %q", tt.args, opts.acctCurrency, tt.expectedCurrency)
+			}
+		})
+	}
+}
+
+func TestParseArgs_CurrencyFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--currency"})
+	if err == nil {
+		t.Error("parseArgs(--currency) without value should return error")
+	}
+}
+
+func TestParseArgs_OpeningBalanceFlag(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		expectedBalance string
+	}{
+		{"long flag with space", []string{"--opening-balance", "1000.00"}, "1000.00"},
+		{"long flag with equals", []string{"--opening-balance=500.50"}, "500.50"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.acctOpeningBal != tt.expectedBalance {
+				t.Errorf("parseArgs(%v) acctOpeningBal = %q, want %q", tt.args, opts.acctOpeningBal, tt.expectedBalance)
+			}
+		})
+	}
+}
+
+func TestParseArgs_OpeningBalanceFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--opening-balance"})
+	if err == nil {
+		t.Error("parseArgs(--opening-balance) without value should return error")
+	}
+}
+
+func TestParseArgs_OpeningDateFlag(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		expectedDate string
+	}{
+		{"long flag with space", []string{"--opening-date", "2024-01-15"}, "2024-01-15"},
+		{"long flag with equals", []string{"--opening-date=2024-06-01"}, "2024-06-01"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.acctOpeningDate != tt.expectedDate {
+				t.Errorf("parseArgs(%v) acctOpeningDate = %q, want %q", tt.args, opts.acctOpeningDate, tt.expectedDate)
+			}
+		})
+	}
+}
+
+func TestParseArgs_OpeningDateFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--opening-date"})
+	if err == nil {
+		t.Error("parseArgs(--opening-date) without value should return error")
+	}
+}
+
+func TestParseArgs_InstitutionFlag(t *testing.T) {
+	tests := []struct {
+		name                string
+		args                []string
+		expectedInstitution string
+	}{
+		{"long flag with space", []string{"--institution", "Chase Bank"}, "Chase Bank"},
+		{"long flag with equals", []string{"--institution=Wells Fargo"}, "Wells Fargo"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.acctInstitution != tt.expectedInstitution {
+				t.Errorf("parseArgs(%v) acctInstitution = %q, want %q", tt.args, opts.acctInstitution, tt.expectedInstitution)
+			}
+		})
+	}
+}
+
+func TestParseArgs_InstitutionFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--institution"})
+	if err == nil {
+		t.Error("parseArgs(--institution) without value should return error")
+	}
+}
+
+func TestParseArgs_AccountNumberFlag(t *testing.T) {
+	tests := []struct {
+		name           string
+		args           []string
+		expectedNumber string
+	}{
+		{"long flag with space", []string{"--account-number", "1234567890"}, "1234567890"},
+		{"long flag with equals", []string{"--account-number=9876543210"}, "9876543210"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.acctNumber != tt.expectedNumber {
+				t.Errorf("parseArgs(%v) acctNumber = %q, want %q", tt.args, opts.acctNumber, tt.expectedNumber)
+			}
+		})
+	}
+}
+
+func TestParseArgs_AccountNumberFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--account-number"})
+	if err == nil {
+		t.Error("parseArgs(--account-number) without value should return error")
+	}
+}
+
+func TestParseArgs_NotesFlag(t *testing.T) {
+	tests := []struct {
+		name          string
+		args          []string
+		expectedNotes string
+	}{
+		{"long flag with space", []string{"--notes", "Primary checking account"}, "Primary checking account"},
+		{"long flag with equals", []string{"--notes=For emergencies only"}, "For emergencies only"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.acctNotes != tt.expectedNotes {
+				t.Errorf("parseArgs(%v) acctNotes = %q, want %q", tt.args, opts.acctNotes, tt.expectedNotes)
+			}
+		})
+	}
+}
+
+func TestParseArgs_NotesFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--notes"})
+	if err == nil {
+		t.Error("parseArgs(--notes) without value should return error")
+	}
+}
+
+func TestParseArgs_CreditLimitFlag(t *testing.T) {
+	tests := []struct {
+		name          string
+		args          []string
+		expectedLimit string
+	}{
+		{"long flag with space", []string{"--credit-limit", "5000.00"}, "5000.00"},
+		{"long flag with equals", []string{"--credit-limit=10000"}, "10000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.acctCreditLimit != tt.expectedLimit {
+				t.Errorf("parseArgs(%v) acctCreditLimit = %q, want %q", tt.args, opts.acctCreditLimit, tt.expectedLimit)
+			}
+		})
+	}
+}
+
+func TestParseArgs_CreditLimitFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--credit-limit"})
+	if err == nil {
+		t.Error("parseArgs(--credit-limit) without value should return error")
+	}
+}
+
+func TestParseArgs_InterestRateFlag(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		expectedRate string
+	}{
+		{"long flag with space", []string{"--interest-rate", "5.5"}, "5.5"},
+		{"long flag with equals", []string{"--interest-rate=7.25"}, "7.25"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.acctInterestRate != tt.expectedRate {
+				t.Errorf("parseArgs(%v) acctInterestRate = %q, want %q", tt.args, opts.acctInterestRate, tt.expectedRate)
+			}
+		})
+	}
+}
+
+func TestParseArgs_InterestRateFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--interest-rate"})
+	if err == nil {
+		t.Error("parseArgs(--interest-rate) without value should return error")
+	}
+}
+
+func TestRun_AddAccountMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--add-account", "--name", "Checking", "--type", "checking"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-account) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_AddAccountMissingName(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--add-account", "--file", dbPath, "--type", "checking"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-account) without --name should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --name") {
+		t.Errorf("error should mention --name requirement, got: %v", err)
+	}
+}
+
+func TestRun_AddAccountMissingType(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--add-account", "--file", dbPath, "--name", "Checking"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-account) without --type should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --type") {
+		t.Errorf("error should mention --type requirement, got: %v", err)
+	}
+}
+
+func TestRun_AddAccountInvalidType(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--add-account", "--file", dbPath, "--name", "Checking", "--type", "invalid_type"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-account) with invalid type should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --type") {
+		t.Errorf("error should mention invalid type, got: %v", err)
+	}
+}
+
+func TestRun_AddAccountInvalidOpeningBalance(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--add-account", "--file", dbPath, "--name", "Checking", "--type", "checking", "--opening-balance", "invalid"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-account) with invalid opening-balance should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --opening-balance") {
+		t.Errorf("error should mention invalid opening-balance, got: %v", err)
+	}
+}
+
+func TestRun_AddAccountInvalidOpeningDate(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--add-account", "--file", dbPath, "--name", "Checking", "--type", "checking", "--opening-date", "invalid-date"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-account) with invalid opening-date should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --opening-date") {
+		t.Errorf("error should mention invalid opening-date, got: %v", err)
+	}
+}
+
+func TestRun_AddAccountDuplicateName(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create existing account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("0"), models.Today())
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--add-account", "--file", dbPath, "--name", "Checking", "--type", "checking"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-account) with duplicate name should return error")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("error should mention already exists, got: %v", err)
+	}
+}
+
+func TestRun_AddAccountCreditLimitOnNonCreditCard(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--add-account", "--file", dbPath, "--name", "Checking", "--type", "checking", "--credit-limit", "5000"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-account) with credit-limit on non-credit_card should return error")
+	}
+	if !strings.Contains(err.Error(), "only valid for credit_card") {
+		t.Errorf("error should mention credit_card requirement, got: %v", err)
+	}
+}
+
+func TestRun_AddAccountInterestRateOnNonLoan(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--add-account", "--file", dbPath, "--name", "Checking", "--type", "checking", "--interest-rate", "5.5"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-account) with interest-rate on non-loan should return error")
+	}
+	if !strings.Contains(err.Error(), "only valid for loan") {
+		t.Errorf("error should mention loan requirement, got: %v", err)
+	}
+}
+
+func TestRun_AddAccountBasic(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--add-account",
+		"--file", dbPath,
+		"--name", "My Checking",
+		"--type", "checking",
+	}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--add-account) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Account created successfully") {
+		t.Errorf("output should confirm creation, got: %s", output)
+	}
+	if !strings.Contains(output, "My Checking") {
+		t.Errorf("output should show account name, got: %s", output)
+	}
+	if !strings.Contains(output, "Checking") {
+		t.Errorf("output should show account type, got: %s", output)
+	}
+	if !strings.Contains(output, "USD") {
+		t.Errorf("output should show default currency, got: %s", output)
+	}
+	if !strings.Contains(output, "$0.00") {
+		t.Errorf("output should show default opening balance, got: %s", output)
+	}
+
+	// Verify account was created
+	database, err = db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	defer database.Close()
+
+	acctRepo := repository.NewAccountRepository(database)
+	account, err := acctRepo.GetByName("My Checking")
+	if err != nil {
+		t.Errorf("account should have been created: %v", err)
+		return
+	}
+	if account.Name != "My Checking" {
+		t.Errorf("account name = %q, want %q", account.Name, "My Checking")
+	}
+	if account.Type != models.AccountTypeChecking {
+		t.Errorf("account type = %v, want %v", account.Type, models.AccountTypeChecking)
+	}
+}
+
+func TestRun_AddAccountWithAllOptions(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--add-account",
+		"--file", dbPath,
+		"--name", "Primary Checking",
+		"--type", "checking",
+		"--currency", "EUR",
+		"--opening-balance", "1000.50",
+		"--opening-date", "2024-01-15",
+		"--institution", "Chase Bank",
+		"--account-number", "1234567890",
+		"--notes", "Primary account",
+	}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--add-account) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Account created successfully") {
+		t.Error("output should confirm creation")
+	}
+	if !strings.Contains(output, "Primary Checking") {
+		t.Error("output should show account name")
+	}
+	if !strings.Contains(output, "EUR") {
+		t.Error("output should show currency")
+	}
+	if !strings.Contains(output, "1000.50") || !strings.Contains(output, "€") {
+		t.Errorf("output should show opening balance with EUR symbol, got: %s", output)
+	}
+	if !strings.Contains(output, "2024-01-15") {
+		t.Error("output should show opening date")
+	}
+	if !strings.Contains(output, "Chase Bank") {
+		t.Error("output should show institution")
+	}
+	if !strings.Contains(output, "1234567890") {
+		t.Error("output should show account number")
+	}
+	if !strings.Contains(output, "Primary account") {
+		t.Error("output should show notes")
+	}
+
+	// Verify account fields
+	database, err = db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	defer database.Close()
+
+	acctRepo := repository.NewAccountRepository(database)
+	account, err := acctRepo.GetByName("Primary Checking")
+	if err != nil {
+		t.Fatalf("account should have been created: %v", err)
+	}
+	if account.Currency != "EUR" {
+		t.Errorf("account currency = %q, want %q", account.Currency, "EUR")
+	}
+	if account.OpeningDate.String() != "2024-01-15" {
+		t.Errorf("account opening date = %s, want 2024-01-15", account.OpeningDate.String())
+	}
+	if !account.Institution.Valid || account.Institution.String != "Chase Bank" {
+		t.Errorf("account institution = %v, want 'Chase Bank'", account.Institution)
+	}
+	if !account.AccountNumber.Valid || account.AccountNumber.String != "1234567890" {
+		t.Errorf("account number = %v, want '1234567890'", account.AccountNumber)
+	}
+	if !account.Notes.Valid || account.Notes.String != "Primary account" {
+		t.Errorf("account notes = %v, want 'Primary account'", account.Notes)
+	}
+}
+
+func TestRun_AddAccountCreditCard(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--add-account",
+		"--file", dbPath,
+		"--name", "Visa Card",
+		"--type", "credit_card",
+		"--credit-limit", "5000.00",
+	}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--add-account) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Credit Limit") {
+		t.Errorf("output should show credit limit, got: %s", output)
+	}
+	if !strings.Contains(output, "$5000.00") {
+		t.Errorf("output should show credit limit value, got: %s", output)
+	}
+
+	// Verify credit limit
+	database, err = db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	defer database.Close()
+
+	acctRepo := repository.NewAccountRepository(database)
+	account, err := acctRepo.GetByName("Visa Card")
+	if err != nil {
+		t.Fatalf("account should have been created: %v", err)
+	}
+	if !account.CreditLimit.Valid {
+		t.Error("credit limit should be set")
+	}
+	if account.CreditLimit.Money.String() != "5000" {
+		t.Errorf("credit limit = %s, want 5000", account.CreditLimit.Money.String())
+	}
+}
+
+func TestRun_AddAccountLoan(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--add-account",
+		"--file", dbPath,
+		"--name", "Car Loan",
+		"--type", "loan",
+		"--opening-balance", "-15000.00",
+		"--interest-rate", "5.5",
+	}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--add-account) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Interest Rate") {
+		t.Errorf("output should show interest rate, got: %s", output)
+	}
+	if !strings.Contains(output, "5.5%") {
+		t.Errorf("output should show interest rate value, got: %s", output)
+	}
+
+	// Verify interest rate
+	database, err = db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	defer database.Close()
+
+	acctRepo := repository.NewAccountRepository(database)
+	account, err := acctRepo.GetByName("Car Loan")
+	if err != nil {
+		t.Fatalf("account should have been created: %v", err)
+	}
+	if !account.InterestRate.Valid {
+		t.Error("interest rate should be set")
+	}
+	if account.InterestRate.Money.String() != "5.5" {
+		t.Errorf("interest rate = %s, want 5.5", account.InterestRate.Money.String())
+	}
+}
+
+func TestRun_AddAccountAllTypes(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	accountTypes := []string{"checking", "savings", "credit_card", "investment", "cash", "loan", "asset"}
+
+	for _, acctType := range accountTypes {
+		t.Run(acctType, func(t *testing.T) {
+			stdout := &bytes.Buffer{}
+			stderr := &bytes.Buffer{}
+			err = run([]string{
+				"--add-account",
+				"--file", dbPath,
+				"--name", "Test " + acctType,
+				"--type", acctType,
+			}, stdout, stderr)
+			if err != nil {
+				t.Errorf("run(--add-account --type %s) returned error: %v", acctType, err)
+				return
+			}
+
+			output := stdout.String()
+			if !strings.Contains(output, "Account created successfully") {
+				t.Errorf("output should confirm creation for type %s, got: %s", acctType, output)
+			}
+		})
+	}
+}
+
+func TestPrintHelp_IncludesAddAccount(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printHelp(buf)
+	output := buf.String()
+
+	if !strings.Contains(output, "--add-account") {
+		t.Error("help output should document --add-account flag")
+	}
+	if !strings.Contains(output, "--name") {
+		t.Error("help output should document --name flag")
+	}
+	if !strings.Contains(output, "--type") {
+		t.Error("help output should document --type flag")
+	}
+	if !strings.Contains(output, "--currency") {
+		t.Error("help output should document --currency flag")
+	}
+	if !strings.Contains(output, "--opening-balance") {
+		t.Error("help output should document --opening-balance flag")
+	}
+	if !strings.Contains(output, "--opening-date") {
+		t.Error("help output should document --opening-date flag")
+	}
+	if !strings.Contains(output, "--institution") {
+		t.Error("help output should document --institution flag")
+	}
+	if !strings.Contains(output, "--account-number") {
+		t.Error("help output should document --account-number flag")
+	}
+	if !strings.Contains(output, "--notes") {
+		t.Error("help output should document --notes flag")
+	}
+	if !strings.Contains(output, "--credit-limit") {
+		t.Error("help output should document --credit-limit flag")
+	}
+	if !strings.Contains(output, "--interest-rate") {
+		t.Error("help output should document --interest-rate flag")
+	}
+}
