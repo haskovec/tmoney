@@ -153,13 +153,13 @@ This document defines the order in which features should be implemented. Each it
 
 ## Phase 6: CLI Foundation
 
-- [ ] **021 - CLI scaffold**
-  - Cobra root command
+- [x] **021 - CLI scaffold**
+  - Root command (manual arg parsing)
   - Global flags (--file, --help, --version)
   - File opening logic
   - Error output handling
 
-- [ ] **022 - Account CLI commands**
+- [x] **022 - Account CLI commands**
   - `--list-accounts`
   - `--account <name>`
   - `--balance`

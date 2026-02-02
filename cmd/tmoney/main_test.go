@@ -459,6 +459,272 @@ func TestPrintHelp_IncludesCreate(t *testing.T) {
 }
 
 // TestRun_ListAccountsWithClosedAccount tests that --include-closed shows closed accounts
+// Tests for --account flag parsing
+func TestParseArgs_AccountFlag(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		expectedAccount string
+	}{
+		{"long flag with space", []string{"--account", "My Checking"}, "My Checking"},
+		{"long flag with equals", []string{"--account=My Checking"}, "My Checking"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.accountName != tt.expectedAccount {
+				t.Errorf("parseArgs(%v) accountName = %q, want %q", tt.args, opts.accountName, tt.expectedAccount)
+			}
+		})
+	}
+}
+
+func TestParseArgs_AccountFlagMissingName(t *testing.T) {
+	_, _, err := parseArgs([]string{"--account"})
+	if err == nil {
+		t.Error("parseArgs(--account) without name should return error")
+	}
+	if !strings.Contains(err.Error(), "requires") {
+		t.Errorf("error should mention requirement, got: %v", err)
+	}
+}
+
+func TestParseArgs_BalanceFlag(t *testing.T) {
+	opts, _, err := parseArgs([]string{"--balance"})
+	if err != nil {
+		t.Errorf("parseArgs returned error: %v", err)
+		return
+	}
+	if !opts.showBalance {
+		t.Error("parseArgs did not set showBalance flag")
+	}
+}
+
+func TestRun_AccountMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--account", "Test Account"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--account) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_AccountNotFound(t *testing.T) {
+	// Create a temporary database
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--account", "Nonexistent Account", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--account) with nonexistent account should return error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention not found, got: %v", err)
+	}
+}
+
+func TestRun_AccountWithValidAccount(t *testing.T) {
+	// Create a temporary database
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account with optional fields
+	repo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Test Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	account.SetInstitution("Chase Bank")
+	account.SetAccountNumber("1234567890")
+	if err := repo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	database.Close()
+
+	// Run the account command
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--account", "Test Checking", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--account) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "ACCOUNT: Test Checking") {
+		t.Error("output should contain account header")
+	}
+	if !strings.Contains(output, "Checking") {
+		t.Error("output should contain account type")
+	}
+	if !strings.Contains(output, "USD") {
+		t.Error("output should contain currency")
+	}
+	if !strings.Contains(output, "Chase Bank") {
+		t.Error("output should contain institution")
+	}
+	if !strings.Contains(output, "****7890") {
+		t.Error("output should contain masked account number")
+	}
+	if !strings.Contains(output, "Current Balance") {
+		t.Error("output should contain current balance")
+	}
+	if !strings.Contains(output, "Active") {
+		t.Error("output should show active status")
+	}
+}
+
+func TestRun_BalanceMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--balance"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--balance) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_BalanceNoAccounts(t *testing.T) {
+	// Create a temporary database with no accounts
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "empty.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	// Run the balance command
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--balance", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--balance) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "No accounts found") {
+		t.Errorf("output should say no accounts found, got: %s", output)
+	}
+}
+
+func TestRun_BalanceWithAccounts(t *testing.T) {
+	// Create a temporary database
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create test accounts
+	repo := repository.NewAccountRepository(database)
+
+	checking := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := repo.Create(checking); err != nil {
+		t.Fatalf("failed to create checking account: %v", err)
+	}
+
+	savings := models.NewAccount(
+		"Savings",
+		models.AccountTypeSavings,
+		"USD",
+		models.MustNewMoney("5000.00"),
+		models.Today(),
+	)
+	if err := repo.Create(savings); err != nil {
+		t.Fatalf("failed to create savings account: %v", err)
+	}
+
+	creditCard := models.NewAccount(
+		"Visa",
+		models.AccountTypeCreditCard,
+		"USD",
+		models.MustNewMoney("-500.00"),
+		models.Today(),
+	)
+	if err := repo.Create(creditCard); err != nil {
+		t.Fatalf("failed to create credit card account: %v", err)
+	}
+
+	database.Close()
+
+	// Run the balance command
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--balance", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--balance) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "BALANCES") {
+		t.Error("output should contain BALANCES header")
+	}
+	if !strings.Contains(output, "Checking") {
+		t.Error("output should contain Checking account")
+	}
+	if !strings.Contains(output, "Savings") {
+		t.Error("output should contain Savings account")
+	}
+	if !strings.Contains(output, "Visa") {
+		t.Error("output should contain Visa account")
+	}
+	if !strings.Contains(output, "Net Worth") {
+		t.Error("output should contain Net Worth")
+	}
+}
+
+func TestPrintHelp_IncludesAccountAndBalance(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printHelp(buf)
+	output := buf.String()
+
+	if !strings.Contains(output, "--account") {
+		t.Error("help output should document --account flag")
+	}
+	if !strings.Contains(output, "--balance") {
+		t.Error("help output should document --balance flag")
+	}
+}
+
 func TestRun_ListAccountsWithClosedAccount(t *testing.T) {
 	// Create a temporary database
 	tmpDir := t.TempDir()
