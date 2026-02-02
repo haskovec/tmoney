@@ -797,3 +797,451 @@ func TestRun_ListAccountsWithClosedAccount(t *testing.T) {
 		t.Error("output should contain closed account with --include-closed")
 	}
 }
+
+// Tests for --transactions flag parsing
+func TestParseArgs_TransactionsFlag(t *testing.T) {
+	opts, _, err := parseArgs([]string{"--transactions"})
+	if err != nil {
+		t.Errorf("parseArgs returned error: %v", err)
+		return
+	}
+	if !opts.transactions {
+		t.Error("parseArgs did not set transactions flag")
+	}
+}
+
+func TestParseArgs_LimitFlag(t *testing.T) {
+	tests := []struct {
+		name          string
+		args          []string
+		expectedLimit int
+	}{
+		{"long flag with space", []string{"--limit", "10"}, 10},
+		{"long flag with equals", []string{"--limit=25"}, 25},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.limit != tt.expectedLimit {
+				t.Errorf("parseArgs(%v) limit = %d, want %d", tt.args, opts.limit, tt.expectedLimit)
+			}
+		})
+	}
+}
+
+func TestParseArgs_LimitFlagInvalid(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"missing value", []string{"--limit"}},
+		{"not a number", []string{"--limit", "abc"}},
+		{"zero", []string{"--limit", "0"}},
+		{"negative", []string{"--limit", "-5"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := parseArgs(tt.args)
+			if err == nil {
+				t.Errorf("parseArgs(%v) should return error", tt.args)
+			}
+		})
+	}
+}
+
+func TestParseArgs_FromToFlags(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		expectedFrom string
+		expectedTo   string
+	}{
+		{"from with space", []string{"--from", "2024-01-01"}, "2024-01-01", ""},
+		{"to with space", []string{"--to", "2024-12-31"}, "", "2024-12-31"},
+		{"from with equals", []string{"--from=2024-01-01"}, "2024-01-01", ""},
+		{"to with equals", []string{"--to=2024-12-31"}, "", "2024-12-31"},
+		{"both flags", []string{"--from", "2024-01-01", "--to", "2024-12-31"}, "2024-01-01", "2024-12-31"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.fromDate != tt.expectedFrom {
+				t.Errorf("parseArgs(%v) fromDate = %q, want %q", tt.args, opts.fromDate, tt.expectedFrom)
+			}
+			if opts.toDate != tt.expectedTo {
+				t.Errorf("parseArgs(%v) toDate = %q, want %q", tt.args, opts.toDate, tt.expectedTo)
+			}
+		})
+	}
+}
+
+func TestParseArgs_FromToMissingValue(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"from missing value", []string{"--from"}},
+		{"to missing value", []string{"--to"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := parseArgs(tt.args)
+			if err == nil {
+				t.Errorf("parseArgs(%v) should return error", tt.args)
+			}
+		})
+	}
+}
+
+func TestRun_TransactionsMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--transactions", "--account", "Checking"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transactions) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_TransactionsMissingAccount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transactions", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transactions) without --account should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --account") {
+		t.Errorf("error should mention --account requirement, got: %v", err)
+	}
+}
+
+func TestRun_TransactionsAccountNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transactions", "--account", "Nonexistent", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transactions) with nonexistent account should return error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention not found, got: %v", err)
+	}
+}
+
+func TestRun_TransactionsNoTransactions(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	repo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := repo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	database.Close()
+
+	// Run the transactions command
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transactions", "--account", "Checking", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--transactions) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "TRANSACTIONS: Checking") {
+		t.Error("output should contain TRANSACTIONS header")
+	}
+	if !strings.Contains(output, "No transactions found") {
+		t.Errorf("output should say no transactions found, got: %s", output)
+	}
+}
+
+func TestRun_TransactionsWithTransactions(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a payee
+	payeeRepo := repository.NewPayeeRepository(database)
+	payee := models.NewPayee("Coffee Shop")
+	if err := payeeRepo.Create(payee); err != nil {
+		t.Fatalf("failed to create payee: %v", err)
+	}
+
+	// Create a category
+	catRepo := repository.NewCategoryRepository(database)
+	category := models.NewCategory("Food", models.CategoryTypeExpense)
+	if err := catRepo.Create(category); err != nil {
+		t.Fatalf("failed to create category: %v", err)
+	}
+
+	// Create transactions
+	txnRepo := repository.NewTransactionRepository(database)
+
+	txn1 := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-5.50"))
+	txn1.SetPayee(payee.ID)
+	txn1.SetCategory(category.ID)
+	txn1.Clear()
+	if err := txnRepo.Create(txn1); err != nil {
+		t.Fatalf("failed to create transaction 1: %v", err)
+	}
+
+	txn2 := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-25.00"))
+	txn2.SetPayee(payee.ID)
+	if err := txnRepo.Create(txn2); err != nil {
+		t.Fatalf("failed to create transaction 2: %v", err)
+	}
+
+	database.Close()
+
+	// Run the transactions command
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transactions", "--account", "Checking", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--transactions) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "TRANSACTIONS: Checking") {
+		t.Error("output should contain TRANSACTIONS header")
+	}
+	if !strings.Contains(output, "Coffee Shop") {
+		t.Error("output should contain payee name")
+	}
+	if !strings.Contains(output, "Food") {
+		t.Error("output should contain category name")
+	}
+	if !strings.Contains(output, "-$5.50") {
+		t.Error("output should contain transaction amount")
+	}
+	if !strings.Contains(output, "Cleared") {
+		t.Error("output should contain transaction status")
+	}
+	if !strings.Contains(output, "Showing 2 transaction(s)") {
+		t.Errorf("output should show transaction count, got: %s", output)
+	}
+}
+
+func TestRun_TransactionsWithLimit(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create multiple transactions
+	txnRepo := repository.NewTransactionRepository(database)
+	for i := 0; i < 5; i++ {
+		txn := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-10.00"))
+		if err := txnRepo.Create(txn); err != nil {
+			t.Fatalf("failed to create transaction %d: %v", i, err)
+		}
+	}
+
+	database.Close()
+
+	// Run with --limit 2
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transactions", "--account", "Checking", "--file", dbPath, "--limit", "2"}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--transactions --limit) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Showing 2 transaction(s)") {
+		t.Errorf("output should show 2 transactions with limit, got: %s", output)
+	}
+}
+
+func TestRun_TransactionsWithDateFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create transactions with different dates
+	txnRepo := repository.NewTransactionRepository(database)
+
+	jan15, _ := models.ParseDate("2024-01-15")
+	txn1 := models.NewTransaction(account.ID, jan15, models.MustNewMoney("-10.00"))
+	if err := txnRepo.Create(txn1); err != nil {
+		t.Fatalf("failed to create transaction 1: %v", err)
+	}
+
+	feb15, _ := models.ParseDate("2024-02-15")
+	txn2 := models.NewTransaction(account.ID, feb15, models.MustNewMoney("-20.00"))
+	if err := txnRepo.Create(txn2); err != nil {
+		t.Fatalf("failed to create transaction 2: %v", err)
+	}
+
+	mar15, _ := models.ParseDate("2024-03-15")
+	txn3 := models.NewTransaction(account.ID, mar15, models.MustNewMoney("-30.00"))
+	if err := txnRepo.Create(txn3); err != nil {
+		t.Fatalf("failed to create transaction 3: %v", err)
+	}
+
+	database.Close()
+
+	// Run with date filter for February only
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--transactions", "--account", "Checking", "--file", dbPath,
+		"--from", "2024-02-01", "--to", "2024-02-28",
+	}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--transactions with date filter) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Showing 1 transaction(s)") {
+		t.Errorf("output should show 1 transaction in date range, got: %s", output)
+	}
+	if !strings.Contains(output, "2024-02-15") {
+		t.Errorf("output should show February transaction, got: %s", output)
+	}
+}
+
+func TestRun_TransactionsInvalidDateFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("0"), models.Today())
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transactions", "--account", "Checking", "--file", dbPath, "--from", "invalid-date"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transactions) with invalid date should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --from date") {
+		t.Errorf("error should mention invalid date, got: %v", err)
+	}
+}
+
+func TestPrintHelp_IncludesTransactions(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printHelp(buf)
+	output := buf.String()
+
+	if !strings.Contains(output, "--transactions") {
+		t.Error("help output should document --transactions flag")
+	}
+	if !strings.Contains(output, "--limit") {
+		t.Error("help output should document --limit flag")
+	}
+	if !strings.Contains(output, "--from") {
+		t.Error("help output should document --from flag")
+	}
+	if !strings.Contains(output, "--to") {
+		t.Error("help output should document --to flag")
+	}
+}

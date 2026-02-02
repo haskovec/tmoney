@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -28,6 +29,10 @@ type cliOptions struct {
 	createDB      string
 	accountName   string // --account <name> to show details
 	showBalance   bool   // --balance to show all balances
+	transactions  bool   // --transactions to list transactions
+	limit         int    // --limit <n> to limit results
+	fromDate      string // --from <YYYY-MM-DD> start date filter
+	toDate        string // --to <YYYY-MM-DD> end date filter
 }
 
 func main() {
@@ -51,6 +56,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Handle --list-accounts
 	if opts.listAccounts {
 		return runListAccounts(opts, stdout)
+	}
+
+	// Handle --transactions (check before --account since it uses --account as argument)
+	if opts.transactions {
+		return runTransactions(opts, stdout)
 	}
 
 	// Handle --account <name>
@@ -111,6 +121,33 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.accountName = args[i]
 		case "--balance":
 			opts.showBalance = true
+		case "--transactions":
+			opts.transactions = true
+		case "--limit":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--limit requires a number argument")
+			}
+			i++
+			limit, err := strconv.Atoi(args[i])
+			if err != nil {
+				return nil, nil, fmt.Errorf("--limit requires a valid number: %w", err)
+			}
+			if limit < 1 {
+				return nil, nil, fmt.Errorf("--limit must be a positive number")
+			}
+			opts.limit = limit
+		case "--from":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--from requires a date argument (YYYY-MM-DD)")
+			}
+			i++
+			opts.fromDate = args[i]
+		case "--to":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--to requires a date argument (YYYY-MM-DD)")
+			}
+			i++
+			opts.toDate = args[i]
 		case "--create":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--create requires a path argument")
@@ -127,6 +164,20 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.createDB = strings.TrimPrefix(arg, "--create=")
 			} else if strings.HasPrefix(arg, "--account=") {
 				opts.accountName = strings.TrimPrefix(arg, "--account=")
+			} else if strings.HasPrefix(arg, "--limit=") {
+				limitStr := strings.TrimPrefix(arg, "--limit=")
+				limit, err := strconv.Atoi(limitStr)
+				if err != nil {
+					return nil, nil, fmt.Errorf("--limit requires a valid number: %w", err)
+				}
+				if limit < 1 {
+					return nil, nil, fmt.Errorf("--limit must be a positive number")
+				}
+				opts.limit = limit
+			} else if strings.HasPrefix(arg, "--from=") {
+				opts.fromDate = strings.TrimPrefix(arg, "--from=")
+			} else if strings.HasPrefix(arg, "--to=") {
+				opts.toDate = strings.TrimPrefix(arg, "--to=")
 			} else {
 				remaining = append(remaining, arg)
 			}
@@ -253,6 +304,102 @@ func runBalance(opts *cliOptions, w io.Writer) error {
 	return nil
 }
 
+// runTransactions lists transactions for an account.
+func runTransactions(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--transactions requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--transactions requires --account to specify an account")
+	}
+
+	// Open database
+	database, err := db.Open(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer database.Close()
+
+	// Get account by name
+	acctRepo := repository.NewAccountRepository(database)
+	acctSvc := service.NewAccountService(acctRepo, database)
+	account, err := acctSvc.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	// Create transaction service
+	txnRepo := repository.NewTransactionRepository(database)
+	splitRepo := repository.NewSplitRepository(database)
+	transferRepo := repository.NewTransferRepository(database)
+	payeeRepo := repository.NewPayeeRepository(database)
+	txnSvc := service.NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+
+	// Parse date filters if provided
+	var startDate, endDate models.Date
+	hasDateFilter := false
+
+	if opts.fromDate != "" {
+		startDate, err = models.ParseDate(opts.fromDate)
+		if err != nil {
+			return fmt.Errorf("invalid --from date: %w", err)
+		}
+		hasDateFilter = true
+	}
+
+	if opts.toDate != "" {
+		endDate, err = models.ParseDate(opts.toDate)
+		if err != nil {
+			return fmt.Errorf("invalid --to date: %w", err)
+		}
+		hasDateFilter = true
+	}
+
+	// Fetch transactions
+	var transactions []*models.Transaction
+	if hasDateFilter {
+		// If only one date provided, use it for both bounds
+		if opts.fromDate == "" {
+			startDate = models.Date{} // Zero date (far past)
+		}
+		if opts.toDate == "" {
+			endDate = models.Today() // Today
+		}
+		transactions, err = txnSvc.ListByAccountAndDateRange(account.ID, startDate, endDate)
+	} else {
+		transactions, err = txnSvc.ListByAccount(account.ID)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to list transactions: %w", err)
+	}
+
+	// Apply limit if specified
+	if opts.limit > 0 && len(transactions) > opts.limit {
+		transactions = transactions[:opts.limit]
+	}
+
+	// Build payee and category lookup maps
+	payeeNames := make(map[models.ID]string)
+	categoryNames := make(map[models.ID]string)
+
+	// Fetch all payees and categories for name lookup
+	payees, _ := payeeRepo.List()
+	for _, p := range payees {
+		payeeNames[p.ID] = p.Name
+	}
+
+	categoryRepo := repository.NewCategoryRepository(database)
+	categories, _ := categoryRepo.List()
+	for _, c := range categories {
+		categoryNames[c.ID] = c.Name
+	}
+
+	// Print transactions table
+	printTransactionsTable(w, account, transactions, payeeNames, categoryNames)
+
+	return nil
+}
+
 // printAccountDetails prints detailed information for a single account.
 func printAccountDetails(w io.Writer, account *models.Account, balance *service.AccountBalance) {
 	fmt.Fprintf(w, "ACCOUNT: %s\n", account.Name)
@@ -366,6 +513,55 @@ func printAccountsTable(w io.Writer, accounts []*models.Account, balances map[mo
 	tw.Flush()
 }
 
+// printTransactionsTable prints transactions in a formatted table.
+func printTransactionsTable(w io.Writer, account *models.Account, transactions []*models.Transaction, payeeNames map[models.ID]string, categoryNames map[models.ID]string) {
+	fmt.Fprintf(w, "TRANSACTIONS: %s\n", account.Name)
+	fmt.Fprintln(w, strings.Repeat("=", len("TRANSACTIONS: ")+len(account.Name)))
+
+	if len(transactions) == 0 {
+		fmt.Fprintln(w, "No transactions found.")
+		return
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "Date\tPayee\tCategory\tAmount\tStatus")
+	fmt.Fprintln(tw, "----\t-----\t--------\t------\t------")
+
+	for _, txn := range transactions {
+		payee := "-"
+		if txn.PayeeID.Valid {
+			if name, ok := payeeNames[txn.PayeeID.ID]; ok {
+				payee = name
+			}
+		}
+
+		category := "-"
+		if txn.CategoryID.Valid {
+			if name, ok := categoryNames[txn.CategoryID.ID]; ok {
+				category = name
+			}
+		}
+
+		// For transfers, show the transfer account
+		if txn.IsTransfer() {
+			payee = "[Transfer]"
+			category = "-"
+		}
+
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			txn.Date.String(),
+			payee,
+			category,
+			formatMoney(txn.Amount, account.Currency),
+			txn.Status.DisplayName(),
+		)
+	}
+
+	tw.Flush()
+
+	fmt.Fprintf(w, "\nShowing %d transaction(s)\n", len(transactions))
+}
+
 // formatMoney formats a Money value with currency symbol.
 // Always displays 2 decimal places for currencies.
 func formatMoney(m models.Money, currency string) string {
@@ -425,6 +621,13 @@ Account Commands:
     --include-closed   Include closed accounts in listing
   --account <name>     Show details for a specific account
   --balance            Show balances for all accounts with net worth
+
+Transaction Commands:
+  --transactions       List transactions (requires --account)
+    --account <name>   Account to show transactions for
+    --limit <n>        Limit number of transactions shown
+    --from <date>      Start date filter (YYYY-MM-DD)
+    --to <date>        End date filter (YYYY-MM-DD)
 
 For more information, visit: https://github.com/haskovec/tmoney`)
 }

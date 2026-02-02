@@ -165,7 +165,7 @@ This document defines the order in which features should be implemented. Each it
   - `--balance`
   - Table formatting
 
-- [ ] **023 - Transaction CLI commands**
+- [x] **023 - Transaction CLI commands**
   - `--transactions <account>`
   - `--limit` flag
   - `--from` and `--to` date flags
