@@ -52,6 +52,12 @@ type cliOptions struct {
 	minAmount  string // --min <amount>
 	maxAmount  string // --max <amount>
 
+	// Scheduled transaction options
+	scheduled     bool   // --scheduled flag
+	scheduledDue  bool   // --due flag (with --scheduled)
+	postScheduled string // --post-scheduled <id>
+	skipScheduled string // --skip-scheduled <id>
+
 	// Add account options
 	addAccount        bool   // --add-account flag
 	acctName          string // --name <name>
@@ -102,6 +108,21 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Handle --transfer
 	if opts.transfer {
 		return runTransfer(opts, stdout)
+	}
+
+	// Handle --post-scheduled
+	if opts.postScheduled != "" {
+		return runPostScheduled(opts, stdout)
+	}
+
+	// Handle --skip-scheduled
+	if opts.skipScheduled != "" {
+		return runSkipScheduled(opts, stdout)
+	}
+
+	// Handle --scheduled
+	if opts.scheduled {
+		return runScheduled(opts, stdout)
 	}
 
 	// Handle --search
@@ -229,6 +250,22 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.maxAmount = args[i]
+		case "--scheduled":
+			opts.scheduled = true
+		case "--due":
+			opts.scheduledDue = true
+		case "--post-scheduled":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--post-scheduled requires a scheduled transaction ID argument")
+			}
+			i++
+			opts.postScheduled = args[i]
+		case "--skip-scheduled":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--skip-scheduled requires a scheduled transaction ID argument")
+			}
+			i++
+			opts.skipScheduled = args[i]
 		case "--amount":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--amount requires a value argument")
@@ -385,6 +422,10 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.minAmount = strings.TrimPrefix(arg, "--min=")
 			} else if strings.HasPrefix(arg, "--max=") {
 				opts.maxAmount = strings.TrimPrefix(arg, "--max=")
+			} else if strings.HasPrefix(arg, "--post-scheduled=") {
+				opts.postScheduled = strings.TrimPrefix(arg, "--post-scheduled=")
+			} else if strings.HasPrefix(arg, "--skip-scheduled=") {
+				opts.skipScheduled = strings.TrimPrefix(arg, "--skip-scheduled=")
 			} else {
 				remaining = append(remaining, arg)
 			}
@@ -1104,6 +1145,339 @@ func runAddAccount(opts *cliOptions, w io.Writer) error {
 	return nil
 }
 
+// runScheduled lists scheduled transactions.
+func runScheduled(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--scheduled requires --file to specify a database")
+	}
+
+	// Open database
+	database, err := db.Open(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer database.Close()
+
+	// Create scheduled transaction service
+	stRepo := repository.NewScheduledTransactionRepository(database)
+	txnRepo := repository.NewTransactionRepository(database)
+	stSvc := service.NewScheduledTransactionService(stRepo, txnRepo, database)
+
+	// Get scheduled transactions
+	var scheduledTxns []*models.ScheduledTransaction
+	if opts.scheduledDue {
+		scheduledTxns, err = stSvc.ListDue()
+	} else {
+		scheduledTxns, err = stSvc.List()
+	}
+	if err != nil {
+		return fmt.Errorf("failed to list scheduled transactions: %w", err)
+	}
+
+	// Filter by account if specified
+	if opts.accountName != "" {
+		acctRepo := repository.NewAccountRepository(database)
+		acctSvc := service.NewAccountService(acctRepo, database)
+		account, err := acctSvc.GetByName(opts.accountName)
+		if err != nil {
+			return fmt.Errorf("account %q not found", opts.accountName)
+		}
+
+		var filtered []*models.ScheduledTransaction
+		for _, st := range scheduledTxns {
+			if st.AccountID == account.ID {
+				filtered = append(filtered, st)
+			}
+		}
+		scheduledTxns = filtered
+	}
+
+	// Build lookup maps
+	payeeNames := make(map[models.ID]string)
+	categoryNames := make(map[models.ID]string)
+	accountNames := make(map[models.ID]string)
+	accountCurrencies := make(map[models.ID]string)
+
+	payeeRepo := repository.NewPayeeRepository(database)
+	payees, _ := payeeRepo.List()
+	for _, p := range payees {
+		payeeNames[p.ID] = p.Name
+	}
+
+	categoryRepo := repository.NewCategoryRepository(database)
+	categories, _ := categoryRepo.List()
+	for _, c := range categories {
+		categoryNames[c.ID] = c.Name
+	}
+
+	acctRepo := repository.NewAccountRepository(database)
+	accounts, _ := acctRepo.List(false)
+	for _, a := range accounts {
+		accountNames[a.ID] = a.Name
+		accountCurrencies[a.ID] = a.Currency
+	}
+
+	// Print scheduled transactions table
+	printScheduledTransactionsTable(w, scheduledTxns, opts.scheduledDue, accountNames, accountCurrencies, payeeNames, categoryNames)
+
+	return nil
+}
+
+// runPostScheduled posts a scheduled transaction (creates a real transaction).
+func runPostScheduled(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--post-scheduled requires --file to specify a database")
+	}
+
+	// Open database
+	database, err := db.Open(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer database.Close()
+
+	// Parse the scheduled transaction ID
+	stID, err := models.ParseID(opts.postScheduled)
+	if err != nil {
+		return fmt.Errorf("invalid scheduled transaction ID: %w", err)
+	}
+
+	// Create scheduled transaction service
+	stRepo := repository.NewScheduledTransactionRepository(database)
+	txnRepo := repository.NewTransactionRepository(database)
+	stSvc := service.NewScheduledTransactionService(stRepo, txnRepo, database)
+
+	// Get the scheduled transaction first to show details
+	st, err := stSvc.GetByID(stID)
+	if err != nil {
+		return fmt.Errorf("scheduled transaction not found: %w", err)
+	}
+
+	// Remember the old next date
+	oldNextDate := st.NextDate
+
+	// Parse optional amount
+	var amount *models.Money
+	if opts.txAmount != "" {
+		amt, err := models.NewMoney(opts.txAmount)
+		if err != nil {
+			return fmt.Errorf("invalid --amount: %w", err)
+		}
+		amount = &amt
+	}
+
+	// Parse optional date
+	var date *models.Date
+	if opts.txDate != "" {
+		d, err := models.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+		date = &d
+	}
+
+	// Post the scheduled transaction
+	var txn *models.Transaction
+	if date != nil {
+		txn, err = stSvc.PostWithDate(stID, *date, amount)
+	} else {
+		txn, err = stSvc.Post(stID, amount)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to post scheduled transaction: %w", err)
+	}
+
+	// Get updated scheduled transaction for next date
+	stUpdated, _ := stSvc.GetByID(stID)
+
+	// Get account info for currency
+	acctRepo := repository.NewAccountRepository(database)
+	account, _ := acctRepo.GetByID(st.AccountID)
+	currency := "USD"
+	accountName := "Unknown"
+	if account != nil {
+		currency = account.Currency
+		accountName = account.Name
+	}
+
+	// Get payee name
+	payeeName := "-"
+	if st.HasPayee() {
+		payeeRepo := repository.NewPayeeRepository(database)
+		payee, err := payeeRepo.GetByID(st.PayeeID.ID)
+		if err == nil {
+			payeeName = payee.Name
+		}
+	}
+
+	// Print confirmation
+	fmt.Fprintln(w, "Scheduled transaction posted successfully!")
+	fmt.Fprintf(w, "  Account:     %s\n", accountName)
+	if payeeName != "-" {
+		fmt.Fprintf(w, "  Payee:       %s\n", payeeName)
+	}
+	fmt.Fprintf(w, "  Amount:      %s\n", formatMoney(txn.Amount, currency))
+	fmt.Fprintf(w, "  Date:        %s\n", txn.Date.String())
+	fmt.Fprintf(w, "  Frequency:   %s\n", st.Frequency.DisplayName())
+	fmt.Fprintf(w, "  Previous:    %s\n", oldNextDate.String())
+	if stUpdated != nil && !stUpdated.IsCompleted() {
+		fmt.Fprintf(w, "  Next:        %s\n", stUpdated.NextDate.String())
+	} else {
+		fmt.Fprintln(w, "  Status:      Completed (no more occurrences)")
+	}
+
+	return nil
+}
+
+// runSkipScheduled skips a scheduled transaction (advances to next date without posting).
+func runSkipScheduled(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--skip-scheduled requires --file to specify a database")
+	}
+
+	// Open database
+	database, err := db.Open(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer database.Close()
+
+	// Parse the scheduled transaction ID
+	stID, err := models.ParseID(opts.skipScheduled)
+	if err != nil {
+		return fmt.Errorf("invalid scheduled transaction ID: %w", err)
+	}
+
+	// Create scheduled transaction service
+	stRepo := repository.NewScheduledTransactionRepository(database)
+	txnRepo := repository.NewTransactionRepository(database)
+	stSvc := service.NewScheduledTransactionService(stRepo, txnRepo, database)
+
+	// Get the scheduled transaction first to show details
+	st, err := stSvc.GetByID(stID)
+	if err != nil {
+		return fmt.Errorf("scheduled transaction not found: %w", err)
+	}
+
+	// Remember the old next date
+	oldNextDate := st.NextDate
+
+	// Skip the scheduled transaction
+	err = stSvc.Skip(stID)
+	if err != nil {
+		return fmt.Errorf("failed to skip scheduled transaction: %w", err)
+	}
+
+	// Get updated scheduled transaction for next date
+	stUpdated, _ := stSvc.GetByID(stID)
+
+	// Get account info
+	acctRepo := repository.NewAccountRepository(database)
+	account, _ := acctRepo.GetByID(st.AccountID)
+	accountName := "Unknown"
+	if account != nil {
+		accountName = account.Name
+	}
+
+	// Get payee name
+	payeeName := "-"
+	if st.HasPayee() {
+		payeeRepo := repository.NewPayeeRepository(database)
+		payee, err := payeeRepo.GetByID(st.PayeeID.ID)
+		if err == nil {
+			payeeName = payee.Name
+		}
+	}
+
+	// Print confirmation
+	fmt.Fprintln(w, "Scheduled transaction skipped!")
+	fmt.Fprintf(w, "  Account:     %s\n", accountName)
+	if payeeName != "-" {
+		fmt.Fprintf(w, "  Payee:       %s\n", payeeName)
+	}
+	fmt.Fprintf(w, "  Frequency:   %s\n", st.Frequency.DisplayName())
+	fmt.Fprintf(w, "  Skipped:     %s\n", oldNextDate.String())
+	if stUpdated != nil && !stUpdated.IsCompleted() {
+		fmt.Fprintf(w, "  Next:        %s\n", stUpdated.NextDate.String())
+	} else {
+		fmt.Fprintln(w, "  Status:      Completed (no more occurrences)")
+	}
+
+	return nil
+}
+
+// printScheduledTransactionsTable prints scheduled transactions in a formatted table.
+func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*models.ScheduledTransaction, dueOnly bool, accountNames map[models.ID]string, accountCurrencies map[models.ID]string, payeeNames map[models.ID]string, categoryNames map[models.ID]string) {
+	if dueOnly {
+		fmt.Fprintln(w, "DUE SCHEDULED TRANSACTIONS")
+		fmt.Fprintln(w, "==========================")
+	} else {
+		fmt.Fprintln(w, "SCHEDULED TRANSACTIONS")
+		fmt.Fprintln(w, "======================")
+	}
+
+	if len(scheduledTxns) == 0 {
+		if dueOnly {
+			fmt.Fprintln(w, "No scheduled transactions are due.")
+		} else {
+			fmt.Fprintln(w, "No scheduled transactions found.")
+		}
+		return
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tAccount\tNext Date\tPayee\tAmount\tFrequency")
+	fmt.Fprintln(tw, "--------\t-------\t---------\t-----\t------\t---------")
+
+	for _, st := range scheduledTxns {
+		// Truncate ID for display
+		idStr := st.ID.String()
+		if len(idStr) > 8 {
+			idStr = idStr[:8]
+		}
+
+		account := accountNames[st.AccountID]
+		if account == "" {
+			account = "-"
+		}
+
+		currency := accountCurrencies[st.AccountID]
+		if currency == "" {
+			currency = "USD"
+		}
+
+		payee := "-"
+		if st.HasPayee() {
+			if name, ok := payeeNames[st.PayeeID.ID]; ok {
+				payee = name
+			}
+		}
+
+		amount := "~" // Variable amount indicator
+		if st.HasAmount() {
+			amount = formatMoney(st.Amount.Money, currency)
+		}
+
+		freq := st.Frequency.DisplayName()
+		if st.OccurrencesRemaining.Valid {
+			freq += fmt.Sprintf(" (%d left)", st.OccurrencesRemaining.Int64)
+		}
+
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			idStr,
+			account,
+			st.NextDate.String(),
+			payee,
+			amount,
+			freq,
+		)
+	}
+
+	tw.Flush()
+
+	fmt.Fprintf(w, "\nShowing %d scheduled transaction(s)\n", len(scheduledTxns))
+}
+
 // printAccountDetails prints detailed information for a single account.
 func printAccountDetails(w io.Writer, account *models.Account, balance *service.AccountBalance) {
 	fmt.Fprintf(w, "ACCOUNT: %s\n", account.Name)
@@ -1423,6 +1797,17 @@ Transaction Commands:
     --category <name>  Filter by category
     --min <amount>     Minimum amount filter
     --max <amount>     Maximum amount filter
+
+Scheduled Transaction Commands:
+  --scheduled          List all scheduled transactions
+    --due              Show only due scheduled transactions
+    --account <name>   Filter by account
+
+  --post-scheduled <id>  Post a scheduled transaction (create real transaction)
+    --amount <value>     Override amount (for variable amount schedules)
+    --date <date>        Override date (YYYY-MM-DD, default: scheduled date)
+
+  --skip-scheduled <id>  Skip a scheduled transaction (advance to next date)
 
 For more information, visit: https://github.com/haskovec/tmoney`)
 }

@@ -208,7 +208,7 @@ This document defines the order in which features should be implemented. Each it
   - Skip scheduled
   - Variable amount estimation
 
-- [ ] **030 - Scheduled CLI commands**
+- [x] **030 - Scheduled CLI commands**
   - `--scheduled`
   - `--scheduled --due`
   - `--post-scheduled <id>`

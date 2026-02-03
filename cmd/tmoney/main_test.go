@@ -3811,3 +3811,741 @@ func TestPrintHelp_IncludesSearch(t *testing.T) {
 		t.Error("help output should describe search functionality")
 	}
 }
+
+// =============================================================================
+// Scheduled Transaction CLI Tests
+// =============================================================================
+
+func TestParseArgs_ScheduledFlags(t *testing.T) {
+	tests := []struct {
+		name             string
+		args             []string
+		expectedScheduled bool
+		expectedDue       bool
+	}{
+		{"scheduled flag", []string{"--scheduled"}, true, false},
+		{"scheduled with due", []string{"--scheduled", "--due"}, true, true},
+		{"due without scheduled", []string{"--due"}, false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.scheduled != tt.expectedScheduled {
+				t.Errorf("parseArgs(%v) scheduled = %v, want %v", tt.args, opts.scheduled, tt.expectedScheduled)
+			}
+			if opts.scheduledDue != tt.expectedDue {
+				t.Errorf("parseArgs(%v) scheduledDue = %v, want %v", tt.args, opts.scheduledDue, tt.expectedDue)
+			}
+		})
+	}
+}
+
+func TestParseArgs_PostScheduledFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		expected string
+	}{
+		{"with space", []string{"--post-scheduled", "abc123"}, "abc123"},
+		{"with equals", []string{"--post-scheduled=abc123"}, "abc123"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.postScheduled != tt.expected {
+				t.Errorf("parseArgs(%v) postScheduled = %q, want %q", tt.args, opts.postScheduled, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseArgs_SkipScheduledFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		expected string
+	}{
+		{"with space", []string{"--skip-scheduled", "abc123"}, "abc123"},
+		{"with equals", []string{"--skip-scheduled=abc123"}, "abc123"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.skipScheduled != tt.expected {
+				t.Errorf("parseArgs(%v) skipScheduled = %q, want %q", tt.args, opts.skipScheduled, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseArgs_PostScheduledMissingID(t *testing.T) {
+	_, _, err := parseArgs([]string{"--post-scheduled"})
+	if err == nil {
+		t.Error("parseArgs(--post-scheduled) without ID should return error")
+	}
+	if !strings.Contains(err.Error(), "requires a scheduled transaction ID") {
+		t.Errorf("error should mention ID requirement, got: %v", err)
+	}
+}
+
+func TestParseArgs_SkipScheduledMissingID(t *testing.T) {
+	_, _, err := parseArgs([]string{"--skip-scheduled"})
+	if err == nil {
+		t.Error("parseArgs(--skip-scheduled) without ID should return error")
+	}
+	if !strings.Contains(err.Error(), "requires a scheduled transaction ID") {
+		t.Errorf("error should mention ID requirement, got: %v", err)
+	}
+}
+
+func TestRun_ScheduledMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--scheduled"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--scheduled) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_PostScheduledMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--post-scheduled", "abc123"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--post-scheduled) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_SkipScheduledMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--skip-scheduled", "abc123"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--skip-scheduled) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_ScheduledNoTransactions(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--scheduled", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--scheduled) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "SCHEDULED TRANSACTIONS") {
+		t.Error("output should contain SCHEDULED TRANSACTIONS header")
+	}
+	if !strings.Contains(output, "No scheduled transactions found") {
+		t.Error("output should indicate no scheduled transactions found")
+	}
+}
+
+func TestRun_ScheduledWithTransactions(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a payee
+	payeeRepo := repository.NewPayeeRepository(database)
+	payee := models.NewPayee("Netflix")
+	if err := payeeRepo.Create(payee); err != nil {
+		t.Fatalf("failed to create payee: %v", err)
+	}
+
+	// Create a scheduled transaction
+	stRepo := repository.NewScheduledTransactionRepository(database)
+	st := models.NewScheduledTransactionWithAmount(
+		account.ID,
+		models.FrequencyMonthly,
+		models.Today(),
+		models.MustNewMoney("-15.99"),
+	)
+	st.SetPayee(payee.ID)
+	if err := stRepo.Create(st); err != nil {
+		t.Fatalf("failed to create scheduled transaction: %v", err)
+	}
+
+	database.Close()
+
+	// Run the scheduled command
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--scheduled", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--scheduled) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "SCHEDULED TRANSACTIONS") {
+		t.Error("output should contain SCHEDULED TRANSACTIONS header")
+	}
+	if !strings.Contains(output, "Checking") {
+		t.Error("output should contain account name")
+	}
+	if !strings.Contains(output, "Netflix") {
+		t.Error("output should contain payee name")
+	}
+	if !strings.Contains(output, "Monthly") {
+		t.Error("output should contain frequency")
+	}
+	if !strings.Contains(output, "-$15.99") {
+		t.Error("output should contain amount")
+	}
+	if !strings.Contains(output, "Showing 1 scheduled transaction(s)") {
+		t.Error("output should show count of scheduled transactions")
+	}
+}
+
+func TestRun_ScheduledDueOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a due scheduled transaction (today)
+	stRepo := repository.NewScheduledTransactionRepository(database)
+	st := models.NewScheduledTransactionWithAmount(
+		account.ID,
+		models.FrequencyMonthly,
+		models.Today(), // Due today
+		models.MustNewMoney("-10.00"),
+	)
+	if err := stRepo.Create(st); err != nil {
+		t.Fatalf("failed to create scheduled transaction: %v", err)
+	}
+
+	database.Close()
+
+	// Run the scheduled --due command
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--scheduled", "--due", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--scheduled --due) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "DUE SCHEDULED TRANSACTIONS") {
+		t.Error("output should contain DUE SCHEDULED TRANSACTIONS header")
+	}
+	if !strings.Contains(output, "Showing 1 scheduled transaction(s)") {
+		t.Error("output should show count of due transactions")
+	}
+}
+
+func TestRun_ScheduledFilterByAccount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create two test accounts
+	acctRepo := repository.NewAccountRepository(database)
+	checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000.00"), models.Today())
+	if err := acctRepo.Create(checking); err != nil {
+		t.Fatalf("failed to create checking account: %v", err)
+	}
+	savings := models.NewAccount("Savings", models.AccountTypeSavings, "USD", models.MustNewMoney("500.00"), models.Today())
+	if err := acctRepo.Create(savings); err != nil {
+		t.Fatalf("failed to create savings account: %v", err)
+	}
+
+	// Create scheduled transactions for each account
+	stRepo := repository.NewScheduledTransactionRepository(database)
+	st1 := models.NewScheduledTransactionWithAmount(checking.ID, models.FrequencyMonthly, models.Today(), models.MustNewMoney("-10.00"))
+	if err := stRepo.Create(st1); err != nil {
+		t.Fatalf("failed to create scheduled transaction 1: %v", err)
+	}
+	st2 := models.NewScheduledTransactionWithAmount(savings.ID, models.FrequencyMonthly, models.Today(), models.MustNewMoney("-20.00"))
+	if err := stRepo.Create(st2); err != nil {
+		t.Fatalf("failed to create scheduled transaction 2: %v", err)
+	}
+
+	database.Close()
+
+	// Run the scheduled command filtered by account
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--scheduled", "--account", "Checking", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--scheduled --account Checking) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Showing 1 scheduled transaction(s)") {
+		t.Errorf("output should show 1 scheduled transaction, got: %s", output)
+	}
+	if !strings.Contains(output, "-$10.00") {
+		t.Error("output should contain the checking account scheduled transaction")
+	}
+}
+
+func TestRun_PostScheduledInvalidID(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--post-scheduled", "invalid-uuid", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--post-scheduled) with invalid ID should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid scheduled transaction ID") {
+		t.Errorf("error should mention invalid ID, got: %v", err)
+	}
+}
+
+func TestRun_PostScheduledNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	// Use a valid UUID format that doesn't exist
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--post-scheduled", "00000000-0000-0000-0000-000000000000", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--post-scheduled) with nonexistent ID should return error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention not found, got: %v", err)
+	}
+}
+
+func TestRun_PostScheduledSuccess(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000.00"), models.Today())
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a payee
+	payeeRepo := repository.NewPayeeRepository(database)
+	payee := models.NewPayee("Netflix")
+	if err := payeeRepo.Create(payee); err != nil {
+		t.Fatalf("failed to create payee: %v", err)
+	}
+
+	// Create a scheduled transaction
+	stRepo := repository.NewScheduledTransactionRepository(database)
+	st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, models.Today(), models.MustNewMoney("-15.99"))
+	st.SetPayee(payee.ID)
+	if err := stRepo.Create(st); err != nil {
+		t.Fatalf("failed to create scheduled transaction: %v", err)
+	}
+	stID := st.ID.String()
+
+	database.Close()
+
+	// Post the scheduled transaction
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--post-scheduled", stID, "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--post-scheduled) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "posted successfully") {
+		t.Error("output should confirm posting")
+	}
+	if !strings.Contains(output, "Checking") {
+		t.Error("output should contain account name")
+	}
+	if !strings.Contains(output, "Netflix") {
+		t.Error("output should contain payee name")
+	}
+	if !strings.Contains(output, "-$15.99") {
+		t.Error("output should contain amount")
+	}
+	if !strings.Contains(output, "Monthly") {
+		t.Error("output should contain frequency")
+	}
+	if !strings.Contains(output, "Next:") {
+		t.Error("output should show next date")
+	}
+
+	// Verify the transaction was created
+	database, err = db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reopen database: %v", err)
+	}
+	defer database.Close()
+
+	txnRepo := repository.NewTransactionRepository(database)
+	txns, err := txnRepo.ListByAccount(account.ID)
+	if err != nil {
+		t.Fatalf("failed to list transactions: %v", err)
+	}
+	if len(txns) != 1 {
+		t.Errorf("expected 1 transaction, got %d", len(txns))
+	}
+}
+
+func TestRun_PostScheduledWithCustomAmount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000.00"), models.Today())
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a scheduled transaction (variable amount)
+	stRepo := repository.NewScheduledTransactionRepository(database)
+	st := models.NewScheduledTransaction(account.ID, models.FrequencyMonthly, models.Today())
+	if err := stRepo.Create(st); err != nil {
+		t.Fatalf("failed to create scheduled transaction: %v", err)
+	}
+	stID := st.ID.String()
+
+	database.Close()
+
+	// Post with custom amount
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--post-scheduled", stID, "--amount", "-25.00", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--post-scheduled) with --amount returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "-$25.00") {
+		t.Error("output should contain custom amount")
+	}
+}
+
+func TestRun_SkipScheduledInvalidID(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--skip-scheduled", "invalid-uuid", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--skip-scheduled) with invalid ID should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid scheduled transaction ID") {
+		t.Errorf("error should mention invalid ID, got: %v", err)
+	}
+}
+
+func TestRun_SkipScheduledNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--skip-scheduled", "00000000-0000-0000-0000-000000000000", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--skip-scheduled) with nonexistent ID should return error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention not found, got: %v", err)
+	}
+}
+
+func TestRun_SkipScheduledSuccess(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000.00"), models.Today())
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a payee
+	payeeRepo := repository.NewPayeeRepository(database)
+	payee := models.NewPayee("Netflix")
+	if err := payeeRepo.Create(payee); err != nil {
+		t.Fatalf("failed to create payee: %v", err)
+	}
+
+	// Create a scheduled transaction
+	stRepo := repository.NewScheduledTransactionRepository(database)
+	st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, models.Today(), models.MustNewMoney("-15.99"))
+	st.SetPayee(payee.ID)
+	if err := stRepo.Create(st); err != nil {
+		t.Fatalf("failed to create scheduled transaction: %v", err)
+	}
+	stID := st.ID.String()
+	originalNextDate := st.NextDate.String()
+
+	database.Close()
+
+	// Skip the scheduled transaction
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--skip-scheduled", stID, "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--skip-scheduled) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "skipped") {
+		t.Error("output should confirm skipping")
+	}
+	if !strings.Contains(output, "Checking") {
+		t.Error("output should contain account name")
+	}
+	if !strings.Contains(output, "Netflix") {
+		t.Error("output should contain payee name")
+	}
+	if !strings.Contains(output, "Monthly") {
+		t.Error("output should contain frequency")
+	}
+	if !strings.Contains(output, "Skipped:") {
+		t.Error("output should show skipped date")
+	}
+	if !strings.Contains(output, originalNextDate) {
+		t.Error("output should show original date in Skipped field")
+	}
+	if !strings.Contains(output, "Next:") {
+		t.Error("output should show next date")
+	}
+
+	// Verify no transaction was created
+	database, err = db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reopen database: %v", err)
+	}
+	defer database.Close()
+
+	txnRepo := repository.NewTransactionRepository(database)
+	txns, err := txnRepo.ListByAccount(account.ID)
+	if err != nil {
+		t.Fatalf("failed to list transactions: %v", err)
+	}
+	if len(txns) != 0 {
+		t.Errorf("expected 0 transactions after skip, got %d", len(txns))
+	}
+}
+
+func TestRun_ScheduledVariableAmount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000.00"), models.Today())
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a scheduled transaction with variable amount (no amount set)
+	stRepo := repository.NewScheduledTransactionRepository(database)
+	st := models.NewScheduledTransaction(account.ID, models.FrequencyMonthly, models.Today())
+	if err := stRepo.Create(st); err != nil {
+		t.Fatalf("failed to create scheduled transaction: %v", err)
+	}
+
+	database.Close()
+
+	// Run the scheduled command
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--scheduled", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--scheduled) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	// Variable amount should show as "~"
+	if !strings.Contains(output, "~") {
+		t.Error("output should show ~ for variable amount")
+	}
+}
+
+func TestRun_ScheduledWithOccurrences(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000.00"), models.Today())
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a scheduled transaction with limited occurrences
+	stRepo := repository.NewScheduledTransactionRepository(database)
+	st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, models.Today(), models.MustNewMoney("-50.00"))
+	st.SetOccurrences(5)
+	if err := stRepo.Create(st); err != nil {
+		t.Fatalf("failed to create scheduled transaction: %v", err)
+	}
+
+	database.Close()
+
+	// Run the scheduled command
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--scheduled", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--scheduled) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	// Should show occurrences remaining
+	if !strings.Contains(output, "(5 left)") {
+		t.Error("output should show occurrences remaining")
+	}
+}
+
+func TestPrintHelp_IncludesScheduled(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printHelp(buf)
+	output := buf.String()
+
+	if !strings.Contains(output, "--scheduled") {
+		t.Error("help output should document --scheduled flag")
+	}
+	if !strings.Contains(output, "--due") {
+		t.Error("help output should document --due flag")
+	}
+	if !strings.Contains(output, "--post-scheduled") {
+		t.Error("help output should document --post-scheduled flag")
+	}
+	if !strings.Contains(output, "--skip-scheduled") {
+		t.Error("help output should document --skip-scheduled flag")
+	}
+	if !strings.Contains(output, "Scheduled Transaction Commands") {
+		t.Error("help output should have Scheduled Transaction Commands section")
+	}
+}
