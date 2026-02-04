@@ -223,7 +223,7 @@ This document defines the order in which features should be implemented. Each it
   - Report data structure
   - CLI output formatting
 
-- [ ] **032 - Spending by category report**
+- [x] **032 - Spending by category report**
   - Monthly aggregation
   - Yearly aggregation
   - Percentage calculation

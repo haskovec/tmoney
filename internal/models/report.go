@@ -21,3 +21,23 @@ type ReportAccountBalance struct {
 	Type      AccountType
 	Balance   Money
 }
+
+// SpendingReport represents spending by category for a given time period.
+type SpendingReport struct {
+	Period        string
+	StartDate     time.Time
+	EndDate       time.Time
+	Categories    []CategorySpending
+	TotalSpending Money
+}
+
+// CategorySpending holds spending information for a single category.
+type CategorySpending struct {
+	CategoryID    ID
+	Name          string
+	ParentID      NullableID
+	ParentName    string
+	Amount        Money
+	Percentage    float64
+	Subcategories []CategorySpending
+}
