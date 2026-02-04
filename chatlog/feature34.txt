@@ -1,0 +1,1009 @@
+
+ ▐▛███▜▌   Claude Code v2.1.29
+▝▜█████▛▘  Opus 4.5 · Claude Pro
+  ▘▘ ▝▝    ~/work/tmoney
+
+❯ /clear
+  ⎿  (no content)
+
+❯ read @docs/PROMPT.md and implement the most important item
+  ⎿  Read docs/PROMPT.md (9 lines)
+
+⏺ I'll start by reading the README.md and the IMPLEMENTATION_PLAN.md to understand the project and identify the most important task.
+
+⏺ Read 2 files (ctrl+o to expand)
+
+⏺ Looking at the IMPLEMENTATION_PLAN.md, the most important next item is 032 - Spending by category report. Let me explore the existing
+  codebase to understand the patterns used, particularly the already-implemented net worth report.
+
+⏺ Explore(Explore reports and related code)
+  ⎿  Done (34 tool uses · 64.4k tokens · 49s)
+
+⏺ Excellent. Now let me read the existing report model and service files to understand the exact implementation patterns.
+
+⏺ Read 3 files (ctrl+o to expand)
+
+⏺ Let me also check the category repository and split repository to understand how to query category spending including split transactions.
+
+⏺ Read 3 files (ctrl+o to expand)
+
+⏺ Let me check if there's a spec file for the spending report.
+
+⏺ Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Now I have a clear understanding of the requirements. Let me implement the spending by category report.
+
+  Plan:
+  1. Add SpendingReport and CategorySpending models to internal/models/report.go
+  2. Add service methods to internal/service/report.go
+  3. Add comprehensive tests to internal/service/report_test.go
+
+  Let me start with the models.
+
+⏺ Update(internal/models/report.go)
+  ⎿  Added 20 lines
+      21    Type      AccountType
+      22    Balance   Money
+      23  }
+      24 +
+      25 +// SpendingReport represents spending by category for a given time period.
+      26 +type SpendingReport struct {
+      27 +  Period        string
+      28 +  StartDate     time.Time
+      29 +  EndDate       time.Time
+      30 +  Categories    []CategorySpending
+      31 +  TotalSpending Money
+      32 +}
+      33 +
+      34 +// CategorySpending holds spending information for a single category.
+      35 +type CategorySpending struct {
+      36 +  CategoryID    ID
+      37 +  Name          string
+      38 +  ParentID      NullableID
+      39 +  ParentName    string
+      40 +  Amount        Money
+      41 +  Percentage    float64
+      42 +  Subcategories []CategorySpending
+      43 +}
+
+⏺ Now let me add the service methods for the spending report.
+
+⏺ Update(internal/service/report.go)
+  ⎿  Added 201 lines
+      119      NetWorth:         netWorth,
+      120    }, nil
+      121  }
+      122 +
+      123 +// SpendingByCategoryMonth generates a spending by category report for a specific month.
+      124 +func (s *ReportService) SpendingByCategoryMonth(year int, month int) (*models.SpendingReport, error) {
+      125 +  startDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+      126 +  endDate := startDate.AddDate(0, 1, 0).Add(-time.Nanosecond) // Last moment of the month
+      127 +
+      128 +  period := startDate.Format("January 2006")
+      129 +  return s.spendingByCategory(period, startDate, endDate)
+      130 +}
+      131 +
+      132 +// SpendingByCategoryYear generates a spending by category report for a specific year.
+      133 +func (s *ReportService) SpendingByCategoryYear(year int) (*models.SpendingReport, error) {
+      134 +  startDate := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
+      135 +  endDate := time.Date(year+1, 1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond) // Last moment of year
+      136 +
+      137 +  period := fmt.Sprintf("%d", year)
+      138 +  return s.spendingByCategory(period, startDate, endDate)
+      139 +}
+      140 +
+      141 +// SpendingByCategoryDateRange generates a spending by category report for a custom date range.
+      142 +func (s *ReportService) SpendingByCategoryDateRange(startDate, endDate time.Time) (*models.SpendingReport, error) {
+      143 +  period := fmt.Sprintf("%s to %s", startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
+      144 +  return s.spendingByCategory(period, startDate, endDate)
+      145 +}
+      146 +
+      147 +// spendingByCategory generates a spending by category report for the given period.
+      148 +func (s *ReportService) spendingByCategory(period string, startDate, endDate time.Time) (*models.SpendingReport, error) {
+      149 +  // Query to get spending by category, including both direct transactions and splits.
+      150 +  // We need to aggregate:
+      151 +  // 1. Direct transactions (non-split) with expense categories
+      152 +  // 2. Split transaction amounts with expense categories
+      153 +  // Exclude transfers (system categories) and only count negative amounts (spending).
+      154 +  query := `
+      155 +    WITH category_spending AS (
+      156 +      -- Direct transactions (non-split, with category)
+      157 +      SELECT
+      158 +        c.id AS category_id,
+      159 +        c.name AS category_name,
+      160 +        c.parent_id,
+      161 +        COALESCE(parent.name, '') AS parent_name,
+      162 +        ABS(t.amount) AS spending
+      163 +      FROM transactions t
+      164 +      JOIN categories c ON CAST(t.category_id AS VARCHAR) = CAST(c.id AS VARCHAR)
+      165 +      LEFT JOIN categories parent ON CAST(c.parent_id AS VARCHAR) = CAST(parent.id AS VARCHAR)
+      166 +      WHERE c.type = 'expense'
+      167 +        AND c.system_category = FALSE
+      168 +        AND t.date >= ?
+      169 +        AND t.date <= ?
+      170 +        AND t.amount < 0
+      171 +        AND NOT EXISTS (
+      172 +          SELECT 1 FROM transaction_splits ts
+      173 +          WHERE CAST(ts.transaction_id AS VARCHAR) = CAST(t.id AS VARCHAR)
+      174 +        )
+      175 +
+      176 +      UNION ALL
+      177 +
+      178 +      -- Split transaction amounts
+      179 +      SELECT
+      180 +        c.id AS category_id,
+      181 +        c.name AS category_name,
+      182 +        c.parent_id,
+      183 +        COALESCE(parent.name, '') AS parent_name,
+      184 +        ABS(ts.amount) AS spending
+      185 +      FROM transaction_splits ts
+      186 +      JOIN categories c ON CAST(ts.category_id AS VARCHAR) = CAST(c.id AS VARCHAR)
+      187 +      LEFT JOIN categories parent ON CAST(c.parent_id AS VARCHAR) = CAST(parent.id AS VARCHAR)
+      188 +      JOIN transactions t ON CAST(ts.transaction_id AS VARCHAR) = CAST(t.id AS VARCHAR)
+      189 +      WHERE c.type = 'expense'
+      190 +        AND c.system_category = FALSE
+      191 +        AND t.date >= ?
+      192 +        AND t.date <= ?
+      193 +        AND ts.amount < 0
+      194 +    )
+      195 +    SELECT
+      196 +      category_id,
+      197 +      category_name,
+      198 +      parent_id,
+      199 +      parent_name,
+      200 +      SUM(spending) AS total_spending
+      201 +    FROM category_spending
+      202 +    GROUP BY category_id, category_name, parent_id, parent_name
+      203 +    ORDER BY total_spending DESC
+      204 +  `
+      205 +
+      206 +  rows, err := s.db.Conn().Query(query, startDate, endDate, startDate, endDate)
+      207 +  if err != nil {
+      208 +    return nil, fmt.Errorf("failed to query spending by category: %w", err)
+      209 +  }
+      210 +  defer rows.Close()
+      211 +
+      212 +  // Build a map of categories and subcategories
+      213 +  type rawSpending struct {
+      214 +    CategoryID   models.ID
+      215 +    CategoryName string
+      216 +    ParentID     models.NullableID
+      217 +    ParentName   string
+      218 +    Amount       models.Money
+      219 +  }
+      220 +
+      221 +  var rawItems []rawSpending
+      222 +  totalSpending := models.ZeroMoney
+      223 +
+      224 +  for rows.Next() {
+      225 +    var item rawSpending
+      226 +    if err := rows.Scan(&item.CategoryID, &item.CategoryName, &item.ParentID, &item.ParentName, &item.Amount); err != nil
+          +{
+      227 +      return nil, fmt.Errorf("failed to scan spending row: %w", err)
+      228 +    }
+      229 +    rawItems = append(rawItems, item)
+      230 +    totalSpending = totalSpending.Add(item.Amount)
+      231 +  }
+      232 +
+      233 +  if err := rows.Err(); err != nil {
+      234 +    return nil, fmt.Errorf("error iterating spending rows: %w", err)
+      235 +  }
+      236 +
+      237 +  // Organize into parent categories with subcategories
+      238 +  parentMap := make(map[string]*models.CategorySpending) // key is category ID string
+      239 +  var topLevelCategories []models.CategorySpending
+      240 +
+      241 +  // First pass: create entries for all categories
+      242 +  for _, item := range rawItems {
+      243 +    percentage := 0.0
+      244 +    if !totalSpending.IsZero() {
+      245 +      percentage = item.Amount.Float64() / totalSpending.Float64() * 100
+      246 +    }
+      247 +
+      248 +    spending := models.CategorySpending{
+      249 +      CategoryID:    item.CategoryID,
+      250 +      Name:          item.CategoryName,
+      251 +      ParentID:      item.ParentID,
+      252 +      ParentName:    item.ParentName,
+      253 +      Amount:        item.Amount,
+      254 +      Percentage:    percentage,
+      255 +      Subcategories: nil,
+      256 +    }
+      257 +
+      258 +    if item.ParentID.Valid {
+      259 +      // This is a subcategory - add to parent
+      260 +      parentKey := item.ParentID.ID.String()
+      261 +      if parent, exists := parentMap[parentKey]; exists {
+      262 +        parent.Subcategories = append(parent.Subcategories, spending)
+      263 +        parent.Amount = parent.Amount.Add(item.Amount)
+      264 +      } else {
+      265 +        // Parent doesn't have spending yet, create placeholder
+      266 +        parentSpending := &models.CategorySpending{
+      267 +          CategoryID:    item.ParentID.ID,
+      268 +          Name:          item.ParentName,
+      269 +          ParentID:      models.NullableID{Valid: false},
+      270 +          ParentName:    "",
+      271 +          Amount:        item.Amount,
+      272 +          Subcategories: []models.CategorySpending{spending},
+      273 +        }
+      274 +        parentMap[parentKey] = parentSpending
+      275 +      }
+      276 +    } else {
+      277 +      // This is a top-level category
+      278 +      key := item.CategoryID.String()
+      279 +      if existing, exists := parentMap[key]; exists {
+      280 +        // Already have subcategory spending, update the parent info
+      281 +        existing.CategoryID = item.CategoryID
+      282 +        existing.Name = item.CategoryName
+      283 +        existing.Amount = existing.Amount.Add(item.Amount)
+      284 +      } else {
+      285 +        spendingCopy := spending
+      286 +        parentMap[key] = &spendingCopy
+      287 +      }
+      288 +    }
+      289 +  }
+      290 +
+      291 +  // Collect top-level categories and recalculate percentages
+      292 +  for _, cat := range parentMap {
+      293 +    percentage := 0.0
+      294 +    if !totalSpending.IsZero() {
+      295 +      percentage = cat.Amount.Float64() / totalSpending.Float64() * 100
+      296 +    }
+      297 +    cat.Percentage = percentage
+      298 +    topLevelCategories = append(topLevelCategories, *cat)
+      299 +  }
+      300 +
+      301 +  // Sort by amount descending
+      302 +  sortCategoriesByAmount(topLevelCategories)
+      303 +
+      304 +  return &models.SpendingReport{
+      305 +    Period:        period,
+      306 +    StartDate:     startDate,
+      307 +    EndDate:       endDate,
+      308 +    Categories:    topLevelCategories,
+      309 +    TotalSpending: totalSpending,
+      310 +  }, nil
+      311 +}
+      312 +
+      313 +// sortCategoriesByAmount sorts categories by amount in descending order.
+      314 +func sortCategoriesByAmount(categories []models.CategorySpending) {
+      315 +  for i := 0; i < len(categories)-1; i++ {
+      316 +    for j := i + 1; j < len(categories); j++ {
+      317 +      if categories[j].Amount.GreaterThan(categories[i].Amount) {
+      318 +        categories[i], categories[j] = categories[j], categories[i]
+      319 +      }
+      320 +    }
+      321 +  }
+      322 +}
+
+⏺ Now let me add the tests for the spending report. First, let me check if there's a category repository available in the test setup.
+
+⏺ Searched for 1 pattern, read 2 files (ctrl+o to expand)
+
+⏺ Now let me add the tests for the spending report to report_test.go.
+
+⏺ Update(internal/service/report_test.go)
+  ⎿  Added 563 lines
+       435      }
+       436    })
+       437  }
+       438 +
+       439 +// Helper to create test categories
+       440 +func createTestCategory(t *testing.T, repo *repository.CategoryRepository, name string, categoryType models.CategoryType)
+           + *models.Category {
+       441 +  t.Helper()
+       442 +  cat := models.NewCategory(name, categoryType)
+       443 +  if err := repo.Create(cat); err != nil {
+       444 +    t.Fatalf("Failed to create category %s: %v", name, err)
+       445 +  }
+       446 +  return cat
+       447 +}
+       448 +
+       449 +func createTestSubcategory(t *testing.T, repo *repository.CategoryRepository, name string, parentID models.ID, categoryTy
+           +pe models.CategoryType) *models.Category {
+       450 +  t.Helper()
+       451 +  cat := models.NewSubcategory(name, parentID, categoryType)
+       452 +  if err := repo.Create(cat); err != nil {
+       453 +    t.Fatalf("Failed to create subcategory %s: %v", name, err)
+       454 +  }
+       455 +  return cat
+       456 +}
+       457 +
+       458 +func createTestReportServiceWithCategories(t *testing.T) (*ReportService, *repository.AccountRepository, *repository.Tran
+           +sactionRepository, *repository.CategoryRepository, *repository.SplitRepository) {
+       459 +  t.Helper()
+       460 +  database := createTestDB(t)
+       461 +  accountRepo := repository.NewAccountRepository(database)
+       462 +  txnRepo := repository.NewTransactionRepository(database)
+       463 +  categoryRepo := repository.NewCategoryRepository(database)
+       464 +  splitRepo := repository.NewSplitRepository(database)
+       465 +  svc := NewReportService(accountRepo, database)
+       466 +  return svc, accountRepo, txnRepo, categoryRepo, splitRepo
+       467 +}
+       468 +
+       469 +func TestReportService_SpendingByCategoryMonth_EmptyDatabase(t *testing.T) {
+       470 +  t.Run("returns zero spending with no transactions", func(t *testing.T) {
+       471 +    svc, _, _, _, _ := createTestReportServiceWithCategories(t)
+       472 +
+       473 +    report, err := svc.SpendingByCategoryMonth(2024, 1)
+       474 +    if err != nil {
+       475 +      t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+       476 +    }
+       477 +
+       478 +    if len(report.Categories) != 0 {
+       479 +      t.Errorf("Expected 0 categories, got %d", len(report.Categories))
+       480 +    }
+       481 +    if !report.TotalSpending.IsZero() {
+       482 +      t.Errorf("Expected zero total spending, got %s", report.TotalSpending.String())
+       483 +    }
+       484 +    if report.Period != "January 2024" {
+       485 +      t.Errorf("Expected period 'January 2024', got %q", report.Period)
+       486 +    }
+       487 +  })
+       488 +}
+       489 +
+       490 +func TestReportService_SpendingByCategoryMonth_DirectTransactions(t *testing.T) {
+       491 +  t.Run("calculates spending from direct transactions", func(t *testing.T) {
+       492 +    svc, accountRepo, txnRepo, categoryRepo, _ := createTestReportServiceWithCategories(t)
+       493 +
+       494 +    // Create account
+       495 +    balance, _ := models.NewMoney("1000.00")
+       496 +    checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", balance, models.Today())
+       497 +    if err := accountRepo.Create(checking); err != nil {
+       498 +      t.Fatalf("Failed to create account: %v", err)
+       499 +    }
+       500 +
+       501 +    // Create expense category
+       502 +    groceries := createTestCategory(t, categoryRepo, "Groceries", models.CategoryTypeExpense)
+       503 +
+       504 +    // Create expense transaction (negative amount)
+       505 +    txnDate := models.NewDate(2024, 1, 15)
+       506 +    amount, _ := models.NewMoney("-100.00")
+       507 +    txn := models.NewTransaction(checking.ID, txnDate, amount)
+       508 +    txn.CategoryID = models.NullableID{ID: groceries.ID, Valid: true}
+       509 +    if err := txnRepo.Create(txn); err != nil {
+       510 +      t.Fatalf("Failed to create transaction: %v", err)
+       511 +    }
+       512 +
+       513 +    report, err := svc.SpendingByCategoryMonth(2024, 1)
+       514 +    if err != nil {
+       515 +      t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+       516 +    }
+       517 +
+       518 +    if len(report.Categories) != 1 {
+       519 +      t.Fatalf("Expected 1 category, got %d", len(report.Categories))
+       520 +    }
+       521 +
+       522 +    expectedSpending, _ := models.NewMoney("100.00")
+       523 +    if !report.TotalSpending.Equal(expectedSpending) {
+       524 +      t.Errorf("Expected total spending %s, got %s", expectedSpending.String(), report.TotalSpending.String())
+       525 +    }
+       526 +
+       527 +    cat := report.Categories[0]
+       528 +    if cat.Name != "Groceries" {
+       529 +      t.Errorf("Expected category 'Groceries', got %q", cat.Name)
+       530 +    }
+       531 +    if !cat.Amount.Equal(expectedSpending) {
+       532 +      t.Errorf("Expected amount %s, got %s", expectedSpending.String(), cat.Amount.String())
+       533 +    }
+       534 +    if cat.Percentage != 100.0 {
+       535 +      t.Errorf("Expected 100%% percentage, got %.1f%%", cat.Percentage)
+       536 +    }
+       537 +  })
+       538 +
+       539 +  t.Run("aggregates multiple transactions in same category", func(t *testing.T) {
+       540 +    svc, accountRepo, txnRepo, categoryRepo, _ := createTestReportServiceWithCategories(t)
+       541 +
+       542 +    // Create account
+       543 +    balance, _ := models.NewMoney("1000.00")
+       544 +    checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", balance, models.Today())
+       545 +    if err := accountRepo.Create(checking); err != nil {
+       546 +      t.Fatalf("Failed to create account: %v", err)
+       547 +    }
+       548 +
+       549 +    // Create expense category
+       550 +    food := createTestCategory(t, categoryRepo, "Food", models.CategoryTypeExpense)
+       551 +
+       552 +    // Create multiple transactions
+       553 +    txnDate := models.NewDate(2024, 1, 15)
+       554 +    amounts := []string{"-50.00", "-30.00", "-20.00"}
+       555 +    for _, amtStr := range amounts {
+       556 +      amount, _ := models.NewMoney(amtStr)
+       557 +      txn := models.NewTransaction(checking.ID, txnDate, amount)
+       558 +      txn.CategoryID = models.NullableID{ID: food.ID, Valid: true}
+       559 +      if err := txnRepo.Create(txn); err != nil {
+       560 +        t.Fatalf("Failed to create transaction: %v", err)
+       561 +      }
+       562 +    }
+       563 +
+       564 +    report, err := svc.SpendingByCategoryMonth(2024, 1)
+       565 +    if err != nil {
+       566 +      t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+       567 +    }
+       568 +
+       569 +    expectedSpending, _ := models.NewMoney("100.00")
+       570 +    if !report.TotalSpending.Equal(expectedSpending) {
+       571 +      t.Errorf("Expected total spending %s, got %s", expectedSpending.String(), report.TotalSpending.String())
+       572 +    }
+       573 +  })
+       574 +}
+       575 +
+       576 +func TestReportService_SpendingByCategoryMonth_ExcludesIncome(t *testing.T) {
+       577 +  t.Run("does not include income categories in spending", func(t *testing.T) {
+       578 +    svc, accountRepo, txnRepo, categoryRepo, _ := createTestReportServiceWithCategories(t)
+       579 +
+       580 +    // Create account
+       581 +    balance, _ := models.NewMoney("1000.00")
+       582 +    checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", balance, models.Today())
+       583 +    if err := accountRepo.Create(checking); err != nil {
+       584 +      t.Fatalf("Failed to create account: %v", err)
+       585 +    }
+       586 +
+       587 +    // Create income category
+       588 +    salary := createTestCategory(t, categoryRepo, "Salary", models.CategoryTypeIncome)
+       589 +
+       590 +    // Create income transaction (positive amount with income category)
+       591 +    txnDate := models.NewDate(2024, 1, 15)
+       592 +    amount, _ := models.NewMoney("5000.00")
+       593 +    txn := models.NewTransaction(checking.ID, txnDate, amount)
+       594 +    txn.CategoryID = models.NullableID{ID: salary.ID, Valid: true}
+       595 +    if err := txnRepo.Create(txn); err != nil {
+       596 +      t.Fatalf("Failed to create transaction: %v", err)
+       597 +    }
+       598 +
+       599 +    report, err := svc.SpendingByCategoryMonth(2024, 1)
+       600 +    if err != nil {
+       601 +      t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+       602 +    }
+       603 +
+       604 +    if len(report.Categories) != 0 {
+       605 +      t.Errorf("Expected 0 categories (income excluded), got %d", len(report.Categories))
+       606 +    }
+       607 +    if !report.TotalSpending.IsZero() {
+       608 +      t.Errorf("Expected zero spending, got %s", report.TotalSpending.String())
+       609 +    }
+       610 +  })
+       611 +}
+       612 +
+       613 +func TestReportService_SpendingByCategoryMonth_ExcludesPositiveAmounts(t *testing.T) {
+       614 +  t.Run("does not include positive amounts (refunds)", func(t *testing.T) {
+       615 +    svc, accountRepo, txnRepo, categoryRepo, _ := createTestReportServiceWithCategories(t)
+       616 +
+       617 +    // Create account
+       618 +    balance, _ := models.NewMoney("1000.00")
+       619 +    checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", balance, models.Today())
+       620 +    if err := accountRepo.Create(checking); err != nil {
+       621 +      t.Fatalf("Failed to create account: %v", err)
+       622 +    }
+       623 +
+       624 +    // Create expense category
+       625 +    groceries := createTestCategory(t, categoryRepo, "Groceries", models.CategoryTypeExpense)
+       626 +
+       627 +    // Create a refund (positive amount with expense category)
+       628 +    txnDate := models.NewDate(2024, 1, 15)
+       629 +    amount, _ := models.NewMoney("50.00") // Positive = refund
+       630 +    txn := models.NewTransaction(checking.ID, txnDate, amount)
+       631 +    txn.CategoryID = models.NullableID{ID: groceries.ID, Valid: true}
+       632 +    if err := txnRepo.Create(txn); err != nil {
+       633 +      t.Fatalf("Failed to create transaction: %v", err)
+       634 +    }
+       635 +
+       636 +    report, err := svc.SpendingByCategoryMonth(2024, 1)
+       637 +    if err != nil {
+       638 +      t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+       639 +    }
+       640 +
+       641 +    // Refunds should not count as spending
+       642 +    if len(report.Categories) != 0 {
+       643 +      t.Errorf("Expected 0 categories (refunds excluded), got %d", len(report.Categories))
+       644 +    }
+       645 +  })
+       646 +}
+       647 +
+       648 +func TestReportService_SpendingByCategoryMonth_DateFiltering(t *testing.T) {
+       649 +  t.Run("only includes transactions in the specified month", func(t *testing.T) {
+       650 +    svc, accountRepo, txnRepo, categoryRepo, _ := createTestReportServiceWithCategories(t)
+       651 +
+       652 +    // Create account
+       653 +    balance, _ := models.NewMoney("1000.00")
+       654 +    checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", balance, models.Today())
+       655 +    if err := accountRepo.Create(checking); err != nil {
+       656 +      t.Fatalf("Failed to create account: %v", err)
+       657 +    }
+       658 +
+       659 +    // Create expense category
+       660 +    groceries := createTestCategory(t, categoryRepo, "Groceries", models.CategoryTypeExpense)
+       661 +
+       662 +    // Create transaction in January
+       663 +    janDate := models.NewDate(2024, 1, 15)
+       664 +    janAmount, _ := models.NewMoney("-100.00")
+       665 +    janTxn := models.NewTransaction(checking.ID, janDate, janAmount)
+       666 +    janTxn.CategoryID = models.NullableID{ID: groceries.ID, Valid: true}
+       667 +    if err := txnRepo.Create(janTxn); err != nil {
+       668 +      t.Fatalf("Failed to create January transaction: %v", err)
+       669 +    }
+       670 +
+       671 +    // Create transaction in February
+       672 +    febDate := models.NewDate(2024, 2, 15)
+       673 +    febAmount, _ := models.NewMoney("-200.00")
+       674 +    febTxn := models.NewTransaction(checking.ID, febDate, febAmount)
+       675 +    febTxn.CategoryID = models.NullableID{ID: groceries.ID, Valid: true}
+       676 +    if err := txnRepo.Create(febTxn); err != nil {
+       677 +      t.Fatalf("Failed to create February transaction: %v", err)
+       678 +    }
+       679 +
+       680 +    // Request January report
+       681 +    report, err := svc.SpendingByCategoryMonth(2024, 1)
+       682 +    if err != nil {
+       683 +      t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+       684 +    }
+       685 +
+       686 +    expectedSpending, _ := models.NewMoney("100.00")
+       687 +    if !report.TotalSpending.Equal(expectedSpending) {
+       688 +      t.Errorf("Expected total spending %s (January only), got %s", expectedSpending.String(), report.TotalSpending.Strin
+           +g())
+       689 +    }
+       690 +  })
+       691 +}
+       692 +
+       693 +func TestReportService_SpendingByCategoryMonth_MultipleCategories(t *testing.T) {
+       694 +  t.Run("calculates percentages across multiple categories", func(t *testing.T) {
+       695 +    svc, accountRepo, txnRepo, categoryRepo, _ := createTestReportServiceWithCategories(t)
+       696 +
+       697 +    // Create account
+       698 +    balance, _ := models.NewMoney("5000.00")
+       699 +    checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", balance, models.Today())
+       700 +    if err := accountRepo.Create(checking); err != nil {
+       701 +      t.Fatalf("Failed to create account: %v", err)
+       702 +    }
+       703 +
+       704 +    // Create expense categories
+       705 +    groceries := createTestCategory(t, categoryRepo, "Groceries", models.CategoryTypeExpense)
+       706 +    utilities := createTestCategory(t, categoryRepo, "Utilities", models.CategoryTypeExpense)
+       707 +    entertainment := createTestCategory(t, categoryRepo, "Entertainment", models.CategoryTypeExpense)
+       708 +
+       709 +    txnDate := models.NewDate(2024, 1, 15)
+       710 +
+       711 +    // 50% groceries
+       712 +    groceryAmt, _ := models.NewMoney("-500.00")
+       713 +    groceryTxn := models.NewTransaction(checking.ID, txnDate, groceryAmt)
+       714 +    groceryTxn.CategoryID = models.NullableID{ID: groceries.ID, Valid: true}
+       715 +    if err := txnRepo.Create(groceryTxn); err != nil {
+       716 +      t.Fatalf("Failed to create grocery transaction: %v", err)
+       717 +    }
+       718 +
+       719 +    // 30% utilities
+       720 +    utilityAmt, _ := models.NewMoney("-300.00")
+       721 +    utilityTxn := models.NewTransaction(checking.ID, txnDate, utilityAmt)
+       722 +    utilityTxn.CategoryID = models.NullableID{ID: utilities.ID, Valid: true}
+       723 +    if err := txnRepo.Create(utilityTxn); err != nil {
+       724 +      t.Fatalf("Failed to create utility transaction: %v", err)
+       725 +    }
+       726 +
+       727 +    // 20% entertainment
+       728 +    entertainmentAmt, _ := models.NewMoney("-200.00")
+       729 +    entertainmentTxn := models.NewTransaction(checking.ID, txnDate, entertainmentAmt)
+       730 +    entertainmentTxn.CategoryID = models.NullableID{ID: entertainment.ID, Valid: true}
+       731 +    if err := txnRepo.Create(entertainmentTxn); err != nil {
+       732 +      t.Fatalf("Failed to create entertainment transaction: %v", err)
+       733 +    }
+       734 +
+       735 +    report, err := svc.SpendingByCategoryMonth(2024, 1)
+       736 +    if err != nil {
+       737 +      t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+       738 +    }
+       739 +
+       740 +    if len(report.Categories) != 3 {
+       741 +      t.Fatalf("Expected 3 categories, got %d", len(report.Categories))
+       742 +    }
+       743 +
+       744 +    expectedTotal, _ := models.NewMoney("1000.00")
+       745 +    if !report.TotalSpending.Equal(expectedTotal) {
+       746 +      t.Errorf("Expected total %s, got %s", expectedTotal.String(), report.TotalSpending.String())
+       747 +    }
+       748 +
+       749 +    // Check that categories are sorted by amount descending
+       750 +    if report.Categories[0].Name != "Groceries" {
+       751 +      t.Errorf("Expected first category to be 'Groceries', got %q", report.Categories[0].Name)
+       752 +    }
+       753 +    if report.Categories[1].Name != "Utilities" {
+       754 +      t.Errorf("Expected second category to be 'Utilities', got %q", report.Categories[1].Name)
+       755 +    }
+       756 +    if report.Categories[2].Name != "Entertainment" {
+       757 +      t.Errorf("Expected third category to be 'Entertainment', got %q", report.Categories[2].Name)
+       758 +    }
+       759 +
+       760 +    // Check percentages (with tolerance for floating point)
+       761 +    if report.Categories[0].Percentage < 49.9 || report.Categories[0].Percentage > 50.1 {
+       762 +      t.Errorf("Expected Groceries percentage ~50%%, got %.1f%%", report.Categories[0].Percentage)
+       763 +    }
+       764 +    if report.Categories[1].Percentage < 29.9 || report.Categories[1].Percentage > 30.1 {
+       765 +      t.Errorf("Expected Utilities percentage ~30%%, got %.1f%%", report.Categories[1].Percentage)
+       766 +    }
+       767 +    if report.Categories[2].Percentage < 19.9 || report.Categories[2].Percentage > 20.1 {
+       768 +      t.Errorf("Expected Entertainment percentage ~20%%, got %.1f%%", report.Categories[2].Percentage)
+       769 +    }
+       770 +  })
+       771 +}
+       772 +
+       773 +func TestReportService_SpendingByCategoryMonth_Subcategories(t *testing.T) {
+       774 +  t.Run("groups subcategory spending under parent", func(t *testing.T) {
+       775 +    svc, accountRepo, txnRepo, categoryRepo, _ := createTestReportServiceWithCategories(t)
+       776 +
+       777 +    // Create account
+       778 +    balance, _ := models.NewMoney("5000.00")
+       779 +    checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", balance, models.Today())
+       780 +    if err := accountRepo.Create(checking); err != nil {
+       781 +      t.Fatalf("Failed to create account: %v", err)
+       782 +    }
+       783 +
+       784 +    // Create parent category and subcategories
+       785 +    food := createTestCategory(t, categoryRepo, "Food", models.CategoryTypeExpense)
+       786 +    groceries := createTestSubcategory(t, categoryRepo, "Groceries", food.ID, models.CategoryTypeExpense)
+       787 +    restaurants := createTestSubcategory(t, categoryRepo, "Restaurants", food.ID, models.CategoryTypeExpense)
+       788 +
+       789 +    txnDate := models.NewDate(2024, 1, 15)
+       790 +
+       791 +    // Transaction in Groceries subcategory
+       792 +    groceryAmt, _ := models.NewMoney("-200.00")
+       793 +    groceryTxn := models.NewTransaction(checking.ID, txnDate, groceryAmt)
+       794 +    groceryTxn.CategoryID = models.NullableID{ID: groceries.ID, Valid: true}
+       795 +    if err := txnRepo.Create(groceryTxn); err != nil {
+       796 +      t.Fatalf("Failed to create grocery transaction: %v", err)
+       797 +    }
+       798 +
+       799 +    // Transaction in Restaurants subcategory
+       800 +    restaurantAmt, _ := models.NewMoney("-100.00")
+       801 +    restaurantTxn := models.NewTransaction(checking.ID, txnDate, restaurantAmt)
+       802 +    restaurantTxn.CategoryID = models.NullableID{ID: restaurants.ID, Valid: true}
+       803 +    if err := txnRepo.Create(restaurantTxn); err != nil {
+       804 +      t.Fatalf("Failed to create restaurant transaction: %v", err)
+       805 +    }
+       806 +
+       807 +    report, err := svc.SpendingByCategoryMonth(2024, 1)
+       808 +    if err != nil {
+       809 +      t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+       810 +    }
+       811 +
+       812 +    // Should have one top-level category (Food) with aggregated spending
+       813 +    if len(report.Categories) != 1 {
+       814 +      t.Fatalf("Expected 1 top-level category, got %d", len(report.Categories))
+       815 +    }
+       816 +
+       817 +    foodCat := report.Categories[0]
+       818 +    if foodCat.Name != "Food" {
+       819 +      t.Errorf("Expected category 'Food', got %q", foodCat.Name)
+       820 +    }
+       821 +
+       822 +    expectedAmount, _ := models.NewMoney("300.00")
+       823 +    if !foodCat.Amount.Equal(expectedAmount) {
+       824 +      t.Errorf("Expected Food amount %s, got %s", expectedAmount.String(), foodCat.Amount.String())
+       825 +    }
+       826 +
+       827 +    // Should have subcategories
+       828 +    if len(foodCat.Subcategories) != 2 {
+       829 +      t.Fatalf("Expected 2 subcategories, got %d", len(foodCat.Subcategories))
+       830 +    }
+       831 +  })
+       832 +}
+       833 +
+       834 +func TestReportService_SpendingByCategoryYear(t *testing.T) {
+       835 +  t.Run("calculates spending for entire year", func(t *testing.T) {
+       836 +    svc, accountRepo, txnRepo, categoryRepo, _ := createTestReportServiceWithCategories(t)
+       837 +
+       838 +    // Create account
+       839 +    balance, _ := models.NewMoney("10000.00")
+       840 +    checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", balance, models.Today())
+       841 +    if err := accountRepo.Create(checking); err != nil {
+       842 +      t.Fatalf("Failed to create account: %v", err)
+       843 +    }
+       844 +
+       845 +    // Create expense category
+       846 +    groceries := createTestCategory(t, categoryRepo, "Groceries", models.CategoryTypeExpense)
+       847 +
+       848 +    // Create transactions across the year
+       849 +    months := []int{1, 3, 6, 9, 12}
+       850 +    for _, month := range months {
+       851 +      txnDate := models.NewDate(2024, month, 15)
+       852 +      amount, _ := models.NewMoney("-100.00")
+       853 +      txn := models.NewTransaction(checking.ID, txnDate, amount)
+       854 +      txn.CategoryID = models.NullableID{ID: groceries.ID, Valid: true}
+       855 +      if err := txnRepo.Create(txn); err != nil {
+       856 +        t.Fatalf("Failed to create transaction: %v", err)
+       857 +      }
+       858 +    }
+       859 +
+       860 +    report, err := svc.SpendingByCategoryYear(2024)
+       861 +    if err != nil {
+       862 +      t.Fatalf("SpendingByCategoryYear() error = %v", err)
+       863 +    }
+       864 +
+       865 +    if report.Period != "2024" {
+       866 +      t.Errorf("Expected period '2024', got %q", report.Period)
+       867 +    }
+       868 +
+       869 +    expectedTotal, _ := models.NewMoney("500.00")
+       870 +    if !report.TotalSpending.Equal(expectedTotal) {
+       871 +      t.Errorf("Expected total spending %s, got %s", expectedTotal.String(), report.TotalSpending.String())
+       872 +    }
+       873 +  })
+       874 +}
+       875 +
+       876 +func TestReportService_SpendingByCategoryDateRange(t *testing.T) {
+       877 +  t.Run("calculates spending for custom date range", func(t *testing.T) {
+       878 +    svc, accountRepo, txnRepo, categoryRepo, _ := createTestReportServiceWithCategories(t)
+       879 +
+       880 +    // Create account
+       881 +    balance, _ := models.NewMoney("5000.00")
+       882 +    checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", balance, models.Today())
+       883 +    if err := accountRepo.Create(checking); err != nil {
+       884 +      t.Fatalf("Failed to create account: %v", err)
+       885 +    }
+       886 +
+       887 +    // Create expense category
+       888 +    groceries := createTestCategory(t, categoryRepo, "Groceries", models.CategoryTypeExpense)
+       889 +
+       890 +    // Create transactions
+       891 +    dates := []struct {
+       892 +      month int
+       893 +      day   int
+       894 +    }{
+       895 +      {1, 15},
+       896 +      {2, 15},
+       897 +      {3, 15},
+       898 +      {4, 15},
+       899 +    }
+       900 +    for _, d := range dates {
+       901 +      txnDate := models.NewDate(2024, d.month, d.day)
+       902 +      amount, _ := models.NewMoney("-100.00")
+       903 +      txn := models.NewTransaction(checking.ID, txnDate, amount)
+       904 +      txn.CategoryID = models.NullableID{ID: groceries.ID, Valid: true}
+       905 +      if err := txnRepo.Create(txn); err != nil {
+       906 +        t.Fatalf("Failed to create transaction: %v", err)
+       907 +      }
+       908 +    }
+       909 +
+       910 +    // Query Feb 1 to Mar 31 (should include 2 transactions)
+       911 +    startDate := time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)
+       912 +    endDate := time.Date(2024, 3, 31, 23, 59, 59, 999999999, time.UTC)
+       913 +
+       914 +    report, err := svc.SpendingByCategoryDateRange(startDate, endDate)
+       915 +    if err != nil {
+       916 +      t.Fatalf("SpendingByCategoryDateRange() error = %v", err)
+       917 +    }
+       918 +
+       919 +    expectedTotal, _ := models.NewMoney("200.00")
+       920 +    if !report.TotalSpending.Equal(expectedTotal) {
+       921 +      t.Errorf("Expected total spending %s, got %s", expectedTotal.String(), report.TotalSpending.String())
+       922 +    }
+       923 +
+       924 +    expectedPeriod := "2024-02-01 to 2024-03-31"
+       925 +    if report.Period != expectedPeriod {
+       926 +      t.Errorf("Expected period %q, got %q", expectedPeriod, report.Period)
+       927 +    }
+       928 +  })
+       929 +}
+       930 +
+       931 +func TestReportService_SpendingByCategoryMonth_SplitTransactions(t *testing.T) {
+       932 +  t.Run("includes split transaction amounts by category", func(t *testing.T) {
+       933 +    svc, accountRepo, txnRepo, categoryRepo, splitRepo := createTestReportServiceWithCategories(t)
+       934 +
+       935 +    // Create account
+       936 +    balance, _ := models.NewMoney("5000.00")
+       937 +    checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", balance, models.Today())
+       938 +    if err := accountRepo.Create(checking); err != nil {
+       939 +      t.Fatalf("Failed to create account: %v", err)
+       940 +    }
+       941 +
+       942 +    // Create expense categories
+       943 +    groceries := createTestCategory(t, categoryRepo, "Groceries", models.CategoryTypeExpense)
+       944 +    household := createTestCategory(t, categoryRepo, "Household", models.CategoryTypeExpense)
+       945 +
+       946 +    // Create a split transaction (e.g., Walmart purchase with groceries and household items)
+       947 +    txnDate := models.NewDate(2024, 1, 15)
+       948 +    totalAmount, _ := models.NewMoney("-150.00")
+       949 +    txn := models.NewTransaction(checking.ID, txnDate, totalAmount)
+       950 +    // Split transaction has no category_id
+       951 +    if err := txnRepo.Create(txn); err != nil {
+       952 +      t.Fatalf("Failed to create transaction: %v", err)
+       953 +    }
+       954 +
+       955 +    // Create splits
+       956 +    groceryAmount, _ := models.NewMoney("-100.00")
+       957 +    grocerySplit := models.NewSplit(txn.ID, groceries.ID, groceryAmount)
+       958 +    if err := splitRepo.Create(grocerySplit); err != nil {
+       959 +      t.Fatalf("Failed to create grocery split: %v", err)
+       960 +    }
+       961 +
+       962 +    householdAmount, _ := models.NewMoney("-50.00")
+       963 +    householdSplit := models.NewSplit(txn.ID, household.ID, householdAmount)
+       964 +    if err := splitRepo.Create(householdSplit); err != nil {
+       965 +      t.Fatalf("Failed to create household split: %v", err)
+       966 +    }
+       967 +
+       968 +    report, err := svc.SpendingByCategoryMonth(2024, 1)
+       969 +    if err != nil {
+       970 +      t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+       971 +    }
+       972 +
+       973 +    expectedTotal, _ := models.NewMoney("150.00")
+       974 +    if !report.TotalSpending.Equal(expectedTotal) {
+       975 +      t.Errorf("Expected total spending %s, got %s", expectedTotal.String(), report.TotalSpending.String())
+       976 +    }
+       977 +
+       978 +    if len(report.Categories) != 2 {
+       979 +      t.Fatalf("Expected 2 categories, got %d", len(report.Categories))
+       980 +    }
+       981 +
+       982 +    // Check Groceries (should be first as it has higher amount)
+       983 +    expectedGrocery, _ := models.NewMoney("100.00")
+       984 +    if report.Categories[0].Name != "Groceries" {
+       985 +      t.Errorf("Expected first category 'Groceries', got %q", report.Categories[0].Name)
+       986 +    }
+       987 +    if !report.Categories[0].Amount.Equal(expectedGrocery) {
+       988 +      t.Errorf("Expected Groceries amount %s, got %s", expectedGrocery.String(), report.Categories[0].Amount.String())
+       989 +    }
+       990 +
+       991 +    // Check Household
+       992 +    expectedHousehold, _ := models.NewMoney("50.00")
+       993 +    if report.Categories[1].Name != "Household" {
+       994 +      t.Errorf("Expected second category 'Household', got %q", report.Categories[1].Name)
+       995 +    }
+       996 +    if !report.Categories[1].Amount.Equal(expectedHousehold) {
+       997 +      t.Errorf("Expected Household amount %s, got %s", expectedHousehold.String(), report.Categories[1].Amount.String())
+       998 +    }
+       999 +  })
+      1000 +}
+
+⏺ Let me check and update the imports in the test file.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Now let me compile and run the tests to see if everything works.
+
+⏺ Bash(go build ./...)
+  ⎿  Error: Exit code 1
+     # github.com/haskovec/tmoney/internal/service
+     internal/service/report.go:317:28: categories[j].Amount.GreaterThan undefined (type models.Money has no field or method GreaterThan)
+
+⏺ Let me check what comparison methods exist on the Money type.
+
+⏺ Searched for 1 pattern (ctrl+o to expand)
+
+⏺ I see the Money type uses Cmp for comparisons. Let me fix the sorting function.
+
+⏺ Update(internal/service/report.go)
+  ⎿  Added 1 line, removed 1 line
+      314  func sortCategoriesByAmount(categories []models.CategorySpending) {
+      315    for i := 0; i < len(categories)-1; i++ {
+      316      for j := i + 1; j < len(categories); j++ {
+      317 -      if categories[j].Amount.GreaterThan(categories[i].Amount) {
+      317 +      if categories[j].Amount.Cmp(categories[i].Amount) > 0 {
+      318          categories[i], categories[j] = categories[j], categories[i]
+      319        }
+      320      }
+
+⏺ Bash(go build ./...)
+  ⎿  (No content)
+
+⏺ The code compiles. Now let me run the tests for the report service.
+
+⏺ Bash(go test -v ./internal/service/... -run Report 2>&1 | head -200)
+  ⎿ # github.com/haskovec/tmoney/internal/service [github.com/haskovec/tmoney/internal/service.test]
+    internal/service/report_test.go:851:36: cannot use month (variable of type int) as time.Month value in argument to models.NewDate
+    internal/service/report_test.go:901:36: cannot use d.month (variable of type int) as time.Month value in argument to models.NewDate
+    … +2 lines (ctrl+o to expand)
+
+
+⏺ I need to fix the type conversion for months.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Update(internal/service/report_test.go)
+  ⎿  Added 1 line, removed 1 line
+      846      groceries := createTestCategory(t, categoryRepo, "Groceries", models.CategoryTypeExpense)
+      847
+      848      // Create transactions across the year
+      849 -    months := []int{1, 3, 6, 9, 12}
+      849 +    months := []time.Month{1, 3, 6, 9, 12}
+      850      for _, month := range months {
+      851        txnDate := models.NewDate(2024, month, 15)
+      852        amount, _ := models.NewMoney("-100.00")
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Update(internal/service/report_test.go)
+  ⎿  Added 1 line, removed 1 line
+      889
+      890      // Create transactions
+      891      dates := []struct {
+      892 -      month int
+      892 +      month time.Month
+      893        day   int
+      894      }{
+      895        {1, 15},
+
+⏺ Bash(go test -v ./internal/service/... -run Report 2>&1 | head -250)
+  ⎿  === RUN   TestNewReportService
+     === RUN   TestNewReportService/creates_service_with_repositories
+     --- PASS: TestNewReportService (0.04s)
+     … +89 lines (ctrl+o to expand)
+  ⎿  (timeout 2m)
+
+⏺ All report tests pass. Let me run all tests to ensure nothing is broken.
+
+⏺ Bash(go test ./... 2>&1)
+  ⎿  ok         github.com/haskovec/tmoney/cmd/tmoney   7.532s
+     ok         github.com/haskovec/tmoney/internal/db  (cached)
+     ok         github.com/haskovec/tmoney/internal/models      (cached)
+     … +3 lines (ctrl+o to expand)
+  ⎿  (timeout 3m)
+
+⏺ All tests pass. Now let me update the IMPLEMENTATION_PLAN.md to mark the task as done and commit the changes.
+
+⏺ Update(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Added 1 line, removed 1 line
+      223    - Report data structure
+      224    - CLI output formatting
+      225
+      226 -- [ ] **032 - Spending by category report**
+      226 +- [x] **032 - Spending by category report**
+      227    - Monthly aggregation
+      228    - Yearly aggregation
+      229    - Percentage calculation
+
+⏺ Bash(git status)
+  ⎿  On branch main
+     Your branch is up to date with 'origin/main'.
+     … +17 lines (ctrl+o to expand)
+
+⏺ Bash(git diff)
+  ⎿  diff --git a/docs/PROMPT.md b/docs/PROMPT.md
+     index 77ba03c..e4f98f7 100644
+     --- a/docs/PROMPT.md
+     … +832 lines (ctrl+o to expand)
+
+⏺ Bash(git log --oneline -5)
+  ⎿  7e6a55b feature log 33
+     19c3556 Implement net worth report service
+     737b759 feature log 32
+     … +2 lines (ctrl+o to expand)
+
+⏺ Let me commit the relevant files (excluding the docs/PROMPT.md which has unrelated changes).
+
+⏺ Bash(git add internal/models/report.go internal/service/report.go internal/service/report_test.go specs/IMPLEMENTATION_PLAN.md && git
+      commit -m "Implement spending b…)
+  ⎿  [main d09eb4e] Implement spending by category report service
+      4 files changed, 785 insertions(+), 1 deletion(-)
+
+⏺ Bash(git push origin main)
+  ⎿  To github.com:haskovec/tmoney.git
+        7e6a55b..d09eb4e  main -> main
+
+⏺ Bash(git status)
+  ⎿  On branch main
+     Your branch is up to date with 'origin/main'.
+     … +13 lines (ctrl+o to expand)
+
+⏺ Successfully completed 032 - Spending by category report.
+
+  Summary of changes:
+
+  1. Models (internal/models/report.go):
+    - Added SpendingReport struct with period, date range, categories, and total spending
+    - Added CategorySpending struct with category info, amount, percentage, and subcategories
+  2. Service (internal/service/report.go):
+    - SpendingByCategoryMonth(year, month) - Monthly spending report
+    - SpendingByCategoryYear(year) - Yearly spending report
+    - SpendingByCategoryDateRange(start, end) - Custom date range report
+    - Handles both direct transactions and split transactions
+    - Groups subcategory spending under parent categories
+    - Calculates percentages and sorts by amount descending
+    - Excludes income categories, transfers, and positive amounts (refunds)
+  3. Tests (internal/service/report_test.go):
+    - 11 new test cases covering empty database, direct transactions, income exclusion, refund exclusion, date filtering, multiple
+  categories with percentages, subcategories, year aggregation, custom date range, and split transactions
+
+  All tests pass and the changes have been committed and pushed.
+
+✻ Worked for 7m 50s
