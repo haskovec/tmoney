@@ -218,7 +218,7 @@ This document defines the order in which features should be implemented. Each it
 
 ## Phase 8: Reports
 
-- [ ] **031 - Net worth report**
+- [x] **031 - Net worth report**
   - Asset/liability calculation
   - Report data structure
   - CLI output formatting
