@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/models"
@@ -70,6 +71,13 @@ type cliOptions struct {
 	acctNotes         string // --notes <text>
 	acctCreditLimit   string // --credit-limit <value>
 	acctInterestRate  string // --interest-rate <value>
+
+	// Report options
+	report       bool   // --report flag
+	reportType   string // net-worth or spending
+	reportMonth  string // --month YYYY-MM for spending
+	reportYear   int    // --year YYYY for spending
+	reportAsOf   string // --as-of YYYY-MM-DD for net-worth
 }
 
 func main() {
@@ -123,6 +131,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Handle --scheduled
 	if opts.scheduled {
 		return runScheduled(opts, stdout)
+	}
+
+	// Handle --report
+	if opts.report {
+		return runReport(opts, stdout)
 	}
 
 	// Handle --search
@@ -358,6 +371,34 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.acctInterestRate = args[i]
+		case "--report":
+			opts.report = true
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+				opts.reportType = args[i]
+			}
+		case "--month":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--month requires a YYYY-MM argument")
+			}
+			i++
+			opts.reportMonth = args[i]
+		case "--year":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--year requires a YYYY argument")
+			}
+			i++
+			year, err := strconv.Atoi(args[i])
+			if err != nil {
+				return nil, nil, fmt.Errorf("--year requires a valid year: %w", err)
+			}
+			opts.reportYear = year
+		case "--as-of":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--as-of requires a YYYY-MM-DD argument")
+			}
+			i++
+			opts.reportAsOf = args[i]
 		default:
 			// Check for --flag=value formats
 			if strings.HasPrefix(arg, "--file=") {
@@ -426,6 +467,20 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.postScheduled = strings.TrimPrefix(arg, "--post-scheduled=")
 			} else if strings.HasPrefix(arg, "--skip-scheduled=") {
 				opts.skipScheduled = strings.TrimPrefix(arg, "--skip-scheduled=")
+			} else if strings.HasPrefix(arg, "--report=") {
+				opts.report = true
+				opts.reportType = strings.TrimPrefix(arg, "--report=")
+			} else if strings.HasPrefix(arg, "--month=") {
+				opts.reportMonth = strings.TrimPrefix(arg, "--month=")
+			} else if strings.HasPrefix(arg, "--year=") {
+				yearStr := strings.TrimPrefix(arg, "--year=")
+				year, err := strconv.Atoi(yearStr)
+				if err != nil {
+					return nil, nil, fmt.Errorf("--year requires a valid year: %w", err)
+				}
+				opts.reportYear = year
+			} else if strings.HasPrefix(arg, "--as-of=") {
+				opts.reportAsOf = strings.TrimPrefix(arg, "--as-of=")
 			} else {
 				remaining = append(remaining, arg)
 			}
@@ -1728,6 +1783,255 @@ func formatMoney(m models.Money, currency string) string {
 	return value
 }
 
+// runReport generates and displays reports.
+func runReport(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--report requires --file to specify a database")
+	}
+
+	// Validate report type
+	if opts.reportType == "" {
+		return fmt.Errorf("--report requires a report type (net-worth or spending)")
+	}
+
+	switch opts.reportType {
+	case "net-worth":
+		return runNetWorthReport(opts, w)
+	case "spending":
+		return runSpendingReport(opts, w)
+	default:
+		return fmt.Errorf("unknown report type %q: valid types are net-worth, spending", opts.reportType)
+	}
+}
+
+// runNetWorthReport generates and displays the net worth report.
+func runNetWorthReport(opts *cliOptions, w io.Writer) error {
+	// Open database
+	database, err := db.Open(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer database.Close()
+
+	// Create report service
+	acctRepo := repository.NewAccountRepository(database)
+	reportSvc := service.NewReportService(acctRepo, database)
+
+	// Determine as-of date
+	var asOf time.Time
+	if opts.reportAsOf != "" {
+		d, err := models.ParseDate(opts.reportAsOf)
+		if err != nil {
+			return fmt.Errorf("invalid --as-of date: %w", err)
+		}
+		asOf = time.Time(d)
+	} else {
+		asOf = time.Now()
+	}
+
+	// Generate report
+	var report *models.NetWorthReport
+	if opts.includeClosed {
+		report, err = reportSvc.NetWorthAsOfIncludingClosed(asOf)
+	} else {
+		report, err = reportSvc.NetWorthAsOf(asOf)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to generate net worth report: %w", err)
+	}
+
+	// Print report
+	printNetWorthReport(w, report)
+	return nil
+}
+
+// runSpendingReport generates and displays the spending by category report.
+func runSpendingReport(opts *cliOptions, w io.Writer) error {
+	// Validate that we have a time period
+	if opts.reportMonth == "" && opts.reportYear == 0 && opts.fromDate == "" {
+		return fmt.Errorf("--report spending requires --month YYYY-MM, --year YYYY, or --from/--to date range")
+	}
+
+	// Open database
+	database, err := db.Open(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer database.Close()
+
+	// Create report service
+	acctRepo := repository.NewAccountRepository(database)
+	reportSvc := service.NewReportService(acctRepo, database)
+
+	// Generate report based on period type
+	var report *models.SpendingReport
+
+	if opts.reportMonth != "" {
+		// Parse YYYY-MM format
+		year, month, err := parseYearMonth(opts.reportMonth)
+		if err != nil {
+			return fmt.Errorf("invalid --month format: %w", err)
+		}
+		report, err = reportSvc.SpendingByCategoryMonth(year, month)
+		if err != nil {
+			return fmt.Errorf("failed to generate spending report: %w", err)
+		}
+	} else if opts.reportYear != 0 {
+		report, err = reportSvc.SpendingByCategoryYear(opts.reportYear)
+		if err != nil {
+			return fmt.Errorf("failed to generate spending report: %w", err)
+		}
+	} else if opts.fromDate != "" {
+		// Custom date range
+		startDate, err := models.ParseDate(opts.fromDate)
+		if err != nil {
+			return fmt.Errorf("invalid --from date: %w", err)
+		}
+
+		var endDate models.Date
+		if opts.toDate != "" {
+			endDate, err = models.ParseDate(opts.toDate)
+			if err != nil {
+				return fmt.Errorf("invalid --to date: %w", err)
+			}
+		} else {
+			endDate = models.Today()
+		}
+
+		report, err = reportSvc.SpendingByCategoryDateRange(time.Time(startDate), time.Time(endDate))
+		if err != nil {
+			return fmt.Errorf("failed to generate spending report: %w", err)
+		}
+	}
+
+	// Print report
+	printSpendingReport(w, report)
+	return nil
+}
+
+// parseYearMonth parses a YYYY-MM string into year and month integers.
+func parseYearMonth(s string) (int, int, error) {
+	parts := strings.Split(s, "-")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("expected YYYY-MM format, got %q", s)
+	}
+
+	year, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid year: %w", err)
+	}
+
+	month, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid month: %w", err)
+	}
+
+	if month < 1 || month > 12 {
+		return 0, 0, fmt.Errorf("month must be between 1 and 12, got %d", month)
+	}
+
+	return year, month, nil
+}
+
+// printNetWorthReport prints the net worth report.
+func printNetWorthReport(w io.Writer, report *models.NetWorthReport) {
+	fmt.Fprintln(w, "NET WORTH REPORT")
+	fmt.Fprintln(w, "================")
+	fmt.Fprintf(w, "As of: %s\n\n", report.AsOfDate.Format("January 2, 2006"))
+
+	// Assets section
+	fmt.Fprintln(w, "ASSETS")
+	fmt.Fprintln(w, "------")
+	if len(report.Assets) == 0 {
+		fmt.Fprintln(w, "  (No asset accounts)")
+	} else {
+		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		for _, acct := range report.Assets {
+			fmt.Fprintf(tw, "  %s\t%s\n", acct.Name, formatMoney(acct.Balance, "USD"))
+		}
+		tw.Flush()
+	}
+	fmt.Fprintf(w, "\nTotal Assets:\t\t%s\n\n", formatMoney(report.TotalAssets, "USD"))
+
+	// Liabilities section
+	fmt.Fprintln(w, "LIABILITIES")
+	fmt.Fprintln(w, "-----------")
+	if len(report.Liabilities) == 0 {
+		fmt.Fprintln(w, "  (No liability accounts)")
+	} else {
+		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		for _, acct := range report.Liabilities {
+			fmt.Fprintf(tw, "  %s\t%s\n", acct.Name, formatMoney(acct.Balance, "USD"))
+		}
+		tw.Flush()
+	}
+	fmt.Fprintf(w, "\nTotal Liabilities:\t%s\n\n", formatMoney(report.TotalLiabilities, "USD"))
+
+	// Net worth
+	fmt.Fprintln(w, "========================")
+	fmt.Fprintf(w, "NET WORTH:\t\t%s\n", formatMoney(report.NetWorth, "USD"))
+}
+
+// printSpendingReport prints the spending by category report.
+func printSpendingReport(w io.Writer, report *models.SpendingReport) {
+	fmt.Fprintln(w, "SPENDING BY CATEGORY")
+	fmt.Fprintln(w, "====================")
+	fmt.Fprintf(w, "Period: %s\n\n", report.Period)
+
+	if len(report.Categories) == 0 {
+		fmt.Fprintln(w, "No spending found for this period.")
+		return
+	}
+
+	// Print category spending with visual bars
+	maxBarWidth := 30
+	maxAmount := models.ZeroMoney
+	for _, cat := range report.Categories {
+		if cat.Amount.Cmp(maxAmount) > 0 {
+			maxAmount = cat.Amount
+		}
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "Category\tAmount\t%\tBar")
+	fmt.Fprintln(tw, "--------\t------\t-\t---")
+
+	for _, cat := range report.Categories {
+		// Calculate bar length
+		barLen := 0
+		if !maxAmount.IsZero() {
+			barLen = int(cat.Amount.Float64() / maxAmount.Float64() * float64(maxBarWidth))
+		}
+		bar := strings.Repeat("█", barLen)
+
+		fmt.Fprintf(tw, "%s\t%s\t%.1f%%\t%s\n",
+			cat.Name,
+			formatMoney(cat.Amount, "USD"),
+			cat.Percentage,
+			bar,
+		)
+
+		// Print subcategories with indentation
+		for _, sub := range cat.Subcategories {
+			subBarLen := 0
+			if !maxAmount.IsZero() {
+				subBarLen = int(sub.Amount.Float64() / maxAmount.Float64() * float64(maxBarWidth))
+			}
+			subBar := strings.Repeat("░", subBarLen)
+
+			fmt.Fprintf(tw, "  %s\t%s\t%.1f%%\t%s\n",
+				sub.Name,
+				formatMoney(sub.Amount, "USD"),
+				sub.Percentage,
+				subBar,
+			)
+		}
+	}
+	tw.Flush()
+
+	fmt.Fprintf(w, "\n------------------------\nTotal Spending:\t%s\n", formatMoney(report.TotalSpending, "USD"))
+}
+
 func printVersion(w io.Writer) {
 	fmt.Fprintf(w, "tmoney version %s\n", Version)
 	fmt.Fprintf(w, "Build time: %s\n", BuildTime)
@@ -1808,6 +2112,17 @@ Scheduled Transaction Commands:
     --date <date>        Override date (YYYY-MM-DD, default: scheduled date)
 
   --skip-scheduled <id>  Skip a scheduled transaction (advance to next date)
+
+Report Commands:
+  --report net-worth     Generate net worth report
+    --as-of <date>       Report as of specific date (YYYY-MM-DD, default: today)
+    --include-closed     Include closed accounts in report
+
+  --report spending      Generate spending by category report
+    --month <YYYY-MM>    Report for a specific month
+    --year <YYYY>        Report for a specific year
+    --from <date>        Start date for custom range (YYYY-MM-DD)
+    --to <date>          End date for custom range (YYYY-MM-DD)
 
 For more information, visit: https://github.com/haskovec/tmoney`)
 }

@@ -4549,3 +4549,609 @@ func TestPrintHelp_IncludesScheduled(t *testing.T) {
 		t.Error("help output should have Scheduled Transaction Commands section")
 	}
 }
+
+// Report CLI Tests
+
+func TestParseArgs_ReportFlag(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantReport bool
+		wantType   string
+	}{
+		{"report flag only", []string{"--report", "net-worth"}, true, "net-worth"},
+		{"report spending", []string{"--report", "spending"}, true, "spending"},
+		{"report with equals", []string{"--report=net-worth"}, true, "net-worth"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.report != tt.wantReport {
+				t.Errorf("report = %v, want %v", opts.report, tt.wantReport)
+			}
+			if opts.reportType != tt.wantType {
+				t.Errorf("reportType = %q, want %q", opts.reportType, tt.wantType)
+			}
+		})
+	}
+}
+
+func TestParseArgs_ReportMonthFlag(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		wantMonth string
+	}{
+		{"month with space", []string{"--month", "2024-01"}, "2024-01"},
+		{"month with equals", []string{"--month=2024-06"}, "2024-06"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.reportMonth != tt.wantMonth {
+				t.Errorf("reportMonth = %q, want %q", opts.reportMonth, tt.wantMonth)
+			}
+		})
+	}
+}
+
+func TestParseArgs_ReportYearFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		wantYear int
+	}{
+		{"year with space", []string{"--year", "2024"}, 2024},
+		{"year with equals", []string{"--year=2023"}, 2023},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.reportYear != tt.wantYear {
+				t.Errorf("reportYear = %d, want %d", opts.reportYear, tt.wantYear)
+			}
+		})
+	}
+}
+
+func TestParseArgs_ReportAsOfFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantVal string
+	}{
+		{"as-of with space", []string{"--as-of", "2024-01-15"}, "2024-01-15"},
+		{"as-of with equals", []string{"--as-of=2023-12-31"}, "2023-12-31"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.reportAsOf != tt.wantVal {
+				t.Errorf("reportAsOf = %q, want %q", opts.reportAsOf, tt.wantVal)
+			}
+		})
+	}
+}
+
+func TestParseArgs_ReportMonthMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--month"})
+	if err == nil {
+		t.Error("--month without value should return error")
+	}
+}
+
+func TestParseArgs_ReportYearMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--year"})
+	if err == nil {
+		t.Error("--year without value should return error")
+	}
+}
+
+func TestParseArgs_ReportYearInvalidValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--year", "abc"})
+	if err == nil {
+		t.Error("--year with non-numeric value should return error")
+	}
+}
+
+func TestParseArgs_ReportAsOfMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--as-of"})
+	if err == nil {
+		t.Error("--as-of without value should return error")
+	}
+}
+
+func TestRun_ReportMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--report", "net-worth"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--report) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_ReportMissingType(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--report) without report type should return error")
+	}
+	if !strings.Contains(err.Error(), "requires a report type") {
+		t.Errorf("error should mention report type requirement, got: %v", err)
+	}
+}
+
+func TestRun_ReportInvalidType(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "invalid-type", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--report) with invalid type should return error")
+	}
+	if !strings.Contains(err.Error(), "unknown report type") {
+		t.Errorf("error should mention unknown report type, got: %v", err)
+	}
+}
+
+func TestRun_ReportNetWorthEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "net-worth", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--report net-worth) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "NET WORTH REPORT") {
+		t.Error("output should contain NET WORTH REPORT header")
+	}
+	if !strings.Contains(output, "ASSETS") {
+		t.Error("output should contain ASSETS section")
+	}
+	if !strings.Contains(output, "LIABILITIES") {
+		t.Error("output should contain LIABILITIES section")
+	}
+	if !strings.Contains(output, "NET WORTH:") {
+		t.Error("output should contain NET WORTH summary")
+	}
+}
+
+func TestRun_ReportNetWorthWithAccounts(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create asset and liability accounts
+	acctRepo := repository.NewAccountRepository(database)
+
+	checking := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("5000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(checking); err != nil {
+		t.Fatalf("failed to create checking account: %v", err)
+	}
+
+	savings := models.NewAccount(
+		"Savings",
+		models.AccountTypeSavings,
+		"USD",
+		models.MustNewMoney("10000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(savings); err != nil {
+		t.Fatalf("failed to create savings account: %v", err)
+	}
+
+	creditCard := models.NewAccount(
+		"Credit Card",
+		models.AccountTypeCreditCard,
+		"USD",
+		models.MustNewMoney("0"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(creditCard); err != nil {
+		t.Fatalf("failed to create credit card account: %v", err)
+	}
+
+	// Add a credit card transaction (liability)
+	txnRepo := repository.NewTransactionRepository(database)
+	txn := models.NewTransaction(creditCard.ID, models.Today(), models.MustNewMoney("-500.00"))
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "net-worth", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--report net-worth) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Checking") {
+		t.Error("output should contain Checking account")
+	}
+	if !strings.Contains(output, "Savings") {
+		t.Error("output should contain Savings account")
+	}
+	if !strings.Contains(output, "Credit Card") {
+		t.Error("output should contain Credit Card account")
+	}
+}
+
+func TestRun_ReportNetWorthWithAsOf(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "net-worth", "--as-of", "2024-01-15", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--report net-worth --as-of) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "January 15, 2024") {
+		t.Error("output should show the as-of date")
+	}
+}
+
+func TestRun_ReportNetWorthInvalidAsOf(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "net-worth", "--as-of", "invalid-date", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--report net-worth) with invalid as-of date should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --as-of date") {
+		t.Errorf("error should mention invalid date, got: %v", err)
+	}
+}
+
+func TestRun_ReportSpendingMissingPeriod(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "spending", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--report spending) without period should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --month") {
+		t.Errorf("error should mention period requirement, got: %v", err)
+	}
+}
+
+func TestRun_ReportSpendingByMonth(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "spending", "--month", "2024-01", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--report spending --month) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "SPENDING BY CATEGORY") {
+		t.Error("output should contain SPENDING BY CATEGORY header")
+	}
+	if !strings.Contains(output, "January 2024") {
+		t.Error("output should show the period")
+	}
+}
+
+func TestRun_ReportSpendingByYear(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "spending", "--year", "2024", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--report spending --year) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "SPENDING BY CATEGORY") {
+		t.Error("output should contain SPENDING BY CATEGORY header")
+	}
+	if !strings.Contains(output, "2024") {
+		t.Error("output should show the year")
+	}
+}
+
+func TestRun_ReportSpendingByDateRange(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "spending", "--from", "2024-01-01", "--to", "2024-06-30", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--report spending --from --to) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "SPENDING BY CATEGORY") {
+		t.Error("output should contain SPENDING BY CATEGORY header")
+	}
+	if !strings.Contains(output, "2024-01-01 to 2024-06-30") {
+		t.Error("output should show the date range")
+	}
+}
+
+func TestRun_ReportSpendingWithData(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("5000.00"),
+		models.MustParseDate("2024-01-01"),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create account: %v", err)
+	}
+
+	// Create expense category
+	catRepo := repository.NewCategoryRepository(database)
+	groceries := models.NewCategory("Groceries", models.CategoryTypeExpense)
+	if err := catRepo.Create(groceries); err != nil {
+		t.Fatalf("failed to create category: %v", err)
+	}
+
+	// Create expense transaction
+	txnRepo := repository.NewTransactionRepository(database)
+	txn := models.NewTransaction(account.ID, models.MustParseDate("2024-01-15"), models.MustNewMoney("-150.00"))
+	txn.SetCategory(groceries.ID)
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "spending", "--month", "2024-01", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--report spending) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Groceries") {
+		t.Error("output should contain Groceries category")
+	}
+	if !strings.Contains(output, "$150.00") {
+		t.Error("output should show spending amount")
+	}
+	if !strings.Contains(output, "100.0%") {
+		t.Error("output should show percentage")
+	}
+}
+
+func TestRun_ReportSpendingInvalidMonth(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "spending", "--month", "invalid", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--report spending) with invalid month should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --month format") {
+		t.Errorf("error should mention invalid month format, got: %v", err)
+	}
+}
+
+func TestRun_ReportSpendingInvalidMonthValue(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--report", "spending", "--month", "2024-13", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--report spending) with month > 12 should return error")
+	}
+	if !strings.Contains(err.Error(), "month must be between 1 and 12") {
+		t.Errorf("error should mention month range, got: %v", err)
+	}
+}
+
+func TestParseYearMonth(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantYear  int
+		wantMonth int
+		wantErr   bool
+	}{
+		{"valid January", "2024-01", 2024, 1, false},
+		{"valid December", "2024-12", 2024, 12, false},
+		{"invalid format", "2024/01", 0, 0, true},
+		{"missing month", "2024", 0, 0, true},
+		{"invalid year", "abcd-01", 0, 0, true},
+		{"invalid month", "2024-ab", 0, 0, true},
+		{"month too low", "2024-00", 0, 0, true},
+		{"month too high", "2024-13", 0, 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			year, month, err := parseYearMonth(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("parseYearMonth(%q) expected error", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("parseYearMonth(%q) unexpected error: %v", tt.input, err)
+				return
+			}
+			if year != tt.wantYear {
+				t.Errorf("parseYearMonth(%q) year = %d, want %d", tt.input, year, tt.wantYear)
+			}
+			if month != tt.wantMonth {
+				t.Errorf("parseYearMonth(%q) month = %d, want %d", tt.input, month, tt.wantMonth)
+			}
+		})
+	}
+}
+
+func TestPrintHelp_IncludesReports(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printHelp(buf)
+	output := buf.String()
+
+	if !strings.Contains(output, "--report net-worth") {
+		t.Error("help output should document --report net-worth")
+	}
+	if !strings.Contains(output, "--report spending") {
+		t.Error("help output should document --report spending")
+	}
+	if !strings.Contains(output, "--as-of") {
+		t.Error("help output should document --as-of flag")
+	}
+	if !strings.Contains(output, "--month") {
+		t.Error("help output should document --month flag")
+	}
+	if !strings.Contains(output, "--year") {
+		t.Error("help output should document --year flag")
+	}
+	if !strings.Contains(output, "Report Commands") {
+		t.Error("help output should have Report Commands section")
+	}
+}

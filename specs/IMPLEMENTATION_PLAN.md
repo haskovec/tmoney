@@ -229,7 +229,7 @@ This document defines the order in which features should be implemented. Each it
   - Percentage calculation
   - CLI output with bars
 
-- [ ] **033 - Report CLI commands**
+- [x] **033 - Report CLI commands**
   - `--report net-worth`
   - `--report spending --month`
   - `--report spending --year`
