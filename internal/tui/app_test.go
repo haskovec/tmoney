@@ -56,6 +56,7 @@ func TestApp_Init(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
 	}
 
 	cmd := app.Init()
@@ -68,6 +69,7 @@ func TestApp_SwitchView(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
 	}
 
 	// Switch to Register view
@@ -155,6 +157,7 @@ func TestApp_Update_ViewSwitchKeys(t *testing.T) {
 				currentView: ViewDashboard,
 				keys:        defaultKeyMap(),
 				menubar:     NewMenuBar(),
+				statusbar:   NewStatusBar(),
 			}
 
 			model, _ := app.Update(tt.key)
@@ -173,6 +176,7 @@ func TestApp_Update_EscapeKey(t *testing.T) {
 		previousView: ViewDashboard,
 		keys:         defaultKeyMap(),
 		menubar:      NewMenuBar(),
+		statusbar:    NewStatusBar(),
 	}
 
 	msg := tea.KeyMsg{Type: tea.KeyEsc}
@@ -247,12 +251,96 @@ func TestApp_RenderLayout(t *testing.T) {
 		styles:      styles,
 		sidebar:     NewSidebar(),
 		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
 		keys:        defaultKeyMap(),
 	}
 
 	layout := app.renderLayout()
 	if layout == "" {
 		t.Error("renderLayout() should not return empty string")
+	}
+}
+
+func TestApp_Update_ScheduledDueCount(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+	}
+
+	// Test with 3 due transactions
+	msg := scheduledDueCountMsg{count: 3}
+	model, cmd := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if cmd != nil {
+		t.Error("scheduledDueCountMsg should not return a command")
+	}
+	notifications := updatedApp.statusbar.Notifications()
+	if len(notifications) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(notifications))
+	}
+	if notifications[0].Text != "3 scheduled due" {
+		t.Errorf("notification text = %q, want %q", notifications[0].Text, "3 scheduled due")
+	}
+	if notifications[0].Level != NotificationAlert {
+		t.Errorf("notification level = %d, want %d", notifications[0].Level, NotificationAlert)
+	}
+}
+
+func TestApp_Update_ScheduledDueCount_Single(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+	}
+
+	msg := scheduledDueCountMsg{count: 1}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	notifications := updatedApp.statusbar.Notifications()
+	if len(notifications) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(notifications))
+	}
+	if notifications[0].Text != "1 scheduled due" {
+		t.Errorf("notification text = %q, want %q", notifications[0].Text, "1 scheduled due")
+	}
+}
+
+func TestApp_Update_ScheduledDueCount_Zero(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+	}
+
+	// Add a notification first, then clear with count 0
+	app.statusbar.AddNotification("old", NotificationInfo)
+
+	msg := scheduledDueCountMsg{count: 0}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if len(updatedApp.statusbar.Notifications()) != 0 {
+		t.Errorf("expected 0 notifications for count=0, got %d", len(updatedApp.statusbar.Notifications()))
+	}
+}
+
+func TestApp_SwitchView_UpdatesStatusBar(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+	}
+
+	app.switchView(ViewScheduled)
+
+	if app.statusbar.Context() != "Scheduled" {
+		t.Errorf("statusbar context = %q, want %q", app.statusbar.Context(), "Scheduled")
 	}
 }
 

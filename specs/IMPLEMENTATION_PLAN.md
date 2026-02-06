@@ -260,7 +260,7 @@ This document defines the order in which features should be implemented. Each it
   - Dropdown menus
   - Keyboard activation
 
-- [ ] **038 - Status bar component**
+- [x] **038 - Status bar component**
   - Context display
   - Key hints
   - Notifications

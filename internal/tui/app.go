@@ -66,8 +66,9 @@ type App struct {
 	styles Styles
 
 	// Components
-	sidebar *Sidebar
-	menubar *MenuBar
+	sidebar   *Sidebar
+	menubar   *MenuBar
+	statusbar *StatusBar
 
 	// Services (initialized on start)
 	accountSvc      *service.AccountService
@@ -206,6 +207,7 @@ func NewApp(database *db.DB) *App {
 		styles:          NewStyles(),
 		sidebar:         NewSidebar(),
 		menubar:         NewMenuBar(),
+		statusbar:       NewStatusBar(),
 		keys:            defaultKeyMap(),
 		accountSvc:      accountSvc,
 		transactionSvc:  transactionSvc,
@@ -218,11 +220,33 @@ func NewApp(database *db.DB) *App {
 
 // Init implements tea.Model.
 func (a *App) Init() tea.Cmd {
+	a.updateStatusBar()
 	return tea.Batch(
 		tea.EnterAltScreen,
 		tea.SetWindowTitle("TMoney - Personal Finance Manager"),
 		a.loadSidebarData(),
+		a.loadScheduledDueCount(),
 	)
+}
+
+// updateStatusBar updates the status bar context and key hints for the current view.
+func (a *App) updateStatusBar() {
+	a.statusbar.SetContext(a.currentView.String())
+	a.statusbar.SetKeyHints(a.getKeyHints())
+}
+
+// loadScheduledDueCount returns a command that loads the count of due scheduled transactions.
+func (a *App) loadScheduledDueCount() tea.Cmd {
+	return func() tea.Msg {
+		if a.scheduledTxnSvc == nil {
+			return nil
+		}
+		due, err := a.scheduledTxnSvc.ListDue()
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return scheduledDueCountMsg{count: len(due)}
+	}
 }
 
 // loadSidebarData returns a command that loads accounts and balances for the sidebar.
@@ -258,6 +282,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case sidebarLoadedMsg:
 		a.sidebar.SetAccounts(msg.accounts, msg.balances)
+		return a, nil
+
+	case scheduledDueCountMsg:
+		a.statusbar.ClearNotifications()
+		if msg.count > 0 {
+			text := fmt.Sprintf("%d scheduled due", msg.count)
+			if msg.count == 1 {
+				text = "1 scheduled due"
+			}
+			a.statusbar.AddNotification(text, NotificationAlert)
+		}
 		return a, nil
 
 	case errMsg:
@@ -437,6 +472,7 @@ func (a *App) switchView(v View) {
 	if a.currentView != v {
 		a.previousView = a.currentView
 		a.currentView = v
+		a.updateStatusBar()
 	}
 }
 
@@ -565,9 +601,7 @@ func (a *App) renderReports() string {
 
 // renderStatusBar renders the status bar at the bottom.
 func (a *App) renderStatusBar() string {
-	hints := a.getKeyHints()
-
-	return a.styles.StatusBar.Render(hints)
+	return a.statusbar.Render(a.styles, a.width)
 }
 
 // getKeyHints returns key hints for the current view.
@@ -602,6 +636,11 @@ type errMsg struct {
 type sidebarLoadedMsg struct {
 	accounts []*models.Account
 	balances map[models.ID]*service.AccountBalance
+}
+
+// scheduledDueCountMsg is sent when the count of due scheduled transactions is loaded.
+type scheduledDueCountMsg struct {
+	count int
 }
 
 // overlayDropdown places a dropdown string on top of the layout at the given row and column offset.
