@@ -271,7 +271,7 @@ This document defines the order in which features should be implemented. Each it
   - Row selection
   - Scrolling
 
-- [ ] **040 - Dialog component**
+- [x] **040 - Dialog component**
   - Modal overlay
   - Form fields
   - Button row
