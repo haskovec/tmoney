@@ -265,7 +265,7 @@ This document defines the order in which features should be implemented. Each it
   - Key hints
   - Notifications
 
-- [ ] **039 - Table component**
+- [x] **039 - Table component**
   - Generic table rendering
   - Column sizing
   - Row selection
