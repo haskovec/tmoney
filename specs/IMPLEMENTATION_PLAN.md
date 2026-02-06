@@ -244,7 +244,7 @@ This document defines the order in which features should be implemented. Each it
   - View routing
   - Quit handling
 
-- [ ] **035 - TUI styles**
+- [x] **035 - TUI styles**
   - Color palette
   - Lipgloss style definitions
   - Responsive width handling

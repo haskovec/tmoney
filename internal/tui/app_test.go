@@ -234,11 +234,14 @@ func TestApp_GetKeyHints(t *testing.T) {
 }
 
 func TestApp_RenderLayout(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(80, 24)
 	app := &App{
 		currentView: ViewDashboard,
 		width:       80,
 		height:      24,
 		ready:       true,
+		styles:      styles,
 		keys:        defaultKeyMap(),
 	}
 

@@ -48,7 +48,7 @@ type App struct {
 	db *db.DB
 
 	// Current view state
-	currentView View
+	currentView  View
 	previousView View
 
 	// Terminal dimensions
@@ -60,13 +60,16 @@ type App struct {
 	quitting bool
 	err      error
 
+	// Styles
+	styles Styles
+
 	// Services (initialized on start)
-	accountSvc            *service.AccountService
-	transactionSvc        *service.TransactionService
-	categorySvc           *service.CategoryService
-	payeeSvc              *service.PayeeService
-	scheduledTxnSvc       *service.ScheduledTransactionService
-	reportSvc             *service.ReportService
+	accountSvc      *service.AccountService
+	transactionSvc  *service.TransactionService
+	categorySvc     *service.CategoryService
+	payeeSvc        *service.PayeeService
+	scheduledTxnSvc *service.ScheduledTransactionService
+	reportSvc       *service.ReportService
 
 	// Key bindings
 	keys keyMap
@@ -187,15 +190,16 @@ func NewApp(database *db.DB) *App {
 	reportSvc := service.NewReportService(accountRepo, database)
 
 	return &App{
-		db:                database,
-		currentView:       ViewDashboard,
-		keys:              defaultKeyMap(),
-		accountSvc:        accountSvc,
-		transactionSvc:    transactionSvc,
-		categorySvc:       categorySvc,
-		payeeSvc:          payeeSvc,
-		scheduledTxnSvc:   scheduledTxnSvc,
-		reportSvc:         reportSvc,
+		db:              database,
+		currentView:     ViewDashboard,
+		styles:          NewStyles(),
+		keys:            defaultKeyMap(),
+		accountSvc:      accountSvc,
+		transactionSvc:  transactionSvc,
+		categorySvc:     categorySvc,
+		payeeSvc:        payeeSvc,
+		scheduledTxnSvc: scheduledTxnSvc,
+		reportSvc:       reportSvc,
 	}
 }
 
@@ -213,6 +217,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
+		a.styles.Resize(msg.Width, msg.Height)
 		a.ready = true
 		return a, nil
 
@@ -346,23 +351,15 @@ func (a *App) renderLayout() string {
 
 // renderHeader renders the application header/menu bar.
 func (a *App) renderHeader() string {
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("15")).
-		Background(lipgloss.Color("62")).
-		Width(a.width).
-		Padding(0, 1)
-
 	title := "TMoney"
 	viewIndicator := fmt.Sprintf(" | %s", a.currentView.String())
 
-	return headerStyle.Render(title + viewIndicator)
+	return a.styles.Header.Render(title + viewIndicator)
 }
 
 // renderContent renders the main content area based on current view.
 func (a *App) renderContent(height int) string {
-	contentStyle := lipgloss.NewStyle().
-		Width(a.width).
+	contentStyle := a.styles.Content.
 		Height(height)
 
 	var content string
@@ -416,16 +413,9 @@ func (a *App) renderReports() string {
 
 // renderStatusBar renders the status bar at the bottom.
 func (a *App) renderStatusBar() string {
-	statusStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252")).
-		Background(lipgloss.Color("236")).
-		Width(a.width).
-		Padding(0, 1)
-
-	// Build key hints based on current view
 	hints := a.getKeyHints()
 
-	return statusStyle.Render(hints)
+	return a.styles.StatusBar.Render(hints)
 }
 
 // getKeyHints returns key hints for the current view.
@@ -448,12 +438,7 @@ func (a *App) getKeyHints() string {
 
 // renderError renders an error message.
 func (a *App) renderError() string {
-	errorStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196")).
-		Bold(true).
-		Padding(1, 2)
-
-	return errorStyle.Render(fmt.Sprintf("Error: %v\n\nPress any key to continue", a.err))
+	return a.styles.Error.Render(fmt.Sprintf("Error: %v\n\nPress any key to continue", a.err))
 }
 
 // errMsg is a message type for errors.
