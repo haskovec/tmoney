@@ -249,7 +249,7 @@ This document defines the order in which features should be implemented. Each it
   - Lipgloss style definitions
   - Responsive width handling
 
-- [ ] **036 - Sidebar component**
+- [x] **036 - Sidebar component**
   - Account list
   - Collapsible groups
   - Selection state

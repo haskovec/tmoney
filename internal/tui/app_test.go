@@ -242,6 +242,7 @@ func TestApp_RenderLayout(t *testing.T) {
 		height:      24,
 		ready:       true,
 		styles:      styles,
+		sidebar:     NewSidebar(),
 		keys:        defaultKeyMap(),
 	}
 

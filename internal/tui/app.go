@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/models"
 	"github.com/haskovec/tmoney/internal/repository"
 	"github.com/haskovec/tmoney/internal/service"
 )
@@ -62,6 +63,9 @@ type App struct {
 
 	// Styles
 	styles Styles
+
+	// Components
+	sidebar *Sidebar
 
 	// Services (initialized on start)
 	accountSvc      *service.AccountService
@@ -193,6 +197,7 @@ func NewApp(database *db.DB) *App {
 		db:              database,
 		currentView:     ViewDashboard,
 		styles:          NewStyles(),
+		sidebar:         NewSidebar(),
 		keys:            defaultKeyMap(),
 		accountSvc:      accountSvc,
 		transactionSvc:  transactionSvc,
@@ -208,7 +213,26 @@ func (a *App) Init() tea.Cmd {
 	return tea.Batch(
 		tea.EnterAltScreen,
 		tea.SetWindowTitle("TMoney - Personal Finance Manager"),
+		a.loadSidebarData(),
 	)
+}
+
+// loadSidebarData returns a command that loads accounts and balances for the sidebar.
+func (a *App) loadSidebarData() tea.Cmd {
+	return func() tea.Msg {
+		if a.accountSvc == nil {
+			return nil
+		}
+		accounts, err := a.accountSvc.List(true)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		balances, err := a.accountSvc.GetAllBalances()
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return sidebarLoadedMsg{accounts: accounts, balances: balances}
+	}
 }
 
 // Update implements tea.Model.
@@ -223,6 +247,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return a.handleKeyPress(msg)
+
+	case sidebarLoadedMsg:
+		a.sidebar.SetAccounts(msg.accounts, msg.balances)
+		return a, nil
 
 	case errMsg:
 		a.err = msg.err
@@ -277,25 +305,57 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // handleDashboardKeys handles key presses in the dashboard view.
 func (a *App) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Placeholder for dashboard-specific key handling
-	return a, nil
+	return a.handleSidebarKeys(msg)
 }
 
 // handleRegisterKeys handles key presses in the register view.
-func (a *App) handleRegisterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleRegisterKeys(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Placeholder for register-specific key handling
 	return a, nil
 }
 
 // handleScheduledKeys handles key presses in the scheduled transactions view.
-func (a *App) handleScheduledKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleScheduledKeys(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Placeholder for scheduled-specific key handling
 	return a, nil
 }
 
 // handleReportsKeys handles key presses in the reports view.
-func (a *App) handleReportsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleReportsKeys(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Placeholder for reports-specific key handling
+	return a, nil
+}
+
+// handleSidebarKeys handles keyboard navigation for the sidebar.
+func (a *App) handleSidebarKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if !a.sidebar.IsFocused() {
+		return a, nil
+	}
+
+	switch {
+	case key.Matches(msg, a.keys.Up):
+		a.sidebar.MoveUp()
+		return a, nil
+
+	case key.Matches(msg, a.keys.Down):
+		a.sidebar.MoveDown()
+		return a, nil
+
+	case key.Matches(msg, a.keys.Left):
+		a.sidebar.CollapseGroup()
+		return a, nil
+
+	case key.Matches(msg, a.keys.Right):
+		a.sidebar.ExpandGroup()
+		return a, nil
+
+	case key.Matches(msg, a.keys.Enter):
+		if a.sidebar.Select() {
+			a.switchView(ViewRegister)
+		}
+		return a, nil
+	}
+
 	return a, nil
 }
 
@@ -332,9 +392,7 @@ func (a *App) renderLayout() string {
 	statusBarHeight := 1
 	contentHeight := a.height - headerHeight - statusBarHeight
 
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
+	contentHeight = max(contentHeight, 1)
 
 	// Render components
 	header := a.renderHeader()
@@ -359,24 +417,38 @@ func (a *App) renderHeader() string {
 
 // renderContent renders the main content area based on current view.
 func (a *App) renderContent(height int) string {
-	contentStyle := a.styles.Content.
-		Height(height)
-
-	var content string
+	var viewContent string
 	switch a.currentView {
 	case ViewDashboard:
-		content = a.renderDashboard()
+		viewContent = a.renderDashboard()
 	case ViewRegister:
-		content = a.renderRegister()
+		viewContent = a.renderRegister()
 	case ViewScheduled:
-		content = a.renderScheduled()
+		viewContent = a.renderScheduled()
 	case ViewReports:
-		content = a.renderReports()
+		viewContent = a.renderReports()
 	default:
-		content = "Unknown view"
+		viewContent = "Unknown view"
 	}
 
-	return contentStyle.Render(content)
+	sidebarWidth := a.styles.SidebarWidth()
+	if sidebarWidth == 0 {
+		// Small layout: no sidebar, full-width content
+		return a.styles.Content.
+			Width(a.width).
+			Height(height).
+			Render(viewContent)
+	}
+
+	// Two-pane layout: sidebar + content
+	sidebar := a.sidebar.Render(a.styles, sidebarWidth, height)
+	contentWidth := a.styles.ContentWidth()
+	content := a.styles.Content.
+		Width(contentWidth).
+		Height(height).
+		Render(viewContent)
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 }
 
 // renderDashboard renders the dashboard view.
@@ -424,7 +496,7 @@ func (a *App) getKeyHints() string {
 
 	switch a.currentView {
 	case ViewDashboard:
-		return "↑↓ navigate  enter select  n new  " + common
+		return "↑↓ navigate  ←→ collapse/expand  enter select  " + common
 	case ViewRegister:
 		return "↑↓ navigate  enter edit  n new  d delete  esc back  " + common
 	case ViewScheduled:
@@ -444,6 +516,12 @@ func (a *App) renderError() string {
 // errMsg is a message type for errors.
 type errMsg struct {
 	err error
+}
+
+// sidebarLoadedMsg is sent when sidebar data has been loaded.
+type sidebarLoadedMsg struct {
+	accounts []*models.Account
+	balances map[models.ID]*service.AccountBalance
 }
 
 // Run starts the TUI application.
