@@ -3,6 +3,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -66,6 +67,7 @@ type App struct {
 
 	// Components
 	sidebar *Sidebar
+	menubar *MenuBar
 
 	// Services (initialized on start)
 	accountSvc      *service.AccountService
@@ -98,6 +100,7 @@ type keyMap struct {
 	Dashboard  key.Binding
 	Scheduled  key.Binding
 	Reports    key.Binding
+	Menu       key.Binding
 }
 
 // defaultKeyMap returns the default key bindings.
@@ -171,6 +174,10 @@ func defaultKeyMap() keyMap {
 			key.WithKeys("3"),
 			key.WithHelp("3", "reports"),
 		),
+		Menu: key.NewBinding(
+			key.WithKeys("f10"),
+			key.WithHelp("F10", "menu"),
+		),
 	}
 }
 
@@ -198,6 +205,7 @@ func NewApp(database *db.DB) *App {
 		currentView:     ViewDashboard,
 		styles:          NewStyles(),
 		sidebar:         NewSidebar(),
+		menubar:         NewMenuBar(),
 		keys:            defaultKeyMap(),
 		accountSvc:      accountSvc,
 		transactionSvc:  transactionSvc,
@@ -262,11 +270,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKeyPress handles keyboard input.
 func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// If menu bar is active, route all keys to menu handling
+	if a.menubar.IsActive() {
+		return a.handleMenuKeys(msg)
+	}
+
 	// Global key bindings
 	switch {
 	case key.Matches(msg, a.keys.Quit):
 		a.quitting = true
 		return a, tea.Quit
+
+	case key.Matches(msg, a.keys.Menu):
+		a.menubar.Activate()
+		return a, nil
 
 	case key.Matches(msg, a.keys.Dashboard):
 		a.switchView(ViewDashboard)
@@ -359,6 +376,62 @@ func (a *App) handleSidebarKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+// handleMenuKeys handles keyboard input when the menu bar is active.
+func (a *App) handleMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, a.keys.Escape), key.Matches(msg, a.keys.Menu):
+		a.menubar.Deactivate()
+		return a, nil
+
+	case key.Matches(msg, a.keys.Left):
+		a.menubar.MoveLeft()
+		return a, nil
+
+	case key.Matches(msg, a.keys.Right):
+		a.menubar.MoveRight()
+		return a, nil
+
+	case key.Matches(msg, a.keys.Up):
+		a.menubar.MoveUp()
+		return a, nil
+
+	case key.Matches(msg, a.keys.Down):
+		a.menubar.MoveDown()
+		return a, nil
+
+	case key.Matches(msg, a.keys.Enter):
+		action := a.menubar.Select()
+		return a.handleMenuAction(action)
+
+	case key.Matches(msg, a.keys.Quit):
+		a.quitting = true
+		return a, tea.Quit
+	}
+
+	return a, nil
+}
+
+// handleMenuAction processes a menu item selection.
+func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
+	switch action {
+	case MenuActionExit:
+		a.quitting = true
+		return a, tea.Quit
+
+	case MenuActionDashboard:
+		a.switchView(ViewDashboard)
+
+	case MenuActionNetWorth, MenuActionSpendingByCategory:
+		a.switchView(ViewReports)
+
+	// Other actions are placeholders for future implementation
+	case MenuActionNone:
+		// No action
+	}
+
+	return a, nil
+}
+
 // switchView changes the current view and stores the previous view.
 func (a *App) switchView(v View) {
 	if a.currentView != v {
@@ -399,20 +472,27 @@ func (a *App) renderLayout() string {
 	content := a.renderContent(contentHeight)
 	statusBar := a.renderStatusBar()
 
-	return lipgloss.JoinVertical(
+	layout := lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
 		content,
 		statusBar,
 	)
+
+	// Overlay dropdown if menu is active
+	if a.menubar.IsActive() {
+		dropdown, offset := a.menubar.RenderDropdown(a.styles)
+		if dropdown != "" {
+			layout = overlayDropdown(layout, dropdown, offset, 1, a.width)
+		}
+	}
+
+	return layout
 }
 
 // renderHeader renders the application header/menu bar.
 func (a *App) renderHeader() string {
-	title := "TMoney"
-	viewIndicator := fmt.Sprintf(" | %s", a.currentView.String())
-
-	return a.styles.Header.Render(title + viewIndicator)
+	return a.menubar.Render(a.styles, a.width)
 }
 
 // renderContent renders the main content area based on current view.
@@ -492,7 +572,7 @@ func (a *App) renderStatusBar() string {
 
 // getKeyHints returns key hints for the current view.
 func (a *App) getKeyHints() string {
-	common := "1 dashboard  2 scheduled  3 reports  ? help  ctrl+q quit"
+	common := "F10 menu  1 dashboard  2 scheduled  3 reports  ? help  ctrl+q quit"
 
 	switch a.currentView {
 	case ViewDashboard:
@@ -522,6 +602,66 @@ type errMsg struct {
 type sidebarLoadedMsg struct {
 	accounts []*models.Account
 	balances map[models.ID]*service.AccountBalance
+}
+
+// overlayDropdown places a dropdown string on top of the layout at the given row and column offset.
+func overlayDropdown(layout, dropdown string, colOffset, rowOffset, totalWidth int) string {
+	layoutLines := strings.Split(layout, "\n")
+	dropdownLines := strings.Split(dropdown, "\n")
+
+	for i, dLine := range dropdownLines {
+		targetRow := rowOffset + i
+		if targetRow >= len(layoutLines) {
+			break
+		}
+
+		// Build the new line: prefix + dropdown + suffix
+		bgLine := layoutLines[targetRow]
+		bgRunes := []rune(stripAnsi(bgLine))
+
+		// Build prefix (characters before the dropdown)
+		prefix := ""
+		if colOffset > 0 {
+			if colOffset <= len(bgRunes) {
+				prefix = string(bgRunes[:colOffset])
+			} else {
+				prefix = string(bgRunes) + strings.Repeat(" ", colOffset-len(bgRunes))
+			}
+		}
+
+		// Build suffix (characters after the dropdown)
+		dropdownWidth := lipgloss.Width(dLine)
+		endCol := colOffset + dropdownWidth
+		suffix := ""
+		if endCol < len(bgRunes) {
+			suffix = string(bgRunes[endCol:])
+		}
+
+		_ = totalWidth
+		layoutLines[targetRow] = prefix + dLine + suffix
+	}
+
+	return strings.Join(layoutLines, "\n")
+}
+
+// stripAnsi removes ANSI escape codes from a string for width calculation.
+func stripAnsi(s string) string {
+	var result []rune
+	inEscape := false
+	for _, r := range s {
+		if r == '\033' {
+			inEscape = true
+			continue
+		}
+		if inEscape {
+			if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
+				inEscape = false
+			}
+			continue
+		}
+		result = append(result, r)
+	}
+	return string(result)
 }
 
 // Run starts the TUI application.

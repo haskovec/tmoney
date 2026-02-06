@@ -102,6 +102,12 @@ type Styles struct {
 	DialogTitle  lipgloss.Style
 	DialogButton lipgloss.Style
 
+	// Menu bar
+	MenuBarItem        lipgloss.Style
+	MenuBarActive      lipgloss.Style
+	MenuDropdownItem   lipgloss.Style
+	MenuDropdownActive lipgloss.Style
+
 	// Borders
 	Border lipgloss.Style
 
@@ -207,6 +213,24 @@ func (s *Styles) initBaseStyles() {
 		Padding(0, 2).
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(ColorBorder)
+
+	// Menu bar
+	s.MenuBarItem = lipgloss.NewStyle().
+		Foreground(ColorHeaderFg).
+		Background(ColorHeaderBg)
+
+	s.MenuBarActive = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ColorHeaderBg).
+		Background(ColorHeaderFg)
+
+	s.MenuDropdownItem = lipgloss.NewStyle().
+		Foreground(ColorStatusFg).
+		Background(ColorStatusBg)
+
+	s.MenuDropdownActive = lipgloss.NewStyle().
+		Foreground(ColorSelectedFg).
+		Background(ColorSelectedBg)
 
 	// Border
 	s.Border = lipgloss.NewStyle().

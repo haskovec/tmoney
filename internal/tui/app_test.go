@@ -123,6 +123,7 @@ func TestApp_Update_QuitKey(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
 	}
 
 	msg := tea.KeyMsg{Type: tea.KeyCtrlQ}
@@ -153,6 +154,7 @@ func TestApp_Update_ViewSwitchKeys(t *testing.T) {
 			app := &App{
 				currentView: ViewDashboard,
 				keys:        defaultKeyMap(),
+				menubar:     NewMenuBar(),
 			}
 
 			model, _ := app.Update(tt.key)
@@ -170,6 +172,7 @@ func TestApp_Update_EscapeKey(t *testing.T) {
 		currentView:  ViewRegister,
 		previousView: ViewDashboard,
 		keys:         defaultKeyMap(),
+		menubar:      NewMenuBar(),
 	}
 
 	msg := tea.KeyMsg{Type: tea.KeyEsc}
@@ -243,6 +246,7 @@ func TestApp_RenderLayout(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
+		menubar:     NewMenuBar(),
 		keys:        defaultKeyMap(),
 	}
 

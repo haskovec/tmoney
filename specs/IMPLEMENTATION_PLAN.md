@@ -255,7 +255,7 @@ This document defines the order in which features should be implemented. Each it
   - Selection state
   - Keyboard navigation
 
-- [ ] **037 - Menu bar component**
+- [x] **037 - Menu bar component**
   - Menu items
   - Dropdown menus
   - Keyboard activation
