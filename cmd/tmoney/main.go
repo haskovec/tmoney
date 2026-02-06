@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -13,6 +14,7 @@ import (
 	"github.com/haskovec/tmoney/internal/models"
 	"github.com/haskovec/tmoney/internal/repository"
 	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/tui"
 )
 
 // Version information - will be set via build flags in production
@@ -165,12 +167,49 @@ func run(args []string, stdout, stderr io.Writer) error {
 		}
 	}
 
-	// Default to TUI mode (placeholder for now)
-	fmt.Fprintln(stdout, "TMoney - Personal Finance Manager")
-	fmt.Fprintln(stdout, "TUI mode not yet implemented.")
-	fmt.Fprintln(stdout, "Use --help for available options.")
+	// Default to TUI mode
+	return runTUI(opts)
+}
 
-	return nil
+// runTUI launches the interactive TUI mode.
+func runTUI(opts *cliOptions) error {
+	// If no file specified, use default location
+	if opts.file == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+		opts.file = filepath.Join(homeDir, "Documents", "TMoney", "default.tdb")
+	}
+
+	// Check if file exists, if not create it
+	if _, err := os.Stat(opts.file); os.IsNotExist(err) {
+		// Create the directory if needed
+		dir := filepath.Dir(opts.file)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create directory: %w", err)
+		}
+
+		// Create new database
+		database, err := db.Create(opts.file)
+		if err != nil {
+			return fmt.Errorf("failed to create database: %w", err)
+		}
+		defer database.Close()
+
+		// Run TUI
+		return tui.Run(database)
+	}
+
+	// Open existing database
+	database, err := db.Open(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer database.Close()
+
+	// Run TUI
+	return tui.Run(database)
 }
 
 // parseArgs parses command-line arguments and returns options and remaining args.

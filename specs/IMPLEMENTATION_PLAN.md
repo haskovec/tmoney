@@ -238,7 +238,7 @@ This document defines the order in which features should be implemented. Each it
 
 ## Phase 9: TUI Foundation
 
-- [ ] **034 - TUI app scaffold**
+- [x] **034 - TUI app scaffold**
   - Bubbletea program setup
   - Main model structure
   - View routing
