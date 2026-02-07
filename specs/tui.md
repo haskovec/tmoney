@@ -198,6 +198,8 @@ When "Split transaction" is checked:
 
 ## Menu Bar
 
+Each menu label has its shortcut letter underlined to indicate the `Alt+key` shortcut (e.g., the "F" in "File" is underlined for `Alt+F`). Pressing `Alt+key` opens the corresponding menu; pressing it again toggles the menu closed.
+
 ### File Menu
 - New File
 - Open File
@@ -239,6 +241,12 @@ When "Split transaction" is checked:
 | `Tab` | Next field / Next pane |
 | `Shift+Tab` | Previous field / Previous pane |
 | `/` | Search |
+| `Alt+F` | Open File menu |
+| `Alt+A` | Open Accounts menu |
+| `Alt+T` | Open Transactions menu |
+| `Alt+R` | Open Reports menu |
+| `Alt+H` | Open Help menu |
+| `F10` | Activate menu bar |
 | `:` | Command palette (v1.5) |
 
 ### Navigation Keys
