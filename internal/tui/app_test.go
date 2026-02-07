@@ -330,6 +330,149 @@ func TestApp_Update_ScheduledDueCount_Zero(t *testing.T) {
 	}
 }
 
+func TestApp_Update_AltKeyMenuShortcuts(t *testing.T) {
+	tests := []struct {
+		name          string
+		key           tea.KeyMsg
+		expectedMenu  int
+		expectedLabel string
+	}{
+		{
+			"Alt+F opens File menu",
+			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}, Alt: true},
+			0, "File",
+		},
+		{
+			"Alt+A opens Accounts menu",
+			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}, Alt: true},
+			1, "Accounts",
+		},
+		{
+			"Alt+T opens Transactions menu",
+			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}, Alt: true},
+			2, "Transactions",
+		},
+		{
+			"Alt+R opens Reports menu",
+			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}, Alt: true},
+			3, "Reports",
+		},
+		{
+			"Alt+H opens Help menu",
+			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}, Alt: true},
+			4, "Help",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := &App{
+				currentView: ViewDashboard,
+				keys:        defaultKeyMap(),
+				menubar:     NewMenuBar(),
+				statusbar:   NewStatusBar(),
+			}
+
+			model, _ := app.Update(tt.key)
+			updatedApp := model.(*App)
+
+			if !updatedApp.menubar.IsActive() {
+				t.Error("menu bar should be active")
+			}
+			if updatedApp.menubar.Cursor() != tt.expectedMenu {
+				t.Errorf("menu cursor = %d, want %d", updatedApp.menubar.Cursor(), tt.expectedMenu)
+			}
+		})
+	}
+}
+
+func TestApp_ToggleMenu_ClosesSameMenu(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+	}
+
+	// Open File menu
+	altF := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}, Alt: true}
+	model, _ := app.Update(altF)
+	updatedApp := model.(*App)
+
+	if !updatedApp.menubar.IsActive() {
+		t.Fatal("menu should be active after Alt+F")
+	}
+
+	// Press Alt+F again to close it
+	model, _ = updatedApp.Update(altF)
+	updatedApp = model.(*App)
+
+	if updatedApp.menubar.IsActive() {
+		t.Error("menu should be deactivated after toggling same menu")
+	}
+}
+
+func TestApp_ToggleMenu_SwitchesToDifferentMenu(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+	}
+
+	// Open File menu
+	altF := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}, Alt: true}
+	model, _ := app.Update(altF)
+	updatedApp := model.(*App)
+
+	if updatedApp.menubar.Cursor() != 0 {
+		t.Fatal("should be on File menu")
+	}
+
+	// Press Alt+A to switch to Accounts
+	altA := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}, Alt: true}
+	model, _ = updatedApp.Update(altA)
+	updatedApp = model.(*App)
+
+	if !updatedApp.menubar.IsActive() {
+		t.Error("menu should still be active")
+	}
+	if updatedApp.menubar.Cursor() != 1 {
+		t.Errorf("menu cursor = %d, want 1 (Accounts)", updatedApp.menubar.Cursor())
+	}
+}
+
+func TestDefaultKeyMap_MenuShortcuts(t *testing.T) {
+	km := defaultKeyMap()
+
+	if len(km.MenuFile.Keys()) == 0 {
+		t.Error("MenuFile key binding not set")
+	}
+	if len(km.MenuAccounts.Keys()) == 0 {
+		t.Error("MenuAccounts key binding not set")
+	}
+	if len(km.MenuTransactions.Keys()) == 0 {
+		t.Error("MenuTransactions key binding not set")
+	}
+	if len(km.MenuReports.Keys()) == 0 {
+		t.Error("MenuReports key binding not set")
+	}
+	if len(km.MenuHelp.Keys()) == 0 {
+		t.Error("MenuHelp key binding not set")
+	}
+}
+
+func TestApp_GetKeyHints_IncludesAltKey(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+	}
+
+	hints := app.getKeyHints()
+	if !contains(hints, "Alt+key") {
+		t.Errorf("getKeyHints() should contain 'Alt+key', got: %s", hints)
+	}
+}
+
 func TestApp_SwitchView_UpdatesStatusBar(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,

@@ -2,6 +2,8 @@ package tui
 
 import (
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -49,8 +51,9 @@ type menuItem struct {
 
 // menu represents a top-level menu with a label and dropdown items.
 type menu struct {
-	label string
-	items []menuItem
+	label       string
+	shortcutKey rune
+	items       []menuItem
 }
 
 // MenuBar manages the menu bar state and rendering.
@@ -78,7 +81,8 @@ func NewMenuBar() *MenuBar {
 func defaultMenus() []menu {
 	return []menu{
 		{
-			label: "File",
+			label:       "File",
+			shortcutKey: 'F',
 			items: []menuItem{
 				{label: "New File", action: MenuActionNewFile},
 				{label: "Open File", action: MenuActionOpenFile},
@@ -88,7 +92,8 @@ func defaultMenus() []menu {
 			},
 		},
 		{
-			label: "Accounts",
+			label:       "Accounts",
+			shortcutKey: 'A',
 			items: []menuItem{
 				{label: "New Account", action: MenuActionNewAccount},
 				{label: "Edit Account", action: MenuActionEditAccount},
@@ -97,7 +102,8 @@ func defaultMenus() []menu {
 			},
 		},
 		{
-			label: "Transactions",
+			label:       "Transactions",
+			shortcutKey: 'T',
 			items: []menuItem{
 				{label: "New Transaction", action: MenuActionNewTransaction},
 				{label: "New Transfer", action: MenuActionNewTransfer},
@@ -107,7 +113,8 @@ func defaultMenus() []menu {
 			},
 		},
 		{
-			label: "Reports",
+			label:       "Reports",
+			shortcutKey: 'R',
 			items: []menuItem{
 				{label: "Dashboard", action: MenuActionDashboard},
 				{label: "Net Worth", action: MenuActionNetWorth},
@@ -115,7 +122,8 @@ func defaultMenus() []menu {
 			},
 		},
 		{
-			label: "Help",
+			label:       "Help",
+			shortcutKey: 'H',
 			items: []menuItem{
 				{label: "Keyboard Shortcuts", action: MenuActionKeyboardShortcuts},
 				{label: "About", action: MenuActionAbout},
@@ -139,6 +147,14 @@ func (m *MenuBar) Activate() {
 func (m *MenuBar) Deactivate() {
 	m.active = false
 	m.itemCursor = 0
+}
+
+// ActivateMenu opens the menu bar at the specified menu index.
+func (m *MenuBar) ActivateMenu(index int) {
+	if index >= 0 && index < len(m.menus) {
+		m.cursor = index
+		m.Activate()
+	}
 }
 
 // Cursor returns the current top-level menu index.
@@ -214,6 +230,7 @@ func (m *MenuBar) Select() MenuAction {
 }
 
 // Render renders the menu bar (just the top-level labels) for the given width.
+// Shortcut letters are underlined to indicate Alt+key shortcuts.
 func (m *MenuBar) Render(styles Styles, width int) string {
 	if width <= 0 {
 		return ""
@@ -221,12 +238,15 @@ func (m *MenuBar) Render(styles Styles, width int) string {
 
 	var parts []string
 	for i, mn := range m.menus {
-		label := " " + mn.label + " "
+		var baseStyle, shortcutStyle lipgloss.Style
 		if m.active && i == m.cursor {
-			parts = append(parts, styles.MenuBarActive.Render(label))
+			baseStyle = styles.MenuBarActive
+			shortcutStyle = styles.MenuBarActiveShortcut
 		} else {
-			parts = append(parts, styles.MenuBarItem.Render(label))
+			baseStyle = styles.MenuBarItem
+			shortcutStyle = styles.MenuBarShortcut
 		}
+		parts = append(parts, renderMenuLabel(mn.label, mn.shortcutKey, baseStyle, shortcutStyle))
 	}
 
 	bar := lipgloss.JoinHorizontal(lipgloss.Top, parts...)
@@ -239,6 +259,24 @@ func (m *MenuBar) Render(styles Styles, width int) string {
 	}
 
 	return bar
+}
+
+// renderMenuLabel renders a menu label with the shortcut character underlined.
+func renderMenuLabel(label string, shortcutKey rune, baseStyle, shortcutStyle lipgloss.Style) string {
+	if shortcutKey == 0 {
+		return baseStyle.Render(" " + label + " ")
+	}
+
+	for i, r := range label {
+		if unicode.ToUpper(r) == unicode.ToUpper(shortcutKey) {
+			before := " " + label[:i]
+			shortcutChar := string(r)
+			after := label[i+utf8.RuneLen(r):] + " "
+			return baseStyle.Render(before) + shortcutStyle.Render(shortcutChar) + baseStyle.Render(after)
+		}
+	}
+
+	return baseStyle.Render(" " + label + " ")
 }
 
 // RenderDropdown renders the dropdown for the currently active menu.

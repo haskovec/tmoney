@@ -1,6 +1,10 @@
 package tui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 func TestNewMenuBar(t *testing.T) {
 	m := NewMenuBar()
@@ -499,6 +503,156 @@ func TestMenuBar_MoveDownOnEmptyMenuBar(t *testing.T) {
 
 	if m.ItemCursor() != 0 {
 		t.Error("itemCursor should remain 0 on empty menu bar")
+	}
+}
+
+func TestMenuBar_ShortcutKeys(t *testing.T) {
+	m := NewMenuBar()
+
+	expectedShortcuts := []struct {
+		label       string
+		shortcutKey rune
+	}{
+		{"File", 'F'},
+		{"Accounts", 'A'},
+		{"Transactions", 'T'},
+		{"Reports", 'R'},
+		{"Help", 'H'},
+	}
+
+	for i, exp := range expectedShortcuts {
+		if m.menus[i].shortcutKey != exp.shortcutKey {
+			t.Errorf("menu %q shortcutKey = %q, want %q", exp.label, string(m.menus[i].shortcutKey), string(exp.shortcutKey))
+		}
+	}
+}
+
+func TestMenuBar_ActivateMenu(t *testing.T) {
+	m := NewMenuBar()
+
+	m.ActivateMenu(2)
+	if !m.IsActive() {
+		t.Error("should be active after ActivateMenu()")
+	}
+	if m.Cursor() != 2 {
+		t.Errorf("cursor = %d, want 2", m.Cursor())
+	}
+	if m.ItemCursor() != 0 {
+		t.Errorf("itemCursor = %d, want 0", m.ItemCursor())
+	}
+}
+
+func TestMenuBar_ActivateMenu_SwitchWhileActive(t *testing.T) {
+	m := NewMenuBar()
+
+	m.ActivateMenu(0)
+	m.MoveDown()
+	m.MoveDown()
+
+	// Switch to a different menu - should reset item cursor
+	m.ActivateMenu(3)
+	if m.Cursor() != 3 {
+		t.Errorf("cursor = %d, want 3", m.Cursor())
+	}
+	if m.ItemCursor() != 0 {
+		t.Errorf("itemCursor = %d, want 0 after switching menus", m.ItemCursor())
+	}
+}
+
+func TestMenuBar_ActivateMenu_InvalidIndex(t *testing.T) {
+	m := NewMenuBar()
+
+	m.ActivateMenu(-1)
+	if m.IsActive() {
+		t.Error("should not activate with negative index")
+	}
+
+	m.ActivateMenu(100)
+	if m.IsActive() {
+		t.Error("should not activate with out-of-range index")
+	}
+}
+
+func TestRenderMenuLabel_WithShortcut(t *testing.T) {
+	baseStyle := lipgloss.NewStyle()
+	shortcutStyle := lipgloss.NewStyle().Underline(true)
+
+	result := renderMenuLabel("File", 'F', baseStyle, shortcutStyle)
+	if result == "" {
+		t.Error("renderMenuLabel should not return empty string")
+	}
+
+	// Visible width should be " File " = 6
+	width := lipgloss.Width(result)
+	if width != 6 {
+		t.Errorf("visible width = %d, want 6", width)
+	}
+}
+
+func TestRenderMenuLabel_WithoutShortcut(t *testing.T) {
+	baseStyle := lipgloss.NewStyle()
+	shortcutStyle := lipgloss.NewStyle().Underline(true)
+
+	result := renderMenuLabel("File", 0, baseStyle, shortcutStyle)
+	if result == "" {
+		t.Error("renderMenuLabel should not return empty string")
+	}
+
+	width := lipgloss.Width(result)
+	if width != 6 {
+		t.Errorf("visible width = %d, want 6", width)
+	}
+}
+
+func TestRenderMenuLabel_ShortcutNotFound(t *testing.T) {
+	baseStyle := lipgloss.NewStyle()
+	shortcutStyle := lipgloss.NewStyle().Underline(true)
+
+	// 'Z' is not in "File"
+	result := renderMenuLabel("File", 'Z', baseStyle, shortcutStyle)
+	if result == "" {
+		t.Error("renderMenuLabel should not return empty string")
+	}
+
+	width := lipgloss.Width(result)
+	if width != 6 {
+		t.Errorf("visible width = %d, want 6", width)
+	}
+}
+
+func TestRenderMenuLabel_AllMenuLabels(t *testing.T) {
+	baseStyle := lipgloss.NewStyle()
+	shortcutStyle := lipgloss.NewStyle().Underline(true)
+
+	menus := defaultMenus()
+	for _, mn := range menus {
+		result := renderMenuLabel(mn.label, mn.shortcutKey, baseStyle, shortcutStyle)
+		expectedWidth := len(mn.label) + 2 // " label "
+		width := lipgloss.Width(result)
+		if width != expectedWidth {
+			t.Errorf("renderMenuLabel(%q, %q): visible width = %d, want %d",
+				mn.label, string(mn.shortcutKey), width, expectedWidth)
+		}
+	}
+}
+
+func TestMenuBar_Render_ShortcutUnderline(t *testing.T) {
+	m := NewMenuBar()
+	styles := NewStyles()
+
+	result := m.Render(styles, 80)
+	if result == "" {
+		t.Error("Render() should not return empty string")
+	}
+
+	// The visible width should be at least the sum of label widths
+	width := lipgloss.Width(result)
+	minWidth := 0
+	for _, mn := range m.menus {
+		minWidth += len(mn.label) + 2
+	}
+	if width < minWidth {
+		t.Errorf("rendered bar width = %d, should be at least %d", width, minWidth)
 	}
 }
 

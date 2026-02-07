@@ -84,24 +84,29 @@ type App struct {
 
 // keyMap defines the key bindings for the application.
 type keyMap struct {
-	Quit       key.Binding
-	Help       key.Binding
-	Up         key.Binding
-	Down       key.Binding
-	Left       key.Binding
-	Right      key.Binding
-	Enter      key.Binding
-	Escape     key.Binding
-	Tab        key.Binding
-	ShiftTab   key.Binding
-	New        key.Binding
-	Edit       key.Binding
-	Delete     key.Binding
-	Search     key.Binding
-	Dashboard  key.Binding
-	Scheduled  key.Binding
-	Reports    key.Binding
-	Menu       key.Binding
+	Quit             key.Binding
+	Help             key.Binding
+	Up               key.Binding
+	Down             key.Binding
+	Left             key.Binding
+	Right            key.Binding
+	Enter            key.Binding
+	Escape           key.Binding
+	Tab              key.Binding
+	ShiftTab         key.Binding
+	New              key.Binding
+	Edit             key.Binding
+	Delete           key.Binding
+	Search           key.Binding
+	Dashboard        key.Binding
+	Scheduled        key.Binding
+	Reports          key.Binding
+	Menu             key.Binding
+	MenuFile         key.Binding
+	MenuAccounts     key.Binding
+	MenuTransactions key.Binding
+	MenuReports      key.Binding
+	MenuHelp         key.Binding
 }
 
 // defaultKeyMap returns the default key bindings.
@@ -178,6 +183,26 @@ func defaultKeyMap() keyMap {
 		Menu: key.NewBinding(
 			key.WithKeys("f10"),
 			key.WithHelp("F10", "menu"),
+		),
+		MenuFile: key.NewBinding(
+			key.WithKeys("alt+f"),
+			key.WithHelp("Alt+F", "file menu"),
+		),
+		MenuAccounts: key.NewBinding(
+			key.WithKeys("alt+a"),
+			key.WithHelp("Alt+A", "accounts menu"),
+		),
+		MenuTransactions: key.NewBinding(
+			key.WithKeys("alt+t"),
+			key.WithHelp("Alt+T", "transactions menu"),
+		),
+		MenuReports: key.NewBinding(
+			key.WithKeys("alt+r"),
+			key.WithHelp("Alt+R", "reports menu"),
+		),
+		MenuHelp: key.NewBinding(
+			key.WithKeys("alt+h"),
+			key.WithHelp("Alt+H", "help menu"),
 		),
 	}
 }
@@ -305,6 +330,25 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKeyPress handles keyboard input.
 func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Alt+key menu shortcuts work regardless of menu state
+	switch {
+	case key.Matches(msg, a.keys.MenuFile):
+		a.toggleMenu(0)
+		return a, nil
+	case key.Matches(msg, a.keys.MenuAccounts):
+		a.toggleMenu(1)
+		return a, nil
+	case key.Matches(msg, a.keys.MenuTransactions):
+		a.toggleMenu(2)
+		return a, nil
+	case key.Matches(msg, a.keys.MenuReports):
+		a.toggleMenu(3)
+		return a, nil
+	case key.Matches(msg, a.keys.MenuHelp):
+		a.toggleMenu(4)
+		return a, nil
+	}
+
 	// If menu bar is active, route all keys to menu handling
 	if a.menubar.IsActive() {
 		return a.handleMenuKeys(msg)
@@ -467,6 +511,15 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+// toggleMenu opens the menu at the given index, or closes it if already open at that index.
+func (a *App) toggleMenu(index int) {
+	if a.menubar.IsActive() && a.menubar.Cursor() == index {
+		a.menubar.Deactivate()
+	} else {
+		a.menubar.ActivateMenu(index)
+	}
+}
+
 // switchView changes the current view and stores the previous view.
 func (a *App) switchView(v View) {
 	if a.currentView != v {
@@ -606,7 +659,7 @@ func (a *App) renderStatusBar() string {
 
 // getKeyHints returns key hints for the current view.
 func (a *App) getKeyHints() string {
-	common := "F10 menu  1 dashboard  2 scheduled  3 reports  ? help  ctrl+q quit"
+	common := "Alt+key/F10 menu  1 dashboard  2 scheduled  3 reports  ? help  ctrl+q quit"
 
 	switch a.currentView {
 	case ViewDashboard:
