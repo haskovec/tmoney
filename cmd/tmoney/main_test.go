@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +11,17 @@ import (
 	"github.com/haskovec/tmoney/internal/models"
 	"github.com/haskovec/tmoney/internal/repository"
 )
+
+// isTerminal reports whether stdin is connected to a terminal.
+// Tests that launch the TUI must be skipped in terminal environments
+// because bubbletea will take over the screen and hang waiting for input.
+func isTerminal() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
 
 func TestParseArgs_FileFlag(t *testing.T) {
 	tests := []struct {
@@ -114,8 +126,11 @@ func TestParseArgs_RemainingArgs(t *testing.T) {
 
 func TestRun_NoArgs(t *testing.T) {
 	// Running with no args launches TUI mode, which requires a TTY.
-	// In test environments (no TTY), this will fail with a TTY-related error.
-	// This is expected behavior - the TUI cannot run without a terminal.
+	// Skip this test when running in a real terminal to avoid launching
+	// a full bubbletea program that hangs waiting for input.
+	if isTerminal() {
+		t.Skip("skipping TUI launch test in terminal environment")
+	}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	err := run([]string{}, stdout, stderr)
@@ -131,7 +146,11 @@ func TestRun_NoArgs(t *testing.T) {
 
 func TestRun_UnknownArgs(t *testing.T) {
 	// Running with a file argument launches TUI mode, which requires a TTY.
-	// In test environments (no TTY), this will fail with a TTY-related error.
+	// Skip this test when running in a real terminal to avoid launching
+	// a full bubbletea program that hangs waiting for input.
+	if isTerminal() {
+		t.Skip("skipping TUI launch test in terminal environment")
+	}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	err := run([]string{"some-file.tdb"}, stdout, stderr)
