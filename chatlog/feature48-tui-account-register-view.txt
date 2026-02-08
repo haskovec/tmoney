@@ -1,0 +1,1151 @@
+
+ ▐▛███▜▌   Claude Code v2.1.32
+▝▜█████▛▘  Opus 4.6 · Claude Pro
+  ▘▘ ▝▝    ~/work/tmoney
+
+❯ /clear
+  ⎿  (no content)
+
+❯ read @docs/PROMPT.md and implement the most important item
+  ⎿  Read docs/PROMPT.md (10 lines)
+
+⏺ I'll start by reading the README and implementation plan as instructed.
+
+⏺ Read 2 files (ctrl+o to expand)
+
+⏺ The next item is 042 - Account register view. Let me study the existing TUI code and relevant specs first.
+
+⏺ Explore(Explore TUI codebase structure)
+  ⎿  Done (20 tool uses · 76.7k tokens · 1m 4s)
+
+⏺ Now let me read the key source files I'll need to modify.
+
+⏺ Read 3 files (ctrl+o to expand)
+
+⏺ Let me check the transaction service and sidebar for the specific interfaces I need.
+
+⏺ Read 3 files (ctrl+o to expand)
+
+⏺ Now let me check the existing tests and the category service for name resolution.
+
+⏺ Read 2 files (ctrl+o to expand)
+
+⏺ Let me quickly check the category and account service for the methods I'll need.
+
+⏺ Searched for 4 patterns (ctrl+o to expand)
+
+⏺ Now I have everything I need. Let me create the task list and start implementing.
+
+⏺ Now let me implement the register view. I'll start by adding the data types, loading, and the table to the App struct.
+
+⏺ Update(internal/tui/app.go)
+  ⎿  Added 4 lines
+      83    // Dashboard data (loaded asynchronously)
+      84    dashboard *dashboardData
+      85
+      86 +  // Register data (loaded when account is selected)
+      87 +  register *registerData
+      88 +  table    *Table
+      89 +
+      90    // Key bindings
+      91    keys keyMap
+      92  }
+
+⏺ Now add the registerData struct and message types at the bottom of the file, near the other data structs.
+
+⏺ Update(internal/tui/app.go)
+  ⎿  Added 15 lines
+      1021    data *dashboardData
+      1022  }
+      1023
+      1024 +// registerData holds the loaded data for the account register view.
+      1025 +type registerData struct {
+      1026 +  account       *models.Account
+      1027 +  transactions  []*models.Transaction
+      1028 +  balance       *service.AccountBalance
+      1029 +  payeeNames    map[models.ID]string
+      1030 +  categoryNames map[models.ID]string
+      1031 +  accountNames  map[models.ID]string
+      1032 +}
+      1033 +
+      1034 +// registerLoadedMsg is sent when register data has been loaded.
+      1035 +type registerLoadedMsg struct {
+      1036 +  data *registerData
+      1037 +}
+      1038 +
+      1039  // overlayDropdown places a dropdown string on top of the layout at the given row and column offset.
+      1040  func overlayDropdown(layout, dropdown string, colOffset, rowOffset, totalWidth int) string {
+      1041    layoutLines := strings.Split(layout, "\n")
+  ⎿  Found 1 new diagnostic issue in 1 file (ctrl+o to expand)
+
+⏺ Good, the struct is defined in the same file so that diagnostic is likely transient. Now add the loadRegisterData function.
+
+⏺ Update(internal/tui/app.go)
+  ⎿  Added 66 lines
+      369    }
+      370  }
+      371
+      372 +// loadRegisterData returns a command that loads all data needed for the register view.
+      373 +func (a *App) loadRegisterData(accountID models.ID) tea.Cmd {
+      374 +  return func() tea.Msg {
+      375 +    data := &registerData{
+      376 +      payeeNames:    make(map[models.ID]string),
+      377 +      categoryNames: make(map[models.ID]string),
+      378 +      accountNames:  make(map[models.ID]string),
+      379 +    }
+      380 +
+      381 +    // Load account
+      382 +    if a.accountSvc != nil {
+      383 +      acct, err := a.accountSvc.GetByID(accountID)
+      384 +      if err != nil {
+      385 +        return errMsg{err: err}
+      386 +      }
+      387 +      data.account = acct
+      388 +
+      389 +      // Load balance
+      390 +      bal, err := a.accountSvc.GetBalance(accountID)
+      391 +      if err != nil {
+      392 +        return errMsg{err: err}
+      393 +      }
+      394 +      data.balance = bal
+      395 +
+      396 +      // Load account names for transfer display
+      397 +      accounts, err := a.accountSvc.List(true)
+      398 +      if err == nil {
+      399 +        for _, acc := range accounts {
+      400 +          data.accountNames[acc.ID] = acc.Name
+      401 +        }
+      402 +      }
+      403 +    }
+      404 +
+      405 +    // Load transactions
+      406 +    if a.transactionSvc != nil {
+      407 +      txns, err := a.transactionSvc.ListByAccount(accountID)
+      408 +      if err != nil {
+      409 +        return errMsg{err: err}
+      410 +      }
+      411 +      data.transactions = txns
+      412 +    }
+      413 +
+      414 +    // Load payee names
+      415 +    if a.payeeSvc != nil {
+      416 +      payees, err := a.payeeSvc.List()
+      417 +      if err == nil {
+      418 +        for _, p := range payees {
+      419 +          data.payeeNames[p.ID] = p.Name
+      420 +        }
+      421 +      }
+      422 +    }
+      423 +
+      424 +    // Load category names
+      425 +    if a.categorySvc != nil {
+      426 +      categories, err := a.categorySvc.List()
+      427 +      if err == nil {
+      428 +        for _, c := range categories {
+      429 +          data.categoryNames[c.ID] = c.Name
+      430 +        }
+      431 +      }
+      432 +    }
+      433 +
+      434 +    return registerLoadedMsg{data: data}
+      435 +  }
+      436 +}
+      437 +
+      438  // Update implements tea.Model.
+      439  func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+      440    switch msg := msg.(type) {
+  ⎿  Found 5 new diagnostic issues in 1 file (ctrl+o to expand)
+
+⏺ Now handle the registerLoadedMsg in Update() and wire up the sidebar selection.
+
+⏺ Update(internal/tui/app.go)
+  ⎿  Added 5 lines
+      467      a.dashboard = msg.data
+      468      return a, nil
+      469
+      470 +  case registerLoadedMsg:
+      471 +    a.register = msg.data
+      472 +    a.buildRegisterTable()
+      473 +    return a, nil
+      474 +
+      475    case errMsg:
+      476      a.err = msg.err
+      477      return a, nil
+  ⎿  Found 5 new diagnostic issues in 1 file (ctrl+o to expand)
+
+⏺ Now wire up the sidebar Enter key to load register data.
+
+⏺ Update(internal/tui/app.go)
+  ⎿  Added 2 lines
+      599
+      600    case key.Matches(msg, a.keys.Enter):
+      601      if a.sidebar.Select() {
+      602 +      a.register = nil // Clear old data while loading
+      603        a.switchView(ViewRegister)
+      604 +      return a, a.loadRegisterData(a.sidebar.SelectedAccountID())
+      605      }
+      606      return a, nil
+      607    }
+  ⎿  Found 1 new diagnostic issue in 1 file (ctrl+o to expand)
+
+⏺ Now let me implement buildRegisterTable, renderRegister, and handleRegisterKeys. I'll replace the placeholder implementations.
+
+⏺ Update(internal/tui/app.go)
+  ⎿  Added 128 lines, removed 2 lines
+      1012    return s[:maxLen-3] + "..."
+      1013  }
+      1014
+      1015 +// buildRegisterTable creates and populates the table for the register view.
+      1016 +func (a *App) buildRegisterTable() {
+      1017 +  if a.register == nil {
+      1018 +    return
+      1019 +  }
+      1020 +
+      1021 +  columns := []Column{
+      1022 +    {Header: "Date", Width: 10, Align: AlignLeft},
+      1023 +    {Header: "S", Width: 1, Align: AlignCenter},
+      1024 +    {Header: "Payee", MinWidth: 12, Align: AlignLeft},
+      1025 +    {Header: "Category", MinWidth: 10, Align: AlignLeft},
+      1026 +    {Header: "Amount", Width: 12, Align: AlignRight},
+      1027 +  }
+      1028 +
+      1029 +  if a.table == nil {
+      1030 +    a.table = NewTable(columns)
+      1031 +  } else {
+      1032 +    a.table.SetColumns(columns)
+      1033 +  }
+      1034 +
+      1035 +  rows := make([][]string, len(a.register.transactions))
+      1036 +  for i, txn := range a.register.transactions {
+      1037 +    rows[i] = a.formatRegisterRow(txn)
+      1038 +  }
+      1039 +  a.table.SetRows(rows)
+      1040 +}
+      1041 +
+      1042 +// formatRegisterRow formats a transaction into table row strings.
+      1043 +func (a *App) formatRegisterRow(txn *models.Transaction) []string {
+      1044 +  // Date
+      1045 +  dateStr := txn.Date.Time().Format("01/02/06")
+      1046 +
+      1047 +  // Status indicator
+      1048 +  status := " "
+      1049 +  switch txn.Status {
+      1050 +  case models.TransactionStatusCleared:
+      1051 +    status = "✓"
+      1052 +  case models.TransactionStatusReconciled:
+      1053 +    status = "R"
+      1054 +  }
+      1055 +
+      1056 +  // Payee
+      1057 +  payee := ""
+      1058 +  if txn.IsTransfer() {
+      1059 +    if name, ok := a.register.accountNames[txn.TransferAccountID.ID]; ok {
+      1060 +      payee = "Transfer: " + name
+      1061 +    } else {
+      1062 +      payee = "Transfer"
+      1063 +    }
+      1064 +  } else if txn.HasPayee() {
+      1065 +    if name, ok := a.register.payeeNames[txn.PayeeID.ID]; ok {
+      1066 +      payee = name
+      1067 +    }
+      1068 +  }
+      1069 +
+      1070 +  // Category
+      1071 +  category := ""
+      1072 +  if txn.HasCategory() {
+      1073 +    if name, ok := a.register.categoryNames[txn.CategoryID.ID]; ok {
+      1074 +      category = name
+      1075 +    }
+      1076 +  } else if txn.IsTransfer() {
+      1077 +    category = "[Transfer]"
+      1078 +  }
+      1079 +
+      1080 +  // Amount
+      1081 +  amount := formatDashboardMoney(txn.Amount)
+      1082 +
+      1083 +  return []string{dateStr, status, payee, category, amount}
+      1084 +}
+      1085 +
+      1086  // renderRegister renders the account register view.
+      1087  func (a *App) renderRegister() string {
+      1017 -  // Placeholder - will be implemented in task 042
+      1088 +  if a.register == nil {
+      1089 +    return lipgloss.NewStyle().
+      1090 +      Padding(1, 2).
+      1091 +      Render("Loading register...")
+      1092 +  }
+      1093 +
+      1094 +  contentWidth := a.styles.ContentWidth()
+      1095 +
+      1096 +  var sections []string
+      1097 +
+      1098 +  // Title row: account name + balance
+      1099 +  acctName := strings.ToUpper(a.register.account.Name)
+      1100 +  balStr := ""
+      1101 +  if a.register.balance != nil {
+      1102 +    balStr = "Bal: " + formatDashboardMoney(a.register.balance.CurrentBalance)
+      1103 +  }
+      1104 +  padding := contentWidth - lipgloss.Width(acctName) - lipgloss.Width(balStr) - 4
+      1105 +  if padding < 1 {
+      1106 +    padding = 1
+      1107 +  }
+      1108 +
+      1109 +  balStyle := a.styles.Positive
+      1110 +  if a.register.balance != nil && a.register.balance.CurrentBalance.IsNegative() {
+      1111 +    balStyle = a.styles.Negative
+      1112 +  }
+      1113 +  titleRow := a.styles.Title.Render(acctName) + strings.Repeat(" ", padding) + balStyle.Render(balStr)
+      1114 +  sections = append(sections, titleRow)
+      1115 +
+      1116 +  // Separator
+      1117 +  sepWidth := contentWidth - 4
+      1118 +  if sepWidth < 1 {
+      1119 +    sepWidth = 1
+      1120 +  }
+      1121 +  sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
+      1122 +
+      1123 +  // Table
+      1124 +  headerHeight := 1
+      1125 +  statusBarHeight := 1
+      1126 +  titleHeight := 2 // title + separator
+      1127 +  paddingHeight := 2 // top/bottom padding
+      1128 +  tableHeight := a.height - headerHeight - statusBarHeight - titleHeight - paddingHeight
+      1129 +  if tableHeight < 1 {
+      1130 +    tableHeight = 1
+      1131 +  }
+      1132 +
+      1133 +  if a.table != nil {
+      1134 +    tableWidth := contentWidth - 4
+      1135 +    if tableWidth < 1 {
+      1136 +      tableWidth = 1
+      1137 +    }
+      1138 +    sections = append(sections, a.table.Render(a.styles, tableWidth, tableHeight))
+      1139 +  } else if len(a.register.transactions) == 0 {
+      1140 +    sections = append(sections, "")
+      1141 +    sections = append(sections, a.styles.Muted.Render("  No transactions"))
+      1142 +  }
+      1143 +
+      1144    return lipgloss.NewStyle().
+      1145      Padding(1, 2).
+      1020 -    Render("Account Register View\n\nPress Esc to go back")
+      1146 +    Render(strings.Join(sections, "\n"))
+      1147  }
+      1148
+      1149  // renderScheduled renders the scheduled transactions view.
+
+⏺ Now implement handleRegisterKeys.
+
+⏺ Update(internal/tui/app.go)
+  ⎿  Added 81 lines, removed 2 lines
+      557  }
+      558
+      559  // handleRegisterKeys handles key presses in the register view.
+      560 -func (a *App) handleRegisterKeys(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
+      561 -  // Placeholder for register-specific key handling
+      560 +func (a *App) handleRegisterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+      561 +  // Handle Tab to switch focus between sidebar and table
+      562 +  if key.Matches(msg, a.keys.Tab) || key.Matches(msg, a.keys.ShiftTab) {
+      563 +    if a.sidebar.IsFocused() {
+      564 +      a.sidebar.SetFocused(false)
+      565 +      if a.table != nil {
+      566 +        a.table.SetFocused(true)
+      567 +      }
+      568 +    } else {
+      569 +      a.sidebar.SetFocused(true)
+      570 +      if a.table != nil {
+      571 +        a.table.SetFocused(false)
+      572 +      }
+      573 +    }
+      574 +    return a, nil
+      575 +  }
+      576 +
+      577 +  // If sidebar has focus, delegate to sidebar handling
+      578 +  if a.sidebar.IsFocused() {
+      579 +    return a.handleSidebarKeys(msg)
+      580 +  }
+      581 +
+      582 +  // Table-focused key handling
+      583 +  if a.table == nil || a.register == nil {
+      584 +    return a, nil
+      585 +  }
+      586 +
+      587 +  switch {
+      588 +  case key.Matches(msg, a.keys.Up):
+      589 +    a.table.MoveUp()
+      590 +  case key.Matches(msg, a.keys.Down):
+      591 +    a.table.MoveDown()
+      592 +  case msg.String() == "home" || msg.String() == "g":
+      593 +    a.table.MoveToTop()
+      594 +  case msg.String() == "end" || msg.String() == "G":
+      595 +    a.table.MoveToBottom()
+      596 +  case msg.String() == "pgup":
+      597 +    tableHeight := a.height - 6
+      598 +    if tableHeight < 1 {
+      599 +      tableHeight = 1
+      600 +    }
+      601 +    a.table.PageUp(tableHeight)
+      602 +  case msg.String() == "pgdown":
+      603 +    tableHeight := a.height - 6
+      604 +    if tableHeight < 1 {
+      605 +      tableHeight = 1
+      606 +    }
+      607 +    a.table.PageDown(tableHeight)
+      608 +  case msg.String() == "c":
+      609 +    return a.toggleTransactionStatus()
+      610 +  }
+      611 +
+      612    return a, nil
+      613  }
+      614
+      615 +// toggleTransactionStatus toggles the cleared/pending status of the selected transaction.
+      616 +func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
+      617 +  if a.table == nil || a.register == nil || a.transactionSvc == nil {
+      618 +    return a, nil
+      619 +  }
+      620 +
+      621 +  cursor := a.table.Cursor()
+      622 +  if cursor < 0 || cursor >= len(a.register.transactions) {
+      623 +    return a, nil
+      624 +  }
+      625 +
+      626 +  txn := a.register.transactions[cursor]
+      627 +  accountID := a.sidebar.SelectedAccountID()
+      628 +
+      629 +  return a, func() tea.Msg {
+      630 +    var err error
+      631 +    if txn.Status == models.TransactionStatusCleared {
+      632 +      err = a.transactionSvc.MarkTransactionPending(txn.ID)
+      633 +    } else {
+      634 +      err = a.transactionSvc.ClearTransaction(txn.ID)
+      635 +    }
+      636 +    if err != nil {
+      637 +      return errMsg{err: err}
+      638 +    }
+      639 +    // Reload register data to reflect the change
+      640 +    return a.loadRegisterData(accountID)()
+      641 +  }
+      642 +}
+      643 +
+      644  // handleScheduledKeys handles key presses in the scheduled transactions view.
+      645  func (a *App) handleScheduledKeys(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
+      646    // Placeholder for scheduled-specific key handling
+  ⎿  Found 8 new diagnostic issues in 1 file (ctrl+o to expand)
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+⏺ Let me also make sure the register view also sets focus correctly when entering. Let me also update switchView to handle focus transfer
+  when entering register.
+
+⏺ Update(internal/tui/app.go)
+  ⎿  Added 16 lines
+      759      a.previousView = a.currentView
+      760      a.currentView = v
+      761      a.updateStatusBar()
+      762 +
+      763 +    // Set focus appropriately for the new view
+      764 +    switch v {
+      765 +    case ViewRegister:
+      766 +      // Start with table focused when entering register
+      767 +      a.sidebar.SetFocused(false)
+      768 +      if a.table != nil {
+      769 +        a.table.SetFocused(true)
+      770 +      }
+      771 +    case ViewDashboard:
+      772 +      // Dashboard uses sidebar navigation
+      773 +      a.sidebar.SetFocused(true)
+      774 +      if a.table != nil {
+      775 +        a.table.SetFocused(false)
+      776 +      }
+      777 +    }
+      778    }
+      779  }
+      780
+
+⏺ Now let me try to compile to check for errors.
+
+⏺ Bash(go build ./...)
+  ⎿  (No content)
+  ⎿  Found 8 new diagnostic issues in 1 file (ctrl+o to expand)
+
+⏺ Build succeeded with no errors (only style suggestions). Now let me write the unit tests.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Update(internal/tui/app_test.go)
+  ⎿  Added 507 lines
+       793    }
+       794  }
+       795
+       796 +// =============================================================================
+       797 +// Register View Tests
+       798 +// =============================================================================
+       799 +
+       800 +func TestApp_RenderRegister_Loading(t *testing.T) {
+       801 +  styles := NewStyles()
+       802 +  styles.Resize(100, 30)
+       803 +  app := &App{
+       804 +    currentView: ViewRegister,
+       805 +    width:       100,
+       806 +    height:      30,
+       807 +    styles:      styles,
+       808 +    register:    nil,
+       809 +  }
+       810 +
+       811 +  view := app.renderRegister()
+       812 +  if !contains(view, "Loading") {
+       813 +    t.Errorf("renderRegister() should show loading when data is nil, got: %q", view)
+       814 +  }
+       815 +}
+       816 +
+       817 +func TestApp_RenderRegister_WithData(t *testing.T) {
+       818 +  styles := NewStyles()
+       819 +  styles.Resize(120, 30)
+       820 +
+       821 +  accountID := models.NewID()
+       822 +  payeeID := models.NewID()
+       823 +  categoryID := models.NewID()
+       824 +
+       825 +  app := &App{
+       826 +    currentView: ViewRegister,
+       827 +    width:       120,
+       828 +    height:      30,
+       829 +    styles:      styles,
+       830 +    register: &registerData{
+       831 +      account: &models.Account{
+       832 +        BaseModel: models.BaseModel{ID: accountID},
+       833 +        Name:      "Checking",
+       834 +      },
+       835 +      transactions: []*models.Transaction{
+       836 +        {
+       837 +          BaseModel:  models.BaseModel{ID: models.NewID()},
+       838 +          AccountID:  accountID,
+       839 +          Date:       models.Today(),
+       840 +          Amount:     models.MustNewMoney("-125.43"),
+       841 +          Status:     models.TransactionStatusCleared,
+       842 +          PayeeID:    models.NullableID{ID: payeeID, Valid: true},
+       843 +          CategoryID: models.NullableID{ID: categoryID, Valid: true},
+       844 +        },
+       845 +        {
+       846 +          BaseModel: models.BaseModel{ID: models.NewID()},
+       847 +          AccountID: accountID,
+       848 +          Date:      models.Today(),
+       849 +          Amount:    models.MustNewMoney("2500.00"),
+       850 +          Status:    models.TransactionStatusPending,
+       851 +          PayeeID:   models.NullableID{ID: payeeID, Valid: true},
+       852 +        },
+       853 +      },
+       854 +      balance: &service.AccountBalance{
+       855 +        AccountID:      accountID,
+       856 +        CurrentBalance: models.MustNewMoney("5234.57"),
+       857 +        ClearedBalance: models.MustNewMoney("5000.00"),
+       858 +      },
+       859 +      payeeNames:    map[models.ID]string{payeeID: "Kroger"},
+       860 +      categoryNames: map[models.ID]string{categoryID: "Groceries"},
+       861 +      accountNames:  make(map[models.ID]string),
+       862 +    },
+       863 +    table: nil,
+       864 +  }
+       865 +
+       866 +  app.buildRegisterTable()
+       867 +  view := app.renderRegister()
+       868 +
+       869 +  if !contains(view, "CHECKING") {
+       870 +    t.Error("renderRegister() should contain account name 'CHECKING'")
+       871 +  }
+       872 +  if !contains(view, "$5234.57") {
+       873 +    t.Error("renderRegister() should contain balance '$5234.57'")
+       874 +  }
+       875 +  if !contains(view, "Kroger") {
+       876 +    t.Error("renderRegister() should contain payee 'Kroger'")
+       877 +  }
+       878 +  if !contains(view, "Groceries") {
+       879 +    t.Error("renderRegister() should contain category 'Groceries'")
+       880 +  }
+       881 +  if !contains(view, "$125.43") {
+       882 +    t.Error("renderRegister() should contain amount '$125.43'")
+       883 +  }
+       884 +  if !contains(view, "$2500.00") {
+       885 +    t.Error("renderRegister() should contain amount '$2500.00'")
+       886 +  }
+       887 +}
+       888 +
+       889 +func TestApp_RenderRegister_EmptyTransactions(t *testing.T) {
+       890 +  styles := NewStyles()
+       891 +  styles.Resize(100, 30)
+       892 +
+       893 +  accountID := models.NewID()
+       894 +
+       895 +  app := &App{
+       896 +    currentView: ViewRegister,
+       897 +    width:       100,
+       898 +    height:      30,
+       899 +    styles:      styles,
+       900 +    register: &registerData{
+       901 +      account: &models.Account{
+       902 +        BaseModel: models.BaseModel{ID: accountID},
+       903 +        Name:      "Savings",
+       904 +      },
+       905 +      transactions:  []*models.Transaction{},
+       906 +      balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+       907 +      payeeNames:    make(map[models.ID]string),
+       908 +      categoryNames: make(map[models.ID]string),
+       909 +      accountNames:  make(map[models.ID]string),
+       910 +    },
+       911 +  }
+       912 +
+       913 +  app.buildRegisterTable()
+       914 +  view := app.renderRegister()
+       915 +
+       916 +  if !contains(view, "SAVINGS") {
+       917 +    t.Error("renderRegister() should show account name 'SAVINGS'")
+       918 +  }
+       919 +  if !contains(view, "$0.00") {
+       920 +    t.Error("renderRegister() should show zero balance")
+       921 +  }
+       922 +}
+       923 +
+       924 +func TestApp_RenderRegister_NegativeBalance(t *testing.T) {
+       925 +  styles := NewStyles()
+       926 +  styles.Resize(100, 30)
+       927 +
+       928 +  accountID := models.NewID()
+       929 +
+       930 +  app := &App{
+       931 +    currentView: ViewRegister,
+       932 +    width:       100,
+       933 +    height:      30,
+       934 +    styles:      styles,
+       935 +    register: &registerData{
+       936 +      account: &models.Account{
+       937 +        BaseModel: models.BaseModel{ID: accountID},
+       938 +        Name:      "Credit Card",
+       939 +      },
+       940 +      transactions:  []*models.Transaction{},
+       941 +      balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("-1500.00")},
+       942 +      payeeNames:    make(map[models.ID]string),
+       943 +      categoryNames: make(map[models.ID]string),
+       944 +      accountNames:  make(map[models.ID]string),
+       945 +    },
+       946 +  }
+       947 +
+       948 +  app.buildRegisterTable()
+       949 +  view := app.renderRegister()
+       950 +
+       951 +  if !contains(view, "-$1500.00") {
+       952 +    t.Error("renderRegister() should show negative balance")
+       953 +  }
+       954 +}
+       955 +
+       956 +func TestApp_RenderRegister_TransferDisplay(t *testing.T) {
+       957 +  styles := NewStyles()
+       958 +  styles.Resize(120, 30)
+       959 +
+       960 +  accountID := models.NewID()
+       961 +  otherAccountID := models.NewID()
+       962 +  transferID := models.NewID()
+       963 +
+       964 +  app := &App{
+       965 +    currentView: ViewRegister,
+       966 +    width:       120,
+       967 +    height:      30,
+       968 +    styles:      styles,
+       969 +    register: &registerData{
+       970 +      account: &models.Account{
+       971 +        BaseModel: models.BaseModel{ID: accountID},
+       972 +        Name:      "Checking",
+       973 +      },
+       974 +      transactions: []*models.Transaction{
+       975 +        {
+       976 +          BaseModel:         models.BaseModel{ID: models.NewID()},
+       977 +          AccountID:         accountID,
+       978 +          Date:              models.Today(),
+       979 +          Amount:            models.MustNewMoney("-500.00"),
+       980 +          Status:            models.TransactionStatusCleared,
+       981 +          TransferID:        models.NullableID{ID: transferID, Valid: true},
+       982 +          TransferAccountID: models.NullableID{ID: otherAccountID, Valid: true},
+       983 +        },
+       984 +      },
+       985 +      balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("4500.00")},
+       986 +      payeeNames:    make(map[models.ID]string),
+       987 +      categoryNames: make(map[models.ID]string),
+       988 +      accountNames:  map[models.ID]string{otherAccountID: "Savings"},
+       989 +    },
+       990 +  }
+       991 +
+       992 +  app.buildRegisterTable()
+       993 +  view := app.renderRegister()
+       994 +
+       995 +  if !contains(view, "Transfer: Savings") {
+       996 +    t.Error("renderRegister() should show 'Transfer: Savings' for transfer payee")
+       997 +  }
+       998 +  if !contains(view, "[Transfer]") {
+       999 +    t.Error("renderRegister() should show '[Transfer]' in category for transfers")
+      1000 +  }
+      1001 +}
+      1002 +
+      1003 +func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
+      1004 +  accountID := models.NewID()
+      1005 +  app := &App{
+      1006 +    currentView: ViewRegister,
+      1007 +    width:       120,
+      1008 +    height:      30,
+      1009 +    styles:      NewStyles(),
+      1010 +    keys:        defaultKeyMap(),
+      1011 +    menubar:     NewMenuBar(),
+      1012 +    statusbar:   NewStatusBar(),
+      1013 +    sidebar:     NewSidebar(),
+      1014 +    register: &registerData{
+      1015 +      account: &models.Account{
+      1016 +        BaseModel: models.BaseModel{ID: accountID},
+      1017 +        Name:      "Checking",
+      1018 +      },
+      1019 +      transactions: []*models.Transaction{
+      1020 +        {BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.Must
+           +NewMoney("-10"), Status: models.TransactionStatusPending},
+      1021 +        {BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.Must
+           +NewMoney("-20"), Status: models.TransactionStatusPending},
+      1022 +        {BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.Must
+           +NewMoney("-30"), Status: models.TransactionStatusPending},
+      1023 +      },
+      1024 +      balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("100")},
+      1025 +      payeeNames:    make(map[models.ID]string),
+      1026 +      categoryNames: make(map[models.ID]string),
+      1027 +      accountNames:  make(map[models.ID]string),
+      1028 +    },
+      1029 +  }
+      1030 +  app.buildRegisterTable()
+      1031 +
+      1032 +  // Table should start focused, sidebar not
+      1033 +  app.sidebar.SetFocused(false)
+      1034 +  app.table.SetFocused(true)
+      1035 +
+      1036 +  // Move down
+      1037 +  downKey := tea.KeyMsg{Type: tea.KeyDown}
+      1038 +  app.Update(downKey)
+      1039 +  if app.table.Cursor() != 1 {
+      1040 +    t.Errorf("cursor should be 1 after down, got %d", app.table.Cursor())
+      1041 +  }
+      1042 +
+      1043 +  // Move down again
+      1044 +  app.Update(downKey)
+      1045 +  if app.table.Cursor() != 2 {
+      1046 +    t.Errorf("cursor should be 2 after two downs, got %d", app.table.Cursor())
+      1047 +  }
+      1048 +
+      1049 +  // Move up
+      1050 +  upKey := tea.KeyMsg{Type: tea.KeyUp}
+      1051 +  app.Update(upKey)
+      1052 +  if app.table.Cursor() != 1 {
+      1053 +    t.Errorf("cursor should be 1 after up, got %d", app.table.Cursor())
+      1054 +  }
+      1055 +}
+      1056 +
+      1057 +func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
+      1058 +  accountID := models.NewID()
+      1059 +  app := &App{
+      1060 +    currentView: ViewRegister,
+      1061 +    width:       120,
+      1062 +    height:      30,
+      1063 +    styles:      NewStyles(),
+      1064 +    keys:        defaultKeyMap(),
+      1065 +    menubar:     NewMenuBar(),
+      1066 +    statusbar:   NewStatusBar(),
+      1067 +    sidebar:     NewSidebar(),
+      1068 +    register: &registerData{
+      1069 +      account: &models.Account{
+      1070 +        BaseModel: models.BaseModel{ID: accountID},
+      1071 +        Name:      "Checking",
+      1072 +      },
+      1073 +      transactions:  []*models.Transaction{},
+      1074 +      balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+      1075 +      payeeNames:    make(map[models.ID]string),
+      1076 +      categoryNames: make(map[models.ID]string),
+      1077 +      accountNames:  make(map[models.ID]string),
+      1078 +    },
+      1079 +  }
+      1080 +  app.buildRegisterTable()
+      1081 +
+      1082 +  // Start with table focused
+      1083 +  app.sidebar.SetFocused(false)
+      1084 +  app.table.SetFocused(true)
+      1085 +
+      1086 +  // Tab should switch focus to sidebar
+      1087 +  tabKey := tea.KeyMsg{Type: tea.KeyTab}
+      1088 +  app.Update(tabKey)
+      1089 +
+      1090 +  if !app.sidebar.IsFocused() {
+      1091 +    t.Error("sidebar should be focused after Tab")
+      1092 +  }
+      1093 +  if app.table.IsFocused() {
+      1094 +    t.Error("table should not be focused after Tab")
+      1095 +  }
+      1096 +
+      1097 +  // Tab again should switch back to table
+      1098 +  app.Update(tabKey)
+      1099 +
+      1100 +  if app.sidebar.IsFocused() {
+      1101 +    t.Error("sidebar should not be focused after second Tab")
+      1102 +  }
+      1103 +  if !app.table.IsFocused() {
+      1104 +    t.Error("table should be focused after second Tab")
+      1105 +  }
+      1106 +}
+      1107 +
+      1108 +func TestApp_Update_RegisterLoaded(t *testing.T) {
+      1109 +  app := &App{
+      1110 +    currentView: ViewRegister,
+      1111 +    keys:        defaultKeyMap(),
+      1112 +    menubar:     NewMenuBar(),
+      1113 +    statusbar:   NewStatusBar(),
+      1114 +    sidebar:     NewSidebar(),
+      1115 +  }
+      1116 +
+      1117 +  accountID := models.NewID()
+      1118 +  data := &registerData{
+      1119 +    account: &models.Account{
+      1120 +      BaseModel: models.BaseModel{ID: accountID},
+      1121 +      Name:      "Checking",
+      1122 +    },
+      1123 +    transactions: []*models.Transaction{
+      1124 +      {
+      1125 +        BaseModel: models.BaseModel{ID: models.NewID()},
+      1126 +        AccountID: accountID,
+      1127 +        Date:      models.Today(),
+      1128 +        Amount:    models.MustNewMoney("-50"),
+      1129 +        Status:    models.TransactionStatusPending,
+      1130 +      },
+      1131 +    },
+      1132 +    balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("950")},
+      1133 +    payeeNames:    make(map[models.ID]string),
+      1134 +    categoryNames: make(map[models.ID]string),
+      1135 +    accountNames:  make(map[models.ID]string),
+      1136 +  }
+      1137 +
+      1138 +  msg := registerLoadedMsg{data: data}
+      1139 +  model, cmd := app.Update(msg)
+      1140 +  updatedApp := model.(*App)
+      1141 +
+      1142 +  if cmd != nil {
+      1143 +    t.Error("registerLoadedMsg should not return a command")
+      1144 +  }
+      1145 +  if updatedApp.register == nil {
+      1146 +    t.Fatal("register data should be set")
+      1147 +  }
+      1148 +  if updatedApp.register.account.Name != "Checking" {
+      1149 +    t.Errorf("register account name = %q, want %q", updatedApp.register.account.Name, "Checking")
+      1150 +  }
+      1151 +  if updatedApp.table == nil {
+      1152 +    t.Fatal("table should be created")
+      1153 +  }
+      1154 +  if updatedApp.table.RowCount() != 1 {
+      1155 +    t.Errorf("table row count = %d, want 1", updatedApp.table.RowCount())
+      1156 +  }
+      1157 +}
+      1158 +
+      1159 +func TestApp_BuildRegisterTable_RowContent(t *testing.T) {
+      1160 +  accountID := models.NewID()
+      1161 +  payeeID := models.NewID()
+      1162 +  categoryID := models.NewID()
+      1163 +
+      1164 +  app := &App{
+      1165 +    styles: NewStyles(),
+      1166 +    register: &registerData{
+      1167 +      account: &models.Account{
+      1168 +        BaseModel: models.BaseModel{ID: accountID},
+      1169 +        Name:      "Checking",
+      1170 +      },
+      1171 +      transactions: []*models.Transaction{
+      1172 +        {
+      1173 +          BaseModel:  models.BaseModel{ID: models.NewID()},
+      1174 +          AccountID:  accountID,
+      1175 +          Date:       models.Today(),
+      1176 +          Amount:     models.MustNewMoney("-42.50"),
+      1177 +          Status:     models.TransactionStatusCleared,
+      1178 +          PayeeID:    models.NullableID{ID: payeeID, Valid: true},
+      1179 +          CategoryID: models.NullableID{ID: categoryID, Valid: true},
+      1180 +        },
+      1181 +      },
+      1182 +      balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("100")},
+      1183 +      payeeNames:    map[models.ID]string{payeeID: "Shell"},
+      1184 +      categoryNames: map[models.ID]string{categoryID: "Gas"},
+      1185 +      accountNames:  make(map[models.ID]string),
+      1186 +    },
+      1187 +  }
+      1188 +
+      1189 +  app.buildRegisterTable()
+      1190 +
+      1191 +  if app.table.RowCount() != 1 {
+      1192 +    t.Fatalf("expected 1 row, got %d", app.table.RowCount())
+      1193 +  }
+      1194 +
+      1195 +  row := app.table.SelectedRow()
+      1196 +  if row == nil {
+      1197 +    t.Fatal("selected row should not be nil")
+      1198 +  }
+      1199 +
+      1200 +  // Check row contents: Date, Status, Payee, Category, Amount
+      1201 +  if row[1] != "✓" {
+      1202 +    t.Errorf("status = %q, want %q", row[1], "✓")
+      1203 +  }
+      1204 +  if row[2] != "Shell" {
+      1205 +    t.Errorf("payee = %q, want %q", row[2], "Shell")
+      1206 +  }
+      1207 +  if row[3] != "Gas" {
+      1208 +    t.Errorf("category = %q, want %q", row[3], "Gas")
+      1209 +  }
+      1210 +  if row[4] != "-$42.50" {
+      1211 +    t.Errorf("amount = %q, want %q", row[4], "-$42.50")
+      1212 +  }
+      1213 +}
+      1214 +
+      1215 +func TestApp_BuildRegisterTable_StatusIndicators(t *testing.T) {
+      1216 +  accountID := models.NewID()
+      1217 +
+      1218 +  tests := []struct {
+      1219 +    name     string
+      1220 +    status   models.TransactionStatus
+      1221 +    expected string
+      1222 +  }{
+      1223 +    {"pending", models.TransactionStatusPending, " "},
+      1224 +    {"cleared", models.TransactionStatusCleared, "✓"},
+      1225 +    {"reconciled", models.TransactionStatusReconciled, "R"},
+      1226 +  }
+      1227 +
+      1228 +  for _, tt := range tests {
+      1229 +    t.Run(tt.name, func(t *testing.T) {
+      1230 +      app := &App{
+      1231 +        styles: NewStyles(),
+      1232 +        register: &registerData{
+      1233 +          account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+      1234 +          transactions: []*models.Transaction{
+      1235 +            {
+      1236 +              BaseModel: models.BaseModel{ID: models.NewID()},
+      1237 +              AccountID: accountID,
+      1238 +              Date:      models.Today(),
+      1239 +              Amount:    models.MustNewMoney("-10"),
+      1240 +              Status:    tt.status,
+      1241 +            },
+      1242 +          },
+      1243 +          balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+      1244 +          payeeNames:    make(map[models.ID]string),
+      1245 +          categoryNames: make(map[models.ID]string),
+      1246 +          accountNames:  make(map[models.ID]string),
+      1247 +        },
+      1248 +      }
+      1249 +
+      1250 +      app.buildRegisterTable()
+      1251 +      row := app.table.SelectedRow()
+      1252 +      if row[1] != tt.expected {
+      1253 +        t.Errorf("status indicator = %q, want %q", row[1], tt.expected)
+      1254 +      }
+      1255 +    })
+      1256 +  }
+      1257 +}
+      1258 +
+      1259 +func TestApp_SwitchView_Register_SetsFocus(t *testing.T) {
+      1260 +  app := &App{
+      1261 +    currentView: ViewDashboard,
+      1262 +    keys:        defaultKeyMap(),
+      1263 +    statusbar:   NewStatusBar(),
+      1264 +    sidebar:     NewSidebar(),
+      1265 +    table:       NewTable([]Column{{Header: "Test", Width: 10}}),
+      1266 +  }
+      1267 +
+      1268 +  app.sidebar.SetFocused(true)
+      1269 +  app.table.SetFocused(false)
+      1270 +
+      1271 +  app.switchView(ViewRegister)
+      1272 +
+      1273 +  if app.sidebar.IsFocused() {
+      1274 +    t.Error("sidebar should not be focused in register view")
+      1275 +  }
+      1276 +  if !app.table.IsFocused() {
+      1277 +    t.Error("table should be focused in register view")
+      1278 +  }
+      1279 +}
+      1280 +
+      1281 +func TestApp_SwitchView_Dashboard_SetsFocus(t *testing.T) {
+      1282 +  app := &App{
+      1283 +    currentView: ViewRegister,
+      1284 +    keys:        defaultKeyMap(),
+      1285 +    statusbar:   NewStatusBar(),
+      1286 +    sidebar:     NewSidebar(),
+      1287 +    table:       NewTable([]Column{{Header: "Test", Width: 10}}),
+      1288 +  }
+      1289 +
+      1290 +  app.sidebar.SetFocused(false)
+      1291 +  app.table.SetFocused(true)
+      1292 +
+      1293 +  app.switchView(ViewDashboard)
+      1294 +
+      1295 +  if !app.sidebar.IsFocused() {
+      1296 +    t.Error("sidebar should be focused in dashboard view")
+      1297 +  }
+      1298 +  if app.table.IsFocused() {
+      1299 +    t.Error("table should not be focused in dashboard view")
+      1300 +  }
+      1301 +}
+      1302 +
+      1303  // Helper function
+      1304  func contains(s, substr string) bool {
+      1305    return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+
+⏺ Now I need to make sure the test file imports the service package.
+
+⏺ Update(internal/tui/app_test.go)
+  ⎿  Added 1 line
+       5
+       6    tea "github.com/charmbracelet/bubbletea"
+       7    "github.com/haskovec/tmoney/internal/models"
+       8 +  "github.com/haskovec/tmoney/internal/service"
+       9  )
+      10
+      11  func TestViewString(t *testing.T) {
+  ⎿  Found 9 new diagnostic issues in 1 file (ctrl+o to expand)
+
+⏺ Bash(go build ./...)
+  ⎿  (No content)
+
+⏺ Build succeeds. Now let's run the tests.
+
+⏺ Bash(go test ./internal/tui/ -v -count=1 2>&1)
+  ⎿  Error: Exit code 1
+     === RUN   TestViewString
+     === RUN   TestViewString/Dashboard
+     === RUN   TestViewString/Register
+     === RUN   TestViewString/Scheduled
+     === RUN   TestViewString/Reports
+     === RUN   TestViewString/Unknown
+     --- PASS: TestViewString (0.00s)
+         --- PASS: TestViewString/Dashboard (0.00s)
+         --- PASS: TestViewString/Register (0.00s)
+     … +31 lines (ctrl+o to see all)
+
+⏺ The existing TestApp_SwitchView test doesn't have a sidebar initialized. My switchView change now accesses sidebar. I need to guard
+  against nil sidebar in switchView.
+
+⏺ Update(internal/tui/app.go)
+  ⎿  Added 14 lines, removed 12 lines
+      761      a.updateStatusBar()
+      762
+      763      // Set focus appropriately for the new view
+      764 -    switch v {
+      765 -    case ViewRegister:
+      766 -      // Start with table focused when entering register
+      767 -      a.sidebar.SetFocused(false)
+      768 -      if a.table != nil {
+      769 -        a.table.SetFocused(true)
+      764 +    if a.sidebar != nil {
+      765 +      switch v {
+      766 +      case ViewRegister:
+      767 +        // Start with table focused when entering register
+      768 +        a.sidebar.SetFocused(false)
+      769 +        if a.table != nil {
+      770 +          a.table.SetFocused(true)
+      771 +        }
+      772 +      case ViewDashboard:
+      773 +        // Dashboard uses sidebar navigation
+      774 +        a.sidebar.SetFocused(true)
+      775 +        if a.table != nil {
+      776 +          a.table.SetFocused(false)
+      777 +        }
+      778        }
+      771 -    case ViewDashboard:
+      772 -      // Dashboard uses sidebar navigation
+      773 -      a.sidebar.SetFocused(true)
+      774 -      if a.table != nil {
+      775 -        a.table.SetFocused(false)
+      776 -      }
+      779      }
+      780    }
+      781  }
+
+⏺ Bash(go test ./internal/tui/ -v -count=1 2>&1)
+  ⎿  === RUN   TestViewString
+     === RUN   TestViewString/Dashboard
+     === RUN   TestViewString/Register
+     … +667 lines (ctrl+o to expand)
+  ⎿  (timeout 1m)
+  ⎿  Found 8 new diagnostic issues in 1 file (ctrl+o to expand)
+
+⏺ Let me check the tail of the output to see if all tests passed.
+
+⏺ Bash(go test ./internal/tui/ -count=1 2>&1 | tail -5)
+  ⎿  ok         github.com/haskovec/tmoney/internal/tui 1.102s
+
+⏺ All tests pass. Let me also run the full test suite to make sure nothing else is broken.
+
+⏺ Bash(go test ./... 2>&1 | tail -20)
+  ⎿  ok         github.com/haskovec/tmoney/cmd/tmoney   11.778s
+     ok         github.com/haskovec/tmoney/internal/db  (cached)
+     ok         github.com/haskovec/tmoney/internal/models      (cached)
+     … +4 lines (ctrl+o to expand)
+  ⎿  (timeout 2m)
+
+⏺ All tests pass across the entire project. Now let me update the tasks and commit.
+
+⏺ Update the implementation plan to mark 042 as complete.
+
+⏺ Update(specs/IMPLEMENTATION_PLAN.md)
+  ⎿  Added 1 line, removed 1 line
+      287    - Scheduled transactions due
+      288    - Layout composition
+      289
+      290 -- [ ] **042 - Account register view**
+      290 +- [x] **042 - Account register view**
+      291    - Transaction table
+      292    - Balance display
+      293    - Status indicators
+
+⏺ Now commit and push.
+
+⏺ Bash(git status)
+  ⎿  On branch main
+     Your branch is up to date with 'origin/main'.
+     … +16 lines (ctrl+o to expand)
+
+⏺ Bash(git diff internal/tui/app.go internal/tui/app_test.go specs/IMPLEMENTATION_PLAN.md | head -30)
+  ⎿  diff --git a/internal/tui/app.go b/internal/tui/app.go
+     index ae3a8df..40b22bc 100644
+     --- a/internal/tui/app.go
+     … +27 lines (ctrl+o to expand)
+
+⏺ Bash(git log --oneline -5)
+  ⎿  25b72f0 feature log 47
+     a9ac5bc Implement TUI Dashboard view with net worth and scheduled transactions
+     b320786 feature log 46
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(git add internal/tui/app.go internal/tui/app_test.go specs/IMPLEMENTATION_PLAN.md && git commit -m "Implement TUI Account Register
+      view with transaction table a…)
+  ⎿  [main a23b1d1] Implement TUI Account Register view with transaction table and navigation
+      3 files changed, 828 insertions(+), 5 deletions(-)
+
+⏺ Bash(git push)
+  ⎿  To github.com:haskovec/tmoney.git
+        25b72f0..a23b1d1  main -> main
+
+⏺ Done! Here's a summary of what was implemented:
+
+  042 - Account Register View is now complete. Here's what was added:
+
+  Features
+
+  - Transaction table with columns: Date, Status (✓/R/blank), Payee, Category, Amount
+  - Account header showing account name and current balance with positive/negative coloring
+  - Transfer display - transfers show "Transfer: AccountName" as payee and "[Transfer]" as category
+  - Async data loading following the same pattern as the dashboard (loadRegisterData -> registerLoadedMsg)
+  - Keyboard navigation:
+    - ↑/↓/j/k - navigate transactions
+    - Home/End/g/G - jump to top/bottom
+    - PgUp/PgDn - page navigation
+    - Tab - switch focus between sidebar and table
+    - c - toggle cleared/pending status
+    - Esc - back to previous view
+  - Focus management - entering register focuses the table, returning to dashboard focuses the sidebar
+
+  Tests
+
+  15 new test cases covering rendering (loading state, with data, empty, negative balance, transfers), navigation, focus switching, data
+  loading messages, row content formatting, and status indicators.
+
+✻ Brewed for 6m 56s
