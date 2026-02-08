@@ -16,11 +16,11 @@ build:
 
 # Run all tests
 test:
-	go test ./...
+	go test -p 1 ./...
 
 # Run tests with coverage and display summary
 test-coverage:
-	go test -coverprofile=coverage.out -covermode=atomic ./...
+	go test -p 1 -coverprofile=coverage.out -covermode=atomic ./...
 	@echo ""
 	@echo "Coverage summary:"
 	@go tool cover -func=coverage.out | tail -1
