@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/service"
 )
 
 func TestViewString(t *testing.T) {
@@ -790,6 +791,513 @@ func TestApp_RenderDashboard_SmallWidth(t *testing.T) {
 	view := app.renderDashboard()
 	if view == "" {
 		t.Error("renderDashboard() should not return empty string on small width")
+	}
+}
+
+// =============================================================================
+// Register View Tests
+// =============================================================================
+
+func TestApp_RenderRegister_Loading(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+	app := &App{
+		currentView: ViewRegister,
+		width:       100,
+		height:      30,
+		styles:      styles,
+		register:    nil,
+	}
+
+	view := app.renderRegister()
+	if !contains(view, "Loading") {
+		t.Errorf("renderRegister() should show loading when data is nil, got: %q", view)
+	}
+}
+
+func TestApp_RenderRegister_WithData(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(120, 30)
+
+	accountID := models.NewID()
+	payeeID := models.NewID()
+	categoryID := models.NewID()
+
+	app := &App{
+		currentView: ViewRegister,
+		width:       120,
+		height:      30,
+		styles:      styles,
+		register: &registerData{
+			account: &models.Account{
+				BaseModel: models.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			transactions: []*models.Transaction{
+				{
+					BaseModel:  models.BaseModel{ID: models.NewID()},
+					AccountID:  accountID,
+					Date:       models.Today(),
+					Amount:     models.MustNewMoney("-125.43"),
+					Status:     models.TransactionStatusCleared,
+					PayeeID:    models.NullableID{ID: payeeID, Valid: true},
+					CategoryID: models.NullableID{ID: categoryID, Valid: true},
+				},
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Date:      models.Today(),
+					Amount:    models.MustNewMoney("2500.00"),
+					Status:    models.TransactionStatusPending,
+					PayeeID:   models.NullableID{ID: payeeID, Valid: true},
+				},
+			},
+			balance: &service.AccountBalance{
+				AccountID:      accountID,
+				CurrentBalance: models.MustNewMoney("5234.57"),
+				ClearedBalance: models.MustNewMoney("5000.00"),
+			},
+			payeeNames:    map[models.ID]string{payeeID: "Kroger"},
+			categoryNames: map[models.ID]string{categoryID: "Groceries"},
+			accountNames:  make(map[models.ID]string),
+		},
+		table: nil,
+	}
+
+	app.buildRegisterTable()
+	view := app.renderRegister()
+
+	if !contains(view, "CHECKING") {
+		t.Error("renderRegister() should contain account name 'CHECKING'")
+	}
+	if !contains(view, "$5234.57") {
+		t.Error("renderRegister() should contain balance '$5234.57'")
+	}
+	if !contains(view, "Kroger") {
+		t.Error("renderRegister() should contain payee 'Kroger'")
+	}
+	if !contains(view, "Groceries") {
+		t.Error("renderRegister() should contain category 'Groceries'")
+	}
+	if !contains(view, "$125.43") {
+		t.Error("renderRegister() should contain amount '$125.43'")
+	}
+	if !contains(view, "$2500.00") {
+		t.Error("renderRegister() should contain amount '$2500.00'")
+	}
+}
+
+func TestApp_RenderRegister_EmptyTransactions(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+
+	accountID := models.NewID()
+
+	app := &App{
+		currentView: ViewRegister,
+		width:       100,
+		height:      30,
+		styles:      styles,
+		register: &registerData{
+			account: &models.Account{
+				BaseModel: models.BaseModel{ID: accountID},
+				Name:      "Savings",
+			},
+			transactions:  []*models.Transaction{},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	view := app.renderRegister()
+
+	if !contains(view, "SAVINGS") {
+		t.Error("renderRegister() should show account name 'SAVINGS'")
+	}
+	if !contains(view, "$0.00") {
+		t.Error("renderRegister() should show zero balance")
+	}
+}
+
+func TestApp_RenderRegister_NegativeBalance(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+
+	accountID := models.NewID()
+
+	app := &App{
+		currentView: ViewRegister,
+		width:       100,
+		height:      30,
+		styles:      styles,
+		register: &registerData{
+			account: &models.Account{
+				BaseModel: models.BaseModel{ID: accountID},
+				Name:      "Credit Card",
+			},
+			transactions:  []*models.Transaction{},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("-1500.00")},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	view := app.renderRegister()
+
+	if !contains(view, "-$1500.00") {
+		t.Error("renderRegister() should show negative balance")
+	}
+}
+
+func TestApp_RenderRegister_TransferDisplay(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(120, 30)
+
+	accountID := models.NewID()
+	otherAccountID := models.NewID()
+	transferID := models.NewID()
+
+	app := &App{
+		currentView: ViewRegister,
+		width:       120,
+		height:      30,
+		styles:      styles,
+		register: &registerData{
+			account: &models.Account{
+				BaseModel: models.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			transactions: []*models.Transaction{
+				{
+					BaseModel:         models.BaseModel{ID: models.NewID()},
+					AccountID:         accountID,
+					Date:              models.Today(),
+					Amount:            models.MustNewMoney("-500.00"),
+					Status:            models.TransactionStatusCleared,
+					TransferID:        models.NullableID{ID: transferID, Valid: true},
+					TransferAccountID: models.NullableID{ID: otherAccountID, Valid: true},
+				},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("4500.00")},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  map[models.ID]string{otherAccountID: "Savings"},
+		},
+	}
+
+	app.buildRegisterTable()
+	view := app.renderRegister()
+
+	if !contains(view, "Transfer: Savings") {
+		t.Error("renderRegister() should show 'Transfer: Savings' for transfer payee")
+	}
+	if !contains(view, "[Transfer]") {
+		t.Error("renderRegister() should show '[Transfer]' in category for transfers")
+	}
+}
+
+func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
+	accountID := models.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		width:       120,
+		height:      30,
+		styles:      NewStyles(),
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		register: &registerData{
+			account: &models.Account{
+				BaseModel: models.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			transactions: []*models.Transaction{
+				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-10"), Status: models.TransactionStatusPending},
+				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-20"), Status: models.TransactionStatusPending},
+				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-30"), Status: models.TransactionStatusPending},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("100")},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+	app.buildRegisterTable()
+
+	// Table should start focused, sidebar not
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+
+	// Move down
+	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	app.Update(downKey)
+	if app.table.Cursor() != 1 {
+		t.Errorf("cursor should be 1 after down, got %d", app.table.Cursor())
+	}
+
+	// Move down again
+	app.Update(downKey)
+	if app.table.Cursor() != 2 {
+		t.Errorf("cursor should be 2 after two downs, got %d", app.table.Cursor())
+	}
+
+	// Move up
+	upKey := tea.KeyMsg{Type: tea.KeyUp}
+	app.Update(upKey)
+	if app.table.Cursor() != 1 {
+		t.Errorf("cursor should be 1 after up, got %d", app.table.Cursor())
+	}
+}
+
+func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
+	accountID := models.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		width:       120,
+		height:      30,
+		styles:      NewStyles(),
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		register: &registerData{
+			account: &models.Account{
+				BaseModel: models.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			transactions:  []*models.Transaction{},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+	app.buildRegisterTable()
+
+	// Start with table focused
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+
+	// Tab should switch focus to sidebar
+	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	app.Update(tabKey)
+
+	if !app.sidebar.IsFocused() {
+		t.Error("sidebar should be focused after Tab")
+	}
+	if app.table.IsFocused() {
+		t.Error("table should not be focused after Tab")
+	}
+
+	// Tab again should switch back to table
+	app.Update(tabKey)
+
+	if app.sidebar.IsFocused() {
+		t.Error("sidebar should not be focused after second Tab")
+	}
+	if !app.table.IsFocused() {
+		t.Error("table should be focused after second Tab")
+	}
+}
+
+func TestApp_Update_RegisterLoaded(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	accountID := models.NewID()
+	data := &registerData{
+		account: &models.Account{
+			BaseModel: models.BaseModel{ID: accountID},
+			Name:      "Checking",
+		},
+		transactions: []*models.Transaction{
+			{
+				BaseModel: models.BaseModel{ID: models.NewID()},
+				AccountID: accountID,
+				Date:      models.Today(),
+				Amount:    models.MustNewMoney("-50"),
+				Status:    models.TransactionStatusPending,
+			},
+		},
+		balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("950")},
+		payeeNames:    make(map[models.ID]string),
+		categoryNames: make(map[models.ID]string),
+		accountNames:  make(map[models.ID]string),
+	}
+
+	msg := registerLoadedMsg{data: data}
+	model, cmd := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if cmd != nil {
+		t.Error("registerLoadedMsg should not return a command")
+	}
+	if updatedApp.register == nil {
+		t.Fatal("register data should be set")
+	}
+	if updatedApp.register.account.Name != "Checking" {
+		t.Errorf("register account name = %q, want %q", updatedApp.register.account.Name, "Checking")
+	}
+	if updatedApp.table == nil {
+		t.Fatal("table should be created")
+	}
+	if updatedApp.table.RowCount() != 1 {
+		t.Errorf("table row count = %d, want 1", updatedApp.table.RowCount())
+	}
+}
+
+func TestApp_BuildRegisterTable_RowContent(t *testing.T) {
+	accountID := models.NewID()
+	payeeID := models.NewID()
+	categoryID := models.NewID()
+
+	app := &App{
+		styles: NewStyles(),
+		register: &registerData{
+			account: &models.Account{
+				BaseModel: models.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			transactions: []*models.Transaction{
+				{
+					BaseModel:  models.BaseModel{ID: models.NewID()},
+					AccountID:  accountID,
+					Date:       models.Today(),
+					Amount:     models.MustNewMoney("-42.50"),
+					Status:     models.TransactionStatusCleared,
+					PayeeID:    models.NullableID{ID: payeeID, Valid: true},
+					CategoryID: models.NullableID{ID: categoryID, Valid: true},
+				},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("100")},
+			payeeNames:    map[models.ID]string{payeeID: "Shell"},
+			categoryNames: map[models.ID]string{categoryID: "Gas"},
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+
+	if app.table.RowCount() != 1 {
+		t.Fatalf("expected 1 row, got %d", app.table.RowCount())
+	}
+
+	row := app.table.SelectedRow()
+	if row == nil {
+		t.Fatal("selected row should not be nil")
+	}
+
+	// Check row contents: Date, Status, Payee, Category, Amount
+	if row[1] != "✓" {
+		t.Errorf("status = %q, want %q", row[1], "✓")
+	}
+	if row[2] != "Shell" {
+		t.Errorf("payee = %q, want %q", row[2], "Shell")
+	}
+	if row[3] != "Gas" {
+		t.Errorf("category = %q, want %q", row[3], "Gas")
+	}
+	if row[4] != "-$42.50" {
+		t.Errorf("amount = %q, want %q", row[4], "-$42.50")
+	}
+}
+
+func TestApp_BuildRegisterTable_StatusIndicators(t *testing.T) {
+	accountID := models.NewID()
+
+	tests := []struct {
+		name     string
+		status   models.TransactionStatus
+		expected string
+	}{
+		{"pending", models.TransactionStatusPending, " "},
+		{"cleared", models.TransactionStatusCleared, "✓"},
+		{"reconciled", models.TransactionStatusReconciled, "R"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := &App{
+				styles: NewStyles(),
+				register: &registerData{
+					account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+					transactions: []*models.Transaction{
+						{
+							BaseModel: models.BaseModel{ID: models.NewID()},
+							AccountID: accountID,
+							Date:      models.Today(),
+							Amount:    models.MustNewMoney("-10"),
+							Status:    tt.status,
+						},
+					},
+					balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+					payeeNames:    make(map[models.ID]string),
+					categoryNames: make(map[models.ID]string),
+					accountNames:  make(map[models.ID]string),
+				},
+			}
+
+			app.buildRegisterTable()
+			row := app.table.SelectedRow()
+			if row[1] != tt.expected {
+				t.Errorf("status indicator = %q, want %q", row[1], tt.expected)
+			}
+		})
+	}
+}
+
+func TestApp_SwitchView_Register_SetsFocus(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		table:       NewTable([]Column{{Header: "Test", Width: 10}}),
+	}
+
+	app.sidebar.SetFocused(true)
+	app.table.SetFocused(false)
+
+	app.switchView(ViewRegister)
+
+	if app.sidebar.IsFocused() {
+		t.Error("sidebar should not be focused in register view")
+	}
+	if !app.table.IsFocused() {
+		t.Error("table should be focused in register view")
+	}
+}
+
+func TestApp_SwitchView_Dashboard_SetsFocus(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		table:       NewTable([]Column{{Header: "Test", Width: 10}}),
+	}
+
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+
+	app.switchView(ViewDashboard)
+
+	if !app.sidebar.IsFocused() {
+		t.Error("sidebar should be focused in dashboard view")
+	}
+	if app.table.IsFocused() {
+		t.Error("table should not be focused in dashboard view")
 	}
 }
 

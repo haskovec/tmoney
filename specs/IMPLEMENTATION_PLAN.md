@@ -287,7 +287,7 @@ This document defines the order in which features should be implemented. Each it
   - Scheduled transactions due
   - Layout composition
 
-- [ ] **042 - Account register view**
+- [x] **042 - Account register view**
   - Transaction table
   - Balance display
   - Status indicators
