@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/haskovec/tmoney/internal/models"
 )
 
 func TestViewString(t *testing.T) {
@@ -484,6 +485,311 @@ func TestApp_SwitchView_UpdatesStatusBar(t *testing.T) {
 
 	if app.statusbar.Context() != "Scheduled" {
 		t.Errorf("statusbar context = %q, want %q", app.statusbar.Context(), "Scheduled")
+	}
+}
+
+func TestFormatDashboardMoney(t *testing.T) {
+	tests := []struct {
+		name     string
+		money    models.Money
+		expected string
+	}{
+		{"positive", models.MustNewMoney("1234.56"), "$1234.56"},
+		{"negative", models.MustNewMoney("-50.00"), "-$50.00"},
+		{"zero", models.MustNewMoney("0"), "$0.00"},
+		{"large", models.MustNewMoney("99999.99"), "$99999.99"},
+		{"small negative", models.MustNewMoney("-0.50"), "-$0.50"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatDashboardMoney(tt.money)
+			if got != tt.expected {
+				t.Errorf("formatDashboardMoney(%v) = %q, want %q", tt.money, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestPadRight(t *testing.T) {
+	tests := []struct {
+		input    string
+		width    int
+		expected string
+	}{
+		{"abc", 6, "abc   "},
+		{"abc", 3, "abc"},
+		{"abc", 1, "abc"}, // already wider, no padding
+		{"", 4, "    "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := padRight(tt.input, tt.width)
+			if got != tt.expected {
+				t.Errorf("padRight(%q, %d) = %q, want %q", tt.input, tt.width, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestTruncate(t *testing.T) {
+	tests := []struct {
+		input    string
+		maxLen   int
+		expected string
+	}{
+		{"short", 10, "short"},
+		{"exactly10!", 10, "exactly10!"},
+		{"this is too long", 10, "this is..."},
+		{"abc", 3, "abc"},
+		{"abcd", 3, "abc"}, // maxLen <= 3, no ellipsis
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := truncate(tt.input, tt.maxLen)
+			if got != tt.expected {
+				t.Errorf("truncate(%q, %d) = %q, want %q", tt.input, tt.maxLen, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestApp_RenderDashboard_Loading(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		width:       100,
+		height:      30,
+		styles:      NewStyles(),
+		dashboard:   nil, // not loaded yet
+	}
+	app.styles.Resize(100, 30)
+
+	view := app.renderDashboard()
+	if !contains(view, "Loading") {
+		t.Errorf("renderDashboard() should show loading when data is nil, got: %q", view)
+	}
+}
+
+func TestApp_RenderDashboard_WithData(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(120, 30)
+	app := &App{
+		currentView: ViewDashboard,
+		width:       120,
+		height:      30,
+		styles:      styles,
+		dashboard: &dashboardData{
+			netWorth: &models.NetWorthReport{
+				Assets: []models.ReportAccountBalance{
+					{Name: "Checking", Balance: models.MustNewMoney("5000.00")},
+					{Name: "Savings", Balance: models.MustNewMoney("10000.00")},
+				},
+				Liabilities: []models.ReportAccountBalance{
+					{Name: "Visa", Balance: models.MustNewMoney("1500.00")},
+				},
+				TotalAssets:      models.MustNewMoney("15000.00"),
+				TotalLiabilities: models.MustNewMoney("1500.00"),
+				NetWorth:         models.MustNewMoney("13500.00"),
+			},
+			dueTxns:      nil,
+			upcomingTxns: nil,
+			payeeNames:   make(map[models.ID]string),
+			accountNames: make(map[models.ID]string),
+		},
+	}
+
+	view := app.renderDashboard()
+
+	// Check that key elements are present
+	if !contains(view, "DASHBOARD") {
+		t.Error("renderDashboard() should contain 'DASHBOARD'")
+	}
+	if !contains(view, "$13500.00") {
+		t.Error("renderDashboard() should contain net worth '$13500.00'")
+	}
+	if !contains(view, "ASSETS") {
+		t.Error("renderDashboard() should contain 'ASSETS'")
+	}
+	if !contains(view, "LIABILITIES") {
+		t.Error("renderDashboard() should contain 'LIABILITIES'")
+	}
+	if !contains(view, "Checking") {
+		t.Error("renderDashboard() should contain 'Checking'")
+	}
+	if !contains(view, "Savings") {
+		t.Error("renderDashboard() should contain 'Savings'")
+	}
+	if !contains(view, "Visa") {
+		t.Error("renderDashboard() should contain 'Visa'")
+	}
+	if !contains(view, "SCHEDULED") {
+		t.Error("renderDashboard() should contain 'SCHEDULED'")
+	}
+}
+
+func TestApp_RenderDashboard_NegativeNetWorth(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+	app := &App{
+		currentView: ViewDashboard,
+		width:       100,
+		height:      30,
+		styles:      styles,
+		dashboard: &dashboardData{
+			netWorth: &models.NetWorthReport{
+				Assets:           nil,
+				Liabilities:      []models.ReportAccountBalance{{Name: "Loan", Balance: models.MustNewMoney("5000.00")}},
+				TotalAssets:      models.MustNewMoney("0"),
+				TotalLiabilities: models.MustNewMoney("5000.00"),
+				NetWorth:         models.MustNewMoney("-5000.00"),
+			},
+			payeeNames:   make(map[models.ID]string),
+			accountNames: make(map[models.ID]string),
+		},
+	}
+
+	view := app.renderDashboard()
+
+	if !contains(view, "-$5000.00") {
+		t.Error("renderDashboard() should show negative net worth")
+	}
+	if !contains(view, "(none)") {
+		t.Error("renderDashboard() should show '(none)' for empty assets")
+	}
+}
+
+func TestApp_RenderDashboard_WithScheduled(t *testing.T) {
+	payeeID := models.NewID()
+	styles := NewStyles()
+	styles.Resize(100, 30)
+
+	app := &App{
+		currentView: ViewDashboard,
+		width:       100,
+		height:      30,
+		styles:      styles,
+		dashboard: &dashboardData{
+			netWorth: &models.NetWorthReport{
+				TotalAssets:      models.MustNewMoney("1000"),
+				TotalLiabilities: models.ZeroMoney,
+				NetWorth:         models.MustNewMoney("1000"),
+			},
+			dueTxns: []*models.ScheduledTransaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					PayeeID:   models.NullableID{ID: payeeID, Valid: true},
+					Amount:    models.NullableMoney{Money: models.MustNewMoney("-1500.00"), Valid: true},
+					NextDate:  models.Today(),
+				},
+			},
+			upcomingTxns: nil,
+			payeeNames:   map[models.ID]string{payeeID: "Landlord"},
+			accountNames: make(map[models.ID]string),
+		},
+	}
+
+	view := app.renderDashboard()
+
+	if !contains(view, "1 due") {
+		t.Error("renderDashboard() should show '1 due' in scheduled header")
+	}
+	if !contains(view, "Landlord") {
+		t.Error("renderDashboard() should show payee name 'Landlord'")
+	}
+	if !contains(view, "$1500.00") {
+		t.Error("renderDashboard() should show amount '$1500.00'")
+	}
+	if !contains(view, "due today") {
+		t.Error("renderDashboard() should show 'due today'")
+	}
+}
+
+func TestApp_RenderDashboard_EmptyData(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(80, 24)
+	app := &App{
+		currentView: ViewDashboard,
+		width:       80,
+		height:      24,
+		styles:      styles,
+		dashboard: &dashboardData{
+			netWorth: &models.NetWorthReport{
+				TotalAssets:      models.ZeroMoney,
+				TotalLiabilities: models.ZeroMoney,
+				NetWorth:         models.ZeroMoney,
+			},
+			payeeNames:   make(map[models.ID]string),
+			accountNames: make(map[models.ID]string),
+		},
+	}
+
+	view := app.renderDashboard()
+
+	if !contains(view, "$0.00") {
+		t.Error("renderDashboard() should show '$0.00' for zero net worth")
+	}
+	if !contains(view, "No scheduled") {
+		t.Error("renderDashboard() should show 'No scheduled' when there are none")
+	}
+}
+
+func TestApp_Update_DashboardLoaded(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+	}
+
+	data := &dashboardData{
+		netWorth: &models.NetWorthReport{
+			NetWorth: models.MustNewMoney("5000"),
+		},
+		payeeNames:   make(map[models.ID]string),
+		accountNames: make(map[models.ID]string),
+	}
+
+	msg := dashboardLoadedMsg{data: data}
+	model, cmd := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if cmd != nil {
+		t.Error("dashboardLoadedMsg should not return a command")
+	}
+	if updatedApp.dashboard == nil {
+		t.Fatal("dashboard data should be set")
+	}
+	if !updatedApp.dashboard.netWorth.NetWorth.Equal(models.MustNewMoney("5000")) {
+		t.Error("dashboard net worth should be $5000")
+	}
+}
+
+func TestApp_RenderDashboard_SmallWidth(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(60, 20)
+	app := &App{
+		currentView: ViewDashboard,
+		width:       60,
+		height:      20,
+		styles:      styles,
+		dashboard: &dashboardData{
+			netWorth: &models.NetWorthReport{
+				Assets:           []models.ReportAccountBalance{{Name: "Checking", Balance: models.MustNewMoney("100")}},
+				TotalAssets:      models.MustNewMoney("100"),
+				TotalLiabilities: models.ZeroMoney,
+				NetWorth:         models.MustNewMoney("100"),
+			},
+			payeeNames:   make(map[models.ID]string),
+			accountNames: make(map[models.ID]string),
+		},
+	}
+
+	// Should not panic on small width
+	view := app.renderDashboard()
+	if view == "" {
+		t.Error("renderDashboard() should not return empty string on small width")
 	}
 }
 

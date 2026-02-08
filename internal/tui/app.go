@@ -3,7 +3,9 @@ package tui
 
 import (
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -77,6 +79,9 @@ type App struct {
 	payeeSvc        *service.PayeeService
 	scheduledTxnSvc *service.ScheduledTransactionService
 	reportSvc       *service.ReportService
+
+	// Dashboard data (loaded asynchronously)
+	dashboard *dashboardData
 
 	// Key bindings
 	keys keyMap
@@ -251,6 +256,7 @@ func (a *App) Init() tea.Cmd {
 		tea.SetWindowTitle("TMoney - Personal Finance Manager"),
 		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
+		a.loadDashboardData(),
 	)
 }
 
@@ -292,6 +298,73 @@ func (a *App) loadSidebarData() tea.Cmd {
 	}
 }
 
+// loadDashboardData returns a command that loads all data needed for the dashboard view.
+func (a *App) loadDashboardData() tea.Cmd {
+	return func() tea.Msg {
+		data := &dashboardData{
+			payeeNames:   make(map[models.ID]string),
+			accountNames: make(map[models.ID]string),
+		}
+
+		// Load net worth report
+		if a.reportSvc != nil {
+			report, err := a.reportSvc.NetWorth()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.netWorth = report
+		}
+
+		// Load due scheduled transactions
+		if a.scheduledTxnSvc != nil {
+			due, err := a.scheduledTxnSvc.ListDue()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.dueTxns = due
+
+			upcoming, err := a.scheduledTxnSvc.ListUpcoming(30)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			// Filter out items already in due list
+			var filteredUpcoming []*models.ScheduledTransaction
+			dueIDs := make(map[string]bool)
+			for _, d := range due {
+				dueIDs[d.ID.String()] = true
+			}
+			for _, u := range upcoming {
+				if !dueIDs[u.ID.String()] {
+					filteredUpcoming = append(filteredUpcoming, u)
+				}
+			}
+			data.upcomingTxns = filteredUpcoming
+		}
+
+		// Load payee names for scheduled transactions
+		if a.payeeSvc != nil {
+			payees, err := a.payeeSvc.List()
+			if err == nil {
+				for _, p := range payees {
+					data.payeeNames[p.ID] = p.Name
+				}
+			}
+		}
+
+		// Load account names
+		if a.accountSvc != nil {
+			accounts, err := a.accountSvc.List(true)
+			if err == nil {
+				for _, acc := range accounts {
+					data.accountNames[acc.ID] = acc.Name
+				}
+			}
+		}
+
+		return dashboardLoadedMsg{data: data}
+	}
+}
+
 // Update implements tea.Model.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -318,6 +391,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			a.statusbar.AddNotification(text, NotificationAlert)
 		}
+		return a, nil
+
+	case dashboardLoadedMsg:
+		a.dashboard = msg.data
 		return a, nil
 
 	case errMsg:
@@ -622,10 +699,240 @@ func (a *App) renderContent(height int) string {
 
 // renderDashboard renders the dashboard view.
 func (a *App) renderDashboard() string {
-	// Placeholder - will be implemented in task 041
+	if a.dashboard == nil {
+		return lipgloss.NewStyle().
+			Padding(1, 2).
+			Render("Loading dashboard...")
+	}
+
+	var sections []string
+
+	// Title row: DASHBOARD + date
+	contentWidth := a.styles.ContentWidth()
+	dateStr := time.Now().Format("Jan 2, 2006")
+	titleText := "DASHBOARD"
+	padding := contentWidth - lipgloss.Width(titleText) - lipgloss.Width(dateStr) - 4
+	if padding < 1 {
+		padding = 1
+	}
+	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render(dateStr)
+	sections = append(sections, titleRow)
+
+	// Separator
+	sepWidth := contentWidth - 4
+	if sepWidth < 1 {
+		sepWidth = 1
+	}
+	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
+
+	// Net worth display
+	if a.dashboard.netWorth != nil {
+		nw := a.dashboard.netWorth
+		nwLabel := "Net Worth:  "
+		nwValue := formatDashboardMoney(nw.NetWorth)
+		nwStyle := a.styles.Positive
+		if nw.NetWorth.IsNegative() {
+			nwStyle = a.styles.Negative
+		}
+		sections = append(sections, "")
+		sections = append(sections, a.styles.Bold.Render(nwLabel)+nwStyle.Bold(true).Render(nwValue))
+		sections = append(sections, "")
+
+		// Assets and Liabilities columns
+		sections = append(sections, a.renderAssetLiabilityColumns(nw, contentWidth))
+	}
+
+	// Scheduled transactions section
+	sections = append(sections, a.renderDashboardScheduled())
+
 	return lipgloss.NewStyle().
 		Padding(1, 2).
-		Render("Dashboard View\n\nPress ? for help, Ctrl+Q to quit")
+		Render(strings.Join(sections, "\n"))
+}
+
+// renderAssetLiabilityColumns renders the assets and liabilities side by side.
+func (a *App) renderAssetLiabilityColumns(report *models.NetWorthReport, totalWidth int) string {
+	colWidth := (totalWidth - 6) / 2 // Leave gap between columns
+	if colWidth < 20 {
+		colWidth = 20
+	}
+
+	// Build assets column
+	assetsLines := []string{a.styles.SectionHead.Render(padRight("ASSETS", colWidth))}
+	if len(report.Assets) == 0 {
+		assetsLines = append(assetsLines, a.styles.Muted.Render("  (none)"))
+	} else {
+		for _, acct := range report.Assets {
+			name := truncate(acct.Name, colWidth-14)
+			amount := formatDashboardMoney(acct.Balance)
+			line := fmt.Sprintf("  %-*s %s", colWidth-len(amount)-4, name, a.styles.Positive.Render(amount))
+			assetsLines = append(assetsLines, line)
+		}
+	}
+	assetsLines = append(assetsLines, a.styles.Muted.Render("  "+strings.Repeat("─", colWidth-4)))
+	totalLabel := "Total"
+	totalAmt := formatDashboardMoney(report.TotalAssets)
+	assetsLines = append(assetsLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalAmt)-4, totalLabel, a.styles.Positive.Bold(true).Render(totalAmt)))
+
+	// Build liabilities column
+	liabLines := []string{a.styles.SectionHead.Render(padRight("LIABILITIES", colWidth))}
+	if len(report.Liabilities) == 0 {
+		liabLines = append(liabLines, a.styles.Muted.Render("  (none)"))
+	} else {
+		for _, acct := range report.Liabilities {
+			name := truncate(acct.Name, colWidth-14)
+			amount := formatDashboardMoney(acct.Balance)
+			line := fmt.Sprintf("  %-*s %s", colWidth-len(amount)-4, name, a.styles.Negative.Render(amount))
+			liabLines = append(liabLines, line)
+		}
+	}
+	liabLines = append(liabLines, a.styles.Muted.Render("  "+strings.Repeat("─", colWidth-4)))
+	totalLiabAmt := formatDashboardMoney(report.TotalLiabilities)
+	liabLines = append(liabLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalLiabAmt)-4, totalLabel, a.styles.Negative.Bold(true).Render(totalLiabAmt)))
+
+	// Ensure both columns have the same height
+	for len(assetsLines) < len(liabLines) {
+		assetsLines = append(assetsLines, "")
+	}
+	for len(liabLines) < len(assetsLines) {
+		liabLines = append(liabLines, "")
+	}
+
+	// Join columns side by side
+	var rows []string
+	for i := range assetsLines {
+		left := padRight(assetsLines[i], colWidth)
+		right := liabLines[i]
+		rows = append(rows, left+"  "+right)
+	}
+
+	return strings.Join(rows, "\n")
+}
+
+// renderDashboardScheduled renders the scheduled transactions section of the dashboard.
+func (a *App) renderDashboardScheduled() string {
+	if a.dashboard == nil {
+		return ""
+	}
+
+	due := a.dashboard.dueTxns
+	upcoming := a.dashboard.upcomingTxns
+	total := len(due) + len(upcoming)
+
+	var lines []string
+	lines = append(lines, "")
+
+	// Section header with count
+	header := "SCHEDULED"
+	if total > 0 {
+		dueCount := len(due)
+		if dueCount > 0 {
+			header += fmt.Sprintf(" (%d due)", dueCount)
+		}
+	}
+	lines = append(lines, a.styles.SectionHead.Render(header))
+
+	if total == 0 {
+		lines = append(lines, a.styles.Muted.Render("  No scheduled transactions"))
+		return strings.Join(lines, "\n")
+	}
+
+	// Due items
+	for _, st := range due {
+		lines = append(lines, a.formatScheduledItem(st, true))
+	}
+
+	// Upcoming items (limit to 5)
+	limit := 5
+	if len(upcoming) < limit {
+		limit = len(upcoming)
+	}
+	for i := 0; i < limit; i++ {
+		lines = append(lines, a.formatScheduledItem(upcoming[i], false))
+	}
+	if len(upcoming) > 5 {
+		lines = append(lines, a.styles.Muted.Render(fmt.Sprintf("  ... and %d more", len(upcoming)-5)))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// formatScheduledItem formats a single scheduled transaction line for the dashboard.
+func (a *App) formatScheduledItem(st *models.ScheduledTransaction, isDue bool) string {
+	// Payee name
+	payee := "Unknown"
+	if st.HasPayee() {
+		if name, ok := a.dashboard.payeeNames[st.PayeeID.ID]; ok {
+			payee = name
+		}
+	}
+
+	// Amount
+	var amount string
+	if st.HasAmount() {
+		amount = formatDashboardMoney(st.Amount.Money)
+	} else {
+		amount = "~variable"
+	}
+
+	// Due indicator
+	if isDue {
+		today := models.Today()
+		if st.NextDate.Equal(today) {
+			return fmt.Sprintf("  %s %s - %s %s",
+				a.styles.Alert.Render("●"),
+				payee,
+				amount,
+				a.styles.Alert.Render("due today"))
+		}
+		daysAgo := int(math.Round(time.Since(st.NextDate.Time()).Hours() / 24))
+		return fmt.Sprintf("  %s %s - %s %s",
+			a.styles.Alert.Render("●"),
+			payee,
+			amount,
+			a.styles.Alert.Render(fmt.Sprintf("overdue %d days", daysAgo)))
+	}
+
+	// Upcoming - show days until
+	daysUntil := int(math.Round(time.Until(st.NextDate.Time()).Hours() / 24))
+	daysText := fmt.Sprintf("in %d days", daysUntil)
+	if daysUntil == 1 {
+		daysText = "tomorrow"
+	}
+	return fmt.Sprintf("  %s %s - %s %s",
+		a.styles.Muted.Render("○"),
+		payee,
+		amount,
+		a.styles.Muted.Render(daysText))
+}
+
+// formatDashboardMoney formats a Money value with $ prefix for dashboard display.
+func formatDashboardMoney(m models.Money) string {
+	value := fmt.Sprintf("%.2f", m.Float64())
+	if m.IsNegative() {
+		return fmt.Sprintf("-$%s", strings.TrimPrefix(value, "-"))
+	}
+	return fmt.Sprintf("$%s", value)
+}
+
+// padRight pads a string with spaces to the given width.
+func padRight(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-w)
+}
+
+// truncate truncates a string to maxLen characters, adding "..." if needed.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
 }
 
 // renderRegister renders the account register view.
@@ -694,6 +1001,20 @@ type sidebarLoadedMsg struct {
 // scheduledDueCountMsg is sent when the count of due scheduled transactions is loaded.
 type scheduledDueCountMsg struct {
 	count int
+}
+
+// dashboardData holds the loaded data for the dashboard view.
+type dashboardData struct {
+	netWorth     *models.NetWorthReport
+	dueTxns      []*models.ScheduledTransaction
+	upcomingTxns []*models.ScheduledTransaction
+	payeeNames   map[models.ID]string
+	accountNames map[models.ID]string
+}
+
+// dashboardLoadedMsg is sent when dashboard data has been loaded.
+type dashboardLoadedMsg struct {
+	data *dashboardData
 }
 
 // overlayDropdown places a dropdown string on top of the layout at the given row and column offset.

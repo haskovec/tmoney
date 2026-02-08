@@ -281,7 +281,7 @@ This document defines the order in which features should be implemented. Each it
 
 ## Phase 10: TUI Views
 
-- [ ] **041 - Dashboard view**
+- [x] **041 - Dashboard view**
   - Net worth display
   - Account balances
   - Scheduled transactions due
