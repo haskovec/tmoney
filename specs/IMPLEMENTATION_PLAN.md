@@ -301,7 +301,7 @@ This document defines the order in which features should be implemented. Each it
   - Memo input
   - Save/cancel
 
-- [ ] **044 - Split transaction dialog**
+- [x] **044 - Split transaction dialog**
   - Split list
   - Add/remove splits
   - Amount validation

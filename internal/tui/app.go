@@ -88,9 +88,13 @@ type App struct {
 	table    *Table
 
 	// Transaction dialog state
-	txnDialog           *Dialog
-	txnDialogData       *transactionDialogData
+	txnDialog            *Dialog
+	txnDialogData        *transactionDialogData
 	txnDialogCategoryIDs []models.ID
+
+	// Split dialog state
+	splitDialog     *SplitDialog
+	pendingSplitTxn *pendingSplitTransaction
 
 	// Key bindings
 	keys keyMap
@@ -491,6 +495,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.loadSidebarData(),
 		)
 
+	case splitDialogSavedMsg:
+		accountID := a.sidebar.SelectedAccountID()
+		return a, tea.Batch(
+			a.loadRegisterData(accountID),
+			a.loadSidebarData(),
+		)
+
 	case errMsg:
 		a.err = msg.err
 		return a, nil
@@ -501,6 +512,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKeyPress handles keyboard input.
 func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// If split dialog is visible, route all keys to it
+	if a.splitDialog != nil && a.splitDialog.IsVisible() {
+		return a.handleSplitDialogKey(msg)
+	}
+
 	// If transaction dialog is visible, route all keys to it
 	if a.txnDialog != nil && a.txnDialog.IsVisible() {
 		return a.handleTransactionDialogKey(msg)
@@ -856,6 +872,12 @@ func (a *App) renderLayout() string {
 	// Overlay transaction dialog if visible
 	if a.txnDialog != nil && a.txnDialog.IsVisible() {
 		overlay := a.txnDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay split dialog if visible
+	if a.splitDialog != nil && a.splitDialog.IsVisible() {
+		overlay := a.splitDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
@@ -1252,7 +1274,7 @@ func (a *App) renderRegister() string {
 	// Table
 	headerHeight := 1
 	statusBarHeight := 1
-	titleHeight := 2 // title + separator
+	titleHeight := 2   // title + separator
 	paddingHeight := 2 // top/bottom padding
 	tableHeight := a.height - headerHeight - statusBarHeight - titleHeight - paddingHeight
 	if tableHeight < 1 {

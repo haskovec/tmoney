@@ -133,6 +133,9 @@ func buildTransactionDialog(data *transactionDialogData, categoryOptions []strin
 	// Status
 	d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
 
+	// Split transaction checkbox
+	d.AddCheckboxField("Split transaction", false)
+
 	d.SetVisible(true)
 	return d
 }
@@ -240,7 +243,7 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 	}
 
 	fields := a.txnDialog.Fields()
-	if len(fields) < 6 {
+	if len(fields) < 7 {
 		return a, nil
 	}
 
@@ -277,8 +280,34 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		status = models.TransactionStatusCleared
 	}
 
+	// Split transaction checkbox
+	isSplit := fields[6].Checked
+
 	// Get account ID from sidebar
 	accountID := a.sidebar.SelectedAccountID()
+
+	if isSplit {
+		// Save pending split transaction data and open split editor
+		a.pendingSplitTxn = &pendingSplitTransaction{
+			accountID: accountID,
+			date:      date,
+			payeeName: payeeName,
+			amount:    amount,
+			memo:      memo,
+			status:    status,
+		}
+
+		// Build category options for the split dialog (reuse loaded data)
+		categoryOptions, categoryIDs := buildCategoryOptions(a.txnDialogData.categories)
+
+		// Close the transaction dialog
+		a.closeTransactionDialog()
+
+		// Open split dialog
+		a.splitDialog = NewSplitDialog(amount, categoryOptions, categoryIDs)
+
+		return a, nil
+	}
 
 	// Close dialog before async save for responsive UI
 	a.closeTransactionDialog()

@@ -197,8 +197,8 @@ func TestBuildTransactionDialog(t *testing.T) {
 	}
 
 	fields := d.Fields()
-	if len(fields) != 6 {
-		t.Fatalf("expected 6 fields, got %d", len(fields))
+	if len(fields) != 7 {
+		t.Fatalf("expected 7 fields, got %d", len(fields))
 	}
 
 	// Date field should default to today
@@ -229,6 +229,7 @@ func TestBuildTransactionDialog_FieldTypes(t *testing.T) {
 		{"Amount", FieldText},
 		{"Memo", FieldText},
 		{"Status", FieldRadio},
+		{"Split transaction", FieldCheckbox},
 	}
 
 	for i, exp := range expected {
