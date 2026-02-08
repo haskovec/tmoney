@@ -272,26 +272,69 @@ func (s *PayeeService) MergePayees(sourceID, targetID models.ID) error {
 	}
 
 	// Update all references to use target payee
-	// Note: DuckDB doesn't support transactions, so we do best-effort updates
+	// Note: DuckDB UPDATE can trigger primary key violations due to internal
+	// delete+re-insert mechanism. Use CREATE TEMP TABLE + DELETE + INSERT pattern.
 
-	// Update transactions
+	// Update transactions: reassign payee_id from source to target
 	_, err = s.db.Conn().Exec(`
-		UPDATE transactions
-		SET payee_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+		CREATE TEMPORARY TABLE _merge_txns AS
+		SELECT id, account_id, date, amount, CAST(? AS UUID) AS payee_id,
+			category_id, memo, check_number, status, transfer_id,
+			transfer_account_id, created_at, CURRENT_TIMESTAMP AS updated_at
+		FROM transactions
 		WHERE CAST(payee_id AS VARCHAR) = ?
 	`, targetID.String(), sourceID.String())
 	if err != nil {
-		return fmt.Errorf("failed to update transactions: %w", err)
+		return fmt.Errorf("failed to stage transaction updates: %w", err)
 	}
 
-	// Update scheduled transactions
 	_, err = s.db.Conn().Exec(`
-		UPDATE scheduled_transactions
-		SET payee_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+		DELETE FROM transactions WHERE CAST(payee_id AS VARCHAR) = ?
+	`, sourceID.String())
+	if err != nil {
+		return fmt.Errorf("failed to delete source transactions for merge: %w", err)
+	}
+
+	_, err = s.db.Conn().Exec(`INSERT INTO transactions SELECT * FROM _merge_txns`)
+	if err != nil {
+		return fmt.Errorf("failed to re-insert merged transactions: %w", err)
+	}
+
+	_, err = s.db.Conn().Exec(`DROP TABLE IF EXISTS _merge_txns`)
+	if err != nil {
+		return fmt.Errorf("failed to drop temp table: %w", err)
+	}
+
+	// Update scheduled transactions: reassign payee_id from source to target
+	_, err = s.db.Conn().Exec(`
+		CREATE TEMPORARY TABLE _merge_st AS
+		SELECT id, account_id, CAST(? AS UUID) AS payee_id, category_id,
+			amount, memo, frequency, interval, start_date, end_date,
+			occurrences, day_of_month, day_of_week, next_date,
+			occurrences_remaining, amount_estimate_count,
+			created_at, CURRENT_TIMESTAMP AS updated_at
+		FROM scheduled_transactions
 		WHERE CAST(payee_id AS VARCHAR) = ?
 	`, targetID.String(), sourceID.String())
 	if err != nil {
-		return fmt.Errorf("failed to update scheduled transactions: %w", err)
+		return fmt.Errorf("failed to stage scheduled transaction updates: %w", err)
+	}
+
+	_, err = s.db.Conn().Exec(`
+		DELETE FROM scheduled_transactions WHERE CAST(payee_id AS VARCHAR) = ?
+	`, sourceID.String())
+	if err != nil {
+		return fmt.Errorf("failed to delete source scheduled transactions for merge: %w", err)
+	}
+
+	_, err = s.db.Conn().Exec(`INSERT INTO scheduled_transactions SELECT * FROM _merge_st`)
+	if err != nil {
+		return fmt.Errorf("failed to re-insert merged scheduled transactions: %w", err)
+	}
+
+	_, err = s.db.Conn().Exec(`DROP TABLE IF EXISTS _merge_st`)
+	if err != nil {
+		return fmt.Errorf("failed to drop temp table: %w", err)
 	}
 
 	// Reassign aliases from source to target

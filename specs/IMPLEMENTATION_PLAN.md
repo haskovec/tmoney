@@ -366,8 +366,11 @@ This document defines the order in which features should be implemented. Each it
 
 - [ ] **055 - Testing**
   - Unit tests for services
-  - Repository integration tests
-  - TUI component tests
+  - [x] Integration tests for payee service (CRUD, auto-create, aliases, pattern matching, merge)
+  - [x] Integration tests for transfers (create, get pair, counterpart, update both sides, delete)
+  - [x] Integration tests for split transactions (create with splits, add/replace/delete splits, validation)
+  - [x] Integration tests for scheduled transactions (CRUD, post, skip, due/upcoming, next-date, estimation)
+  - [ ] TUI component tests
 
 - [ ] **056 - Documentation**
   - README update
