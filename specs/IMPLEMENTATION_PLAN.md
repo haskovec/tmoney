@@ -307,7 +307,7 @@ This document defines the order in which features should be implemented. Each it
   - Amount validation
   - Category per split
 
-- [ ] **045 - Transfer dialog**
+- [x] **045 - Transfer dialog**
   - From/to account selection
   - Amount input
   - Date input

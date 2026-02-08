@@ -96,6 +96,11 @@ type App struct {
 	splitDialog     *SplitDialog
 	pendingSplitTxn *pendingSplitTransaction
 
+	// Transfer dialog state
+	transferDialog           *Dialog
+	transferDialogData       *transferDialogData
+	transferDialogAccountIDs []models.ID
+
 	// Key bindings
 	keys keyMap
 }
@@ -502,6 +507,29 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.loadSidebarData(),
 		)
 
+	case transferDialogDataMsg:
+		a.transferDialogData = msg.data
+		accountOptions, accountIDs := buildAccountOptions(msg.data.accounts)
+		a.transferDialogAccountIDs = accountIDs
+		// Pre-select the currently selected sidebar account as "From"
+		defaultFromIndex := 0
+		selectedID := a.sidebar.SelectedAccountID()
+		for i, id := range accountIDs {
+			if id == selectedID {
+				defaultFromIndex = i
+				break
+			}
+		}
+		a.transferDialog = buildTransferDialog(accountOptions, defaultFromIndex)
+		return a, nil
+
+	case transferDialogSavedMsg:
+		accountID := a.sidebar.SelectedAccountID()
+		return a, tea.Batch(
+			a.loadRegisterData(accountID),
+			a.loadSidebarData(),
+		)
+
 	case errMsg:
 		a.err = msg.err
 		return a, nil
@@ -520,6 +548,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If transaction dialog is visible, route all keys to it
 	if a.txnDialog != nil && a.txnDialog.IsVisible() {
 		return a.handleTransactionDialogKey(msg)
+	}
+
+	// If transfer dialog is visible, route all keys to it
+	if a.transferDialog != nil && a.transferDialog.IsVisible() {
+		return a.handleTransferDialogKey(msg)
 	}
 
 	// Alt+key menu shortcuts work regardless of menu state
@@ -649,6 +682,8 @@ func (a *App) handleRegisterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.toggleTransactionStatus()
 	case key.Matches(msg, a.keys.New):
 		return a, a.loadTransactionDialogData()
+	case msg.String() == "t":
+		return a, a.loadTransferDialogData()
 	}
 
 	return a, nil
@@ -878,6 +913,12 @@ func (a *App) renderLayout() string {
 	// Overlay split dialog if visible
 	if a.splitDialog != nil && a.splitDialog.IsVisible() {
 		overlay := a.splitDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay transfer dialog if visible
+	if a.transferDialog != nil && a.transferDialog.IsVisible() {
+		overlay := a.transferDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
@@ -1326,7 +1367,7 @@ func (a *App) getKeyHints() string {
 	case ViewDashboard:
 		return "↑↓ navigate  ←→ collapse/expand  enter select  " + common
 	case ViewRegister:
-		return "↑↓ navigate  enter edit  n new  d delete  esc back  " + common
+		return "↑↓ navigate  enter edit  n new  t transfer  d delete  esc back  " + common
 	case ViewScheduled:
 		return "↑↓ navigate  enter post  s skip  e edit  esc back  " + common
 	case ViewReports:
