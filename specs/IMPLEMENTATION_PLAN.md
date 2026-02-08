@@ -293,7 +293,7 @@ This document defines the order in which features should be implemented. Each it
   - Status indicators
   - Row selection
 
-- [ ] **043 - Transaction entry dialog**
+- [x] **043 - Transaction entry dialog**
   - Date input
   - Payee autocomplete
   - Category selector

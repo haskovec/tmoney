@@ -87,6 +87,11 @@ type App struct {
 	register *registerData
 	table    *Table
 
+	// Transaction dialog state
+	txnDialog           *Dialog
+	txnDialogData       *transactionDialogData
+	txnDialogCategoryIDs []models.ID
+
 	// Key bindings
 	keys keyMap
 }
@@ -472,6 +477,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.buildRegisterTable()
 		return a, nil
 
+	case transactionDialogDataMsg:
+		a.txnDialogData = msg.data
+		categoryOptions, categoryIDs := buildCategoryOptions(msg.data.categories)
+		a.txnDialogCategoryIDs = categoryIDs
+		a.txnDialog = buildTransactionDialog(msg.data, categoryOptions)
+		return a, nil
+
+	case transactionDialogSavedMsg:
+		accountID := a.sidebar.SelectedAccountID()
+		return a, tea.Batch(
+			a.loadRegisterData(accountID),
+			a.loadSidebarData(),
+		)
+
 	case errMsg:
 		a.err = msg.err
 		return a, nil
@@ -482,6 +501,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKeyPress handles keyboard input.
 func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// If transaction dialog is visible, route all keys to it
+	if a.txnDialog != nil && a.txnDialog.IsVisible() {
+		return a.handleTransactionDialogKey(msg)
+	}
+
 	// Alt+key menu shortcuts work regardless of menu state
 	switch {
 	case key.Matches(msg, a.keys.MenuFile):
@@ -607,6 +631,8 @@ func (a *App) handleRegisterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.table.PageDown(tableHeight)
 	case msg.String() == "c":
 		return a.toggleTransactionStatus()
+	case key.Matches(msg, a.keys.New):
+		return a, a.loadTransactionDialogData()
 	}
 
 	return a, nil
@@ -825,6 +851,12 @@ func (a *App) renderLayout() string {
 		if dropdown != "" {
 			layout = overlayDropdown(layout, dropdown, offset, 1, a.width)
 		}
+	}
+
+	// Overlay transaction dialog if visible
+	if a.txnDialog != nil && a.txnDialog.IsVisible() {
+		overlay := a.txnDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
 	return layout
