@@ -431,18 +431,19 @@ Accepted amount formats:
 
 ## Configuration
 
-Config file location (OS-agnostic):
-- macOS: `~/Library/Application Support/tmoney/config.toml`
-- Linux: `~/.config/tmoney/config.toml`
-- Windows: `%APPDATA%\tmoney\config.toml`
+Config file location (OS-agnostic, uses `os.UserConfigDir()`):
+- macOS: `~/Library/Application Support/tmoney/config.json`
+- Linux: `~/.config/tmoney/config.json`
+- Windows: `%APPDATA%\tmoney\config.json`
 
 Config options:
-```toml
-[general]
-default_file = "~/Documents/TMoney/personal.tdb"
-date_format = "YYYY-MM-DD"
-currency_format = "$#,##0.00"
-
-[cli]
-default_limit = 20
+```json
+{
+  "default_file": "~/Documents/TMoney/personal.tdb",
+  "recent_files": [
+    "~/Documents/TMoney/personal.tdb",
+    "~/Documents/TMoney/business.tdb"
+  ],
+  "last_file": "~/Documents/TMoney/personal.tdb"
+}
 ```

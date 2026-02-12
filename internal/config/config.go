@@ -1,0 +1,134 @@
+// Package config provides persistent application settings for TMoney.
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+)
+
+// maxRecentFiles is the maximum number of recent files to track.
+const maxRecentFiles = 10
+
+// Config holds TMoney application settings persisted across sessions.
+type Config struct {
+	DefaultFile string   `json:"default_file,omitempty"`
+	RecentFiles []string `json:"recent_files,omitempty"`
+	LastFile    string   `json:"last_file,omitempty"`
+
+	// path is the file path where this config is stored (not serialized).
+	path string `json:"-"`
+}
+
+// Dir returns the configuration directory for TMoney.
+// Uses os.UserConfigDir() which maps to:
+//   - macOS: ~/Library/Application Support/tmoney
+//   - Linux: ~/.config/tmoney
+//   - Windows: %AppData%/tmoney
+func Dir() (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "tmoney"), nil
+}
+
+// Path returns the full path to the config file.
+func Path() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.json"), nil
+}
+
+// Load reads the config from disk. If the file does not exist (first run),
+// it returns a zero-value Config with no error.
+func Load() (*Config, error) {
+	p, err := Path()
+	if err != nil {
+		return nil, err
+	}
+	return LoadFrom(p)
+}
+
+// LoadFrom reads the config from the specified path. If the file does not
+// exist, it returns a zero-value Config with no error.
+func LoadFrom(path string) (*Config, error) {
+	cfg := &Config{path: path}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return cfg, nil
+		}
+		return nil, err
+	}
+
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+	cfg.path = path
+	return cfg, nil
+}
+
+// Save writes the config to disk atomically (write to .tmp, then rename).
+func (c *Config) Save() error {
+	if c.path == "" {
+		p, err := Path()
+		if err != nil {
+			return err
+		}
+		c.path = p
+	}
+
+	dir := filepath.Dir(c.path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+
+	tmp := c.path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, c.path)
+}
+
+// AddRecentFile adds a file path to the recent files list.
+// It prepends the path, deduplicates, caps at maxRecentFiles, and updates LastFile.
+func (c *Config) AddRecentFile(path string) {
+	c.LastFile = path
+
+	// Build new list with this path first
+	recent := []string{path}
+	for _, f := range c.RecentFiles {
+		if f != path {
+			recent = append(recent, f)
+		}
+	}
+
+	// Cap at max
+	if len(recent) > maxRecentFiles {
+		recent = recent[:maxRecentFiles]
+	}
+
+	c.RecentFiles = recent
+}
+
+// ResolveDefaultFile returns the best file path to open.
+// Priority: LastFile > DefaultFile > "" (caller handles final fallback).
+func (c *Config) ResolveDefaultFile() string {
+	if c.LastFile != "" {
+		return c.LastFile
+	}
+	if c.DefaultFile != "" {
+		return c.DefaultFile
+	}
+	return ""
+}

@@ -4,12 +4,14 @@ package tui
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/models"
 	"github.com/haskovec/tmoney/internal/service"
@@ -116,6 +118,13 @@ type App struct {
 
 	// Reports view state
 	reports *reportsViewData
+
+	// File dialog state
+	fileDialog     *Dialog
+	fileDialogMode fileDialogMode
+
+	// Configuration
+	cfg *config.Config
 
 	// Key bindings
 	keys keyMap
@@ -246,12 +255,13 @@ func defaultKeyMap() keyMap {
 	}
 }
 
-// NewApp creates a new TUI application with the given database.
-func NewApp(database *db.DB) *App {
+// NewApp creates a new TUI application with the given database and optional config.
+func NewApp(database *db.DB, cfg *config.Config) *App {
 	svc := service.NewServices(database)
 
 	return &App{
 		db:              database,
+		cfg:             cfg,
 		currentView:     ViewDashboard,
 		styles:          NewStyles(),
 		sidebar:         NewSidebar(),
@@ -281,7 +291,11 @@ func (a *App) Init() tea.Cmd {
 
 // updateStatusBar updates the status bar context and key hints for the current view.
 func (a *App) updateStatusBar() {
-	a.statusbar.SetContext(a.currentView.String())
+	context := a.currentView.String()
+	if a.db != nil {
+		context += " - " + filepath.Base(a.db.Path())
+	}
+	a.statusbar.SetContext(context)
 	a.statusbar.SetKeyHints(a.getKeyHints())
 }
 
@@ -723,6 +737,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, tea.Batch(cmds...)
 
+	case fileDialogSavedMsg:
+		return a.switchDatabase(msg.db)
+
 	case accountDeletedMsg:
 		a.switchView(ViewDashboard)
 		return a, tea.Batch(a.loadSidebarData(), a.loadDashboardData())
@@ -745,6 +762,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKeyPress handles keyboard input.
 func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// If file dialog is visible, route all keys to it
+	if a.fileDialog != nil && a.fileDialog.IsVisible() {
+		return a.handleFileDialogKey(msg)
+	}
+
 	// If split dialog is visible, route all keys to it
 	if a.splitDialog != nil && a.splitDialog.IsVisible() {
 		return a.handleSplitDialogKey(msg)
@@ -1230,6 +1252,32 @@ func (a *App) handleMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // handleMenuAction processes a menu item selection.
 func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 	switch action {
+	case MenuActionNewFile:
+		a.menubar.Deactivate()
+		a.fileDialogMode = fileDialogModeNew
+		a.fileDialog = buildNewFileDialog()
+		return a, nil
+
+	case MenuActionOpenFile:
+		a.menubar.Deactivate()
+		a.fileDialogMode = fileDialogModeOpen
+		a.fileDialog = buildOpenFileDialog()
+		return a, nil
+
+	case MenuActionOpenRecent:
+		a.menubar.Deactivate()
+		a.fileDialogMode = fileDialogModeOpenRecent
+		var recent []string
+		if a.cfg != nil {
+			recent = a.cfg.RecentFiles
+		}
+		a.fileDialog = buildOpenRecentDialog(recent)
+		return a, nil
+
+	case MenuActionCloseFile:
+		a.quitting = true
+		return a, tea.Quit
+
 	case MenuActionExit:
 		a.quitting = true
 		return a, tea.Quit
@@ -1404,6 +1452,12 @@ func (a *App) renderLayout() string {
 	// Overlay account dialog if visible
 	if a.acctDialog != nil && a.acctDialog.IsVisible() {
 		overlay := a.acctDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay file dialog if visible
+	if a.fileDialog != nil && a.fileDialog.IsVisible() {
+		overlay := a.fileDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
@@ -2366,8 +2420,8 @@ func stripAnsi(s string) string {
 }
 
 // Run starts the TUI application.
-func Run(database *db.DB) error {
-	app := NewApp(database)
+func Run(database *db.DB, cfg *config.Config) error {
+	app := NewApp(database, cfg)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 
 	_, err := p.Run()

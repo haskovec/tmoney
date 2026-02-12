@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/tui"
 )
@@ -109,41 +110,46 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 // runTUI launches the interactive TUI mode.
 func runTUI(opts *cliOptions) error {
-	// If no file specified, use default location
+	// Load config
+	cfg, err := config.Load()
+	if err != nil {
+		// Non-fatal: use empty config if load fails
+		cfg = &config.Config{}
+	}
+
+	// Resolve file path: CLI flag > config > default
 	if opts.file == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-		opts.file = filepath.Join(homeDir, "Documents", "TMoney", "default.tdb")
+		opts.file = cfg.ResolveDefaultFile()
+	}
+	if opts.file == "" {
+		opts.file = filepath.Join(db.DefaultDirectory(), "default.tdb")
 	}
 
 	// Check if file exists, if not create it
-	if _, err := os.Stat(opts.file); os.IsNotExist(err) {
+	var database *db.DB
+	if _, statErr := os.Stat(opts.file); os.IsNotExist(statErr) {
 		// Create the directory if needed
 		dir := filepath.Dir(opts.file)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("failed to create directory: %w", err)
 		}
 
-		// Create new database
-		database, err := db.Create(opts.file)
+		database, err = db.Create(opts.file)
 		if err != nil {
 			return fmt.Errorf("failed to create database: %w", err)
 		}
-		defer database.Close()
-
-		// Run TUI
-		return tui.Run(database)
-	}
-
-	// Open existing database
-	database, err := db.Open(opts.file)
-	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+	} else {
+		database, err = db.Open(opts.file)
+		if err != nil {
+			return fmt.Errorf("failed to open database: %w", err)
+		}
 	}
 	defer database.Close()
 
+	// Update recent files in config
+	cfg.AddRecentFile(opts.file)
+	_ = cfg.Save() // best-effort
+
 	// Run TUI
-	return tui.Run(database)
+	return tui.Run(database, cfg)
 }

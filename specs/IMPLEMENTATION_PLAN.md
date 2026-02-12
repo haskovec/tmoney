@@ -344,7 +344,7 @@ This document defines the order in which features should be implemented. Each it
   - Consistent behavior
   - Error handling
 
-- [ ] **051 - File management**
+- [x] **051 - File management**
   - New file creation
   - Recent files tracking
   - Default file location

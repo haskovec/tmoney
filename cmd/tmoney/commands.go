@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/models"
 	"github.com/haskovec/tmoney/internal/repository"
@@ -13,11 +14,19 @@ import (
 )
 
 // openServices opens the database and creates all services via the shared registry.
+// It also does a best-effort update of the recent files in the config.
 func openServices(file string) (*db.DB, *service.Services, error) {
 	database, err := db.Open(file)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open database: %w", err)
 	}
+
+	// Best-effort update recent files
+	if cfg, err := config.Load(); err == nil {
+		cfg.AddRecentFile(file)
+		_ = cfg.Save()
+	}
+
 	return database, service.NewServices(database), nil
 }
 
