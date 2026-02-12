@@ -317,7 +317,7 @@ This document defines the order in which features should be implemented. Each it
   - Edit account dialog
   - Account type selection
 
-- [ ] **047 - Scheduled transactions view**
+- [x] **047 - Scheduled transactions view**
   - Due section
   - Upcoming section
   - Post/skip actions

@@ -105,6 +105,10 @@ type App struct {
 	acctDialog     *Dialog
 	acctDialogData *accountDialogData
 
+	// Scheduled view state
+	scheduled      *scheduledViewData
+	scheduledTable *Table
+
 	// Key bindings
 	keys keyMap
 }
@@ -387,6 +391,81 @@ func (a *App) loadDashboardData() tea.Cmd {
 	}
 }
 
+// loadScheduledViewData returns a command that loads all data needed for the scheduled transactions view.
+func (a *App) loadScheduledViewData() tea.Cmd {
+	return func() tea.Msg {
+		data := &scheduledViewData{
+			payeeNames:    make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+		}
+
+		// Load due scheduled transactions
+		if a.scheduledTxnSvc != nil {
+			due, err := a.scheduledTxnSvc.ListDue()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.dueTxns = due
+			data.dueCount = len(due)
+
+			upcoming, err := a.scheduledTxnSvc.ListUpcoming(30)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			// Filter out items already in due list
+			dueIDs := make(map[string]bool)
+			for _, d := range due {
+				dueIDs[d.ID.String()] = true
+			}
+			var filteredUpcoming []*models.ScheduledTransaction
+			for _, u := range upcoming {
+				if !dueIDs[u.ID.String()] {
+					filteredUpcoming = append(filteredUpcoming, u)
+				}
+			}
+			data.upcomingTxns = filteredUpcoming
+
+			// Build combined list: due first, then upcoming
+			data.allTxns = make([]*models.ScheduledTransaction, 0, len(due)+len(filteredUpcoming))
+			data.allTxns = append(data.allTxns, due...)
+			data.allTxns = append(data.allTxns, filteredUpcoming...)
+		}
+
+		// Load payee names
+		if a.payeeSvc != nil {
+			payees, err := a.payeeSvc.List()
+			if err == nil {
+				for _, p := range payees {
+					data.payeeNames[p.ID] = p.Name
+				}
+			}
+		}
+
+		// Load account names
+		if a.accountSvc != nil {
+			accounts, err := a.accountSvc.List(true)
+			if err == nil {
+				for _, acc := range accounts {
+					data.accountNames[acc.ID] = acc.Name
+				}
+			}
+		}
+
+		// Load category names
+		if a.categorySvc != nil {
+			categories, err := a.categorySvc.List()
+			if err == nil {
+				for _, c := range categories {
+					data.categoryNames[c.ID] = c.Name
+				}
+			}
+		}
+
+		return scheduledViewDataLoadedMsg{data: data}
+	}
+}
+
 // loadRegisterData returns a command that loads all data needed for the register view.
 func (a *App) loadRegisterData(accountID models.ID) tea.Cmd {
 	return func() tea.Msg {
@@ -489,6 +568,30 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.register = msg.data
 		a.buildRegisterTable()
 		return a, nil
+
+	case scheduledViewDataLoadedMsg:
+		a.scheduled = msg.data
+		a.buildScheduledTable()
+		return a, nil
+
+	case scheduledPostedMsg:
+		return a, tea.Batch(
+			a.loadScheduledViewData(),
+			a.loadSidebarData(),
+			a.loadScheduledDueCount(),
+		)
+
+	case scheduledSkippedMsg:
+		return a, tea.Batch(
+			a.loadScheduledViewData(),
+			a.loadScheduledDueCount(),
+		)
+
+	case scheduledDeletedMsg:
+		return a, tea.Batch(
+			a.loadScheduledViewData(),
+			a.loadScheduledDueCount(),
+		)
 
 	case transactionDialogDataMsg:
 		a.txnDialogData = msg.data
@@ -633,7 +736,7 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, a.keys.Scheduled):
 		a.switchView(ViewScheduled)
-		return a, nil
+		return a, a.loadScheduledViewData()
 
 	case key.Matches(msg, a.keys.Reports):
 		a.switchView(ViewReports)
@@ -757,9 +860,126 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 }
 
 // handleScheduledKeys handles key presses in the scheduled transactions view.
-func (a *App) handleScheduledKeys(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Placeholder for scheduled-specific key handling
+func (a *App) handleScheduledKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle Tab to switch focus between sidebar and table
+	if key.Matches(msg, a.keys.Tab) || key.Matches(msg, a.keys.ShiftTab) {
+		if a.sidebar.IsFocused() {
+			a.sidebar.SetFocused(false)
+			if a.scheduledTable != nil {
+				a.scheduledTable.SetFocused(true)
+			}
+		} else {
+			a.sidebar.SetFocused(true)
+			if a.scheduledTable != nil {
+				a.scheduledTable.SetFocused(false)
+			}
+		}
+		return a, nil
+	}
+
+	// If sidebar has focus, delegate to sidebar handling
+	if a.sidebar.IsFocused() {
+		return a.handleSidebarKeys(msg)
+	}
+
+	// Table-focused key handling
+	if a.scheduledTable == nil || a.scheduled == nil {
+		return a, nil
+	}
+
+	switch {
+	case key.Matches(msg, a.keys.Up):
+		a.scheduledTable.MoveUp()
+	case key.Matches(msg, a.keys.Down):
+		a.scheduledTable.MoveDown()
+	case msg.String() == "home" || msg.String() == "g":
+		a.scheduledTable.MoveToTop()
+	case msg.String() == "end" || msg.String() == "G":
+		a.scheduledTable.MoveToBottom()
+	case msg.String() == "pgup":
+		tableHeight := a.height - 6
+		if tableHeight < 1 {
+			tableHeight = 1
+		}
+		a.scheduledTable.PageUp(tableHeight)
+	case msg.String() == "pgdown":
+		tableHeight := a.height - 6
+		if tableHeight < 1 {
+			tableHeight = 1
+		}
+		a.scheduledTable.PageDown(tableHeight)
+	case key.Matches(msg, a.keys.Enter):
+		return a.postSelectedScheduled()
+	case msg.String() == "s":
+		return a.skipSelectedScheduled()
+	case key.Matches(msg, a.keys.Delete):
+		return a.deleteSelectedScheduled()
+	}
+
 	return a, nil
+}
+
+// postSelectedScheduled posts the currently selected scheduled transaction.
+func (a *App) postSelectedScheduled() (tea.Model, tea.Cmd) {
+	if a.scheduled == nil || a.scheduledTable == nil || a.scheduledTxnSvc == nil {
+		return a, nil
+	}
+
+	cursor := a.scheduledTable.Cursor()
+	if cursor < 0 || cursor >= len(a.scheduled.allTxns) {
+		return a, nil
+	}
+
+	st := a.scheduled.allTxns[cursor]
+	return a, func() tea.Msg {
+		_, err := a.scheduledTxnSvc.Post(st.ID, nil)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return scheduledPostedMsg{}
+	}
+}
+
+// skipSelectedScheduled skips the currently selected scheduled transaction.
+func (a *App) skipSelectedScheduled() (tea.Model, tea.Cmd) {
+	if a.scheduled == nil || a.scheduledTable == nil || a.scheduledTxnSvc == nil {
+		return a, nil
+	}
+
+	cursor := a.scheduledTable.Cursor()
+	if cursor < 0 || cursor >= len(a.scheduled.allTxns) {
+		return a, nil
+	}
+
+	st := a.scheduled.allTxns[cursor]
+	return a, func() tea.Msg {
+		err := a.scheduledTxnSvc.Skip(st.ID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return scheduledSkippedMsg{}
+	}
+}
+
+// deleteSelectedScheduled deletes the currently selected scheduled transaction.
+func (a *App) deleteSelectedScheduled() (tea.Model, tea.Cmd) {
+	if a.scheduled == nil || a.scheduledTable == nil || a.scheduledTxnSvc == nil {
+		return a, nil
+	}
+
+	cursor := a.scheduledTable.Cursor()
+	if cursor < 0 || cursor >= len(a.scheduled.allTxns) {
+		return a, nil
+	}
+
+	st := a.scheduled.allTxns[cursor]
+	return a, func() tea.Msg {
+		err := a.scheduledTxnSvc.Delete(st.ID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return scheduledDeletedMsg{}
+	}
 }
 
 // handleReportsKeys handles key presses in the reports view.
@@ -910,6 +1130,12 @@ func (a *App) switchView(v View) {
 				a.sidebar.SetFocused(false)
 				if a.table != nil {
 					a.table.SetFocused(true)
+				}
+			case ViewScheduled:
+				// Start with scheduled table focused
+				a.sidebar.SetFocused(false)
+				if a.scheduledTable != nil {
+					a.scheduledTable.SetFocused(true)
 				}
 			case ViewDashboard:
 				// Dashboard uses sidebar navigation
@@ -1411,10 +1637,141 @@ func (a *App) renderRegister() string {
 
 // renderScheduled renders the scheduled transactions view.
 func (a *App) renderScheduled() string {
-	// Placeholder - will be implemented in task 047
+	if a.scheduled == nil {
+		return lipgloss.NewStyle().
+			Padding(1, 2).
+			Render("Loading scheduled transactions...")
+	}
+
+	contentWidth := a.styles.ContentWidth()
+
+	var sections []string
+
+	// Title row: SCHEDULED + counts
+	titleText := "SCHEDULED TRANSACTIONS"
+	countText := ""
+	if a.scheduled.dueCount > 0 {
+		countText = fmt.Sprintf("%d due", a.scheduled.dueCount)
+	}
+	padding := contentWidth - lipgloss.Width(titleText) - lipgloss.Width(countText) - 4
+	if padding < 1 {
+		padding = 1
+	}
+	titleRow := a.styles.Title.Render(titleText)
+	if countText != "" {
+		titleRow += strings.Repeat(" ", padding) + a.styles.Alert.Render(countText)
+	}
+	sections = append(sections, titleRow)
+
+	// Separator
+	sepWidth := contentWidth - 4
+	if sepWidth < 1 {
+		sepWidth = 1
+	}
+	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
+
+	if len(a.scheduled.allTxns) == 0 {
+		sections = append(sections, "")
+		sections = append(sections, a.styles.Muted.Render("  No scheduled transactions"))
+		sections = append(sections, "")
+		sections = append(sections, a.styles.Muted.Render("  Create scheduled transactions via CLI:"))
+		sections = append(sections, a.styles.Muted.Render("  tmoney --add-scheduled --account <name> ..."))
+		return lipgloss.NewStyle().
+			Padding(1, 2).
+			Render(strings.Join(sections, "\n"))
+	}
+
+	// Table
+	headerHeight := 1
+	statusBarHeight := 1
+	titleHeight := 2   // title + separator
+	paddingHeight := 2 // top/bottom padding
+	tableHeight := a.height - headerHeight - statusBarHeight - titleHeight - paddingHeight
+	if tableHeight < 1 {
+		tableHeight = 1
+	}
+
+	if a.scheduledTable != nil {
+		tableWidth := contentWidth - 4
+		if tableWidth < 1 {
+			tableWidth = 1
+		}
+		sections = append(sections, a.scheduledTable.Render(a.styles, tableWidth, tableHeight))
+	}
+
 	return lipgloss.NewStyle().
 		Padding(1, 2).
-		Render("Scheduled Transactions View\n\nPress Esc to go back")
+		Render(strings.Join(sections, "\n"))
+}
+
+// buildScheduledTable creates and populates the table for the scheduled view.
+func (a *App) buildScheduledTable() {
+	if a.scheduled == nil {
+		return
+	}
+
+	columns := []Column{
+		{Header: " ", Width: 3, Align: AlignCenter},
+		{Header: "Next Date", Width: 10, Align: AlignLeft},
+		{Header: "Payee", MinWidth: 12, Align: AlignLeft},
+		{Header: "Amount", Width: 12, Align: AlignRight},
+		{Header: "Frequency", Width: 10, Align: AlignLeft},
+		{Header: "Account", MinWidth: 10, Align: AlignLeft},
+	}
+
+	if a.scheduledTable == nil {
+		a.scheduledTable = NewTable(columns)
+	} else {
+		a.scheduledTable.SetColumns(columns)
+	}
+
+	rows := make([][]string, len(a.scheduled.allTxns))
+	for i, st := range a.scheduled.allTxns {
+		rows[i] = a.formatScheduledRow(st, i < a.scheduled.dueCount)
+	}
+	a.scheduledTable.SetRows(rows)
+}
+
+// formatScheduledRow formats a scheduled transaction into table row strings.
+func (a *App) formatScheduledRow(st *models.ScheduledTransaction, isDue bool) []string {
+	// Status indicator
+	status := " ○"
+	if isDue {
+		today := models.Today()
+		if st.NextDate.Equal(today) {
+			status = " ●"
+		} else {
+			status = "!●"
+		}
+	}
+
+	// Next date
+	dateStr := st.NextDate.Time().Format("01/02/06")
+
+	// Payee
+	payee := ""
+	if st.HasPayee() {
+		if name, ok := a.scheduled.payeeNames[st.PayeeID.ID]; ok {
+			payee = name
+		}
+	}
+
+	// Amount
+	amount := "~variable"
+	if st.HasAmount() {
+		amount = formatDashboardMoney(st.Amount.Money)
+	}
+
+	// Frequency
+	freq := st.Frequency.DisplayName()
+
+	// Account
+	account := ""
+	if name, ok := a.scheduled.accountNames[st.AccountID]; ok {
+		account = name
+	}
+
+	return []string{status, dateStr, payee, amount, freq, account}
 }
 
 // renderReports renders the reports view.
@@ -1497,6 +1854,31 @@ type registerData struct {
 type registerLoadedMsg struct {
 	data *registerData
 }
+
+// scheduledViewData holds the loaded data for the scheduled transactions view.
+type scheduledViewData struct {
+	dueTxns      []*models.ScheduledTransaction
+	upcomingTxns []*models.ScheduledTransaction
+	allTxns      []*models.ScheduledTransaction // combined: due first, then upcoming
+	dueCount     int                            // number of due items (index boundary)
+	payeeNames   map[models.ID]string
+	accountNames map[models.ID]string
+	categoryNames map[models.ID]string
+}
+
+// scheduledViewDataLoadedMsg is sent when scheduled view data has been loaded.
+type scheduledViewDataLoadedMsg struct {
+	data *scheduledViewData
+}
+
+// scheduledPostedMsg is sent when a scheduled transaction has been posted.
+type scheduledPostedMsg struct{}
+
+// scheduledSkippedMsg is sent when a scheduled transaction has been skipped.
+type scheduledSkippedMsg struct{}
+
+// scheduledDeletedMsg is sent when a scheduled transaction has been deleted.
+type scheduledDeletedMsg struct{}
 
 // overlayDropdown places a dropdown string on top of the layout at the given row and column offset.
 func overlayDropdown(layout, dropdown string, colOffset, rowOffset, totalWidth int) string {

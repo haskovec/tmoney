@@ -1301,6 +1301,482 @@ func TestApp_SwitchView_Dashboard_SetsFocus(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Scheduled View Tests
+// =============================================================================
+
+func TestApp_RenderScheduled_Loading(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+	app := &App{
+		currentView: ViewScheduled,
+		width:       100,
+		height:      30,
+		styles:      styles,
+		scheduled:   nil,
+	}
+
+	view := app.renderScheduled()
+	if !contains(view, "Loading") {
+		t.Errorf("renderScheduled() should show loading when data is nil, got: %q", view)
+	}
+}
+
+func TestApp_RenderScheduled_Empty(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+	app := &App{
+		currentView: ViewScheduled,
+		width:       100,
+		height:      30,
+		styles:      styles,
+		scheduled: &scheduledViewData{
+			allTxns:       nil,
+			dueCount:      0,
+			payeeNames:    make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+		},
+	}
+
+	view := app.renderScheduled()
+	if !contains(view, "No scheduled transactions") {
+		t.Error("renderScheduled() should show 'No scheduled transactions' when empty")
+	}
+	if !contains(view, "SCHEDULED TRANSACTIONS") {
+		t.Error("renderScheduled() should contain title 'SCHEDULED TRANSACTIONS'")
+	}
+}
+
+func TestApp_RenderScheduled_WithDueAndUpcoming(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(120, 30)
+
+	payeeID1 := models.NewID()
+	payeeID2 := models.NewID()
+	accountID := models.NewID()
+
+	dueTxn := &models.ScheduledTransaction{
+		BaseModel: models.BaseModel{ID: models.NewID()},
+		AccountID: accountID,
+		Frequency: models.FrequencyMonthly,
+		NextDate:  models.Today(),
+		PayeeID:   models.NullableID{ID: payeeID1, Valid: true},
+		Amount:    models.NullableMoney{Money: models.MustNewMoney("-1500.00"), Valid: true},
+	}
+
+	upcomingTxn := &models.ScheduledTransaction{
+		BaseModel: models.BaseModel{ID: models.NewID()},
+		AccountID: accountID,
+		Frequency: models.FrequencyWeekly,
+		NextDate:  models.Today().AddDays(7),
+		PayeeID:   models.NullableID{ID: payeeID2, Valid: true},
+		Amount:    models.NullableMoney{Money: models.MustNewMoney("-50.00"), Valid: true},
+	}
+
+	app := &App{
+		currentView: ViewScheduled,
+		width:       120,
+		height:      30,
+		styles:      styles,
+		scheduled: &scheduledViewData{
+			dueTxns:      []*models.ScheduledTransaction{dueTxn},
+			upcomingTxns: []*models.ScheduledTransaction{upcomingTxn},
+			allTxns:      []*models.ScheduledTransaction{dueTxn, upcomingTxn},
+			dueCount:     1,
+			payeeNames:   map[models.ID]string{payeeID1: "Landlord", payeeID2: "Netflix"},
+			accountNames:  map[models.ID]string{accountID: "Checking"},
+			categoryNames: make(map[models.ID]string),
+		},
+	}
+
+	app.buildScheduledTable()
+	view := app.renderScheduled()
+
+	if !contains(view, "SCHEDULED TRANSACTIONS") {
+		t.Error("renderScheduled() should contain title")
+	}
+	if !contains(view, "1 due") {
+		t.Error("renderScheduled() should show '1 due' count")
+	}
+	if !contains(view, "Landlord") {
+		t.Error("renderScheduled() should contain payee 'Landlord'")
+	}
+	if !contains(view, "Netflix") {
+		t.Error("renderScheduled() should contain payee 'Netflix'")
+	}
+	if !contains(view, "$1500.00") {
+		t.Error("renderScheduled() should contain amount '$1500.00'")
+	}
+	if !contains(view, "Monthly") {
+		t.Error("renderScheduled() should contain frequency 'Monthly'")
+	}
+	if !contains(view, "Checking") {
+		t.Error("renderScheduled() should contain account 'Checking'")
+	}
+}
+
+func TestApp_BuildScheduledTable(t *testing.T) {
+	payeeID := models.NewID()
+	accountID := models.NewID()
+
+	app := &App{
+		styles: NewStyles(),
+		scheduled: &scheduledViewData{
+			allTxns: []*models.ScheduledTransaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Frequency: models.FrequencyMonthly,
+					NextDate:  models.Today(),
+					PayeeID:   models.NullableID{ID: payeeID, Valid: true},
+					Amount:    models.NullableMoney{Money: models.MustNewMoney("-100.00"), Valid: true},
+				},
+			},
+			dueCount:      1,
+			payeeNames:    map[models.ID]string{payeeID: "Electric Co"},
+			accountNames:  map[models.ID]string{accountID: "Checking"},
+			categoryNames: make(map[models.ID]string),
+		},
+	}
+
+	app.buildScheduledTable()
+
+	if app.scheduledTable == nil {
+		t.Fatal("scheduledTable should be created")
+	}
+	if app.scheduledTable.RowCount() != 1 {
+		t.Errorf("expected 1 row, got %d", app.scheduledTable.RowCount())
+	}
+
+	row := app.scheduledTable.SelectedRow()
+	if row == nil {
+		t.Fatal("selected row should not be nil")
+	}
+
+	// Check row content: Status, Date, Payee, Amount, Frequency, Account
+	if row[0] != " ●" {
+		t.Errorf("status = %q, want %q (due today)", row[0], " ●")
+	}
+	if row[2] != "Electric Co" {
+		t.Errorf("payee = %q, want %q", row[2], "Electric Co")
+	}
+	if row[3] != "-$100.00" {
+		t.Errorf("amount = %q, want %q", row[3], "-$100.00")
+	}
+	if row[4] != "Monthly" {
+		t.Errorf("frequency = %q, want %q", row[4], "Monthly")
+	}
+	if row[5] != "Checking" {
+		t.Errorf("account = %q, want %q", row[5], "Checking")
+	}
+}
+
+func TestApp_BuildScheduledTable_VariableAmount(t *testing.T) {
+	accountID := models.NewID()
+
+	app := &App{
+		styles: NewStyles(),
+		scheduled: &scheduledViewData{
+			allTxns: []*models.ScheduledTransaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Frequency: models.FrequencyMonthly,
+					NextDate:  models.Today(),
+					// No amount set - variable
+				},
+			},
+			dueCount:      1,
+			payeeNames:    make(map[models.ID]string),
+			accountNames:  map[models.ID]string{accountID: "Checking"},
+			categoryNames: make(map[models.ID]string),
+		},
+	}
+
+	app.buildScheduledTable()
+
+	row := app.scheduledTable.SelectedRow()
+	if row[3] != "~variable" {
+		t.Errorf("amount = %q, want %q for variable amount", row[3], "~variable")
+	}
+}
+
+func TestApp_BuildScheduledTable_OverdueIndicator(t *testing.T) {
+	accountID := models.NewID()
+	pastDate := models.Today().AddDays(-3)
+
+	app := &App{
+		styles: NewStyles(),
+		scheduled: &scheduledViewData{
+			allTxns: []*models.ScheduledTransaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Frequency: models.FrequencyMonthly,
+					NextDate:  pastDate,
+					Amount:    models.NullableMoney{Money: models.MustNewMoney("-50"), Valid: true},
+				},
+			},
+			dueCount:      1,
+			payeeNames:    make(map[models.ID]string),
+			accountNames:  map[models.ID]string{accountID: "Checking"},
+			categoryNames: make(map[models.ID]string),
+		},
+	}
+
+	app.buildScheduledTable()
+
+	row := app.scheduledTable.SelectedRow()
+	if row[0] != "!●" {
+		t.Errorf("status = %q, want %q for overdue", row[0], "!●")
+	}
+}
+
+func TestApp_BuildScheduledTable_UpcomingIndicator(t *testing.T) {
+	accountID := models.NewID()
+	futureDate := models.Today().AddDays(7)
+
+	app := &App{
+		styles: NewStyles(),
+		scheduled: &scheduledViewData{
+			allTxns: []*models.ScheduledTransaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Frequency: models.FrequencyWeekly,
+					NextDate:  futureDate,
+					Amount:    models.NullableMoney{Money: models.MustNewMoney("-25"), Valid: true},
+				},
+			},
+			dueCount:      0, // not due, so index 0 >= dueCount (0)
+			payeeNames:    make(map[models.ID]string),
+			accountNames:  map[models.ID]string{accountID: "Checking"},
+			categoryNames: make(map[models.ID]string),
+		},
+	}
+
+	app.buildScheduledTable()
+
+	row := app.scheduledTable.SelectedRow()
+	if row[0] != " ○" {
+		t.Errorf("status = %q, want %q for upcoming", row[0], " ○")
+	}
+}
+
+func TestApp_HandleScheduledKeys_TableNavigation(t *testing.T) {
+	accountID := models.NewID()
+
+	app := &App{
+		currentView: ViewScheduled,
+		width:       120,
+		height:      30,
+		styles:      NewStyles(),
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		scheduled: &scheduledViewData{
+			allTxns: []*models.ScheduledTransaction{
+				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Frequency: models.FrequencyMonthly, NextDate: models.Today()},
+				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Frequency: models.FrequencyWeekly, NextDate: models.Today()},
+				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Frequency: models.FrequencyYearly, NextDate: models.Today()},
+			},
+			dueCount:      3,
+			payeeNames:    make(map[models.ID]string),
+			accountNames:  map[models.ID]string{accountID: "Checking"},
+			categoryNames: make(map[models.ID]string),
+		},
+	}
+	app.buildScheduledTable()
+
+	// Start with table focused, sidebar not
+	app.sidebar.SetFocused(false)
+	app.scheduledTable.SetFocused(true)
+
+	// Move down
+	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	app.Update(downKey)
+	if app.scheduledTable.Cursor() != 1 {
+		t.Errorf("cursor should be 1 after down, got %d", app.scheduledTable.Cursor())
+	}
+
+	// Move down again
+	app.Update(downKey)
+	if app.scheduledTable.Cursor() != 2 {
+		t.Errorf("cursor should be 2 after two downs, got %d", app.scheduledTable.Cursor())
+	}
+
+	// Move up
+	upKey := tea.KeyMsg{Type: tea.KeyUp}
+	app.Update(upKey)
+	if app.scheduledTable.Cursor() != 1 {
+		t.Errorf("cursor should be 1 after up, got %d", app.scheduledTable.Cursor())
+	}
+}
+
+func TestApp_HandleScheduledKeys_TabFocus(t *testing.T) {
+	accountID := models.NewID()
+
+	app := &App{
+		currentView: ViewScheduled,
+		width:       120,
+		height:      30,
+		styles:      NewStyles(),
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		scheduled: &scheduledViewData{
+			allTxns:       []*models.ScheduledTransaction{},
+			dueCount:      0,
+			payeeNames:    make(map[models.ID]string),
+			accountNames:  map[models.ID]string{accountID: "Checking"},
+			categoryNames: make(map[models.ID]string),
+		},
+	}
+	app.buildScheduledTable()
+
+	// Start with table focused
+	app.sidebar.SetFocused(false)
+	app.scheduledTable.SetFocused(true)
+
+	// Tab should switch focus to sidebar
+	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	app.Update(tabKey)
+
+	if !app.sidebar.IsFocused() {
+		t.Error("sidebar should be focused after Tab")
+	}
+	if app.scheduledTable.IsFocused() {
+		t.Error("scheduled table should not be focused after Tab")
+	}
+
+	// Tab again should switch back to table
+	app.Update(tabKey)
+
+	if app.sidebar.IsFocused() {
+		t.Error("sidebar should not be focused after second Tab")
+	}
+	if !app.scheduledTable.IsFocused() {
+		t.Error("scheduled table should be focused after second Tab")
+	}
+}
+
+func TestApp_Update_ScheduledViewDataLoaded(t *testing.T) {
+	app := &App{
+		currentView: ViewScheduled,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	accountID := models.NewID()
+	payeeID := models.NewID()
+
+	data := &scheduledViewData{
+		allTxns: []*models.ScheduledTransaction{
+			{
+				BaseModel: models.BaseModel{ID: models.NewID()},
+				AccountID: accountID,
+				Frequency: models.FrequencyMonthly,
+				NextDate:  models.Today(),
+				PayeeID:   models.NullableID{ID: payeeID, Valid: true},
+				Amount:    models.NullableMoney{Money: models.MustNewMoney("-100"), Valid: true},
+			},
+		},
+		dueCount:      1,
+		payeeNames:    map[models.ID]string{payeeID: "Landlord"},
+		accountNames:  map[models.ID]string{accountID: "Checking"},
+		categoryNames: make(map[models.ID]string),
+	}
+
+	msg := scheduledViewDataLoadedMsg{data: data}
+	model, cmd := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if cmd != nil {
+		t.Error("scheduledViewDataLoadedMsg should not return a command")
+	}
+	if updatedApp.scheduled == nil {
+		t.Fatal("scheduled data should be set")
+	}
+	if len(updatedApp.scheduled.allTxns) != 1 {
+		t.Errorf("expected 1 scheduled txn, got %d", len(updatedApp.scheduled.allTxns))
+	}
+	if updatedApp.scheduledTable == nil {
+		t.Fatal("scheduled table should be created")
+	}
+	if updatedApp.scheduledTable.RowCount() != 1 {
+		t.Errorf("scheduled table row count = %d, want 1", updatedApp.scheduledTable.RowCount())
+	}
+}
+
+func TestApp_SwitchView_Scheduled_SetsFocus(t *testing.T) {
+	app := &App{
+		currentView:    ViewDashboard,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		scheduledTable: NewTable([]Column{{Header: "Test", Width: 10}}),
+	}
+
+	app.sidebar.SetFocused(true)
+	app.scheduledTable.SetFocused(false)
+
+	app.switchView(ViewScheduled)
+
+	if app.sidebar.IsFocused() {
+		t.Error("sidebar should not be focused in scheduled view")
+	}
+	if !app.scheduledTable.IsFocused() {
+		t.Error("scheduled table should be focused in scheduled view")
+	}
+}
+
+func TestApp_FormatScheduledRow_AllFrequencies(t *testing.T) {
+	accountID := models.NewID()
+
+	frequencies := []struct {
+		freq     models.Frequency
+		expected string
+	}{
+		{models.FrequencyDaily, "Daily"},
+		{models.FrequencyWeekly, "Weekly"},
+		{models.FrequencyBiweekly, "Biweekly"},
+		{models.FrequencyMonthly, "Monthly"},
+		{models.FrequencyQuarterly, "Quarterly"},
+		{models.FrequencyYearly, "Yearly"},
+	}
+
+	for _, tt := range frequencies {
+		t.Run(string(tt.freq), func(t *testing.T) {
+			app := &App{
+				styles: NewStyles(),
+				scheduled: &scheduledViewData{
+					payeeNames:    make(map[models.ID]string),
+					accountNames:  map[models.ID]string{accountID: "Checking"},
+					categoryNames: make(map[models.ID]string),
+				},
+			}
+
+			st := &models.ScheduledTransaction{
+				BaseModel: models.BaseModel{ID: models.NewID()},
+				AccountID: accountID,
+				Frequency: tt.freq,
+				NextDate:  models.Today(),
+				Amount:    models.NullableMoney{Money: models.MustNewMoney("-25"), Valid: true},
+			}
+
+			row := app.formatScheduledRow(st, false)
+			if row[4] != tt.expected {
+				t.Errorf("frequency = %q, want %q", row[4], tt.expected)
+			}
+		})
+	}
+}
+
 // Helper function
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
