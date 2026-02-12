@@ -323,7 +323,7 @@ This document defines the order in which features should be implemented. Each it
   - Post/skip actions
   - Navigation
 
-- [ ] **048 - Scheduled transaction dialogs**
+- [x] **048 - Scheduled transaction dialogs**
   - New scheduled dialog
   - Edit scheduled dialog
   - Frequency selection

@@ -105,6 +105,12 @@ type App struct {
 	acctDialog     *Dialog
 	acctDialogData *accountDialogData
 
+	// Scheduled dialog state
+	schedDialog            *Dialog
+	schedDialogData        *scheduledDialogData
+	schedDialogAccountIDs  []models.ID
+	schedDialogCategoryIDs []models.ID
+
 	// Scheduled view state
 	scheduled      *scheduledViewData
 	scheduledTable *Table
@@ -637,6 +643,40 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.loadSidebarData(),
 		)
 
+	case scheduledDialogDataMsg:
+		a.schedDialogData = msg.data
+		accountOptions, accountIDs := buildAccountOptions(msg.data.accounts)
+		a.schedDialogAccountIDs = accountIDs
+
+		var categories []*models.Category
+		if a.categorySvc != nil {
+			cats, err := a.categorySvc.List()
+			if err == nil {
+				categories = cats
+			}
+		}
+		categoryOptions, categoryIDs := buildCategoryOptions(categories)
+		a.schedDialogCategoryIDs = categoryIDs
+
+		if msg.data.mode == scheduledDialogModeEdit && msg.data.scheduled != nil {
+			// Build payee name map for edit dialog
+			payeeNames := make(map[models.ID]string)
+			for _, p := range msg.data.payees {
+				payeeNames[p.ID] = p.Name
+			}
+			a.schedDialog = buildEditScheduledDialog(msg.data.scheduled, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
+		} else {
+			a.schedDialog = buildNewScheduledDialog(accountOptions, categoryOptions)
+		}
+		return a, nil
+
+	case scheduledDialogSavedMsg:
+		return a, tea.Batch(
+			a.loadScheduledViewData(),
+			a.loadScheduledDueCount(),
+			a.loadSidebarData(),
+		)
+
 	case accountDialogDataMsg:
 		a.acctDialogData = msg.data
 		if msg.data.mode == accountDialogModeEdit && msg.data.account != nil {
@@ -689,6 +729,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If transfer dialog is visible, route all keys to it
 	if a.transferDialog != nil && a.transferDialog.IsVisible() {
 		return a.handleTransferDialogKey(msg)
+	}
+
+	// If scheduled dialog is visible, route all keys to it
+	if a.schedDialog != nil && a.schedDialog.IsVisible() {
+		return a.handleScheduledDialogKey(msg)
 	}
 
 	// If account dialog is visible, route all keys to it
@@ -914,6 +959,10 @@ func (a *App) handleScheduledKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.skipSelectedScheduled()
 	case key.Matches(msg, a.keys.Delete):
 		return a.deleteSelectedScheduled()
+	case key.Matches(msg, a.keys.New):
+		return a, a.loadNewScheduledDialogData()
+	case key.Matches(msg, a.keys.Edit):
+		return a, a.loadEditScheduledDialogData()
 	}
 
 	return a, nil
@@ -1210,6 +1259,12 @@ func (a *App) renderLayout() string {
 	// Overlay transfer dialog if visible
 	if a.transferDialog != nil && a.transferDialog.IsVisible() {
 		overlay := a.transferDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay scheduled dialog if visible
+	if a.schedDialog != nil && a.schedDialog.IsVisible() {
+		overlay := a.schedDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
@@ -1674,8 +1729,7 @@ func (a *App) renderScheduled() string {
 		sections = append(sections, "")
 		sections = append(sections, a.styles.Muted.Render("  No scheduled transactions"))
 		sections = append(sections, "")
-		sections = append(sections, a.styles.Muted.Render("  Create scheduled transactions via CLI:"))
-		sections = append(sections, a.styles.Muted.Render("  tmoney --add-scheduled --account <name> ..."))
+		sections = append(sections, a.styles.Muted.Render("  Press 'n' to create a new scheduled transaction"))
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render(strings.Join(sections, "\n"))
@@ -1797,7 +1851,7 @@ func (a *App) getKeyHints() string {
 	case ViewRegister:
 		return "↑↓ navigate  enter edit  n new  t transfer  d delete  esc back  " + common
 	case ViewScheduled:
-		return "↑↓ navigate  enter post  s skip  e edit  esc back  " + common
+		return "↑↓ navigate  enter post  s skip  n new  e edit  d delete  esc back  " + common
 	case ViewReports:
 		return "↑↓ navigate  ←→ period  esc back  " + common
 	default:
