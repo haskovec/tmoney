@@ -115,6 +115,9 @@ type App struct {
 	scheduled      *scheduledViewData
 	scheduledTable *Table
 
+	// Reports view state
+	reports *reportsViewData
+
 	// Key bindings
 	keys keyMap
 }
@@ -472,6 +475,44 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 	}
 }
 
+// loadReportsViewData returns a command that loads report data for the reports view.
+func (a *App) loadReportsViewData(rt reportType, year, month int) tea.Cmd {
+	return func() tea.Msg {
+		data := &reportsViewData{
+			rtype: rt,
+			year:  year,
+			month: month,
+		}
+
+		switch rt {
+		case reportTypeNetWorth:
+			if a.reportSvc != nil {
+				report, err := a.reportSvc.NetWorth()
+				if err != nil {
+					return errMsg{err: err}
+				}
+				data.netWorth = report
+			}
+		case reportTypeSpending:
+			if a.reportSvc != nil {
+				var report *models.SpendingReport
+				var err error
+				if month > 0 {
+					report, err = a.reportSvc.SpendingByCategoryMonth(year, month)
+				} else {
+					report, err = a.reportSvc.SpendingByCategoryYear(year)
+				}
+				if err != nil {
+					return errMsg{err: err}
+				}
+				data.spending = report
+			}
+		}
+
+		return reportsViewDataLoadedMsg{data: data}
+	}
+}
+
 // loadRegisterData returns a command that loads all data needed for the register view.
 func (a *App) loadRegisterData(accountID models.ID) tea.Cmd {
 	return func() tea.Msg {
@@ -578,6 +619,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data
 		a.buildScheduledTable()
+		return a, nil
+
+	case reportsViewDataLoadedMsg:
+		a.reports = msg.data
 		return a, nil
 
 	case scheduledPostedMsg:
@@ -785,6 +830,10 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, a.keys.Reports):
 		a.switchView(ViewReports)
+		if a.reports == nil {
+			now := time.Now()
+			return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()))
+		}
 		return a, nil
 
 	case key.Matches(msg, a.keys.Escape):
@@ -1032,9 +1081,96 @@ func (a *App) deleteSelectedScheduled() (tea.Model, tea.Cmd) {
 }
 
 // handleReportsKeys handles key presses in the reports view.
-func (a *App) handleReportsKeys(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Placeholder for reports-specific key handling
+func (a *App) handleReportsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if a.reports == nil {
+		return a, nil
+	}
+
+	switch {
+	case key.Matches(msg, a.keys.Left):
+		// Navigate to previous period
+		return a.reportsPreviousPeriod()
+
+	case key.Matches(msg, a.keys.Right):
+		// Navigate to next period
+		return a.reportsNextPeriod()
+
+	case msg.String() == "n":
+		// Switch to net worth report
+		now := time.Now()
+		return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()))
+
+	case msg.String() == "s":
+		// Switch to spending report
+		year := a.reports.year
+		month := a.reports.month
+		if month == 0 {
+			month = int(time.Now().Month())
+		}
+		return a, a.loadReportsViewData(reportTypeSpending, year, month)
+
+	case msg.String() == "y":
+		// Toggle to yearly spending view (only for spending)
+		if a.reports.rtype == reportTypeSpending {
+			return a, a.loadReportsViewData(reportTypeSpending, a.reports.year, 0)
+		}
+
+	case msg.String() == "m":
+		// Toggle to monthly spending view (only for spending)
+		if a.reports.rtype == reportTypeSpending && a.reports.month == 0 {
+			return a, a.loadReportsViewData(reportTypeSpending, a.reports.year, int(time.Now().Month()))
+		}
+	}
+
 	return a, nil
+}
+
+// reportsPreviousPeriod navigates to the previous time period for reports.
+func (a *App) reportsPreviousPeriod() (tea.Model, tea.Cmd) {
+	if a.reports == nil || a.reports.rtype != reportTypeSpending {
+		return a, nil
+	}
+
+	year := a.reports.year
+	month := a.reports.month
+
+	if month > 0 {
+		// Monthly: go to previous month
+		month--
+		if month < 1 {
+			month = 12
+			year--
+		}
+	} else {
+		// Yearly: go to previous year
+		year--
+	}
+
+	return a, a.loadReportsViewData(reportTypeSpending, year, month)
+}
+
+// reportsNextPeriod navigates to the next time period for reports.
+func (a *App) reportsNextPeriod() (tea.Model, tea.Cmd) {
+	if a.reports == nil || a.reports.rtype != reportTypeSpending {
+		return a, nil
+	}
+
+	year := a.reports.year
+	month := a.reports.month
+
+	if month > 0 {
+		// Monthly: go to next month
+		month++
+		if month > 12 {
+			month = 1
+			year++
+		}
+	} else {
+		// Yearly: go to next year
+		year++
+	}
+
+	return a, a.loadReportsViewData(reportTypeSpending, year, month)
 }
 
 // handleSidebarKeys handles keyboard navigation for the sidebar.
@@ -1117,8 +1253,15 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 	case MenuActionDashboard:
 		a.switchView(ViewDashboard)
 
-	case MenuActionNetWorth, MenuActionSpendingByCategory:
+	case MenuActionNetWorth:
 		a.switchView(ViewReports)
+		now := time.Now()
+		return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()))
+
+	case MenuActionSpendingByCategory:
+		a.switchView(ViewReports)
+		now := time.Now()
+		return a, a.loadReportsViewData(reportTypeSpending, now.Year(), int(now.Month()))
 
 	case MenuActionNewAccount:
 		return a, a.loadNewAccountDialogData()
@@ -1189,6 +1332,12 @@ func (a *App) switchView(v View) {
 			case ViewDashboard:
 				// Dashboard uses sidebar navigation
 				a.sidebar.SetFocused(true)
+				if a.table != nil {
+					a.table.SetFocused(false)
+				}
+			case ViewReports:
+				// Reports view doesn't use sidebar focus
+				a.sidebar.SetFocused(false)
 				if a.table != nil {
 					a.table.SetFocused(false)
 				}
@@ -1830,10 +1979,226 @@ func (a *App) formatScheduledRow(st *models.ScheduledTransaction, isDue bool) []
 
 // renderReports renders the reports view.
 func (a *App) renderReports() string {
-	// Placeholder - will be implemented in task 049
+	if a.reports == nil {
+		return lipgloss.NewStyle().
+			Padding(1, 2).
+			Render("Loading reports...")
+	}
+
+	switch a.reports.rtype {
+	case reportTypeNetWorth:
+		return a.renderNetWorthReport()
+	case reportTypeSpending:
+		return a.renderSpendingReport()
+	default:
+		return lipgloss.NewStyle().
+			Padding(1, 2).
+			Render("Unknown report type")
+	}
+}
+
+// renderNetWorthReport renders the net worth report.
+func (a *App) renderNetWorthReport() string {
+	if a.reports.netWorth == nil {
+		return lipgloss.NewStyle().
+			Padding(1, 2).
+			Render("No data available")
+	}
+
+	contentWidth := a.styles.ContentWidth()
+	nw := a.reports.netWorth
+
+	var sections []string
+
+	// Title row: NET WORTH REPORT + date
+	dateStr := nw.AsOfDate.Format("Jan 2, 2006")
+	titleText := "NET WORTH REPORT"
+	padding := contentWidth - lipgloss.Width(titleText) - lipgloss.Width(dateStr) - 4
+	if padding < 1 {
+		padding = 1
+	}
+	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render("As of: "+dateStr)
+	sections = append(sections, titleRow)
+
+	// Separator
+	sepWidth := contentWidth - 4
+	if sepWidth < 1 {
+		sepWidth = 1
+	}
+	sections = append(sections, a.styles.Muted.Render(strings.Repeat("═", sepWidth)))
+
+	// Net worth summary
+	nwLabel := "Net Worth:  "
+	nwValue := formatDashboardMoney(nw.NetWorth)
+	nwStyle := a.styles.Positive
+	if nw.NetWorth.IsNegative() {
+		nwStyle = a.styles.Negative
+	}
+	sections = append(sections, "")
+	sections = append(sections, a.styles.Bold.Render(nwLabel)+nwStyle.Bold(true).Render(nwValue))
+	sections = append(sections, "")
+
+	// Assets and liabilities columns
+	sections = append(sections, a.renderAssetLiabilityColumns(nw, contentWidth))
+
+	// Navigation hints
+	sections = append(sections, "")
+	sections = append(sections, a.styles.Muted.Render("  n net worth  s spending  esc back"))
+
 	return lipgloss.NewStyle().
 		Padding(1, 2).
-		Render("Reports View\n\nPress Esc to go back")
+		Render(strings.Join(sections, "\n"))
+}
+
+// renderSpendingReport renders the spending by category report.
+func (a *App) renderSpendingReport() string {
+	if a.reports.spending == nil {
+		return lipgloss.NewStyle().
+			Padding(1, 2).
+			Render("No data available")
+	}
+
+	contentWidth := a.styles.ContentWidth()
+	sr := a.reports.spending
+
+	var sections []string
+
+	// Title row
+	titleText := "SPENDING BY CATEGORY"
+	periodText := sr.Period
+	padding := contentWidth - lipgloss.Width(titleText) - lipgloss.Width(periodText) - 4
+	if padding < 1 {
+		padding = 1
+	}
+	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Bold.Render(periodText)
+	sections = append(sections, titleRow)
+
+	// Separator
+	sepWidth := contentWidth - 4
+	if sepWidth < 1 {
+		sepWidth = 1
+	}
+	sections = append(sections, a.styles.Muted.Render(strings.Repeat("═", sepWidth)))
+
+	if len(sr.Categories) == 0 {
+		sections = append(sections, "")
+		sections = append(sections, a.styles.Muted.Render("  No spending data for this period"))
+	} else {
+		// Column header
+		tableWidth := contentWidth - 4
+		if tableWidth < 1 {
+			tableWidth = 1
+		}
+		barWidth := tableWidth - 42 // Reserve space for name(20), amount(12), percent(8), gaps(2)
+		if barWidth < 4 {
+			barWidth = 4
+		}
+
+		headerLine := fmt.Sprintf("  %-20s %12s %7s  %s", "Category", "Amount", "% Total", "")
+		sections = append(sections, a.styles.TableHeader.Render(headerLine))
+
+		// Category rows
+		for _, cat := range sr.Categories {
+			// Parent category row with bar
+			name := truncate(cat.Name, 20)
+			amount := formatDashboardMoney(cat.Amount)
+			pct := fmt.Sprintf("%.1f%%", cat.Percentage)
+			bar := renderSpendingBar(cat.Percentage, barWidth)
+
+			line := fmt.Sprintf("  %-20s %12s %7s  %s",
+				a.styles.Bold.Render(name),
+				a.styles.Negative.Render(amount),
+				pct,
+				a.styles.Negative.Render(bar))
+			sections = append(sections, line)
+
+			// Subcategory rows
+			for _, sub := range cat.Subcategories {
+				subName := "  " + truncate(sub.Name, 18)
+				subAmount := formatDashboardMoney(sub.Amount)
+				subLine := fmt.Sprintf("  %-20s %12s",
+					a.styles.Muted.Render(subName),
+					a.styles.Muted.Render(subAmount))
+				sections = append(sections, subLine)
+			}
+		}
+
+		// Total row
+		sections = append(sections, a.styles.Muted.Render("  "+strings.Repeat("─", tableWidth-2)))
+		totalAmount := formatDashboardMoney(sr.TotalSpending)
+		totalLine := fmt.Sprintf("  %-20s %12s %7s",
+			a.styles.Bold.Render("TOTAL"),
+			a.styles.Negative.Bold(true).Render(totalAmount),
+			"100.0%")
+		sections = append(sections, totalLine)
+	}
+
+	// Period navigation
+	sections = append(sections, "")
+	prevPeriod, nextPeriod := a.getAdjacentPeriods()
+	navLine := fmt.Sprintf("  %s  %s  %s",
+		a.styles.Muted.Render(fmt.Sprintf("< %s", prevPeriod)),
+		a.styles.Bold.Render(periodText),
+		a.styles.Muted.Render(fmt.Sprintf("%s >", nextPeriod)))
+	sections = append(sections, navLine)
+
+	// Navigation hints
+	modeHint := "m monthly"
+	if a.reports.month > 0 {
+		modeHint = "y yearly"
+	}
+	sections = append(sections, a.styles.Muted.Render(fmt.Sprintf("  <-> period  %s  n net worth  s spending  esc back", modeHint)))
+
+	return lipgloss.NewStyle().
+		Padding(1, 2).
+		Render(strings.Join(sections, "\n"))
+}
+
+// getAdjacentPeriods returns display strings for the previous and next periods.
+func (a *App) getAdjacentPeriods() (string, string) {
+	if a.reports == nil {
+		return "", ""
+	}
+
+	year := a.reports.year
+	month := a.reports.month
+
+	if month > 0 {
+		// Monthly
+		prevMonth := month - 1
+		prevYear := year
+		if prevMonth < 1 {
+			prevMonth = 12
+			prevYear--
+		}
+		nextMonth := month + 1
+		nextYear := year
+		if nextMonth > 12 {
+			nextMonth = 1
+			nextYear++
+		}
+		prev := time.Date(prevYear, time.Month(prevMonth), 1, 0, 0, 0, 0, time.UTC).Format("Jan 2006")
+		next := time.Date(nextYear, time.Month(nextMonth), 1, 0, 0, 0, 0, time.UTC).Format("Jan 2006")
+		return prev, next
+	}
+
+	// Yearly
+	return fmt.Sprintf("%d", year-1), fmt.Sprintf("%d", year+1)
+}
+
+// renderSpendingBar renders a horizontal bar chart segment for spending percentage.
+func renderSpendingBar(percentage float64, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	filled := int(math.Round(percentage / 100.0 * float64(maxWidth)))
+	if filled > maxWidth {
+		filled = maxWidth
+	}
+	if filled < 0 {
+		filled = 0
+	}
+	return strings.Repeat("█", filled) + strings.Repeat("░", maxWidth-filled)
 }
 
 // renderStatusBar renders the status bar at the bottom.
@@ -1853,7 +2218,7 @@ func (a *App) getKeyHints() string {
 	case ViewScheduled:
 		return "↑↓ navigate  enter post  s skip  n new  e edit  d delete  esc back  " + common
 	case ViewReports:
-		return "↑↓ navigate  ←→ period  esc back  " + common
+		return "←→ period  n net worth  s spending  y year  m month  esc back  " + common
 	default:
 		return common
 	}
@@ -1933,6 +2298,28 @@ type scheduledSkippedMsg struct{}
 
 // scheduledDeletedMsg is sent when a scheduled transaction has been deleted.
 type scheduledDeletedMsg struct{}
+
+// reportType represents which report is being displayed.
+type reportType int
+
+const (
+	reportTypeNetWorth reportType = iota
+	reportTypeSpending
+)
+
+// reportsViewData holds the loaded data for the reports view.
+type reportsViewData struct {
+	rtype    reportType
+	netWorth *models.NetWorthReport
+	spending *models.SpendingReport
+	year     int
+	month    int // 1-12 for monthly, 0 for yearly
+}
+
+// reportsViewDataLoadedMsg is sent when reports data has been loaded.
+type reportsViewDataLoadedMsg struct {
+	data *reportsViewData
+}
 
 // overlayDropdown places a dropdown string on top of the layout at the given row and column offset.
 func overlayDropdown(layout, dropdown string, colOffset, rowOffset, totalWidth int) string {

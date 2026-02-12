@@ -329,7 +329,7 @@ This document defines the order in which features should be implemented. Each it
   - Frequency selection
   - Duration options
 
-- [ ] **049 - Reports view**
+- [x] **049 - Reports view**
   - Report selection sidebar
   - Net worth display
   - Spending chart
