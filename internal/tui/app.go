@@ -762,6 +762,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKeyPress handles keyboard input.
 func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// If an error is displayed, any key press dismisses it
+	if a.err != nil {
+		a.err = nil
+		return a, nil
+	}
+
 	// If file dialog is visible, route all keys to it
 	if a.fileDialog != nil && a.fileDialog.IsVisible() {
 		return a.handleFileDialogKey(msg)

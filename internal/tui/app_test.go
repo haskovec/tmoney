@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -2479,6 +2480,186 @@ func TestApp_GetKeyHints_Reports(t *testing.T) {
 	}
 	if !contains(hints, "period") {
 		t.Error("reports key hints should mention 'period'")
+	}
+}
+
+// =============================================================================
+// Error Display and Dismissal Tests
+// =============================================================================
+
+func TestApp_View_Error(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(80, 24)
+	app := &App{
+		ready:  true,
+		styles: styles,
+		err:    fmt.Errorf("failed to open database: not a valid file"),
+	}
+
+	view := app.View()
+	if !contains(view, "Error") {
+		t.Error("View() should contain 'Error' when err is set")
+	}
+	if !contains(view, "failed to open database") {
+		t.Error("View() should contain the error message")
+	}
+	if !contains(view, "Press any key to continue") {
+		t.Error("View() should contain 'Press any key to continue'")
+	}
+}
+
+func TestApp_Update_ErrorDismissedByKeyPress(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		err:         fmt.Errorf("some error"),
+	}
+
+	// Any key press should clear the error
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	model, cmd := app.Update(msg)
+
+	updatedApp := model.(*App)
+	if updatedApp.err != nil {
+		t.Error("error should be cleared after key press")
+	}
+	if cmd != nil {
+		t.Error("dismissing error should not return a command")
+	}
+}
+
+func TestApp_Update_ErrorDismissedByEnter(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		err:         fmt.Errorf("some error"),
+	}
+
+	msg := tea.KeyMsg{Type: tea.KeyEnter}
+	model, _ := app.Update(msg)
+
+	updatedApp := model.(*App)
+	if updatedApp.err != nil {
+		t.Error("error should be cleared after Enter key")
+	}
+}
+
+func TestApp_Update_ErrorDismissedByEscape(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		err:         fmt.Errorf("some error"),
+	}
+
+	msg := tea.KeyMsg{Type: tea.KeyEsc}
+	model, _ := app.Update(msg)
+
+	updatedApp := model.(*App)
+	if updatedApp.err != nil {
+		t.Error("error should be cleared after Escape key")
+	}
+}
+
+func TestApp_Update_ErrorDismissedBySpace(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		err:         fmt.Errorf("some error"),
+	}
+
+	msg := tea.KeyMsg{Type: tea.KeySpace}
+	model, _ := app.Update(msg)
+
+	updatedApp := model.(*App)
+	if updatedApp.err != nil {
+		t.Error("error should be cleared after Space key")
+	}
+}
+
+func TestApp_Update_ErrorDoesNotQuit(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		err:         fmt.Errorf("some error"),
+	}
+
+	// Ctrl+Q should dismiss the error, not quit the app
+	msg := tea.KeyMsg{Type: tea.KeyCtrlQ}
+	model, cmd := app.Update(msg)
+
+	updatedApp := model.(*App)
+	if updatedApp.err != nil {
+		t.Error("error should be cleared after Ctrl+Q")
+	}
+	if updatedApp.quitting {
+		t.Error("app should not quit when dismissing an error")
+	}
+	if cmd != nil {
+		t.Error("dismissing error should not return a command")
+	}
+}
+
+func TestApp_Update_ErrMsg(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+	}
+
+	msg := errMsg{err: fmt.Errorf("test error")}
+	model, cmd := app.Update(msg)
+
+	updatedApp := model.(*App)
+	if updatedApp.err == nil {
+		t.Error("err should be set after errMsg")
+	}
+	if updatedApp.err.Error() != "test error" {
+		t.Errorf("err = %q, want %q", updatedApp.err.Error(), "test error")
+	}
+	if cmd != nil {
+		t.Error("errMsg should not return a command")
+	}
+}
+
+func TestApp_Update_ErrorThenNormalOperation(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		err:         fmt.Errorf("some error"),
+	}
+
+	// First key press dismisses the error
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.err != nil {
+		t.Fatal("error should be cleared after first key press")
+	}
+
+	// Second key press should work normally (not get stuck)
+	msg = tea.KeyMsg{Type: tea.KeyCtrlQ}
+	model, cmd := updatedApp.Update(msg)
+	updatedApp = model.(*App)
+
+	if !updatedApp.quitting {
+		t.Error("app should quit on Ctrl+Q after error is dismissed")
+	}
+	if cmd == nil {
+		t.Error("Ctrl+Q should return tea.Quit command")
 	}
 }
 
