@@ -101,6 +101,10 @@ type App struct {
 	transferDialogData       *transferDialogData
 	transferDialogAccountIDs []models.ID
 
+	// Account dialog state
+	acctDialog     *Dialog
+	acctDialogData *accountDialogData
+
 	// Key bindings
 	keys keyMap
 }
@@ -530,6 +534,35 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.loadSidebarData(),
 		)
 
+	case accountDialogDataMsg:
+		a.acctDialogData = msg.data
+		if msg.data.mode == accountDialogModeEdit && msg.data.account != nil {
+			a.acctDialog = buildEditAccountDialog(msg.data.account)
+		} else {
+			a.acctDialog = buildNewAccountDialog()
+		}
+		return a, nil
+
+	case accountDialogSavedMsg:
+		cmds := []tea.Cmd{a.loadSidebarData(), a.loadDashboardData()}
+		if a.currentView == ViewRegister {
+			accountID := a.sidebar.SelectedAccountID()
+			cmds = append(cmds, a.loadRegisterData(accountID))
+		}
+		return a, tea.Batch(cmds...)
+
+	case accountDeletedMsg:
+		a.switchView(ViewDashboard)
+		return a, tea.Batch(a.loadSidebarData(), a.loadDashboardData())
+
+	case accountClosedMsg:
+		cmds := []tea.Cmd{a.loadSidebarData(), a.loadDashboardData()}
+		if a.currentView == ViewRegister {
+			accountID := a.sidebar.SelectedAccountID()
+			cmds = append(cmds, a.loadRegisterData(accountID))
+		}
+		return a, tea.Batch(cmds...)
+
 	case errMsg:
 		a.err = msg.err
 		return a, nil
@@ -553,6 +586,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If transfer dialog is visible, route all keys to it
 	if a.transferDialog != nil && a.transferDialog.IsVisible() {
 		return a.handleTransferDialogKey(msg)
+	}
+
+	// If account dialog is visible, route all keys to it
+	if a.acctDialog != nil && a.acctDialog.IsVisible() {
+		return a.handleAccountDialogKey(msg)
 	}
 
 	// Alt+key menu shortcuts work regardless of menu state
@@ -813,7 +851,34 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 	case MenuActionNetWorth, MenuActionSpendingByCategory:
 		a.switchView(ViewReports)
 
-	// Other actions are placeholders for future implementation
+	case MenuActionNewAccount:
+		return a, a.loadNewAccountDialogData()
+
+	case MenuActionEditAccount:
+		if a.sidebar.SelectedAccountID() != models.NilID {
+			return a, a.loadEditAccountDialogData()
+		}
+
+	case MenuActionCloseAccount:
+		if a.sidebar.SelectedAccountID() != models.NilID {
+			return a, a.closeSelectedAccount()
+		}
+
+	case MenuActionDeleteAccount:
+		if a.sidebar.SelectedAccountID() != models.NilID {
+			return a, a.deleteSelectedAccount()
+		}
+
+	case MenuActionNewTransaction:
+		if a.currentView == ViewRegister {
+			return a, a.loadTransactionDialogData()
+		}
+
+	case MenuActionNewTransfer:
+		if a.currentView == ViewRegister {
+			return a, a.loadTransferDialogData()
+		}
+
 	case MenuActionNone:
 		// No action
 	}
@@ -919,6 +984,12 @@ func (a *App) renderLayout() string {
 	// Overlay transfer dialog if visible
 	if a.transferDialog != nil && a.transferDialog.IsVisible() {
 		overlay := a.transferDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay account dialog if visible
+	if a.acctDialog != nil && a.acctDialog.IsVisible() {
+		overlay := a.acctDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

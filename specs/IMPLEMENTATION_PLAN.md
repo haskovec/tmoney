@@ -312,7 +312,7 @@ This document defines the order in which features should be implemented. Each it
   - Amount input
   - Date input
 
-- [ ] **046 - Account dialogs**
+- [x] **046 - Account dialogs**
   - New account dialog
   - Edit account dialog
   - Account type selection

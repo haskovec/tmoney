@@ -1,0 +1,387 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/haskovec/tmoney/internal/models"
+)
+
+// accountDialogMode indicates whether the dialog is creating or editing.
+type accountDialogMode int
+
+const (
+	accountDialogModeNew  accountDialogMode = iota
+	accountDialogModeEdit
+)
+
+// accountDialogData holds the loaded data needed for the account dialog.
+type accountDialogData struct {
+	mode    accountDialogMode
+	account *models.Account // non-nil when editing
+}
+
+// accountDialogDataMsg is sent when account dialog data has been loaded.
+type accountDialogDataMsg struct {
+	data *accountDialogData
+}
+
+// accountDialogSavedMsg is sent when an account has been saved.
+type accountDialogSavedMsg struct{}
+
+// accountDeletedMsg is sent when an account has been deleted.
+type accountDeletedMsg struct{}
+
+// accountClosedMsg is sent when an account has been closed/reopened.
+type accountClosedMsg struct{}
+
+// Account dialog field indices for new account dialog.
+const (
+	acctFieldName           = 0
+	acctFieldType           = 1
+	acctFieldCurrency       = 2
+	acctFieldOpeningBalance = 3
+	acctFieldOpeningDate    = 4
+	acctFieldInstitution    = 5
+	acctFieldAccountNumber  = 6
+	acctFieldNotes          = 7
+	acctFieldCreditLimit    = 8
+	acctFieldInterestRate   = 9
+)
+
+// buildAccountTypeOptions returns display names for all account types.
+func buildAccountTypeOptions() []string {
+	types := models.AllAccountTypes()
+	options := make([]string, len(types))
+	for i, t := range types {
+		options[i] = t.DisplayName()
+	}
+	return options
+}
+
+// accountTypeFromIndex returns the AccountType for a given select index.
+func accountTypeFromIndex(index int) models.AccountType {
+	types := models.AllAccountTypes()
+	if index < 0 || index >= len(types) {
+		return models.AccountTypeChecking
+	}
+	return types[index]
+}
+
+// accountTypeToIndex returns the select index for a given AccountType.
+func accountTypeToIndex(at models.AccountType) int {
+	types := models.AllAccountTypes()
+	for i, t := range types {
+		if t == at {
+			return i
+		}
+	}
+	return 0
+}
+
+// buildNewAccountDialog creates a Dialog for creating a new account.
+func buildNewAccountDialog() *Dialog {
+	d := NewDialog("New Account")
+
+	// Name
+	d.AddTextField("Name", "", "Account name", 0)
+
+	// Type
+	d.AddSelectField("Type", buildAccountTypeOptions(), 0)
+
+	// Currency
+	d.AddTextField("Currency", "USD", "ISO 4217", 5)
+
+	// Opening balance
+	d.AddTextField("Opening Balance", "0.00", "0.00", 12)
+
+	// Opening date
+	today := time.Now().Format("01/02/2006")
+	d.AddTextField("Opening Date", today, "MM/DD/YYYY", 10)
+
+	// Institution (optional)
+	d.AddTextField("Institution", "", "Bank name (optional)", 0)
+
+	// Account number (optional)
+	d.AddTextField("Account #", "", "Last 4 digits (optional)", 10)
+
+	// Notes (optional)
+	d.AddTextField("Notes", "", "Optional notes", 0)
+
+	// Credit limit (for credit card)
+	d.AddTextField("Credit Limit", "", "For credit cards (optional)", 12)
+
+	// Interest rate (for loans)
+	d.AddTextField("Interest Rate", "", "For loans, e.g. 5.25 (optional)", 8)
+
+	d.SetVisible(true)
+	return d
+}
+
+// buildEditAccountDialog creates a Dialog for editing an existing account.
+func buildEditAccountDialog(account *models.Account) *Dialog {
+	d := NewDialog("Edit Account")
+
+	// Name
+	d.AddTextField("Name", account.Name, "Account name", 0)
+
+	// Type
+	d.AddSelectField("Type", buildAccountTypeOptions(), accountTypeToIndex(account.Type))
+
+	// Currency
+	d.AddTextField("Currency", account.Currency, "ISO 4217", 5)
+
+	// Opening balance
+	d.AddTextField("Opening Balance", fmt.Sprintf("%.2f", account.OpeningBalance.Float64()), "0.00", 12)
+
+	// Opening date
+	dateStr := account.OpeningDate.Time().Format("01/02/2006")
+	d.AddTextField("Opening Date", dateStr, "MM/DD/YYYY", 10)
+
+	// Institution
+	institution := ""
+	if account.Institution.Valid {
+		institution = account.Institution.String
+	}
+	d.AddTextField("Institution", institution, "Bank name (optional)", 0)
+
+	// Account number
+	acctNum := ""
+	if account.AccountNumber.Valid {
+		acctNum = account.AccountNumber.String
+	}
+	d.AddTextField("Account #", acctNum, "Last 4 digits (optional)", 10)
+
+	// Notes
+	notes := ""
+	if account.Notes.Valid {
+		notes = account.Notes.String
+	}
+	d.AddTextField("Notes", notes, "Optional notes", 0)
+
+	// Credit limit
+	creditLimit := ""
+	if account.CreditLimit.Valid {
+		creditLimit = fmt.Sprintf("%.2f", account.CreditLimit.Money.Float64())
+	}
+	d.AddTextField("Credit Limit", creditLimit, "For credit cards (optional)", 12)
+
+	// Interest rate
+	interestRate := ""
+	if account.InterestRate.Valid {
+		interestRate = fmt.Sprintf("%.2f", account.InterestRate.Money.Float64())
+	}
+	d.AddTextField("Interest Rate", interestRate, "For loans, e.g. 5.25 (optional)", 8)
+
+	d.SetVisible(true)
+	return d
+}
+
+// loadNewAccountDialogData returns a command that prepares the new account dialog.
+func (a *App) loadNewAccountDialogData() tea.Cmd {
+	return func() tea.Msg {
+		return accountDialogDataMsg{
+			data: &accountDialogData{
+				mode: accountDialogModeNew,
+			},
+		}
+	}
+}
+
+// loadEditAccountDialogData returns a command that loads the selected account for editing.
+func (a *App) loadEditAccountDialogData() tea.Cmd {
+	accountID := a.sidebar.SelectedAccountID()
+	return func() tea.Msg {
+		if a.accountSvc == nil {
+			return errMsg{err: fmt.Errorf("account service not available")}
+		}
+
+		account, err := a.accountSvc.GetByID(accountID)
+		if err != nil {
+			return errMsg{err: fmt.Errorf("failed to load account: %w", err)}
+		}
+
+		return accountDialogDataMsg{
+			data: &accountDialogData{
+				mode:    accountDialogModeEdit,
+				account: account,
+			},
+		}
+	}
+}
+
+// closeAccountDialog clears the account dialog state.
+func (a *App) closeAccountDialog() {
+	a.acctDialog = nil
+	a.acctDialogData = nil
+}
+
+// handleAccountDialogKey routes key events to the account dialog.
+func (a *App) handleAccountDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if a.acctDialog == nil {
+		return a, nil
+	}
+
+	action := a.acctDialog.HandleKey(msg)
+	switch action {
+	case DialogActionSubmit:
+		return a.submitAccountDialog()
+	case DialogActionCancel:
+		a.closeAccountDialog()
+		return a, nil
+	}
+
+	return a, nil
+}
+
+// submitAccountDialog parses dialog fields, validates, and saves the account.
+func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
+	if a.acctDialog == nil || a.acctDialogData == nil {
+		return a, nil
+	}
+
+	fields := a.acctDialog.Fields()
+	if len(fields) < 10 {
+		return a, nil
+	}
+
+	// Name
+	name := strings.TrimSpace(fields[acctFieldName].Value)
+	if name == "" {
+		a.err = fmt.Errorf("account name is required")
+		return a, nil
+	}
+
+	// Type
+	accountType := accountTypeFromIndex(fields[acctFieldType].SelectedIndex)
+
+	// Currency
+	currency := strings.TrimSpace(fields[acctFieldCurrency].Value)
+	if currency == "" {
+		a.err = fmt.Errorf("currency is required")
+		return a, nil
+	}
+	currency = strings.ToUpper(currency)
+
+	// Opening balance
+	openingBalance, err := parseAmountInput(fields[acctFieldOpeningBalance].Value)
+	if err != nil {
+		a.err = fmt.Errorf("invalid opening balance: %w", err)
+		return a, nil
+	}
+
+	// Opening date
+	openingDate, err := parseDateInput(fields[acctFieldOpeningDate].Value)
+	if err != nil {
+		a.err = fmt.Errorf("invalid opening date: %w", err)
+		return a, nil
+	}
+
+	// Optional fields
+	institution := strings.TrimSpace(fields[acctFieldInstitution].Value)
+	accountNumber := strings.TrimSpace(fields[acctFieldAccountNumber].Value)
+	notes := strings.TrimSpace(fields[acctFieldNotes].Value)
+	creditLimitStr := strings.TrimSpace(fields[acctFieldCreditLimit].Value)
+	interestRateStr := strings.TrimSpace(fields[acctFieldInterestRate].Value)
+
+	// Parse credit limit if provided
+	var creditLimit models.NullableMoney
+	if creditLimitStr != "" {
+		cl, err := parseAmountInput(creditLimitStr)
+		if err != nil {
+			a.err = fmt.Errorf("invalid credit limit: %w", err)
+			return a, nil
+		}
+		creditLimit = models.NullableMoney{Money: cl, Valid: true}
+	}
+
+	// Parse interest rate if provided
+	var interestRate models.NullableMoney
+	if interestRateStr != "" {
+		ir, err := parseAmountInput(interestRateStr)
+		if err != nil {
+			a.err = fmt.Errorf("invalid interest rate: %w", err)
+			return a, nil
+		}
+		interestRate = models.NullableMoney{Money: ir, Valid: true}
+	}
+
+	mode := a.acctDialogData.mode
+	existingAccount := a.acctDialogData.account
+
+	// Close dialog before async save for responsive UI
+	a.closeAccountDialog()
+
+	return a, func() tea.Msg {
+		if a.accountSvc == nil {
+			return errMsg{err: fmt.Errorf("account service not available")}
+		}
+
+		var account *models.Account
+		if mode == accountDialogModeEdit && existingAccount != nil {
+			account = existingAccount
+			account.Name = name
+			account.Type = accountType
+			account.Currency = currency
+			account.OpeningBalance = openingBalance
+			account.OpeningDate = openingDate
+		} else {
+			account = models.NewAccount(name, accountType, currency, openingBalance, openingDate)
+		}
+
+		// Set optional fields
+		account.SetInstitution(institution)
+		account.SetAccountNumber(accountNumber)
+		account.SetNotes(notes)
+
+		// Type-specific fields
+		account.CreditLimit = creditLimit
+		account.InterestRate = interestRate
+
+		if mode == accountDialogModeEdit {
+			if err := a.accountSvc.Update(account); err != nil {
+				return errMsg{err: fmt.Errorf("failed to update account: %w", err)}
+			}
+		} else {
+			if err := a.accountSvc.Create(account); err != nil {
+				return errMsg{err: fmt.Errorf("failed to create account: %w", err)}
+			}
+		}
+
+		return accountDialogSavedMsg{}
+	}
+}
+
+// closeSelectedAccount closes the currently selected account.
+func (a *App) closeSelectedAccount() tea.Cmd {
+	accountID := a.sidebar.SelectedAccountID()
+	return func() tea.Msg {
+		if a.accountSvc == nil {
+			return errMsg{err: fmt.Errorf("account service not available")}
+		}
+
+		if err := a.accountSvc.Close(accountID); err != nil {
+			return errMsg{err: fmt.Errorf("failed to close account: %w", err)}
+		}
+
+		return accountClosedMsg{}
+	}
+}
+
+// deleteSelectedAccount deletes the currently selected account.
+func (a *App) deleteSelectedAccount() tea.Cmd {
+	accountID := a.sidebar.SelectedAccountID()
+	return func() tea.Msg {
+		if a.accountSvc == nil {
+			return errMsg{err: fmt.Errorf("account service not available")}
+		}
+
+		if err := a.accountSvc.Delete(accountID); err != nil {
+			return errMsg{err: fmt.Errorf("failed to delete account: %w", err)}
+		}
+
+		return accountDeletedMsg{}
+	}
+}
