@@ -12,7 +12,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
 	"github.com/haskovec/tmoney/internal/service"
 )
 
@@ -249,22 +248,7 @@ func defaultKeyMap() keyMap {
 
 // NewApp creates a new TUI application with the given database.
 func NewApp(database *db.DB) *App {
-	// Create repositories
-	accountRepo := repository.NewAccountRepository(database)
-	transactionRepo := repository.NewTransactionRepository(database)
-	splitRepo := repository.NewSplitRepository(database)
-	transferRepo := repository.NewTransferRepository(database)
-	categoryRepo := repository.NewCategoryRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	scheduledRepo := repository.NewScheduledTransactionRepository(database)
-
-	// Create services
-	accountSvc := service.NewAccountService(accountRepo, database)
-	transactionSvc := service.NewTransactionService(transactionRepo, splitRepo, transferRepo, payeeRepo, database)
-	categorySvc := service.NewCategoryService(categoryRepo, database)
-	payeeSvc := service.NewPayeeService(payeeRepo, database)
-	scheduledTxnSvc := service.NewScheduledTransactionService(scheduledRepo, transactionRepo, database)
-	reportSvc := service.NewReportService(accountRepo, database)
+	svc := service.NewServices(database)
 
 	return &App{
 		db:              database,
@@ -274,12 +258,12 @@ func NewApp(database *db.DB) *App {
 		menubar:         NewMenuBar(),
 		statusbar:       NewStatusBar(),
 		keys:            defaultKeyMap(),
-		accountSvc:      accountSvc,
-		transactionSvc:  transactionSvc,
-		categorySvc:     categorySvc,
-		payeeSvc:        payeeSvc,
-		scheduledTxnSvc: scheduledTxnSvc,
-		reportSvc:       reportSvc,
+		accountSvc:      svc.Account,
+		transactionSvc:  svc.Transaction,
+		categorySvc:     svc.Category,
+		payeeSvc:        svc.Payee,
+		scheduledTxnSvc: svc.ScheduledTxn,
+		reportSvc:       svc.Report,
 	}
 }
 

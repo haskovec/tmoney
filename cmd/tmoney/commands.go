@@ -12,6 +12,15 @@ import (
 	"github.com/haskovec/tmoney/internal/service"
 )
 
+// openServices opens the database and creates all services via the shared registry.
+func openServices(file string) (*db.DB, *service.Services, error) {
+	database, err := db.Open(file)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	return database, service.NewServices(database), nil
+}
+
 // runCreateDB creates a new database file.
 func runCreateDB(opts *cliOptions, w io.Writer) error {
 	database, err := db.Create(opts.createDB)
@@ -30,25 +39,20 @@ func runListAccounts(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("--list-accounts requires --file to specify a database")
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
 
-	// Create service
-	repo := repository.NewAccountRepository(database)
-	svc := service.NewAccountService(repo, database)
-
 	// List accounts (activeOnly = !includeClosed)
-	accounts, err := svc.List(!opts.includeClosed)
+	accounts, err := svc.Account.List(!opts.includeClosed)
 	if err != nil {
 		return fmt.Errorf("failed to list accounts: %w", err)
 	}
 
 	// Get all balances
-	balances, err := svc.GetAllBalances()
+	balances, err := svc.Account.GetAllBalances()
 	if err != nil {
 		return fmt.Errorf("failed to get balances: %w", err)
 	}
@@ -65,25 +69,20 @@ func runAccountDetails(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("--account requires --file to specify a database")
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
 
-	// Create service
-	repo := repository.NewAccountRepository(database)
-	svc := service.NewAccountService(repo, database)
-
 	// Get account by name
-	account, err := svc.GetByName(opts.accountName)
+	account, err := svc.Account.GetByName(opts.accountName)
 	if err != nil {
 		return fmt.Errorf("account %q not found", opts.accountName)
 	}
 
 	// Get balance
-	balance, err := svc.GetBalance(account.ID)
+	balance, err := svc.Account.GetBalance(account.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get balance: %w", err)
 	}
@@ -100,25 +99,20 @@ func runBalance(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("--balance requires --file to specify a database")
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
 
-	// Create service
-	repo := repository.NewAccountRepository(database)
-	svc := service.NewAccountService(repo, database)
-
 	// List accounts (active only)
-	accounts, err := svc.List(true)
+	accounts, err := svc.Account.List(true)
 	if err != nil {
 		return fmt.Errorf("failed to list accounts: %w", err)
 	}
 
 	// Get all balances
-	balances, err := svc.GetAllBalances()
+	balances, err := svc.Account.GetAllBalances()
 	if err != nil {
 		return fmt.Errorf("failed to get balances: %w", err)
 	}
@@ -138,27 +132,17 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("--transactions requires --account to specify an account")
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
 
 	// Get account by name
-	acctRepo := repository.NewAccountRepository(database)
-	acctSvc := service.NewAccountService(acctRepo, database)
-	account, err := acctSvc.GetByName(opts.accountName)
+	account, err := svc.Account.GetByName(opts.accountName)
 	if err != nil {
 		return fmt.Errorf("account %q not found", opts.accountName)
 	}
-
-	// Create transaction service
-	txnRepo := repository.NewTransactionRepository(database)
-	splitRepo := repository.NewSplitRepository(database)
-	transferRepo := repository.NewTransferRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	txnSvc := service.NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
 
 	// Parse date filters if provided
 	var startDate, endDate models.Date
@@ -190,9 +174,9 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 		if opts.toDate == "" {
 			endDate = models.Today() // Today
 		}
-		transactions, err = txnSvc.ListByAccountAndDateRange(account.ID, startDate, endDate)
+		transactions, err = svc.Transaction.ListByAccountAndDateRange(account.ID, startDate, endDate)
 	} else {
-		transactions, err = txnSvc.ListByAccount(account.ID)
+		transactions, err = svc.Transaction.ListByAccount(account.ID)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to list transactions: %w", err)
@@ -208,13 +192,12 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 	categoryNames := make(map[models.ID]string)
 
 	// Fetch all payees and categories for name lookup
-	payees, _ := payeeRepo.List()
+	payees, _ := svc.PayeeRepo.List()
 	for _, p := range payees {
 		payeeNames[p.ID] = p.Name
 	}
 
-	categoryRepo := repository.NewCategoryRepository(database)
-	categories, _ := categoryRepo.List()
+	categories, _ := svc.CategoryRepo.List()
 	for _, c := range categories {
 		categoryNames[c.ID] = c.Name
 	}
@@ -254,37 +237,24 @@ func runAddTransaction(opts *cliOptions, w io.Writer) error {
 		date = models.Today()
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
 
 	// Get account by name
-	acctRepo := repository.NewAccountRepository(database)
-	acctSvc := service.NewAccountService(acctRepo, database)
-	account, err := acctSvc.GetByName(opts.accountName)
+	account, err := svc.Account.GetByName(opts.accountName)
 	if err != nil {
 		return fmt.Errorf("account %q not found", opts.accountName)
 	}
-
-	// Create transaction service
-	txnRepo := repository.NewTransactionRepository(database)
-	splitRepo := repository.NewSplitRepository(database)
-	transferRepo := repository.NewTransferRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	txnSvc := service.NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
-
-	// Create payee service for auto-creation
-	payeeSvc := service.NewPayeeService(payeeRepo, database)
 
 	// Handle payee (auto-create if needed)
 	var payeeID models.NullableID
 	var payeeName string
 	var payeeCreated bool
 	if opts.txPayee != "" {
-		payee, created, err := payeeSvc.GetOrCreate(opts.txPayee)
+		payee, created, err := svc.Payee.GetOrCreate(opts.txPayee)
 		if err != nil {
 			return fmt.Errorf("failed to resolve payee: %w", err)
 		}
@@ -297,12 +267,11 @@ func runAddTransaction(opts *cliOptions, w io.Writer) error {
 	var categoryID models.NullableID
 	var categoryName string
 	if opts.txCategory != "" {
-		categoryRepo := repository.NewCategoryRepository(database)
 		// First try top-level category, then search all categories
-		category, err := categoryRepo.GetByName(opts.txCategory, nil)
+		category, err := svc.CategoryRepo.GetByName(opts.txCategory, nil)
 		if err != nil {
 			// Try finding it as a subcategory (search all categories)
-			categories, listErr := categoryRepo.List()
+			categories, listErr := svc.CategoryRepo.List()
 			if listErr != nil {
 				return fmt.Errorf("category %q not found", opts.txCategory)
 			}
@@ -335,7 +304,7 @@ func runAddTransaction(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Save transaction
-	if err := txnSvc.Create(txn); err != nil {
+	if err := svc.Transaction.Create(txn); err != nil {
 		return fmt.Errorf("failed to create transaction: %w", err)
 	}
 
@@ -398,44 +367,33 @@ func runTransfer(opts *cliOptions, w io.Writer) error {
 		date = models.Today()
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
 
 	// Get source account by name
-	acctRepo := repository.NewAccountRepository(database)
-	acctSvc := service.NewAccountService(acctRepo, database)
-
-	fromAcct, err := acctSvc.GetByName(opts.fromAccount)
+	fromAcct, err := svc.Account.GetByName(opts.fromAccount)
 	if err != nil {
 		return fmt.Errorf("source account %q not found", opts.fromAccount)
 	}
 
 	// Get destination account by name
-	toAcct, err := acctSvc.GetByName(opts.toAccount)
+	toAcct, err := svc.Account.GetByName(opts.toAccount)
 	if err != nil {
 		return fmt.Errorf("destination account %q not found", opts.toAccount)
 	}
 
-	// Create transaction service
-	txnRepo := repository.NewTransactionRepository(database)
-	splitRepo := repository.NewSplitRepository(database)
-	transferRepo := repository.NewTransferRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	txnSvc := service.NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
-
 	// Create the transfer
-	pair, err := txnSvc.CreateTransfer(fromAcct.ID, toAcct.ID, date, amount)
+	pair, err := svc.Transaction.CreateTransfer(fromAcct.ID, toAcct.ID, date, amount)
 	if err != nil {
 		return fmt.Errorf("failed to create transfer: %w", err)
 	}
 
 	// Set memo if provided
 	if opts.txMemo != "" {
-		err = txnSvc.UpdateTransfer(pair.FromTransaction.TransferID.ID, date, amount, opts.txMemo, models.TransactionStatusPending)
+		err = svc.Transaction.UpdateTransfer(pair.FromTransaction.TransferID.ID, date, amount, opts.txMemo, models.TransactionStatusPending)
 		if err != nil {
 			return fmt.Errorf("failed to set memo on transfer: %w", err)
 		}
@@ -460,10 +418,9 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("--search requires --file to specify a database")
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
 
@@ -492,9 +449,7 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 
 	// Parse account filter if provided
 	if opts.accountName != "" {
-		acctRepo := repository.NewAccountRepository(database)
-		acctSvc := service.NewAccountService(acctRepo, database)
-		account, err := acctSvc.GetByName(opts.accountName)
+		account, err := svc.Account.GetByName(opts.accountName)
 		if err != nil {
 			return fmt.Errorf("account %q not found", opts.accountName)
 		}
@@ -523,12 +478,6 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 		criteria.MaxAmount = &maxAmt
 	}
 
-	// Create repositories
-	txnRepo := repository.NewTransactionRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	categoryRepo := repository.NewCategoryRepository(database)
-	acctRepo := repository.NewAccountRepository(database)
-
 	// Search for transactions - we need to search by payee OR memo
 	// Since the Search method uses AND logic, we'll do two searches and merge
 	var transactions []*models.Transaction
@@ -536,7 +485,7 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 	// Search by payee name
 	payeeCriteria := criteria
 	payeeCriteria.Memo = ""
-	payeeResults, err := txnRepo.Search(payeeCriteria)
+	payeeResults, err := svc.TransactionRepo.Search(payeeCriteria)
 	if err != nil {
 		return fmt.Errorf("failed to search transactions: %w", err)
 	}
@@ -544,7 +493,7 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 	// Search by memo
 	memoCriteria := criteria
 	memoCriteria.PayeeName = ""
-	memoResults, err := txnRepo.Search(memoCriteria)
+	memoResults, err := svc.TransactionRepo.Search(memoCriteria)
 	if err != nil {
 		return fmt.Errorf("failed to search transactions: %w", err)
 	}
@@ -570,17 +519,17 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 	accountNames := make(map[models.ID]string)
 	accountCurrencies := make(map[models.ID]string)
 
-	payees, _ := payeeRepo.List()
+	payees, _ := svc.PayeeRepo.List()
 	for _, p := range payees {
 		payeeNames[p.ID] = p.Name
 	}
 
-	categories, _ := categoryRepo.List()
+	categories, _ := svc.CategoryRepo.List()
 	for _, c := range categories {
 		categoryNames[c.ID] = c.Name
 	}
 
-	accounts, _ := acctRepo.List(false)
+	accounts, _ := svc.AccountRepo.List(false)
 	for _, a := range accounts {
 		accountNames[a.ID] = a.Name
 		accountCurrencies[a.ID] = a.Currency
@@ -638,19 +587,14 @@ func runAddAccount(opts *cliOptions, w io.Writer) error {
 		}
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
 
-	// Create account service
-	acctRepo := repository.NewAccountRepository(database)
-	acctSvc := service.NewAccountService(acctRepo, database)
-
 	// Check if account name already exists
-	if _, err := acctSvc.GetByName(opts.acctName); err == nil {
+	if _, err := svc.Account.GetByName(opts.acctName); err == nil {
 		return fmt.Errorf("account %q already exists", opts.acctName)
 	}
 
@@ -692,7 +636,7 @@ func runAddAccount(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Save account
-	if err := acctSvc.Create(account); err != nil {
+	if err := svc.Account.Create(account); err != nil {
 		return fmt.Errorf("failed to create account: %w", err)
 	}
 
@@ -728,24 +672,18 @@ func runScheduled(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("--scheduled requires --file to specify a database")
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
-
-	// Create scheduled transaction service
-	stRepo := repository.NewScheduledTransactionRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
-	stSvc := service.NewScheduledTransactionService(stRepo, txnRepo, database)
 
 	// Get scheduled transactions
 	var scheduledTxns []*models.ScheduledTransaction
 	if opts.scheduledDue {
-		scheduledTxns, err = stSvc.ListDue()
+		scheduledTxns, err = svc.ScheduledTxn.ListDue()
 	} else {
-		scheduledTxns, err = stSvc.List()
+		scheduledTxns, err = svc.ScheduledTxn.List()
 	}
 	if err != nil {
 		return fmt.Errorf("failed to list scheduled transactions: %w", err)
@@ -753,9 +691,7 @@ func runScheduled(opts *cliOptions, w io.Writer) error {
 
 	// Filter by account if specified
 	if opts.accountName != "" {
-		acctRepo := repository.NewAccountRepository(database)
-		acctSvc := service.NewAccountService(acctRepo, database)
-		account, err := acctSvc.GetByName(opts.accountName)
+		account, err := svc.Account.GetByName(opts.accountName)
 		if err != nil {
 			return fmt.Errorf("account %q not found", opts.accountName)
 		}
@@ -775,20 +711,17 @@ func runScheduled(opts *cliOptions, w io.Writer) error {
 	accountNames := make(map[models.ID]string)
 	accountCurrencies := make(map[models.ID]string)
 
-	payeeRepo := repository.NewPayeeRepository(database)
-	payees, _ := payeeRepo.List()
+	payees, _ := svc.PayeeRepo.List()
 	for _, p := range payees {
 		payeeNames[p.ID] = p.Name
 	}
 
-	categoryRepo := repository.NewCategoryRepository(database)
-	categories, _ := categoryRepo.List()
+	categories, _ := svc.CategoryRepo.List()
 	for _, c := range categories {
 		categoryNames[c.ID] = c.Name
 	}
 
-	acctRepo := repository.NewAccountRepository(database)
-	accounts, _ := acctRepo.List(false)
+	accounts, _ := svc.AccountRepo.List(false)
 	for _, a := range accounts {
 		accountNames[a.ID] = a.Name
 		accountCurrencies[a.ID] = a.Currency
@@ -806,10 +739,9 @@ func runPostScheduled(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("--post-scheduled requires --file to specify a database")
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
 
@@ -819,13 +751,8 @@ func runPostScheduled(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("invalid scheduled transaction ID: %w", err)
 	}
 
-	// Create scheduled transaction service
-	stRepo := repository.NewScheduledTransactionRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
-	stSvc := service.NewScheduledTransactionService(stRepo, txnRepo, database)
-
 	// Get the scheduled transaction first to show details
-	st, err := stSvc.GetByID(stID)
+	st, err := svc.ScheduledTxn.GetByID(stID)
 	if err != nil {
 		return fmt.Errorf("scheduled transaction not found: %w", err)
 	}
@@ -856,20 +783,19 @@ func runPostScheduled(opts *cliOptions, w io.Writer) error {
 	// Post the scheduled transaction
 	var txn *models.Transaction
 	if date != nil {
-		txn, err = stSvc.PostWithDate(stID, *date, amount)
+		txn, err = svc.ScheduledTxn.PostWithDate(stID, *date, amount)
 	} else {
-		txn, err = stSvc.Post(stID, amount)
+		txn, err = svc.ScheduledTxn.Post(stID, amount)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to post scheduled transaction: %w", err)
 	}
 
 	// Get updated scheduled transaction for next date
-	stUpdated, _ := stSvc.GetByID(stID)
+	stUpdated, _ := svc.ScheduledTxn.GetByID(stID)
 
 	// Get account info for currency
-	acctRepo := repository.NewAccountRepository(database)
-	account, _ := acctRepo.GetByID(st.AccountID)
+	account, _ := svc.AccountRepo.GetByID(st.AccountID)
 	currency := "USD"
 	accountName := "Unknown"
 	if account != nil {
@@ -880,8 +806,7 @@ func runPostScheduled(opts *cliOptions, w io.Writer) error {
 	// Get payee name
 	payeeName := "-"
 	if st.HasPayee() {
-		payeeRepo := repository.NewPayeeRepository(database)
-		payee, err := payeeRepo.GetByID(st.PayeeID.ID)
+		payee, err := svc.PayeeRepo.GetByID(st.PayeeID.ID)
 		if err == nil {
 			payeeName = payee.Name
 		}
@@ -912,10 +837,9 @@ func runSkipScheduled(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("--skip-scheduled requires --file to specify a database")
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
 
@@ -925,13 +849,8 @@ func runSkipScheduled(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("invalid scheduled transaction ID: %w", err)
 	}
 
-	// Create scheduled transaction service
-	stRepo := repository.NewScheduledTransactionRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
-	stSvc := service.NewScheduledTransactionService(stRepo, txnRepo, database)
-
 	// Get the scheduled transaction first to show details
-	st, err := stSvc.GetByID(stID)
+	st, err := svc.ScheduledTxn.GetByID(stID)
 	if err != nil {
 		return fmt.Errorf("scheduled transaction not found: %w", err)
 	}
@@ -940,17 +859,16 @@ func runSkipScheduled(opts *cliOptions, w io.Writer) error {
 	oldNextDate := st.NextDate
 
 	// Skip the scheduled transaction
-	err = stSvc.Skip(stID)
+	err = svc.ScheduledTxn.Skip(stID)
 	if err != nil {
 		return fmt.Errorf("failed to skip scheduled transaction: %w", err)
 	}
 
 	// Get updated scheduled transaction for next date
-	stUpdated, _ := stSvc.GetByID(stID)
+	stUpdated, _ := svc.ScheduledTxn.GetByID(stID)
 
 	// Get account info
-	acctRepo := repository.NewAccountRepository(database)
-	account, _ := acctRepo.GetByID(st.AccountID)
+	account, _ := svc.AccountRepo.GetByID(st.AccountID)
 	accountName := "Unknown"
 	if account != nil {
 		accountName = account.Name
@@ -959,8 +877,7 @@ func runSkipScheduled(opts *cliOptions, w io.Writer) error {
 	// Get payee name
 	payeeName := "-"
 	if st.HasPayee() {
-		payeeRepo := repository.NewPayeeRepository(database)
-		payee, err := payeeRepo.GetByID(st.PayeeID.ID)
+		payee, err := svc.PayeeRepo.GetByID(st.PayeeID.ID)
 		if err == nil {
 			payeeName = payee.Name
 		}
@@ -1006,16 +923,11 @@ func runReport(opts *cliOptions, w io.Writer) error {
 
 // runNetWorthReport generates and displays the net worth report.
 func runNetWorthReport(opts *cliOptions, w io.Writer) error {
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
-
-	// Create report service
-	acctRepo := repository.NewAccountRepository(database)
-	reportSvc := service.NewReportService(acctRepo, database)
 
 	// Determine as-of date
 	var asOf time.Time
@@ -1032,9 +944,9 @@ func runNetWorthReport(opts *cliOptions, w io.Writer) error {
 	// Generate report
 	var report *models.NetWorthReport
 	if opts.includeClosed {
-		report, err = reportSvc.NetWorthAsOfIncludingClosed(asOf)
+		report, err = svc.Report.NetWorthAsOfIncludingClosed(asOf)
 	} else {
-		report, err = reportSvc.NetWorthAsOf(asOf)
+		report, err = svc.Report.NetWorthAsOf(asOf)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to generate net worth report: %w", err)
@@ -1052,16 +964,11 @@ func runSpendingReport(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("--report spending requires --month YYYY-MM, --year YYYY, or --from/--to date range")
 	}
 
-	// Open database
-	database, err := db.Open(opts.file)
+	database, svc, err := openServices(opts.file)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return err
 	}
 	defer database.Close()
-
-	// Create report service
-	acctRepo := repository.NewAccountRepository(database)
-	reportSvc := service.NewReportService(acctRepo, database)
 
 	// Generate report based on period type
 	var report *models.SpendingReport
@@ -1072,12 +979,12 @@ func runSpendingReport(opts *cliOptions, w io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("invalid --month format: %w", err)
 		}
-		report, err = reportSvc.SpendingByCategoryMonth(year, month)
+		report, err = svc.Report.SpendingByCategoryMonth(year, month)
 		if err != nil {
 			return fmt.Errorf("failed to generate spending report: %w", err)
 		}
 	} else if opts.reportYear != 0 {
-		report, err = reportSvc.SpendingByCategoryYear(opts.reportYear)
+		report, err = svc.Report.SpendingByCategoryYear(opts.reportYear)
 		if err != nil {
 			return fmt.Errorf("failed to generate spending report: %w", err)
 		}
@@ -1098,7 +1005,7 @@ func runSpendingReport(opts *cliOptions, w io.Writer) error {
 			endDate = models.Today()
 		}
 
-		report, err = reportSvc.SpendingByCategoryDateRange(time.Time(startDate), time.Time(endDate))
+		report, err = svc.Report.SpendingByCategoryDateRange(time.Time(startDate), time.Time(endDate))
 		if err != nil {
 			return fmt.Errorf("failed to generate spending report: %w", err)
 		}
