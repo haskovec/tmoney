@@ -126,6 +126,9 @@ type App struct {
 	// Configuration
 	cfg *config.Config
 
+	// Help overlay state
+	showHelp bool
+
 	// Key bindings
 	keys keyMap
 }
@@ -768,6 +771,14 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	// If help overlay is visible, close it on ? or Esc
+	if a.showHelp {
+		if key.Matches(msg, a.keys.Help) || key.Matches(msg, a.keys.Escape) {
+			a.showHelp = false
+		}
+		return a, nil
+	}
+
 	// If file dialog is visible, route all keys to it
 	if a.fileDialog != nil && a.fileDialog.IsVisible() {
 		return a.handleFileDialogKey(msg)
@@ -827,6 +838,10 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, a.keys.Quit):
 		a.quitting = true
 		return a, tea.Quit
+
+	case key.Matches(msg, a.keys.Help):
+		a.showHelp = true
+		return a, nil
 
 	case key.Matches(msg, a.keys.Menu):
 		a.menubar.Activate()
@@ -1329,6 +1344,11 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 			return a, a.loadTransferDialogData()
 		}
 
+	case MenuActionKeyboardShortcuts:
+		a.menubar.Deactivate()
+		a.showHelp = true
+		return a, nil
+
 	case MenuActionNone:
 		// No action
 	}
@@ -1464,6 +1484,12 @@ func (a *App) renderLayout() string {
 	// Overlay file dialog if visible
 	if a.fileDialog != nil && a.fileDialog.IsVisible() {
 		overlay := a.fileDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay help if visible
+	if a.showHelp {
+		overlay := renderHelpOverlay(a.styles, a.currentView, a.width, a.height)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
