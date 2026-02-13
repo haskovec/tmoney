@@ -364,13 +364,13 @@ This document defines the order in which features should be implemented. Each it
   - Large data sets
   - Long text handling
 
-- [ ] **055 - Testing**
-  - Unit tests for services
+- [x] **055 - Testing**
+  - [x] Unit tests for services (account service CRUD, balance, close/reopen, validation)
   - [x] Integration tests for payee service (CRUD, auto-create, aliases, pattern matching, merge)
   - [x] Integration tests for transfers (create, get pair, counterpart, update both sides, delete)
   - [x] Integration tests for split transactions (create with splits, add/replace/delete splits, validation)
   - [x] Integration tests for scheduled transactions (CRUD, post, skip, due/upcoming, next-date, estimation)
-  - [ ] TUI component tests
+  - [x] TUI component tests (transaction dialog, file dialog, pure functions, submit validation, edge cases)
 
 - [ ] **056 - Documentation**
   - README update
