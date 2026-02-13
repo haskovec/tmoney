@@ -315,6 +315,14 @@ All dialogs are modal and keyboard-navigable.
 | `Esc` | Cancel / Close |
 | `↑` / `↓` | Navigate options |
 
+### Field Validation
+
+- Required fields are marked with a red `*` next to the label
+- On submit, all fields are validated simultaneously and inline errors appear below each invalid field
+- Editing a field clears its error message
+- Cross-field errors (e.g., transfer from/to same account) appear as a dialog-level message above the buttons
+- Async/service errors after dialog close still use the full-screen error display
+
 ### Dropdown/Autocomplete
 
 | Key | Action |
