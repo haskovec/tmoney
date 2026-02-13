@@ -618,9 +618,9 @@ func (d *Dialog) renderField(styles Styles, field *Field, focused bool, labelWid
 	case FieldText:
 		fieldContent = d.renderTextFieldContent(field, focused, available)
 	case FieldSelect:
-		fieldContent = d.renderSelectFieldContent(styles, field, focused)
+		fieldContent = d.renderSelectFieldContent(styles, field, focused, available)
 	case FieldRadio:
-		fieldContent = d.renderRadioFieldContent(styles, field, focused)
+		fieldContent = d.renderRadioFieldContent(styles, field, focused, available)
 	default:
 		fieldContent = ""
 	}
@@ -688,25 +688,48 @@ func (d *Dialog) renderTextFieldContent(field *Field, focused bool, available in
 	return "[ " + string(displayRunes) + strings.Repeat(" ", pad) + " ]"
 }
 
-func (d *Dialog) renderSelectFieldContent(_ Styles, field *Field, focused bool) string {
+func (d *Dialog) renderSelectFieldContent(_ Styles, field *Field, focused bool, available int) string {
 	opt := field.SelectedOption()
 	if opt == "" {
 		opt = "(none)"
 	}
+	// Reserve 3 chars for " ▼" suffix (▼ is 3 bytes but 1 rune + space)
+	maxOptWidth := available - 3
+	if focused {
+		maxOptWidth = available - 5 // " " + opt + " " + " ▼"
+	}
+	if maxOptWidth < 3 {
+		maxOptWidth = 3
+	}
+	opt = truncateRunes(opt, maxOptWidth)
 	if focused {
 		return lipgloss.NewStyle().Reverse(true).Render(" " + opt + " ") + " ▼"
 	}
 	return opt + " ▼"
 }
 
-func (d *Dialog) renderRadioFieldContent(styles Styles, field *Field, focused bool) string {
+func (d *Dialog) renderRadioFieldContent(styles Styles, field *Field, focused bool, available int) string {
+	numOpts := len(field.Options)
+	if numOpts == 0 {
+		return ""
+	}
+	// Each option has "( ) " prefix (4 chars) + gap of 2 between items
+	gaps := (numOpts - 1) * 2
+	bulletOverhead := numOpts * 4 // "( ) " per option
+	textBudget := available - gaps - bulletOverhead
+	if textBudget < numOpts {
+		textBudget = numOpts
+	}
+	perOpt := textBudget / numOpts
+
 	var parts []string
 	for i, opt := range field.Options {
 		bullet := "( )"
 		if i == field.SelectedIndex {
 			bullet = "(*)"
 		}
-		item := bullet + " " + opt
+		truncOpt := truncateRunes(opt, perOpt)
+		item := bullet + " " + truncOpt
 		if focused && i == field.SelectedIndex {
 			item = styles.Bold.Render(item)
 		}

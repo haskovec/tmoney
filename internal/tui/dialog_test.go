@@ -1228,3 +1228,41 @@ func TestDialog_Render_CheckboxFieldError(t *testing.T) {
 		t.Error("Render() should show checkbox field error")
 	}
 }
+
+func TestDialog_Render_SelectFieldTruncatesLongOption(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddSelectField("Account", []string{
+		"My Extremely Long Account Name That Should Be Truncated For Display",
+	}, 0)
+	styles := NewStyles()
+
+	result := d.Render(styles)
+	// The full option name should NOT appear
+	if strings.Contains(result, "My Extremely Long Account Name That Should Be Truncated For Display") {
+		t.Error("Render() should truncate long select option text")
+	}
+	// Dropdown indicator should still appear
+	if !strings.Contains(result, "▼") {
+		t.Error("Render() should still show dropdown indicator")
+	}
+}
+
+func TestDialog_Render_RadioFieldTruncatesLongOptions(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddRadioField("Type", []string{
+		"A Really Long Radio Option Label One",
+		"A Really Long Radio Option Label Two",
+		"A Really Long Radio Option Label Three",
+	}, 0)
+	styles := NewStyles()
+
+	result := d.Render(styles)
+	// The full option name should NOT all appear
+	if strings.Contains(result, "A Really Long Radio Option Label Three") {
+		t.Error("Render() should truncate long radio option text")
+	}
+	// Radio bullets should still appear
+	if !strings.Contains(result, "(*)") {
+		t.Error("Render() should still show radio bullets")
+	}
+}

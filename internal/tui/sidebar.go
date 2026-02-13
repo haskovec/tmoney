@@ -304,6 +304,12 @@ func (s *Sidebar) Render(styles Styles, width, height int) string {
 
 	var lines []string
 
+	if len(s.items) == 0 {
+		lines = append(lines, "")
+		lines = append(lines, styles.Muted.Render("  No accounts"))
+		lines = append(lines, styles.Muted.Render("  Press 'n' to add"))
+	}
+
 	for i, item := range s.items {
 		line := s.renderItem(styles, item, i, width)
 		lines = append(lines, line)

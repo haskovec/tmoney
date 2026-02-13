@@ -1580,6 +1580,9 @@ func (a *App) renderDashboard() string {
 
 		// Assets and Liabilities columns
 		sections = append(sections, a.renderAssetLiabilityColumns(nw, contentWidth))
+	} else {
+		sections = append(sections, "")
+		sections = append(sections, a.styles.Muted.Render("  No account data available"))
 	}
 
 	// Scheduled transactions section
@@ -1699,13 +1702,14 @@ func (a *App) renderDashboardScheduled() string {
 
 // formatScheduledItem formats a single scheduled transaction line for the dashboard.
 func (a *App) formatScheduledItem(st *models.ScheduledTransaction, isDue bool) string {
-	// Payee name
+	// Payee name (cap at 20 chars to prevent overflow)
 	payee := "Unknown"
 	if st.HasPayee() {
 		if name, ok := a.dashboard.payeeNames[st.PayeeID.ID]; ok {
 			payee = name
 		}
 	}
+	payee = truncate(payee, 20)
 
 	// Amount
 	var amount string
@@ -1773,6 +1777,18 @@ func truncate(s string, maxLen int) string {
 		return s[:maxLen]
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// truncateRunes truncates a string to maxLen runes, adding "..." if needed.
+func truncateRunes(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return string(runes[:maxLen])
+	}
+	return string(runes[:maxLen-3]) + "..."
 }
 
 // buildRegisterTable creates and populates the table for the register view.
@@ -1864,6 +1880,12 @@ func (a *App) renderRegister() string {
 	if a.register.balance != nil {
 		balStr = "Bal: " + formatDashboardMoney(a.register.balance.CurrentBalance)
 	}
+	// Truncate account name if it would overflow available space
+	maxNameWidth := contentWidth - lipgloss.Width(balStr) - 6 // 4 padding + 2 gap
+	if maxNameWidth < 10 {
+		maxNameWidth = 10
+	}
+	acctName = truncate(acctName, maxNameWidth)
 	padding := contentWidth - lipgloss.Width(acctName) - lipgloss.Width(balStr) - 4
 	if padding < 1 {
 		padding = 1
@@ -1899,9 +1921,14 @@ func (a *App) renderRegister() string {
 			tableWidth = 1
 		}
 		sections = append(sections, a.table.Render(a.styles, tableWidth, tableHeight))
+		if info := a.table.ScrollInfo(tableHeight - 1); info != "" {
+			sections = append(sections, a.styles.Muted.Render("  "+info))
+		}
 	} else if len(a.register.transactions) == 0 {
 		sections = append(sections, "")
 		sections = append(sections, a.styles.Muted.Render("  No transactions"))
+		sections = append(sections, "")
+		sections = append(sections, a.styles.Muted.Render("  Press 'n' to add a new transaction"))
 	}
 
 	return lipgloss.NewStyle().
@@ -1970,6 +1997,9 @@ func (a *App) renderScheduled() string {
 			tableWidth = 1
 		}
 		sections = append(sections, a.scheduledTable.Render(a.styles, tableWidth, tableHeight))
+		if info := a.scheduledTable.ScrollInfo(tableHeight - 1); info != "" {
+			sections = append(sections, a.styles.Muted.Render("  "+info))
+		}
 	}
 
 	return lipgloss.NewStyle().
@@ -2072,7 +2102,7 @@ func (a *App) renderNetWorthReport() string {
 	if a.reports.netWorth == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
-			Render("No data available")
+			Render("No net worth data available. Add accounts to get started.")
 	}
 
 	contentWidth := a.styles.ContentWidth()
@@ -2125,7 +2155,7 @@ func (a *App) renderSpendingReport() string {
 	if a.reports.spending == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
-			Render("No data available")
+			Render("No spending data available. Add transactions to see reports.")
 	}
 
 	contentWidth := a.styles.ContentWidth()

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -314,6 +315,21 @@ func (t *Table) clampScroll(viewportHeight int) {
 	if t.scrollOffset < 0 {
 		t.scrollOffset = 0
 	}
+}
+
+// ScrollInfo returns a scroll position string like "1-20 of 50" when rows
+// exceed the last rendered viewport height. Returns empty string when all
+// rows fit or the table is empty.
+func (t *Table) ScrollInfo(viewportHeight int) string {
+	if len(t.rows) == 0 || viewportHeight <= 0 || len(t.rows) <= viewportHeight {
+		return ""
+	}
+	start := t.scrollOffset + 1
+	end := t.scrollOffset + viewportHeight
+	if end > len(t.rows) {
+		end = len(t.rows)
+	}
+	return fmt.Sprintf("%d-%d of %d", start, end, len(t.rows))
 }
 
 // alignText aligns text within a given width.

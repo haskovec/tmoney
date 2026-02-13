@@ -1895,8 +1895,8 @@ func TestApp_RenderNetWorthReport_NoData(t *testing.T) {
 	}
 
 	view := app.renderNetWorthReport()
-	if !contains(view, "No data") {
-		t.Error("renderNetWorthReport() should show 'No data' when nil")
+	if !contains(view, "No net worth data") {
+		t.Error("renderNetWorthReport() should show 'No net worth data' when nil")
 	}
 }
 
@@ -2018,8 +2018,8 @@ func TestApp_RenderSpendingReport_NoData(t *testing.T) {
 	}
 
 	view := app.renderSpendingReport()
-	if !contains(view, "No data") {
-		t.Error("renderSpendingReport() should show 'No data' when nil")
+	if !contains(view, "No spending data") {
+		t.Error("renderSpendingReport() should show 'No spending data' when nil")
 	}
 }
 
@@ -2660,6 +2660,146 @@ func TestApp_Update_ErrorThenNormalOperation(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Error("Ctrl+Q should return tea.Quit command")
+	}
+}
+
+func TestApp_RenderRegister_LongAccountName(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(60, 30) // narrow width to force truncation
+
+	accountID := models.NewID()
+
+	app := &App{
+		currentView: ViewRegister,
+		width:       60,
+		height:      30,
+		styles:      styles,
+		register: &registerData{
+			account: &models.Account{
+				BaseModel: models.BaseModel{ID: accountID},
+				Name:      "My Super Duper Extremely Long Savings Account Name That Overflows",
+			},
+			transactions:  []*models.Transaction{},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("100.00")},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	view := app.renderRegister()
+
+	// The full name should NOT appear (it's too long)
+	fullName := "MY SUPER DUPER EXTREMELY LONG SAVINGS ACCOUNT NAME THAT OVERFLOWS"
+	if contains(view, fullName) {
+		t.Error("renderRegister() should truncate long account names")
+	}
+	// Truncation indicator should appear
+	if !contains(view, "...") {
+		t.Error("renderRegister() should show '...' for truncated account names")
+	}
+	// Balance should still be visible
+	if !contains(view, "$100.00") {
+		t.Error("renderRegister() should still show balance after truncation")
+	}
+}
+
+func TestApp_RenderRegister_EmptyShowsHint(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+
+	accountID := models.NewID()
+
+	app := &App{
+		currentView: ViewRegister,
+		width:       100,
+		height:      30,
+		styles:      styles,
+		register: &registerData{
+			account: &models.Account{
+				BaseModel: models.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			transactions:  []*models.Transaction{},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	view := app.renderRegister()
+
+	if !contains(view, "No transactions") {
+		t.Error("renderRegister() should show 'No transactions' when empty")
+	}
+	if !contains(view, "Press 'n' to add a new transaction") {
+		t.Error("renderRegister() should show action hint when empty")
+	}
+}
+
+func TestApp_RenderDashboard_NilNetWorth(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(80, 24)
+	app := &App{
+		currentView: ViewDashboard,
+		width:       80,
+		height:      24,
+		styles:      styles,
+		dashboard: &dashboardData{
+			netWorth:     nil,
+			payeeNames:   make(map[models.ID]string),
+			accountNames: make(map[models.ID]string),
+		},
+	}
+
+	view := app.renderDashboard()
+
+	if !contains(view, "No account data available") {
+		t.Error("renderDashboard() should show 'No account data available' when netWorth is nil")
+	}
+}
+
+func TestApp_RenderNetWorthReport_ImprovedNoData(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+
+	app := &App{
+		currentView: ViewReports,
+		width:       100,
+		height:      30,
+		styles:      styles,
+		reports: &reportsViewData{
+			rtype:    reportTypeNetWorth,
+			netWorth: nil,
+		},
+	}
+
+	view := app.renderNetWorthReport()
+	if !contains(view, "Add accounts to get started") {
+		t.Error("renderNetWorthReport() should show helpful message when nil")
+	}
+}
+
+func TestApp_RenderSpendingReport_ImprovedNoData(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+
+	app := &App{
+		currentView: ViewReports,
+		width:       100,
+		height:      30,
+		styles:      styles,
+		reports: &reportsViewData{
+			rtype:    reportTypeSpending,
+			spending: nil,
+		},
+	}
+
+	view := app.renderSpendingReport()
+	if !contains(view, "Add transactions to see reports") {
+		t.Error("renderSpendingReport() should show helpful message when nil")
 	}
 }
 

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -356,6 +357,20 @@ func TestSidebar_Render_Empty(t *testing.T) {
 	result := s.Render(styles, 20, 10)
 	if result == "" {
 		t.Error("Render() should not return empty string even with no items")
+	}
+}
+
+func TestSidebar_Render_EmptyShowsMessage(t *testing.T) {
+	s := NewSidebar()
+	styles := NewStyles()
+	styles.Resize(80, 24)
+
+	result := s.Render(styles, 25, 10)
+	if !strings.Contains(result, "No accounts") {
+		t.Error("Render() should show 'No accounts' when empty")
+	}
+	if !strings.Contains(result, "Press 'n' to add") {
+		t.Error("Render() should show hint to add accounts when empty")
 	}
 }
 

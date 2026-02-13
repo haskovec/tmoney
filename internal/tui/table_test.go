@@ -693,3 +693,60 @@ func TestTable_Render_HeightOnlyForHeader(t *testing.T) {
 		t.Error("should still render header with height=1")
 	}
 }
+
+func TestTable_ScrollInfo_AllFit(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 10}})
+	tbl.SetRows([][]string{{"one"}, {"two"}, {"three"}})
+
+	// Viewport fits all rows
+	info := tbl.ScrollInfo(5)
+	if info != "" {
+		t.Errorf("ScrollInfo() = %q, want empty when all rows fit", info)
+	}
+}
+
+func TestTable_ScrollInfo_Scrolled(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 10}})
+	rows := make([][]string, 50)
+	for i := range rows {
+		rows[i] = []string{"row"}
+	}
+	tbl.SetRows(rows)
+
+	styles := NewStyles()
+	// Render to set scroll offset (cursor at 0)
+	tbl.Render(styles, 10, 11) // height 11 = 1 header + 10 data rows
+
+	info := tbl.ScrollInfo(10)
+	if info != "1-10 of 50" {
+		t.Errorf("ScrollInfo() = %q, want %q", info, "1-10 of 50")
+	}
+}
+
+func TestTable_ScrollInfo_AtEnd(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 10}})
+	rows := make([][]string, 25)
+	for i := range rows {
+		rows[i] = []string{"row"}
+	}
+	tbl.SetRows(rows)
+	tbl.MoveToBottom()
+
+	styles := NewStyles()
+	tbl.Render(styles, 10, 11) // height 11 = 1 header + 10 data rows
+
+	info := tbl.ScrollInfo(10)
+	if info != "16-25 of 25" {
+		t.Errorf("ScrollInfo() = %q, want %q", info, "16-25 of 25")
+	}
+}
+
+func TestTable_ScrollInfo_EmptyTable(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 10}})
+	tbl.SetRows([][]string{})
+
+	info := tbl.ScrollInfo(10)
+	if info != "" {
+		t.Errorf("ScrollInfo() = %q, want empty for empty table", info)
+	}
+}
