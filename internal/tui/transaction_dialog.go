@@ -116,7 +116,8 @@ func buildTransactionDialog(data *transactionDialogData, categoryOptions []strin
 
 	// Date field - default to today in MM/DD/YYYY
 	today := time.Now().Format("01/02/2006")
-	d.AddTextField("Date", today, "MM/DD/YYYY", 10)
+	f := d.AddTextField("Date", today, "MM/DD/YYYY", 10)
+	f.Required = true
 
 	// Payee
 	d.AddTextField("Payee", "", "Payee name", 0)
@@ -125,7 +126,8 @@ func buildTransactionDialog(data *transactionDialogData, categoryOptions []strin
 	d.AddSelectField("Category", categoryOptions, 0)
 
 	// Amount
-	d.AddTextField("Amount", "", "-50.00", 12)
+	f = d.AddTextField("Amount", "", "-50.00", 12)
+	f.Required = true
 
 	// Memo
 	d.AddTextField("Memo", "", "Optional memo", 0)
@@ -247,11 +249,14 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	a.txnDialog.ClearErrors()
+	hasErrors := false
+
 	// Parse date
 	date, err := parseDateInput(fields[0].Value)
 	if err != nil {
-		a.err = fmt.Errorf("invalid date: %w", err)
-		return a, nil
+		fields[0].Error = "Invalid date (MM/DD/YYYY)"
+		hasErrors = true
 	}
 
 	// Payee name
@@ -267,7 +272,11 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 	// Parse amount
 	amount, err := parseAmountInput(fields[3].Value)
 	if err != nil {
-		a.err = fmt.Errorf("invalid amount: %w", err)
+		fields[3].Error = "Invalid amount"
+		hasErrors = true
+	}
+
+	if hasErrors {
 		return a, nil
 	}
 

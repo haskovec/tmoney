@@ -406,17 +406,16 @@ func TestApp_SubmitAccountDialog_EmptyName(t *testing.T) {
 		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
 	}
 
-	model, cmd := app.submitAccountDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitAccountDialog()
 
 	if cmd != nil {
 		t.Error("empty name should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("empty name should set an error")
+	if app.acctDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "name") {
-		t.Errorf("error = %q, should mention name", updatedApp.err.Error())
+	if app.acctDialog.Fields()[acctFieldName].Error == "" {
+		t.Error("empty name should set field-level error")
 	}
 }
 
@@ -436,17 +435,16 @@ func TestApp_SubmitAccountDialog_EmptyCurrency(t *testing.T) {
 		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
 	}
 
-	model, cmd := app.submitAccountDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitAccountDialog()
 
 	if cmd != nil {
 		t.Error("empty currency should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("empty currency should set an error")
+	if app.acctDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "currency") {
-		t.Errorf("error = %q, should mention currency", updatedApp.err.Error())
+	if app.acctDialog.Fields()[acctFieldCurrency].Error == "" {
+		t.Error("empty currency should set field-level error")
 	}
 }
 
@@ -466,17 +464,16 @@ func TestApp_SubmitAccountDialog_InvalidOpeningBalance(t *testing.T) {
 		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
 	}
 
-	model, cmd := app.submitAccountDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitAccountDialog()
 
 	if cmd != nil {
 		t.Error("invalid balance should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("invalid balance should set an error")
+	if app.acctDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "opening balance") {
-		t.Errorf("error = %q, should mention opening balance", updatedApp.err.Error())
+	if app.acctDialog.Fields()[acctFieldOpeningBalance].Error == "" {
+		t.Error("invalid balance should set field-level error")
 	}
 }
 
@@ -496,17 +493,16 @@ func TestApp_SubmitAccountDialog_InvalidDate(t *testing.T) {
 		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
 	}
 
-	model, cmd := app.submitAccountDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitAccountDialog()
 
 	if cmd != nil {
 		t.Error("invalid date should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("invalid date should set an error")
+	if app.acctDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "opening date") {
-		t.Errorf("error = %q, should mention opening date", updatedApp.err.Error())
+	if app.acctDialog.Fields()[acctFieldOpeningDate].Error == "" {
+		t.Error("invalid date should set field-level error")
 	}
 }
 
@@ -526,17 +522,16 @@ func TestApp_SubmitAccountDialog_InvalidCreditLimit(t *testing.T) {
 		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
 	}
 
-	model, cmd := app.submitAccountDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitAccountDialog()
 
 	if cmd != nil {
 		t.Error("invalid credit limit should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("invalid credit limit should set an error")
+	if app.acctDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "credit limit") {
-		t.Errorf("error = %q, should mention credit limit", updatedApp.err.Error())
+	if app.acctDialog.Fields()[acctFieldCreditLimit].Error == "" {
+		t.Error("invalid credit limit should set field-level error")
 	}
 }
 
@@ -556,17 +551,79 @@ func TestApp_SubmitAccountDialog_InvalidInterestRate(t *testing.T) {
 		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
 	}
 
-	model, cmd := app.submitAccountDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitAccountDialog()
 
 	if cmd != nil {
 		t.Error("invalid interest rate should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("invalid interest rate should set an error")
+	if app.acctDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "interest rate") {
-		t.Errorf("error = %q, should mention interest rate", updatedApp.err.Error())
+	if app.acctDialog.Fields()[acctFieldInterestRate].Error == "" {
+		t.Error("invalid interest rate should set field-level error")
+	}
+}
+
+func TestApp_SubmitAccountDialog_MultipleErrors(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		acctDialog: func() *Dialog {
+			d := buildNewAccountDialog()
+			d.Fields()[acctFieldName].Value = ""
+			d.Fields()[acctFieldCurrency].Value = ""
+			d.Fields()[acctFieldOpeningBalance].Value = "bad"
+			d.Fields()[acctFieldOpeningDate].Value = "bad"
+			return d
+		}(),
+		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+	}
+
+	_, cmd := app.submitAccountDialog()
+
+	if cmd != nil {
+		t.Error("should not return a cmd with multiple errors")
+	}
+	if app.acctDialog == nil {
+		t.Fatal("dialog should remain open")
+	}
+
+	fields := app.acctDialog.Fields()
+	if fields[acctFieldName].Error == "" {
+		t.Error("name field should have error")
+	}
+	if fields[acctFieldCurrency].Error == "" {
+		t.Error("currency field should have error")
+	}
+	if fields[acctFieldOpeningBalance].Error == "" {
+		t.Error("opening balance field should have error")
+	}
+	if fields[acctFieldOpeningDate].Error == "" {
+		t.Error("opening date field should have error")
+	}
+}
+
+func TestBuildNewAccountDialog_RequiredFields(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+
+	if !fields[acctFieldName].Required {
+		t.Error("Name field should be required")
+	}
+	if !fields[acctFieldCurrency].Required {
+		t.Error("Currency field should be required")
+	}
+	if !fields[acctFieldOpeningBalance].Required {
+		t.Error("Opening Balance field should be required")
+	}
+	if !fields[acctFieldOpeningDate].Required {
+		t.Error("Opening Date field should be required")
+	}
+	if fields[acctFieldInstitution].Required {
+		t.Error("Institution field should not be required")
 	}
 }
 

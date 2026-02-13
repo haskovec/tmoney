@@ -52,11 +52,13 @@ func buildTransferDialog(accountOptions []string, defaultFromIndex int) *Dialog 
 	d.AddSelectField("To", accountOptions, toIndex)
 
 	// Amount (positive)
-	d.AddTextField("Amount", "", "100.00", 12)
+	f := d.AddTextField("Amount", "", "100.00", 12)
+	f.Required = true
 
 	// Date field - default to today in MM/DD/YYYY
 	today := time.Now().Format("01/02/2006")
-	d.AddTextField("Date", today, "MM/DD/YYYY", 10)
+	f = d.AddTextField("Date", today, "MM/DD/YYYY", 10)
+	f.Required = true
 
 	// Memo
 	d.AddTextField("Memo", "", "Optional memo", 0)
@@ -121,45 +123,55 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	a.transferDialog.ClearErrors()
+	hasErrors := false
+
 	// From account
 	fromIdx := fields[0].SelectedIndex
 	if fromIdx < 0 || fromIdx >= len(a.transferDialogAccountIDs) {
-		a.err = fmt.Errorf("please select a From account")
-		return a, nil
+		fields[0].Error = "Please select a From account"
+		hasErrors = true
 	}
-	fromAccountID := a.transferDialogAccountIDs[fromIdx]
+	fromAccountID := models.NilID
+	if fromIdx >= 0 && fromIdx < len(a.transferDialogAccountIDs) {
+		fromAccountID = a.transferDialogAccountIDs[fromIdx]
+	}
 
 	// To account
 	toIdx := fields[1].SelectedIndex
 	if toIdx < 0 || toIdx >= len(a.transferDialogAccountIDs) {
-		a.err = fmt.Errorf("please select a To account")
-		return a, nil
+		fields[1].Error = "Please select a To account"
+		hasErrors = true
 	}
-	toAccountID := a.transferDialogAccountIDs[toIdx]
+	toAccountID := models.NilID
+	if toIdx >= 0 && toIdx < len(a.transferDialogAccountIDs) {
+		toAccountID = a.transferDialogAccountIDs[toIdx]
+	}
 
 	// Validate from != to
-	if fromAccountID == toAccountID {
-		a.err = fmt.Errorf("From and To accounts must be different")
-		return a, nil
+	if !fromAccountID.IsNil() && !toAccountID.IsNil() && fromAccountID == toAccountID {
+		a.transferDialog.SetErrorMsg("From and To accounts must be different")
+		hasErrors = true
 	}
 
 	// Parse amount
 	amount, err := parseAmountInput(fields[2].Value)
 	if err != nil {
-		a.err = fmt.Errorf("invalid amount: %w", err)
-		return a, nil
-	}
-
-	// Amount must be positive for transfers
-	if !amount.IsPositive() {
-		a.err = fmt.Errorf("transfer amount must be positive")
-		return a, nil
+		fields[2].Error = "Invalid amount"
+		hasErrors = true
+	} else if !amount.IsPositive() {
+		fields[2].Error = "Amount must be positive"
+		hasErrors = true
 	}
 
 	// Parse date
 	date, err := parseDateInput(fields[3].Value)
 	if err != nil {
-		a.err = fmt.Errorf("invalid date: %w", err)
+		fields[3].Error = "Invalid date (MM/DD/YYYY)"
+		hasErrors = true
+	}
+
+	if hasErrors {
 		return a, nil
 	}
 

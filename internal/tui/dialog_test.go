@@ -1049,3 +1049,182 @@ func TestField_DeleteBack_CursorPastEnd(t *testing.T) {
 		t.Errorf("Value = %q, want %q", f.Value, "h")
 	}
 }
+
+// =============================================================================
+// Validation Tests
+// =============================================================================
+
+func TestDialog_Render_RequiredMarker(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddTextField("Name", "", "Enter name", 0)
+	f.Required = true
+	styles := NewStyles()
+
+	result := d.Render(styles)
+	if !strings.Contains(result, "*") {
+		t.Error("Render() should contain '*' for required field")
+	}
+}
+
+func TestDialog_Render_FieldError(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddTextField("Name", "", "Enter name", 0)
+	f.Error = "Name is required"
+	styles := NewStyles()
+
+	result := d.Render(styles)
+	if !strings.Contains(result, "Name is required") {
+		t.Error("Render() should show field error message")
+	}
+}
+
+func TestDialog_Render_DialogErrorMsg(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddTextField("A", "", "", 0)
+	d.SetErrorMsg("Cross-field error")
+	styles := NewStyles()
+
+	result := d.Render(styles)
+	if !strings.Contains(result, "Cross-field error") {
+		t.Error("Render() should show dialog-level error message")
+	}
+}
+
+func TestDialog_ClearErrors(t *testing.T) {
+	d := NewDialog("Test")
+	f1 := d.AddTextField("A", "", "", 0)
+	f2 := d.AddTextField("B", "", "", 0)
+	f1.Error = "error1"
+	f2.Error = "error2"
+	d.SetErrorMsg("dialog error")
+
+	d.ClearErrors()
+
+	if f1.Error != "" {
+		t.Errorf("field 1 error = %q, want empty", f1.Error)
+	}
+	if f2.Error != "" {
+		t.Errorf("field 2 error = %q, want empty", f2.Error)
+	}
+	if d.ErrorMsg() != "" {
+		t.Errorf("dialog errorMsg = %q, want empty", d.ErrorMsg())
+	}
+}
+
+func TestDialog_FieldByLabel(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddTextField("First", "", "", 0)
+	d.AddTextField("Second", "", "", 0)
+	d.AddTextField("Third", "", "", 0)
+
+	f := d.FieldByLabel("Second")
+	if f == nil {
+		t.Fatal("FieldByLabel('Second') returned nil")
+	}
+	if f.Label != "Second" {
+		t.Errorf("FieldByLabel('Second') returned field with label %q", f.Label)
+	}
+}
+
+func TestDialog_FieldByLabel_NotFound(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddTextField("First", "", "", 0)
+
+	f := d.FieldByLabel("Missing")
+	if f != nil {
+		t.Error("FieldByLabel('Missing') should return nil")
+	}
+}
+
+func TestDialog_EditingFieldClearsError_Text(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddTextField("Name", "", "", 0)
+	f.Error = "required"
+
+	// Type a character
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+
+	if f.Error != "" {
+		t.Errorf("Error should be cleared after typing, got %q", f.Error)
+	}
+}
+
+func TestDialog_EditingFieldClearsError_Backspace(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddTextField("Name", "x", "", 0)
+	f.Error = "required"
+
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyBackspace})
+
+	if f.Error != "" {
+		t.Errorf("Error should be cleared after backspace, got %q", f.Error)
+	}
+}
+
+func TestDialog_EditingFieldClearsError_Select(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddSelectField("Type", []string{"A", "B"}, 0)
+	f.Error = "required"
+
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyDown})
+
+	if f.Error != "" {
+		t.Errorf("Error should be cleared after select change, got %q", f.Error)
+	}
+}
+
+func TestDialog_EditingFieldClearsError_Radio(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddRadioField("Status", []string{"A", "B"}, 0)
+	f.Error = "required"
+
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyDown})
+
+	if f.Error != "" {
+		t.Errorf("Error should be cleared after radio change, got %q", f.Error)
+	}
+}
+
+func TestDialog_EditingFieldClearsError_Checkbox(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddCheckboxField("Accept", false)
+	f.Error = "required"
+
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+
+	if f.Error != "" {
+		t.Errorf("Error should be cleared after checkbox toggle, got %q", f.Error)
+	}
+}
+
+func TestDialog_MaxLabelWidth_WithRequired(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddTextField("A", "", "", 0) // width 1
+	f := d.AddTextField("BB", "", "", 0) // width 2
+	f.Required = true // width 2 + 1 = 3
+
+	maxW := d.maxLabelWidth()
+	if maxW != 3 {
+		t.Errorf("maxLabelWidth() = %d, want 3 (BB + *)", maxW)
+	}
+}
+
+func TestDialog_SetErrorMsg(t *testing.T) {
+	d := NewDialog("Test")
+	d.SetErrorMsg("test error")
+	if d.ErrorMsg() != "test error" {
+		t.Errorf("ErrorMsg() = %q, want %q", d.ErrorMsg(), "test error")
+	}
+}
+
+func TestDialog_Render_CheckboxFieldError(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddCheckboxField("Accept", false)
+	f.Error = "Must accept"
+	styles := NewStyles()
+
+	result := d.Render(styles)
+	if !strings.Contains(result, "Must accept") {
+		t.Error("Render() should show checkbox field error")
+	}
+}

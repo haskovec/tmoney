@@ -36,7 +36,8 @@ func buildNewFileDialog() *Dialog {
 	d := NewDialog("New File")
 
 	defaultPath := filepath.Join(db.DefaultDirectory(), "new.tdb")
-	d.AddTextField("Path", defaultPath, "Path to new .tdb file", 0)
+	f := d.AddTextField("Path", defaultPath, "Path to new .tdb file", 0)
+	f.Required = true
 
 	d.SetVisible(true)
 	return d
@@ -47,7 +48,8 @@ func buildOpenFileDialog() *Dialog {
 	d := NewDialog("Open File")
 
 	defaultPath := filepath.Join(db.DefaultDirectory(), "")
-	d.AddTextField("Path", defaultPath, "Path to .tdb file", 0)
+	f := d.AddTextField("Path", defaultPath, "Path to .tdb file", 0)
+	f.Required = true
 
 	d.SetVisible(true)
 	return d
@@ -101,8 +103,7 @@ func (a *App) submitFileDialog() (tea.Model, tea.Cmd) {
 	mode := a.fileDialogMode
 	fields := a.fileDialog.Fields()
 
-	// Close dialog before async operation for responsive UI
-	a.closeFileDialog()
+	a.fileDialog.ClearErrors()
 
 	switch mode {
 	case fileDialogModeNew:
@@ -111,9 +112,10 @@ func (a *App) submitFileDialog() (tea.Model, tea.Cmd) {
 		}
 		path := strings.TrimSpace(fields[fileFieldPath].Value)
 		if path == "" {
-			a.err = fmt.Errorf("file path is required")
+			fields[fileFieldPath].Error = "File path is required"
 			return a, nil
 		}
+		a.closeFileDialog()
 		return a, a.submitNewFile(path)
 
 	case fileDialogModeOpen:
@@ -122,9 +124,10 @@ func (a *App) submitFileDialog() (tea.Model, tea.Cmd) {
 		}
 		path := strings.TrimSpace(fields[fileFieldPath].Value)
 		if path == "" {
-			a.err = fmt.Errorf("file path is required")
+			fields[fileFieldPath].Error = "File path is required"
 			return a, nil
 		}
+		a.closeFileDialog()
 		return a, a.submitOpenFile(path)
 
 	case fileDialogModeOpenRecent:
@@ -135,6 +138,7 @@ func (a *App) submitFileDialog() (tea.Model, tea.Cmd) {
 		if selected == "" || selected == "(no recent files)" {
 			return a, nil
 		}
+		a.closeFileDialog()
 		return a, a.submitOpenFile(selected)
 	}
 

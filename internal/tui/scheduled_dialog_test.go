@@ -566,17 +566,16 @@ func TestApp_SubmitScheduledDialog_InvalidStartDate(t *testing.T) {
 		schedDialogCategoryIDs: []models.ID{models.NilID},
 	}
 
-	model, cmd := app.submitScheduledDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitScheduledDialog()
 
 	if cmd != nil {
 		t.Error("invalid start date should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("invalid start date should set an error")
+	if app.schedDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "start date") {
-		t.Errorf("error = %q, should mention start date", updatedApp.err.Error())
+	if app.schedDialog.Fields()[schedFieldStartDate].Error == "" {
+		t.Error("invalid start date should set field-level error")
 	}
 }
 
@@ -601,17 +600,16 @@ func TestApp_SubmitScheduledDialog_InvalidAmount(t *testing.T) {
 		schedDialogCategoryIDs: []models.ID{models.NilID},
 	}
 
-	model, cmd := app.submitScheduledDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitScheduledDialog()
 
 	if cmd != nil {
 		t.Error("invalid amount should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("invalid amount should set an error")
+	if app.schedDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "amount") {
-		t.Errorf("error = %q, should mention amount", updatedApp.err.Error())
+	if app.schedDialog.Fields()[schedFieldAmount].Error == "" {
+		t.Error("invalid amount should set field-level error")
 	}
 }
 
@@ -636,17 +634,16 @@ func TestApp_SubmitScheduledDialog_InvalidInterval(t *testing.T) {
 		schedDialogCategoryIDs: []models.ID{models.NilID},
 	}
 
-	model, cmd := app.submitScheduledDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitScheduledDialog()
 
 	if cmd != nil {
 		t.Error("invalid interval should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("invalid interval should set an error")
+	if app.schedDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "interval") {
-		t.Errorf("error = %q, should mention interval", updatedApp.err.Error())
+	if app.schedDialog.Fields()[schedFieldInterval].Error == "" {
+		t.Error("invalid interval should set field-level error")
 	}
 }
 
@@ -671,14 +668,16 @@ func TestApp_SubmitScheduledDialog_ZeroInterval(t *testing.T) {
 		schedDialogCategoryIDs: []models.ID{models.NilID},
 	}
 
-	model, cmd := app.submitScheduledDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitScheduledDialog()
 
 	if cmd != nil {
 		t.Error("zero interval should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("zero interval should set an error")
+	if app.schedDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
+	}
+	if app.schedDialog.Fields()[schedFieldInterval].Error == "" {
+		t.Error("zero interval should set field-level error")
 	}
 }
 
@@ -706,17 +705,16 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_MissingEndDate(t *testing.T
 		schedDialogCategoryIDs: []models.ID{models.NilID},
 	}
 
-	model, cmd := app.submitScheduledDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitScheduledDialog()
 
 	if cmd != nil {
 		t.Error("missing end date should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("missing end date should set an error")
+	if app.schedDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "end date") {
-		t.Errorf("error = %q, should mention end date", updatedApp.err.Error())
+	if app.schedDialog.Fields()[schedFieldEndDate].Error == "" {
+		t.Error("missing end date should set field-level error")
 	}
 }
 
@@ -742,14 +740,16 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_InvalidEndDate(t *testing.T
 		schedDialogCategoryIDs: []models.ID{models.NilID},
 	}
 
-	model, cmd := app.submitScheduledDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitScheduledDialog()
 
 	if cmd != nil {
 		t.Error("invalid end date should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("invalid end date should set an error")
+	if app.schedDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
+	}
+	if app.schedDialog.Fields()[schedFieldEndDate].Error == "" {
+		t.Error("invalid end date should set field-level error")
 	}
 }
 
@@ -775,17 +775,16 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_MissingCount(t *testing.T
 		schedDialogCategoryIDs: []models.ID{models.NilID},
 	}
 
-	model, cmd := app.submitScheduledDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitScheduledDialog()
 
 	if cmd != nil {
 		t.Error("missing occurrences should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("missing occurrences should set an error")
+	if app.schedDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "occurrences") {
-		t.Errorf("error = %q, should mention occurrences", updatedApp.err.Error())
+	if app.schedDialog.Fields()[schedFieldOccurrence].Error == "" {
+		t.Error("missing occurrences should set field-level error")
 	}
 }
 
@@ -811,14 +810,16 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_InvalidCount(t *testing.T
 		schedDialogCategoryIDs: []models.ID{models.NilID},
 	}
 
-	model, cmd := app.submitScheduledDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitScheduledDialog()
 
 	if cmd != nil {
 		t.Error("invalid occurrences should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("invalid occurrences should set an error")
+	if app.schedDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
+	}
+	if app.schedDialog.Fields()[schedFieldOccurrence].Error == "" {
+		t.Error("invalid occurrences should set field-level error")
 	}
 }
 

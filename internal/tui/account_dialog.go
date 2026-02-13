@@ -86,20 +86,24 @@ func buildNewAccountDialog() *Dialog {
 	d := NewDialog("New Account")
 
 	// Name
-	d.AddTextField("Name", "", "Account name", 0)
+	f := d.AddTextField("Name", "", "Account name", 0)
+	f.Required = true
 
 	// Type
 	d.AddSelectField("Type", buildAccountTypeOptions(), 0)
 
 	// Currency
-	d.AddTextField("Currency", "USD", "ISO 4217", 5)
+	f = d.AddTextField("Currency", "USD", "ISO 4217", 5)
+	f.Required = true
 
 	// Opening balance
-	d.AddTextField("Opening Balance", "0.00", "0.00", 12)
+	f = d.AddTextField("Opening Balance", "0.00", "0.00", 12)
+	f.Required = true
 
 	// Opening date
 	today := time.Now().Format("01/02/2006")
-	d.AddTextField("Opening Date", today, "MM/DD/YYYY", 10)
+	f = d.AddTextField("Opening Date", today, "MM/DD/YYYY", 10)
+	f.Required = true
 
 	// Institution (optional)
 	d.AddTextField("Institution", "", "Bank name (optional)", 0)
@@ -125,20 +129,24 @@ func buildEditAccountDialog(account *models.Account) *Dialog {
 	d := NewDialog("Edit Account")
 
 	// Name
-	d.AddTextField("Name", account.Name, "Account name", 0)
+	f := d.AddTextField("Name", account.Name, "Account name", 0)
+	f.Required = true
 
 	// Type
 	d.AddSelectField("Type", buildAccountTypeOptions(), accountTypeToIndex(account.Type))
 
 	// Currency
-	d.AddTextField("Currency", account.Currency, "ISO 4217", 5)
+	f = d.AddTextField("Currency", account.Currency, "ISO 4217", 5)
+	f.Required = true
 
 	// Opening balance
-	d.AddTextField("Opening Balance", fmt.Sprintf("%.2f", account.OpeningBalance.Float64()), "0.00", 12)
+	f = d.AddTextField("Opening Balance", fmt.Sprintf("%.2f", account.OpeningBalance.Float64()), "0.00", 12)
+	f.Required = true
 
 	// Opening date
 	dateStr := account.OpeningDate.Time().Format("01/02/2006")
-	d.AddTextField("Opening Date", dateStr, "MM/DD/YYYY", 10)
+	f = d.AddTextField("Opening Date", dateStr, "MM/DD/YYYY", 10)
+	f.Required = true
 
 	// Institution
 	institution := ""
@@ -247,11 +255,14 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	a.acctDialog.ClearErrors()
+	hasErrors := false
+
 	// Name
 	name := strings.TrimSpace(fields[acctFieldName].Value)
 	if name == "" {
-		a.err = fmt.Errorf("account name is required")
-		return a, nil
+		fields[acctFieldName].Error = "Account name is required"
+		hasErrors = true
 	}
 
 	// Type
@@ -260,23 +271,24 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 	// Currency
 	currency := strings.TrimSpace(fields[acctFieldCurrency].Value)
 	if currency == "" {
-		a.err = fmt.Errorf("currency is required")
-		return a, nil
+		fields[acctFieldCurrency].Error = "Currency is required"
+		hasErrors = true
+	} else {
+		currency = strings.ToUpper(currency)
 	}
-	currency = strings.ToUpper(currency)
 
 	// Opening balance
 	openingBalance, err := parseAmountInput(fields[acctFieldOpeningBalance].Value)
 	if err != nil {
-		a.err = fmt.Errorf("invalid opening balance: %w", err)
-		return a, nil
+		fields[acctFieldOpeningBalance].Error = "Invalid amount"
+		hasErrors = true
 	}
 
 	// Opening date
 	openingDate, err := parseDateInput(fields[acctFieldOpeningDate].Value)
 	if err != nil {
-		a.err = fmt.Errorf("invalid opening date: %w", err)
-		return a, nil
+		fields[acctFieldOpeningDate].Error = "Invalid date (MM/DD/YYYY)"
+		hasErrors = true
 	}
 
 	// Optional fields
@@ -291,10 +303,11 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 	if creditLimitStr != "" {
 		cl, err := parseAmountInput(creditLimitStr)
 		if err != nil {
-			a.err = fmt.Errorf("invalid credit limit: %w", err)
-			return a, nil
+			fields[acctFieldCreditLimit].Error = "Invalid amount"
+			hasErrors = true
+		} else {
+			creditLimit = models.NullableMoney{Money: cl, Valid: true}
 		}
-		creditLimit = models.NullableMoney{Money: cl, Valid: true}
 	}
 
 	// Parse interest rate if provided
@@ -302,10 +315,15 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 	if interestRateStr != "" {
 		ir, err := parseAmountInput(interestRateStr)
 		if err != nil {
-			a.err = fmt.Errorf("invalid interest rate: %w", err)
-			return a, nil
+			fields[acctFieldInterestRate].Error = "Invalid amount"
+			hasErrors = true
+		} else {
+			interestRate = models.NullableMoney{Money: ir, Valid: true}
 		}
-		interestRate = models.NullableMoney{Money: ir, Valid: true}
+	}
+
+	if hasErrors {
+		return a, nil
 	}
 
 	mode := a.acctDialogData.mode

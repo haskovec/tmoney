@@ -96,6 +96,8 @@ type Styles struct {
 
 	// Error display
 	Error lipgloss.Style
+	// FieldError is a compact inline error style for dialog field validation.
+	FieldError lipgloss.Style
 
 	// Dialog / Modal
 	Dialog       lipgloss.Style
@@ -200,6 +202,10 @@ func (s *Styles) initBaseStyles() {
 		Foreground(ColorNegative).
 		Bold(true).
 		Padding(1, 2)
+
+	// Field-level inline error (compact, no padding)
+	s.FieldError = lipgloss.NewStyle().
+		Foreground(ColorNegative)
 
 	// Dialog
 	s.Dialog = lipgloss.NewStyle().

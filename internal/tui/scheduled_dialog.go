@@ -111,11 +111,13 @@ func buildNewScheduledDialog(accountOptions, categoryOptions []string) *Dialog {
 	d.AddSelectField("Frequency", buildFrequencyOptions(), 3) // Monthly default
 
 	// Interval
-	d.AddTextField("Interval", "1", "Every N periods", 5)
+	f := d.AddTextField("Interval", "1", "Every N periods", 5)
+	f.Required = true
 
 	// Start date
 	today := time.Now().Format("01/02/2006")
-	d.AddTextField("Start Date", today, "MM/DD/YYYY", 10)
+	f = d.AddTextField("Start Date", today, "MM/DD/YYYY", 10)
+	f.Required = true
 
 	// Duration
 	d.AddRadioField("Duration", []string{"Indefinite", "Until Date", "Occurrences"}, 0)
@@ -184,10 +186,12 @@ func buildEditScheduledDialog(st *models.ScheduledTransaction, accountOptions []
 	d.AddSelectField("Frequency", buildFrequencyOptions(), frequencyToIndex(st.Frequency))
 
 	// Interval
-	d.AddTextField("Interval", strconv.Itoa(st.Interval), "Every N periods", 5)
+	f := d.AddTextField("Interval", strconv.Itoa(st.Interval), "Every N periods", 5)
+	f.Required = true
 
 	// Start date
-	d.AddTextField("Start Date", st.StartDate.Time().Format("01/02/2006"), "MM/DD/YYYY", 10)
+	f = d.AddTextField("Start Date", st.StartDate.Time().Format("01/02/2006"), "MM/DD/YYYY", 10)
+	f.Required = true
 
 	// Duration
 	durationIdx := durationIndefinite
@@ -322,13 +326,19 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	a.schedDialog.ClearErrors()
+	hasErrors := false
+
 	// Account
 	acctIdx := fields[schedFieldAccount].SelectedIndex
 	if acctIdx < 0 || acctIdx >= len(a.schedDialogAccountIDs) {
-		a.err = fmt.Errorf("please select an account")
-		return a, nil
+		fields[schedFieldAccount].Error = "Please select an account"
+		hasErrors = true
 	}
-	accountID := a.schedDialogAccountIDs[acctIdx]
+	accountID := models.NilID
+	if acctIdx >= 0 && acctIdx < len(a.schedDialogAccountIDs) {
+		accountID = a.schedDialogAccountIDs[acctIdx]
+	}
 
 	// Payee name
 	payeeName := strings.TrimSpace(fields[schedFieldPayee].Value)
@@ -346,10 +356,11 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	if amountStr != "" {
 		m, err := parseAmountInput(amountStr)
 		if err != nil {
-			a.err = fmt.Errorf("invalid amount: %w", err)
-			return a, nil
+			fields[schedFieldAmount].Error = "Invalid amount"
+			hasErrors = true
+		} else {
+			amount = models.NullableMoney{Money: m, Valid: true}
 		}
-		amount = models.NullableMoney{Money: m, Valid: true}
 	}
 
 	// Memo
@@ -364,17 +375,18 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	if intervalStr != "" {
 		n, err := strconv.Atoi(intervalStr)
 		if err != nil || n < 1 {
-			a.err = fmt.Errorf("interval must be a positive number")
-			return a, nil
+			fields[schedFieldInterval].Error = "Must be a positive number"
+			hasErrors = true
+		} else {
+			interval = n
 		}
-		interval = n
 	}
 
 	// Start date
 	startDate, err := parseDateInput(fields[schedFieldStartDate].Value)
 	if err != nil {
-		a.err = fmt.Errorf("invalid start date: %w", err)
-		return a, nil
+		fields[schedFieldStartDate].Error = "Invalid date (MM/DD/YYYY)"
+		hasErrors = true
 	}
 
 	// Duration
@@ -387,28 +399,36 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	case durationUntilDate:
 		endDateStr := strings.TrimSpace(fields[schedFieldEndDate].Value)
 		if endDateStr == "" {
-			a.err = fmt.Errorf("end date is required when duration is 'Until Date'")
-			return a, nil
+			fields[schedFieldEndDate].Error = "End date is required"
+			hasErrors = true
+		} else {
+			ed, err := parseDateInput(endDateStr)
+			if err != nil {
+				fields[schedFieldEndDate].Error = "Invalid date (MM/DD/YYYY)"
+				hasErrors = true
+			} else {
+				endDate = models.NullableDate{Date: ed, Valid: true}
+			}
 		}
-		ed, err := parseDateInput(endDateStr)
-		if err != nil {
-			a.err = fmt.Errorf("invalid end date: %w", err)
-			return a, nil
-		}
-		endDate = models.NullableDate{Date: ed, Valid: true}
 
 	case durationOccurrences:
 		occStr := strings.TrimSpace(fields[schedFieldOccurrence].Value)
 		if occStr == "" {
-			a.err = fmt.Errorf("occurrences is required when duration is 'Occurrences'")
-			return a, nil
+			fields[schedFieldOccurrence].Error = "Occurrences is required"
+			hasErrors = true
+		} else {
+			n, err := strconv.ParseInt(occStr, 10, 64)
+			if err != nil || n < 1 {
+				fields[schedFieldOccurrence].Error = "Must be a positive number"
+				hasErrors = true
+			} else {
+				occurrences = models.NullableInt{Int64: n, Valid: true}
+			}
 		}
-		n, err := strconv.ParseInt(occStr, 10, 64)
-		if err != nil || n < 1 {
-			a.err = fmt.Errorf("occurrences must be a positive number")
-			return a, nil
-		}
-		occurrences = models.NullableInt{Int64: n, Valid: true}
+	}
+
+	if hasErrors {
+		return a, nil
 	}
 
 	mode := a.schedDialogData.mode

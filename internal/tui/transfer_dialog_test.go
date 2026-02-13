@@ -377,17 +377,19 @@ func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
 		transferDialogAccountIDs: []models.ID{accountID},
 	}
 
-	model, cmd := app.submitTransferDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitTransferDialog()
 
 	if cmd != nil {
 		t.Error("same-account transfer should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("same-account transfer should set an error")
+	if app.transferDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "different") {
-		t.Errorf("error = %q, should mention accounts must be different", updatedApp.err.Error())
+	if app.transferDialog.ErrorMsg() == "" {
+		t.Error("same-account transfer should set dialog-level error")
+	}
+	if !strings.Contains(app.transferDialog.ErrorMsg(), "different") {
+		t.Errorf("error = %q, should mention accounts must be different", app.transferDialog.ErrorMsg())
 	}
 }
 
@@ -416,17 +418,19 @@ func TestApp_SubmitTransferDialog_NegativeAmount(t *testing.T) {
 		transferDialogAccountIDs: []models.ID{fromID, toID},
 	}
 
-	model, cmd := app.submitTransferDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitTransferDialog()
 
 	if cmd != nil {
 		t.Error("negative amount transfer should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("negative amount transfer should set an error")
+	if app.transferDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "positive") {
-		t.Errorf("error = %q, should mention amount must be positive", updatedApp.err.Error())
+	if app.transferDialog.Fields()[2].Error == "" {
+		t.Error("negative amount should set field-level error on amount")
+	}
+	if !strings.Contains(app.transferDialog.Fields()[2].Error, "positive") {
+		t.Errorf("error = %q, should mention amount must be positive", app.transferDialog.Fields()[2].Error)
 	}
 }
 
@@ -455,14 +459,16 @@ func TestApp_SubmitTransferDialog_InvalidDate(t *testing.T) {
 		transferDialogAccountIDs: []models.ID{fromID, toID},
 	}
 
-	model, cmd := app.submitTransferDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitTransferDialog()
 
 	if cmd != nil {
 		t.Error("invalid date transfer should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("invalid date transfer should set an error")
+	if app.transferDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
+	}
+	if app.transferDialog.Fields()[3].Error == "" {
+		t.Error("invalid date should set field-level error")
 	}
 }
 
@@ -491,14 +497,16 @@ func TestApp_SubmitTransferDialog_EmptyAmount(t *testing.T) {
 		transferDialogAccountIDs: []models.ID{fromID, toID},
 	}
 
-	model, cmd := app.submitTransferDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitTransferDialog()
 
 	if cmd != nil {
 		t.Error("empty amount transfer should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("empty amount transfer should set an error")
+	if app.transferDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
+	}
+	if app.transferDialog.Fields()[2].Error == "" {
+		t.Error("empty amount should set field-level error")
 	}
 }
 
@@ -686,16 +694,18 @@ func TestApp_SubmitTransferDialog_ZeroAmount(t *testing.T) {
 		transferDialogAccountIDs: []models.ID{fromID, toID},
 	}
 
-	model, cmd := app.submitTransferDialog()
-	updatedApp := model.(*App)
+	_, cmd := app.submitTransferDialog()
 
 	if cmd != nil {
 		t.Error("zero amount transfer should not return a cmd")
 	}
-	if updatedApp.err == nil {
-		t.Error("zero amount transfer should set an error")
+	if app.transferDialog == nil {
+		t.Fatal("dialog should remain open after validation failure")
 	}
-	if updatedApp.err != nil && !strings.Contains(updatedApp.err.Error(), "positive") {
-		t.Errorf("error = %q, should mention amount must be positive", updatedApp.err.Error())
+	if app.transferDialog.Fields()[2].Error == "" {
+		t.Error("zero amount should set field-level error")
+	}
+	if !strings.Contains(app.transferDialog.Fields()[2].Error, "positive") {
+		t.Errorf("error = %q, should mention amount must be positive", app.transferDialog.Fields()[2].Error)
 	}
 }

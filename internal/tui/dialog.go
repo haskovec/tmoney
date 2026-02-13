@@ -39,6 +39,10 @@ type Field struct {
 	Checked bool
 	// Width is the display width of the text input area (for FieldText). 0 means auto.
 	Width int
+	// Required indicates this field must be filled in.
+	Required bool
+	// Error is an inline validation error message displayed below the field.
+	Error string
 	// cursorPos is the cursor position within the text value.
 	cursorPos int
 }
@@ -197,6 +201,7 @@ type Dialog struct {
 	focusIndex int
 	visible    bool
 	width      int
+	errorMsg   string
 }
 
 // dialogHorizontalOverhead is the horizontal space used by dialog border (2) and padding (4).
@@ -252,6 +257,34 @@ func (d *Dialog) Fields() []*Field {
 // Buttons returns the dialog buttons.
 func (d *Dialog) Buttons() []DialogButton {
 	return d.buttons
+}
+
+// ErrorMsg returns the dialog-level error message.
+func (d *Dialog) ErrorMsg() string {
+	return d.errorMsg
+}
+
+// SetErrorMsg sets a dialog-level error message (for cross-field validation).
+func (d *Dialog) SetErrorMsg(msg string) {
+	d.errorMsg = msg
+}
+
+// ClearErrors clears the dialog-level error and all field-level errors.
+func (d *Dialog) ClearErrors() {
+	d.errorMsg = ""
+	for _, f := range d.fields {
+		f.Error = ""
+	}
+}
+
+// FieldByLabel returns the first field with the given label, or nil.
+func (d *Dialog) FieldByLabel(label string) *Field {
+	for _, f := range d.fields {
+		if f.Label == label {
+			return f
+		}
+	}
+	return nil
 }
 
 // SetButtons replaces the dialog buttons.
@@ -436,8 +469,10 @@ func (d *Dialog) handleTextFieldKey(field *Field, msg tea.KeyMsg) {
 	switch msg.Type {
 	case tea.KeyBackspace:
 		field.DeleteBack()
+		field.Error = ""
 	case tea.KeyDelete:
 		field.DeleteForward()
+		field.Error = ""
 	case tea.KeyLeft:
 		field.MoveCursorLeft()
 	case tea.KeyRight:
@@ -450,6 +485,7 @@ func (d *Dialog) handleTextFieldKey(field *Field, msg tea.KeyMsg) {
 		for _, r := range msg.Runes {
 			field.InsertChar(r)
 		}
+		field.Error = ""
 	}
 }
 
@@ -457,8 +493,10 @@ func (d *Dialog) handleSelectFieldKey(field *Field, msg tea.KeyMsg) {
 	switch msg.Type {
 	case tea.KeyUp:
 		field.SelectPrev()
+		field.Error = ""
 	case tea.KeyDown:
 		field.SelectNext()
+		field.Error = ""
 	}
 }
 
@@ -466,14 +504,17 @@ func (d *Dialog) handleRadioFieldKey(field *Field, msg tea.KeyMsg) {
 	switch msg.Type {
 	case tea.KeyUp, tea.KeyLeft:
 		field.SelectPrev()
+		field.Error = ""
 	case tea.KeyDown, tea.KeyRight:
 		field.SelectNext()
+		field.Error = ""
 	}
 }
 
 func (d *Dialog) handleCheckboxFieldKey(field *Field, msg tea.KeyMsg) {
 	if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == ' ' {
 		field.Toggle()
+		field.Error = ""
 	}
 }
 
@@ -500,6 +541,12 @@ func (d *Dialog) Render(styles Styles) string {
 		lines = append(lines, "")
 	}
 
+	// Dialog-level error message
+	if d.errorMsg != "" {
+		lines = append(lines, styles.FieldError.Render(d.errorMsg))
+		lines = append(lines, "")
+	}
+
 	// Separator
 	lines = append(lines, strings.Repeat("─", contentWidth))
 
@@ -517,6 +564,9 @@ func (d *Dialog) maxLabelWidth() int {
 			continue
 		}
 		w := len([]rune(f.Label))
+		if f.Required {
+			w++ // account for "*" suffix
+		}
 		if w > maxW {
 			maxW = w
 		}
@@ -537,12 +587,26 @@ func (d *Dialog) renderTitle(styles Styles, contentWidth int) string {
 
 func (d *Dialog) renderField(styles Styles, field *Field, focused bool, labelWidth, contentWidth int) string {
 	if field.Type == FieldCheckbox {
-		return d.renderCheckboxField(styles, field, focused)
+		line := d.renderCheckboxField(styles, field, focused)
+		if field.Error != "" {
+			line += "\n" + styles.FieldError.Render(field.Error)
+		}
+		return line
+	}
+
+	// Build label with required marker
+	label := field.Label
+	if field.Required {
+		label += styles.FieldError.Render("*")
 	}
 
 	// Right-align label to labelWidth
-	padLeft := max(labelWidth-len([]rune(field.Label)), 0)
-	paddedLabel := strings.Repeat(" ", padLeft) + field.Label + ":"
+	labelRuneLen := len([]rune(field.Label))
+	if field.Required {
+		labelRuneLen++ // account for "*"
+	}
+	padLeft := max(labelWidth-labelRuneLen, 0)
+	paddedLabel := strings.Repeat(" ", padLeft) + label + ":"
 
 	// Available width for field content area
 	labelColWidth := labelWidth + 1 // label + colon
@@ -561,7 +625,13 @@ func (d *Dialog) renderField(styles Styles, field *Field, focused bool, labelWid
 		fieldContent = ""
 	}
 
-	return paddedLabel + "  " + fieldContent
+	line := paddedLabel + "  " + fieldContent
+	if field.Error != "" {
+		// Indent the error to align under the field content
+		errorIndent := strings.Repeat(" ", labelWidth+1+gap)
+		line += "\n" + errorIndent + styles.FieldError.Render(field.Error)
+	}
+	return line
 }
 
 func (d *Dialog) renderTextFieldContent(field *Field, focused bool, available int) string {
