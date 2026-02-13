@@ -938,3 +938,863 @@ func TestTransactionService_AddSplit_TransferError(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// Search Tests
+// =============================================================================
+
+// createTestTransactionServiceWithCategories creates a test service with access
+// to category and payee repos for search tests.
+func createTestTransactionServiceWithCategories(t *testing.T) (
+	*TransactionService,
+	*repository.AccountRepository,
+	*repository.CategoryRepository,
+	*repository.PayeeRepository,
+) {
+	t.Helper()
+	database := createTestDB(t)
+	txnRepo := repository.NewTransactionRepository(database)
+	splitRepo := repository.NewSplitRepository(database)
+	transferRepo := repository.NewTransferRepository(database)
+	payeeRepo := repository.NewPayeeRepository(database)
+	accountRepo := repository.NewAccountRepository(database)
+	categoryRepo := repository.NewCategoryRepository(database)
+
+	svc := NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	return svc, accountRepo, categoryRepo, payeeRepo
+}
+
+func TestTransactionService_ListByDateRange(t *testing.T) {
+	t.Run("returns transactions within date range", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		date1, _ := models.ParseDate("2024-01-15")
+		date2, _ := models.ParseDate("2024-02-15")
+		date3, _ := models.ParseDate("2024-03-15")
+
+		if err := svc.Create(models.NewTransaction(account.ID, date1, amount)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.Create(models.NewTransaction(account.ID, date2, amount)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.Create(models.NewTransaction(account.ID, date3, amount)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		startDate, _ := models.ParseDate("2024-01-01")
+		endDate, _ := models.ParseDate("2024-02-28")
+
+		txns, err := svc.ListByDateRange(startDate, endDate)
+		if err != nil {
+			t.Fatalf("ListByDateRange() error = %v", err)
+		}
+		if len(txns) != 2 {
+			t.Errorf("Expected 2 transactions in range, got %d", len(txns))
+		}
+	})
+
+	t.Run("returns empty for no matches", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		date1, _ := models.ParseDate("2024-06-15")
+		if err := svc.Create(models.NewTransaction(account.ID, date1, amount)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		startDate, _ := models.ParseDate("2024-01-01")
+		endDate, _ := models.ParseDate("2024-02-28")
+
+		txns, err := svc.ListByDateRange(startDate, endDate)
+		if err != nil {
+			t.Fatalf("ListByDateRange() error = %v", err)
+		}
+		if len(txns) != 0 {
+			t.Errorf("Expected 0 transactions, got %d", len(txns))
+		}
+	})
+}
+
+func TestTransactionService_ListByAccountAndDateRange(t *testing.T) {
+	t.Run("filters by both account and date range", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account1 := createTestAccount(t, accountRepo, "Checking")
+		account2 := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("-50.00")
+		date1, _ := models.ParseDate("2024-01-15")
+		date2, _ := models.ParseDate("2024-02-15")
+		date3, _ := models.ParseDate("2024-03-15")
+
+		// Account 1: Jan, Feb, Mar
+		if err := svc.Create(models.NewTransaction(account1.ID, date1, amount)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.Create(models.NewTransaction(account1.ID, date2, amount)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.Create(models.NewTransaction(account1.ID, date3, amount)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		// Account 2: Feb
+		if err := svc.Create(models.NewTransaction(account2.ID, date2, amount)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		startDate, _ := models.ParseDate("2024-01-01")
+		endDate, _ := models.ParseDate("2024-02-28")
+
+		txns, err := svc.ListByAccountAndDateRange(account1.ID, startDate, endDate)
+		if err != nil {
+			t.Fatalf("ListByAccountAndDateRange() error = %v", err)
+		}
+		if len(txns) != 2 {
+			t.Errorf("Expected 2 transactions for account1 in range, got %d", len(txns))
+		}
+
+		txns2, err := svc.ListByAccountAndDateRange(account2.ID, startDate, endDate)
+		if err != nil {
+			t.Fatalf("ListByAccountAndDateRange() error = %v", err)
+		}
+		if len(txns2) != 1 {
+			t.Errorf("Expected 1 transaction for account2 in range, got %d", len(txns2))
+		}
+	})
+}
+
+func TestTransactionService_SearchByPayee(t *testing.T) {
+	t.Run("finds transactions by payee name", func(t *testing.T) {
+		svc, accountRepo, _, payeeRepo := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		payee1 := models.NewPayee("Kroger Grocery")
+		if err := payeeRepo.Create(payee1); err != nil {
+			t.Fatalf("Failed to create payee: %v", err)
+		}
+		payee2 := models.NewPayee("Target")
+		if err := payeeRepo.Create(payee2); err != nil {
+			t.Fatalf("Failed to create payee: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-50.00")
+
+		txn1 := models.NewTransactionWithPayee(account.ID, models.Today(), amount, payee1.ID)
+		if err := svc.Create(txn1); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		txn2 := models.NewTransactionWithPayee(account.ID, models.Today(), amount, payee2.ID)
+		if err := svc.Create(txn2); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		// Search for "Kroger" (partial, case-insensitive)
+		txns, err := svc.SearchByPayee("kroger")
+		if err != nil {
+			t.Fatalf("SearchByPayee() error = %v", err)
+		}
+		if len(txns) != 1 {
+			t.Errorf("Expected 1 transaction matching 'kroger', got %d", len(txns))
+		}
+	})
+
+	t.Run("returns empty for no matching payee", func(t *testing.T) {
+		svc, accountRepo, _, payeeRepo := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		payee := models.NewPayee("Kroger")
+		if err := payeeRepo.Create(payee); err != nil {
+			t.Fatalf("Failed to create payee: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransactionWithPayee(account.ID, models.Today(), amount, payee.ID)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		txns, err := svc.SearchByPayee("walmart")
+		if err != nil {
+			t.Fatalf("SearchByPayee() error = %v", err)
+		}
+		if len(txns) != 0 {
+			t.Errorf("Expected 0 transactions for 'walmart', got %d", len(txns))
+		}
+	})
+}
+
+func TestTransactionService_SearchByMemo(t *testing.T) {
+	t.Run("finds transactions by memo", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+
+		txn1 := models.NewTransaction(account.ID, models.Today(), amount)
+		txn1.SetMemo("Grocery shopping at store")
+		if err := svc.Create(txn1); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		txn2 := models.NewTransaction(account.ID, models.Today(), amount)
+		txn2.SetMemo("Gas station fill up")
+		if err := svc.Create(txn2); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		txns, err := svc.SearchByMemo("grocery")
+		if err != nil {
+			t.Fatalf("SearchByMemo() error = %v", err)
+		}
+		if len(txns) != 1 {
+			t.Errorf("Expected 1 transaction matching 'grocery', got %d", len(txns))
+		}
+	})
+
+	t.Run("returns empty for no matching memo", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		txn.SetMemo("Grocery shopping")
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		txns, err := svc.SearchByMemo("electric")
+		if err != nil {
+			t.Fatalf("SearchByMemo() error = %v", err)
+		}
+		if len(txns) != 0 {
+			t.Errorf("Expected 0 transactions for 'electric', got %d", len(txns))
+		}
+	})
+}
+
+func TestTransactionService_SearchByCategory(t *testing.T) {
+	t.Run("finds transactions by category name", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, _ := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat1 := models.NewCategory("Groceries", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat1); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+		cat2 := models.NewCategory("Entertainment", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat2); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-50.00")
+
+		txn1 := models.NewTransaction(account.ID, models.Today(), amount)
+		txn1.SetCategory(cat1.ID)
+		if err := svc.Create(txn1); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		txn2 := models.NewTransaction(account.ID, models.Today(), amount)
+		txn2.SetCategory(cat2.ID)
+		if err := svc.Create(txn2); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		txns, err := svc.SearchByCategory("groceries")
+		if err != nil {
+			t.Fatalf("SearchByCategory() error = %v", err)
+		}
+		if len(txns) != 1 {
+			t.Errorf("Expected 1 transaction matching 'groceries', got %d", len(txns))
+		}
+	})
+
+	t.Run("returns empty for no matching category", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, _ := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat := models.NewCategory("Groceries", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		txn.SetCategory(cat.ID)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		txns, err := svc.SearchByCategory("utilities")
+		if err != nil {
+			t.Fatalf("SearchByCategory() error = %v", err)
+		}
+		if len(txns) != 0 {
+			t.Errorf("Expected 0 transactions for 'utilities', got %d", len(txns))
+		}
+	})
+}
+
+func TestTransactionService_Search(t *testing.T) {
+	t.Run("searches with combined criteria", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, payeeRepo := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat := models.NewCategory("Groceries", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		payee := models.NewPayee("Kroger")
+		if err := payeeRepo.Create(payee); err != nil {
+			t.Fatalf("Failed to create payee: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-50.00")
+		date1, _ := models.ParseDate("2024-01-15")
+		date2, _ := models.ParseDate("2024-03-15")
+
+		// Txn 1: Kroger, Groceries, Jan
+		txn1 := models.NewTransactionWithPayee(account.ID, date1, amount, payee.ID)
+		txn1.SetCategory(cat.ID)
+		if err := svc.Create(txn1); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		// Txn 2: Kroger, Groceries, Mar
+		txn2 := models.NewTransactionWithPayee(account.ID, date2, amount, payee.ID)
+		txn2.SetCategory(cat.ID)
+		if err := svc.Create(txn2); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		// Search with date range that only includes Jan
+		startDate, _ := models.ParseDate("2024-01-01")
+		endDate, _ := models.ParseDate("2024-02-01")
+		criteria := repository.TransactionSearchCriteria{
+			PayeeName: "kroger",
+			StartDate: &startDate,
+			EndDate:   &endDate,
+		}
+
+		txns, err := svc.Search(criteria)
+		if err != nil {
+			t.Fatalf("Search() error = %v", err)
+		}
+		if len(txns) != 1 {
+			t.Errorf("Expected 1 transaction matching combined criteria, got %d", len(txns))
+		}
+	})
+
+	t.Run("searches with memo criteria", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+
+		txn1 := models.NewTransaction(account.ID, models.Today(), amount)
+		txn1.SetMemo("Weekly groceries")
+		if err := svc.Create(txn1); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		txn2 := models.NewTransaction(account.ID, models.Today(), amount)
+		txn2.SetMemo("Gas station")
+		if err := svc.Create(txn2); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		criteria := repository.TransactionSearchCriteria{
+			Memo: "groceries",
+		}
+
+		txns, err := svc.Search(criteria)
+		if err != nil {
+			t.Fatalf("Search() error = %v", err)
+		}
+		if len(txns) != 1 {
+			t.Errorf("Expected 1 transaction matching memo, got %d", len(txns))
+		}
+	})
+
+	t.Run("empty criteria returns all", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		if err := svc.Create(models.NewTransaction(account.ID, models.Today(), amount)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.Create(models.NewTransaction(account.ID, models.Today(), amount)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		txns, err := svc.Search(repository.TransactionSearchCriteria{})
+		if err != nil {
+			t.Fatalf("Search() error = %v", err)
+		}
+		if len(txns) != 2 {
+			t.Errorf("Expected 2 transactions with empty criteria, got %d", len(txns))
+		}
+	})
+}
+
+// =============================================================================
+// Split Update Tests
+// =============================================================================
+
+func TestTransactionService_AddSplit(t *testing.T) {
+	t.Run("adds split to existing transaction", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, _ := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat := models.NewCategory("Food", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		// Add a split that matches the total
+		splitAmount, _ := models.NewMoney("-100.00")
+		split := models.NewSplit(txn.ID, cat.ID, splitAmount)
+
+		err := svc.AddSplit(split)
+		if err != nil {
+			t.Fatalf("AddSplit() error = %v", err)
+		}
+
+		splits, err := svc.GetSplits(txn.ID)
+		if err != nil {
+			t.Fatalf("GetSplits() error = %v", err)
+		}
+		if len(splits) != 1 {
+			t.Errorf("Expected 1 split, got %d", len(splits))
+		}
+	})
+
+	t.Run("returns mismatch error when split total does not match", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, _ := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat := models.NewCategory("Food", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		// Add a split with partial amount (doesn't match total)
+		splitAmount, _ := models.NewMoney("-30.00")
+		split := models.NewSplit(txn.ID, cat.ID, splitAmount)
+
+		err := svc.AddSplit(split)
+		if err == nil {
+			t.Error("AddSplit() expected mismatch error")
+		}
+		if _, ok := err.(*SplitTotalMismatchError); !ok {
+			t.Errorf("Expected SplitTotalMismatchError, got %T: %v", err, err)
+		}
+
+		// Split should still be created despite mismatch
+		splits, err := svc.GetSplits(txn.ID)
+		if err != nil {
+			t.Fatalf("GetSplits() error = %v", err)
+		}
+		if len(splits) != 1 {
+			t.Errorf("Expected 1 split (still created), got %d", len(splits))
+		}
+	})
+}
+
+func TestTransactionService_UpdateSplit(t *testing.T) {
+	t.Run("updates split amount", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, _ := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat1 := models.NewCategory("Food", models.CategoryTypeExpense)
+		cat2 := models.NewCategory("Household", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat1); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+		if err := categoryRepo.Create(cat2); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+
+		split1Amount, _ := models.NewMoney("-60.00")
+		split2Amount, _ := models.NewMoney("-40.00")
+		splits := []*models.Split{
+			models.NewSplit(txn.ID, cat1.ID, split1Amount),
+			models.NewSplit(txn.ID, cat2.ID, split2Amount),
+		}
+
+		if err := svc.CreateWithSplits(txn, splits); err != nil {
+			t.Fatalf("CreateWithSplits() error = %v", err)
+		}
+
+		// Update first split
+		retrievedSplits, _ := svc.GetSplits(txn.ID)
+		newAmount, _ := models.NewMoney("-80.00")
+		retrievedSplits[0].Amount = newAmount
+
+		err := svc.UpdateSplit(retrievedSplits[0])
+		if err != nil {
+			t.Fatalf("UpdateSplit() error = %v", err)
+		}
+
+		// Verify the update
+		updatedSplits, _ := svc.GetSplits(txn.ID)
+		found := false
+		for _, s := range updatedSplits {
+			if s.ID == retrievedSplits[0].ID {
+				if !s.Amount.Equal(newAmount) {
+					t.Errorf("Expected updated amount %s, got %s", newAmount.String(), s.Amount.String())
+				}
+				found = true
+			}
+		}
+		if !found {
+			t.Error("Updated split not found")
+		}
+	})
+
+	t.Run("validates split before updating", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, _ := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat := models.NewCategory("Food", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+
+		splitAmount, _ := models.NewMoney("-100.00")
+		splits := []*models.Split{
+			models.NewSplit(txn.ID, cat.ID, splitAmount),
+		}
+
+		if err := svc.CreateWithSplits(txn, splits); err != nil {
+			t.Fatalf("CreateWithSplits() error = %v", err)
+		}
+
+		retrievedSplits, _ := svc.GetSplits(txn.ID)
+		// Set invalid zero amount
+		retrievedSplits[0].Amount = models.ZeroMoney
+
+		err := svc.UpdateSplit(retrievedSplits[0])
+		if err == nil {
+			t.Error("UpdateSplit() expected error for zero amount")
+		}
+	})
+}
+
+func TestTransactionService_DeleteSplit(t *testing.T) {
+	t.Run("deletes a split", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, _ := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat1 := models.NewCategory("Food", models.CategoryTypeExpense)
+		cat2 := models.NewCategory("Household", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat1); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+		if err := categoryRepo.Create(cat2); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+
+		split1Amount, _ := models.NewMoney("-60.00")
+		split2Amount, _ := models.NewMoney("-40.00")
+		splits := []*models.Split{
+			models.NewSplit(txn.ID, cat1.ID, split1Amount),
+			models.NewSplit(txn.ID, cat2.ID, split2Amount),
+		}
+
+		if err := svc.CreateWithSplits(txn, splits); err != nil {
+			t.Fatalf("CreateWithSplits() error = %v", err)
+		}
+
+		retrievedSplits, _ := svc.GetSplits(txn.ID)
+		if len(retrievedSplits) != 2 {
+			t.Fatalf("Expected 2 splits, got %d", len(retrievedSplits))
+		}
+
+		// Delete the first split
+		if err := svc.DeleteSplit(retrievedSplits[0].ID); err != nil {
+			t.Fatalf("DeleteSplit() error = %v", err)
+		}
+
+		remaining, _ := svc.GetSplits(txn.ID)
+		if len(remaining) != 1 {
+			t.Errorf("Expected 1 remaining split, got %d", len(remaining))
+		}
+	})
+}
+
+func TestTransactionService_ReplaceSplits(t *testing.T) {
+	t.Run("replaces all splits", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, _ := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat1 := models.NewCategory("Food", models.CategoryTypeExpense)
+		cat2 := models.NewCategory("Household", models.CategoryTypeExpense)
+		cat3 := models.NewCategory("Entertainment", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat1); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+		if err := categoryRepo.Create(cat2); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+		if err := categoryRepo.Create(cat3); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+
+		splitAmount, _ := models.NewMoney("-100.00")
+		origSplits := []*models.Split{
+			models.NewSplit(txn.ID, cat1.ID, splitAmount),
+		}
+
+		if err := svc.CreateWithSplits(txn, origSplits); err != nil {
+			t.Fatalf("CreateWithSplits() error = %v", err)
+		}
+
+		// Replace with two new splits
+		newSplit1, _ := models.NewMoney("-70.00")
+		newSplit2, _ := models.NewMoney("-30.00")
+		newSplits := []*models.Split{
+			models.NewSplit(txn.ID, cat2.ID, newSplit1),
+			models.NewSplit(txn.ID, cat3.ID, newSplit2),
+		}
+
+		if err := svc.ReplaceSplits(txn.ID, newSplits); err != nil {
+			t.Fatalf("ReplaceSplits() error = %v", err)
+		}
+
+		retrievedSplits, _ := svc.GetSplits(txn.ID)
+		if len(retrievedSplits) != 2 {
+			t.Errorf("Expected 2 splits after replace, got %d", len(retrievedSplits))
+		}
+	})
+
+	t.Run("rejects replacement splits that do not sum to transaction amount", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, _ := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat1 := models.NewCategory("Food", models.CategoryTypeExpense)
+		cat2 := models.NewCategory("Household", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat1); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+		if err := categoryRepo.Create(cat2); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+
+		splitAmount, _ := models.NewMoney("-100.00")
+		origSplits := []*models.Split{
+			models.NewSplit(txn.ID, cat1.ID, splitAmount),
+		}
+
+		if err := svc.CreateWithSplits(txn, origSplits); err != nil {
+			t.Fatalf("CreateWithSplits() error = %v", err)
+		}
+
+		// Try to replace with splits that don't sum correctly
+		badAmount, _ := models.NewMoney("-50.00")
+		badSplits := []*models.Split{
+			models.NewSplit(txn.ID, cat2.ID, badAmount),
+		}
+
+		err := svc.ReplaceSplits(txn.ID, badSplits)
+		if err == nil {
+			t.Error("ReplaceSplits() expected error for mismatched totals")
+		}
+	})
+}
+
+// =============================================================================
+// Transfer Update Tests
+// =============================================================================
+
+func TestTransactionService_UpdateTransferAmount(t *testing.T) {
+	t.Run("updates amount on both sides", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		newAmount, _ := models.NewMoney("750.00")
+		if err := svc.UpdateTransferAmount(pair.FromTransaction.TransferID.ID, newAmount); err != nil {
+			t.Fatalf("UpdateTransferAmount() error = %v", err)
+		}
+
+		// Verify both sides updated
+		updatedPair, err := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
+		if err != nil {
+			t.Fatalf("GetTransferPair() error = %v", err)
+		}
+
+		if !updatedPair.FromTransaction.Amount.Neg().Equal(newAmount) {
+			t.Errorf("From amount should be -%s, got %s", newAmount.String(), updatedPair.FromTransaction.Amount.String())
+		}
+		if !updatedPair.ToTransaction.Amount.Equal(newAmount) {
+			t.Errorf("To amount should be %s, got %s", newAmount.String(), updatedPair.ToTransaction.Amount.String())
+		}
+	})
+
+	t.Run("rejects negative amount", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		negAmount, _ := models.NewMoney("-100.00")
+		err = svc.UpdateTransferAmount(pair.FromTransaction.TransferID.ID, negAmount)
+		if err == nil {
+			t.Error("UpdateTransferAmount() expected error for negative amount")
+		}
+		if _, ok := err.(*InvalidTransferAmountError); !ok {
+			t.Errorf("Expected InvalidTransferAmountError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects zero amount", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		err = svc.UpdateTransferAmount(pair.FromTransaction.TransferID.ID, models.ZeroMoney)
+		if err == nil {
+			t.Error("UpdateTransferAmount() expected error for zero amount")
+		}
+	})
+}
+
+func TestTransactionService_UpdateTransferDate(t *testing.T) {
+	t.Run("updates date on both sides", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		newDate, _ := models.ParseDate("2024-06-15")
+		if err := svc.UpdateTransferDate(pair.FromTransaction.TransferID.ID, newDate); err != nil {
+			t.Fatalf("UpdateTransferDate() error = %v", err)
+		}
+
+		updatedPair, err := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
+		if err != nil {
+			t.Fatalf("GetTransferPair() error = %v", err)
+		}
+
+		if updatedPair.FromTransaction.Date != newDate {
+			t.Errorf("From date should be %s, got %s", newDate, updatedPair.FromTransaction.Date)
+		}
+		if updatedPair.ToTransaction.Date != newDate {
+			t.Errorf("To date should be %s, got %s", newDate, updatedPair.ToTransaction.Date)
+		}
+	})
+}
+
+func TestTransactionService_UpdateTransferStatus(t *testing.T) {
+	t.Run("updates status on both sides", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, models.TransactionStatusCleared); err != nil {
+			t.Fatalf("UpdateTransferStatus() error = %v", err)
+		}
+
+		updatedPair, err := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
+		if err != nil {
+			t.Fatalf("GetTransferPair() error = %v", err)
+		}
+
+		if updatedPair.FromTransaction.Status != models.TransactionStatusCleared {
+			t.Errorf("From status should be cleared, got %s", updatedPair.FromTransaction.Status)
+		}
+		if updatedPair.ToTransaction.Status != models.TransactionStatusCleared {
+			t.Errorf("To status should be cleared, got %s", updatedPair.ToTransaction.Status)
+		}
+	})
+
+	t.Run("updates to reconciled", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, models.TransactionStatusReconciled); err != nil {
+			t.Fatalf("UpdateTransferStatus() error = %v", err)
+		}
+
+		updatedPair, err := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
+		if err != nil {
+			t.Fatalf("GetTransferPair() error = %v", err)
+		}
+
+		if updatedPair.FromTransaction.Status != models.TransactionStatusReconciled {
+			t.Errorf("From status should be reconciled, got %s", updatedPair.FromTransaction.Status)
+		}
+		if updatedPair.ToTransaction.Status != models.TransactionStatusReconciled {
+			t.Errorf("To status should be reconciled, got %s", updatedPair.ToTransaction.Status)
+		}
+	})
+}
