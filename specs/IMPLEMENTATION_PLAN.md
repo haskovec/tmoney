@@ -372,7 +372,7 @@ This document defines the order in which features should be implemented. Each it
   - [x] Integration tests for scheduled transactions (CRUD, post, skip, due/upcoming, next-date, estimation)
   - [x] TUI component tests (transaction dialog, file dialog, pure functions, submit validation, edge cases)
 
-- [ ] **056 - Documentation**
+- [x] **056 - Documentation**
   - README update
   - Usage examples
   - Keyboard reference
