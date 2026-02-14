@@ -1,5 +1,8 @@
 .PHONY: build test test-coverage coverage-html coverage-func clean help
 
+# Enable CGO for DuckDB bindings
+export CGO_ENABLED=1
+
 # Default target
 help:
 	@echo "Available targets:"
@@ -12,15 +15,15 @@ help:
 
 # Build the tmoney executable
 build:
-	go build -o tmoney ./cmd/tmoney
+	CGO_ENABLED=1 go build -o tmoney ./cmd/tmoney
 
 # Run all tests
 test:
-	go test -p 1 ./...
+	CGO_ENABLED=1 go test -p 1 ./...
 
 # Run tests with coverage and display summary
 test-coverage:
-	go test -p 1 -coverprofile=coverage.out -covermode=atomic ./...
+	CGO_ENABLED=1 go test -p 1 -coverprofile=coverage.out -covermode=atomic ./...
 	@echo ""
 	@echo "Coverage summary:"
 	@go tool cover -func=coverage.out | tail -1
