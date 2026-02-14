@@ -631,6 +631,52 @@ func TestDialog_HandleKey_TypingInTextField(t *testing.T) {
 	}
 }
 
+func TestDialog_HandleKey_SpaceInTextField(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddTextField("Name", "", "", 0)
+
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'M'}})
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	d.HandleKey(tea.KeyMsg{Type: tea.KeySpace})
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+
+	if d.Fields()[0].Value != "My Acct" {
+		t.Errorf("Value = %q, want %q", d.Fields()[0].Value, "My Acct")
+	}
+}
+
+func TestDialog_HandleKey_SpaceInTextField_ClearsError(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddTextField("Name", "test", "", 0)
+	f.Error = "some error"
+
+	d.HandleKey(tea.KeyMsg{Type: tea.KeySpace})
+
+	if f.Error != "" {
+		t.Errorf("Error should be cleared after space, got %q", f.Error)
+	}
+	if f.Value != "test " {
+		t.Errorf("Value = %q, want %q", f.Value, "test ")
+	}
+}
+
+func TestDialog_HandleKey_MultipleSpacesInTextField(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddTextField("Name", "", "", 0)
+
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	d.HandleKey(tea.KeyMsg{Type: tea.KeySpace})
+	d.HandleKey(tea.KeyMsg{Type: tea.KeySpace})
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'B'}})
+
+	if d.Fields()[0].Value != "A  B" {
+		t.Errorf("Value = %q, want %q", d.Fields()[0].Value, "A  B")
+	}
+}
+
 func TestDialog_HandleKey_BackspaceInTextField(t *testing.T) {
 	d := NewDialog("Test")
 	d.AddTextField("Name", "Hello", "", 0)
@@ -703,12 +749,27 @@ func TestDialog_HandleKey_SpaceTogglesCheckbox(t *testing.T) {
 
 	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
 	if !f.Checked {
-		t.Error("Checked should be true after space")
+		t.Error("Checked should be true after space rune")
 	}
 
 	d.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
 	if f.Checked {
-		t.Error("Checked should be false after second space")
+		t.Error("Checked should be false after second space rune")
+	}
+}
+
+func TestDialog_HandleKey_KeySpaceTogglesCheckbox(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddCheckboxField("Accept", false)
+
+	d.HandleKey(tea.KeyMsg{Type: tea.KeySpace})
+	if !f.Checked {
+		t.Error("Checked should be true after KeySpace")
+	}
+
+	d.HandleKey(tea.KeyMsg{Type: tea.KeySpace})
+	if f.Checked {
+		t.Error("Checked should be false after second KeySpace")
 	}
 }
 

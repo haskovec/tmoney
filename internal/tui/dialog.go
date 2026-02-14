@@ -481,6 +481,9 @@ func (d *Dialog) handleTextFieldKey(field *Field, msg tea.KeyMsg) {
 		field.MoveCursorHome()
 	case tea.KeyEnd, tea.KeyCtrlE:
 		field.MoveCursorEnd()
+	case tea.KeySpace:
+		field.InsertChar(' ')
+		field.Error = ""
 	case tea.KeyRunes:
 		for _, r := range msg.Runes {
 			field.InsertChar(r)
@@ -512,7 +515,7 @@ func (d *Dialog) handleRadioFieldKey(field *Field, msg tea.KeyMsg) {
 }
 
 func (d *Dialog) handleCheckboxFieldKey(field *Field, msg tea.KeyMsg) {
-	if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == ' ' {
+	if msg.Type == tea.KeySpace || (msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == ' ') {
 		field.Toggle()
 		field.Error = ""
 	}
