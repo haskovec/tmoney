@@ -37,7 +37,7 @@ Accounts represent financial accounts that hold money or track balances. Each ac
 | Property | Type | Applies To | Description |
 |----------|------|------------|-------------|
 | `institution` | string | All | Bank/brokerage name |
-| `account_number` | string | All | Last 4 digits for reference |
+| `account_number` | string | All | Full account number (alphanumeric, max 50 chars) |
 | `notes` | string | All | User notes |
 | `credit_limit` | decimal | credit_card | Maximum credit limit |
 | `interest_rate` | decimal | loan | Annual interest rate (percentage) |

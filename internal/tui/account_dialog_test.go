@@ -219,6 +219,25 @@ func TestBuildEditAccountDialog(t *testing.T) {
 	}
 }
 
+func TestBuildEditAccountDialog_AlphanumericAccountNumber(t *testing.T) {
+	account := models.NewAccount(
+		"Brokerage",
+		models.AccountTypeInvestment,
+		"USD",
+		models.ZeroMoney,
+		models.Today(),
+	)
+	account.SetInstitution("Fidelity")
+	account.SetAccountNumber("Z12-345ABC")
+
+	d := buildEditAccountDialog(account)
+	fields := d.Fields()
+
+	if fields[acctFieldAccountNumber].Value != "Z12-345ABC" {
+		t.Errorf("account number = %q, want %q", fields[acctFieldAccountNumber].Value, "Z12-345ABC")
+	}
+}
+
 func TestBuildEditAccountDialog_CreditCard(t *testing.T) {
 	creditLimit, _ := models.NewMoney("5000.00")
 	account := models.NewAccount(

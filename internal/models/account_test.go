@@ -491,6 +491,21 @@ func TestAccountOptionalFields(t *testing.T) {
 		}
 	})
 
+	t.Run("SetAccountNumber accepts alphanumeric values", func(t *testing.T) {
+		acc := NewAccount("Test", AccountTypeInvestment, "USD", ZeroMoney, Today())
+		acc.SetAccountNumber("Z12-345ABC")
+		if !acc.AccountNumber.Valid {
+			t.Error("AccountNumber should be valid after SetAccountNumber with alphanumeric value")
+		}
+		if acc.AccountNumber.String != "Z12-345ABC" {
+			t.Errorf("Expected 'Z12-345ABC', got %q", acc.AccountNumber.String)
+		}
+		errs := acc.Validate()
+		if errs.HasErrors() {
+			t.Errorf("Alphanumeric account number should pass validation: %v", errs)
+		}
+	})
+
 	t.Run("SetNotes sets valid value", func(t *testing.T) {
 		acc := NewAccount("Test", AccountTypeChecking, "USD", ZeroMoney, Today())
 		acc.SetNotes("Some notes here")

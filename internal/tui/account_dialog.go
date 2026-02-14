@@ -109,7 +109,7 @@ func buildNewAccountDialog() *Dialog {
 	d.AddTextField("Institution", "", "Bank name (optional)", 0)
 
 	// Account number (optional)
-	d.AddTextField("Account #", "", "Last 4 digits (optional)", 10)
+	d.AddTextField("Account #", "", "Account number (optional)", 0)
 
 	// Notes (optional)
 	d.AddTextField("Notes", "", "Optional notes", 0)
@@ -160,7 +160,7 @@ func buildEditAccountDialog(account *models.Account) *Dialog {
 	if account.AccountNumber.Valid {
 		acctNum = account.AccountNumber.String
 	}
-	d.AddTextField("Account #", acctNum, "Last 4 digits (optional)", 10)
+	d.AddTextField("Account #", acctNum, "Account number (optional)", 0)
 
 	// Notes
 	notes := ""

@@ -172,6 +172,63 @@ func TestAccountLifecycle(t *testing.T) {
 	}
 }
 
+// TestAlphanumericAccountNumber tests that account numbers with letters are stored and retrieved correctly.
+func TestAlphanumericAccountNumber(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tmoney-integration-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer database.Close()
+
+	repo := repository.NewAccountRepository(database)
+
+	tests := []struct {
+		name          string
+		accountNumber string
+	}{
+		{"Brokerage", "Z12-345ABC"},
+		{"IRA", "9X8Y7Z"},
+		{"Trading", "ACCT-2024-001"},
+		{"Foreign", "GB29NWBK60161331926819"},
+	}
+
+	for _, tc := range tests {
+		account := models.NewAccount(
+			tc.name,
+			models.AccountTypeInvestment,
+			"USD",
+			models.ZeroMoney,
+			models.Today(),
+		)
+		account.SetAccountNumber(tc.accountNumber)
+
+		if err := repo.Create(account); err != nil {
+			t.Fatalf("Failed to create account %q: %v", tc.name, err)
+		}
+
+		retrieved, err := repo.GetByID(account.ID)
+		if err != nil {
+			t.Fatalf("Failed to retrieve account %q: %v", tc.name, err)
+		}
+
+		if !retrieved.AccountNumber.Valid {
+			t.Errorf("Account %q: account number should be valid", tc.name)
+		}
+		if retrieved.AccountNumber.String != tc.accountNumber {
+			t.Errorf("Account %q: expected account number %q, got %q",
+				tc.name, tc.accountNumber, retrieved.AccountNumber.String)
+		}
+	}
+}
+
 // TestMultipleAccounts tests creating and listing multiple accounts.
 func TestMultipleAccounts(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "tmoney-integration-*")
