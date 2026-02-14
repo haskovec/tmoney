@@ -8,7 +8,7 @@ import (
 
 	"github.com/alpacahq/alpacadecimal"
 	"github.com/google/uuid"
-	"github.com/marcboeker/go-duckdb"
+	"github.com/duckdb/duckdb-go/v2"
 )
 
 // ID represents a unique identifier for model entities.

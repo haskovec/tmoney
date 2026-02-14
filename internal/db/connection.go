@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	_ "github.com/marcboeker/go-duckdb"
+	_ "github.com/duckdb/duckdb-go/v2"
 )
 
 // FileExtension is the standard extension for TMoney database files.

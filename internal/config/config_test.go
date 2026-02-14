@@ -139,8 +139,9 @@ func TestAddRecentFile_CapsAtMax(t *testing.T) {
 		t.Errorf("RecentFiles length = %d, want %d", len(cfg.RecentFiles), maxRecentFiles)
 	}
 	// Most recent should be first
-	if cfg.RecentFiles[0] != "/tmp/l.tdb" {
-		t.Errorf("RecentFiles[0] = %q, want %q", cfg.RecentFiles[0], "/tmp/l.tdb")
+	want := filepath.Join("/tmp", "l.tdb")
+	if cfg.RecentFiles[0] != want {
+		t.Errorf("RecentFiles[0] = %q, want %q", cfg.RecentFiles[0], want)
 	}
 }
 

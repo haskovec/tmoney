@@ -3,7 +3,7 @@ package db
 import (
 	"embed"
 	"fmt"
-	"path/filepath"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -83,7 +83,7 @@ func loadMigrations() ([]Migration, error) {
 			continue // Skip files that don't match pattern
 		}
 
-		content, err := migrationsFS.ReadFile(filepath.Join("migrations", name))
+		content, err := migrationsFS.ReadFile(path.Join("migrations", name))
 		if err != nil {
 			return nil, &DatabaseError{Op: "read migration file", Err: err}
 		}
