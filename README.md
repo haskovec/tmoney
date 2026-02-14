@@ -33,8 +33,8 @@ tmoney --create ~/Documents/TMoney/personal.tdb
 tmoney ~/Documents/TMoney/personal.tdb
 
 # Or use the CLI to add data
-tmoney -f personal.tdb --add-account --name Checking --type checking --opening-balance 1000
-tmoney -f personal.tdb --add-transaction --account Checking --amount -45.50 --payee "Grocery Store" --category "Food:Groceries"
+tmoney -f personal.tdb --add-account --name "My Checking" --type checking --opening-balance 1000
+tmoney -f personal.tdb --add-transaction --account "My Checking" --amount -45.50 --payee "Grocery Store" --category "Food:Groceries"
 tmoney -f personal.tdb --balance
 ```
 
@@ -176,7 +176,7 @@ Press `?` at any time to show the help overlay.
 | `Enter` | Submit / confirm |
 | `Esc` | Cancel / close |
 | `Up/Down` | Navigate options |
-| `Space` | Toggle checkbox |
+| `Space` | Type space in text fields / toggle checkbox |
 
 ## CLI Reference
 
