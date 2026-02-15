@@ -81,6 +81,49 @@ func accountTypeToIndex(at models.AccountType) int {
 	return 0
 }
 
+// accountTypeShowsCreditLimit returns true if the account type should show the credit limit field.
+func accountTypeShowsCreditLimit(at models.AccountType) bool {
+	return at == models.AccountTypeCreditCard
+}
+
+// accountTypeShowsInterestRate returns true if the account type should show the interest rate field.
+func accountTypeShowsInterestRate(at models.AccountType) bool {
+	switch at {
+	case models.AccountTypeChecking, models.AccountTypeSavings, models.AccountTypeCreditCard,
+		models.AccountTypeInvestment, models.AccountTypeLoan:
+		return true
+	default:
+		return false
+	}
+}
+
+// updateAccountFieldVisibility updates the Hidden state of credit limit and interest rate
+// fields based on the currently selected account type.
+func updateAccountFieldVisibility(d *Dialog) {
+	fields := d.Fields()
+	if len(fields) <= acctFieldInterestRate {
+		return
+	}
+
+	accountType := accountTypeFromIndex(fields[acctFieldType].SelectedIndex)
+
+	showCreditLimit := accountTypeShowsCreditLimit(accountType)
+	showInterestRate := accountTypeShowsInterestRate(accountType)
+
+	fields[acctFieldCreditLimit].Hidden = !showCreditLimit
+	fields[acctFieldInterestRate].Hidden = !showInterestRate
+
+	// Clear values of hidden fields so stale data isn't submitted
+	if !showCreditLimit {
+		fields[acctFieldCreditLimit].Value = ""
+		fields[acctFieldCreditLimit].Error = ""
+	}
+	if !showInterestRate {
+		fields[acctFieldInterestRate].Value = ""
+		fields[acctFieldInterestRate].Error = ""
+	}
+}
+
 // buildNewAccountDialog creates a Dialog for creating a new account.
 func buildNewAccountDialog() *Dialog {
 	d := NewDialog("New Account")
@@ -114,12 +157,13 @@ func buildNewAccountDialog() *Dialog {
 	// Notes (optional)
 	d.AddTextField("Notes", "", "Optional notes", 0)
 
-	// Credit limit (for credit card)
-	d.AddTextField("Credit Limit", "", "For credit cards (optional)", 12)
+	// Credit limit (shown for credit cards)
+	d.AddTextField("Credit Limit", "", "e.g. 5000.00", 12)
 
-	// Interest rate (for loans)
-	d.AddTextField("Interest Rate", "", "For loans, e.g. 5.25 (optional)", 8)
+	// Interest rate (shown for most account types)
+	d.AddTextField("Interest Rate", "", "APR, e.g. 5.25", 8)
 
+	updateAccountFieldVisibility(d)
 	d.SetVisible(true)
 	return d
 }
@@ -169,20 +213,21 @@ func buildEditAccountDialog(account *models.Account) *Dialog {
 	}
 	d.AddTextField("Notes", notes, "Optional notes", 0)
 
-	// Credit limit
+	// Credit limit (shown for credit cards)
 	creditLimit := ""
 	if account.CreditLimit.Valid {
 		creditLimit = fmt.Sprintf("%.2f", account.CreditLimit.Money.Float64())
 	}
-	d.AddTextField("Credit Limit", creditLimit, "For credit cards (optional)", 12)
+	d.AddTextField("Credit Limit", creditLimit, "e.g. 5000.00", 12)
 
-	// Interest rate
+	// Interest rate (shown for most account types)
 	interestRate := ""
 	if account.InterestRate.Valid {
 		interestRate = fmt.Sprintf("%.2f", account.InterestRate.Money.Float64())
 	}
-	d.AddTextField("Interest Rate", interestRate, "For loans, e.g. 5.25 (optional)", 8)
+	d.AddTextField("Interest Rate", interestRate, "APR, e.g. 5.25", 8)
 
+	updateAccountFieldVisibility(d)
 	d.SetVisible(true)
 	return d
 }
@@ -241,6 +286,9 @@ func (a *App) handleAccountDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	// Update field visibility when account type changes
+	updateAccountFieldVisibility(a.acctDialog)
+
 	return a, nil
 }
 
@@ -295,30 +343,34 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 	institution := strings.TrimSpace(fields[acctFieldInstitution].Value)
 	accountNumber := strings.TrimSpace(fields[acctFieldAccountNumber].Value)
 	notes := strings.TrimSpace(fields[acctFieldNotes].Value)
-	creditLimitStr := strings.TrimSpace(fields[acctFieldCreditLimit].Value)
-	interestRateStr := strings.TrimSpace(fields[acctFieldInterestRate].Value)
 
-	// Parse credit limit if provided
+	// Parse credit limit if field is visible and provided
 	var creditLimit models.NullableMoney
-	if creditLimitStr != "" {
-		cl, err := parseAmountInput(creditLimitStr)
-		if err != nil {
-			fields[acctFieldCreditLimit].Error = "Invalid amount"
-			hasErrors = true
-		} else {
-			creditLimit = models.NullableMoney{Money: cl, Valid: true}
+	if !fields[acctFieldCreditLimit].Hidden {
+		creditLimitStr := strings.TrimSpace(fields[acctFieldCreditLimit].Value)
+		if creditLimitStr != "" {
+			cl, err := parseAmountInput(creditLimitStr)
+			if err != nil {
+				fields[acctFieldCreditLimit].Error = "Invalid amount"
+				hasErrors = true
+			} else {
+				creditLimit = models.NullableMoney{Money: cl, Valid: true}
+			}
 		}
 	}
 
-	// Parse interest rate if provided
+	// Parse interest rate if field is visible and provided
 	var interestRate models.NullableMoney
-	if interestRateStr != "" {
-		ir, err := parseAmountInput(interestRateStr)
-		if err != nil {
-			fields[acctFieldInterestRate].Error = "Invalid amount"
-			hasErrors = true
-		} else {
-			interestRate = models.NullableMoney{Money: ir, Valid: true}
+	if !fields[acctFieldInterestRate].Hidden {
+		interestRateStr := strings.TrimSpace(fields[acctFieldInterestRate].Value)
+		if interestRateStr != "" {
+			ir, err := parseAmountInput(interestRateStr)
+			if err != nil {
+				fields[acctFieldInterestRate].Error = "Invalid amount"
+				hasErrors = true
+			} else {
+				interestRate = models.NullableMoney{Money: ir, Valid: true}
+			}
 		}
 	}
 

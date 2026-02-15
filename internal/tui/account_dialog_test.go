@@ -103,6 +103,14 @@ func TestBuildNewAccountDialog(t *testing.T) {
 	if len(fields) != 10 {
 		t.Fatalf("expected 10 fields, got %d", len(fields))
 	}
+
+	// Default type is Checking: credit limit hidden, interest rate visible
+	if !fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be hidden for Checking")
+	}
+	if fields[acctFieldInterestRate].Hidden {
+		t.Error("interest rate should be visible for Checking")
+	}
 }
 
 func TestBuildNewAccountDialog_FieldTypes(t *testing.T) {
@@ -257,9 +265,17 @@ func TestBuildEditAccountDialog_CreditCard(t *testing.T) {
 		t.Errorf("type selectedIndex = %d, want 2", fields[acctFieldType].SelectedIndex)
 	}
 
-	// Credit limit should be populated
+	// Credit limit should be populated and visible
 	if fields[acctFieldCreditLimit].Value != "5000.00" {
 		t.Errorf("credit limit = %q, want %q", fields[acctFieldCreditLimit].Value, "5000.00")
+	}
+	if fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be visible for Credit Card")
+	}
+
+	// Interest rate should also be visible for credit cards
+	if fields[acctFieldInterestRate].Hidden {
+		t.Error("interest rate should be visible for Credit Card")
 	}
 }
 
@@ -282,9 +298,17 @@ func TestBuildEditAccountDialog_Loan(t *testing.T) {
 		t.Errorf("type selectedIndex = %d, want 5", fields[acctFieldType].SelectedIndex)
 	}
 
-	// Interest rate should be populated
+	// Interest rate should be populated and visible
 	if fields[acctFieldInterestRate].Value != "4.50" {
 		t.Errorf("interest rate = %q, want %q", fields[acctFieldInterestRate].Value, "4.50")
+	}
+	if fields[acctFieldInterestRate].Hidden {
+		t.Error("interest rate should be visible for Loan")
+	}
+
+	// Credit limit should be hidden for loans
+	if !fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be hidden for Loan")
 	}
 }
 
@@ -535,6 +559,9 @@ func TestApp_SubmitAccountDialog_InvalidCreditLimit(t *testing.T) {
 		acctDialog: func() *Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Card"
+			// Set type to Credit Card so credit limit field is visible
+			d.Fields()[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCreditCard)
+			updateAccountFieldVisibility(d)
 			d.Fields()[acctFieldCreditLimit].Value = "abc"
 			return d
 		}(),
@@ -564,6 +591,7 @@ func TestApp_SubmitAccountDialog_InvalidInterestRate(t *testing.T) {
 		acctDialog: func() *Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Loan"
+			// Default type is Checking which shows interest rate
 			d.Fields()[acctFieldInterestRate].Value = "xyz"
 			return d
 		}(),
@@ -865,5 +893,401 @@ func TestApp_HandleMenuAction_EditAccount_WithSelection(t *testing.T) {
 
 	if cmd == nil {
 		t.Error("MenuActionEditAccount with selection should return a non-nil cmd")
+	}
+}
+
+// =============================================================================
+// Dynamic Field Visibility Tests
+// =============================================================================
+
+func TestAccountTypeShowsCreditLimit(t *testing.T) {
+	tests := []struct {
+		accountType models.AccountType
+		expected    bool
+	}{
+		{models.AccountTypeChecking, false},
+		{models.AccountTypeSavings, false},
+		{models.AccountTypeCreditCard, true},
+		{models.AccountTypeInvestment, false},
+		{models.AccountTypeCash, false},
+		{models.AccountTypeLoan, false},
+		{models.AccountTypeAsset, false},
+	}
+
+	for _, tc := range tests {
+		got := accountTypeShowsCreditLimit(tc.accountType)
+		if got != tc.expected {
+			t.Errorf("accountTypeShowsCreditLimit(%q) = %v, want %v", tc.accountType, got, tc.expected)
+		}
+	}
+}
+
+func TestAccountTypeShowsInterestRate(t *testing.T) {
+	tests := []struct {
+		accountType models.AccountType
+		expected    bool
+	}{
+		{models.AccountTypeChecking, true},
+		{models.AccountTypeSavings, true},
+		{models.AccountTypeCreditCard, true},
+		{models.AccountTypeInvestment, true},
+		{models.AccountTypeCash, false},
+		{models.AccountTypeLoan, true},
+		{models.AccountTypeAsset, false},
+	}
+
+	for _, tc := range tests {
+		got := accountTypeShowsInterestRate(tc.accountType)
+		if got != tc.expected {
+			t.Errorf("accountTypeShowsInterestRate(%q) = %v, want %v", tc.accountType, got, tc.expected)
+		}
+	}
+}
+
+func TestNewAccountDialog_FieldVisibility_Checking(t *testing.T) {
+	d := buildNewAccountDialog()
+	// Default type is Checking (index 0)
+	fields := d.Fields()
+
+	if !fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be hidden for Checking")
+	}
+	if fields[acctFieldInterestRate].Hidden {
+		t.Error("interest rate should be visible for Checking")
+	}
+}
+
+func TestNewAccountDialog_FieldVisibility_CreditCard(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+
+	// Change type to Credit Card
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCreditCard)
+	updateAccountFieldVisibility(d)
+
+	if fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be visible for Credit Card")
+	}
+	if fields[acctFieldInterestRate].Hidden {
+		t.Error("interest rate should be visible for Credit Card")
+	}
+}
+
+func TestNewAccountDialog_FieldVisibility_Cash(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+
+	// Change type to Cash
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCash)
+	updateAccountFieldVisibility(d)
+
+	if !fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be hidden for Cash")
+	}
+	if !fields[acctFieldInterestRate].Hidden {
+		t.Error("interest rate should be hidden for Cash")
+	}
+}
+
+func TestNewAccountDialog_FieldVisibility_Asset(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+
+	// Change type to Asset
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeAsset)
+	updateAccountFieldVisibility(d)
+
+	if !fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be hidden for Asset")
+	}
+	if !fields[acctFieldInterestRate].Hidden {
+		t.Error("interest rate should be hidden for Asset")
+	}
+}
+
+func TestNewAccountDialog_FieldVisibility_Savings(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+
+	// Change type to Savings
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeSavings)
+	updateAccountFieldVisibility(d)
+
+	if !fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be hidden for Savings")
+	}
+	if fields[acctFieldInterestRate].Hidden {
+		t.Error("interest rate should be visible for Savings")
+	}
+}
+
+func TestNewAccountDialog_FieldVisibility_Investment(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+
+	// Change type to Investment
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeInvestment)
+	updateAccountFieldVisibility(d)
+
+	if !fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be hidden for Investment")
+	}
+	if fields[acctFieldInterestRate].Hidden {
+		t.Error("interest rate should be visible for Investment")
+	}
+}
+
+func TestNewAccountDialog_FieldVisibility_Loan(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+
+	// Change type to Loan
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeLoan)
+	updateAccountFieldVisibility(d)
+
+	if !fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be hidden for Loan")
+	}
+	if fields[acctFieldInterestRate].Hidden {
+		t.Error("interest rate should be visible for Loan")
+	}
+}
+
+func TestUpdateAccountFieldVisibility_ClearsHiddenValues(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+
+	// Set type to Credit Card and fill in credit limit
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCreditCard)
+	updateAccountFieldVisibility(d)
+	fields[acctFieldCreditLimit].Value = "5000.00"
+
+	// Now switch to Cash - credit limit and interest rate should be cleared
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCash)
+	updateAccountFieldVisibility(d)
+
+	if fields[acctFieldCreditLimit].Value != "" {
+		t.Errorf("credit limit should be cleared when hidden, got %q", fields[acctFieldCreditLimit].Value)
+	}
+	if fields[acctFieldInterestRate].Value != "" {
+		t.Errorf("interest rate should be cleared when hidden, got %q", fields[acctFieldInterestRate].Value)
+	}
+}
+
+func TestUpdateAccountFieldVisibility_ClearsHiddenErrors(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+
+	// Set type to Credit Card with an error on credit limit
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCreditCard)
+	updateAccountFieldVisibility(d)
+	fields[acctFieldCreditLimit].Error = "Invalid amount"
+
+	// Switch to Checking - error should be cleared
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeChecking)
+	updateAccountFieldVisibility(d)
+
+	if fields[acctFieldCreditLimit].Error != "" {
+		t.Errorf("credit limit error should be cleared when hidden, got %q", fields[acctFieldCreditLimit].Error)
+	}
+}
+
+func TestApp_HandleAccountDialogKey_TypeChangeUpdatesVisibility(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		acctDialog: func() *Dialog {
+			d := buildNewAccountDialog()
+			// Focus the Type field
+			d.SetFocusIndex(acctFieldType)
+			return d
+		}(),
+		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+	}
+
+	fields := app.acctDialog.Fields()
+
+	// Default is Checking (index 0) - credit limit hidden
+	if !fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should start hidden for Checking")
+	}
+
+	// Press down to change type to Savings (index 1)
+	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	app.Update(downKey)
+
+	// Still Savings - credit limit should still be hidden
+	if !fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be hidden for Savings")
+	}
+
+	// Press down again to Credit Card (index 2)
+	app.Update(downKey)
+
+	// Now credit limit should be visible
+	if fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be visible for Credit Card")
+	}
+}
+
+func TestApp_SubmitAccountDialog_HiddenCreditLimitIgnored(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		acctDialog: func() *Dialog {
+			d := buildNewAccountDialog()
+			d.Fields()[acctFieldName].Value = "My Checking"
+			// Credit limit has invalid value but field is hidden (default Checking type)
+			d.Fields()[acctFieldCreditLimit].Value = "abc"
+			return d
+		}(),
+		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+	}
+
+	// Since credit limit is hidden for Checking, invalid value should be ignored
+	_, cmd := app.submitAccountDialog()
+
+	if cmd == nil {
+		t.Error("submit should succeed - hidden credit limit field should be ignored")
+	}
+}
+
+func TestApp_SubmitAccountDialog_HiddenInterestRateIgnored(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		acctDialog: func() *Dialog {
+			d := buildNewAccountDialog()
+			d.Fields()[acctFieldName].Value = "My Cash"
+			// Change type to Cash
+			d.Fields()[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCash)
+			updateAccountFieldVisibility(d)
+			// Interest rate has invalid value but field is hidden
+			d.Fields()[acctFieldInterestRate].Value = "xyz"
+			d.Fields()[acctFieldInterestRate].Hidden = true
+			return d
+		}(),
+		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+	}
+
+	_, cmd := app.submitAccountDialog()
+
+	if cmd == nil {
+		t.Error("submit should succeed - hidden interest rate field should be ignored")
+	}
+}
+
+func TestEditAccountDialog_FieldVisibility_Asset(t *testing.T) {
+	account := models.NewAccount(
+		"House",
+		models.AccountTypeAsset,
+		"USD",
+		models.ZeroMoney,
+		models.Today(),
+	)
+
+	d := buildEditAccountDialog(account)
+	fields := d.Fields()
+
+	if !fields[acctFieldCreditLimit].Hidden {
+		t.Error("credit limit should be hidden for Asset")
+	}
+	if !fields[acctFieldInterestRate].Hidden {
+		t.Error("interest rate should be hidden for Asset")
+	}
+}
+
+func TestDialog_FocusNext_SkipsHiddenFields(t *testing.T) {
+	d := buildNewAccountDialog()
+	// Default type is Checking: credit limit (index 8) is hidden
+
+	// Focus on Notes (index 7, just before credit limit)
+	d.SetFocusIndex(acctFieldNotes)
+
+	// FocusNext should skip hidden credit limit (index 8) and land on interest rate (index 9)
+	d.FocusNext()
+
+	if d.FocusIndex() != acctFieldInterestRate {
+		t.Errorf("FocusNext from Notes should skip hidden credit limit and land on interest rate, got focus index %d", d.FocusIndex())
+	}
+}
+
+func TestDialog_FocusPrev_SkipsHiddenFields(t *testing.T) {
+	d := buildNewAccountDialog()
+	// Default type is Checking: credit limit (index 8) is hidden
+
+	// Focus on interest rate (index 9)
+	d.SetFocusIndex(acctFieldInterestRate)
+
+	// FocusPrev should skip hidden credit limit (index 8) and land on notes (index 7)
+	d.FocusPrev()
+
+	if d.FocusIndex() != acctFieldNotes {
+		t.Errorf("FocusPrev from interest rate should skip hidden credit limit and land on notes, got focus index %d", d.FocusIndex())
+	}
+}
+
+func TestDialog_Render_SkipsHiddenFields(t *testing.T) {
+	d := buildNewAccountDialog()
+	styles := NewStyles()
+	styles.Resize(80, 30)
+
+	output := d.Render(styles)
+
+	// Credit limit is hidden by default (Checking type)
+	if strings.Contains(output, "Credit Limit") {
+		t.Error("hidden Credit Limit field should not appear in rendered output")
+	}
+
+	// Interest rate should be visible for Checking
+	if !strings.Contains(output, "Interest Rate") {
+		t.Error("visible Interest Rate field should appear in rendered output")
+	}
+}
+
+func TestDialog_Render_ShowsCreditLimitForCreditCard(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCreditCard)
+	updateAccountFieldVisibility(d)
+
+	styles := NewStyles()
+	styles.Resize(80, 30)
+
+	output := d.Render(styles)
+
+	if !strings.Contains(output, "Credit Limit") {
+		t.Error("Credit Limit field should appear in rendered output for Credit Card")
+	}
+	if !strings.Contains(output, "Interest Rate") {
+		t.Error("Interest Rate field should appear in rendered output for Credit Card")
+	}
+}
+
+func TestDialog_Render_HidesBothForCash(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCash)
+	updateAccountFieldVisibility(d)
+
+	styles := NewStyles()
+	styles.Resize(80, 30)
+
+	output := d.Render(styles)
+
+	if strings.Contains(output, "Credit Limit") {
+		t.Error("Credit Limit field should not appear for Cash")
+	}
+	if strings.Contains(output, "Interest Rate") {
+		t.Error("Interest Rate field should not appear for Cash")
 	}
 }

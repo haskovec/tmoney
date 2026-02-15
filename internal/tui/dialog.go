@@ -43,6 +43,8 @@ type Field struct {
 	Required bool
 	// Error is an inline validation error message displayed below the field.
 	Error string
+	// Hidden indicates this field should not be rendered or focusable.
+	Hidden bool
 	// cursorPos is the cursor position within the text value.
 	cursorPos int
 }
@@ -365,22 +367,48 @@ func (d *Dialog) SetFocusIndex(idx int) {
 	d.clampFocusIndex()
 }
 
-// FocusNext moves focus to the next element, wrapping around.
+// FocusNext moves focus to the next element, wrapping around and skipping hidden fields.
 func (d *Dialog) FocusNext() {
 	total := d.focusableCount()
 	if total == 0 {
 		return
 	}
-	d.focusIndex = (d.focusIndex + 1) % total
+	start := d.focusIndex
+	for {
+		d.focusIndex = (d.focusIndex + 1) % total
+		if d.focusIndex == start {
+			break
+		}
+		if !d.isFocusIndexHidden() {
+			break
+		}
+	}
 }
 
-// FocusPrev moves focus to the previous element, wrapping around.
+// FocusPrev moves focus to the previous element, wrapping around and skipping hidden fields.
 func (d *Dialog) FocusPrev() {
 	total := d.focusableCount()
 	if total == 0 {
 		return
 	}
-	d.focusIndex = (d.focusIndex - 1 + total) % total
+	start := d.focusIndex
+	for {
+		d.focusIndex = (d.focusIndex - 1 + total) % total
+		if d.focusIndex == start {
+			break
+		}
+		if !d.isFocusIndexHidden() {
+			break
+		}
+	}
+}
+
+// isFocusIndexHidden returns true if the current focus index points to a hidden field.
+func (d *Dialog) isFocusIndexHidden() bool {
+	if d.focusIndex >= len(d.fields) {
+		return false // buttons are never hidden
+	}
+	return d.fields[d.focusIndex].Hidden
 }
 
 // focusableCount returns the total number of focusable elements.
@@ -536,6 +564,9 @@ func (d *Dialog) Render(styles Styles) string {
 	// Fields
 	labelWidth := d.maxLabelWidth()
 	for i, field := range d.fields {
+		if field.Hidden {
+			continue
+		}
 		focused := i == d.focusIndex
 		lines = append(lines, "")
 		lines = append(lines, d.renderField(styles, field, focused, labelWidth, contentWidth))
@@ -563,7 +594,7 @@ func (d *Dialog) Render(styles Styles) string {
 func (d *Dialog) maxLabelWidth() int {
 	maxW := 0
 	for _, f := range d.fields {
-		if f.Type == FieldCheckbox {
+		if f.Type == FieldCheckbox || f.Hidden {
 			continue
 		}
 		w := len([]rune(f.Label))
