@@ -43,7 +43,9 @@ tmoney -f personal.tdb --balance
 ### Accounts
 - Multiple account types: checking, savings, credit card, investment, cash, loan, asset
 - Per-account currency setting (USD, EUR, GBP)
-- Credit card limits and loan interest rates
+- Credit limit for credit card accounts
+- Interest rate (APR) for checking, savings, credit card, investment, and loan accounts
+- Dynamic account dialog that shows only relevant fields for the selected account type
 - Open/close account lifecycle
 
 ### Transactions
