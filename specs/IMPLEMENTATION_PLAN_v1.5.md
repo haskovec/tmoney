@@ -35,7 +35,7 @@ Spec: `specs/v1.5/transaction-status.md`
   - Update balance calculations to exclude void transactions
   - Cleared balance includes `cleared` + `reconciled`
 
-- [ ] **059 - Implement void transaction logic**
+- [x] **059 - Implement void transaction logic**
   - Service method to void a transaction (zero amount, set memo to `**VOID**`)
   - Void transfer logic (void both sides atomically)
   - Void split transaction logic

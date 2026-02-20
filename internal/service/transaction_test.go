@@ -1798,3 +1798,328 @@ func TestTransactionService_UpdateTransferStatus(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// Void Transaction Tests
+// =============================================================================
+
+func TestTransactionService_VoidTransaction(t *testing.T) {
+	t.Run("voids a regular transaction", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		txn.SetMemo("Original memo")
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := svc.VoidTransaction(txn.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		retrieved, err := svc.GetByID(txn.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+
+		if retrieved.Status != models.TransactionStatusVoid {
+			t.Errorf("Expected status void, got %s", retrieved.Status)
+		}
+		if !retrieved.Amount.IsZero() {
+			t.Errorf("Expected amount 0, got %s", retrieved.Amount.String())
+		}
+		if !retrieved.Memo.Valid || retrieved.Memo.String != "**VOID**" {
+			t.Errorf("Expected memo '**VOID**', got %q", retrieved.Memo.String)
+		}
+	})
+
+	t.Run("voids a cleared transaction", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-75.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.ClearTransaction(txn.ID); err != nil {
+			t.Fatalf("ClearTransaction() error = %v", err)
+		}
+
+		if err := svc.VoidTransaction(txn.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		retrieved, _ := svc.GetByID(txn.ID)
+		if retrieved.Status != models.TransactionStatusVoid {
+			t.Errorf("Expected status void, got %s", retrieved.Status)
+		}
+	})
+
+	t.Run("rejects voiding a void transaction", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := svc.VoidTransaction(txn.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		// Voiding again should fail
+		err := svc.VoidTransaction(txn.ID)
+		if err == nil {
+			t.Error("VoidTransaction() expected error for already void transaction")
+		}
+		if _, ok := err.(*TransactionIsVoidError); !ok {
+			t.Errorf("Expected TransactionIsVoidError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects voiding a reconciled transaction", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.ReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("ReconcileTransaction() error = %v", err)
+		}
+
+		err := svc.VoidTransaction(txn.ID)
+		if err == nil {
+			t.Error("VoidTransaction() expected error for reconciled transaction")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("voids a split transaction and removes splits", func(t *testing.T) {
+		database := createTestDB(t)
+		txnRepo := repository.NewTransactionRepository(database)
+		splitRepo := repository.NewSplitRepository(database)
+		transferRepo := repository.NewTransferRepository(database)
+		payeeRepo := repository.NewPayeeRepository(database)
+		accountRepo := repository.NewAccountRepository(database)
+		categoryRepo := repository.NewCategoryRepository(database)
+
+		svc := NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat1 := models.NewCategory("Food", models.CategoryTypeExpense)
+		cat2 := models.NewCategory("Household", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat1); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+		if err := categoryRepo.Create(cat2); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+
+		split1Amount, _ := models.NewMoney("-60.00")
+		split2Amount, _ := models.NewMoney("-40.00")
+		splits := []*models.Split{
+			models.NewSplit(txn.ID, cat1.ID, split1Amount),
+			models.NewSplit(txn.ID, cat2.ID, split2Amount),
+		}
+
+		if err := svc.CreateWithSplits(txn, splits); err != nil {
+			t.Fatalf("CreateWithSplits() error = %v", err)
+		}
+
+		// Void the split transaction
+		if err := svc.VoidTransaction(txn.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		// Verify transaction is voided
+		retrieved, _ := svc.GetByID(txn.ID)
+		if retrieved.Status != models.TransactionStatusVoid {
+			t.Errorf("Expected status void, got %s", retrieved.Status)
+		}
+		if !retrieved.Amount.IsZero() {
+			t.Errorf("Expected amount 0, got %s", retrieved.Amount.String())
+		}
+
+		// Verify splits are removed
+		remainingSplits, err := svc.GetSplits(txn.ID)
+		if err != nil {
+			t.Fatalf("GetSplits() error = %v", err)
+		}
+		if len(remainingSplits) != 0 {
+			t.Errorf("Expected 0 splits after void, got %d", len(remainingSplits))
+		}
+	})
+
+	t.Run("voids a transfer (both sides)", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		// Void via the from-side
+		if err := svc.VoidTransaction(pair.FromTransaction.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		// Both sides should be void
+		fromTxn, err := svc.GetByID(pair.FromTransaction.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if fromTxn.Status != models.TransactionStatusVoid {
+			t.Errorf("From transaction should be void, got %s", fromTxn.Status)
+		}
+		if !fromTxn.Amount.IsZero() {
+			t.Errorf("From amount should be 0, got %s", fromTxn.Amount.String())
+		}
+		if !fromTxn.Memo.Valid || fromTxn.Memo.String != "**VOID**" {
+			t.Errorf("From memo should be '**VOID**', got %q", fromTxn.Memo.String)
+		}
+
+		toTxn, err := svc.GetByID(pair.ToTransaction.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if toTxn.Status != models.TransactionStatusVoid {
+			t.Errorf("To transaction should be void, got %s", toTxn.Status)
+		}
+		if !toTxn.Amount.IsZero() {
+			t.Errorf("To amount should be 0, got %s", toTxn.Amount.String())
+		}
+		if !toTxn.Memo.Valid || toTxn.Memo.String != "**VOID**" {
+			t.Errorf("To memo should be '**VOID**', got %q", toTxn.Memo.String)
+		}
+	})
+
+	t.Run("voids transfer via to-side", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("300.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		// Void via the to-side
+		if err := svc.VoidTransaction(pair.ToTransaction.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		// Both sides should be void
+		fromTxn, _ := svc.GetByID(pair.FromTransaction.ID)
+		if fromTxn.Status != models.TransactionStatusVoid {
+			t.Errorf("From transaction should be void, got %s", fromTxn.Status)
+		}
+
+		toTxn, _ := svc.GetByID(pair.ToTransaction.ID)
+		if toTxn.Status != models.TransactionStatusVoid {
+			t.Errorf("To transaction should be void, got %s", toTxn.Status)
+		}
+	})
+
+	t.Run("rejects voiding transfer when one side is reconciled", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		// Reconcile both sides (transfer status updates both)
+		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, models.TransactionStatusReconciled); err != nil {
+			t.Fatalf("UpdateTransferStatus() error = %v", err)
+		}
+
+		// Voiding should fail
+		err = svc.VoidTransaction(pair.FromTransaction.ID)
+		if err == nil {
+			t.Error("VoidTransaction() expected error for reconciled transfer")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+}
+
+func TestTransactionService_Update_VoidGuard(t *testing.T) {
+	t.Run("rejects editing a void transaction", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := svc.VoidTransaction(txn.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		// Try to update the void transaction
+		retrieved, _ := svc.GetByID(txn.ID)
+		newAmount, _ := models.NewMoney("-100.00")
+		retrieved.Amount = newAmount
+		retrieved.Status = models.TransactionStatusUncleared
+
+		err := svc.Update(retrieved)
+		if err == nil {
+			t.Error("Update() expected error for void transaction")
+		}
+		if _, ok := err.(*TransactionIsVoidError); !ok {
+			t.Errorf("Expected TransactionIsVoidError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects editing a reconciled transaction", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := svc.ReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("ReconcileTransaction() error = %v", err)
+		}
+
+		// Try to update the reconciled transaction
+		retrieved, _ := svc.GetByID(txn.ID)
+		newAmount, _ := models.NewMoney("-100.00")
+		retrieved.Amount = newAmount
+
+		err := svc.Update(retrieved)
+		if err == nil {
+			t.Error("Update() expected error for reconciled transaction")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+}

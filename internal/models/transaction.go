@@ -281,8 +281,8 @@ func (t *Transaction) Validate() ValidationErrors {
 	v.RequiredID("account_id", t.AccountID)
 	v.RequiredDate("date", t.Date)
 
-	// Amount cannot be zero
-	if t.Amount.IsZero() {
+	// Amount cannot be zero (unless void)
+	if t.Amount.IsZero() && t.Status != TransactionStatusVoid {
 		v.errors.Add("amount", "cannot be zero")
 	}
 

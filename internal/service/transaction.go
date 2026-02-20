@@ -63,16 +63,29 @@ func (s *TransactionService) GetByID(id models.ID) (*models.Transaction, error) 
 
 // Update validates and updates an existing transaction.
 // For transfers, use UpdateTransfer to update both sides.
+// Void and reconciled transactions cannot be edited.
 func (s *TransactionService) Update(transaction *models.Transaction) error {
 	if err := s.validateTransaction(transaction); err != nil {
 		return err
 	}
 
-	// Check if this is a transfer - caller should use UpdateTransfer
+	// Check existing transaction state
 	existing, err := s.txnRepo.GetByID(transaction.ID)
 	if err != nil {
 		return err
 	}
+
+	// Prevent editing void transactions
+	if existing.IsVoid() {
+		return &TransactionIsVoidError{ID: transaction.ID.String()}
+	}
+
+	// Prevent editing reconciled transactions
+	if existing.IsReconciled() {
+		return &TransactionIsReconciledError{ID: transaction.ID.String()}
+	}
+
+	// Check if this is a transfer - caller should use UpdateTransfer
 	if existing.IsTransfer() && !transaction.IsTransfer() {
 		return &TransactionIsTransferError{ID: transaction.ID.String()}
 	}
@@ -401,6 +414,71 @@ func (s *TransactionService) MarkTransactionUncleared(id models.ID) error {
 
 	txn.MarkUncleared()
 	return s.txnRepo.Update(txn)
+}
+
+// VoidTransaction voids a transaction by setting its amount to 0, memo to **VOID**,
+// and status to void. For transfers, both sides are voided atomically.
+// For split transactions, all splits are removed.
+// Void and reconciled transactions cannot be voided.
+func (s *TransactionService) VoidTransaction(id models.ID) error {
+	txn, err := s.txnRepo.GetByID(id)
+	if err != nil {
+		return err
+	}
+
+	// Cannot void an already void transaction
+	if txn.IsVoid() {
+		return &TransactionIsVoidError{ID: id.String()}
+	}
+
+	// Cannot void a reconciled transaction
+	if txn.IsReconciled() {
+		return &TransactionIsReconciledError{ID: id.String()}
+	}
+
+	// If this is a transfer, void both sides
+	if txn.IsTransfer() {
+		return s.voidTransfer(txn.TransferID.ID)
+	}
+
+	// Delete splits if any
+	if _, err := s.splitRepo.DeleteByTransaction(id); err != nil {
+		return fmt.Errorf("failed to delete splits for void: %w", err)
+	}
+
+	// Void the transaction
+	txn.Amount = models.ZeroMoney
+	txn.SetMemo("**VOID**")
+	txn.Void()
+
+	return s.txnRepo.Update(txn)
+}
+
+// voidTransfer voids both sides of a transfer atomically.
+func (s *TransactionService) voidTransfer(transferID models.ID) error {
+	pair, err := s.transferRepo.GetByTransferID(transferID)
+	if err != nil {
+		return err
+	}
+
+	// Check if either side is reconciled
+	if pair.FromTransaction.IsReconciled() {
+		return &TransactionIsReconciledError{ID: pair.FromTransaction.ID.String()}
+	}
+	if pair.ToTransaction.IsReconciled() {
+		return &TransactionIsReconciledError{ID: pair.ToTransaction.ID.String()}
+	}
+
+	// Void both sides
+	pair.FromTransaction.Amount = models.ZeroMoney
+	pair.FromTransaction.SetMemo("**VOID**")
+	pair.FromTransaction.Void()
+
+	pair.ToTransaction.Amount = models.ZeroMoney
+	pair.ToTransaction.SetMemo("**VOID**")
+	pair.ToTransaction.Void()
+
+	return s.transferRepo.Update(pair)
 }
 
 // =============================================================================

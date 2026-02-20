@@ -141,6 +141,24 @@ func (e *CannotDuplicateTransferError) Error() string {
 	return fmt.Sprintf("cannot duplicate transfer transaction %s; use CreateTransfer instead", e.ID)
 }
 
+// TransactionIsVoidError is returned when trying to edit or void a void transaction.
+type TransactionIsVoidError struct {
+	ID string
+}
+
+func (e *TransactionIsVoidError) Error() string {
+	return fmt.Sprintf("transaction %s is void and cannot be modified", e.ID)
+}
+
+// TransactionIsReconciledError is returned when trying to void a reconciled transaction.
+type TransactionIsReconciledError struct {
+	ID string
+}
+
+func (e *TransactionIsReconciledError) Error() string {
+	return fmt.Sprintf("transaction %s is reconciled; un-reconcile it first before voiding", e.ID)
+}
+
 // ScheduledTransactionCompletedError is returned when trying to post/skip a completed schedule.
 type ScheduledTransactionCompletedError struct {
 	ID string
