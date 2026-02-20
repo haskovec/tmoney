@@ -194,7 +194,7 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 		// Set memo if provided
 		if memo != "" {
 			transferID := pair.FromTransaction.TransferID.ID
-			if err := a.transactionSvc.UpdateTransfer(transferID, date, amount, memo, models.TransactionStatusPending); err != nil {
+			if err := a.transactionSvc.UpdateTransfer(transferID, date, amount, memo, models.TransactionStatusUncleared); err != nil {
 				return errMsg{err: fmt.Errorf("transfer created but failed to set memo: %w", err)}
 			}
 		}

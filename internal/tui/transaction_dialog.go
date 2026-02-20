@@ -133,7 +133,7 @@ func buildTransactionDialog(data *transactionDialogData, categoryOptions []strin
 	d.AddTextField("Memo", "", "Optional memo", 0)
 
 	// Status
-	d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
+	d.AddRadioField("Status", []string{"Uncleared", "Cleared"}, 0)
 
 	// Split transaction checkbox
 	d.AddCheckboxField("Split transaction", false)
@@ -284,7 +284,7 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 	memo := strings.TrimSpace(fields[4].Value)
 
 	// Status
-	status := models.TransactionStatusPending
+	status := models.TransactionStatusUncleared
 	if fields[5].SelectedIndex == 1 {
 		status = models.TransactionStatusCleared
 	}

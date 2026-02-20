@@ -23,13 +23,13 @@ This document defines the order in which v1.5 features should be implemented. Ea
 
 Spec: `specs/v1.5/transaction-status.md`
 
-- [ ] **057 - Database migration for transaction status**
+- [x] **057 - Database migration for transaction status**
   - Add migration to rename `pending` → `uncleared`
   - Add `void` as valid status value
   - Ensure `reconciled` status is active
   - Update `_metadata` version
 
-- [ ] **058 - Update transaction model and repository for new statuses**
+- [x] **058 - Update transaction model and repository for new statuses**
   - Update status enum in models (add `Uncleared`, `Void`)
   - Update repository queries to handle four statuses
   - Update balance calculations to exclude void transactions

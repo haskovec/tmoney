@@ -333,6 +333,233 @@ func TestSchemaTablesExist(t *testing.T) {
 	})
 }
 
+func TestMigration002TransactionStatus(t *testing.T) {
+	t.Run("migrates pending status to uncleared", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Insert a transaction with uncleared status (post-migration default)
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (account_id, date, amount, status)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-01-15', -50.00, 'uncleared')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert uncleared transaction: %v", err)
+		}
+
+		// Verify the transaction has uncleared status
+		var status string
+		err = db.Conn().QueryRow(`SELECT status FROM transactions LIMIT 1`).Scan(&status)
+		if err != nil {
+			t.Fatalf("Failed to query transaction status: %v", err)
+		}
+		if status != "uncleared" {
+			t.Errorf("Expected status 'uncleared', got %q", status)
+		}
+	})
+
+	t.Run("allows void status after migration", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		// Insert a void transaction
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (account_id, date, amount, status)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-01-15', 0, 'void')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert void transaction: %v", err)
+		}
+
+		var status string
+		err = db.Conn().QueryRow(`SELECT status FROM transactions WHERE status = 'void'`).Scan(&status)
+		if err != nil {
+			t.Fatalf("Failed to query void transaction: %v", err)
+		}
+		if status != "void" {
+			t.Errorf("Expected status 'void', got %q", status)
+		}
+	})
+
+	t.Run("rejects pending status after migration", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		// Inserting a 'pending' status should fail due to CHECK constraint
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (account_id, date, amount, status)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-01-15', -50.00, 'pending')
+		`)
+		if err == nil {
+			t.Error("Expected error when inserting 'pending' status, but got none")
+		}
+	})
+
+	t.Run("account_balances view excludes void from current_balance", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Create account with opening balance 1000
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date, opening_balance)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'checking', '2024-01-01', 1000)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		// Add an uncleared transaction of -100
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (account_id, date, amount, status)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-01-15', -100, 'uncleared')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert uncleared transaction: %v", err)
+		}
+
+		// Add a void transaction of -500 (should be excluded from balance)
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (account_id, date, amount, status)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-01-16', -500, 'void')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert void transaction: %v", err)
+		}
+
+		// Add a cleared transaction of -200
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (account_id, date, amount, status)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-01-17', -200, 'cleared')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert cleared transaction: %v", err)
+		}
+
+		var currentBalance, clearedBalance float64
+		err = db.Conn().QueryRow(`
+			SELECT current_balance, cleared_balance FROM account_balances
+			WHERE id = '11111111-1111-1111-1111-111111111111'
+		`).Scan(&currentBalance, &clearedBalance)
+		if err != nil {
+			t.Fatalf("Failed to query account_balances: %v", err)
+		}
+
+		// current_balance = 1000 + (-100) + (-200) = 700 (void excluded)
+		if currentBalance != 700 {
+			t.Errorf("Expected current_balance 700, got %f", currentBalance)
+		}
+
+		// cleared_balance = 1000 + (-200) = 800 (only cleared + reconciled)
+		if clearedBalance != 800 {
+			t.Errorf("Expected cleared_balance 800, got %f", clearedBalance)
+		}
+	})
+
+	t.Run("schema version is 2 after migration", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		version, err := db.SchemaVersion()
+		if err != nil {
+			t.Fatalf("SchemaVersion() error = %v", err)
+		}
+		if version != 2 {
+			t.Errorf("Expected schema version 2, got %d", version)
+		}
+	})
+
+	t.Run("default status for new transactions is uncleared", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		// Insert without specifying status - should default to uncleared
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (account_id, date, amount)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-01-15', -50.00)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert transaction with default status: %v", err)
+		}
+
+		var status string
+		err = db.Conn().QueryRow(`SELECT status FROM transactions LIMIT 1`).Scan(&status)
+		if err != nil {
+			t.Fatalf("Failed to query transaction status: %v", err)
+		}
+		if status != "uncleared" {
+			t.Errorf("Expected default status 'uncleared', got %q", status)
+		}
+	})
+}
+
 func TestCurrentSchemaVersion(t *testing.T) {
 	t.Run("matches highest migration version", func(t *testing.T) {
 		migrations, err := loadMigrations()

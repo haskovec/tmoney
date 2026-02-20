@@ -402,7 +402,7 @@ func runTransfer(opts *cliOptions, w io.Writer) error {
 
 	// Set memo if provided
 	if opts.txMemo != "" {
-		err = svc.Transaction.UpdateTransfer(pair.FromTransaction.TransferID.ID, date, amount, opts.txMemo, models.TransactionStatusPending)
+		err = svc.Transaction.UpdateTransfer(pair.FromTransaction.TransferID.ID, date, amount, opts.txMemo, models.TransactionStatusUncleared)
 		if err != nil {
 			return fmt.Errorf("failed to set memo on transfer: %w", err)
 		}

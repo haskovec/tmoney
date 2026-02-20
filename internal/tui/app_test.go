@@ -849,7 +849,7 @@ func TestApp_RenderRegister_WithData(t *testing.T) {
 					AccountID: accountID,
 					Date:      models.Today(),
 					Amount:    models.MustNewMoney("2500.00"),
-					Status:    models.TransactionStatusPending,
+					Status:    models.TransactionStatusUncleared,
 					PayeeID:   models.NullableID{ID: payeeID, Valid: true},
 				},
 			},
@@ -1019,9 +1019,9 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 				Name:      "Checking",
 			},
 			transactions: []*models.Transaction{
-				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-10"), Status: models.TransactionStatusPending},
-				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-20"), Status: models.TransactionStatusPending},
-				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-30"), Status: models.TransactionStatusPending},
+				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-10"), Status: models.TransactionStatusUncleared},
+				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-20"), Status: models.TransactionStatusUncleared},
+				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-30"), Status: models.TransactionStatusUncleared},
 			},
 			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("100")},
 			payeeNames:    make(map[models.ID]string),
@@ -1128,7 +1128,7 @@ func TestApp_Update_RegisterLoaded(t *testing.T) {
 				AccountID: accountID,
 				Date:      models.Today(),
 				Amount:    models.MustNewMoney("-50"),
-				Status:    models.TransactionStatusPending,
+				Status:    models.TransactionStatusUncleared,
 			},
 		},
 		balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("950")},
@@ -1222,7 +1222,7 @@ func TestApp_BuildRegisterTable_StatusIndicators(t *testing.T) {
 		status   models.TransactionStatus
 		expected string
 	}{
-		{"pending", models.TransactionStatusPending, " "},
+		{"uncleared", models.TransactionStatusUncleared, " "},
 		{"cleared", models.TransactionStatusCleared, "✓"},
 		{"reconciled", models.TransactionStatusReconciled, "R"},
 	}

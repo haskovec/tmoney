@@ -10,17 +10,19 @@ import (
 type TransactionStatus string
 
 const (
-	TransactionStatusPending    TransactionStatus = "pending"
+	TransactionStatusUncleared  TransactionStatus = "uncleared"
 	TransactionStatusCleared    TransactionStatus = "cleared"
 	TransactionStatusReconciled TransactionStatus = "reconciled"
+	TransactionStatusVoid       TransactionStatus = "void"
 )
 
 // AllTransactionStatuses returns all valid transaction statuses.
 func AllTransactionStatuses() []TransactionStatus {
 	return []TransactionStatus{
-		TransactionStatusPending,
+		TransactionStatusUncleared,
 		TransactionStatusCleared,
 		TransactionStatusReconciled,
+		TransactionStatusVoid,
 	}
 }
 
@@ -32,7 +34,7 @@ func (ts TransactionStatus) String() string {
 // IsValid returns true if the TransactionStatus is a valid status.
 func (ts TransactionStatus) IsValid() bool {
 	switch ts {
-	case TransactionStatusPending, TransactionStatusCleared, TransactionStatusReconciled:
+	case TransactionStatusUncleared, TransactionStatusCleared, TransactionStatusReconciled, TransactionStatusVoid:
 		return true
 	}
 	return false
@@ -41,12 +43,14 @@ func (ts TransactionStatus) IsValid() bool {
 // DisplayName returns a human-readable name for the transaction status.
 func (ts TransactionStatus) DisplayName() string {
 	switch ts {
-	case TransactionStatusPending:
-		return "Pending"
+	case TransactionStatusUncleared:
+		return "Uncleared"
 	case TransactionStatusCleared:
 		return "Cleared"
 	case TransactionStatusReconciled:
 		return "Reconciled"
+	case TransactionStatusVoid:
+		return "Void"
 	default:
 		return string(ts)
 	}
@@ -112,7 +116,7 @@ func NewTransaction(accountID ID, date Date, amount Money) *Transaction {
 		AccountID: accountID,
 		Date:      date,
 		Amount:    amount,
-		Status:    TransactionStatusPending,
+		Status:    TransactionStatusUncleared,
 	}
 }
 
@@ -220,9 +224,24 @@ func (t *Transaction) Reconcile() {
 	t.SetStatus(TransactionStatusReconciled)
 }
 
-// MarkPending marks the transaction as pending.
-func (t *Transaction) MarkPending() {
-	t.SetStatus(TransactionStatusPending)
+// MarkUncleared marks the transaction as uncleared.
+func (t *Transaction) MarkUncleared() {
+	t.SetStatus(TransactionStatusUncleared)
+}
+
+// Void marks the transaction as void.
+func (t *Transaction) Void() {
+	t.SetStatus(TransactionStatusVoid)
+}
+
+// IsVoid returns true if the transaction is voided.
+func (t *Transaction) IsVoid() bool {
+	return t.Status == TransactionStatusVoid
+}
+
+// IsReconciled returns true if the transaction is reconciled.
+func (t *Transaction) IsReconciled() bool {
+	return t.Status == TransactionStatusReconciled
 }
 
 // IsTransfer returns true if this transaction is part of a transfer.
@@ -269,7 +288,7 @@ func (t *Transaction) Validate() ValidationErrors {
 
 	// Status validation
 	if !t.Status.IsValid() {
-		v.errors.Add("status", "must be a valid transaction status (pending, cleared, or reconciled)")
+		v.errors.Add("status", "must be a valid transaction status (uncleared, cleared, reconciled, or void)")
 	}
 
 	// Optional field length limits

@@ -217,7 +217,7 @@ func TestAccountServiceGetBalance(t *testing.T) {
 			INSERT INTO transactions (id, account_id, date, amount, status)
 			VALUES
 				(gen_random_uuid(), ?, CURRENT_DATE, -100.00, 'cleared'),
-				(gen_random_uuid(), ?, CURRENT_DATE, -50.00, 'pending')
+				(gen_random_uuid(), ?, CURRENT_DATE, -50.00, 'uncleared')
 		`, account.ID.String(), account.ID.String())
 		if err != nil {
 			t.Fatalf("Failed to insert transactions: %v", err)

@@ -968,7 +968,7 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 	return a, func() tea.Msg {
 		var err error
 		if txn.Status == models.TransactionStatusCleared {
-			err = a.transactionSvc.MarkTransactionPending(txn.ID)
+			err = a.transactionSvc.MarkTransactionUncleared(txn.ID)
 		} else {
 			err = a.transactionSvc.ClearTransaction(txn.ID)
 		}

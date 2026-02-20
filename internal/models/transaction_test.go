@@ -8,7 +8,7 @@ import (
 func TestTransactionStatus(t *testing.T) {
 	t.Run("AllTransactionStatuses returns all statuses", func(t *testing.T) {
 		statuses := AllTransactionStatuses()
-		expected := 3
+		expected := 4
 		if len(statuses) != expected {
 			t.Errorf("Expected %d transaction statuses, got %d", expected, len(statuses))
 		}
@@ -19,9 +19,10 @@ func TestTransactionStatus(t *testing.T) {
 			status   TransactionStatus
 			expected string
 		}{
-			{TransactionStatusPending, "pending"},
+			{TransactionStatusUncleared, "uncleared"},
 			{TransactionStatusCleared, "cleared"},
 			{TransactionStatusReconciled, "reconciled"},
+			{TransactionStatusVoid, "void"},
 		}
 		for _, tc := range tests {
 			if tc.status.String() != tc.expected {
@@ -32,9 +33,10 @@ func TestTransactionStatus(t *testing.T) {
 
 	t.Run("IsValid returns true for valid statuses", func(t *testing.T) {
 		validStatuses := []TransactionStatus{
-			TransactionStatusPending,
+			TransactionStatusUncleared,
 			TransactionStatusCleared,
 			TransactionStatusReconciled,
+			TransactionStatusVoid,
 		}
 		for _, ts := range validStatuses {
 			if !ts.IsValid() {
@@ -55,9 +57,10 @@ func TestTransactionStatus(t *testing.T) {
 			status   TransactionStatus
 			expected string
 		}{
-			{TransactionStatusPending, "Pending"},
+			{TransactionStatusUncleared, "Uncleared"},
 			{TransactionStatusCleared, "Cleared"},
 			{TransactionStatusReconciled, "Reconciled"},
+			{TransactionStatusVoid, "Void"},
 		}
 		for _, tc := range tests {
 			if tc.status.DisplayName() != tc.expected {
@@ -76,13 +79,13 @@ func TestTransactionStatus(t *testing.T) {
 }
 
 func TestParseTransactionStatus(t *testing.T) {
-	t.Run("Parses valid pending status", func(t *testing.T) {
-		ts, err := ParseTransactionStatus("pending")
+	t.Run("Parses valid uncleared status", func(t *testing.T) {
+		ts, err := ParseTransactionStatus("uncleared")
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
-		if ts != TransactionStatusPending {
-			t.Errorf("Expected TransactionStatusPending, got %q", ts)
+		if ts != TransactionStatusUncleared {
+			t.Errorf("Expected TransactionStatusUncleared, got %q", ts)
 		}
 	})
 
@@ -106,13 +109,23 @@ func TestParseTransactionStatus(t *testing.T) {
 		}
 	})
 
-	t.Run("Parses uppercase status", func(t *testing.T) {
-		ts, err := ParseTransactionStatus("PENDING")
+	t.Run("Parses valid void status", func(t *testing.T) {
+		ts, err := ParseTransactionStatus("void")
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
-		if ts != TransactionStatusPending {
-			t.Errorf("Expected TransactionStatusPending, got %q", ts)
+		if ts != TransactionStatusVoid {
+			t.Errorf("Expected TransactionStatusVoid, got %q", ts)
+		}
+	})
+
+	t.Run("Parses uppercase status", func(t *testing.T) {
+		ts, err := ParseTransactionStatus("UNCLEARED")
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if ts != TransactionStatusUncleared {
+			t.Errorf("Expected TransactionStatusUncleared, got %q", ts)
 		}
 	})
 
@@ -143,13 +156,13 @@ func TestParseTransactionStatus(t *testing.T) {
 
 func TestTransactionStatusScanValue(t *testing.T) {
 	t.Run("Value returns string", func(t *testing.T) {
-		ts := TransactionStatusPending
+		ts := TransactionStatusUncleared
 		v, err := ts.Value()
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
-		if v != "pending" {
-			t.Errorf("Expected 'pending', got %v", v)
+		if v != "uncleared" {
+			t.Errorf("Expected 'uncleared', got %v", v)
 		}
 	})
 
@@ -215,8 +228,8 @@ func TestNewTransaction(t *testing.T) {
 		if !txn.Amount.Equal(amount) {
 			t.Errorf("Expected amount %s, got %s", amount.String(), txn.Amount.String())
 		}
-		if txn.Status != TransactionStatusPending {
-			t.Errorf("Expected status 'pending', got %s", txn.Status.String())
+		if txn.Status != TransactionStatusUncleared {
+			t.Errorf("Expected status 'uncleared', got %s", txn.Status.String())
 		}
 		if txn.PayeeID.Valid {
 			t.Error("PayeeID should not be set")
@@ -473,14 +486,48 @@ func TestTransactionStatus_Operations(t *testing.T) {
 		}
 	})
 
-	t.Run("MarkPending marks transaction as pending", func(t *testing.T) {
+	t.Run("MarkUncleared marks transaction as uncleared", func(t *testing.T) {
 		txn := NewTransaction(NewID(), Today(), MustNewMoney("-50.00"))
 		txn.Clear()
 
-		txn.MarkPending()
+		txn.MarkUncleared()
 
-		if txn.Status != TransactionStatusPending {
-			t.Errorf("Expected status 'pending', got %s", txn.Status.String())
+		if txn.Status != TransactionStatusUncleared {
+			t.Errorf("Expected status 'uncleared', got %s", txn.Status.String())
+		}
+	})
+
+	t.Run("Void marks transaction as void", func(t *testing.T) {
+		txn := NewTransaction(NewID(), Today(), MustNewMoney("-50.00"))
+
+		txn.Void()
+
+		if txn.Status != TransactionStatusVoid {
+			t.Errorf("Expected status 'void', got %s", txn.Status.String())
+		}
+	})
+
+	t.Run("IsVoid returns true for void transactions", func(t *testing.T) {
+		txn := NewTransaction(NewID(), Today(), MustNewMoney("-50.00"))
+		if txn.IsVoid() {
+			t.Error("IsVoid should return false for new transaction")
+		}
+
+		txn.Void()
+		if !txn.IsVoid() {
+			t.Error("IsVoid should return true after voiding")
+		}
+	})
+
+	t.Run("IsReconciled returns true for reconciled transactions", func(t *testing.T) {
+		txn := NewTransaction(NewID(), Today(), MustNewMoney("-50.00"))
+		if txn.IsReconciled() {
+			t.Error("IsReconciled should return false for new transaction")
+		}
+
+		txn.Reconcile()
+		if !txn.IsReconciled() {
+			t.Error("IsReconciled should return true after reconciling")
 		}
 	})
 }

@@ -51,7 +51,8 @@ func (s *ReportService) netWorthAsOf(asOf time.Time, includeClosed bool) (*model
 				(SELECT SUM(t.amount)
 				 FROM transactions t
 				 WHERE t.account_id = a.id
-				 AND t.date <= ?),
+				 AND t.date <= ?
+				 AND t.status != 'void'),
 				0
 			) as balance
 		FROM accounts a
@@ -168,6 +169,7 @@ func (s *ReportService) spendingByCategory(period string, startDate, endDate tim
 			  AND t.date >= ?
 			  AND t.date <= ?
 			  AND t.amount < 0
+			  AND t.status != 'void'
 			  AND NOT EXISTS (
 				  SELECT 1 FROM transaction_splits ts
 				  WHERE CAST(ts.transaction_id AS VARCHAR) = CAST(t.id AS VARCHAR)
@@ -191,6 +193,7 @@ func (s *ReportService) spendingByCategory(period string, startDate, endDate tim
 			  AND t.date >= ?
 			  AND t.date <= ?
 			  AND ts.amount < 0
+			  AND t.status != 'void'
 		)
 		SELECT
 			category_id,

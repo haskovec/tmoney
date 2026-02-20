@@ -78,8 +78,8 @@ func TestTransactionLifecycle(t *testing.T) {
 		if !retrieved.Memo.Valid || retrieved.Memo.String != "Coffee shop" {
 			t.Errorf("Expected memo 'Coffee shop', got %v", retrieved.Memo)
 		}
-		if retrieved.Status != models.TransactionStatusPending {
-			t.Errorf("Expected status 'pending', got %q", retrieved.Status)
+		if retrieved.Status != models.TransactionStatusUncleared {
+			t.Errorf("Expected status 'uncleared', got %q", retrieved.Status)
 		}
 	})
 

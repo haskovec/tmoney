@@ -392,14 +392,14 @@ func (s *TransactionService) ReconcileTransaction(id models.ID) error {
 	return s.txnRepo.Update(txn)
 }
 
-// MarkTransactionPending marks a transaction as pending.
-func (s *TransactionService) MarkTransactionPending(id models.ID) error {
+// MarkTransactionUncleared marks a transaction as uncleared.
+func (s *TransactionService) MarkTransactionUncleared(id models.ID) error {
 	txn, err := s.txnRepo.GetByID(id)
 	if err != nil {
 		return err
 	}
 
-	txn.MarkPending()
+	txn.MarkUncleared()
 	return s.txnRepo.Update(txn)
 }
 
@@ -453,7 +453,7 @@ func (s *TransactionService) GetBalanceImpact(transactionID models.ID) ([]Balanc
 // Duplicate Operations
 // =============================================================================
 
-// Duplicate creates a copy of a transaction with today's date and pending status.
+// Duplicate creates a copy of a transaction with today's date and uncleared status.
 func (s *TransactionService) Duplicate(transactionID models.ID) (*models.Transaction, error) {
 	original, err := s.txnRepo.GetByID(transactionID)
 	if err != nil {
@@ -471,7 +471,7 @@ func (s *TransactionService) Duplicate(transactionID models.ID) (*models.Transac
 	duplicate.CategoryID = original.CategoryID
 	duplicate.Memo = original.Memo
 	duplicate.CheckNumber = original.CheckNumber
-	// Status is always pending for duplicates (set by NewTransaction)
+	// Status is always uncleared for duplicates (set by NewTransaction)
 
 	if err := s.txnRepo.Create(duplicate); err != nil {
 		return nil, err

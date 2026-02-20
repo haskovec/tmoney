@@ -115,8 +115,8 @@ func TestCreate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SchemaVersion() error = %v", err)
 		}
-		if version != 1 {
-			t.Errorf("SchemaVersion() = %v, want 1", version)
+		if version != CurrentSchemaVersion {
+			t.Errorf("SchemaVersion() = %v, want %v", version, CurrentSchemaVersion)
 		}
 
 		// Check default_currency
@@ -154,8 +154,8 @@ func TestOpen(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SchemaVersion() error = %v", err)
 		}
-		if version != 1 {
-			t.Errorf("SchemaVersion() = %v, want 1", version)
+		if version != CurrentSchemaVersion {
+			t.Errorf("SchemaVersion() = %v, want %v", version, CurrentSchemaVersion)
 		}
 	})
 

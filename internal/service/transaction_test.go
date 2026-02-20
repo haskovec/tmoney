@@ -710,7 +710,7 @@ func TestTransactionService_StatusOperations(t *testing.T) {
 		}
 	})
 
-	t.Run("MarkTransactionPending sets status to pending", func(t *testing.T) {
+	t.Run("MarkTransactionUncleared sets status to uncleared", func(t *testing.T) {
 		svc, accountRepo := createTestTransactionService(t)
 		account := createTestAccount(t, accountRepo, "Checking")
 
@@ -725,14 +725,14 @@ func TestTransactionService_StatusOperations(t *testing.T) {
 			t.Fatalf("ClearTransaction() error = %v", err)
 		}
 
-		// Then mark pending
-		if err := svc.MarkTransactionPending(txn.ID); err != nil {
-			t.Fatalf("MarkTransactionPending() error = %v", err)
+		// Then mark uncleared
+		if err := svc.MarkTransactionUncleared(txn.ID); err != nil {
+			t.Fatalf("MarkTransactionUncleared() error = %v", err)
 		}
 
 		retrieved, _ := svc.GetByID(txn.ID)
-		if retrieved.Status != models.TransactionStatusPending {
-			t.Errorf("Expected status pending, got %s", retrieved.Status)
+		if retrieved.Status != models.TransactionStatusUncleared {
+			t.Errorf("Expected status uncleared, got %s", retrieved.Status)
 		}
 	})
 }
@@ -769,8 +769,8 @@ func TestTransactionService_Duplicate(t *testing.T) {
 		if duplicate.Date == oldDate {
 			t.Error("Duplicate should have today's date, not original date")
 		}
-		if duplicate.Status != models.TransactionStatusPending {
-			t.Error("Duplicate should have pending status")
+		if duplicate.Status != models.TransactionStatusUncleared {
+			t.Error("Duplicate should have uncleared status")
 		}
 	})
 
