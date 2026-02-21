@@ -168,6 +168,15 @@ func (e *TransactionNotReconciledError) Error() string {
 	return fmt.Sprintf("transaction %s is not reconciled", e.ID)
 }
 
+// TransactionIsNotTransferError is returned when a transfer operation is attempted on a non-transfer transaction.
+type TransactionIsNotTransferError struct {
+	ID string
+}
+
+func (e *TransactionIsNotTransferError) Error() string {
+	return fmt.Sprintf("transaction %s is not a transfer", e.ID)
+}
+
 // ScheduledTransactionCompletedError is returned when trying to post/skip a completed schedule.
 type ScheduledTransactionCompletedError struct {
 	ID string

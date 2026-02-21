@@ -657,6 +657,52 @@ func (s *TransactionService) voidTransfer(transferID models.ID) error {
 	return s.transferRepo.Update(pair)
 }
 
+// RestoreVoidedTransaction restores a voided transaction to its original state.
+// This is used by the undo system to reverse a void operation.
+// Only void transactions can be restored.
+func (s *TransactionService) RestoreVoidedTransaction(id models.ID, amount models.Money, memo models.NullableString, status models.TransactionStatus) error {
+	txn, err := s.txnRepo.GetByID(id)
+	if err != nil {
+		return err
+	}
+
+	if !txn.IsVoid() {
+		return fmt.Errorf("transaction %s is not void; cannot restore", id.String())
+	}
+
+	txn.Amount = amount
+	txn.Memo = memo
+	txn.SetStatus(status)
+
+	return s.txnRepo.Update(txn)
+}
+
+// RestoreVoidedTransfer restores both sides of a voided transfer to their original state.
+// This is used by the undo system to reverse a void transfer operation.
+func (s *TransactionService) RestoreVoidedTransfer(transferID models.ID, fromAmount models.Money, fromMemo models.NullableString, fromStatus models.TransactionStatus, toAmount models.Money, toMemo models.NullableString, toStatus models.TransactionStatus) error {
+	pair, err := s.transferRepo.GetByTransferID(transferID)
+	if err != nil {
+		return err
+	}
+
+	if !pair.FromTransaction.IsVoid() {
+		return fmt.Errorf("transfer from-side %s is not void; cannot restore", pair.FromTransaction.ID.String())
+	}
+	if !pair.ToTransaction.IsVoid() {
+		return fmt.Errorf("transfer to-side %s is not void; cannot restore", pair.ToTransaction.ID.String())
+	}
+
+	pair.FromTransaction.Amount = fromAmount
+	pair.FromTransaction.Memo = fromMemo
+	pair.FromTransaction.SetStatus(fromStatus)
+
+	pair.ToTransaction.Amount = toAmount
+	pair.ToTransaction.Memo = toMemo
+	pair.ToTransaction.SetStatus(toStatus)
+
+	return s.transferRepo.Update(pair)
+}
+
 // =============================================================================
 // Balance Impact Operations
 // =============================================================================

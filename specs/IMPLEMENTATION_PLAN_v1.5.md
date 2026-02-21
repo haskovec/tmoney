@@ -78,7 +78,7 @@ Spec: `specs/v1.5/undo-redo.md`
   - Implement `UndoManager` with undo/redo stacks
   - Platform-aware keybinding detection (macOS vs Linux/Windows)
 
-- [ ] **065 - Undoable commands for transactions**
+- [x] **065 - Undoable commands for transactions**
   - CreateTransactionCommand
   - EditTransactionCommand (stores before state)
   - DeleteTransactionCommand (stores full entity)
