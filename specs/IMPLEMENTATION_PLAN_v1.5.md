@@ -86,7 +86,7 @@ Spec: `specs/v1.5/undo-redo.md`
   - CreateTransferCommand / DeleteTransferCommand (compound)
   - VoidTransferCommand (compound)
 
-- [ ] **066 - Undoable commands for accounts, categories, payees**
+- [x] **066 - Undoable commands for accounts, categories, payees**
   - Account: create, edit, delete, close, reopen
   - Category: create, edit, delete, merge (compound)
   - Payee: create, edit, delete, merge (compound)
