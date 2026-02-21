@@ -60,7 +60,7 @@ Spec: `specs/v1.5/transaction-status.md`
   - Lock indicator when editing reconciled transaction attempted
   - Update `c` key to cycle uncleared ↔ cleared
 
-- [ ] **063 - Tests for transaction status changes**
+- [x] **063 - Tests for transaction status changes**
   - Unit tests for void logic (regular, transfer, split)
   - Unit tests for reconciled locking and un-reconcile
   - Unit tests for balance calculation excluding void
