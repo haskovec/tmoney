@@ -72,7 +72,7 @@ Spec: `specs/v1.5/transaction-status.md`
 
 Spec: `specs/v1.5/undo-redo.md`
 
-- [ ] **064 - Undo/redo framework**
+- [x] **064 - Undo/redo framework**
   - Define `UndoableCommand` interface
   - Implement `CompoundCommand` for grouped operations
   - Implement `UndoManager` with undo/redo stacks

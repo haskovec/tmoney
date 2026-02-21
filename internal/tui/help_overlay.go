@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -29,12 +30,15 @@ func globalShortcuts() shortcutSection {
 			{"Esc", "Close dialog / Go back"},
 			{"Tab", "Next pane / Next field"},
 			{"Shift+Tab", "Previous pane / Previous field"},
+			{undoShortcutLabel(), "Undo"},
+			{redoShortcutLabel(), "Redo"},
 			{"/", "Search"},
 			{"1", "Dashboard view"},
 			{"2", "Scheduled view"},
 			{"3", "Reports view"},
 			{"F10", "Activate menu bar"},
 			{"Alt+F", "File menu"},
+			{"Alt+E", "Edit menu"},
 			{"Alt+A", "Accounts menu"},
 			{"Alt+T", "Transactions menu"},
 			{"Alt+R", "Reports menu"},
@@ -262,4 +266,20 @@ func renderHelpOverlay(styles Styles, view View, screenWidth, screenHeight int) 
 	}
 
 	return strings.Join(renderedLines, "\n")
+}
+
+// undoShortcutLabel returns the platform-appropriate label for the undo shortcut.
+func undoShortcutLabel() string {
+	if runtime.GOOS == "darwin" {
+		return "Cmd+Z"
+	}
+	return "Ctrl+Z"
+}
+
+// redoShortcutLabel returns the platform-appropriate label for the redo shortcut.
+func redoShortcutLabel() string {
+	if runtime.GOOS == "darwin" {
+		return "Cmd+Y"
+	}
+	return "Ctrl+Y"
 }

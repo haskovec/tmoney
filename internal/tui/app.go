@@ -2,9 +2,11 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/models"
 	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // View represents the current view being displayed.
@@ -127,6 +130,9 @@ type App struct {
 	confirmDialog *Dialog
 	confirmAction func() tea.Msg
 
+	// Undo/redo manager (session-based, not persisted)
+	undoManager *undo.Manager
+
 	// Configuration
 	cfg *config.Config
 
@@ -160,8 +166,11 @@ type keyMap struct {
 	MenuFile         key.Binding
 	MenuAccounts     key.Binding
 	MenuTransactions key.Binding
+	MenuEdit         key.Binding
 	MenuReports      key.Binding
 	MenuHelp         key.Binding
+	Undo             key.Binding
+	Redo             key.Binding
 }
 
 // defaultKeyMap returns the default key bindings.
@@ -255,11 +264,47 @@ func defaultKeyMap() keyMap {
 			key.WithKeys("alt+r"),
 			key.WithHelp("Alt+R", "reports menu"),
 		),
+		MenuEdit: key.NewBinding(
+			key.WithKeys("alt+e"),
+			key.WithHelp("Alt+E", "edit menu"),
+		),
 		MenuHelp: key.NewBinding(
 			key.WithKeys("alt+h"),
 			key.WithHelp("Alt+H", "help menu"),
 		),
+		Undo: undoKeyBinding(),
+		Redo: redoKeyBinding(),
 	}
+}
+
+// undoKeyBinding returns the platform-aware undo key binding.
+// On macOS, Cmd+Z is the primary binding; Ctrl+Z is also accepted
+// because some terminals send Ctrl+Z for Cmd+Z.
+func undoKeyBinding() key.Binding {
+	if runtime.GOOS == "darwin" {
+		return key.NewBinding(
+			key.WithKeys("ctrl+z"),
+			key.WithHelp("Cmd+Z", "undo"),
+		)
+	}
+	return key.NewBinding(
+		key.WithKeys("ctrl+z"),
+		key.WithHelp("Ctrl+Z", "undo"),
+	)
+}
+
+// redoKeyBinding returns the platform-aware redo key binding.
+func redoKeyBinding() key.Binding {
+	if runtime.GOOS == "darwin" {
+		return key.NewBinding(
+			key.WithKeys("ctrl+y"),
+			key.WithHelp("Cmd+Y", "redo"),
+		)
+	}
+	return key.NewBinding(
+		key.WithKeys("ctrl+y"),
+		key.WithHelp("Ctrl+Y", "redo"),
+	)
 }
 
 // NewApp creates a new TUI application with the given database and optional config.
@@ -274,6 +319,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		sidebar:         NewSidebar(),
 		menubar:         NewMenuBar(),
 		statusbar:       NewStatusBar(),
+		undoManager:     undo.NewManager(),
 		keys:            defaultKeyMap(),
 		accountSvc:      svc.Account,
 		transactionSvc:  svc.Transaction,
@@ -759,6 +805,26 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, tea.Batch(cmds...)
 
+	case undoResultMsg:
+		if errors.Is(msg.err, undo.ErrNothingToUndo) {
+			a.statusbar.AddNotification("Nothing to undo", NotificationInfo)
+			return a, nil
+		}
+		if errors.Is(msg.err, undo.ErrNothingToRedo) {
+			a.statusbar.AddNotification("Nothing to redo", NotificationInfo)
+			return a, nil
+		}
+		if msg.err != nil {
+			a.err = msg.err
+			return a, nil
+		}
+		a.statusbar.AddNotification(
+			fmt.Sprintf("%s: %s", msg.action, msg.description),
+			NotificationInfo,
+		)
+		// Reload current view data after undo/redo
+		return a, a.reloadCurrentView()
+
 	case errMsg:
 		a.err = msg.err
 		return a, nil
@@ -818,22 +884,34 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handleAccountDialogKey(msg)
 	}
 
+	// Undo/redo key bindings (handled before menus since they should
+	// work from any non-dialog context)
+	switch {
+	case key.Matches(msg, a.keys.Undo):
+		return a, a.performUndo()
+	case key.Matches(msg, a.keys.Redo):
+		return a, a.performRedo()
+	}
+
 	// Alt+key menu shortcuts work regardless of menu state
 	switch {
 	case key.Matches(msg, a.keys.MenuFile):
 		a.toggleMenu(0)
 		return a, nil
-	case key.Matches(msg, a.keys.MenuAccounts):
+	case key.Matches(msg, a.keys.MenuEdit):
 		a.toggleMenu(1)
 		return a, nil
-	case key.Matches(msg, a.keys.MenuTransactions):
+	case key.Matches(msg, a.keys.MenuAccounts):
 		a.toggleMenu(2)
 		return a, nil
-	case key.Matches(msg, a.keys.MenuReports):
+	case key.Matches(msg, a.keys.MenuTransactions):
 		a.toggleMenu(3)
 		return a, nil
-	case key.Matches(msg, a.keys.MenuHelp):
+	case key.Matches(msg, a.keys.MenuReports):
 		a.toggleMenu(4)
+		return a, nil
+	case key.Matches(msg, a.keys.MenuHelp):
+		a.toggleMenu(5)
 		return a, nil
 	}
 
@@ -1453,6 +1531,14 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 		if a.currentView == ViewRegister {
 			return a, a.loadTransferDialogData()
 		}
+
+	case MenuActionUndo:
+		a.menubar.Deactivate()
+		return a, a.performUndo()
+
+	case MenuActionRedo:
+		a.menubar.Deactivate()
+		return a, a.performRedo()
 
 	case MenuActionKeyboardShortcuts:
 		a.menubar.Deactivate()
@@ -2604,6 +2690,57 @@ func stripAnsi(s string) string {
 		result = append(result, r)
 	}
 	return string(result)
+}
+
+// reloadCurrentView returns a tea.Cmd that reloads data for the active view
+// and the sidebar. Used after undo/redo to reflect changes.
+func (a *App) reloadCurrentView() tea.Cmd {
+	cmds := []tea.Cmd{a.loadSidebarData()}
+	switch a.currentView {
+	case ViewDashboard:
+		cmds = append(cmds, a.loadDashboardData(), a.loadScheduledDueCount())
+	case ViewRegister:
+		accountID := a.sidebar.SelectedAccountID()
+		cmds = append(cmds, a.loadRegisterData(accountID))
+	case ViewScheduled:
+		cmds = append(cmds, a.loadScheduledViewData(), a.loadScheduledDueCount())
+	case ViewReports:
+		if a.reports != nil {
+			cmds = append(cmds, a.loadReportsViewData(
+				a.reports.rtype, a.reports.year, a.reports.month,
+			))
+		}
+	}
+	return tea.Batch(cmds...)
+}
+
+// undoResultMsg carries the result of an undo or redo operation.
+type undoResultMsg struct {
+	action      string // "Undo" or "Redo"
+	description string
+	err         error
+}
+
+// performUndo returns a tea.Cmd that undoes the last operation.
+func (a *App) performUndo() tea.Cmd {
+	if a.undoManager == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		desc, err := a.undoManager.Undo()
+		return undoResultMsg{action: "Undo", description: desc, err: err}
+	}
+}
+
+// performRedo returns a tea.Cmd that redoes the last undone operation.
+func (a *App) performRedo() tea.Cmd {
+	if a.undoManager == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		desc, err := a.undoManager.Redo()
+		return undoResultMsg{action: "Redo", description: desc, err: err}
+	}
 }
 
 // Run starts the TUI application.

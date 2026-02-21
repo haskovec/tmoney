@@ -38,6 +38,10 @@ const (
 	MenuActionNetWorth
 	MenuActionSpendingByCategory
 
+	// Edit menu actions
+	MenuActionUndo
+	MenuActionRedo
+
 	// Help menu actions
 	MenuActionKeyboardShortcuts
 	MenuActionAbout
@@ -89,6 +93,14 @@ func defaultMenus() []menu {
 				{label: "Open Recent", action: MenuActionOpenRecent},
 				{label: "Close File", action: MenuActionCloseFile},
 				{label: "Exit", action: MenuActionExit},
+			},
+		},
+		{
+			label:       "Edit",
+			shortcutKey: 'E',
+			items: []menuItem{
+				{label: "Undo", action: MenuActionUndo},
+				{label: "Redo", action: MenuActionRedo},
 			},
 		},
 		{

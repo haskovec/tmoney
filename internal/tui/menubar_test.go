@@ -25,11 +25,11 @@ func TestNewMenuBar(t *testing.T) {
 func TestMenuBar_DefaultMenus(t *testing.T) {
 	m := NewMenuBar()
 
-	if m.MenuCount() != 5 {
-		t.Fatalf("expected 5 menus, got %d", m.MenuCount())
+	if m.MenuCount() != 6 {
+		t.Fatalf("expected 6 menus, got %d", m.MenuCount())
 	}
 
-	expectedLabels := []string{"File", "Accounts", "Transactions", "Reports", "Help"}
+	expectedLabels := []string{"File", "Edit", "Accounts", "Transactions", "Reports", "Help"}
 	for i, mn := range m.menus {
 		if mn.label != expectedLabels[i] {
 			t.Errorf("menu[%d].label = %q, want %q", i, mn.label, expectedLabels[i])
@@ -237,7 +237,8 @@ func TestMenuBar_SelectFromDifferentMenu(t *testing.T) {
 	m := NewMenuBar()
 	m.Activate()
 
-	// Move to Accounts menu
+	// Move to Accounts menu (index 2, past Edit)
+	m.MoveRight()
 	m.MoveRight()
 
 	// First item is "New Account"
@@ -269,8 +270,8 @@ func TestMenuBar_CurrentMenu(t *testing.T) {
 
 	m.MoveRight()
 	current = m.CurrentMenu()
-	if current.label != "Accounts" {
-		t.Errorf("after MoveRight, CurrentMenu().label = %q, want %q", current.label, "Accounts")
+	if current.label != "Edit" {
+		t.Errorf("after MoveRight, CurrentMenu().label = %q, want %q", current.label, "Edit")
 	}
 }
 
@@ -345,12 +346,12 @@ func TestMenuBar_RenderDropdown_Active(t *testing.T) {
 func TestMenuBar_RenderDropdown_SecondMenu(t *testing.T) {
 	m := NewMenuBar()
 	m.Activate()
-	m.MoveRight() // Move to Accounts
+	m.MoveRight() // Move to Edit
 	styles := NewStyles()
 
 	dropdown, offset := m.RenderDropdown(styles)
 	if dropdown == "" {
-		t.Error("RenderDropdown() should return non-empty for Accounts menu")
+		t.Error("RenderDropdown() should return non-empty for Edit menu")
 	}
 
 	// Offset should be the width of " File " = 6
@@ -363,14 +364,14 @@ func TestMenuBar_RenderDropdown_SecondMenu(t *testing.T) {
 func TestMenuBar_RenderDropdown_ThirdMenu(t *testing.T) {
 	m := NewMenuBar()
 	m.Activate()
+	m.MoveRight() // Edit
 	m.MoveRight() // Accounts
-	m.MoveRight() // Transactions
 	styles := NewStyles()
 
 	_, offset := m.RenderDropdown(styles)
 
-	// Offset = " File " + " Accounts " = 6 + 10 = 16
-	expectedOffset := (len("File") + 2) + (len("Accounts") + 2)
+	// Offset = " File " + " Edit " = 6 + 6 = 12
+	expectedOffset := (len("File") + 2) + (len("Edit") + 2)
 	if offset != expectedOffset {
 		t.Errorf("offset = %d, want %d", offset, expectedOffset)
 	}
@@ -395,12 +396,42 @@ func TestMenuBar_AllMenuActions(t *testing.T) {
 	}
 }
 
+func TestMenuBar_EditMenuItems(t *testing.T) {
+	m := NewMenuBar()
+
+	editMenu := m.menus[1]
+	if editMenu.label != "Edit" {
+		t.Fatalf("expected Edit menu at index 1, got %q", editMenu.label)
+	}
+
+	expectedItems := []struct {
+		label  string
+		action MenuAction
+	}{
+		{"Undo", MenuActionUndo},
+		{"Redo", MenuActionRedo},
+	}
+
+	if len(editMenu.items) != len(expectedItems) {
+		t.Fatalf("Edit menu: expected %d items, got %d", len(expectedItems), len(editMenu.items))
+	}
+
+	for i, exp := range expectedItems {
+		if editMenu.items[i].label != exp.label {
+			t.Errorf("Edit[%d].label = %q, want %q", i, editMenu.items[i].label, exp.label)
+		}
+		if editMenu.items[i].action != exp.action {
+			t.Errorf("Edit[%d].action = %d, want %d", i, editMenu.items[i].action, exp.action)
+		}
+	}
+}
+
 func TestMenuBar_TransactionsMenuItems(t *testing.T) {
 	m := NewMenuBar()
 
-	txnMenu := m.menus[2]
+	txnMenu := m.menus[3]
 	if txnMenu.label != "Transactions" {
-		t.Fatalf("expected Transactions menu at index 2, got %q", txnMenu.label)
+		t.Fatalf("expected Transactions menu at index 3, got %q", txnMenu.label)
 	}
 
 	expectedItems := []struct {
@@ -431,9 +462,9 @@ func TestMenuBar_TransactionsMenuItems(t *testing.T) {
 func TestMenuBar_ReportsMenuItems(t *testing.T) {
 	m := NewMenuBar()
 
-	reportsMenu := m.menus[3]
+	reportsMenu := m.menus[4]
 	if reportsMenu.label != "Reports" {
-		t.Fatalf("expected Reports menu at index 3, got %q", reportsMenu.label)
+		t.Fatalf("expected Reports menu at index 4, got %q", reportsMenu.label)
 	}
 
 	if len(reportsMenu.items) != 3 {
@@ -454,9 +485,9 @@ func TestMenuBar_ReportsMenuItems(t *testing.T) {
 func TestMenuBar_HelpMenuItems(t *testing.T) {
 	m := NewMenuBar()
 
-	helpMenu := m.menus[4]
+	helpMenu := m.menus[5]
 	if helpMenu.label != "Help" {
-		t.Fatalf("expected Help menu at index 4, got %q", helpMenu.label)
+		t.Fatalf("expected Help menu at index 5, got %q", helpMenu.label)
 	}
 
 	if len(helpMenu.items) != 2 {
@@ -514,6 +545,7 @@ func TestMenuBar_ShortcutKeys(t *testing.T) {
 		shortcutKey rune
 	}{
 		{"File", 'F'},
+		{"Edit", 'E'},
 		{"Accounts", 'A'},
 		{"Transactions", 'T'},
 		{"Reports", 'R'},
