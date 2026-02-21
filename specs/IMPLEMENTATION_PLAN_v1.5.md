@@ -42,7 +42,7 @@ Spec: `specs/v1.5/transaction-status.md`
   - Prevent editing void transactions
   - Prevent voiding reconciled transactions (must un-reconcile first)
 
-- [ ] **060 - Implement reconciled transaction locking**
+- [x] **060 - Implement reconciled transaction locking**
   - Prevent editing reconciled transactions at service layer
   - Un-reconcile method (reconciled → cleared with warning)
   - Update transaction service edit/delete to check reconciled status

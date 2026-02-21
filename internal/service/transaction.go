@@ -95,14 +95,35 @@ func (s *TransactionService) Update(transaction *models.Transaction) error {
 
 // Delete removes a transaction.
 // For transfers, this will delete both sides after confirmation.
+// Void and reconciled transactions cannot be deleted.
 func (s *TransactionService) Delete(id models.ID) error {
 	txn, err := s.txnRepo.GetByID(id)
 	if err != nil {
 		return err
 	}
 
-	// If this is a transfer, delete both sides
+	// Prevent deleting void transactions
+	if txn.IsVoid() {
+		return &TransactionIsVoidError{ID: id.String()}
+	}
+
+	// Prevent deleting reconciled transactions
+	if txn.IsReconciled() {
+		return &TransactionIsReconciledError{ID: id.String()}
+	}
+
+	// If this is a transfer, check both sides and delete
 	if txn.IsTransfer() {
+		pair, err := s.transferRepo.GetByTransferID(txn.TransferID.ID)
+		if err != nil {
+			return err
+		}
+		if pair.FromTransaction.IsReconciled() {
+			return &TransactionIsReconciledError{ID: pair.FromTransaction.ID.String()}
+		}
+		if pair.ToTransaction.IsReconciled() {
+			return &TransactionIsReconciledError{ID: pair.ToTransaction.ID.String()}
+		}
 		return s.transferRepo.Delete(txn.TransferID.ID)
 	}
 
@@ -201,6 +222,7 @@ func (s *TransactionService) GetSplits(transactionID models.ID) ([]*models.Split
 
 // AddSplit adds a new split to an existing transaction.
 // After adding, the splits must still sum to the transaction amount.
+// Void and reconciled transactions cannot have splits added.
 func (s *TransactionService) AddSplit(split *models.Split) error {
 	if err := s.validateSplit(split); err != nil {
 		return err
@@ -210,6 +232,16 @@ func (s *TransactionService) AddSplit(split *models.Split) error {
 	txn, err := s.txnRepo.GetByID(split.TransactionID)
 	if err != nil {
 		return err
+	}
+
+	// Prevent modifying void transactions
+	if txn.IsVoid() {
+		return &TransactionIsVoidError{ID: txn.ID.String()}
+	}
+
+	// Prevent modifying reconciled transactions
+	if txn.IsReconciled() {
+		return &TransactionIsReconciledError{ID: txn.ID.String()}
 	}
 
 	// Transfers cannot have splits
@@ -241,26 +273,73 @@ func (s *TransactionService) AddSplit(split *models.Split) error {
 }
 
 // UpdateSplit updates an existing split.
+// Splits on void or reconciled transactions cannot be updated.
 func (s *TransactionService) UpdateSplit(split *models.Split) error {
 	if err := s.validateSplit(split); err != nil {
 		return err
+	}
+
+	// Check the parent transaction status
+	txn, err := s.txnRepo.GetByID(split.TransactionID)
+	if err != nil {
+		return err
+	}
+
+	if txn.IsVoid() {
+		return &TransactionIsVoidError{ID: txn.ID.String()}
+	}
+
+	if txn.IsReconciled() {
+		return &TransactionIsReconciledError{ID: txn.ID.String()}
 	}
 
 	return s.splitRepo.Update(split)
 }
 
 // DeleteSplit removes a split from a transaction.
+// Splits on void or reconciled transactions cannot be deleted.
 func (s *TransactionService) DeleteSplit(splitID models.ID) error {
+	// Get the split to find its parent transaction
+	split, err := s.splitRepo.GetByID(splitID)
+	if err != nil {
+		return err
+	}
+
+	// Check the parent transaction status
+	txn, err := s.txnRepo.GetByID(split.TransactionID)
+	if err != nil {
+		return err
+	}
+
+	if txn.IsVoid() {
+		return &TransactionIsVoidError{ID: txn.ID.String()}
+	}
+
+	if txn.IsReconciled() {
+		return &TransactionIsReconciledError{ID: txn.ID.String()}
+	}
+
 	return s.splitRepo.Delete(splitID)
 }
 
 // ReplaceSplits replaces all splits for a transaction with new ones.
 // The new splits must sum to the transaction amount.
+// Void and reconciled transactions cannot have splits replaced.
 func (s *TransactionService) ReplaceSplits(transactionID models.ID, splits []*models.Split) error {
 	// Get the transaction
 	txn, err := s.txnRepo.GetByID(transactionID)
 	if err != nil {
 		return err
+	}
+
+	// Prevent modifying void transactions
+	if txn.IsVoid() {
+		return &TransactionIsVoidError{ID: txn.ID.String()}
+	}
+
+	// Prevent modifying reconciled transactions
+	if txn.IsReconciled() {
+		return &TransactionIsReconciledError{ID: txn.ID.String()}
 	}
 
 	// Validate splits sum to transaction amount
@@ -329,10 +408,27 @@ func (s *TransactionService) GetTransferCounterpart(transactionID models.ID) (*m
 
 // UpdateTransfer updates both sides of a transfer.
 // Only amount, date, memo, and status can be updated.
+// Reconciled transfers cannot be edited.
 func (s *TransactionService) UpdateTransfer(transferID models.ID, date models.Date, amount models.Money, memo string, status models.TransactionStatus) error {
 	pair, err := s.transferRepo.GetByTransferID(transferID)
 	if err != nil {
 		return err
+	}
+
+	// Prevent editing reconciled transfers
+	if pair.FromTransaction.IsReconciled() {
+		return &TransactionIsReconciledError{ID: pair.FromTransaction.ID.String()}
+	}
+	if pair.ToTransaction.IsReconciled() {
+		return &TransactionIsReconciledError{ID: pair.ToTransaction.ID.String()}
+	}
+
+	// Prevent editing void transfers
+	if pair.FromTransaction.IsVoid() {
+		return &TransactionIsVoidError{ID: pair.FromTransaction.ID.String()}
+	}
+	if pair.ToTransaction.IsVoid() {
+		return &TransactionIsVoidError{ID: pair.ToTransaction.ID.String()}
 	}
 
 	// Update common fields on both sides
@@ -352,15 +448,26 @@ func (s *TransactionService) UpdateTransfer(transferID models.ID, date models.Da
 }
 
 // UpdateTransferAmount updates the amount on both sides of a transfer.
+// Reconciled transfers cannot be edited.
 func (s *TransactionService) UpdateTransferAmount(transferID models.ID, newAmount models.Money) error {
 	if !newAmount.IsPositive() {
 		return &InvalidTransferAmountError{Amount: newAmount}
 	}
+
+	if err := s.checkTransferEditable(transferID); err != nil {
+		return err
+	}
+
 	return s.transferRepo.UpdateAmount(transferID, newAmount)
 }
 
 // UpdateTransferDate updates the date on both sides of a transfer.
+// Reconciled transfers cannot be edited.
 func (s *TransactionService) UpdateTransferDate(transferID models.ID, newDate models.Date) error {
+	if err := s.checkTransferEditable(transferID); err != nil {
+		return err
+	}
+
 	return s.transferRepo.UpdateDate(transferID, newDate)
 }
 
@@ -370,8 +477,37 @@ func (s *TransactionService) UpdateTransferStatus(transferID models.ID, status m
 }
 
 // DeleteTransfer removes both sides of a transfer.
+// Reconciled transfers cannot be deleted.
 func (s *TransactionService) DeleteTransfer(transferID models.ID) error {
+	if err := s.checkTransferEditable(transferID); err != nil {
+		return err
+	}
+
 	return s.transferRepo.Delete(transferID)
+}
+
+// checkTransferEditable checks if a transfer can be edited/deleted.
+// Returns an error if either side is reconciled or void.
+func (s *TransactionService) checkTransferEditable(transferID models.ID) error {
+	pair, err := s.transferRepo.GetByTransferID(transferID)
+	if err != nil {
+		return err
+	}
+
+	if pair.FromTransaction.IsReconciled() {
+		return &TransactionIsReconciledError{ID: pair.FromTransaction.ID.String()}
+	}
+	if pair.ToTransaction.IsReconciled() {
+		return &TransactionIsReconciledError{ID: pair.ToTransaction.ID.String()}
+	}
+	if pair.FromTransaction.IsVoid() {
+		return &TransactionIsVoidError{ID: pair.FromTransaction.ID.String()}
+	}
+	if pair.ToTransaction.IsVoid() {
+		return &TransactionIsVoidError{ID: pair.ToTransaction.ID.String()}
+	}
+
+	return nil
 }
 
 // IsTransfer checks if a transaction is part of a transfer.
@@ -384,10 +520,19 @@ func (s *TransactionService) IsTransfer(transactionID models.ID) (bool, error) {
 // =============================================================================
 
 // ClearTransaction marks a transaction as cleared.
+// Void and reconciled transactions cannot be cleared directly.
 func (s *TransactionService) ClearTransaction(id models.ID) error {
 	txn, err := s.txnRepo.GetByID(id)
 	if err != nil {
 		return err
+	}
+
+	if txn.IsVoid() {
+		return &TransactionIsVoidError{ID: id.String()}
+	}
+
+	if txn.IsReconciled() {
+		return &TransactionIsReconciledError{ID: id.String()}
 	}
 
 	txn.Clear()
@@ -395,10 +540,15 @@ func (s *TransactionService) ClearTransaction(id models.ID) error {
 }
 
 // ReconcileTransaction marks a transaction as reconciled.
+// Void transactions cannot be reconciled.
 func (s *TransactionService) ReconcileTransaction(id models.ID) error {
 	txn, err := s.txnRepo.GetByID(id)
 	if err != nil {
 		return err
+	}
+
+	if txn.IsVoid() {
+		return &TransactionIsVoidError{ID: id.String()}
 	}
 
 	txn.Reconcile()
@@ -406,13 +556,39 @@ func (s *TransactionService) ReconcileTransaction(id models.ID) error {
 }
 
 // MarkTransactionUncleared marks a transaction as uncleared.
+// Void and reconciled transactions cannot be marked uncleared directly.
+// Use UnReconcileTransaction to move from reconciled to cleared.
 func (s *TransactionService) MarkTransactionUncleared(id models.ID) error {
 	txn, err := s.txnRepo.GetByID(id)
 	if err != nil {
 		return err
 	}
 
+	if txn.IsVoid() {
+		return &TransactionIsVoidError{ID: id.String()}
+	}
+
+	if txn.IsReconciled() {
+		return &TransactionIsReconciledError{ID: id.String()}
+	}
+
 	txn.MarkUncleared()
+	return s.txnRepo.Update(txn)
+}
+
+// UnReconcileTransaction moves a reconciled transaction back to cleared status.
+// Only reconciled transactions can be un-reconciled.
+func (s *TransactionService) UnReconcileTransaction(id models.ID) error {
+	txn, err := s.txnRepo.GetByID(id)
+	if err != nil {
+		return err
+	}
+
+	if !txn.IsReconciled() {
+		return &TransactionNotReconciledError{ID: id.String()}
+	}
+
+	txn.Clear()
 	return s.txnRepo.Update(txn)
 }
 

@@ -2123,3 +2123,613 @@ func TestTransactionService_Update_VoidGuard(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// Reconciled Transaction Locking Tests
+// =============================================================================
+
+func TestTransactionService_Delete_ReconciledGuard(t *testing.T) {
+	t.Run("rejects deleting a reconciled transaction", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := svc.ReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("ReconcileTransaction() error = %v", err)
+		}
+
+		err := svc.Delete(txn.ID)
+		if err == nil {
+			t.Error("Delete() expected error for reconciled transaction")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects deleting a void transaction", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := svc.VoidTransaction(txn.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		err := svc.Delete(txn.ID)
+		if err == nil {
+			t.Error("Delete() expected error for void transaction")
+		}
+		if _, ok := err.(*TransactionIsVoidError); !ok {
+			t.Errorf("Expected TransactionIsVoidError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects deleting a reconciled transfer", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, models.TransactionStatusReconciled); err != nil {
+			t.Fatalf("UpdateTransferStatus() error = %v", err)
+		}
+
+		err = svc.Delete(pair.FromTransaction.ID)
+		if err == nil {
+			t.Error("Delete() expected error for reconciled transfer")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+}
+
+func TestTransactionService_UnReconcileTransaction(t *testing.T) {
+	t.Run("un-reconciles a reconciled transaction to cleared", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := svc.ReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("ReconcileTransaction() error = %v", err)
+		}
+
+		if err := svc.UnReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("UnReconcileTransaction() error = %v", err)
+		}
+
+		retrieved, _ := svc.GetByID(txn.ID)
+		if retrieved.Status != models.TransactionStatusCleared {
+			t.Errorf("Expected status cleared after un-reconcile, got %s", retrieved.Status)
+		}
+	})
+
+	t.Run("rejects un-reconciling a non-reconciled transaction", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		err := svc.UnReconcileTransaction(txn.ID)
+		if err == nil {
+			t.Error("UnReconcileTransaction() expected error for uncleared transaction")
+		}
+		if _, ok := err.(*TransactionNotReconciledError); !ok {
+			t.Errorf("Expected TransactionNotReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects un-reconciling a cleared transaction", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := svc.ClearTransaction(txn.ID); err != nil {
+			t.Fatalf("ClearTransaction() error = %v", err)
+		}
+
+		err := svc.UnReconcileTransaction(txn.ID)
+		if err == nil {
+			t.Error("UnReconcileTransaction() expected error for cleared transaction")
+		}
+		if _, ok := err.(*TransactionNotReconciledError); !ok {
+			t.Errorf("Expected TransactionNotReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects un-reconciling a void transaction", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := svc.VoidTransaction(txn.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		err := svc.UnReconcileTransaction(txn.ID)
+		if err == nil {
+			t.Error("UnReconcileTransaction() expected error for void transaction")
+		}
+		if _, ok := err.(*TransactionNotReconciledError); !ok {
+			t.Errorf("Expected TransactionNotReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("allows editing after un-reconcile", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		// Reconcile then un-reconcile
+		if err := svc.ReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("ReconcileTransaction() error = %v", err)
+		}
+		if err := svc.UnReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("UnReconcileTransaction() error = %v", err)
+		}
+
+		// Should now be editable
+		retrieved, _ := svc.GetByID(txn.ID)
+		newAmount, _ := models.NewMoney("-100.00")
+		retrieved.Amount = newAmount
+		if err := svc.Update(retrieved); err != nil {
+			t.Fatalf("Update() should succeed after un-reconcile, got error: %v", err)
+		}
+
+		final, _ := svc.GetByID(txn.ID)
+		if !final.Amount.Equal(newAmount) {
+			t.Errorf("Expected amount %s after edit, got %s", newAmount.String(), final.Amount.String())
+		}
+	})
+}
+
+func TestTransactionService_StatusOperations_ReconciledGuard(t *testing.T) {
+	t.Run("rejects ClearTransaction on reconciled", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.ReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("ReconcileTransaction() error = %v", err)
+		}
+
+		err := svc.ClearTransaction(txn.ID)
+		if err == nil {
+			t.Error("ClearTransaction() expected error for reconciled transaction")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects MarkTransactionUncleared on reconciled", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.ReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("ReconcileTransaction() error = %v", err)
+		}
+
+		err := svc.MarkTransactionUncleared(txn.ID)
+		if err == nil {
+			t.Error("MarkTransactionUncleared() expected error for reconciled transaction")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects ClearTransaction on void", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.VoidTransaction(txn.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		err := svc.ClearTransaction(txn.ID)
+		if err == nil {
+			t.Error("ClearTransaction() expected error for void transaction")
+		}
+		if _, ok := err.(*TransactionIsVoidError); !ok {
+			t.Errorf("Expected TransactionIsVoidError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects MarkTransactionUncleared on void", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.VoidTransaction(txn.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		err := svc.MarkTransactionUncleared(txn.ID)
+		if err == nil {
+			t.Error("MarkTransactionUncleared() expected error for void transaction")
+		}
+		if _, ok := err.(*TransactionIsVoidError); !ok {
+			t.Errorf("Expected TransactionIsVoidError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects ReconcileTransaction on void", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.VoidTransaction(txn.ID); err != nil {
+			t.Fatalf("VoidTransaction() error = %v", err)
+		}
+
+		err := svc.ReconcileTransaction(txn.ID)
+		if err == nil {
+			t.Error("ReconcileTransaction() expected error for void transaction")
+		}
+		if _, ok := err.(*TransactionIsVoidError); !ok {
+			t.Errorf("Expected TransactionIsVoidError, got %T: %v", err, err)
+		}
+	})
+}
+
+func TestTransactionService_SplitOperations_ReconciledGuard(t *testing.T) {
+	t.Run("rejects AddSplit on reconciled transaction", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, _ := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat := models.NewCategory("Food", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.ReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("ReconcileTransaction() error = %v", err)
+		}
+
+		splitAmount, _ := models.NewMoney("-100.00")
+		split := models.NewSplit(txn.ID, cat.ID, splitAmount)
+
+		err := svc.AddSplit(split)
+		if err == nil {
+			t.Error("AddSplit() expected error for reconciled transaction")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects UpdateSplit on reconciled transaction", func(t *testing.T) {
+		database := createTestDB(t)
+		txnRepo := repository.NewTransactionRepository(database)
+		splitRepo := repository.NewSplitRepository(database)
+		transferRepo := repository.NewTransferRepository(database)
+		payeeRepo := repository.NewPayeeRepository(database)
+		accountRepo := repository.NewAccountRepository(database)
+		categoryRepo := repository.NewCategoryRepository(database)
+
+		svc := NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat := models.NewCategory("Food", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		// Create transaction and reconcile it first (no splits yet)
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.ReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("ReconcileTransaction() error = %v", err)
+		}
+
+		// Insert a split directly via SQL to create a reconciled transaction with splits
+		splitID := models.NewID()
+		if _, err := database.Conn().Exec(
+			`INSERT INTO transaction_splits (id, transaction_id, category_id, amount, created_at)
+			 VALUES (?, ?, ?, -100.0000, CURRENT_TIMESTAMP)`,
+			splitID.String(), txn.ID.String(), cat.ID.String(),
+		); err != nil {
+			t.Fatalf("Failed to insert split: %v", err)
+		}
+
+		retrievedSplits, _ := svc.GetSplits(txn.ID)
+		if len(retrievedSplits) == 0 {
+			t.Fatal("Expected splits to exist")
+		}
+		newAmount, _ := models.NewMoney("-80.00")
+		retrievedSplits[0].Amount = newAmount
+
+		err := svc.UpdateSplit(retrievedSplits[0])
+		if err == nil {
+			t.Error("UpdateSplit() expected error for reconciled transaction")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects DeleteSplit on reconciled transaction", func(t *testing.T) {
+		database := createTestDB(t)
+		txnRepo := repository.NewTransactionRepository(database)
+		splitRepo := repository.NewSplitRepository(database)
+		transferRepo := repository.NewTransferRepository(database)
+		payeeRepo := repository.NewPayeeRepository(database)
+		accountRepo := repository.NewAccountRepository(database)
+		categoryRepo := repository.NewCategoryRepository(database)
+
+		svc := NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat := models.NewCategory("Food", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		// Create transaction and reconcile it first (no splits yet)
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.ReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("ReconcileTransaction() error = %v", err)
+		}
+
+		// Insert a split directly via SQL
+		splitID := models.NewID()
+		if _, err := database.Conn().Exec(
+			`INSERT INTO transaction_splits (id, transaction_id, category_id, amount, created_at)
+			 VALUES (?, ?, ?, -100.0000, CURRENT_TIMESTAMP)`,
+			splitID.String(), txn.ID.String(), cat.ID.String(),
+		); err != nil {
+			t.Fatalf("Failed to insert split: %v", err)
+		}
+
+		retrievedSplits, _ := svc.GetSplits(txn.ID)
+		if len(retrievedSplits) == 0 {
+			t.Fatal("Expected splits to exist")
+		}
+
+		err := svc.DeleteSplit(retrievedSplits[0].ID)
+		if err == nil {
+			t.Error("DeleteSplit() expected error for reconciled transaction")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects ReplaceSplits on reconciled transaction", func(t *testing.T) {
+		svc, accountRepo, categoryRepo, _ := createTestTransactionServiceWithCategories(t)
+		account := createTestAccount(t, accountRepo, "Checking")
+
+		cat1 := models.NewCategory("Food", models.CategoryTypeExpense)
+		cat2 := models.NewCategory("Household", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(cat1); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+		if err := categoryRepo.Create(cat2); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		// Create transaction and reconcile it (no splits needed for ReplaceSplits guard test)
+		amount, _ := models.NewMoney("-100.00")
+		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		if err := svc.Create(txn); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.ReconcileTransaction(txn.ID); err != nil {
+			t.Fatalf("ReconcileTransaction() error = %v", err)
+		}
+
+		splitAmount, _ := models.NewMoney("-100.00")
+		newSplits := []*models.Split{
+			models.NewSplit(txn.ID, cat2.ID, splitAmount),
+		}
+
+		err := svc.ReplaceSplits(txn.ID, newSplits)
+		if err == nil {
+			t.Error("ReplaceSplits() expected error for reconciled transaction")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+}
+
+func TestTransactionService_TransferOperations_ReconciledGuard(t *testing.T) {
+	t.Run("rejects UpdateTransfer on reconciled transfer", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, models.TransactionStatusReconciled); err != nil {
+			t.Fatalf("UpdateTransferStatus() error = %v", err)
+		}
+
+		newAmount, _ := models.NewMoney("750.00")
+		newDate, _ := models.ParseDate("2024-06-15")
+		err = svc.UpdateTransfer(pair.FromTransaction.TransferID.ID, newDate, newAmount, "Updated", models.TransactionStatusCleared)
+		if err == nil {
+			t.Error("UpdateTransfer() expected error for reconciled transfer")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects UpdateTransferAmount on reconciled transfer", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, models.TransactionStatusReconciled); err != nil {
+			t.Fatalf("UpdateTransferStatus() error = %v", err)
+		}
+
+		newAmount, _ := models.NewMoney("750.00")
+		err = svc.UpdateTransferAmount(pair.FromTransaction.TransferID.ID, newAmount)
+		if err == nil {
+			t.Error("UpdateTransferAmount() expected error for reconciled transfer")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects UpdateTransferDate on reconciled transfer", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, models.TransactionStatusReconciled); err != nil {
+			t.Fatalf("UpdateTransferStatus() error = %v", err)
+		}
+
+		newDate, _ := models.ParseDate("2024-06-15")
+		err = svc.UpdateTransferDate(pair.FromTransaction.TransferID.ID, newDate)
+		if err == nil {
+			t.Error("UpdateTransferDate() expected error for reconciled transfer")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects DeleteTransfer on reconciled transfer", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, models.TransactionStatusReconciled); err != nil {
+			t.Fatalf("UpdateTransferStatus() error = %v", err)
+		}
+
+		err = svc.DeleteTransfer(pair.FromTransaction.TransferID.ID)
+		if err == nil {
+			t.Error("DeleteTransfer() expected error for reconciled transfer")
+		}
+		if _, ok := err.(*TransactionIsReconciledError); !ok {
+			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("allows UpdateTransferStatus on non-reconciled transfer", func(t *testing.T) {
+		svc, accountRepo := createTestTransactionService(t)
+		checking := createTestAccount(t, accountRepo, "Checking")
+		savings := createTestAccount(t, accountRepo, "Savings")
+
+		amount, _ := models.NewMoney("500.00")
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, models.Today(), amount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+
+		// UpdateTransferStatus should still work (it's how reconciliation happens)
+		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, models.TransactionStatusReconciled); err != nil {
+			t.Fatalf("UpdateTransferStatus() error = %v", err)
+		}
+
+		updatedPair, _ := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
+		if updatedPair.FromTransaction.Status != models.TransactionStatusReconciled {
+			t.Errorf("Expected reconciled status, got %s", updatedPair.FromTransaction.Status)
+		}
+	})
+}

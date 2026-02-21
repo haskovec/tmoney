@@ -150,13 +150,22 @@ func (e *TransactionIsVoidError) Error() string {
 	return fmt.Sprintf("transaction %s is void and cannot be modified", e.ID)
 }
 
-// TransactionIsReconciledError is returned when trying to void a reconciled transaction.
+// TransactionIsReconciledError is returned when trying to edit, delete, or void a reconciled transaction.
 type TransactionIsReconciledError struct {
 	ID string
 }
 
 func (e *TransactionIsReconciledError) Error() string {
-	return fmt.Sprintf("transaction %s is reconciled; un-reconcile it first before voiding", e.ID)
+	return fmt.Sprintf("transaction %s is reconciled; un-reconcile it first", e.ID)
+}
+
+// TransactionNotReconciledError is returned when trying to un-reconcile a non-reconciled transaction.
+type TransactionNotReconciledError struct {
+	ID string
+}
+
+func (e *TransactionNotReconciledError) Error() string {
+	return fmt.Sprintf("transaction %s is not reconciled", e.ID)
 }
 
 // ScheduledTransactionCompletedError is returned when trying to post/skip a completed schedule.
