@@ -76,6 +76,31 @@ func TestTransactionStatus(t *testing.T) {
 			t.Errorf("Expected 'unknown', got %q", unknown.DisplayName())
 		}
 	})
+
+	t.Run("Code returns single-letter status codes", func(t *testing.T) {
+		tests := []struct {
+			status   TransactionStatus
+			expected string
+		}{
+			{TransactionStatusUncleared, "U"},
+			{TransactionStatusCleared, "C"},
+			{TransactionStatusReconciled, "R"},
+			{TransactionStatusVoid, "V"},
+		}
+		for _, tc := range tests {
+			if tc.status.Code() != tc.expected {
+				t.Errorf("Code for %q: expected %q, got %q",
+					tc.status, tc.expected, tc.status.Code())
+			}
+		}
+	})
+
+	t.Run("Code returns ? for unknown status", func(t *testing.T) {
+		unknown := TransactionStatus("unknown")
+		if unknown.Code() != "?" {
+			t.Errorf("Expected '?', got %q", unknown.Code())
+		}
+	})
 }
 
 func TestParseTransactionStatus(t *testing.T) {

@@ -680,8 +680,9 @@ func TestRun_TransactionsWithTransactions(t *testing.T) {
 	if !strings.Contains(output, "-$5.50") {
 		t.Error("output should contain transaction amount")
 	}
-	if !strings.Contains(output, "Cleared") {
-		t.Error("output should contain transaction status")
+	// Status column should show "C" code (tabwriter converts tabs to spaces)
+	if !strings.Contains(output, "  C\n") {
+		t.Error("output should contain status code C for cleared transaction")
 	}
 	if !strings.Contains(output, "Showing 2 transaction(s)") {
 		t.Errorf("output should show transaction count, got: %s", output)
@@ -3677,6 +3678,324 @@ func TestRun_ReportSpendingInvalidMonthValue(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "month must be between 1 and 12") {
 		t.Errorf("error should mention month range, got: %v", err)
+	}
+}
+
+func TestRun_VoidMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--void", "abc123"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--void) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_VoidInvalidID(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--void", "not-a-valid-id", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--void) with invalid ID should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid transaction ID") {
+		t.Errorf("error should mention invalid ID, got: %v", err)
+	}
+}
+
+func TestRun_VoidTransaction(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a transaction
+	txnRepo := repository.NewTransactionRepository(database)
+	txn := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-50.00"))
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	txnID := txn.ID.String()
+	database.Close()
+
+	// Void the transaction
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--void", txnID, "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--void) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Transaction voided successfully") {
+		t.Error("output should confirm void")
+	}
+	if !strings.Contains(output, "Checking") {
+		t.Error("output should contain account name")
+	}
+	if !strings.Contains(output, "Void") {
+		t.Error("output should show void status")
+	}
+
+	// Verify the transaction is now void
+	database2, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reopen database: %v", err)
+	}
+	defer database2.Close()
+
+	txnRepo2 := repository.NewTransactionRepository(database2)
+	voidedTxn, err := txnRepo2.GetByID(txn.ID)
+	if err != nil {
+		t.Fatalf("failed to get voided transaction: %v", err)
+	}
+	if voidedTxn.Status != models.TransactionStatusVoid {
+		t.Errorf("transaction status should be void, got %q", voidedTxn.Status)
+	}
+	if !voidedTxn.Amount.IsZero() {
+		t.Errorf("voided transaction amount should be zero, got %s", voidedTxn.Amount.String())
+	}
+}
+
+func TestRun_VoidAlreadyVoidTransaction(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create account and void transaction
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	txnRepo := repository.NewTransactionRepository(database)
+	txn := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-50.00"))
+	txn.Void()
+	txn.Amount = models.ZeroMoney
+	txn.SetMemo("**VOID**")
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	txnID := txn.ID.String()
+	database.Close()
+
+	// Try to void again
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--void", txnID, "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("voiding an already void transaction should return error")
+	}
+}
+
+func TestRun_TransactionsWithStatusFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create transactions with different statuses
+	txnRepo := repository.NewTransactionRepository(database)
+
+	txn1 := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-10.00"))
+	// Default status is uncleared
+	if err := txnRepo.Create(txn1); err != nil {
+		t.Fatalf("failed to create transaction 1: %v", err)
+	}
+
+	txn2 := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-20.00"))
+	txn2.Clear()
+	if err := txnRepo.Create(txn2); err != nil {
+		t.Fatalf("failed to create transaction 2: %v", err)
+	}
+
+	txn3 := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-30.00"))
+	txn3.Clear()
+	if err := txnRepo.Create(txn3); err != nil {
+		t.Fatalf("failed to create transaction 3: %v", err)
+	}
+
+	database.Close()
+
+	// Filter by cleared status
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transactions", "--account", "Checking", "--status", "cleared", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--transactions --status cleared) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Showing 2 transaction(s)") {
+		t.Errorf("should show 2 cleared transactions, got: %s", output)
+	}
+
+	// Filter by uncleared status
+	stdout.Reset()
+	stderr.Reset()
+	err = run([]string{"--transactions", "--account", "Checking", "--status", "uncleared", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--transactions --status uncleared) returned error: %v", err)
+		return
+	}
+
+	output = stdout.String()
+	if !strings.Contains(output, "Showing 1 transaction(s)") {
+		t.Errorf("should show 1 uncleared transaction, got: %s", output)
+	}
+}
+
+func TestRun_TransactionsWithInvalidStatusFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transactions", "--account", "Checking", "--status", "invalid", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--transactions --status invalid) should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --status") {
+		t.Errorf("error should mention invalid status, got: %v", err)
+	}
+}
+
+func TestRun_TransactionsStatusCodeDisplay(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	txnRepo := repository.NewTransactionRepository(database)
+
+	// Uncleared transaction
+	txn1 := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-10.00"))
+	if err := txnRepo.Create(txn1); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	// Cleared transaction
+	txn2 := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-20.00"))
+	txn2.Clear()
+	if err := txnRepo.Create(txn2); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--transactions", "--account", "Checking", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--transactions) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	// Status column should show single-letter codes (tabwriter converts tabs to spaces)
+	if !strings.Contains(output, "  U\n") {
+		t.Errorf("output should contain status code U for uncleared transaction, got:\n%s", output)
+	}
+	if !strings.Contains(output, "  C\n") {
+		t.Errorf("output should contain status code C for cleared transaction, got:\n%s", output)
+	}
+	// Should NOT contain full status words in the table
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "Uncleared") && !strings.Contains(line, "Status") {
+			t.Error("output should use status codes, not full words like 'Uncleared'")
+		}
 	}
 }
 

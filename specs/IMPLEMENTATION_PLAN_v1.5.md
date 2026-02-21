@@ -47,7 +47,7 @@ Spec: `specs/v1.5/transaction-status.md`
   - Un-reconcile method (reconciled → cleared with warning)
   - Update transaction service edit/delete to check reconciled status
 
-- [ ] **061 - Update CLI for new transaction statuses**
+- [x] **061 - Update CLI for new transaction statuses**
   - Update `--status` flag to accept new values
   - Add `--void <txn-id>` command
   - Update transaction list output to show U/C/R/V status codes

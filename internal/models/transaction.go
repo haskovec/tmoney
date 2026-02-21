@@ -40,6 +40,22 @@ func (ts TransactionStatus) IsValid() bool {
 	return false
 }
 
+// Code returns the single-letter status code for CLI display.
+func (ts TransactionStatus) Code() string {
+	switch ts {
+	case TransactionStatusUncleared:
+		return "U"
+	case TransactionStatusCleared:
+		return "C"
+	case TransactionStatusReconciled:
+		return "R"
+	case TransactionStatusVoid:
+		return "V"
+	default:
+		return "?"
+	}
+}
+
 // DisplayName returns a human-readable name for the transaction status.
 func (ts TransactionStatus) DisplayName() string {
 	switch ts {

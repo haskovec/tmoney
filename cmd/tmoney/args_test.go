@@ -1149,6 +1149,77 @@ func TestParseArgs_ReportAsOfMissingValue(t *testing.T) {
 	}
 }
 
+func TestParseArgs_VoidFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		expected string
+	}{
+		{"with space", []string{"--void", "abc123"}, "abc123"},
+		{"with equals", []string{"--void=abc123"}, "abc123"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.voidTxn != tt.expected {
+				t.Errorf("parseArgs(%v) voidTxn = %q, want %q", tt.args, opts.voidTxn, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseArgs_VoidFlagMissingID(t *testing.T) {
+	_, _, err := parseArgs([]string{"--void"})
+	if err == nil {
+		t.Error("parseArgs(--void) without ID should return error")
+	}
+	if !strings.Contains(err.Error(), "requires a transaction ID") {
+		t.Errorf("error should mention transaction ID requirement, got: %v", err)
+	}
+}
+
+func TestParseArgs_StatusFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		expected string
+	}{
+		{"uncleared with space", []string{"--status", "uncleared"}, "uncleared"},
+		{"cleared with space", []string{"--status", "cleared"}, "cleared"},
+		{"reconciled with space", []string{"--status", "reconciled"}, "reconciled"},
+		{"void with space", []string{"--status", "void"}, "void"},
+		{"with equals", []string{"--status=cleared"}, "cleared"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			if opts.txStatus != tt.expected {
+				t.Errorf("parseArgs(%v) txStatus = %q, want %q", tt.args, opts.txStatus, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseArgs_StatusFlagMissingValue(t *testing.T) {
+	_, _, err := parseArgs([]string{"--status"})
+	if err == nil {
+		t.Error("parseArgs(--status) without value should return error")
+	}
+	if !strings.Contains(err.Error(), "requires a status value") {
+		t.Errorf("error should mention status value requirement, got: %v", err)
+	}
+}
+
 func TestParseYearMonth(t *testing.T) {
 	tests := []struct {
 		name      string

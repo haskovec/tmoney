@@ -57,6 +57,12 @@ type cliOptions struct {
 	acctCreditLimit   string // --credit-limit <value>
 	acctInterestRate  string // --interest-rate <value>
 
+	// Void transaction
+	voidTxn string // --void <txn-id>
+
+	// Status filter
+	txStatus string // --status <uncleared|cleared|reconciled|void>
+
 	// Report options
 	report       bool   // --report flag
 	reportType   string // net-worth or spending
@@ -171,6 +177,18 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.skipScheduled = args[i]
+		case "--void":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--void requires a transaction ID argument")
+			}
+			i++
+			opts.voidTxn = args[i]
+		case "--status":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--status requires a status value (uncleared, cleared, reconciled, void)")
+			}
+			i++
+			opts.txStatus = args[i]
 		case "--amount":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--amount requires a value argument")
@@ -349,6 +367,10 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.acctCreditLimit = strings.TrimPrefix(arg, "--credit-limit=")
 			} else if strings.HasPrefix(arg, "--interest-rate=") {
 				opts.acctInterestRate = strings.TrimPrefix(arg, "--interest-rate=")
+			} else if strings.HasPrefix(arg, "--void=") {
+				opts.voidTxn = strings.TrimPrefix(arg, "--void=")
+			} else if strings.HasPrefix(arg, "--status=") {
+				opts.txStatus = strings.TrimPrefix(arg, "--status=")
 			} else if strings.HasPrefix(arg, "--search=") {
 				opts.searchTerm = strings.TrimPrefix(arg, "--search=")
 			} else if strings.HasPrefix(arg, "--min=") {

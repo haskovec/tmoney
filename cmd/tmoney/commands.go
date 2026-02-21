@@ -191,6 +191,21 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("failed to list transactions: %w", err)
 	}
 
+	// Filter by status if specified
+	if opts.txStatus != "" {
+		status, err := models.ParseTransactionStatus(opts.txStatus)
+		if err != nil {
+			return fmt.Errorf("invalid --status: %w", err)
+		}
+		var filtered []*models.Transaction
+		for _, txn := range transactions {
+			if txn.Status == status {
+				filtered = append(filtered, txn)
+			}
+		}
+		transactions = filtered
+	}
+
 	// Apply limit if specified
 	if opts.limit > 0 && len(transactions) > opts.limit {
 		transactions = transactions[:opts.limit]
@@ -416,6 +431,60 @@ func runTransfer(opts *cliOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Amount: %s\n", formatMoney(amount, fromAcct.Currency))
 	if opts.txMemo != "" {
 		fmt.Fprintf(w, "  Memo:   %s\n", opts.txMemo)
+	}
+
+	return nil
+}
+
+// runVoidTransaction voids a transaction by ID.
+func runVoidTransaction(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--void requires --file to specify a database")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	// Parse the transaction ID
+	txnID, err := models.ParseID(opts.voidTxn)
+	if err != nil {
+		return fmt.Errorf("invalid transaction ID: %w", err)
+	}
+
+	// Get the transaction first to show details
+	txn, err := svc.TransactionRepo.GetByID(txnID)
+	if err != nil {
+		return fmt.Errorf("transaction not found: %w", err)
+	}
+
+	// Get account info for display
+	account, _ := svc.AccountRepo.GetByID(txn.AccountID)
+	accountName := "Unknown"
+	currency := "USD"
+	if account != nil {
+		accountName = account.Name
+		currency = account.Currency
+	}
+
+	// Remember original amount for confirmation display
+	originalAmount := txn.Amount
+
+	// Void the transaction
+	if err := svc.Transaction.VoidTransaction(txnID); err != nil {
+		return fmt.Errorf("failed to void transaction: %w", err)
+	}
+
+	// Print confirmation
+	fmt.Fprintln(w, "Transaction voided successfully!")
+	fmt.Fprintf(w, "  Account:  %s\n", accountName)
+	fmt.Fprintf(w, "  Date:     %s\n", txn.Date.String())
+	fmt.Fprintf(w, "  Amount:   %s (was %s)\n", formatMoney(models.ZeroMoney, currency), formatMoney(originalAmount, currency))
+	fmt.Fprintf(w, "  Status:   Void\n")
+	if txn.IsTransfer() {
+		fmt.Fprintln(w, "  Note:     Transfer counterpart was also voided")
 	}
 
 	return nil

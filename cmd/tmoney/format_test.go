@@ -236,6 +236,22 @@ func TestPrintHelp_IncludesScheduled(t *testing.T) {
 	}
 }
 
+func TestPrintHelp_IncludesVoidAndStatus(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printHelp(buf)
+	output := buf.String()
+
+	if !strings.Contains(output, "--void") {
+		t.Error("help output should document --void flag")
+	}
+	if !strings.Contains(output, "--status") {
+		t.Error("help output should document --status flag")
+	}
+	if !strings.Contains(output, "Void a transaction") {
+		t.Error("help output should describe --void functionality")
+	}
+}
+
 func TestPrintHelp_IncludesReports(t *testing.T) {
 	buf := &bytes.Buffer{}
 	printHelp(buf)

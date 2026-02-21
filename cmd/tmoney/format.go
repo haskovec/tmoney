@@ -196,7 +196,7 @@ func printTransactionsTable(w io.Writer, account *models.Account, transactions [
 			payee,
 			category,
 			formatMoney(txn.Amount, account.Currency),
-			txn.Status.DisplayName(),
+			txn.Status.Code(),
 		)
 	}
 
@@ -477,6 +477,9 @@ Transaction Commands:
     --limit <n>        Limit number of transactions shown
     --from <date>      Start date filter (YYYY-MM-DD)
     --to <date>        End date filter (YYYY-MM-DD)
+    --status <status>  Filter by status (uncleared, cleared, reconciled, void)
+
+  --void <txn-id>      Void a transaction (sets amount to 0, status to void)
 
   --add-transaction    Add a new transaction (requires --account, --amount)
     --account <name>   Account for the transaction

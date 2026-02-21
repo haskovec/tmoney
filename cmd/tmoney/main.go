@@ -47,6 +47,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runAddAccount(opts, stdout)
 	}
 
+	// Handle --void
+	if opts.voidTxn != "" {
+		return runVoidTransaction(opts, stdout)
+	}
+
 	// Handle --add-transaction
 	if opts.addTransaction {
 		return runAddTransaction(opts, stdout)
