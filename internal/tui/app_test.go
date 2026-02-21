@@ -2803,6 +2803,569 @@ func TestApp_RenderSpendingReport_ImprovedNoData(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Transaction Status TUI Tests (Task 062)
+// =============================================================================
+
+func TestApp_BuildRegisterTable_VoidStatusIndicator(t *testing.T) {
+	accountID := models.NewID()
+
+	app := &App{
+		styles: NewStyles(),
+		register: &registerData{
+			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*models.Transaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Date:      models.Today(),
+					Amount:    models.ZeroMoney,
+					Status:    models.TransactionStatusVoid,
+				},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	row := app.table.SelectedRow()
+	if row[1] != "V" {
+		t.Errorf("void status indicator = %q, want %q", row[1], "V")
+	}
+}
+
+func TestApp_BuildRegisterTable_VoidRowStyling(t *testing.T) {
+	accountID := models.NewID()
+
+	app := &App{
+		styles: NewStyles(),
+		register: &registerData{
+			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*models.Transaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Date:      models.Today(),
+					Amount:    models.MustNewMoney("-50"),
+					Status:    models.TransactionStatusCleared,
+				},
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Date:      models.Today(),
+					Amount:    models.ZeroMoney,
+					Status:    models.TransactionStatusVoid,
+				},
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Date:      models.Today(),
+					Amount:    models.MustNewMoney("-25"),
+					Status:    models.TransactionStatusUncleared,
+				},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+
+	// Void row (index 1) should have RowStyleVoid
+	if style, ok := app.table.rowStyles[1]; !ok || style != RowStyleVoid {
+		t.Errorf("void row style = %v (ok=%v), want RowStyleVoid", style, ok)
+	}
+
+	// Non-void rows should not have a style override
+	if _, ok := app.table.rowStyles[0]; ok {
+		t.Error("cleared row should not have a style override")
+	}
+	if _, ok := app.table.rowStyles[2]; ok {
+		t.Error("uncleared row should not have a style override")
+	}
+}
+
+func TestApp_BuildRegisterTable_AllFourStatusIndicators(t *testing.T) {
+	accountID := models.NewID()
+
+	tests := []struct {
+		name     string
+		status   models.TransactionStatus
+		expected string
+	}{
+		{"uncleared", models.TransactionStatusUncleared, " "},
+		{"cleared", models.TransactionStatusCleared, "✓"},
+		{"reconciled", models.TransactionStatusReconciled, "R"},
+		{"void", models.TransactionStatusVoid, "V"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := &App{
+				styles: NewStyles(),
+				register: &registerData{
+					account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+					transactions: []*models.Transaction{
+						{
+							BaseModel: models.BaseModel{ID: models.NewID()},
+							AccountID: accountID,
+							Date:      models.Today(),
+							Amount:    models.MustNewMoney("-10"),
+							Status:    tt.status,
+						},
+					},
+					balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+					payeeNames:    make(map[models.ID]string),
+					categoryNames: make(map[models.ID]string),
+					accountNames:  make(map[models.ID]string),
+				},
+			}
+
+			app.buildRegisterTable()
+			row := app.table.SelectedRow()
+			if row[1] != tt.expected {
+				t.Errorf("status indicator = %q, want %q", row[1], tt.expected)
+			}
+		})
+	}
+}
+
+func TestApp_ToggleTransactionStatus_VoidBlocked(t *testing.T) {
+	accountID := models.NewID()
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		transactionSvc: &service.TransactionService{},
+		register: &registerData{
+			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*models.Transaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Date:      models.Today(),
+					Amount:    models.ZeroMoney,
+					Status:    models.TransactionStatusVoid,
+				},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	_, cmd := app.toggleTransactionStatus()
+
+	// Should return nil cmd (no service call made)
+	if cmd != nil {
+		t.Error("toggleTransactionStatus() should return nil cmd for void transaction")
+	}
+
+	// Should have an alert notification
+	notifications := app.statusbar.Notifications()
+	if len(notifications) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(notifications))
+	}
+	if !contains(notifications[0].Text, "void") {
+		t.Errorf("notification = %q, should mention void", notifications[0].Text)
+	}
+}
+
+func TestApp_ToggleTransactionStatus_ReconciledBlocked(t *testing.T) {
+	accountID := models.NewID()
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		transactionSvc: &service.TransactionService{},
+		register: &registerData{
+			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*models.Transaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Date:      models.Today(),
+					Amount:    models.MustNewMoney("-10"),
+					Status:    models.TransactionStatusReconciled,
+				},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	_, cmd := app.toggleTransactionStatus()
+
+	if cmd != nil {
+		t.Error("toggleTransactionStatus() should return nil cmd for reconciled transaction")
+	}
+
+	notifications := app.statusbar.Notifications()
+	if len(notifications) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(notifications))
+	}
+	if !contains(notifications[0].Text, "reconciled") {
+		t.Errorf("notification = %q, should mention reconciled", notifications[0].Text)
+	}
+}
+
+func TestApp_ShowVoidConfirmation_AlreadyVoid(t *testing.T) {
+	accountID := models.NewID()
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		transactionSvc: &service.TransactionService{},
+		register: &registerData{
+			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*models.Transaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Date:      models.Today(),
+					Amount:    models.ZeroMoney,
+					Status:    models.TransactionStatusVoid,
+				},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	_, cmd := app.showVoidConfirmation()
+
+	if cmd != nil {
+		t.Error("showVoidConfirmation() should return nil cmd for already-void transaction")
+	}
+
+	// Should show notification
+	notifications := app.statusbar.Notifications()
+	if len(notifications) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(notifications))
+	}
+	if !contains(notifications[0].Text, "already void") {
+		t.Errorf("notification = %q, should mention 'already void'", notifications[0].Text)
+	}
+
+	// No confirm dialog should be shown
+	if app.confirmDialog != nil {
+		t.Error("confirmDialog should be nil for already-void transaction")
+	}
+}
+
+func TestApp_ShowVoidConfirmation_ReconciledBlocked(t *testing.T) {
+	accountID := models.NewID()
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		transactionSvc: &service.TransactionService{},
+		register: &registerData{
+			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*models.Transaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Date:      models.Today(),
+					Amount:    models.MustNewMoney("-50"),
+					Status:    models.TransactionStatusReconciled,
+				},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	_, cmd := app.showVoidConfirmation()
+
+	if cmd != nil {
+		t.Error("showVoidConfirmation() should return nil cmd for reconciled transaction")
+	}
+
+	notifications := app.statusbar.Notifications()
+	if len(notifications) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(notifications))
+	}
+	if !contains(notifications[0].Text, "reconciled") {
+		t.Errorf("notification = %q, should mention 'reconciled'", notifications[0].Text)
+	}
+}
+
+func TestApp_ShowVoidConfirmation_ShowsDialog(t *testing.T) {
+	accountID := models.NewID()
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		transactionSvc: &service.TransactionService{},
+		register: &registerData{
+			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*models.Transaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Date:      models.Today(),
+					Amount:    models.MustNewMoney("-50"),
+					Status:    models.TransactionStatusCleared,
+				},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	_, _ = app.showVoidConfirmation()
+
+	if app.confirmDialog == nil {
+		t.Fatal("confirmDialog should be set after showVoidConfirmation()")
+	}
+	if !app.confirmDialog.IsVisible() {
+		t.Error("confirmDialog should be visible")
+	}
+	if app.confirmDialog.Title() != "Void Transaction" {
+		t.Errorf("dialog title = %q, want %q", app.confirmDialog.Title(), "Void Transaction")
+	}
+	if app.confirmAction == nil {
+		t.Error("confirmAction should be set")
+	}
+}
+
+func TestApp_ShowVoidConfirmation_TransferMessage(t *testing.T) {
+	accountID := models.NewID()
+	transferAccountID := models.NewID()
+	transferPairID := models.NewID()
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		transactionSvc: &service.TransactionService{},
+		register: &registerData{
+			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*models.Transaction{
+				{
+					BaseModel:         models.BaseModel{ID: models.NewID()},
+					AccountID:         accountID,
+					TransferID:        models.NullableID{ID: transferPairID, Valid: true},
+					TransferAccountID: models.NullableID{ID: transferAccountID, Valid: true},
+					Date:              models.Today(),
+					Amount:            models.MustNewMoney("-50"),
+					Status:            models.TransactionStatusCleared,
+				},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  map[models.ID]string{transferAccountID: "Savings"},
+		},
+	}
+
+	app.buildRegisterTable()
+	_, _ = app.showVoidConfirmation()
+
+	if app.confirmDialog == nil {
+		t.Fatal("confirmDialog should be set")
+	}
+	// The message should mention "transfer"
+	errorMsg := app.confirmDialog.ErrorMsg()
+	if !contains(errorMsg, "transfer") {
+		t.Errorf("dialog message = %q, should mention 'transfer'", errorMsg)
+	}
+}
+
+func TestApp_HandleConfirmDialogKey_Cancel(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+	}
+
+	d := NewDialog("Confirm")
+	d.SetButtons([]DialogButton{
+		{Label: "No"},
+		{Label: "Yes", Primary: true},
+	})
+	d.SetVisible(true)
+	app.confirmDialog = d
+	app.confirmAction = func() tea.Msg { return nil }
+
+	// Press Escape to cancel
+	_, _ = app.handleConfirmDialogKey(tea.KeyMsg{Type: tea.KeyEsc})
+
+	if app.confirmDialog != nil {
+		t.Error("confirmDialog should be nil after cancel")
+	}
+	if app.confirmAction != nil {
+		t.Error("confirmAction should be nil after cancel")
+	}
+}
+
+func TestApp_HandleConfirmDialogKey_Confirm(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+	}
+
+	called := false
+	d := NewDialog("Confirm")
+	d.SetButtons([]DialogButton{
+		{Label: "No"},
+		{Label: "Yes", Primary: true},
+	})
+	d.SetVisible(true)
+	// Focus on the Yes button (fields count = 0, so button index 1 = focus index 1)
+	d.SetFocusIndex(1)
+	app.confirmDialog = d
+	app.confirmAction = func() tea.Msg {
+		called = true
+		return nil
+	}
+
+	// Press Enter on Yes button
+	_, cmd := app.handleConfirmDialogKey(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if app.confirmDialog != nil {
+		t.Error("confirmDialog should be nil after confirm")
+	}
+	if cmd == nil {
+		t.Error("should return a cmd after confirm")
+	}
+
+	// Execute the cmd to verify action was captured
+	if cmd != nil {
+		cmd()
+		if !called {
+			t.Error("confirm action should have been called")
+		}
+	}
+}
+
+func TestApp_VoidKey_InRegisterView(t *testing.T) {
+	accountID := models.NewID()
+
+	sidebar := NewSidebar()
+	sidebar.SetFocused(false)
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        sidebar,
+		transactionSvc: &service.TransactionService{},
+		register: &registerData{
+			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*models.Transaction{
+				{
+					BaseModel: models.BaseModel{ID: models.NewID()},
+					AccountID: accountID,
+					Date:      models.Today(),
+					Amount:    models.MustNewMoney("-25"),
+					Status:    models.TransactionStatusUncleared,
+				},
+			},
+			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
+			payeeNames:    make(map[models.ID]string),
+			categoryNames: make(map[models.ID]string),
+			accountNames:  make(map[models.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+
+	// Press 'v' key
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}}
+	_, _ = app.handleRegisterKeys(msg)
+
+	// Should show confirmation dialog
+	if app.confirmDialog == nil {
+		t.Fatal("pressing 'v' should show confirmation dialog")
+	}
+	if !app.confirmDialog.IsVisible() {
+		t.Error("confirmation dialog should be visible")
+	}
+}
+
+func TestApp_KeyHints_RegisterIncludesVoid(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+	}
+
+	hints := app.getKeyHints()
+	if !contains(hints, "v void") {
+		t.Errorf("key hints = %q, should include 'v void'", hints)
+	}
+	if !contains(hints, "c clear") {
+		t.Errorf("key hints = %q, should include 'c clear'", hints)
+	}
+}
+
+func TestApp_HelpOverlay_RegisterIncludesVoid(t *testing.T) {
+	section := registerShortcuts()
+	found := false
+	for _, entry := range section.Entries {
+		if entry.Key == "v" && contains(entry.Description, "Void") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("register shortcuts should include 'v' for voiding transactions")
+	}
+}
+
+func TestApp_ShowVoidConfirmation_NilGuards(t *testing.T) {
+	// Nil table
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+	}
+	_, cmd := app.showVoidConfirmation()
+	if cmd != nil {
+		t.Error("showVoidConfirmation() should return nil when table is nil")
+	}
+
+	// Nil register
+	app.table = NewTable([]Column{{Header: "A", Width: 10}})
+	_, cmd = app.showVoidConfirmation()
+	if cmd != nil {
+		t.Error("showVoidConfirmation() should return nil when register is nil")
+	}
+}
+
 // Helper function
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))

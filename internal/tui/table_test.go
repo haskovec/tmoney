@@ -750,3 +750,67 @@ func TestTable_ScrollInfo_EmptyTable(t *testing.T) {
 		t.Errorf("ScrollInfo() = %q, want empty for empty table", info)
 	}
 }
+
+func TestTable_SetRowStyle(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 10}})
+	tbl.SetRows([][]string{{"row1"}, {"row2"}, {"row3"}})
+
+	tbl.SetRowStyle(1, RowStyleVoid)
+
+	if style, ok := tbl.rowStyles[1]; !ok || style != RowStyleVoid {
+		t.Errorf("row style at index 1 = %v (ok=%v), want RowStyleVoid", style, ok)
+	}
+
+	// Default rows should not be in the map
+	if _, ok := tbl.rowStyles[0]; ok {
+		t.Error("row 0 should not have a style override")
+	}
+}
+
+func TestTable_ClearRowStyles(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 10}})
+	tbl.SetRows([][]string{{"row1"}, {"row2"}})
+
+	tbl.SetRowStyle(0, RowStyleVoid)
+	tbl.SetRowStyle(1, RowStyleVoid)
+
+	tbl.ClearRowStyles()
+	if tbl.rowStyles != nil {
+		t.Error("rowStyles should be nil after ClearRowStyles()")
+	}
+}
+
+func TestTable_SetRows_ClearsRowStyles(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 10}})
+	tbl.SetRows([][]string{{"row1"}})
+	tbl.SetRowStyle(0, RowStyleVoid)
+
+	// Setting new rows should clear styles
+	tbl.SetRows([][]string{{"new1"}, {"new2"}})
+	if tbl.rowStyles != nil {
+		t.Error("SetRows should clear rowStyles")
+	}
+}
+
+func TestTable_Render_VoidRowStyle(t *testing.T) {
+	styles := NewStyles()
+	cols := []Column{{Header: "Name", Width: 20}}
+	tbl := NewTable(cols)
+	tbl.SetRows([][]string{{"Normal"}, {"Void Row"}, {"Normal 2"}})
+	tbl.SetRowStyle(1, RowStyleVoid)
+	tbl.SetFocused(false) // Unfocused so no selected row styling
+
+	rendered := tbl.Render(styles, 20, 5)
+
+	// The void row should be rendered with void styling (dimmed/strikethrough)
+	// The exact appearance depends on terminal, but we verify it renders without panic
+	if rendered == "" {
+		t.Error("Render() should produce output with void row styles")
+	}
+
+	// Verify the void row content is still present (even if styled)
+	if !strings.Contains(rendered, "Void") {
+		t.Error("void row content should still be visible in rendered output")
+	}
+}
+

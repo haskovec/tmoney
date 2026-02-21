@@ -30,6 +30,16 @@ type Column struct {
 	Align ColumnAlign
 }
 
+// RowStyle identifies a named row style variant for custom rendering.
+type RowStyle int
+
+const (
+	// RowStyleDefault is the normal row style.
+	RowStyleDefault RowStyle = iota
+	// RowStyleVoid is a dimmed style for void/inactive rows.
+	RowStyleVoid
+)
+
 // Table is a generic table component with row selection and scrolling.
 type Table struct {
 	// Column definitions
@@ -37,6 +47,9 @@ type Table struct {
 
 	// Row data (each row is a slice of cell strings, one per column)
 	rows [][]string
+
+	// Row style overrides (row index -> RowStyle)
+	rowStyles map[int]RowStyle
 
 	// Navigation state
 	cursor       int
@@ -54,9 +67,23 @@ func NewTable(columns []Column) *Table {
 	}
 }
 
-// SetRows replaces all row data. Resets scroll offset and clamps cursor.
+// SetRowStyle sets the style variant for a specific row.
+func (t *Table) SetRowStyle(rowIndex int, style RowStyle) {
+	if t.rowStyles == nil {
+		t.rowStyles = make(map[int]RowStyle)
+	}
+	t.rowStyles[rowIndex] = style
+}
+
+// ClearRowStyles removes all row style overrides.
+func (t *Table) ClearRowStyles() {
+	t.rowStyles = nil
+}
+
+// SetRows replaces all row data. Resets scroll offset, clamps cursor, and clears row styles.
 func (t *Table) SetRows(rows [][]string) {
 	t.rows = rows
+	t.rowStyles = nil
 	t.clampCursor()
 	t.clampScroll(0)
 }
@@ -271,6 +298,9 @@ func (t *Table) renderRow(styles Styles, rowIndex int, colWidths []int, totalWid
 	isCursor := t.focused && rowIndex == t.cursor
 	if isCursor {
 		return styles.SelectedRow.Render(line)
+	}
+	if rs, ok := t.rowStyles[rowIndex]; ok && rs == RowStyleVoid {
+		return styles.VoidRow.Render(line)
 	}
 	return styles.TableRow.Render(line)
 }

@@ -123,6 +123,10 @@ type App struct {
 	fileDialog     *Dialog
 	fileDialogMode fileDialogMode
 
+	// Confirmation dialog state
+	confirmDialog *Dialog
+	confirmAction func() tea.Msg
+
 	// Configuration
 	cfg *config.Config
 
@@ -779,6 +783,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	// If confirmation dialog is visible, route all keys to it
+	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
+		return a.handleConfirmDialogKey(msg)
+	}
+
 	// If file dialog is visible, route all keys to it
 	if a.fileDialog != nil && a.fileDialog.IsVisible() {
 		return a.handleFileDialogKey(msg)
@@ -942,6 +951,8 @@ func (a *App) handleRegisterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.table.PageDown(tableHeight)
 	case msg.String() == "c":
 		return a.toggleTransactionStatus()
+	case msg.String() == "v":
+		return a.showVoidConfirmation()
 	case key.Matches(msg, a.keys.New):
 		return a, a.loadTransactionDialogData()
 	case msg.String() == "t":
@@ -951,7 +962,7 @@ func (a *App) handleRegisterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// toggleTransactionStatus toggles the cleared/pending status of the selected transaction.
+// toggleTransactionStatus toggles the cleared/uncleared status of the selected transaction.
 func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 	if a.table == nil || a.register == nil || a.transactionSvc == nil {
 		return a, nil
@@ -963,6 +974,19 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 	}
 
 	txn := a.register.transactions[cursor]
+
+	// Cannot toggle void transactions
+	if txn.IsVoid() {
+		a.statusbar.AddNotification("Cannot change status of void transaction", NotificationAlert)
+		return a, nil
+	}
+
+	// Cannot toggle reconciled transactions
+	if txn.IsReconciled() {
+		a.statusbar.AddNotification("Cannot change status of reconciled transaction (un-reconcile first)", NotificationAlert)
+		return a, nil
+	}
+
 	accountID := a.sidebar.SelectedAccountID()
 
 	return a, func() tea.Msg {
@@ -978,6 +1002,92 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 		// Reload register data to reflect the change
 		return a.loadRegisterData(accountID)()
 	}
+}
+
+// showVoidConfirmation shows a confirmation dialog before voiding the selected transaction.
+func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
+	if a.table == nil || a.register == nil || a.transactionSvc == nil {
+		return a, nil
+	}
+
+	cursor := a.table.Cursor()
+	if cursor < 0 || cursor >= len(a.register.transactions) {
+		return a, nil
+	}
+
+	txn := a.register.transactions[cursor]
+
+	// Cannot void already-void transactions
+	if txn.IsVoid() {
+		a.statusbar.AddNotification("Transaction is already void", NotificationAlert)
+		return a, nil
+	}
+
+	// Cannot void reconciled transactions
+	if txn.IsReconciled() {
+		a.statusbar.AddNotification("Cannot void reconciled transaction (un-reconcile first)", NotificationAlert)
+		return a, nil
+	}
+
+	// Build confirmation message
+	msg := "Void this transaction? Amount will be set to $0.00 and memo replaced with **VOID**."
+	if txn.IsTransfer() {
+		msg = "Void this transfer? Both sides will be voided. Amount will be set to $0.00."
+	}
+
+	accountID := a.sidebar.SelectedAccountID()
+	txnID := txn.ID
+
+	a.showConfirmDialog("Void Transaction", msg, func() tea.Msg {
+		err := a.transactionSvc.VoidTransaction(txnID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return a.loadRegisterData(accountID)()
+	})
+
+	return a, nil
+}
+
+// showConfirmDialog displays a confirmation dialog with the given title and message.
+// The action function is called when the user confirms.
+func (a *App) showConfirmDialog(title, message string, action func() tea.Msg) {
+	d := NewDialog(title)
+	d.SetWidth(50)
+	d.SetButtons([]DialogButton{
+		{Label: "No"},
+		{Label: "Yes", Primary: true},
+	})
+	// Use a text field with the message as a label (read-only visual)
+	// We'll render the message as the dialog error message area (repurposed for display)
+	d.SetErrorMsg(message)
+	d.SetFocusIndex(len(d.Fields())) // Focus on first button (No)
+	d.SetVisible(true)
+	a.confirmDialog = d
+	a.confirmAction = action
+}
+
+// handleConfirmDialogKey handles key input for the confirmation dialog.
+func (a *App) handleConfirmDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	action := a.confirmDialog.HandleKey(msg)
+
+	switch action {
+	case DialogActionSubmit:
+		a.confirmDialog.SetVisible(false)
+		fn := a.confirmAction
+		a.confirmDialog = nil
+		a.confirmAction = nil
+		return a, func() tea.Msg {
+			return fn()
+		}
+	case DialogActionCancel:
+		a.confirmDialog.SetVisible(false)
+		a.confirmDialog = nil
+		a.confirmAction = nil
+		return a, nil
+	}
+
+	return a, nil
 }
 
 // handleScheduledKeys handles key presses in the scheduled transactions view.
@@ -1487,6 +1597,12 @@ func (a *App) renderLayout() string {
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
+	// Overlay confirmation dialog if visible
+	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
+		overlay := a.confirmDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
 	// Overlay help if visible
 	if a.showHelp {
 		overlay := renderHelpOverlay(a.styles, a.currentView, a.width, a.height)
@@ -1816,6 +1932,13 @@ func (a *App) buildRegisterTable() {
 		rows[i] = a.formatRegisterRow(txn)
 	}
 	a.table.SetRows(rows)
+
+	// Apply void row styling
+	for i, txn := range a.register.transactions {
+		if txn.IsVoid() {
+			a.table.SetRowStyle(i, RowStyleVoid)
+		}
+	}
 }
 
 // formatRegisterRow formats a transaction into table row strings.
@@ -1830,6 +1953,8 @@ func (a *App) formatRegisterRow(txn *models.Transaction) []string {
 		status = "✓"
 	case models.TransactionStatusReconciled:
 		status = "R"
+	case models.TransactionStatusVoid:
+		status = "V"
 	}
 
 	// Payee
@@ -2314,7 +2439,7 @@ func (a *App) getKeyHints() string {
 	case ViewDashboard:
 		return "↑↓ navigate  ←→ collapse/expand  enter select  " + common
 	case ViewRegister:
-		return "↑↓ navigate  enter edit  n new  t transfer  d delete  esc back  " + common
+		return "↑↓ navigate  enter edit  n new  t transfer  c clear  v void  d delete  esc back  " + common
 	case ViewScheduled:
 		return "↑↓ navigate  enter post  s skip  n new  e edit  d delete  esc back  " + common
 	case ViewReports:

@@ -91,6 +91,9 @@ type Styles struct {
 	Negative lipgloss.Style
 	Pending  lipgloss.Style
 
+	// Special row styles
+	VoidRow lipgloss.Style
+
 	// Alerts and notifications
 	Alert lipgloss.Style
 
@@ -191,6 +194,11 @@ func (s *Styles) initBaseStyles() {
 
 	s.Pending = lipgloss.NewStyle().
 		Foreground(ColorPending)
+
+	// Special row styles
+	s.VoidRow = lipgloss.NewStyle().
+		Foreground(ColorMuted).
+		Strikethrough(true)
 
 	// Alerts
 	s.Alert = lipgloss.NewStyle().

@@ -53,7 +53,7 @@ Spec: `specs/v1.5/transaction-status.md`
   - Update transaction list output to show U/C/R/V status codes
   - Update `pending` references throughout CLI code
 
-- [ ] **062 - Update TUI for new transaction statuses**
+- [x] **062 - Update TUI for new transaction statuses**
   - Update register view to show four status indicators
   - Add `v` key to void selected transaction (with confirmation dialog)
   - Dim/strikethrough styling for void transactions
