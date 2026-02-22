@@ -8,12 +8,13 @@ import (
 // Services holds all application services, providing a single point of
 // initialization shared between the CLI and TUI.
 type Services struct {
-	Account      *AccountService
-	Transaction  *TransactionService
-	Category     *CategoryService
-	Payee        *PayeeService
-	ScheduledTxn *ScheduledTransactionService
-	Report       *ReportService
+	Account        *AccountService
+	Transaction    *TransactionService
+	Category       *CategoryService
+	Payee          *PayeeService
+	ScheduledTxn   *ScheduledTransactionService
+	Report         *ReportService
+	Reconciliation *ReconciliationService
 
 	// Repositories exposed for cases where direct repo access is needed
 	// (e.g. search criteria, category lookups in CLI).
@@ -47,14 +48,16 @@ func NewServices(database *db.DB) *Services {
 	payeeSvc := NewPayeeService(payeeRepo, database)
 	scheduledTxnSvc := NewScheduledTransactionService(scheduledRepo, transactionRepo, database)
 	reportSvc := NewReportService(accountRepo, database)
+	reconciliationSvc := NewReconciliationService(reconciliationRepo, transactionRepo, accountRepo, database)
 
 	return &Services{
-		Account:      accountSvc,
-		Transaction:  transactionSvc,
-		Category:     categorySvc,
-		Payee:        payeeSvc,
-		ScheduledTxn: scheduledTxnSvc,
-		Report:       reportSvc,
+		Account:        accountSvc,
+		Transaction:    transactionSvc,
+		Category:       categorySvc,
+		Payee:          payeeSvc,
+		ScheduledTxn:   scheduledTxnSvc,
+		Report:         reportSvc,
+		Reconciliation: reconciliationSvc,
 
 		AccountRepo:        accountRepo,
 		TransactionRepo:    transactionRepo,

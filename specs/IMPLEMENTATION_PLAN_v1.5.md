@@ -158,7 +158,7 @@ Spec: `specs/v1.5/reconciliation.md`
   - CRUD operations for sessions
   - Constraint: one active session per account
 
-- [ ] **076 - Reconciliation service**
+- [x] **076 - Reconciliation service**
   - Start reconciliation (create session, validate account)
   - Mark transactions for reconciliation
   - Finish reconciliation (validate $0 difference, update statuses)

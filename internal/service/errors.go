@@ -194,3 +194,37 @@ type ScheduledTransactionAmountRequiredError struct {
 func (e *ScheduledTransactionAmountRequiredError) Error() string {
 	return fmt.Sprintf("scheduled transaction %s requires an amount (variable amount with no estimate available)", e.ID)
 }
+
+// AccountIsClosedError is returned when trying to reconcile a closed account.
+type AccountIsClosedError struct {
+	ID string
+}
+
+func (e *AccountIsClosedError) Error() string {
+	return fmt.Sprintf("cannot reconcile closed account %s", e.ID)
+}
+
+// NoActiveReconciliationError is returned when trying to finish or cancel with no active session.
+type NoActiveReconciliationError struct {
+	AccountID string
+}
+
+func (e *NoActiveReconciliationError) Error() string {
+	return fmt.Sprintf("no active reconciliation session for account %s", e.AccountID)
+}
+
+// ReconciliationDifferenceError is returned when trying to finish with a non-zero difference.
+type ReconciliationDifferenceError struct {
+	Difference models.Money
+}
+
+func (e *ReconciliationDifferenceError) Error() string {
+	return fmt.Sprintf("cannot complete reconciliation: difference is %s (must be $0.00; use force to override)", e.Difference.String())
+}
+
+// StatementDateFutureError is returned when the statement date is in the future.
+type StatementDateFutureError struct{}
+
+func (e *StatementDateFutureError) Error() string {
+	return "statement date must not be in the future"
+}
