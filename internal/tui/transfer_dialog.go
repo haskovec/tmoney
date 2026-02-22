@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // transferDialogData holds the loaded data needed for the transfer dialog.
@@ -182,20 +183,23 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	a.closeTransferDialog()
 
 	return a, func() tea.Msg {
-		if a.transactionSvc == nil {
+		if a.transactionSvc == nil || a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("transaction service not available")}
 		}
 
-		pair, err := a.transactionSvc.CreateTransfer(fromAccountID, toAccountID, date, amount)
-		if err != nil {
+		cmd := undo.NewCreateTransferCommand(a.transactionSvc, fromAccountID, toAccountID, date, amount)
+		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 		}
 
-		// Set memo if provided
+		// Set memo if provided (undo of the transfer deletes both sides, so no separate undo needed)
 		if memo != "" {
-			transferID := pair.FromTransaction.TransferID.ID
-			if err := a.transactionSvc.UpdateTransfer(transferID, date, amount, memo, models.TransactionStatusUncleared); err != nil {
-				return errMsg{err: fmt.Errorf("transfer created but failed to set memo: %w", err)}
+			pair := cmd.Pair()
+			if pair != nil {
+				transferID := pair.FromTransaction.TransferID.ID
+				if err := a.transactionSvc.UpdateTransfer(transferID, date, amount, memo, models.TransactionStatusUncleared); err != nil {
+					return errMsg{err: fmt.Errorf("transfer created but failed to set memo: %w", err)}
+				}
 			}
 		}
 

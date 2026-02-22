@@ -96,14 +96,14 @@ Spec: `specs/v1.5/undo-redo.md`
   - PostScheduledCommand (compound: create transaction + advance schedule)
   - SkipScheduledCommand
 
-- [ ] **068 - TUI undo/redo integration**
+- [x] **068 - TUI undo/redo integration**
   - Wire Cmd+Z / Ctrl+Z and Cmd+Y / Ctrl+Y keybindings
   - Status bar notifications for undo/redo actions
   - Add Edit menu to menu bar with Undo/Redo items
   - Route all TUI data operations through UndoManager
   - Handle "Nothing to undo/redo" feedback
 
-- [ ] **069 - Tests for undo/redo**
+- [x] **069 - Tests for undo/redo**
   - Unit tests for UndoManager (stack behavior, redo clearing)
   - Unit tests for each command type (execute + undo roundtrip)
   - Unit tests for compound commands (partial failure rollback)

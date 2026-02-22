@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // transactionDialogData holds the loaded data needed for the transaction dialog.
@@ -336,9 +337,10 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		txn := models.NewTransactionFull(accountID, date, amount, payeeID, categoryID, memo)
 		txn.Status = status
 
-		// Save
-		if a.transactionSvc != nil {
-			if err := a.transactionSvc.Create(txn); err != nil {
+		// Save via undo manager
+		if a.transactionSvc != nil && a.undoManager != nil {
+			cmd := undo.NewCreateTransactionCommand(a.transactionSvc, txn)
+			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to save transaction: %w", err)}
 			}
 		}

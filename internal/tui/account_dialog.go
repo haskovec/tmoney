@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // accountDialogMode indicates whether the dialog is creating or editing.
@@ -385,7 +386,7 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 	a.closeAccountDialog()
 
 	return a, func() tea.Msg {
-		if a.accountSvc == nil {
+		if a.accountSvc == nil || a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
 
@@ -411,11 +412,13 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 		account.InterestRate = interestRate
 
 		if mode == accountDialogModeEdit {
-			if err := a.accountSvc.Update(account); err != nil {
+			cmd := undo.NewEditAccountCommand(a.accountSvc, account)
+			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update account: %w", err)}
 			}
 		} else {
-			if err := a.accountSvc.Create(account); err != nil {
+			cmd := undo.NewCreateAccountCommand(a.accountSvc, account)
+			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create account: %w", err)}
 			}
 		}
@@ -428,11 +431,12 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 func (a *App) closeSelectedAccount() tea.Cmd {
 	accountID := a.sidebar.SelectedAccountID()
 	return func() tea.Msg {
-		if a.accountSvc == nil {
+		if a.accountSvc == nil || a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
 
-		if err := a.accountSvc.Close(accountID); err != nil {
+		cmd := undo.NewCloseAccountCommand(a.accountSvc, accountID)
+		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to close account: %w", err)}
 		}
 
@@ -444,11 +448,12 @@ func (a *App) closeSelectedAccount() tea.Cmd {
 func (a *App) deleteSelectedAccount() tea.Cmd {
 	accountID := a.sidebar.SelectedAccountID()
 	return func() tea.Msg {
-		if a.accountSvc == nil {
+		if a.accountSvc == nil || a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
 
-		if err := a.accountSvc.Delete(accountID); err != nil {
+		cmd := undo.NewDeleteAccountCommand(a.accountSvc, accountID)
+		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to delete account: %w", err)}
 		}
 

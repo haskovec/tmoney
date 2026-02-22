@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // splitDialogFocus indicates which top-level area of the split dialog has focus.
@@ -575,9 +576,10 @@ func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 		txn := models.NewTransactionFull(pending.accountID, pending.date, pending.amount, payeeID, models.NilID, pending.memo)
 		txn.Status = pending.status
 
-		// Save with splits
-		if a.transactionSvc != nil {
-			if err := a.transactionSvc.CreateWithSplits(txn, splits); err != nil {
+		// Save with splits via undo manager
+		if a.transactionSvc != nil && a.undoManager != nil {
+			cmd := undo.NewCreateTransactionWithSplitsCommand(a.transactionSvc, txn, splits)
+			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to save split transaction: %w", err)}
 			}
 		}

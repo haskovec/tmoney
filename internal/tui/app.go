@@ -1066,17 +1066,33 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 	}
 
 	accountID := a.sidebar.SelectedAccountID()
+	txnID := txn.ID
+	currentStatus := txn.Status
 
 	return a, func() tea.Msg {
-		var err error
-		if txn.Status == models.TransactionStatusCleared {
-			err = a.transactionSvc.MarkTransactionUncleared(txn.ID)
-		} else {
-			err = a.transactionSvc.ClearTransaction(txn.ID)
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
+
+		// Get current state from DB for the edit command
+		current, err := a.transactionSvc.GetByID(txnID)
 		if err != nil {
 			return errMsg{err: err}
 		}
+
+		// Build updated copy with toggled status
+		updated := *current
+		if currentStatus == models.TransactionStatusCleared {
+			updated.MarkUncleared()
+		} else {
+			updated.Clear()
+		}
+
+		cmd := undo.NewEditTransactionCommand(a.transactionSvc, &updated)
+		if err := a.undoManager.Execute(cmd); err != nil {
+			return errMsg{err: err}
+		}
+
 		// Reload register data to reflect the change
 		return a.loadRegisterData(accountID)()
 	}
@@ -1116,9 +1132,20 @@ func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
 	accountID := a.sidebar.SelectedAccountID()
 	txnID := txn.ID
 
+	isTransfer := txn.IsTransfer()
+
 	a.showConfirmDialog("Void Transaction", msg, func() tea.Msg {
-		err := a.transactionSvc.VoidTransaction(txnID)
-		if err != nil {
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
+		}
+
+		var cmd undo.Command
+		if isTransfer {
+			cmd = undo.NewVoidTransferCommand(a.transactionSvc, txnID)
+		} else {
+			cmd = undo.NewVoidTransactionCommand(a.transactionSvc, txnID)
+		}
+		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
 		return a.loadRegisterData(accountID)()
@@ -1245,8 +1272,11 @@ func (a *App) postSelectedScheduled() (tea.Model, tea.Cmd) {
 
 	st := a.scheduled.allTxns[cursor]
 	return a, func() tea.Msg {
-		_, err := a.scheduledTxnSvc.Post(st.ID, nil)
-		if err != nil {
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
+		}
+		cmd := undo.NewPostScheduledTransactionCommand(a.scheduledTxnSvc, a.transactionSvc, st.ID, nil)
+		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
 		return scheduledPostedMsg{}
@@ -1266,8 +1296,11 @@ func (a *App) skipSelectedScheduled() (tea.Model, tea.Cmd) {
 
 	st := a.scheduled.allTxns[cursor]
 	return a, func() tea.Msg {
-		err := a.scheduledTxnSvc.Skip(st.ID)
-		if err != nil {
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
+		}
+		cmd := undo.NewSkipScheduledTransactionCommand(a.scheduledTxnSvc, st.ID)
+		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
 		return scheduledSkippedMsg{}
@@ -1287,8 +1320,11 @@ func (a *App) deleteSelectedScheduled() (tea.Model, tea.Cmd) {
 
 	st := a.scheduled.allTxns[cursor]
 	return a, func() tea.Msg {
-		err := a.scheduledTxnSvc.Delete(st.ID)
-		if err != nil {
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
+		}
+		cmd := undo.NewDeleteScheduledTransactionCommand(a.scheduledTxnSvc, st.ID)
+		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
 		return scheduledDeletedMsg{}

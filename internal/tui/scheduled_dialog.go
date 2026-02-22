@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // scheduledDialogMode indicates whether the dialog is creating or editing.
@@ -448,6 +449,10 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 			payeeID = payee.ID
 		}
 
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
+		}
+
 		if mode == scheduledDialogModeEdit && existingSched != nil {
 			// Update existing scheduled transaction
 			st := existingSched
@@ -489,7 +494,8 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 				st.SetOccurrences(occurrences.Int64)
 			}
 
-			if err := a.scheduledTxnSvc.Update(st); err != nil {
+			cmd := undo.NewEditScheduledTransactionCommand(a.scheduledTxnSvc, st)
+			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update scheduled transaction: %w", err)}
 			}
 		} else {
@@ -522,7 +528,8 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 				st.SetOccurrences(occurrences.Int64)
 			}
 
-			if err := a.scheduledTxnSvc.Create(st); err != nil {
+			cmd := undo.NewCreateScheduledTransactionCommand(a.scheduledTxnSvc, st)
+			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}
 			}
 		}
