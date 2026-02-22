@@ -77,6 +77,21 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runScheduled(opts, stdout)
 	}
 
+	// Handle --backup
+	if opts.backup {
+		return runBackup(opts, stdout)
+	}
+
+	// Handle --list-backups
+	if opts.listBackups {
+		return runListBackups(opts, stdout)
+	}
+
+	// Handle --restore
+	if opts.restore != "" {
+		return runRestore(opts, stdout)
+	}
+
 	// Handle --report
 	if opts.report {
 		return runReport(opts, stdout)

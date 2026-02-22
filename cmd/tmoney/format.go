@@ -526,5 +526,10 @@ Report Commands:
     --from <date>        Start date for custom range (YYYY-MM-DD)
     --to <date>          End date for custom range (YYYY-MM-DD)
 
+Backup/Restore Commands:
+  --backup               Create a manual backup of the database
+  --list-backups         List available backups
+  --restore <file>       Restore database from a backup file
+
 For more information, visit: https://github.com/haskovec/tmoney`)
 }

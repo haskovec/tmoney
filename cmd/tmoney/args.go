@@ -69,6 +69,11 @@ type cliOptions struct {
 	reportMonth  string // --month YYYY-MM for spending
 	reportYear   int    // --year YYYY for spending
 	reportAsOf   string // --as-of YYYY-MM-DD for net-worth
+
+	// Backup/restore options
+	backup      bool   // --backup flag
+	listBackups bool   // --list-backups flag
+	restore     string // --restore <backup-file>
 }
 
 // parseArgs parses command-line arguments and returns options and remaining args.
@@ -309,6 +314,16 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.reportAsOf = args[i]
+		case "--backup":
+			opts.backup = true
+		case "--list-backups":
+			opts.listBackups = true
+		case "--restore":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--restore requires a backup file path argument")
+			}
+			i++
+			opts.restore = args[i]
 		default:
 			// Check for --flag=value formats
 			if strings.HasPrefix(arg, "--file=") {
@@ -395,6 +410,8 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.reportYear = year
 			} else if strings.HasPrefix(arg, "--as-of=") {
 				opts.reportAsOf = strings.TrimPrefix(arg, "--as-of=")
+			} else if strings.HasPrefix(arg, "--restore=") {
+				opts.restore = strings.TrimPrefix(arg, "--restore=")
 			} else {
 				remaining = append(remaining, arg)
 			}

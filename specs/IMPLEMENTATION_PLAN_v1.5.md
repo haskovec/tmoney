@@ -115,32 +115,32 @@ Spec: `specs/v1.5/undo-redo.md`
 
 Spec: `specs/v1.5/backup-restore.md`
 
-- [ ] **070 - Auto-backup on app close**
+- [x] **070 - Auto-backup on app close**
   - Implement backup file creation (file copy with timestamp)
   - Rolling retention: keep last 5 auto-backups, delete oldest
   - Naming convention: `<file>.tdb.backup.<timestamp>`
   - Trigger on TUI quit
   - Trigger on CLI command completion (for data-modifying commands)
 
-- [ ] **071 - Manual backup and list backups**
+- [x] **071 - Manual backup and list backups**
   - CLI `--backup` command for manual backup creation
   - CLI `--list-backups` command showing available backups with date, size, type
   - Manual backup naming: `<file>.tdb.manual-backup.<timestamp>`
   - Manual backups excluded from auto-rotation
 
-- [ ] **072 - Restore functionality**
+- [x] **072 - Restore functionality**
   - Safe restore process (copy to temp, verify, rename)
   - CLI `--restore <backup-file>` command
   - Safety backup of current state before restoring
   - Database connection reload after restore
 
-- [ ] **073 - TUI backup/restore integration**
+- [x] **073 - TUI backup/restore integration**
   - File menu → Create Backup (with status bar notification)
   - File menu → Restore from Backup... (backup selection dialog)
   - Confirmation dialog before restore
   - Database reload after restore
 
-- [ ] **074 - Tests for backup/restore**
+- [x] **074 - Tests for backup/restore**
   - Unit tests for backup creation and naming
   - Unit tests for rolling retention logic
   - Unit tests for safe restore process

@@ -41,8 +41,8 @@ func TestMenuBar_FileMenuItems(t *testing.T) {
 	m := NewMenuBar()
 
 	fileMenu := m.menus[0]
-	if len(fileMenu.items) != 5 {
-		t.Fatalf("File menu: expected 5 items, got %d", len(fileMenu.items))
+	if len(fileMenu.items) != 7 {
+		t.Fatalf("File menu: expected 7 items, got %d", len(fileMenu.items))
 	}
 
 	expectedItems := []struct {
@@ -52,6 +52,8 @@ func TestMenuBar_FileMenuItems(t *testing.T) {
 		{"New File", MenuActionNewFile},
 		{"Open File", MenuActionOpenFile},
 		{"Open Recent", MenuActionOpenRecent},
+		{"Create Backup", MenuActionCreateBackup},
+		{"Restore from Backup", MenuActionRestoreBackup},
 		{"Close File", MenuActionCloseFile},
 		{"Exit", MenuActionExit},
 	}
@@ -167,7 +169,7 @@ func TestMenuBar_MoveUpDown(t *testing.T) {
 	m := NewMenuBar()
 	m.Activate()
 
-	// File menu has 5 items
+	// File menu has 7 items
 	m.MoveDown()
 	if m.ItemCursor() != 1 {
 		t.Errorf("after MoveDown, itemCursor = %d, want 1", m.ItemCursor())
@@ -176,22 +178,26 @@ func TestMenuBar_MoveUpDown(t *testing.T) {
 	m.MoveDown()
 	m.MoveDown()
 	m.MoveDown()
-	if m.ItemCursor() != 4 {
-		t.Errorf("after 4x MoveDown, itemCursor = %d, want 4", m.ItemCursor())
+	m.MoveDown()
+	m.MoveDown()
+	if m.ItemCursor() != 6 {
+		t.Errorf("after 6x MoveDown, itemCursor = %d, want 6", m.ItemCursor())
 	}
 
 	// Should not go past last item
 	m.MoveDown()
-	if m.ItemCursor() != 4 {
-		t.Errorf("itemCursor should stay at 4, got %d", m.ItemCursor())
+	if m.ItemCursor() != 6 {
+		t.Errorf("itemCursor should stay at 6, got %d", m.ItemCursor())
 	}
 
 	m.MoveUp()
-	if m.ItemCursor() != 3 {
-		t.Errorf("after MoveUp, itemCursor = %d, want 3", m.ItemCursor())
+	if m.ItemCursor() != 5 {
+		t.Errorf("after MoveUp, itemCursor = %d, want 5", m.ItemCursor())
 	}
 
 	// Move all the way up
+	m.MoveUp()
+	m.MoveUp()
 	m.MoveUp()
 	m.MoveUp()
 	m.MoveUp()
@@ -221,7 +227,9 @@ func TestMenuBar_SelectExitAction(t *testing.T) {
 	m := NewMenuBar()
 	m.Activate()
 
-	// Move to "Exit" (index 4 in File menu)
+	// Move to "Exit" (index 6 in File menu)
+	m.MoveDown()
+	m.MoveDown()
 	m.MoveDown()
 	m.MoveDown()
 	m.MoveDown()

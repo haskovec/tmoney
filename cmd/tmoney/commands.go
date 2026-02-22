@@ -3,9 +3,12 @@ package main
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
+	"text/tabwriter"
 	"time"
 
+	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/models"
@@ -351,6 +354,7 @@ func runAddTransaction(opts *cliOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Memo:     %s\n", opts.txMemo)
 	}
 
+	autoBackupAfterModification(opts.file)
 	return nil
 }
 
@@ -433,6 +437,7 @@ func runTransfer(opts *cliOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Memo:   %s\n", opts.txMemo)
 	}
 
+	autoBackupAfterModification(opts.file)
 	return nil
 }
 
@@ -487,6 +492,7 @@ func runVoidTransaction(opts *cliOptions, w io.Writer) error {
 		fmt.Fprintln(w, "  Note:     Transfer counterpart was also voided")
 	}
 
+	autoBackupAfterModification(opts.file)
 	return nil
 }
 
@@ -741,6 +747,7 @@ func runAddAccount(opts *cliOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Notes:           %s\n", account.Notes.String)
 	}
 
+	autoBackupAfterModification(opts.file)
 	return nil
 }
 
@@ -906,6 +913,7 @@ func runPostScheduled(opts *cliOptions, w io.Writer) error {
 		fmt.Fprintln(w, "  Status:      Completed (no more occurrences)")
 	}
 
+	autoBackupAfterModification(opts.file)
 	return nil
 }
 
@@ -975,6 +983,7 @@ func runSkipScheduled(opts *cliOptions, w io.Writer) error {
 		fmt.Fprintln(w, "  Status:      Completed (no more occurrences)")
 	}
 
+	autoBackupAfterModification(opts.file)
 	return nil
 }
 
@@ -1092,4 +1101,85 @@ func runSpendingReport(opts *cliOptions, w io.Writer) error {
 	// Print report
 	printSpendingReport(w, report)
 	return nil
+}
+
+// runBackup creates a manual backup of the database file.
+func runBackup(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--backup requires --file to specify a database")
+	}
+
+	backupPath, err := backup.CreateManualBackup(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to create backup: %w", err)
+	}
+
+	fmt.Fprintf(w, "Backup created: %s\n", backupPath)
+	return nil
+}
+
+// runListBackups lists available backups for the database file.
+func runListBackups(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--list-backups requires --file to specify a database")
+	}
+
+	backups, err := backup.ListBackups(opts.file)
+	if err != nil {
+		return fmt.Errorf("failed to list backups: %w", err)
+	}
+
+	dbBase := filepath.Base(opts.file)
+	fmt.Fprintf(w, "BACKUPS: %s\n", dbBase)
+	fmt.Fprintln(w, strings.Repeat("=", len("BACKUPS: ")+len(dbBase)))
+
+	if len(backups) == 0 {
+		fmt.Fprintln(w, "No backups found.")
+		return nil
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 0, 4, ' ', 0)
+	fmt.Fprintln(tw, "Date\tSize\tType")
+	fmt.Fprintln(tw, "----\t----\t----")
+
+	for _, b := range backups {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n",
+			b.Timestamp.Format("2006-01-02 15:04:05"),
+			backup.FormatSize(b.Size),
+			b.Type,
+		)
+	}
+
+	tw.Flush()
+	fmt.Fprintf(w, "\n%d backup(s) found\n", len(backups))
+
+	return nil
+}
+
+// runRestore restores the database from a backup file.
+func runRestore(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--restore requires --file to specify a database")
+	}
+
+	fmt.Fprintln(w, "Creating backup of current state...")
+
+	safetyPath, err := backup.Restore(opts.file, opts.restore)
+	if safetyPath != "" {
+		fmt.Fprintf(w, "Backup created: %s\n", safetyPath)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to restore: %w", err)
+	}
+
+	fmt.Fprintf(w, "\nRestoring from: %s\n", opts.restore)
+	fmt.Fprintln(w, "Restore complete.")
+
+	return nil
+}
+
+// autoBackupAfterModification creates an auto-backup after a data-modifying CLI command.
+func autoBackupAfterModification(dbPath string) {
+	// Best-effort: don't fail the CLI command if backup fails
+	backup.CreateAutoBackup(dbPath)
 }

@@ -130,6 +130,9 @@ type App struct {
 	confirmDialog *Dialog
 	confirmAction func() tea.Msg
 
+	// Backup dialog state (for restore selection)
+	backupDialog *backupDialogState
+
 	// Undo/redo manager (session-based, not persisted)
 	undoManager *undo.Manager
 
@@ -793,6 +796,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fileDialogSavedMsg:
 		return a.switchDatabase(msg.db)
 
+	case backupCreatedMsg:
+		a.statusbar.AddNotification(
+			fmt.Sprintf("Backup created: %s", backupFilename(msg.path)),
+			NotificationInfo,
+		)
+		return a, nil
+
+	case restoreConfirmedMsg:
+		// Switch to the reopened database
+		model, cmd := a.switchDatabase(msg.db)
+		a.statusbar.AddNotification(
+			fmt.Sprintf("Restored from backup (safety backup: %s)", backupFilename(msg.safetyBackupPath)),
+			NotificationInfo,
+		)
+		return model, cmd
+
 	case accountDeletedMsg:
 		a.switchView(ViewDashboard)
 		return a, tea.Batch(a.loadSidebarData(), a.loadDashboardData())
@@ -852,6 +871,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If confirmation dialog is visible, route all keys to it
 	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
 		return a.handleConfirmDialogKey(msg)
+	}
+
+	// If backup dialog is visible, route all keys to it
+	if a.backupDialog != nil && a.backupDialog.dialog.IsVisible() {
+		return a.handleBackupDialogKey(msg)
 	}
 
 	// If file dialog is visible, route all keys to it
@@ -1519,6 +1543,20 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 		a.fileDialog = buildOpenRecentDialog(recent)
 		return a, nil
 
+	case MenuActionCreateBackup:
+		a.menubar.Deactivate()
+		return a, a.createManualBackupCmd()
+
+	case MenuActionRestoreBackup:
+		a.menubar.Deactivate()
+		d, backups, err := buildRestoreBackupDialog(a.db.Path())
+		if err != nil {
+			a.err = err
+			return a, nil
+		}
+		a.backupDialog = &backupDialogState{dialog: d, backups: backups}
+		return a, nil
+
 	case MenuActionCloseFile:
 		a.quitting = true
 		return a, tea.Quit
@@ -1710,6 +1748,12 @@ func (a *App) renderLayout() string {
 	// Overlay account dialog if visible
 	if a.acctDialog != nil && a.acctDialog.IsVisible() {
 		overlay := a.acctDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay backup dialog if visible
+	if a.backupDialog != nil && a.backupDialog.dialog.IsVisible() {
+		overlay := a.backupDialog.dialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
@@ -2785,5 +2829,9 @@ func Run(database *db.DB, cfg *config.Config) error {
 	p := tea.NewProgram(app, tea.WithAltScreen())
 
 	_, err := p.Run()
+
+	// Auto-backup on quit (best-effort)
+	createAutoBackupOnQuit(database.Path())
+
 	return err
 }

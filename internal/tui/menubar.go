@@ -17,6 +17,8 @@ const (
 	MenuActionNewFile
 	MenuActionOpenFile
 	MenuActionOpenRecent
+	MenuActionCreateBackup
+	MenuActionRestoreBackup
 	MenuActionCloseFile
 	MenuActionExit
 
@@ -91,6 +93,8 @@ func defaultMenus() []menu {
 				{label: "New File", action: MenuActionNewFile},
 				{label: "Open File", action: MenuActionOpenFile},
 				{label: "Open Recent", action: MenuActionOpenRecent},
+				{label: "Create Backup", action: MenuActionCreateBackup},
+				{label: "Restore from Backup", action: MenuActionRestoreBackup},
 				{label: "Close File", action: MenuActionCloseFile},
 				{label: "Exit", action: MenuActionExit},
 			},
