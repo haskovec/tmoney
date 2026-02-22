@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -158,13 +159,7 @@ func TestBuildCategoryOptions(t *testing.T) {
 	}
 
 	// Check "Food > Groceries" format
-	found := false
-	for _, opt := range options {
-		if opt == "Food > Groceries" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(options, "Food > Groceries")
 	if !found {
 		t.Errorf("expected 'Food > Groceries' in options, got: %v", options)
 	}

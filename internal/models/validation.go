@@ -3,6 +3,7 @@ package models
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -165,10 +166,8 @@ func (v *Validator) Currency(field, value string) *Validator {
 
 // OneOf validates that a string is one of the allowed values.
 func (v *Validator) OneOf(field, value string, allowed []string) *Validator {
-	for _, a := range allowed {
-		if value == a {
-			return v
-		}
+	if slices.Contains(allowed, value) {
+		return v
 	}
 	v.errors.Add(field, fmt.Sprintf("must be one of: %s", strings.Join(allowed, ", ")))
 	return v

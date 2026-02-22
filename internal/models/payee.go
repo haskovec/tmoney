@@ -72,7 +72,7 @@ func (mt MatchType) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface for database retrieval.
-func (mt *MatchType) Scan(value interface{}) error {
+func (mt *MatchType) Scan(value any) error {
 	if value == nil {
 		*mt = ""
 		return nil
@@ -94,9 +94,9 @@ type Payee struct {
 	BaseModel
 
 	// Core properties
-	Name              string     `json:"name"`
-	DefaultCategoryID NullableID `json:"default_category_id,omitempty"`
-	Notes             NullableString `json:"notes,omitempty"`
+	Name              string         `json:"name"`
+	DefaultCategoryID NullableID     `json:"default_category_id"`
+	Notes             NullableString `json:"notes"`
 }
 
 // NewPayee creates a new Payee with generated ID and timestamps.

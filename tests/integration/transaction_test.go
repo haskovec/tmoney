@@ -376,7 +376,7 @@ func TestTransactionCountByAccount(t *testing.T) {
 	}
 
 	// Create some transactions
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		txn := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-10.00"))
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("Failed to create transaction: %v", err)

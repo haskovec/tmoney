@@ -81,7 +81,7 @@ func (f Frequency) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface for database retrieval.
-func (f *Frequency) Scan(value interface{}) error {
+func (f *Frequency) Scan(value any) error {
 	if value == nil {
 		*f = ""
 		return nil
@@ -109,21 +109,21 @@ type ScheduledTransaction struct {
 	NextDate  Date      `json:"next_date"`
 
 	// Schedule properties
-	Interval             int          `json:"interval"`                        // Every N periods (default: 1)
-	EndDate              NullableDate `json:"end_date,omitempty"`              // When schedule ends (null = indefinite)
-	Occurrences          NullableInt  `json:"occurrences,omitempty"`           // Total number of times to repeat
-	OccurrencesRemaining NullableInt  `json:"occurrences_remaining,omitempty"` // Countdown for fixed occurrences
-	DayOfMonth           NullableInt  `json:"day_of_month,omitempty"`          // Specific day (1-31, or -1 for last day)
-	DayOfWeek            NullableInt  `json:"day_of_week,omitempty"`           // Day of week (0=Sunday, 6=Saturday)
+	Interval             int          `json:"interval"`              // Every N periods (default: 1)
+	EndDate              NullableDate `json:"end_date"`              // When schedule ends (null = indefinite)
+	Occurrences          NullableInt  `json:"occurrences"`           // Total number of times to repeat
+	OccurrencesRemaining NullableInt  `json:"occurrences_remaining"` // Countdown for fixed occurrences
+	DayOfMonth           NullableInt  `json:"day_of_month"`          // Specific day (1-31, or -1 for last day)
+	DayOfWeek            NullableInt  `json:"day_of_week"`           // Day of week (0=Sunday, 6=Saturday)
 
 	// Transaction template properties
-	PayeeID    NullableID    `json:"payee_id,omitempty"`
-	CategoryID NullableID    `json:"category_id,omitempty"`
-	Amount     NullableMoney `json:"amount,omitempty"` // Null if variable amount
-	Memo       NullableString `json:"memo,omitempty"`
+	PayeeID    NullableID     `json:"payee_id"`
+	CategoryID NullableID     `json:"category_id"`
+	Amount     NullableMoney  `json:"amount"` // Null if variable amount
+	Memo       NullableString `json:"memo"`
 
 	// Variable amount estimation
-	AmountEstimateCount NullableInt `json:"amount_estimate_count,omitempty"` // Use average of last N transactions
+	AmountEstimateCount NullableInt `json:"amount_estimate_count"` // Use average of last N transactions
 }
 
 // NewScheduledTransaction creates a new ScheduledTransaction with required properties.

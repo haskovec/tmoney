@@ -488,7 +488,7 @@ func (r *PayeeRepository) listAllAliases() ([]*models.Alias, error) {
 }
 
 // queryAliasesWithArgs executes a query with arguments and returns a slice of aliases.
-func (r *PayeeRepository) queryAliasesWithArgs(query string, args ...interface{}) ([]*models.Alias, error) {
+func (r *PayeeRepository) queryAliasesWithArgs(query string, args ...any) ([]*models.Alias, error) {
 	rows, err := r.db.Conn().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query aliases: %w", err)

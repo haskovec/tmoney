@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/alpacahq/alpacadecimal"
-	"github.com/google/uuid"
 	"github.com/duckdb/duckdb-go/v2"
+	"github.com/google/uuid"
 )
 
 // ID represents a unique identifier for model entities.
@@ -64,7 +64,7 @@ func (id ID) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface for database retrieval.
-func (id *ID) Scan(value interface{}) error {
+func (id *ID) Scan(value any) error {
 	if value == nil {
 		*id = NilID
 		return nil
@@ -213,7 +213,7 @@ func (m Money) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface for database retrieval.
-func (m *Money) Scan(value interface{}) error {
+func (m *Money) Scan(value any) error {
 	if value == nil {
 		*m = ZeroMoney
 		return nil
@@ -323,7 +323,7 @@ func (q Quantity) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface for database retrieval.
-func (q *Quantity) Scan(value interface{}) error {
+func (q *Quantity) Scan(value any) error {
 	if value == nil {
 		*q = ZeroQuantity
 		return nil
@@ -418,7 +418,7 @@ func (ts Timestamp) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface for database retrieval.
-func (ts *Timestamp) Scan(value interface{}) error {
+func (ts *Timestamp) Scan(value any) error {
 	if value == nil {
 		*ts = ZeroTimestamp
 		return nil
@@ -553,7 +553,7 @@ func (d Date) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface for database retrieval.
-func (d *Date) Scan(value interface{}) error {
+func (d *Date) Scan(value any) error {
 	if value == nil {
 		*d = ZeroDate
 		return nil
@@ -595,7 +595,7 @@ func (n NullableID) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface.
-func (n *NullableID) Scan(value interface{}) error {
+func (n *NullableID) Scan(value any) error {
 	if value == nil {
 		n.ID = NilID
 		n.Valid = false
@@ -620,7 +620,7 @@ func (n NullableMoney) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface.
-func (n *NullableMoney) Scan(value interface{}) error {
+func (n *NullableMoney) Scan(value any) error {
 	if value == nil {
 		n.Money = ZeroMoney
 		n.Valid = false
@@ -651,7 +651,7 @@ func (n NullableDate) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface.
-func (n *NullableDate) Scan(value interface{}) error {
+func (n *NullableDate) Scan(value any) error {
 	if value == nil {
 		n.Date = ZeroDate
 		n.Valid = false

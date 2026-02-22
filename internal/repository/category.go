@@ -116,7 +116,7 @@ func (r *CategoryRepository) GetByID(id models.ID) (*models.Category, error) {
 // Pass nil for parentID to search for top-level categories.
 func (r *CategoryRepository) GetByName(name string, parentID *models.ID) (*models.Category, error) {
 	var query string
-	var args []interface{}
+	var args []any
 
 	if parentID != nil {
 		query = `
@@ -125,7 +125,7 @@ func (r *CategoryRepository) GetByName(name string, parentID *models.ID) (*model
 			FROM categories
 			WHERE name = ? AND CAST(parent_id AS VARCHAR) = ?
 		`
-		args = []interface{}{name, parentID.String()}
+		args = []any{name, parentID.String()}
 	} else {
 		query = `
 			SELECT id, name, parent_id, type, system_category,
@@ -133,7 +133,7 @@ func (r *CategoryRepository) GetByName(name string, parentID *models.ID) (*model
 			FROM categories
 			WHERE name = ? AND parent_id IS NULL
 		`
-		args = []interface{}{name}
+		args = []any{name}
 	}
 
 	category := &models.Category{}
@@ -376,7 +376,7 @@ func (r *CategoryRepository) queryCategories(query string) ([]*models.Category, 
 }
 
 // queryCategoriesWithArgs executes a query with arguments and returns a slice of categories.
-func (r *CategoryRepository) queryCategoriesWithArgs(query string, args ...interface{}) ([]*models.Category, error) {
+func (r *CategoryRepository) queryCategoriesWithArgs(query string, args ...any) ([]*models.Category, error) {
 	rows, err := r.db.Conn().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query categories: %w", err)
@@ -414,7 +414,7 @@ func (r *CategoryRepository) scanCategories(rows *sql.Rows) ([]*models.Category,
 }
 
 // nullID converts NullableID to a value for database insertion.
-func nullID(nid models.NullableID) interface{} {
+func nullID(nid models.NullableID) any {
 	if nid.Valid {
 		return nid.ID.String()
 	}

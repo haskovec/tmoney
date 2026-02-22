@@ -355,10 +355,7 @@ func (t *Table) ScrollInfo(viewportHeight int) string {
 		return ""
 	}
 	start := t.scrollOffset + 1
-	end := t.scrollOffset + viewportHeight
-	if end > len(t.rows) {
-		end = len(t.rows)
-	}
+	end := min(t.scrollOffset+viewportHeight, len(t.rows))
 	return fmt.Sprintf("%d-%d of %d", start, end, len(t.rows))
 }
 

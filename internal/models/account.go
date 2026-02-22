@@ -103,7 +103,7 @@ func (at AccountType) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface for database retrieval.
-func (at *AccountType) Scan(value interface{}) error {
+func (at *AccountType) Scan(value any) error {
 	if value == nil {
 		*at = ""
 		return nil
@@ -133,13 +133,13 @@ type Account struct {
 	Active         bool        `json:"active"`
 
 	// Optional properties
-	Institution   NullableString `json:"institution,omitempty"`
-	AccountNumber NullableString `json:"account_number,omitempty"`
-	Notes         NullableString `json:"notes,omitempty"`
+	Institution   NullableString `json:"institution"`
+	AccountNumber NullableString `json:"account_number"`
+	Notes         NullableString `json:"notes"`
 
 	// Type-specific optional properties
-	CreditLimit  NullableMoney `json:"credit_limit,omitempty"`  // For credit_card accounts
-	InterestRate NullableMoney `json:"interest_rate,omitempty"` // For loan accounts (percentage)
+	CreditLimit  NullableMoney `json:"credit_limit"`  // For credit_card accounts
+	InterestRate NullableMoney `json:"interest_rate"` // For loan accounts (percentage)
 }
 
 // NewAccount creates a new Account with generated ID and timestamps.

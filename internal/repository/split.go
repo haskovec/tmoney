@@ -297,7 +297,7 @@ func (r *SplitRepository) ValidateSplitsAgainstTransaction(transactionID models.
 }
 
 // querySplitsWithArgs executes a query with arguments and returns a slice of splits.
-func (r *SplitRepository) querySplitsWithArgs(query string, args ...interface{}) ([]*models.Split, error) {
+func (r *SplitRepository) querySplitsWithArgs(query string, args ...any) ([]*models.Split, error) {
 	rows, err := r.db.Conn().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query splits: %w", err)

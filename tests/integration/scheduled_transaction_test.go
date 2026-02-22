@@ -699,7 +699,7 @@ func TestScheduledTransactionIsCompleted(t *testing.T) {
 		}
 
 		// Post twice to exhaust occurrences
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			_, err := svc.Post(st.ID, nil)
 			if err != nil {
 				t.Fatalf("Failed to post occurrence %d: %v", i+1, err)

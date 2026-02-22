@@ -16,8 +16,8 @@ type shortcutEntry struct {
 
 // shortcutSection represents a group of related keyboard shortcuts.
 type shortcutSection struct {
-	Title    string
-	Entries  []shortcutEntry
+	Title   string
+	Entries []shortcutEntry
 }
 
 // globalShortcuts returns the global keyboard shortcuts.
@@ -214,10 +214,7 @@ func renderHelpOverlay(styles Styles, view View, screenWidth, screenHeight int) 
 	dialogOverhead := 4 // border and padding
 	headerLines := 2    // title + separator (already in lines)
 	footerLines := 3    // blank + separator + close hint
-	maxContentLines := screenHeight - dialogOverhead - headerLines - footerLines
-	if maxContentLines < 5 {
-		maxContentLines = 5
-	}
+	maxContentLines := max(screenHeight-dialogOverhead-headerLines-footerLines, 5)
 
 	contentLineCount := 0
 	for i, section := range sections {
@@ -257,10 +254,7 @@ func renderHelpOverlay(styles Styles, view View, screenWidth, screenHeight int) 
 
 	// Final height clamp to ensure we don't exceed screen
 	renderedLines := strings.Split(rendered, "\n")
-	maxHeight := screenHeight - 2
-	if maxHeight < 5 {
-		maxHeight = 5
-	}
+	maxHeight := max(screenHeight-2, 5)
 	if len(renderedLines) > maxHeight {
 		renderedLines = renderedLines[:maxHeight]
 	}

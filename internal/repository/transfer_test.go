@@ -844,7 +844,7 @@ func TestTransferRepository_CountByAccount(t *testing.T) {
 		}
 
 		// Create multiple transfers
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			amount := models.MustNewMoney("100.00")
 			date := models.NewDate(now.Year(), now.Month(), now.Day())
 			pair := models.NewTransferPair(checking.ID, savings.ID, date, amount)

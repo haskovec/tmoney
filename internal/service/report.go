@@ -58,7 +58,7 @@ func (s *ReportService) netWorthAsOf(asOf time.Time, includeClosed bool) (*model
 		FROM accounts a
 		WHERE 1=1
 	`
-	args := []interface{}{asOf}
+	args := []any{asOf}
 
 	if !includeClosed {
 		query += " AND a.active = TRUE"

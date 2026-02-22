@@ -63,7 +63,7 @@ func (ct CategoryType) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface for database retrieval.
-func (ct *CategoryType) Scan(value interface{}) error {
+func (ct *CategoryType) Scan(value any) error {
 	if value == nil {
 		*ct = ""
 		return nil
@@ -86,7 +86,7 @@ type Category struct {
 
 	// Core properties
 	Name     string       `json:"name"`
-	ParentID NullableID   `json:"parent_id,omitempty"`
+	ParentID NullableID   `json:"parent_id"`
 	Type     CategoryType `json:"type"`
 	IsSystem bool         `json:"is_system"`
 }

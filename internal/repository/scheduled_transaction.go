@@ -378,7 +378,7 @@ func (r *ScheduledTransactionRepository) queryScheduledTransactions(query string
 }
 
 // queryScheduledTransactionsWithArgs executes a query with arguments and returns a slice of scheduled transactions.
-func (r *ScheduledTransactionRepository) queryScheduledTransactionsWithArgs(query string, args ...interface{}) ([]*models.ScheduledTransaction, error) {
+func (r *ScheduledTransactionRepository) queryScheduledTransactionsWithArgs(query string, args ...any) ([]*models.ScheduledTransaction, error) {
 	rows, err := r.db.Conn().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query scheduled transactions: %w", err)
@@ -427,7 +427,7 @@ func (r *ScheduledTransactionRepository) scanScheduledTransactions(rows *sql.Row
 }
 
 // nullDate converts a NullableDate for database insertion.
-func nullDate(nd models.NullableDate) interface{} {
+func nullDate(nd models.NullableDate) any {
 	if !nd.Valid {
 		return nil
 	}
@@ -435,7 +435,7 @@ func nullDate(nd models.NullableDate) interface{} {
 }
 
 // nullInt converts a NullableInt for database insertion.
-func nullInt(ni models.NullableInt) interface{} {
+func nullInt(ni models.NullableInt) any {
 	if !ni.Valid {
 		return nil
 	}

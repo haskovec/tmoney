@@ -2,6 +2,7 @@ package service
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/db"
@@ -381,13 +382,7 @@ func TestDefaultCategoriesContent(t *testing.T) {
 
 		expectedChildren := []string{"Salary", "Bonus", "Interest", "Dividends"}
 		for _, expected := range expectedChildren {
-			found := false
-			for _, child := range income.Children {
-				if child == expected {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(income.Children, expected)
 			if !found {
 				t.Errorf("Income missing expected subcategory: %q", expected)
 			}
@@ -409,13 +404,7 @@ func TestDefaultCategoriesContent(t *testing.T) {
 
 		expectedChildren := []string{"Groceries", "Dining Out"}
 		for _, expected := range expectedChildren {
-			found := false
-			for _, child := range food.Children {
-				if child == expected {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(food.Children, expected)
 			if !found {
 				t.Errorf("Food missing expected subcategory: %q", expected)
 			}

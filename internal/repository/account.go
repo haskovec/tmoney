@@ -289,7 +289,7 @@ func (r *AccountRepository) Delete(id models.ID) error {
 }
 
 // nullString converts NullableString to a value for database insertion.
-func nullString(ns models.NullableString) interface{} {
+func nullString(ns models.NullableString) any {
 	if ns.Valid {
 		return ns.String
 	}
@@ -297,7 +297,7 @@ func nullString(ns models.NullableString) interface{} {
 }
 
 // nullMoney converts NullableMoney to a value for database insertion.
-func nullMoney(nm models.NullableMoney) interface{} {
+func nullMoney(nm models.NullableMoney) any {
 	if nm.Valid {
 		return nm.Money.String()
 	}

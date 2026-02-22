@@ -45,17 +45,17 @@ type cliOptions struct {
 	skipScheduled string // --skip-scheduled <id>
 
 	// Add account options
-	addAccount        bool   // --add-account flag
-	acctName          string // --name <name>
-	acctType          string // --type <type>
-	acctCurrency      string // --currency <code>
-	acctOpeningBal    string // --opening-balance <value>
-	acctOpeningDate   string // --opening-date <YYYY-MM-DD>
-	acctInstitution   string // --institution <name>
-	acctNumber        string // --account-number <number>
-	acctNotes         string // --notes <text>
-	acctCreditLimit   string // --credit-limit <value>
-	acctInterestRate  string // --interest-rate <value>
+	addAccount       bool   // --add-account flag
+	acctName         string // --name <name>
+	acctType         string // --type <type>
+	acctCurrency     string // --currency <code>
+	acctOpeningBal   string // --opening-balance <value>
+	acctOpeningDate  string // --opening-date <YYYY-MM-DD>
+	acctInstitution  string // --institution <name>
+	acctNumber       string // --account-number <number>
+	acctNotes        string // --notes <text>
+	acctCreditLimit  string // --credit-limit <value>
+	acctInterestRate string // --interest-rate <value>
 
 	// Void transaction
 	voidTxn string // --void <txn-id>
@@ -64,11 +64,11 @@ type cliOptions struct {
 	txStatus string // --status <uncleared|cleared|reconciled|void>
 
 	// Report options
-	report       bool   // --report flag
-	reportType   string // net-worth or spending
-	reportMonth  string // --month YYYY-MM for spending
-	reportYear   int    // --year YYYY for spending
-	reportAsOf   string // --as-of YYYY-MM-DD for net-worth
+	report      bool   // --report flag
+	reportType  string // net-worth or spending
+	reportMonth string // --month YYYY-MM for spending
+	reportYear  int    // --year YYYY for spending
+	reportAsOf  string // --as-of YYYY-MM-DD for net-worth
 
 	// Backup/restore options
 	backup      bool   // --backup flag
@@ -326,16 +326,16 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.restore = args[i]
 		default:
 			// Check for --flag=value formats
-			if strings.HasPrefix(arg, "--file=") {
-				opts.file = strings.TrimPrefix(arg, "--file=")
-			} else if strings.HasPrefix(arg, "-f=") {
-				opts.file = strings.TrimPrefix(arg, "-f=")
-			} else if strings.HasPrefix(arg, "--create=") {
-				opts.createDB = strings.TrimPrefix(arg, "--create=")
-			} else if strings.HasPrefix(arg, "--account=") {
-				opts.accountName = strings.TrimPrefix(arg, "--account=")
-			} else if strings.HasPrefix(arg, "--limit=") {
-				limitStr := strings.TrimPrefix(arg, "--limit=")
+			if after, ok := strings.CutPrefix(arg, "--file="); ok {
+				opts.file = after
+			} else if after, ok := strings.CutPrefix(arg, "-f="); ok {
+				opts.file = after
+			} else if after, ok := strings.CutPrefix(arg, "--create="); ok {
+				opts.createDB = after
+			} else if after, ok := strings.CutPrefix(arg, "--account="); ok {
+				opts.accountName = after
+			} else if after, ok := strings.CutPrefix(arg, "--limit="); ok {
+				limitStr := after
 				limit, err := strconv.Atoi(limitStr)
 				if err != nil {
 					return nil, nil, fmt.Errorf("--limit requires a valid number: %w", err)
@@ -344,74 +344,74 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 					return nil, nil, fmt.Errorf("--limit must be a positive number")
 				}
 				opts.limit = limit
-			} else if strings.HasPrefix(arg, "--from=") {
-				val := strings.TrimPrefix(arg, "--from=")
+			} else if after, ok := strings.CutPrefix(arg, "--from="); ok {
+				val := after
 				opts.fromDate = val
 				opts.fromAccount = val
-			} else if strings.HasPrefix(arg, "--to=") {
-				val := strings.TrimPrefix(arg, "--to=")
+			} else if after, ok := strings.CutPrefix(arg, "--to="); ok {
+				val := after
 				opts.toDate = val
 				opts.toAccount = val
-			} else if strings.HasPrefix(arg, "--amount=") {
-				opts.txAmount = strings.TrimPrefix(arg, "--amount=")
-			} else if strings.HasPrefix(arg, "--payee=") {
-				opts.txPayee = strings.TrimPrefix(arg, "--payee=")
-			} else if strings.HasPrefix(arg, "--category=") {
-				opts.txCategory = strings.TrimPrefix(arg, "--category=")
-			} else if strings.HasPrefix(arg, "--date=") {
-				opts.txDate = strings.TrimPrefix(arg, "--date=")
-			} else if strings.HasPrefix(arg, "--memo=") {
-				opts.txMemo = strings.TrimPrefix(arg, "--memo=")
-			} else if strings.HasPrefix(arg, "--name=") {
-				opts.acctName = strings.TrimPrefix(arg, "--name=")
-			} else if strings.HasPrefix(arg, "--type=") {
-				opts.acctType = strings.TrimPrefix(arg, "--type=")
-			} else if strings.HasPrefix(arg, "--currency=") {
-				opts.acctCurrency = strings.TrimPrefix(arg, "--currency=")
-			} else if strings.HasPrefix(arg, "--opening-balance=") {
-				opts.acctOpeningBal = strings.TrimPrefix(arg, "--opening-balance=")
-			} else if strings.HasPrefix(arg, "--opening-date=") {
-				opts.acctOpeningDate = strings.TrimPrefix(arg, "--opening-date=")
-			} else if strings.HasPrefix(arg, "--institution=") {
-				opts.acctInstitution = strings.TrimPrefix(arg, "--institution=")
-			} else if strings.HasPrefix(arg, "--account-number=") {
-				opts.acctNumber = strings.TrimPrefix(arg, "--account-number=")
-			} else if strings.HasPrefix(arg, "--notes=") {
-				opts.acctNotes = strings.TrimPrefix(arg, "--notes=")
-			} else if strings.HasPrefix(arg, "--credit-limit=") {
-				opts.acctCreditLimit = strings.TrimPrefix(arg, "--credit-limit=")
-			} else if strings.HasPrefix(arg, "--interest-rate=") {
-				opts.acctInterestRate = strings.TrimPrefix(arg, "--interest-rate=")
-			} else if strings.HasPrefix(arg, "--void=") {
-				opts.voidTxn = strings.TrimPrefix(arg, "--void=")
-			} else if strings.HasPrefix(arg, "--status=") {
-				opts.txStatus = strings.TrimPrefix(arg, "--status=")
-			} else if strings.HasPrefix(arg, "--search=") {
-				opts.searchTerm = strings.TrimPrefix(arg, "--search=")
-			} else if strings.HasPrefix(arg, "--min=") {
-				opts.minAmount = strings.TrimPrefix(arg, "--min=")
-			} else if strings.HasPrefix(arg, "--max=") {
-				opts.maxAmount = strings.TrimPrefix(arg, "--max=")
-			} else if strings.HasPrefix(arg, "--post-scheduled=") {
-				opts.postScheduled = strings.TrimPrefix(arg, "--post-scheduled=")
-			} else if strings.HasPrefix(arg, "--skip-scheduled=") {
-				opts.skipScheduled = strings.TrimPrefix(arg, "--skip-scheduled=")
+			} else if after, ok := strings.CutPrefix(arg, "--amount="); ok {
+				opts.txAmount = after
+			} else if after, ok := strings.CutPrefix(arg, "--payee="); ok {
+				opts.txPayee = after
+			} else if after, ok := strings.CutPrefix(arg, "--category="); ok {
+				opts.txCategory = after
+			} else if after, ok := strings.CutPrefix(arg, "--date="); ok {
+				opts.txDate = after
+			} else if after, ok := strings.CutPrefix(arg, "--memo="); ok {
+				opts.txMemo = after
+			} else if after, ok := strings.CutPrefix(arg, "--name="); ok {
+				opts.acctName = after
+			} else if after, ok := strings.CutPrefix(arg, "--type="); ok {
+				opts.acctType = after
+			} else if after, ok := strings.CutPrefix(arg, "--currency="); ok {
+				opts.acctCurrency = after
+			} else if after, ok := strings.CutPrefix(arg, "--opening-balance="); ok {
+				opts.acctOpeningBal = after
+			} else if after, ok := strings.CutPrefix(arg, "--opening-date="); ok {
+				opts.acctOpeningDate = after
+			} else if after, ok := strings.CutPrefix(arg, "--institution="); ok {
+				opts.acctInstitution = after
+			} else if after, ok := strings.CutPrefix(arg, "--account-number="); ok {
+				opts.acctNumber = after
+			} else if after, ok := strings.CutPrefix(arg, "--notes="); ok {
+				opts.acctNotes = after
+			} else if after, ok := strings.CutPrefix(arg, "--credit-limit="); ok {
+				opts.acctCreditLimit = after
+			} else if after, ok := strings.CutPrefix(arg, "--interest-rate="); ok {
+				opts.acctInterestRate = after
+			} else if after, ok := strings.CutPrefix(arg, "--void="); ok {
+				opts.voidTxn = after
+			} else if after, ok := strings.CutPrefix(arg, "--status="); ok {
+				opts.txStatus = after
+			} else if after, ok := strings.CutPrefix(arg, "--search="); ok {
+				opts.searchTerm = after
+			} else if after, ok := strings.CutPrefix(arg, "--min="); ok {
+				opts.minAmount = after
+			} else if after, ok := strings.CutPrefix(arg, "--max="); ok {
+				opts.maxAmount = after
+			} else if after, ok := strings.CutPrefix(arg, "--post-scheduled="); ok {
+				opts.postScheduled = after
+			} else if after, ok := strings.CutPrefix(arg, "--skip-scheduled="); ok {
+				opts.skipScheduled = after
 			} else if strings.HasPrefix(arg, "--report=") {
 				opts.report = true
 				opts.reportType = strings.TrimPrefix(arg, "--report=")
-			} else if strings.HasPrefix(arg, "--month=") {
-				opts.reportMonth = strings.TrimPrefix(arg, "--month=")
-			} else if strings.HasPrefix(arg, "--year=") {
-				yearStr := strings.TrimPrefix(arg, "--year=")
+			} else if after, ok := strings.CutPrefix(arg, "--month="); ok {
+				opts.reportMonth = after
+			} else if after, ok := strings.CutPrefix(arg, "--year="); ok {
+				yearStr := after
 				year, err := strconv.Atoi(yearStr)
 				if err != nil {
 					return nil, nil, fmt.Errorf("--year requires a valid year: %w", err)
 				}
 				opts.reportYear = year
-			} else if strings.HasPrefix(arg, "--as-of=") {
-				opts.reportAsOf = strings.TrimPrefix(arg, "--as-of=")
-			} else if strings.HasPrefix(arg, "--restore=") {
-				opts.restore = strings.TrimPrefix(arg, "--restore=")
+			} else if after, ok := strings.CutPrefix(arg, "--as-of="); ok {
+				opts.reportAsOf = after
+			} else if after, ok := strings.CutPrefix(arg, "--restore="); ok {
+				opts.restore = after
 			} else {
 				remaining = append(remaining, arg)
 			}

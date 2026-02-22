@@ -131,7 +131,7 @@ func TestAddRecentFile_CapsAtMax(t *testing.T) {
 	cfg := &Config{}
 
 	// Add 12 files
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		cfg.AddRecentFile(filepath.Join("/tmp", string(rune('a'+i))+".tdb"))
 	}
 

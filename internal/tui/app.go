@@ -1040,16 +1040,10 @@ func (a *App) handleRegisterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "end" || msg.String() == "G":
 		a.table.MoveToBottom()
 	case msg.String() == "pgup":
-		tableHeight := a.height - 6
-		if tableHeight < 1 {
-			tableHeight = 1
-		}
+		tableHeight := max(a.height-6, 1)
 		a.table.PageUp(tableHeight)
 	case msg.String() == "pgdown":
-		tableHeight := a.height - 6
-		if tableHeight < 1 {
-			tableHeight = 1
-		}
+		tableHeight := max(a.height-6, 1)
 		a.table.PageDown(tableHeight)
 	case msg.String() == "c":
 		return a.toggleTransactionStatus()
@@ -1257,16 +1251,10 @@ func (a *App) handleScheduledKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "end" || msg.String() == "G":
 		a.scheduledTable.MoveToBottom()
 	case msg.String() == "pgup":
-		tableHeight := a.height - 6
-		if tableHeight < 1 {
-			tableHeight = 1
-		}
+		tableHeight := max(a.height-6, 1)
 		a.scheduledTable.PageUp(tableHeight)
 	case msg.String() == "pgdown":
-		tableHeight := a.height - 6
-		if tableHeight < 1 {
-			tableHeight = 1
-		}
+		tableHeight := max(a.height-6, 1)
 		a.scheduledTable.PageDown(tableHeight)
 	case key.Matches(msg, a.keys.Enter):
 		return a.postSelectedScheduled()
@@ -1833,18 +1821,12 @@ func (a *App) renderDashboard() string {
 	contentWidth := a.styles.ContentWidth()
 	dateStr := time.Now().Format("Jan 2, 2006")
 	titleText := "DASHBOARD"
-	padding := contentWidth - lipgloss.Width(titleText) - lipgloss.Width(dateStr) - 4
-	if padding < 1 {
-		padding = 1
-	}
+	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(dateStr)-4, 1)
 	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render(dateStr)
 	sections = append(sections, titleRow)
 
 	// Separator
-	sepWidth := contentWidth - 4
-	if sepWidth < 1 {
-		sepWidth = 1
-	}
+	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
 	// Net worth display
@@ -1877,10 +1859,9 @@ func (a *App) renderDashboard() string {
 
 // renderAssetLiabilityColumns renders the assets and liabilities side by side.
 func (a *App) renderAssetLiabilityColumns(report *models.NetWorthReport, totalWidth int) string {
-	colWidth := (totalWidth - 6) / 2 // Leave gap between columns
-	if colWidth < 20 {
-		colWidth = 20
-	}
+	colWidth := max(
+		// Leave gap between columns
+		(totalWidth-6)/2, 20)
 
 	// Build assets column
 	assetsLines := []string{a.styles.SectionHead.Render(padRight("ASSETS", colWidth))}
@@ -1968,10 +1949,7 @@ func (a *App) renderDashboardScheduled() string {
 	}
 
 	// Upcoming items (limit to 5)
-	limit := 5
-	if len(upcoming) < limit {
-		limit = len(upcoming)
-	}
+	limit := min(len(upcoming), 5)
 	for i := 0; i < limit; i++ {
 		lines = append(lines, a.formatScheduledItem(upcoming[i], false))
 	}
@@ -2172,15 +2150,11 @@ func (a *App) renderRegister() string {
 		balStr = "Bal: " + formatDashboardMoney(a.register.balance.CurrentBalance)
 	}
 	// Truncate account name if it would overflow available space
-	maxNameWidth := contentWidth - lipgloss.Width(balStr) - 6 // 4 padding + 2 gap
-	if maxNameWidth < 10 {
-		maxNameWidth = 10
-	}
+	maxNameWidth := max(
+		// 4 padding + 2 gap
+		contentWidth-lipgloss.Width(balStr)-6, 10)
 	acctName = truncate(acctName, maxNameWidth)
-	padding := contentWidth - lipgloss.Width(acctName) - lipgloss.Width(balStr) - 4
-	if padding < 1 {
-		padding = 1
-	}
+	padding := max(contentWidth-lipgloss.Width(acctName)-lipgloss.Width(balStr)-4, 1)
 
 	balStyle := a.styles.Positive
 	if a.register.balance != nil && a.register.balance.CurrentBalance.IsNegative() {
@@ -2190,10 +2164,7 @@ func (a *App) renderRegister() string {
 	sections = append(sections, titleRow)
 
 	// Separator
-	sepWidth := contentWidth - 4
-	if sepWidth < 1 {
-		sepWidth = 1
-	}
+	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
 	// Table
@@ -2201,16 +2172,10 @@ func (a *App) renderRegister() string {
 	statusBarHeight := 1
 	titleHeight := 2   // title + separator
 	paddingHeight := 2 // top/bottom padding
-	tableHeight := a.height - headerHeight - statusBarHeight - titleHeight - paddingHeight
-	if tableHeight < 1 {
-		tableHeight = 1
-	}
+	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight, 1)
 
 	if a.table != nil {
-		tableWidth := contentWidth - 4
-		if tableWidth < 1 {
-			tableWidth = 1
-		}
+		tableWidth := max(contentWidth-4, 1)
 		sections = append(sections, a.table.Render(a.styles, tableWidth, tableHeight))
 		if info := a.table.ScrollInfo(tableHeight - 1); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
@@ -2245,10 +2210,7 @@ func (a *App) renderScheduled() string {
 	if a.scheduled.dueCount > 0 {
 		countText = fmt.Sprintf("%d due", a.scheduled.dueCount)
 	}
-	padding := contentWidth - lipgloss.Width(titleText) - lipgloss.Width(countText) - 4
-	if padding < 1 {
-		padding = 1
-	}
+	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(countText)-4, 1)
 	titleRow := a.styles.Title.Render(titleText)
 	if countText != "" {
 		titleRow += strings.Repeat(" ", padding) + a.styles.Alert.Render(countText)
@@ -2256,10 +2218,7 @@ func (a *App) renderScheduled() string {
 	sections = append(sections, titleRow)
 
 	// Separator
-	sepWidth := contentWidth - 4
-	if sepWidth < 1 {
-		sepWidth = 1
-	}
+	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
 	if len(a.scheduled.allTxns) == 0 {
@@ -2277,16 +2236,10 @@ func (a *App) renderScheduled() string {
 	statusBarHeight := 1
 	titleHeight := 2   // title + separator
 	paddingHeight := 2 // top/bottom padding
-	tableHeight := a.height - headerHeight - statusBarHeight - titleHeight - paddingHeight
-	if tableHeight < 1 {
-		tableHeight = 1
-	}
+	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight, 1)
 
 	if a.scheduledTable != nil {
-		tableWidth := contentWidth - 4
-		if tableWidth < 1 {
-			tableWidth = 1
-		}
+		tableWidth := max(contentWidth-4, 1)
 		sections = append(sections, a.scheduledTable.Render(a.styles, tableWidth, tableHeight))
 		if info := a.scheduledTable.ScrollInfo(tableHeight - 1); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
@@ -2404,18 +2357,12 @@ func (a *App) renderNetWorthReport() string {
 	// Title row: NET WORTH REPORT + date
 	dateStr := nw.AsOfDate.Format("Jan 2, 2006")
 	titleText := "NET WORTH REPORT"
-	padding := contentWidth - lipgloss.Width(titleText) - lipgloss.Width(dateStr) - 4
-	if padding < 1 {
-		padding = 1
-	}
+	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(dateStr)-4, 1)
 	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render("As of: "+dateStr)
 	sections = append(sections, titleRow)
 
 	// Separator
-	sepWidth := contentWidth - 4
-	if sepWidth < 1 {
-		sepWidth = 1
-	}
+	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("═", sepWidth)))
 
 	// Net worth summary
@@ -2457,18 +2404,12 @@ func (a *App) renderSpendingReport() string {
 	// Title row
 	titleText := "SPENDING BY CATEGORY"
 	periodText := sr.Period
-	padding := contentWidth - lipgloss.Width(titleText) - lipgloss.Width(periodText) - 4
-	if padding < 1 {
-		padding = 1
-	}
+	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(periodText)-4, 1)
 	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Bold.Render(periodText)
 	sections = append(sections, titleRow)
 
 	// Separator
-	sepWidth := contentWidth - 4
-	if sepWidth < 1 {
-		sepWidth = 1
-	}
+	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("═", sepWidth)))
 
 	if len(sr.Categories) == 0 {
@@ -2476,14 +2417,10 @@ func (a *App) renderSpendingReport() string {
 		sections = append(sections, a.styles.Muted.Render("  No spending data for this period"))
 	} else {
 		// Column header
-		tableWidth := contentWidth - 4
-		if tableWidth < 1 {
-			tableWidth = 1
-		}
-		barWidth := tableWidth - 42 // Reserve space for name(20), amount(12), percent(8), gaps(2)
-		if barWidth < 4 {
-			barWidth = 4
-		}
+		tableWidth := max(contentWidth-4, 1)
+		barWidth := max(
+			// Reserve space for name(20), amount(12), percent(8), gaps(2)
+			tableWidth-42, 4)
 
 		headerLine := fmt.Sprintf("  %-20s %12s %7s  %s", "Category", "Amount", "% Total", "")
 		sections = append(sections, a.styles.TableHeader.Render(headerLine))
@@ -2582,10 +2519,7 @@ func renderSpendingBar(percentage float64, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
-	filled := int(math.Round(percentage / 100.0 * float64(maxWidth)))
-	if filled > maxWidth {
-		filled = maxWidth
-	}
+	filled := min(int(math.Round(percentage/100.0*float64(maxWidth))), maxWidth)
 	if filled < 0 {
 		filled = 0
 	}
@@ -2667,12 +2601,12 @@ type registerLoadedMsg struct {
 
 // scheduledViewData holds the loaded data for the scheduled transactions view.
 type scheduledViewData struct {
-	dueTxns      []*models.ScheduledTransaction
-	upcomingTxns []*models.ScheduledTransaction
-	allTxns      []*models.ScheduledTransaction // combined: due first, then upcoming
-	dueCount     int                            // number of due items (index boundary)
-	payeeNames   map[models.ID]string
-	accountNames map[models.ID]string
+	dueTxns       []*models.ScheduledTransaction
+	upcomingTxns  []*models.ScheduledTransaction
+	allTxns       []*models.ScheduledTransaction // combined: due first, then upcoming
+	dueCount      int                            // number of due items (index boundary)
+	payeeNames    map[models.ID]string
+	accountNames  map[models.ID]string
 	categoryNames map[models.ID]string
 }
 

@@ -651,7 +651,7 @@ func TestSplitRepository_CountByTransaction(t *testing.T) {
 		}
 
 		// Create splits
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			split := models.NewSplit(txn.ID, category.ID, models.MustNewMoney("-33.33"))
 			if err := splitRepo.Create(split); err != nil {
 				t.Fatalf("Create split error = %v", err)
@@ -690,7 +690,7 @@ func TestSplitRepository_CountByCategory(t *testing.T) {
 		}
 
 		// Create multiple transactions with splits in this category
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			txn := models.NewTransaction(account.ID, models.NewDate(now.Year(), now.Month(), now.Day()), models.MustNewMoney("-50.00"))
 			if err := txnRepo.Create(txn); err != nil {
 				t.Fatalf("Create transaction error = %v", err)

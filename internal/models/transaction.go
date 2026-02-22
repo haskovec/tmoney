@@ -87,7 +87,7 @@ func (ts TransactionStatus) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface for database retrieval.
-func (ts *TransactionStatus) Scan(value interface{}) error {
+func (ts *TransactionStatus) Scan(value any) error {
 	if value == nil {
 		*ts = ""
 		return nil
@@ -115,14 +115,14 @@ type Transaction struct {
 	Status    TransactionStatus `json:"status"`
 
 	// Optional properties
-	PayeeID     NullableID     `json:"payee_id,omitempty"`
-	CategoryID  NullableID     `json:"category_id,omitempty"`
-	Memo        NullableString `json:"memo,omitempty"`
-	CheckNumber NullableString `json:"check_number,omitempty"`
+	PayeeID     NullableID     `json:"payee_id"`
+	CategoryID  NullableID     `json:"category_id"`
+	Memo        NullableString `json:"memo"`
+	CheckNumber NullableString `json:"check_number"`
 
 	// Transfer properties (for linked transfers between accounts)
-	TransferID        NullableID `json:"transfer_id,omitempty"`
-	TransferAccountID NullableID `json:"transfer_account_id,omitempty"`
+	TransferID        NullableID `json:"transfer_id"`
+	TransferAccountID NullableID `json:"transfer_account_id"`
 }
 
 // NewTransaction creates a new Transaction with generated ID and timestamps.
@@ -338,7 +338,7 @@ type Split struct {
 	Amount        Money `json:"amount"`
 
 	// Optional properties
-	Memo NullableString `json:"memo,omitempty"`
+	Memo NullableString `json:"memo"`
 }
 
 // NewSplit creates a new Split with generated ID and timestamps.

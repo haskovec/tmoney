@@ -713,7 +713,7 @@ func TestRun_TransactionsWithLimit(t *testing.T) {
 
 	// Create multiple transactions
 	txnRepo := repository.NewTransactionRepository(database)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		txn := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-10.00"))
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("failed to create transaction %d: %v", i, err)
@@ -3991,11 +3991,10 @@ func TestRun_TransactionsStatusCodeDisplay(t *testing.T) {
 		t.Errorf("output should contain status code C for cleared transaction, got:\n%s", output)
 	}
 	// Should NOT contain full status words in the table
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(output, "\n")
+	for line := range lines {
 		if strings.Contains(line, "Uncleared") && !strings.Contains(line, "Status") {
 			t.Error("output should use status codes, not full words like 'Uncleared'")
 		}
 	}
 }
-

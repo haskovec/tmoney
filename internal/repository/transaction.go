@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/models"
@@ -401,7 +402,7 @@ func (r *TransactionRepository) queryTransactions(query string) ([]*models.Trans
 }
 
 // queryTransactionsWithArgs executes a query with arguments and returns a slice of transactions.
-func (r *TransactionRepository) queryTransactionsWithArgs(query string, args ...interface{}) ([]*models.Transaction, error) {
+func (r *TransactionRepository) queryTransactionsWithArgs(query string, args ...any) ([]*models.Transaction, error) {
 	rows, err := r.db.Conn().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transactions: %w", err)
@@ -481,16 +482,17 @@ func (c *TransactionSearchCriteria) HasFilters() bool {
 // Results are ordered by date descending.
 func (r *TransactionRepository) Search(criteria TransactionSearchCriteria) ([]*models.Transaction, error) {
 	// Build the query dynamically based on criteria
-	query := `
+	var query strings.Builder
+	query.WriteString(`
 		SELECT DISTINCT t.id, t.account_id, t.date, t.amount, t.payee_id, t.category_id,
 			t.memo, t.check_number, t.status, t.transfer_id, t.transfer_account_id,
 			t.created_at, t.updated_at
 		FROM transactions t
-	`
+	`)
 
 	var joins []string
 	var conditions []string
-	var args []interface{}
+	var args []any
 
 	// Join payees table if filtering by payee name
 	if criteria.PayeeName != "" {
@@ -540,22 +542,22 @@ func (r *TransactionRepository) Search(criteria TransactionSearchCriteria) ([]*m
 
 	// Build final query
 	for _, join := range joins {
-		query += " " + join
+		query.WriteString(" " + join)
 	}
 
 	if len(conditions) > 0 {
-		query += " WHERE "
+		query.WriteString(" WHERE ")
 		for i, cond := range conditions {
 			if i > 0 {
-				query += " AND "
+				query.WriteString(" AND ")
 			}
-			query += cond
+			query.WriteString(cond)
 		}
 	}
 
-	query += " ORDER BY t.date DESC, t.created_at DESC"
+	query.WriteString(" ORDER BY t.date DESC, t.created_at DESC")
 
-	return r.queryTransactionsWithArgs(query, args...)
+	return r.queryTransactionsWithArgs(query.String(), args...)
 }
 
 // SearchByPayee finds transactions by partial payee name match (case-insensitive).

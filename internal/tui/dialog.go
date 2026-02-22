@@ -737,7 +737,7 @@ func (d *Dialog) renderSelectFieldContent(_ Styles, field *Field, focused bool, 
 	}
 	opt = truncateRunes(opt, maxOptWidth)
 	if focused {
-		return lipgloss.NewStyle().Reverse(true).Render(" " + opt + " ") + " ▼"
+		return lipgloss.NewStyle().Reverse(true).Render(" "+opt+" ") + " ▼"
 	}
 	return opt + " ▼"
 }
@@ -750,10 +750,7 @@ func (d *Dialog) renderRadioFieldContent(styles Styles, field *Field, focused bo
 	// Each option has "( ) " prefix (4 chars) + gap of 2 between items
 	gaps := (numOpts - 1) * 2
 	bulletOverhead := numOpts * 4 // "( ) " per option
-	textBudget := available - gaps - bulletOverhead
-	if textBudget < numOpts {
-		textBudget = numOpts
-	}
+	textBudget := max(available-gaps-bulletOverhead, numOpts)
 	perOpt := textBudget / numOpts
 
 	var parts []string
