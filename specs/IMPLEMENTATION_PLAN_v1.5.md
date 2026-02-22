@@ -152,7 +152,7 @@ Spec: `specs/v1.5/backup-restore.md`
 
 Spec: `specs/v1.5/reconciliation.md`
 
-- [ ] **075 - Reconciliation session model and repository**
+- [x] **075 - Reconciliation session model and repository**
   - Reconciliation session struct (id, account_id, statement_date, statement_balance, status)
   - Database migration for reconciliation_sessions table
   - CRUD operations for sessions

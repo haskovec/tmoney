@@ -1950,7 +1950,7 @@ func (a *App) renderDashboardScheduled() string {
 
 	// Upcoming items (limit to 5)
 	limit := min(len(upcoming), 5)
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		lines = append(lines, a.formatScheduledItem(upcoming[i], false))
 	}
 	if len(upcoming) > 5 {
@@ -2519,10 +2519,7 @@ func renderSpendingBar(percentage float64, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
-	filled := min(int(math.Round(percentage/100.0*float64(maxWidth))), maxWidth)
-	if filled < 0 {
-		filled = 0
-	}
+	filled := max(min(int(math.Round(percentage/100.0*float64(maxWidth))), maxWidth), 0)
 	return strings.Repeat("█", filled) + strings.Repeat("░", maxWidth-filled)
 }
 

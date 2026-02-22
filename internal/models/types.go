@@ -580,6 +580,31 @@ func (d *Date) Scan(value any) error {
 	return nil
 }
 
+// NullableTimestamp is a Timestamp that can be null in the database.
+type NullableTimestamp struct {
+	Timestamp Timestamp
+	Valid     bool
+}
+
+// Value implements the driver.Valuer interface.
+func (n NullableTimestamp) Value() (driver.Value, error) {
+	if !n.Valid {
+		return nil, nil
+	}
+	return n.Timestamp.Value()
+}
+
+// Scan implements the sql.Scanner interface.
+func (n *NullableTimestamp) Scan(value any) error {
+	if value == nil {
+		n.Timestamp = ZeroTimestamp
+		n.Valid = false
+		return nil
+	}
+	n.Valid = true
+	return n.Timestamp.Scan(value)
+}
+
 // NullableID is an ID that can be null in the database.
 type NullableID struct {
 	ID    ID

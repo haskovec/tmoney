@@ -17,13 +17,14 @@ type Services struct {
 
 	// Repositories exposed for cases where direct repo access is needed
 	// (e.g. search criteria, category lookups in CLI).
-	AccountRepo      *repository.AccountRepository
-	TransactionRepo  *repository.TransactionRepository
-	SplitRepo        *repository.SplitRepository
-	TransferRepo     *repository.TransferRepository
-	CategoryRepo     *repository.CategoryRepository
-	PayeeRepo        *repository.PayeeRepository
-	ScheduledTxnRepo *repository.ScheduledTransactionRepository
+	AccountRepo          *repository.AccountRepository
+	TransactionRepo      *repository.TransactionRepository
+	SplitRepo            *repository.SplitRepository
+	TransferRepo         *repository.TransferRepository
+	CategoryRepo         *repository.CategoryRepository
+	PayeeRepo            *repository.PayeeRepository
+	ScheduledTxnRepo     *repository.ScheduledTransactionRepository
+	ReconciliationRepo   *repository.ReconciliationRepository
 }
 
 // NewServices creates all repositories and services from a database connection.
@@ -37,6 +38,7 @@ func NewServices(database *db.DB) *Services {
 	categoryRepo := repository.NewCategoryRepository(database)
 	payeeRepo := repository.NewPayeeRepository(database)
 	scheduledRepo := repository.NewScheduledTransactionRepository(database)
+	reconciliationRepo := repository.NewReconciliationRepository(database)
 
 	// Create services
 	accountSvc := NewAccountService(accountRepo, database)
@@ -54,12 +56,13 @@ func NewServices(database *db.DB) *Services {
 		ScheduledTxn: scheduledTxnSvc,
 		Report:       reportSvc,
 
-		AccountRepo:      accountRepo,
-		TransactionRepo:  transactionRepo,
-		SplitRepo:        splitRepo,
-		TransferRepo:     transferRepo,
-		CategoryRepo:     categoryRepo,
-		PayeeRepo:        payeeRepo,
-		ScheduledTxnRepo: scheduledRepo,
+		AccountRepo:        accountRepo,
+		TransactionRepo:    transactionRepo,
+		SplitRepo:          splitRepo,
+		TransferRepo:       transferRepo,
+		CategoryRepo:       categoryRepo,
+		PayeeRepo:          payeeRepo,
+		ScheduledTxnRepo:   scheduledRepo,
+		ReconciliationRepo: reconciliationRepo,
 	}
 }

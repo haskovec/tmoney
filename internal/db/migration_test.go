@@ -140,6 +140,7 @@ func TestMigrate(t *testing.T) {
 			"transaction_splits",
 			"investment_lots",
 			"scheduled_transactions",
+			"reconciliation_sessions",
 		}
 
 		for _, table := range tables {
@@ -503,7 +504,7 @@ func TestMigration002TransactionStatus(t *testing.T) {
 		}
 	})
 
-	t.Run("schema version is 2 after migration", func(t *testing.T) {
+	t.Run("schema version is current after migration", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		dbPath := filepath.Join(tmpDir, "test.tdb")
 
@@ -517,8 +518,8 @@ func TestMigration002TransactionStatus(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SchemaVersion() error = %v", err)
 		}
-		if version != 2 {
-			t.Errorf("Expected schema version 2, got %d", version)
+		if version != CurrentSchemaVersion {
+			t.Errorf("Expected schema version %d, got %d", CurrentSchemaVersion, version)
 		}
 	})
 
@@ -661,6 +662,131 @@ func TestMigrationRollbackOnError(t *testing.T) {
 
 		if version != CurrentSchemaVersion {
 			t.Errorf("Expected version %d after migration, got %d", CurrentSchemaVersion, version)
+		}
+	})
+}
+
+func TestMigration003Reconciliation(t *testing.T) {
+	t.Run("reconciliation_sessions table exists with correct columns", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Create a test account
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		// Insert a reconciliation session
+		_, err = db.Conn().Exec(`
+			INSERT INTO reconciliation_sessions (account_id, statement_date, statement_balance)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-01-31', 5234.56)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert reconciliation session: %v", err)
+		}
+
+		// Verify default status is in_progress
+		var status string
+		err = db.Conn().QueryRow(`SELECT status FROM reconciliation_sessions LIMIT 1`).Scan(&status)
+		if err != nil {
+			t.Fatalf("Failed to query reconciliation session status: %v", err)
+		}
+		if status != "in_progress" {
+			t.Errorf("Expected default status 'in_progress', got %q", status)
+		}
+	})
+
+	t.Run("rejects invalid reconciliation status", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		// Inserting an invalid status should fail due to CHECK constraint
+		_, err = db.Conn().Exec(`
+			INSERT INTO reconciliation_sessions (account_id, statement_date, statement_balance, status)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-01-31', 1000, 'invalid')
+		`)
+		if err == nil {
+			t.Error("Expected error when inserting invalid reconciliation status, but got none")
+		}
+	})
+
+	t.Run("reconciliation session references account via foreign key", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Inserting a session for a non-existent account should fail
+		_, err = db.Conn().Exec(`
+			INSERT INTO reconciliation_sessions (account_id, statement_date, statement_balance)
+			VALUES ('99999999-9999-9999-9999-999999999999', '2024-01-31', 1000)
+		`)
+		if err == nil {
+			t.Error("Expected foreign key error when inserting session for non-existent account")
+		}
+	})
+
+	t.Run("allows completed status with completed_at", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO reconciliation_sessions (account_id, statement_date, statement_balance, status, completed_at)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-01-31', 5234.56, 'completed', CURRENT_TIMESTAMP)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert completed reconciliation session: %v", err)
+		}
+
+		var status string
+		err = db.Conn().QueryRow(`SELECT status FROM reconciliation_sessions WHERE status = 'completed'`).Scan(&status)
+		if err != nil {
+			t.Fatalf("Failed to query completed session: %v", err)
+		}
+		if status != "completed" {
+			t.Errorf("Expected status 'completed', got %q", status)
 		}
 	})
 }
