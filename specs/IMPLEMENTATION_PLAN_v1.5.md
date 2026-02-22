@@ -91,7 +91,7 @@ Spec: `specs/v1.5/undo-redo.md`
   - Category: create, edit, delete, merge (compound)
   - Payee: create, edit, delete, merge (compound)
 
-- [ ] **067 - Undoable commands for scheduled transactions**
+- [x] **067 - Undoable commands for scheduled transactions**
   - Create, edit, delete scheduled transaction
   - PostScheduledCommand (compound: create transaction + advance schedule)
   - SkipScheduledCommand
