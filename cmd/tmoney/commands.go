@@ -1178,6 +1178,218 @@ func runRestore(opts *cliOptions, w io.Writer) error {
 	return nil
 }
 
+// runStartReconcile starts a reconciliation session for an account.
+func runStartReconcile(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--start-reconcile requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--start-reconcile requires --account to specify an account")
+	}
+	if opts.statementDate == "" {
+		return fmt.Errorf("--start-reconcile requires --statement-date")
+	}
+	if opts.statementBalance == "" {
+		return fmt.Errorf("--start-reconcile requires --statement-balance")
+	}
+
+	// Parse statement date
+	stmtDate, err := models.ParseDate(opts.statementDate)
+	if err != nil {
+		return fmt.Errorf("invalid --statement-date: %w", err)
+	}
+
+	// Parse statement balance
+	stmtBalance, err := models.NewMoney(opts.statementBalance)
+	if err != nil {
+		return fmt.Errorf("invalid --statement-balance: %w", err)
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	// Get account by name
+	account, err := svc.Account.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	// Start reconciliation
+	session, err := svc.Reconciliation.StartReconciliation(account.ID, stmtDate, stmtBalance)
+	if err != nil {
+		return fmt.Errorf("failed to start reconciliation: %w", err)
+	}
+
+	// Get candidate transaction count
+	candidates, err := svc.Reconciliation.GetCandidateTransactions(account.ID, stmtDate)
+	if err != nil {
+		return fmt.Errorf("failed to get candidate transactions: %w", err)
+	}
+
+	_ = session // session created successfully
+	fmt.Fprintf(w, "Reconciliation started for %s\n", account.Name)
+	fmt.Fprintf(w, "  Statement date:    %s\n", stmtDate.String())
+	fmt.Fprintf(w, "  Statement balance: %s\n", formatMoney(stmtBalance, account.Currency))
+	fmt.Fprintf(w, "  Unreconciled transactions: %d\n", len(candidates))
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runMarkReconciled marks transactions for reconciliation.
+func runMarkReconciled(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--mark-reconciled requires --file to specify a database")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	// Parse transaction IDs
+	var txnIDs []models.ID
+	for _, idStr := range opts.markReconciled {
+		id, err := models.ParseID(idStr)
+		if err != nil {
+			return fmt.Errorf("invalid transaction ID %q: %w", idStr, err)
+		}
+		txnIDs = append(txnIDs, id)
+	}
+
+	// Get the first transaction to find its account
+	firstTxn, err := svc.TransactionRepo.GetByID(txnIDs[0])
+	if err != nil {
+		return fmt.Errorf("transaction not found: %w", err)
+	}
+
+	// Get active session for this account
+	session, err := svc.Reconciliation.GetActiveSession(firstTxn.AccountID)
+	if err != nil {
+		return fmt.Errorf("failed to get reconciliation session: %w", err)
+	}
+	if session == nil {
+		return fmt.Errorf("no active reconciliation session for this account; use --start-reconcile first")
+	}
+
+	// Calculate cleared total with these transactions marked
+	clearedTotal, err := svc.Reconciliation.CalculateClearedTotal(firstTxn.AccountID, txnIDs)
+	if err != nil {
+		return fmt.Errorf("failed to calculate cleared total: %w", err)
+	}
+
+	difference := session.StatementBalance.Sub(clearedTotal)
+
+	// Get account for currency
+	account, _ := svc.AccountRepo.GetByID(firstTxn.AccountID)
+	currency := "USD"
+	if account != nil {
+		currency = account.Currency
+	}
+
+	fmt.Fprintf(w, "Marked %d transaction(s) for reconciliation\n", len(txnIDs))
+	fmt.Fprintf(w, "  Current difference: %s\n", formatMoney(difference, currency))
+
+	return nil
+}
+
+// runFinishReconcile completes the reconciliation for an account.
+func runFinishReconcile(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--finish-reconcile requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--finish-reconcile requires --account to specify an account")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	// Get account by name
+	account, err := svc.Account.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	// Get active session
+	session, err := svc.Reconciliation.GetActiveSession(account.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get reconciliation session: %w", err)
+	}
+	if session == nil {
+		return fmt.Errorf("no active reconciliation session for %s", account.Name)
+	}
+
+	// Get all candidate transactions to mark as reconciled
+	candidates, err := svc.Reconciliation.GetCandidateTransactions(account.ID, session.StatementDate)
+	if err != nil {
+		return fmt.Errorf("failed to get candidate transactions: %w", err)
+	}
+
+	// Collect all candidate transaction IDs
+	var txnIDs []models.ID
+	for _, txn := range candidates {
+		txnIDs = append(txnIDs, txn.ID)
+	}
+
+	// Finish reconciliation
+	err = svc.Reconciliation.FinishReconciliation(account.ID, txnIDs, opts.reconcileForce)
+	if err != nil {
+		// Check for difference error and provide helpful message
+		if diffErr, ok := err.(*service.ReconciliationDifferenceError); ok {
+			return fmt.Errorf("cannot complete reconciliation. Difference: %s\nUse --mark-reconciled to mark additional transactions, or --force to complete anyway",
+				formatMoney(diffErr.Difference, account.Currency))
+		}
+		return fmt.Errorf("failed to finish reconciliation: %w", err)
+	}
+
+	fmt.Fprintf(w, "Reconciliation completed for %s\n", account.Name)
+	fmt.Fprintf(w, "  Statement date:         %s\n", session.StatementDate.String())
+	fmt.Fprintf(w, "  Transactions reconciled: %d\n", len(txnIDs))
+	fmt.Fprintf(w, "  Balance:                %s\n", formatMoney(session.StatementBalance, account.Currency))
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runReconcileStatus shows the reconciliation status for an account.
+func runReconcileStatus(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--reconcile-status requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--reconcile-status requires --account to specify an account")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	// Get account by name
+	account, err := svc.Account.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	// Get reconciliation status
+	status, err := svc.Reconciliation.GetReconciliationStatus(account.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get reconciliation status: %w", err)
+	}
+
+	printReconcileStatus(w, account, status)
+	return nil
+}
+
 // autoBackupAfterModification creates an auto-backup after a data-modifying CLI command.
 func autoBackupAfterModification(dbPath string) {
 	// Best-effort: don't fail the CLI command if backup fails

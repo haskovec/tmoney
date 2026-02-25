@@ -74,6 +74,15 @@ type cliOptions struct {
 	backup      bool   // --backup flag
 	listBackups bool   // --list-backups flag
 	restore     string // --restore <backup-file>
+
+	// Reconciliation options
+	startReconcile   bool     // --start-reconcile flag
+	markReconciled   []string // --mark-reconciled <txn-id>... (remaining args)
+	finishReconcile  bool     // --finish-reconcile flag
+	reconcileStatus  bool     // --reconcile-status flag
+	reconcileForce   bool     // --force flag (for finish with non-zero diff)
+	statementDate    string   // --statement-date <YYYY-MM-DD>
+	statementBalance string   // --statement-balance <amount>
 }
 
 // parseArgs parses command-line arguments and returns options and remaining args.
@@ -324,6 +333,35 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.restore = args[i]
+		case "--start-reconcile":
+			opts.startReconcile = true
+		case "--finish-reconcile":
+			opts.finishReconcile = true
+		case "--reconcile-status":
+			opts.reconcileStatus = true
+		case "--force":
+			opts.reconcileForce = true
+		case "--statement-date":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--statement-date requires a date argument (YYYY-MM-DD)")
+			}
+			i++
+			opts.statementDate = args[i]
+		case "--statement-balance":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--statement-balance requires an amount argument")
+			}
+			i++
+			opts.statementBalance = args[i]
+		case "--mark-reconciled":
+			// Collect all following non-flag arguments as transaction IDs
+			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+				opts.markReconciled = append(opts.markReconciled, args[i])
+			}
+			if len(opts.markReconciled) == 0 {
+				return nil, nil, fmt.Errorf("--mark-reconciled requires at least one transaction ID")
+			}
 		default:
 			// Check for --flag=value formats
 			if after, ok := strings.CutPrefix(arg, "--file="); ok {
@@ -412,6 +450,10 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.reportAsOf = after
 			} else if after, ok := strings.CutPrefix(arg, "--restore="); ok {
 				opts.restore = after
+			} else if after, ok := strings.CutPrefix(arg, "--statement-date="); ok {
+				opts.statementDate = after
+			} else if after, ok := strings.CutPrefix(arg, "--statement-balance="); ok {
+				opts.statementBalance = after
 			} else {
 				remaining = append(remaining, arg)
 			}

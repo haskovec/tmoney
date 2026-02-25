@@ -92,6 +92,26 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runRestore(opts, stdout)
 	}
 
+	// Handle --start-reconcile
+	if opts.startReconcile {
+		return runStartReconcile(opts, stdout)
+	}
+
+	// Handle --mark-reconciled
+	if len(opts.markReconciled) > 0 {
+		return runMarkReconciled(opts, stdout)
+	}
+
+	// Handle --finish-reconcile
+	if opts.finishReconcile {
+		return runFinishReconcile(opts, stdout)
+	}
+
+	// Handle --reconcile-status
+	if opts.reconcileStatus {
+		return runReconcileStatus(opts, stdout)
+	}
+
 	// Handle --report
 	if opts.report {
 		return runReport(opts, stdout)

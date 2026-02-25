@@ -166,7 +166,7 @@ Spec: `specs/v1.5/reconciliation.md`
   - Get reconciliation status
   - Cleared total calculation (opening_balance + reconciled + checked)
 
-- [ ] **077 - CLI reconciliation commands**
+- [x] **077 - CLI reconciliation commands**
   - `--start-reconcile --account <name> --statement-date <date> --statement-balance <amount>`
   - `--mark-reconciled <txn-id>...`
   - `--finish-reconcile --account <name>` (with `--force` option)

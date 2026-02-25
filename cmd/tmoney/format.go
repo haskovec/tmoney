@@ -431,6 +431,29 @@ func printSpendingReport(w io.Writer, report *models.SpendingReport) {
 	fmt.Fprintf(w, "\n------------------------\nTotal Spending:\t%s\n", formatMoney(report.TotalSpending, "USD"))
 }
 
+// printReconcileStatus prints the reconciliation status for an account.
+func printReconcileStatus(w io.Writer, account *models.Account, status *service.ReconciliationStatus) {
+	fmt.Fprintf(w, "RECONCILIATION STATUS: %s\n", account.Name)
+	fmt.Fprintln(w, strings.Repeat("=", len("RECONCILIATION STATUS: ")+len(account.Name)))
+
+	if status.LastCompletedSession != nil {
+		fmt.Fprintf(w, "Last reconciled:  %s (balance: %s)\n",
+			status.LastCompletedSession.StatementDate.String(),
+			formatMoney(status.LastCompletedSession.StatementBalance, account.Currency))
+	} else {
+		fmt.Fprintln(w, "Last reconciled:  Never")
+	}
+
+	if status.ActiveSession != nil {
+		fmt.Fprintln(w, "Current session:  In progress")
+		fmt.Fprintf(w, "  Statement date:    %s\n", status.ActiveSession.StatementDate.String())
+		fmt.Fprintf(w, "  Statement balance: %s\n", formatMoney(status.ActiveSession.StatementBalance, account.Currency))
+		fmt.Fprintf(w, "  Unreconciled transactions: %d\n", status.CandidateCount)
+	} else {
+		fmt.Fprintln(w, "Current session:  None")
+	}
+}
+
 func printVersion(w io.Writer) {
 	fmt.Fprintf(w, "tmoney version %s\n", Version)
 	fmt.Fprintf(w, "Build time: %s\n", BuildTime)
@@ -525,6 +548,22 @@ Report Commands:
     --year <YYYY>        Report for a specific year
     --from <date>        Start date for custom range (YYYY-MM-DD)
     --to <date>          End date for custom range (YYYY-MM-DD)
+
+Reconciliation Commands:
+  --start-reconcile      Start reconciliation (requires --account, --statement-date,
+                         --statement-balance)
+    --account <name>           Account to reconcile
+    --statement-date <date>    Bank statement date (YYYY-MM-DD)
+    --statement-balance <amt>  Bank statement ending balance
+
+  --mark-reconciled <id>...  Mark transactions for reconciliation (one or more IDs)
+
+  --finish-reconcile     Complete reconciliation (requires --account)
+    --account <name>     Account to finish reconciling
+    --force              Complete even with non-zero difference
+
+  --reconcile-status     Show reconciliation status (requires --account)
+    --account <name>     Account to check status for
 
 Backup/Restore Commands:
   --backup               Create a manual backup of the database

@@ -3998,3 +3998,722 @@ func TestRun_TransactionsStatusCodeDisplay(t *testing.T) {
 		}
 	}
 }
+
+// --- Reconciliation CLI Tests ---
+
+func TestRun_StartReconcileMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--start-reconcile", "--account", "Checking", "--statement-date", "2024-01-31", "--statement-balance", "5000"}, stdout, stderr)
+	if err == nil {
+		t.Error("should fail without --file")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file, got: %v", err)
+	}
+}
+
+func TestRun_StartReconcileMissingAccount(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--start-reconcile", "--file", "test.tdb", "--statement-date", "2024-01-31", "--statement-balance", "5000"}, stdout, stderr)
+	if err == nil {
+		t.Error("should fail without --account")
+	}
+	if !strings.Contains(err.Error(), "requires --account") {
+		t.Errorf("error should mention --account, got: %v", err)
+	}
+}
+
+func TestRun_StartReconcileMissingDate(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--start-reconcile", "--file", "test.tdb", "--account", "Checking", "--statement-balance", "5000"}, stdout, stderr)
+	if err == nil {
+		t.Error("should fail without --statement-date")
+	}
+	if !strings.Contains(err.Error(), "requires --statement-date") {
+		t.Errorf("error should mention --statement-date, got: %v", err)
+	}
+}
+
+func TestRun_StartReconcileMissingBalance(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--start-reconcile", "--file", "test.tdb", "--account", "Checking", "--statement-date", "2024-01-31"}, stdout, stderr)
+	if err == nil {
+		t.Error("should fail without --statement-balance")
+	}
+	if !strings.Contains(err.Error(), "requires --statement-balance") {
+		t.Errorf("error should mention --statement-balance, got: %v", err)
+	}
+}
+
+func TestRun_StartReconcileSuccess(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.MustParseDate("2024-01-01"),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create some transactions
+	txnRepo := repository.NewTransactionRepository(database)
+	txn1 := models.NewTransaction(account.ID, models.MustParseDate("2024-01-05"), models.MustNewMoney("-50.00"))
+	txn2 := models.NewTransaction(account.ID, models.MustParseDate("2024-01-10"), models.MustNewMoney("-100.00"))
+	if err := txnRepo.Create(txn1); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+	if err := txnRepo.Create(txn2); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--start-reconcile",
+		"--file", dbPath,
+		"--account", "Checking",
+		"--statement-date", "2024-01-31",
+		"--statement-balance", "850.00",
+	}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--start-reconcile) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Reconciliation started for Checking") {
+		t.Error("output should confirm reconciliation started")
+	}
+	if !strings.Contains(output, "2024-01-31") {
+		t.Error("output should contain statement date")
+	}
+	if !strings.Contains(output, "$850.00") {
+		t.Error("output should contain statement balance")
+	}
+	if !strings.Contains(output, "Unreconciled transactions: 2") {
+		t.Errorf("output should show 2 unreconciled transactions, got:\n%s", output)
+	}
+}
+
+func TestRun_StartReconcileAccountNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--start-reconcile",
+		"--file", dbPath,
+		"--account", "NonExistent",
+		"--statement-date", "2024-01-31",
+		"--statement-balance", "5000",
+	}, stdout, stderr)
+	if err == nil {
+		t.Error("should fail with nonexistent account")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention account not found, got: %v", err)
+	}
+}
+
+func TestRun_MarkReconciledMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--mark-reconciled", "some-id", "--file", ""}, stdout, stderr)
+	// --mark-reconciled without --file should fail
+	if err == nil {
+		t.Error("should fail without proper --file")
+	}
+}
+
+func TestRun_MarkReconciledNoIDs(t *testing.T) {
+	_, _, err := parseArgs([]string{"--mark-reconciled"})
+	if err == nil {
+		t.Error("--mark-reconciled without IDs should return parse error")
+	}
+	if !strings.Contains(err.Error(), "requires at least one") {
+		t.Errorf("error should mention requiring IDs, got: %v", err)
+	}
+}
+
+func TestRun_FinishReconcileMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--finish-reconcile", "--account", "Checking"}, stdout, stderr)
+	if err == nil {
+		t.Error("should fail without --file")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file, got: %v", err)
+	}
+}
+
+func TestRun_FinishReconcileMissingAccount(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--finish-reconcile", "--file", "test.tdb"}, stdout, stderr)
+	if err == nil {
+		t.Error("should fail without --account")
+	}
+	if !strings.Contains(err.Error(), "requires --account") {
+		t.Errorf("error should mention --account, got: %v", err)
+	}
+}
+
+func TestRun_FinishReconcileNoActiveSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--finish-reconcile", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
+	if err == nil {
+		t.Error("should fail with no active session")
+	}
+	if !strings.Contains(err.Error(), "no active reconciliation") {
+		t.Errorf("error should mention no active session, got: %v", err)
+	}
+}
+
+func TestRun_FinishReconcileSuccess(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create a test account with opening balance 1000
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.MustParseDate("2024-01-01"),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create transactions: -50 and -100 = 850 total balance
+	txnRepo := repository.NewTransactionRepository(database)
+	txn1 := models.NewTransaction(account.ID, models.MustParseDate("2024-01-05"), models.MustNewMoney("-50.00"))
+	txn2 := models.NewTransaction(account.ID, models.MustParseDate("2024-01-10"), models.MustNewMoney("-100.00"))
+	if err := txnRepo.Create(txn1); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+	if err := txnRepo.Create(txn2); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	// Start a reconciliation session
+	reconRepo := repository.NewReconciliationRepository(database)
+	session := models.NewReconciliationSession(
+		account.ID,
+		models.MustParseDate("2024-01-31"),
+		models.MustNewMoney("850.00"),
+	)
+	if err := reconRepo.Create(session); err != nil {
+		t.Fatalf("failed to create reconciliation session: %v", err)
+	}
+
+	database.Close()
+
+	// Finish reconciliation
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--finish-reconcile", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--finish-reconcile) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Reconciliation completed for Checking") {
+		t.Errorf("output should confirm completion, got:\n%s", output)
+	}
+	if !strings.Contains(output, "2024-01-31") {
+		t.Error("output should contain statement date")
+	}
+	if !strings.Contains(output, "$850.00") {
+		t.Error("output should contain balance")
+	}
+
+	// Verify transactions are now reconciled
+	database2, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reopen database: %v", err)
+	}
+	defer database2.Close()
+
+	txnRepo2 := repository.NewTransactionRepository(database2)
+	reconciledTxn1, err := txnRepo2.GetByID(txn1.ID)
+	if err != nil {
+		t.Fatalf("failed to get transaction: %v", err)
+	}
+	if reconciledTxn1.Status != models.TransactionStatusReconciled {
+		t.Errorf("transaction 1 should be reconciled, got %q", reconciledTxn1.Status)
+	}
+
+	reconciledTxn2, err := txnRepo2.GetByID(txn2.ID)
+	if err != nil {
+		t.Fatalf("failed to get transaction: %v", err)
+	}
+	if reconciledTxn2.Status != models.TransactionStatusReconciled {
+		t.Errorf("transaction 2 should be reconciled, got %q", reconciledTxn2.Status)
+	}
+}
+
+func TestRun_FinishReconcileWithDifference(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.MustParseDate("2024-01-01"),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create a transaction: balance is 1000 - 50 = 950
+	txnRepo := repository.NewTransactionRepository(database)
+	txn := models.NewTransaction(account.ID, models.MustParseDate("2024-01-05"), models.MustNewMoney("-50.00"))
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	// Create session with wrong balance (should cause difference)
+	reconRepo := repository.NewReconciliationRepository(database)
+	session := models.NewReconciliationSession(
+		account.ID,
+		models.MustParseDate("2024-01-31"),
+		models.MustNewMoney("5000.00"), // Wrong balance
+	)
+	if err := reconRepo.Create(session); err != nil {
+		t.Fatalf("failed to create reconciliation session: %v", err)
+	}
+
+	database.Close()
+
+	// Finish should fail due to difference
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--finish-reconcile", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
+	if err == nil {
+		t.Error("should fail with non-zero difference")
+	}
+	if !strings.Contains(err.Error(), "Difference") {
+		t.Errorf("error should mention difference, got: %v", err)
+	}
+}
+
+func TestRun_FinishReconcileWithForce(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.MustParseDate("2024-01-01"),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	txnRepo := repository.NewTransactionRepository(database)
+	txn := models.NewTransaction(account.ID, models.MustParseDate("2024-01-05"), models.MustNewMoney("-50.00"))
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	reconRepo := repository.NewReconciliationRepository(database)
+	session := models.NewReconciliationSession(
+		account.ID,
+		models.MustParseDate("2024-01-31"),
+		models.MustNewMoney("5000.00"), // Wrong balance
+	)
+	if err := reconRepo.Create(session); err != nil {
+		t.Fatalf("failed to create reconciliation session: %v", err)
+	}
+
+	database.Close()
+
+	// Finish with --force should succeed
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--finish-reconcile", "--file", dbPath, "--account", "Checking", "--force"}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--finish-reconcile --force) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Reconciliation completed for Checking") {
+		t.Errorf("output should confirm completion, got:\n%s", output)
+	}
+}
+
+func TestRun_ReconcileStatusMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--reconcile-status", "--account", "Checking"}, stdout, stderr)
+	if err == nil {
+		t.Error("should fail without --file")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file, got: %v", err)
+	}
+}
+
+func TestRun_ReconcileStatusMissingAccount(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--reconcile-status", "--file", "test.tdb"}, stdout, stderr)
+	if err == nil {
+		t.Error("should fail without --account")
+	}
+	if !strings.Contains(err.Error(), "requires --account") {
+		t.Errorf("error should mention --account, got: %v", err)
+	}
+}
+
+func TestRun_ReconcileStatusNoSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.Today(),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--reconcile-status", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--reconcile-status) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "RECONCILIATION STATUS: Checking") {
+		t.Error("output should contain status header")
+	}
+	if !strings.Contains(output, "Last reconciled:  Never") {
+		t.Errorf("output should show 'Never' for last reconciled, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Current session:  None") {
+		t.Errorf("output should show 'None' for current session, got:\n%s", output)
+	}
+}
+
+func TestRun_ReconcileStatusWithActiveSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.MustParseDate("2024-01-01"),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create an active reconciliation session
+	reconRepo := repository.NewReconciliationRepository(database)
+	session := models.NewReconciliationSession(
+		account.ID,
+		models.MustParseDate("2024-01-31"),
+		models.MustNewMoney("5000.00"),
+	)
+	if err := reconRepo.Create(session); err != nil {
+		t.Fatalf("failed to create reconciliation session: %v", err)
+	}
+
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{"--reconcile-status", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--reconcile-status) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "RECONCILIATION STATUS: Checking") {
+		t.Error("output should contain status header")
+	}
+	if !strings.Contains(output, "In progress") {
+		t.Errorf("output should show 'In progress', got:\n%s", output)
+	}
+	if !strings.Contains(output, "2024-01-31") {
+		t.Error("output should contain statement date")
+	}
+	if !strings.Contains(output, "$5000.00") {
+		t.Errorf("output should contain statement balance, got:\n%s", output)
+	}
+}
+
+func TestRun_FullReconciliationWorkflow(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create account with opening balance 1000
+	acctRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount(
+		"Checking",
+		models.AccountTypeChecking,
+		"USD",
+		models.MustNewMoney("1000.00"),
+		models.MustParseDate("2024-01-01"),
+	)
+	if err := acctRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create transactions: -200 and +500 = 1300 total
+	txnRepo := repository.NewTransactionRepository(database)
+	txn1 := models.NewTransaction(account.ID, models.MustParseDate("2024-01-05"), models.MustNewMoney("-200.00"))
+	txn2 := models.NewTransaction(account.ID, models.MustParseDate("2024-01-15"), models.MustNewMoney("500.00"))
+	if err := txnRepo.Create(txn1); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+	if err := txnRepo.Create(txn2); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+
+	database.Close()
+
+	// Step 1: Start reconciliation
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--start-reconcile",
+		"--file", dbPath,
+		"--account", "Checking",
+		"--statement-date", "2024-01-31",
+		"--statement-balance", "1300.00",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("start reconcile failed: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Reconciliation started") {
+		t.Error("should confirm reconciliation started")
+	}
+
+	// Step 2: Check status
+	stdout.Reset()
+	err = run([]string{
+		"--reconcile-status",
+		"--file", dbPath,
+		"--account", "Checking",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("reconcile status failed: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "In progress") {
+		t.Error("status should show in progress")
+	}
+
+	// Step 3: Finish reconciliation
+	stdout.Reset()
+	err = run([]string{
+		"--finish-reconcile",
+		"--file", dbPath,
+		"--account", "Checking",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("finish reconcile failed: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Reconciliation completed") {
+		t.Error("should confirm reconciliation completed")
+	}
+
+	// Step 4: Verify status shows completed
+	stdout.Reset()
+	err = run([]string{
+		"--reconcile-status",
+		"--file", dbPath,
+		"--account", "Checking",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("reconcile status after completion failed: %v", err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "Last reconciled:  2024-01-31") {
+		t.Errorf("status should show last reconciled date, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Current session:  None") {
+		t.Errorf("status should show no current session, got:\n%s", output)
+	}
+}
+
+func TestParseArgs_ReconciliationFlags(t *testing.T) {
+	// Test --start-reconcile flag parsing
+	opts, _, err := parseArgs([]string{
+		"--start-reconcile",
+		"--file", "test.tdb",
+		"--account", "Checking",
+		"--statement-date", "2024-01-31",
+		"--statement-balance", "5000.00",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs failed: %v", err)
+	}
+	if !opts.startReconcile {
+		t.Error("startReconcile should be true")
+	}
+	if opts.statementDate != "2024-01-31" {
+		t.Errorf("statementDate should be 2024-01-31, got %q", opts.statementDate)
+	}
+	if opts.statementBalance != "5000.00" {
+		t.Errorf("statementBalance should be 5000.00, got %q", opts.statementBalance)
+	}
+
+	// Test --finish-reconcile with --force
+	opts, _, err = parseArgs([]string{
+		"--finish-reconcile",
+		"--force",
+		"--file", "test.tdb",
+		"--account", "Checking",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs failed: %v", err)
+	}
+	if !opts.finishReconcile {
+		t.Error("finishReconcile should be true")
+	}
+	if !opts.reconcileForce {
+		t.Error("reconcileForce should be true")
+	}
+
+	// Test --mark-reconciled with multiple IDs
+	opts, _, err = parseArgs([]string{
+		"--mark-reconciled", "id1", "id2", "id3",
+		"--file", "test.tdb",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs failed: %v", err)
+	}
+	if len(opts.markReconciled) != 3 {
+		t.Errorf("markReconciled should have 3 IDs, got %d", len(opts.markReconciled))
+	}
+
+	// Test --reconcile-status
+	opts, _, err = parseArgs([]string{
+		"--reconcile-status",
+		"--file", "test.tdb",
+		"--account", "Checking",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs failed: %v", err)
+	}
+	if !opts.reconcileStatus {
+		t.Error("reconcileStatus should be true")
+	}
+
+	// Test = form for statement-date and statement-balance
+	opts, _, err = parseArgs([]string{
+		"--start-reconcile",
+		"--statement-date=2024-02-28",
+		"--statement-balance=1234.56",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs failed: %v", err)
+	}
+	if opts.statementDate != "2024-02-28" {
+		t.Errorf("statementDate should be 2024-02-28, got %q", opts.statementDate)
+	}
+	if opts.statementBalance != "1234.56" {
+		t.Errorf("statementBalance should be 1234.56, got %q", opts.statementBalance)
+	}
+}
