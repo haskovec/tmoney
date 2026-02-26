@@ -82,14 +82,14 @@ func TestShortcutSections(t *testing.T) {
 
 func TestAllShortcutSections(t *testing.T) {
 	sections := allShortcutSections()
-	if len(sections) != 7 {
-		t.Errorf("expected 7 sections, got %d", len(sections))
+	if len(sections) != 8 {
+		t.Errorf("expected 8 sections, got %d", len(sections))
 	}
 
 	// Verify ordering
 	expectedTitles := []string{
 		"Global", "Navigation", "Dashboard", "Register",
-		"Scheduled Transactions", "Reports", "Dialogs",
+		"Scheduled Transactions", "Reports", "Reconciliation", "Dialogs",
 	}
 	for i, s := range sections {
 		if s.Title != expectedTitles[i] {
@@ -107,6 +107,7 @@ func TestViewShortcutSections(t *testing.T) {
 		{ViewRegister, "Register"},
 		{ViewScheduled, "Scheduled Transactions"},
 		{ViewReports, "Reports"},
+		{ViewReconciliation, "Reconciliation"},
 	}
 
 	for _, tt := range tests {

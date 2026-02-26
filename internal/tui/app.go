@@ -32,6 +32,8 @@ const (
 	ViewScheduled
 	// ViewReports shows reports.
 	ViewReports
+	// ViewReconciliation shows the reconciliation view.
+	ViewReconciliation
 )
 
 // String returns the display name of the view.
@@ -45,6 +47,8 @@ func (v View) String() string {
 		return "Scheduled"
 	case ViewReports:
 		return "Reports"
+	case ViewReconciliation:
+		return "Reconciliation"
 	default:
 		return "Unknown"
 	}
@@ -81,8 +85,9 @@ type App struct {
 	transactionSvc  *service.TransactionService
 	categorySvc     *service.CategoryService
 	payeeSvc        *service.PayeeService
-	scheduledTxnSvc *service.ScheduledTransactionService
-	reportSvc       *service.ReportService
+	scheduledTxnSvc    *service.ScheduledTransactionService
+	reportSvc          *service.ReportService
+	reconciliationSvc  *service.ReconciliationService
 
 	// Dashboard data (loaded asynchronously)
 	dashboard *dashboardData
@@ -121,6 +126,11 @@ type App struct {
 
 	// Reports view state
 	reports *reportsViewData
+
+	// Reconciliation view state
+	reconciliation      *reconciliationViewData
+	reconciliationTable *Table
+	reconDialog         *Dialog
 
 	// File dialog state
 	fileDialog     *Dialog
@@ -328,8 +338,9 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		transactionSvc:  svc.Transaction,
 		categorySvc:     svc.Category,
 		payeeSvc:        svc.Payee,
-		scheduledTxnSvc: svc.ScheduledTxn,
-		reportSvc:       svc.Report,
+		scheduledTxnSvc:   svc.ScheduledTxn,
+		reportSvc:         svc.Report,
+		reconciliationSvc: svc.Reconciliation,
 	}
 }
 
@@ -812,6 +823,47 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 		return model, cmd
 
+	case reconciliationStartedMsg:
+		// Session started, switch to reconciliation view and load data
+		a.switchView(ViewReconciliation)
+		return a, a.loadReconciliationData(msg.session, msg.account)
+
+	case reconciliationLoadedMsg:
+		a.reconciliation = msg.data
+		a.buildReconciliationTable()
+		return a, nil
+
+	case reconciliationClearedTotalMsg:
+		if a.reconciliation != nil {
+			a.reconciliation.clearedTotal = msg.clearedTotal
+		}
+		return a, nil
+
+	case reconciliationFinishedMsg:
+		acctName := ""
+		if a.reconciliation != nil {
+			acctName = a.reconciliation.account.Name
+		}
+		a.reconciliation = nil
+		a.reconciliationTable = nil
+		a.switchView(ViewRegister)
+		a.statusbar.AddNotification(
+			fmt.Sprintf("Reconciliation completed for %s", acctName),
+			NotificationInfo,
+		)
+		accountID := a.sidebar.SelectedAccountID()
+		return a, tea.Batch(
+			a.loadRegisterData(accountID),
+			a.loadSidebarData(),
+		)
+
+	case reconciliationCancelledMsg:
+		a.reconciliation = nil
+		a.reconciliationTable = nil
+		a.switchView(ViewRegister)
+		a.statusbar.AddNotification("Reconciliation cancelled", NotificationInfo)
+		return a, nil
+
 	case accountDeletedMsg:
 		a.switchView(ViewDashboard)
 		return a, tea.Batch(a.loadSidebarData(), a.loadDashboardData())
@@ -908,6 +960,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handleAccountDialogKey(msg)
 	}
 
+	// If reconciliation start dialog is visible, route all keys to it
+	if a.reconDialog != nil && a.reconDialog.IsVisible() {
+		return a.handleReconDialogKey(msg)
+	}
+
 	// Undo/redo key bindings (handled before menus since they should
 	// work from any non-dialog context)
 	switch {
@@ -942,6 +999,20 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If menu bar is active, route all keys to menu handling
 	if a.menubar.IsActive() {
 		return a.handleMenuKeys(msg)
+	}
+
+	// In reconciliation view, only allow quit, help, and view-specific keys
+	// Don't allow view switching or generic escape (handled by reconciliation keys)
+	if a.currentView == ViewReconciliation {
+		switch {
+		case key.Matches(msg, a.keys.Quit):
+			a.quitting = true
+			return a, tea.Quit
+		case key.Matches(msg, a.keys.Help):
+			a.showHelp = true
+			return a, nil
+		}
+		return a.handleReconciliationKeys(msg)
 	}
 
 	// Global key bindings
@@ -992,6 +1063,8 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handleScheduledKeys(msg)
 	case ViewReports:
 		return a.handleReportsKeys(msg)
+	case ViewReconciliation:
+		return a.handleReconciliationKeys(msg)
 	}
 
 	return a, nil
@@ -1584,6 +1657,13 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 			return a, a.deleteSelectedAccount()
 		}
 
+	case MenuActionReconcileAccount:
+		a.menubar.Deactivate()
+		if a.sidebar.SelectedAccountID() != models.NilID {
+			a.showStartReconciliationDialog()
+		}
+		return a, nil
+
 	case MenuActionNewTransaction:
 		if a.currentView == ViewRegister {
 			return a, a.loadTransactionDialogData()
@@ -1656,6 +1736,12 @@ func (a *App) switchView(v View) {
 				a.sidebar.SetFocused(false)
 				if a.table != nil {
 					a.table.SetFocused(false)
+				}
+			case ViewReconciliation:
+				// Reconciliation is full-screen, no sidebar
+				a.sidebar.SetFocused(false)
+				if a.reconciliationTable != nil {
+					a.reconciliationTable.SetFocused(true)
 				}
 			}
 		}
@@ -1751,6 +1837,12 @@ func (a *App) renderLayout() string {
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
+	// Overlay reconciliation start dialog if visible
+	if a.reconDialog != nil && a.reconDialog.IsVisible() {
+		overlay := a.reconDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
 	// Overlay confirmation dialog if visible
 	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
 		overlay := a.confirmDialog.Render(a.styles)
@@ -1783,8 +1875,18 @@ func (a *App) renderContent(height int) string {
 		viewContent = a.renderScheduled()
 	case ViewReports:
 		viewContent = a.renderReports()
+	case ViewReconciliation:
+		viewContent = a.renderReconciliation()
 	default:
 		viewContent = "Unknown view"
+	}
+
+	// Reconciliation view is full-screen (no sidebar)
+	if a.currentView == ViewReconciliation {
+		return a.styles.Content.
+			Width(a.width).
+			Height(height).
+			Render(viewContent)
 	}
 
 	sidebarWidth := a.styles.SidebarWidth()
@@ -2541,6 +2643,8 @@ func (a *App) getKeyHints() string {
 		return "↑↓ navigate  enter post  s skip  n new  e edit  d delete  esc back  " + common
 	case ViewReports:
 		return "←→ period  n net worth  s spending  y year  m month  esc back  " + common
+	case ViewReconciliation:
+		return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help"
 	default:
 		return common
 	}

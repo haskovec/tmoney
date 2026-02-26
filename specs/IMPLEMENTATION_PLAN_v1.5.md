@@ -172,7 +172,7 @@ Spec: `specs/v1.5/reconciliation.md`
   - `--finish-reconcile --account <name>` (with `--force` option)
   - `--reconcile-status --account <name>`
 
-- [ ] **078 - TUI reconciliation view**
+- [x] **078 - TUI reconciliation view**
   - Dedicated full-screen reconciliation view
   - Start reconciliation dialog (statement date + ending balance)
   - Transaction list with checkboxes
