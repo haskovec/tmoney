@@ -300,3 +300,45 @@ func (s *ReconciliationService) GetActiveSession(accountID models.ID) (*models.R
 func (s *ReconciliationService) GetLastCompletedSession(accountID models.ID) (*models.ReconciliationSession, error) {
 	return s.reconRepo.GetLastCompletedByAccountID(accountID)
 }
+
+// ReopenSession reverts a completed reconciliation session back to in_progress.
+// Used by the undo system to reverse a FinishReconciliation operation.
+func (s *ReconciliationService) ReopenSession(sessionID models.ID) error {
+	session, err := s.reconRepo.GetByID(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get reconciliation session: %w", err)
+	}
+
+	if !session.IsCompleted() {
+		return fmt.Errorf("session %s is not completed; cannot reopen", sessionID.String())
+	}
+
+	session.Status = models.ReconciliationStatusInProgress
+	session.CompletedAt = models.NullableTimestamp{}
+	session.Touch()
+
+	return s.reconRepo.Update(session)
+}
+
+// RestoreTransactionStatuses restores transactions to their previous statuses.
+// Used by the undo system to reverse transaction status changes from reconciliation.
+// Only reconciled transactions can be restored.
+func (s *ReconciliationService) RestoreTransactionStatuses(statuses map[models.ID]models.TransactionStatus) error {
+	for txnID, prevStatus := range statuses {
+		txn, err := s.txnRepo.GetByID(txnID)
+		if err != nil {
+			return fmt.Errorf("failed to get transaction %s: %w", txnID.String(), err)
+		}
+
+		if !txn.IsReconciled() {
+			continue
+		}
+
+		txn.SetStatus(prevStatus)
+		if err := s.txnRepo.Update(txn); err != nil {
+			return fmt.Errorf("failed to restore transaction %s status: %w", txnID.String(), err)
+		}
+	}
+
+	return nil
+}

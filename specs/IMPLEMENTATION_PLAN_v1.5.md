@@ -179,12 +179,12 @@ Spec: `specs/v1.5/reconciliation.md`
   - Sticky footer: statement balance, cleared total, difference, count
   - Keyboard: Space toggle, Enter finish, Esc cancel, a check-all, u uncheck-all
 
-- [ ] **079 - Reconciliation undo integration**
+- [x] **079 - Reconciliation undo integration**
   - ReconcileCommand (compound: update N transaction statuses)
   - Un-reconcile undoes the entire reconciliation session
   - Wire through UndoManager
 
-- [ ] **080 - Tests for reconciliation**
+- [x] **080 - Tests for reconciliation**
   - Unit tests for reconciliation service (start, mark, finish, cancel)
   - Unit tests for balance calculations
   - Unit tests for edge cases (non-zero difference, force finish, closed account)

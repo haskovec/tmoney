@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // reconciliationViewData holds the loaded data for the reconciliation view.
@@ -492,7 +491,7 @@ func (a *App) finishReconciliation() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	if a.reconciliationSvc == nil {
+	if a.reconciliationSvc == nil || a.undoManager == nil {
 		return a, nil
 	}
 
@@ -500,12 +499,10 @@ func (a *App) finishReconciliation() (tea.Model, tea.Cmd) {
 	txnIDs := a.getCheckedTransactionIDs()
 
 	return a, func() tea.Msg {
-		err := a.reconciliationSvc.FinishReconciliation(accountID, txnIDs, false)
-		if err != nil {
-			var diffErr *service.ReconciliationDifferenceError
-			if errors.As(err, &diffErr) {
-				return errMsg{err: fmt.Errorf("reconciliation difference: %s", formatDashboardMoney(diffErr.Difference))}
-			}
+		cmd := undo.NewFinishReconciliationCommand(
+			a.reconciliationSvc, a.transactionSvc, accountID, txnIDs,
+		)
+		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to finish reconciliation: %w", err)}
 		}
 		return reconciliationFinishedMsg{}

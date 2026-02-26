@@ -987,3 +987,172 @@ func TestReconciliationService_EdgeCases(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// ReopenSession Tests
+// =============================================================================
+
+func TestReconciliationService_ReopenSession(t *testing.T) {
+	t.Run("reopens completed session", func(t *testing.T) {
+		svc, txnSvc, accountRepo := createTestReconciliationService(t)
+		account := createTestCheckingAccount(t, accountRepo, "Checking", "1000.00")
+
+		txn := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-200.00"))
+		if err := txnSvc.Create(txn); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		session, err := svc.StartReconciliation(account.ID, models.NewDate(2024, 1, 31), models.MustNewMoney("800.00"))
+		if err != nil {
+			t.Fatalf("StartReconciliation() error = %v", err)
+		}
+
+		if err := svc.FinishReconciliation(account.ID, []models.ID{txn.ID}, false); err != nil {
+			t.Fatalf("FinishReconciliation() error = %v", err)
+		}
+
+		// Reopen the session
+		if err := svc.ReopenSession(session.ID); err != nil {
+			t.Fatalf("ReopenSession() error = %v", err)
+		}
+
+		// Session should now be active again
+		active, err := svc.GetActiveSession(account.ID)
+		if err != nil {
+			t.Fatalf("GetActiveSession() error = %v", err)
+		}
+		if active == nil {
+			t.Fatal("Expected active session after reopen")
+		}
+		if active.ID != session.ID {
+			t.Error("Active session should be the reopened session")
+		}
+		if !active.IsInProgress() {
+			t.Error("Session should be in_progress after reopen")
+		}
+		if active.CompletedAt.Valid {
+			t.Error("CompletedAt should be cleared after reopen")
+		}
+	})
+
+	t.Run("rejects non-completed session", func(t *testing.T) {
+		svc, _, accountRepo := createTestReconciliationService(t)
+		account := createTestCheckingAccount(t, accountRepo, "Checking", "1000.00")
+
+		session, err := svc.StartReconciliation(account.ID, models.NewDate(2024, 1, 31), models.MustNewMoney("1000.00"))
+		if err != nil {
+			t.Fatalf("StartReconciliation() error = %v", err)
+		}
+
+		err = svc.ReopenSession(session.ID)
+		if err == nil {
+			t.Fatal("ReopenSession() should fail for in_progress session")
+		}
+	})
+
+	t.Run("rejects non-existent session", func(t *testing.T) {
+		svc, _, _ := createTestReconciliationService(t)
+
+		err := svc.ReopenSession(models.NewID())
+		if err == nil {
+			t.Fatal("ReopenSession() should fail for non-existent session")
+		}
+	})
+}
+
+// =============================================================================
+// RestoreTransactionStatuses Tests
+// =============================================================================
+
+func TestReconciliationService_RestoreTransactionStatuses(t *testing.T) {
+	t.Run("restores reconciled transactions to previous status", func(t *testing.T) {
+		svc, txnSvc, accountRepo := createTestReconciliationService(t)
+		account := createTestCheckingAccount(t, accountRepo, "Checking", "1000.00")
+
+		// Create an uncleared transaction and a cleared transaction
+		txnUncleared := models.NewTransaction(account.ID, models.NewDate(2024, 1, 5), models.MustNewMoney("-100.00"))
+		if err := txnSvc.Create(txnUncleared); err != nil {
+			t.Fatalf("Create txnUncleared: %v", err)
+		}
+
+		txnCleared := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-200.00"))
+		if err := txnSvc.Create(txnCleared); err != nil {
+			t.Fatalf("Create txnCleared: %v", err)
+		}
+		if err := txnSvc.ClearTransaction(txnCleared.ID); err != nil {
+			t.Fatalf("Clear txnCleared: %v", err)
+		}
+
+		// Reconcile both
+		_, err := svc.StartReconciliation(account.ID, models.NewDate(2024, 1, 31), models.MustNewMoney("700.00"))
+		if err != nil {
+			t.Fatalf("StartReconciliation() error = %v", err)
+		}
+		if err := svc.FinishReconciliation(account.ID, []models.ID{txnUncleared.ID, txnCleared.ID}, false); err != nil {
+			t.Fatalf("FinishReconciliation() error = %v", err)
+		}
+
+		// Restore to previous statuses
+		statuses := map[models.ID]models.TransactionStatus{
+			txnUncleared.ID: models.TransactionStatusUncleared,
+			txnCleared.ID:   models.TransactionStatusCleared,
+		}
+		if err := svc.RestoreTransactionStatuses(statuses); err != nil {
+			t.Fatalf("RestoreTransactionStatuses() error = %v", err)
+		}
+
+		// Verify uncleared is restored
+		updated1, err := txnSvc.GetByID(txnUncleared.ID)
+		if err != nil {
+			t.Fatalf("GetByID txnUncleared: %v", err)
+		}
+		if updated1.Status != models.TransactionStatusUncleared {
+			t.Errorf("txnUncleared status = %s, want uncleared", updated1.Status)
+		}
+
+		// Verify cleared is restored
+		updated2, err := txnSvc.GetByID(txnCleared.ID)
+		if err != nil {
+			t.Fatalf("GetByID txnCleared: %v", err)
+		}
+		if updated2.Status != models.TransactionStatusCleared {
+			t.Errorf("txnCleared status = %s, want cleared", updated2.Status)
+		}
+	})
+
+	t.Run("skips non-reconciled transactions", func(t *testing.T) {
+		svc, txnSvc, accountRepo := createTestReconciliationService(t)
+		account := createTestCheckingAccount(t, accountRepo, "Checking", "1000.00")
+
+		txn := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-50.00"))
+		if err := txnSvc.Create(txn); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		// Try to restore an already-uncleared transaction (should be a no-op)
+		statuses := map[models.ID]models.TransactionStatus{
+			txn.ID: models.TransactionStatusUncleared,
+		}
+		if err := svc.RestoreTransactionStatuses(statuses); err != nil {
+			t.Fatalf("RestoreTransactionStatuses() error = %v", err)
+		}
+
+		// Transaction should still be uncleared
+		updated, err := txnSvc.GetByID(txn.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if updated.Status != models.TransactionStatusUncleared {
+			t.Errorf("Status = %s, want uncleared", updated.Status)
+		}
+	})
+
+	t.Run("handles empty status map", func(t *testing.T) {
+		svc, _, _ := createTestReconciliationService(t)
+
+		err := svc.RestoreTransactionStatuses(map[models.ID]models.TransactionStatus{})
+		if err != nil {
+			t.Fatalf("RestoreTransactionStatuses() with empty map error = %v", err)
+		}
+	})
+}
