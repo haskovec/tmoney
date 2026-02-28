@@ -68,8 +68,9 @@ func (r *ScheduledTransactionRepository) Create(st *models.ScheduledTransaction)
 			id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, day_of_week, next_date, occurrences_remaining,
-			amount_estimate_count, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			amount_estimate_count, auto_post, post_lead_days,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = r.db.Conn().Exec(query,
@@ -89,6 +90,8 @@ func (r *ScheduledTransactionRepository) Create(st *models.ScheduledTransaction)
 		st.NextDate,
 		nullInt(st.OccurrencesRemaining),
 		nullInt(st.AmountEstimateCount),
+		st.AutoPost,
+		st.PostLeadDays,
 		st.CreatedAt,
 		st.UpdatedAt,
 	)
@@ -105,7 +108,8 @@ func (r *ScheduledTransactionRepository) GetByID(id models.ID) (*models.Schedule
 		SELECT id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, day_of_week, next_date, occurrences_remaining,
-			amount_estimate_count, created_at, updated_at
+			amount_estimate_count, auto_post, post_lead_days,
+			created_at, updated_at
 		FROM scheduled_transactions
 		WHERE CAST(id AS VARCHAR) = ?
 	`
@@ -128,6 +132,8 @@ func (r *ScheduledTransactionRepository) GetByID(id models.ID) (*models.Schedule
 		&st.NextDate,
 		&st.OccurrencesRemaining,
 		&st.AmountEstimateCount,
+		&st.AutoPost,
+		&st.PostLeadDays,
 		&st.CreatedAt,
 		&st.UpdatedAt,
 	)
@@ -147,7 +153,8 @@ func (r *ScheduledTransactionRepository) List() ([]*models.ScheduledTransaction,
 		SELECT id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, day_of_week, next_date, occurrences_remaining,
-			amount_estimate_count, created_at, updated_at
+			amount_estimate_count, auto_post, post_lead_days,
+			created_at, updated_at
 		FROM scheduled_transactions
 		ORDER BY next_date ASC, created_at ASC
 	`
@@ -161,7 +168,8 @@ func (r *ScheduledTransactionRepository) ListByAccount(accountID models.ID) ([]*
 		SELECT id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, day_of_week, next_date, occurrences_remaining,
-			amount_estimate_count, created_at, updated_at
+			amount_estimate_count, auto_post, post_lead_days,
+			created_at, updated_at
 		FROM scheduled_transactions
 		WHERE CAST(account_id AS VARCHAR) = ?
 		ORDER BY next_date ASC, created_at ASC
@@ -176,7 +184,8 @@ func (r *ScheduledTransactionRepository) ListDue() ([]*models.ScheduledTransacti
 		SELECT id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, day_of_week, next_date, occurrences_remaining,
-			amount_estimate_count, created_at, updated_at
+			amount_estimate_count, auto_post, post_lead_days,
+			created_at, updated_at
 		FROM scheduled_transactions
 		WHERE next_date <= CURRENT_DATE
 		ORDER BY next_date ASC, created_at ASC
@@ -194,13 +203,34 @@ func (r *ScheduledTransactionRepository) ListUpcoming(days int) ([]*models.Sched
 		SELECT id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, day_of_week, next_date, occurrences_remaining,
-			amount_estimate_count, created_at, updated_at
+			amount_estimate_count, auto_post, post_lead_days,
+			created_at, updated_at
 		FROM scheduled_transactions
 		WHERE next_date <= ?
 		ORDER BY next_date ASC, created_at ASC
 	`
 
 	return r.queryScheduledTransactionsWithArgs(query, targetDate.Time())
+}
+
+// ListAutoPostDue retrieves all auto-post scheduled transactions that should be posted.
+// A transaction should be auto-posted when: next_date - post_lead_days <= today.
+func (r *ScheduledTransactionRepository) ListAutoPostDue() ([]*models.ScheduledTransaction, error) {
+	today := models.Today().Time()
+
+	query := `
+		SELECT id, account_id, payee_id, category_id, amount, memo,
+			frequency, interval, start_date, end_date, occurrences,
+			day_of_month, day_of_week, next_date, occurrences_remaining,
+			amount_estimate_count, auto_post, post_lead_days,
+			created_at, updated_at
+		FROM scheduled_transactions
+		WHERE auto_post = TRUE
+			AND next_date - INTERVAL (post_lead_days) DAY <= ?
+		ORDER BY next_date ASC, created_at ASC
+	`
+
+	return r.queryScheduledTransactionsWithArgs(query, today)
 }
 
 // Update updates an existing scheduled transaction in the database.
@@ -279,8 +309,9 @@ func (r *ScheduledTransactionRepository) Update(st *models.ScheduledTransaction)
 			id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, day_of_week, next_date, occurrences_remaining,
-			amount_estimate_count, created_at, updated_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			amount_estimate_count, auto_post, post_lead_days,
+			created_at, updated_at
+		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Conn().Exec(insertQuery,
 		st.ID.String(),
@@ -299,6 +330,8 @@ func (r *ScheduledTransactionRepository) Update(st *models.ScheduledTransaction)
 		st.NextDate.Time(),
 		nullInt(st.OccurrencesRemaining),
 		nullInt(st.AmountEstimateCount),
+		st.AutoPost,
+		st.PostLeadDays,
 		st.CreatedAt.Time(),
 		st.UpdatedAt.Time(),
 	)
@@ -410,6 +443,8 @@ func (r *ScheduledTransactionRepository) scanScheduledTransactions(rows *sql.Row
 			&st.NextDate,
 			&st.OccurrencesRemaining,
 			&st.AmountEstimateCount,
+			&st.AutoPost,
+			&st.PostLeadDays,
 			&st.CreatedAt,
 			&st.UpdatedAt,
 		)

@@ -232,6 +232,12 @@ func TestNewScheduledTransaction(t *testing.T) {
 		if st.Occurrences.Valid {
 			t.Error("Occurrences should not be set")
 		}
+		if st.AutoPost {
+			t.Error("AutoPost should default to false")
+		}
+		if st.PostLeadDays != 0 {
+			t.Errorf("PostLeadDays should default to 0, got %d", st.PostLeadDays)
+		}
 		if st.CreatedAt.IsZero() {
 			t.Error("CreatedAt should be set")
 		}
@@ -580,6 +586,78 @@ func TestScheduledTransactionAmountEstimate(t *testing.T) {
 
 		if st.AmountEstimateCount.Valid {
 			t.Error("AmountEstimateCount should not be valid after clearing")
+		}
+	})
+}
+
+func TestScheduledTransactionAutoPost(t *testing.T) {
+	t.Run("SetAutoPost enables auto-post", func(t *testing.T) {
+		st := NewScheduledTransaction(NewID(), FrequencyMonthly, Today())
+
+		if st.IsAutoPost() {
+			t.Error("Scheduled transaction should start with auto-post disabled")
+		}
+
+		st.SetAutoPost(true)
+
+		if !st.IsAutoPost() {
+			t.Error("IsAutoPost should return true after enabling")
+		}
+		if !st.AutoPost {
+			t.Error("AutoPost should be true after enabling")
+		}
+	})
+
+	t.Run("SetAutoPost disables auto-post", func(t *testing.T) {
+		st := NewScheduledTransaction(NewID(), FrequencyMonthly, Today())
+		st.SetAutoPost(true)
+
+		st.SetAutoPost(false)
+
+		if st.IsAutoPost() {
+			t.Error("IsAutoPost should return false after disabling")
+		}
+	})
+
+	t.Run("SetPostLeadDays sets lead days", func(t *testing.T) {
+		st := NewScheduledTransaction(NewID(), FrequencyMonthly, Today())
+
+		st.SetPostLeadDays(3)
+
+		if st.PostLeadDays != 3 {
+			t.Errorf("Expected post_lead_days 3, got %d", st.PostLeadDays)
+		}
+	})
+
+	t.Run("SetPostLeadDays with 7 days", func(t *testing.T) {
+		st := NewScheduledTransaction(NewID(), FrequencyMonthly, Today())
+
+		st.SetPostLeadDays(7)
+
+		if st.PostLeadDays != 7 {
+			t.Errorf("Expected post_lead_days 7, got %d", st.PostLeadDays)
+		}
+	})
+
+	t.Run("SetAutoPost updates timestamp", func(t *testing.T) {
+		st := NewScheduledTransaction(NewID(), FrequencyMonthly, Today())
+		original := st.UpdatedAt
+
+		st.SetAutoPost(true)
+
+		if !st.UpdatedAt.After(original) && !st.UpdatedAt.Time().Equal(original.Time()) {
+			t.Error("SetAutoPost should update UpdatedAt")
+		}
+	})
+
+	t.Run("SetPostLeadDays updates timestamp", func(t *testing.T) {
+		st := NewScheduledTransaction(NewID(), FrequencyMonthly, Today())
+		original := st.UpdatedAt
+
+		st.SetPostLeadDays(3)
+
+		if !st.UpdatedAt.After(original) && !st.UpdatedAt.Time().Equal(original.Time()) {
+			t.Error("SetPostLeadDays should update UpdatedAt")
 		}
 	})
 }
@@ -1115,6 +1193,40 @@ func TestScheduledTransactionValidation(t *testing.T) {
 		errs := st.Validate()
 		if !errs.HasErrors() {
 			t.Error("Memo exceeding 1000 chars should fail validation")
+		}
+	})
+
+	t.Run("Invalid post_lead_days fails validation", func(t *testing.T) {
+		testCases := []int{1, 2, 4, 5, 6, 10, -1}
+		for _, days := range testCases {
+			st := validScheduledTransaction()
+			st.PostLeadDays = days
+			errs := st.Validate()
+			if !errs.HasErrors() {
+				t.Errorf("post_lead_days %d should fail validation", days)
+			}
+		}
+	})
+
+	t.Run("Valid post_lead_days passes validation", func(t *testing.T) {
+		validDays := []int{0, 3, 7}
+		for _, days := range validDays {
+			st := validScheduledTransaction()
+			st.PostLeadDays = days
+			errs := st.Validate()
+			if errs.HasErrors() {
+				t.Errorf("post_lead_days %d should pass validation: %v", days, errs)
+			}
+		}
+	})
+
+	t.Run("AutoPost with valid post_lead_days passes validation", func(t *testing.T) {
+		st := validScheduledTransaction()
+		st.AutoPost = true
+		st.PostLeadDays = 3
+		errs := st.Validate()
+		if errs.HasErrors() {
+			t.Errorf("AutoPost with post_lead_days 3 should pass validation: %v", errs)
 		}
 	})
 

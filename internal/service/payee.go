@@ -312,6 +312,7 @@ func (s *PayeeService) MergePayees(sourceID, targetID models.ID) error {
 			amount, memo, frequency, interval, start_date, end_date,
 			occurrences, day_of_month, day_of_week, next_date,
 			occurrences_remaining, amount_estimate_count,
+			auto_post, post_lead_days,
 			created_at, CURRENT_TIMESTAMP AS updated_at
 		FROM scheduled_transactions
 		WHERE CAST(payee_id AS VARCHAR) = ?

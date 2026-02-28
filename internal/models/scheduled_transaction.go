@@ -124,6 +124,10 @@ type ScheduledTransaction struct {
 
 	// Variable amount estimation
 	AmountEstimateCount NullableInt `json:"amount_estimate_count"` // Use average of last N transactions
+
+	// Auto-post properties
+	AutoPost     bool `json:"auto_post"`      // Whether to automatically post when due
+	PostLeadDays int  `json:"post_lead_days"` // Days before due date to post (0, 3, or 7)
 }
 
 // NewScheduledTransaction creates a new ScheduledTransaction with required properties.
@@ -306,6 +310,24 @@ func (st *ScheduledTransaction) SetAmountEstimateCount(count int) {
 func (st *ScheduledTransaction) ClearAmountEstimateCount() {
 	st.AmountEstimateCount = NullableInt{Valid: false}
 	st.Touch()
+}
+
+// SetAutoPost enables or disables auto-posting for this scheduled transaction.
+func (st *ScheduledTransaction) SetAutoPost(autoPost bool) {
+	st.AutoPost = autoPost
+	st.Touch()
+}
+
+// SetPostLeadDays sets the number of days before the due date to auto-post.
+// Valid values are 0, 3, or 7.
+func (st *ScheduledTransaction) SetPostLeadDays(days int) {
+	st.PostLeadDays = days
+	st.Touch()
+}
+
+// IsAutoPost returns true if the scheduled transaction is set to auto-post.
+func (st *ScheduledTransaction) IsAutoPost() bool {
+	return st.AutoPost
 }
 
 // SetInterval sets the interval between occurrences.
@@ -511,6 +533,11 @@ func (st *ScheduledTransaction) Validate() ValidationErrors {
 	// amount_estimate_count must be positive if set
 	if st.AmountEstimateCount.Valid && st.AmountEstimateCount.Int64 <= 0 {
 		v.errors.Add("amount_estimate_count", "must be positive")
+	}
+
+	// post_lead_days must be 0, 3, or 7
+	if st.PostLeadDays != 0 && st.PostLeadDays != 3 && st.PostLeadDays != 7 {
+		v.errors.Add("post_lead_days", "must be 0, 3, or 7")
 	}
 
 	// occurrences_remaining cannot exceed occurrences

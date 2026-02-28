@@ -791,6 +791,100 @@ func TestMigration003Reconciliation(t *testing.T) {
 	})
 }
 
+func TestMigration004AutoPost(t *testing.T) {
+	t.Run("scheduled_transactions has auto_post and post_lead_days columns", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Create a test account
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		// Insert a scheduled transaction with auto_post fields
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_transactions (
+				account_id, frequency, interval, start_date, next_date,
+				auto_post, post_lead_days
+			)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'monthly', 1, '2024-01-01', '2024-02-01', TRUE, 3)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert scheduled transaction with auto_post: %v", err)
+		}
+
+		var autoPost bool
+		var postLeadDays int
+		err = db.Conn().QueryRow(`
+			SELECT auto_post, post_lead_days FROM scheduled_transactions LIMIT 1
+		`).Scan(&autoPost, &postLeadDays)
+		if err != nil {
+			t.Fatalf("Failed to query auto_post fields: %v", err)
+		}
+		if !autoPost {
+			t.Error("Expected auto_post TRUE, got FALSE")
+		}
+		if postLeadDays != 3 {
+			t.Errorf("Expected post_lead_days 3, got %d", postLeadDays)
+		}
+	})
+
+	t.Run("auto_post defaults to FALSE", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		// Insert without specifying auto_post - should default to FALSE
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_transactions (
+				account_id, frequency, interval, start_date, next_date
+			)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'monthly', 1, '2024-01-01', '2024-02-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert scheduled transaction: %v", err)
+		}
+
+		var autoPost bool
+		var postLeadDays int
+		err = db.Conn().QueryRow(`
+			SELECT auto_post, post_lead_days FROM scheduled_transactions LIMIT 1
+		`).Scan(&autoPost, &postLeadDays)
+		if err != nil {
+			t.Fatalf("Failed to query auto_post defaults: %v", err)
+		}
+		if autoPost {
+			t.Error("Expected auto_post to default to FALSE")
+		}
+		if postLeadDays != 0 {
+			t.Errorf("Expected post_lead_days to default to 0, got %d", postLeadDays)
+		}
+	})
+}
+
 // Helper to remove test file if it exists
 func removeIfExists(path string) {
 	os.Remove(path)

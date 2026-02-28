@@ -196,7 +196,7 @@ Spec: `specs/v1.5/reconciliation.md`
 
 Spec: `specs/v1.5/auto-post.md`
 
-- [ ] **081 - Database migration for auto-post fields**
+- [x] **081 - Database migration for auto-post fields**
   - Add `auto_post` (boolean, default false) to scheduled_transactions
   - Add `post_lead_days` (integer, default 0) to scheduled_transactions
   - Migration script
