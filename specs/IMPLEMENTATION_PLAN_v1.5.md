@@ -213,7 +213,7 @@ Spec: `specs/v1.5/auto-post.md`
   - Auto-post runs on CLI file open, prints summary
   - Update `--scheduled` output to show auto-post indicator
 
-- [ ] **084 - Update TUI for auto-post**
+- [x] **084 - Update TUI for auto-post**
   - Auto-post runs on file open, status bar notification
   - Update new/edit scheduled transaction dialog with auto-post checkbox and lead time radio
   - Update scheduled transactions view to show auto-post indicators ([Auto], [Auto 3d], [Auto 7d])

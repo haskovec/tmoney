@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/service"
 )
 
 // =============================================================================
@@ -101,8 +102,8 @@ func TestBuildNewScheduledDialog(t *testing.T) {
 	}
 
 	fields := d.Fields()
-	if len(fields) != 11 {
-		t.Fatalf("expected 11 fields, got %d", len(fields))
+	if len(fields) != 13 {
+		t.Fatalf("expected 13 fields, got %d", len(fields))
 	}
 
 	if d.Width() != 62 {
@@ -132,6 +133,8 @@ func TestBuildNewScheduledDialog_FieldTypes(t *testing.T) {
 		{"Duration", FieldRadio},
 		{"End Date", FieldText},
 		{"Occurrences", FieldText},
+		{"Auto-post", FieldCheckbox},
+		{"Lead time", FieldRadio},
 	}
 
 	for i, exp := range expected {
@@ -175,6 +178,16 @@ func TestBuildNewScheduledDialog_Defaults(t *testing.T) {
 	// Duration defaults to Indefinite (index 0)
 	if fields[schedFieldDuration].SelectedIndex != 0 {
 		t.Errorf("duration selectedIndex = %d, want 0", fields[schedFieldDuration].SelectedIndex)
+	}
+
+	// Auto-post defaults to unchecked
+	if fields[schedFieldAutoPost].Checked {
+		t.Error("auto-post should default to unchecked")
+	}
+
+	// Lead time defaults to "On the day" (index 0)
+	if fields[schedFieldLeadDays].SelectedIndex != 0 {
+		t.Errorf("lead days selectedIndex = %d, want 0", fields[schedFieldLeadDays].SelectedIndex)
 	}
 }
 
@@ -1126,5 +1139,287 @@ func TestApp_RenderScheduled_EmptyState(t *testing.T) {
 	output := app.renderScheduled()
 	if !strings.Contains(output, "'n'") {
 		t.Error("empty scheduled view should mention 'n' key for creating new")
+	}
+}
+
+// =============================================================================
+// Auto-post tests
+// =============================================================================
+
+func TestLeadDaysToIndex(t *testing.T) {
+	tests := []struct {
+		days     int
+		expected int
+	}{
+		{0, leadDaysOnTheDay},
+		{3, leadDays3Days},
+		{7, leadDays1Week},
+		{1, leadDaysOnTheDay}, // invalid value defaults to on-the-day
+	}
+
+	for _, tc := range tests {
+		got := leadDaysToIndex(tc.days)
+		if got != tc.expected {
+			t.Errorf("leadDaysToIndex(%d) = %d, want %d", tc.days, got, tc.expected)
+		}
+	}
+}
+
+func TestLeadDaysFromIndex(t *testing.T) {
+	tests := []struct {
+		index    int
+		expected int
+	}{
+		{leadDaysOnTheDay, 0},
+		{leadDays3Days, 3},
+		{leadDays1Week, 7},
+		{99, 0}, // invalid index defaults to 0
+	}
+
+	for _, tc := range tests {
+		got := leadDaysFromIndex(tc.index)
+		if got != tc.expected {
+			t.Errorf("leadDaysFromIndex(%d) = %d, want %d", tc.index, got, tc.expected)
+		}
+	}
+}
+
+func TestLeadDaysRoundTrip(t *testing.T) {
+	for _, days := range []int{0, 3, 7} {
+		idx := leadDaysToIndex(days)
+		back := leadDaysFromIndex(idx)
+		if back != days {
+			t.Errorf("leadDays round-trip failed for %d: got %d", days, back)
+		}
+	}
+}
+
+func TestBuildNewScheduledDialog_AutoPostFields(t *testing.T) {
+	d := buildNewScheduledDialog([]string{"Checking"}, []string{"(None)"})
+	fields := d.Fields()
+
+	// Auto-post checkbox should be unchecked by default
+	if fields[schedFieldAutoPost].Type != FieldCheckbox {
+		t.Errorf("auto-post field type = %v, want %v", fields[schedFieldAutoPost].Type, FieldCheckbox)
+	}
+	if fields[schedFieldAutoPost].Checked {
+		t.Error("auto-post should default to unchecked")
+	}
+
+	// Lead time radio
+	if fields[schedFieldLeadDays].Type != FieldRadio {
+		t.Errorf("lead time field type = %v, want %v", fields[schedFieldLeadDays].Type, FieldRadio)
+	}
+	if fields[schedFieldLeadDays].SelectedIndex != 0 {
+		t.Errorf("lead time default = %d, want 0", fields[schedFieldLeadDays].SelectedIndex)
+	}
+	if len(fields[schedFieldLeadDays].Options) != 3 {
+		t.Errorf("lead time options = %d, want 3", len(fields[schedFieldLeadDays].Options))
+	}
+}
+
+func TestBuildEditScheduledDialog_AutoPostEnabled(t *testing.T) {
+	accountID := models.NewID()
+	st := models.NewScheduledTransaction(accountID, models.FrequencyMonthly, models.NewDate(2024, time.January, 1))
+	st.SetAutoPost(true)
+	st.SetPostLeadDays(3)
+
+	d := buildEditScheduledDialog(st,
+		[]string{"Checking"}, []models.ID{accountID},
+		[]string{"(None)"}, []models.ID{models.NilID},
+		map[models.ID]string{})
+	fields := d.Fields()
+
+	// Auto-post should be checked
+	if !fields[schedFieldAutoPost].Checked {
+		t.Error("auto-post should be checked when editing auto-post transaction")
+	}
+
+	// Lead time should be "3 days early" (index 1)
+	if fields[schedFieldLeadDays].SelectedIndex != leadDays3Days {
+		t.Errorf("lead time = %d, want %d", fields[schedFieldLeadDays].SelectedIndex, leadDays3Days)
+	}
+}
+
+func TestBuildEditScheduledDialog_AutoPostWith7DayLead(t *testing.T) {
+	accountID := models.NewID()
+	st := models.NewScheduledTransaction(accountID, models.FrequencyMonthly, models.NewDate(2024, time.January, 1))
+	st.SetAutoPost(true)
+	st.SetPostLeadDays(7)
+
+	d := buildEditScheduledDialog(st,
+		[]string{"Checking"}, []models.ID{accountID},
+		[]string{"(None)"}, []models.ID{models.NilID},
+		map[models.ID]string{})
+	fields := d.Fields()
+
+	if !fields[schedFieldAutoPost].Checked {
+		t.Error("auto-post should be checked")
+	}
+	if fields[schedFieldLeadDays].SelectedIndex != leadDays1Week {
+		t.Errorf("lead time = %d, want %d", fields[schedFieldLeadDays].SelectedIndex, leadDays1Week)
+	}
+}
+
+func TestBuildEditScheduledDialog_AutoPostDisabled(t *testing.T) {
+	accountID := models.NewID()
+	st := models.NewScheduledTransaction(accountID, models.FrequencyMonthly, models.NewDate(2024, time.January, 1))
+	// AutoPost defaults to false
+
+	d := buildEditScheduledDialog(st,
+		[]string{"Checking"}, []models.ID{accountID},
+		[]string{"(None)"}, []models.ID{models.NilID},
+		map[models.ID]string{})
+	fields := d.Fields()
+
+	if fields[schedFieldAutoPost].Checked {
+		t.Error("auto-post should be unchecked for non-auto-post transaction")
+	}
+	if fields[schedFieldLeadDays].SelectedIndex != leadDaysOnTheDay {
+		t.Errorf("lead time = %d, want %d", fields[schedFieldLeadDays].SelectedIndex, leadDaysOnTheDay)
+	}
+}
+
+func TestFormatScheduledRow_AutoPostIndicator(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(120, 30)
+
+	tests := []struct {
+		name      string
+		autoPost  bool
+		leadDays  int
+		wantAuto  string
+	}{
+		{"no auto-post", false, 0, ""},
+		{"auto-post 0 lead", true, 0, "[Auto]"},
+		{"auto-post 3 lead", true, 3, "[Auto 3d]"},
+		{"auto-post 7 lead", true, 7, "[Auto 7d]"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			st := models.NewScheduledTransaction(models.NewID(), models.FrequencyMonthly, models.Today())
+			st.SetAutoPost(tc.autoPost)
+			st.SetPostLeadDays(tc.leadDays)
+
+			app := &App{
+				styles: styles,
+				scheduled: &scheduledViewData{
+					payeeNames:    make(map[models.ID]string),
+					accountNames:  make(map[models.ID]string),
+					categoryNames: make(map[models.ID]string),
+				},
+			}
+
+			row := app.formatScheduledRow(st, false)
+			// Auto indicator is the 7th column (index 6)
+			if len(row) < 7 {
+				t.Fatalf("row has %d columns, want at least 7", len(row))
+			}
+			if row[6] != tc.wantAuto {
+				t.Errorf("auto indicator = %q, want %q", row[6], tc.wantAuto)
+			}
+		})
+	}
+}
+
+func TestApp_AutoPostCompletedMsg_WithPosts(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	summary := &service.AutoPostSummary{
+		PostedCount: 3,
+	}
+
+	msg := autoPostCompletedMsg{summary: summary}
+	_, cmd := app.Update(msg)
+
+	// Should trigger a data reload
+	if cmd == nil {
+		t.Error("autoPostCompletedMsg with posts should return reload commands")
+	}
+
+	// Status bar should show notification
+	rendered := app.statusbar.Render(NewStyles(), 80)
+	if !strings.Contains(rendered, "Auto-posted 3") {
+		t.Errorf("status bar should show auto-post notification, got: %s", rendered)
+	}
+}
+
+func TestApp_AutoPostCompletedMsg_NoPosts(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	summary := &service.AutoPostSummary{
+		PostedCount: 0,
+	}
+
+	msg := autoPostCompletedMsg{summary: summary}
+	_, cmd := app.Update(msg)
+
+	// Should not trigger reload when nothing posted
+	if cmd != nil {
+		t.Error("autoPostCompletedMsg with 0 posts should not trigger reload")
+	}
+}
+
+func TestApp_AutoPostCompletedMsg_NilSummary(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	msg := autoPostCompletedMsg{summary: nil}
+	_, cmd := app.Update(msg)
+
+	if cmd != nil {
+		t.Error("autoPostCompletedMsg with nil summary should not trigger reload")
+	}
+}
+
+func TestApp_SubmitScheduledDialog_ValidNew_WithAutoPost(t *testing.T) {
+	accountID := models.NewID()
+	accountOptions := []string{"Checking"}
+	categoryOptions := []string{"(None)"}
+
+	app := &App{
+		currentView: ViewScheduled,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		schedDialog: func() *Dialog {
+			d := buildNewScheduledDialog(accountOptions, categoryOptions)
+			d.Fields()[schedFieldAmount].Value = "100.00"
+			d.Fields()[schedFieldAutoPost].Checked = true
+			d.Fields()[schedFieldLeadDays].SelectedIndex = leadDays3Days
+			return d
+		}(),
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
+		schedDialogAccountIDs:  []models.ID{accountID},
+		schedDialogCategoryIDs: []models.ID{models.NilID},
+	}
+
+	model, cmd := app.submitScheduledDialog()
+	updatedApp := model.(*App)
+
+	if cmd == nil {
+		t.Error("valid new scheduled with auto-post should return a non-nil cmd")
+	}
+	if updatedApp.schedDialog != nil {
+		t.Error("dialog should be closed after submit")
 	}
 }

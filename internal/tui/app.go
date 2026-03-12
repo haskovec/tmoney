@@ -350,10 +350,25 @@ func (a *App) Init() tea.Cmd {
 	return tea.Batch(
 		tea.EnterAltScreen,
 		tea.SetWindowTitle("TMoney - Personal Finance Manager"),
+		a.autoPostOnFileOpen(),
 		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
 		a.loadDashboardData(),
 	)
+}
+
+// autoPostOnFileOpen returns a command that runs auto-posting on startup.
+func (a *App) autoPostOnFileOpen() tea.Cmd {
+	if a.scheduledTxnSvc == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		summary, err := a.scheduledTxnSvc.AutoPost()
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return autoPostCompletedMsg{summary: summary}
+	}
 }
 
 // updateStatusBar updates the status bar context and key hints for the current view.
@@ -786,6 +801,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.loadScheduledDueCount(),
 			a.loadSidebarData(),
 		)
+
+	case autoPostCompletedMsg:
+		if msg.summary != nil && msg.summary.PostedCount > 0 {
+			text := fmt.Sprintf("Auto-posted %d scheduled transaction(s)", msg.summary.PostedCount)
+			a.statusbar.AddNotification(text, NotificationInfo)
+			// Reload data since auto-posting created transactions
+			return a, tea.Batch(
+				a.loadSidebarData(),
+				a.loadScheduledDueCount(),
+				a.loadDashboardData(),
+			)
+		}
+		return a, nil
 
 	case accountDialogDataMsg:
 		a.acctDialogData = msg.data
@@ -2366,6 +2394,7 @@ func (a *App) buildScheduledTable() {
 		{Header: "Amount", Width: 12, Align: AlignRight},
 		{Header: "Frequency", Width: 10, Align: AlignLeft},
 		{Header: "Account", MinWidth: 10, Align: AlignLeft},
+		{Header: "Auto", Width: 10, Align: AlignLeft},
 	}
 
 	if a.scheduledTable == nil {
@@ -2420,7 +2449,20 @@ func (a *App) formatScheduledRow(st *models.ScheduledTransaction, isDue bool) []
 		account = name
 	}
 
-	return []string{status, dateStr, payee, amount, freq, account}
+	// Auto-post indicator
+	autoIndicator := ""
+	if st.IsAutoPost() {
+		switch st.PostLeadDays {
+		case 3:
+			autoIndicator = "[Auto 3d]"
+		case 7:
+			autoIndicator = "[Auto 7d]"
+		default:
+			autoIndicator = "[Auto]"
+		}
+	}
+
+	return []string{status, dateStr, payee, amount, freq, account, autoIndicator}
 }
 
 // renderReports renders the reports view.
@@ -2724,6 +2766,11 @@ type scheduledSkippedMsg struct{}
 
 // scheduledDeletedMsg is sent when a scheduled transaction has been deleted.
 type scheduledDeletedMsg struct{}
+
+// autoPostCompletedMsg is sent when auto-posting on file open completes.
+type autoPostCompletedMsg struct {
+	summary *service.AutoPostSummary
+}
 
 // reportType represents which report is being displayed.
 type reportType int

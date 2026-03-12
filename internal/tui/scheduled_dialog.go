@@ -49,6 +49,8 @@ const (
 	schedFieldDuration   = 8
 	schedFieldEndDate    = 9
 	schedFieldOccurrence = 10
+	schedFieldAutoPost   = 11
+	schedFieldLeadDays   = 12
 )
 
 // buildFrequencyOptions returns display names for all frequencies.
@@ -87,6 +89,37 @@ const (
 	durationUntilDate   = 1
 	durationOccurrences = 2
 )
+
+// leadDays constants for the radio field.
+const (
+	leadDaysOnTheDay  = 0
+	leadDays3Days     = 1
+	leadDays1Week     = 2
+)
+
+// leadDaysToIndex converts PostLeadDays value to radio index.
+func leadDaysToIndex(days int) int {
+	switch days {
+	case 3:
+		return leadDays3Days
+	case 7:
+		return leadDays1Week
+	default:
+		return leadDaysOnTheDay
+	}
+}
+
+// leadDaysFromIndex converts a radio index to PostLeadDays value.
+func leadDaysFromIndex(index int) int {
+	switch index {
+	case leadDays3Days:
+		return 3
+	case leadDays1Week:
+		return 7
+	default:
+		return 0
+	}
+}
 
 // buildNewScheduledDialog creates a Dialog for creating a new scheduled transaction.
 func buildNewScheduledDialog(accountOptions, categoryOptions []string) *Dialog {
@@ -128,6 +161,12 @@ func buildNewScheduledDialog(accountOptions, categoryOptions []string) *Dialog {
 
 	// Occurrences (used when Duration = Occurrences)
 	d.AddTextField("Occurrences", "", "Number of times", 5)
+
+	// Auto-post checkbox
+	d.AddCheckboxField("Auto-post", false)
+
+	// Lead days radio (only meaningful when auto-post is checked)
+	d.AddRadioField("Lead time", []string{"On the day", "3 days early", "1 week early"}, 0)
 
 	d.SetVisible(true)
 	return d
@@ -212,6 +251,12 @@ func buildEditScheduledDialog(st *models.ScheduledTransaction, accountOptions []
 
 	// Occurrences
 	d.AddTextField("Occurrences", occurrencesStr, "Number of times", 5)
+
+	// Auto-post checkbox
+	d.AddCheckboxField("Auto-post", st.IsAutoPost())
+
+	// Lead days radio
+	d.AddRadioField("Lead time", []string{"On the day", "3 days early", "1 week early"}, leadDaysToIndex(st.PostLeadDays))
 
 	d.SetVisible(true)
 	return d
@@ -323,7 +368,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	}
 
 	fields := a.schedDialog.Fields()
-	if len(fields) < 11 {
+	if len(fields) < 13 {
 		return a, nil
 	}
 
@@ -428,6 +473,10 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Auto-post
+	autoPost := fields[schedFieldAutoPost].Checked
+	leadDays := leadDaysFromIndex(fields[schedFieldLeadDays].SelectedIndex)
+
 	if hasErrors {
 		return a, nil
 	}
@@ -494,6 +543,10 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 				st.SetOccurrences(occurrences.Int64)
 			}
 
+			// Auto-post
+			st.SetAutoPost(autoPost)
+			st.SetPostLeadDays(leadDays)
+
 			cmd := undo.NewEditScheduledTransactionCommand(a.scheduledTxnSvc, st)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update scheduled transaction: %w", err)}
@@ -527,6 +580,10 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 			} else if occurrences.Valid {
 				st.SetOccurrences(occurrences.Int64)
 			}
+
+			// Auto-post
+			st.SetAutoPost(autoPost)
+			st.SetPostLeadDays(leadDays)
 
 			cmd := undo.NewCreateScheduledTransactionCommand(a.scheduledTxnSvc, st)
 			if err := a.undoManager.Execute(cmd); err != nil {
