@@ -208,7 +208,7 @@ Spec: `specs/v1.5/auto-post.md`
   - Handle variable amounts (use estimate, skip if unavailable)
   - Return count and details of auto-posted transactions
 
-- [ ] **083 - Update CLI for auto-post**
+- [x] **083 - Update CLI for auto-post**
   - Add `--auto-post` and `--lead-days` flags to `--add-scheduled`
   - Auto-post runs on CLI file open, prints summary
   - Update `--scheduled` output to show auto-post indicator

@@ -280,8 +280,8 @@ func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*models.Schedu
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tAccount\tNext Date\tPayee\tAmount\tFrequency")
-	fmt.Fprintln(tw, "--------\t-------\t---------\t-----\t------\t---------")
+	fmt.Fprintln(tw, "ID\tAccount\tNext Date\tPayee\tAmount\tFrequency\tAuto")
+	fmt.Fprintln(tw, "--------\t-------\t---------\t-----\t------\t---------\t----")
 
 	for _, st := range scheduledTxns {
 		// Truncate ID for display
@@ -317,13 +317,24 @@ func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*models.Schedu
 			freq += fmt.Sprintf(" (%d left)", st.OccurrencesRemaining.Int64)
 		}
 
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		// Auto-post indicator
+		autoIndicator := ""
+		if st.IsAutoPost() {
+			if st.PostLeadDays > 0 {
+				autoIndicator = fmt.Sprintf("[Auto %dd]", st.PostLeadDays)
+			} else {
+				autoIndicator = "[Auto]"
+			}
+		}
+
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			idStr,
 			account,
 			st.NextDate.String(),
 			payee,
 			amount,
 			freq,
+			autoIndicator,
 		)
 	}
 
@@ -531,6 +542,20 @@ Scheduled Transaction Commands:
   --scheduled          List all scheduled transactions
     --due              Show only due scheduled transactions
     --account <name>   Filter by account
+
+  --add-scheduled      Create a new scheduled transaction
+    --account <name>         Account for the scheduled transaction
+    --frequency <freq>       Frequency (daily, weekly, biweekly, monthly, quarterly, yearly)
+    --amount <value>         Transaction amount (omit for variable amount)
+    --payee <name>           Payee name
+    --category <name>        Category name
+    --date <date>            Start date (YYYY-MM-DD, default: today)
+    --memo <text>            Memo/note
+    --day <1-31|-1>          Day of month (monthly/quarterly; -1 for last day)
+    --occurrences <n>        Number of times to repeat
+    --end-date <date>        End date for the schedule (YYYY-MM-DD)
+    --auto-post              Automatically post when due
+    --lead-days <0|3|7>      Days before due date to auto-post (requires --auto-post)
 
   --post-scheduled <id>  Post a scheduled transaction (create real transaction)
     --amount <value>     Override amount (for variable amount schedules)

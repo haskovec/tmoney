@@ -62,6 +62,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runTransfer(opts, stdout)
 	}
 
+	// Handle --add-scheduled
+	if opts.addScheduled {
+		return runAddScheduled(opts, stdout)
+	}
+
 	// Handle --post-scheduled
 	if opts.postScheduled != "" {
 		return runPostScheduled(opts, stdout)
