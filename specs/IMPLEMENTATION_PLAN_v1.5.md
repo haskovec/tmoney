@@ -249,7 +249,7 @@ Spec: `specs/v1.5/import-export.md`
   - Parse account type headers
   - Write QIF with proper field codes and record separators
 
-- [ ] **089 - OFX parser (import only)**
+- [x] **089 - OFX parser (import only)**
   - Parse OFX/QFX XML-like format
   - Extract FITID, date, amount, payee/memo, check number, transaction type
   - Handle various OFX date formats
