@@ -79,6 +79,148 @@ func (s *ScheduledTransactionService) ListUpcoming(days int) ([]*models.Schedule
 }
 
 // =============================================================================
+// Auto-post Operations
+// =============================================================================
+
+// AutoPostResult describes the outcome of an auto-post operation for a single scheduled transaction.
+type AutoPostResult struct {
+	ScheduledTransactionID models.ID
+	Transactions           []*models.Transaction
+	Skipped                bool   // True if skipped due to variable amount with no estimate
+	SkipReason             string // Reason for skipping
+}
+
+// AutoPostSummary contains the results of running auto-post on file open.
+type AutoPostSummary struct {
+	Results      []AutoPostResult
+	PostedCount  int // Total number of transactions created
+	SkippedCount int // Number of scheduled transactions skipped
+}
+
+// AutoPost finds all due auto-post scheduled transactions and posts them.
+// This should be called on file open (both TUI and CLI).
+// Multiple overdue occurrences are posted, each with their correct scheduled date.
+// Variable-amount transactions without an estimate are skipped.
+func (s *ScheduledTransactionService) AutoPost() (*AutoPostSummary, error) {
+	summary := &AutoPostSummary{}
+
+	candidates, err := s.repo.ListAutoPostDue()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list auto-post due transactions: %w", err)
+	}
+
+	today := models.Today()
+
+	for _, st := range candidates {
+		result := AutoPostResult{
+			ScheduledTransactionID: st.ID,
+		}
+
+		// Post all overdue occurrences for this scheduled transaction
+		for !st.IsCompleted() && s.isAutoPostDue(st, today) {
+			// Determine the amount to use
+			var txnAmount models.Money
+			if st.HasAmount() {
+				txnAmount = st.Amount.Money
+			} else {
+				// Variable amount - try to estimate
+				estimated, estErr := s.estimateAmountForSchedule(st)
+				if estErr != nil || estimated == nil {
+					result.Skipped = true
+					result.SkipReason = "variable amount with no estimate available"
+					break
+				}
+				txnAmount = *estimated
+			}
+
+			// Create the transaction with the scheduled date (not today)
+			txn := models.NewTransaction(st.AccountID, st.NextDate, txnAmount)
+
+			// Copy optional fields
+			if st.HasPayee() {
+				txn.SetPayee(st.PayeeID.ID)
+			}
+			if st.HasCategory() {
+				txn.SetCategory(st.CategoryID.ID)
+			}
+			if st.Memo.Valid && st.Memo.String != "" {
+				txn.SetMemo(st.Memo.String)
+			}
+
+			// Create the transaction
+			if err := s.txnRepo.Create(txn); err != nil {
+				return nil, fmt.Errorf("failed to create auto-post transaction: %w", err)
+			}
+
+			result.Transactions = append(result.Transactions, txn)
+			summary.PostedCount++
+
+			// Advance the schedule
+			st.AdvanceSchedule()
+		}
+
+		// Update the scheduled transaction to persist any schedule advancement
+		if len(result.Transactions) > 0 || result.Skipped {
+			if len(result.Transactions) > 0 {
+				if err := s.repo.Update(st); err != nil {
+					return nil, fmt.Errorf("failed to update schedule after auto-post: %w", err)
+				}
+			}
+		}
+
+		if result.Skipped {
+			summary.SkippedCount++
+		}
+
+		if len(result.Transactions) > 0 || result.Skipped {
+			summary.Results = append(summary.Results, result)
+		}
+	}
+
+	return summary, nil
+}
+
+// isAutoPostDue checks if a scheduled transaction should be auto-posted based on lead days.
+func (s *ScheduledTransactionService) isAutoPostDue(st *models.ScheduledTransaction, today models.Date) bool {
+	effectiveDate := st.NextDate.AddDays(-st.PostLeadDays)
+	return !effectiveDate.After(today)
+}
+
+// estimateAmountForSchedule estimates the amount for a variable-amount scheduled transaction.
+// This avoids re-fetching from the DB since we already have the scheduled transaction in memory.
+func (s *ScheduledTransactionService) estimateAmountForSchedule(st *models.ScheduledTransaction) (*models.Money, error) {
+	if st.HasAmount() {
+		return &st.Amount.Money, nil
+	}
+
+	if !st.AmountEstimateCount.Valid || st.AmountEstimateCount.Int64 <= 0 {
+		return nil, nil
+	}
+
+	if !st.HasPayee() {
+		return nil, nil
+	}
+
+	count := int(st.AmountEstimateCount.Int64)
+	transactions, err := s.getRecentTransactionsByPayee(st.AccountID, st.PayeeID.ID, count)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recent transactions: %w", err)
+	}
+
+	if len(transactions) == 0 {
+		return nil, nil
+	}
+
+	var total models.Money
+	for _, txn := range transactions {
+		total = total.Add(txn.Amount)
+	}
+
+	average := total.Div(int64(len(transactions)))
+	return &average, nil
+}
+
+// =============================================================================
 // Post and Skip Operations
 // =============================================================================
 

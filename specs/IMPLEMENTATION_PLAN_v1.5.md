@@ -201,7 +201,7 @@ Spec: `specs/v1.5/auto-post.md`
   - Add `post_lead_days` (integer, default 0) to scheduled_transactions
   - Migration script
 
-- [ ] **082 - Auto-post service logic**
+- [x] **082 - Auto-post service logic**
   - Auto-post check on file open (find due auto-post transactions)
   - Post multiple overdue occurrences
   - Lead time calculation (next_date - post_lead_days <= today)

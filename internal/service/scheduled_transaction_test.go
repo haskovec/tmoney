@@ -732,3 +732,376 @@ func TestScheduledTransactionService_CalculateNextDate(t *testing.T) {
 		}
 	})
 }
+
+func TestScheduledTransactionService_AutoPost(t *testing.T) {
+	t.Run("auto-posts due transaction with fixed amount", func(t *testing.T) {
+		svc, accountRepo, payeeRepo, categoryRepo := createTestScheduledTransactionService(t)
+		account := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		payee := models.NewPayee("Landlord")
+		if err := payeeRepo.Create(payee); err != nil {
+			t.Fatalf("Failed to create payee: %v", err)
+		}
+		category := models.NewCategory("Housing", models.CategoryTypeExpense)
+		if err := categoryRepo.Create(category); err != nil {
+			t.Fatalf("Failed to create category: %v", err)
+		}
+
+		amount, _ := models.NewMoney("-1500.00")
+		st := models.NewScheduledTransactionFull(
+			account.ID, models.FrequencyMonthly, models.Today(), amount,
+			payee.ID, category.ID, "Monthly rent",
+		)
+		st.SetAutoPost(true)
+		st.SetPostLeadDays(0)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost() error = %v", err)
+		}
+
+		if summary.PostedCount != 1 {
+			t.Errorf("Expected 1 posted, got %d", summary.PostedCount)
+		}
+		if summary.SkippedCount != 0 {
+			t.Errorf("Expected 0 skipped, got %d", summary.SkippedCount)
+		}
+		if len(summary.Results) != 1 {
+			t.Fatalf("Expected 1 result, got %d", len(summary.Results))
+		}
+
+		result := summary.Results[0]
+		if len(result.Transactions) != 1 {
+			t.Fatalf("Expected 1 transaction, got %d", len(result.Transactions))
+		}
+
+		txn := result.Transactions[0]
+		if !txn.Amount.Equal(amount) {
+			t.Errorf("Expected amount %s, got %s", amount.String(), txn.Amount.String())
+		}
+		if !txn.HasPayee() || txn.PayeeID.ID != payee.ID {
+			t.Error("Transaction should have payee")
+		}
+		if !txn.HasCategory() || txn.CategoryID.ID != category.ID {
+			t.Error("Transaction should have category")
+		}
+		if !txn.Memo.Valid || txn.Memo.String != "Monthly rent" {
+			t.Error("Transaction should have memo")
+		}
+	})
+
+	t.Run("does not auto-post non-auto-post transactions", func(t *testing.T) {
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		account := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, models.Today(), amount)
+		// AutoPost defaults to false
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost() error = %v", err)
+		}
+
+		if summary.PostedCount != 0 {
+			t.Errorf("Expected 0 posted, got %d", summary.PostedCount)
+		}
+	})
+
+	t.Run("does not auto-post future transactions", func(t *testing.T) {
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		account := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		futureDate := models.Today().AddDays(30)
+		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, futureDate, amount)
+		st.SetAutoPost(true)
+		st.SetPostLeadDays(0)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost() error = %v", err)
+		}
+
+		if summary.PostedCount != 0 {
+			t.Errorf("Expected 0 posted for future transaction, got %d", summary.PostedCount)
+		}
+	})
+
+	t.Run("posts multiple overdue occurrences", func(t *testing.T) {
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		account := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-100.00")
+		// Start date 3 months ago - should post 3+ overdue occurrences
+		pastDate := models.Today().AddDays(-90)
+		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, pastDate, amount)
+		st.SetAutoPost(true)
+		st.SetPostLeadDays(0)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost() error = %v", err)
+		}
+
+		// Should have posted at least 3 occurrences (90 days = ~3 months)
+		if summary.PostedCount < 3 {
+			t.Errorf("Expected at least 3 posted for 90-day overdue, got %d", summary.PostedCount)
+		}
+
+		// Each transaction should have its own correct scheduled date
+		result := summary.Results[0]
+		for i := 1; i < len(result.Transactions); i++ {
+			if !result.Transactions[i].Date.After(result.Transactions[i-1].Date) {
+				t.Error("Transactions should have ascending dates")
+			}
+		}
+
+		// Schedule should have advanced past today
+		updated, _ := svc.GetByID(st.ID)
+		if !updated.NextDate.After(models.Today()) {
+			t.Error("Schedule should have advanced past today")
+		}
+	})
+
+	t.Run("respects lead time for auto-post", func(t *testing.T) {
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		account := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-200.00")
+		// Due 2 days from now, with 3-day lead time -> should be posted
+		futureDate := models.Today().AddDays(2)
+		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, futureDate, amount)
+		st.SetAutoPost(true)
+		st.SetPostLeadDays(3)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost() error = %v", err)
+		}
+
+		if summary.PostedCount != 1 {
+			t.Errorf("Expected 1 posted with lead time, got %d", summary.PostedCount)
+		}
+
+		// Transaction date should be the scheduled date, not today
+		if len(summary.Results) > 0 && len(summary.Results[0].Transactions) > 0 {
+			txn := summary.Results[0].Transactions[0]
+			if txn.Date != futureDate {
+				t.Errorf("Expected transaction date %s (scheduled date), got %s", futureDate.String(), txn.Date.String())
+			}
+		}
+	})
+
+	t.Run("does not post when lead time not yet reached", func(t *testing.T) {
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		account := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-200.00")
+		// Due 5 days from now, with 3-day lead time -> should NOT be posted
+		futureDate := models.Today().AddDays(5)
+		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, futureDate, amount)
+		st.SetAutoPost(true)
+		st.SetPostLeadDays(3)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost() error = %v", err)
+		}
+
+		if summary.PostedCount != 0 {
+			t.Errorf("Expected 0 posted when lead time not reached, got %d", summary.PostedCount)
+		}
+	})
+
+	t.Run("skips variable amount with no estimate", func(t *testing.T) {
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		account := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		// Variable amount (no amount set), no payee, no estimate count
+		st := models.NewScheduledTransaction(account.ID, models.FrequencyMonthly, models.Today())
+		st.SetAutoPost(true)
+		st.SetPostLeadDays(0)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost() error = %v", err)
+		}
+
+		if summary.PostedCount != 0 {
+			t.Errorf("Expected 0 posted for variable amount, got %d", summary.PostedCount)
+		}
+		if summary.SkippedCount != 1 {
+			t.Errorf("Expected 1 skipped, got %d", summary.SkippedCount)
+		}
+		if len(summary.Results) != 1 {
+			t.Fatalf("Expected 1 result, got %d", len(summary.Results))
+		}
+		if !summary.Results[0].Skipped {
+			t.Error("Result should be marked as skipped")
+		}
+	})
+
+	t.Run("auto-posts variable amount with estimate", func(t *testing.T) {
+		database := createTestDB(t)
+		stRepo := repository.NewScheduledTransactionRepository(database)
+		txnRepo := repository.NewTransactionRepository(database)
+		accountRepo := repository.NewAccountRepository(database)
+		payeeRepo := repository.NewPayeeRepository(database)
+
+		svc := NewScheduledTransactionService(stRepo, txnRepo, database)
+
+		account := createTestAccountForScheduled(t, accountRepo, "Checking")
+		payee := models.NewPayee("Electric Company")
+		if err := payeeRepo.Create(payee); err != nil {
+			t.Fatalf("Failed to create payee: %v", err)
+		}
+
+		// Create past transactions for estimate
+		amount1, _ := models.NewMoney("-100.00")
+		amount2, _ := models.NewMoney("-120.00")
+		date1, _ := models.ParseDate("2024-01-15")
+		date2, _ := models.ParseDate("2024-02-15")
+
+		txn1 := models.NewTransactionWithPayee(account.ID, date1, amount1, payee.ID)
+		txn2 := models.NewTransactionWithPayee(account.ID, date2, amount2, payee.ID)
+		if err := txnRepo.Create(txn1); err != nil {
+			t.Fatalf("Failed to create txn1: %v", err)
+		}
+		if err := txnRepo.Create(txn2); err != nil {
+			t.Fatalf("Failed to create txn2: %v", err)
+		}
+
+		// Create variable-amount auto-post scheduled transaction with estimate
+		st := models.NewScheduledTransaction(account.ID, models.FrequencyMonthly, models.Today())
+		st.SetPayee(payee.ID)
+		st.SetAmountEstimateCount(2)
+		st.SetAutoPost(true)
+		st.SetPostLeadDays(0)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost() error = %v", err)
+		}
+
+		if summary.PostedCount != 1 {
+			t.Errorf("Expected 1 posted, got %d", summary.PostedCount)
+		}
+		if summary.SkippedCount != 0 {
+			t.Errorf("Expected 0 skipped, got %d", summary.SkippedCount)
+		}
+
+		// Verify the estimated amount was used (average of -100 and -120 = -110)
+		expectedAmount, _ := models.NewMoney("-110.00")
+		txn := summary.Results[0].Transactions[0]
+		if !txn.Amount.Equal(expectedAmount) {
+			t.Errorf("Expected estimated amount %s, got %s", expectedAmount.String(), txn.Amount.String())
+		}
+	})
+
+	t.Run("respects occurrence limit during auto-post", func(t *testing.T) {
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		account := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		amount, _ := models.NewMoney("-50.00")
+		// 90 days overdue but only 2 occurrences allowed
+		pastDate := models.Today().AddDays(-90)
+		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, pastDate, amount)
+		st.SetAutoPost(true)
+		st.SetPostLeadDays(0)
+		st.SetOccurrences(2)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost() error = %v", err)
+		}
+
+		if summary.PostedCount != 2 {
+			t.Errorf("Expected 2 posted (occurrence limit), got %d", summary.PostedCount)
+		}
+
+		// Schedule should be completed
+		updated, _ := svc.GetByID(st.ID)
+		if !updated.IsCompleted() {
+			t.Error("Schedule should be completed after posting all occurrences")
+		}
+	})
+
+	t.Run("returns empty summary when nothing to auto-post", func(t *testing.T) {
+		svc, _, _, _ := createTestScheduledTransactionService(t)
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost() error = %v", err)
+		}
+
+		if summary.PostedCount != 0 {
+			t.Errorf("Expected 0 posted, got %d", summary.PostedCount)
+		}
+		if summary.SkippedCount != 0 {
+			t.Errorf("Expected 0 skipped, got %d", summary.SkippedCount)
+		}
+		if len(summary.Results) != 0 {
+			t.Errorf("Expected 0 results, got %d", len(summary.Results))
+		}
+	})
+
+	t.Run("auto-posts multiple scheduled transactions", func(t *testing.T) {
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		account := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		amount1, _ := models.NewMoney("-100.00")
+		amount2, _ := models.NewMoney("-200.00")
+
+		st1 := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, models.Today(), amount1)
+		st1.SetAutoPost(true)
+		if err := svc.Create(st1); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		st2 := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyWeekly, models.Today(), amount2)
+		st2.SetAutoPost(true)
+		if err := svc.Create(st2); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost() error = %v", err)
+		}
+
+		if summary.PostedCount != 2 {
+			t.Errorf("Expected 2 posted, got %d", summary.PostedCount)
+		}
+		if len(summary.Results) != 2 {
+			t.Errorf("Expected 2 results, got %d", len(summary.Results))
+		}
+	})
+}
