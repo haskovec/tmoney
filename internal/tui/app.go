@@ -806,6 +806,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.summary != nil && msg.summary.PostedCount > 0 {
 			text := fmt.Sprintf("Auto-posted %d scheduled transaction(s)", msg.summary.PostedCount)
 			a.statusbar.AddNotification(text, NotificationInfo)
+			// Register auto-post as a single undo step
+			if a.undoManager != nil && a.transactionSvc != nil && a.scheduledTxnSvc != nil {
+				cmd := undo.NewAutoPostCommand(a.transactionSvc, a.scheduledTxnSvc, msg.summary)
+				a.undoManager.Push(cmd)
+			}
 			// Reload data since auto-posting created transactions
 			return a, tea.Batch(
 				a.loadSidebarData(),

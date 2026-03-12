@@ -218,11 +218,11 @@ Spec: `specs/v1.5/auto-post.md`
   - Update new/edit scheduled transaction dialog with auto-post checkbox and lead time radio
   - Update scheduled transactions view to show auto-post indicators ([Auto], [Auto 3d], [Auto 7d])
 
-- [ ] **085 - Auto-post undo integration**
+- [x] **085 - Auto-post undo integration**
   - Auto-posted transactions are grouped as compound undo commands
   - Each auto-post session is a single undo step
 
-- [ ] **086 - Tests for auto-post**
+- [x] **086 - Tests for auto-post**
   - Unit tests for auto-post detection logic
   - Unit tests for lead time calculation
   - Unit tests for multiple overdue occurrences

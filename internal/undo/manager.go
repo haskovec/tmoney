@@ -31,6 +31,15 @@ func (m *Manager) Execute(cmd Command) error {
 	return nil
 }
 
+// Push adds an already-executed command onto the undo stack without calling
+// Execute. This is useful for operations that were performed asynchronously
+// (e.g. auto-post on startup) and need to be made undoable after the fact.
+// Any pending redo operations are discarded.
+func (m *Manager) Push(cmd Command) {
+	m.undoStack = append(m.undoStack, cmd)
+	m.redoStack = nil
+}
+
 // Undo reverses the most recent operation. Returns the command description
 // on success.
 func (m *Manager) Undo() (string, error) {

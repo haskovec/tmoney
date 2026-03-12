@@ -308,6 +308,65 @@ func TestManager_Clear(t *testing.T) {
 	}
 }
 
+func TestManager_Push(t *testing.T) {
+	m := NewManager()
+	cmd := newMockCommand("Auto-post")
+
+	m.Push(cmd)
+
+	// Should not have executed the command
+	if cmd.executed != 0 {
+		t.Errorf("Push should not execute command, got %d executions", cmd.executed)
+	}
+	if !m.CanUndo() {
+		t.Error("should be able to undo after Push")
+	}
+	if m.UndoLen() != 1 {
+		t.Errorf("undo stack length = %d, want 1", m.UndoLen())
+	}
+	if m.UndoDescription() != "Auto-post" {
+		t.Errorf("UndoDescription() = %q, want %q", m.UndoDescription(), "Auto-post")
+	}
+}
+
+func TestManager_PushClearsRedoStack(t *testing.T) {
+	m := NewManager()
+	cmd1 := newMockCommand("First")
+	_ = m.Execute(cmd1)
+	_, _ = m.Undo()
+
+	if !m.CanRedo() {
+		t.Fatal("should be able to redo before Push")
+	}
+
+	cmd2 := newMockCommand("Pushed")
+	m.Push(cmd2)
+
+	if m.CanRedo() {
+		t.Error("Push should clear redo stack")
+	}
+}
+
+func TestManager_PushThenUndo(t *testing.T) {
+	m := NewManager()
+	cmd := newMockCommand("Pushed command")
+	m.Push(cmd)
+
+	desc, err := m.Undo()
+	if err != nil {
+		t.Fatalf("Undo() error = %v", err)
+	}
+	if desc != "Pushed command" {
+		t.Errorf("Undo() desc = %q, want %q", desc, "Pushed command")
+	}
+	if cmd.undone != 1 {
+		t.Errorf("command undone %d times, want 1", cmd.undone)
+	}
+	if !m.CanRedo() {
+		t.Error("should be able to redo after undoing pushed command")
+	}
+}
+
 func TestManager_DescriptionEmpty(t *testing.T) {
 	m := NewManager()
 	if m.UndoDescription() != "" {

@@ -86,8 +86,9 @@ func (s *ScheduledTransactionService) ListUpcoming(days int) ([]*models.Schedule
 type AutoPostResult struct {
 	ScheduledTransactionID models.ID
 	Transactions           []*models.Transaction
-	Skipped                bool   // True if skipped due to variable amount with no estimate
-	SkipReason             string // Reason for skipping
+	BeforeSchedule         *models.ScheduledTransaction // Schedule state before auto-posting (for undo)
+	Skipped                bool                         // True if skipped due to variable amount with no estimate
+	SkipReason             string                       // Reason for skipping
 }
 
 // AutoPostSummary contains the results of running auto-post on file open.
@@ -115,6 +116,10 @@ func (s *ScheduledTransactionService) AutoPost() (*AutoPostSummary, error) {
 		result := AutoPostResult{
 			ScheduledTransactionID: st.ID,
 		}
+
+		// Capture schedule state before any modifications (deep copy for undo)
+		beforeSchedule := *st
+		result.BeforeSchedule = &beforeSchedule
 
 		// Post all overdue occurrences for this scheduled transaction
 		for !st.IsCompleted() && s.isAutoPostDue(st, today) {
