@@ -243,7 +243,7 @@ Spec: `specs/v1.5/import-export.md`
   - Write CSV with standard column layout
   - RFC 4180 compliance
 
-- [ ] **088 - QIF parser and writer**
+- [x] **088 - QIF parser and writer**
   - Parse QIF transaction records (D, T, P, L, M, C, N fields)
   - Parse QIF split transactions (S, $, E fields)
   - Parse account type headers
