@@ -237,7 +237,7 @@ Spec: `specs/v1.5/import-export.md`
 
 ### 6.1 Format Parsers
 
-- [ ] **087 - CSV parser and writer**
+- [x] **087 - CSV parser and writer**
   - Parse CSV files with header row mapping
   - Handle split transactions (multiple rows per parent)
   - Write CSV with standard column layout
