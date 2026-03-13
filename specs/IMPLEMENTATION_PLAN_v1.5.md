@@ -277,7 +277,7 @@ Spec: `specs/v1.5/import-export.md`
 
 ### 6.3 Export Engine
 
-- [ ] **093 - Export service**
+- [x] **093 - Export service**
   - Query transactions by account and date range
   - Include related data (payees, categories, splits, transfers)
   - Full database export (accounts, categories, payees, scheduled)
