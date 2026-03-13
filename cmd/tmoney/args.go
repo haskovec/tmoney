@@ -99,6 +99,9 @@ type cliOptions struct {
 	skipDuplicates   bool   // --skip-duplicates flag
 	updateDuplicates bool   // --update-duplicates flag
 	formatOverride   string // --format <csv|qif|ofx>
+
+	// Export options
+	exportFile string // --export <file>
 }
 
 // parseArgs parses command-line arguments and returns options and remaining args.
@@ -418,6 +421,12 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.importFile = args[i]
+		case "--export":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--export requires a file path argument")
+			}
+			i++
+			opts.exportFile = args[i]
 		case "--confirm":
 			opts.confirm = true
 		case "--skip-duplicates":
@@ -534,6 +543,8 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.statementBalance = after
 			} else if after, ok := strings.CutPrefix(arg, "--import="); ok {
 				opts.importFile = after
+			} else if after, ok := strings.CutPrefix(arg, "--export="); ok {
+				opts.exportFile = after
 			} else if after, ok := strings.CutPrefix(arg, "--format="); ok {
 				opts.formatOverride = after
 			} else {

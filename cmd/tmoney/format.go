@@ -598,6 +598,13 @@ Import Commands:
     --skip-duplicates    Skip matched/duplicate transactions
     --update-duplicates  Update existing matched transactions
 
+Export Commands:
+  --export <file>        Export transactions to a file
+    --format <fmt>       Override format detection (csv or qif)
+    --account <name>     Export only a specific account
+    --from <date>        Start date filter (YYYY-MM-DD)
+    --to <date>          End date filter (YYYY-MM-DD)
+
 Backup/Restore Commands:
   --backup               Create a manual backup of the database
   --list-backups         List available backups

@@ -293,7 +293,7 @@ Spec: `specs/v1.5/import-export.md`
   - Dry-run summary output
   - Execution summary output
 
-- [ ] **095 - CLI export commands**
+- [x] **095 - CLI export commands**
   - `--export <file>` (full database)
   - `--export <file> --format csv|qif`
   - `--export <file> --account <name>`

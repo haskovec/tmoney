@@ -122,6 +122,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runImport(opts, stdout)
 	}
 
+	// Handle --export
+	if opts.exportFile != "" {
+		return runExport(opts, stdout)
+	}
+
 	// Handle --report
 	if opts.report {
 		return runReport(opts, stdout)
