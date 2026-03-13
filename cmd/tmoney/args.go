@@ -92,6 +92,13 @@ type cliOptions struct {
 	reconcileForce   bool     // --force flag (for finish with non-zero diff)
 	statementDate    string   // --statement-date <YYYY-MM-DD>
 	statementBalance string   // --statement-balance <amount>
+
+	// Import options
+	importFile       string // --import <file>
+	confirm          bool   // --confirm flag (execute import instead of dry-run)
+	skipDuplicates   bool   // --skip-duplicates flag
+	updateDuplicates bool   // --update-duplicates flag
+	formatOverride   string // --format <csv|qif|ofx>
 }
 
 // parseArgs parses command-line arguments and returns options and remaining args.
@@ -405,6 +412,24 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			if len(opts.markReconciled) == 0 {
 				return nil, nil, fmt.Errorf("--mark-reconciled requires at least one transaction ID")
 			}
+		case "--import":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--import requires a file path argument")
+			}
+			i++
+			opts.importFile = args[i]
+		case "--confirm":
+			opts.confirm = true
+		case "--skip-duplicates":
+			opts.skipDuplicates = true
+		case "--update-duplicates":
+			opts.updateDuplicates = true
+		case "--format":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--format requires a value argument (csv, qif, or ofx)")
+			}
+			i++
+			opts.formatOverride = args[i]
 		default:
 			// Check for --flag=value formats
 			if after, ok := strings.CutPrefix(arg, "--file="); ok {
@@ -507,6 +532,10 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.statementDate = after
 			} else if after, ok := strings.CutPrefix(arg, "--statement-balance="); ok {
 				opts.statementBalance = after
+			} else if after, ok := strings.CutPrefix(arg, "--import="); ok {
+				opts.importFile = after
+			} else if after, ok := strings.CutPrefix(arg, "--format="); ok {
+				opts.formatOverride = after
 			} else {
 				remaining = append(remaining, arg)
 			}

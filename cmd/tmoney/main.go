@@ -117,6 +117,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runReconcileStatus(opts, stdout)
 	}
 
+	// Handle --import
+	if opts.importFile != "" {
+		return runImport(opts, stdout)
+	}
+
 	// Handle --report
 	if opts.report {
 		return runReport(opts, stdout)

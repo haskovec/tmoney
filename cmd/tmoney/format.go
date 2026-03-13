@@ -590,6 +590,14 @@ Reconciliation Commands:
   --reconcile-status     Show reconciliation status (requires --account)
     --account <name>     Account to check status for
 
+Import Commands:
+  --import <file>        Import transactions from a file (dry-run by default)
+    --account <name>     Target account for imported transactions
+    --format <fmt>       Override format detection (csv, qif, or ofx)
+    --confirm            Execute the import (default is dry-run preview)
+    --skip-duplicates    Skip matched/duplicate transactions
+    --update-duplicates  Update existing matched transactions
+
 Backup/Restore Commands:
   --backup               Create a manual backup of the database
   --list-backups         List available backups

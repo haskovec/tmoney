@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -5230,4 +5231,430 @@ func TestParseArgs_AddScheduledEqualsFormat(t *testing.T) {
 	if opts.leadDays != "7" {
 		t.Errorf("leadDays should be 7, got %q", opts.leadDays)
 	}
+}
+
+// --- Import CLI tests ---
+
+func TestParseArgs_ImportFlags(t *testing.T) {
+	opts, _, err := parseArgs([]string{
+		"--import", "bank.csv",
+		"--account", "Checking",
+		"--file", "test.tdb",
+		"--confirm",
+		"--skip-duplicates",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs returned error: %v", err)
+	}
+	if opts.importFile != "bank.csv" {
+		t.Errorf("importFile should be bank.csv, got %q", opts.importFile)
+	}
+	if opts.accountName != "Checking" {
+		t.Errorf("accountName should be Checking, got %q", opts.accountName)
+	}
+	if !opts.confirm {
+		t.Error("confirm should be true")
+	}
+	if !opts.skipDuplicates {
+		t.Error("skipDuplicates should be true")
+	}
+}
+
+func TestParseArgs_ImportFlagsEqualFormat(t *testing.T) {
+	opts, _, err := parseArgs([]string{
+		"--import=bank.txt",
+		"--format=csv",
+		"--account", "Checking",
+		"--file", "test.tdb",
+		"--update-duplicates",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs returned error: %v", err)
+	}
+	if opts.importFile != "bank.txt" {
+		t.Errorf("importFile should be bank.txt, got %q", opts.importFile)
+	}
+	if opts.formatOverride != "csv" {
+		t.Errorf("formatOverride should be csv, got %q", opts.formatOverride)
+	}
+	if !opts.updateDuplicates {
+		t.Error("updateDuplicates should be true")
+	}
+}
+
+func TestParseArgs_ImportMissingFile(t *testing.T) {
+	_, _, err := parseArgs([]string{"--import"})
+	if err == nil {
+		t.Error("parseArgs should return error for --import without argument")
+	}
+}
+
+func TestParseArgs_FormatMissing(t *testing.T) {
+	_, _, err := parseArgs([]string{"--format"})
+	if err == nil {
+		t.Error("parseArgs should return error for --format without argument")
+	}
+}
+
+func TestRun_ImportMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--import", "bank.csv", "--account", "Checking"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--import) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_ImportMissingAccount(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--import", "bank.csv", "--file", "test.tdb"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--import) without --account should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --account") {
+		t.Errorf("error should mention --account requirement, got: %v", err)
+	}
+}
+
+func TestRun_ImportMutuallyExclusiveDuplicateFlags(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{
+		"--import", "bank.csv",
+		"--file", "test.tdb",
+		"--account", "Checking",
+		"--skip-duplicates",
+		"--update-duplicates",
+	}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--import) with both --skip-duplicates and --update-duplicates should return error")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("error should mention mutually exclusive, got: %v", err)
+	}
+}
+
+func TestRun_ImportInvalidFormat(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{
+		"--import", "bank.csv",
+		"--file", "test.tdb",
+		"--account", "Checking",
+		"--format", "xml",
+	}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--import) with invalid --format should return error")
+	}
+	if !strings.Contains(err.Error(), "unsupported --format") {
+		t.Errorf("error should mention unsupported format, got: %v", err)
+	}
+}
+
+func TestRun_ImportNonexistentFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	repo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("0"), models.Today())
+	if err := repo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--import", "/nonexistent/bank.csv",
+		"--file", dbPath,
+		"--account", "Checking",
+	}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--import) with nonexistent import file should return error")
+	}
+	if !strings.Contains(err.Error(), "failed to open") {
+		t.Errorf("error should mention failed to open, got: %v", err)
+	}
+}
+
+func TestRun_ImportCSVDryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	repo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000"), models.Today())
+	if err := repo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+	database.Close()
+
+	// Create a CSV file for import
+	csvPath := filepath.Join(tmpDir, "import.csv")
+	csvContent := "Date,Amount,Payee,Category,Memo\n2024-03-01,-50.00,Coffee Shop,Food:Coffee,Morning coffee\n2024-03-02,-120.00,Electric Co,Bills:Utilities,March electric\n"
+	if err := writeTestFile(csvPath, csvContent); err != nil {
+		t.Fatalf("failed to write CSV file: %v", err)
+	}
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--import", csvPath,
+		"--file", dbPath,
+		"--account", "Checking",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("run(--import dry-run) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "IMPORT PREVIEW") {
+		t.Error("output should contain IMPORT PREVIEW header")
+	}
+	if !strings.Contains(output, "Checking") {
+		t.Error("output should contain account name")
+	}
+	if !strings.Contains(output, "2 transactions") {
+		t.Error("output should show 2 parsed transactions")
+	}
+	if !strings.Contains(output, "Run with --confirm") {
+		t.Error("output should prompt to run with --confirm")
+	}
+}
+
+func TestRun_ImportCSVConfirm(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	repo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000"), models.Today())
+	if err := repo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+	database.Close()
+
+	// Create a CSV file for import
+	csvPath := filepath.Join(tmpDir, "import.csv")
+	csvContent := "Date,Amount,Payee,Memo\n2024-03-01,-50.00,Coffee Shop,Morning coffee\n2024-03-02,-120.00,Electric Co,March electric\n"
+	if err := writeTestFile(csvPath, csvContent); err != nil {
+		t.Fatalf("failed to write CSV file: %v", err)
+	}
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--import", csvPath,
+		"--file", dbPath,
+		"--account", "Checking",
+		"--confirm",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("run(--import --confirm) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "IMPORT COMPLETE") {
+		t.Error("output should contain IMPORT COMPLETE header")
+	}
+	if !strings.Contains(output, "Created:  2") {
+		t.Errorf("output should show 2 created transactions, got: %s", output)
+	}
+
+	// Verify transactions were actually created
+	database2, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reopen database: %v", err)
+	}
+	defer database2.Close()
+
+	txnRepo := repository.NewTransactionRepository(database2)
+	txns, err := txnRepo.ListByAccount(account.ID)
+	if err != nil {
+		t.Fatalf("failed to list transactions: %v", err)
+	}
+	if len(txns) != 2 {
+		t.Errorf("expected 2 transactions, got %d", len(txns))
+	}
+}
+
+func TestRun_ImportClosedAccount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	repo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Closed Account", models.AccountTypeChecking, "USD", models.MustNewMoney("0"), models.Today())
+	account.Active = false
+	if err := repo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+	database.Close()
+
+	csvPath := filepath.Join(tmpDir, "import.csv")
+	csvContent := "Date,Amount,Payee\n2024-03-01,-50.00,Coffee Shop\n"
+	if err := writeTestFile(csvPath, csvContent); err != nil {
+		t.Fatalf("failed to write CSV file: %v", err)
+	}
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--import", csvPath,
+		"--file", dbPath,
+		"--account", "Closed Account",
+	}, stdout, stderr)
+	if err == nil {
+		t.Error("import into closed account should return error")
+	}
+	if !strings.Contains(err.Error(), "closed") {
+		t.Errorf("error should mention account is closed, got: %v", err)
+	}
+}
+
+func TestRun_ImportFormatOverride(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	repo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("0"), models.Today())
+	if err := repo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+	database.Close()
+
+	// Create a CSV file with a .txt extension
+	csvPath := filepath.Join(tmpDir, "import.txt")
+	csvContent := "Date,Amount,Payee\n2024-03-01,-50.00,Coffee Shop\n"
+	if err := writeTestFile(csvPath, csvContent); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--import", csvPath,
+		"--file", dbPath,
+		"--account", "Checking",
+		"--format", "csv",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("run(--import --format csv) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "IMPORT PREVIEW") {
+		t.Error("output should contain IMPORT PREVIEW header")
+	}
+}
+
+func TestRun_ImportSkipDuplicates(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	accountRepo := repository.NewAccountRepository(database)
+	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000"), models.Today())
+	if err := accountRepo.Create(account); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	// Create an existing transaction that should match an import row
+	txnRepo := repository.NewTransactionRepository(database)
+	existingTxn := models.NewTransaction(account.ID, models.MustParseDate("2024-03-01"), models.MustNewMoney("-50.00"))
+	if err := txnRepo.Create(existingTxn); err != nil {
+		t.Fatalf("failed to create existing transaction: %v", err)
+	}
+
+	database.Close()
+
+	// Create a CSV file with a matching transaction
+	csvPath := filepath.Join(tmpDir, "import.csv")
+	csvContent := "Date,Amount,Payee\n2024-03-01,-50.00,Coffee Shop\n2024-03-02,-75.00,Gas Station\n"
+	if err := writeTestFile(csvPath, csvContent); err != nil {
+		t.Fatalf("failed to write CSV file: %v", err)
+	}
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--import", csvPath,
+		"--file", dbPath,
+		"--account", "Checking",
+		"--skip-duplicates",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("run(--import --skip-duplicates) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "IMPORT PREVIEW") {
+		t.Error("output should contain IMPORT PREVIEW header")
+	}
+}
+
+func TestRun_ImportAccountNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	database.Close()
+
+	csvPath := filepath.Join(tmpDir, "import.csv")
+	csvContent := "Date,Amount,Payee\n2024-03-01,-50.00,Coffee Shop\n"
+	if err := writeTestFile(csvPath, csvContent); err != nil {
+		t.Fatalf("failed to write CSV file: %v", err)
+	}
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = run([]string{
+		"--import", csvPath,
+		"--file", dbPath,
+		"--account", "Nonexistent",
+	}, stdout, stderr)
+	if err == nil {
+		t.Error("import with nonexistent account should return error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention account not found, got: %v", err)
+	}
+}
+
+// writeTestFile is a test helper that writes content to a file.
+func writeTestFile(path, content string) error {
+	return os.WriteFile(path, []byte(content), 0644)
 }

@@ -285,7 +285,7 @@ Spec: `specs/v1.5/import-export.md`
 
 ### 6.4 CLI Commands
 
-- [ ] **094 - CLI import commands**
+- [x] **094 - CLI import commands**
   - `--import <file> --account <name>` (dry-run)
   - `--import <file> --account <name> --confirm` (execute)
   - `--import <file> --account <name> --format <fmt>` (override format)

@@ -13,6 +13,7 @@ import (
 	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/imexport"
 	"github.com/haskovec/tmoney/internal/models"
 	"github.com/haskovec/tmoney/internal/repository"
 	"github.com/haskovec/tmoney/internal/service"
@@ -1585,4 +1586,253 @@ func runReconcileStatus(opts *cliOptions, w io.Writer) error {
 func autoBackupAfterModification(dbPath string) {
 	// Best-effort: don't fail the CLI command if backup fails
 	backup.CreateAutoBackup(dbPath)
+}
+
+// runImport handles the --import command.
+func runImport(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--import requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--import requires --account to specify the target account")
+	}
+	if opts.skipDuplicates && opts.updateDuplicates {
+		return fmt.Errorf("--skip-duplicates and --update-duplicates are mutually exclusive")
+	}
+
+	// Detect or override format
+	var format imexport.Format
+	if opts.formatOverride != "" {
+		switch strings.ToLower(opts.formatOverride) {
+		case "csv":
+			format = imexport.FormatCSV
+		case "qif":
+			format = imexport.FormatQIF
+		case "ofx", "qfx":
+			format = imexport.FormatOFX
+		default:
+			return fmt.Errorf("unsupported --format value %q (must be csv, qif, or ofx)", opts.formatOverride)
+		}
+	} else {
+		var err error
+		format, err = imexport.DetectFormat(opts.importFile)
+		if err != nil {
+			return fmt.Errorf("cannot detect format: %w\nUse --format to specify the format explicitly", err)
+		}
+	}
+
+	// Open the import file
+	file, err := os.Open(opts.importFile)
+	if err != nil {
+		return fmt.Errorf("failed to open import file: %w", err)
+	}
+	defer file.Close()
+
+	// Open database and services
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	// Resolve the target account
+	account, err := svc.Account.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found: %w", opts.accountName, err)
+	}
+	if !account.Active {
+		return fmt.Errorf("account %q is closed; cannot import into a closed account", opts.accountName)
+	}
+
+	// Determine duplicate handling
+	dupHandling := imexport.DuplicateHandlingNone
+	if opts.skipDuplicates {
+		dupHandling = imexport.DuplicateHandlingSkip
+	} else if opts.updateDuplicates {
+		dupHandling = imexport.DuplicateHandlingUpdate
+	}
+
+	// Create import service with adapters
+	importSvc := imexport.NewImportService(
+		&cliCategoryResolver{categorySvc: svc.Category},
+		&cliPayeeResolver{payeeSvc: svc.Payee},
+		&cliTransactionStore{
+			transactionRepo: svc.TransactionRepo,
+			payeeRepo:       svc.PayeeRepo,
+		},
+		&cliTransactionCreator{transactionSvc: svc.Transaction},
+	)
+
+	// Run preview
+	importOpts := imexport.ImportOptions{
+		Format:            format,
+		DuplicateHandling: dupHandling,
+	}
+	result, err := importSvc.Preview(file, format, account.ID, importOpts)
+	if err != nil {
+		return fmt.Errorf("import preview failed: %w", err)
+	}
+
+	// If not confirming, show dry-run summary
+	if !opts.confirm {
+		printImportPreview(w, opts.importFile, opts.accountName, result)
+		return nil
+	}
+
+	// Execute the import
+	if err := importSvc.Execute(result, account.ID); err != nil {
+		return fmt.Errorf("import execution failed: %w", err)
+	}
+
+	// Print execution summary
+	printImportResult(w, opts.importFile, opts.accountName, result)
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// printImportPreview prints the dry-run import summary.
+func printImportPreview(w io.Writer, importFile, accountName string, result *imexport.ImportResult) {
+	fmt.Fprintf(w, "IMPORT PREVIEW: %s → %s\n", filepath.Base(importFile), accountName)
+	fmt.Fprintln(w, strings.Repeat("=", 44))
+	fmt.Fprintf(w, "Parsed: %d transactions\n", len(result.Rows))
+	fmt.Fprintf(w, "  New:      %3d transactions (will be created)\n", result.NewCount())
+	fmt.Fprintf(w, "  Matched:  %3d transactions (will be updated)\n", result.MatchCount())
+	fmt.Fprintf(w, "  Review:   %3d transactions (low-confidence match)\n", result.ReviewCount())
+	fmt.Fprintf(w, "  Skipped:  %3d transactions (duplicates)\n", result.SkipCount())
+
+	if len(result.Rows) > 0 {
+		fmt.Fprintf(w, "\nDate range: %s to %s\n", result.DateFrom.String(), result.DateTo.String())
+		fmt.Fprintf(w, "Total amount: $%.2f\n", result.TotalAmount().Float64())
+	}
+
+	if len(result.Errors) > 0 {
+		fmt.Fprintf(w, "\nWarnings:\n")
+		for _, e := range result.Errors {
+			fmt.Fprintf(w, "  - %s\n", e)
+		}
+	}
+
+	fmt.Fprintln(w, "\nRun with --confirm to execute the import.")
+}
+
+// printImportResult prints the import execution summary.
+func printImportResult(w io.Writer, importFile, accountName string, result *imexport.ImportResult) {
+	fmt.Fprintf(w, "IMPORT COMPLETE: %s → %s\n", filepath.Base(importFile), accountName)
+	fmt.Fprintln(w, strings.Repeat("=", 45))
+	fmt.Fprintf(w, "Created:  %d new transactions\n", result.Created)
+	fmt.Fprintf(w, "Updated:  %d existing transactions\n", result.Updated)
+	fmt.Fprintf(w, "Skipped:  %d duplicates\n", result.Skipped)
+
+	if len(result.Errors) > 0 {
+		fmt.Fprintf(w, "\nErrors:\n")
+		for _, e := range result.Errors {
+			fmt.Fprintf(w, "  - %s\n", e)
+		}
+	}
+}
+
+// --- Import adapter types ---
+// These adapt the existing service/repository types to the interfaces expected
+// by imexport.ImportService.
+
+// cliCategoryResolver adapts CategoryService to imexport.CategoryResolver.
+type cliCategoryResolver struct {
+	categorySvc *service.CategoryService
+}
+
+func (r *cliCategoryResolver) ResolveCategoryByName(name string) (models.ID, error) {
+	// Handle hierarchical names like "Food:Groceries"
+	parts := strings.SplitN(name, ":", 2)
+
+	if len(parts) == 1 {
+		// Top-level category
+		cat, err := r.categorySvc.GetByName(name, nil)
+		if err != nil {
+			return models.ID{}, err
+		}
+		return cat.ID, nil
+	}
+
+	// Find parent first, then child
+	parent, err := r.categorySvc.GetByName(parts[0], nil)
+	if err != nil {
+		return models.ID{}, fmt.Errorf("parent category %q not found: %w", parts[0], err)
+	}
+
+	child, err := r.categorySvc.GetByName(parts[1], &parent.ID)
+	if err != nil {
+		return models.ID{}, fmt.Errorf("subcategory %q not found under %q: %w", parts[1], parts[0], err)
+	}
+
+	return child.ID, nil
+}
+
+// cliPayeeResolver adapts PayeeService to imexport.PayeeResolver.
+type cliPayeeResolver struct {
+	payeeSvc *service.PayeeService
+}
+
+func (r *cliPayeeResolver) ResolvePayee(name string) (models.ID, models.NullableID, error) {
+	payee, created, err := r.payeeSvc.ResolveOrCreate(name)
+	if err != nil {
+		return models.ID{}, models.NullableID{}, err
+	}
+	_ = created
+
+	if payee == nil {
+		return models.ID{}, models.NullableID{}, nil
+	}
+
+	var defaultCatID models.NullableID
+	if payee.DefaultCategoryID.Valid {
+		defaultCatID = payee.DefaultCategoryID
+	}
+
+	return payee.ID, defaultCatID, nil
+}
+
+// cliTransactionStore adapts repositories to imexport.TransactionStore.
+type cliTransactionStore struct {
+	transactionRepo *repository.TransactionRepository
+	payeeRepo       *repository.PayeeRepository
+}
+
+func (s *cliTransactionStore) ListByAccount(accountID models.ID) ([]*models.Transaction, error) {
+	return s.transactionRepo.ListByAccount(accountID)
+}
+
+func (s *cliTransactionStore) GetPayeeName(payeeID models.ID) string {
+	if payeeID.IsNil() {
+		return ""
+	}
+	payee, err := s.payeeRepo.GetByID(payeeID)
+	if err != nil {
+		return ""
+	}
+	return payee.Name
+}
+
+func (s *cliTransactionStore) GetBankReferenceID(txn *models.Transaction) string {
+	if txn.HasBankReferenceID() {
+		return txn.BankReferenceID.String
+	}
+	return ""
+}
+
+// cliTransactionCreator adapts TransactionService to imexport.TransactionCreator.
+type cliTransactionCreator struct {
+	transactionSvc *service.TransactionService
+}
+
+func (c *cliTransactionCreator) CreateTransaction(txn *models.Transaction) error {
+	return c.transactionSvc.Create(txn)
+}
+
+func (c *cliTransactionCreator) CreateTransactionWithSplits(txn *models.Transaction, splits []*models.Split) error {
+	return c.transactionSvc.CreateWithSplits(txn, splits)
+}
+
+func (c *cliTransactionCreator) UpdateTransaction(txn *models.Transaction) error {
+	return c.transactionSvc.Update(txn)
 }
