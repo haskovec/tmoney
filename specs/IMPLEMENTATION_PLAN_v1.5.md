@@ -264,14 +264,14 @@ Spec: `specs/v1.5/import-export.md`
   - Combined confidence score (high/low/no match)
   - FITID matching override for OFX imports
 
-- [ ] **091 - Import service**
+- [x] **091 - Import service**
   - Parse file into intermediate transaction list
   - Run matching against existing account transactions
   - Auto-categorize using payee-to-category mappings
   - Apply import actions (create new, update matched, skip)
   - Bank reference ID storage on transactions (new field)
 
-- [ ] **092 - Database migration for bank reference ID**
+- [x] **092 - Database migration for bank reference ID**
   - Add `bank_reference_id` (string, nullable) to transactions table
   - Index for FITID lookup
 

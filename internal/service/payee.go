@@ -280,7 +280,7 @@ func (s *PayeeService) MergePayees(sourceID, targetID models.ID) error {
 		CREATE TEMPORARY TABLE _merge_txns AS
 		SELECT id, account_id, date, amount, CAST(? AS UUID) AS payee_id,
 			category_id, memo, check_number, status, transfer_id,
-			transfer_account_id, created_at, CURRENT_TIMESTAMP AS updated_at
+			transfer_account_id, bank_reference_id, created_at, CURRENT_TIMESTAMP AS updated_at
 		FROM transactions
 		WHERE CAST(payee_id AS VARCHAR) = ?
 	`, targetID.String(), sourceID.String())

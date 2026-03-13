@@ -83,8 +83,8 @@ func (r *TransactionRepository) Create(transaction *models.Transaction) error {
 		INSERT INTO transactions (
 			id, account_id, date, amount, payee_id, category_id,
 			memo, check_number, status, transfer_id, transfer_account_id,
-			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			bank_reference_id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = r.db.Conn().Exec(query,
@@ -99,6 +99,7 @@ func (r *TransactionRepository) Create(transaction *models.Transaction) error {
 		transaction.Status,
 		nullID(transaction.TransferID),
 		nullID(transaction.TransferAccountID),
+		nullString(transaction.BankReferenceID),
 		transaction.CreatedAt,
 		transaction.UpdatedAt,
 	)
@@ -114,7 +115,7 @@ func (r *TransactionRepository) GetByID(id models.ID) (*models.Transaction, erro
 	query := `
 		SELECT id, account_id, date, amount, payee_id, category_id,
 			memo, check_number, status, transfer_id, transfer_account_id,
-			created_at, updated_at
+			bank_reference_id, created_at, updated_at
 		FROM transactions
 		WHERE CAST(id AS VARCHAR) = ?
 	`
@@ -132,6 +133,7 @@ func (r *TransactionRepository) GetByID(id models.ID) (*models.Transaction, erro
 		&transaction.Status,
 		&transaction.TransferID,
 		&transaction.TransferAccountID,
+		&transaction.BankReferenceID,
 		&transaction.CreatedAt,
 		&transaction.UpdatedAt,
 	)
@@ -150,7 +152,7 @@ func (r *TransactionRepository) List() ([]*models.Transaction, error) {
 	query := `
 		SELECT id, account_id, date, amount, payee_id, category_id,
 			memo, check_number, status, transfer_id, transfer_account_id,
-			created_at, updated_at
+			bank_reference_id, created_at, updated_at
 		FROM transactions
 		ORDER BY date DESC, created_at DESC
 	`
@@ -163,7 +165,7 @@ func (r *TransactionRepository) ListByAccount(accountID models.ID) ([]*models.Tr
 	query := `
 		SELECT id, account_id, date, amount, payee_id, category_id,
 			memo, check_number, status, transfer_id, transfer_account_id,
-			created_at, updated_at
+			bank_reference_id, created_at, updated_at
 		FROM transactions
 		WHERE CAST(account_id AS VARCHAR) = ?
 		ORDER BY date DESC, created_at DESC
@@ -177,7 +179,7 @@ func (r *TransactionRepository) ListByDateRange(startDate, endDate models.Date) 
 	query := `
 		SELECT id, account_id, date, amount, payee_id, category_id,
 			memo, check_number, status, transfer_id, transfer_account_id,
-			created_at, updated_at
+			bank_reference_id, created_at, updated_at
 		FROM transactions
 		WHERE date >= ? AND date <= ?
 		ORDER BY date DESC, created_at DESC
@@ -191,7 +193,7 @@ func (r *TransactionRepository) ListByAccountAndDateRange(accountID models.ID, s
 	query := `
 		SELECT id, account_id, date, amount, payee_id, category_id,
 			memo, check_number, status, transfer_id, transfer_account_id,
-			created_at, updated_at
+			bank_reference_id, created_at, updated_at
 		FROM transactions
 		WHERE CAST(account_id AS VARCHAR) = ? AND date >= ? AND date <= ?
 		ORDER BY date DESC, created_at DESC
@@ -290,8 +292,8 @@ func (r *TransactionRepository) Update(transaction *models.Transaction) error {
 		INSERT INTO transactions (
 			id, account_id, date, amount, payee_id, category_id,
 			memo, check_number, status, transfer_id, transfer_account_id,
-			created_at, updated_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			bank_reference_id, created_at, updated_at
+		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Conn().Exec(insertQuery,
 		transaction.ID.String(),
@@ -305,6 +307,7 @@ func (r *TransactionRepository) Update(transaction *models.Transaction) error {
 		transaction.Status.String(),
 		nullID(transaction.TransferID),
 		nullID(transaction.TransferAccountID),
+		nullString(transaction.BankReferenceID),
 		transaction.CreatedAt.Time(),
 		transaction.UpdatedAt.Time(),
 	)
@@ -390,6 +393,40 @@ func (r *TransactionRepository) CountByPayee(payeeID models.ID) (int, error) {
 	return count, nil
 }
 
+// GetByBankReferenceID retrieves a transaction by its bank reference ID within an account.
+func (r *TransactionRepository) GetByBankReferenceID(accountID models.ID, bankRefID string) (*models.Transaction, error) {
+	query := `
+		SELECT id, account_id, date, amount, payee_id, category_id,
+			memo, check_number, status, transfer_id, transfer_account_id,
+			bank_reference_id, created_at, updated_at
+		FROM transactions
+		WHERE CAST(account_id AS VARCHAR) = ? AND bank_reference_id = ?
+	`
+
+	transaction := &models.Transaction{}
+	err := r.db.Conn().QueryRow(query, accountID.String(), bankRefID).Scan(
+		&transaction.ID,
+		&transaction.AccountID,
+		&transaction.Date,
+		&transaction.Amount,
+		&transaction.PayeeID,
+		&transaction.CategoryID,
+		&transaction.Memo,
+		&transaction.CheckNumber,
+		&transaction.Status,
+		&transaction.TransferID,
+		&transaction.TransferAccountID,
+		&transaction.BankReferenceID,
+		&transaction.CreatedAt,
+		&transaction.UpdatedAt,
+	)
+	if err != nil {
+		return nil, nil // Not found returns nil, nil (not an error)
+	}
+
+	return transaction, nil
+}
+
 // queryTransactions executes a query and returns a slice of transactions.
 func (r *TransactionRepository) queryTransactions(query string) ([]*models.Transaction, error) {
 	rows, err := r.db.Conn().Query(query)
@@ -429,6 +466,7 @@ func (r *TransactionRepository) scanTransactions(rows *sql.Rows) ([]*models.Tran
 			&transaction.Status,
 			&transaction.TransferID,
 			&transaction.TransferAccountID,
+			&transaction.BankReferenceID,
 			&transaction.CreatedAt,
 			&transaction.UpdatedAt,
 		)
@@ -486,7 +524,7 @@ func (r *TransactionRepository) Search(criteria TransactionSearchCriteria) ([]*m
 	query.WriteString(`
 		SELECT DISTINCT t.id, t.account_id, t.date, t.amount, t.payee_id, t.category_id,
 			t.memo, t.check_number, t.status, t.transfer_id, t.transfer_account_id,
-			t.created_at, t.updated_at
+			t.bank_reference_id, t.created_at, t.updated_at
 		FROM transactions t
 	`)
 

@@ -123,6 +123,9 @@ type Transaction struct {
 	// Transfer properties (for linked transfers between accounts)
 	TransferID        NullableID `json:"transfer_id"`
 	TransferAccountID NullableID `json:"transfer_account_id"`
+
+	// Bank reference ID for imported transactions (e.g., OFX FITID)
+	BankReferenceID NullableString `json:"bank_reference_id"`
 }
 
 // NewTransaction creates a new Transaction with generated ID and timestamps.
@@ -277,6 +280,21 @@ func (t *Transaction) ClearTransfer() {
 	t.TransferID = NullableID{Valid: false}
 	t.TransferAccountID = NullableID{Valid: false}
 	t.Touch()
+}
+
+// SetBankReferenceID sets the bank reference ID (e.g., OFX FITID) for this transaction.
+func (t *Transaction) SetBankReferenceID(refID string) {
+	if refID == "" {
+		t.BankReferenceID = NullableString{Valid: false}
+	} else {
+		t.BankReferenceID = NullableString{String: refID, Valid: true}
+	}
+	t.Touch()
+}
+
+// HasBankReferenceID returns true if the transaction has a bank reference ID.
+func (t *Transaction) HasBankReferenceID() bool {
+	return t.BankReferenceID.Valid && t.BankReferenceID.String != ""
 }
 
 // IsIncome returns true if the transaction is an income (positive amount).

@@ -50,7 +50,7 @@ func (r *TransferRepository) GetByTransferID(transferID models.ID) (*models.Tran
 	query := `
 		SELECT id, account_id, date, amount, payee_id, category_id,
 			memo, check_number, status, transfer_id, transfer_account_id,
-			created_at, updated_at
+			bank_reference_id, created_at, updated_at
 		FROM transactions
 		WHERE CAST(transfer_id AS VARCHAR) = ?
 		ORDER BY amount ASC
@@ -77,6 +77,7 @@ func (r *TransferRepository) GetByTransferID(transferID models.ID) (*models.Tran
 			&txn.Status,
 			&txn.TransferID,
 			&txn.TransferAccountID,
+			&txn.BankReferenceID,
 			&txn.CreatedAt,
 			&txn.UpdatedAt,
 		)
@@ -123,7 +124,7 @@ func (r *TransferRepository) GetOtherSide(transactionID models.ID) (*models.Tran
 	query := `
 		SELECT id, account_id, date, amount, payee_id, category_id,
 			memo, check_number, status, transfer_id, transfer_account_id,
-			created_at, updated_at
+			bank_reference_id, created_at, updated_at
 		FROM transactions
 		WHERE CAST(transfer_id AS VARCHAR) = ? AND CAST(id AS VARCHAR) != ?
 	`
@@ -141,6 +142,7 @@ func (r *TransferRepository) GetOtherSide(transactionID models.ID) (*models.Tran
 		&other.Status,
 		&other.TransferID,
 		&other.TransferAccountID,
+		&other.BankReferenceID,
 		&other.CreatedAt,
 		&other.UpdatedAt,
 	)
@@ -277,7 +279,7 @@ func (r *TransferRepository) ListByAccount(accountID models.ID) ([]*models.Trans
 	query := `
 		SELECT id, account_id, date, amount, payee_id, category_id,
 			memo, check_number, status, transfer_id, transfer_account_id,
-			created_at, updated_at
+			bank_reference_id, created_at, updated_at
 		FROM transactions
 		WHERE CAST(account_id AS VARCHAR) = ? AND transfer_id IS NOT NULL
 		ORDER BY date DESC, created_at DESC
@@ -304,6 +306,7 @@ func (r *TransferRepository) ListByAccount(accountID models.ID) ([]*models.Trans
 			&txn.Status,
 			&txn.TransferID,
 			&txn.TransferAccountID,
+			&txn.BankReferenceID,
 			&txn.CreatedAt,
 			&txn.UpdatedAt,
 		)
