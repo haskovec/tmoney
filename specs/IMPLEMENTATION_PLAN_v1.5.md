@@ -257,7 +257,7 @@ Spec: `specs/v1.5/import-export.md`
 
 ### 6.2 Import Engine
 
-- [ ] **090 - Fuzzy matching engine**
+- [x] **090 - Fuzzy matching engine**
   - Amount-exact matching (required first pass)
   - Date closeness scoring (within +/- 7 day window)
   - Payee name similarity scoring (fuzzy string comparison)
