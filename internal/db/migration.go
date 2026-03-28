@@ -13,7 +13,7 @@ import (
 var migrationsFS embed.FS
 
 // CurrentSchemaVersion is the latest schema version supported by this app.
-const CurrentSchemaVersion = 5
+const CurrentSchemaVersion = 6
 
 // Migrate runs all pending migrations on the database.
 // It reads the current schema_version and applies any migrations with a higher version.

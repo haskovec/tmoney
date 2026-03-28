@@ -141,6 +141,8 @@ func TestMigrate(t *testing.T) {
 			"investment_lots",
 			"scheduled_transactions",
 			"reconciliation_sessions",
+			"securities",
+			"security_prices",
 		}
 
 		for _, table := range tables {
@@ -881,6 +883,298 @@ func TestMigration004AutoPost(t *testing.T) {
 		}
 		if postLeadDays != 0 {
 			t.Errorf("Expected post_lead_days to default to 0, got %d", postLeadDays)
+		}
+	})
+}
+
+func TestMigration006Securities(t *testing.T) {
+	t.Run("securities table accepts valid security", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Insert a security
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type, asset_class, currency, exchange, hidden)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'AAPL', 'Apple Inc.', 'stock', 'large_cap_stock', 'USD', 'NASDAQ', FALSE)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		// Read it back and verify all columns
+		var ticker, name, secType, assetClass, currency string
+		var exchange *string
+		var hidden bool
+		err = db.Conn().QueryRow(`
+			SELECT ticker, name, security_type, asset_class, currency, exchange, hidden
+			FROM securities WHERE id = '11111111-1111-1111-1111-111111111111'
+		`).Scan(&ticker, &name, &secType, &assetClass, &currency, &exchange, &hidden)
+		if err != nil {
+			t.Fatalf("Failed to read security: %v", err)
+		}
+		if ticker != "AAPL" {
+			t.Errorf("Expected ticker 'AAPL', got %q", ticker)
+		}
+		if name != "Apple Inc." {
+			t.Errorf("Expected name 'Apple Inc.', got %q", name)
+		}
+		if secType != "stock" {
+			t.Errorf("Expected security_type 'stock', got %q", secType)
+		}
+		if assetClass != "large_cap_stock" {
+			t.Errorf("Expected asset_class 'large_cap_stock', got %q", assetClass)
+		}
+		if currency != "USD" {
+			t.Errorf("Expected currency 'USD', got %q", currency)
+		}
+		if exchange == nil || *exchange != "NASDAQ" {
+			t.Errorf("Expected exchange 'NASDAQ', got %v", exchange)
+		}
+		if hidden {
+			t.Error("Expected hidden FALSE")
+		}
+	})
+
+	t.Run("rejects invalid security_type", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (ticker, name, security_type)
+			VALUES ('BAD', 'Bad Security', 'bond')
+		`)
+		if err == nil {
+			t.Error("Expected error when inserting invalid security_type 'bond'")
+		}
+	})
+
+	t.Run("rejects invalid asset_class", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (ticker, name, security_type, asset_class)
+			VALUES ('BAD', 'Bad Security', 'stock', 'real_estate')
+		`)
+		if err == nil {
+			t.Error("Expected error when inserting invalid asset_class 'real_estate'")
+		}
+	})
+
+	t.Run("defaults asset_class to unclassified and currency to USD", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (ticker, name, security_type)
+			VALUES ('VTI', 'Vanguard Total Stock Market ETF', 'etf')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security with defaults: %v", err)
+		}
+
+		var assetClass, currency string
+		err = db.Conn().QueryRow(`
+			SELECT asset_class, currency FROM securities WHERE ticker = 'VTI'
+		`).Scan(&assetClass, &currency)
+		if err != nil {
+			t.Fatalf("Failed to read security defaults: %v", err)
+		}
+		if assetClass != "unclassified" {
+			t.Errorf("Expected default asset_class 'unclassified', got %q", assetClass)
+		}
+		if currency != "USD" {
+			t.Errorf("Expected default currency 'USD', got %q", currency)
+		}
+	})
+
+	t.Run("security_prices inserts and reads back correctly", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Create a security first
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'AAPL', 'Apple Inc.', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		// Insert a price
+		_, err = db.Conn().Exec(`
+			INSERT INTO security_prices (security_id, date, price, source)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-15', 195.50, 'manual')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security price: %v", err)
+		}
+
+		var price float64
+		var source string
+		err = db.Conn().QueryRow(`
+			SELECT price, source FROM security_prices
+			WHERE security_id = '11111111-1111-1111-1111-111111111111'
+		`).Scan(&price, &source)
+		if err != nil {
+			t.Fatalf("Failed to read security price: %v", err)
+		}
+		if price != 195.50 {
+			t.Errorf("Expected price 195.50, got %f", price)
+		}
+		if source != "manual" {
+			t.Errorf("Expected source 'manual', got %q", source)
+		}
+	})
+
+	t.Run("security_prices enforces unique constraint on security_id + date", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'AAPL', 'Apple Inc.', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		// Insert first price
+		_, err = db.Conn().Exec(`
+			INSERT INTO security_prices (security_id, date, price, source)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-15', 195.50, 'manual')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert first price: %v", err)
+		}
+
+		// Insert duplicate (same security_id + date) should fail
+		_, err = db.Conn().Exec(`
+			INSERT INTO security_prices (security_id, date, price, source)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-15', 196.00, 'api')
+		`)
+		if err == nil {
+			t.Error("Expected error when inserting duplicate security_id + date")
+		}
+	})
+
+	t.Run("security_prices rejects non-positive price", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'AAPL', 'Apple Inc.', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		// Zero price should fail
+		_, err = db.Conn().Exec(`
+			INSERT INTO security_prices (security_id, date, price, source)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-15', 0, 'manual')
+		`)
+		if err == nil {
+			t.Error("Expected error when inserting zero price")
+		}
+
+		// Negative price should fail
+		_, err = db.Conn().Exec(`
+			INSERT INTO security_prices (security_id, date, price, source)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-16', -10.00, 'manual')
+		`)
+		if err == nil {
+			t.Error("Expected error when inserting negative price")
+		}
+	})
+
+	t.Run("security_prices rejects invalid source", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'AAPL', 'Apple Inc.', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO security_prices (security_id, date, price, source)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-15', 195.50, 'scrape')
+		`)
+		if err == nil {
+			t.Error("Expected error when inserting invalid source 'scrape'")
+		}
+	})
+
+	t.Run("security_prices references securities via foreign key", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Insert a price for a non-existent security
+		_, err = db.Conn().Exec(`
+			INSERT INTO security_prices (security_id, date, price, source)
+			VALUES ('99999999-9999-9999-9999-999999999999', '2024-06-15', 100.00, 'manual')
+		`)
+		if err == nil {
+			t.Error("Expected foreign key error when inserting price for non-existent security")
 		}
 	})
 }

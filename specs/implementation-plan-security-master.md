@@ -65,11 +65,11 @@ Spec: `specs/security-master.md`
 
 ## Phase 3: Securities Database Migration
 
-- [ ] **SM-007 - Migration: securities table**
+- [x] **SM-007 - Migration: securities table**
   - RED: Write integration test that runs migration, inserts a security, and reads it back verifying all columns
   - GREEN: Create migration `006_securities.sql` with `securities` table and indexes per spec schema
 
-- [ ] **SM-008 - Migration: security_prices table**
+- [x] **SM-008 - Migration: security_prices table**
   - RED: Write integration test that inserts a price for an existing security, verifies unique constraint on (security_id, date), verifies price > 0 check
   - GREEN: Add `security_prices` table and indexes to migration `006_securities.sql`
 
