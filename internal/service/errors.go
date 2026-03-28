@@ -228,3 +228,42 @@ type StatementDateFutureError struct{}
 func (e *StatementDateFutureError) Error() string {
 	return "statement date must not be in the future"
 }
+
+// SecurityAlreadyHiddenError is returned when trying to hide an already hidden security.
+type SecurityAlreadyHiddenError struct {
+	ID string
+}
+
+func (e *SecurityAlreadyHiddenError) Error() string {
+	return fmt.Sprintf("security %s is already hidden", e.ID)
+}
+
+// SecurityNotHiddenError is returned when trying to unhide a security that is not hidden.
+type SecurityNotHiddenError struct {
+	ID string
+}
+
+func (e *SecurityNotHiddenError) Error() string {
+	return fmt.Sprintf("security %s is not hidden", e.ID)
+}
+
+// SecurityHasOpenPositionsError is returned when trying to hide a security with open positions.
+type SecurityHasOpenPositionsError struct {
+	ID string
+}
+
+func (e *SecurityHasOpenPositionsError) Error() string {
+	return fmt.Sprintf("cannot hide security %s: has open positions", e.ID)
+}
+
+// SecurityHasDependentsError is returned when trying to delete a security with prices or transactions.
+// Suggests hiding instead.
+type SecurityHasDependentsError struct {
+	ID         string
+	Dependents string
+	Count      int
+}
+
+func (e *SecurityHasDependentsError) Error() string {
+	return fmt.Sprintf("cannot delete security %s: has %d %s; consider hiding instead", e.ID, e.Count, e.Dependents)
+}

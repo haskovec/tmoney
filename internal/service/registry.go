@@ -15,6 +15,7 @@ type Services struct {
 	ScheduledTxn   *ScheduledTransactionService
 	Report         *ReportService
 	Reconciliation *ReconciliationService
+	Security       *SecurityService
 
 	// Repositories exposed for cases where direct repo access is needed
 	// (e.g. search criteria, category lookups in CLI).
@@ -26,6 +27,7 @@ type Services struct {
 	PayeeRepo            *repository.PayeeRepository
 	ScheduledTxnRepo     *repository.ScheduledTransactionRepository
 	ReconciliationRepo   *repository.ReconciliationRepository
+	SecurityRepo         *repository.SecurityRepository
 }
 
 // NewServices creates all repositories and services from a database connection.
@@ -40,6 +42,7 @@ func NewServices(database *db.DB) *Services {
 	payeeRepo := repository.NewPayeeRepository(database)
 	scheduledRepo := repository.NewScheduledTransactionRepository(database)
 	reconciliationRepo := repository.NewReconciliationRepository(database)
+	securityRepo := repository.NewSecurityRepository(database)
 
 	// Create services
 	accountSvc := NewAccountService(accountRepo, database)
@@ -49,6 +52,7 @@ func NewServices(database *db.DB) *Services {
 	scheduledTxnSvc := NewScheduledTransactionService(scheduledRepo, transactionRepo, database)
 	reportSvc := NewReportService(accountRepo, database)
 	reconciliationSvc := NewReconciliationService(reconciliationRepo, transactionRepo, accountRepo, database)
+	securitySvc := NewSecurityService(securityRepo, database)
 
 	return &Services{
 		Account:        accountSvc,
@@ -58,6 +62,7 @@ func NewServices(database *db.DB) *Services {
 		ScheduledTxn:   scheduledTxnSvc,
 		Report:         reportSvc,
 		Reconciliation: reconciliationSvc,
+		Security:       securitySvc,
 
 		AccountRepo:        accountRepo,
 		TransactionRepo:    transactionRepo,
@@ -67,5 +72,6 @@ func NewServices(database *db.DB) *Services {
 		PayeeRepo:          payeeRepo,
 		ScheduledTxnRepo:   scheduledRepo,
 		ReconciliationRepo: reconciliationRepo,
+		SecurityRepo:       securityRepo,
 	}
 }

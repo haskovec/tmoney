@@ -101,27 +101,27 @@ Spec: `specs/security-master.md`
 
 ## Phase 5: Security Service
 
-- [ ] **SM-015 - SecurityService.Create with validation**
+- [x] **SM-015 - SecurityService.Create with validation**
   - RED: Write test — valid security created; invalid security (empty ticker) returns validation error; duplicate ticker+currency returns error
   - GREEN: Implement `SecurityService.Create` in `internal/service/security.go`
 
-- [ ] **SM-016 - SecurityService.Update**
+- [x] **SM-016 - SecurityService.Update**
   - RED: Write test — update fields; ticker change allowed; validation errors returned
   - GREEN: Implement `SecurityService.Update`
 
-- [ ] **SM-017 - SecurityService.Hide and Unhide**
+- [x] **SM-017 - SecurityService.Hide and Unhide**
   - RED: Write test — hide security with no positions succeeds; hide security with open positions fails; unhide works unconditionally
   - GREEN: Implement `Hide` and `Unhide` methods (position check is a stub returning true until positions are built)
 
-- [ ] **SM-018 - SecurityService.Delete**
+- [x] **SM-018 - SecurityService.Delete**
   - RED: Write test — delete with no history succeeds; delete with prices/transactions suggests hiding instead
   - GREEN: Implement `SecurityService.Delete`
 
-- [ ] **SM-019 - SecurityService.Search**
+- [x] **SM-019 - SecurityService.Search**
   - RED: Write test — search by partial ticker match; search by partial name match; case-insensitive
   - GREEN: Implement `SecurityService.Search`
 
-- [ ] **SM-020 - Register SecurityService in service registry**
+- [x] **SM-020 - Register SecurityService in service registry**
   - RED: Write test — `NewServices()` returns non-nil SecurityService
   - GREEN: Add SecurityService to `Services` struct and `NewServices()` in `registry.go`
 
