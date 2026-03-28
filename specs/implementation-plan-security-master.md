@@ -55,11 +55,11 @@ Spec: `specs/security-master.md`
 
 ## Phase 2: Price Model
 
-- [ ] **SM-005 - Price source enum**
+- [x] **SM-005 - Price source enum**
   - RED: Write tests for `PriceSource` enum — valid sources (`manual`, `transaction`, `import`, `api`), invalid rejected, `IsValid()`
   - GREEN: Implement `PriceSource` in `internal/models/price.go`
 
-- [ ] **SM-006 - Security price model and validation**
+- [x] **SM-006 - Security price model and validation**
   - RED: Write tests for `SecurityPrice` struct — required security_id, required date (not future), required price (must be positive), required source, unique constraint concept (security_id + date)
   - GREEN: Implement `SecurityPrice` struct with `Validate()` method
 
