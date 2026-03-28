@@ -1,5 +1,5 @@
-github.com/alpacahq/alpacadecimal v0.0.8 h1:DZlC1dfZT7dX9ljDmayVVlIvYb3ljglQd/Xq64aetDk=
-github.com/alpacahq/alpacadecimal v0.0.8/go.mod h1:RGlrk0IdAzlsqnONx7wnfvhO5g/9parrcU3HELvbfSI=
+github.com/alpacahq/alpacadecimal v0.0.9 h1:geeT3ZMyfgBV1mrqRDJWQ/4u+FaHep9MmQNFoHKFDNs=
+github.com/alpacahq/alpacadecimal v0.0.9/go.mod h1:DmR0Qs+sFJ7nyhfYD0/UUzE+9tCbEF1Wa4iz1lZnlwg=
 github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=
 github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/apache/arrow-go/v18 v18.5.1 h1:yaQ6zxMGgf9YCYw4/oaeOU3AULySDlAYDOcnr4LdHdI=
@@ -42,8 +42,6 @@ github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.10500.0 h1:6ZUdeqS5oWA
 github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.10500.0/go.mod h1:K25pJL26ARblGDeuAkrdblFvUen92+CwksLtPEHRqqQ=
 github.com/duckdb/duckdb-go/v2 v2.10500.0 h1:fINiqzIVyZYCuOeA1JZlT6xFXsDOM8DHMOXV+WEaYDY=
 github.com/duckdb/duckdb-go/v2 v2.10500.0/go.mod h1:0VI/sNb61DMuNLWR4kPh6AjPGnnhlKjuefcmrskXurY=
-github.com/ericlagergren/decimal v0.0.0-20211103172832-aca2edc11f73 h1:odNUt+pGupjtZyfaNIGLT/PUxT7r3fZ0Kf+QH9reIoM=
-github.com/ericlagergren/decimal v0.0.0-20211103172832-aca2edc11f73/go.mod h1:5sruVSMrZCk0U4hwRaGD0D8wIMFVsBWQqG74jQDFg4k=
 github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f h1:Y/CXytFA4m6baUTXGLOoWe4PQhGxaX0KpnayAqC48p4=
 github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f/go.mod h1:vw97MGsxSvLiUE2X8qFplwetxpGLQrlU1Q9AUEIzCaM=
 github.com/go-viper/mapstructure/v2 v2.5.0 h1:vM5IJoUAy3d7zRSVtIwQgBj7BiWtMPfmPEgAXnvj1Ro=

@@ -3,7 +3,7 @@ module github.com/haskovec/tmoney
 go 1.26
 
 require (
-	github.com/alpacahq/alpacadecimal v0.0.8
+	github.com/alpacahq/alpacadecimal v0.0.9
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
