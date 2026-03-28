@@ -198,11 +198,11 @@ Spec: `specs/security-master.md`
   - RED: Write test — Account with TrackLots=true validates; TrackLots only meaningful for investment type; default is false
   - GREEN: Add `TrackLots` field to `Account` struct in `internal/models/account.go`
 
-- [ ] **SM-037 - Migration: add track_lots column to accounts**
+- [x] **SM-037 - Migration: add track_lots column to accounts**
   - RED: Write integration test — existing accounts get track_lots=false; new investment account can set track_lots=true
   - GREEN: Create migration `007_account_track_lots.sql`
 
-- [ ] **SM-038 - Update AccountRepository for track_lots**
+- [x] **SM-038 - Update AccountRepository for track_lots**
   - RED: Write test — create account with track_lots=true; read back verifies field; update track_lots
   - GREEN: Update Create/Update/scan methods in account repository
 

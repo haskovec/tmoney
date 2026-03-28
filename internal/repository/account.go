@@ -34,8 +34,8 @@ func (r *AccountRepository) Create(account *models.Account) error {
 		INSERT INTO accounts (
 			id, name, type, currency, institution, account_number,
 			opening_balance, opening_date, credit_limit, interest_rate,
-			notes, active, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			notes, active, track_lots, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = r.db.Conn().Exec(query,
@@ -51,6 +51,7 @@ func (r *AccountRepository) Create(account *models.Account) error {
 		nullMoney(account.InterestRate),
 		nullString(account.Notes),
 		account.Active,
+		account.TrackLots,
 		account.CreatedAt,
 		account.UpdatedAt,
 	)
@@ -66,7 +67,7 @@ func (r *AccountRepository) GetByID(id models.ID) (*models.Account, error) {
 	query := `
 		SELECT id, name, type, currency, institution, account_number,
 			opening_balance, opening_date, credit_limit, interest_rate,
-			notes, active, created_at, updated_at
+			notes, active, track_lots, created_at, updated_at
 		FROM accounts
 		WHERE CAST(id AS VARCHAR) = ?
 	`
@@ -85,6 +86,7 @@ func (r *AccountRepository) GetByID(id models.ID) (*models.Account, error) {
 		&account.InterestRate,
 		&account.Notes,
 		&account.Active,
+		&account.TrackLots,
 		&account.CreatedAt,
 		&account.UpdatedAt,
 	)
@@ -103,7 +105,7 @@ func (r *AccountRepository) GetByName(name string) (*models.Account, error) {
 	query := `
 		SELECT id, name, type, currency, institution, account_number,
 			opening_balance, opening_date, credit_limit, interest_rate,
-			notes, active, created_at, updated_at
+			notes, active, track_lots, created_at, updated_at
 		FROM accounts
 		WHERE name = ?
 	`
@@ -122,6 +124,7 @@ func (r *AccountRepository) GetByName(name string) (*models.Account, error) {
 		&account.InterestRate,
 		&account.Notes,
 		&account.Active,
+		&account.TrackLots,
 		&account.CreatedAt,
 		&account.UpdatedAt,
 	)
@@ -140,7 +143,7 @@ func (r *AccountRepository) List(activeOnly bool) ([]*models.Account, error) {
 	query := `
 		SELECT id, name, type, currency, institution, account_number,
 			opening_balance, opening_date, credit_limit, interest_rate,
-			notes, active, created_at, updated_at
+			notes, active, track_lots, created_at, updated_at
 		FROM accounts
 	`
 	if activeOnly {
@@ -170,6 +173,7 @@ func (r *AccountRepository) List(activeOnly bool) ([]*models.Account, error) {
 			&account.InterestRate,
 			&account.Notes,
 			&account.Active,
+			&account.TrackLots,
 			&account.CreatedAt,
 			&account.UpdatedAt,
 		)
@@ -226,8 +230,8 @@ func (r *AccountRepository) Update(account *models.Account) error {
 		INSERT INTO accounts (
 			id, name, type, currency, institution, account_number,
 			opening_balance, opening_date, credit_limit, interest_rate,
-			notes, active, created_at, updated_at
-		) VALUES (CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			notes, active, track_lots, created_at, updated_at
+		) VALUES (CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Conn().Exec(insertQuery,
 		account.ID.String(),
@@ -242,6 +246,7 @@ func (r *AccountRepository) Update(account *models.Account) error {
 		nullMoney(account.InterestRate),
 		nullString(account.Notes),
 		account.Active,
+		account.TrackLots,
 		account.CreatedAt.Time(),
 		account.UpdatedAt.Time(),
 	)

@@ -391,6 +391,192 @@ func TestAccountNotFound(t *testing.T) {
 	}
 }
 
+// TestAccountTrackLots tests that the track_lots field is persisted and retrieved correctly.
+// SM-037: existing accounts get track_lots=false; new investment account can set track_lots=true.
+// SM-038: Create, read, and update round-trip for track_lots field.
+func TestAccountTrackLots(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tmoney-tracklots-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer database.Close()
+
+	// Verify schema version includes the track_lots migration
+	version, err := database.SchemaVersion()
+	if err != nil {
+		t.Fatalf("Failed to get schema version: %v", err)
+	}
+	if version < 7 {
+		t.Fatalf("Expected schema version >= 7, got %d", version)
+	}
+
+	repo := repository.NewAccountRepository(database)
+
+	// Test 1: Non-investment account defaults to track_lots=false
+	t.Run("non-investment account defaults to track_lots false", func(t *testing.T) {
+		checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+		if err := repo.Create(checking); err != nil {
+			t.Fatalf("Failed to create checking account: %v", err)
+		}
+
+		retrieved, err := repo.GetByID(checking.ID)
+		if err != nil {
+			t.Fatalf("Failed to retrieve checking account: %v", err)
+		}
+		if retrieved.TrackLots {
+			t.Error("Expected track_lots=false for checking account")
+		}
+	})
+
+	// Test 2: Investment account with track_lots=false (default)
+	t.Run("investment account defaults to track_lots false", func(t *testing.T) {
+		investment := models.NewAccount("Brokerage", models.AccountTypeInvestment, "USD", models.ZeroMoney, models.Today())
+		if err := repo.Create(investment); err != nil {
+			t.Fatalf("Failed to create investment account: %v", err)
+		}
+
+		retrieved, err := repo.GetByID(investment.ID)
+		if err != nil {
+			t.Fatalf("Failed to retrieve investment account: %v", err)
+		}
+		if retrieved.TrackLots {
+			t.Error("Expected track_lots=false for default investment account")
+		}
+	})
+
+	// Test 3: Investment account with track_lots=true
+	t.Run("investment account with track_lots true", func(t *testing.T) {
+		lotTracked := models.NewAccount("IRA", models.AccountTypeInvestment, "USD", models.ZeroMoney, models.Today())
+		lotTracked.TrackLots = true
+		if err := repo.Create(lotTracked); err != nil {
+			t.Fatalf("Failed to create lot-tracked investment account: %v", err)
+		}
+
+		// Verify via GetByID
+		retrieved, err := repo.GetByID(lotTracked.ID)
+		if err != nil {
+			t.Fatalf("Failed to retrieve lot-tracked account: %v", err)
+		}
+		if !retrieved.TrackLots {
+			t.Error("Expected track_lots=true for lot-tracked investment account")
+		}
+
+		// Verify via GetByName
+		byName, err := repo.GetByName("IRA")
+		if err != nil {
+			t.Fatalf("Failed to retrieve by name: %v", err)
+		}
+		if !byName.TrackLots {
+			t.Error("Expected track_lots=true when retrieved by name")
+		}
+	})
+
+	// Test 4: List returns track_lots correctly
+	t.Run("list returns track_lots correctly", func(t *testing.T) {
+		accounts, err := repo.List(false)
+		if err != nil {
+			t.Fatalf("Failed to list accounts: %v", err)
+		}
+
+		lotTrackedCount := 0
+		for _, acc := range accounts {
+			if acc.TrackLots {
+				lotTrackedCount++
+				if acc.Type != models.AccountTypeInvestment {
+					t.Errorf("Non-investment account %q has track_lots=true", acc.Name)
+				}
+			}
+		}
+		if lotTrackedCount != 1 {
+			t.Errorf("Expected 1 lot-tracked account, got %d", lotTrackedCount)
+		}
+	})
+
+	// Test 5: Update track_lots from false to true
+	t.Run("update track_lots from false to true", func(t *testing.T) {
+		account, err := repo.GetByName("Brokerage")
+		if err != nil {
+			t.Fatalf("Failed to get account: %v", err)
+		}
+		if account.TrackLots {
+			t.Fatal("Precondition failed: expected track_lots=false")
+		}
+
+		account.TrackLots = true
+		if err := repo.Update(account); err != nil {
+			t.Fatalf("Failed to update account: %v", err)
+		}
+
+		updated, err := repo.GetByID(account.ID)
+		if err != nil {
+			t.Fatalf("Failed to retrieve updated account: %v", err)
+		}
+		if !updated.TrackLots {
+			t.Error("Expected track_lots=true after update")
+		}
+	})
+
+	// Test 6: Update track_lots from true to false
+	t.Run("update track_lots from true to false", func(t *testing.T) {
+		account, err := repo.GetByName("Brokerage")
+		if err != nil {
+			t.Fatalf("Failed to get account: %v", err)
+		}
+		if !account.TrackLots {
+			t.Fatal("Precondition failed: expected track_lots=true")
+		}
+
+		account.TrackLots = false
+		if err := repo.Update(account); err != nil {
+			t.Fatalf("Failed to update account: %v", err)
+		}
+
+		updated, err := repo.GetByID(account.ID)
+		if err != nil {
+			t.Fatalf("Failed to retrieve updated account: %v", err)
+		}
+		if updated.TrackLots {
+			t.Error("Expected track_lots=false after update")
+		}
+	})
+}
+
+// TestAccountTrackLotsColumnExists verifies the track_lots column exists in the accounts table schema.
+func TestAccountTrackLotsColumnExists(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tmoney-tracklots-schema-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer database.Close()
+
+	var colName string
+	err = database.Conn().QueryRow(
+		`SELECT column_name FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'track_lots'`,
+	).Scan(&colName)
+	if err != nil {
+		t.Fatalf("track_lots column not found in accounts table: %v", err)
+	}
+	if colName != "track_lots" {
+		t.Errorf("Expected column name 'track_lots', got %q", colName)
+	}
+}
+
 func TestCheckSchema(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "tmoney-schema-*")
 	if err != nil {
