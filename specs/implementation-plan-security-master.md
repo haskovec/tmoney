@@ -37,19 +37,19 @@ Spec: `specs/security-master.md`
 
 ## Phase 1: Security Model
 
-- [ ] **SM-001 - Security type enum and validation**
+- [x] **SM-001 - Security type enum and validation**
   - RED: Write tests for `SecurityType` enum — valid types (`stock`, `etf`, `mutual_fund`, `other`), invalid type rejected, `IsValid()`, `DisplayName()`
   - GREEN: Implement `SecurityType` in `internal/models/security.go`
 
-- [ ] **SM-002 - Asset class enum and validation**
+- [x] **SM-002 - Asset class enum and validation**
   - RED: Write tests for `AssetClass` enum — all 11 valid values, invalid rejected, `IsValid()`, `DisplayName()`
   - GREEN: Implement `AssetClass` in `internal/models/security.go`
 
-- [ ] **SM-003 - Security model struct and validation**
+- [x] **SM-003 - Security model struct and validation**
   - RED: Write tests for `Security` struct validation — required ticker (max 20 chars), required name, required security_type, required asset_class, valid currency, default values (currency=USD, asset_class=unclassified, hidden=false)
   - GREEN: Implement `Security` struct with `Validate()` method using existing `Validator` pattern
 
-- [ ] **SM-004 - Security model helper methods**
+- [x] **SM-004 - Security model helper methods**
   - RED: Write tests for `Security.CanHide()` (placeholder — returns true when no positions exist, tested more fully after positions are built), `Security.CanDelete()` (placeholder)
   - GREEN: Implement helper methods on `Security`
 

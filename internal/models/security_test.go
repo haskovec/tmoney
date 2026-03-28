@@ -1,0 +1,498 @@
+package models
+
+import (
+	"strings"
+	"testing"
+)
+
+// --- SM-001: SecurityType enum tests ---
+
+func TestSecurityType(t *testing.T) {
+	t.Run("AllSecurityTypes returns all types", func(t *testing.T) {
+		types := AllSecurityTypes()
+		expected := 4
+		if len(types) != expected {
+			t.Errorf("Expected %d security types, got %d", expected, len(types))
+		}
+	})
+
+	t.Run("String returns correct value", func(t *testing.T) {
+		if SecurityTypeStock.String() != "stock" {
+			t.Errorf("Expected 'stock', got %q", SecurityTypeStock.String())
+		}
+		if SecurityTypeMutualFund.String() != "mutual_fund" {
+			t.Errorf("Expected 'mutual_fund', got %q", SecurityTypeMutualFund.String())
+		}
+	})
+
+	t.Run("IsValid returns true for valid types", func(t *testing.T) {
+		validTypes := []SecurityType{
+			SecurityTypeStock,
+			SecurityTypeETF,
+			SecurityTypeMutualFund,
+			SecurityTypeOther,
+		}
+		for _, st := range validTypes {
+			if !st.IsValid() {
+				t.Errorf("IsValid should return true for %q", st)
+			}
+		}
+	})
+
+	t.Run("IsValid returns false for invalid type", func(t *testing.T) {
+		invalid := SecurityType("bond")
+		if invalid.IsValid() {
+			t.Error("IsValid should return false for 'bond'")
+		}
+
+		empty := SecurityType("")
+		if empty.IsValid() {
+			t.Error("IsValid should return false for empty string")
+		}
+	})
+
+	t.Run("DisplayName returns human-readable names", func(t *testing.T) {
+		tests := []struct {
+			securityType SecurityType
+			expected     string
+		}{
+			{SecurityTypeStock, "Stock"},
+			{SecurityTypeETF, "ETF"},
+			{SecurityTypeMutualFund, "Mutual Fund"},
+			{SecurityTypeOther, "Other"},
+		}
+		for _, tc := range tests {
+			if tc.securityType.DisplayName() != tc.expected {
+				t.Errorf("DisplayName for %q: expected %q, got %q",
+					tc.securityType, tc.expected, tc.securityType.DisplayName())
+			}
+		}
+	})
+}
+
+func TestParseSecurityType(t *testing.T) {
+	t.Run("Parses valid types", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected SecurityType
+		}{
+			{"stock", SecurityTypeStock},
+			{"etf", SecurityTypeETF},
+			{"mutual_fund", SecurityTypeMutualFund},
+			{"other", SecurityTypeOther},
+			{"Stock", SecurityTypeStock},
+			{"ETF", SecurityTypeETF},
+		}
+		for _, tc := range tests {
+			st, err := ParseSecurityType(tc.input)
+			if err != nil {
+				t.Errorf("ParseSecurityType(%q) returned error: %v", tc.input, err)
+			}
+			if st != tc.expected {
+				t.Errorf("ParseSecurityType(%q) = %q, expected %q", tc.input, st, tc.expected)
+			}
+		}
+	})
+
+	t.Run("Rejects invalid types", func(t *testing.T) {
+		_, err := ParseSecurityType("bond")
+		if err == nil {
+			t.Error("ParseSecurityType('bond') should return error")
+		}
+	})
+}
+
+func TestSecurityTypeScanValue(t *testing.T) {
+	t.Run("Value returns string", func(t *testing.T) {
+		val, err := SecurityTypeStock.Value()
+		if err != nil {
+			t.Fatalf("Value() returned error: %v", err)
+		}
+		if val != "stock" {
+			t.Errorf("Expected 'stock', got %v", val)
+		}
+	})
+
+	t.Run("Scan from string", func(t *testing.T) {
+		var st SecurityType
+		err := st.Scan("etf")
+		if err != nil {
+			t.Fatalf("Scan returned error: %v", err)
+		}
+		if st != SecurityTypeETF {
+			t.Errorf("Expected SecurityTypeETF, got %q", st)
+		}
+	})
+
+	t.Run("Scan from bytes", func(t *testing.T) {
+		var st SecurityType
+		err := st.Scan([]byte("stock"))
+		if err != nil {
+			t.Fatalf("Scan returned error: %v", err)
+		}
+		if st != SecurityTypeStock {
+			t.Errorf("Expected SecurityTypeStock, got %q", st)
+		}
+	})
+
+	t.Run("Scan from nil", func(t *testing.T) {
+		var st SecurityType
+		err := st.Scan(nil)
+		if err != nil {
+			t.Fatalf("Scan returned error: %v", err)
+		}
+		if st != "" {
+			t.Errorf("Expected empty string, got %q", st)
+		}
+	})
+
+	t.Run("Scan from unsupported type returns error", func(t *testing.T) {
+		var st SecurityType
+		err := st.Scan(123)
+		if err == nil {
+			t.Error("Scan from int should return error")
+		}
+	})
+}
+
+// --- SM-002: AssetClass enum tests ---
+
+func TestAssetClass(t *testing.T) {
+	t.Run("AllAssetClasses returns all classes", func(t *testing.T) {
+		classes := AllAssetClasses()
+		expected := 11
+		if len(classes) != expected {
+			t.Errorf("Expected %d asset classes, got %d", expected, len(classes))
+		}
+	})
+
+	t.Run("String returns correct value", func(t *testing.T) {
+		if AssetClassLargeCapStock.String() != "large_cap_stock" {
+			t.Errorf("Expected 'large_cap_stock', got %q", AssetClassLargeCapStock.String())
+		}
+		if AssetClassUnclassified.String() != "unclassified" {
+			t.Errorf("Expected 'unclassified', got %q", AssetClassUnclassified.String())
+		}
+	})
+
+	t.Run("IsValid returns true for all valid classes", func(t *testing.T) {
+		for _, ac := range AllAssetClasses() {
+			if !ac.IsValid() {
+				t.Errorf("IsValid should return true for %q", ac)
+			}
+		}
+	})
+
+	t.Run("IsValid returns false for invalid class", func(t *testing.T) {
+		invalid := AssetClass("real_estate")
+		if invalid.IsValid() {
+			t.Error("IsValid should return false for 'real_estate'")
+		}
+	})
+
+	t.Run("DisplayName returns human-readable names", func(t *testing.T) {
+		tests := []struct {
+			assetClass AssetClass
+			expected   string
+		}{
+			{AssetClassLargeCapStock, "Large Cap Stock"},
+			{AssetClassSmallCapStock, "Small Cap Stock"},
+			{AssetClassInternationalStock, "International Stock"},
+			{AssetClassIndex, "Index"},
+			{AssetClassDomesticBond, "Domestic Bond"},
+			{AssetClassForeignBond, "Foreign Bond"},
+			{AssetClassCash, "Cash"},
+			{AssetClassCommodity, "Commodity"},
+			{AssetClassCrypto, "Crypto"},
+			{AssetClassAssetMixture, "Asset Mixture"},
+			{AssetClassUnclassified, "Unclassified"},
+		}
+		for _, tc := range tests {
+			if tc.assetClass.DisplayName() != tc.expected {
+				t.Errorf("DisplayName for %q: expected %q, got %q",
+					tc.assetClass, tc.expected, tc.assetClass.DisplayName())
+			}
+		}
+	})
+}
+
+func TestParseAssetClass(t *testing.T) {
+	t.Run("Parses valid classes", func(t *testing.T) {
+		ac, err := ParseAssetClass("large_cap_stock")
+		if err != nil {
+			t.Fatalf("ParseAssetClass returned error: %v", err)
+		}
+		if ac != AssetClassLargeCapStock {
+			t.Errorf("Expected AssetClassLargeCapStock, got %q", ac)
+		}
+	})
+
+	t.Run("Rejects invalid classes", func(t *testing.T) {
+		_, err := ParseAssetClass("real_estate")
+		if err == nil {
+			t.Error("ParseAssetClass('real_estate') should return error")
+		}
+	})
+}
+
+func TestAssetClassScanValue(t *testing.T) {
+	t.Run("Value returns string", func(t *testing.T) {
+		val, err := AssetClassCash.Value()
+		if err != nil {
+			t.Fatalf("Value() returned error: %v", err)
+		}
+		if val != "cash" {
+			t.Errorf("Expected 'cash', got %v", val)
+		}
+	})
+
+	t.Run("Scan from string", func(t *testing.T) {
+		var ac AssetClass
+		err := ac.Scan("crypto")
+		if err != nil {
+			t.Fatalf("Scan returned error: %v", err)
+		}
+		if ac != AssetClassCrypto {
+			t.Errorf("Expected AssetClassCrypto, got %q", ac)
+		}
+	})
+
+	t.Run("Scan from nil", func(t *testing.T) {
+		var ac AssetClass
+		err := ac.Scan(nil)
+		if err != nil {
+			t.Fatalf("Scan returned error: %v", err)
+		}
+		if ac != "" {
+			t.Errorf("Expected empty string, got %q", ac)
+		}
+	})
+}
+
+// --- SM-003: Security model struct and validation tests ---
+
+func TestNewSecurity(t *testing.T) {
+	t.Run("Creates security with required fields", func(t *testing.T) {
+		sec := NewSecurity("AAPL", "Apple Inc.", SecurityTypeStock)
+
+		if sec.ID.IsNil() {
+			t.Error("NewSecurity should create non-nil ID")
+		}
+		if sec.Ticker != "AAPL" {
+			t.Errorf("Expected ticker 'AAPL', got %q", sec.Ticker)
+		}
+		if sec.Name != "Apple Inc." {
+			t.Errorf("Expected name 'Apple Inc.', got %q", sec.Name)
+		}
+		if sec.SecurityType != SecurityTypeStock {
+			t.Errorf("Expected type stock, got %q", sec.SecurityType)
+		}
+		if sec.AssetClass != AssetClassUnclassified {
+			t.Errorf("Expected asset class unclassified, got %q", sec.AssetClass)
+		}
+		if sec.Currency != "USD" {
+			t.Errorf("Expected currency USD, got %q", sec.Currency)
+		}
+		if sec.Hidden {
+			t.Error("Expected hidden to default to false")
+		}
+		if sec.Exchange.Valid {
+			t.Error("Expected exchange to default to invalid/empty")
+		}
+		if sec.CreatedAt.IsZero() {
+			t.Error("CreatedAt should not be zero")
+		}
+		if sec.UpdatedAt.IsZero() {
+			t.Error("UpdatedAt should not be zero")
+		}
+	})
+}
+
+func TestSecurityValidation(t *testing.T) {
+	validSecurity := func() *Security {
+		return NewSecurity("AAPL", "Apple Inc.", SecurityTypeStock)
+	}
+
+	t.Run("Valid security passes validation", func(t *testing.T) {
+		sec := validSecurity()
+		errs := sec.Validate()
+		if errs.HasErrors() {
+			t.Errorf("Valid security should pass validation: %v", errs)
+		}
+	})
+
+	t.Run("Empty ticker fails validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.Ticker = ""
+		errs := sec.Validate()
+		if !errs.HasErrors() {
+			t.Error("Empty ticker should fail validation")
+		}
+	})
+
+	t.Run("Whitespace-only ticker fails validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.Ticker = "   "
+		errs := sec.Validate()
+		if !errs.HasErrors() {
+			t.Error("Whitespace-only ticker should fail validation")
+		}
+	})
+
+	t.Run("Ticker exceeding 20 characters fails validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.Ticker = strings.Repeat("A", 21)
+		errs := sec.Validate()
+		if !errs.HasErrors() {
+			t.Error("Ticker > 20 chars should fail validation")
+		}
+	})
+
+	t.Run("Ticker at 20 characters passes validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.Ticker = strings.Repeat("A", 20)
+		errs := sec.Validate()
+		if errs.HasErrors() {
+			t.Errorf("Ticker at 20 chars should pass validation: %v", errs)
+		}
+	})
+
+	t.Run("Empty name fails validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.Name = ""
+		errs := sec.Validate()
+		if !errs.HasErrors() {
+			t.Error("Empty name should fail validation")
+		}
+	})
+
+	t.Run("Invalid security type fails validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.SecurityType = SecurityType("bond")
+		errs := sec.Validate()
+		if !errs.HasErrors() {
+			t.Error("Invalid security type should fail validation")
+		}
+	})
+
+	t.Run("Invalid asset class fails validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.AssetClass = AssetClass("real_estate")
+		errs := sec.Validate()
+		if !errs.HasErrors() {
+			t.Error("Invalid asset class should fail validation")
+		}
+	})
+
+	t.Run("Invalid currency fails validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.Currency = "INVALID"
+		errs := sec.Validate()
+		if !errs.HasErrors() {
+			t.Error("Invalid currency should fail validation")
+		}
+	})
+
+	t.Run("Valid non-USD currency passes validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.Currency = "CAD"
+		errs := sec.Validate()
+		if errs.HasErrors() {
+			t.Errorf("Valid CAD currency should pass: %v", errs)
+		}
+	})
+
+	t.Run("Multiple validation errors collected", func(t *testing.T) {
+		sec := validSecurity()
+		sec.Ticker = ""
+		sec.Name = ""
+		sec.SecurityType = SecurityType("invalid")
+		sec.Currency = "INVALID"
+		errs := sec.Validate()
+		if len(errs) < 4 {
+			t.Errorf("Expected at least 4 errors, got %d: %v", len(errs), errs)
+		}
+	})
+
+	t.Run("IsValid returns correct boolean", func(t *testing.T) {
+		sec := validSecurity()
+		if !sec.IsValid() {
+			t.Error("Valid security should return true from IsValid")
+		}
+
+		sec.Ticker = ""
+		if sec.IsValid() {
+			t.Error("Invalid security should return false from IsValid")
+		}
+	})
+}
+
+// --- SM-004: Security helper methods tests ---
+
+func TestSecurityOptionalFields(t *testing.T) {
+	t.Run("SetExchange sets valid value", func(t *testing.T) {
+		sec := NewSecurity("AAPL", "Apple Inc.", SecurityTypeStock)
+		sec.SetExchange("NYSE")
+		if !sec.Exchange.Valid {
+			t.Error("Exchange should be valid after SetExchange")
+		}
+		if sec.Exchange.String != "NYSE" {
+			t.Errorf("Expected 'NYSE', got %q", sec.Exchange.String)
+		}
+	})
+
+	t.Run("SetExchange clears with empty string", func(t *testing.T) {
+		sec := NewSecurity("AAPL", "Apple Inc.", SecurityTypeStock)
+		sec.SetExchange("NYSE")
+		sec.SetExchange("")
+		if sec.Exchange.Valid {
+			t.Error("Exchange should be invalid after SetExchange with empty string")
+		}
+	})
+}
+
+func TestSecurityCanHide(t *testing.T) {
+	t.Run("CanHide returns true when no positions exist", func(t *testing.T) {
+		sec := NewSecurity("AAPL", "Apple Inc.", SecurityTypeStock)
+		if !sec.CanHide() {
+			t.Error("CanHide should return true when no positions exist")
+		}
+	})
+}
+
+func TestSecurityCanDelete(t *testing.T) {
+	t.Run("CanDelete returns true as placeholder", func(t *testing.T) {
+		sec := NewSecurity("AAPL", "Apple Inc.", SecurityTypeStock)
+		if !sec.CanDelete() {
+			t.Error("CanDelete should return true as placeholder")
+		}
+	})
+}
+
+func TestSecurityHideUnhide(t *testing.T) {
+	t.Run("Hide sets hidden to true", func(t *testing.T) {
+		sec := NewSecurity("AAPL", "Apple Inc.", SecurityTypeStock)
+		sec.Hide()
+		if !sec.Hidden {
+			t.Error("Security should be hidden after Hide()")
+		}
+	})
+
+	t.Run("Hide updates UpdatedAt", func(t *testing.T) {
+		sec := NewSecurity("AAPL", "Apple Inc.", SecurityTypeStock)
+		original := sec.UpdatedAt
+		sec.Hide()
+		if sec.UpdatedAt.Time().Before(original.Time()) {
+			t.Error("Hide should update UpdatedAt")
+		}
+	})
+
+	t.Run("Unhide sets hidden to false", func(t *testing.T) {
+		sec := NewSecurity("AAPL", "Apple Inc.", SecurityTypeStock)
+		sec.Hidden = true
+		sec.Unhide()
+		if sec.Hidden {
+			t.Error("Security should not be hidden after Unhide()")
+		}
+	})
+}
