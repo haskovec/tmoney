@@ -140,6 +140,7 @@ type Account struct {
 	// Type-specific optional properties
 	CreditLimit  NullableMoney `json:"credit_limit"`  // For credit_card accounts
 	InterestRate NullableMoney `json:"interest_rate"` // For loan accounts (percentage)
+	TrackLots    bool          `json:"track_lots"`    // For investment accounts (lot-based cost tracking)
 }
 
 // NewAccount creates a new Account with generated ID and timestamps.
@@ -179,6 +180,10 @@ func (a *Account) Validate() ValidationErrors {
 
 	if a.InterestRate.Valid {
 		v.Percentage("interest_rate", a.InterestRate.Money)
+	}
+
+	if a.TrackLots && a.Type != AccountTypeInvestment {
+		v.errors.Add("track_lots", "can only be enabled for investment accounts")
 	}
 
 	// Optional field length limits

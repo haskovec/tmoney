@@ -608,6 +608,61 @@ func TestAccountCloseReopen(t *testing.T) {
 	})
 }
 
+func TestAccountTrackLots(t *testing.T) {
+	t.Run("TrackLots defaults to false", func(t *testing.T) {
+		acc := NewAccount("Brokerage", AccountTypeInvestment, "USD", ZeroMoney, Today())
+		if acc.TrackLots {
+			t.Error("TrackLots should default to false")
+		}
+	})
+
+	t.Run("Investment account with TrackLots=true validates", func(t *testing.T) {
+		acc := NewAccount("Brokerage", AccountTypeInvestment, "USD", ZeroMoney, Today())
+		acc.TrackLots = true
+		errs := acc.Validate()
+		if errs.HasErrors() {
+			t.Errorf("Investment account with TrackLots=true should validate: %v", errs)
+		}
+	})
+
+	t.Run("Investment account with TrackLots=false validates", func(t *testing.T) {
+		acc := NewAccount("Brokerage", AccountTypeInvestment, "USD", ZeroMoney, Today())
+		acc.TrackLots = false
+		errs := acc.Validate()
+		if errs.HasErrors() {
+			t.Errorf("Investment account with TrackLots=false should validate: %v", errs)
+		}
+	})
+
+	t.Run("Non-investment account with TrackLots=true fails validation", func(t *testing.T) {
+		nonInvestmentTypes := []AccountType{
+			AccountTypeChecking,
+			AccountTypeSavings,
+			AccountTypeCreditCard,
+			AccountTypeCash,
+			AccountTypeLoan,
+			AccountTypeAsset,
+		}
+		for _, at := range nonInvestmentTypes {
+			acc := NewAccount("Test", at, "USD", ZeroMoney, Today())
+			acc.TrackLots = true
+			errs := acc.Validate()
+			if !errs.HasErrors() {
+				t.Errorf("Non-investment account type %q with TrackLots=true should fail validation", at)
+			}
+		}
+	})
+
+	t.Run("Non-investment account with TrackLots=false validates", func(t *testing.T) {
+		acc := NewAccount("Test", AccountTypeChecking, "USD", ZeroMoney, Today())
+		acc.TrackLots = false
+		errs := acc.Validate()
+		if errs.HasErrors() {
+			t.Errorf("Non-investment account with TrackLots=false should validate: %v", errs)
+		}
+	})
+}
+
 func TestAccountNegativeOpeningBalance(t *testing.T) {
 	t.Run("Negative opening balance is valid for credit cards", func(t *testing.T) {
 		acc := NewAccount(
