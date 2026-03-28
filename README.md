@@ -13,7 +13,7 @@ A personal finance management application that runs in the terminal. TMoney is d
 
 ### Build from Source
 
-Requires Go 1.21 or later.
+Requires Go 1.26 or later.
 
 ```bash
 git clone https://github.com/haskovec/tmoney.git
