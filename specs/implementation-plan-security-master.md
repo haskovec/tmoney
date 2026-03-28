@@ -208,7 +208,7 @@ Spec: `specs/security-master.md`
 
 ## Phase 10: Investment Transaction Model
 
-- [ ] **SM-039 - InvestmentTransactionType enum**
+- [x] **SM-039 - InvestmentTransactionType enum**
   - RED: Write tests for all 12 types (`buy`, `sell`, `dividend`, `reinvest_dividend`, `fee`, `fee_liquidation`, `deposit`, `withdrawal`, `interest`, `transfer_shares`, `transfer_cash`, `exchange`), invalid rejected, `IsValid()`, `RequiresSecurity()`, `RequiresShares()`, `AffectsCash()`
   - GREEN: Implement `InvestmentTransactionType` in `internal/models/investment_transaction.go`
 
