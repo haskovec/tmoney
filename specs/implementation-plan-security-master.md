@@ -75,27 +75,27 @@ Spec: `specs/security-master.md`
 
 ## Phase 4: Security Repository
 
-- [ ] **SM-009 - SecurityRepository.Create**
+- [x] **SM-009 - SecurityRepository.Create**
   - RED: Write test — create security, verify returned ID, verify all fields persisted; test duplicate ticker+currency rejected
   - GREEN: Implement `Create` in `internal/repository/security.go`
 
-- [ ] **SM-010 - SecurityRepository.GetByID**
+- [x] **SM-010 - SecurityRepository.GetByID**
   - RED: Write test — get existing security by ID returns all fields; get non-existent ID returns NotFoundError
   - GREEN: Implement `GetByID`
 
-- [ ] **SM-011 - SecurityRepository.GetByTicker**
+- [x] **SM-011 - SecurityRepository.GetByTicker**
   - RED: Write test — get security by ticker returns match; get by ticker+currency when multiple currencies exist; not found returns error
   - GREEN: Implement `GetByTicker`
 
-- [ ] **SM-012 - SecurityRepository.List with filters**
+- [x] **SM-012 - SecurityRepository.List with filters**
   - RED: Write tests — list all securities; list excluding hidden; filter by security_type; filter by asset_class; filter by hidden status; combined filters
   - GREEN: Implement `List` with `SecurityFilter` struct
 
-- [ ] **SM-013 - SecurityRepository.Update**
+- [x] **SM-013 - SecurityRepository.Update**
   - RED: Write test — update all mutable fields (ticker, name, type, asset_class, currency, exchange, hidden); verify updated_at changes; verify non-existent ID returns error
   - GREEN: Implement `Update` using delete+insert pattern per project convention
 
-- [ ] **SM-014 - SecurityRepository.Delete**
+- [x] **SM-014 - SecurityRepository.Delete**
   - RED: Write test — delete security with no history succeeds; delete security with prices fails with HasDependentsError; delete security with transactions fails
   - GREEN: Implement `Delete` with dependency checks
 
