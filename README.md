@@ -301,6 +301,11 @@ TMoney uses `.tdb` files (DuckDB databases) stored in `~/Documents/TMoney/` by d
 - **DuckDB**: Embedded analytics database
 - **alpacadecimal**: Precise decimal arithmetic
 
+## Documentation
+
+- **[Architecture](docs/ARCHITECTURE.md)** — Layered architecture, data flow, design decisions, and package overview
+- **[Feature Specifications](specs/)** — Detailed specs for all features (accounts, transactions, categories, reports, security master, and more)
+
 ## Design Inspiration
 
 - **lazygit**: Modern TUI aesthetics, keyboard-first
