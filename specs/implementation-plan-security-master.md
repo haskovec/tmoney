@@ -157,38 +157,38 @@ Spec: `specs/security-master.md`
 
 ## Phase 7: Price Provider Interface
 
-- [ ] **SM-028 - Define PriceProvider interface**
+- [x] **SM-028 - Define PriceProvider interface**
   - RED: Write test — verify manual provider implements interface; test `FetchPrice` returns a price for a known security+date
   - GREEN: Define `PriceProvider` interface in `internal/service/price_provider.go` with methods: `FetchPrice(ticker string, date Date) (*SecurityPrice, error)`, `FetchPriceHistory(ticker string, from, to Date) ([]SecurityPrice, error)`, `Name() string`
   - Implement `ManualPriceProvider` as a no-op/passthrough (returns error "manual entry required")
 
-- [ ] **SM-029 - Price provider registry**
+- [x] **SM-029 - Price provider registry**
   - RED: Write test — register provider by name, retrieve by name, list available providers
   - GREEN: Implement `PriceProviderRegistry` that holds named providers and allows selection
 
 ## Phase 8: Price Service
 
-- [ ] **SM-030 - PriceService.AddPrice**
+- [x] **SM-030 - PriceService.AddPrice**
   - RED: Write test — add price for valid security+date; reject future date; reject non-positive price; handle duplicate (return conflict info)
   - GREEN: Implement `PriceService.AddPrice` in `internal/service/price.go`
 
-- [ ] **SM-031 - PriceService.UpdatePrice**
+- [x] **SM-031 - PriceService.UpdatePrice**
   - RED: Write test — update existing price; reject invalid values
   - GREEN: Implement `PriceService.UpdatePrice`
 
-- [ ] **SM-032 - PriceService.GetCurrentPrice**
+- [x] **SM-032 - PriceService.GetCurrentPrice**
   - RED: Write test — returns most recent price on or before date; returns error when no price exists
   - GREEN: Implement `PriceService.GetCurrentPrice`
 
-- [ ] **SM-033 - PriceService.GetPriceHistory**
+- [x] **SM-033 - PriceService.GetPriceHistory**
   - RED: Write test — returns prices in date range; empty range returns all
   - GREEN: Implement `PriceService.GetPriceHistory`
 
-- [ ] **SM-034 - PriceService.DeletePrice**
+- [x] **SM-034 - PriceService.DeletePrice**
   - RED: Write test — delete price; verify no cascade effects
   - GREEN: Implement `PriceService.DeletePrice`
 
-- [ ] **SM-035 - Register PriceService in service registry**
+- [x] **SM-035 - Register PriceService in service registry**
   - RED: Write test — `NewServices()` returns non-nil PriceService
   - GREEN: Add PriceService to `Services` struct and `NewServices()`
 

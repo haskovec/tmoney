@@ -229,6 +229,18 @@ func (e *StatementDateFutureError) Error() string {
 	return "statement date must not be in the future"
 }
 
+// PriceAlreadyExistsError is returned when trying to add a price that already exists
+// for the same security and date.
+type PriceAlreadyExistsError struct {
+	SecurityID string
+	Date       string
+	Detail     string
+}
+
+func (e *PriceAlreadyExistsError) Error() string {
+	return fmt.Sprintf("price for security %s on %s already exists", e.SecurityID, e.Date)
+}
+
 // SecurityAlreadyHiddenError is returned when trying to hide an already hidden security.
 type SecurityAlreadyHiddenError struct {
 	ID string
