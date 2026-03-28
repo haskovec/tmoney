@@ -194,7 +194,7 @@ Spec: `specs/security-master.md`
 
 ## Phase 9: Account Enhancement (track_lots)
 
-- [ ] **SM-036 - Add TrackLots field to Account model**
+- [x] **SM-036 - Add TrackLots field to Account model**
   - RED: Write test — Account with TrackLots=true validates; TrackLots only meaningful for investment type; default is false
   - GREEN: Add `TrackLots` field to `Account` struct in `internal/models/account.go`
 
