@@ -127,31 +127,31 @@ Spec: `specs/security-master.md`
 
 ## Phase 6: Price Repository
 
-- [ ] **SM-021 - PriceRepository.Create**
+- [x] **SM-021 - PriceRepository.Create**
   - RED: Write test — create price, verify fields; duplicate security_id+date returns DuplicateError; invalid security_id returns error
   - GREEN: Implement `Create` in `internal/repository/price.go`
 
-- [ ] **SM-022 - PriceRepository.CreateOrUpdate (upsert)**
+- [x] **SM-022 - PriceRepository.CreateOrUpdate (upsert)**
   - RED: Write test — insert new price; update existing price for same security+date; verify source is updated
   - GREEN: Implement `CreateOrUpdate` for overwrite scenarios
 
-- [ ] **SM-023 - PriceRepository.GetBySecurityAndDate**
+- [x] **SM-023 - PriceRepository.GetBySecurityAndDate**
   - RED: Write test — exact match returns price; no match returns NotFoundError
   - GREEN: Implement `GetBySecurityAndDate`
 
-- [ ] **SM-024 - PriceRepository.GetCurrentPrice**
+- [x] **SM-024 - PriceRepository.GetCurrentPrice**
   - RED: Write test — returns most recent price on or before given date; no price before date returns NotFoundError; respects security_id filter
   - GREEN: Implement `GetCurrentPrice`
 
-- [ ] **SM-025 - PriceRepository.GetPriceHistory**
+- [x] **SM-025 - PriceRepository.GetPriceHistory**
   - RED: Write test — returns all prices for security ordered by date desc; optional date range filter; empty result returns empty slice (not error)
   - GREEN: Implement `GetPriceHistory`
 
-- [ ] **SM-026 - PriceRepository.Delete**
+- [x] **SM-026 - PriceRepository.Delete**
   - RED: Write test — delete existing price succeeds; delete non-existent returns NotFoundError
   - GREEN: Implement `Delete`
 
-- [ ] **SM-027 - PriceRepository.BulkCreate**
+- [x] **SM-027 - PriceRepository.BulkCreate**
   - RED: Write test — insert multiple prices in one call; skip duplicates when skipExisting=true; overwrite duplicates when overwrite=true; return import summary (total, imported, skipped)
   - GREEN: Implement `BulkCreate`
 
