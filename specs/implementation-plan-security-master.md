@@ -322,11 +322,11 @@ Spec: `specs/security-master.md`
 
 ## Phase 17: Transaction-Lot Junction Repository
 
-- [ ] **SM-064 - TransactionLotRepository.Create**
+- [x] **SM-064 - TransactionLotRepository.Create**
   - RED: Write test — link transaction to lot with share count; verify foreign keys
   - GREEN: Implement `Create` in `internal/repository/transaction_lot.go`
 
-- [ ] **SM-065 - TransactionLotRepository.GetByTransaction**
+- [x] **SM-065 - TransactionLotRepository.GetByTransaction**
   - RED: Write test — get all lot allocations for a transaction
   - GREEN: Implement `GetByTransaction`
 
