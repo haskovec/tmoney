@@ -127,12 +127,12 @@ type Account struct {
 	types.BaseModel
 
 	// Core properties
-	Name           string     `json:"name"`
-	Type           Type       `json:"type"`
-	Currency       string     `json:"currency"`
+	Name           string      `json:"name"`
+	Type           Type        `json:"type"`
+	Currency       string      `json:"currency"`
 	OpeningBalance types.Money `json:"opening_balance"`
 	OpeningDate    types.Date  `json:"opening_date"`
-	Active         bool       `json:"active"`
+	Active         bool        `json:"active"`
 
 	// Optional properties
 	Institution   types.NullableString `json:"institution"`
