@@ -388,15 +388,15 @@ Spec: `specs/security-master.md`
 
 ## Phase 22: Investment Transaction Service — Sell
 
-- [ ] **SM-078 - Sell transaction (non-lot-tracking account)**
+- [x] **SM-078 - Sell transaction (non-lot-tracking account)**
   - RED: Write test — sell reduces position shares; adds proceeds to cash; selling more than held returns error; position removed when shares reach 0
   - GREEN: Implement `Sell` for non-lot-tracking accounts
 
-- [ ] **SM-079 - Sell transaction (lot-tracking account)**
+- [x] **SM-079 - Sell transaction (lot-tracking account)**
   - RED: Write test — sell requires lot selection; reduces specified lot shares; lot closed when shares=0; junction record created; total shares across lots must equal sell shares; proceeds added to cash
   - GREEN: Implement `Sell` with lot selection for lot-tracking accounts
 
-- [ ] **SM-080 - Sell validation: lot selection**
+- [x] **SM-080 - Sell validation: lot selection**
   - RED: Write test — selling from non-existent lot returns error; selling more shares than lot holds returns error; selling from lot in different account returns error; partial lot sell works
   - GREEN: Implement lot selection validation
 

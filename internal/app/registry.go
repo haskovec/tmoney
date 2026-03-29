@@ -78,7 +78,7 @@ func NewServices(database *db.DB) *Services {
 	reconciliationSvc := reconciliation.NewService(reconciliationRepo, txnRepo, accountRepo, database)
 	reportSvc := report.NewService(accountRepo, database)
 	priceSvc := price.NewService(priceRepo, securityRepo, database)
-	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, database)
+	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, database)
 
 	return &Services{
 		Account:        accountSvc,
