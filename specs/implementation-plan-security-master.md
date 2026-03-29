@@ -304,19 +304,19 @@ Spec: `specs/security-master.md`
 
 ## Phase 16: Position Repository
 
-- [ ] **SM-060 - PositionRepository.CreateOrUpdate**
+- [x] **SM-060 - PositionRepository.CreateOrUpdate**
   - RED: Write test — create new position; update existing position for same account+security (upsert)
   - GREEN: Implement `CreateOrUpdate` in `internal/repository/position.go`
 
-- [ ] **SM-061 - PositionRepository.GetByAccountAndSecurity**
+- [x] **SM-061 - PositionRepository.GetByAccountAndSecurity**
   - RED: Write test — get position; not found returns zero-value position (not error)
   - GREEN: Implement `GetByAccountAndSecurity`
 
-- [ ] **SM-062 - PositionRepository.ListByAccount**
+- [x] **SM-062 - PositionRepository.ListByAccount**
   - RED: Write test — list all positions for account; exclude zero-share positions optionally
   - GREEN: Implement `ListByAccount`
 
-- [ ] **SM-063 - PositionRepository.Delete**
+- [x] **SM-063 - PositionRepository.Delete**
   - RED: Write test — delete position when shares reach zero
   - GREEN: Implement `Delete`
 
