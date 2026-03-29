@@ -10,21 +10,27 @@ import (
 
 // Service provides business logic for investment transaction operations.
 type Service struct {
-	repo        *Repository
-	accountRepo *account.Repository
-	db          *db.DB
+	repo         *Repository
+	accountRepo  *account.Repository
+	positionRepo *PositionRepository
+	lotRepo      *LotRepository
+	db           *db.DB
 }
 
 // NewService creates a new Service.
 func NewService(
 	repo *Repository,
 	accountRepo *account.Repository,
+	positionRepo *PositionRepository,
+	lotRepo *LotRepository,
 	database *db.DB,
 ) *Service {
 	return &Service{
-		repo:        repo,
-		accountRepo: accountRepo,
-		db:          database,
+		repo:         repo,
+		accountRepo:  accountRepo,
+		positionRepo: positionRepo,
+		lotRepo:      lotRepo,
+		db:           database,
 	}
 }
 
@@ -166,6 +172,86 @@ func (s *Service) Fee(accountID types.ID, date types.Date, amount types.Money, m
 	return txn, nil
 }
 
+// Buy creates a buy transaction that purchases shares of a security.
+// For non-lot-tracking accounts, it updates the aggregate position.
+// For lot-tracking accounts, it creates a new lot.
+// At least shares + one of (totalAmount, pricePerShare) must be provided.
+func (s *Service) Buy(
+	accountID types.ID,
+	securityID types.ID,
+	date types.Date,
+	shares types.Quantity,
+	totalAmount *types.Money,
+	pricePerShare *types.Money,
+	commission types.Money,
+	memo string,
+) (*Transaction, error) {
+	acct, err := s.getInvestmentAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Smart compute missing fields
+	computed, err := SmartCompute(shares, totalAmount, pricePerShare, commission)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute buy fields: %w", err)
+	}
+
+	// Check cash balance
+	cashBalance, err := s.GetCashBalance(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cash balance: %w", err)
+	}
+
+	if cashBalance.Cmp(computed.TotalAmount) < 0 {
+		return nil, &InsufficientCashError{
+			AccountID: accountID.String(),
+			Available: cashBalance,
+			Requested: computed.TotalAmount,
+		}
+	}
+
+	// Create transaction with negative total (buy deducts cash)
+	negTotal := computed.TotalAmount.Neg()
+	txn := NewTransactionWithSecurity(accountID, date, TransactionTypeBuy, negTotal, securityID, shares)
+	txn.SetPricePerShare(computed.PricePerShare)
+	if !commission.IsZero() {
+		txn.SetCommission(commission)
+	}
+	if memo != "" {
+		txn.SetMemo(memo)
+	}
+
+	if err := s.validateTransaction(txn); err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.Create(txn); err != nil {
+		return nil, fmt.Errorf("failed to create buy transaction: %w", err)
+	}
+
+	// Update position or create lot based on account tracking mode
+	if acct.TrackLots {
+		lot := NewLot(accountID, securityID, shares, computed.PricePerShare, date, txn.ID)
+		if err := s.lotRepo.Create(&lot); err != nil {
+			return nil, fmt.Errorf("failed to create lot: %w", err)
+		}
+	} else {
+		pos, err := s.positionRepo.GetByAccountAndSecurity(accountID, securityID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get position: %w", err)
+		}
+		if err := pos.AddShares(shares, computed.PricePerShare); err != nil {
+			return nil, fmt.Errorf("failed to update position: %w", err)
+		}
+		if err := s.positionRepo.CreateOrUpdate(pos); err != nil {
+			return nil, fmt.Errorf("failed to save position: %w", err)
+		}
+	}
+
+	return txn, nil
+}
+
 // GetCashBalance computes the cash balance for an investment account by summing
 // all cash-affecting transactions.
 func (s *Service) GetCashBalance(accountID types.ID) (types.Money, error) {
@@ -186,19 +272,25 @@ func (s *Service) GetCashBalance(accountID types.ID) (types.Money, error) {
 
 // requireInvestmentAccount verifies that the given account exists and is an investment account.
 func (s *Service) requireInvestmentAccount(accountID types.ID) error {
+	_, err := s.getInvestmentAccount(accountID)
+	return err
+}
+
+// getInvestmentAccount retrieves and validates that the account is an investment account.
+func (s *Service) getInvestmentAccount(accountID types.ID) (*account.Account, error) {
 	acct, err := s.accountRepo.GetByID(accountID)
 	if err != nil {
-		return fmt.Errorf("failed to get account: %w", err)
+		return nil, fmt.Errorf("failed to get account: %w", err)
 	}
 
 	if acct.Type != account.TypeInvestment {
-		return &account.NotInvestmentError{
+		return nil, &account.NotInvestmentError{
 			AccountID: accountID.String(),
 			Type:      string(acct.Type),
 		}
 	}
 
-	return nil
+	return acct, nil
 }
 
 // validateTransaction validates an investment transaction and returns any validation errors.

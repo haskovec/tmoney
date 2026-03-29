@@ -378,11 +378,11 @@ Spec: `specs/security-master.md`
 
 ## Phase 21: Investment Transaction Service — Buy
 
-- [ ] **SM-076 - Buy transaction (non-lot-tracking account)**
+- [x] **SM-076 - Buy transaction (non-lot-tracking account)**
   - RED: Write test — buy adds shares to position; updates average cost; deducts total from cash; creates transaction record; requires sufficient cash
   - GREEN: Implement `Buy` for non-lot-tracking accounts
 
-- [ ] **SM-077 - Buy transaction (lot-tracking account)**
+- [x] **SM-077 - Buy transaction (lot-tracking account)**
   - RED: Write test — buy creates new lot with correct shares, cost_per_share, purchase_date; deducts total from cash; creates transaction record
   - GREEN: Implement `Buy` for lot-tracking accounts
 
