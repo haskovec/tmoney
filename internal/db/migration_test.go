@@ -143,6 +143,9 @@ func TestMigrate(t *testing.T) {
 			"reconciliation_sessions",
 			"securities",
 			"security_prices",
+			"investment_transactions",
+			"investment_positions",
+			"investment_transaction_lots",
 		}
 
 		for _, table := range tables {
@@ -1175,6 +1178,770 @@ func TestMigration006Securities(t *testing.T) {
 		`)
 		if err == nil {
 			t.Error("Expected foreign key error when inserting price for non-existent security")
+		}
+	})
+}
+
+func TestMigration008InvestmentTables(t *testing.T) {
+	// SM-046: investment_transactions table
+	t.Run("investment_transactions inserts and reads back correctly", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Create prerequisite account and security
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Investment Account', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'AAPL', 'Apple Inc.', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test security: %v", err)
+		}
+
+		// Insert an investment transaction
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (
+				id, account_id, date, transaction_type, security_id,
+				shares, price_per_share, total_amount, commission, memo, status
+			) VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'2024-06-15', 'buy',
+				'22222222-2222-2222-2222-222222222222',
+				10.0, 185.00, 1854.95, 4.95, 'Buy 10 shares AAPL', 'cleared'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert investment transaction: %v", err)
+		}
+
+		// Read it back
+		var txType, status, memo string
+		var shares, pricePerShare, totalAmount, commission float64
+		err = db.Conn().QueryRow(`
+			SELECT transaction_type, shares, price_per_share, total_amount, commission, memo, status
+			FROM investment_transactions
+			WHERE id = '33333333-3333-3333-3333-333333333333'
+		`).Scan(&txType, &shares, &pricePerShare, &totalAmount, &commission, &memo, &status)
+		if err != nil {
+			t.Fatalf("Failed to read investment transaction: %v", err)
+		}
+		if txType != "buy" {
+			t.Errorf("Expected transaction_type 'buy', got %q", txType)
+		}
+		if shares != 10.0 {
+			t.Errorf("Expected shares 10.0, got %f", shares)
+		}
+		if pricePerShare != 185.00 {
+			t.Errorf("Expected price_per_share 185.00, got %f", pricePerShare)
+		}
+		if totalAmount != 1854.95 {
+			t.Errorf("Expected total_amount 1854.95, got %f", totalAmount)
+		}
+		if commission != 4.95 {
+			t.Errorf("Expected commission 4.95, got %f", commission)
+		}
+		if memo != "Buy 10 shares AAPL" {
+			t.Errorf("Expected memo 'Buy 10 shares AAPL', got %q", memo)
+		}
+		if status != "cleared" {
+			t.Errorf("Expected status 'cleared', got %q", status)
+		}
+	})
+
+	t.Run("investment_transactions rejects invalid transaction_type", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (account_id, date, transaction_type, total_amount)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-15', 'invalid_type', 100.00)
+		`)
+		if err == nil {
+			t.Error("Expected error when inserting invalid transaction_type")
+		}
+	})
+
+	t.Run("investment_transactions rejects invalid status", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (account_id, date, transaction_type, total_amount, status)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-15', 'deposit', 1000.00, 'void')
+		`)
+		if err == nil {
+			t.Error("Expected error when inserting invalid status 'void'")
+		}
+	})
+
+	t.Run("investment_transactions defaults status to pending", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (account_id, date, transaction_type, total_amount)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-15', 'deposit', 5000.00)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert investment transaction: %v", err)
+		}
+
+		var status string
+		err = db.Conn().QueryRow(`SELECT status FROM investment_transactions LIMIT 1`).Scan(&status)
+		if err != nil {
+			t.Fatalf("Failed to query status: %v", err)
+		}
+		if status != "pending" {
+			t.Errorf("Expected default status 'pending', got %q", status)
+		}
+	})
+
+	t.Run("investment_transactions enforces account foreign key", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (account_id, date, transaction_type, total_amount)
+			VALUES ('99999999-9999-9999-9999-999999999999', '2024-06-15', 'deposit', 1000.00)
+		`)
+		if err == nil {
+			t.Error("Expected foreign key error for non-existent account")
+		}
+	})
+
+	t.Run("investment_transactions enforces security foreign key", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (account_id, date, transaction_type, security_id, total_amount)
+			VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-15', 'buy', '99999999-9999-9999-9999-999999999999', 1000.00)
+		`)
+		if err == nil {
+			t.Error("Expected foreign key error for non-existent security")
+		}
+	})
+
+	t.Run("investment_transactions allows all 12 transaction types", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		types := []string{
+			"buy", "sell", "dividend", "reinvest_dividend",
+			"fee", "fee_liquidation", "deposit", "withdrawal",
+			"interest", "transfer_shares", "transfer_cash", "exchange",
+		}
+		for _, txType := range types {
+			_, err = db.Conn().Exec(`
+				INSERT INTO investment_transactions (account_id, date, transaction_type, total_amount)
+				VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-15', ?, 100.00)
+			`, txType)
+			if err != nil {
+				t.Errorf("Failed to insert transaction_type %q: %v", txType, err)
+			}
+		}
+
+		var count int
+		err = db.Conn().QueryRow(`SELECT COUNT(*) FROM investment_transactions`).Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to count transactions: %v", err)
+		}
+		if count != 12 {
+			t.Errorf("Expected 12 transactions, got %d", count)
+		}
+	})
+
+	// SM-047: investment_lots table
+	t.Run("investment_lots inserts and reads back correctly", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Create prerequisites
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Investment', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'AAPL', 'Apple Inc.', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test security: %v", err)
+		}
+
+		// Create a source transaction
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (id, account_id, date, transaction_type, total_amount)
+			VALUES ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', '2024-06-15', 'buy', 1850.00)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert source transaction: %v", err)
+		}
+
+		// Insert a lot
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_lots (
+				id, account_id, security_id, shares, original_shares,
+				cost_per_share, purchase_date, source_transaction_id, closed
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'11111111-1111-1111-1111-111111111111',
+				'22222222-2222-2222-2222-222222222222',
+				10.0, 10.0, 185.00, '2024-06-15',
+				'33333333-3333-3333-3333-333333333333', FALSE
+			)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert lot: %v", err)
+		}
+
+		// Read it back
+		var shares, originalShares, costPerShare float64
+		var closed bool
+		err = db.Conn().QueryRow(`
+			SELECT shares, original_shares, cost_per_share, closed
+			FROM investment_lots WHERE id = '44444444-4444-4444-4444-444444444444'
+		`).Scan(&shares, &originalShares, &costPerShare, &closed)
+		if err != nil {
+			t.Fatalf("Failed to read lot: %v", err)
+		}
+		if shares != 10.0 {
+			t.Errorf("Expected shares 10.0, got %f", shares)
+		}
+		if originalShares != 10.0 {
+			t.Errorf("Expected original_shares 10.0, got %f", originalShares)
+		}
+		if costPerShare != 185.00 {
+			t.Errorf("Expected cost_per_share 185.00, got %f", costPerShare)
+		}
+		if closed {
+			t.Error("Expected closed FALSE")
+		}
+	})
+
+	t.Run("investment_lots enforces account foreign key", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'AAPL', 'Apple Inc.', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test security: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_lots (
+				account_id, security_id, shares, original_shares,
+				cost_per_share, purchase_date, source_transaction_id
+			) VALUES (
+				'99999999-9999-9999-9999-999999999999',
+				'22222222-2222-2222-2222-222222222222',
+				10.0, 10.0, 185.00, '2024-06-15',
+				'33333333-3333-3333-3333-333333333333'
+			)
+		`)
+		if err == nil {
+			t.Error("Expected foreign key error for non-existent account")
+		}
+	})
+
+	t.Run("investment_lots enforces security foreign key", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_lots (
+				account_id, security_id, shares, original_shares,
+				cost_per_share, purchase_date, source_transaction_id
+			) VALUES (
+				'11111111-1111-1111-1111-111111111111',
+				'99999999-9999-9999-9999-999999999999',
+				10.0, 10.0, 185.00, '2024-06-15',
+				'33333333-3333-3333-3333-333333333333'
+			)
+		`)
+		if err == nil {
+			t.Error("Expected foreign key error for non-existent security")
+		}
+	})
+
+	// SM-048: investment_positions table
+	t.Run("investment_positions inserts and reads back correctly", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Investment', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'VTI', 'Vanguard Total Stock Market', 'etf')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test security: %v", err)
+		}
+
+		// Insert a position
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_positions (
+				id, account_id, security_id, shares, average_cost_per_share
+			) VALUES (
+				'55555555-5555-5555-5555-555555555555',
+				'11111111-1111-1111-1111-111111111111',
+				'22222222-2222-2222-2222-222222222222',
+				25.5, 220.75
+			)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert position: %v", err)
+		}
+
+		var shares, avgCost float64
+		err = db.Conn().QueryRow(`
+			SELECT shares, average_cost_per_share FROM investment_positions
+			WHERE id = '55555555-5555-5555-5555-555555555555'
+		`).Scan(&shares, &avgCost)
+		if err != nil {
+			t.Fatalf("Failed to read position: %v", err)
+		}
+		if shares != 25.5 {
+			t.Errorf("Expected shares 25.5, got %f", shares)
+		}
+		if avgCost != 220.75 {
+			t.Errorf("Expected average_cost_per_share 220.75, got %f", avgCost)
+		}
+	})
+
+	t.Run("investment_positions enforces unique constraint on account_id + security_id", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Investment', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'VTI', 'Vanguard Total Stock Market', 'etf')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test security: %v", err)
+		}
+
+		// First insert should succeed
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_positions (account_id, security_id, shares, average_cost_per_share)
+			VALUES ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', 10.0, 200.00)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert first position: %v", err)
+		}
+
+		// Duplicate should fail
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_positions (account_id, security_id, shares, average_cost_per_share)
+			VALUES ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', 5.0, 210.00)
+		`)
+		if err == nil {
+			t.Error("Expected unique constraint error for duplicate account_id + security_id")
+		}
+	})
+
+	t.Run("investment_positions enforces foreign keys", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Non-existent account
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_positions (account_id, security_id, shares, average_cost_per_share)
+			VALUES ('99999999-9999-9999-9999-999999999999', '22222222-2222-2222-2222-222222222222', 10.0, 100.00)
+		`)
+		if err == nil {
+			t.Error("Expected foreign key error for non-existent account")
+		}
+
+		// Create account, try non-existent security
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Test', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert test account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_positions (account_id, security_id, shares, average_cost_per_share)
+			VALUES ('11111111-1111-1111-1111-111111111111', '99999999-9999-9999-9999-999999999999', 10.0, 100.00)
+		`)
+		if err == nil {
+			t.Error("Expected foreign key error for non-existent security")
+		}
+	})
+
+	// SM-049: investment_transaction_lots junction table
+	t.Run("investment_transaction_lots links transaction to lot", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Set up prerequisites
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Investment', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'AAPL', 'Apple Inc.', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		// Create buy transaction (source for lot)
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (id, account_id, date, transaction_type, total_amount)
+			VALUES ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', '2024-01-15', 'buy', 1850.00)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert buy transaction: %v", err)
+		}
+
+		// Create lot
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_lots (
+				id, account_id, security_id, shares, original_shares,
+				cost_per_share, purchase_date, source_transaction_id
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'11111111-1111-1111-1111-111111111111',
+				'22222222-2222-2222-2222-222222222222',
+				10.0, 10.0, 185.00, '2024-01-15',
+				'33333333-3333-3333-3333-333333333333'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert lot: %v", err)
+		}
+
+		// Create sell transaction
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (id, account_id, date, transaction_type, total_amount)
+			VALUES ('55555555-5555-5555-5555-555555555555', '11111111-1111-1111-1111-111111111111', '2024-06-15', 'sell', 2000.00)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert sell transaction: %v", err)
+		}
+
+		// Link sell transaction to lot
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transaction_lots (id, transaction_id, lot_id, shares)
+			VALUES ('66666666-6666-6666-6666-666666666666', '55555555-5555-5555-5555-555555555555', '44444444-4444-4444-4444-444444444444', 5.0)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert transaction-lot link: %v", err)
+		}
+
+		// Read it back
+		var lotShares float64
+		err = db.Conn().QueryRow(`
+			SELECT shares FROM investment_transaction_lots
+			WHERE id = '66666666-6666-6666-6666-666666666666'
+		`).Scan(&lotShares)
+		if err != nil {
+			t.Fatalf("Failed to read transaction-lot link: %v", err)
+		}
+		if lotShares != 5.0 {
+			t.Errorf("Expected shares 5.0, got %f", lotShares)
+		}
+	})
+
+	t.Run("investment_transaction_lots blocks transaction delete when linked", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Set up full chain
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Investment', 'investment', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'AAPL', 'Apple Inc.', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		// Buy transaction (source for lot)
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (id, account_id, date, transaction_type, total_amount)
+			VALUES ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', '2024-01-15', 'buy', 1850.00)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert buy: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_lots (
+				id, account_id, security_id, shares, original_shares,
+				cost_per_share, purchase_date, source_transaction_id
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'11111111-1111-1111-1111-111111111111',
+				'22222222-2222-2222-2222-222222222222',
+				10.0, 10.0, 185.00, '2024-01-15',
+				'33333333-3333-3333-3333-333333333333'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert lot: %v", err)
+		}
+
+		// Sell transaction
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (id, account_id, date, transaction_type, total_amount)
+			VALUES ('55555555-5555-5555-5555-555555555555', '11111111-1111-1111-1111-111111111111', '2024-06-15', 'sell', 2000.00)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert sell: %v", err)
+		}
+
+		// Link
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transaction_lots (transaction_id, lot_id, shares)
+			VALUES ('55555555-5555-5555-5555-555555555555', '44444444-4444-4444-4444-444444444444', 5.0)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert link: %v", err)
+		}
+
+		// Verify junction record exists
+		var count int
+		err = db.Conn().QueryRow(`
+			SELECT COUNT(*) FROM investment_transaction_lots
+			WHERE transaction_id = '55555555-5555-5555-5555-555555555555'
+		`).Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to count junction records: %v", err)
+		}
+		if count != 1 {
+			t.Fatalf("Expected 1 junction record, got %d", count)
+		}
+
+		// Deleting junction records first, then transaction should work
+		_, err = db.Conn().Exec(`
+			DELETE FROM investment_transaction_lots
+			WHERE transaction_id = '55555555-5555-5555-5555-555555555555'
+		`)
+		if err != nil {
+			t.Fatalf("Failed to delete junction records: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			DELETE FROM investment_transactions
+			WHERE id = '55555555-5555-5555-5555-555555555555'
+		`)
+		if err != nil {
+			t.Fatalf("Failed to delete transaction after clearing junction: %v", err)
+		}
+
+		// Verify transaction is gone
+		err = db.Conn().QueryRow(`
+			SELECT COUNT(*) FROM investment_transactions
+			WHERE id = '55555555-5555-5555-5555-555555555555'
+		`).Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to count transactions: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("Expected 0 transactions after delete, got %d", count)
+		}
+	})
+
+	t.Run("investment_transaction_lots enforces transaction foreign key", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transaction_lots (transaction_id, lot_id, shares)
+			VALUES ('99999999-9999-9999-9999-999999999999', '88888888-8888-8888-8888-888888888888', 5.0)
+		`)
+		if err == nil {
+			t.Error("Expected foreign key error for non-existent transaction")
 		}
 	})
 }

@@ -242,19 +242,19 @@ Spec: `specs/security-master.md`
 
 ## Phase 13: Investment Tables Migration
 
-- [ ] **SM-046 - Migration: investment_transactions table**
+- [x] **SM-046 - Migration: investment_transactions table**
   - RED: Write integration test — insert investment transaction, read back, verify all columns and constraints
   - GREEN: Create migration `008_investment_tables.sql` with `investment_transactions` table and indexes
 
-- [ ] **SM-047 - Migration: investment_lots table**
+- [x] **SM-047 - Migration: investment_lots table**
   - RED: Write integration test — insert lot, verify columns; verify foreign keys to accounts and securities
   - GREEN: Add `investment_lots` table to migration `008_investment_tables.sql`
 
-- [ ] **SM-048 - Migration: investment_positions table**
+- [x] **SM-048 - Migration: investment_positions table**
   - RED: Write integration test — insert position, verify unique constraint on (account_id, security_id)
   - GREEN: Add `investment_positions` table to migration `008_investment_tables.sql`
 
-- [ ] **SM-049 - Migration: investment_transaction_lots junction table**
+- [x] **SM-049 - Migration: investment_transaction_lots junction table**
   - RED: Write integration test — insert junction record linking transaction to lot; verify cascade delete
   - GREEN: Add `investment_transaction_lots` table to migration `008_investment_tables.sql`
 
