@@ -6,7 +6,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
@@ -21,7 +22,7 @@ const (
 // accountDialogData holds the loaded data needed for the account dialog.
 type accountDialogData struct {
 	mode    accountDialogMode
-	account *models.Account // non-nil when editing
+	account *account.Account // non-nil when editing
 }
 
 // accountDialogDataMsg is sent when account dialog data has been loaded.
@@ -54,7 +55,7 @@ const (
 
 // buildAccountTypeOptions returns display names for all account types.
 func buildAccountTypeOptions() []string {
-	types := models.AllAccountTypes()
+	types := account.AllTypes()
 	options := make([]string, len(types))
 	for i, t := range types {
 		options[i] = t.DisplayName()
@@ -63,17 +64,17 @@ func buildAccountTypeOptions() []string {
 }
 
 // accountTypeFromIndex returns the AccountType for a given select index.
-func accountTypeFromIndex(index int) models.AccountType {
-	types := models.AllAccountTypes()
+func accountTypeFromIndex(index int) account.Type {
+	types := account.AllTypes()
 	if index < 0 || index >= len(types) {
-		return models.AccountTypeChecking
+		return account.TypeChecking
 	}
 	return types[index]
 }
 
 // accountTypeToIndex returns the select index for a given AccountType.
-func accountTypeToIndex(at models.AccountType) int {
-	types := models.AllAccountTypes()
+func accountTypeToIndex(at account.Type) int {
+	types := account.AllTypes()
 	for i, t := range types {
 		if t == at {
 			return i
@@ -83,15 +84,15 @@ func accountTypeToIndex(at models.AccountType) int {
 }
 
 // accountTypeShowsCreditLimit returns true if the account type should show the credit limit field.
-func accountTypeShowsCreditLimit(at models.AccountType) bool {
-	return at == models.AccountTypeCreditCard
+func accountTypeShowsCreditLimit(at account.Type) bool {
+	return at == account.TypeCreditCard
 }
 
 // accountTypeShowsInterestRate returns true if the account type should show the interest rate field.
-func accountTypeShowsInterestRate(at models.AccountType) bool {
+func accountTypeShowsInterestRate(at account.Type) bool {
 	switch at {
-	case models.AccountTypeChecking, models.AccountTypeSavings, models.AccountTypeCreditCard,
-		models.AccountTypeInvestment, models.AccountTypeLoan:
+	case account.TypeChecking, account.TypeSavings, account.TypeCreditCard,
+		account.TypeInvestment, account.TypeLoan:
 		return true
 	default:
 		return false
@@ -170,61 +171,61 @@ func buildNewAccountDialog() *Dialog {
 }
 
 // buildEditAccountDialog creates a Dialog for editing an existing account.
-func buildEditAccountDialog(account *models.Account) *Dialog {
+func buildEditAccountDialog(acct *account.Account) *Dialog {
 	d := NewDialog("Edit Account")
 
 	// Name
-	f := d.AddTextField("Name", account.Name, "Account name", 0)
+	f := d.AddTextField("Name", acct.Name, "Account name", 0)
 	f.Required = true
 
 	// Type
-	d.AddSelectField("Type", buildAccountTypeOptions(), accountTypeToIndex(account.Type))
+	d.AddSelectField("Type", buildAccountTypeOptions(), accountTypeToIndex(acct.Type))
 
 	// Currency
-	f = d.AddTextField("Currency", account.Currency, "ISO 4217", 5)
+	f = d.AddTextField("Currency", acct.Currency, "ISO 4217", 5)
 	f.Required = true
 
 	// Opening balance
-	f = d.AddTextField("Opening Balance", fmt.Sprintf("%.2f", account.OpeningBalance.Float64()), "0.00", 12)
+	f = d.AddTextField("Opening Balance", fmt.Sprintf("%.2f", acct.OpeningBalance.Float64()), "0.00", 12)
 	f.Required = true
 
 	// Opening date
-	dateStr := account.OpeningDate.Time().Format("01/02/2006")
+	dateStr := acct.OpeningDate.Time().Format("01/02/2006")
 	f = d.AddTextField("Opening Date", dateStr, "MM/DD/YYYY", 10)
 	f.Required = true
 
 	// Institution
 	institution := ""
-	if account.Institution.Valid {
-		institution = account.Institution.String
+	if acct.Institution.Valid {
+		institution = acct.Institution.String
 	}
 	d.AddTextField("Institution", institution, "Bank name (optional)", 0)
 
 	// Account number
 	acctNum := ""
-	if account.AccountNumber.Valid {
-		acctNum = account.AccountNumber.String
+	if acct.AccountNumber.Valid {
+		acctNum = acct.AccountNumber.String
 	}
 	d.AddTextField("Account #", acctNum, "Account number (optional)", 0)
 
 	// Notes
 	notes := ""
-	if account.Notes.Valid {
-		notes = account.Notes.String
+	if acct.Notes.Valid {
+		notes = acct.Notes.String
 	}
 	d.AddTextField("Notes", notes, "Optional notes", 0)
 
 	// Credit limit (shown for credit cards)
 	creditLimit := ""
-	if account.CreditLimit.Valid {
-		creditLimit = fmt.Sprintf("%.2f", account.CreditLimit.Money.Float64())
+	if acct.CreditLimit.Valid {
+		creditLimit = fmt.Sprintf("%.2f", acct.CreditLimit.Money.Float64())
 	}
 	d.AddTextField("Credit Limit", creditLimit, "e.g. 5000.00", 12)
 
 	// Interest rate (shown for most account types)
 	interestRate := ""
-	if account.InterestRate.Valid {
-		interestRate = fmt.Sprintf("%.2f", account.InterestRate.Money.Float64())
+	if acct.InterestRate.Valid {
+		interestRate = fmt.Sprintf("%.2f", acct.InterestRate.Money.Float64())
 	}
 	d.AddTextField("Interest Rate", interestRate, "APR, e.g. 5.25", 8)
 
@@ -346,7 +347,7 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 	notes := strings.TrimSpace(fields[acctFieldNotes].Value)
 
 	// Parse credit limit if field is visible and provided
-	var creditLimit models.NullableMoney
+	var creditLimit types.NullableMoney
 	if !fields[acctFieldCreditLimit].Hidden {
 		creditLimitStr := strings.TrimSpace(fields[acctFieldCreditLimit].Value)
 		if creditLimitStr != "" {
@@ -355,13 +356,13 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 				fields[acctFieldCreditLimit].Error = "Invalid amount"
 				hasErrors = true
 			} else {
-				creditLimit = models.NullableMoney{Money: cl, Valid: true}
+				creditLimit = types.NullableMoney{Money: cl, Valid: true}
 			}
 		}
 	}
 
 	// Parse interest rate if field is visible and provided
-	var interestRate models.NullableMoney
+	var interestRate types.NullableMoney
 	if !fields[acctFieldInterestRate].Hidden {
 		interestRateStr := strings.TrimSpace(fields[acctFieldInterestRate].Value)
 		if interestRateStr != "" {
@@ -370,7 +371,7 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 				fields[acctFieldInterestRate].Error = "Invalid amount"
 				hasErrors = true
 			} else {
-				interestRate = models.NullableMoney{Money: ir, Valid: true}
+				interestRate = types.NullableMoney{Money: ir, Valid: true}
 			}
 		}
 	}
@@ -390,34 +391,34 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
 
-		var account *models.Account
+		var acct *account.Account
 		if mode == accountDialogModeEdit && existingAccount != nil {
-			account = existingAccount
-			account.Name = name
-			account.Type = accountType
-			account.Currency = currency
-			account.OpeningBalance = openingBalance
-			account.OpeningDate = openingDate
+			acct = existingAccount
+			acct.Name = name
+			acct.Type = accountType
+			acct.Currency = currency
+			acct.OpeningBalance = openingBalance
+			acct.OpeningDate = openingDate
 		} else {
-			account = models.NewAccount(name, accountType, currency, openingBalance, openingDate)
+			acct = account.NewAccount(name, accountType, currency, openingBalance, openingDate)
 		}
 
 		// Set optional fields
-		account.SetInstitution(institution)
-		account.SetAccountNumber(accountNumber)
-		account.SetNotes(notes)
+		acct.SetInstitution(institution)
+		acct.SetAccountNumber(accountNumber)
+		acct.SetNotes(notes)
 
 		// Type-specific fields
-		account.CreditLimit = creditLimit
-		account.InterestRate = interestRate
+		acct.CreditLimit = creditLimit
+		acct.InterestRate = interestRate
 
 		if mode == accountDialogModeEdit {
-			cmd := undo.NewEditAccountCommand(a.accountSvc, account)
+			cmd := undo.NewEditAccountCommand(a.accountSvc, acct)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update account: %w", err)}
 			}
 		} else {
-			cmd := undo.NewCreateAccountCommand(a.accountSvc, account)
+			cmd := undo.NewCreateAccountCommand(a.accountSvc, acct)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create account: %w", err)}
 			}

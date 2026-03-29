@@ -4,30 +4,30 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // accountGroupOrder defines the display order of account type groups in the sidebar.
-var accountGroupOrder = []models.AccountType{
-	models.AccountTypeChecking,
-	models.AccountTypeSavings,
-	models.AccountTypeCash,
-	models.AccountTypeCreditCard,
-	models.AccountTypeInvestment,
-	models.AccountTypeLoan,
-	models.AccountTypeAsset,
+var accountGroupOrder = []account.Type{
+	account.TypeChecking,
+	account.TypeSavings,
+	account.TypeCash,
+	account.TypeCreditCard,
+	account.TypeInvestment,
+	account.TypeLoan,
+	account.TypeAsset,
 }
 
 // accountGroupLabels maps account types to their sidebar group display names.
-var accountGroupLabels = map[models.AccountType]string{
-	models.AccountTypeChecking:   "Bank Accounts",
-	models.AccountTypeSavings:    "Bank Accounts",
-	models.AccountTypeCash:       "Cash",
-	models.AccountTypeCreditCard: "Credit Cards",
-	models.AccountTypeInvestment: "Investments",
-	models.AccountTypeLoan:       "Loans",
-	models.AccountTypeAsset:      "Assets",
+var accountGroupLabels = map[account.Type]string{
+	account.TypeChecking:   "Bank Accounts",
+	account.TypeSavings:    "Bank Accounts",
+	account.TypeCash:       "Cash",
+	account.TypeCreditCard: "Credit Cards",
+	account.TypeInvestment: "Investments",
+	account.TypeLoan:       "Loans",
+	account.TypeAsset:      "Assets",
 }
 
 // sidebarItemKind distinguishes between group headers and account items.
@@ -42,14 +42,14 @@ const (
 type sidebarItem struct {
 	kind      sidebarItemKind
 	groupKey  string           // group label (used as key for collapse state)
-	account   *models.Account  // non-nil for account items
-	accountID models.ID        // shortcut for account items
+	account   *account.Account  // non-nil for account items
+	accountID types.ID        // shortcut for account items
 }
 
 // accountGroup holds a named group of accounts for sidebar display.
 type accountGroup struct {
 	label    string
-	accounts []*models.Account
+	accounts []*account.Account
 }
 
 // Sidebar manages the account sidebar state and rendering.
@@ -64,11 +64,11 @@ type Sidebar struct {
 	collapsed map[string]bool
 
 	// Selected account (persists across navigation)
-	selectedAccountID models.ID
+	selectedAccountID types.ID
 
 	// Cached data
-	accounts []*models.Account
-	balances map[models.ID]*service.AccountBalance
+	accounts []*account.Account
+	balances map[types.ID]*account.Balance
 
 	// Focus state
 	focused bool
@@ -78,13 +78,13 @@ type Sidebar struct {
 func NewSidebar() *Sidebar {
 	return &Sidebar{
 		collapsed: make(map[string]bool),
-		balances:  make(map[models.ID]*service.AccountBalance),
+		balances:  make(map[types.ID]*account.Balance),
 		focused:   true,
 	}
 }
 
 // SetAccounts updates the sidebar with a new account list and balances.
-func (s *Sidebar) SetAccounts(accounts []*models.Account, balances map[models.ID]*service.AccountBalance) {
+func (s *Sidebar) SetAccounts(accounts []*account.Account, balances map[types.ID]*account.Balance) {
 	s.accounts = accounts
 	if balances != nil {
 		s.balances = balances
@@ -103,12 +103,12 @@ func (s *Sidebar) IsFocused() bool {
 }
 
 // SelectedAccountID returns the currently selected account ID.
-func (s *Sidebar) SelectedAccountID() models.ID {
+func (s *Sidebar) SelectedAccountID() types.ID {
 	return s.selectedAccountID
 }
 
 // SelectedAccount returns the currently selected account, or nil.
-func (s *Sidebar) SelectedAccount() *models.Account {
+func (s *Sidebar) SelectedAccount() *account.Account {
 	if s.selectedAccountID.IsNil() {
 		return nil
 	}
@@ -223,9 +223,9 @@ func (s *Sidebar) Select() bool {
 }
 
 // buildGroups organizes accounts into display groups.
-func buildGroups(accounts []*models.Account) []accountGroup {
+func buildGroups(accounts []*account.Account) []accountGroup {
 	// Group accounts by their sidebar group label
-	byGroup := make(map[string][]*models.Account)
+	byGroup := make(map[string][]*account.Account)
 	for _, a := range accounts {
 		label := accountGroupLabels[a.Type]
 		if label == "" {

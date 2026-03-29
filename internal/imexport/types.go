@@ -3,18 +3,18 @@ package imexport
 import (
 	"fmt"
 
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // ImportRecord represents a single parsed transaction from an import file.
 // This is a format-agnostic intermediate representation used between parsing
 // and the import engine.
 type ImportRecord struct {
-	Date            models.Date
+	Date            types.Date
 	Account         string
 	Payee           string
 	Category        string
-	Amount          models.Money
+	Amount          types.Money
 	Memo            string
 	CheckNumber     string
 	Status          string
@@ -33,7 +33,7 @@ type ImportRecord struct {
 // ImportSplit represents a split line within a split transaction.
 type ImportSplit struct {
 	Category string
-	Amount   models.Money
+	Amount   types.Money
 	Memo     string
 }
 

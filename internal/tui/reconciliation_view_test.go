@@ -5,7 +5,10 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/reconciliation"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestBuildStartReconciliationDialog(t *testing.T) {
@@ -41,12 +44,12 @@ func TestBuildStartReconciliationDialog(t *testing.T) {
 
 func TestReconciliationViewData(t *testing.T) {
 	data := &reconciliationViewData{
-		checkedIDs: make(map[models.ID]bool),
+		checkedIDs: make(map[types.ID]bool),
 	}
 
-	id1 := models.NewID()
-	id2 := models.NewID()
-	id3 := models.NewID()
+	id1 := types.NewID()
+	id2 := types.NewID()
+	id3 := types.NewID()
 
 	// Nothing checked initially
 	if len(data.checkedIDs) != 0 {
@@ -75,13 +78,13 @@ func TestReconciliationViewData(t *testing.T) {
 }
 
 func TestGetCheckedTransactionIDs(t *testing.T) {
-	id1 := models.NewID()
-	id2 := models.NewID()
-	id3 := models.NewID()
+	id1 := types.NewID()
+	id2 := types.NewID()
+	id3 := types.NewID()
 
 	app := &App{
 		reconciliation: &reconciliationViewData{
-			checkedIDs: map[models.ID]bool{
+			checkedIDs: map[types.ID]bool{
 				id1: true,
 				id2: true,
 				id3: false, // unchecked
@@ -92,7 +95,7 @@ func TestGetCheckedTransactionIDs(t *testing.T) {
 	ids := app.getCheckedTransactionIDs()
 
 	// Should only include true entries
-	idSet := make(map[models.ID]bool)
+	idSet := make(map[types.ID]bool)
 	for _, id := range ids {
 		idSet[id] = true
 	}
@@ -117,29 +120,29 @@ func TestGetCheckedTransactionIDs_NilReconciliation(t *testing.T) {
 }
 
 func TestFormatReconciliationRow(t *testing.T) {
-	payeeID := models.NewID()
-	categoryID := models.NewID()
+	payeeID := types.NewID()
+	categoryID := types.NewID()
 
 	app := &App{
 		reconciliation: &reconciliationViewData{
-			checkedIDs: make(map[models.ID]bool),
-			payeeNames: map[models.ID]string{
+			checkedIDs: make(map[types.ID]bool),
+			payeeNames: map[types.ID]string{
 				payeeID: "Coffee Shop",
 			},
-			categoryNames: map[models.ID]string{
+			categoryNames: map[types.ID]string{
 				categoryID: "Food",
 			},
-			accountNames: make(map[models.ID]string),
+			accountNames: make(map[types.ID]string),
 		},
 	}
 
-	txn := &models.Transaction{
-		Status:     models.TransactionStatusUncleared,
-		PayeeID:    models.NullableID{ID: payeeID, Valid: true},
-		CategoryID: models.NullableID{ID: categoryID, Valid: true},
+	txn := &transaction.Transaction{
+		Status:     transaction.StatusUncleared,
+		PayeeID:    types.NullableID{ID: payeeID, Valid: true},
+		CategoryID: types.NullableID{ID: categoryID, Valid: true},
 	}
-	txn.Amount, _ = models.NewMoney("-45.50")
-	txn.Date = models.Today()
+	txn.Amount, _ = types.NewMoney("-45.50")
+	txn.Date = types.Today()
 
 	row := app.formatReconciliationRow(txn)
 
@@ -174,23 +177,23 @@ func TestFormatReconciliationRow(t *testing.T) {
 }
 
 func TestFormatReconciliationRow_Checked(t *testing.T) {
-	txnID := models.NewID()
+	txnID := types.NewID()
 
 	app := &App{
 		reconciliation: &reconciliationViewData{
-			checkedIDs:    map[models.ID]bool{txnID: true},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			checkedIDs:    map[types.ID]bool{txnID: true},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
-	txn := &models.Transaction{
-		Status: models.TransactionStatusCleared,
+	txn := &transaction.Transaction{
+		Status: transaction.StatusCleared,
 	}
 	txn.ID = txnID
-	txn.Amount = models.ZeroMoney
-	txn.Date = models.Today()
+	txn.Amount = types.ZeroMoney
+	txn.Date = types.Today()
 
 	row := app.formatReconciliationRow(txn)
 
@@ -206,26 +209,26 @@ func TestFormatReconciliationRow_Checked(t *testing.T) {
 }
 
 func TestFormatReconciliationRow_Transfer(t *testing.T) {
-	transferAcctID := models.NewID()
+	transferAcctID := types.NewID()
 
 	app := &App{
 		reconciliation: &reconciliationViewData{
-			checkedIDs:    make(map[models.ID]bool),
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames: map[models.ID]string{
+			checkedIDs:    make(map[types.ID]bool),
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames: map[types.ID]string{
 				transferAcctID: "Savings",
 			},
 		},
 	}
 
-	txn := &models.Transaction{
-		Status:            models.TransactionStatusUncleared,
-		TransferID:        models.NullableID{ID: models.NewID(), Valid: true},
-		TransferAccountID: models.NullableID{ID: transferAcctID, Valid: true},
+	txn := &transaction.Transaction{
+		Status:            transaction.StatusUncleared,
+		TransferID:        types.NullableID{ID: types.NewID(), Valid: true},
+		TransferAccountID: types.NullableID{ID: transferAcctID, Valid: true},
 	}
-	txn.Amount, _ = models.NewMoney("-500.00")
-	txn.Date = models.Today()
+	txn.Amount, _ = types.NewMoney("-500.00")
+	txn.Date = types.Today()
 
 	row := app.formatReconciliationRow(txn)
 
@@ -238,27 +241,27 @@ func TestFormatReconciliationRow_Transfer(t *testing.T) {
 }
 
 func TestBuildReconciliationTable(t *testing.T) {
-	txn1 := &models.Transaction{
-		Status: models.TransactionStatusUncleared,
+	txn1 := &transaction.Transaction{
+		Status: transaction.StatusUncleared,
 	}
-	txn1.ID = models.NewID()
-	txn1.Amount = models.ZeroMoney
-	txn1.Date = models.Today()
+	txn1.ID = types.NewID()
+	txn1.Amount = types.ZeroMoney
+	txn1.Date = types.Today()
 
-	txn2 := &models.Transaction{
-		Status: models.TransactionStatusCleared,
+	txn2 := &transaction.Transaction{
+		Status: transaction.StatusCleared,
 	}
-	txn2.ID = models.NewID()
-	txn2.Amount = models.ZeroMoney
-	txn2.Date = models.Today()
+	txn2.ID = types.NewID()
+	txn2.Amount = types.ZeroMoney
+	txn2.Date = types.Today()
 
 	app := &App{
 		reconciliation: &reconciliationViewData{
-			candidates:    []*models.Transaction{txn1, txn2},
-			checkedIDs:    make(map[models.ID]bool),
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			candidates:    []*transaction.Transaction{txn1, txn2},
+			checkedIDs:    make(map[types.ID]bool),
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -273,23 +276,23 @@ func TestBuildReconciliationTable(t *testing.T) {
 }
 
 func TestToggleReconciliationCheck(t *testing.T) {
-	txn := &models.Transaction{
-		Status: models.TransactionStatusUncleared,
+	txn := &transaction.Transaction{
+		Status: transaction.StatusUncleared,
 	}
-	txn.ID = models.NewID()
-	txn.Amount = models.ZeroMoney
-	txn.Date = models.Today()
+	txn.ID = types.NewID()
+	txn.Amount = types.ZeroMoney
+	txn.Date = types.Today()
 
 	app := &App{
 		reconciliation: &reconciliationViewData{
-			session: &models.ReconciliationSession{
-				AccountID: models.NewID(),
+			session: &reconciliation.Session{
+				AccountID: types.NewID(),
 			},
-			candidates:    []*models.Transaction{txn},
-			checkedIDs:    make(map[models.ID]bool),
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			candidates:    []*transaction.Transaction{txn},
+			checkedIDs:    make(map[types.ID]bool),
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 	app.buildReconciliationTable()
@@ -308,26 +311,26 @@ func TestToggleReconciliationCheck(t *testing.T) {
 }
 
 func TestCheckAllReconciliation(t *testing.T) {
-	txn1 := &models.Transaction{Status: models.TransactionStatusUncleared}
-	txn1.ID = models.NewID()
-	txn1.Amount = models.ZeroMoney
-	txn1.Date = models.Today()
+	txn1 := &transaction.Transaction{Status: transaction.StatusUncleared}
+	txn1.ID = types.NewID()
+	txn1.Amount = types.ZeroMoney
+	txn1.Date = types.Today()
 
-	txn2 := &models.Transaction{Status: models.TransactionStatusCleared}
-	txn2.ID = models.NewID()
-	txn2.Amount = models.ZeroMoney
-	txn2.Date = models.Today()
+	txn2 := &transaction.Transaction{Status: transaction.StatusCleared}
+	txn2.ID = types.NewID()
+	txn2.Amount = types.ZeroMoney
+	txn2.Date = types.Today()
 
 	app := &App{
 		reconciliation: &reconciliationViewData{
-			session: &models.ReconciliationSession{
-				AccountID: models.NewID(),
+			session: &reconciliation.Session{
+				AccountID: types.NewID(),
 			},
-			candidates:    []*models.Transaction{txn1, txn2},
-			checkedIDs:    make(map[models.ID]bool),
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			candidates:    []*transaction.Transaction{txn1, txn2},
+			checkedIDs:    make(map[types.ID]bool),
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 	app.buildReconciliationTable()
@@ -343,21 +346,21 @@ func TestCheckAllReconciliation(t *testing.T) {
 }
 
 func TestUncheckAllReconciliation(t *testing.T) {
-	txn1 := &models.Transaction{Status: models.TransactionStatusUncleared}
-	txn1.ID = models.NewID()
-	txn1.Amount = models.ZeroMoney
-	txn1.Date = models.Today()
+	txn1 := &transaction.Transaction{Status: transaction.StatusUncleared}
+	txn1.ID = types.NewID()
+	txn1.Amount = types.ZeroMoney
+	txn1.Date = types.Today()
 
 	app := &App{
 		reconciliation: &reconciliationViewData{
-			session: &models.ReconciliationSession{
-				AccountID: models.NewID(),
+			session: &reconciliation.Session{
+				AccountID: types.NewID(),
 			},
-			candidates:    []*models.Transaction{txn1},
-			checkedIDs:    map[models.ID]bool{txn1.ID: true},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			candidates:    []*transaction.Transaction{txn1},
+			checkedIDs:    map[types.ID]bool{txn1.ID: true},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 	app.buildReconciliationTable()
@@ -385,11 +388,11 @@ func TestRenderReconciliation_Loading(t *testing.T) {
 }
 
 func TestRenderReconciliation_NoCandidates(t *testing.T) {
-	stmtBal, _ := models.NewMoney("5000.00")
-	session := &models.ReconciliationSession{
+	stmtBal, _ := types.NewMoney("5000.00")
+	session := &reconciliation.Session{
 		StatementBalance: stmtBal,
 	}
-	session.StatementDate = models.Today()
+	session.StatementDate = types.Today()
 
 	app := &App{
 		width:  80,
@@ -397,10 +400,10 @@ func TestRenderReconciliation_NoCandidates(t *testing.T) {
 		styles: NewStyles(),
 		reconciliation: &reconciliationViewData{
 			session: session,
-			account: &models.Account{Name: "Checking"},
-			candidates:    []*models.Transaction{},
-			checkedIDs:    make(map[models.ID]bool),
-			clearedTotal:  models.ZeroMoney,
+			account: &account.Account{Name: "Checking"},
+			candidates:    []*transaction.Transaction{},
+			checkedIDs:    make(map[types.ID]bool),
+			clearedTotal:  types.ZeroMoney,
 		},
 	}
 	app.styles.Resize(80, 24)
@@ -415,19 +418,19 @@ func TestRenderReconciliation_NoCandidates(t *testing.T) {
 }
 
 func TestRenderReconciliation_WithData(t *testing.T) {
-	stmtBal, _ := models.NewMoney("5000.00")
-	clrTotal, _ := models.NewMoney("4500.00")
-	session := &models.ReconciliationSession{
+	stmtBal, _ := types.NewMoney("5000.00")
+	clrTotal, _ := types.NewMoney("4500.00")
+	session := &reconciliation.Session{
 		StatementBalance: stmtBal,
 	}
-	session.StatementDate = models.Today()
+	session.StatementDate = types.Today()
 
-	txn := &models.Transaction{
-		Status: models.TransactionStatusUncleared,
+	txn := &transaction.Transaction{
+		Status: transaction.StatusUncleared,
 	}
-	txn.ID = models.NewID()
-	txn.Amount, _ = models.NewMoney("-50.00")
-	txn.Date = models.Today()
+	txn.ID = types.NewID()
+	txn.Amount, _ = types.NewMoney("-50.00")
+	txn.Date = types.Today()
 
 	app := &App{
 		width:  100,
@@ -435,12 +438,12 @@ func TestRenderReconciliation_WithData(t *testing.T) {
 		styles: NewStyles(),
 		reconciliation: &reconciliationViewData{
 			session:       session,
-			account:       &models.Account{Name: "Checking"},
-			candidates:    []*models.Transaction{txn},
-			checkedIDs:    make(map[models.ID]bool),
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			account:       &account.Account{Name: "Checking"},
+			candidates:    []*transaction.Transaction{txn},
+			checkedIDs:    make(map[types.ID]bool),
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 			clearedTotal:  clrTotal,
 		},
 	}
@@ -468,29 +471,29 @@ func TestRenderReconciliation_WithData(t *testing.T) {
 }
 
 func TestHandleReconciliationKeys_Navigation(t *testing.T) {
-	txn1 := &models.Transaction{Status: models.TransactionStatusUncleared}
-	txn1.ID = models.NewID()
-	txn1.Amount = models.ZeroMoney
-	txn1.Date = models.Today()
+	txn1 := &transaction.Transaction{Status: transaction.StatusUncleared}
+	txn1.ID = types.NewID()
+	txn1.Amount = types.ZeroMoney
+	txn1.Date = types.Today()
 
-	txn2 := &models.Transaction{Status: models.TransactionStatusCleared}
-	txn2.ID = models.NewID()
-	txn2.Amount = models.ZeroMoney
-	txn2.Date = models.Today()
+	txn2 := &transaction.Transaction{Status: transaction.StatusCleared}
+	txn2.ID = types.NewID()
+	txn2.Amount = types.ZeroMoney
+	txn2.Date = types.Today()
 
 	app := &App{
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
 		reconciliation: &reconciliationViewData{
-			session: &models.ReconciliationSession{
-				AccountID: models.NewID(),
+			session: &reconciliation.Session{
+				AccountID: types.NewID(),
 			},
-			candidates:    []*models.Transaction{txn1, txn2},
-			checkedIDs:    make(map[models.ID]bool),
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			candidates:    []*transaction.Transaction{txn1, txn2},
+			checkedIDs:    make(map[types.ID]bool),
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 	app.buildReconciliationTable()
@@ -513,24 +516,24 @@ func TestHandleReconciliationKeys_Navigation(t *testing.T) {
 }
 
 func TestHandleReconciliationKeys_Space(t *testing.T) {
-	txn := &models.Transaction{Status: models.TransactionStatusUncleared}
-	txn.ID = models.NewID()
-	txn.Amount = models.ZeroMoney
-	txn.Date = models.Today()
+	txn := &transaction.Transaction{Status: transaction.StatusUncleared}
+	txn.ID = types.NewID()
+	txn.Amount = types.ZeroMoney
+	txn.Date = types.Today()
 
 	app := &App{
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
 		reconciliation: &reconciliationViewData{
-			session: &models.ReconciliationSession{
-				AccountID: models.NewID(),
+			session: &reconciliation.Session{
+				AccountID: types.NewID(),
 			},
-			candidates:    []*models.Transaction{txn},
-			checkedIDs:    make(map[models.ID]bool),
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			candidates:    []*transaction.Transaction{txn},
+			checkedIDs:    make(map[types.ID]bool),
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 	app.buildReconciliationTable()
@@ -545,29 +548,29 @@ func TestHandleReconciliationKeys_Space(t *testing.T) {
 }
 
 func TestHandleReconciliationKeys_CheckAll(t *testing.T) {
-	txn1 := &models.Transaction{Status: models.TransactionStatusUncleared}
-	txn1.ID = models.NewID()
-	txn1.Amount = models.ZeroMoney
-	txn1.Date = models.Today()
+	txn1 := &transaction.Transaction{Status: transaction.StatusUncleared}
+	txn1.ID = types.NewID()
+	txn1.Amount = types.ZeroMoney
+	txn1.Date = types.Today()
 
-	txn2 := &models.Transaction{Status: models.TransactionStatusCleared}
-	txn2.ID = models.NewID()
-	txn2.Amount = models.ZeroMoney
-	txn2.Date = models.Today()
+	txn2 := &transaction.Transaction{Status: transaction.StatusCleared}
+	txn2.ID = types.NewID()
+	txn2.Amount = types.ZeroMoney
+	txn2.Date = types.Today()
 
 	app := &App{
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
 		reconciliation: &reconciliationViewData{
-			session: &models.ReconciliationSession{
-				AccountID: models.NewID(),
+			session: &reconciliation.Session{
+				AccountID: types.NewID(),
 			},
-			candidates:    []*models.Transaction{txn1, txn2},
-			checkedIDs:    make(map[models.ID]bool),
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			candidates:    []*transaction.Transaction{txn1, txn2},
+			checkedIDs:    make(map[types.ID]bool),
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 	app.buildReconciliationTable()
@@ -596,11 +599,11 @@ func TestHandleReconciliationKeys_CheckAll(t *testing.T) {
 }
 
 func TestHandleReconciliationKeys_FinishWithDifference(t *testing.T) {
-	stmtBal, _ := models.NewMoney("5000.00")
-	session := &models.ReconciliationSession{
+	stmtBal, _ := types.NewMoney("5000.00")
+	session := &reconciliation.Session{
 		StatementBalance: stmtBal,
 	}
-	session.StatementDate = models.Today()
+	session.StatementDate = types.Today()
 
 	app := &App{
 		width:     80,
@@ -609,12 +612,12 @@ func TestHandleReconciliationKeys_FinishWithDifference(t *testing.T) {
 		statusbar: NewStatusBar(),
 		reconciliation: &reconciliationViewData{
 			session:       session,
-			candidates:    []*models.Transaction{},
-			checkedIDs:    make(map[models.ID]bool),
-			clearedTotal:  models.ZeroMoney,
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			candidates:    []*transaction.Transaction{},
+			checkedIDs:    make(map[types.ID]bool),
+			clearedTotal:  types.ZeroMoney,
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 	app.buildReconciliationTable()
@@ -678,8 +681,8 @@ func TestReconciliationView_SwitchView(t *testing.T) {
 }
 
 func TestReconciliationUpdate_StartedMsg(t *testing.T) {
-	session := models.NewReconciliationSession(models.NewID(), models.Today(), models.ZeroMoney)
-	account := &models.Account{Name: "Checking"}
+	session := reconciliation.NewSession(types.NewID(), types.Today(), types.ZeroMoney)
+	account := &account.Account{Name: "Checking"}
 
 	app := &App{
 		currentView: ViewRegister,
@@ -701,19 +704,19 @@ func TestReconciliationUpdate_StartedMsg(t *testing.T) {
 }
 
 func TestReconciliationUpdate_LoadedMsg(t *testing.T) {
-	txn := &models.Transaction{Status: models.TransactionStatusUncleared}
-	txn.ID = models.NewID()
-	txn.Amount = models.ZeroMoney
-	txn.Date = models.Today()
+	txn := &transaction.Transaction{Status: transaction.StatusUncleared}
+	txn.ID = types.NewID()
+	txn.Amount = types.ZeroMoney
+	txn.Date = types.Today()
 
 	data := &reconciliationViewData{
-		session: &models.ReconciliationSession{},
-		account: &models.Account{Name: "Checking"},
-		candidates:    []*models.Transaction{txn},
-		checkedIDs:    make(map[models.ID]bool),
-		payeeNames:    make(map[models.ID]string),
-		categoryNames: make(map[models.ID]string),
-		accountNames:  make(map[models.ID]string),
+		session: &reconciliation.Session{},
+		account: &account.Account{Name: "Checking"},
+		candidates:    []*transaction.Transaction{txn},
+		checkedIDs:    make(map[types.ID]bool),
+		payeeNames:    make(map[types.ID]string),
+		categoryNames: make(map[types.ID]string),
+		accountNames:  make(map[types.ID]string),
 	}
 
 	app := &App{
@@ -735,13 +738,13 @@ func TestReconciliationUpdate_LoadedMsg(t *testing.T) {
 }
 
 func TestReconciliationUpdate_ClearedTotalMsg(t *testing.T) {
-	total, _ := models.NewMoney("1234.56")
+	total, _ := types.NewMoney("1234.56")
 
 	app := &App{
 		currentView: ViewReconciliation,
 		keys:        defaultKeyMap(),
 		reconciliation: &reconciliationViewData{
-			clearedTotal: models.ZeroMoney,
+			clearedTotal: types.ZeroMoney,
 		},
 	}
 
@@ -761,7 +764,7 @@ func TestReconciliationUpdate_FinishedMsg(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
 		reconciliation: &reconciliationViewData{
-			account: &models.Account{Name: "Checking"},
+			account: &account.Account{Name: "Checking"},
 		},
 	}
 
@@ -797,7 +800,7 @@ func TestReconciliationUpdate_CancelledMsg(t *testing.T) {
 		statusbar:    NewStatusBar(),
 		sidebar:      NewSidebar(),
 		reconciliation: &reconciliationViewData{
-			account: &models.Account{Name: "Checking"},
+			account: &account.Account{Name: "Checking"},
 		},
 	}
 
@@ -820,11 +823,11 @@ func TestReconciliationUpdate_CancelledMsg(t *testing.T) {
 
 func TestReconciliationFullScreen(t *testing.T) {
 	// Verify that reconciliation view renders full-screen (no sidebar)
-	stmtBal, _ := models.NewMoney("5000.00")
-	session := &models.ReconciliationSession{
+	stmtBal, _ := types.NewMoney("5000.00")
+	session := &reconciliation.Session{
 		StatementBalance: stmtBal,
 	}
-	session.StatementDate = models.Today()
+	session.StatementDate = types.Today()
 
 	styles := NewStyles()
 	styles.Resize(100, 30)
@@ -841,10 +844,10 @@ func TestReconciliationFullScreen(t *testing.T) {
 		keys:        defaultKeyMap(),
 		reconciliation: &reconciliationViewData{
 			session:       session,
-			account:       &models.Account{Name: "Test Account"},
-			candidates:    []*models.Transaction{},
-			checkedIDs:    make(map[models.ID]bool),
-			clearedTotal:  models.ZeroMoney,
+			account:       &account.Account{Name: "Test Account"},
+			candidates:    []*transaction.Transaction{},
+			checkedIDs:    make(map[types.ID]bool),
+			clearedTotal:  types.ZeroMoney,
 		},
 	}
 
@@ -863,9 +866,9 @@ func TestReconciliationBlocksViewSwitching(t *testing.T) {
 		menubar:     NewMenuBar(),
 		statusbar:   NewStatusBar(),
 		reconciliation: &reconciliationViewData{
-			session:    &models.ReconciliationSession{AccountID: models.NewID()},
-			candidates: []*models.Transaction{},
-			checkedIDs: make(map[models.ID]bool),
+			session:    &reconciliation.Session{AccountID: types.NewID()},
+			candidates: []*transaction.Transaction{},
+			checkedIDs: make(map[types.ID]bool),
 		},
 	}
 	app.buildReconciliationTable()

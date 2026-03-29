@@ -7,18 +7,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // --- Mock implementations for export ---
 
 type mockAccountProvider struct {
-	accounts []*models.Account
+	accounts []*account.Account
 }
 
-func (m *mockAccountProvider) List(activeOnly bool) ([]*models.Account, error) {
+func (m *mockAccountProvider) List(activeOnly bool) ([]*account.Account, error) {
 	if activeOnly {
-		var result []*models.Account
+		var result []*account.Account
 		for _, a := range m.accounts {
 			if a.Active {
 				result = append(result, a)
@@ -29,7 +33,7 @@ func (m *mockAccountProvider) List(activeOnly bool) ([]*models.Account, error) {
 	return m.accounts, nil
 }
 
-func (m *mockAccountProvider) GetByID(id models.ID) (*models.Account, error) {
+func (m *mockAccountProvider) GetByID(id types.ID) (*account.Account, error) {
 	for _, a := range m.accounts {
 		if a.ID == id {
 			return a, nil
@@ -39,15 +43,15 @@ func (m *mockAccountProvider) GetByID(id models.ID) (*models.Account, error) {
 }
 
 type mockTransactionProvider struct {
-	transactions map[string][]*models.Transaction // accountID -> transactions
+	transactions map[string][]*transaction.Transaction // accountID -> transactions
 }
 
-func (m *mockTransactionProvider) ListByAccount(accountID models.ID) ([]*models.Transaction, error) {
+func (m *mockTransactionProvider) ListByAccount(accountID types.ID) ([]*transaction.Transaction, error) {
 	return m.transactions[accountID.String()], nil
 }
 
-func (m *mockTransactionProvider) ListByAccountAndDateRange(accountID models.ID, startDate, endDate models.Date) ([]*models.Transaction, error) {
-	var result []*models.Transaction
+func (m *mockTransactionProvider) ListByAccountAndDateRange(accountID types.ID, startDate, endDate types.Date) ([]*transaction.Transaction, error) {
+	var result []*transaction.Transaction
 	for _, txn := range m.transactions[accountID.String()] {
 		if !txn.Date.Before(startDate) && !txn.Date.After(endDate) {
 			result = append(result, txn)
@@ -57,18 +61,18 @@ func (m *mockTransactionProvider) ListByAccountAndDateRange(accountID models.ID,
 }
 
 type mockSplitProvider struct {
-	splits map[string][]*models.Split // txnID -> splits
+	splits map[string][]*transaction.Split // txnID -> splits
 }
 
-func (m *mockSplitProvider) ListByTransaction(transactionID models.ID) ([]*models.Split, error) {
+func (m *mockSplitProvider) ListByTransaction(transactionID types.ID) ([]*transaction.Split, error) {
 	return m.splits[transactionID.String()], nil
 }
 
 type mockPayeeProvider struct {
-	payees map[string]*models.Payee // payeeID -> payee
+	payees map[string]*payee.Payee // payeeID -> payee
 }
 
-func (m *mockPayeeProvider) GetByID(id models.ID) (*models.Payee, error) {
+func (m *mockPayeeProvider) GetByID(id types.ID) (*payee.Payee, error) {
 	if p, ok := m.payees[id.String()]; ok {
 		return p, nil
 	}
@@ -76,17 +80,17 @@ func (m *mockPayeeProvider) GetByID(id models.ID) (*models.Payee, error) {
 }
 
 type mockCategoryProvider struct {
-	categories map[string]*models.Category // catID -> category
+	categories map[string]*category.Category // catID -> category
 }
 
-func (m *mockCategoryProvider) GetByID(id models.ID) (*models.Category, error) {
+func (m *mockCategoryProvider) GetByID(id types.ID) (*category.Category, error) {
 	if c, ok := m.categories[id.String()]; ok {
 		return c, nil
 	}
 	return nil, fmt.Errorf("category not found: %s", id.String())
 }
 
-func (m *mockCategoryProvider) GetWithParent(id models.ID) (*models.Category, *models.Category, error) {
+func (m *mockCategoryProvider) GetWithParent(id types.ID) (*category.Category, *category.Category, error) {
 	cat, ok := m.categories[id.String()]
 	if !ok {
 		return nil, nil, fmt.Errorf("category not found: %s", id.String())
@@ -102,28 +106,28 @@ func (m *mockCategoryProvider) GetWithParent(id models.ID) (*models.Category, *m
 
 // --- Helper functions ---
 
-func makeAccount(name string, accountType models.AccountType) *models.Account {
-	return models.NewAccount(name, accountType, "USD", models.ZeroMoney, makeDate("2024-01-01"))
+func makeAccount(name string, accountType account.Type) *account.Account {
+	return account.NewAccount(name, accountType, "USD", types.ZeroMoney, makeDate("2024-01-01"))
 }
 
 func makeExportService(
-	accounts []*models.Account,
-	transactions map[string][]*models.Transaction,
-	splits map[string][]*models.Split,
-	payees map[string]*models.Payee,
-	categories map[string]*models.Category,
+	accounts []*account.Account,
+	transactions map[string][]*transaction.Transaction,
+	splits map[string][]*transaction.Split,
+	payees map[string]*payee.Payee,
+	categories map[string]*category.Category,
 ) *ExportService {
 	if transactions == nil {
-		transactions = make(map[string][]*models.Transaction)
+		transactions = make(map[string][]*transaction.Transaction)
 	}
 	if splits == nil {
-		splits = make(map[string][]*models.Split)
+		splits = make(map[string][]*transaction.Split)
 	}
 	if payees == nil {
-		payees = make(map[string]*models.Payee)
+		payees = make(map[string]*payee.Payee)
 	}
 	if categories == nil {
-		categories = make(map[string]*models.Category)
+		categories = make(map[string]*category.Category)
 	}
 
 	return NewExportService(
@@ -138,29 +142,29 @@ func makeExportService(
 // --- Tests ---
 
 func TestExportService_Export_CSV_BasicTransactions(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
-	payeeID := models.NewID()
-	catID := models.NewID()
+	acct := makeAccount("Checking", account.TypeChecking)
+	payeeID := types.NewID()
+	catID := types.NewID()
 
-	payee := &models.Payee{Name: "Coffee Shop"}
-	payee.ID = payeeID
+	py := &payee.Payee{Name: "Coffee Shop"}
+	py.ID = payeeID
 
-	cat := models.NewCategory("Food", models.CategoryTypeExpense)
+	cat := category.NewCategory("Food", category.TypeExpense)
 	cat.ID = catID
 
-	txn := models.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
+	txn := transaction.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
 	txn.SetPayee(payeeID)
 	txn.SetCategory(catID)
 	txn.SetMemo("Morning coffee")
 	txn.Clear()
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		acct.ID.String(): {txn},
 	}
-	payees := map[string]*models.Payee{payeeID.String(): payee}
-	categories := map[string]*models.Category{catID.String(): cat}
+	payees := map[string]*payee.Payee{payeeID.String(): py}
+	categories := map[string]*category.Category{catID.String(): cat}
 
-	svc := makeExportService([]*models.Account{acct}, transactions, nil, payees, categories)
+	svc := makeExportService([]*account.Account{acct}, transactions, nil, payees, categories)
 
 	var buf bytes.Buffer
 	result, err := svc.Export(&buf, ExportOptions{Format: FormatCSV})
@@ -218,28 +222,28 @@ func TestExportService_Export_CSV_BasicTransactions(t *testing.T) {
 }
 
 func TestExportService_Export_CSV_SubcategoryPath(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
-	parentCatID := models.NewID()
-	childCatID := models.NewID()
+	acct := makeAccount("Checking", account.TypeChecking)
+	parentCatID := types.NewID()
+	childCatID := types.NewID()
 
-	parentCat := models.NewCategory("Food", models.CategoryTypeExpense)
+	parentCat := category.NewCategory("Food", category.TypeExpense)
 	parentCat.ID = parentCatID
 
-	childCat := models.NewSubcategory("Groceries", parentCatID, models.CategoryTypeExpense)
+	childCat := category.NewSubcategory("Groceries", parentCatID, category.TypeExpense)
 	childCat.ID = childCatID
 
-	txn := models.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-120.00"))
+	txn := transaction.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-120.00"))
 	txn.SetCategory(childCatID)
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		acct.ID.String(): {txn},
 	}
-	categories := map[string]*models.Category{
+	categories := map[string]*category.Category{
 		parentCatID.String(): parentCat,
 		childCatID.String():  childCat,
 	}
 
-	svc := makeExportService([]*models.Account{acct}, transactions, nil, nil, categories)
+	svc := makeExportService([]*account.Account{acct}, transactions, nil, nil, categories)
 
 	var buf bytes.Buffer
 	result, err := svc.Export(&buf, ExportOptions{Format: FormatCSV})
@@ -263,32 +267,32 @@ func TestExportService_Export_CSV_SubcategoryPath(t *testing.T) {
 }
 
 func TestExportService_Export_CSV_SplitTransaction(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
-	catID1 := models.NewID()
-	catID2 := models.NewID()
+	acct := makeAccount("Checking", account.TypeChecking)
+	catID1 := types.NewID()
+	catID2 := types.NewID()
 
-	cat1 := models.NewCategory("Food", models.CategoryTypeExpense)
+	cat1 := category.NewCategory("Food", category.TypeExpense)
 	cat1.ID = catID1
-	cat2 := models.NewCategory("Transport", models.CategoryTypeExpense)
+	cat2 := category.NewCategory("Transport", category.TypeExpense)
 	cat2.ID = catID2
 
-	txn := models.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-150.00"))
+	txn := transaction.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-150.00"))
 
-	split1 := models.NewSplitWithMemo(txn.ID, catID1, makeMoney("-100.00"), "groceries")
-	split2 := models.NewSplit(txn.ID, catID2, makeMoney("-50.00"))
+	split1 := transaction.NewSplitWithMemo(txn.ID, catID1, makeMoney("-100.00"), "groceries")
+	split2 := transaction.NewSplit(txn.ID, catID2, makeMoney("-50.00"))
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		acct.ID.String(): {txn},
 	}
-	splits := map[string][]*models.Split{
+	splits := map[string][]*transaction.Split{
 		txn.ID.String(): {split1, split2},
 	}
-	categories := map[string]*models.Category{
+	categories := map[string]*category.Category{
 		catID1.String(): cat1,
 		catID2.String(): cat2,
 	}
 
-	svc := makeExportService([]*models.Account{acct}, transactions, splits, nil, categories)
+	svc := makeExportService([]*account.Account{acct}, transactions, splits, nil, categories)
 
 	var buf bytes.Buffer
 	result, err := svc.Export(&buf, ExportOptions{Format: FormatCSV})
@@ -329,18 +333,18 @@ func TestExportService_Export_CSV_SplitTransaction(t *testing.T) {
 }
 
 func TestExportService_Export_CSV_Transfer(t *testing.T) {
-	checking := makeAccount("Checking", models.AccountTypeChecking)
-	savings := makeAccount("Savings", models.AccountTypeSavings)
+	checking := makeAccount("Checking", account.TypeChecking)
+	savings := makeAccount("Savings", account.TypeSavings)
 
-	transferID := models.NewID()
-	txn := models.NewTransaction(checking.ID, makeDate("2024-01-15"), makeMoney("-500.00"))
+	transferID := types.NewID()
+	txn := transaction.NewTransaction(checking.ID, makeDate("2024-01-15"), makeMoney("-500.00"))
 	txn.SetTransfer(transferID, savings.ID)
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		checking.ID.String(): {txn},
 	}
 
-	svc := makeExportService([]*models.Account{checking, savings}, transactions, nil, nil, nil)
+	svc := makeExportService([]*account.Account{checking, savings}, transactions, nil, nil, nil)
 
 	var buf bytes.Buffer
 	result, err := svc.Export(&buf, ExportOptions{
@@ -368,18 +372,18 @@ func TestExportService_Export_CSV_Transfer(t *testing.T) {
 }
 
 func TestExportService_Export_CSV_AccountFilter(t *testing.T) {
-	checking := makeAccount("Checking", models.AccountTypeChecking)
-	savings := makeAccount("Savings", models.AccountTypeSavings)
+	checking := makeAccount("Checking", account.TypeChecking)
+	savings := makeAccount("Savings", account.TypeSavings)
 
-	txn1 := models.NewTransaction(checking.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
-	txn2 := models.NewTransaction(savings.ID, makeDate("2024-01-16"), makeMoney("100.00"))
+	txn1 := transaction.NewTransaction(checking.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
+	txn2 := transaction.NewTransaction(savings.ID, makeDate("2024-01-16"), makeMoney("100.00"))
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		checking.ID.String(): {txn1},
 		savings.ID.String():  {txn2},
 	}
 
-	svc := makeExportService([]*models.Account{checking, savings}, transactions, nil, nil, nil)
+	svc := makeExportService([]*account.Account{checking, savings}, transactions, nil, nil, nil)
 
 	// Export only checking
 	var buf bytes.Buffer
@@ -400,17 +404,17 @@ func TestExportService_Export_CSV_AccountFilter(t *testing.T) {
 }
 
 func TestExportService_Export_CSV_DateRangeFilter(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
+	acct := makeAccount("Checking", account.TypeChecking)
 
-	txn1 := models.NewTransaction(acct.ID, makeDate("2024-01-10"), makeMoney("-10.00"))
-	txn2 := models.NewTransaction(acct.ID, makeDate("2024-01-20"), makeMoney("-20.00"))
-	txn3 := models.NewTransaction(acct.ID, makeDate("2024-02-15"), makeMoney("-30.00"))
+	txn1 := transaction.NewTransaction(acct.ID, makeDate("2024-01-10"), makeMoney("-10.00"))
+	txn2 := transaction.NewTransaction(acct.ID, makeDate("2024-01-20"), makeMoney("-20.00"))
+	txn3 := transaction.NewTransaction(acct.ID, makeDate("2024-02-15"), makeMoney("-30.00"))
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		acct.ID.String(): {txn1, txn2, txn3},
 	}
 
-	svc := makeExportService([]*models.Account{acct}, transactions, nil, nil, nil)
+	svc := makeExportService([]*account.Account{acct}, transactions, nil, nil, nil)
 
 	start := makeDate("2024-01-01")
 	end := makeDate("2024-01-31")
@@ -431,18 +435,18 @@ func TestExportService_Export_CSV_DateRangeFilter(t *testing.T) {
 }
 
 func TestExportService_Export_CSV_MultipleAccounts(t *testing.T) {
-	checking := makeAccount("Checking", models.AccountTypeChecking)
-	savings := makeAccount("Savings", models.AccountTypeSavings)
+	checking := makeAccount("Checking", account.TypeChecking)
+	savings := makeAccount("Savings", account.TypeSavings)
 
-	txn1 := models.NewTransaction(checking.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
-	txn2 := models.NewTransaction(savings.ID, makeDate("2024-01-16"), makeMoney("100.00"))
+	txn1 := transaction.NewTransaction(checking.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
+	txn2 := transaction.NewTransaction(savings.ID, makeDate("2024-01-16"), makeMoney("100.00"))
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		checking.ID.String(): {txn1},
 		savings.ID.String():  {txn2},
 	}
 
-	svc := makeExportService([]*models.Account{checking, savings}, transactions, nil, nil, nil)
+	svc := makeExportService([]*account.Account{checking, savings}, transactions, nil, nil, nil)
 
 	var buf bytes.Buffer
 	result, err := svc.Export(&buf, ExportOptions{Format: FormatCSV})
@@ -459,17 +463,17 @@ func TestExportService_Export_CSV_MultipleAccounts(t *testing.T) {
 }
 
 func TestExportService_Export_SkipsVoidTransactions(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
+	acct := makeAccount("Checking", account.TypeChecking)
 
-	txn1 := models.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
-	txn2 := models.NewTransaction(acct.ID, makeDate("2024-01-16"), makeMoney("-25.00"))
+	txn1 := transaction.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
+	txn2 := transaction.NewTransaction(acct.ID, makeDate("2024-01-16"), makeMoney("-25.00"))
 	txn2.Void()
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		acct.ID.String(): {txn1, txn2},
 	}
 
-	svc := makeExportService([]*models.Account{acct}, transactions, nil, nil, nil)
+	svc := makeExportService([]*account.Account{acct}, transactions, nil, nil, nil)
 
 	var buf bytes.Buffer
 	result, err := svc.Export(&buf, ExportOptions{Format: FormatCSV})
@@ -483,22 +487,22 @@ func TestExportService_Export_SkipsVoidTransactions(t *testing.T) {
 }
 
 func TestExportService_Export_QIF(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
-	payeeID := models.NewID()
+	acct := makeAccount("Checking", account.TypeChecking)
+	payeeID := types.NewID()
 
-	payee := &models.Payee{Name: "Coffee Shop"}
-	payee.ID = payeeID
+	py := &payee.Payee{Name: "Coffee Shop"}
+	py.ID = payeeID
 
-	txn := models.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
+	txn := transaction.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
 	txn.SetPayee(payeeID)
 	txn.Clear()
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		acct.ID.String(): {txn},
 	}
-	payees := map[string]*models.Payee{payeeID.String(): payee}
+	payees := map[string]*payee.Payee{payeeID.String(): py}
 
-	svc := makeExportService([]*models.Account{acct}, transactions, nil, payees, nil)
+	svc := makeExportService([]*account.Account{acct}, transactions, nil, payees, nil)
 
 	var buf bytes.Buffer
 	result, err := svc.Export(&buf, ExportOptions{
@@ -535,15 +539,15 @@ func TestExportService_Export_QIF(t *testing.T) {
 }
 
 func TestExportService_Export_QIF_CreditCardType(t *testing.T) {
-	acct := makeAccount("Visa", models.AccountTypeCreditCard)
+	acct := makeAccount("Visa", account.TypeCreditCard)
 
-	txn := models.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
+	txn := transaction.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-50.00"))
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		acct.ID.String(): {txn},
 	}
 
-	svc := makeExportService([]*models.Account{acct}, transactions, nil, nil, nil)
+	svc := makeExportService([]*account.Account{acct}, transactions, nil, nil, nil)
 
 	var buf bytes.Buffer
 	_, err := svc.Export(&buf, ExportOptions{
@@ -560,18 +564,18 @@ func TestExportService_Export_QIF_CreditCardType(t *testing.T) {
 }
 
 func TestExportService_Export_QIF_TransferCategory(t *testing.T) {
-	checking := makeAccount("Checking", models.AccountTypeChecking)
-	savings := makeAccount("Savings", models.AccountTypeSavings)
+	checking := makeAccount("Checking", account.TypeChecking)
+	savings := makeAccount("Savings", account.TypeSavings)
 
-	transferID := models.NewID()
-	txn := models.NewTransaction(checking.ID, makeDate("2024-01-15"), makeMoney("-500.00"))
+	transferID := types.NewID()
+	txn := transaction.NewTransaction(checking.ID, makeDate("2024-01-15"), makeMoney("-500.00"))
 	txn.SetTransfer(transferID, savings.ID)
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		checking.ID.String(): {txn},
 	}
 
-	svc := makeExportService([]*models.Account{checking, savings}, transactions, nil, nil, nil)
+	svc := makeExportService([]*account.Account{checking, savings}, transactions, nil, nil, nil)
 
 	var buf bytes.Buffer
 	_, err := svc.Export(&buf, ExportOptions{
@@ -589,8 +593,8 @@ func TestExportService_Export_QIF_TransferCategory(t *testing.T) {
 }
 
 func TestExportService_Export_UnsupportedFormat(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
-	svc := makeExportService([]*models.Account{acct}, nil, nil, nil, nil)
+	acct := makeAccount("Checking", account.TypeChecking)
+	svc := makeExportService([]*account.Account{acct}, nil, nil, nil, nil)
 
 	var buf bytes.Buffer
 	_, err := svc.Export(&buf, ExportOptions{Format: FormatOFX})
@@ -600,8 +604,8 @@ func TestExportService_Export_UnsupportedFormat(t *testing.T) {
 }
 
 func TestExportService_Export_NoTransactions(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
-	svc := makeExportService([]*models.Account{acct}, nil, nil, nil, nil)
+	acct := makeAccount("Checking", account.TypeChecking)
+	svc := makeExportService([]*account.Account{acct}, nil, nil, nil, nil)
 
 	var buf bytes.Buffer
 	_, err := svc.Export(&buf, ExportOptions{Format: FormatCSV})
@@ -621,16 +625,16 @@ func TestExportService_Export_NoAccounts(t *testing.T) {
 }
 
 func TestExportService_Export_CheckNumber(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
+	acct := makeAccount("Checking", account.TypeChecking)
 
-	txn := models.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-200.00"))
+	txn := transaction.NewTransaction(acct.ID, makeDate("2024-01-15"), makeMoney("-200.00"))
 	txn.SetCheckNumber("1234")
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		acct.ID.String(): {txn},
 	}
 
-	svc := makeExportService([]*models.Account{acct}, transactions, nil, nil, nil)
+	svc := makeExportService([]*account.Account{acct}, transactions, nil, nil, nil)
 
 	var buf bytes.Buffer
 	_, err := svc.Export(&buf, ExportOptions{Format: FormatCSV})
@@ -651,16 +655,16 @@ func TestExportService_Export_CheckNumber(t *testing.T) {
 }
 
 func TestExportService_Export_StartDateOnly(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
+	acct := makeAccount("Checking", account.TypeChecking)
 
-	txn1 := models.NewTransaction(acct.ID, makeDate("2024-01-10"), makeMoney("-10.00"))
-	txn2 := models.NewTransaction(acct.ID, makeDate("2024-02-15"), makeMoney("-20.00"))
+	txn1 := transaction.NewTransaction(acct.ID, makeDate("2024-01-10"), makeMoney("-10.00"))
+	txn2 := transaction.NewTransaction(acct.ID, makeDate("2024-02-15"), makeMoney("-20.00"))
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		acct.ID.String(): {txn1, txn2},
 	}
 
-	svc := makeExportService([]*models.Account{acct}, transactions, nil, nil, nil)
+	svc := makeExportService([]*account.Account{acct}, transactions, nil, nil, nil)
 
 	start := makeDate("2024-02-01")
 	var buf bytes.Buffer
@@ -678,16 +682,16 @@ func TestExportService_Export_StartDateOnly(t *testing.T) {
 }
 
 func TestExportService_Export_EndDateOnly(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
+	acct := makeAccount("Checking", account.TypeChecking)
 
-	txn1 := models.NewTransaction(acct.ID, makeDate("2024-01-10"), makeMoney("-10.00"))
-	txn2 := models.NewTransaction(acct.ID, makeDate("2024-02-15"), makeMoney("-20.00"))
+	txn1 := transaction.NewTransaction(acct.ID, makeDate("2024-01-10"), makeMoney("-10.00"))
+	txn2 := transaction.NewTransaction(acct.ID, makeDate("2024-02-15"), makeMoney("-20.00"))
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		acct.ID.String(): {txn1, txn2},
 	}
 
-	svc := makeExportService([]*models.Account{acct}, transactions, nil, nil, nil)
+	svc := makeExportService([]*account.Account{acct}, transactions, nil, nil, nil)
 
 	end := makeDate("2024-01-31")
 	var buf bytes.Buffer
@@ -705,19 +709,19 @@ func TestExportService_Export_EndDateOnly(t *testing.T) {
 }
 
 func TestExportService_Export_CSV_AllStatuses(t *testing.T) {
-	acct := makeAccount("Checking", models.AccountTypeChecking)
+	acct := makeAccount("Checking", account.TypeChecking)
 
-	txnU := models.NewTransaction(acct.ID, makeDate("2024-01-01"), makeMoney("-10.00"))
-	txnC := models.NewTransaction(acct.ID, makeDate("2024-01-02"), makeMoney("-20.00"))
+	txnU := transaction.NewTransaction(acct.ID, makeDate("2024-01-01"), makeMoney("-10.00"))
+	txnC := transaction.NewTransaction(acct.ID, makeDate("2024-01-02"), makeMoney("-20.00"))
 	txnC.Clear()
-	txnR := models.NewTransaction(acct.ID, makeDate("2024-01-03"), makeMoney("-30.00"))
+	txnR := transaction.NewTransaction(acct.ID, makeDate("2024-01-03"), makeMoney("-30.00"))
 	txnR.Reconcile()
 
-	transactions := map[string][]*models.Transaction{
+	transactions := map[string][]*transaction.Transaction{
 		acct.ID.String(): {txnU, txnC, txnR},
 	}
 
-	svc := makeExportService([]*models.Account{acct}, transactions, nil, nil, nil)
+	svc := makeExportService([]*account.Account{acct}, transactions, nil, nil, nil)
 
 	var buf bytes.Buffer
 	_, err := svc.Export(&buf, ExportOptions{Format: FormatCSV})

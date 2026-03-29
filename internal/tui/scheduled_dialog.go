@@ -7,7 +7,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
@@ -22,10 +25,10 @@ const (
 // scheduledDialogData holds the loaded data needed for the scheduled dialog.
 type scheduledDialogData struct {
 	mode      scheduledDialogMode
-	scheduled *models.ScheduledTransaction // non-nil when editing
-	accounts  []*models.Account
-	payees    []*models.Payee
-	payeeMap  map[string]*models.Payee // lowercase name -> payee
+	scheduled *scheduled.Transaction // non-nil when editing
+	accounts  []*account.Account
+	payees    []*payee.Payee
+	payeeMap  map[string]*payee.Payee // lowercase name -> payee
 }
 
 // scheduledDialogDataMsg is sent when scheduled dialog data has been loaded.
@@ -55,7 +58,7 @@ const (
 
 // buildFrequencyOptions returns display names for all frequencies.
 func buildFrequencyOptions() []string {
-	freqs := models.AllFrequencies()
+	freqs := scheduled.AllFrequencies()
 	options := make([]string, len(freqs))
 	for i, f := range freqs {
 		options[i] = f.DisplayName()
@@ -64,17 +67,17 @@ func buildFrequencyOptions() []string {
 }
 
 // frequencyFromIndex returns the Frequency for a given select index.
-func frequencyFromIndex(index int) models.Frequency {
-	freqs := models.AllFrequencies()
+func frequencyFromIndex(index int) scheduled.Frequency {
+	freqs := scheduled.AllFrequencies()
 	if index < 0 || index >= len(freqs) {
-		return models.FrequencyMonthly
+		return scheduled.FrequencyMonthly
 	}
 	return freqs[index]
 }
 
 // frequencyToIndex returns the select index for a given Frequency.
-func frequencyToIndex(f models.Frequency) int {
-	freqs := models.AllFrequencies()
+func frequencyToIndex(f scheduled.Frequency) int {
+	freqs := scheduled.AllFrequencies()
 	for i, freq := range freqs {
 		if freq == f {
 			return i
@@ -173,7 +176,7 @@ func buildNewScheduledDialog(accountOptions, categoryOptions []string) *Dialog {
 }
 
 // buildEditScheduledDialog creates a Dialog for editing an existing scheduled transaction.
-func buildEditScheduledDialog(st *models.ScheduledTransaction, accountOptions []string, accountIDs []models.ID, categoryOptions []string, categoryIDs []models.ID, payeeNames map[models.ID]string) *Dialog {
+func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string, accountIDs []types.ID, categoryOptions []string, categoryIDs []types.ID, payeeNames map[types.ID]string) *Dialog {
 	d := NewDialog("Edit Scheduled Transaction")
 	d.SetWidth(62)
 
@@ -267,7 +270,7 @@ func (a *App) loadNewScheduledDialogData() tea.Cmd {
 	return func() tea.Msg {
 		data := &scheduledDialogData{
 			mode:     scheduledDialogModeNew,
-			payeeMap: make(map[string]*models.Payee),
+			payeeMap: make(map[string]*payee.Payee),
 		}
 
 		if a.accountSvc != nil {
@@ -309,7 +312,7 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 		data := &scheduledDialogData{
 			mode:      scheduledDialogModeEdit,
 			scheduled: st,
-			payeeMap:  make(map[string]*models.Payee),
+			payeeMap:  make(map[string]*payee.Payee),
 		}
 
 		if a.accountSvc != nil {
@@ -381,7 +384,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 		fields[schedFieldAccount].Error = "Please select an account"
 		hasErrors = true
 	}
-	accountID := models.NilID
+	accountID := types.NilID
 	if acctIdx >= 0 && acctIdx < len(a.schedDialogAccountIDs) {
 		accountID = a.schedDialogAccountIDs[acctIdx]
 	}
@@ -391,21 +394,21 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 
 	// Category
 	catIdx := fields[schedFieldCategory].SelectedIndex
-	var categoryID models.ID
+	var categoryID types.ID
 	if catIdx > 0 && catIdx < len(a.schedDialogCategoryIDs) {
 		categoryID = a.schedDialogCategoryIDs[catIdx]
 	}
 
 	// Amount (empty = variable)
 	amountStr := strings.TrimSpace(fields[schedFieldAmount].Value)
-	var amount models.NullableMoney
+	var amount types.NullableMoney
 	if amountStr != "" {
 		m, err := parseAmountInput(amountStr)
 		if err != nil {
 			fields[schedFieldAmount].Error = "Invalid amount"
 			hasErrors = true
 		} else {
-			amount = models.NullableMoney{Money: m, Valid: true}
+			amount = types.NullableMoney{Money: m, Valid: true}
 		}
 	}
 
@@ -438,8 +441,8 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	// Duration
 	durationChoice := fields[schedFieldDuration].SelectedIndex
 
-	var endDate models.NullableDate
-	var occurrences models.NullableInt
+	var endDate types.NullableDate
+	var occurrences types.NullableInt
 
 	switch durationChoice {
 	case durationUntilDate:
@@ -453,7 +456,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 				fields[schedFieldEndDate].Error = "Invalid date (MM/DD/YYYY)"
 				hasErrors = true
 			} else {
-				endDate = models.NullableDate{Date: ed, Valid: true}
+				endDate = types.NullableDate{Date: ed, Valid: true}
 			}
 		}
 
@@ -468,7 +471,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 				fields[schedFieldOccurrence].Error = "Must be a positive number"
 				hasErrors = true
 			} else {
-				occurrences = models.NullableInt{Int64: n, Valid: true}
+				occurrences = types.NullableInt{Int64: n, Valid: true}
 			}
 		}
 	}
@@ -489,13 +492,13 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 
 	return a, func() tea.Msg {
 		// Resolve or create payee
-		var payeeID models.ID
+		var payeeID types.ID
 		if payeeName != "" && a.payeeSvc != nil {
-			payee, _, err := a.payeeSvc.GetOrCreate(payeeName)
+			py, _, err := a.payeeSvc.GetOrCreate(payeeName)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
-			payeeID = payee.ID
+			payeeID = py.ID
 		}
 
 		if a.undoManager == nil {
@@ -553,7 +556,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 			}
 		} else {
 			// Create new scheduled transaction
-			st := models.NewScheduledTransaction(accountID, frequency, startDate)
+			st := scheduled.NewTransaction(accountID, frequency, startDate)
 			st.Interval = interval
 
 			// Payee

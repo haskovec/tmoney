@@ -5,19 +5,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // testAccount creates an account with the given name and type for testing.
-func testAccount(name string, accountType models.AccountType) *models.Account {
-	return &models.Account{
-		BaseModel:      models.BaseModel{ID: models.NewID(), CreatedAt: models.NewTimestamp(time.Now()), UpdatedAt: models.NewTimestamp(time.Now())},
+func testAccount(name string, accountType account.Type) *account.Account {
+	return &account.Account{
+		BaseModel:      types.BaseModel{ID: types.NewID(), CreatedAt: types.NewTimestamp(time.Now()), UpdatedAt: types.NewTimestamp(time.Now())},
 		Name:           name,
 		Type:           accountType,
 		Currency:       "USD",
-		OpeningBalance: models.ZeroMoney,
-		OpeningDate:    models.Today(),
+		OpeningBalance: types.ZeroMoney,
+		OpeningDate:    types.Today(),
 		Active:         true,
 	}
 }
@@ -52,9 +52,9 @@ func TestSidebar_SetAccounts_EmptyList(t *testing.T) {
 
 func TestSidebar_SetAccounts_SingleGroup(t *testing.T) {
 	s := NewSidebar()
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
-		testAccount("Savings", models.AccountTypeSavings),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
 	}
 
 	s.SetAccounts(accounts, nil)
@@ -81,10 +81,10 @@ func TestSidebar_SetAccounts_SingleGroup(t *testing.T) {
 
 func TestSidebar_SetAccounts_MultipleGroups(t *testing.T) {
 	s := NewSidebar()
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
-		testAccount("Visa", models.AccountTypeCreditCard),
-		testAccount("Brokerage", models.AccountTypeInvestment),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Visa", account.TypeCreditCard),
+		testAccount("Brokerage", account.TypeInvestment),
 	}
 
 	s.SetAccounts(accounts, nil)
@@ -114,9 +114,9 @@ func TestSidebar_SetAccounts_MultipleGroups(t *testing.T) {
 
 func TestSidebar_MoveUpDown(t *testing.T) {
 	s := NewSidebar()
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
-		testAccount("Savings", models.AccountTypeSavings),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
 	}
 	s.SetAccounts(accounts, nil)
 	// items: [Bank Accounts, Checking, Savings]
@@ -160,9 +160,9 @@ func TestSidebar_MoveUpDown(t *testing.T) {
 
 func TestSidebar_CollapseExpand(t *testing.T) {
 	s := NewSidebar()
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
-		testAccount("Savings", models.AccountTypeSavings),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
 	}
 	s.SetAccounts(accounts, nil)
 	// items: [Bank Accounts, Checking, Savings] -> 3 items
@@ -184,9 +184,9 @@ func TestSidebar_CollapseExpand(t *testing.T) {
 
 func TestSidebar_CollapseFromAccount(t *testing.T) {
 	s := NewSidebar()
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
-		testAccount("Savings", models.AccountTypeSavings),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
 	}
 	s.SetAccounts(accounts, nil)
 
@@ -210,8 +210,8 @@ func TestSidebar_CollapseFromAccount(t *testing.T) {
 
 func TestSidebar_ToggleCollapse(t *testing.T) {
 	s := NewSidebar()
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
 	}
 	s.SetAccounts(accounts, nil)
 	// items: [Bank Accounts, Checking]
@@ -231,8 +231,8 @@ func TestSidebar_ToggleCollapse(t *testing.T) {
 
 func TestSidebar_Select_Account(t *testing.T) {
 	s := NewSidebar()
-	checking := testAccount("Checking", models.AccountTypeChecking)
-	accounts := []*models.Account{checking}
+	checking := testAccount("Checking", account.TypeChecking)
+	accounts := []*account.Account{checking}
 	s.SetAccounts(accounts, nil)
 
 	// Move to account
@@ -250,8 +250,8 @@ func TestSidebar_Select_Account(t *testing.T) {
 
 func TestSidebar_Select_Group(t *testing.T) {
 	s := NewSidebar()
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
 	}
 	s.SetAccounts(accounts, nil)
 
@@ -269,8 +269,8 @@ func TestSidebar_Select_Group(t *testing.T) {
 
 func TestSidebar_SelectedAccount(t *testing.T) {
 	s := NewSidebar()
-	checking := testAccount("Checking", models.AccountTypeChecking)
-	accounts := []*models.Account{checking}
+	checking := testAccount("Checking", account.TypeChecking)
+	accounts := []*account.Account{checking}
 	s.SetAccounts(accounts, nil)
 
 	// No selection yet
@@ -299,8 +299,8 @@ func TestSidebar_CursorItem(t *testing.T) {
 		t.Error("CursorItem() should be nil for empty sidebar")
 	}
 
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
 	}
 	s.SetAccounts(accounts, nil)
 
@@ -333,16 +333,16 @@ func TestSidebar_Focus(t *testing.T) {
 
 func TestSidebar_SetAccounts_WithBalances(t *testing.T) {
 	s := NewSidebar()
-	checking := testAccount("Checking", models.AccountTypeChecking)
-	balances := map[models.ID]*service.AccountBalance{
+	checking := testAccount("Checking", account.TypeChecking)
+	balances := map[types.ID]*account.Balance{
 		checking.ID: {
 			AccountID:      checking.ID,
-			CurrentBalance: models.MustNewMoney("1234.56"),
-			ClearedBalance: models.MustNewMoney("1000.00"),
+			CurrentBalance: types.MustNewMoney("1234.56"),
+			ClearedBalance: types.MustNewMoney("1000.00"),
 		},
 	}
 
-	s.SetAccounts([]*models.Account{checking}, balances)
+	s.SetAccounts([]*account.Account{checking}, balances)
 
 	if len(s.balances) != 1 {
 		t.Errorf("expected 1 balance, got %d", len(s.balances))
@@ -388,9 +388,9 @@ func TestSidebar_Render_ZeroDimensions(t *testing.T) {
 
 func TestSidebar_Render_WithAccounts(t *testing.T) {
 	s := NewSidebar()
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
-		testAccount("Visa", models.AccountTypeCreditCard),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Visa", account.TypeCreditCard),
 	}
 	s.SetAccounts(accounts, nil)
 
@@ -405,9 +405,9 @@ func TestSidebar_Render_WithAccounts(t *testing.T) {
 
 func TestSidebar_ClampCursor_AfterCollapse(t *testing.T) {
 	s := NewSidebar()
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
-		testAccount("Savings", models.AccountTypeSavings),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
 	}
 	s.SetAccounts(accounts, nil)
 	// items: [Bank Accounts, Checking, Savings]
@@ -433,12 +433,12 @@ func TestBuildGroups_EmptyAccounts(t *testing.T) {
 }
 
 func TestBuildGroups_OrderAndGrouping(t *testing.T) {
-	accounts := []*models.Account{
-		testAccount("Brokerage", models.AccountTypeInvestment),
-		testAccount("Visa", models.AccountTypeCreditCard),
-		testAccount("Checking", models.AccountTypeChecking),
-		testAccount("Savings", models.AccountTypeSavings),
-		testAccount("Cash", models.AccountTypeCash),
+	accounts := []*account.Account{
+		testAccount("Brokerage", account.TypeInvestment),
+		testAccount("Visa", account.TypeCreditCard),
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
+		testAccount("Cash", account.TypeCash),
 	}
 
 	groups := buildGroups(accounts)
@@ -462,14 +462,14 @@ func TestBuildGroups_OrderAndGrouping(t *testing.T) {
 }
 
 func TestBuildGroups_AllTypes(t *testing.T) {
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
-		testAccount("Savings", models.AccountTypeSavings),
-		testAccount("Cash", models.AccountTypeCash),
-		testAccount("Visa", models.AccountTypeCreditCard),
-		testAccount("Brokerage", models.AccountTypeInvestment),
-		testAccount("Mortgage", models.AccountTypeLoan),
-		testAccount("House", models.AccountTypeAsset),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
+		testAccount("Cash", account.TypeCash),
+		testAccount("Visa", account.TypeCreditCard),
+		testAccount("Brokerage", account.TypeInvestment),
+		testAccount("Mortgage", account.TypeLoan),
+		testAccount("House", account.TypeAsset),
 	}
 
 	groups := buildGroups(accounts)
@@ -489,9 +489,9 @@ func TestBuildGroups_AllTypes(t *testing.T) {
 
 func TestSidebar_MultipleGroupCollapseExpand(t *testing.T) {
 	s := NewSidebar()
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
-		testAccount("Visa", models.AccountTypeCreditCard),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Visa", account.TypeCreditCard),
 	}
 	s.SetAccounts(accounts, nil)
 	// items: [Bank Accounts, Checking, Credit Cards, Visa] = 4 items
@@ -526,9 +526,9 @@ func TestSidebar_MultipleGroupCollapseExpand(t *testing.T) {
 
 func TestSidebar_NavigationWithCollapseState(t *testing.T) {
 	s := NewSidebar()
-	accounts := []*models.Account{
-		testAccount("Checking", models.AccountTypeChecking),
-		testAccount("Visa", models.AccountTypeCreditCard),
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Visa", account.TypeCreditCard),
 	}
 	s.SetAccounts(accounts, nil)
 
@@ -552,8 +552,8 @@ func TestSidebar_NavigationWithCollapseState(t *testing.T) {
 
 func TestSidebar_SelectPreservesAcrossReload(t *testing.T) {
 	s := NewSidebar()
-	checking := testAccount("Checking", models.AccountTypeChecking)
-	accounts := []*models.Account{checking}
+	checking := testAccount("Checking", account.TypeChecking)
+	accounts := []*account.Account{checking}
 	s.SetAccounts(accounts, nil)
 
 	// Select the account

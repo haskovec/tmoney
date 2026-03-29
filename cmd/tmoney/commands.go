@@ -10,19 +10,25 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/backup"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/imexport"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/reconciliation"
+	"github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // openServices opens the database and creates all services via the shared registry.
 // It also does a best-effort update of the recent files in the config.
 // Auto-posts due scheduled transactions and prints a summary if any were posted.
-func openServices(file string) (*db.DB, *service.Services, error) {
+func openServices(file string) (*db.DB, *app.Services, error) {
 	database, err := db.Open(file)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open database: %w", err)
@@ -34,10 +40,10 @@ func openServices(file string) (*db.DB, *service.Services, error) {
 		_ = cfg.Save()
 	}
 
-	svc := service.NewServices(database)
+	svc := app.NewServices(database)
 
 	// Auto-post due scheduled transactions on file open
-	if summary, err := svc.ScheduledTxn.AutoPost(); err == nil && summary.PostedCount > 0 {
+	if summary, err := svc.Scheduled.AutoPost(); err == nil && summary.PostedCount > 0 {
 		fmt.Fprintf(os.Stdout, "Auto-posted %d scheduled transaction(s)\n", summary.PostedCount)
 	}
 
@@ -99,19 +105,19 @@ func runAccountDetails(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Get account by name
-	account, err := svc.Account.GetByName(opts.accountName)
+	acct, err := svc.Account.GetByName(opts.accountName)
 	if err != nil {
 		return fmt.Errorf("account %q not found", opts.accountName)
 	}
 
 	// Get balance
-	balance, err := svc.Account.GetBalance(account.ID)
+	bal, err := svc.Account.GetBalance(acct.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get balance: %w", err)
 	}
 
 	// Print account details
-	printAccountDetails(w, account, balance)
+	printAccountDetails(w, acct, bal)
 
 	return nil
 }
@@ -162,17 +168,17 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Get account by name
-	account, err := svc.Account.GetByName(opts.accountName)
+	acct, err := svc.Account.GetByName(opts.accountName)
 	if err != nil {
 		return fmt.Errorf("account %q not found", opts.accountName)
 	}
 
 	// Parse date filters if provided
-	var startDate, endDate models.Date
+	var startDate, endDate types.Date
 	hasDateFilter := false
 
 	if opts.fromDate != "" {
-		startDate, err = models.ParseDate(opts.fromDate)
+		startDate, err = types.ParseDate(opts.fromDate)
 		if err != nil {
 			return fmt.Errorf("invalid --from date: %w", err)
 		}
@@ -180,7 +186,7 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 	}
 
 	if opts.toDate != "" {
-		endDate, err = models.ParseDate(opts.toDate)
+		endDate, err = types.ParseDate(opts.toDate)
 		if err != nil {
 			return fmt.Errorf("invalid --to date: %w", err)
 		}
@@ -188,18 +194,18 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Fetch transactions
-	var transactions []*models.Transaction
+	var transactions []*transaction.Transaction
 	if hasDateFilter {
 		// If only one date provided, use it for both bounds
 		if opts.fromDate == "" {
-			startDate = models.Date{} // Zero date (far past)
+			startDate = types.Date{} // Zero date (far past)
 		}
 		if opts.toDate == "" {
-			endDate = models.Today() // Today
+			endDate = types.Today() // Today
 		}
-		transactions, err = svc.Transaction.ListByAccountAndDateRange(account.ID, startDate, endDate)
+		transactions, err = svc.Transaction.ListByAccountAndDateRange(acct.ID, startDate, endDate)
 	} else {
-		transactions, err = svc.Transaction.ListByAccount(account.ID)
+		transactions, err = svc.Transaction.ListByAccount(acct.ID)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to list transactions: %w", err)
@@ -207,11 +213,11 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 
 	// Filter by status if specified
 	if opts.txStatus != "" {
-		status, err := models.ParseTransactionStatus(opts.txStatus)
+		status, err := transaction.ParseStatus(opts.txStatus)
 		if err != nil {
 			return fmt.Errorf("invalid --status: %w", err)
 		}
-		var filtered []*models.Transaction
+		var filtered []*transaction.Transaction
 		for _, txn := range transactions {
 			if txn.Status == status {
 				filtered = append(filtered, txn)
@@ -226,8 +232,8 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Build payee and category lookup maps
-	payeeNames := make(map[models.ID]string)
-	categoryNames := make(map[models.ID]string)
+	payeeNames := make(map[types.ID]string)
+	categoryNames := make(map[types.ID]string)
 
 	// Fetch all payees and categories for name lookup
 	payees, _ := svc.PayeeRepo.List()
@@ -241,7 +247,7 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Print transactions table
-	printTransactionsTable(w, account, transactions, payeeNames, categoryNames)
+	printTransactionsTable(w, acct, transactions, payeeNames, categoryNames)
 
 	return nil
 }
@@ -259,20 +265,20 @@ func runAddTransaction(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Parse amount
-	amount, err := models.NewMoney(opts.txAmount)
+	amount, err := types.NewMoney(opts.txAmount)
 	if err != nil {
 		return fmt.Errorf("invalid --amount: %w", err)
 	}
 
 	// Parse date (default to today)
-	var date models.Date
+	var date types.Date
 	if opts.txDate != "" {
-		date, err = models.ParseDate(opts.txDate)
+		date, err = types.ParseDate(opts.txDate)
 		if err != nil {
 			return fmt.Errorf("invalid --date: %w", err)
 		}
 	} else {
-		date = models.Today()
+		date = types.Today()
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -282,38 +288,38 @@ func runAddTransaction(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Get account by name
-	account, err := svc.Account.GetByName(opts.accountName)
+	acct, err := svc.Account.GetByName(opts.accountName)
 	if err != nil {
 		return fmt.Errorf("account %q not found", opts.accountName)
 	}
 
 	// Handle payee (auto-create if needed)
-	var payeeID models.NullableID
+	var payeeID types.NullableID
 	var payeeName string
 	var payeeCreated bool
 	if opts.txPayee != "" {
-		payee, created, err := svc.Payee.GetOrCreate(opts.txPayee)
+		py, created, err := svc.Payee.GetOrCreate(opts.txPayee)
 		if err != nil {
 			return fmt.Errorf("failed to resolve payee: %w", err)
 		}
-		payeeID = models.NullableID{Valid: true, ID: payee.ID}
-		payeeName = payee.Name
+		payeeID = types.NullableID{Valid: true, ID: py.ID}
+		payeeName = py.Name
 		payeeCreated = created
 	}
 
 	// Handle category
-	var categoryID models.NullableID
+	var categoryID types.NullableID
 	var categoryName string
 	if opts.txCategory != "" {
 		// First try top-level category, then search all categories
-		category, err := svc.CategoryRepo.GetByName(opts.txCategory, nil)
+		cat, err := svc.CategoryRepo.GetByName(opts.txCategory, nil)
 		if err != nil {
 			// Try finding it as a subcategory (search all categories)
 			categories, listErr := svc.CategoryRepo.List()
 			if listErr != nil {
 				return fmt.Errorf("category %q not found", opts.txCategory)
 			}
-			var found *models.Category
+			var found *category.Category
 			for _, c := range categories {
 				if c.Name == opts.txCategory {
 					found = c
@@ -323,14 +329,14 @@ func runAddTransaction(opts *cliOptions, w io.Writer) error {
 			if found == nil {
 				return fmt.Errorf("category %q not found", opts.txCategory)
 			}
-			category = found
+			cat = found
 		}
-		categoryID = models.NullableID{Valid: true, ID: category.ID}
-		categoryName = category.Name
+		categoryID = types.NullableID{Valid: true, ID: cat.ID}
+		categoryName = cat.Name
 	}
 
 	// Create transaction
-	txn := models.NewTransaction(account.ID, date, amount)
+	txn := transaction.NewTransaction(acct.ID, date, amount)
 	if payeeID.Valid {
 		txn.SetPayee(payeeID.ID)
 	}
@@ -348,9 +354,9 @@ func runAddTransaction(opts *cliOptions, w io.Writer) error {
 
 	// Print confirmation
 	fmt.Fprintln(w, "Transaction created successfully!")
-	fmt.Fprintf(w, "  Account:  %s\n", account.Name)
+	fmt.Fprintf(w, "  Account:  %s\n", acct.Name)
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
-	fmt.Fprintf(w, "  Amount:   %s\n", formatMoney(amount, account.Currency))
+	fmt.Fprintf(w, "  Amount:   %s\n", formatMoney(amount, acct.Currency))
 	if payeeName != "" {
 		if payeeCreated {
 			fmt.Fprintf(w, "  Payee:    %s (new)\n", payeeName)
@@ -385,7 +391,7 @@ func runTransfer(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Parse amount
-	amount, err := models.NewMoney(opts.txAmount)
+	amount, err := types.NewMoney(opts.txAmount)
 	if err != nil {
 		return fmt.Errorf("invalid --amount: %w", err)
 	}
@@ -396,14 +402,14 @@ func runTransfer(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Parse date (default to today)
-	var date models.Date
+	var date types.Date
 	if opts.txDate != "" {
-		date, err = models.ParseDate(opts.txDate)
+		date, err = types.ParseDate(opts.txDate)
 		if err != nil {
 			return fmt.Errorf("invalid --date: %w", err)
 		}
 	} else {
-		date = models.Today()
+		date = types.Today()
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -432,7 +438,7 @@ func runTransfer(opts *cliOptions, w io.Writer) error {
 
 	// Set memo if provided
 	if opts.txMemo != "" {
-		err = svc.Transaction.UpdateTransfer(pair.FromTransaction.TransferID.ID, date, amount, opts.txMemo, models.TransactionStatusUncleared)
+		err = svc.Transaction.UpdateTransfer(pair.FromTransaction.TransferID.ID, date, amount, opts.txMemo, transaction.StatusUncleared)
 		if err != nil {
 			return fmt.Errorf("failed to set memo on transfer: %w", err)
 		}
@@ -465,7 +471,7 @@ func runVoidTransaction(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Parse the transaction ID
-	txnID, err := models.ParseID(opts.voidTxn)
+	txnID, err := types.ParseID(opts.voidTxn)
 	if err != nil {
 		return fmt.Errorf("invalid transaction ID: %w", err)
 	}
@@ -477,12 +483,12 @@ func runVoidTransaction(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Get account info for display
-	account, _ := svc.AccountRepo.GetByID(txn.AccountID)
+	acct, _ := svc.AccountRepo.GetByID(txn.AccountID)
 	accountName := "Unknown"
 	currency := "USD"
-	if account != nil {
-		accountName = account.Name
-		currency = account.Currency
+	if acct != nil {
+		accountName = acct.Name
+		currency = acct.Currency
 	}
 
 	// Remember original amount for confirmation display
@@ -497,7 +503,7 @@ func runVoidTransaction(opts *cliOptions, w io.Writer) error {
 	fmt.Fprintln(w, "Transaction voided successfully!")
 	fmt.Fprintf(w, "  Account:  %s\n", accountName)
 	fmt.Fprintf(w, "  Date:     %s\n", txn.Date.String())
-	fmt.Fprintf(w, "  Amount:   %s (was %s)\n", formatMoney(models.ZeroMoney, currency), formatMoney(originalAmount, currency))
+	fmt.Fprintf(w, "  Amount:   %s (was %s)\n", formatMoney(types.ZeroMoney, currency), formatMoney(originalAmount, currency))
 	fmt.Fprintf(w, "  Status:   Void\n")
 	if txn.IsTransfer() {
 		fmt.Fprintln(w, "  Note:     Transfer counterpart was also voided")
@@ -520,14 +526,14 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Build search criteria
-	criteria := repository.TransactionSearchCriteria{
+	criteria := transaction.SearchCriteria{
 		PayeeName: opts.searchTerm,
 		Memo:      opts.searchTerm,
 	}
 
 	// Parse date filters if provided
 	if opts.fromDate != "" {
-		startDate, err := models.ParseDate(opts.fromDate)
+		startDate, err := types.ParseDate(opts.fromDate)
 		if err != nil {
 			return fmt.Errorf("invalid --from date: %w", err)
 		}
@@ -535,7 +541,7 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 	}
 
 	if opts.toDate != "" {
-		endDate, err := models.ParseDate(opts.toDate)
+		endDate, err := types.ParseDate(opts.toDate)
 		if err != nil {
 			return fmt.Errorf("invalid --to date: %w", err)
 		}
@@ -544,11 +550,11 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 
 	// Parse account filter if provided
 	if opts.accountName != "" {
-		account, err := svc.Account.GetByName(opts.accountName)
+		acct, err := svc.Account.GetByName(opts.accountName)
 		if err != nil {
 			return fmt.Errorf("account %q not found", opts.accountName)
 		}
-		criteria.AccountID = &account.ID
+		criteria.AccountID = &acct.ID
 	}
 
 	// Parse category filter if provided
@@ -558,7 +564,7 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 
 	// Parse min/max amount filters if provided
 	if opts.minAmount != "" {
-		minAmt, err := models.NewMoney(opts.minAmount)
+		minAmt, err := types.NewMoney(opts.minAmount)
 		if err != nil {
 			return fmt.Errorf("invalid --min amount: %w", err)
 		}
@@ -566,7 +572,7 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 	}
 
 	if opts.maxAmount != "" {
-		maxAmt, err := models.NewMoney(opts.maxAmount)
+		maxAmt, err := types.NewMoney(opts.maxAmount)
 		if err != nil {
 			return fmt.Errorf("invalid --max amount: %w", err)
 		}
@@ -575,7 +581,7 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 
 	// Search for transactions - we need to search by payee OR memo
 	// Since the Search method uses AND logic, we'll do two searches and merge
-	var transactions []*models.Transaction
+	var transactions []*transaction.Transaction
 
 	// Search by payee name
 	payeeCriteria := criteria
@@ -609,10 +615,10 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Build lookup maps for display
-	payeeNames := make(map[models.ID]string)
-	categoryNames := make(map[models.ID]string)
-	accountNames := make(map[models.ID]string)
-	accountCurrencies := make(map[models.ID]string)
+	payeeNames := make(map[types.ID]string)
+	categoryNames := make(map[types.ID]string)
+	accountNames := make(map[types.ID]string)
+	accountCurrencies := make(map[types.ID]string)
 
 	payees, _ := svc.PayeeRepo.List()
 	for _, p := range payees {
@@ -649,10 +655,10 @@ func runAddAccount(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Parse account type
-	acctType, err := models.ParseAccountType(opts.acctType)
+	acctType, err := account.ParseType(opts.acctType)
 	if err != nil {
 		validTypes := []string{}
-		for _, t := range models.AllAccountTypes() {
+		for _, t := range account.AllTypes() {
 			validTypes = append(validTypes, string(t))
 		}
 		return fmt.Errorf("invalid --type %q: valid types are %s", opts.acctType, strings.Join(validTypes, ", "))
@@ -665,18 +671,18 @@ func runAddAccount(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Parse opening balance (default to 0)
-	openingBalance := models.MustNewMoney("0")
+	openingBalance := types.MustNewMoney("0")
 	if opts.acctOpeningBal != "" {
-		openingBalance, err = models.NewMoney(opts.acctOpeningBal)
+		openingBalance, err = types.NewMoney(opts.acctOpeningBal)
 		if err != nil {
 			return fmt.Errorf("invalid --opening-balance: %w", err)
 		}
 	}
 
 	// Parse opening date (default to today)
-	openingDate := models.Today()
+	openingDate := types.Today()
 	if opts.acctOpeningDate != "" {
-		openingDate, err = models.ParseDate(opts.acctOpeningDate)
+		openingDate, err = types.ParseDate(opts.acctOpeningDate)
 		if err != nil {
 			return fmt.Errorf("invalid --opening-date: %w", err)
 		}
@@ -694,68 +700,68 @@ func runAddAccount(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Create account
-	account := models.NewAccount(opts.acctName, acctType, currency, openingBalance, openingDate)
+	acct := account.NewAccount(opts.acctName, acctType, currency, openingBalance, openingDate)
 
 	// Set optional fields
 	if opts.acctInstitution != "" {
-		account.SetInstitution(opts.acctInstitution)
+		acct.SetInstitution(opts.acctInstitution)
 	}
 	if opts.acctNumber != "" {
-		account.SetAccountNumber(opts.acctNumber)
+		acct.SetAccountNumber(opts.acctNumber)
 	}
 	if opts.acctNotes != "" {
-		account.SetNotes(opts.acctNotes)
+		acct.SetNotes(opts.acctNotes)
 	}
 
 	// Handle type-specific fields
 	if opts.acctCreditLimit != "" {
-		if acctType != models.AccountTypeCreditCard {
+		if acctType != account.TypeCreditCard {
 			return fmt.Errorf("--credit-limit is only valid for credit_card accounts")
 		}
-		creditLimit, err := models.NewMoney(opts.acctCreditLimit)
+		creditLimit, err := types.NewMoney(opts.acctCreditLimit)
 		if err != nil {
 			return fmt.Errorf("invalid --credit-limit: %w", err)
 		}
-		account.SetCreditLimit(creditLimit)
+		acct.SetCreditLimit(creditLimit)
 	}
 
 	if opts.acctInterestRate != "" {
-		if acctType != models.AccountTypeLoan {
+		if acctType != account.TypeLoan {
 			return fmt.Errorf("--interest-rate is only valid for loan accounts")
 		}
-		interestRate, err := models.NewMoney(opts.acctInterestRate)
+		interestRate, err := types.NewMoney(opts.acctInterestRate)
 		if err != nil {
 			return fmt.Errorf("invalid --interest-rate: %w", err)
 		}
-		account.SetInterestRate(interestRate)
+		acct.SetInterestRate(interestRate)
 	}
 
 	// Save account
-	if err := svc.Account.Create(account); err != nil {
+	if err := svc.Account.Create(acct); err != nil {
 		return fmt.Errorf("failed to create account: %w", err)
 	}
 
 	// Print confirmation
 	fmt.Fprintln(w, "Account created successfully!")
-	fmt.Fprintf(w, "  Name:            %s\n", account.Name)
-	fmt.Fprintf(w, "  Type:            %s\n", account.Type.DisplayName())
-	fmt.Fprintf(w, "  Currency:        %s\n", account.Currency)
-	fmt.Fprintf(w, "  Opening Balance: %s\n", formatMoney(account.OpeningBalance, account.Currency))
-	fmt.Fprintf(w, "  Opening Date:    %s\n", account.OpeningDate.String())
-	if account.Institution.Valid {
-		fmt.Fprintf(w, "  Institution:     %s\n", account.Institution.String)
+	fmt.Fprintf(w, "  Name:            %s\n", acct.Name)
+	fmt.Fprintf(w, "  Type:            %s\n", acct.Type.DisplayName())
+	fmt.Fprintf(w, "  Currency:        %s\n", acct.Currency)
+	fmt.Fprintf(w, "  Opening Balance: %s\n", formatMoney(acct.OpeningBalance, acct.Currency))
+	fmt.Fprintf(w, "  Opening Date:    %s\n", acct.OpeningDate.String())
+	if acct.Institution.Valid {
+		fmt.Fprintf(w, "  Institution:     %s\n", acct.Institution.String)
 	}
-	if account.AccountNumber.Valid {
-		fmt.Fprintf(w, "  Account Number:  %s\n", account.AccountNumber.String)
+	if acct.AccountNumber.Valid {
+		fmt.Fprintf(w, "  Account Number:  %s\n", acct.AccountNumber.String)
 	}
-	if account.CreditLimit.Valid {
-		fmt.Fprintf(w, "  Credit Limit:    %s\n", formatMoney(account.CreditLimit.Money, account.Currency))
+	if acct.CreditLimit.Valid {
+		fmt.Fprintf(w, "  Credit Limit:    %s\n", formatMoney(acct.CreditLimit.Money, acct.Currency))
 	}
-	if account.InterestRate.Valid {
-		fmt.Fprintf(w, "  Interest Rate:   %s%%\n", account.InterestRate.Money.String())
+	if acct.InterestRate.Valid {
+		fmt.Fprintf(w, "  Interest Rate:   %s%%\n", acct.InterestRate.Money.String())
 	}
-	if account.Notes.Valid {
-		fmt.Fprintf(w, "  Notes:           %s\n", account.Notes.String)
+	if acct.Notes.Valid {
+		fmt.Fprintf(w, "  Notes:           %s\n", acct.Notes.String)
 	}
 
 	autoBackupAfterModification(opts.file)
@@ -775,11 +781,11 @@ func runScheduled(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Get scheduled transactions
-	var scheduledTxns []*models.ScheduledTransaction
+	var scheduledTxns []*scheduled.Transaction
 	if opts.scheduledDue {
-		scheduledTxns, err = svc.ScheduledTxn.ListDue()
+		scheduledTxns, err = svc.Scheduled.ListDue()
 	} else {
-		scheduledTxns, err = svc.ScheduledTxn.List()
+		scheduledTxns, err = svc.Scheduled.List()
 	}
 	if err != nil {
 		return fmt.Errorf("failed to list scheduled transactions: %w", err)
@@ -787,14 +793,14 @@ func runScheduled(opts *cliOptions, w io.Writer) error {
 
 	// Filter by account if specified
 	if opts.accountName != "" {
-		account, err := svc.Account.GetByName(opts.accountName)
+		acct, err := svc.Account.GetByName(opts.accountName)
 		if err != nil {
 			return fmt.Errorf("account %q not found", opts.accountName)
 		}
 
-		var filtered []*models.ScheduledTransaction
+		var filtered []*scheduled.Transaction
 		for _, st := range scheduledTxns {
-			if st.AccountID == account.ID {
+			if st.AccountID == acct.ID {
 				filtered = append(filtered, st)
 			}
 		}
@@ -802,10 +808,10 @@ func runScheduled(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Build lookup maps
-	payeeNames := make(map[models.ID]string)
-	categoryNames := make(map[models.ID]string)
-	accountNames := make(map[models.ID]string)
-	accountCurrencies := make(map[models.ID]string)
+	payeeNames := make(map[types.ID]string)
+	categoryNames := make(map[types.ID]string)
+	accountNames := make(map[types.ID]string)
+	accountCurrencies := make(map[types.ID]string)
 
 	payees, _ := svc.PayeeRepo.List()
 	for _, p := range payees {
@@ -842,13 +848,13 @@ func runPostScheduled(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Parse the scheduled transaction ID
-	stID, err := models.ParseID(opts.postScheduled)
+	stID, err := types.ParseID(opts.postScheduled)
 	if err != nil {
 		return fmt.Errorf("invalid scheduled transaction ID: %w", err)
 	}
 
 	// Get the scheduled transaction first to show details
-	st, err := svc.ScheduledTxn.GetByID(stID)
+	st, err := svc.Scheduled.GetByID(stID)
 	if err != nil {
 		return fmt.Errorf("scheduled transaction not found: %w", err)
 	}
@@ -857,9 +863,9 @@ func runPostScheduled(opts *cliOptions, w io.Writer) error {
 	oldNextDate := st.NextDate
 
 	// Parse optional amount
-	var amount *models.Money
+	var amount *types.Money
 	if opts.txAmount != "" {
-		amt, err := models.NewMoney(opts.txAmount)
+		amt, err := types.NewMoney(opts.txAmount)
 		if err != nil {
 			return fmt.Errorf("invalid --amount: %w", err)
 		}
@@ -867,9 +873,9 @@ func runPostScheduled(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Parse optional date
-	var date *models.Date
+	var date *types.Date
 	if opts.txDate != "" {
-		d, err := models.ParseDate(opts.txDate)
+		d, err := types.ParseDate(opts.txDate)
 		if err != nil {
 			return fmt.Errorf("invalid --date: %w", err)
 		}
@@ -877,34 +883,34 @@ func runPostScheduled(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Post the scheduled transaction
-	var txn *models.Transaction
+	var txn *transaction.Transaction
 	if date != nil {
-		txn, err = svc.ScheduledTxn.PostWithDate(stID, *date, amount)
+		txn, err = svc.Scheduled.PostWithDate(stID, *date, amount)
 	} else {
-		txn, err = svc.ScheduledTxn.Post(stID, amount)
+		txn, err = svc.Scheduled.Post(stID, amount)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to post scheduled transaction: %w", err)
 	}
 
 	// Get updated scheduled transaction for next date
-	stUpdated, _ := svc.ScheduledTxn.GetByID(stID)
+	stUpdated, _ := svc.Scheduled.GetByID(stID)
 
 	// Get account info for currency
-	account, _ := svc.AccountRepo.GetByID(st.AccountID)
+	acct, _ := svc.AccountRepo.GetByID(st.AccountID)
 	currency := "USD"
 	accountName := "Unknown"
-	if account != nil {
-		currency = account.Currency
-		accountName = account.Name
+	if acct != nil {
+		currency = acct.Currency
+		accountName = acct.Name
 	}
 
 	// Get payee name
 	payeeName := "-"
 	if st.HasPayee() {
-		payee, err := svc.PayeeRepo.GetByID(st.PayeeID.ID)
+		py, err := svc.PayeeRepo.GetByID(st.PayeeID.ID)
 		if err == nil {
-			payeeName = payee.Name
+			payeeName = py.Name
 		}
 	}
 
@@ -941,13 +947,13 @@ func runSkipScheduled(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Parse the scheduled transaction ID
-	stID, err := models.ParseID(opts.skipScheduled)
+	stID, err := types.ParseID(opts.skipScheduled)
 	if err != nil {
 		return fmt.Errorf("invalid scheduled transaction ID: %w", err)
 	}
 
 	// Get the scheduled transaction first to show details
-	st, err := svc.ScheduledTxn.GetByID(stID)
+	st, err := svc.Scheduled.GetByID(stID)
 	if err != nil {
 		return fmt.Errorf("scheduled transaction not found: %w", err)
 	}
@@ -956,27 +962,27 @@ func runSkipScheduled(opts *cliOptions, w io.Writer) error {
 	oldNextDate := st.NextDate
 
 	// Skip the scheduled transaction
-	err = svc.ScheduledTxn.Skip(stID)
+	err = svc.Scheduled.Skip(stID)
 	if err != nil {
 		return fmt.Errorf("failed to skip scheduled transaction: %w", err)
 	}
 
 	// Get updated scheduled transaction for next date
-	stUpdated, _ := svc.ScheduledTxn.GetByID(stID)
+	stUpdated, _ := svc.Scheduled.GetByID(stID)
 
 	// Get account info
-	account, _ := svc.AccountRepo.GetByID(st.AccountID)
+	acct, _ := svc.AccountRepo.GetByID(st.AccountID)
 	accountName := "Unknown"
-	if account != nil {
-		accountName = account.Name
+	if acct != nil {
+		accountName = acct.Name
 	}
 
 	// Get payee name
 	payeeName := "-"
 	if st.HasPayee() {
-		payee, err := svc.PayeeRepo.GetByID(st.PayeeID.ID)
+		py, err := svc.PayeeRepo.GetByID(st.PayeeID.ID)
 		if err == nil {
-			payeeName = payee.Name
+			payeeName = py.Name
 		}
 	}
 
@@ -1011,24 +1017,24 @@ func runAddScheduled(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Parse frequency
-	frequency, err := models.ParseFrequency(opts.stFrequency)
+	frequency, err := scheduled.ParseFrequency(opts.stFrequency)
 	if err != nil {
 		validFreqs := []string{}
-		for _, f := range models.AllFrequencies() {
+		for _, f := range scheduled.AllFrequencies() {
 			validFreqs = append(validFreqs, string(f))
 		}
 		return fmt.Errorf("invalid --frequency %q: valid values are %s", opts.stFrequency, strings.Join(validFreqs, ", "))
 	}
 
 	// Parse start date (default to today)
-	var startDate models.Date
+	var startDate types.Date
 	if opts.txDate != "" {
-		startDate, err = models.ParseDate(opts.txDate)
+		startDate, err = types.ParseDate(opts.txDate)
 		if err != nil {
 			return fmt.Errorf("invalid --date: %w", err)
 		}
 	} else {
-		startDate = models.Today()
+		startDate = types.Today()
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -1038,17 +1044,17 @@ func runAddScheduled(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Get account by name
-	account, err := svc.Account.GetByName(opts.accountName)
+	acct, err := svc.Account.GetByName(opts.accountName)
 	if err != nil {
 		return fmt.Errorf("account %q not found", opts.accountName)
 	}
 
 	// Create scheduled transaction
-	st := models.NewScheduledTransaction(account.ID, frequency, startDate)
+	st := scheduled.NewTransaction(acct.ID, frequency, startDate)
 
 	// Handle amount (optional - null means variable amount)
 	if opts.txAmount != "" {
-		amount, err := models.NewMoney(opts.txAmount)
+		amount, err := types.NewMoney(opts.txAmount)
 		if err != nil {
 			return fmt.Errorf("invalid --amount: %w", err)
 		}
@@ -1058,24 +1064,24 @@ func runAddScheduled(opts *cliOptions, w io.Writer) error {
 	// Handle payee
 	var payeeName string
 	if opts.txPayee != "" {
-		payee, _, err := svc.Payee.GetOrCreate(opts.txPayee)
+		py, _, err := svc.Payee.GetOrCreate(opts.txPayee)
 		if err != nil {
 			return fmt.Errorf("failed to resolve payee: %w", err)
 		}
-		st.SetPayee(payee.ID)
-		payeeName = payee.Name
+		st.SetPayee(py.ID)
+		payeeName = py.Name
 	}
 
 	// Handle category
 	var categoryName string
 	if opts.txCategory != "" {
-		category, err := svc.CategoryRepo.GetByName(opts.txCategory, nil)
+		cat, err := svc.CategoryRepo.GetByName(opts.txCategory, nil)
 		if err != nil {
 			categories, listErr := svc.CategoryRepo.List()
 			if listErr != nil {
 				return fmt.Errorf("category %q not found", opts.txCategory)
 			}
-			var found *models.Category
+			var found *category.Category
 			for _, c := range categories {
 				if c.Name == opts.txCategory {
 					found = c
@@ -1085,10 +1091,10 @@ func runAddScheduled(opts *cliOptions, w io.Writer) error {
 			if found == nil {
 				return fmt.Errorf("category %q not found", opts.txCategory)
 			}
-			category = found
+			cat = found
 		}
-		st.SetCategory(category.ID)
-		categoryName = category.Name
+		st.SetCategory(cat.ID)
+		categoryName = cat.Name
 	}
 
 	// Handle memo
@@ -1116,7 +1122,7 @@ func runAddScheduled(opts *cliOptions, w io.Writer) error {
 
 	// Handle end date
 	if opts.stEndDate != "" {
-		endDate, err := models.ParseDate(opts.stEndDate)
+		endDate, err := types.ParseDate(opts.stEndDate)
 		if err != nil {
 			return fmt.Errorf("invalid --end-date: %w", err)
 		}
@@ -1144,17 +1150,17 @@ func runAddScheduled(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Save scheduled transaction
-	if err := svc.ScheduledTxn.Create(st); err != nil {
+	if err := svc.Scheduled.Create(st); err != nil {
 		return fmt.Errorf("failed to create scheduled transaction: %w", err)
 	}
 
 	// Print confirmation
 	fmt.Fprintln(w, "Scheduled transaction created successfully!")
-	fmt.Fprintf(w, "  Account:   %s\n", account.Name)
+	fmt.Fprintf(w, "  Account:   %s\n", acct.Name)
 	fmt.Fprintf(w, "  Frequency: %s\n", frequency.DisplayName())
 	fmt.Fprintf(w, "  Next Date: %s\n", st.NextDate.String())
 	if st.HasAmount() {
-		fmt.Fprintf(w, "  Amount:    %s\n", formatMoney(st.Amount.Money, account.Currency))
+		fmt.Fprintf(w, "  Amount:    %s\n", formatMoney(st.Amount.Money, acct.Currency))
 	} else {
 		fmt.Fprintf(w, "  Amount:    Variable\n")
 	}
@@ -1211,7 +1217,7 @@ func runNetWorthReport(opts *cliOptions, w io.Writer) error {
 	// Determine as-of date
 	var asOf time.Time
 	if opts.reportAsOf != "" {
-		d, err := models.ParseDate(opts.reportAsOf)
+		d, err := types.ParseDate(opts.reportAsOf)
 		if err != nil {
 			return fmt.Errorf("invalid --as-of date: %w", err)
 		}
@@ -1221,18 +1227,18 @@ func runNetWorthReport(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Generate report
-	var report *models.NetWorthReport
+	var rpt *report.NetWorth
 	if opts.includeClosed {
-		report, err = svc.Report.NetWorthAsOfIncludingClosed(asOf)
+		rpt, err = svc.Report.NetWorthAsOfIncludingClosed(asOf)
 	} else {
-		report, err = svc.Report.NetWorthAsOf(asOf)
+		rpt, err = svc.Report.NetWorthAsOf(asOf)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to generate net worth report: %w", err)
 	}
 
 	// Print report
-	printNetWorthReport(w, report)
+	printNetWorthReport(w, rpt)
 	return nil
 }
 
@@ -1250,7 +1256,7 @@ func runSpendingReport(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Generate report based on period type
-	var report *models.SpendingReport
+	var rpt *report.Spending
 
 	if opts.reportMonth != "" {
 		// Parse YYYY-MM format
@@ -1258,40 +1264,40 @@ func runSpendingReport(opts *cliOptions, w io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("invalid --month format: %w", err)
 		}
-		report, err = svc.Report.SpendingByCategoryMonth(year, month)
+		rpt, err = svc.Report.SpendingByCategoryMonth(year, month)
 		if err != nil {
 			return fmt.Errorf("failed to generate spending report: %w", err)
 		}
 	} else if opts.reportYear != 0 {
-		report, err = svc.Report.SpendingByCategoryYear(opts.reportYear)
+		rpt, err = svc.Report.SpendingByCategoryYear(opts.reportYear)
 		if err != nil {
 			return fmt.Errorf("failed to generate spending report: %w", err)
 		}
 	} else if opts.fromDate != "" {
 		// Custom date range
-		startDate, err := models.ParseDate(opts.fromDate)
+		startDate, err := types.ParseDate(opts.fromDate)
 		if err != nil {
 			return fmt.Errorf("invalid --from date: %w", err)
 		}
 
-		var endDate models.Date
+		var endDate types.Date
 		if opts.toDate != "" {
-			endDate, err = models.ParseDate(opts.toDate)
+			endDate, err = types.ParseDate(opts.toDate)
 			if err != nil {
 				return fmt.Errorf("invalid --to date: %w", err)
 			}
 		} else {
-			endDate = models.Today()
+			endDate = types.Today()
 		}
 
-		report, err = svc.Report.SpendingByCategoryDateRange(time.Time(startDate), time.Time(endDate))
+		rpt, err = svc.Report.SpendingByCategoryDateRange(time.Time(startDate), time.Time(endDate))
 		if err != nil {
 			return fmt.Errorf("failed to generate spending report: %w", err)
 		}
 	}
 
 	// Print report
-	printSpendingReport(w, report)
+	printSpendingReport(w, rpt)
 	return nil
 }
 
@@ -1386,13 +1392,13 @@ func runStartReconcile(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Parse statement date
-	stmtDate, err := models.ParseDate(opts.statementDate)
+	stmtDate, err := types.ParseDate(opts.statementDate)
 	if err != nil {
 		return fmt.Errorf("invalid --statement-date: %w", err)
 	}
 
 	// Parse statement balance
-	stmtBalance, err := models.NewMoney(opts.statementBalance)
+	stmtBalance, err := types.NewMoney(opts.statementBalance)
 	if err != nil {
 		return fmt.Errorf("invalid --statement-balance: %w", err)
 	}
@@ -1444,9 +1450,9 @@ func runMarkReconciled(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Parse transaction IDs
-	var txnIDs []models.ID
+	var txnIDs []types.ID
 	for _, idStr := range opts.markReconciled {
-		id, err := models.ParseID(idStr)
+		id, err := types.ParseID(idStr)
 		if err != nil {
 			return fmt.Errorf("invalid transaction ID %q: %w", idStr, err)
 		}
@@ -1526,7 +1532,7 @@ func runFinishReconcile(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Collect all candidate transaction IDs
-	var txnIDs []models.ID
+	var txnIDs []types.ID
 	for _, txn := range candidates {
 		txnIDs = append(txnIDs, txn.ID)
 	}
@@ -1535,7 +1541,7 @@ func runFinishReconcile(opts *cliOptions, w io.Writer) error {
 	err = svc.Reconciliation.FinishReconciliation(account.ID, txnIDs, opts.reconcileForce)
 	if err != nil {
 		// Check for difference error and provide helpful message
-		if diffErr, ok := err.(*service.ReconciliationDifferenceError); ok {
+		if diffErr, ok := err.(*reconciliation.DifferenceError); ok {
 			return fmt.Errorf("cannot complete reconciliation. Difference: %s\nUse --mark-reconciled to mark additional transactions, or --force to complete anyway",
 				formatMoney(diffErr.Difference, account.Currency))
 		}
@@ -1742,14 +1748,14 @@ func runExport(opts *cliOptions, w io.Writer) error {
 
 	// Parse date filters
 	if opts.fromDate != "" {
-		d, err := models.ParseDate(opts.fromDate)
+		d, err := types.ParseDate(opts.fromDate)
 		if err != nil {
 			return fmt.Errorf("invalid --from date: %w", err)
 		}
 		exportOpts.StartDate = &d
 	}
 	if opts.toDate != "" {
-		d, err := models.ParseDate(opts.toDate)
+		d, err := types.ParseDate(opts.toDate)
 		if err != nil {
 			return fmt.Errorf("invalid --to date: %w", err)
 		}
@@ -1839,10 +1845,10 @@ func printImportResult(w io.Writer, importFile, accountName string, result *imex
 
 // cliCategoryResolver adapts CategoryService to imexport.CategoryResolver.
 type cliCategoryResolver struct {
-	categorySvc *service.CategoryService
+	categorySvc *category.Service
 }
 
-func (r *cliCategoryResolver) ResolveCategoryByName(name string) (models.ID, error) {
+func (r *cliCategoryResolver) ResolveCategoryByName(name string) (types.ID, error) {
 	// Handle hierarchical names like "Food:Groceries"
 	parts := strings.SplitN(name, ":", 2)
 
@@ -1850,7 +1856,7 @@ func (r *cliCategoryResolver) ResolveCategoryByName(name string) (models.ID, err
 		// Top-level category
 		cat, err := r.categorySvc.GetByName(name, nil)
 		if err != nil {
-			return models.ID{}, err
+			return types.ID{}, err
 		}
 		return cat.ID, nil
 	}
@@ -1858,12 +1864,12 @@ func (r *cliCategoryResolver) ResolveCategoryByName(name string) (models.ID, err
 	// Find parent first, then child
 	parent, err := r.categorySvc.GetByName(parts[0], nil)
 	if err != nil {
-		return models.ID{}, fmt.Errorf("parent category %q not found: %w", parts[0], err)
+		return types.ID{}, fmt.Errorf("parent category %q not found: %w", parts[0], err)
 	}
 
 	child, err := r.categorySvc.GetByName(parts[1], &parent.ID)
 	if err != nil {
-		return models.ID{}, fmt.Errorf("subcategory %q not found under %q: %w", parts[1], parts[0], err)
+		return types.ID{}, fmt.Errorf("subcategory %q not found under %q: %w", parts[1], parts[0], err)
 	}
 
 	return child.ID, nil
@@ -1871,21 +1877,21 @@ func (r *cliCategoryResolver) ResolveCategoryByName(name string) (models.ID, err
 
 // cliPayeeResolver adapts PayeeService to imexport.PayeeResolver.
 type cliPayeeResolver struct {
-	payeeSvc *service.PayeeService
+	payeeSvc *payee.Service
 }
 
-func (r *cliPayeeResolver) ResolvePayee(name string) (models.ID, models.NullableID, error) {
+func (r *cliPayeeResolver) ResolvePayee(name string) (types.ID, types.NullableID, error) {
 	payee, created, err := r.payeeSvc.ResolveOrCreate(name)
 	if err != nil {
-		return models.ID{}, models.NullableID{}, err
+		return types.ID{}, types.NullableID{}, err
 	}
 	_ = created
 
 	if payee == nil {
-		return models.ID{}, models.NullableID{}, nil
+		return types.ID{}, types.NullableID{}, nil
 	}
 
-	var defaultCatID models.NullableID
+	var defaultCatID types.NullableID
 	if payee.DefaultCategoryID.Valid {
 		defaultCatID = payee.DefaultCategoryID
 	}
@@ -1895,15 +1901,15 @@ func (r *cliPayeeResolver) ResolvePayee(name string) (models.ID, models.Nullable
 
 // cliTransactionStore adapts repositories to imexport.TransactionStore.
 type cliTransactionStore struct {
-	transactionRepo *repository.TransactionRepository
-	payeeRepo       *repository.PayeeRepository
+	transactionRepo *transaction.Repository
+	payeeRepo       *payee.Repository
 }
 
-func (s *cliTransactionStore) ListByAccount(accountID models.ID) ([]*models.Transaction, error) {
+func (s *cliTransactionStore) ListByAccount(accountID types.ID) ([]*transaction.Transaction, error) {
 	return s.transactionRepo.ListByAccount(accountID)
 }
 
-func (s *cliTransactionStore) GetPayeeName(payeeID models.ID) string {
+func (s *cliTransactionStore) GetPayeeName(payeeID types.ID) string {
 	if payeeID.IsNil() {
 		return ""
 	}
@@ -1914,7 +1920,7 @@ func (s *cliTransactionStore) GetPayeeName(payeeID models.ID) string {
 	return payee.Name
 }
 
-func (s *cliTransactionStore) GetBankReferenceID(txn *models.Transaction) string {
+func (s *cliTransactionStore) GetBankReferenceID(txn *transaction.Transaction) string {
 	if txn.HasBankReferenceID() {
 		return txn.BankReferenceID.String
 	}
@@ -1923,17 +1929,17 @@ func (s *cliTransactionStore) GetBankReferenceID(txn *models.Transaction) string
 
 // cliTransactionCreator adapts TransactionService to imexport.TransactionCreator.
 type cliTransactionCreator struct {
-	transactionSvc *service.TransactionService
+	transactionSvc *transaction.Service
 }
 
-func (c *cliTransactionCreator) CreateTransaction(txn *models.Transaction) error {
+func (c *cliTransactionCreator) CreateTransaction(txn *transaction.Transaction) error {
 	return c.transactionSvc.Create(txn)
 }
 
-func (c *cliTransactionCreator) CreateTransactionWithSplits(txn *models.Transaction, splits []*models.Split) error {
+func (c *cliTransactionCreator) CreateTransactionWithSplits(txn *transaction.Transaction, splits []*transaction.Split) error {
 	return c.transactionSvc.CreateWithSplits(txn, splits)
 }
 
-func (c *cliTransactionCreator) UpdateTransaction(txn *models.Transaction) error {
+func (c *cliTransactionCreator) UpdateTransaction(txn *transaction.Transaction) error {
 	return c.transactionSvc.Update(txn)
 }

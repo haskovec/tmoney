@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // ExportOptions configures the export behavior.
@@ -12,11 +16,11 @@ type ExportOptions struct {
 	// Format specifies the output format (csv or qif).
 	Format Format
 	// AccountID filters transactions to a specific account. Nil means all accounts.
-	AccountID *models.ID
+	AccountID *types.ID
 	// StartDate filters transactions on or after this date. Nil means no lower bound.
-	StartDate *models.Date
+	StartDate *types.Date
 	// EndDate filters transactions on or before this date. Nil means no upper bound.
-	EndDate *models.Date
+	EndDate *types.Date
 }
 
 // ExportResult holds the summary of an export operation.
@@ -29,30 +33,30 @@ type ExportResult struct {
 
 // AccountProvider retrieves accounts for export.
 type AccountProvider interface {
-	List(activeOnly bool) ([]*models.Account, error)
-	GetByID(id models.ID) (*models.Account, error)
+	List(activeOnly bool) ([]*account.Account, error)
+	GetByID(id types.ID) (*account.Account, error)
 }
 
 // TransactionProvider retrieves transactions for export.
 type TransactionProvider interface {
-	ListByAccount(accountID models.ID) ([]*models.Transaction, error)
-	ListByAccountAndDateRange(accountID models.ID, startDate, endDate models.Date) ([]*models.Transaction, error)
+	ListByAccount(accountID types.ID) ([]*transaction.Transaction, error)
+	ListByAccountAndDateRange(accountID types.ID, startDate, endDate types.Date) ([]*transaction.Transaction, error)
 }
 
 // SplitProvider retrieves splits for export.
 type SplitProvider interface {
-	ListByTransaction(transactionID models.ID) ([]*models.Split, error)
+	ListByTransaction(transactionID types.ID) ([]*transaction.Split, error)
 }
 
 // PayeeProvider retrieves payee names for export.
 type PayeeProvider interface {
-	GetByID(id models.ID) (*models.Payee, error)
+	GetByID(id types.ID) (*payee.Payee, error)
 }
 
 // CategoryProvider retrieves categories for export.
 type CategoryProvider interface {
-	GetByID(id models.ID) (*models.Category, error)
-	GetWithParent(id models.ID) (*models.Category, *models.Category, error)
+	GetByID(id types.ID) (*category.Category, error)
+	GetWithParent(id types.ID) (*category.Category, *category.Category, error)
 }
 
 // ExportService orchestrates the export workflow: query, resolve, and write.
@@ -155,13 +159,13 @@ func (s *ExportService) Export(w io.Writer, opts ExportOptions) (*ExportResult, 
 }
 
 // resolveAccounts determines which accounts to export.
-func (s *ExportService) resolveAccounts(opts ExportOptions) ([]*models.Account, error) {
+func (s *ExportService) resolveAccounts(opts ExportOptions) ([]*account.Account, error) {
 	if opts.AccountID != nil {
 		acct, err := s.accounts.GetByID(*opts.AccountID)
 		if err != nil {
 			return nil, err
 		}
-		return []*models.Account{acct}, nil
+		return []*account.Account{acct}, nil
 	}
 
 	// All accounts (including closed, since they may have historical transactions)
@@ -169,7 +173,7 @@ func (s *ExportService) resolveAccounts(opts ExportOptions) ([]*models.Account, 
 }
 
 // queryTransactions fetches transactions for an account, optionally filtered by date range.
-func (s *ExportService) queryTransactions(accountID models.ID, opts ExportOptions) ([]*models.Transaction, error) {
+func (s *ExportService) queryTransactions(accountID types.ID, opts ExportOptions) ([]*transaction.Transaction, error) {
 	if opts.StartDate != nil && opts.EndDate != nil {
 		return s.transactions.ListByAccountAndDateRange(accountID, *opts.StartDate, *opts.EndDate)
 	}
@@ -181,7 +185,7 @@ func (s *ExportService) queryTransactions(accountID models.ID, opts ExportOption
 
 	// Apply partial date filters
 	if opts.StartDate != nil || opts.EndDate != nil {
-		var filtered []*models.Transaction
+		var filtered []*transaction.Transaction
 		for _, txn := range txns {
 			if opts.StartDate != nil && txn.Date.Before(*opts.StartDate) {
 				continue
@@ -199,8 +203,8 @@ func (s *ExportService) queryTransactions(accountID models.ID, opts ExportOption
 
 // buildExportRecord converts a transaction to an ExportRecord, resolving related entities.
 func (s *ExportService) buildExportRecord(
-	txn *models.Transaction,
-	acct *models.Account,
+	txn *transaction.Transaction,
+	acct *account.Account,
 	payeeCache map[string]string,
 	categoryCache map[string]string,
 	accountNameCache map[string]string,
@@ -275,7 +279,7 @@ func (s *ExportService) buildExportRecord(
 }
 
 // resolvePayeeName returns the payee name, using cache.
-func (s *ExportService) resolvePayeeName(payeeID models.ID, cache map[string]string) (string, error) {
+func (s *ExportService) resolvePayeeName(payeeID types.ID, cache map[string]string) (string, error) {
 	key := payeeID.String()
 	if name, ok := cache[key]; ok {
 		return name, nil
@@ -291,7 +295,7 @@ func (s *ExportService) resolvePayeeName(payeeID models.ID, cache map[string]str
 }
 
 // resolveCategoryPath returns the full category path (e.g. "Food:Groceries"), using cache.
-func (s *ExportService) resolveCategoryPath(categoryID models.ID, cache map[string]string) (string, error) {
+func (s *ExportService) resolveCategoryPath(categoryID types.ID, cache map[string]string) (string, error) {
 	key := categoryID.String()
 	if path, ok := cache[key]; ok {
 		return path, nil
@@ -312,7 +316,7 @@ func (s *ExportService) resolveCategoryPath(categoryID models.ID, cache map[stri
 }
 
 // resolveAccountName returns the account name, using cache.
-func (s *ExportService) resolveAccountName(accountID models.ID, cache map[string]string) (string, error) {
+func (s *ExportService) resolveAccountName(accountID types.ID, cache map[string]string) (string, error) {
 	key := accountID.String()
 	if name, ok := cache[key]; ok {
 		return name, nil

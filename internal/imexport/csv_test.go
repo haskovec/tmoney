@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestParseCSV_BasicTransactions(t *testing.T) {
@@ -42,7 +42,7 @@ func TestParseCSV_BasicTransactions(t *testing.T) {
 	if rec.Category != "Food:Groceries" {
 		t.Errorf("record 0 category = %q, want %q", rec.Category, "Food:Groceries")
 	}
-	expectedAmt := models.MustNewMoney("-125.43")
+	expectedAmt := types.MustNewMoney("-125.43")
 	if !rec.Amount.Equal(expectedAmt) {
 		t.Errorf("record 0 amount = %s, want %s", rec.Amount.String(), expectedAmt.String())
 	}
@@ -94,7 +94,7 @@ func TestParseCSV_SplitTransactions(t *testing.T) {
 	if rec.Splits[0].Category != "Food:Groceries" {
 		t.Errorf("split 0 category = %q, want %q", rec.Splits[0].Category, "Food:Groceries")
 	}
-	expectedAmt := models.MustNewMoney("-120.00")
+	expectedAmt := types.MustNewMoney("-120.00")
 	if !rec.Splits[0].Amount.Equal(expectedAmt) {
 		t.Errorf("split 0 amount = %s, want %s", rec.Splits[0].Amount.String(), expectedAmt.String())
 	}
@@ -416,7 +416,7 @@ func TestWriteCSV_BasicTransactions(t *testing.T) {
 		t.Errorf("round-trip record 0 payee = %q, want %q", result.Records[0].Payee, "Kroger")
 	}
 
-	expectedAmt := models.MustNewMoney("-125.43")
+	expectedAmt := types.MustNewMoney("-125.43")
 	if !result.Records[0].Amount.Equal(expectedAmt) {
 		t.Errorf("round-trip record 0 amount = %s, want %s", result.Records[0].Amount.String(), expectedAmt.String())
 	}

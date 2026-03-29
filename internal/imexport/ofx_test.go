@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestParseOFX_BasicTransactions(t *testing.T) {
@@ -76,11 +76,11 @@ DATA:OFXSGML
 
 	// Verify first record (debit)
 	rec := result.Records[0]
-	expectedDate, _ := models.ParseDate("2024-01-15")
+	expectedDate, _ := types.ParseDate("2024-01-15")
 	if !rec.Date.Equal(expectedDate) {
 		t.Errorf("record 0 date = %v, want %v", rec.Date, expectedDate)
 	}
-	expectedAmount := models.MustNewMoney("-125.43")
+	expectedAmount := types.MustNewMoney("-125.43")
 	if !rec.Amount.Equal(expectedAmount) {
 		t.Errorf("record 0 amount = %v, want %v", rec.Amount, expectedAmount)
 	}
@@ -99,11 +99,11 @@ DATA:OFXSGML
 
 	// Verify second record (credit)
 	rec = result.Records[1]
-	expectedDate, _ = models.ParseDate("2024-01-16")
+	expectedDate, _ = types.ParseDate("2024-01-16")
 	if !rec.Date.Equal(expectedDate) {
 		t.Errorf("record 1 date = %v, want %v", rec.Date, expectedDate)
 	}
-	expectedAmount = models.MustNewMoney("3500.00")
+	expectedAmount = types.MustNewMoney("3500.00")
 	if !rec.Amount.Equal(expectedAmount) {
 		t.Errorf("record 1 amount = %v, want %v", rec.Amount, expectedAmount)
 	}
@@ -166,11 +166,11 @@ func TestParseOFX_XMLStyle(t *testing.T) {
 	}
 
 	rec := result.Records[0]
-	expectedDate, _ := models.ParseDate("2024-01-15")
+	expectedDate, _ := types.ParseDate("2024-01-15")
 	if !rec.Date.Equal(expectedDate) {
 		t.Errorf("date = %v, want %v", rec.Date, expectedDate)
 	}
-	expectedAmount := models.MustNewMoney("-42.50")
+	expectedAmount := types.MustNewMoney("-42.50")
 	if !rec.Amount.Equal(expectedAmount) {
 		t.Errorf("amount = %v, want %v", rec.Amount, expectedAmount)
 	}
@@ -243,7 +243,7 @@ func TestParseOFX_DateFormats(t *testing.T) {
 				t.Fatalf("expected 1 record, got %d", len(result.Records))
 			}
 
-			expectedDate, _ := models.ParseDate(tt.wantDate)
+			expectedDate, _ := types.ParseDate(tt.wantDate)
 			if !result.Records[0].Date.Equal(expectedDate) {
 				t.Errorf("date = %v, want %v", result.Records[0].Date, expectedDate)
 			}
@@ -541,7 +541,7 @@ DATA:OFXSGML
 	if rec.Payee != "RESTAURANT" {
 		t.Errorf("payee = %q, want %q", rec.Payee, "RESTAURANT")
 	}
-	expectedAmount := models.MustNewMoney("-55.00")
+	expectedAmount := types.MustNewMoney("-55.00")
 	if !rec.Amount.Equal(expectedAmount) {
 		t.Errorf("amount = %v, want %v", rec.Amount, expectedAmount)
 	}
@@ -700,7 +700,7 @@ func TestParseOFXDate(t *testing.T) {
 				return
 			}
 			if !tt.wantErr {
-				want, _ := models.ParseDate(tt.want)
+				want, _ := types.ParseDate(tt.want)
 				if !got.Equal(want) {
 					t.Errorf("parseOFXDate(%q) = %v, want %v", tt.input, got, want)
 				}

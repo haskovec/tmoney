@@ -6,8 +6,9 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -15,10 +16,10 @@ import (
 // =============================================================================
 
 func TestBuildAccountOptions(t *testing.T) {
-	accounts := []*models.Account{
-		{BaseModel: models.BaseModel{ID: models.NewID()}, Name: "Checking"},
-		{BaseModel: models.BaseModel{ID: models.NewID()}, Name: "Savings"},
-		{BaseModel: models.BaseModel{ID: models.NewID()}, Name: "Credit Card"},
+	accounts := []*account.Account{
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Checking"},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Savings"},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Credit Card"},
 	}
 
 	options, ids := buildAccountOptions(accounts)
@@ -172,7 +173,7 @@ func TestBuildTransferDialog_SingleAccount(t *testing.T) {
 // =============================================================================
 
 func TestApp_HandleRegisterKeys_TransferKey(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		width:       120,
@@ -183,15 +184,15 @@ func TestApp_HandleRegisterKeys_TransferKey(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: accountID},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
 			},
-			transactions:  []*models.Transaction{},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			transactions:  []*transaction.Transaction{},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 	app.buildRegisterTable()
@@ -208,8 +209,8 @@ func TestApp_HandleRegisterKeys_TransferKey(t *testing.T) {
 }
 
 func TestApp_Update_TransferDialogDataMsg(t *testing.T) {
-	checkingID := models.NewID()
-	savingsID := models.NewID()
+	checkingID := types.NewID()
+	savingsID := types.NewID()
 
 	app := &App{
 		currentView: ViewRegister,
@@ -220,17 +221,17 @@ func TestApp_Update_TransferDialogDataMsg(t *testing.T) {
 	}
 
 	// Set up sidebar with a selected account
-	app.sidebar.SetAccounts([]*models.Account{
-		{BaseModel: models.BaseModel{ID: checkingID}, Name: "Checking", Active: true, Type: models.AccountTypeChecking},
-		{BaseModel: models.BaseModel{ID: savingsID}, Name: "Savings", Active: true, Type: models.AccountTypeSavings},
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking", Active: true, Type: account.TypeChecking},
+		{BaseModel: types.BaseModel{ID: savingsID}, Name: "Savings", Active: true, Type: account.TypeSavings},
 	}, nil)
 
 	data := &transferDialogData{
-		accounts: []*models.Account{
-			{BaseModel: models.BaseModel{ID: checkingID}, Name: "Checking"},
-			{BaseModel: models.BaseModel{ID: savingsID}, Name: "Savings"},
+		accounts: []*account.Account{
+			{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking"},
+			{BaseModel: types.BaseModel{ID: savingsID}, Name: "Savings"},
 		},
-		accountIDs: []models.ID{checkingID, savingsID},
+		accountIDs: []types.ID{checkingID, savingsID},
 	}
 
 	msg := transferDialogDataMsg{data: data}
@@ -272,9 +273,9 @@ func TestApp_HandleTransferDialogKey_Cancel(t *testing.T) {
 			return d
 		}(),
 		transferDialogData: &transferDialogData{
-			accounts: []*models.Account{},
+			accounts: []*account.Account{},
 		},
-		transferDialogAccountIDs: []models.ID{models.NewID(), models.NewID()},
+		transferDialogAccountIDs: []types.ID{types.NewID(), types.NewID()},
 	}
 
 	// Press Escape to cancel
@@ -311,9 +312,9 @@ func TestApp_HandleTransferDialogKey_TabCycles(t *testing.T) {
 			return d
 		}(),
 		transferDialogData: &transferDialogData{
-			accounts: []*models.Account{},
+			accounts: []*account.Account{},
 		},
-		transferDialogAccountIDs: []models.ID{models.NewID(), models.NewID()},
+		transferDialogAccountIDs: []types.ID{types.NewID(), types.NewID()},
 	}
 
 	initialFocus := app.transferDialog.FocusIndex()
@@ -332,7 +333,7 @@ func TestApp_HandleTransferDialogKey_TabCycles(t *testing.T) {
 }
 
 func TestApp_Update_TransferDialogSavedMsg(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
@@ -341,8 +342,8 @@ func TestApp_Update_TransferDialogSavedMsg(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 	// Set up sidebar with a selected account
-	app.sidebar.SetAccounts([]*models.Account{
-		{BaseModel: models.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: models.AccountTypeChecking},
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 	}, nil)
 
 	msg := transferDialogSavedMsg{}
@@ -354,7 +355,7 @@ func TestApp_Update_TransferDialogSavedMsg(t *testing.T) {
 }
 
 func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
@@ -372,9 +373,9 @@ func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
 			return d
 		}(),
 		transferDialogData: &transferDialogData{
-			accounts: []*models.Account{},
+			accounts: []*account.Account{},
 		},
-		transferDialogAccountIDs: []models.ID{accountID},
+		transferDialogAccountIDs: []types.ID{accountID},
 	}
 
 	_, cmd := app.submitTransferDialog()
@@ -394,8 +395,8 @@ func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
 }
 
 func TestApp_SubmitTransferDialog_NegativeAmount(t *testing.T) {
-	fromID := models.NewID()
-	toID := models.NewID()
+	fromID := types.NewID()
+	toID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
@@ -413,9 +414,9 @@ func TestApp_SubmitTransferDialog_NegativeAmount(t *testing.T) {
 			return d
 		}(),
 		transferDialogData: &transferDialogData{
-			accounts: []*models.Account{},
+			accounts: []*account.Account{},
 		},
-		transferDialogAccountIDs: []models.ID{fromID, toID},
+		transferDialogAccountIDs: []types.ID{fromID, toID},
 	}
 
 	_, cmd := app.submitTransferDialog()
@@ -435,8 +436,8 @@ func TestApp_SubmitTransferDialog_NegativeAmount(t *testing.T) {
 }
 
 func TestApp_SubmitTransferDialog_InvalidDate(t *testing.T) {
-	fromID := models.NewID()
-	toID := models.NewID()
+	fromID := types.NewID()
+	toID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
@@ -454,9 +455,9 @@ func TestApp_SubmitTransferDialog_InvalidDate(t *testing.T) {
 			return d
 		}(),
 		transferDialogData: &transferDialogData{
-			accounts: []*models.Account{},
+			accounts: []*account.Account{},
 		},
-		transferDialogAccountIDs: []models.ID{fromID, toID},
+		transferDialogAccountIDs: []types.ID{fromID, toID},
 	}
 
 	_, cmd := app.submitTransferDialog()
@@ -473,8 +474,8 @@ func TestApp_SubmitTransferDialog_InvalidDate(t *testing.T) {
 }
 
 func TestApp_SubmitTransferDialog_EmptyAmount(t *testing.T) {
-	fromID := models.NewID()
-	toID := models.NewID()
+	fromID := types.NewID()
+	toID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
@@ -492,9 +493,9 @@ func TestApp_SubmitTransferDialog_EmptyAmount(t *testing.T) {
 			return d
 		}(),
 		transferDialogData: &transferDialogData{
-			accounts: []*models.Account{},
+			accounts: []*account.Account{},
 		},
-		transferDialogAccountIDs: []models.ID{fromID, toID},
+		transferDialogAccountIDs: []types.ID{fromID, toID},
 	}
 
 	_, cmd := app.submitTransferDialog()
@@ -511,8 +512,8 @@ func TestApp_SubmitTransferDialog_EmptyAmount(t *testing.T) {
 }
 
 func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
-	fromID := models.NewID()
-	toID := models.NewID()
+	fromID := types.NewID()
+	toID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
@@ -530,9 +531,9 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 			return d
 		}(),
 		transferDialogData: &transferDialogData{
-			accounts: []*models.Account{},
+			accounts: []*account.Account{},
 		},
-		transferDialogAccountIDs: []models.ID{fromID, toID},
+		transferDialogAccountIDs: []types.ID{fromID, toID},
 	}
 
 	model, cmd := app.submitTransferDialog()
@@ -565,7 +566,7 @@ func TestApp_CloseTransferDialog(t *testing.T) {
 			return d
 		}(),
 		transferDialogData:       &transferDialogData{},
-		transferDialogAccountIDs: []models.ID{models.NewID()},
+		transferDialogAccountIDs: []types.ID{types.NewID()},
 	}
 
 	app.closeTransferDialog()
@@ -595,15 +596,15 @@ func TestApp_RenderLayout_WithTransferDialog(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		keys:        defaultKeyMap(),
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: models.NewID()},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: types.NewID()},
 				Name:      "Checking",
 			},
-			transactions:  []*models.Transaction{},
-			balance:       &service.AccountBalance{CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			transactions:  []*transaction.Transaction{},
+			balance:       &account.Balance{CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 		transferDialog: func() *Dialog {
 			d := NewDialog("New Transfer")
@@ -620,8 +621,8 @@ func TestApp_RenderLayout_WithTransferDialog(t *testing.T) {
 }
 
 func TestApp_TransferDialogDataMsg_PreSelectsFromAccount(t *testing.T) {
-	checkingID := models.NewID()
-	savingsID := models.NewID()
+	checkingID := types.NewID()
+	savingsID := types.NewID()
 
 	app := &App{
 		currentView: ViewRegister,
@@ -632,9 +633,9 @@ func TestApp_TransferDialogDataMsg_PreSelectsFromAccount(t *testing.T) {
 	}
 
 	// Set up sidebar with Savings selected
-	app.sidebar.SetAccounts([]*models.Account{
-		{BaseModel: models.BaseModel{ID: checkingID}, Name: "Checking", Active: true, Type: models.AccountTypeChecking},
-		{BaseModel: models.BaseModel{ID: savingsID}, Name: "Savings", Active: true, Type: models.AccountTypeSavings},
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking", Active: true, Type: account.TypeChecking},
+		{BaseModel: types.BaseModel{ID: savingsID}, Name: "Savings", Active: true, Type: account.TypeSavings},
 	}, nil)
 	// Select Savings account (second item - navigate down past the group header)
 	app.sidebar.MoveDown() // to Checking
@@ -642,11 +643,11 @@ func TestApp_TransferDialogDataMsg_PreSelectsFromAccount(t *testing.T) {
 	app.sidebar.Select()
 
 	data := &transferDialogData{
-		accounts: []*models.Account{
-			{BaseModel: models.BaseModel{ID: checkingID}, Name: "Checking"},
-			{BaseModel: models.BaseModel{ID: savingsID}, Name: "Savings"},
+		accounts: []*account.Account{
+			{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking"},
+			{BaseModel: types.BaseModel{ID: savingsID}, Name: "Savings"},
 		},
-		accountIDs: []models.ID{checkingID, savingsID},
+		accountIDs: []types.ID{checkingID, savingsID},
 	}
 
 	msg := transferDialogDataMsg{data: data}
@@ -670,8 +671,8 @@ func TestApp_TransferDialogDataMsg_PreSelectsFromAccount(t *testing.T) {
 }
 
 func TestApp_SubmitTransferDialog_ZeroAmount(t *testing.T) {
-	fromID := models.NewID()
-	toID := models.NewID()
+	fromID := types.NewID()
+	toID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
@@ -689,9 +690,9 @@ func TestApp_SubmitTransferDialog_ZeroAmount(t *testing.T) {
 			return d
 		}(),
 		transferDialogData: &transferDialogData{
-			accounts: []*models.Account{},
+			accounts: []*account.Account{},
 		},
-		transferDialogAccountIDs: []models.ID{fromID, toID},
+		transferDialogAccountIDs: []types.ID{fromID, toID},
 	}
 
 	_, cmd := app.submitTransferDialog()

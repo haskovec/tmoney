@@ -5,7 +5,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // MatchConfidence represents the confidence level of a match.
@@ -27,7 +28,7 @@ type MatchResult struct {
 	ImportRecord *ImportRecord
 
 	// MatchedTransaction is the existing transaction that matched, or nil if no match.
-	MatchedTransaction *models.Transaction
+	MatchedTransaction *transaction.Transaction
 
 	// Confidence is the confidence level of the match.
 	Confidence MatchConfidence
@@ -49,7 +50,7 @@ type MatchResult struct {
 
 // ExistingTransaction wraps a transaction with its payee name for matching.
 type ExistingTransaction struct {
-	Transaction     *models.Transaction
+	Transaction     *transaction.Transaction
 	PayeeName       string
 	BankReferenceID string
 }
@@ -307,7 +308,7 @@ func sortCandidates(candidates []matchCandidate) {
 
 // dateScore calculates the date closeness score (0.0 to 1.0).
 // Returns 0 if outside the date window.
-func (m *Matcher) dateScore(importDate, existingDate models.Date) float64 {
+func (m *Matcher) dateScore(importDate, existingDate types.Date) float64 {
 	days := absDaysDiff(importDate, existingDate)
 	if days > m.config.DateWindowDays {
 		return 0
@@ -331,7 +332,7 @@ func (m *Matcher) payeeScore(importPayee, existingPayee string) float64 {
 }
 
 // absDaysDiff returns the absolute number of days between two dates.
-func absDaysDiff(a, b models.Date) int {
+func absDaysDiff(a, b types.Date) int {
 	diff := a.Time().Sub(b.Time())
 	days := int(math.Abs(diff.Hours() / 24))
 	return days

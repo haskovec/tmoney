@@ -3,7 +3,8 @@ package undo
 import (
 	"fmt"
 
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
 )
 
 // AutoPostCommand represents an auto-post session that created transactions
@@ -14,9 +15,9 @@ import (
 // auto-post has already been performed (via Manager.Push), since auto-posting
 // runs asynchronously on startup.
 type AutoPostCommand struct {
-	txnSvc       *service.TransactionService
-	scheduledSvc *service.ScheduledTransactionService
-	summary      *service.AutoPostSummary
+	txnSvc       *transaction.Service
+	scheduledSvc *scheduled.Service
+	summary      *scheduled.AutoPostSummary
 	count        int
 }
 
@@ -24,9 +25,9 @@ type AutoPostCommand struct {
 // auto-post session. The summary contains the created transactions and
 // the before-state of each scheduled transaction for undo.
 func NewAutoPostCommand(
-	txnSvc *service.TransactionService,
-	scheduledSvc *service.ScheduledTransactionService,
-	summary *service.AutoPostSummary,
+	txnSvc *transaction.Service,
+	scheduledSvc *scheduled.Service,
+	summary *scheduled.AutoPostSummary,
 ) *AutoPostCommand {
 	return &AutoPostCommand{
 		txnSvc:       txnSvc,

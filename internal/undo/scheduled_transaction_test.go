@@ -4,9 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
@@ -15,26 +18,26 @@ import (
 // =============================================================================
 
 type scheduledTestEnv struct {
-	scheduledSvc *service.ScheduledTransactionService
-	txnSvc       *service.TransactionService
-	accountRepo  *repository.AccountRepository
-	payeeRepo    *repository.PayeeRepository
-	categoryRepo *repository.CategoryRepository
+	scheduledSvc *scheduled.Service
+	txnSvc       *transaction.Service
+	accountRepo  *account.Repository
+	payeeRepo    *payee.Repository
+	categoryRepo *category.Repository
 }
 
 func createScheduledTestEnv(t *testing.T) *scheduledTestEnv {
 	t.Helper()
 	database := createTestDB(t)
-	txnRepo := repository.NewTransactionRepository(database)
-	splitRepo := repository.NewSplitRepository(database)
-	transferRepo := repository.NewTransferRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	accountRepo := repository.NewAccountRepository(database)
-	categoryRepo := repository.NewCategoryRepository(database)
-	scheduledRepo := repository.NewScheduledTransactionRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	splitRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+	scheduledRepo := scheduled.NewRepository(database)
 
-	txnSvc := service.NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
-	scheduledSvc := service.NewScheduledTransactionService(scheduledRepo, txnRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, database)
 
 	return &scheduledTestEnv{
 		scheduledSvc: scheduledSvc,
@@ -45,27 +48,27 @@ func createScheduledTestEnv(t *testing.T) *scheduledTestEnv {
 	}
 }
 
-func createScheduledTestAccount(t *testing.T, repo *repository.AccountRepository, name string) *models.Account {
+func createScheduledTestAccount(t *testing.T, repo *account.Repository, name string) *account.Account {
 	t.Helper()
-	account := models.NewAccount(name, models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	if err := repo.Create(account); err != nil {
+	acct := account.NewAccount(name, account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := repo.Create(acct); err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
-	return account
+	return acct
 }
 
-func createScheduledTestPayee(t *testing.T, repo *repository.PayeeRepository, name string) *models.Payee {
+func createScheduledTestPayee(t *testing.T, repo *payee.Repository, name string) *payee.Payee {
 	t.Helper()
-	payee := models.NewPayee(name)
-	if err := repo.Create(payee); err != nil {
+	py := payee.NewPayee(name)
+	if err := repo.Create(py); err != nil {
 		t.Fatalf("Failed to create test payee: %v", err)
 	}
-	return payee
+	return py
 }
 
-func createScheduledTestCategory(t *testing.T, repo *repository.CategoryRepository, name string) *models.Category {
+func createScheduledTestCategory(t *testing.T, repo *category.Repository, name string) *category.Category {
 	t.Helper()
-	cat := models.NewCategory(name, models.CategoryTypeExpense)
+	cat := category.NewCategory(name, category.TypeExpense)
 	if err := repo.Create(cat); err != nil {
 		t.Fatalf("Failed to create test category: %v", err)
 	}
@@ -73,8 +76,8 @@ func createScheduledTestCategory(t *testing.T, repo *repository.CategoryReposito
 }
 
 // pastDate returns a date in the past so scheduled transactions are due.
-func pastDate() models.Date {
-	return models.NewDate(2024, time.January, 1)
+func pastDate() types.Date {
+	return types.NewDate(2024, time.January, 1)
 }
 
 // =============================================================================
@@ -84,10 +87,10 @@ func pastDate() models.Date {
 func TestCreateScheduledTransactionCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("creates and then deletes scheduled transaction", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-100.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, pastDate(), amount)
+		amount := types.MustNewMoney("-100.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, pastDate(), amount)
 
 		cmd := undo.NewCreateScheduledTransactionCommand(env.scheduledSvc, st)
 
@@ -100,8 +103,8 @@ func TestCreateScheduledTransactionCommand_ExecuteAndUndo(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetByID() after Execute error = %v", err)
 		}
-		if retrieved.Frequency != models.FrequencyMonthly {
-			t.Errorf("frequency = %q, want %q", retrieved.Frequency, models.FrequencyMonthly)
+		if retrieved.Frequency != scheduled.FrequencyMonthly {
+			t.Errorf("frequency = %q, want %q", retrieved.Frequency, scheduled.FrequencyMonthly)
 		}
 
 		// Undo: scheduled transaction should be gone
@@ -126,10 +129,10 @@ func TestCreateScheduledTransactionCommand_Description(t *testing.T) {
 func TestCreateScheduledTransactionCommand_WithManager(t *testing.T) {
 	t.Run("works with undo manager execute and undo", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-50.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyWeekly, pastDate(), amount)
+		amount := types.MustNewMoney("-50.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyWeekly, pastDate(), amount)
 
 		mgr := undo.NewManager()
 		cmd := undo.NewCreateScheduledTransactionCommand(env.scheduledSvc, st)
@@ -168,8 +171,8 @@ func TestCreateScheduledTransactionCommand_WithManager(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetByID() after redo error = %v", err)
 		}
-		if retrieved.Frequency != models.FrequencyWeekly {
-			t.Errorf("frequency after redo = %q, want %q", retrieved.Frequency, models.FrequencyWeekly)
+		if retrieved.Frequency != scheduled.FrequencyWeekly {
+			t.Errorf("frequency after redo = %q, want %q", retrieved.Frequency, scheduled.FrequencyWeekly)
 		}
 	})
 }
@@ -181,10 +184,10 @@ func TestCreateScheduledTransactionCommand_WithManager(t *testing.T) {
 func TestEditScheduledTransactionCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("edits and then restores original state", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-100.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, pastDate(), amount)
+		amount := types.MustNewMoney("-100.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, pastDate(), amount)
 		st.SetMemo("Original memo")
 		if err := env.scheduledSvc.Create(st); err != nil {
 			t.Fatalf("Create() error = %v", err)
@@ -195,8 +198,8 @@ func TestEditScheduledTransactionCommand_ExecuteAndUndo(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetByID() error = %v", err)
 		}
-		newAmount := models.MustNewMoney("-200.00")
-		edited.Amount = models.NullableMoney{Money: newAmount, Valid: true}
+		newAmount := types.MustNewMoney("-200.00")
+		edited.Amount = types.NullableMoney{Money: newAmount, Valid: true}
 		edited.SetMemo("Updated memo")
 
 		cmd := undo.NewEditScheduledTransactionCommand(env.scheduledSvc, edited)
@@ -249,10 +252,10 @@ func TestEditScheduledTransactionCommand_Description(t *testing.T) {
 func TestDeleteScheduledTransactionCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("deletes and then recreates scheduled transaction", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-75.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, pastDate(), amount)
+		amount := types.MustNewMoney("-75.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, pastDate(), amount)
 		st.SetMemo("Test memo")
 		if err := env.scheduledSvc.Create(st); err != nil {
 			t.Fatalf("Create() error = %v", err)
@@ -289,7 +292,7 @@ func TestDeleteScheduledTransactionCommand_ExecuteAndUndo(t *testing.T) {
 }
 
 func TestDeleteScheduledTransactionCommand_Description(t *testing.T) {
-	cmd := undo.NewDeleteScheduledTransactionCommand(nil, models.NewID())
+	cmd := undo.NewDeleteScheduledTransactionCommand(nil, types.NewID())
 	if cmd.Description() != "Delete scheduled transaction" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Delete scheduled transaction")
 	}
@@ -302,11 +305,11 @@ func TestDeleteScheduledTransactionCommand_Description(t *testing.T) {
 func TestPostScheduledTransactionCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("posts scheduled transaction and undoes by deleting transaction and restoring schedule", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-150.00")
+		amount := types.MustNewMoney("-150.00")
 		startDate := pastDate()
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, startDate, amount)
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, startDate, amount)
 		if err := env.scheduledSvc.Create(st); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
@@ -368,11 +371,11 @@ func TestPostScheduledTransactionCommand_ExecuteAndUndo(t *testing.T) {
 func TestPostScheduledTransactionCommand_WithOverrideAmount(t *testing.T) {
 	t.Run("posts with override amount", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		scheduledAmount := models.MustNewMoney("-100.00")
-		overrideAmount := models.MustNewMoney("-125.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, pastDate(), scheduledAmount)
+		scheduledAmount := types.MustNewMoney("-100.00")
+		overrideAmount := types.MustNewMoney("-125.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, pastDate(), scheduledAmount)
 		if err := env.scheduledSvc.Create(st); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
@@ -407,12 +410,12 @@ func TestPostScheduledTransactionCommand_WithOverrideAmount(t *testing.T) {
 func TestPostScheduledTransactionCommand_WithPayeeAndCategory(t *testing.T) {
 	t.Run("posts with payee and category copied to transaction", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
-		payee := createScheduledTestPayee(t, env.payeeRepo, "Electric Co")
-		category := createScheduledTestCategory(t, env.categoryRepo, "Utilities")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		py := createScheduledTestPayee(t, env.payeeRepo, "Electric Co")
+		cat := createScheduledTestCategory(t, env.categoryRepo, "Utilities")
 
-		amount := models.MustNewMoney("-80.00")
-		st := models.NewScheduledTransactionFull(account.ID, models.FrequencyMonthly, pastDate(), amount, payee.ID, category.ID, "Monthly electric bill")
+		amount := types.MustNewMoney("-80.00")
+		st := scheduled.NewTransactionFull(acct.ID, scheduled.FrequencyMonthly, pastDate(), amount, py.ID, cat.ID, "Monthly electric bill")
 		if err := env.scheduledSvc.Create(st); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
@@ -428,10 +431,10 @@ func TestPostScheduledTransactionCommand_WithPayeeAndCategory(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetByID(txn) error = %v", err)
 		}
-		if !retrieved.PayeeID.Valid || retrieved.PayeeID.ID != payee.ID {
+		if !retrieved.PayeeID.Valid || retrieved.PayeeID.ID != py.ID {
 			t.Error("transaction should have payee from scheduled transaction")
 		}
-		if !retrieved.CategoryID.Valid || retrieved.CategoryID.ID != category.ID {
+		if !retrieved.CategoryID.Valid || retrieved.CategoryID.ID != cat.ID {
 			t.Error("transaction should have category from scheduled transaction")
 		}
 		if retrieved.Memo.String != "Monthly electric bill" {
@@ -451,14 +454,14 @@ func TestPostScheduledTransactionCommand_WithPayeeAndCategory(t *testing.T) {
 }
 
 func TestPostScheduledTransactionCommand_Description(t *testing.T) {
-	cmd := undo.NewPostScheduledTransactionCommand(nil, nil, models.NewID(), nil)
+	cmd := undo.NewPostScheduledTransactionCommand(nil, nil, types.NewID(), nil)
 	if cmd.Description() != "Post scheduled transaction" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Post scheduled transaction")
 	}
 }
 
 func TestPostScheduledTransactionCommand_CreatedTransactionNilBeforeExecute(t *testing.T) {
-	cmd := undo.NewPostScheduledTransactionCommand(nil, nil, models.NewID(), nil)
+	cmd := undo.NewPostScheduledTransactionCommand(nil, nil, types.NewID(), nil)
 	if cmd.CreatedTransaction() != nil {
 		t.Error("CreatedTransaction() should be nil before Execute")
 	}
@@ -467,10 +470,10 @@ func TestPostScheduledTransactionCommand_CreatedTransactionNilBeforeExecute(t *t
 func TestPostScheduledTransactionCommand_WithManager(t *testing.T) {
 	t.Run("post via manager undo/redo cycle", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-200.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, pastDate(), amount)
+		amount := types.MustNewMoney("-200.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, pastDate(), amount)
 		if err := env.scheduledSvc.Create(st); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
@@ -542,10 +545,10 @@ func TestPostScheduledTransactionCommand_WithManager(t *testing.T) {
 func TestSkipScheduledTransactionCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("skips and then restores schedule state", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-100.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, pastDate(), amount)
+		amount := types.MustNewMoney("-100.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, pastDate(), amount)
 		if err := env.scheduledSvc.Create(st); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
@@ -585,10 +588,10 @@ func TestSkipScheduledTransactionCommand_ExecuteAndUndo(t *testing.T) {
 func TestSkipScheduledTransactionCommand_WithOccurrences(t *testing.T) {
 	t.Run("skip restores occurrences remaining on undo", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-50.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, pastDate(), amount)
+		amount := types.MustNewMoney("-50.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, pastDate(), amount)
 		st.SetOccurrences(3)
 		if err := env.scheduledSvc.Create(st); err != nil {
 			t.Fatalf("Create() error = %v", err)
@@ -627,7 +630,7 @@ func TestSkipScheduledTransactionCommand_WithOccurrences(t *testing.T) {
 }
 
 func TestSkipScheduledTransactionCommand_Description(t *testing.T) {
-	cmd := undo.NewSkipScheduledTransactionCommand(nil, models.NewID())
+	cmd := undo.NewSkipScheduledTransactionCommand(nil, types.NewID())
 	if cmd.Description() != "Skip scheduled transaction" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Skip scheduled transaction")
 	}
@@ -636,10 +639,10 @@ func TestSkipScheduledTransactionCommand_Description(t *testing.T) {
 func TestSkipScheduledTransactionCommand_WithManager(t *testing.T) {
 	t.Run("skip via manager undo/redo cycle", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-60.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, pastDate(), amount)
+		amount := types.MustNewMoney("-60.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, pastDate(), amount)
 		if err := env.scheduledSvc.Create(st); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}

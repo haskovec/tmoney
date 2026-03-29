@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
@@ -14,7 +14,7 @@ import (
 // =============================================================================
 
 func TestAutoPostCommand_Description(t *testing.T) {
-	summary := &service.AutoPostSummary{PostedCount: 3}
+	summary := &scheduled.AutoPostSummary{PostedCount: 3}
 	cmd := undo.NewAutoPostCommand(nil, nil, summary)
 	want := "Auto-post 3 scheduled transaction(s)"
 	if cmd.Description() != want {
@@ -23,7 +23,7 @@ func TestAutoPostCommand_Description(t *testing.T) {
 }
 
 func TestAutoPostCommand_DescriptionSingle(t *testing.T) {
-	summary := &service.AutoPostSummary{PostedCount: 1}
+	summary := &scheduled.AutoPostSummary{PostedCount: 1}
 	cmd := undo.NewAutoPostCommand(nil, nil, summary)
 	want := "Auto-post 1 scheduled transaction(s)"
 	if cmd.Description() != want {
@@ -32,7 +32,7 @@ func TestAutoPostCommand_DescriptionSingle(t *testing.T) {
 }
 
 func TestAutoPostCommand_ExecuteIsNoop(t *testing.T) {
-	summary := &service.AutoPostSummary{PostedCount: 0}
+	summary := &scheduled.AutoPostSummary{PostedCount: 0}
 	cmd := undo.NewAutoPostCommand(nil, nil, summary)
 	if err := cmd.Execute(); err != nil {
 		t.Errorf("Execute() should be no-op, got error = %v", err)
@@ -42,11 +42,11 @@ func TestAutoPostCommand_ExecuteIsNoop(t *testing.T) {
 func TestAutoPostCommand_UndoDeletesTransactionsAndRestoresSchedule(t *testing.T) {
 	t.Run("undoes single auto-posted transaction", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
 		// Create a scheduled transaction and auto-post it
-		amount := models.MustNewMoney("-500.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, models.Today(), amount)
+		amount := types.MustNewMoney("-500.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, types.Today(), amount)
 		st.SetAutoPost(true)
 		st.SetPostLeadDays(0)
 		if err := env.scheduledSvc.Create(st); err != nil {
@@ -103,14 +103,14 @@ func TestAutoPostCommand_UndoDeletesTransactionsAndRestoresSchedule(t *testing.T
 func TestAutoPostCommand_UndoMultipleOverdueOccurrences(t *testing.T) {
 	t.Run("undoes multiple overdue occurrences", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-100.00")
+		amount := types.MustNewMoney("-100.00")
 		// Start date 90 days ago to trigger multiple overdue posts
-		pastStartDate := models.NewDate(time.Now().AddDate(0, 0, -90).Year(),
+		pastStartDate := types.NewDate(time.Now().AddDate(0, 0, -90).Year(),
 			time.Now().AddDate(0, 0, -90).Month(),
 			time.Now().AddDate(0, 0, -90).Day())
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, pastStartDate, amount)
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, pastStartDate, amount)
 		st.SetAutoPost(true)
 		st.SetPostLeadDays(0)
 		if err := env.scheduledSvc.Create(st); err != nil {
@@ -129,7 +129,7 @@ func TestAutoPostCommand_UndoMultipleOverdueOccurrences(t *testing.T) {
 		}
 
 		// Collect all created transaction IDs
-		var txnIDs []models.ID
+		var txnIDs []types.ID
 		for _, result := range summary.Results {
 			for _, txn := range result.Transactions {
 				txnIDs = append(txnIDs, txn.ID)
@@ -170,19 +170,19 @@ func TestAutoPostCommand_UndoMultipleOverdueOccurrences(t *testing.T) {
 func TestAutoPostCommand_UndoMultipleScheduledTransactions(t *testing.T) {
 	t.Run("undoes auto-post across multiple scheduled transactions", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount1 := models.MustNewMoney("-500.00")
-		amount2 := models.MustNewMoney("-100.00")
+		amount1 := types.MustNewMoney("-500.00")
+		amount2 := types.MustNewMoney("-100.00")
 
-		st1 := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, models.Today(), amount1)
+		st1 := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, types.Today(), amount1)
 		st1.SetAutoPost(true)
 		st1.SetPostLeadDays(0)
 		if err := env.scheduledSvc.Create(st1); err != nil {
 			t.Fatalf("Create(st1) error = %v", err)
 		}
 
-		st2 := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, models.Today(), amount2)
+		st2 := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, types.Today(), amount2)
 		st2.SetAutoPost(true)
 		st2.SetPostLeadDays(0)
 		if err := env.scheduledSvc.Create(st2); err != nil {
@@ -231,10 +231,10 @@ func TestAutoPostCommand_UndoMultipleScheduledTransactions(t *testing.T) {
 func TestAutoPostCommand_WithManagerPush(t *testing.T) {
 	t.Run("pushed auto-post command can be undone via manager", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-250.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, models.Today(), amount)
+		amount := types.MustNewMoney("-250.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, types.Today(), amount)
 		st.SetAutoPost(true)
 		st.SetPostLeadDays(0)
 		if err := env.scheduledSvc.Create(st); err != nil {
@@ -289,10 +289,10 @@ func TestAutoPostCommand_WithManagerPush(t *testing.T) {
 func TestAutoPostCommand_SkippedResultsNotUndone(t *testing.T) {
 	t.Run("skipped results do not affect undo", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
 		// Create a variable-amount scheduled transaction (will be skipped)
-		st := models.NewScheduledTransaction(account.ID, models.FrequencyMonthly, models.Today())
+		st := scheduled.NewTransaction(acct.ID, scheduled.FrequencyMonthly, types.Today())
 		st.SetAutoPost(true)
 		st.SetPostLeadDays(0)
 		if err := env.scheduledSvc.Create(st); err != nil {
@@ -316,10 +316,10 @@ func TestAutoPostCommand_SkippedResultsNotUndone(t *testing.T) {
 func TestAutoPostCommand_BeforeScheduleCaptured(t *testing.T) {
 	t.Run("AutoPost captures BeforeSchedule in results", func(t *testing.T) {
 		env := createScheduledTestEnv(t)
-		account := createScheduledTestAccount(t, env.accountRepo, "Checking")
+		acct := createScheduledTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-300.00")
-		st := models.NewScheduledTransactionWithAmount(account.ID, models.FrequencyMonthly, models.Today(), amount)
+		amount := types.MustNewMoney("-300.00")
+		st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, types.Today(), amount)
 		st.SetAutoPost(true)
 		st.SetPostLeadDays(0)
 		if err := env.scheduledSvc.Create(st); err != nil {

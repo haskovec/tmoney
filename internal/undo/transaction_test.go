@@ -4,10 +4,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
@@ -33,22 +35,22 @@ func createTestDB(t *testing.T) *db.DB {
 }
 
 type testEnv struct {
-	txnSvc       *service.TransactionService
-	accountRepo  *repository.AccountRepository
-	categoryRepo *repository.CategoryRepository
+	txnSvc       *transaction.Service
+	accountRepo  *account.Repository
+	categoryRepo *category.Repository
 }
 
 func createTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 	database := createTestDB(t)
-	txnRepo := repository.NewTransactionRepository(database)
-	splitRepo := repository.NewSplitRepository(database)
-	transferRepo := repository.NewTransferRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	accountRepo := repository.NewAccountRepository(database)
-	categoryRepo := repository.NewCategoryRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	splitRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
 
-	svc := service.NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
 	return &testEnv{
 		txnSvc:       svc,
 		accountRepo:  accountRepo,
@@ -56,18 +58,18 @@ func createTestEnv(t *testing.T) *testEnv {
 	}
 }
 
-func createTestAccount(t *testing.T, repo *repository.AccountRepository, name string) *models.Account {
+func createTestAccount(t *testing.T, repo *account.Repository, name string) *account.Account {
 	t.Helper()
-	account := models.NewAccount(name, models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	if err := repo.Create(account); err != nil {
+	acct := account.NewAccount(name, account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := repo.Create(acct); err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
-	return account
+	return acct
 }
 
-func createTestCategory(t *testing.T, repo *repository.CategoryRepository, name string) *models.Category {
+func createTestCategory(t *testing.T, repo *category.Repository, name string) *category.Category {
 	t.Helper()
-	cat := models.NewCategory(name, models.CategoryTypeExpense)
+	cat := category.NewCategory(name, category.TypeExpense)
 	if err := repo.Create(cat); err != nil {
 		t.Fatalf("Failed to create test category: %v", err)
 	}
@@ -81,10 +83,10 @@ func createTestCategory(t *testing.T, repo *repository.CategoryRepository, name 
 func TestCreateTransactionCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("creates and then deletes transaction", func(t *testing.T) {
 		env := createTestEnv(t)
-		account := createTestAccount(t, env.accountRepo, "Checking")
+		acct := createTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-50.00")
-		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		amount := types.MustNewMoney("-50.00")
+		txn := transaction.NewTransaction(acct.ID, types.Today(), amount)
 
 		cmd := undo.NewCreateTransactionCommand(env.txnSvc, txn)
 
@@ -123,17 +125,17 @@ func TestCreateTransactionCommand_Description(t *testing.T) {
 func TestCreateTransactionCommand_WithSplits(t *testing.T) {
 	t.Run("creates transaction with splits and undoes both", func(t *testing.T) {
 		env := createTestEnv(t)
-		account := createTestAccount(t, env.accountRepo, "Checking")
+		acct := createTestAccount(t, env.accountRepo, "Checking")
 		cat1 := createTestCategory(t, env.categoryRepo, "Food")
 		cat2 := createTestCategory(t, env.categoryRepo, "Drink")
 
-		amount := models.MustNewMoney("-100.00")
-		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		amount := types.MustNewMoney("-100.00")
+		txn := transaction.NewTransaction(acct.ID, types.Today(), amount)
 
-		split1 := models.NewSplit(txn.ID, cat1.ID, models.MustNewMoney("-60.00"))
-		split2 := models.NewSplit(txn.ID, cat2.ID, models.MustNewMoney("-40.00"))
+		split1 := transaction.NewSplit(txn.ID, cat1.ID, types.MustNewMoney("-60.00"))
+		split2 := transaction.NewSplit(txn.ID, cat2.ID, types.MustNewMoney("-40.00"))
 
-		cmd := undo.NewCreateTransactionWithSplitsCommand(env.txnSvc, txn, []*models.Split{split1, split2})
+		cmd := undo.NewCreateTransactionWithSplitsCommand(env.txnSvc, txn, []*transaction.Split{split1, split2})
 
 		// Execute
 		if err := cmd.Execute(); err != nil {
@@ -163,10 +165,10 @@ func TestCreateTransactionCommand_WithSplits(t *testing.T) {
 func TestCreateTransactionCommand_WithManager(t *testing.T) {
 	t.Run("works with undo manager execute and undo", func(t *testing.T) {
 		env := createTestEnv(t)
-		account := createTestAccount(t, env.accountRepo, "Checking")
+		acct := createTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-25.00")
-		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		amount := types.MustNewMoney("-25.00")
+		txn := transaction.NewTransaction(acct.ID, types.Today(), amount)
 
 		mgr := undo.NewManager()
 		cmd := undo.NewCreateTransactionCommand(env.txnSvc, txn)
@@ -218,10 +220,10 @@ func TestCreateTransactionCommand_WithManager(t *testing.T) {
 func TestEditTransactionCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("edits and then restores original state", func(t *testing.T) {
 		env := createTestEnv(t)
-		account := createTestAccount(t, env.accountRepo, "Checking")
+		acct := createTestAccount(t, env.accountRepo, "Checking")
 
-		originalAmount := models.MustNewMoney("-50.00")
-		txn := models.NewTransaction(account.ID, models.Today(), originalAmount)
+		originalAmount := types.MustNewMoney("-50.00")
+		txn := transaction.NewTransaction(acct.ID, types.Today(), originalAmount)
 		txn.SetMemo("Original memo")
 		if err := env.txnSvc.Create(txn); err != nil {
 			t.Fatalf("Create() error = %v", err)
@@ -232,7 +234,7 @@ func TestEditTransactionCommand_ExecuteAndUndo(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetByID() error = %v", err)
 		}
-		newAmount := models.MustNewMoney("-75.00")
+		newAmount := types.MustNewMoney("-75.00")
 		edited.Amount = newAmount
 		edited.SetMemo("Edited memo")
 
@@ -286,10 +288,10 @@ func TestEditTransactionCommand_Description(t *testing.T) {
 func TestDeleteTransactionCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("deletes and then recreates transaction", func(t *testing.T) {
 		env := createTestEnv(t)
-		account := createTestAccount(t, env.accountRepo, "Checking")
+		acct := createTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-50.00")
-		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		amount := types.MustNewMoney("-50.00")
+		txn := transaction.NewTransaction(acct.ID, types.Today(), amount)
 		txn.SetMemo("Test memo")
 		if err := env.txnSvc.Create(txn); err != nil {
 			t.Fatalf("Create() error = %v", err)
@@ -328,17 +330,17 @@ func TestDeleteTransactionCommand_ExecuteAndUndo(t *testing.T) {
 func TestDeleteTransactionCommand_WithSplits(t *testing.T) {
 	t.Run("deletes transaction with splits and restores both", func(t *testing.T) {
 		env := createTestEnv(t)
-		account := createTestAccount(t, env.accountRepo, "Checking")
+		acct := createTestAccount(t, env.accountRepo, "Checking")
 		cat1 := createTestCategory(t, env.categoryRepo, "Groceries")
 		cat2 := createTestCategory(t, env.categoryRepo, "Dining")
 
-		amount := models.MustNewMoney("-100.00")
-		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		amount := types.MustNewMoney("-100.00")
+		txn := transaction.NewTransaction(acct.ID, types.Today(), amount)
 
-		split1 := models.NewSplit(txn.ID, cat1.ID, models.MustNewMoney("-60.00"))
-		split2 := models.NewSplit(txn.ID, cat2.ID, models.MustNewMoney("-40.00"))
+		split1 := transaction.NewSplit(txn.ID, cat1.ID, types.MustNewMoney("-60.00"))
+		split2 := transaction.NewSplit(txn.ID, cat2.ID, types.MustNewMoney("-40.00"))
 
-		if err := env.txnSvc.CreateWithSplits(txn, []*models.Split{split1, split2}); err != nil {
+		if err := env.txnSvc.CreateWithSplits(txn, []*transaction.Split{split1, split2}); err != nil {
 			t.Fatalf("CreateWithSplits() error = %v", err)
 		}
 
@@ -378,7 +380,7 @@ func TestDeleteTransactionCommand_WithSplits(t *testing.T) {
 }
 
 func TestDeleteTransactionCommand_Description(t *testing.T) {
-	cmd := undo.NewDeleteTransactionCommand(nil, models.NewID())
+	cmd := undo.NewDeleteTransactionCommand(nil, types.NewID())
 	if cmd.Description() != "Delete transaction" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Delete transaction")
 	}
@@ -391,10 +393,10 @@ func TestDeleteTransactionCommand_Description(t *testing.T) {
 func TestVoidTransactionCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("voids and then restores transaction", func(t *testing.T) {
 		env := createTestEnv(t)
-		account := createTestAccount(t, env.accountRepo, "Checking")
+		acct := createTestAccount(t, env.accountRepo, "Checking")
 
-		originalAmount := models.MustNewMoney("-50.00")
-		txn := models.NewTransaction(account.ID, models.Today(), originalAmount)
+		originalAmount := types.MustNewMoney("-50.00")
+		txn := transaction.NewTransaction(acct.ID, types.Today(), originalAmount)
 		txn.SetMemo("Original memo")
 		if err := env.txnSvc.Create(txn); err != nil {
 			t.Fatalf("Create() error = %v", err)
@@ -439,8 +441,8 @@ func TestVoidTransactionCommand_ExecuteAndUndo(t *testing.T) {
 		if restored.Memo.String != "Original memo" {
 			t.Errorf("memo after undo = %q, want %q", restored.Memo.String, "Original memo")
 		}
-		if restored.Status != models.TransactionStatusUncleared {
-			t.Errorf("status after undo = %q, want %q", restored.Status, models.TransactionStatusUncleared)
+		if restored.Status != transaction.StatusUncleared {
+			t.Errorf("status after undo = %q, want %q", restored.Status, transaction.StatusUncleared)
 		}
 	})
 }
@@ -448,10 +450,10 @@ func TestVoidTransactionCommand_ExecuteAndUndo(t *testing.T) {
 func TestVoidTransactionCommand_ClearedTransaction(t *testing.T) {
 	t.Run("voids cleared transaction and restores cleared status", func(t *testing.T) {
 		env := createTestEnv(t)
-		account := createTestAccount(t, env.accountRepo, "Checking")
+		acct := createTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-30.00")
-		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		amount := types.MustNewMoney("-30.00")
+		txn := transaction.NewTransaction(acct.ID, types.Today(), amount)
 		if err := env.txnSvc.Create(txn); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
@@ -473,8 +475,8 @@ func TestVoidTransactionCommand_ClearedTransaction(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetByID() after Undo error = %v", err)
 		}
-		if restored.Status != models.TransactionStatusCleared {
-			t.Errorf("status after undo = %q, want %q", restored.Status, models.TransactionStatusCleared)
+		if restored.Status != transaction.StatusCleared {
+			t.Errorf("status after undo = %q, want %q", restored.Status, transaction.StatusCleared)
 		}
 	})
 }
@@ -482,17 +484,17 @@ func TestVoidTransactionCommand_ClearedTransaction(t *testing.T) {
 func TestVoidTransactionCommand_WithSplits(t *testing.T) {
 	t.Run("voids split transaction and restores splits on undo", func(t *testing.T) {
 		env := createTestEnv(t)
-		account := createTestAccount(t, env.accountRepo, "Checking")
+		acct := createTestAccount(t, env.accountRepo, "Checking")
 		cat1 := createTestCategory(t, env.categoryRepo, "Rent")
 		cat2 := createTestCategory(t, env.categoryRepo, "Utilities")
 
-		amount := models.MustNewMoney("-100.00")
-		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		amount := types.MustNewMoney("-100.00")
+		txn := transaction.NewTransaction(acct.ID, types.Today(), amount)
 
-		split1 := models.NewSplit(txn.ID, cat1.ID, models.MustNewMoney("-60.00"))
-		split2 := models.NewSplit(txn.ID, cat2.ID, models.MustNewMoney("-40.00"))
+		split1 := transaction.NewSplit(txn.ID, cat1.ID, types.MustNewMoney("-60.00"))
+		split2 := transaction.NewSplit(txn.ID, cat2.ID, types.MustNewMoney("-40.00"))
 
-		if err := env.txnSvc.CreateWithSplits(txn, []*models.Split{split1, split2}); err != nil {
+		if err := env.txnSvc.CreateWithSplits(txn, []*transaction.Split{split1, split2}); err != nil {
 			t.Fatalf("CreateWithSplits() error = %v", err)
 		}
 
@@ -527,7 +529,7 @@ func TestVoidTransactionCommand_WithSplits(t *testing.T) {
 }
 
 func TestVoidTransactionCommand_Description(t *testing.T) {
-	cmd := undo.NewVoidTransactionCommand(nil, models.NewID())
+	cmd := undo.NewVoidTransactionCommand(nil, types.NewID())
 	if cmd.Description() != "Void transaction" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Void transaction")
 	}
@@ -543,8 +545,8 @@ func TestCreateTransferCommand_ExecuteAndUndo(t *testing.T) {
 		from := createTestAccount(t, env.accountRepo, "Checking")
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
-		amount := models.MustNewMoney("500.00")
-		cmd := undo.NewCreateTransferCommand(env.txnSvc, from.ID, to.ID, models.Today(), amount)
+		amount := types.MustNewMoney("500.00")
+		cmd := undo.NewCreateTransferCommand(env.txnSvc, from.ID, to.ID, types.Today(), amount)
 
 		// Execute: transfer should exist
 		if err := cmd.Execute(); err != nil {
@@ -589,14 +591,14 @@ func TestCreateTransferCommand_ExecuteAndUndo(t *testing.T) {
 }
 
 func TestCreateTransferCommand_Description(t *testing.T) {
-	cmd := undo.NewCreateTransferCommand(nil, models.NewID(), models.NewID(), models.Today(), models.ZeroMoney)
+	cmd := undo.NewCreateTransferCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney)
 	if cmd.Description() != "Create transfer" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Create transfer")
 	}
 }
 
 func TestCreateTransferCommand_PairNilBeforeExecute(t *testing.T) {
-	cmd := undo.NewCreateTransferCommand(nil, models.NewID(), models.NewID(), models.Today(), models.ZeroMoney)
+	cmd := undo.NewCreateTransferCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney)
 	if cmd.Pair() != nil {
 		t.Error("Pair() should be nil before Execute")
 	}
@@ -612,8 +614,8 @@ func TestDeleteTransferCommand_ExecuteAndUndo(t *testing.T) {
 		from := createTestAccount(t, env.accountRepo, "Checking")
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
-		amount := models.MustNewMoney("200.00")
-		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, models.Today(), amount)
+		amount := types.MustNewMoney("200.00")
+		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount)
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -659,7 +661,7 @@ func TestDeleteTransferCommand_ExecuteAndUndo(t *testing.T) {
 }
 
 func TestDeleteTransferCommand_Description(t *testing.T) {
-	cmd := undo.NewDeleteTransferCommand(nil, models.NewID())
+	cmd := undo.NewDeleteTransferCommand(nil, types.NewID())
 	if cmd.Description() != "Delete transfer" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Delete transfer")
 	}
@@ -675,8 +677,8 @@ func TestVoidTransferCommand_ExecuteAndUndo(t *testing.T) {
 		from := createTestAccount(t, env.accountRepo, "Checking")
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
-		amount := models.MustNewMoney("300.00")
-		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, models.Today(), amount)
+		amount := types.MustNewMoney("300.00")
+		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount)
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -739,10 +741,10 @@ func TestVoidTransferCommand_ExecuteAndUndo(t *testing.T) {
 func TestVoidTransferCommand_NotATransfer(t *testing.T) {
 	t.Run("returns error when transaction is not a transfer", func(t *testing.T) {
 		env := createTestEnv(t)
-		account := createTestAccount(t, env.accountRepo, "Checking")
+		acct := createTestAccount(t, env.accountRepo, "Checking")
 
-		amount := models.MustNewMoney("-50.00")
-		txn := models.NewTransaction(account.ID, models.Today(), amount)
+		amount := types.MustNewMoney("-50.00")
+		txn := transaction.NewTransaction(acct.ID, types.Today(), amount)
 		if err := env.txnSvc.Create(txn); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
@@ -756,7 +758,7 @@ func TestVoidTransferCommand_NotATransfer(t *testing.T) {
 }
 
 func TestVoidTransferCommand_Description(t *testing.T) {
-	cmd := undo.NewVoidTransferCommand(nil, models.NewID())
+	cmd := undo.NewVoidTransferCommand(nil, types.NewID())
 	if cmd.Description() != "Void transfer" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Void transfer")
 	}
@@ -772,8 +774,8 @@ func TestCompoundCommand_VoidTransferWithManager(t *testing.T) {
 		from := createTestAccount(t, env.accountRepo, "Checking")
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
-		amount := models.MustNewMoney("150.00")
-		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, models.Today(), amount)
+		amount := types.MustNewMoney("150.00")
+		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount)
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}

@@ -5,8 +5,11 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -14,9 +17,9 @@ import (
 // =============================================================================
 
 func TestNewSplitDialog(t *testing.T) {
-	amount := models.MustNewMoney("-150.00")
+	amount := types.MustNewMoney("-150.00")
 	catOptions := []string{"(None)", "Food", "Household"}
-	catIDs := []models.ID{models.NilID, models.NewID(), models.NewID()}
+	catIDs := []types.ID{types.NilID, types.NewID(), types.NewID()}
 
 	sd := NewSplitDialog(amount, catOptions, catIDs)
 
@@ -38,8 +41,8 @@ func TestNewSplitDialog(t *testing.T) {
 }
 
 func TestSplitDialog_Remaining_NoAmounts(t *testing.T) {
-	amount := models.MustNewMoney("-100.00")
-	sd := NewSplitDialog(amount, []string{"(None)"}, []models.ID{models.NilID})
+	amount := types.MustNewMoney("-100.00")
+	sd := NewSplitDialog(amount, []string{"(None)"}, []types.ID{types.NilID})
 
 	rem := sd.remaining()
 	if !rem.Equal(amount) {
@@ -48,21 +51,21 @@ func TestSplitDialog_Remaining_NoAmounts(t *testing.T) {
 }
 
 func TestSplitDialog_Remaining_Partial(t *testing.T) {
-	amount := models.MustNewMoney("-100.00")
-	sd := NewSplitDialog(amount, []string{"(None)", "Food"}, []models.ID{models.NilID, models.NewID()})
+	amount := types.MustNewMoney("-100.00")
+	sd := NewSplitDialog(amount, []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
 
 	sd.rows[0].amountField.Value = "-60.00"
 
 	rem := sd.remaining()
-	expected := models.MustNewMoney("-40.00")
+	expected := types.MustNewMoney("-40.00")
 	if !rem.Equal(expected) {
 		t.Errorf("remaining = %s, want %s", rem.String(), expected.String())
 	}
 }
 
 func TestSplitDialog_Remaining_Exact(t *testing.T) {
-	amount := models.MustNewMoney("-100.00")
-	sd := NewSplitDialog(amount, []string{"(None)", "Food", "Household"}, []models.ID{models.NilID, models.NewID(), models.NewID()})
+	amount := types.MustNewMoney("-100.00")
+	sd := NewSplitDialog(amount, []string{"(None)", "Food", "Household"}, []types.ID{types.NilID, types.NewID(), types.NewID()})
 
 	sd.addRow()
 	sd.rows[0].amountField.Value = "-60.00"
@@ -75,22 +78,22 @@ func TestSplitDialog_Remaining_Exact(t *testing.T) {
 }
 
 func TestSplitDialog_Remaining_OverAllocated(t *testing.T) {
-	amount := models.MustNewMoney("-100.00")
-	sd := NewSplitDialog(amount, []string{"(None)", "Food"}, []models.ID{models.NilID, models.NewID()})
+	amount := types.MustNewMoney("-100.00")
+	sd := NewSplitDialog(amount, []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
 
 	sd.addRow()
 	sd.rows[0].amountField.Value = "-80.00"
 	sd.rows[1].amountField.Value = "-40.00"
 
 	rem := sd.remaining()
-	expected := models.MustNewMoney("20.00")
+	expected := types.MustNewMoney("20.00")
 	if !rem.Equal(expected) {
 		t.Errorf("remaining = %s, want %s", rem.String(), expected.String())
 	}
 }
 
 func TestSplitDialog_AddRow(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)"}, []models.ID{models.NilID})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
 	if len(sd.rows) != 1 {
 		t.Fatalf("expected 1 row, got %d", len(sd.rows))
@@ -103,7 +106,7 @@ func TestSplitDialog_AddRow(t *testing.T) {
 }
 
 func TestSplitDialog_RemoveRow(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)"}, []models.ID{models.NilID})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 	sd.addRow()
 	sd.addRow()
 
@@ -118,7 +121,7 @@ func TestSplitDialog_RemoveRow(t *testing.T) {
 }
 
 func TestSplitDialog_RemoveRow_MinimumOne(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)"}, []models.ID{models.NilID})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
 	sd.removeRow(0)
 	if len(sd.rows) != 1 {
@@ -127,7 +130,7 @@ func TestSplitDialog_RemoveRow_MinimumOne(t *testing.T) {
 }
 
 func TestSplitDialog_RemoveRow_AdjustsFocus(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)"}, []models.ID{models.NilID})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 	sd.addRow()
 	sd.rowIndex = 1
 
@@ -138,8 +141,8 @@ func TestSplitDialog_RemoveRow_AdjustsFocus(t *testing.T) {
 }
 
 func TestSplitDialog_Validate_Valid(t *testing.T) {
-	catIDs := []models.ID{models.NilID, models.NewID(), models.NewID()}
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food", "Household"}, catIDs)
+	catIDs := []types.ID{types.NilID, types.NewID(), types.NewID()}
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food", "Household"}, catIDs)
 	sd.addRow()
 
 	sd.rows[0].categoryIndex = 1
@@ -154,7 +157,7 @@ func TestSplitDialog_Validate_Valid(t *testing.T) {
 }
 
 func TestSplitDialog_Validate_MissingCategory(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []models.ID{models.NilID, models.NewID()})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
 
 	sd.rows[0].categoryIndex = 0 // (None)
 	sd.rows[0].amountField.Value = "-100.00"
@@ -169,7 +172,7 @@ func TestSplitDialog_Validate_MissingCategory(t *testing.T) {
 }
 
 func TestSplitDialog_Validate_MissingAmount(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []models.ID{models.NilID, models.NewID()})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
 
 	sd.rows[0].categoryIndex = 1
 	sd.rows[0].amountField.Value = ""
@@ -184,8 +187,8 @@ func TestSplitDialog_Validate_MissingAmount(t *testing.T) {
 }
 
 func TestSplitDialog_Validate_SumMismatch(t *testing.T) {
-	catIDs := []models.ID{models.NilID, models.NewID()}
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food"}, catIDs)
+	catIDs := []types.ID{types.NilID, types.NewID()}
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, catIDs)
 
 	sd.rows[0].categoryIndex = 1
 	sd.rows[0].amountField.Value = "-50.00"
@@ -200,10 +203,10 @@ func TestSplitDialog_Validate_SumMismatch(t *testing.T) {
 }
 
 func TestSplitDialog_BuildSplits(t *testing.T) {
-	catID1 := models.NewID()
-	catID2 := models.NewID()
-	catIDs := []models.ID{models.NilID, catID1, catID2}
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food", "Household"}, catIDs)
+	catID1 := types.NewID()
+	catID2 := types.NewID()
+	catIDs := []types.ID{types.NilID, catID1, catID2}
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food", "Household"}, catIDs)
 	sd.addRow()
 
 	sd.rows[0].categoryIndex = 1
@@ -224,7 +227,7 @@ func TestSplitDialog_BuildSplits(t *testing.T) {
 	if splits[0].CategoryID != catID1 {
 		t.Errorf("split[0] category = %s, want %s", splits[0].CategoryID.String(), catID1.String())
 	}
-	if !splits[0].Amount.Equal(models.MustNewMoney("-60.00")) {
+	if !splits[0].Amount.Equal(types.MustNewMoney("-60.00")) {
 		t.Errorf("split[0] amount = %s, want -60.00", splits[0].Amount.String())
 	}
 	if !splits[0].Memo.Valid || splits[0].Memo.String != "Groceries" {
@@ -234,7 +237,7 @@ func TestSplitDialog_BuildSplits(t *testing.T) {
 	if splits[1].CategoryID != catID2 {
 		t.Errorf("split[1] category = %s, want %s", splits[1].CategoryID.String(), catID2.String())
 	}
-	if !splits[1].Amount.Equal(models.MustNewMoney("-40.00")) {
+	if !splits[1].Amount.Equal(types.MustNewMoney("-40.00")) {
 		t.Errorf("split[1] amount = %s, want -40.00", splits[1].Amount.String())
 	}
 	if splits[1].Memo.Valid {
@@ -247,7 +250,7 @@ func TestSplitDialog_BuildSplits(t *testing.T) {
 // =============================================================================
 
 func TestSplitDialog_HandleKey_EscCancels(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)"}, []models.ID{models.NilID})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
 	action := sd.HandleKey(tea.KeyMsg{Type: tea.KeyEsc})
 	if action != DialogActionCancel {
@@ -256,7 +259,7 @@ func TestSplitDialog_HandleKey_EscCancels(t *testing.T) {
 }
 
 func TestSplitDialog_HandleKey_TabCycles(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []models.ID{models.NilID, models.NewID()})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
 
 	// Start: rows, row 0, category
 	if sd.focus != splitFocusRows || sd.fieldFocus != splitFieldCategory {
@@ -301,7 +304,7 @@ func TestSplitDialog_HandleKey_TabCycles(t *testing.T) {
 }
 
 func TestSplitDialog_HandleKey_ShiftTabCycles(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)"}, []models.ID{models.NilID})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
 	// Start at rows, row 0, category
 	// Shift-Tab should wrap to save button
@@ -330,8 +333,8 @@ func TestSplitDialog_HandleKey_ShiftTabCycles(t *testing.T) {
 }
 
 func TestSplitDialog_HandleKey_EnterOnSave_Valid(t *testing.T) {
-	catIDs := []models.ID{models.NilID, models.NewID()}
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food"}, catIDs)
+	catIDs := []types.ID{types.NilID, types.NewID()}
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, catIDs)
 	sd.rows[0].categoryIndex = 1
 	sd.rows[0].amountField.Value = "-100.00"
 
@@ -343,7 +346,7 @@ func TestSplitDialog_HandleKey_EnterOnSave_Valid(t *testing.T) {
 }
 
 func TestSplitDialog_HandleKey_EnterOnSave_Invalid(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []models.ID{models.NilID, models.NewID()})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
 
 	sd.focus = splitFocusSaveBtn
 	action := sd.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
@@ -356,7 +359,7 @@ func TestSplitDialog_HandleKey_EnterOnSave_Invalid(t *testing.T) {
 }
 
 func TestSplitDialog_HandleKey_EnterOnCancel(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)"}, []models.ID{models.NilID})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
 	sd.focus = splitFocusCancelBtn
 	action := sd.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
@@ -366,7 +369,7 @@ func TestSplitDialog_HandleKey_EnterOnCancel(t *testing.T) {
 }
 
 func TestSplitDialog_HandleKey_EnterOnAdd(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)"}, []models.ID{models.NilID})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
 	sd.focus = splitFocusAddBtn
 	sd.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
@@ -380,7 +383,7 @@ func TestSplitDialog_HandleKey_EnterOnAdd(t *testing.T) {
 }
 
 func TestSplitDialog_HandleKey_CategoryUpDown(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food", "Household"}, []models.ID{models.NilID, models.NewID(), models.NewID()})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food", "Household"}, []types.ID{types.NilID, types.NewID(), types.NewID()})
 
 	if sd.rows[0].categoryIndex != 0 {
 		t.Fatal("expected initial categoryIndex 0")
@@ -412,7 +415,7 @@ func TestSplitDialog_HandleKey_CategoryUpDown(t *testing.T) {
 }
 
 func TestSplitDialog_HandleKey_TextEditing(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []models.ID{models.NilID, models.NewID()})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
 
 	// Move to amount field
 	sd.fieldFocus = splitFieldAmount
@@ -433,7 +436,7 @@ func TestSplitDialog_HandleKey_TextEditing(t *testing.T) {
 }
 
 func TestSplitDialog_HandleKey_CtrlD_RemovesRow(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)"}, []models.ID{models.NilID})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 	sd.addRow()
 
 	if len(sd.rows) != 2 {
@@ -447,7 +450,7 @@ func TestSplitDialog_HandleKey_CtrlD_RemovesRow(t *testing.T) {
 }
 
 func TestSplitDialog_HandleKey_CtrlD_NoRemoveLastRow(t *testing.T) {
-	sd := NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)"}, []models.ID{models.NilID})
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
 	sd.HandleKey(tea.KeyMsg{Type: tea.KeyCtrlD})
 	if len(sd.rows) != 1 {
@@ -462,7 +465,7 @@ func TestSplitDialog_HandleKey_CtrlD_NoRemoveLastRow(t *testing.T) {
 func TestSplitDialog_Render(t *testing.T) {
 	styles := NewStyles()
 	styles.Resize(100, 30)
-	sd := NewSplitDialog(models.MustNewMoney("-150.00"), []string{"(None)", "Food", "Household"}, []models.ID{models.NilID, models.NewID(), models.NewID()})
+	sd := NewSplitDialog(types.MustNewMoney("-150.00"), []string{"(None)", "Food", "Household"}, []types.ID{types.NilID, types.NewID(), types.NewID()})
 
 	output := sd.Render(styles)
 
@@ -490,8 +493,8 @@ func TestSplitDialog_Render(t *testing.T) {
 // =============================================================================
 
 func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
-	accountID := models.NewID()
-	catID := models.NewID()
+	accountID := types.NewID()
+	catID := types.NewID()
 
 	app := &App{
 		currentView: ViewRegister,
@@ -515,21 +518,21 @@ func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
 			return d
 		}(),
 		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*models.Payee),
-			categories: []*models.Category{
+			payeeMap: make(map[string]*payee.Payee),
+			categories: []*category.Category{
 				{
-					BaseModel: models.BaseModel{ID: catID},
+					BaseModel: types.BaseModel{ID: catID},
 					Name:      "Food",
-					Type:      models.CategoryTypeExpense,
+					Type:      category.TypeExpense,
 				},
 			},
 		},
-		txnDialogCategoryIDs: []models.ID{models.NilID, catID},
+		txnDialogCategoryIDs: []types.ID{types.NilID, catID},
 	}
 
 	// Set up sidebar with a selected account
-	app.sidebar.SetAccounts([]*models.Account{
-		{BaseModel: models.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: models.AccountTypeChecking},
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 	}, nil)
 
 	// Submit the dialog (focus on Save button)
@@ -559,7 +562,7 @@ func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
 	if updatedApp.pendingSplitTxn.payeeName != "Grocery Store" {
 		t.Errorf("pendingSplitTxn.payeeName = %q, want 'Grocery Store'", updatedApp.pendingSplitTxn.payeeName)
 	}
-	if !updatedApp.pendingSplitTxn.amount.Equal(models.MustNewMoney("-150.00")) {
+	if !updatedApp.pendingSplitTxn.amount.Equal(types.MustNewMoney("-150.00")) {
 		t.Errorf("pendingSplitTxn.amount = %s, want -150.00", updatedApp.pendingSplitTxn.amount.String())
 	}
 
@@ -576,9 +579,9 @@ func TestApp_HandleSplitDialogKey_Cancel(t *testing.T) {
 		menubar:     NewMenuBar(),
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
-		splitDialog: NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)"}, []models.ID{models.NilID}),
+		splitDialog: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID}),
 		pendingSplitTxn: &pendingSplitTransaction{
-			amount: models.MustNewMoney("-100.00"),
+			amount: types.MustNewMoney("-100.00"),
 		},
 	}
 
@@ -596,7 +599,7 @@ func TestApp_HandleSplitDialogKey_Cancel(t *testing.T) {
 }
 
 func TestApp_Update_SplitDialogSavedMsg(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
@@ -604,8 +607,8 @@ func TestApp_Update_SplitDialogSavedMsg(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
-	app.sidebar.SetAccounts([]*models.Account{
-		{BaseModel: models.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: models.AccountTypeChecking},
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 	}, nil)
 
 	msg := splitDialogSavedMsg{}
@@ -630,17 +633,17 @@ func TestApp_RenderLayout_WithSplitDialog(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		keys:        defaultKeyMap(),
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: models.NewID()},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: types.NewID()},
 				Name:      "Checking",
 			},
-			transactions:  []*models.Transaction{},
-			balance:       &service.AccountBalance{CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			transactions:  []*transaction.Transaction{},
+			balance:       &account.Balance{CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
-		splitDialog: NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []models.ID{models.NilID, models.NewID()}),
+		splitDialog: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()}),
 	}
 
 	output := app.renderLayout()
@@ -660,9 +663,9 @@ func TestApp_SplitDialogKeyRouting(t *testing.T) {
 		menubar:     NewMenuBar(),
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
-		splitDialog: NewSplitDialog(models.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []models.ID{models.NilID, models.NewID()}),
+		splitDialog: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()}),
 		pendingSplitTxn: &pendingSplitTransaction{
-			amount: models.MustNewMoney("-100.00"),
+			amount: types.MustNewMoney("-100.00"),
 		},
 	}
 

@@ -1,8 +1,8 @@
 package undo
 
 import (
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -11,25 +11,25 @@ import (
 
 // CreateAccountCommand creates an account and can undo it by deleting.
 type CreateAccountCommand struct {
-	svc     *service.AccountService
-	account *models.Account
+	svc  *account.Service
+	acct *account.Account
 }
 
 // NewCreateAccountCommand creates a command that will create an account.
 // The account is created on Execute and deleted on Undo.
-func NewCreateAccountCommand(svc *service.AccountService, account *models.Account) *CreateAccountCommand {
+func NewCreateAccountCommand(svc *account.Service, acct *account.Account) *CreateAccountCommand {
 	return &CreateAccountCommand{
-		svc:     svc,
-		account: account,
+		svc:  svc,
+		acct: acct,
 	}
 }
 
 func (c *CreateAccountCommand) Execute() error {
-	return c.svc.Create(c.account)
+	return c.svc.Create(c.acct)
 }
 
 func (c *CreateAccountCommand) Undo() error {
-	return c.svc.Delete(c.account.ID)
+	return c.svc.Delete(c.acct.ID)
 }
 
 func (c *CreateAccountCommand) Description() string {
@@ -43,14 +43,14 @@ func (c *CreateAccountCommand) Description() string {
 // EditAccountCommand edits an account and can undo it by restoring
 // the previous state.
 type EditAccountCommand struct {
-	svc    *service.AccountService
-	before *models.Account // state before editing (captured on Execute)
-	after  *models.Account // desired new state
+	svc    *account.Service
+	before *account.Account // state before editing (captured on Execute)
+	after  *account.Account // desired new state
 }
 
 // NewEditAccountCommand creates a command that will update an account.
 // The before state is captured at execute time by reading from the database.
-func NewEditAccountCommand(svc *service.AccountService, after *models.Account) *EditAccountCommand {
+func NewEditAccountCommand(svc *account.Service, after *account.Account) *EditAccountCommand {
 	return &EditAccountCommand{
 		svc:   svc,
 		after: after,
@@ -82,14 +82,14 @@ func (c *EditAccountCommand) Description() string {
 
 // DeleteAccountCommand deletes an account and can undo it by recreating.
 type DeleteAccountCommand struct {
-	svc    *service.AccountService
-	id     models.ID
-	before *models.Account // full entity captured on Execute for undo
+	svc    *account.Service
+	id     types.ID
+	before *account.Account // full entity captured on Execute for undo
 }
 
 // NewDeleteAccountCommand creates a command that will delete an account.
 // The full entity is captured at execute time so it can be recreated on undo.
-func NewDeleteAccountCommand(svc *service.AccountService, id models.ID) *DeleteAccountCommand {
+func NewDeleteAccountCommand(svc *account.Service, id types.ID) *DeleteAccountCommand {
 	return &DeleteAccountCommand{
 		svc: svc,
 		id:  id,
@@ -98,11 +98,11 @@ func NewDeleteAccountCommand(svc *service.AccountService, id models.ID) *DeleteA
 
 func (c *DeleteAccountCommand) Execute() error {
 	// Capture full entity before deleting
-	account, err := c.svc.GetByID(c.id)
+	acct, err := c.svc.GetByID(c.id)
 	if err != nil {
 		return err
 	}
-	c.before = account
+	c.before = acct
 
 	return c.svc.Delete(c.id)
 }
@@ -121,12 +121,12 @@ func (c *DeleteAccountCommand) Description() string {
 
 // CloseAccountCommand closes an account and can undo it by reopening.
 type CloseAccountCommand struct {
-	svc *service.AccountService
-	id  models.ID
+	svc *account.Service
+	id  types.ID
 }
 
 // NewCloseAccountCommand creates a command that will close an account.
-func NewCloseAccountCommand(svc *service.AccountService, id models.ID) *CloseAccountCommand {
+func NewCloseAccountCommand(svc *account.Service, id types.ID) *CloseAccountCommand {
 	return &CloseAccountCommand{
 		svc: svc,
 		id:  id,
@@ -151,12 +151,12 @@ func (c *CloseAccountCommand) Description() string {
 
 // ReopenAccountCommand reopens a closed account and can undo it by closing.
 type ReopenAccountCommand struct {
-	svc *service.AccountService
-	id  models.ID
+	svc *account.Service
+	id  types.ID
 }
 
 // NewReopenAccountCommand creates a command that will reopen a closed account.
-func NewReopenAccountCommand(svc *service.AccountService, id models.ID) *ReopenAccountCommand {
+func NewReopenAccountCommand(svc *account.Service, id types.ID) *ReopenAccountCommand {
 	return &ReopenAccountCommand{
 		svc: svc,
 		id:  id,

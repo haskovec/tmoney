@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
+	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // TestCategoryLifecycle tests the complete category lifecycle:
@@ -27,13 +28,13 @@ func TestCategoryLifecycle(t *testing.T) {
 	}
 	defer database.Close()
 
-	repo := repository.NewCategoryRepository(database)
+	repo := category.NewRepository(database)
 
-	var categoryID models.ID
+	var categoryID types.ID
 
 	// Step 1: Create a test category
 	t.Run("Create category", func(t *testing.T) {
-		category := models.NewCategory("Groceries", models.CategoryTypeExpense)
+		category := category.NewCategory("Groceries", category.TypeExpense)
 		categoryID = category.ID
 
 		err = repo.Create(category)
@@ -57,7 +58,7 @@ func TestCategoryLifecycle(t *testing.T) {
 		if retrieved.Name != "Groceries" {
 			t.Errorf("Expected name 'Groceries', got %q", retrieved.Name)
 		}
-		if retrieved.Type != models.CategoryTypeExpense {
+		if retrieved.Type != category.TypeExpense {
 			t.Errorf("Expected type 'expense', got %q", retrieved.Type)
 		}
 		if retrieved.ParentID.Valid {
@@ -145,21 +146,21 @@ func TestCategoryHierarchy(t *testing.T) {
 	}
 	defer database.Close()
 
-	repo := repository.NewCategoryRepository(database)
+	repo := category.NewRepository(database)
 
 	// Create parent category
-	parent := models.NewCategory("Food", models.CategoryTypeExpense)
+	parent := category.NewCategory("Food", category.TypeExpense)
 	if err := repo.Create(parent); err != nil {
 		t.Fatalf("Failed to create parent category: %v", err)
 	}
 
 	// Create subcategories
-	groceries := models.NewSubcategory("Groceries", parent.ID, models.CategoryTypeExpense)
+	groceries := category.NewSubcategory("Groceries", parent.ID, category.TypeExpense)
 	if err := repo.Create(groceries); err != nil {
 		t.Fatalf("Failed to create groceries subcategory: %v", err)
 	}
 
-	restaurants := models.NewSubcategory("Restaurants", parent.ID, models.CategoryTypeExpense)
+	restaurants := category.NewSubcategory("Restaurants", parent.ID, category.TypeExpense)
 	if err := repo.Create(restaurants); err != nil {
 		t.Fatalf("Failed to create restaurants subcategory: %v", err)
 	}
@@ -238,7 +239,7 @@ func TestCategoryHierarchy(t *testing.T) {
 		if err == nil {
 			t.Fatal("Expected error when deleting parent with children")
 		}
-		if _, ok := err.(*repository.HasDependentsError); !ok {
+		if _, ok := err.(*dberrors.HasDependentsError); !ok {
 			t.Errorf("Expected HasDependentsError, got %T: %v", err, err)
 		}
 	})
@@ -260,28 +261,28 @@ func TestCategoryByType(t *testing.T) {
 	}
 	defer database.Close()
 
-	repo := repository.NewCategoryRepository(database)
+	repo := category.NewRepository(database)
 
 	// Create expense categories
-	groceries := models.NewCategory("Groceries", models.CategoryTypeExpense)
+	groceries := category.NewCategory("Groceries", category.TypeExpense)
 	if err := repo.Create(groceries); err != nil {
 		t.Fatalf("Failed to create category: %v", err)
 	}
 
-	utilities := models.NewCategory("Utilities", models.CategoryTypeExpense)
+	utilities := category.NewCategory("Utilities", category.TypeExpense)
 	if err := repo.Create(utilities); err != nil {
 		t.Fatalf("Failed to create category: %v", err)
 	}
 
 	// Create income categories
-	salary := models.NewCategory("Salary", models.CategoryTypeIncome)
+	salary := category.NewCategory("Salary", category.TypeIncome)
 	if err := repo.Create(salary); err != nil {
 		t.Fatalf("Failed to create category: %v", err)
 	}
 
 	// Test ListByType
 	t.Run("List expense categories", func(t *testing.T) {
-		expenses, err := repo.ListByType(models.CategoryTypeExpense)
+		expenses, err := repo.ListByType(category.TypeExpense)
 		if err != nil {
 			t.Fatalf("Failed to list expense categories: %v", err)
 		}
@@ -292,7 +293,7 @@ func TestCategoryByType(t *testing.T) {
 	})
 
 	t.Run("List income categories", func(t *testing.T) {
-		income, err := repo.ListByType(models.CategoryTypeIncome)
+		income, err := repo.ListByType(category.TypeIncome)
 		if err != nil {
 			t.Fatalf("Failed to list income categories: %v", err)
 		}
@@ -322,29 +323,29 @@ func TestCategoryDuplicateNameValidation(t *testing.T) {
 	}
 	defer database.Close()
 
-	repo := repository.NewCategoryRepository(database)
+	repo := category.NewRepository(database)
 
 	// Create first category
-	first := models.NewCategory("Food", models.CategoryTypeExpense)
+	first := category.NewCategory("Food", category.TypeExpense)
 	if err := repo.Create(first); err != nil {
 		t.Fatalf("Failed to create first category: %v", err)
 	}
 
 	// Try to create duplicate at top level
 	t.Run("Duplicate top-level name rejected", func(t *testing.T) {
-		duplicate := models.NewCategory("Food", models.CategoryTypeExpense)
+		duplicate := category.NewCategory("Food", category.TypeExpense)
 		err := repo.Create(duplicate)
 		if err == nil {
 			t.Fatal("Expected error for duplicate name")
 		}
-		if _, ok := err.(*repository.DuplicateError); !ok {
+		if _, ok := err.(*dberrors.DuplicateError); !ok {
 			t.Errorf("Expected DuplicateError, got %T: %v", err, err)
 		}
 	})
 
 	// Same name as subcategory is allowed
 	t.Run("Same name under different parent allowed", func(t *testing.T) {
-		subcategory := models.NewSubcategory("Food", first.ID, models.CategoryTypeExpense)
+		subcategory := category.NewSubcategory("Food", first.ID, category.TypeExpense)
 		err := repo.Create(subcategory)
 		if err != nil {
 			t.Errorf("Expected same name under parent to be allowed, got error: %v", err)
@@ -368,23 +369,23 @@ func TestCategorySubcategoryValidation(t *testing.T) {
 	}
 	defer database.Close()
 
-	repo := repository.NewCategoryRepository(database)
+	repo := category.NewRepository(database)
 
 	// Create expense parent
-	expenseParent := models.NewCategory("Food", models.CategoryTypeExpense)
+	expenseParent := category.NewCategory("Food", category.TypeExpense)
 	if err := repo.Create(expenseParent); err != nil {
 		t.Fatalf("Failed to create parent category: %v", err)
 	}
 
 	// Create valid subcategory
-	groceries := models.NewSubcategory("Groceries", expenseParent.ID, models.CategoryTypeExpense)
+	groceries := category.NewSubcategory("Groceries", expenseParent.ID, category.TypeExpense)
 	if err := repo.Create(groceries); err != nil {
 		t.Fatalf("Failed to create subcategory: %v", err)
 	}
 
 	// Test type mismatch
 	t.Run("Subcategory type must match parent", func(t *testing.T) {
-		mismatch := models.NewSubcategory("Income Item", expenseParent.ID, models.CategoryTypeIncome)
+		mismatch := category.NewSubcategory("Income Item", expenseParent.ID, category.TypeIncome)
 		err := repo.Create(mismatch)
 		if err == nil {
 			t.Fatal("Expected error for type mismatch")
@@ -393,7 +394,7 @@ func TestCategorySubcategoryValidation(t *testing.T) {
 
 	// Test three-level nesting rejected
 	t.Run("Three-level nesting rejected", func(t *testing.T) {
-		nested := models.NewSubcategory("Organic", groceries.ID, models.CategoryTypeExpense)
+		nested := category.NewSubcategory("Organic", groceries.ID, category.TypeExpense)
 		err := repo.Create(nested)
 		if err == nil {
 			t.Fatal("Expected error for three-level nesting")
@@ -402,8 +403,8 @@ func TestCategorySubcategoryValidation(t *testing.T) {
 
 	// Test non-existent parent
 	t.Run("Non-existent parent rejected", func(t *testing.T) {
-		fakeParentID := models.NewID()
-		orphan := models.NewSubcategory("Orphan", fakeParentID, models.CategoryTypeExpense)
+		fakeParentID := types.NewID()
+		orphan := category.NewSubcategory("Orphan", fakeParentID, category.TypeExpense)
 		err := repo.Create(orphan)
 		if err == nil {
 			t.Fatal("Expected error for non-existent parent")
@@ -427,10 +428,10 @@ func TestSystemCategory(t *testing.T) {
 	}
 	defer database.Close()
 
-	repo := repository.NewCategoryRepository(database)
+	repo := category.NewRepository(database)
 
 	// Create system category
-	transfer := models.NewSystemCategory("Transfer", models.CategoryTypeExpense)
+	transfer := category.NewSystemCategory("Transfer", category.TypeExpense)
 	if err := repo.Create(transfer); err != nil {
 		t.Fatalf("Failed to create system category: %v", err)
 	}
@@ -461,15 +462,15 @@ func TestCategoryNotFound(t *testing.T) {
 	}
 	defer database.Close()
 
-	repo := repository.NewCategoryRepository(database)
+	repo := category.NewRepository(database)
 
 	// Try to get non-existent category by ID
 	t.Run("Get by ID not found", func(t *testing.T) {
-		_, err := repo.GetByID(models.NewID())
+		_, err := repo.GetByID(types.NewID())
 		if err == nil {
 			t.Error("Expected error for non-existent category")
 		}
-		if _, ok := err.(*repository.NotFoundError); !ok {
+		if _, ok := err.(*dberrors.NotFoundError); !ok {
 			t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 		}
 	})
@@ -480,30 +481,30 @@ func TestCategoryNotFound(t *testing.T) {
 		if err == nil {
 			t.Error("Expected error for non-existent category")
 		}
-		if _, ok := err.(*repository.NotFoundError); !ok {
+		if _, ok := err.(*dberrors.NotFoundError); !ok {
 			t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 		}
 	})
 
 	// Try to delete non-existent category
 	t.Run("Delete not found", func(t *testing.T) {
-		err := repo.Delete(models.NewID())
+		err := repo.Delete(types.NewID())
 		if err == nil {
 			t.Error("Expected error for deleting non-existent category")
 		}
-		if _, ok := err.(*repository.NotFoundError); !ok {
+		if _, ok := err.(*dberrors.NotFoundError); !ok {
 			t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 		}
 	})
 
 	// Try to update non-existent category
 	t.Run("Update not found", func(t *testing.T) {
-		category := models.NewCategory("Fake", models.CategoryTypeExpense)
+		category := category.NewCategory("Fake", category.TypeExpense)
 		err := repo.Update(category)
 		if err == nil {
 			t.Error("Expected error for updating non-existent category")
 		}
-		if _, ok := err.(*repository.NotFoundError); !ok {
+		if _, ok := err.(*dberrors.NotFoundError); !ok {
 			t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 		}
 	})

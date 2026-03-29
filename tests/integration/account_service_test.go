@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // createTestService creates a test database and service for testing.
-func createTestService(t *testing.T) (*service.AccountService, *db.DB, func()) {
+func createTestService(t *testing.T) (*account.Service, *db.DB, func()) {
 	t.Helper()
 
 	tempDir, err := os.MkdirTemp("", "tmoney-service-test-*")
@@ -27,8 +27,8 @@ func createTestService(t *testing.T) (*service.AccountService, *db.DB, func()) {
 		t.Fatalf("Failed to create database: %v", err)
 	}
 
-	repo := repository.NewAccountRepository(database)
-	svc := service.NewAccountService(repo, database)
+	repo := account.NewRepository(database)
+	svc := account.NewService(repo, database)
 
 	cleanup := func() {
 		database.Close()
@@ -43,21 +43,21 @@ func TestAccountServiceCreate(t *testing.T) {
 	defer cleanup()
 
 	t.Run("creates valid account", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"Test Checking",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.MustNewMoney("1000.00"),
-			models.NewDate(2024, 1, 15),
+			types.MustNewMoney("1000.00"),
+			types.NewDate(2024, 1, 15),
 		)
 
-		err := svc.Create(account)
+		err := svc.Create(acct)
 		if err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
 		// Verify account was created
-		retrieved, err := svc.GetByID(account.ID)
+		retrieved, err := svc.GetByID(acct.ID)
 		if err != nil {
 			t.Fatalf("Failed to retrieve account: %v", err)
 		}
@@ -67,48 +67,48 @@ func TestAccountServiceCreate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid account", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"", // Invalid: empty name
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.MustNewMoney("1000.00"),
-			models.NewDate(2024, 1, 15),
+			types.MustNewMoney("1000.00"),
+			types.NewDate(2024, 1, 15),
 		)
 
-		err := svc.Create(account)
+		err := svc.Create(acct)
 		if err == nil {
 			t.Error("Expected validation error for empty name")
 		}
-		if _, ok := err.(*service.ServiceValidationError); !ok {
+		if _, ok := err.(*types.ServiceValidationError); !ok {
 			t.Errorf("Expected ServiceValidationError, got %T: %v", err, err)
 		}
 	})
 
 	t.Run("rejects duplicate name", func(t *testing.T) {
-		account1 := models.NewAccount(
+		acct1 := account.NewAccount(
 			"Duplicate Account",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.ZeroMoney,
-			models.Today(),
+			types.ZeroMoney,
+			types.Today(),
 		)
-		err := svc.Create(account1)
+		err := svc.Create(acct1)
 		if err != nil {
 			t.Fatalf("Failed to create first account: %v", err)
 		}
 
-		account2 := models.NewAccount(
+		acct2 := account.NewAccount(
 			"Duplicate Account",
-			models.AccountTypeSavings,
+			account.TypeSavings,
 			"USD",
-			models.ZeroMoney,
-			models.Today(),
+			types.ZeroMoney,
+			types.Today(),
 		)
-		err = svc.Create(account2)
+		err = svc.Create(acct2)
 		if err == nil {
 			t.Error("Expected error for duplicate account name")
 		}
-		if _, ok := err.(*repository.DuplicateError); !ok {
+		if _, ok := err.(*dberrors.DuplicateError); !ok {
 			t.Errorf("Expected DuplicateError, got %T: %v", err, err)
 		}
 	})
@@ -119,24 +119,24 @@ func TestAccountServiceUpdate(t *testing.T) {
 	defer cleanup()
 
 	t.Run("updates valid account", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"Original Name",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.ZeroMoney,
-			models.Today(),
+			types.ZeroMoney,
+			types.Today(),
 		)
-		if err := svc.Create(account); err != nil {
+		if err := svc.Create(acct); err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		account.Name = "Updated Name"
-		account.SetNotes("Some notes")
-		if err := svc.Update(account); err != nil {
+		acct.Name = "Updated Name"
+		acct.SetNotes("Some notes")
+		if err := svc.Update(acct); err != nil {
 			t.Fatalf("Failed to update account: %v", err)
 		}
 
-		retrieved, err := svc.GetByID(account.ID)
+		retrieved, err := svc.GetByID(acct.ID)
 		if err != nil {
 			t.Fatalf("Failed to retrieve account: %v", err)
 		}
@@ -149,23 +149,23 @@ func TestAccountServiceUpdate(t *testing.T) {
 	})
 
 	t.Run("rejects invalid update", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"Valid Account",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.ZeroMoney,
-			models.Today(),
+			types.ZeroMoney,
+			types.Today(),
 		)
-		if err := svc.Create(account); err != nil {
+		if err := svc.Create(acct); err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		account.Name = "" // Invalid
-		err := svc.Update(account)
+		acct.Name = "" // Invalid
+		err := svc.Update(acct)
 		if err == nil {
 			t.Error("Expected validation error for empty name")
 		}
-		if _, ok := err.(*service.ServiceValidationError); !ok {
+		if _, ok := err.(*types.ServiceValidationError); !ok {
 			t.Errorf("Expected ServiceValidationError, got %T: %v", err, err)
 		}
 	})
@@ -176,39 +176,39 @@ func TestAccountServiceGetBalance(t *testing.T) {
 	defer cleanup()
 
 	t.Run("returns opening balance when no transactions", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"Checking",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.MustNewMoney("500.00"),
-			models.Today(),
+			types.MustNewMoney("500.00"),
+			types.Today(),
 		)
-		if err := svc.Create(account); err != nil {
+		if err := svc.Create(acct); err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		balance, err := svc.GetBalance(account.ID)
+		balance, err := svc.GetBalance(acct.ID)
 		if err != nil {
 			t.Fatalf("Failed to get balance: %v", err)
 		}
 
-		if !balance.CurrentBalance.Equal(models.MustNewMoney("500.00")) {
+		if !balance.CurrentBalance.Equal(types.MustNewMoney("500.00")) {
 			t.Errorf("Expected current balance 500.00, got %s", balance.CurrentBalance.String())
 		}
-		if !balance.ClearedBalance.Equal(models.MustNewMoney("500.00")) {
+		if !balance.ClearedBalance.Equal(types.MustNewMoney("500.00")) {
 			t.Errorf("Expected cleared balance 500.00, got %s", balance.ClearedBalance.String())
 		}
 	})
 
 	t.Run("includes transactions in balance", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"Checking With Transactions",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.MustNewMoney("1000.00"),
-			models.Today(),
+			types.MustNewMoney("1000.00"),
+			types.Today(),
 		)
-		if err := svc.Create(account); err != nil {
+		if err := svc.Create(acct); err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
@@ -218,23 +218,23 @@ func TestAccountServiceGetBalance(t *testing.T) {
 			VALUES
 				(gen_random_uuid(), ?, CURRENT_DATE, -100.00, 'cleared'),
 				(gen_random_uuid(), ?, CURRENT_DATE, -50.00, 'uncleared')
-		`, account.ID.String(), account.ID.String())
+		`, acct.ID.String(), acct.ID.String())
 		if err != nil {
 			t.Fatalf("Failed to insert transactions: %v", err)
 		}
 
-		balance, err := svc.GetBalance(account.ID)
+		balance, err := svc.GetBalance(acct.ID)
 		if err != nil {
 			t.Fatalf("Failed to get balance: %v", err)
 		}
 
 		// Current balance = 1000 - 100 - 50 = 850
-		if !balance.CurrentBalance.Equal(models.MustNewMoney("850.00")) {
+		if !balance.CurrentBalance.Equal(types.MustNewMoney("850.00")) {
 			t.Errorf("Expected current balance 850.00, got %s", balance.CurrentBalance.String())
 		}
 
 		// Cleared balance = 1000 - 100 = 900 (pending transaction excluded)
-		if !balance.ClearedBalance.Equal(models.MustNewMoney("900.00")) {
+		if !balance.ClearedBalance.Equal(types.MustNewMoney("900.00")) {
 			t.Errorf("Expected cleared balance 900.00, got %s", balance.ClearedBalance.String())
 		}
 	})
@@ -245,10 +245,10 @@ func TestAccountServiceGetAllBalances(t *testing.T) {
 	defer cleanup()
 
 	t.Run("returns balances for all accounts", func(t *testing.T) {
-		accounts := []*models.Account{
-			models.NewAccount("Account 1", models.AccountTypeChecking, "USD", models.MustNewMoney("100"), models.Today()),
-			models.NewAccount("Account 2", models.AccountTypeSavings, "USD", models.MustNewMoney("200"), models.Today()),
-			models.NewAccount("Account 3", models.AccountTypeCash, "USD", models.MustNewMoney("300"), models.Today()),
+		accounts := []*account.Account{
+			account.NewAccount("Account 1", account.TypeChecking, "USD", types.MustNewMoney("100"), types.Today()),
+			account.NewAccount("Account 2", account.TypeSavings, "USD", types.MustNewMoney("200"), types.Today()),
+			account.NewAccount("Account 3", account.TypeCash, "USD", types.MustNewMoney("300"), types.Today()),
 		}
 
 		for _, acc := range accounts {
@@ -286,22 +286,22 @@ func TestAccountServiceClose(t *testing.T) {
 	defer cleanup()
 
 	t.Run("closes account with zero balance", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"Account To Close",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.ZeroMoney,
-			models.Today(),
+			types.ZeroMoney,
+			types.Today(),
 		)
-		if err := svc.Create(account); err != nil {
+		if err := svc.Create(acct); err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		if err := svc.Close(account.ID); err != nil {
+		if err := svc.Close(acct.ID); err != nil {
 			t.Fatalf("Failed to close account: %v", err)
 		}
 
-		retrieved, err := svc.GetByID(account.ID)
+		retrieved, err := svc.GetByID(acct.ID)
 		if err != nil {
 			t.Fatalf("Failed to retrieve account: %v", err)
 		}
@@ -311,27 +311,27 @@ func TestAccountServiceClose(t *testing.T) {
 	})
 
 	t.Run("rejects closing account with non-zero balance", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"Account With Balance",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.MustNewMoney("100.00"),
-			models.Today(),
+			types.MustNewMoney("100.00"),
+			types.Today(),
 		)
-		if err := svc.Create(account); err != nil {
+		if err := svc.Create(acct); err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		err := svc.Close(account.ID)
+		err := svc.Close(acct.ID)
 		if err == nil {
 			t.Error("Expected error when closing account with balance")
 		}
-		if _, ok := err.(*service.AccountHasBalanceError); !ok {
+		if _, ok := err.(*account.HasBalanceError); !ok {
 			t.Errorf("Expected AccountHasBalanceError, got %T: %v", err, err)
 		}
 
 		// Verify account is still active
-		retrieved, err := svc.GetByID(account.ID)
+		retrieved, err := svc.GetByID(acct.ID)
 		if err != nil {
 			t.Fatalf("Failed to retrieve account: %v", err)
 		}
@@ -341,26 +341,26 @@ func TestAccountServiceClose(t *testing.T) {
 	})
 
 	t.Run("rejects closing already closed account", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"Already Closed",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.ZeroMoney,
-			models.Today(),
+			types.ZeroMoney,
+			types.Today(),
 		)
-		if err := svc.Create(account); err != nil {
+		if err := svc.Create(acct); err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		if err := svc.Close(account.ID); err != nil {
+		if err := svc.Close(acct.ID); err != nil {
 			t.Fatalf("Failed to close account: %v", err)
 		}
 
-		err := svc.Close(account.ID)
+		err := svc.Close(acct.ID)
 		if err == nil {
 			t.Error("Expected error when closing already closed account")
 		}
-		if _, ok := err.(*service.AccountAlreadyClosedError); !ok {
+		if _, ok := err.(*account.AlreadyClosedError); !ok {
 			t.Errorf("Expected AccountAlreadyClosedError, got %T: %v", err, err)
 		}
 	})
@@ -371,26 +371,26 @@ func TestAccountServiceReopen(t *testing.T) {
 	defer cleanup()
 
 	t.Run("reopens closed account", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"Account To Reopen",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.ZeroMoney,
-			models.Today(),
+			types.ZeroMoney,
+			types.Today(),
 		)
-		if err := svc.Create(account); err != nil {
+		if err := svc.Create(acct); err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		if err := svc.Close(account.ID); err != nil {
+		if err := svc.Close(acct.ID); err != nil {
 			t.Fatalf("Failed to close account: %v", err)
 		}
 
-		if err := svc.Reopen(account.ID); err != nil {
+		if err := svc.Reopen(acct.ID); err != nil {
 			t.Fatalf("Failed to reopen account: %v", err)
 		}
 
-		retrieved, err := svc.GetByID(account.ID)
+		retrieved, err := svc.GetByID(acct.ID)
 		if err != nil {
 			t.Fatalf("Failed to retrieve account: %v", err)
 		}
@@ -400,22 +400,22 @@ func TestAccountServiceReopen(t *testing.T) {
 	})
 
 	t.Run("rejects reopening active account", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"Active Account",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.ZeroMoney,
-			models.Today(),
+			types.ZeroMoney,
+			types.Today(),
 		)
-		if err := svc.Create(account); err != nil {
+		if err := svc.Create(acct); err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		err := svc.Reopen(account.ID)
+		err := svc.Reopen(acct.ID)
 		if err == nil {
 			t.Error("Expected error when reopening active account")
 		}
-		if _, ok := err.(*service.AccountNotClosedError); !ok {
+		if _, ok := err.(*account.NotClosedError); !ok {
 			t.Errorf("Expected AccountNotClosedError, got %T: %v", err, err)
 		}
 	})
@@ -426,10 +426,10 @@ func TestAccountServiceList(t *testing.T) {
 	defer cleanup()
 
 	t.Run("lists all accounts", func(t *testing.T) {
-		accounts := []*models.Account{
-			models.NewAccount("Active 1", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today()),
-			models.NewAccount("Active 2", models.AccountTypeSavings, "USD", models.ZeroMoney, models.Today()),
-			models.NewAccount("Closed", models.AccountTypeCash, "USD", models.ZeroMoney, models.Today()),
+		accounts := []*account.Account{
+			account.NewAccount("Active 1", account.TypeChecking, "USD", types.ZeroMoney, types.Today()),
+			account.NewAccount("Active 2", account.TypeSavings, "USD", types.ZeroMoney, types.Today()),
+			account.NewAccount("Closed", account.TypeCash, "USD", types.ZeroMoney, types.Today()),
 		}
 
 		for _, acc := range accounts {
@@ -468,22 +468,22 @@ func TestAccountServiceDelete(t *testing.T) {
 	defer cleanup()
 
 	t.Run("deletes account without transactions", func(t *testing.T) {
-		account := models.NewAccount(
+		acct := account.NewAccount(
 			"Account To Delete",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.ZeroMoney,
-			models.Today(),
+			types.ZeroMoney,
+			types.Today(),
 		)
-		if err := svc.Create(account); err != nil {
+		if err := svc.Create(acct); err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		if err := svc.Delete(account.ID); err != nil {
+		if err := svc.Delete(acct.ID); err != nil {
 			t.Fatalf("Failed to delete account: %v", err)
 		}
 
-		_, err := svc.GetByID(account.ID)
+		_, err := svc.GetByID(acct.ID)
 		if err == nil {
 			t.Error("Expected error when getting deleted account")
 		}

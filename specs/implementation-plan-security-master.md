@@ -39,11 +39,11 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-001 - Security type enum and validation**
   - RED: Write tests for `SecurityType` enum — valid types (`stock`, `etf`, `mutual_fund`, `other`), invalid type rejected, `IsValid()`, `DisplayName()`
-  - GREEN: Implement `SecurityType` in `internal/models/security.go`
+  - GREEN: Implement `SecurityType` in `internal/security/model.go`
 
 - [x] **SM-002 - Asset class enum and validation**
   - RED: Write tests for `AssetClass` enum — all 11 valid values, invalid rejected, `IsValid()`, `DisplayName()`
-  - GREEN: Implement `AssetClass` in `internal/models/security.go`
+  - GREEN: Implement `AssetClass` in `internal/security/model.go`
 
 - [x] **SM-003 - Security model struct and validation**
   - RED: Write tests for `Security` struct validation — required ticker (max 20 chars), required name, required security_type, required asset_class, valid currency, default values (currency=USD, asset_class=unclassified, hidden=false)
@@ -57,7 +57,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-005 - Price source enum**
   - RED: Write tests for `PriceSource` enum — valid sources (`manual`, `transaction`, `import`, `api`), invalid rejected, `IsValid()`
-  - GREEN: Implement `PriceSource` in `internal/models/price.go`
+  - GREEN: Implement `PriceSource` in `internal/price/model.go`
 
 - [x] **SM-006 - Security price model and validation**
   - RED: Write tests for `SecurityPrice` struct — required security_id, required date (not future), required price (must be positive), required source, unique constraint concept (security_id + date)
@@ -77,7 +77,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-009 - SecurityRepository.Create**
   - RED: Write test — create security, verify returned ID, verify all fields persisted; test duplicate ticker+currency rejected
-  - GREEN: Implement `Create` in `internal/repository/security.go`
+  - GREEN: Implement `Create` in `internal/security/repository.go`
 
 - [x] **SM-010 - SecurityRepository.GetByID**
   - RED: Write test — get existing security by ID returns all fields; get non-existent ID returns NotFoundError
@@ -103,7 +103,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-015 - SecurityService.Create with validation**
   - RED: Write test — valid security created; invalid security (empty ticker) returns validation error; duplicate ticker+currency returns error
-  - GREEN: Implement `SecurityService.Create` in `internal/service/security.go`
+  - GREEN: Implement `SecurityService.Create` in `internal/security/service.go`
 
 - [x] **SM-016 - SecurityService.Update**
   - RED: Write test — update fields; ticker change allowed; validation errors returned
@@ -129,7 +129,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-021 - PriceRepository.Create**
   - RED: Write test — create price, verify fields; duplicate security_id+date returns DuplicateError; invalid security_id returns error
-  - GREEN: Implement `Create` in `internal/repository/price.go`
+  - GREEN: Implement `Create` in `internal/price/repository.go`
 
 - [x] **SM-022 - PriceRepository.CreateOrUpdate (upsert)**
   - RED: Write test — insert new price; update existing price for same security+date; verify source is updated
@@ -159,7 +159,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-028 - Define PriceProvider interface**
   - RED: Write test — verify manual provider implements interface; test `FetchPrice` returns a price for a known security+date
-  - GREEN: Define `PriceProvider` interface in `internal/service/price_provider.go` with methods: `FetchPrice(ticker string, date Date) (*SecurityPrice, error)`, `FetchPriceHistory(ticker string, from, to Date) ([]SecurityPrice, error)`, `Name() string`
+  - GREEN: Define `PriceProvider` interface in `internal/price/provider.go` with methods: `FetchPrice(ticker string, date Date) (*SecurityPrice, error)`, `FetchPriceHistory(ticker string, from, to Date) ([]SecurityPrice, error)`, `Name() string`
   - Implement `ManualPriceProvider` as a no-op/passthrough (returns error "manual entry required")
 
 - [x] **SM-029 - Price provider registry**
@@ -170,7 +170,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-030 - PriceService.AddPrice**
   - RED: Write test — add price for valid security+date; reject future date; reject non-positive price; handle duplicate (return conflict info)
-  - GREEN: Implement `PriceService.AddPrice` in `internal/service/price.go`
+  - GREEN: Implement `PriceService.AddPrice` in `internal/price/service.go`
 
 - [x] **SM-031 - PriceService.UpdatePrice**
   - RED: Write test — update existing price; reject invalid values
@@ -196,7 +196,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-036 - Add TrackLots field to Account model**
   - RED: Write test — Account with TrackLots=true validates; TrackLots only meaningful for investment type; default is false
-  - GREEN: Add `TrackLots` field to `Account` struct in `internal/models/account.go`
+  - GREEN: Add `TrackLots` field to `Account` struct in `internal/account/model.go`
 
 - [x] **SM-037 - Migration: add track_lots column to accounts**
   - RED: Write integration test — existing accounts get track_lots=false; new investment account can set track_lots=true
@@ -210,7 +210,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-039 - InvestmentTransactionType enum**
   - RED: Write tests for all 12 types (`buy`, `sell`, `dividend`, `reinvest_dividend`, `fee`, `fee_liquidation`, `deposit`, `withdrawal`, `interest`, `transfer_shares`, `transfer_cash`, `exchange`), invalid rejected, `IsValid()`, `RequiresSecurity()`, `RequiresShares()`, `AffectsCash()`
-  - GREEN: Implement `InvestmentTransactionType` in `internal/models/investment_transaction.go`
+  - GREEN: Implement `InvestmentTransactionType` in `internal/investment/model.go`
 
 - [x] **SM-040 - InvestmentTransaction model and validation**
   - RED: Write tests — required fields (account_id, date, type, total_amount); security_id required for security-based types; shares required for share-based types; price_per_share optional; commission >= 0; status enum (pending, cleared, reconciled)
@@ -224,7 +224,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-042 - Lot model and validation**
   - RED: Write tests — required fields (account_id, security_id, shares > 0, original_shares > 0, cost_per_share > 0, purchase_date, source_transaction_id); closed default false; `CostBasis()` returns shares × cost_per_share; `IsFullyClosed()` returns shares == 0
-  - GREEN: Implement `Lot` struct in `internal/models/lot.go`
+  - GREEN: Implement `Lot` struct in `internal/investment/lot.go`
 
 - [x] **SM-043 - Lot reduce and close logic**
   - RED: Write tests — `Reduce(shares)` decreases shares; reducing to 0 sets closed=true; reducing more than available returns error; reducing negative amount returns error
@@ -234,7 +234,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-044 - Position model and validation (non-lot-tracking)**
   - RED: Write tests — required fields (account_id, security_id); shares >= 0; average_cost_per_share >= 0; `CostBasis()` returns shares × average_cost_per_share; `MarketValue(currentPrice)` returns shares × currentPrice
-  - GREEN: Implement `Position` struct in `internal/models/position.go`
+  - GREEN: Implement `Position` struct in `internal/investment/position.go`
 
 - [x] **SM-045 - Position average cost recalculation**
   - RED: Write tests — `AddShares(newShares, pricePerShare)` recalculates weighted average; `RemoveShares(shares)` reduces count without changing average; removing more than held returns error
@@ -262,7 +262,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-050 - InvestmentTransactionRepository.Create**
   - RED: Write test — create transaction, verify returned ID and all fields; verify account_id foreign key enforced
-  - GREEN: Implement `Create` in `internal/repository/investment_transaction.go`
+  - GREEN: Implement `Create` in `internal/investment/repository.go`
 
 - [x] **SM-051 - InvestmentTransactionRepository.GetByID**
   - RED: Write test — get existing by ID; not found returns error
@@ -284,7 +284,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-055 - LotRepository.Create**
   - RED: Write test — create lot, verify all fields; verify foreign keys
-  - GREEN: Implement `Create` in `internal/repository/lot.go`
+  - GREEN: Implement `Create` in `internal/investment/lot_repository.go`
 
 - [x] **SM-056 - LotRepository.GetByID**
   - RED: Write test — get lot by ID; not found returns error
@@ -306,7 +306,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-060 - PositionRepository.CreateOrUpdate**
   - RED: Write test — create new position; update existing position for same account+security (upsert)
-  - GREEN: Implement `CreateOrUpdate` in `internal/repository/position.go`
+  - GREEN: Implement `CreateOrUpdate` in `internal/investment/position_repository.go`
 
 - [x] **SM-061 - PositionRepository.GetByAccountAndSecurity**
   - RED: Write test — get position; not found returns zero-value position (not error)
@@ -324,7 +324,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-064 - TransactionLotRepository.Create**
   - RED: Write test — link transaction to lot with share count; verify foreign keys
-  - GREEN: Implement `Create` in `internal/repository/transaction_lot.go`
+  - GREEN: Implement `Create` in `internal/investment/transaction_lot_repository.go`
 
 - [x] **SM-065 - TransactionLotRepository.GetByTransaction**
   - RED: Write test — get all lot allocations for a transaction
@@ -334,7 +334,7 @@ Spec: `specs/security-master.md`
 
 - [x] **SM-066 - InvestmentTransactionService.Deposit**
   - RED: Write test — deposit increases cash position; verify transaction created; verify account must be investment type
-  - GREEN: Implement `Deposit` in `internal/service/investment_transaction.go`
+  - GREEN: Implement `Deposit` in `internal/investment/service.go`
 
 - [x] **SM-067 - InvestmentTransactionService.Withdrawal**
   - RED: Write test — withdrawal decreases cash position; insufficient cash returns error; verify transaction created
@@ -672,7 +672,7 @@ Spec: `specs/security-master.md`
 
 - [ ] **SM-140 - CorporateActionType enum**
   - RED: Write tests — valid types (`split`, `reverse_split`, `merger`, `spin_off`); invalid rejected
-  - GREEN: Implement `CorporateActionType` in `internal/models/corporate_action.go`
+  - GREEN: Implement `CorporateActionType` in `internal/investment/corporate_action.go`
 
 - [ ] **SM-141 - CorporateAction model**
   - RED: Write tests — required fields (action_type, security_id, action_date, parameters); parameters is JSON string; target_security_id required for merger and spin_off
@@ -694,7 +694,7 @@ Spec: `specs/security-master.md`
 
 - [ ] **SM-145 - CorporateActionRepository.Create**
   - RED: Write test — create action, verify fields and JSON parameters stored correctly
-  - GREEN: Implement `Create` in `internal/repository/corporate_action.go`
+  - GREEN: Implement `Create` in `internal/investment/corporate_action_repository.go`
 
 - [ ] **SM-146 - CorporateActionRepository.ListBySecurity**
   - RED: Write test — list actions for a security ordered by date; includes actions where security is source or target

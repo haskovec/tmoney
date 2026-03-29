@@ -7,3 +7,4 @@ IMPORTANT:
 - when the data model changes make sure to include migration scripts
 - when tests pass commit the changes and push
 - updated the implementation-plan-security-master.md file marking the task as done
+- at the end of the process display the code coverage metrics for the project

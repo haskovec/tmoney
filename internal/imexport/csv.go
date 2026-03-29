@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // CSV column headers as defined in the spec.
@@ -136,7 +136,7 @@ func parseCSVRow(cm columnMap, row []string, lineNum int) (*ImportRecord, *Parse
 		return nil, &ParseError{Line: lineNum, Message: "missing date"}
 	}
 
-	date, err := models.ParseDate(dateStr)
+	date, err := types.ParseDate(dateStr)
 	if err != nil {
 		return nil, &ParseError{Line: lineNum, Message: fmt.Sprintf("invalid date %q: %v", dateStr, err)}
 	}
@@ -146,7 +146,7 @@ func parseCSVRow(cm columnMap, row []string, lineNum int) (*ImportRecord, *Parse
 		return nil, &ParseError{Line: lineNum, Message: "missing amount"}
 	}
 
-	amount, err := models.NewMoney(amountStr)
+	amount, err := types.NewMoney(amountStr)
 	if err != nil {
 		return nil, &ParseError{Line: lineNum, Message: fmt.Sprintf("invalid amount %q: %v", amountStr, err)}
 	}

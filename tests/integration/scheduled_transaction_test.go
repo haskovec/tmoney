@@ -6,14 +6,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // createScheduledTestService creates a test database with a ScheduledTransactionService.
-func createScheduledTestService(t *testing.T) (*service.ScheduledTransactionService, *db.DB, func()) {
+func createScheduledTestService(t *testing.T) (*scheduled.Service, *db.DB, func()) {
 	t.Helper()
 
 	tempDir, err := os.MkdirTemp("", "tmoney-scheduled-test-*")
@@ -28,9 +31,9 @@ func createScheduledTestService(t *testing.T) (*service.ScheduledTransactionServ
 		t.Fatalf("Failed to create database: %v", err)
 	}
 
-	stRepo := repository.NewScheduledTransactionRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
-	svc := service.NewScheduledTransactionService(stRepo, txnRepo, database)
+	stRepo := scheduled.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	svc := scheduled.NewService(stRepo, txnRepo, database)
 
 	cleanup := func() {
 		database.Close()
@@ -44,19 +47,19 @@ func TestScheduledTransactionCreate(t *testing.T) {
 	svc, database, cleanup := createScheduledTestService(t)
 	defer cleanup()
 
-	accountRepo := repository.NewAccountRepository(database)
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD",
-		models.MustNewMoney("1000.00"), models.NewDate(2024, 1, 1))
+	accountRepo := account.NewRepository(database)
+	account := account.NewAccount("Checking", account.TypeChecking, "USD",
+		types.MustNewMoney("1000.00"), types.NewDate(2024, 1, 1))
 	if err := accountRepo.Create(account); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	t.Run("creates valid scheduled transaction", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 1, 1),
-			models.MustNewMoney("-100.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 1, 1),
+			types.MustNewMoney("-100.00"),
 		)
 		st.SetMemo("Monthly rent")
 
@@ -68,10 +71,10 @@ func TestScheduledTransactionCreate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to retrieve: %v", err)
 		}
-		if retrieved.Frequency != models.FrequencyMonthly {
+		if retrieved.Frequency != scheduled.FrequencyMonthly {
 			t.Errorf("Expected frequency 'monthly', got %q", retrieved.Frequency)
 		}
-		if !retrieved.Amount.Valid || !retrieved.Amount.Money.Equal(models.MustNewMoney("-100.00")) {
+		if !retrieved.Amount.Valid || !retrieved.Amount.Money.Equal(types.MustNewMoney("-100.00")) {
 			t.Errorf("Expected amount -100.00, got %v", retrieved.Amount)
 		}
 		if !retrieved.Memo.Valid || retrieved.Memo.String != "Monthly rent" {
@@ -80,24 +83,24 @@ func TestScheduledTransactionCreate(t *testing.T) {
 	})
 
 	t.Run("creates scheduled transaction with payee and category", func(t *testing.T) {
-		payeeRepo := repository.NewPayeeRepository(database)
-		categoryRepo := repository.NewCategoryRepository(database)
+		payeeRepo := payee.NewRepository(database)
+		categoryRepo := category.NewRepository(database)
 
-		payee := models.NewPayee("Landlord")
+		payee := payee.NewPayee("Landlord")
 		if err := payeeRepo.Create(payee); err != nil {
 			t.Fatalf("Failed to create payee: %v", err)
 		}
 
-		category := models.NewCategory("Housing", models.CategoryTypeExpense)
+		category := category.NewCategory("Housing", category.TypeExpense)
 		if err := categoryRepo.Create(category); err != nil {
 			t.Fatalf("Failed to create category: %v", err)
 		}
 
-		st := models.NewScheduledTransactionFull(
+		st := scheduled.NewTransactionFull(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 1, 15),
-			models.MustNewMoney("-1500.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 1, 15),
+			types.MustNewMoney("-1500.00"),
 			payee.ID,
 			category.ID,
 			"Rent payment",
@@ -124,24 +127,24 @@ func TestScheduledTransactionCRUD(t *testing.T) {
 	svc, database, cleanup := createScheduledTestService(t)
 	defer cleanup()
 
-	accountRepo := repository.NewAccountRepository(database)
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+	accountRepo := account.NewRepository(database)
+	account := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 	if err := accountRepo.Create(account); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
-	st := models.NewScheduledTransactionWithAmount(
+	st := scheduled.NewTransactionWithAmount(
 		account.ID,
-		models.FrequencyWeekly,
-		models.NewDate(2024, 1, 1),
-		models.MustNewMoney("-25.00"),
+		scheduled.FrequencyWeekly,
+		types.NewDate(2024, 1, 1),
+		types.MustNewMoney("-25.00"),
 	)
 	if err := svc.Create(st); err != nil {
 		t.Fatalf("Failed to create: %v", err)
 	}
 
 	t.Run("update scheduled transaction", func(t *testing.T) {
-		st.SetAmount(models.MustNewMoney("-30.00"))
+		st.SetAmount(types.MustNewMoney("-30.00"))
 		st.SetMemo("Updated memo")
 		if err := svc.Update(st); err != nil {
 			t.Fatalf("Failed to update: %v", err)
@@ -151,7 +154,7 @@ func TestScheduledTransactionCRUD(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to retrieve: %v", err)
 		}
-		if !retrieved.Amount.Money.Equal(models.MustNewMoney("-30.00")) {
+		if !retrieved.Amount.Money.Equal(types.MustNewMoney("-30.00")) {
 			t.Errorf("Expected amount -30.00, got %s", retrieved.Amount.Money.String())
 		}
 		if !retrieved.Memo.Valid || retrieved.Memo.String != "Updated memo" {
@@ -180,9 +183,9 @@ func TestScheduledTransactionCRUD(t *testing.T) {
 	})
 
 	t.Run("delete scheduled transaction", func(t *testing.T) {
-		deleteMe := models.NewScheduledTransactionWithAmount(
-			account.ID, models.FrequencyDaily,
-			models.NewDate(2024, 6, 1), models.MustNewMoney("-5.00"),
+		deleteMe := scheduled.NewTransactionWithAmount(
+			account.ID, scheduled.FrequencyDaily,
+			types.NewDate(2024, 6, 1), types.MustNewMoney("-5.00"),
 		)
 		if err := svc.Create(deleteMe); err != nil {
 			t.Fatalf("Failed to create: %v", err)
@@ -203,21 +206,21 @@ func TestScheduledTransactionPost(t *testing.T) {
 	svc, database, cleanup := createScheduledTestService(t)
 	defer cleanup()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD",
-		models.MustNewMoney("5000.00"), models.NewDate(2024, 1, 1))
+	account := account.NewAccount("Checking", account.TypeChecking, "USD",
+		types.MustNewMoney("5000.00"), types.NewDate(2024, 1, 1))
 	if err := accountRepo.Create(account); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	t.Run("post creates real transaction and advances schedule", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 1, 15),
-			models.MustNewMoney("-500.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 1, 15),
+			types.MustNewMoney("-500.00"),
 		)
 		st.SetMemo("Rent")
 
@@ -235,7 +238,7 @@ func TestScheduledTransactionPost(t *testing.T) {
 		if txn == nil {
 			t.Fatal("Expected a transaction, got nil")
 		}
-		if !txn.Amount.Equal(models.MustNewMoney("-500.00")) {
+		if !txn.Amount.Equal(types.MustNewMoney("-500.00")) {
 			t.Errorf("Expected amount -500.00, got %s", txn.Amount.String())
 		}
 		if txn.AccountID != account.ID {
@@ -257,40 +260,40 @@ func TestScheduledTransactionPost(t *testing.T) {
 			t.Fatalf("Failed to get updated schedule: %v", err)
 		}
 		// Next date should have advanced from Jan 15 to Feb 15
-		expectedNextDate := models.NewDate(2024, 2, 15)
+		expectedNextDate := types.NewDate(2024, 2, 15)
 		if !updated.NextDate.Equal(expectedNextDate) {
 			t.Errorf("Expected next date %v, got %v", expectedNextDate, updated.NextDate)
 		}
 	})
 
 	t.Run("post with custom amount overrides scheduled amount", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 3, 1),
-			models.MustNewMoney("-100.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 3, 1),
+			types.MustNewMoney("-100.00"),
 		)
 		if err := svc.Create(st); err != nil {
 			t.Fatalf("Failed to create: %v", err)
 		}
 
-		customAmount := models.MustNewMoney("-75.00")
+		customAmount := types.MustNewMoney("-75.00")
 		txn, err := svc.Post(st.ID, &customAmount)
 		if err != nil {
 			t.Fatalf("Failed to post with custom amount: %v", err)
 		}
 
-		if !txn.Amount.Equal(models.MustNewMoney("-75.00")) {
+		if !txn.Amount.Equal(types.MustNewMoney("-75.00")) {
 			t.Errorf("Expected custom amount -75.00, got %s", txn.Amount.String())
 		}
 	})
 
 	t.Run("post with fixed occurrences decrements remaining", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 4, 1),
-			models.MustNewMoney("-50.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 4, 1),
+			types.MustNewMoney("-50.00"),
 		)
 		st.SetOccurrences(3)
 		if err := svc.Create(st); err != nil {
@@ -313,11 +316,11 @@ func TestScheduledTransactionPost(t *testing.T) {
 	})
 
 	t.Run("post rejects completed schedule", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 5, 1),
-			models.MustNewMoney("-10.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 5, 1),
+			types.MustNewMoney("-10.00"),
 		)
 		st.SetOccurrences(1)
 		if err := svc.Create(st); err != nil {
@@ -335,7 +338,7 @@ func TestScheduledTransactionPost(t *testing.T) {
 		if err == nil {
 			t.Error("Expected error when posting completed schedule")
 		}
-		if _, ok := err.(*service.ScheduledTransactionCompletedError); !ok {
+		if _, ok := err.(*scheduled.CompletedError); !ok {
 			t.Errorf("Expected ScheduledTransactionCompletedError, got %T: %v", err, err)
 		}
 	})
@@ -345,24 +348,24 @@ func TestScheduledTransactionPostWithDate(t *testing.T) {
 	svc, database, cleanup := createScheduledTestService(t)
 	defer cleanup()
 
-	accountRepo := repository.NewAccountRepository(database)
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+	accountRepo := account.NewRepository(database)
+	account := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 	if err := accountRepo.Create(account); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	t.Run("creates transaction with specified date", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 1, 15),
-			models.MustNewMoney("-200.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 1, 15),
+			types.MustNewMoney("-200.00"),
 		)
 		if err := svc.Create(st); err != nil {
 			t.Fatalf("Failed to create: %v", err)
 		}
 
-		customDate := models.NewDate(2024, 1, 20)
+		customDate := types.NewDate(2024, 1, 20)
 		txn, err := svc.PostWithDate(st.ID, customDate, nil)
 		if err != nil {
 			t.Fatalf("Failed to post with date: %v", err)
@@ -378,20 +381,20 @@ func TestScheduledTransactionSkip(t *testing.T) {
 	svc, database, cleanup := createScheduledTestService(t)
 	defer cleanup()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+	account := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 	if err := accountRepo.Create(account); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	t.Run("skip advances schedule without creating transaction", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyWeekly,
-			models.NewDate(2024, 1, 1),
-			models.MustNewMoney("-25.00"),
+			scheduled.FrequencyWeekly,
+			types.NewDate(2024, 1, 1),
+			types.MustNewMoney("-25.00"),
 		)
 		if err := svc.Create(st); err != nil {
 			t.Fatalf("Failed to create: %v", err)
@@ -423,18 +426,18 @@ func TestScheduledTransactionSkip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get updated: %v", err)
 		}
-		expectedNextDate := models.NewDate(2024, 1, 8) // Weekly: Jan 1 + 7 days
+		expectedNextDate := types.NewDate(2024, 1, 8) // Weekly: Jan 1 + 7 days
 		if !updated.NextDate.Equal(expectedNextDate) {
 			t.Errorf("Expected next date %v, got %v", expectedNextDate, updated.NextDate)
 		}
 	})
 
 	t.Run("skip rejects completed schedule", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 6, 1),
-			models.MustNewMoney("-10.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 6, 1),
+			types.MustNewMoney("-10.00"),
 		)
 		st.SetOccurrences(1)
 		if err := svc.Create(st); err != nil {
@@ -451,7 +454,7 @@ func TestScheduledTransactionSkip(t *testing.T) {
 		if err == nil {
 			t.Error("Expected error when skipping completed schedule")
 		}
-		if _, ok := err.(*service.ScheduledTransactionCompletedError); !ok {
+		if _, ok := err.(*scheduled.CompletedError); !ok {
 			t.Errorf("Expected ScheduledTransactionCompletedError, got %T: %v", err, err)
 		}
 	})
@@ -461,29 +464,29 @@ func TestScheduledTransactionDueAndUpcoming(t *testing.T) {
 	svc, database, cleanup := createScheduledTestService(t)
 	defer cleanup()
 
-	accountRepo := repository.NewAccountRepository(database)
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+	accountRepo := account.NewRepository(database)
+	account := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 	if err := accountRepo.Create(account); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	// Create a scheduled transaction that is due (next_date in the past)
-	pastDue := models.NewScheduledTransactionWithAmount(
+	pastDue := scheduled.NewTransactionWithAmount(
 		account.ID,
-		models.FrequencyMonthly,
-		models.NewDate(2020, 1, 1), // Far in the past
-		models.MustNewMoney("-100.00"),
+		scheduled.FrequencyMonthly,
+		types.NewDate(2020, 1, 1), // Far in the past
+		types.MustNewMoney("-100.00"),
 	)
 	if err := svc.Create(pastDue); err != nil {
 		t.Fatalf("Failed to create past due: %v", err)
 	}
 
 	// Create a scheduled transaction far in the future
-	future := models.NewScheduledTransactionWithAmount(
+	future := scheduled.NewTransactionWithAmount(
 		account.ID,
-		models.FrequencyYearly,
-		models.NewDate(2099, 12, 31), // Far in the future
-		models.MustNewMoney("-50.00"),
+		scheduled.FrequencyYearly,
+		types.NewDate(2099, 12, 31), // Far in the future
+		types.MustNewMoney("-50.00"),
 	)
 	if err := svc.Create(future); err != nil {
 		t.Fatalf("Failed to create future: %v", err)
@@ -538,18 +541,18 @@ func TestScheduledTransactionNextDateCalculation(t *testing.T) {
 	svc, database, cleanup := createScheduledTestService(t)
 	defer cleanup()
 
-	accountRepo := repository.NewAccountRepository(database)
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+	accountRepo := account.NewRepository(database)
+	account := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 	if err := accountRepo.Create(account); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	t.Run("monthly next date", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 1, 15),
-			models.MustNewMoney("-100.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 1, 15),
+			types.MustNewMoney("-100.00"),
 		)
 		if err := svc.Create(st); err != nil {
 			t.Fatalf("Failed to create: %v", err)
@@ -560,18 +563,18 @@ func TestScheduledTransactionNextDateCalculation(t *testing.T) {
 			t.Fatalf("Failed to calculate next date: %v", err)
 		}
 
-		expected := models.NewDate(2024, 2, 15)
+		expected := types.NewDate(2024, 2, 15)
 		if !nextDate.Equal(expected) {
 			t.Errorf("Expected next date %v, got %v", expected, nextDate)
 		}
 	})
 
 	t.Run("weekly next date", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyWeekly,
-			models.NewDate(2024, 1, 1),
-			models.MustNewMoney("-25.00"),
+			scheduled.FrequencyWeekly,
+			types.NewDate(2024, 1, 1),
+			types.MustNewMoney("-25.00"),
 		)
 		if err := svc.Create(st); err != nil {
 			t.Fatalf("Failed to create: %v", err)
@@ -582,18 +585,18 @@ func TestScheduledTransactionNextDateCalculation(t *testing.T) {
 			t.Fatalf("Failed to calculate: %v", err)
 		}
 
-		expected := models.NewDate(2024, 1, 8)
+		expected := types.NewDate(2024, 1, 8)
 		if !nextDate.Equal(expected) {
 			t.Errorf("Expected next date %v, got %v", expected, nextDate)
 		}
 	})
 
 	t.Run("biweekly next date", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyBiweekly,
-			models.NewDate(2024, 1, 5),
-			models.MustNewMoney("-50.00"),
+			scheduled.FrequencyBiweekly,
+			types.NewDate(2024, 1, 5),
+			types.MustNewMoney("-50.00"),
 		)
 		if err := svc.Create(st); err != nil {
 			t.Fatalf("Failed to create: %v", err)
@@ -604,18 +607,18 @@ func TestScheduledTransactionNextDateCalculation(t *testing.T) {
 			t.Fatalf("Failed to calculate: %v", err)
 		}
 
-		expected := models.NewDate(2024, 1, 19)
+		expected := types.NewDate(2024, 1, 19)
 		if !nextDate.Equal(expected) {
 			t.Errorf("Expected next date %v, got %v", expected, nextDate)
 		}
 	})
 
 	t.Run("yearly next date", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyYearly,
-			models.NewDate(2024, 3, 15),
-			models.MustNewMoney("-1000.00"),
+			scheduled.FrequencyYearly,
+			types.NewDate(2024, 3, 15),
+			types.MustNewMoney("-1000.00"),
 		)
 		if err := svc.Create(st); err != nil {
 			t.Fatalf("Failed to create: %v", err)
@@ -626,18 +629,18 @@ func TestScheduledTransactionNextDateCalculation(t *testing.T) {
 			t.Fatalf("Failed to calculate: %v", err)
 		}
 
-		expected := models.NewDate(2025, 3, 15)
+		expected := types.NewDate(2025, 3, 15)
 		if !nextDate.Equal(expected) {
 			t.Errorf("Expected next date %v, got %v", expected, nextDate)
 		}
 	})
 
 	t.Run("GetNextDate returns current next date", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 6, 1),
-			models.MustNewMoney("-200.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 6, 1),
+			types.MustNewMoney("-200.00"),
 		)
 		if err := svc.Create(st); err != nil {
 			t.Fatalf("Failed to create: %v", err)
@@ -649,7 +652,7 @@ func TestScheduledTransactionNextDateCalculation(t *testing.T) {
 		}
 
 		// Should be the start date since no posts have happened
-		expected := models.NewDate(2024, 6, 1)
+		expected := types.NewDate(2024, 6, 1)
 		if !nextDate.Equal(expected) {
 			t.Errorf("Expected next date %v, got %v", expected, nextDate)
 		}
@@ -660,18 +663,18 @@ func TestScheduledTransactionIsCompleted(t *testing.T) {
 	svc, database, cleanup := createScheduledTestService(t)
 	defer cleanup()
 
-	accountRepo := repository.NewAccountRepository(database)
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+	accountRepo := account.NewRepository(database)
+	account := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 	if err := accountRepo.Create(account); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	t.Run("indefinite schedule is not completed", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 1, 1),
-			models.MustNewMoney("-100.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 1, 1),
+			types.MustNewMoney("-100.00"),
 		)
 		if err := svc.Create(st); err != nil {
 			t.Fatalf("Failed to create: %v", err)
@@ -687,11 +690,11 @@ func TestScheduledTransactionIsCompleted(t *testing.T) {
 	})
 
 	t.Run("schedule with used-up occurrences is completed", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 2, 1),
-			models.MustNewMoney("-10.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 2, 1),
+			types.MustNewMoney("-10.00"),
 		)
 		st.SetOccurrences(2)
 		if err := svc.Create(st); err != nil {
@@ -720,17 +723,17 @@ func TestScheduledTransactionEstimateAmount(t *testing.T) {
 	svc, database, cleanup := createScheduledTestService(t)
 	defer cleanup()
 
-	accountRepo := repository.NewAccountRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
+	accountRepo := account.NewRepository(database)
+	payeeRepo := payee.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD",
-		models.MustNewMoney("10000.00"), models.NewDate(2024, 1, 1))
+	account := account.NewAccount("Checking", account.TypeChecking, "USD",
+		types.MustNewMoney("10000.00"), types.NewDate(2024, 1, 1))
 	if err := accountRepo.Create(account); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
-	payee := models.NewPayee("Electric Company")
+	payee := payee.NewPayee("Electric Company")
 	if err := payeeRepo.Create(payee); err != nil {
 		t.Fatalf("Failed to create payee: %v", err)
 	}
@@ -740,10 +743,10 @@ func TestScheduledTransactionEstimateAmount(t *testing.T) {
 		amounts := []string{"-100.00", "-120.00", "-110.00"}
 		months := []time.Month{time.January, time.February, time.March}
 		for i, amtStr := range amounts {
-			txn := models.NewTransactionWithPayee(
+			txn := transaction.NewTransactionWithPayee(
 				account.ID,
-				models.NewDate(2024, months[i], 15),
-				models.MustNewMoney(amtStr),
+				types.NewDate(2024, months[i], 15),
+				types.MustNewMoney(amtStr),
 				payee.ID,
 			)
 			if err := txnRepo.Create(txn); err != nil {
@@ -752,10 +755,10 @@ func TestScheduledTransactionEstimateAmount(t *testing.T) {
 		}
 
 		// Create a variable-amount scheduled transaction
-		st := models.NewScheduledTransaction(
+		st := scheduled.NewTransaction(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 4, 15),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 4, 15),
 		)
 		st.SetPayee(payee.ID)
 		st.SetAmountEstimateCount(3)
@@ -772,18 +775,18 @@ func TestScheduledTransactionEstimateAmount(t *testing.T) {
 		}
 
 		// Average of -100, -120, -110 = -110
-		expectedAvg := models.MustNewMoney("-110.00")
+		expectedAvg := types.MustNewMoney("-110.00")
 		if !estimated.Equal(expectedAvg) {
 			t.Errorf("Expected estimated amount %s, got %s", expectedAvg.String(), estimated.String())
 		}
 	})
 
 	t.Run("returns fixed amount when set", func(t *testing.T) {
-		st := models.NewScheduledTransactionWithAmount(
+		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 5, 1),
-			models.MustNewMoney("-75.00"),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 5, 1),
+			types.MustNewMoney("-75.00"),
 		)
 		if err := svc.Create(st); err != nil {
 			t.Fatalf("Failed to create: %v", err)
@@ -796,16 +799,16 @@ func TestScheduledTransactionEstimateAmount(t *testing.T) {
 		if estimated == nil {
 			t.Fatal("Expected amount, got nil")
 		}
-		if !estimated.Equal(models.MustNewMoney("-75.00")) {
+		if !estimated.Equal(types.MustNewMoney("-75.00")) {
 			t.Errorf("Expected -75.00, got %s", estimated.String())
 		}
 	})
 
 	t.Run("returns nil when no payee and no amount", func(t *testing.T) {
-		st := models.NewScheduledTransaction(
+		st := scheduled.NewTransaction(
 			account.ID,
-			models.FrequencyMonthly,
-			models.NewDate(2024, 6, 1),
+			scheduled.FrequencyMonthly,
+			types.NewDate(2024, 6, 1),
 		)
 		st.SetAmountEstimateCount(3)
 		if err := svc.Create(st); err != nil {

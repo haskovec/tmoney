@@ -6,7 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
@@ -38,12 +39,12 @@ type splitRow struct {
 
 // pendingSplitTransaction holds the transaction data while the split editor is open.
 type pendingSplitTransaction struct {
-	accountID models.ID
-	date      models.Date
+	accountID types.ID
+	date      types.Date
 	payeeName string
-	amount    models.Money
+	amount    types.Money
 	memo      string
-	status    models.TransactionStatus
+	status    transaction.Status
 }
 
 // splitDialogSavedMsg is sent when a split transaction has been saved.
@@ -53,18 +54,18 @@ type splitDialogSavedMsg struct{}
 type SplitDialog struct {
 	visible         bool
 	width           int
-	totalAmount     models.Money
+	totalAmount     types.Money
 	rows            []splitRow
 	focus           splitDialogFocus
 	rowIndex        int
 	fieldFocus      splitFieldFocus
 	categoryOptions []string
-	categoryIDs     []models.ID
+	categoryIDs     []types.ID
 	errorMsg        string
 }
 
 // NewSplitDialog creates a new SplitDialog for the given total amount.
-func NewSplitDialog(amount models.Money, categoryOptions []string, categoryIDs []models.ID) *SplitDialog {
+func NewSplitDialog(amount types.Money, categoryOptions []string, categoryIDs []types.ID) *SplitDialog {
 	sd := &SplitDialog{
 		visible:         true,
 		width:           64,
@@ -110,8 +111,8 @@ func (sd *SplitDialog) ErrorMsg() string {
 }
 
 // remaining calculates totalAmount minus the sum of entered split amounts.
-func (sd *SplitDialog) remaining() models.Money {
-	sum := models.ZeroMoney
+func (sd *SplitDialog) remaining() types.Money {
+	sum := types.ZeroMoney
 	for _, row := range sd.rows {
 		amt := strings.TrimSpace(row.amountField.Value)
 		if amt == "" {
@@ -186,23 +187,23 @@ func (sd *SplitDialog) validate() error {
 	return nil
 }
 
-// buildSplits produces Split models from the current rows.
-func (sd *SplitDialog) buildSplits() ([]*models.Split, error) {
+// buildSplits produces Split structs from the current rows.
+func (sd *SplitDialog) buildSplits() ([]*transaction.Split, error) {
 	if err := sd.validate(); err != nil {
 		return nil, err
 	}
 
-	var splits []*models.Split
+	var splits []*transaction.Split
 	for _, row := range sd.rows {
 		amount, _ := parseAmountInput(row.amountField.Value)
 		categoryID := sd.categoryIDs[row.categoryIndex]
 		memo := strings.TrimSpace(row.memoField.Value)
 
-		var split *models.Split
+		var split *transaction.Split
 		if memo != "" {
-			split = models.NewSplitWithMemo(models.NilID, categoryID, amount, memo)
+			split = transaction.NewSplitWithMemo(types.NilID, categoryID, amount, memo)
 		} else {
-			split = models.NewSplit(models.NilID, categoryID, amount)
+			split = transaction.NewSplit(types.NilID, categoryID, amount)
 		}
 		splits = append(splits, split)
 	}
@@ -563,7 +564,7 @@ func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 
 	return a, func() tea.Msg {
 		// Resolve or create payee
-		var payeeID models.ID
+		var payeeID types.ID
 		if pending.payeeName != "" && a.payeeSvc != nil {
 			payee, _, err := a.payeeSvc.GetOrCreate(pending.payeeName)
 			if err != nil {
@@ -573,7 +574,7 @@ func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 		}
 
 		// Build transaction (no category when using splits)
-		txn := models.NewTransactionFull(pending.accountID, pending.date, pending.amount, payeeID, models.NilID, pending.memo)
+		txn := transaction.NewTransactionFull(pending.accountID, pending.date, pending.amount, payeeID, types.NilID, pending.memo)
 		txn.Status = pending.status
 
 		// Save with splits via undo manager

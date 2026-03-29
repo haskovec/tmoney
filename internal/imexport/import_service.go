@@ -5,7 +5,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // ImportAction represents the action to take for an imported transaction.
@@ -28,8 +29,8 @@ type ImportRow struct {
 	Record     *ImportRecord
 	Match      MatchResult
 	Action     ImportAction
-	CategoryID models.NullableID
-	PayeeID    models.NullableID
+	CategoryID types.NullableID
+	PayeeID    types.NullableID
 }
 
 // ImportResult holds the summary of an import operation.
@@ -39,13 +40,13 @@ type ImportResult struct {
 	Updated  int
 	Skipped  int
 	Errors   []string
-	DateFrom models.Date
-	DateTo   models.Date
+	DateFrom types.Date
+	DateTo   types.Date
 }
 
 // TotalAmount returns the total amount of non-skipped rows.
-func (r *ImportResult) TotalAmount() models.Money {
-	total := models.ZeroMoney
+func (r *ImportResult) TotalAmount() types.Money {
+	total := types.ZeroMoney
 	for _, row := range r.Rows {
 		if row.Action != ImportActionSkip {
 			total = total.Add(row.Record.Amount)
@@ -120,27 +121,27 @@ type ImportOptions struct {
 
 // CategoryResolver looks up a category by its hierarchical name (e.g. "Food:Groceries").
 type CategoryResolver interface {
-	ResolveCategoryByName(name string) (models.ID, error)
+	ResolveCategoryByName(name string) (types.ID, error)
 }
 
 // PayeeResolver looks up or creates a payee by name and returns the payee ID
 // and its default category ID (if any).
 type PayeeResolver interface {
-	ResolvePayee(name string) (payeeID models.ID, defaultCategoryID models.NullableID, err error)
+	ResolvePayee(name string) (payeeID types.ID, defaultCategoryID types.NullableID, err error)
 }
 
 // TransactionStore provides access to existing transactions for matching.
 type TransactionStore interface {
-	ListByAccount(accountID models.ID) ([]*models.Transaction, error)
-	GetPayeeName(payeeID models.ID) string
-	GetBankReferenceID(txn *models.Transaction) string
+	ListByAccount(accountID types.ID) ([]*transaction.Transaction, error)
+	GetPayeeName(payeeID types.ID) string
+	GetBankReferenceID(txn *transaction.Transaction) string
 }
 
 // TransactionCreator creates or updates transactions during import execution.
 type TransactionCreator interface {
-	CreateTransaction(txn *models.Transaction) error
-	CreateTransactionWithSplits(txn *models.Transaction, splits []*models.Split) error
-	UpdateTransaction(txn *models.Transaction) error
+	CreateTransaction(txn *transaction.Transaction) error
+	CreateTransactionWithSplits(txn *transaction.Transaction, splits []*transaction.Split) error
+	UpdateTransaction(txn *transaction.Transaction) error
 }
 
 // ImportService orchestrates the import workflow: parse, match, categorize, and apply.
@@ -184,7 +185,7 @@ func (s *ImportService) Parse(r io.Reader, format Format) (*ParseResult, error) 
 
 // Preview parses the file, runs matching and auto-categorization, and returns
 // the import result ready for user review. No changes are made to the database.
-func (s *ImportService) Preview(r io.Reader, format Format, accountID models.ID, opts ImportOptions) (*ImportResult, error) {
+func (s *ImportService) Preview(r io.Reader, format Format, accountID types.ID, opts ImportOptions) (*ImportResult, error) {
 	// Parse the file
 	parseResult, err := s.Parse(r, format)
 	if err != nil {
@@ -261,7 +262,7 @@ func (s *ImportService) Preview(r io.Reader, format Format, accountID models.ID,
 
 // Execute applies the import actions to the database.
 // It processes all non-skipped rows: creates new transactions and updates matched ones.
-func (s *ImportService) Execute(result *ImportResult, accountID models.ID) error {
+func (s *ImportService) Execute(result *ImportResult, accountID types.ID) error {
 	result.Created = 0
 	result.Updated = 0
 	result.Skipped = 0
@@ -308,8 +309,8 @@ func (s *ImportService) Execute(result *ImportResult, accountID models.ID) error
 			updated := false
 
 			// Update status to cleared if currently uncleared
-			if txn.Status == models.TransactionStatusUncleared {
-				txn.SetStatus(models.TransactionStatusCleared)
+			if txn.Status == transaction.StatusUncleared {
+				txn.SetStatus(transaction.StatusCleared)
 				updated = true
 			}
 
@@ -334,7 +335,7 @@ func (s *ImportService) Execute(result *ImportResult, accountID models.ID) error
 }
 
 // buildExistingTransactions loads existing transactions and wraps them for matching.
-func (s *ImportService) buildExistingTransactions(accountID models.ID) ([]ExistingTransaction, error) {
+func (s *ImportService) buildExistingTransactions(accountID types.ID) ([]ExistingTransaction, error) {
 	txns, err := s.transactionStore.ListByAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -358,7 +359,7 @@ func (s *ImportService) autoCategorize(row *ImportRow) {
 	if row.Record.Payee != "" && s.payeeResolver != nil {
 		payeeID, defaultCatID, err := s.payeeResolver.ResolvePayee(row.Record.Payee)
 		if err == nil && !payeeID.IsNil() {
-			row.PayeeID = models.NullableID{ID: payeeID, Valid: true}
+			row.PayeeID = types.NullableID{ID: payeeID, Valid: true}
 
 			// Use payee's default category if no category specified
 			if row.Record.Category == "" && !row.Record.IsSplit() && defaultCatID.Valid {
@@ -371,14 +372,14 @@ func (s *ImportService) autoCategorize(row *ImportRow) {
 	if row.Record.Category != "" && !row.Record.IsSplit() && s.categoryResolver != nil {
 		catID, err := s.categoryResolver.ResolveCategoryByName(row.Record.Category)
 		if err == nil && !catID.IsNil() {
-			row.CategoryID = models.NullableID{ID: catID, Valid: true}
+			row.CategoryID = types.NullableID{ID: catID, Valid: true}
 		}
 	}
 }
 
-// buildTransaction creates a models.Transaction from an import row.
-func (s *ImportService) buildTransaction(row *ImportRow, accountID models.ID) (*models.Transaction, []*models.Split, error) {
-	txn := models.NewTransaction(accountID, row.Record.Date, row.Record.Amount)
+// buildTransaction creates a transaction.Transaction from an import row.
+func (s *ImportService) buildTransaction(row *ImportRow, accountID types.ID) (*transaction.Transaction, []*transaction.Split, error) {
+	txn := transaction.NewTransaction(accountID, row.Record.Date, row.Record.Amount)
 
 	// Set payee
 	if row.PayeeID.Valid {
@@ -412,7 +413,7 @@ func (s *ImportService) buildTransaction(row *ImportRow, accountID models.ID) (*
 	}
 
 	// Build splits if applicable
-	var splits []*models.Split
+	var splits []*transaction.Split
 	if row.Record.IsSplit() && s.categoryResolver != nil {
 		for _, importSplit := range row.Record.Splits {
 			catID, err := s.categoryResolver.ResolveCategoryByName(importSplit.Category)
@@ -420,7 +421,7 @@ func (s *ImportService) buildTransaction(row *ImportRow, accountID models.ID) (*
 				continue // Skip splits with unresolvable categories
 			}
 
-			split := models.NewSplit(txn.ID, catID, importSplit.Amount)
+			split := transaction.NewSplit(txn.ID, catID, importSplit.Amount)
 			if importSplit.Memo != "" {
 				split.SetMemo(importSplit.Memo)
 			}
@@ -460,13 +461,13 @@ func (s *ImportService) calculateDateRange(result *ImportResult) {
 }
 
 // parseImportStatus converts a status code from an import file to a TransactionStatus.
-func parseImportStatus(status string) models.TransactionStatus {
+func parseImportStatus(status string) transaction.Status {
 	switch strings.ToUpper(strings.TrimSpace(status)) {
 	case "C", "X":
-		return models.TransactionStatusCleared
+		return transaction.StatusCleared
 	case "R", "*":
-		return models.TransactionStatusReconciled
+		return transaction.StatusReconciled
 	default:
-		return models.TransactionStatusUncleared
+		return transaction.StatusUncleared
 	}
 }

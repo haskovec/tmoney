@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
+	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // TestAccountLifecycle tests the complete account lifecycle:
@@ -38,16 +39,16 @@ func TestAccountLifecycle(t *testing.T) {
 		t.Errorf("Expected schema version %d, got %d", db.CurrentSchemaVersion, version)
 	}
 
-	repo := repository.NewAccountRepository(database)
+	repo := account.NewRepository(database)
 
 	// Step 2: Create a test account
 	t.Run("Create account", func(t *testing.T) {
-		account := models.NewAccount(
+		account := account.NewAccount(
 			"Chase Checking",
-			models.AccountTypeChecking,
+			account.TypeChecking,
 			"USD",
-			models.MustNewMoney("1000.00"),
-			models.NewDate(2024, 1, 15),
+			types.MustNewMoney("1000.00"),
+			types.NewDate(2024, 1, 15),
 		)
 		account.SetInstitution("Chase Bank")
 		account.SetAccountNumber("1234")
@@ -74,13 +75,13 @@ func TestAccountLifecycle(t *testing.T) {
 		if retrieved.Name != "Chase Checking" {
 			t.Errorf("Expected name 'Chase Checking', got %q", retrieved.Name)
 		}
-		if retrieved.Type != models.AccountTypeChecking {
+		if retrieved.Type != account.TypeChecking {
 			t.Errorf("Expected type 'checking', got %q", retrieved.Type)
 		}
 		if retrieved.Currency != "USD" {
 			t.Errorf("Expected currency 'USD', got %q", retrieved.Currency)
 		}
-		if !retrieved.OpeningBalance.Equal(models.MustNewMoney("1000.00")) {
+		if !retrieved.OpeningBalance.Equal(types.MustNewMoney("1000.00")) {
 			t.Errorf("Expected opening balance '1000.00', got %q", retrieved.OpeningBalance.String())
 		}
 		if !retrieved.Active {
@@ -188,7 +189,7 @@ func TestAlphanumericAccountNumber(t *testing.T) {
 	}
 	defer database.Close()
 
-	repo := repository.NewAccountRepository(database)
+	repo := account.NewRepository(database)
 
 	tests := []struct {
 		name          string
@@ -201,12 +202,12 @@ func TestAlphanumericAccountNumber(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		account := models.NewAccount(
+		account := account.NewAccount(
 			tc.name,
-			models.AccountTypeInvestment,
+			account.TypeInvestment,
 			"USD",
-			models.ZeroMoney,
-			models.Today(),
+			types.ZeroMoney,
+			types.Today(),
 		)
 		account.SetAccountNumber(tc.accountNumber)
 
@@ -246,17 +247,17 @@ func TestMultipleAccounts(t *testing.T) {
 	}
 	defer database.Close()
 
-	repo := repository.NewAccountRepository(database)
+	repo := account.NewRepository(database)
 
 	// Create multiple accounts
-	accounts := []*models.Account{
-		models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.MustNewMoney("1000"), models.Today()),
-		models.NewAccount("Savings", models.AccountTypeSavings, "USD", models.MustNewMoney("5000"), models.Today()),
-		models.NewAccount("Credit Card", models.AccountTypeCreditCard, "USD", models.MustNewMoney("0"), models.Today()),
+	accounts := []*account.Account{
+		account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000"), types.Today()),
+		account.NewAccount("Savings", account.TypeSavings, "USD", types.MustNewMoney("5000"), types.Today()),
+		account.NewAccount("Credit Card", account.TypeCreditCard, "USD", types.MustNewMoney("0"), types.Today()),
 	}
 
 	// Set credit limit on credit card
-	accounts[2].SetCreditLimit(models.MustNewMoney("10000"))
+	accounts[2].SetCreditLimit(types.MustNewMoney("10000"))
 
 	for _, acc := range accounts {
 		if err := repo.Create(acc); err != nil {
@@ -275,9 +276,9 @@ func TestMultipleAccounts(t *testing.T) {
 	}
 
 	// Verify credit limit on credit card
-	var creditCard *models.Account
+	var creditCard *account.Account
 	for _, acc := range listed {
-		if acc.Type == models.AccountTypeCreditCard {
+		if acc.Type == account.TypeCreditCard {
 			creditCard = acc
 			break
 		}
@@ -288,7 +289,7 @@ func TestMultipleAccounts(t *testing.T) {
 	if !creditCard.CreditLimit.Valid {
 		t.Error("Credit limit should be set")
 	}
-	if !creditCard.CreditLimit.Money.Equal(models.MustNewMoney("10000")) {
+	if !creditCard.CreditLimit.Money.Equal(types.MustNewMoney("10000")) {
 		t.Errorf("Expected credit limit 10000, got %s", creditCard.CreditLimit.Money.String())
 	}
 }
@@ -309,11 +310,11 @@ func TestAccountActiveFilter(t *testing.T) {
 	}
 	defer database.Close()
 
-	repo := repository.NewAccountRepository(database)
+	repo := account.NewRepository(database)
 
 	// Create an active and closed account
-	activeAcc := models.NewAccount("Active Account", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	closedAcc := models.NewAccount("Closed Account", models.AccountTypeSavings, "USD", models.ZeroMoney, models.Today())
+	activeAcc := account.NewAccount("Active Account", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	closedAcc := account.NewAccount("Closed Account", account.TypeSavings, "USD", types.ZeroMoney, types.Today())
 	closedAcc.Close()
 
 	if err := repo.Create(activeAcc); err != nil {
@@ -361,14 +362,14 @@ func TestAccountNotFound(t *testing.T) {
 	}
 	defer database.Close()
 
-	repo := repository.NewAccountRepository(database)
+	repo := account.NewRepository(database)
 
 	// Try to get non-existent account by ID
-	_, err = repo.GetByID(models.NewID())
+	_, err = repo.GetByID(types.NewID())
 	if err == nil {
 		t.Error("Expected error for non-existent account")
 	}
-	if _, ok := err.(*repository.NotFoundError); !ok {
+	if _, ok := err.(*dberrors.NotFoundError); !ok {
 		t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 	}
 
@@ -377,16 +378,16 @@ func TestAccountNotFound(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for non-existent account")
 	}
-	if _, ok := err.(*repository.NotFoundError); !ok {
+	if _, ok := err.(*dberrors.NotFoundError); !ok {
 		t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 	}
 
 	// Try to delete non-existent account
-	err = repo.Delete(models.NewID())
+	err = repo.Delete(types.NewID())
 	if err == nil {
 		t.Error("Expected error for deleting non-existent account")
 	}
-	if _, ok := err.(*repository.NotFoundError); !ok {
+	if _, ok := err.(*dberrors.NotFoundError); !ok {
 		t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 	}
 }
@@ -418,11 +419,11 @@ func TestAccountTrackLots(t *testing.T) {
 		t.Fatalf("Expected schema version >= 7, got %d", version)
 	}
 
-	repo := repository.NewAccountRepository(database)
+	repo := account.NewRepository(database)
 
 	// Test 1: Non-investment account defaults to track_lots=false
 	t.Run("non-investment account defaults to track_lots false", func(t *testing.T) {
-		checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+		checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 		if err := repo.Create(checking); err != nil {
 			t.Fatalf("Failed to create checking account: %v", err)
 		}
@@ -438,7 +439,7 @@ func TestAccountTrackLots(t *testing.T) {
 
 	// Test 2: Investment account with track_lots=false (default)
 	t.Run("investment account defaults to track_lots false", func(t *testing.T) {
-		investment := models.NewAccount("Brokerage", models.AccountTypeInvestment, "USD", models.ZeroMoney, models.Today())
+		investment := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
 		if err := repo.Create(investment); err != nil {
 			t.Fatalf("Failed to create investment account: %v", err)
 		}
@@ -454,7 +455,7 @@ func TestAccountTrackLots(t *testing.T) {
 
 	// Test 3: Investment account with track_lots=true
 	t.Run("investment account with track_lots true", func(t *testing.T) {
-		lotTracked := models.NewAccount("IRA", models.AccountTypeInvestment, "USD", models.ZeroMoney, models.Today())
+		lotTracked := account.NewAccount("IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
 		lotTracked.TrackLots = true
 		if err := repo.Create(lotTracked); err != nil {
 			t.Fatalf("Failed to create lot-tracked investment account: %v", err)
@@ -490,7 +491,7 @@ func TestAccountTrackLots(t *testing.T) {
 		for _, acc := range accounts {
 			if acc.TrackLots {
 				lotTrackedCount++
-				if acc.Type != models.AccountTypeInvestment {
+				if acc.Type != account.TypeInvestment {
 					t.Errorf("Non-investment account %q has track_lots=true", acc.Name)
 				}
 			}

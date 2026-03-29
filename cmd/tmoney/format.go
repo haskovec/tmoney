@@ -6,13 +6,17 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/reconciliation"
+	"github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // formatMoney formats a Money value with currency symbol.
 // Always displays 2 decimal places for currencies.
-func formatMoney(m models.Money, currency string) string {
+func formatMoney(m types.Money, currency string) string {
 	// Format with 2 decimal places
 	value := fmt.Sprintf("%.2f", m.Float64())
 
@@ -44,7 +48,7 @@ func formatMoney(m models.Money, currency string) string {
 }
 
 // printAccountsTable prints accounts in a formatted table.
-func printAccountsTable(w io.Writer, accounts []*models.Account, balances map[models.ID]*service.AccountBalance) {
+func printAccountsTable(w io.Writer, accounts []*account.Account, balances map[types.ID]*account.Balance) {
 	if len(accounts) == 0 {
 		fmt.Fprintln(w, "No accounts found.")
 		return
@@ -75,52 +79,52 @@ func printAccountsTable(w io.Writer, accounts []*models.Account, balances map[mo
 }
 
 // printAccountDetails prints detailed information for a single account.
-func printAccountDetails(w io.Writer, account *models.Account, balance *service.AccountBalance) {
-	fmt.Fprintf(w, "ACCOUNT: %s\n", account.Name)
-	fmt.Fprintln(w, strings.Repeat("=", len("ACCOUNT: ")+len(account.Name)))
+func printAccountDetails(w io.Writer, acct *account.Account, bal *account.Balance) {
+	fmt.Fprintf(w, "ACCOUNT: %s\n", acct.Name)
+	fmt.Fprintln(w, strings.Repeat("=", len("ACCOUNT: ")+len(acct.Name)))
 
-	fmt.Fprintf(w, "Type:            %s\n", account.Type.DisplayName())
-	fmt.Fprintf(w, "Currency:        %s\n", account.Currency)
+	fmt.Fprintf(w, "Type:            %s\n", acct.Type.DisplayName())
+	fmt.Fprintf(w, "Currency:        %s\n", acct.Currency)
 
-	if account.Institution.Valid {
-		fmt.Fprintf(w, "Institution:     %s\n", account.Institution.String)
+	if acct.Institution.Valid {
+		fmt.Fprintf(w, "Institution:     %s\n", acct.Institution.String)
 	}
 
-	if account.AccountNumber.Valid {
+	if acct.AccountNumber.Valid {
 		// Mask account number for privacy
-		num := account.AccountNumber.String
+		num := acct.AccountNumber.String
 		if len(num) > 4 {
 			num = "****" + num[len(num)-4:]
 		}
 		fmt.Fprintf(w, "Account Number:  %s\n", num)
 	}
 
-	fmt.Fprintf(w, "Opening Date:    %s\n", account.OpeningDate.String())
-	fmt.Fprintf(w, "Opening Balance: %s\n", formatMoney(account.OpeningBalance, account.Currency))
-	fmt.Fprintf(w, "Current Balance: %s\n", formatMoney(balance.CurrentBalance, account.Currency))
-	fmt.Fprintf(w, "Cleared Balance: %s\n", formatMoney(balance.ClearedBalance, account.Currency))
+	fmt.Fprintf(w, "Opening Date:    %s\n", acct.OpeningDate.String())
+	fmt.Fprintf(w, "Opening Balance: %s\n", formatMoney(acct.OpeningBalance, acct.Currency))
+	fmt.Fprintf(w, "Current Balance: %s\n", formatMoney(bal.CurrentBalance, acct.Currency))
+	fmt.Fprintf(w, "Cleared Balance: %s\n", formatMoney(bal.ClearedBalance, acct.Currency))
 
 	status := "Active"
-	if !account.Active {
+	if !acct.Active {
 		status = "Closed"
 	}
 	fmt.Fprintf(w, "Status:          %s\n", status)
 
 	// Type-specific details
-	if account.CreditLimit.Valid {
-		fmt.Fprintf(w, "Credit Limit:    %s\n", formatMoney(account.CreditLimit.Money, account.Currency))
+	if acct.CreditLimit.Valid {
+		fmt.Fprintf(w, "Credit Limit:    %s\n", formatMoney(acct.CreditLimit.Money, acct.Currency))
 	}
-	if account.InterestRate.Valid {
-		fmt.Fprintf(w, "Interest Rate:   %s%%\n", account.InterestRate.Money.String())
+	if acct.InterestRate.Valid {
+		fmt.Fprintf(w, "Interest Rate:   %s%%\n", acct.InterestRate.Money.String())
 	}
 
-	if account.Notes.Valid {
-		fmt.Fprintf(w, "Notes:           %s\n", account.Notes.String)
+	if acct.Notes.Valid {
+		fmt.Fprintf(w, "Notes:           %s\n", acct.Notes.String)
 	}
 }
 
 // printBalancesTable prints balances for all accounts with net worth.
-func printBalancesTable(w io.Writer, accounts []*models.Account, balances map[models.ID]*service.AccountBalance) {
+func printBalancesTable(w io.Writer, accounts []*account.Account, balances map[types.ID]*account.Balance) {
 	if len(accounts) == 0 {
 		fmt.Fprintln(w, "No accounts found.")
 		return
@@ -129,21 +133,21 @@ func printBalancesTable(w io.Writer, accounts []*models.Account, balances map[mo
 	fmt.Fprintln(w, "BALANCES")
 	fmt.Fprintln(w, "========")
 
-	var totalAssets, totalLiabilities models.Money
+	var totalAssets, totalLiabilities types.Money
 
 	for _, acct := range accounts {
-		balance := models.MustNewMoney("0")
+		bal := types.MustNewMoney("0")
 		if b, ok := balances[acct.ID]; ok {
-			balance = b.CurrentBalance
+			bal = b.CurrentBalance
 		}
 
-		fmt.Fprintf(w, "%-20s %s\n", acct.Name+":", formatMoney(balance, acct.Currency))
+		fmt.Fprintf(w, "%-20s %s\n", acct.Name+":", formatMoney(bal, acct.Currency))
 
 		// Track net worth
 		if acct.Type.IsAssetType() {
-			totalAssets = totalAssets.Add(balance)
+			totalAssets = totalAssets.Add(bal)
 		} else if acct.Type.IsLiabilityType() {
-			totalLiabilities = totalLiabilities.Add(balance)
+			totalLiabilities = totalLiabilities.Add(bal)
 		}
 	}
 
@@ -157,9 +161,9 @@ func printBalancesTable(w io.Writer, accounts []*models.Account, balances map[mo
 }
 
 // printTransactionsTable prints transactions in a formatted table.
-func printTransactionsTable(w io.Writer, account *models.Account, transactions []*models.Transaction, payeeNames map[models.ID]string, categoryNames map[models.ID]string) {
-	fmt.Fprintf(w, "TRANSACTIONS: %s\n", account.Name)
-	fmt.Fprintln(w, strings.Repeat("=", len("TRANSACTIONS: ")+len(account.Name)))
+func printTransactionsTable(w io.Writer, acct *account.Account, transactions []*transaction.Transaction, payeeNames map[types.ID]string, categoryNames map[types.ID]string) {
+	fmt.Fprintf(w, "TRANSACTIONS: %s\n", acct.Name)
+	fmt.Fprintln(w, strings.Repeat("=", len("TRANSACTIONS: ")+len(acct.Name)))
 
 	if len(transactions) == 0 {
 		fmt.Fprintln(w, "No transactions found.")
@@ -171,31 +175,31 @@ func printTransactionsTable(w io.Writer, account *models.Account, transactions [
 	fmt.Fprintln(tw, "----\t-----\t--------\t------\t------")
 
 	for _, txn := range transactions {
-		payee := "-"
+		py := "-"
 		if txn.PayeeID.Valid {
 			if name, ok := payeeNames[txn.PayeeID.ID]; ok {
-				payee = name
+				py = name
 			}
 		}
 
-		category := "-"
+		cat := "-"
 		if txn.CategoryID.Valid {
 			if name, ok := categoryNames[txn.CategoryID.ID]; ok {
-				category = name
+				cat = name
 			}
 		}
 
 		// For transfers, show the transfer account
 		if txn.IsTransfer() {
-			payee = "[Transfer]"
-			category = "-"
+			py = "[Transfer]"
+			cat = "-"
 		}
 
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
 			txn.Date.String(),
-			payee,
-			category,
-			formatMoney(txn.Amount, account.Currency),
+			py,
+			cat,
+			formatMoney(txn.Amount, acct.Currency),
 			txn.Status.Code(),
 		)
 	}
@@ -206,7 +210,7 @@ func printTransactionsTable(w io.Writer, account *models.Account, transactions [
 }
 
 // printSearchResults prints search results in a formatted table.
-func printSearchResults(w io.Writer, searchTerm string, transactions []*models.Transaction, accountNames map[models.ID]string, accountCurrencies map[models.ID]string, payeeNames map[models.ID]string, categoryNames map[models.ID]string) {
+func printSearchResults(w io.Writer, searchTerm string, transactions []*transaction.Transaction, accountNames map[types.ID]string, accountCurrencies map[types.ID]string, payeeNames map[types.ID]string, categoryNames map[types.ID]string) {
 	fmt.Fprintf(w, "SEARCH RESULTS: %q\n", searchTerm)
 	fmt.Fprintln(w, strings.Repeat("=", len("SEARCH RESULTS: ")+len(searchTerm)+2))
 
@@ -220,37 +224,37 @@ func printSearchResults(w io.Writer, searchTerm string, transactions []*models.T
 	fmt.Fprintln(tw, "-------\t----\t-----\t--------\t------")
 
 	for _, txn := range transactions {
-		account := accountNames[txn.AccountID]
+		acctName := accountNames[txn.AccountID]
 		currency := accountCurrencies[txn.AccountID]
 		if currency == "" {
 			currency = "USD"
 		}
 
-		payee := "-"
+		py := "-"
 		if txn.PayeeID.Valid {
 			if name, ok := payeeNames[txn.PayeeID.ID]; ok {
-				payee = name
+				py = name
 			}
 		}
 
-		category := "-"
+		cat := "-"
 		if txn.CategoryID.Valid {
 			if name, ok := categoryNames[txn.CategoryID.ID]; ok {
-				category = name
+				cat = name
 			}
 		}
 
 		// For transfers, show transfer indicator
 		if txn.IsTransfer() {
-			payee = "[Transfer]"
-			category = "-"
+			py = "[Transfer]"
+			cat = "-"
 		}
 
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			account,
+			acctName,
 			txn.Date.String(),
-			payee,
-			category,
+			py,
+			cat,
 			formatMoney(txn.Amount, currency),
 		)
 	}
@@ -261,7 +265,7 @@ func printSearchResults(w io.Writer, searchTerm string, transactions []*models.T
 }
 
 // printScheduledTransactionsTable prints scheduled transactions in a formatted table.
-func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*models.ScheduledTransaction, dueOnly bool, accountNames map[models.ID]string, accountCurrencies map[models.ID]string, payeeNames map[models.ID]string, categoryNames map[models.ID]string) {
+func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*scheduled.Transaction, dueOnly bool, accountNames map[types.ID]string, accountCurrencies map[types.ID]string, payeeNames map[types.ID]string, categoryNames map[types.ID]string) {
 	if dueOnly {
 		fmt.Fprintln(w, "DUE SCHEDULED TRANSACTIONS")
 		fmt.Fprintln(w, "==========================")
@@ -290,9 +294,9 @@ func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*models.Schedu
 			idStr = idStr[:8]
 		}
 
-		account := accountNames[st.AccountID]
-		if account == "" {
-			account = "-"
+		acctName := accountNames[st.AccountID]
+		if acctName == "" {
+			acctName = "-"
 		}
 
 		currency := accountCurrencies[st.AccountID]
@@ -300,10 +304,10 @@ func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*models.Schedu
 			currency = "USD"
 		}
 
-		payee := "-"
+		py := "-"
 		if st.HasPayee() {
 			if name, ok := payeeNames[st.PayeeID.ID]; ok {
-				payee = name
+				py = name
 			}
 		}
 
@@ -329,9 +333,9 @@ func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*models.Schedu
 
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			idStr,
-			account,
+			acctName,
 			st.NextDate.String(),
-			payee,
+			py,
 			amount,
 			freq,
 			autoIndicator,
@@ -344,61 +348,61 @@ func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*models.Schedu
 }
 
 // printNetWorthReport prints the net worth report.
-func printNetWorthReport(w io.Writer, report *models.NetWorthReport) {
+func printNetWorthReport(w io.Writer, rpt *report.NetWorth) {
 	fmt.Fprintln(w, "NET WORTH REPORT")
 	fmt.Fprintln(w, "================")
-	fmt.Fprintf(w, "As of: %s\n\n", report.AsOfDate.Format("January 2, 2006"))
+	fmt.Fprintf(w, "As of: %s\n\n", rpt.AsOfDate.Format("January 2, 2006"))
 
 	// Assets section
 	fmt.Fprintln(w, "ASSETS")
 	fmt.Fprintln(w, "------")
-	if len(report.Assets) == 0 {
+	if len(rpt.Assets) == 0 {
 		fmt.Fprintln(w, "  (No asset accounts)")
 	} else {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		for _, acct := range report.Assets {
-			fmt.Fprintf(tw, "  %s\t%s\n", acct.Name, formatMoney(acct.Balance, "USD"))
+		for _, ab := range rpt.Assets {
+			fmt.Fprintf(tw, "  %s\t%s\n", ab.Name, formatMoney(ab.Balance, "USD"))
 		}
 		tw.Flush()
 	}
-	fmt.Fprintf(w, "\nTotal Assets:\t\t%s\n\n", formatMoney(report.TotalAssets, "USD"))
+	fmt.Fprintf(w, "\nTotal Assets:\t\t%s\n\n", formatMoney(rpt.TotalAssets, "USD"))
 
 	// Liabilities section
 	fmt.Fprintln(w, "LIABILITIES")
 	fmt.Fprintln(w, "-----------")
-	if len(report.Liabilities) == 0 {
+	if len(rpt.Liabilities) == 0 {
 		fmt.Fprintln(w, "  (No liability accounts)")
 	} else {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		for _, acct := range report.Liabilities {
-			fmt.Fprintf(tw, "  %s\t%s\n", acct.Name, formatMoney(acct.Balance, "USD"))
+		for _, ab := range rpt.Liabilities {
+			fmt.Fprintf(tw, "  %s\t%s\n", ab.Name, formatMoney(ab.Balance, "USD"))
 		}
 		tw.Flush()
 	}
-	fmt.Fprintf(w, "\nTotal Liabilities:\t%s\n\n", formatMoney(report.TotalLiabilities, "USD"))
+	fmt.Fprintf(w, "\nTotal Liabilities:\t%s\n\n", formatMoney(rpt.TotalLiabilities, "USD"))
 
 	// Net worth
 	fmt.Fprintln(w, "========================")
-	fmt.Fprintf(w, "NET WORTH:\t\t%s\n", formatMoney(report.NetWorth, "USD"))
+	fmt.Fprintf(w, "NET WORTH:\t\t%s\n", formatMoney(rpt.NetWorth, "USD"))
 }
 
 // printSpendingReport prints the spending by category report.
-func printSpendingReport(w io.Writer, report *models.SpendingReport) {
+func printSpendingReport(w io.Writer, rpt *report.Spending) {
 	fmt.Fprintln(w, "SPENDING BY CATEGORY")
 	fmt.Fprintln(w, "====================")
-	fmt.Fprintf(w, "Period: %s\n\n", report.Period)
+	fmt.Fprintf(w, "Period: %s\n\n", rpt.Period)
 
-	if len(report.Categories) == 0 {
+	if len(rpt.Categories) == 0 {
 		fmt.Fprintln(w, "No spending found for this period.")
 		return
 	}
 
 	// Print category spending with visual bars
 	maxBarWidth := 30
-	maxAmount := models.ZeroMoney
-	for _, cat := range report.Categories {
-		if cat.Amount.Cmp(maxAmount) > 0 {
-			maxAmount = cat.Amount
+	maxAmount := types.ZeroMoney
+	for _, cs := range rpt.Categories {
+		if cs.Amount.Cmp(maxAmount) > 0 {
+			maxAmount = cs.Amount
 		}
 	}
 
@@ -406,23 +410,23 @@ func printSpendingReport(w io.Writer, report *models.SpendingReport) {
 	fmt.Fprintln(tw, "Category\tAmount\t%\tBar")
 	fmt.Fprintln(tw, "--------\t------\t-\t---")
 
-	for _, cat := range report.Categories {
+	for _, cs := range rpt.Categories {
 		// Calculate bar length
 		barLen := 0
 		if !maxAmount.IsZero() {
-			barLen = int(cat.Amount.Float64() / maxAmount.Float64() * float64(maxBarWidth))
+			barLen = int(cs.Amount.Float64() / maxAmount.Float64() * float64(maxBarWidth))
 		}
 		bar := strings.Repeat("█", barLen)
 
 		fmt.Fprintf(tw, "%s\t%s\t%.1f%%\t%s\n",
-			cat.Name,
-			formatMoney(cat.Amount, "USD"),
-			cat.Percentage,
+			cs.Name,
+			formatMoney(cs.Amount, "USD"),
+			cs.Percentage,
 			bar,
 		)
 
 		// Print subcategories with indentation
-		for _, sub := range cat.Subcategories {
+		for _, sub := range cs.Subcategories {
 			subBarLen := 0
 			if !maxAmount.IsZero() {
 				subBarLen = int(sub.Amount.Float64() / maxAmount.Float64() * float64(maxBarWidth))
@@ -439,18 +443,18 @@ func printSpendingReport(w io.Writer, report *models.SpendingReport) {
 	}
 	tw.Flush()
 
-	fmt.Fprintf(w, "\n------------------------\nTotal Spending:\t%s\n", formatMoney(report.TotalSpending, "USD"))
+	fmt.Fprintf(w, "\n------------------------\nTotal Spending:\t%s\n", formatMoney(rpt.TotalSpending, "USD"))
 }
 
 // printReconcileStatus prints the reconciliation status for an account.
-func printReconcileStatus(w io.Writer, account *models.Account, status *service.ReconciliationStatus) {
-	fmt.Fprintf(w, "RECONCILIATION STATUS: %s\n", account.Name)
-	fmt.Fprintln(w, strings.Repeat("=", len("RECONCILIATION STATUS: ")+len(account.Name)))
+func printReconcileStatus(w io.Writer, acct *account.Account, status *reconciliation.Status) {
+	fmt.Fprintf(w, "RECONCILIATION STATUS: %s\n", acct.Name)
+	fmt.Fprintln(w, strings.Repeat("=", len("RECONCILIATION STATUS: ")+len(acct.Name)))
 
 	if status.LastCompletedSession != nil {
 		fmt.Fprintf(w, "Last reconciled:  %s (balance: %s)\n",
 			status.LastCompletedSession.StatementDate.String(),
-			formatMoney(status.LastCompletedSession.StatementBalance, account.Currency))
+			formatMoney(status.LastCompletedSession.StatementBalance, acct.Currency))
 	} else {
 		fmt.Fprintln(w, "Last reconciled:  Never")
 	}
@@ -458,7 +462,7 @@ func printReconcileStatus(w io.Writer, account *models.Account, status *service.
 	if status.ActiveSession != nil {
 		fmt.Fprintln(w, "Current session:  In progress")
 		fmt.Fprintf(w, "  Statement date:    %s\n", status.ActiveSession.StatementDate.String())
-		fmt.Fprintf(w, "  Statement balance: %s\n", formatMoney(status.ActiveSession.StatementBalance, account.Currency))
+		fmt.Fprintf(w, "  Statement balance: %s\n", formatMoney(status.ActiveSession.StatementBalance, acct.Currency))
 		fmt.Fprintf(w, "  Unreconciled transactions: %d\n", status.CandidateCount)
 	} else {
 		fmt.Fprintln(w, "Current session:  None")

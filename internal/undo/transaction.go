@@ -3,8 +3,8 @@ package undo
 import (
 	"fmt"
 
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -13,39 +13,39 @@ import (
 
 // CreateTransactionCommand creates a transaction and can undo it by deleting.
 type CreateTransactionCommand struct {
-	svc         *service.TransactionService
-	transaction *models.Transaction
-	splits      []*models.Split // optional splits for split transactions
+	svc  *transaction.Service
+	txn  *transaction.Transaction
+	splits []*transaction.Split // optional splits for split transactions
 }
 
 // NewCreateTransactionCommand creates a command that will create a transaction.
 // The transaction is created on Execute and deleted on Undo.
-func NewCreateTransactionCommand(svc *service.TransactionService, txn *models.Transaction) *CreateTransactionCommand {
+func NewCreateTransactionCommand(svc *transaction.Service, txn *transaction.Transaction) *CreateTransactionCommand {
 	return &CreateTransactionCommand{
-		svc:         svc,
-		transaction: txn,
+		svc: svc,
+		txn: txn,
 	}
 }
 
 // NewCreateTransactionWithSplitsCommand creates a command that will create a
 // transaction with splits. Both are created on Execute and deleted on Undo.
-func NewCreateTransactionWithSplitsCommand(svc *service.TransactionService, txn *models.Transaction, splits []*models.Split) *CreateTransactionCommand {
+func NewCreateTransactionWithSplitsCommand(svc *transaction.Service, txn *transaction.Transaction, splits []*transaction.Split) *CreateTransactionCommand {
 	return &CreateTransactionCommand{
-		svc:         svc,
-		transaction: txn,
-		splits:      splits,
+		svc:    svc,
+		txn:    txn,
+		splits: splits,
 	}
 }
 
 func (c *CreateTransactionCommand) Execute() error {
 	if len(c.splits) > 0 {
-		return c.svc.CreateWithSplits(c.transaction, c.splits)
+		return c.svc.CreateWithSplits(c.txn, c.splits)
 	}
-	return c.svc.Create(c.transaction)
+	return c.svc.Create(c.txn)
 }
 
 func (c *CreateTransactionCommand) Undo() error {
-	return c.svc.Delete(c.transaction.ID)
+	return c.svc.Delete(c.txn.ID)
 }
 
 func (c *CreateTransactionCommand) Description() string {
@@ -59,14 +59,14 @@ func (c *CreateTransactionCommand) Description() string {
 // EditTransactionCommand edits a transaction and can undo it by restoring
 // the previous state.
 type EditTransactionCommand struct {
-	svc    *service.TransactionService
-	before *models.Transaction // state before editing (captured on Execute)
-	after  *models.Transaction // desired new state
+	svc    *transaction.Service
+	before *transaction.Transaction // state before editing (captured on Execute)
+	after  *transaction.Transaction // desired new state
 }
 
 // NewEditTransactionCommand creates a command that will update a transaction.
 // The before state is captured at execute time by reading from the database.
-func NewEditTransactionCommand(svc *service.TransactionService, after *models.Transaction) *EditTransactionCommand {
+func NewEditTransactionCommand(svc *transaction.Service, after *transaction.Transaction) *EditTransactionCommand {
 	return &EditTransactionCommand{
 		svc:   svc,
 		after: after,
@@ -98,15 +98,15 @@ func (c *EditTransactionCommand) Description() string {
 
 // DeleteTransactionCommand deletes a transaction and can undo it by recreating.
 type DeleteTransactionCommand struct {
-	svc    *service.TransactionService
-	id     models.ID
-	before *models.Transaction // full entity captured on Execute for undo
-	splits []*models.Split     // splits captured on Execute for undo
+	svc    *transaction.Service
+	id     types.ID
+	before *transaction.Transaction // full entity captured on Execute for undo
+	splits []*transaction.Split     // splits captured on Execute for undo
 }
 
 // NewDeleteTransactionCommand creates a command that will delete a transaction.
 // The full entity is captured at execute time so it can be recreated on undo.
-func NewDeleteTransactionCommand(svc *service.TransactionService, id models.ID) *DeleteTransactionCommand {
+func NewDeleteTransactionCommand(svc *transaction.Service, id types.ID) *DeleteTransactionCommand {
 	return &DeleteTransactionCommand{
 		svc: svc,
 		id:  id,
@@ -149,18 +149,18 @@ func (c *DeleteTransactionCommand) Description() string {
 // VoidTransactionCommand voids a transaction and can undo it by restoring
 // the original amount, memo, and status.
 type VoidTransactionCommand struct {
-	svc          *service.TransactionService
-	id           models.ID
-	beforeAmount models.Money
-	beforeMemo   models.NullableString
-	beforeStatus models.TransactionStatus
-	beforeSplits []*models.Split // splits removed during void
+	svc          *transaction.Service
+	id           types.ID
+	beforeAmount types.Money
+	beforeMemo   types.NullableString
+	beforeStatus transaction.Status
+	beforeSplits []*transaction.Split // splits removed during void
 	captured     bool
 }
 
 // NewVoidTransactionCommand creates a command that will void a transaction.
 // The original amount, memo, and status are captured at execute time.
-func NewVoidTransactionCommand(svc *service.TransactionService, id models.ID) *VoidTransactionCommand {
+func NewVoidTransactionCommand(svc *transaction.Service, id types.ID) *VoidTransactionCommand {
 	return &VoidTransactionCommand{
 		svc: svc,
 		id:  id,
@@ -213,16 +213,16 @@ func (c *VoidTransactionCommand) Description() string {
 // CreateTransferCommand creates a transfer between accounts and can undo it
 // by deleting both sides.
 type CreateTransferCommand struct {
-	svc           *service.TransactionService
-	fromAccountID models.ID
-	toAccountID   models.ID
-	date          models.Date
-	amount        models.Money
-	pair          *models.TransferPair // populated after Execute
+	svc           *transaction.Service
+	fromAccountID types.ID
+	toAccountID   types.ID
+	date          types.Date
+	amount        types.Money
+	pair          *transaction.TransferPair // populated after Execute
 }
 
 // NewCreateTransferCommand creates a command that will create a transfer.
-func NewCreateTransferCommand(svc *service.TransactionService, fromAccountID, toAccountID models.ID, date models.Date, amount models.Money) *CreateTransferCommand {
+func NewCreateTransferCommand(svc *transaction.Service, fromAccountID, toAccountID types.ID, date types.Date, amount types.Money) *CreateTransferCommand {
 	return &CreateTransferCommand{
 		svc:           svc,
 		fromAccountID: fromAccountID,
@@ -251,7 +251,7 @@ func (c *CreateTransferCommand) Description() string {
 
 // Pair returns the transfer pair created by Execute. Returns nil if Execute
 // has not been called or failed.
-func (c *CreateTransferCommand) Pair() *models.TransferPair {
+func (c *CreateTransferCommand) Pair() *transaction.TransferPair {
 	return c.pair
 }
 
@@ -261,13 +261,13 @@ func (c *CreateTransferCommand) Pair() *models.TransferPair {
 
 // DeleteTransferCommand deletes a transfer and can undo it by recreating both sides.
 type DeleteTransferCommand struct {
-	svc        *service.TransactionService
-	transferID models.ID
-	before     *models.TransferPair // captured on Execute for undo
+	svc        *transaction.Service
+	transferID types.ID
+	before     *transaction.TransferPair // captured on Execute for undo
 }
 
 // NewDeleteTransferCommand creates a command that will delete a transfer.
-func NewDeleteTransferCommand(svc *service.TransactionService, transferID models.ID) *DeleteTransferCommand {
+func NewDeleteTransferCommand(svc *transaction.Service, transferID types.ID) *DeleteTransferCommand {
 	return &DeleteTransferCommand{
 		svc:        svc,
 		transferID: transferID,
@@ -309,24 +309,24 @@ func (c *DeleteTransferCommand) Description() string {
 // VoidTransferCommand voids both sides of a transfer and can undo it by
 // restoring the original amounts, memos, and statuses.
 type VoidTransferCommand struct {
-	svc           *service.TransactionService
-	transactionID models.ID // any transaction ID in the transfer pair
-	transferID    models.ID // populated during Execute
-	beforeFrom    transactionSnapshot
-	beforeTo      transactionSnapshot
+	svc           *transaction.Service
+	transactionID types.ID               // any transaction ID in the transfer pair
+	transferID    types.ID               // populated during Execute
+	beforeFrom    txnSnapshot
+	beforeTo      txnSnapshot
 	captured      bool
 }
 
-// transactionSnapshot stores the fields needed to restore a voided transaction.
-type transactionSnapshot struct {
-	amount models.Money
-	memo   models.NullableString
-	status models.TransactionStatus
+// txnSnapshot stores the fields needed to restore a voided transaction.
+type txnSnapshot struct {
+	amount types.Money
+	memo   types.NullableString
+	status transaction.Status
 }
 
 // NewVoidTransferCommand creates a command that will void a transfer.
 // Pass any transaction ID from the transfer pair.
-func NewVoidTransferCommand(svc *service.TransactionService, transactionID models.ID) *VoidTransferCommand {
+func NewVoidTransferCommand(svc *transaction.Service, transactionID types.ID) *VoidTransferCommand {
 	return &VoidTransferCommand{
 		svc:           svc,
 		transactionID: transactionID,
@@ -351,12 +351,12 @@ func (c *VoidTransferCommand) Execute() error {
 	if err != nil {
 		return err
 	}
-	c.beforeFrom = transactionSnapshot{
+	c.beforeFrom = txnSnapshot{
 		amount: pair.FromTransaction.Amount,
 		memo:   pair.FromTransaction.Memo,
 		status: pair.FromTransaction.Status,
 	}
-	c.beforeTo = transactionSnapshot{
+	c.beforeTo = txnSnapshot{
 		amount: pair.ToTransaction.Amount,
 		memo:   pair.ToTransaction.Memo,
 		status: pair.ToTransaction.Status,

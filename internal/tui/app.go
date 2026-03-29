@@ -13,10 +13,17 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/reconciliation"
+	"github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
@@ -81,13 +88,13 @@ type App struct {
 	statusbar *StatusBar
 
 	// Services (initialized on start)
-	accountSvc      *service.AccountService
-	transactionSvc  *service.TransactionService
-	categorySvc     *service.CategoryService
-	payeeSvc        *service.PayeeService
-	scheduledTxnSvc    *service.ScheduledTransactionService
-	reportSvc          *service.ReportService
-	reconciliationSvc  *service.ReconciliationService
+	accountSvc      *account.Service
+	transactionSvc  *transaction.Service
+	categorySvc     *category.Service
+	payeeSvc        *payee.Service
+	scheduledTxnSvc    *scheduled.Service
+	reportSvc          *report.Service
+	reconciliationSvc  *reconciliation.Service
 
 	// Dashboard data (loaded asynchronously)
 	dashboard *dashboardData
@@ -99,7 +106,7 @@ type App struct {
 	// Transaction dialog state
 	txnDialog            *Dialog
 	txnDialogData        *transactionDialogData
-	txnDialogCategoryIDs []models.ID
+	txnDialogCategoryIDs []types.ID
 
 	// Split dialog state
 	splitDialog     *SplitDialog
@@ -108,7 +115,7 @@ type App struct {
 	// Transfer dialog state
 	transferDialog           *Dialog
 	transferDialogData       *transferDialogData
-	transferDialogAccountIDs []models.ID
+	transferDialogAccountIDs []types.ID
 
 	// Account dialog state
 	acctDialog     *Dialog
@@ -117,8 +124,8 @@ type App struct {
 	// Scheduled dialog state
 	schedDialog            *Dialog
 	schedDialogData        *scheduledDialogData
-	schedDialogAccountIDs  []models.ID
-	schedDialogCategoryIDs []models.ID
+	schedDialogAccountIDs  []types.ID
+	schedDialogCategoryIDs []types.ID
 
 	// Scheduled view state
 	scheduled      *scheduledViewData
@@ -322,7 +329,7 @@ func redoKeyBinding() key.Binding {
 
 // NewApp creates a new TUI application with the given database and optional config.
 func NewApp(database *db.DB, cfg *config.Config) *App {
-	svc := service.NewServices(database)
+	svc := app.NewServices(database)
 
 	return &App{
 		db:              database,
@@ -338,7 +345,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		transactionSvc:  svc.Transaction,
 		categorySvc:     svc.Category,
 		payeeSvc:        svc.Payee,
-		scheduledTxnSvc:   svc.ScheduledTxn,
+		scheduledTxnSvc:   svc.Scheduled,
 		reportSvc:         svc.Report,
 		reconciliationSvc: svc.Reconciliation,
 	}
@@ -417,13 +424,13 @@ func (a *App) loadSidebarData() tea.Cmd {
 func (a *App) loadDashboardData() tea.Cmd {
 	return func() tea.Msg {
 		data := &dashboardData{
-			payeeNames:   make(map[models.ID]string),
-			accountNames: make(map[models.ID]string),
+			payeeNames:   make(map[types.ID]string),
+			accountNames: make(map[types.ID]string),
 		}
 
 		// Load net worth report
 		if a.reportSvc != nil {
-			report, err := a.reportSvc.NetWorth()
+			report, err := a.reportSvc.NetWorthReport()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -443,7 +450,7 @@ func (a *App) loadDashboardData() tea.Cmd {
 				return errMsg{err: err}
 			}
 			// Filter out items already in due list
-			var filteredUpcoming []*models.ScheduledTransaction
+			var filteredUpcoming []*scheduled.Transaction
 			dueIDs := make(map[string]bool)
 			for _, d := range due {
 				dueIDs[d.ID.String()] = true
@@ -484,9 +491,9 @@ func (a *App) loadDashboardData() tea.Cmd {
 func (a *App) loadScheduledViewData() tea.Cmd {
 	return func() tea.Msg {
 		data := &scheduledViewData{
-			payeeNames:    make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
+			payeeNames:    make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
 		}
 
 		// Load due scheduled transactions
@@ -507,7 +514,7 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 			for _, d := range due {
 				dueIDs[d.ID.String()] = true
 			}
-			var filteredUpcoming []*models.ScheduledTransaction
+			var filteredUpcoming []*scheduled.Transaction
 			for _, u := range upcoming {
 				if !dueIDs[u.ID.String()] {
 					filteredUpcoming = append(filteredUpcoming, u)
@@ -516,7 +523,7 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 			data.upcomingTxns = filteredUpcoming
 
 			// Build combined list: due first, then upcoming
-			data.allTxns = make([]*models.ScheduledTransaction, 0, len(due)+len(filteredUpcoming))
+			data.allTxns = make([]*scheduled.Transaction, 0, len(due)+len(filteredUpcoming))
 			data.allTxns = append(data.allTxns, due...)
 			data.allTxns = append(data.allTxns, filteredUpcoming...)
 		}
@@ -567,7 +574,7 @@ func (a *App) loadReportsViewData(rt reportType, year, month int) tea.Cmd {
 		switch rt {
 		case reportTypeNetWorth:
 			if a.reportSvc != nil {
-				report, err := a.reportSvc.NetWorth()
+				report, err := a.reportSvc.NetWorthReport()
 				if err != nil {
 					return errMsg{err: err}
 				}
@@ -575,7 +582,7 @@ func (a *App) loadReportsViewData(rt reportType, year, month int) tea.Cmd {
 			}
 		case reportTypeSpending:
 			if a.reportSvc != nil {
-				var report *models.SpendingReport
+				var report *report.Spending
 				var err error
 				if month > 0 {
 					report, err = a.reportSvc.SpendingByCategoryMonth(year, month)
@@ -594,12 +601,12 @@ func (a *App) loadReportsViewData(rt reportType, year, month int) tea.Cmd {
 }
 
 // loadRegisterData returns a command that loads all data needed for the register view.
-func (a *App) loadRegisterData(accountID models.ID) tea.Cmd {
+func (a *App) loadRegisterData(accountID types.ID) tea.Cmd {
 	return func() tea.Msg {
 		data := &registerData{
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		}
 
 		// Load account
@@ -773,7 +780,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		accountOptions, accountIDs := buildAccountOptions(msg.data.accounts)
 		a.schedDialogAccountIDs = accountIDs
 
-		var categories []*models.Category
+		var categories []*category.Category
 		if a.categorySvc != nil {
 			cats, err := a.categorySvc.List()
 			if err == nil {
@@ -785,7 +792,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if msg.data.mode == scheduledDialogModeEdit && msg.data.scheduled != nil {
 			// Build payee name map for edit dialog
-			payeeNames := make(map[models.ID]string)
+			payeeNames := make(map[types.ID]string)
 			for _, p := range msg.data.payees {
 				payeeNames[p.ID] = p.Name
 			}
@@ -1206,7 +1213,7 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 
 		// Build updated copy with toggled status
 		updated := *current
-		if currentStatus == models.TransactionStatusCleared {
+		if currentStatus == transaction.StatusCleared {
 			updated.MarkUncleared()
 		} else {
 			updated.Clear()
@@ -1676,23 +1683,23 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 		return a, a.loadNewAccountDialogData()
 
 	case MenuActionEditAccount:
-		if a.sidebar.SelectedAccountID() != models.NilID {
+		if a.sidebar.SelectedAccountID() != types.NilID {
 			return a, a.loadEditAccountDialogData()
 		}
 
 	case MenuActionCloseAccount:
-		if a.sidebar.SelectedAccountID() != models.NilID {
+		if a.sidebar.SelectedAccountID() != types.NilID {
 			return a, a.closeSelectedAccount()
 		}
 
 	case MenuActionDeleteAccount:
-		if a.sidebar.SelectedAccountID() != models.NilID {
+		if a.sidebar.SelectedAccountID() != types.NilID {
 			return a, a.deleteSelectedAccount()
 		}
 
 	case MenuActionReconcileAccount:
 		a.menubar.Deactivate()
-		if a.sidebar.SelectedAccountID() != models.NilID {
+		if a.sidebar.SelectedAccountID() != types.NilID {
 			a.showStartReconciliationDialog()
 		}
 		return a, nil
@@ -1993,7 +2000,7 @@ func (a *App) renderDashboard() string {
 }
 
 // renderAssetLiabilityColumns renders the assets and liabilities side by side.
-func (a *App) renderAssetLiabilityColumns(report *models.NetWorthReport, totalWidth int) string {
+func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth int) string {
 	colWidth := max(
 		// Leave gap between columns
 		(totalWidth-6)/2, 20)
@@ -2096,7 +2103,7 @@ func (a *App) renderDashboardScheduled() string {
 }
 
 // formatScheduledItem formats a single scheduled transaction line for the dashboard.
-func (a *App) formatScheduledItem(st *models.ScheduledTransaction, isDue bool) string {
+func (a *App) formatScheduledItem(st *scheduled.Transaction, isDue bool) string {
 	// Payee name (cap at 20 chars to prevent overflow)
 	payee := "Unknown"
 	if st.HasPayee() {
@@ -2116,7 +2123,7 @@ func (a *App) formatScheduledItem(st *models.ScheduledTransaction, isDue bool) s
 
 	// Due indicator
 	if isDue {
-		today := models.Today()
+		today := types.Today()
 		if st.NextDate.Equal(today) {
 			return fmt.Sprintf("  %s %s - %s %s",
 				a.styles.Alert.Render("●"),
@@ -2146,7 +2153,7 @@ func (a *App) formatScheduledItem(st *models.ScheduledTransaction, isDue bool) s
 }
 
 // formatDashboardMoney formats a Money value with $ prefix for dashboard display.
-func formatDashboardMoney(m models.Money) string {
+func formatDashboardMoney(m types.Money) string {
 	value := fmt.Sprintf("%.2f", m.Float64())
 	if m.IsNegative() {
 		return fmt.Sprintf("-$%s", strings.TrimPrefix(value, "-"))
@@ -2221,18 +2228,18 @@ func (a *App) buildRegisterTable() {
 }
 
 // formatRegisterRow formats a transaction into table row strings.
-func (a *App) formatRegisterRow(txn *models.Transaction) []string {
+func (a *App) formatRegisterRow(txn *transaction.Transaction) []string {
 	// Date
 	dateStr := txn.Date.Time().Format("01/02/06")
 
 	// Status indicator
 	status := " "
 	switch txn.Status {
-	case models.TransactionStatusCleared:
+	case transaction.StatusCleared:
 		status = "✓"
-	case models.TransactionStatusReconciled:
+	case transaction.StatusReconciled:
 		status = "R"
-	case models.TransactionStatusVoid:
+	case transaction.StatusVoid:
 		status = "V"
 	}
 
@@ -2416,11 +2423,11 @@ func (a *App) buildScheduledTable() {
 }
 
 // formatScheduledRow formats a scheduled transaction into table row strings.
-func (a *App) formatScheduledRow(st *models.ScheduledTransaction, isDue bool) []string {
+func (a *App) formatScheduledRow(st *scheduled.Transaction, isDue bool) []string {
 	// Status indicator
 	status := " ○"
 	if isDue {
-		today := models.Today()
+		today := types.Today()
 		if st.NextDate.Equal(today) {
 			status = " ●"
 		} else {
@@ -2709,8 +2716,8 @@ type errMsg struct {
 
 // sidebarLoadedMsg is sent when sidebar data has been loaded.
 type sidebarLoadedMsg struct {
-	accounts []*models.Account
-	balances map[models.ID]*service.AccountBalance
+	accounts []*account.Account
+	balances map[types.ID]*account.Balance
 }
 
 // scheduledDueCountMsg is sent when the count of due scheduled transactions is loaded.
@@ -2720,11 +2727,11 @@ type scheduledDueCountMsg struct {
 
 // dashboardData holds the loaded data for the dashboard view.
 type dashboardData struct {
-	netWorth     *models.NetWorthReport
-	dueTxns      []*models.ScheduledTransaction
-	upcomingTxns []*models.ScheduledTransaction
-	payeeNames   map[models.ID]string
-	accountNames map[models.ID]string
+	netWorth     *report.NetWorth
+	dueTxns      []*scheduled.Transaction
+	upcomingTxns []*scheduled.Transaction
+	payeeNames   map[types.ID]string
+	accountNames map[types.ID]string
 }
 
 // dashboardLoadedMsg is sent when dashboard data has been loaded.
@@ -2734,12 +2741,12 @@ type dashboardLoadedMsg struct {
 
 // registerData holds the loaded data for the account register view.
 type registerData struct {
-	account       *models.Account
-	transactions  []*models.Transaction
-	balance       *service.AccountBalance
-	payeeNames    map[models.ID]string
-	categoryNames map[models.ID]string
-	accountNames  map[models.ID]string
+	account       *account.Account
+	transactions  []*transaction.Transaction
+	balance       *account.Balance
+	payeeNames    map[types.ID]string
+	categoryNames map[types.ID]string
+	accountNames  map[types.ID]string
 }
 
 // registerLoadedMsg is sent when register data has been loaded.
@@ -2749,13 +2756,13 @@ type registerLoadedMsg struct {
 
 // scheduledViewData holds the loaded data for the scheduled transactions view.
 type scheduledViewData struct {
-	dueTxns       []*models.ScheduledTransaction
-	upcomingTxns  []*models.ScheduledTransaction
-	allTxns       []*models.ScheduledTransaction // combined: due first, then upcoming
+	dueTxns       []*scheduled.Transaction
+	upcomingTxns  []*scheduled.Transaction
+	allTxns       []*scheduled.Transaction // combined: due first, then upcoming
 	dueCount      int                            // number of due items (index boundary)
-	payeeNames    map[models.ID]string
-	accountNames  map[models.ID]string
-	categoryNames map[models.ID]string
+	payeeNames    map[types.ID]string
+	accountNames  map[types.ID]string
+	categoryNames map[types.ID]string
 }
 
 // scheduledViewDataLoadedMsg is sent when scheduled view data has been loaded.
@@ -2774,7 +2781,7 @@ type scheduledDeletedMsg struct{}
 
 // autoPostCompletedMsg is sent when auto-posting on file open completes.
 type autoPostCompletedMsg struct {
-	summary *service.AutoPostSummary
+	summary *scheduled.AutoPostSummary
 }
 
 // reportType represents which report is being displayed.
@@ -2788,8 +2795,8 @@ const (
 // reportsViewData holds the loaded data for the reports view.
 type reportsViewData struct {
 	rtype    reportType
-	netWorth *models.NetWorthReport
-	spending *models.SpendingReport
+	netWorth *report.NetWorth
+	spending *report.Spending
 	year     int
 	month    int // 1-12 for monthly, 0 for yearly
 }

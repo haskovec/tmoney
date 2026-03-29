@@ -1,0 +1,143 @@
+package price
+
+import (
+	"testing"
+
+	"github.com/haskovec/tmoney/internal/types"
+)
+
+// =============================================================================
+// SM-028: Provider interface and ManualProvider
+// =============================================================================
+
+func TestManualProvider_ImplementsInterface(t *testing.T) {
+	// Compile-time check that ManualProvider implements Provider.
+	var _ Provider = &ManualProvider{}
+}
+
+func TestManualProvider_FetchPrice(t *testing.T) {
+	t.Run("returns error requiring manual entry", func(t *testing.T) {
+		provider := &ManualProvider{}
+		date := types.NewDate(2024, 3, 15)
+
+		p, err := provider.FetchPrice("AAPL", date)
+		if err == nil {
+			t.Error("FetchPrice() expected error for manual provider")
+		}
+		if p != nil {
+			t.Error("FetchPrice() expected nil price for manual provider")
+		}
+		if err.Error() != "manual entry required" {
+			t.Errorf("Expected 'manual entry required', got %q", err.Error())
+		}
+	})
+}
+
+func TestManualProvider_FetchPriceHistory(t *testing.T) {
+	t.Run("returns error requiring manual entry", func(t *testing.T) {
+		provider := &ManualProvider{}
+		from := types.NewDate(2024, 1, 1)
+		to := types.NewDate(2024, 3, 31)
+
+		prices, err := provider.FetchPriceHistory("AAPL", from, to)
+		if err == nil {
+			t.Error("FetchPriceHistory() expected error for manual provider")
+		}
+		if prices != nil {
+			t.Error("FetchPriceHistory() expected nil prices for manual provider")
+		}
+	})
+}
+
+func TestManualProvider_Name(t *testing.T) {
+	t.Run("returns 'manual'", func(t *testing.T) {
+		provider := &ManualProvider{}
+		if provider.Name() != "manual" {
+			t.Errorf("Expected name 'manual', got %q", provider.Name())
+		}
+	})
+}
+
+// =============================================================================
+// SM-029: ProviderRegistry
+// =============================================================================
+
+func TestProviderRegistry_New(t *testing.T) {
+	t.Run("has manual provider pre-registered", func(t *testing.T) {
+		registry := NewProviderRegistry()
+
+		provider, err := registry.Get("manual")
+		if err != nil {
+			t.Fatalf("Get('manual') error = %v", err)
+		}
+		if provider.Name() != "manual" {
+			t.Errorf("Expected name 'manual', got %q", provider.Name())
+		}
+	})
+}
+
+func TestProviderRegistry_Register(t *testing.T) {
+	t.Run("registers and retrieves provider by name", func(t *testing.T) {
+		registry := NewProviderRegistry()
+		mock := &mockProvider{name: "mock-api"}
+
+		registry.Register(mock)
+
+		provider, err := registry.Get("mock-api")
+		if err != nil {
+			t.Fatalf("Get('mock-api') error = %v", err)
+		}
+		if provider.Name() != "mock-api" {
+			t.Errorf("Expected name 'mock-api', got %q", provider.Name())
+		}
+	})
+
+	t.Run("returns error for unknown provider", func(t *testing.T) {
+		registry := NewProviderRegistry()
+
+		_, err := registry.Get("nonexistent")
+		if err == nil {
+			t.Error("Get('nonexistent') expected error")
+		}
+	})
+}
+
+func TestProviderRegistry_List(t *testing.T) {
+	t.Run("lists all registered providers", func(t *testing.T) {
+		registry := NewProviderRegistry()
+		registry.Register(&mockProvider{name: "alpha"})
+		registry.Register(&mockProvider{name: "beta"})
+
+		names := registry.List()
+		if len(names) != 3 { // manual + alpha + beta
+			t.Fatalf("Expected 3 providers, got %d", len(names))
+		}
+
+		nameMap := make(map[string]bool)
+		for _, n := range names {
+			nameMap[n] = true
+		}
+		for _, expected := range []string{"manual", "alpha", "beta"} {
+			if !nameMap[expected] {
+				t.Errorf("Expected provider %q in list", expected)
+			}
+		}
+	})
+}
+
+// mockProvider is a test helper implementing Provider.
+type mockProvider struct {
+	name string
+}
+
+func (m *mockProvider) FetchPrice(ticker string, date types.Date) (*Price, error) {
+	return nil, nil
+}
+
+func (m *mockProvider) FetchPriceHistory(ticker string, from, to types.Date) ([]*Price, error) {
+	return nil, nil
+}
+
+func (m *mockProvider) Name() string {
+	return m.name
+}

@@ -3,21 +3,22 @@ package undo
 import (
 	"fmt"
 
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/reconciliation"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // FinishReconciliationCommand finishes a reconciliation session and can undo it
 // by restoring all transaction statuses and reopening the session.
 type FinishReconciliationCommand struct {
-	reconSvc  *service.ReconciliationService
-	txnSvc    *service.TransactionService
-	accountID models.ID
-	txnIDs    []models.ID
+	reconSvc  *reconciliation.Service
+	txnSvc    *transaction.Service
+	accountID types.ID
+	txnIDs    []types.ID
 
 	// Captured on Execute
-	sessionID        models.ID
-	previousStatuses map[models.ID]models.TransactionStatus
+	sessionID        types.ID
+	previousStatuses map[types.ID]transaction.Status
 	count            int
 }
 
@@ -25,10 +26,10 @@ type FinishReconciliationCommand struct {
 // The accountID identifies the account being reconciled, and txnIDs are the checked
 // transactions to be marked as reconciled. Previous statuses are captured at execute time.
 func NewFinishReconciliationCommand(
-	reconSvc *service.ReconciliationService,
-	txnSvc *service.TransactionService,
-	accountID models.ID,
-	txnIDs []models.ID,
+	reconSvc *reconciliation.Service,
+	txnSvc *transaction.Service,
+	accountID types.ID,
+	txnIDs []types.ID,
 ) *FinishReconciliationCommand {
 	return &FinishReconciliationCommand{
 		reconSvc:  reconSvc,
@@ -50,7 +51,7 @@ func (c *FinishReconciliationCommand) Execute() error {
 	c.sessionID = session.ID
 
 	// Capture previous statuses of transactions that will be reconciled
-	c.previousStatuses = make(map[models.ID]models.TransactionStatus, len(c.txnIDs))
+	c.previousStatuses = make(map[types.ID]transaction.Status, len(c.txnIDs))
 	for _, txnID := range c.txnIDs {
 		txn, err := c.txnSvc.GetByID(txnID)
 		if err != nil {

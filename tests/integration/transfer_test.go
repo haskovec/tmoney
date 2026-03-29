@@ -5,14 +5,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // createTransferTestService creates a test database with a TransactionService for transfer testing.
-func createTransferTestService(t *testing.T) (*service.TransactionService, *db.DB, func()) {
+func createTransferTestService(t *testing.T) (*transaction.Service, *db.DB, func()) {
 	t.Helper()
 
 	tempDir, err := os.MkdirTemp("", "tmoney-transfer-test-*")
@@ -27,11 +28,11 @@ func createTransferTestService(t *testing.T) (*service.TransactionService, *db.D
 		t.Fatalf("Failed to create database: %v", err)
 	}
 
-	txnRepo := repository.NewTransactionRepository(database)
-	splitRepo := repository.NewSplitRepository(database)
-	transferRepo := repository.NewTransferRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	svc := service.NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	txnRepo := transaction.NewRepository(database)
+	splitRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	svc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
 
 	cleanup := func() {
 		database.Close()
@@ -42,15 +43,15 @@ func createTransferTestService(t *testing.T) (*service.TransactionService, *db.D
 }
 
 // createTwoAccounts is a helper to create a checking and savings account.
-func createTwoAccounts(t *testing.T, database *db.DB) (*models.Account, *models.Account) {
+func createTwoAccounts(t *testing.T, database *db.DB) (*account.Account, *account.Account) {
 	t.Helper()
 
-	accountRepo := repository.NewAccountRepository(database)
+	accountRepo := account.NewRepository(database)
 
-	checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD",
-		models.MustNewMoney("1000.00"), models.NewDate(2024, 1, 1))
-	savings := models.NewAccount("Savings", models.AccountTypeSavings, "USD",
-		models.MustNewMoney("5000.00"), models.NewDate(2024, 1, 1))
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD",
+		types.MustNewMoney("1000.00"), types.NewDate(2024, 1, 1))
+	savings := account.NewAccount("Savings", account.TypeSavings, "USD",
+		types.MustNewMoney("5000.00"), types.NewDate(2024, 1, 1))
 
 	if err := accountRepo.Create(checking); err != nil {
 		t.Fatalf("Failed to create checking account: %v", err)
@@ -71,15 +72,15 @@ func TestTransferCreate(t *testing.T) {
 	t.Run("creates linked transfer between accounts", func(t *testing.T) {
 		pair, err := svc.CreateTransfer(
 			checking.ID, savings.ID,
-			models.NewDate(2024, 1, 15),
-			models.MustNewMoney("500.00"),
+			types.NewDate(2024, 1, 15),
+			types.MustNewMoney("500.00"),
 		)
 		if err != nil {
 			t.Fatalf("Failed to create transfer: %v", err)
 		}
 
 		// Verify from side (negative amount)
-		if !pair.FromTransaction.Amount.Equal(models.MustNewMoney("-500.00")) {
+		if !pair.FromTransaction.Amount.Equal(types.MustNewMoney("-500.00")) {
 			t.Errorf("Expected from amount -500.00, got %s", pair.FromTransaction.Amount.String())
 		}
 		if pair.FromTransaction.AccountID != checking.ID {
@@ -87,7 +88,7 @@ func TestTransferCreate(t *testing.T) {
 		}
 
 		// Verify to side (positive amount)
-		if !pair.ToTransaction.Amount.Equal(models.MustNewMoney("500.00")) {
+		if !pair.ToTransaction.Amount.Equal(types.MustNewMoney("500.00")) {
 			t.Errorf("Expected to amount 500.00, got %s", pair.ToTransaction.Amount.String())
 		}
 		if pair.ToTransaction.AccountID != savings.ID {
@@ -111,13 +112,13 @@ func TestTransferCreate(t *testing.T) {
 	t.Run("rejects negative transfer amount", func(t *testing.T) {
 		_, err := svc.CreateTransfer(
 			checking.ID, savings.ID,
-			models.NewDate(2024, 1, 15),
-			models.MustNewMoney("-100.00"),
+			types.NewDate(2024, 1, 15),
+			types.MustNewMoney("-100.00"),
 		)
 		if err == nil {
 			t.Error("Expected error for negative transfer amount")
 		}
-		if _, ok := err.(*service.InvalidTransferAmountError); !ok {
+		if _, ok := err.(*transaction.InvalidTransferAmountError); !ok {
 			t.Errorf("Expected InvalidTransferAmountError, got %T: %v", err, err)
 		}
 	})
@@ -125,8 +126,8 @@ func TestTransferCreate(t *testing.T) {
 	t.Run("rejects zero transfer amount", func(t *testing.T) {
 		_, err := svc.CreateTransfer(
 			checking.ID, savings.ID,
-			models.NewDate(2024, 1, 15),
-			models.ZeroMoney,
+			types.NewDate(2024, 1, 15),
+			types.ZeroMoney,
 		)
 		if err == nil {
 			t.Error("Expected error for zero transfer amount")
@@ -142,8 +143,8 @@ func TestTransferGetPair(t *testing.T) {
 
 	pair, err := svc.CreateTransfer(
 		checking.ID, savings.ID,
-		models.NewDate(2024, 2, 1),
-		models.MustNewMoney("250.00"),
+		types.NewDate(2024, 2, 1),
+		types.MustNewMoney("250.00"),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create transfer: %v", err)
@@ -156,16 +157,16 @@ func TestTransferGetPair(t *testing.T) {
 			t.Fatalf("Failed to get transfer pair: %v", err)
 		}
 
-		if !retrieved.FromTransaction.Amount.Equal(models.MustNewMoney("-250.00")) {
+		if !retrieved.FromTransaction.Amount.Equal(types.MustNewMoney("-250.00")) {
 			t.Errorf("Expected from amount -250.00, got %s", retrieved.FromTransaction.Amount.String())
 		}
-		if !retrieved.ToTransaction.Amount.Equal(models.MustNewMoney("250.00")) {
+		if !retrieved.ToTransaction.Amount.Equal(types.MustNewMoney("250.00")) {
 			t.Errorf("Expected to amount 250.00, got %s", retrieved.ToTransaction.Amount.String())
 		}
 	})
 
 	t.Run("returns error for non-existent transfer ID", func(t *testing.T) {
-		_, err := svc.GetTransferPair(models.NewID())
+		_, err := svc.GetTransferPair(types.NewID())
 		if err == nil {
 			t.Error("Expected error for non-existent transfer")
 		}
@@ -180,8 +181,8 @@ func TestTransferGetCounterpart(t *testing.T) {
 
 	pair, err := svc.CreateTransfer(
 		checking.ID, savings.ID,
-		models.NewDate(2024, 2, 1),
-		models.MustNewMoney("300.00"),
+		types.NewDate(2024, 2, 1),
+		types.MustNewMoney("300.00"),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create transfer: %v", err)
@@ -195,7 +196,7 @@ func TestTransferGetCounterpart(t *testing.T) {
 		if other.ID != pair.ToTransaction.ID {
 			t.Errorf("Expected counterpart to be to-transaction")
 		}
-		if !other.Amount.Equal(models.MustNewMoney("300.00")) {
+		if !other.Amount.Equal(types.MustNewMoney("300.00")) {
 			t.Errorf("Expected counterpart amount 300.00, got %s", other.Amount.String())
 		}
 	})
@@ -208,7 +209,7 @@ func TestTransferGetCounterpart(t *testing.T) {
 		if other.ID != pair.FromTransaction.ID {
 			t.Errorf("Expected counterpart to be from-transaction")
 		}
-		if !other.Amount.Equal(models.MustNewMoney("-300.00")) {
+		if !other.Amount.Equal(types.MustNewMoney("-300.00")) {
 			t.Errorf("Expected counterpart amount -300.00, got %s", other.Amount.String())
 		}
 	})
@@ -222,8 +223,8 @@ func TestTransferUpdate(t *testing.T) {
 
 	pair, err := svc.CreateTransfer(
 		checking.ID, savings.ID,
-		models.NewDate(2024, 3, 1),
-		models.MustNewMoney("200.00"),
+		types.NewDate(2024, 3, 1),
+		types.MustNewMoney("200.00"),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create transfer: %v", err)
@@ -232,7 +233,7 @@ func TestTransferUpdate(t *testing.T) {
 	transferID := pair.FromTransaction.TransferID.ID
 
 	t.Run("updates transfer amount on both sides", func(t *testing.T) {
-		err := svc.UpdateTransferAmount(transferID, models.MustNewMoney("350.00"))
+		err := svc.UpdateTransferAmount(transferID, types.MustNewMoney("350.00"))
 		if err != nil {
 			t.Fatalf("Failed to update amount: %v", err)
 		}
@@ -242,16 +243,16 @@ func TestTransferUpdate(t *testing.T) {
 			t.Fatalf("Failed to get updated pair: %v", err)
 		}
 
-		if !updated.FromTransaction.Amount.Equal(models.MustNewMoney("-350.00")) {
+		if !updated.FromTransaction.Amount.Equal(types.MustNewMoney("-350.00")) {
 			t.Errorf("Expected from amount -350.00, got %s", updated.FromTransaction.Amount.String())
 		}
-		if !updated.ToTransaction.Amount.Equal(models.MustNewMoney("350.00")) {
+		if !updated.ToTransaction.Amount.Equal(types.MustNewMoney("350.00")) {
 			t.Errorf("Expected to amount 350.00, got %s", updated.ToTransaction.Amount.String())
 		}
 	})
 
 	t.Run("updates transfer date on both sides", func(t *testing.T) {
-		newDate := models.NewDate(2024, 3, 15)
+		newDate := types.NewDate(2024, 3, 15)
 		err := svc.UpdateTransferDate(transferID, newDate)
 		if err != nil {
 			t.Fatalf("Failed to update date: %v", err)
@@ -271,7 +272,7 @@ func TestTransferUpdate(t *testing.T) {
 	})
 
 	t.Run("updates transfer status on both sides", func(t *testing.T) {
-		err := svc.UpdateTransferStatus(transferID, models.TransactionStatusCleared)
+		err := svc.UpdateTransferStatus(transferID, transaction.StatusCleared)
 		if err != nil {
 			t.Fatalf("Failed to update status: %v", err)
 		}
@@ -281,10 +282,10 @@ func TestTransferUpdate(t *testing.T) {
 			t.Fatalf("Failed to get updated pair: %v", err)
 		}
 
-		if updated.FromTransaction.Status != models.TransactionStatusCleared {
+		if updated.FromTransaction.Status != transaction.StatusCleared {
 			t.Errorf("Expected from status 'cleared', got %q", updated.FromTransaction.Status)
 		}
-		if updated.ToTransaction.Status != models.TransactionStatusCleared {
+		if updated.ToTransaction.Status != transaction.StatusCleared {
 			t.Errorf("Expected to status 'cleared', got %q", updated.ToTransaction.Status)
 		}
 	})
@@ -292,10 +293,10 @@ func TestTransferUpdate(t *testing.T) {
 	t.Run("UpdateTransfer updates all fields", func(t *testing.T) {
 		err := svc.UpdateTransfer(
 			transferID,
-			models.NewDate(2024, 4, 1),
-			models.MustNewMoney("999.00"),
+			types.NewDate(2024, 4, 1),
+			types.MustNewMoney("999.00"),
 			"Monthly transfer",
-			models.TransactionStatusReconciled,
+			transaction.StatusReconciled,
 		)
 		if err != nil {
 			t.Fatalf("Failed to update transfer: %v", err)
@@ -306,19 +307,19 @@ func TestTransferUpdate(t *testing.T) {
 			t.Fatalf("Failed to get updated pair: %v", err)
 		}
 
-		if !updated.FromTransaction.Amount.Equal(models.MustNewMoney("-999.00")) {
+		if !updated.FromTransaction.Amount.Equal(types.MustNewMoney("-999.00")) {
 			t.Errorf("Expected from amount -999.00, got %s", updated.FromTransaction.Amount.String())
 		}
-		if !updated.ToTransaction.Amount.Equal(models.MustNewMoney("999.00")) {
+		if !updated.ToTransaction.Amount.Equal(types.MustNewMoney("999.00")) {
 			t.Errorf("Expected to amount 999.00, got %s", updated.ToTransaction.Amount.String())
 		}
-		if !updated.FromTransaction.Date.Equal(models.NewDate(2024, 4, 1)) {
+		if !updated.FromTransaction.Date.Equal(types.NewDate(2024, 4, 1)) {
 			t.Errorf("Expected date 2024-04-01")
 		}
 		if !updated.FromTransaction.Memo.Valid || updated.FromTransaction.Memo.String != "Monthly transfer" {
 			t.Errorf("Expected memo 'Monthly transfer', got %v", updated.FromTransaction.Memo)
 		}
-		if updated.FromTransaction.Status != models.TransactionStatusReconciled {
+		if updated.FromTransaction.Status != transaction.StatusReconciled {
 			t.Errorf("Expected status 'reconciled', got %q", updated.FromTransaction.Status)
 		}
 	})
@@ -333,8 +334,8 @@ func TestTransferDelete(t *testing.T) {
 	t.Run("deletes both sides of transfer", func(t *testing.T) {
 		pair, err := svc.CreateTransfer(
 			checking.ID, savings.ID,
-			models.NewDate(2024, 5, 1),
-			models.MustNewMoney("100.00"),
+			types.NewDate(2024, 5, 1),
+			types.MustNewMoney("100.00"),
 		)
 		if err != nil {
 			t.Fatalf("Failed to create transfer: %v", err)
@@ -364,8 +365,8 @@ func TestTransferDelete(t *testing.T) {
 	t.Run("deleting one side via Delete removes both", func(t *testing.T) {
 		pair, err := svc.CreateTransfer(
 			checking.ID, savings.ID,
-			models.NewDate(2024, 5, 15),
-			models.MustNewMoney("75.00"),
+			types.NewDate(2024, 5, 15),
+			types.MustNewMoney("75.00"),
 		)
 		if err != nil {
 			t.Fatalf("Failed to create transfer: %v", err)
@@ -402,16 +403,16 @@ func TestTransferIsTransfer(t *testing.T) {
 	// Create a transfer
 	pair, err := svc.CreateTransfer(
 		checking.ID, savings.ID,
-		models.NewDate(2024, 6, 1),
-		models.MustNewMoney("50.00"),
+		types.NewDate(2024, 6, 1),
+		types.MustNewMoney("50.00"),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create transfer: %v", err)
 	}
 
 	// Create a regular transaction
-	txnRepo := repository.NewTransactionRepository(database)
-	regularTxn := models.NewTransaction(checking.ID, models.Today(), models.MustNewMoney("-20.00"))
+	txnRepo := transaction.NewRepository(database)
+	regularTxn := transaction.NewTransaction(checking.ID, types.Today(), types.MustNewMoney("-20.00"))
 	if err := txnRepo.Create(regularTxn); err != nil {
 		t.Fatalf("Failed to create regular transaction: %v", err)
 	}

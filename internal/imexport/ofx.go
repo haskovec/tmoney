@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // ParseOFX reads an OFX/QFX file from r and returns parsed import records.
@@ -79,7 +79,7 @@ func parseOFXTransaction(block string, index int) (*ImportRecord, *ParseError) {
 		}
 	}
 
-	amount, err := models.NewMoney(trnAmt)
+	amount, err := types.NewMoney(trnAmt)
 	if err != nil {
 		return nil, &ParseError{
 			Line:    index,
@@ -218,7 +218,7 @@ func indexCaseInsensitive(s, substr string, fromIndex int) int {
 //   - YYYYMMDDHHMMSS.XXX (with milliseconds)
 //   - YYYYMMDDHHMMSS.XXX[TZ:TZNAME] (with timezone)
 //   - YYYYMMDD[TZ:TZNAME]
-func parseOFXDate(s string) (models.Date, error) {
+func parseOFXDate(s string) (types.Date, error) {
 	s = strings.TrimSpace(s)
 
 	// Strip timezone info in brackets: [GMT-5:EST]
@@ -239,7 +239,7 @@ func parseOFXDate(s string) (models.Date, error) {
 		if err == nil {
 			// Parse date-only portion to get a clean date without time
 			t, _ := time.Parse("20060102", s[:8])
-			return models.Date(t), nil
+			return types.Date(t), nil
 		}
 	}
 
@@ -247,9 +247,9 @@ func parseOFXDate(s string) (models.Date, error) {
 	if len(s) >= 8 {
 		t, err := time.Parse("20060102", s[:8])
 		if err == nil {
-			return models.Date(t), nil
+			return types.Date(t), nil
 		}
 	}
 
-	return models.ZeroDate, fmt.Errorf("unable to parse OFX date %q", s)
+	return types.ZeroDate, fmt.Errorf("unable to parse OFX date %q", s)
 }

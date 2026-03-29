@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // QIF account type headers mapped from TMoney account types.
@@ -52,15 +52,15 @@ const (
 )
 
 // parseQIFDate tries multiple date formats to parse a QIF date string.
-func parseQIFDate(s string) (models.Date, error) {
+func parseQIFDate(s string) (types.Date, error) {
 	s = strings.TrimSpace(s)
 	for _, format := range qifDateFormats {
 		t, err := time.Parse(format, s)
 		if err == nil {
-			return models.Date(t), nil
+			return types.Date(t), nil
 		}
 	}
-	return models.ZeroDate, fmt.Errorf("unable to parse QIF date %q", s)
+	return types.ZeroDate, fmt.Errorf("unable to parse QIF date %q", s)
 }
 
 // formatQIFDate formats a date string from YYYY-MM-DD to MM/DD/YYYY for QIF output.
@@ -124,9 +124,9 @@ func ParseQIF(r io.Reader) (*ParseResult, error) {
 
 	flushSplit := func() {
 		if curSplitCat != "" || curSplitAmt != "" {
-			amt, err := models.NewMoney(curSplitAmt)
+			amt, err := types.NewMoney(curSplitAmt)
 			if err != nil {
-				amt = models.MustNewMoney("0")
+				amt = types.MustNewMoney("0")
 			}
 			splits = append(splits, ImportSplit{
 				Category: curSplitCat,
@@ -192,7 +192,7 @@ func ParseQIF(r io.Reader) (*ParseResult, error) {
 			return
 		}
 
-		amount, err := models.NewMoney(amountStr)
+		amount, err := types.NewMoney(amountStr)
 		if err != nil {
 			result.Errors = append(result.Errors, ParseError{
 				Line:    recordStartLine,

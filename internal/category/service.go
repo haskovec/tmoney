@@ -1,0 +1,435 @@
+package category
+
+import (
+	"fmt"
+
+	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/types"
+)
+
+// DefaultCategory represents a default category to be seeded.
+type DefaultCategory struct {
+	Name     string
+	Type     Type
+	IsSystem bool
+	Children []string // Names of subcategories
+}
+
+// DefaultCategories defines the default categories to seed for new files.
+// These are based on common personal finance categories.
+var DefaultCategories = []DefaultCategory{
+	// System category for transfers between accounts
+	{
+		Name:     "Transfer",
+		Type:     TypeExpense,
+		IsSystem: true,
+	},
+
+	// Income categories
+	{
+		Name: "Income",
+		Type: TypeIncome,
+		Children: []string{
+			"Salary",
+			"Bonus",
+			"Interest",
+			"Dividends",
+			"Gifts Received",
+			"Other Income",
+		},
+	},
+
+	// Expense categories
+	{
+		Name: "Housing",
+		Type: TypeExpense,
+		Children: []string{
+			"Rent",
+			"Mortgage",
+			"Property Tax",
+			"Home Insurance",
+			"Repairs & Maintenance",
+		},
+	},
+	{
+		Name: "Utilities",
+		Type: TypeExpense,
+		Children: []string{
+			"Electric",
+			"Gas",
+			"Water",
+			"Internet",
+			"Phone",
+		},
+	},
+	{
+		Name: "Food",
+		Type: TypeExpense,
+		Children: []string{
+			"Groceries",
+			"Dining Out",
+			"Coffee & Snacks",
+		},
+	},
+	{
+		Name: "Transportation",
+		Type: TypeExpense,
+		Children: []string{
+			"Gas & Fuel",
+			"Auto Insurance",
+			"Auto Repairs",
+			"Parking",
+			"Public Transit",
+		},
+	},
+	{
+		Name: "Healthcare",
+		Type: TypeExpense,
+		Children: []string{
+			"Doctor",
+			"Dentist",
+			"Pharmacy",
+			"Health Insurance",
+		},
+	},
+	{
+		Name: "Personal",
+		Type: TypeExpense,
+		Children: []string{
+			"Clothing",
+			"Haircut",
+			"Gym",
+		},
+	},
+	{
+		Name: "Entertainment",
+		Type: TypeExpense,
+		Children: []string{
+			"Movies",
+			"Music & Streaming",
+			"Books & Magazines",
+			"Hobbies",
+		},
+	},
+	{
+		Name: "Shopping",
+		Type: TypeExpense,
+		Children: []string{
+			"Electronics",
+			"Home Goods",
+			"Gifts Given",
+		},
+	},
+	{
+		Name: "Financial",
+		Type: TypeExpense,
+		Children: []string{
+			"Bank Fees",
+			"Late Fees",
+			"Interest Paid",
+		},
+	},
+	{
+		Name: "Taxes",
+		Type: TypeExpense,
+		Children: []string{
+			"Federal Tax",
+			"State Tax",
+			"Local Tax",
+		},
+	},
+	{
+		Name: "Miscellaneous",
+		Type: TypeExpense,
+	},
+}
+
+// Service provides business logic for category operations.
+type Service struct {
+	repo *Repository
+	db   *db.DB
+}
+
+// NewService creates a new Service.
+func NewService(repo *Repository, database *db.DB) *Service {
+	return &Service{
+		repo: repo,
+		db:   database,
+	}
+}
+
+// SeedDefaultCategories creates all default categories in the database.
+// This should be called when a new TMoney file is created.
+// It skips categories that already exist (based on name and parent).
+func (s *Service) SeedDefaultCategories() error {
+	for _, dc := range DefaultCategories {
+		if err := s.seedCategory(dc); err != nil {
+			return fmt.Errorf("failed to seed category %q: %w", dc.Name, err)
+		}
+	}
+	return nil
+}
+
+// seedCategory creates a single parent category and its children.
+func (s *Service) seedCategory(dc DefaultCategory) error {
+	// Check if parent category already exists
+	existing, err := s.repo.GetByName(dc.Name, nil)
+	if err == nil {
+		// Category exists, skip seeding children since they should already exist
+		_ = existing
+		return nil
+	}
+
+	// Check if error is "not found" - that's expected for seeding
+	if _, ok := err.(*dberrors.NotFoundError); !ok {
+		return fmt.Errorf("failed to check existing category: %w", err)
+	}
+
+	// Create the parent category
+	var parent *Category
+	if dc.IsSystem {
+		parent = NewSystemCategory(dc.Name, dc.Type)
+	} else {
+		parent = NewCategory(dc.Name, dc.Type)
+	}
+
+	if err := s.repo.Create(parent); err != nil {
+		return fmt.Errorf("failed to create parent category: %w", err)
+	}
+
+	// Create child categories
+	for _, childName := range dc.Children {
+		child := NewSubcategory(childName, parent.ID, dc.Type)
+		if err := s.repo.Create(child); err != nil {
+			return fmt.Errorf("failed to create subcategory %q: %w", childName, err)
+		}
+	}
+
+	return nil
+}
+
+// GetTransferCategory returns the system Transfer category.
+// This category is used for transfers between accounts.
+func (s *Service) GetTransferCategory() (*Category, error) {
+	categories, err := s.repo.List()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, cat := range categories {
+		if cat.IsSystem && cat.Name == "Transfer" {
+			return cat, nil
+		}
+	}
+
+	return nil, &dberrors.NotFoundError{Entity: "category", ID: "Transfer"}
+}
+
+// HasDefaultCategories checks if default categories have been seeded.
+func (s *Service) HasDefaultCategories() (bool, error) {
+	categories, err := s.repo.ListTopLevel()
+	if err != nil {
+		return false, err
+	}
+	return len(categories) > 0, nil
+}
+
+// Create validates and creates a new category.
+// If setting a parent, validates the parent exists and type matches.
+func (s *Service) Create(category *Category) error {
+	if err := s.validateCategory(category); err != nil {
+		return err
+	}
+
+	// Additional parent validation is done in the repository
+	return s.repo.Create(category)
+}
+
+// GetByID retrieves a category by its ID.
+func (s *Service) GetByID(id types.ID) (*Category, error) {
+	return s.repo.GetByID(id)
+}
+
+// GetByName retrieves a category by its name within a parent.
+// Pass nil for parentID to search for top-level categories.
+func (s *Service) GetByName(name string, parentID *types.ID) (*Category, error) {
+	return s.repo.GetByName(name, parentID)
+}
+
+// GetWithParent retrieves a category and its parent (if any) by ID.
+func (s *Service) GetWithParent(id types.ID) (*Category, *Category, error) {
+	return s.repo.GetWithParent(id)
+}
+
+// Update validates and updates an existing category.
+// System categories cannot be updated (except by seeding).
+func (s *Service) Update(category *Category) error {
+	// Check if this is a system category
+	existing, err := s.repo.GetByID(category.ID)
+	if err != nil {
+		return err
+	}
+	if existing.IsSystem {
+		return &IsSystemError{ID: category.ID.String(), Name: existing.Name}
+	}
+
+	if err := s.validateCategory(category); err != nil {
+		return err
+	}
+
+	return s.repo.Update(category)
+}
+
+// Delete removes a category.
+// System categories cannot be deleted.
+// Categories with transactions or subcategories cannot be deleted.
+func (s *Service) Delete(id types.ID) error {
+	// Check if this is a system category
+	category, err := s.repo.GetByID(id)
+	if err != nil {
+		return err
+	}
+	if category.IsSystem {
+		return &IsSystemError{ID: id.String(), Name: category.Name}
+	}
+
+	// Repository handles checks for subcategories and transactions
+	return s.repo.Delete(id)
+}
+
+// List returns all categories ordered by name.
+func (s *Service) List() ([]*Category, error) {
+	return s.repo.List()
+}
+
+// ListByType returns all categories of a specific type.
+func (s *Service) ListByType(categoryType Type) ([]*Category, error) {
+	return s.repo.ListByType(categoryType)
+}
+
+// ListTopLevel returns all top-level categories (those without a parent).
+func (s *Service) ListTopLevel() ([]*Category, error) {
+	return s.repo.ListTopLevel()
+}
+
+// ListChildren returns all child categories of a parent.
+func (s *Service) ListChildren(parentID types.ID) ([]*Category, error) {
+	return s.repo.ListChildren(parentID)
+}
+
+// MergeCategories merges the source category into the target category.
+// All transactions, splits, scheduled transactions, and payee defaults
+// using the source category will be updated to use the target category.
+// The source category is then deleted.
+//
+// Rules:
+// - Source and target must have the same type (income/expense)
+// - System categories cannot be merged
+// - Cannot merge a category into itself
+func (s *Service) MergeCategories(sourceID, targetID types.ID) error {
+	// Cannot merge into itself
+	if sourceID == targetID {
+		return &MergeSameError{ID: sourceID.String()}
+	}
+
+	// Get both categories
+	source, err := s.repo.GetByID(sourceID)
+	if err != nil {
+		return fmt.Errorf("failed to get source category: %w", err)
+	}
+
+	target, err := s.repo.GetByID(targetID)
+	if err != nil {
+		return fmt.Errorf("failed to get target category: %w", err)
+	}
+
+	// System categories cannot be merged
+	if source.IsSystem {
+		return &IsSystemError{ID: sourceID.String(), Name: source.Name}
+	}
+	if target.IsSystem {
+		return &IsSystemError{ID: targetID.String(), Name: target.Name}
+	}
+
+	// Types must match
+	if source.Type != target.Type {
+		return &MergeTypeMismatchError{
+			SourceID:   sourceID.String(),
+			SourceType: source.Type.String(),
+			TargetID:   targetID.String(),
+			TargetType: target.Type.String(),
+		}
+	}
+
+	// Update all references to use target category
+	// Note: DuckDB doesn't support transactions, so we do best-effort updates
+
+	// Update transactions
+	_, err = s.db.Conn().Exec(`
+		UPDATE transactions
+		SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+		WHERE CAST(category_id AS VARCHAR) = ?
+	`, targetID.String(), sourceID.String())
+	if err != nil {
+		return fmt.Errorf("failed to update transactions: %w", err)
+	}
+
+	// Update transaction splits
+	_, err = s.db.Conn().Exec(`
+		UPDATE transaction_splits
+		SET category_id = CAST(? AS UUID)
+		WHERE CAST(category_id AS VARCHAR) = ?
+	`, targetID.String(), sourceID.String())
+	if err != nil {
+		return fmt.Errorf("failed to update transaction splits: %w", err)
+	}
+
+	// Update payee defaults
+	_, err = s.db.Conn().Exec(`
+		UPDATE payees
+		SET default_category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+		WHERE CAST(default_category_id AS VARCHAR) = ?
+	`, targetID.String(), sourceID.String())
+	if err != nil {
+		return fmt.Errorf("failed to update payee defaults: %w", err)
+	}
+
+	// Update scheduled transactions
+	_, err = s.db.Conn().Exec(`
+		UPDATE scheduled_transactions
+		SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+		WHERE CAST(category_id AS VARCHAR) = ?
+	`, targetID.String(), sourceID.String())
+	if err != nil {
+		return fmt.Errorf("failed to update scheduled transactions: %w", err)
+	}
+
+	// If source has children, reassign them to target
+	children, err := s.repo.ListChildren(sourceID)
+	if err != nil {
+		return fmt.Errorf("failed to list source children: %w", err)
+	}
+	for _, child := range children {
+		child.SetParent(targetID)
+		if err := s.repo.Update(child); err != nil {
+			return fmt.Errorf("failed to reassign child category %s: %w", child.Name, err)
+		}
+	}
+
+	// Delete the source category (should now have no references)
+	if err := s.repo.Delete(sourceID); err != nil {
+		return fmt.Errorf("failed to delete source category: %w", err)
+	}
+
+	return nil
+}
+
+// validateCategory validates a category and returns any validation errors.
+func (s *Service) validateCategory(category *Category) error {
+	errors := category.Validate()
+	if errors.HasErrors() {
+		return &types.ServiceValidationError{Errors: errors}
+	}
+	return nil
+}

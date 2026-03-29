@@ -6,8 +6,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -17,7 +19,7 @@ import (
 func TestBuildFrequencyOptions(t *testing.T) {
 	options := buildFrequencyOptions()
 
-	allFreqs := models.AllFrequencies()
+	allFreqs := scheduled.AllFrequencies()
 	if len(options) != len(allFreqs) {
 		t.Fatalf("expected %d options, got %d", len(allFreqs), len(options))
 	}
@@ -32,16 +34,16 @@ func TestBuildFrequencyOptions(t *testing.T) {
 func TestFrequencyFromIndex(t *testing.T) {
 	tests := []struct {
 		index    int
-		expected models.Frequency
+		expected scheduled.Frequency
 	}{
-		{0, models.FrequencyDaily},
-		{1, models.FrequencyWeekly},
-		{2, models.FrequencyBiweekly},
-		{3, models.FrequencyMonthly},
-		{4, models.FrequencyQuarterly},
-		{5, models.FrequencyYearly},
-		{-1, models.FrequencyMonthly},  // out of range defaults to monthly
-		{100, models.FrequencyMonthly}, // out of range defaults to monthly
+		{0, scheduled.FrequencyDaily},
+		{1, scheduled.FrequencyWeekly},
+		{2, scheduled.FrequencyBiweekly},
+		{3, scheduled.FrequencyMonthly},
+		{4, scheduled.FrequencyQuarterly},
+		{5, scheduled.FrequencyYearly},
+		{-1, scheduled.FrequencyMonthly},  // out of range defaults to monthly
+		{100, scheduled.FrequencyMonthly}, // out of range defaults to monthly
 	}
 
 	for _, tc := range tests {
@@ -54,16 +56,16 @@ func TestFrequencyFromIndex(t *testing.T) {
 
 func TestFrequencyToIndex(t *testing.T) {
 	tests := []struct {
-		freq     models.Frequency
+		freq     scheduled.Frequency
 		expected int
 	}{
-		{models.FrequencyDaily, 0},
-		{models.FrequencyWeekly, 1},
-		{models.FrequencyBiweekly, 2},
-		{models.FrequencyMonthly, 3},
-		{models.FrequencyQuarterly, 4},
-		{models.FrequencyYearly, 5},
-		{models.Frequency("unknown"), 3}, // unknown defaults to monthly index
+		{scheduled.FrequencyDaily, 0},
+		{scheduled.FrequencyWeekly, 1},
+		{scheduled.FrequencyBiweekly, 2},
+		{scheduled.FrequencyMonthly, 3},
+		{scheduled.FrequencyQuarterly, 4},
+		{scheduled.FrequencyYearly, 5},
+		{scheduled.Frequency("unknown"), 3}, // unknown defaults to monthly index
 	}
 
 	for _, tc := range tests {
@@ -75,7 +77,7 @@ func TestFrequencyToIndex(t *testing.T) {
 }
 
 func TestFrequencyRoundTrip(t *testing.T) {
-	for i, f := range models.AllFrequencies() {
+	for i, f := range scheduled.AllFrequencies() {
 		idx := frequencyToIndex(f)
 		if idx != i {
 			t.Errorf("frequencyToIndex(%q) = %d, want %d", f, idx, i)
@@ -192,15 +194,15 @@ func TestBuildNewScheduledDialog_Defaults(t *testing.T) {
 }
 
 func TestBuildEditScheduledDialog(t *testing.T) {
-	accountID := models.NewID()
-	payeeID := models.NewID()
-	categoryID := models.NewID()
-	amount := models.MustNewMoney("50.00")
+	accountID := types.NewID()
+	payeeID := types.NewID()
+	categoryID := types.NewID()
+	amount := types.MustNewMoney("50.00")
 
-	st := models.NewScheduledTransactionFull(
+	st := scheduled.NewTransactionFull(
 		accountID,
-		models.FrequencyWeekly,
-		models.NewDate(2024, time.March, 15),
+		scheduled.FrequencyWeekly,
+		types.NewDate(2024, time.March, 15),
 		amount,
 		payeeID,
 		categoryID,
@@ -209,10 +211,10 @@ func TestBuildEditScheduledDialog(t *testing.T) {
 	st.SetInterval(2)
 
 	accountOptions := []string{"Checking", "Savings"}
-	accountIDs := []models.ID{accountID, models.NewID()}
+	accountIDs := []types.ID{accountID, types.NewID()}
 	categoryOptions := []string{"(None)", "Groceries"}
-	categoryIDs := []models.ID{models.NilID, categoryID}
-	payeeNames := map[models.ID]string{payeeID: "Test Payee"}
+	categoryIDs := []types.ID{types.NilID, categoryID}
+	payeeNames := map[types.ID]string{payeeID: "Test Payee"}
 
 	d := buildEditScheduledDialog(st, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
 
@@ -273,15 +275,15 @@ func TestBuildEditScheduledDialog(t *testing.T) {
 }
 
 func TestBuildEditScheduledDialog_WithEndDate(t *testing.T) {
-	accountID := models.NewID()
-	st := models.NewScheduledTransaction(accountID, models.FrequencyMonthly, models.NewDate(2024, time.January, 1))
-	st.SetEndDate(models.NewDate(2024, time.December, 31))
+	accountID := types.NewID()
+	st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.NewDate(2024, time.January, 1))
+	st.SetEndDate(types.NewDate(2024, time.December, 31))
 
 	accountOptions := []string{"Checking"}
-	accountIDs := []models.ID{accountID}
+	accountIDs := []types.ID{accountID}
 	categoryOptions := []string{"(None)"}
-	categoryIDs := []models.ID{models.NilID}
-	payeeNames := map[models.ID]string{}
+	categoryIDs := []types.ID{types.NilID}
+	payeeNames := map[types.ID]string{}
 
 	d := buildEditScheduledDialog(st, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
 	fields := d.Fields()
@@ -298,15 +300,15 @@ func TestBuildEditScheduledDialog_WithEndDate(t *testing.T) {
 }
 
 func TestBuildEditScheduledDialog_WithOccurrences(t *testing.T) {
-	accountID := models.NewID()
-	st := models.NewScheduledTransaction(accountID, models.FrequencyMonthly, models.NewDate(2024, time.January, 1))
+	accountID := types.NewID()
+	st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.NewDate(2024, time.January, 1))
 	st.SetOccurrences(12)
 
 	accountOptions := []string{"Checking"}
-	accountIDs := []models.ID{accountID}
+	accountIDs := []types.ID{accountID}
 	categoryOptions := []string{"(None)"}
-	categoryIDs := []models.ID{models.NilID}
-	payeeNames := map[models.ID]string{}
+	categoryIDs := []types.ID{types.NilID}
+	payeeNames := map[types.ID]string{}
 
 	d := buildEditScheduledDialog(st, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
 	fields := d.Fields()
@@ -323,15 +325,15 @@ func TestBuildEditScheduledDialog_WithOccurrences(t *testing.T) {
 }
 
 func TestBuildEditScheduledDialog_VariableAmount(t *testing.T) {
-	accountID := models.NewID()
-	st := models.NewScheduledTransaction(accountID, models.FrequencyMonthly, models.NewDate(2024, time.January, 1))
+	accountID := types.NewID()
+	st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.NewDate(2024, time.January, 1))
 	// No amount set - variable
 
 	accountOptions := []string{"Checking"}
-	accountIDs := []models.ID{accountID}
+	accountIDs := []types.ID{accountID}
 	categoryOptions := []string{"(None)"}
-	categoryIDs := []models.ID{models.NilID}
-	payeeNames := map[models.ID]string{}
+	categoryIDs := []types.ID{types.NilID}
+	payeeNames := map[types.ID]string{}
 
 	d := buildEditScheduledDialog(st, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
 	fields := d.Fields()
@@ -357,10 +359,10 @@ func TestApp_HandleScheduledKeys_NewKey(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
 		scheduled: &scheduledViewData{
-			allTxns:       []*models.ScheduledTransaction{},
-			payeeNames:    make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
+			allTxns:       []*scheduled.Transaction{},
+			payeeNames:    make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
 		},
 	}
 	app.buildScheduledTable()
@@ -377,7 +379,7 @@ func TestApp_HandleScheduledKeys_NewKey(t *testing.T) {
 }
 
 func TestApp_HandleScheduledKeys_EditKey(t *testing.T) {
-	st := models.NewScheduledTransaction(models.NewID(), models.FrequencyMonthly, models.Today())
+	st := scheduled.NewTransaction(types.NewID(), scheduled.FrequencyMonthly, types.Today())
 	app := &App{
 		currentView: ViewScheduled,
 		width:       120,
@@ -388,11 +390,11 @@ func TestApp_HandleScheduledKeys_EditKey(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
 		scheduled: &scheduledViewData{
-			allTxns:       []*models.ScheduledTransaction{st},
+			allTxns:       []*scheduled.Transaction{st},
 			dueCount:      0,
-			payeeNames:    make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
+			payeeNames:    make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
 		},
 	}
 	app.buildScheduledTable()
@@ -419,9 +421,9 @@ func TestApp_Update_ScheduledDialogDataMsg_New(t *testing.T) {
 
 	data := &scheduledDialogData{
 		mode:     scheduledDialogModeNew,
-		accounts: []*models.Account{{BaseModel: models.BaseModel{ID: models.NewID()}, Name: "Checking"}},
-		payees:   []*models.Payee{},
-		payeeMap: make(map[string]*models.Payee),
+		accounts: []*account.Account{{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Checking"}},
+		payees:   []*payee.Payee{},
+		payeeMap: make(map[string]*payee.Payee),
 	}
 
 	msg := scheduledDialogDataMsg{data: data}
@@ -449,9 +451,9 @@ func TestApp_Update_ScheduledDialogDataMsg_New(t *testing.T) {
 }
 
 func TestApp_Update_ScheduledDialogDataMsg_Edit(t *testing.T) {
-	accountID := models.NewID()
-	payeeID := models.NewID()
-	st := models.NewScheduledTransaction(accountID, models.FrequencyMonthly, models.Today())
+	accountID := types.NewID()
+	payeeID := types.NewID()
+	st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.Today())
 	st.SetPayee(payeeID)
 
 	app := &App{
@@ -465,9 +467,9 @@ func TestApp_Update_ScheduledDialogDataMsg_Edit(t *testing.T) {
 	data := &scheduledDialogData{
 		mode:      scheduledDialogModeEdit,
 		scheduled: st,
-		accounts:  []*models.Account{{BaseModel: models.BaseModel{ID: accountID}, Name: "Checking"}},
-		payees:    []*models.Payee{{BaseModel: models.BaseModel{ID: payeeID}, Name: "Test Payee"}},
-		payeeMap:  map[string]*models.Payee{"test payee": {BaseModel: models.BaseModel{ID: payeeID}, Name: "Test Payee"}},
+		accounts:  []*account.Account{{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking"}},
+		payees:    []*payee.Payee{{BaseModel: types.BaseModel{ID: payeeID}, Name: "Test Payee"}},
+		payeeMap:  map[string]*payee.Payee{"test payee": {BaseModel: types.BaseModel{ID: payeeID}, Name: "Test Payee"}},
 	}
 
 	msg := scheduledDialogDataMsg{data: data}
@@ -502,9 +504,9 @@ func TestApp_HandleScheduledDialogKey_Cancel(t *testing.T) {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			return d
 		}(),
-		schedDialogData:       &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs: []models.ID{models.NewID()},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:       &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs: []types.ID{types.NewID()},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	escKey := tea.KeyMsg{Type: tea.KeyEsc}
@@ -539,9 +541,9 @@ func TestApp_HandleScheduledDialogKey_TabCycles(t *testing.T) {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			return d
 		}(),
-		schedDialogData:       &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs: []models.ID{models.NewID()},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:       &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs: []types.ID{types.NewID()},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	initialFocus := app.schedDialog.FocusIndex()
@@ -559,7 +561,7 @@ func TestApp_HandleScheduledDialogKey_TabCycles(t *testing.T) {
 }
 
 func TestApp_SubmitScheduledDialog_InvalidStartDate(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -574,9 +576,9 @@ func TestApp_SubmitScheduledDialog_InvalidStartDate(t *testing.T) {
 			d.Fields()[schedFieldStartDate].Value = "not-a-date"
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -593,7 +595,7 @@ func TestApp_SubmitScheduledDialog_InvalidStartDate(t *testing.T) {
 }
 
 func TestApp_SubmitScheduledDialog_InvalidAmount(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -608,9 +610,9 @@ func TestApp_SubmitScheduledDialog_InvalidAmount(t *testing.T) {
 			d.Fields()[schedFieldAmount].Value = "not-a-number"
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -627,7 +629,7 @@ func TestApp_SubmitScheduledDialog_InvalidAmount(t *testing.T) {
 }
 
 func TestApp_SubmitScheduledDialog_InvalidInterval(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -642,9 +644,9 @@ func TestApp_SubmitScheduledDialog_InvalidInterval(t *testing.T) {
 			d.Fields()[schedFieldInterval].Value = "abc"
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -661,7 +663,7 @@ func TestApp_SubmitScheduledDialog_InvalidInterval(t *testing.T) {
 }
 
 func TestApp_SubmitScheduledDialog_ZeroInterval(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -676,9 +678,9 @@ func TestApp_SubmitScheduledDialog_ZeroInterval(t *testing.T) {
 			d.Fields()[schedFieldInterval].Value = "0"
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -695,7 +697,7 @@ func TestApp_SubmitScheduledDialog_ZeroInterval(t *testing.T) {
 }
 
 func TestApp_SubmitScheduledDialog_DurationUntilDate_MissingEndDate(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -713,9 +715,9 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_MissingEndDate(t *testing.T
 			d.Fields()[schedFieldEndDate].Value = ""
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -732,7 +734,7 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_MissingEndDate(t *testing.T
 }
 
 func TestApp_SubmitScheduledDialog_DurationUntilDate_InvalidEndDate(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -748,9 +750,9 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_InvalidEndDate(t *testing.T
 			d.Fields()[schedFieldEndDate].Value = "invalid"
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -767,7 +769,7 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_InvalidEndDate(t *testing.T
 }
 
 func TestApp_SubmitScheduledDialog_DurationOccurrences_MissingCount(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -783,9 +785,9 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_MissingCount(t *testing.T
 			d.Fields()[schedFieldOccurrence].Value = ""
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -802,7 +804,7 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_MissingCount(t *testing.T
 }
 
 func TestApp_SubmitScheduledDialog_DurationOccurrences_InvalidCount(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -818,9 +820,9 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_InvalidCount(t *testing.T
 			d.Fields()[schedFieldOccurrence].Value = "abc"
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -837,7 +839,7 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_InvalidCount(t *testing.T
 }
 
 func TestApp_SubmitScheduledDialog_ValidNew(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)", "Groceries"}
 
@@ -852,9 +854,9 @@ func TestApp_SubmitScheduledDialog_ValidNew(t *testing.T) {
 			d.Fields()[schedFieldAmount].Value = "100.00"
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID, models.NewID()},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID, types.NewID()},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -875,7 +877,7 @@ func TestApp_SubmitScheduledDialog_ValidNew(t *testing.T) {
 }
 
 func TestApp_SubmitScheduledDialog_ValidNew_VariableAmount(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -891,9 +893,9 @@ func TestApp_SubmitScheduledDialog_ValidNew_VariableAmount(t *testing.T) {
 			d.Fields()[schedFieldAmount].Value = ""
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -908,7 +910,7 @@ func TestApp_SubmitScheduledDialog_ValidNew_VariableAmount(t *testing.T) {
 }
 
 func TestApp_SubmitScheduledDialog_ValidNew_WithEndDate(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -925,9 +927,9 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithEndDate(t *testing.T) {
 			d.Fields()[schedFieldEndDate].Value = "12/31/2025"
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -942,7 +944,7 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithEndDate(t *testing.T) {
 }
 
 func TestApp_SubmitScheduledDialog_ValidNew_WithOccurrences(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -959,9 +961,9 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithOccurrences(t *testing.T) {
 			d.Fields()[schedFieldOccurrence].Value = "12"
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -976,8 +978,8 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithOccurrences(t *testing.T) {
 }
 
 func TestApp_SubmitScheduledDialog_ValidEdit(t *testing.T) {
-	accountID := models.NewID()
-	st := models.NewScheduledTransaction(accountID, models.FrequencyMonthly, models.Today())
+	accountID := types.NewID()
+	st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.Today())
 
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
@@ -990,19 +992,19 @@ func TestApp_SubmitScheduledDialog_ValidEdit(t *testing.T) {
 		sidebar:     NewSidebar(),
 		schedDialog: func() *Dialog {
 			d := buildEditScheduledDialog(st,
-				accountOptions, []models.ID{accountID},
-				categoryOptions, []models.ID{models.NilID},
-				map[models.ID]string{})
+				accountOptions, []types.ID{accountID},
+				categoryOptions, []types.ID{types.NilID},
+				map[types.ID]string{})
 			d.Fields()[schedFieldAmount].Value = "200.00"
 			return d
 		}(),
 		schedDialogData: &scheduledDialogData{
 			mode:      scheduledDialogModeEdit,
 			scheduled: st,
-			payeeMap:  make(map[string]*models.Payee),
+			payeeMap:  make(map[string]*payee.Payee),
 		},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -1027,8 +1029,8 @@ func TestApp_CloseScheduledDialog(t *testing.T) {
 			return d
 		}(),
 		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew},
-		schedDialogAccountIDs:  []models.ID{models.NewID()},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogAccountIDs:  []types.ID{types.NewID()},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	app.closeScheduledDialog()
@@ -1078,10 +1080,10 @@ func TestApp_RenderLayout_WithScheduledDialog(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		keys:        defaultKeyMap(),
 		scheduled: &scheduledViewData{
-			allTxns:       []*models.ScheduledTransaction{},
-			payeeNames:    make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
+			allTxns:       []*scheduled.Transaction{},
+			payeeNames:    make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
 		},
 		schedDialog: func() *Dialog {
 			d := buildNewScheduledDialog([]string{"Checking"}, []string{"(None)"})
@@ -1129,10 +1131,10 @@ func TestApp_RenderScheduled_EmptyState(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		keys:        defaultKeyMap(),
 		scheduled: &scheduledViewData{
-			allTxns:       []*models.ScheduledTransaction{},
-			payeeNames:    make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
+			allTxns:       []*scheduled.Transaction{},
+			payeeNames:    make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
 		},
 	}
 
@@ -1219,15 +1221,15 @@ func TestBuildNewScheduledDialog_AutoPostFields(t *testing.T) {
 }
 
 func TestBuildEditScheduledDialog_AutoPostEnabled(t *testing.T) {
-	accountID := models.NewID()
-	st := models.NewScheduledTransaction(accountID, models.FrequencyMonthly, models.NewDate(2024, time.January, 1))
+	accountID := types.NewID()
+	st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.NewDate(2024, time.January, 1))
 	st.SetAutoPost(true)
 	st.SetPostLeadDays(3)
 
 	d := buildEditScheduledDialog(st,
-		[]string{"Checking"}, []models.ID{accountID},
-		[]string{"(None)"}, []models.ID{models.NilID},
-		map[models.ID]string{})
+		[]string{"Checking"}, []types.ID{accountID},
+		[]string{"(None)"}, []types.ID{types.NilID},
+		map[types.ID]string{})
 	fields := d.Fields()
 
 	// Auto-post should be checked
@@ -1242,15 +1244,15 @@ func TestBuildEditScheduledDialog_AutoPostEnabled(t *testing.T) {
 }
 
 func TestBuildEditScheduledDialog_AutoPostWith7DayLead(t *testing.T) {
-	accountID := models.NewID()
-	st := models.NewScheduledTransaction(accountID, models.FrequencyMonthly, models.NewDate(2024, time.January, 1))
+	accountID := types.NewID()
+	st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.NewDate(2024, time.January, 1))
 	st.SetAutoPost(true)
 	st.SetPostLeadDays(7)
 
 	d := buildEditScheduledDialog(st,
-		[]string{"Checking"}, []models.ID{accountID},
-		[]string{"(None)"}, []models.ID{models.NilID},
-		map[models.ID]string{})
+		[]string{"Checking"}, []types.ID{accountID},
+		[]string{"(None)"}, []types.ID{types.NilID},
+		map[types.ID]string{})
 	fields := d.Fields()
 
 	if !fields[schedFieldAutoPost].Checked {
@@ -1262,14 +1264,14 @@ func TestBuildEditScheduledDialog_AutoPostWith7DayLead(t *testing.T) {
 }
 
 func TestBuildEditScheduledDialog_AutoPostDisabled(t *testing.T) {
-	accountID := models.NewID()
-	st := models.NewScheduledTransaction(accountID, models.FrequencyMonthly, models.NewDate(2024, time.January, 1))
+	accountID := types.NewID()
+	st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.NewDate(2024, time.January, 1))
 	// AutoPost defaults to false
 
 	d := buildEditScheduledDialog(st,
-		[]string{"Checking"}, []models.ID{accountID},
-		[]string{"(None)"}, []models.ID{models.NilID},
-		map[models.ID]string{})
+		[]string{"Checking"}, []types.ID{accountID},
+		[]string{"(None)"}, []types.ID{types.NilID},
+		map[types.ID]string{})
 	fields := d.Fields()
 
 	if fields[schedFieldAutoPost].Checked {
@@ -1298,16 +1300,16 @@ func TestFormatScheduledRow_AutoPostIndicator(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			st := models.NewScheduledTransaction(models.NewID(), models.FrequencyMonthly, models.Today())
+			st := scheduled.NewTransaction(types.NewID(), scheduled.FrequencyMonthly, types.Today())
 			st.SetAutoPost(tc.autoPost)
 			st.SetPostLeadDays(tc.leadDays)
 
 			app := &App{
 				styles: styles,
 				scheduled: &scheduledViewData{
-					payeeNames:    make(map[models.ID]string),
-					accountNames:  make(map[models.ID]string),
-					categoryNames: make(map[models.ID]string),
+					payeeNames:    make(map[types.ID]string),
+					accountNames:  make(map[types.ID]string),
+					categoryNames: make(map[types.ID]string),
 				},
 			}
 
@@ -1332,7 +1334,7 @@ func TestApp_AutoPostCompletedMsg_WithPosts(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	summary := &service.AutoPostSummary{
+	summary := &scheduled.AutoPostSummary{
 		PostedCount: 3,
 	}
 
@@ -1360,7 +1362,7 @@ func TestApp_AutoPostCompletedMsg_NoPosts(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	summary := &service.AutoPostSummary{
+	summary := &scheduled.AutoPostSummary{
 		PostedCount: 0,
 	}
 
@@ -1391,7 +1393,7 @@ func TestApp_AutoPostCompletedMsg_NilSummary(t *testing.T) {
 }
 
 func TestApp_SubmitScheduledDialog_ValidNew_WithAutoPost(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	accountOptions := []string{"Checking"}
 	categoryOptions := []string{"(None)"}
 
@@ -1408,9 +1410,9 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithAutoPost(t *testing.T) {
 			d.Fields()[schedFieldLeadDays].SelectedIndex = leadDays3Days
 			return d
 		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*models.Payee)},
-		schedDialogAccountIDs:  []models.ID{accountID},
-		schedDialogCategoryIDs: []models.ID{models.NilID},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	model, cmd := app.submitScheduledDialog()

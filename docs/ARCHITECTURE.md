@@ -10,9 +10,20 @@ TMoney is a terminal-based personal finance application written in Go. It provid
 tmoney/
 ├── cmd/tmoney/          # Application entry point, CLI commands, argument parsing
 ├── internal/
-│   ├── models/          # Domain models and value types
-│   ├── repository/      # Data access layer (SQL queries)
-│   ├── service/         # Business logic and orchestration
+│   ├── account/         # Account feature (model, repository, service)
+│   ├── category/        # Category feature (model, repository, service)
+│   ├── payee/           # Payee feature (model, repository, service)
+│   ├── transaction/     # Transaction feature (model, repos for txn/split/transfer, service)
+│   ├── scheduled/       # Scheduled transaction feature (model, repository, service)
+│   ├── reconciliation/  # Reconciliation feature (model, repository, service)
+│   ├── report/          # Report feature (model, service)
+│   ├── security/        # Security master feature (model, repository, service)
+│   ├── price/           # Price feature (model, repository, service, provider)
+│   ├── investment/      # Investment feature (models, repos for txn/lot/position, service)
+│   ├── types/           # Shared value types (Money, ID, Date, Quantity, Validator)
+│   ├── dberrors/        # Shared repository error types
+│   ├── dbutil/          # Shared database helper functions
+│   ├── app/             # Composition root (service registry)
 │   ├── db/              # Database connection, migrations, error types
 │   ├── tui/             # Bubbletea TUI application
 │   ├── config/          # User configuration (~/.config/tmoney/)
@@ -24,30 +35,63 @@ tmoney/
 └── docs/                # Documentation
 ```
 
-## Layered Architecture
+## Vertical Slice Architecture
 
-The application follows a strict layered architecture where each layer only depends on the layers below it.
+The application follows a vertical slice architecture where code is organized by feature. Each feature slice contains its own model, repository, and service in a single package.
 
 ```
 ┌──────────────────────────────────────────────────┐
 │          Presentation Layer                       │
 │    CLI (cmd/tmoney/)  │  TUI (internal/tui/)     │
 ├──────────────────────────────────────────────────┤
-│          Service Layer (internal/service/)        │
+│          Composition Root (internal/app/)         │
 ├──────────────────────────────────────────────────┤
-│          Repository Layer (internal/repository/) │
+│          Feature Slices                           │
+│  account/ │ transaction/ │ category/ │ payee/ ... │
+│  (model + repository + service per slice)        │
 ├──────────────────────────────────────────────────┤
-│          Database Layer (internal/db/)            │
-├──────────────────────────────────────────────────┤
-│          Domain Models (internal/models/)         │
+│          Shared Foundation                        │
+│  types/ │ dberrors/ │ dbutil/ │ db/              │
 └──────────────────────────────────────────────────┘
 ```
 
-### Models Layer (`internal/models/`)
+### Feature Slice Convention
 
-Domain models and value types that are used across all layers. No dependencies on other internal packages.
+Each feature slice follows a consistent file naming convention:
 
-**Value Types** — Custom types with database serialization (`sql.Scanner`/`driver.Valuer`):
+| File | Contains |
+|------|----------|
+| `model.go` | Domain model struct(s), enums, constructors, validation |
+| `repository.go` | Repository struct, CRUD operations, SQL queries |
+| `service.go` | Service struct, business logic, cross-entity orchestration |
+| `errors.go` | Feature-specific error types |
+
+Types are named to avoid stutter with the package name:
+- `account.Service` (not `account.AccountService`)
+- `account.Repository` (not `account.AccountRepository`)
+- `account.Type` (not `account.AccountType`)
+- `transaction.Status` (not `transaction.TransactionStatus`)
+
+### Feature Slices
+
+| Slice | Contents | Cross-Slice Dependencies |
+|-------|----------|------------------------|
+| `account/` | Account model, repository, service | — |
+| `category/` | Category model, repository, service | — |
+| `payee/` | Payee model, repository, service | — |
+| `security/` | Security model, repository, service | — |
+| `transaction/` | Transaction, Split, Transfer models + repos + service | `payee` (for auto-category) |
+| `scheduled/` | Scheduled transaction model, repository, service | `transaction` (for posting) |
+| `reconciliation/` | Reconciliation session model, repository, service | `transaction`, `account` |
+| `report/` | Report models, service (no repository) | `account` |
+| `price/` | Price model, repository, service, provider interface | `security` |
+| `investment/` | Investment transaction, Lot, Position, TransactionLot models + repos + service | `account` |
+
+### Shared Foundation Packages
+
+#### Value Types (`internal/types/`)
+
+Custom types with database serialization (`sql.Scanner`/`driver.Valuer`):
 
 | Type | Purpose | Precision |
 |------|---------|-----------|
@@ -59,50 +103,26 @@ Domain models and value types that are used across all layers. No dependencies o
 
 Each value type has a nullable variant (`NullableID`, `NullableMoney`, etc.) for optional database fields.
 
-**Entity Models** — Structs representing domain objects. All embed `BaseModel` which provides `ID`, `CreatedAt`, and `UpdatedAt` fields:
+Also contains: `BaseModel` (common ID/timestamp fields), `Validator` (fluent validation builder), `ValidationErrors`, and `ServiceValidationError`.
 
-- `Account` — Financial accounts with type-specific properties (credit limit, interest rate)
-- `Transaction` — Money movement with status tracking and transfer linking
-- `Split` / `SplitCollection` — Category allocation for split transactions
-- `Category` — Two-level hierarchy (parent/subcategory), income or expense
-- `Payee` — Transaction counterparties with alias pattern matching
-- `ScheduledTransaction` — Recurring transaction templates with frequency rules
-- `ReconciliationSession` — Bank statement reconciliation state
+#### Repository Errors (`internal/dberrors/`)
 
-**Validation** — The `Validator` struct collects field-level errors and returns `ValidationErrors`.
+Shared error types used by all repositories: `NotFoundError`, `DuplicateError`, `HasDependentsError`.
 
-### Repository Layer (`internal/repository/`)
+#### Database Utilities (`internal/dbutil/`)
 
-Data access using raw SQL with parameterized queries against DuckDB. No ORM. Each repository is responsible for a single entity type.
+Exported helper functions for converting nullable types to SQL parameter values (`NullString`, `NullMoney`, `NullID`, `NullDate`, etc.).
 
-| Repository | Entity | Key Operations |
-|------------|--------|----------------|
-| `AccountRepository` | Account | CRUD, GetBalance, List |
-| `TransactionRepository` | Transaction | CRUD, ListByAccount, Search |
-| `SplitRepository` | Split | CRUD, ListByTransaction |
-| `TransferRepository` | Transfer pairs | Create linked pairs, GetLinked |
-| `CategoryRepository` | Category | CRUD, GetHierarchy |
-| `PayeeRepository` | Payee | CRUD, alias matching |
-| `ScheduledTransactionRepository` | Scheduled | CRUD, GetDue, GetByAccount |
-| `ReconciliationRepository` | Reconciliation | Session lifecycle |
+### Composition Root (`internal/app/`)
 
-Each repository receives `*db.DB` via constructor injection. Custom error types (`NotFoundError`, `DuplicateError`) provide structured error handling.
+The `Services` struct and `NewServices(db)` factory function wire all repositories and services with proper dependency injection. This is the single initialization point used by both CLI and TUI entry points.
 
-### Service Layer (`internal/service/`)
-
-Business logic, validation, and cross-entity orchestration. Services compose one or more repositories and enforce invariants.
-
-| Service | Responsibilities |
-|---------|-----------------|
-| `AccountService` | Account lifecycle, balance calculation |
-| `TransactionService` | Transaction creation with splits and transfers, voiding |
-| `CategoryService` | Category hierarchy management |
-| `PayeeService` | Payee management, alias resolution |
-| `ScheduledTransactionService` | Schedule management, auto-posting, skip/post workflow |
-| `ReportService` | Cash flow, category breakdown, net worth |
-| `ReconciliationService` | Reconciliation session workflow |
-
-The `Services` struct in `registry.go` is the single initialization point — `NewServices(db)` creates all repositories and services with proper dependency wiring.
+```go
+svc := app.NewServices(database)
+svc.Account.Create(acct)           // account.Service
+svc.Transaction.Create(txn, nil)   // transaction.Service
+svc.AccountRepo.GetByID(id)       // account.Repository
+```
 
 ### Database Layer (`internal/db/`)
 
@@ -165,10 +185,10 @@ Built on the [Bubbletea](https://github.com/charmbracelet/bubbletea) framework w
 
 ```
 User input (TUI dialog or CLI flags)
-  → Service.Transaction.Create(txn, splits)
+  → transaction.Service.Create(txn, splits)
     → Validate fields
-    → Repository.Transaction.Create()     [INSERT]
-    → Repository.Split.Create() per split [INSERT]
+    → transaction.Repository.Create()          [INSERT]
+    → transaction.SplitRepository.Create()     [INSERT per split]
   → TUI: refresh register, update sidebar balances
   → Undo manager: record operation
 ```
@@ -177,10 +197,10 @@ User input (TUI dialog or CLI flags)
 
 ```
 User input
-  → Service.Transaction.CreateTransfer(from, to, amount)
+  → transaction.Service.CreateTransfer(from, to, amount)
     → Create TransferPair (two linked transactions)
-    → Repository.Transfer.Create()
-      → Repository.Transaction.Create() × 2
+    → transaction.TransferRepository.Create()
+      → transaction.Repository.Create() × 2
     → Recalculate balances for both accounts
 ```
 
@@ -188,7 +208,7 @@ User input
 
 ```
 Application startup
-  → Service.ScheduledTxn.AutoPost()
+  → scheduled.Service.AutoPost()
     → Get due transactions (next_date ≤ today)
     → For each: create real transaction, advance schedule
     → Return PostSummary (count, details)
@@ -224,6 +244,8 @@ User preferences stored in `~/.config/tmoney/config.json`:
 
 ## Key Design Decisions
 
+**Vertical slices over layered architecture** — Code is organized by feature (account, transaction, category, etc.) rather than by technical layer (models, repository, service). Each slice is self-contained, making it easier to understand and modify a single feature without jumping between packages. Cross-slice dependencies are explicit imports between packages.
+
 **DuckDB over SQLite** — DuckDB's columnar storage is well-suited for the analytical queries used in reports (aggregations, date-range filtering). It also provides precise decimal types natively.
 
 **Raw SQL over ORM** — Direct SQL gives full control over query optimization and avoids ORM abstraction leaks. DuckDB's SQL dialect has some differences from SQLite/PostgreSQL that are easier to handle with raw queries.
@@ -232,7 +254,7 @@ User preferences stored in `~/.config/tmoney/config.json`:
 
 **Value types over primitives** — Custom `Money`, `ID`, `Date`, and `Quantity` types prevent mixing incompatible values at compile time and centralize serialization logic.
 
-**Service registry pattern** — `NewServices(db)` wires all dependencies in one place, making it easy to initialize the full service layer for both CLI and TUI entry points.
+**Central composition root** — `app.NewServices(db)` wires all dependencies in one place, keeping feature slices unaware of each other's initialization details while providing a single entry point for both CLI and TUI.
 
 ## Database
 
@@ -266,6 +288,6 @@ See [specs/database.md](../specs/database.md) for the complete schema definition
 
 ## Testing
 
-- **Unit tests** — Per-package tests using test database fixtures
-- **Integration tests** (`tests/integration/`) — Full service-layer workflows against real DuckDB databases
+- **Unit tests** — Per-slice tests using test database fixtures (each slice has its own `*_test.go` files)
+- **Integration tests** (`tests/integration/`) — Cross-slice workflows against real DuckDB databases
 - **TUI tests** — `App` struct instantiated directly without database for component and key-binding verification

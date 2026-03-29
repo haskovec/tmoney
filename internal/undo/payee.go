@@ -3,8 +3,8 @@ package undo
 import (
 	"fmt"
 
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -13,25 +13,25 @@ import (
 
 // CreatePayeeCommand creates a payee and can undo it by deleting.
 type CreatePayeeCommand struct {
-	svc   *service.PayeeService
-	payee *models.Payee
+	svc *payee.Service
+	py  *payee.Payee
 }
 
 // NewCreatePayeeCommand creates a command that will create a payee.
 // The payee is created on Execute and deleted on Undo.
-func NewCreatePayeeCommand(svc *service.PayeeService, payee *models.Payee) *CreatePayeeCommand {
+func NewCreatePayeeCommand(svc *payee.Service, py *payee.Payee) *CreatePayeeCommand {
 	return &CreatePayeeCommand{
-		svc:   svc,
-		payee: payee,
+		svc: svc,
+		py:  py,
 	}
 }
 
 func (c *CreatePayeeCommand) Execute() error {
-	return c.svc.Create(c.payee)
+	return c.svc.Create(c.py)
 }
 
 func (c *CreatePayeeCommand) Undo() error {
-	return c.svc.Delete(c.payee.ID)
+	return c.svc.Delete(c.py.ID)
 }
 
 func (c *CreatePayeeCommand) Description() string {
@@ -45,14 +45,14 @@ func (c *CreatePayeeCommand) Description() string {
 // EditPayeeCommand edits a payee and can undo it by restoring
 // the previous state.
 type EditPayeeCommand struct {
-	svc    *service.PayeeService
-	before *models.Payee // state before editing (captured on Execute)
-	after  *models.Payee // desired new state
+	svc    *payee.Service
+	before *payee.Payee // state before editing (captured on Execute)
+	after  *payee.Payee // desired new state
 }
 
 // NewEditPayeeCommand creates a command that will update a payee.
 // The before state is captured at execute time by reading from the database.
-func NewEditPayeeCommand(svc *service.PayeeService, after *models.Payee) *EditPayeeCommand {
+func NewEditPayeeCommand(svc *payee.Service, after *payee.Payee) *EditPayeeCommand {
 	return &EditPayeeCommand{
 		svc:   svc,
 		after: after,
@@ -84,16 +84,16 @@ func (c *EditPayeeCommand) Description() string {
 
 // DeletePayeeCommand deletes a payee and can undo it by recreating.
 type DeletePayeeCommand struct {
-	svc     *service.PayeeService
-	id      models.ID
-	before  *models.Payee    // full entity captured on Execute for undo
-	aliases []*models.Alias  // aliases captured on Execute for undo
+	svc     *payee.Service
+	id      types.ID
+	before  *payee.Payee    // full entity captured on Execute for undo
+	aliases []*payee.Alias  // aliases captured on Execute for undo
 }
 
 // NewDeletePayeeCommand creates a command that will delete a payee.
 // The full entity and its aliases are captured at execute time so they
 // can be recreated on undo.
-func NewDeletePayeeCommand(svc *service.PayeeService, id models.ID) *DeletePayeeCommand {
+func NewDeletePayeeCommand(svc *payee.Service, id types.ID) *DeletePayeeCommand {
 	return &DeletePayeeCommand{
 		svc: svc,
 		id:  id,
@@ -102,11 +102,11 @@ func NewDeletePayeeCommand(svc *service.PayeeService, id models.ID) *DeletePayee
 
 func (c *DeletePayeeCommand) Execute() error {
 	// Capture full entity before deleting
-	payee, err := c.svc.GetByID(c.id)
+	py, err := c.svc.GetByID(c.id)
 	if err != nil {
 		return err
 	}
-	c.before = payee
+	c.before = py
 
 	// Capture aliases before deleting (they are cascaded on payee delete)
 	aliases, err := c.svc.GetAliasesByPayee(c.id)
@@ -125,8 +125,8 @@ func (c *DeletePayeeCommand) Undo() error {
 	}
 
 	// Recreate aliases
-	for _, alias := range c.aliases {
-		if err := c.svc.CreateAlias(alias); err != nil {
+	for _, a := range c.aliases {
+		if err := c.svc.CreateAlias(a); err != nil {
 			return err
 		}
 	}
@@ -148,13 +148,13 @@ func (c *DeletePayeeCommand) Description() string {
 // their complexity (they modify transactions, scheduled transactions, and aliases
 // across multiple tables using temp table workarounds).
 type MergePayeesCommand struct {
-	svc      *service.PayeeService
-	sourceID models.ID
-	targetID models.ID
+	svc      *payee.Service
+	sourceID types.ID
+	targetID types.ID
 }
 
 // NewMergePayeesCommand creates a command that will merge sourceID into targetID.
-func NewMergePayeesCommand(svc *service.PayeeService, sourceID, targetID models.ID) *MergePayeesCommand {
+func NewMergePayeesCommand(svc *payee.Service, sourceID, targetID types.ID) *MergePayeesCommand {
 	return &MergePayeesCommand{
 		svc:      svc,
 		sourceID: sourceID,

@@ -8,20 +8,23 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/reconciliation"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // reconciliationViewData holds the loaded data for the reconciliation view.
 type reconciliationViewData struct {
-	session       *models.ReconciliationSession
-	account       *models.Account
-	candidates    []*models.Transaction
-	checkedIDs    map[models.ID]bool
-	payeeNames    map[models.ID]string
-	categoryNames map[models.ID]string
-	accountNames  map[models.ID]string
-	clearedTotal  models.Money
+	session       *reconciliation.Session
+	account       *account.Account
+	candidates    []*transaction.Transaction
+	checkedIDs    map[types.ID]bool
+	payeeNames    map[types.ID]string
+	categoryNames map[types.ID]string
+	accountNames  map[types.ID]string
+	clearedTotal  types.Money
 }
 
 // reconciliationLoadedMsg is sent when reconciliation data has been loaded.
@@ -31,8 +34,8 @@ type reconciliationLoadedMsg struct {
 
 // reconciliationStartedMsg is sent when a reconciliation session has been started.
 type reconciliationStartedMsg struct {
-	session *models.ReconciliationSession
-	account *models.Account
+	session *reconciliation.Session
+	account *account.Account
 }
 
 // reconciliationFinishedMsg is sent when reconciliation completes successfully.
@@ -43,7 +46,7 @@ type reconciliationCancelledMsg struct{}
 
 // reconciliationClearedTotalMsg is sent with an updated cleared total.
 type reconciliationClearedTotalMsg struct {
-	clearedTotal models.Money
+	clearedTotal types.Money
 }
 
 // buildStartReconciliationDialog builds the dialog for starting a reconciliation session.
@@ -105,7 +108,7 @@ func (a *App) submitStartReconciliation() (tea.Model, tea.Cmd) {
 	}
 
 	accountID := a.sidebar.SelectedAccountID()
-	if accountID == models.NilID {
+	if accountID == types.NilID {
 		a.reconDialog.SetErrorMsg("No account selected.")
 		return a, nil
 	}
@@ -117,7 +120,7 @@ func (a *App) submitStartReconciliation() (tea.Model, tea.Cmd) {
 }
 
 // startReconciliation starts a reconciliation session and loads view data.
-func (a *App) startReconciliation(accountID models.ID, statementDate models.Date, statementBalance models.Money) tea.Cmd {
+func (a *App) startReconciliation(accountID types.ID, statementDate types.Date, statementBalance types.Money) tea.Cmd {
 	return func() tea.Msg {
 		if a.reconciliationSvc == nil {
 			return errMsg{err: fmt.Errorf("reconciliation service not available")}
@@ -128,17 +131,17 @@ func (a *App) startReconciliation(accountID models.ID, statementDate models.Date
 			return errMsg{err: fmt.Errorf("failed to start reconciliation: %w", err)}
 		}
 
-		account, err := a.accountSvc.GetByID(accountID)
+		acct, err := a.accountSvc.GetByID(accountID)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to get account: %w", err)}
 		}
 
-		return reconciliationStartedMsg{session: session, account: account}
+		return reconciliationStartedMsg{session: session, account: acct}
 	}
 }
 
 // loadReconciliationData loads reconciliation view data for an active session.
-func (a *App) loadReconciliationData(session *models.ReconciliationSession, account *models.Account) tea.Cmd {
+func (a *App) loadReconciliationData(session *reconciliation.Session, account *account.Account) tea.Cmd {
 	return func() tea.Msg {
 		candidates, err := a.reconciliationSvc.GetCandidateTransactions(
 			session.AccountID, session.StatementDate,
@@ -148,7 +151,7 @@ func (a *App) loadReconciliationData(session *models.ReconciliationSession, acco
 		}
 
 		// Load payee names
-		payeeNames := make(map[models.ID]string)
+		payeeNames := make(map[types.ID]string)
 		if a.payeeSvc != nil {
 			payees, err := a.payeeSvc.List()
 			if err == nil {
@@ -159,7 +162,7 @@ func (a *App) loadReconciliationData(session *models.ReconciliationSession, acco
 		}
 
 		// Load category names
-		categoryNames := make(map[models.ID]string)
+		categoryNames := make(map[types.ID]string)
 		if a.categorySvc != nil {
 			categories, err := a.categorySvc.List()
 			if err == nil {
@@ -170,7 +173,7 @@ func (a *App) loadReconciliationData(session *models.ReconciliationSession, acco
 		}
 
 		// Load account names for transfers
-		accountNames := make(map[models.ID]string)
+		accountNames := make(map[types.ID]string)
 		if a.accountSvc != nil {
 			accounts, err := a.accountSvc.List(true)
 			if err == nil {
@@ -190,7 +193,7 @@ func (a *App) loadReconciliationData(session *models.ReconciliationSession, acco
 			session:       session,
 			account:       account,
 			candidates:    candidates,
-			checkedIDs:    make(map[models.ID]bool),
+			checkedIDs:    make(map[types.ID]bool),
 			payeeNames:    payeeNames,
 			categoryNames: categoryNames,
 			accountNames:  accountNames,
@@ -220,11 +223,11 @@ func (a *App) recalculateClearedTotal() tea.Cmd {
 }
 
 // getCheckedTransactionIDs returns a slice of checked transaction IDs.
-func (a *App) getCheckedTransactionIDs() []models.ID {
+func (a *App) getCheckedTransactionIDs() []types.ID {
 	if a.reconciliation == nil {
 		return nil
 	}
-	var ids []models.ID
+	var ids []types.ID
 	for id, checked := range a.reconciliation.checkedIDs {
 		if checked {
 			ids = append(ids, id)
@@ -263,7 +266,7 @@ func (a *App) buildReconciliationTable() {
 }
 
 // formatReconciliationRow formats a transaction into a reconciliation table row.
-func (a *App) formatReconciliationRow(txn *models.Transaction) []string {
+func (a *App) formatReconciliationRow(txn *transaction.Transaction) []string {
 	// Checkbox
 	checkbox := "[ ]"
 	if a.reconciliation.checkedIDs[txn.ID] {
@@ -275,7 +278,7 @@ func (a *App) formatReconciliationRow(txn *models.Transaction) []string {
 
 	// Cleared indicator
 	status := " "
-	if txn.Status == models.TransactionStatusCleared {
+	if txn.Status == transaction.StatusCleared {
 		status = "✓"
 	}
 
@@ -469,7 +472,7 @@ func (a *App) checkAllReconciliation() (tea.Model, tea.Cmd) {
 
 // uncheckAllReconciliation unchecks all candidate transactions.
 func (a *App) uncheckAllReconciliation() (tea.Model, tea.Cmd) {
-	a.reconciliation.checkedIDs = make(map[models.ID]bool)
+	a.reconciliation.checkedIDs = make(map[types.ID]bool)
 	a.updateReconciliationCheckboxes()
 	return a, a.recalculateClearedTotal()
 }

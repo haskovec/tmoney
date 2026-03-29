@@ -5,14 +5,17 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // createPayeeTestService creates a test database with all repositories and the payee service.
-func createPayeeTestService(t *testing.T) (*service.PayeeService, *db.DB, *repository.PayeeRepository, func()) {
+func createPayeeTestService(t *testing.T) (*payee.Service, *db.DB, *payee.Repository, func()) {
 	t.Helper()
 
 	tempDir, err := os.MkdirTemp("", "tmoney-payee-test-*")
@@ -27,8 +30,8 @@ func createPayeeTestService(t *testing.T) (*service.PayeeService, *db.DB, *repos
 		t.Fatalf("Failed to create database: %v", err)
 	}
 
-	repo := repository.NewPayeeRepository(database)
-	svc := service.NewPayeeService(repo, database)
+	repo := payee.NewRepository(database)
+	svc := payee.NewService(repo, database)
 
 	cleanup := func() {
 		database.Close()
@@ -43,12 +46,12 @@ func TestPayeeServiceCreate(t *testing.T) {
 	defer cleanup()
 
 	t.Run("creates valid payee", func(t *testing.T) {
-		payee := models.NewPayee("Coffee Shop")
-		if err := svc.Create(payee); err != nil {
+		py := payee.NewPayee("Coffee Shop")
+		if err := svc.Create(py); err != nil {
 			t.Fatalf("Failed to create payee: %v", err)
 		}
 
-		retrieved, err := svc.GetByID(payee.ID)
+		retrieved, err := svc.GetByID(py.ID)
 		if err != nil {
 			t.Fatalf("Failed to retrieve payee: %v", err)
 		}
@@ -58,28 +61,28 @@ func TestPayeeServiceCreate(t *testing.T) {
 	})
 
 	t.Run("rejects empty name", func(t *testing.T) {
-		payee := models.NewPayee("")
-		err := svc.Create(payee)
+		py := payee.NewPayee("")
+		err := svc.Create(py)
 		if err == nil {
 			t.Error("Expected validation error for empty name")
 		}
-		if _, ok := err.(*service.ServiceValidationError); !ok {
+		if _, ok := err.(*types.ServiceValidationError); !ok {
 			t.Errorf("Expected ServiceValidationError, got %T: %v", err, err)
 		}
 	})
 
 	t.Run("rejects duplicate name", func(t *testing.T) {
-		p1 := models.NewPayee("Duplicate Payee")
+		p1 := payee.NewPayee("Duplicate Payee")
 		if err := svc.Create(p1); err != nil {
 			t.Fatalf("Failed to create first payee: %v", err)
 		}
 
-		p2 := models.NewPayee("Duplicate Payee")
+		p2 := payee.NewPayee("Duplicate Payee")
 		err := svc.Create(p2)
 		if err == nil {
 			t.Error("Expected error for duplicate payee name")
 		}
-		if _, ok := err.(*repository.DuplicateError); !ok {
+		if _, ok := err.(*dberrors.DuplicateError); !ok {
 			t.Errorf("Expected DuplicateError, got %T: %v", err, err)
 		}
 	})
@@ -90,18 +93,18 @@ func TestPayeeServiceUpdate(t *testing.T) {
 	defer cleanup()
 
 	t.Run("updates payee name", func(t *testing.T) {
-		payee := models.NewPayee("Old Name")
-		if err := svc.Create(payee); err != nil {
+		py := payee.NewPayee("Old Name")
+		if err := svc.Create(py); err != nil {
 			t.Fatalf("Failed to create payee: %v", err)
 		}
 
-		payee.Name = "New Name"
-		payee.SetNotes("Some notes")
-		if err := svc.Update(payee); err != nil {
+		py.Name = "New Name"
+		py.SetNotes("Some notes")
+		if err := svc.Update(py); err != nil {
 			t.Fatalf("Failed to update payee: %v", err)
 		}
 
-		retrieved, err := svc.GetByID(payee.ID)
+		retrieved, err := svc.GetByID(py.ID)
 		if err != nil {
 			t.Fatalf("Failed to retrieve payee: %v", err)
 		}
@@ -118,8 +121,8 @@ func TestPayeeServiceGetByName(t *testing.T) {
 	svc, _, _, cleanup := createPayeeTestService(t)
 	defer cleanup()
 
-	payee := models.NewPayee("Target Payee")
-	if err := svc.Create(payee); err != nil {
+	py := payee.NewPayee("Target Payee")
+	if err := svc.Create(py); err != nil {
 		t.Fatalf("Failed to create payee: %v", err)
 	}
 
@@ -128,8 +131,8 @@ func TestPayeeServiceGetByName(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get by name: %v", err)
 		}
-		if found.ID != payee.ID {
-			t.Errorf("Expected ID %s, got %s", payee.ID.String(), found.ID.String())
+		if found.ID != py.ID {
+			t.Errorf("Expected ID %s, got %s", py.ID.String(), found.ID.String())
 		}
 	})
 
@@ -138,7 +141,7 @@ func TestPayeeServiceGetByName(t *testing.T) {
 		if err == nil {
 			t.Error("Expected error for non-existent payee")
 		}
-		if _, ok := err.(*repository.NotFoundError); !ok {
+		if _, ok := err.(*dberrors.NotFoundError); !ok {
 			t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 		}
 	})
@@ -150,7 +153,7 @@ func TestPayeeServiceList(t *testing.T) {
 
 	names := []string{"Alpha Payee", "Beta Payee", "Gamma Payee"}
 	for _, name := range names {
-		if err := svc.Create(models.NewPayee(name)); err != nil {
+		if err := svc.Create(payee.NewPayee(name)); err != nil {
 			t.Fatalf("Failed to create payee: %v", err)
 		}
 	}
@@ -173,16 +176,16 @@ func TestPayeeServiceDelete(t *testing.T) {
 	defer cleanup()
 
 	t.Run("deletes payee without transactions", func(t *testing.T) {
-		payee := models.NewPayee("Payee To Delete")
-		if err := svc.Create(payee); err != nil {
+		py := payee.NewPayee("Payee To Delete")
+		if err := svc.Create(py); err != nil {
 			t.Fatalf("Failed to create payee: %v", err)
 		}
 
-		if err := svc.Delete(payee.ID); err != nil {
+		if err := svc.Delete(py.ID); err != nil {
 			t.Fatalf("Failed to delete payee: %v", err)
 		}
 
-		_, err := svc.GetByID(payee.ID)
+		_, err := svc.GetByID(py.ID)
 		if err == nil {
 			t.Error("Expected error when getting deleted payee")
 		}
@@ -198,29 +201,29 @@ func TestPayeeServiceGetOrCreate(t *testing.T) {
 	defer cleanup()
 
 	t.Run("creates new payee when not found", func(t *testing.T) {
-		payee, created, err := svc.GetOrCreate("New Payee")
+		py, created, err := svc.GetOrCreate("New Payee")
 		if err != nil {
 			t.Fatalf("Failed to get or create: %v", err)
 		}
 		if !created {
 			t.Error("Expected payee to be newly created")
 		}
-		if payee.Name != "New Payee" {
-			t.Errorf("Expected name 'New Payee', got %q", payee.Name)
+		if py.Name != "New Payee" {
+			t.Errorf("Expected name 'New Payee', got %q", py.Name)
 		}
 	})
 
 	t.Run("returns existing payee when found", func(t *testing.T) {
 		// The payee "New Payee" was created in the previous sub-test
-		payee, created, err := svc.GetOrCreate("New Payee")
+		py, created, err := svc.GetOrCreate("New Payee")
 		if err != nil {
 			t.Fatalf("Failed to get or create: %v", err)
 		}
 		if created {
 			t.Error("Expected payee to already exist")
 		}
-		if payee.Name != "New Payee" {
-			t.Errorf("Expected name 'New Payee', got %q", payee.Name)
+		if py.Name != "New Payee" {
+			t.Errorf("Expected name 'New Payee', got %q", py.Name)
 		}
 	})
 }
@@ -230,37 +233,37 @@ func TestPayeeServiceGetOrCreateWithCategory(t *testing.T) {
 	defer cleanup()
 
 	// Create a category
-	catRepo := repository.NewCategoryRepository(database)
-	category := models.NewCategory("Food", models.CategoryTypeExpense)
-	if err := catRepo.Create(category); err != nil {
+	catRepo := category.NewRepository(database)
+	cat := category.NewCategory("Food", category.TypeExpense)
+	if err := catRepo.Create(cat); err != nil {
 		t.Fatalf("Failed to create category: %v", err)
 	}
 
 	t.Run("creates payee with default category", func(t *testing.T) {
-		payee, created, err := svc.GetOrCreateWithCategory("Restaurant", category.ID)
+		py, created, err := svc.GetOrCreateWithCategory("Restaurant", cat.ID)
 		if err != nil {
 			t.Fatalf("Failed to get or create: %v", err)
 		}
 		if !created {
 			t.Error("Expected payee to be newly created")
 		}
-		if !payee.HasDefaultCategory() {
+		if !py.HasDefaultCategory() {
 			t.Error("Expected payee to have default category")
 		}
-		if payee.DefaultCategoryID.ID != category.ID {
+		if py.DefaultCategoryID.ID != cat.ID {
 			t.Errorf("Expected default category %s, got %s",
-				category.ID.String(), payee.DefaultCategoryID.ID.String())
+				cat.ID.String(), py.DefaultCategoryID.ID.String())
 		}
 	})
 
 	t.Run("returns existing payee without modifying category", func(t *testing.T) {
 		// Create a payee without a category
-		existing := models.NewPayee("Grocery Store")
+		existing := payee.NewPayee("Grocery Store")
 		if err := svc.Create(existing); err != nil {
 			t.Fatalf("Failed to create payee: %v", err)
 		}
 
-		payee, created, err := svc.GetOrCreateWithCategory("Grocery Store", category.ID)
+		py, created, err := svc.GetOrCreateWithCategory("Grocery Store", cat.ID)
 		if err != nil {
 			t.Fatalf("Failed to get or create: %v", err)
 		}
@@ -268,7 +271,7 @@ func TestPayeeServiceGetOrCreateWithCategory(t *testing.T) {
 			t.Error("Expected payee to already exist")
 		}
 		// Existing payee should not have been modified
-		if payee.HasDefaultCategory() {
+		if py.HasDefaultCategory() {
 			t.Error("Expected existing payee category to remain unchanged")
 		}
 	})
@@ -282,40 +285,40 @@ func TestPayeeServiceDefaultCategory(t *testing.T) {
 	svc, database, _, cleanup := createPayeeTestService(t)
 	defer cleanup()
 
-	catRepo := repository.NewCategoryRepository(database)
-	category := models.NewCategory("Utilities", models.CategoryTypeExpense)
-	if err := catRepo.Create(category); err != nil {
+	catRepo := category.NewRepository(database)
+	cat := category.NewCategory("Utilities", category.TypeExpense)
+	if err := catRepo.Create(cat); err != nil {
 		t.Fatalf("Failed to create category: %v", err)
 	}
 
-	payee := models.NewPayee("Electric Company")
-	if err := svc.Create(payee); err != nil {
+	py := payee.NewPayee("Electric Company")
+	if err := svc.Create(py); err != nil {
 		t.Fatalf("Failed to create payee: %v", err)
 	}
 
 	t.Run("set default category", func(t *testing.T) {
-		if err := svc.SetDefaultCategory(payee.ID, category.ID); err != nil {
+		if err := svc.SetDefaultCategory(py.ID, cat.ID); err != nil {
 			t.Fatalf("Failed to set default category: %v", err)
 		}
 
-		catID, err := svc.GetDefaultCategory(payee.ID)
+		catID, err := svc.GetDefaultCategory(py.ID)
 		if err != nil {
 			t.Fatalf("Failed to get default category: %v", err)
 		}
 		if catID == nil {
 			t.Fatal("Expected default category, got nil")
 		}
-		if *catID != category.ID {
-			t.Errorf("Expected category %s, got %s", category.ID.String(), catID.String())
+		if *catID != cat.ID {
+			t.Errorf("Expected category %s, got %s", cat.ID.String(), catID.String())
 		}
 	})
 
 	t.Run("clear default category", func(t *testing.T) {
-		if err := svc.ClearDefaultCategory(payee.ID); err != nil {
+		if err := svc.ClearDefaultCategory(py.ID); err != nil {
 			t.Fatalf("Failed to clear default category: %v", err)
 		}
 
-		catID, err := svc.GetDefaultCategory(payee.ID)
+		catID, err := svc.GetDefaultCategory(py.ID)
 		if err != nil {
 			t.Fatalf("Failed to get default category: %v", err)
 		}
@@ -325,7 +328,7 @@ func TestPayeeServiceDefaultCategory(t *testing.T) {
 	})
 
 	t.Run("returns nil when no default category", func(t *testing.T) {
-		noCat := models.NewPayee("No Category Payee")
+		noCat := payee.NewPayee("No Category Payee")
 		if err := svc.Create(noCat); err != nil {
 			t.Fatalf("Failed to create payee: %v", err)
 		}
@@ -348,15 +351,15 @@ func TestPayeeServiceAliasLifecycle(t *testing.T) {
 	svc, _, _, cleanup := createPayeeTestService(t)
 	defer cleanup()
 
-	payee := models.NewPayee("Amazon")
-	if err := svc.Create(payee); err != nil {
+	py := payee.NewPayee("Amazon")
+	if err := svc.Create(py); err != nil {
 		t.Fatalf("Failed to create payee: %v", err)
 	}
 
-	var aliasID models.ID
+	var aliasID types.ID
 
 	t.Run("create alias", func(t *testing.T) {
-		alias := models.NewContainsAlias(payee.ID, "AMZN")
+		alias := payee.NewContainsAlias(py.ID, "AMZN")
 		if err := svc.CreateAlias(alias); err != nil {
 			t.Fatalf("Failed to create alias: %v", err)
 		}
@@ -371,19 +374,19 @@ func TestPayeeServiceAliasLifecycle(t *testing.T) {
 		if alias.Pattern != "AMZN" {
 			t.Errorf("Expected pattern 'AMZN', got %q", alias.Pattern)
 		}
-		if alias.MatchType != models.MatchTypeContains {
+		if alias.MatchType != payee.MatchTypeContains {
 			t.Errorf("Expected match type 'contains', got %q", alias.MatchType)
 		}
 	})
 
 	t.Run("get aliases by payee", func(t *testing.T) {
 		// Add another alias
-		alias2 := models.NewExactAlias(payee.ID, "Amazon.com")
+		alias2 := payee.NewExactAlias(py.ID, "Amazon.com")
 		if err := svc.CreateAlias(alias2); err != nil {
 			t.Fatalf("Failed to create second alias: %v", err)
 		}
 
-		aliases, err := svc.GetAliasesByPayee(payee.ID)
+		aliases, err := svc.GetAliasesByPayee(py.ID)
 		if err != nil {
 			t.Fatalf("Failed to get aliases: %v", err)
 		}
@@ -433,22 +436,22 @@ func TestPayeeServicePatternMatching(t *testing.T) {
 	defer cleanup()
 
 	// Create payees with aliases
-	amazon := models.NewPayee("Amazon")
+	amazon := payee.NewPayee("Amazon")
 	if err := svc.Create(amazon); err != nil {
 		t.Fatalf("Failed to create payee: %v", err)
 	}
-	if err := svc.CreateAlias(models.NewContainsAlias(amazon.ID, "AMZN")); err != nil {
+	if err := svc.CreateAlias(payee.NewContainsAlias(amazon.ID, "AMZN")); err != nil {
 		t.Fatalf("Failed to create alias: %v", err)
 	}
-	if err := svc.CreateAlias(models.NewStartsWithAlias(amazon.ID, "Amazon")); err != nil {
+	if err := svc.CreateAlias(payee.NewStartsWithAlias(amazon.ID, "Amazon")); err != nil {
 		t.Fatalf("Failed to create alias: %v", err)
 	}
 
-	starbucks := models.NewPayee("Starbucks")
+	starbucks := payee.NewPayee("Starbucks")
 	if err := svc.Create(starbucks); err != nil {
 		t.Fatalf("Failed to create payee: %v", err)
 	}
-	if err := svc.CreateAlias(models.NewContainsAlias(starbucks.ID, "SBUX")); err != nil {
+	if err := svc.CreateAlias(payee.NewContainsAlias(starbucks.ID, "SBUX")); err != nil {
 		t.Fatalf("Failed to create alias: %v", err)
 	}
 
@@ -538,28 +541,28 @@ func TestPayeeServicePatternMatching(t *testing.T) {
 	})
 
 	t.Run("ResolveOrCreate creates when not found", func(t *testing.T) {
-		payee, created, err := svc.ResolveOrCreate("Brand New Store")
+		py, created, err := svc.ResolveOrCreate("Brand New Store")
 		if err != nil {
 			t.Fatalf("Failed to resolve or create: %v", err)
 		}
 		if !created {
 			t.Error("Expected payee to be newly created")
 		}
-		if payee.Name != "Brand New Store" {
-			t.Errorf("Expected name 'Brand New Store', got %q", payee.Name)
+		if py.Name != "Brand New Store" {
+			t.Errorf("Expected name 'Brand New Store', got %q", py.Name)
 		}
 	})
 
 	t.Run("ResolveOrCreate finds existing by alias", func(t *testing.T) {
-		payee, created, err := svc.ResolveOrCreate("SBUX Downtown")
+		py, created, err := svc.ResolveOrCreate("SBUX Downtown")
 		if err != nil {
 			t.Fatalf("Failed to resolve or create: %v", err)
 		}
 		if created {
 			t.Error("Expected to find existing payee via alias")
 		}
-		if payee.ID != starbucks.ID {
-			t.Errorf("Expected Starbucks, got %q", payee.Name)
+		if py.ID != starbucks.ID {
+			t.Errorf("Expected Starbucks, got %q", py.Name)
 		}
 	})
 }
@@ -572,18 +575,18 @@ func TestPayeeServiceMerge(t *testing.T) {
 	svc, database, _, cleanup := createPayeeTestService(t)
 	defer cleanup()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
 	// Create an account for transactions
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	if err := accountRepo.Create(account); err != nil {
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	t.Run("merge payees moves transactions and aliases", func(t *testing.T) {
-		source := models.NewPayee("Source Payee")
-		target := models.NewPayee("Target Payee")
+		source := payee.NewPayee("Source Payee")
+		target := payee.NewPayee("Target Payee")
 		if err := svc.Create(source); err != nil {
 			t.Fatalf("Failed to create source: %v", err)
 		}
@@ -592,13 +595,13 @@ func TestPayeeServiceMerge(t *testing.T) {
 		}
 
 		// Create a transaction assigned to the source payee
-		txn := models.NewTransactionWithPayee(account.ID, models.Today(), models.MustNewMoney("-25.00"), source.ID)
+		txn := transaction.NewTransactionWithPayee(acct.ID, types.Today(), types.MustNewMoney("-25.00"), source.ID)
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("Failed to create transaction: %v", err)
 		}
 
 		// Create an alias on the source payee
-		alias := models.NewContainsAlias(source.ID, "SRC")
+		alias := payee.NewContainsAlias(source.ID, "SRC")
 		if err := svc.CreateAlias(alias); err != nil {
 			t.Fatalf("Failed to create alias: %v", err)
 		}
@@ -636,16 +639,16 @@ func TestPayeeServiceMerge(t *testing.T) {
 	})
 
 	t.Run("rejects merging payee into itself", func(t *testing.T) {
-		payee := models.NewPayee("Self Payee")
-		if err := svc.Create(payee); err != nil {
+		py := payee.NewPayee("Self Payee")
+		if err := svc.Create(py); err != nil {
 			t.Fatalf("Failed to create payee: %v", err)
 		}
 
-		err := svc.MergePayees(payee.ID, payee.ID)
+		err := svc.MergePayees(py.ID, py.ID)
 		if err == nil {
 			t.Error("Expected error when merging payee into itself")
 		}
-		if _, ok := err.(*service.PayeeMergeSameError); !ok {
+		if _, ok := err.(*payee.MergeSameError); !ok {
 			t.Errorf("Expected PayeeMergeSameError, got %T: %v", err, err)
 		}
 	})

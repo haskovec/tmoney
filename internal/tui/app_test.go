@@ -6,8 +6,11 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
@@ -500,14 +503,14 @@ func TestApp_SwitchView_UpdatesStatusBar(t *testing.T) {
 func TestFormatDashboardMoney(t *testing.T) {
 	tests := []struct {
 		name     string
-		money    models.Money
+		money    types.Money
 		expected string
 	}{
-		{"positive", models.MustNewMoney("1234.56"), "$1234.56"},
-		{"negative", models.MustNewMoney("-50.00"), "-$50.00"},
-		{"zero", models.MustNewMoney("0"), "$0.00"},
-		{"large", models.MustNewMoney("99999.99"), "$99999.99"},
-		{"small negative", models.MustNewMoney("-0.50"), "-$0.50"},
+		{"positive", types.MustNewMoney("1234.56"), "$1234.56"},
+		{"negative", types.MustNewMoney("-50.00"), "-$50.00"},
+		{"zero", types.MustNewMoney("0"), "$0.00"},
+		{"large", types.MustNewMoney("99999.99"), "$99999.99"},
+		{"small negative", types.MustNewMoney("-0.50"), "-$0.50"},
 	}
 
 	for _, tt := range tests {
@@ -590,22 +593,22 @@ func TestApp_RenderDashboard_WithData(t *testing.T) {
 		height:      30,
 		styles:      styles,
 		dashboard: &dashboardData{
-			netWorth: &models.NetWorthReport{
-				Assets: []models.ReportAccountBalance{
-					{Name: "Checking", Balance: models.MustNewMoney("5000.00")},
-					{Name: "Savings", Balance: models.MustNewMoney("10000.00")},
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{Name: "Checking", Balance: types.MustNewMoney("5000.00")},
+					{Name: "Savings", Balance: types.MustNewMoney("10000.00")},
 				},
-				Liabilities: []models.ReportAccountBalance{
-					{Name: "Visa", Balance: models.MustNewMoney("1500.00")},
+				Liabilities: []report.AccountBalance{
+					{Name: "Visa", Balance: types.MustNewMoney("1500.00")},
 				},
-				TotalAssets:      models.MustNewMoney("15000.00"),
-				TotalLiabilities: models.MustNewMoney("1500.00"),
-				NetWorth:         models.MustNewMoney("13500.00"),
+				TotalAssets:      types.MustNewMoney("15000.00"),
+				TotalLiabilities: types.MustNewMoney("1500.00"),
+				NetWorth:         types.MustNewMoney("13500.00"),
 			},
 			dueTxns:      nil,
 			upcomingTxns: nil,
-			payeeNames:   make(map[models.ID]string),
-			accountNames: make(map[models.ID]string),
+			payeeNames:   make(map[types.ID]string),
+			accountNames: make(map[types.ID]string),
 		},
 	}
 
@@ -647,15 +650,15 @@ func TestApp_RenderDashboard_NegativeNetWorth(t *testing.T) {
 		height:      30,
 		styles:      styles,
 		dashboard: &dashboardData{
-			netWorth: &models.NetWorthReport{
+			netWorth: &report.NetWorth{
 				Assets:           nil,
-				Liabilities:      []models.ReportAccountBalance{{Name: "Loan", Balance: models.MustNewMoney("5000.00")}},
-				TotalAssets:      models.MustNewMoney("0"),
-				TotalLiabilities: models.MustNewMoney("5000.00"),
-				NetWorth:         models.MustNewMoney("-5000.00"),
+				Liabilities:      []report.AccountBalance{{Name: "Loan", Balance: types.MustNewMoney("5000.00")}},
+				TotalAssets:      types.MustNewMoney("0"),
+				TotalLiabilities: types.MustNewMoney("5000.00"),
+				NetWorth:         types.MustNewMoney("-5000.00"),
 			},
-			payeeNames:   make(map[models.ID]string),
-			accountNames: make(map[models.ID]string),
+			payeeNames:   make(map[types.ID]string),
+			accountNames: make(map[types.ID]string),
 		},
 	}
 
@@ -670,7 +673,7 @@ func TestApp_RenderDashboard_NegativeNetWorth(t *testing.T) {
 }
 
 func TestApp_RenderDashboard_WithScheduled(t *testing.T) {
-	payeeID := models.NewID()
+	payeeID := types.NewID()
 	styles := NewStyles()
 	styles.Resize(100, 30)
 
@@ -680,22 +683,22 @@ func TestApp_RenderDashboard_WithScheduled(t *testing.T) {
 		height:      30,
 		styles:      styles,
 		dashboard: &dashboardData{
-			netWorth: &models.NetWorthReport{
-				TotalAssets:      models.MustNewMoney("1000"),
-				TotalLiabilities: models.ZeroMoney,
-				NetWorth:         models.MustNewMoney("1000"),
+			netWorth: &report.NetWorth{
+				TotalAssets:      types.MustNewMoney("1000"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("1000"),
 			},
-			dueTxns: []*models.ScheduledTransaction{
+			dueTxns: []*scheduled.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
-					PayeeID:   models.NullableID{ID: payeeID, Valid: true},
-					Amount:    models.NullableMoney{Money: models.MustNewMoney("-1500.00"), Valid: true},
-					NextDate:  models.Today(),
+					BaseModel: types.BaseModel{ID: types.NewID()},
+					PayeeID:   types.NullableID{ID: payeeID, Valid: true},
+					Amount:    types.NullableMoney{Money: types.MustNewMoney("-1500.00"), Valid: true},
+					NextDate:  types.Today(),
 				},
 			},
 			upcomingTxns: nil,
-			payeeNames:   map[models.ID]string{payeeID: "Landlord"},
-			accountNames: make(map[models.ID]string),
+			payeeNames:   map[types.ID]string{payeeID: "Landlord"},
+			accountNames: make(map[types.ID]string),
 		},
 	}
 
@@ -724,13 +727,13 @@ func TestApp_RenderDashboard_EmptyData(t *testing.T) {
 		height:      24,
 		styles:      styles,
 		dashboard: &dashboardData{
-			netWorth: &models.NetWorthReport{
-				TotalAssets:      models.ZeroMoney,
-				TotalLiabilities: models.ZeroMoney,
-				NetWorth:         models.ZeroMoney,
+			netWorth: &report.NetWorth{
+				TotalAssets:      types.ZeroMoney,
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.ZeroMoney,
 			},
-			payeeNames:   make(map[models.ID]string),
-			accountNames: make(map[models.ID]string),
+			payeeNames:   make(map[types.ID]string),
+			accountNames: make(map[types.ID]string),
 		},
 	}
 
@@ -753,11 +756,11 @@ func TestApp_Update_DashboardLoaded(t *testing.T) {
 	}
 
 	data := &dashboardData{
-		netWorth: &models.NetWorthReport{
-			NetWorth: models.MustNewMoney("5000"),
+		netWorth: &report.NetWorth{
+			NetWorth: types.MustNewMoney("5000"),
 		},
-		payeeNames:   make(map[models.ID]string),
-		accountNames: make(map[models.ID]string),
+		payeeNames:   make(map[types.ID]string),
+		accountNames: make(map[types.ID]string),
 	}
 
 	msg := dashboardLoadedMsg{data: data}
@@ -770,7 +773,7 @@ func TestApp_Update_DashboardLoaded(t *testing.T) {
 	if updatedApp.dashboard == nil {
 		t.Fatal("dashboard data should be set")
 	}
-	if !updatedApp.dashboard.netWorth.NetWorth.Equal(models.MustNewMoney("5000")) {
+	if !updatedApp.dashboard.netWorth.NetWorth.Equal(types.MustNewMoney("5000")) {
 		t.Error("dashboard net worth should be $5000")
 	}
 }
@@ -784,14 +787,14 @@ func TestApp_RenderDashboard_SmallWidth(t *testing.T) {
 		height:      20,
 		styles:      styles,
 		dashboard: &dashboardData{
-			netWorth: &models.NetWorthReport{
-				Assets:           []models.ReportAccountBalance{{Name: "Checking", Balance: models.MustNewMoney("100")}},
-				TotalAssets:      models.MustNewMoney("100"),
-				TotalLiabilities: models.ZeroMoney,
-				NetWorth:         models.MustNewMoney("100"),
+			netWorth: &report.NetWorth{
+				Assets:           []report.AccountBalance{{Name: "Checking", Balance: types.MustNewMoney("100")}},
+				TotalAssets:      types.MustNewMoney("100"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("100"),
 			},
-			payeeNames:   make(map[models.ID]string),
-			accountNames: make(map[models.ID]string),
+			payeeNames:   make(map[types.ID]string),
+			accountNames: make(map[types.ID]string),
 		},
 	}
 
@@ -827,9 +830,9 @@ func TestApp_RenderRegister_WithData(t *testing.T) {
 	styles := NewStyles()
 	styles.Resize(120, 30)
 
-	accountID := models.NewID()
-	payeeID := models.NewID()
-	categoryID := models.NewID()
+	accountID := types.NewID()
+	payeeID := types.NewID()
+	categoryID := types.NewID()
 
 	app := &App{
 		currentView: ViewRegister,
@@ -837,37 +840,37 @@ func TestApp_RenderRegister_WithData(t *testing.T) {
 		height:      30,
 		styles:      styles,
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: accountID},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
 			},
-			transactions: []*models.Transaction{
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel:  models.BaseModel{ID: models.NewID()},
+					BaseModel:  types.BaseModel{ID: types.NewID()},
 					AccountID:  accountID,
-					Date:       models.Today(),
-					Amount:     models.MustNewMoney("-125.43"),
-					Status:     models.TransactionStatusCleared,
-					PayeeID:    models.NullableID{ID: payeeID, Valid: true},
-					CategoryID: models.NullableID{ID: categoryID, Valid: true},
+					Date:       types.Today(),
+					Amount:     types.MustNewMoney("-125.43"),
+					Status:     transaction.StatusCleared,
+					PayeeID:    types.NullableID{ID: payeeID, Valid: true},
+					CategoryID: types.NullableID{ID: categoryID, Valid: true},
 				},
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Date:      models.Today(),
-					Amount:    models.MustNewMoney("2500.00"),
-					Status:    models.TransactionStatusUncleared,
-					PayeeID:   models.NullableID{ID: payeeID, Valid: true},
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("2500.00"),
+					Status:    transaction.StatusUncleared,
+					PayeeID:   types.NullableID{ID: payeeID, Valid: true},
 				},
 			},
-			balance: &service.AccountBalance{
+			balance: &account.Balance{
 				AccountID:      accountID,
-				CurrentBalance: models.MustNewMoney("5234.57"),
-				ClearedBalance: models.MustNewMoney("5000.00"),
+				CurrentBalance: types.MustNewMoney("5234.57"),
+				ClearedBalance: types.MustNewMoney("5000.00"),
 			},
-			payeeNames:    map[models.ID]string{payeeID: "Kroger"},
-			categoryNames: map[models.ID]string{categoryID: "Groceries"},
-			accountNames:  make(map[models.ID]string),
+			payeeNames:    map[types.ID]string{payeeID: "Kroger"},
+			categoryNames: map[types.ID]string{categoryID: "Groceries"},
+			accountNames:  make(map[types.ID]string),
 		},
 		table: nil,
 	}
@@ -899,7 +902,7 @@ func TestApp_RenderRegister_EmptyTransactions(t *testing.T) {
 	styles := NewStyles()
 	styles.Resize(100, 30)
 
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		currentView: ViewRegister,
@@ -907,15 +910,15 @@ func TestApp_RenderRegister_EmptyTransactions(t *testing.T) {
 		height:      30,
 		styles:      styles,
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: accountID},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Savings",
 			},
-			transactions:  []*models.Transaction{},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			transactions:  []*transaction.Transaction{},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -934,7 +937,7 @@ func TestApp_RenderRegister_NegativeBalance(t *testing.T) {
 	styles := NewStyles()
 	styles.Resize(100, 30)
 
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		currentView: ViewRegister,
@@ -942,15 +945,15 @@ func TestApp_RenderRegister_NegativeBalance(t *testing.T) {
 		height:      30,
 		styles:      styles,
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: accountID},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Credit Card",
 			},
-			transactions:  []*models.Transaction{},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("-1500.00")},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			transactions:  []*transaction.Transaction{},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("-1500.00")},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -966,9 +969,9 @@ func TestApp_RenderRegister_TransferDisplay(t *testing.T) {
 	styles := NewStyles()
 	styles.Resize(120, 30)
 
-	accountID := models.NewID()
-	otherAccountID := models.NewID()
-	transferID := models.NewID()
+	accountID := types.NewID()
+	otherAccountID := types.NewID()
+	transferID := types.NewID()
 
 	app := &App{
 		currentView: ViewRegister,
@@ -976,25 +979,25 @@ func TestApp_RenderRegister_TransferDisplay(t *testing.T) {
 		height:      30,
 		styles:      styles,
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: accountID},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
 			},
-			transactions: []*models.Transaction{
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel:         models.BaseModel{ID: models.NewID()},
+					BaseModel:         types.BaseModel{ID: types.NewID()},
 					AccountID:         accountID,
-					Date:              models.Today(),
-					Amount:            models.MustNewMoney("-500.00"),
-					Status:            models.TransactionStatusCleared,
-					TransferID:        models.NullableID{ID: transferID, Valid: true},
-					TransferAccountID: models.NullableID{ID: otherAccountID, Valid: true},
+					Date:              types.Today(),
+					Amount:            types.MustNewMoney("-500.00"),
+					Status:            transaction.StatusCleared,
+					TransferID:        types.NullableID{ID: transferID, Valid: true},
+					TransferAccountID: types.NullableID{ID: otherAccountID, Valid: true},
 				},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("4500.00")},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  map[models.ID]string{otherAccountID: "Savings"},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("4500.00")},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  map[types.ID]string{otherAccountID: "Savings"},
 		},
 	}
 
@@ -1010,7 +1013,7 @@ func TestApp_RenderRegister_TransferDisplay(t *testing.T) {
 }
 
 func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		width:       120,
@@ -1021,19 +1024,19 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: accountID},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
 			},
-			transactions: []*models.Transaction{
-				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-10"), Status: models.TransactionStatusUncleared},
-				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-20"), Status: models.TransactionStatusUncleared},
-				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Date: models.Today(), Amount: models.MustNewMoney("-30"), Status: models.TransactionStatusUncleared},
+			transactions: []*transaction.Transaction{
+				{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Date: types.Today(), Amount: types.MustNewMoney("-10"), Status: transaction.StatusUncleared},
+				{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Date: types.Today(), Amount: types.MustNewMoney("-20"), Status: transaction.StatusUncleared},
+				{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Date: types.Today(), Amount: types.MustNewMoney("-30"), Status: transaction.StatusUncleared},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("100")},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("100")},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 	app.buildRegisterTable()
@@ -1064,7 +1067,7 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 }
 
 func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		width:       120,
@@ -1075,15 +1078,15 @@ func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: accountID},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
 			},
-			transactions:  []*models.Transaction{},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			transactions:  []*transaction.Transaction{},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 	app.buildRegisterTable()
@@ -1123,25 +1126,25 @@ func TestApp_Update_RegisterLoaded(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	accountID := models.NewID()
+	accountID := types.NewID()
 	data := &registerData{
-		account: &models.Account{
-			BaseModel: models.BaseModel{ID: accountID},
+		account: &account.Account{
+			BaseModel: types.BaseModel{ID: accountID},
 			Name:      "Checking",
 		},
-		transactions: []*models.Transaction{
+		transactions: []*transaction.Transaction{
 			{
-				BaseModel: models.BaseModel{ID: models.NewID()},
+				BaseModel: types.BaseModel{ID: types.NewID()},
 				AccountID: accountID,
-				Date:      models.Today(),
-				Amount:    models.MustNewMoney("-50"),
-				Status:    models.TransactionStatusUncleared,
+				Date:      types.Today(),
+				Amount:    types.MustNewMoney("-50"),
+				Status:    transaction.StatusUncleared,
 			},
 		},
-		balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("950")},
-		payeeNames:    make(map[models.ID]string),
-		categoryNames: make(map[models.ID]string),
-		accountNames:  make(map[models.ID]string),
+		balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("950")},
+		payeeNames:    make(map[types.ID]string),
+		categoryNames: make(map[types.ID]string),
+		accountNames:  make(map[types.ID]string),
 	}
 
 	msg := registerLoadedMsg{data: data}
@@ -1166,32 +1169,32 @@ func TestApp_Update_RegisterLoaded(t *testing.T) {
 }
 
 func TestApp_BuildRegisterTable_RowContent(t *testing.T) {
-	accountID := models.NewID()
-	payeeID := models.NewID()
-	categoryID := models.NewID()
+	accountID := types.NewID()
+	payeeID := types.NewID()
+	categoryID := types.NewID()
 
 	app := &App{
 		styles: NewStyles(),
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: accountID},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
 			},
-			transactions: []*models.Transaction{
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel:  models.BaseModel{ID: models.NewID()},
+					BaseModel:  types.BaseModel{ID: types.NewID()},
 					AccountID:  accountID,
-					Date:       models.Today(),
-					Amount:     models.MustNewMoney("-42.50"),
-					Status:     models.TransactionStatusCleared,
-					PayeeID:    models.NullableID{ID: payeeID, Valid: true},
-					CategoryID: models.NullableID{ID: categoryID, Valid: true},
+					Date:       types.Today(),
+					Amount:     types.MustNewMoney("-42.50"),
+					Status:     transaction.StatusCleared,
+					PayeeID:    types.NullableID{ID: payeeID, Valid: true},
+					CategoryID: types.NullableID{ID: categoryID, Valid: true},
 				},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("100")},
-			payeeNames:    map[models.ID]string{payeeID: "Shell"},
-			categoryNames: map[models.ID]string{categoryID: "Gas"},
-			accountNames:  make(map[models.ID]string),
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("100")},
+			payeeNames:    map[types.ID]string{payeeID: "Shell"},
+			categoryNames: map[types.ID]string{categoryID: "Gas"},
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -1222,16 +1225,16 @@ func TestApp_BuildRegisterTable_RowContent(t *testing.T) {
 }
 
 func TestApp_BuildRegisterTable_StatusIndicators(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	tests := []struct {
 		name     string
-		status   models.TransactionStatus
+		status   transaction.Status
 		expected string
 	}{
-		{"uncleared", models.TransactionStatusUncleared, " "},
-		{"cleared", models.TransactionStatusCleared, "✓"},
-		{"reconciled", models.TransactionStatusReconciled, "R"},
+		{"uncleared", transaction.StatusUncleared, " "},
+		{"cleared", transaction.StatusCleared, "✓"},
+		{"reconciled", transaction.StatusReconciled, "R"},
 	}
 
 	for _, tt := range tests {
@@ -1239,20 +1242,20 @@ func TestApp_BuildRegisterTable_StatusIndicators(t *testing.T) {
 			app := &App{
 				styles: NewStyles(),
 				register: &registerData{
-					account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
-					transactions: []*models.Transaction{
+					account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+					transactions: []*transaction.Transaction{
 						{
-							BaseModel: models.BaseModel{ID: models.NewID()},
+							BaseModel: types.BaseModel{ID: types.NewID()},
 							AccountID: accountID,
-							Date:      models.Today(),
-							Amount:    models.MustNewMoney("-10"),
+							Date:      types.Today(),
+							Amount:    types.MustNewMoney("-10"),
 							Status:    tt.status,
 						},
 					},
-					balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-					payeeNames:    make(map[models.ID]string),
-					categoryNames: make(map[models.ID]string),
-					accountNames:  make(map[models.ID]string),
+					balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+					payeeNames:    make(map[types.ID]string),
+					categoryNames: make(map[types.ID]string),
+					accountNames:  make(map[types.ID]string),
 				},
 			}
 
@@ -1341,9 +1344,9 @@ func TestApp_RenderScheduled_Empty(t *testing.T) {
 		scheduled: &scheduledViewData{
 			allTxns:       nil,
 			dueCount:      0,
-			payeeNames:    make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
+			payeeNames:    make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
 		},
 	}
 
@@ -1360,26 +1363,26 @@ func TestApp_RenderScheduled_WithDueAndUpcoming(t *testing.T) {
 	styles := NewStyles()
 	styles.Resize(120, 30)
 
-	payeeID1 := models.NewID()
-	payeeID2 := models.NewID()
-	accountID := models.NewID()
+	payeeID1 := types.NewID()
+	payeeID2 := types.NewID()
+	accountID := types.NewID()
 
-	dueTxn := &models.ScheduledTransaction{
-		BaseModel: models.BaseModel{ID: models.NewID()},
+	dueTxn := &scheduled.Transaction{
+		BaseModel: types.BaseModel{ID: types.NewID()},
 		AccountID: accountID,
-		Frequency: models.FrequencyMonthly,
-		NextDate:  models.Today(),
-		PayeeID:   models.NullableID{ID: payeeID1, Valid: true},
-		Amount:    models.NullableMoney{Money: models.MustNewMoney("-1500.00"), Valid: true},
+		Frequency: scheduled.FrequencyMonthly,
+		NextDate:  types.Today(),
+		PayeeID:   types.NullableID{ID: payeeID1, Valid: true},
+		Amount:    types.NullableMoney{Money: types.MustNewMoney("-1500.00"), Valid: true},
 	}
 
-	upcomingTxn := &models.ScheduledTransaction{
-		BaseModel: models.BaseModel{ID: models.NewID()},
+	upcomingTxn := &scheduled.Transaction{
+		BaseModel: types.BaseModel{ID: types.NewID()},
 		AccountID: accountID,
-		Frequency: models.FrequencyWeekly,
-		NextDate:  models.Today().AddDays(7),
-		PayeeID:   models.NullableID{ID: payeeID2, Valid: true},
-		Amount:    models.NullableMoney{Money: models.MustNewMoney("-50.00"), Valid: true},
+		Frequency: scheduled.FrequencyWeekly,
+		NextDate:  types.Today().AddDays(7),
+		PayeeID:   types.NullableID{ID: payeeID2, Valid: true},
+		Amount:    types.NullableMoney{Money: types.MustNewMoney("-50.00"), Valid: true},
 	}
 
 	app := &App{
@@ -1388,13 +1391,13 @@ func TestApp_RenderScheduled_WithDueAndUpcoming(t *testing.T) {
 		height:      30,
 		styles:      styles,
 		scheduled: &scheduledViewData{
-			dueTxns:      []*models.ScheduledTransaction{dueTxn},
-			upcomingTxns: []*models.ScheduledTransaction{upcomingTxn},
-			allTxns:      []*models.ScheduledTransaction{dueTxn, upcomingTxn},
+			dueTxns:      []*scheduled.Transaction{dueTxn},
+			upcomingTxns: []*scheduled.Transaction{upcomingTxn},
+			allTxns:      []*scheduled.Transaction{dueTxn, upcomingTxn},
 			dueCount:     1,
-			payeeNames:   map[models.ID]string{payeeID1: "Landlord", payeeID2: "Netflix"},
-			accountNames:  map[models.ID]string{accountID: "Checking"},
-			categoryNames: make(map[models.ID]string),
+			payeeNames:   map[types.ID]string{payeeID1: "Landlord", payeeID2: "Netflix"},
+			accountNames:  map[types.ID]string{accountID: "Checking"},
+			categoryNames: make(map[types.ID]string),
 		},
 	}
 
@@ -1425,26 +1428,26 @@ func TestApp_RenderScheduled_WithDueAndUpcoming(t *testing.T) {
 }
 
 func TestApp_BuildScheduledTable(t *testing.T) {
-	payeeID := models.NewID()
-	accountID := models.NewID()
+	payeeID := types.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		styles: NewStyles(),
 		scheduled: &scheduledViewData{
-			allTxns: []*models.ScheduledTransaction{
+			allTxns: []*scheduled.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Frequency: models.FrequencyMonthly,
-					NextDate:  models.Today(),
-					PayeeID:   models.NullableID{ID: payeeID, Valid: true},
-					Amount:    models.NullableMoney{Money: models.MustNewMoney("-100.00"), Valid: true},
+					Frequency: scheduled.FrequencyMonthly,
+					NextDate:  types.Today(),
+					PayeeID:   types.NullableID{ID: payeeID, Valid: true},
+					Amount:    types.NullableMoney{Money: types.MustNewMoney("-100.00"), Valid: true},
 				},
 			},
 			dueCount:      1,
-			payeeNames:    map[models.ID]string{payeeID: "Electric Co"},
-			accountNames:  map[models.ID]string{accountID: "Checking"},
-			categoryNames: make(map[models.ID]string),
+			payeeNames:    map[types.ID]string{payeeID: "Electric Co"},
+			accountNames:  map[types.ID]string{accountID: "Checking"},
+			categoryNames: make(map[types.ID]string),
 		},
 	}
 
@@ -1481,24 +1484,24 @@ func TestApp_BuildScheduledTable(t *testing.T) {
 }
 
 func TestApp_BuildScheduledTable_VariableAmount(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		styles: NewStyles(),
 		scheduled: &scheduledViewData{
-			allTxns: []*models.ScheduledTransaction{
+			allTxns: []*scheduled.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Frequency: models.FrequencyMonthly,
-					NextDate:  models.Today(),
+					Frequency: scheduled.FrequencyMonthly,
+					NextDate:  types.Today(),
 					// No amount set - variable
 				},
 			},
 			dueCount:      1,
-			payeeNames:    make(map[models.ID]string),
-			accountNames:  map[models.ID]string{accountID: "Checking"},
-			categoryNames: make(map[models.ID]string),
+			payeeNames:    make(map[types.ID]string),
+			accountNames:  map[types.ID]string{accountID: "Checking"},
+			categoryNames: make(map[types.ID]string),
 		},
 	}
 
@@ -1511,25 +1514,25 @@ func TestApp_BuildScheduledTable_VariableAmount(t *testing.T) {
 }
 
 func TestApp_BuildScheduledTable_OverdueIndicator(t *testing.T) {
-	accountID := models.NewID()
-	pastDate := models.Today().AddDays(-3)
+	accountID := types.NewID()
+	pastDate := types.Today().AddDays(-3)
 
 	app := &App{
 		styles: NewStyles(),
 		scheduled: &scheduledViewData{
-			allTxns: []*models.ScheduledTransaction{
+			allTxns: []*scheduled.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Frequency: models.FrequencyMonthly,
+					Frequency: scheduled.FrequencyMonthly,
 					NextDate:  pastDate,
-					Amount:    models.NullableMoney{Money: models.MustNewMoney("-50"), Valid: true},
+					Amount:    types.NullableMoney{Money: types.MustNewMoney("-50"), Valid: true},
 				},
 			},
 			dueCount:      1,
-			payeeNames:    make(map[models.ID]string),
-			accountNames:  map[models.ID]string{accountID: "Checking"},
-			categoryNames: make(map[models.ID]string),
+			payeeNames:    make(map[types.ID]string),
+			accountNames:  map[types.ID]string{accountID: "Checking"},
+			categoryNames: make(map[types.ID]string),
 		},
 	}
 
@@ -1542,25 +1545,25 @@ func TestApp_BuildScheduledTable_OverdueIndicator(t *testing.T) {
 }
 
 func TestApp_BuildScheduledTable_UpcomingIndicator(t *testing.T) {
-	accountID := models.NewID()
-	futureDate := models.Today().AddDays(7)
+	accountID := types.NewID()
+	futureDate := types.Today().AddDays(7)
 
 	app := &App{
 		styles: NewStyles(),
 		scheduled: &scheduledViewData{
-			allTxns: []*models.ScheduledTransaction{
+			allTxns: []*scheduled.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Frequency: models.FrequencyWeekly,
+					Frequency: scheduled.FrequencyWeekly,
 					NextDate:  futureDate,
-					Amount:    models.NullableMoney{Money: models.MustNewMoney("-25"), Valid: true},
+					Amount:    types.NullableMoney{Money: types.MustNewMoney("-25"), Valid: true},
 				},
 			},
 			dueCount:      0, // not due, so index 0 >= dueCount (0)
-			payeeNames:    make(map[models.ID]string),
-			accountNames:  map[models.ID]string{accountID: "Checking"},
-			categoryNames: make(map[models.ID]string),
+			payeeNames:    make(map[types.ID]string),
+			accountNames:  map[types.ID]string{accountID: "Checking"},
+			categoryNames: make(map[types.ID]string),
 		},
 	}
 
@@ -1573,7 +1576,7 @@ func TestApp_BuildScheduledTable_UpcomingIndicator(t *testing.T) {
 }
 
 func TestApp_HandleScheduledKeys_TableNavigation(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		currentView: ViewScheduled,
@@ -1585,15 +1588,15 @@ func TestApp_HandleScheduledKeys_TableNavigation(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
 		scheduled: &scheduledViewData{
-			allTxns: []*models.ScheduledTransaction{
-				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Frequency: models.FrequencyMonthly, NextDate: models.Today()},
-				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Frequency: models.FrequencyWeekly, NextDate: models.Today()},
-				{BaseModel: models.BaseModel{ID: models.NewID()}, AccountID: accountID, Frequency: models.FrequencyYearly, NextDate: models.Today()},
+			allTxns: []*scheduled.Transaction{
+				{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Frequency: scheduled.FrequencyMonthly, NextDate: types.Today()},
+				{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Frequency: scheduled.FrequencyWeekly, NextDate: types.Today()},
+				{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Frequency: scheduled.FrequencyYearly, NextDate: types.Today()},
 			},
 			dueCount:      3,
-			payeeNames:    make(map[models.ID]string),
-			accountNames:  map[models.ID]string{accountID: "Checking"},
-			categoryNames: make(map[models.ID]string),
+			payeeNames:    make(map[types.ID]string),
+			accountNames:  map[types.ID]string{accountID: "Checking"},
+			categoryNames: make(map[types.ID]string),
 		},
 	}
 	app.buildScheduledTable()
@@ -1624,7 +1627,7 @@ func TestApp_HandleScheduledKeys_TableNavigation(t *testing.T) {
 }
 
 func TestApp_HandleScheduledKeys_TabFocus(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		currentView: ViewScheduled,
@@ -1636,11 +1639,11 @@ func TestApp_HandleScheduledKeys_TabFocus(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
 		scheduled: &scheduledViewData{
-			allTxns:       []*models.ScheduledTransaction{},
+			allTxns:       []*scheduled.Transaction{},
 			dueCount:      0,
-			payeeNames:    make(map[models.ID]string),
-			accountNames:  map[models.ID]string{accountID: "Checking"},
-			categoryNames: make(map[models.ID]string),
+			payeeNames:    make(map[types.ID]string),
+			accountNames:  map[types.ID]string{accountID: "Checking"},
+			categoryNames: make(map[types.ID]string),
 		},
 	}
 	app.buildScheduledTable()
@@ -1680,24 +1683,24 @@ func TestApp_Update_ScheduledViewDataLoaded(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	accountID := models.NewID()
-	payeeID := models.NewID()
+	accountID := types.NewID()
+	payeeID := types.NewID()
 
 	data := &scheduledViewData{
-		allTxns: []*models.ScheduledTransaction{
+		allTxns: []*scheduled.Transaction{
 			{
-				BaseModel: models.BaseModel{ID: models.NewID()},
+				BaseModel: types.BaseModel{ID: types.NewID()},
 				AccountID: accountID,
-				Frequency: models.FrequencyMonthly,
-				NextDate:  models.Today(),
-				PayeeID:   models.NullableID{ID: payeeID, Valid: true},
-				Amount:    models.NullableMoney{Money: models.MustNewMoney("-100"), Valid: true},
+				Frequency: scheduled.FrequencyMonthly,
+				NextDate:  types.Today(),
+				PayeeID:   types.NullableID{ID: payeeID, Valid: true},
+				Amount:    types.NullableMoney{Money: types.MustNewMoney("-100"), Valid: true},
 			},
 		},
 		dueCount:      1,
-		payeeNames:    map[models.ID]string{payeeID: "Landlord"},
-		accountNames:  map[models.ID]string{accountID: "Checking"},
-		categoryNames: make(map[models.ID]string),
+		payeeNames:    map[types.ID]string{payeeID: "Landlord"},
+		accountNames:  map[types.ID]string{accountID: "Checking"},
+		categoryNames: make(map[types.ID]string),
 	}
 
 	msg := scheduledViewDataLoadedMsg{data: data}
@@ -1744,18 +1747,18 @@ func TestApp_SwitchView_Scheduled_SetsFocus(t *testing.T) {
 }
 
 func TestApp_FormatScheduledRow_AllFrequencies(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	frequencies := []struct {
-		freq     models.Frequency
+		freq     scheduled.Frequency
 		expected string
 	}{
-		{models.FrequencyDaily, "Daily"},
-		{models.FrequencyWeekly, "Weekly"},
-		{models.FrequencyBiweekly, "Biweekly"},
-		{models.FrequencyMonthly, "Monthly"},
-		{models.FrequencyQuarterly, "Quarterly"},
-		{models.FrequencyYearly, "Yearly"},
+		{scheduled.FrequencyDaily, "Daily"},
+		{scheduled.FrequencyWeekly, "Weekly"},
+		{scheduled.FrequencyBiweekly, "Biweekly"},
+		{scheduled.FrequencyMonthly, "Monthly"},
+		{scheduled.FrequencyQuarterly, "Quarterly"},
+		{scheduled.FrequencyYearly, "Yearly"},
 	}
 
 	for _, tt := range frequencies {
@@ -1763,18 +1766,18 @@ func TestApp_FormatScheduledRow_AllFrequencies(t *testing.T) {
 			app := &App{
 				styles: NewStyles(),
 				scheduled: &scheduledViewData{
-					payeeNames:    make(map[models.ID]string),
-					accountNames:  map[models.ID]string{accountID: "Checking"},
-					categoryNames: make(map[models.ID]string),
+					payeeNames:    make(map[types.ID]string),
+					accountNames:  map[types.ID]string{accountID: "Checking"},
+					categoryNames: make(map[types.ID]string),
 				},
 			}
 
-			st := &models.ScheduledTransaction{
-				BaseModel: models.BaseModel{ID: models.NewID()},
+			st := &scheduled.Transaction{
+				BaseModel: types.BaseModel{ID: types.NewID()},
 				AccountID: accountID,
 				Frequency: tt.freq,
-				NextDate:  models.Today(),
-				Amount:    models.NullableMoney{Money: models.MustNewMoney("-25"), Valid: true},
+				NextDate:  types.Today(),
+				Amount:    types.NullableMoney{Money: types.MustNewMoney("-25"), Valid: true},
 			}
 
 			row := app.formatScheduledRow(st, false)
@@ -1817,18 +1820,18 @@ func TestApp_RenderNetWorthReport(t *testing.T) {
 		styles:      styles,
 		reports: &reportsViewData{
 			rtype: reportTypeNetWorth,
-			netWorth: &models.NetWorthReport{
-				AsOfDate: models.Today().Time(),
-				Assets: []models.ReportAccountBalance{
-					{Name: "Checking", Balance: models.MustNewMoney("5000.00")},
-					{Name: "Savings", Balance: models.MustNewMoney("10000.00")},
+			netWorth: &report.NetWorth{
+				AsOfDate: types.Today().Time(),
+				Assets: []report.AccountBalance{
+					{Name: "Checking", Balance: types.MustNewMoney("5000.00")},
+					{Name: "Savings", Balance: types.MustNewMoney("10000.00")},
 				},
-				Liabilities: []models.ReportAccountBalance{
-					{Name: "Visa", Balance: models.MustNewMoney("1500.00")},
+				Liabilities: []report.AccountBalance{
+					{Name: "Visa", Balance: types.MustNewMoney("1500.00")},
 				},
-				TotalAssets:      models.MustNewMoney("15000.00"),
-				TotalLiabilities: models.MustNewMoney("1500.00"),
-				NetWorth:         models.MustNewMoney("13500.00"),
+				TotalAssets:      types.MustNewMoney("15000.00"),
+				TotalLiabilities: types.MustNewMoney("1500.00"),
+				NetWorth:         types.MustNewMoney("13500.00"),
 			},
 		},
 	}
@@ -1869,13 +1872,13 @@ func TestApp_RenderNetWorthReport_NegativeNetWorth(t *testing.T) {
 		styles:      styles,
 		reports: &reportsViewData{
 			rtype: reportTypeNetWorth,
-			netWorth: &models.NetWorthReport{
-				AsOfDate:         models.Today().Time(),
+			netWorth: &report.NetWorth{
+				AsOfDate:         types.Today().Time(),
 				Assets:           nil,
-				Liabilities:      []models.ReportAccountBalance{{Name: "Loan", Balance: models.MustNewMoney("5000.00")}},
-				TotalAssets:      models.MustNewMoney("0"),
-				TotalLiabilities: models.MustNewMoney("5000.00"),
-				NetWorth:         models.MustNewMoney("-5000.00"),
+				Liabilities:      []report.AccountBalance{{Name: "Loan", Balance: types.MustNewMoney("5000.00")}},
+				TotalAssets:      types.MustNewMoney("0"),
+				TotalLiabilities: types.MustNewMoney("5000.00"),
+				NetWorth:         types.MustNewMoney("-5000.00"),
 			},
 		},
 	}
@@ -1920,30 +1923,30 @@ func TestApp_RenderSpendingReport(t *testing.T) {
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 1,
-			spending: &models.SpendingReport{
+			spending: &report.Spending{
 				Period:    "January 2024",
-				TotalSpending: models.MustNewMoney("3000.00"),
-				Categories: []models.CategorySpending{
+				TotalSpending: types.MustNewMoney("3000.00"),
+				Categories: []report.CategorySpending{
 					{
 						Name:       "Housing",
-						Amount:     models.MustNewMoney("1500.00"),
+						Amount:     types.MustNewMoney("1500.00"),
 						Percentage: 50.0,
-						Subcategories: []models.CategorySpending{
-							{Name: "Rent", Amount: models.MustNewMoney("1500.00")},
+						Subcategories: []report.CategorySpending{
+							{Name: "Rent", Amount: types.MustNewMoney("1500.00")},
 						},
 					},
 					{
 						Name:       "Food",
-						Amount:     models.MustNewMoney("1000.00"),
+						Amount:     types.MustNewMoney("1000.00"),
 						Percentage: 33.3,
-						Subcategories: []models.CategorySpending{
-							{Name: "Groceries", Amount: models.MustNewMoney("700.00")},
-							{Name: "Restaurants", Amount: models.MustNewMoney("300.00")},
+						Subcategories: []report.CategorySpending{
+							{Name: "Groceries", Amount: types.MustNewMoney("700.00")},
+							{Name: "Restaurants", Amount: types.MustNewMoney("300.00")},
 						},
 					},
 					{
 						Name:       "Transportation",
-						Amount:     models.MustNewMoney("500.00"),
+						Amount:     types.MustNewMoney("500.00"),
 						Percentage: 16.7,
 					},
 				},
@@ -1995,10 +1998,10 @@ func TestApp_RenderSpendingReport_Empty(t *testing.T) {
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 6,
-			spending: &models.SpendingReport{
+			spending: &report.Spending{
 				Period:        "June 2024",
 				Categories:    nil,
-				TotalSpending: models.ZeroMoney,
+				TotalSpending: types.ZeroMoney,
 			},
 		},
 	}
@@ -2293,8 +2296,8 @@ func TestApp_Update_ReportsViewDataLoaded(t *testing.T) {
 
 	data := &reportsViewData{
 		rtype: reportTypeNetWorth,
-		netWorth: &models.NetWorthReport{
-			NetWorth: models.MustNewMoney("10000"),
+		netWorth: &report.NetWorth{
+			NetWorth: types.MustNewMoney("10000"),
 		},
 	}
 
@@ -2441,11 +2444,11 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 		styles:      styles,
 		reports: &reportsViewData{
 			rtype: reportTypeNetWorth,
-			netWorth: &models.NetWorthReport{
-				AsOfDate:         models.Today().Time(),
-				TotalAssets:      models.MustNewMoney("1000"),
-				TotalLiabilities: models.ZeroMoney,
-				NetWorth:         models.MustNewMoney("1000"),
+			netWorth: &report.NetWorth{
+				AsOfDate:         types.Today().Time(),
+				TotalAssets:      types.MustNewMoney("1000"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("1000"),
 			},
 		},
 	}
@@ -2460,10 +2463,10 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 		rtype: reportTypeSpending,
 		year:  2024,
 		month: 1,
-		spending: &models.SpendingReport{
+		spending: &report.Spending{
 			Period:        "January 2024",
 			Categories:    nil,
-			TotalSpending: models.ZeroMoney,
+			TotalSpending: types.ZeroMoney,
 		},
 	}
 
@@ -2674,7 +2677,7 @@ func TestApp_RenderRegister_LongAccountName(t *testing.T) {
 	styles := NewStyles()
 	styles.Resize(60, 30) // narrow width to force truncation
 
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		currentView: ViewRegister,
@@ -2682,15 +2685,15 @@ func TestApp_RenderRegister_LongAccountName(t *testing.T) {
 		height:      30,
 		styles:      styles,
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: accountID},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "My Super Duper Extremely Long Savings Account Name That Overflows",
 			},
-			transactions:  []*models.Transaction{},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.MustNewMoney("100.00")},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			transactions:  []*transaction.Transaction{},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("100.00")},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -2716,7 +2719,7 @@ func TestApp_RenderRegister_EmptyShowsHint(t *testing.T) {
 	styles := NewStyles()
 	styles.Resize(100, 30)
 
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		currentView: ViewRegister,
@@ -2724,15 +2727,15 @@ func TestApp_RenderRegister_EmptyShowsHint(t *testing.T) {
 		height:      30,
 		styles:      styles,
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: accountID},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
 			},
-			transactions:  []*models.Transaction{},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			transactions:  []*transaction.Transaction{},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -2756,8 +2759,8 @@ func TestApp_RenderDashboard_NilNetWorth(t *testing.T) {
 		styles:      styles,
 		dashboard: &dashboardData{
 			netWorth:     nil,
-			payeeNames:   make(map[models.ID]string),
-			accountNames: make(map[models.ID]string),
+			payeeNames:   make(map[types.ID]string),
+			accountNames: make(map[types.ID]string),
 		},
 	}
 
@@ -2815,25 +2818,25 @@ func TestApp_RenderSpendingReport_ImprovedNoData(t *testing.T) {
 // =============================================================================
 
 func TestApp_BuildRegisterTable_VoidStatusIndicator(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		styles: NewStyles(),
 		register: &registerData{
-			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
-			transactions: []*models.Transaction{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Date:      models.Today(),
-					Amount:    models.ZeroMoney,
-					Status:    models.TransactionStatusVoid,
+					Date:      types.Today(),
+					Amount:    types.ZeroMoney,
+					Status:    transaction.StatusVoid,
 				},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -2845,39 +2848,39 @@ func TestApp_BuildRegisterTable_VoidStatusIndicator(t *testing.T) {
 }
 
 func TestApp_BuildRegisterTable_VoidRowStyling(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		styles: NewStyles(),
 		register: &registerData{
-			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
-			transactions: []*models.Transaction{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Date:      models.Today(),
-					Amount:    models.MustNewMoney("-50"),
-					Status:    models.TransactionStatusCleared,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-50"),
+					Status:    transaction.StatusCleared,
 				},
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Date:      models.Today(),
-					Amount:    models.ZeroMoney,
-					Status:    models.TransactionStatusVoid,
+					Date:      types.Today(),
+					Amount:    types.ZeroMoney,
+					Status:    transaction.StatusVoid,
 				},
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Date:      models.Today(),
-					Amount:    models.MustNewMoney("-25"),
-					Status:    models.TransactionStatusUncleared,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-25"),
+					Status:    transaction.StatusUncleared,
 				},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -2898,17 +2901,17 @@ func TestApp_BuildRegisterTable_VoidRowStyling(t *testing.T) {
 }
 
 func TestApp_BuildRegisterTable_AllFourStatusIndicators(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	tests := []struct {
 		name     string
-		status   models.TransactionStatus
+		status   transaction.Status
 		expected string
 	}{
-		{"uncleared", models.TransactionStatusUncleared, " "},
-		{"cleared", models.TransactionStatusCleared, "✓"},
-		{"reconciled", models.TransactionStatusReconciled, "R"},
-		{"void", models.TransactionStatusVoid, "V"},
+		{"uncleared", transaction.StatusUncleared, " "},
+		{"cleared", transaction.StatusCleared, "✓"},
+		{"reconciled", transaction.StatusReconciled, "R"},
+		{"void", transaction.StatusVoid, "V"},
 	}
 
 	for _, tt := range tests {
@@ -2916,20 +2919,20 @@ func TestApp_BuildRegisterTable_AllFourStatusIndicators(t *testing.T) {
 			app := &App{
 				styles: NewStyles(),
 				register: &registerData{
-					account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
-					transactions: []*models.Transaction{
+					account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+					transactions: []*transaction.Transaction{
 						{
-							BaseModel: models.BaseModel{ID: models.NewID()},
+							BaseModel: types.BaseModel{ID: types.NewID()},
 							AccountID: accountID,
-							Date:      models.Today(),
-							Amount:    models.MustNewMoney("-10"),
+							Date:      types.Today(),
+							Amount:    types.MustNewMoney("-10"),
 							Status:    tt.status,
 						},
 					},
-					balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-					payeeNames:    make(map[models.ID]string),
-					categoryNames: make(map[models.ID]string),
-					accountNames:  make(map[models.ID]string),
+					balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+					payeeNames:    make(map[types.ID]string),
+					categoryNames: make(map[types.ID]string),
+					accountNames:  make(map[types.ID]string),
 				},
 			}
 
@@ -2943,29 +2946,29 @@ func TestApp_BuildRegisterTable_AllFourStatusIndicators(t *testing.T) {
 }
 
 func TestApp_ToggleTransactionStatus_VoidBlocked(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
 		statusbar:      NewStatusBar(),
 		sidebar:        NewSidebar(),
-		transactionSvc: &service.TransactionService{},
+		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
-			transactions: []*models.Transaction{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Date:      models.Today(),
-					Amount:    models.ZeroMoney,
-					Status:    models.TransactionStatusVoid,
+					Date:      types.Today(),
+					Amount:    types.ZeroMoney,
+					Status:    transaction.StatusVoid,
 				},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -2988,29 +2991,29 @@ func TestApp_ToggleTransactionStatus_VoidBlocked(t *testing.T) {
 }
 
 func TestApp_ToggleTransactionStatus_ReconciledBlocked(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
 		statusbar:      NewStatusBar(),
 		sidebar:        NewSidebar(),
-		transactionSvc: &service.TransactionService{},
+		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
-			transactions: []*models.Transaction{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Date:      models.Today(),
-					Amount:    models.MustNewMoney("-10"),
-					Status:    models.TransactionStatusReconciled,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-10"),
+					Status:    transaction.StatusReconciled,
 				},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -3031,29 +3034,29 @@ func TestApp_ToggleTransactionStatus_ReconciledBlocked(t *testing.T) {
 }
 
 func TestApp_ShowVoidConfirmation_AlreadyVoid(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
 		statusbar:      NewStatusBar(),
 		sidebar:        NewSidebar(),
-		transactionSvc: &service.TransactionService{},
+		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
-			transactions: []*models.Transaction{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Date:      models.Today(),
-					Amount:    models.ZeroMoney,
-					Status:    models.TransactionStatusVoid,
+					Date:      types.Today(),
+					Amount:    types.ZeroMoney,
+					Status:    transaction.StatusVoid,
 				},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -3080,29 +3083,29 @@ func TestApp_ShowVoidConfirmation_AlreadyVoid(t *testing.T) {
 }
 
 func TestApp_ShowVoidConfirmation_ReconciledBlocked(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
 		statusbar:      NewStatusBar(),
 		sidebar:        NewSidebar(),
-		transactionSvc: &service.TransactionService{},
+		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
-			transactions: []*models.Transaction{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Date:      models.Today(),
-					Amount:    models.MustNewMoney("-50"),
-					Status:    models.TransactionStatusReconciled,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-50"),
+					Status:    transaction.StatusReconciled,
 				},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -3123,29 +3126,29 @@ func TestApp_ShowVoidConfirmation_ReconciledBlocked(t *testing.T) {
 }
 
 func TestApp_ShowVoidConfirmation_ShowsDialog(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
 		statusbar:      NewStatusBar(),
 		sidebar:        NewSidebar(),
-		transactionSvc: &service.TransactionService{},
+		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
-			transactions: []*models.Transaction{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Date:      models.Today(),
-					Amount:    models.MustNewMoney("-50"),
-					Status:    models.TransactionStatusCleared,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-50"),
+					Status:    transaction.StatusCleared,
 				},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -3167,33 +3170,33 @@ func TestApp_ShowVoidConfirmation_ShowsDialog(t *testing.T) {
 }
 
 func TestApp_ShowVoidConfirmation_TransferMessage(t *testing.T) {
-	accountID := models.NewID()
-	transferAccountID := models.NewID()
-	transferPairID := models.NewID()
+	accountID := types.NewID()
+	transferAccountID := types.NewID()
+	transferPairID := types.NewID()
 
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
 		statusbar:      NewStatusBar(),
 		sidebar:        NewSidebar(),
-		transactionSvc: &service.TransactionService{},
+		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
-			transactions: []*models.Transaction{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel:         models.BaseModel{ID: models.NewID()},
+					BaseModel:         types.BaseModel{ID: types.NewID()},
 					AccountID:         accountID,
-					TransferID:        models.NullableID{ID: transferPairID, Valid: true},
-					TransferAccountID: models.NullableID{ID: transferAccountID, Valid: true},
-					Date:              models.Today(),
-					Amount:            models.MustNewMoney("-50"),
-					Status:            models.TransactionStatusCleared,
+					TransferID:        types.NullableID{ID: transferPairID, Valid: true},
+					TransferAccountID: types.NullableID{ID: transferAccountID, Valid: true},
+					Date:              types.Today(),
+					Amount:            types.MustNewMoney("-50"),
+					Status:            transaction.StatusCleared,
 				},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  map[models.ID]string{transferAccountID: "Savings"},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  map[types.ID]string{transferAccountID: "Savings"},
 		},
 	}
 
@@ -3279,7 +3282,7 @@ func TestApp_HandleConfirmDialogKey_Confirm(t *testing.T) {
 }
 
 func TestApp_VoidKey_InRegisterView(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	sidebar := NewSidebar()
 	sidebar.SetFocused(false)
@@ -3289,22 +3292,22 @@ func TestApp_VoidKey_InRegisterView(t *testing.T) {
 		keys:           defaultKeyMap(),
 		statusbar:      NewStatusBar(),
 		sidebar:        sidebar,
-		transactionSvc: &service.TransactionService{},
+		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &models.Account{BaseModel: models.BaseModel{ID: accountID}, Name: "Test"},
-			transactions: []*models.Transaction{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
 				{
-					BaseModel: models.BaseModel{ID: models.NewID()},
+					BaseModel: types.BaseModel{ID: types.NewID()},
 					AccountID: accountID,
-					Date:      models.Today(),
-					Amount:    models.MustNewMoney("-25"),
-					Status:    models.TransactionStatusUncleared,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-25"),
+					Status:    transaction.StatusUncleared,
 				},
 			},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 
@@ -3636,7 +3639,7 @@ func TestApp_UndoKeyBindingNotActiveInDialogs(t *testing.T) {
 	app.txnDialog.AddTextField("Name", "", "", 0)
 	app.txnDialog.SetVisible(true)
 	app.txnDialogData = &transactionDialogData{}
-	app.txnDialogCategoryIDs = []models.ID{}
+	app.txnDialogCategoryIDs = []types.ID{}
 
 	// Press Ctrl+Z - should be routed to dialog, not undo
 	msg := tea.KeyMsg{Type: tea.KeyCtrlZ}

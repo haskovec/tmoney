@@ -7,15 +7,18 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // transactionDialogData holds the loaded data needed for the transaction dialog.
 type transactionDialogData struct {
-	payees     []*models.Payee
-	categories []*models.Category
-	payeeMap   map[string]*models.Payee // lowercase name -> payee
+	payees     []*payee.Payee
+	categories []*category.Category
+	payeeMap   map[string]*payee.Payee // lowercase name -> payee
 }
 
 // transactionDialogDataMsg is sent when transaction dialog data has been loaded.
@@ -27,19 +30,19 @@ type transactionDialogDataMsg struct {
 type transactionDialogSavedMsg struct{}
 
 // parseDateInput parses a date string in MM/DD/YYYY format.
-func parseDateInput(input string) (models.Date, error) {
+func parseDateInput(input string) (types.Date, error) {
 	t, err := time.Parse("01/02/2006", input)
 	if err != nil {
-		return models.ZeroDate, fmt.Errorf("invalid date format (expected MM/DD/YYYY): %w", err)
+		return types.ZeroDate, fmt.Errorf("invalid date format (expected MM/DD/YYYY): %w", err)
 	}
-	return models.NewDate(t.Year(), t.Month(), t.Day()), nil
+	return types.NewDate(t.Year(), t.Month(), t.Day()), nil
 }
 
 // parseAmountInput parses a money string, stripping "$" and handling negatives.
-func parseAmountInput(input string) (models.Money, error) {
+func parseAmountInput(input string) (types.Money, error) {
 	s := strings.TrimSpace(input)
 	if s == "" {
-		return models.ZeroMoney, fmt.Errorf("amount is required")
+		return types.ZeroMoney, fmt.Errorf("amount is required")
 	}
 
 	// Handle negative with $ sign: -$50.00 or $-50.00
@@ -58,18 +61,18 @@ func parseAmountInput(input string) (models.Money, error) {
 		s = "-" + s
 	}
 
-	return models.NewMoney(s)
+	return types.NewMoney(s)
 }
 
 // buildCategoryOptions builds parallel display name and ID slices for the category selector.
 // First entry is "(None)" with a nil ID. Subcategories are formatted as "Parent > Child".
 // System categories are excluded. Results are sorted alphabetically.
-func buildCategoryOptions(categories []*models.Category) ([]string, []models.ID) {
+func buildCategoryOptions(categories []*category.Category) ([]string, []types.ID) {
 	options := []string{"(None)"}
-	ids := []models.ID{models.NilID}
+	ids := []types.ID{types.NilID}
 
 	// Build parent name map
-	parentNames := make(map[models.ID]string)
+	parentNames := make(map[types.ID]string)
 	for _, c := range categories {
 		if c.IsTopLevel() && !c.IsSystem {
 			parentNames[c.ID] = c.Name
@@ -78,7 +81,7 @@ func buildCategoryOptions(categories []*models.Category) ([]string, []models.ID)
 
 	type catEntry struct {
 		name string
-		id   models.ID
+		id   types.ID
 	}
 	var entries []catEntry
 
@@ -147,7 +150,7 @@ func buildTransactionDialog(data *transactionDialogData, categoryOptions []strin
 func (a *App) loadTransactionDialogData() tea.Cmd {
 	return func() tea.Msg {
 		data := &transactionDialogData{
-			payeeMap: make(map[string]*models.Payee),
+			payeeMap: make(map[string]*payee.Payee),
 		}
 
 		if a.payeeSvc != nil {
@@ -198,13 +201,13 @@ func (a *App) checkPayeeAutoFill() {
 		return
 	}
 
-	payee, ok := a.txnDialogData.payeeMap[payeeName]
-	if !ok || !payee.HasDefaultCategory() {
+	py, ok := a.txnDialogData.payeeMap[payeeName]
+	if !ok || !py.HasDefaultCategory() {
 		return
 	}
 
 	// Find the category index
-	defaultCatID := payee.DefaultCategoryID.ID
+	defaultCatID := py.DefaultCategoryID.ID
 	for i, catID := range a.txnDialogCategoryIDs {
 		if catID == defaultCatID {
 			// Category field is at index 2
@@ -265,7 +268,7 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 
 	// Category
 	catIdx := fields[2].SelectedIndex
-	var categoryID models.ID
+	var categoryID types.ID
 	if catIdx > 0 && catIdx < len(a.txnDialogCategoryIDs) {
 		categoryID = a.txnDialogCategoryIDs[catIdx]
 	}
@@ -285,9 +288,9 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 	memo := strings.TrimSpace(fields[4].Value)
 
 	// Status
-	status := models.TransactionStatusUncleared
+	status := transaction.StatusUncleared
 	if fields[5].SelectedIndex == 1 {
-		status = models.TransactionStatusCleared
+		status = transaction.StatusCleared
 	}
 
 	// Split transaction checkbox
@@ -324,17 +327,17 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 
 	return a, func() tea.Msg {
 		// Resolve or create payee
-		var payeeID models.ID
+		var payeeID types.ID
 		if payeeName != "" && a.payeeSvc != nil {
-			payee, _, err := a.payeeSvc.GetOrCreate(payeeName)
+			py, _, err := a.payeeSvc.GetOrCreate(payeeName)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
-			payeeID = payee.ID
+			payeeID = py.ID
 		}
 
 		// Build transaction
-		txn := models.NewTransactionFull(accountID, date, amount, payeeID, categoryID, memo)
+		txn := transaction.NewTransactionFull(accountID, date, amount, payeeID, categoryID, memo)
 		txn.Status = status
 
 		// Save via undo manager

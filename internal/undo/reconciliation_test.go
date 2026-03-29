@@ -4,17 +4,19 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/reconciliation"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
 type reconTestEnv struct {
-	reconSvc    *service.ReconciliationService
-	txnSvc      *service.TransactionService
-	accountRepo *repository.AccountRepository
+	reconSvc    *reconciliation.Service
+	txnSvc      *transaction.Service
+	accountRepo *account.Repository
 }
 
 func createReconTestEnv(t *testing.T) *reconTestEnv {
@@ -28,15 +30,15 @@ func createReconTestEnv(t *testing.T) *reconTestEnv {
 	}
 	t.Cleanup(func() { database.Close() })
 
-	txnRepo := repository.NewTransactionRepository(database)
-	splitRepo := repository.NewSplitRepository(database)
-	transferRepo := repository.NewTransferRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	accountRepo := repository.NewAccountRepository(database)
-	reconRepo := repository.NewReconciliationRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	splitRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	reconRepo := reconciliation.NewRepository(database)
 
-	txnSvc := service.NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
-	reconSvc := service.NewReconciliationService(reconRepo, txnRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	reconSvc := reconciliation.NewService(reconRepo, txnRepo, accountRepo, database)
 
 	return &reconTestEnv{
 		reconSvc:    reconSvc,
@@ -45,14 +47,14 @@ func createReconTestEnv(t *testing.T) *reconTestEnv {
 	}
 }
 
-func createReconTestAccount(t *testing.T, repo *repository.AccountRepository, name string, balance string) *models.Account {
+func createReconTestAccount(t *testing.T, repo *account.Repository, name string, balance string) *account.Account {
 	t.Helper()
-	bal := models.MustNewMoney(balance)
-	account := models.NewAccount(name, models.AccountTypeChecking, "USD", bal, models.NewDate(2024, 1, 1))
-	if err := repo.Create(account); err != nil {
+	bal := types.MustNewMoney(balance)
+	acct := account.NewAccount(name, account.TypeChecking, "USD", bal, types.NewDate(2024, 1, 1))
+	if err := repo.Create(acct); err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
-	return account
+	return acct
 }
 
 // =============================================================================
@@ -62,27 +64,27 @@ func createReconTestAccount(t *testing.T, repo *repository.AccountRepository, na
 func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("reconciles transactions and undoes them", func(t *testing.T) {
 		env := createReconTestEnv(t)
-		account := createReconTestAccount(t, env.accountRepo, "Checking", "1000.00")
+		acct := createReconTestAccount(t, env.accountRepo, "Checking", "1000.00")
 
 		// Create two transactions
-		txn1 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 5), models.MustNewMoney("-100.00"))
+		txn1 := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 5), types.MustNewMoney("-100.00"))
 		if err := env.txnSvc.Create(txn1); err != nil {
 			t.Fatalf("Create txn1: %v", err)
 		}
 
-		txn2 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-200.00"))
+		txn2 := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 10), types.MustNewMoney("-200.00"))
 		if err := env.txnSvc.Create(txn2); err != nil {
 			t.Fatalf("Create txn2: %v", err)
 		}
 
 		// Start reconciliation: 1000 - 100 - 200 = 700
-		_, err := env.reconSvc.StartReconciliation(account.ID, models.NewDate(2024, 1, 31), models.MustNewMoney("700.00"))
+		_, err := env.reconSvc.StartReconciliation(acct.ID, types.NewDate(2024, 1, 31), types.MustNewMoney("700.00"))
 		if err != nil {
 			t.Fatalf("StartReconciliation() error = %v", err)
 		}
 
 		cmd := undo.NewFinishReconciliationCommand(
-			env.reconSvc, env.txnSvc, account.ID, []models.ID{txn1.ID, txn2.ID},
+			env.reconSvc, env.txnSvc, acct.ID, []types.ID{txn1.ID, txn2.ID},
 		)
 
 		// Execute: both transactions should be reconciled
@@ -100,7 +102,7 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 		}
 
 		// Verify session is completed
-		active, _ := env.reconSvc.GetActiveSession(account.ID)
+		active, _ := env.reconSvc.GetActiveSession(acct.ID)
 		if active != nil {
 			t.Error("Session should be completed after Execute")
 		}
@@ -112,15 +114,15 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 
 		restored1, _ := env.txnSvc.GetByID(txn1.ID)
 		restored2, _ := env.txnSvc.GetByID(txn2.ID)
-		if restored1.Status != models.TransactionStatusUncleared {
+		if restored1.Status != transaction.StatusUncleared {
 			t.Errorf("txn1 status = %s, want uncleared after Undo", restored1.Status)
 		}
-		if restored2.Status != models.TransactionStatusUncleared {
+		if restored2.Status != transaction.StatusUncleared {
 			t.Errorf("txn2 status = %s, want uncleared after Undo", restored2.Status)
 		}
 
 		// Session should be active again
-		active, _ = env.reconSvc.GetActiveSession(account.ID)
+		active, _ = env.reconSvc.GetActiveSession(acct.ID)
 		if active == nil {
 			t.Fatal("Session should be in_progress after Undo")
 		}
@@ -131,15 +133,15 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 
 	t.Run("preserves original cleared status on undo", func(t *testing.T) {
 		env := createReconTestEnv(t)
-		account := createReconTestAccount(t, env.accountRepo, "Checking", "1000.00")
+		acct := createReconTestAccount(t, env.accountRepo, "Checking", "1000.00")
 
 		// Create one uncleared and one cleared transaction
-		txnUncleared := models.NewTransaction(account.ID, models.NewDate(2024, 1, 5), models.MustNewMoney("-100.00"))
+		txnUncleared := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 5), types.MustNewMoney("-100.00"))
 		if err := env.txnSvc.Create(txnUncleared); err != nil {
 			t.Fatalf("Create txnUncleared: %v", err)
 		}
 
-		txnCleared := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-200.00"))
+		txnCleared := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 10), types.MustNewMoney("-200.00"))
 		if err := env.txnSvc.Create(txnCleared); err != nil {
 			t.Fatalf("Create txnCleared: %v", err)
 		}
@@ -148,13 +150,13 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 		}
 
 		// Start reconciliation: 1000 - 100 - 200 = 700
-		_, err := env.reconSvc.StartReconciliation(account.ID, models.NewDate(2024, 1, 31), models.MustNewMoney("700.00"))
+		_, err := env.reconSvc.StartReconciliation(acct.ID, types.NewDate(2024, 1, 31), types.MustNewMoney("700.00"))
 		if err != nil {
 			t.Fatalf("StartReconciliation() error = %v", err)
 		}
 
 		cmd := undo.NewFinishReconciliationCommand(
-			env.reconSvc, env.txnSvc, account.ID, []models.ID{txnUncleared.ID, txnCleared.ID},
+			env.reconSvc, env.txnSvc, acct.ID, []types.ID{txnUncleared.ID, txnCleared.ID},
 		)
 
 		if err := cmd.Execute(); err != nil {
@@ -177,30 +179,30 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 		restored1, _ := env.txnSvc.GetByID(txnUncleared.ID)
 		restored2, _ := env.txnSvc.GetByID(txnCleared.ID)
 
-		if restored1.Status != models.TransactionStatusUncleared {
+		if restored1.Status != transaction.StatusUncleared {
 			t.Errorf("txnUncleared status = %s, want uncleared", restored1.Status)
 		}
-		if restored2.Status != models.TransactionStatusCleared {
+		if restored2.Status != transaction.StatusCleared {
 			t.Errorf("txnCleared status = %s, want cleared", restored2.Status)
 		}
 	})
 
 	t.Run("description includes transaction count", func(t *testing.T) {
 		env := createReconTestEnv(t)
-		account := createReconTestAccount(t, env.accountRepo, "Checking", "1000.00")
+		acct := createReconTestAccount(t, env.accountRepo, "Checking", "1000.00")
 
-		txn := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-200.00"))
+		txn := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 10), types.MustNewMoney("-200.00"))
 		if err := env.txnSvc.Create(txn); err != nil {
 			t.Fatalf("Create: %v", err)
 		}
 
-		_, err := env.reconSvc.StartReconciliation(account.ID, models.NewDate(2024, 1, 31), models.MustNewMoney("800.00"))
+		_, err := env.reconSvc.StartReconciliation(acct.ID, types.NewDate(2024, 1, 31), types.MustNewMoney("800.00"))
 		if err != nil {
 			t.Fatalf("StartReconciliation() error = %v", err)
 		}
 
 		cmd := undo.NewFinishReconciliationCommand(
-			env.reconSvc, env.txnSvc, account.ID, []models.ID{txn.ID},
+			env.reconSvc, env.txnSvc, acct.ID, []types.ID{txn.ID},
 		)
 
 		if err := cmd.Execute(); err != nil {
@@ -216,21 +218,21 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 
 	t.Run("redo works after undo", func(t *testing.T) {
 		env := createReconTestEnv(t)
-		account := createReconTestAccount(t, env.accountRepo, "Checking", "1000.00")
+		acct := createReconTestAccount(t, env.accountRepo, "Checking", "1000.00")
 
-		txn := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-200.00"))
+		txn := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 10), types.MustNewMoney("-200.00"))
 		if err := env.txnSvc.Create(txn); err != nil {
 			t.Fatalf("Create: %v", err)
 		}
 
-		_, err := env.reconSvc.StartReconciliation(account.ID, models.NewDate(2024, 1, 31), models.MustNewMoney("800.00"))
+		_, err := env.reconSvc.StartReconciliation(acct.ID, types.NewDate(2024, 1, 31), types.MustNewMoney("800.00"))
 		if err != nil {
 			t.Fatalf("StartReconciliation() error = %v", err)
 		}
 
 		manager := undo.NewManager()
 		cmd := undo.NewFinishReconciliationCommand(
-			env.reconSvc, env.txnSvc, account.ID, []models.ID{txn.ID},
+			env.reconSvc, env.txnSvc, acct.ID, []types.ID{txn.ID},
 		)
 
 		// Execute via manager
@@ -252,7 +254,7 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 
 		// Transaction should be uncleared
 		restored, _ := env.txnSvc.GetByID(txn.ID)
-		if restored.Status != models.TransactionStatusUncleared {
+		if restored.Status != transaction.StatusUncleared {
 			t.Errorf("After Undo: status = %s, want uncleared", restored.Status)
 		}
 
@@ -269,7 +271,7 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 		}
 
 		// Session should be completed again
-		active, _ := env.reconSvc.GetActiveSession(account.ID)
+		active, _ := env.reconSvc.GetActiveSession(acct.ID)
 		if active != nil {
 			t.Error("Session should be completed after Redo")
 		}
@@ -277,10 +279,10 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 
 	t.Run("handles already reconciled transactions in list", func(t *testing.T) {
 		env := createReconTestEnv(t)
-		account := createReconTestAccount(t, env.accountRepo, "Checking", "1000.00")
+		acct := createReconTestAccount(t, env.accountRepo, "Checking", "1000.00")
 
 		// Pre-reconcile a transaction
-		txnRecon := models.NewTransaction(account.ID, models.NewDate(2024, 1, 5), models.MustNewMoney("-100.00"))
+		txnRecon := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 5), types.MustNewMoney("-100.00"))
 		if err := env.txnSvc.Create(txnRecon); err != nil {
 			t.Fatalf("Create txnRecon: %v", err)
 		}
@@ -289,19 +291,19 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 		}
 
 		// New transaction to reconcile
-		txnNew := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-200.00"))
+		txnNew := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 10), types.MustNewMoney("-200.00"))
 		if err := env.txnSvc.Create(txnNew); err != nil {
 			t.Fatalf("Create txnNew: %v", err)
 		}
 
 		// Statement: 1000 - 100 - 200 = 700
-		_, err := env.reconSvc.StartReconciliation(account.ID, models.NewDate(2024, 1, 31), models.MustNewMoney("700.00"))
+		_, err := env.reconSvc.StartReconciliation(acct.ID, types.NewDate(2024, 1, 31), types.MustNewMoney("700.00"))
 		if err != nil {
 			t.Fatalf("StartReconciliation() error = %v", err)
 		}
 
 		cmd := undo.NewFinishReconciliationCommand(
-			env.reconSvc, env.txnSvc, account.ID, []models.ID{txnRecon.ID, txnNew.ID},
+			env.reconSvc, env.txnSvc, acct.ID, []types.ID{txnRecon.ID, txnNew.ID},
 		)
 
 		if err := cmd.Execute(); err != nil {
@@ -321,7 +323,7 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 
 		// txnNew should be uncleared
 		r2, _ := env.txnSvc.GetByID(txnNew.ID)
-		if r2.Status != models.TransactionStatusUncleared {
+		if r2.Status != transaction.StatusUncleared {
 			t.Errorf("New transaction status = %s, want uncleared after Undo", r2.Status)
 		}
 	})

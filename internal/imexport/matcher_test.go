@@ -4,21 +4,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
-func makeDate(s string) models.Date {
-	d, err := models.ParseDate(s)
+func makeDate(s string) types.Date {
+	d, err := types.ParseDate(s)
 	if err != nil {
 		panic(err)
 	}
 	return d
 }
 
-func makeTransaction(accountID models.ID, date string, amount string, payeeName string) ExistingTransaction {
+func makeTransaction(accountID types.ID, date string, amount string, payeeName string) ExistingTransaction {
 	d := makeDate(date)
-	a := models.MustNewMoney(amount)
-	txn := models.NewTransaction(accountID, d, a)
+	a := types.MustNewMoney(amount)
+	txn := transaction.NewTransaction(accountID, d, a)
 	return ExistingTransaction{
 		Transaction: txn,
 		PayeeName:   payeeName,
@@ -27,7 +28,7 @@ func makeTransaction(accountID models.ID, date string, amount string, payeeName 
 
 func makeImportRecord(date string, amount string, payee string) ImportRecord {
 	d := makeDate(date)
-	a := models.MustNewMoney(amount)
+	a := types.MustNewMoney(amount)
 	return ImportRecord{
 		Date:   d,
 		Amount: a,
@@ -215,7 +216,7 @@ func TestDateScore_Decreasing(t *testing.T) {
 	base := makeDate("2024-01-15")
 	prev := 2.0 // larger than any score
 	for i := 0; i <= 7; i++ {
-		d := models.Date(time.Time(base).AddDate(0, 0, i))
+		d := types.Date(time.Time(base).AddDate(0, 0, i))
 		score := m.dateScore(base, d)
 		if score > prev {
 			t.Errorf("date score should decrease with distance: day %d score %f > previous %f", i, score, prev)
@@ -241,7 +242,7 @@ func TestMatch_NoExisting(t *testing.T) {
 
 func TestMatch_NoAmountMatch(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 	record := makeImportRecord("2024-01-15", "-50.00", "Kroger")
 	existing := []ExistingTransaction{
 		makeTransaction(accountID, "2024-01-15", "-75.00", "Kroger"),
@@ -255,7 +256,7 @@ func TestMatch_NoAmountMatch(t *testing.T) {
 
 func TestMatch_HighConfidence(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 	record := makeImportRecord("2024-01-15", "-50.00", "Kroger")
 	existing := []ExistingTransaction{
 		makeTransaction(accountID, "2024-01-15", "-50.00", "Kroger"),
@@ -275,7 +276,7 @@ func TestMatch_HighConfidence(t *testing.T) {
 
 func TestMatch_HighConfidence_SimilarPayee(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 	record := makeImportRecord("2024-01-15", "-5.75", "STARBUCKS #1234")
 	existing := []ExistingTransaction{
 		makeTransaction(accountID, "2024-01-16", "-5.75", "Starbucks"),
@@ -289,7 +290,7 @@ func TestMatch_HighConfidence_SimilarPayee(t *testing.T) {
 
 func TestMatch_LowConfidence_DateFar(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 	record := makeImportRecord("2024-01-15", "-50.00", "Kroger")
 	existing := []ExistingTransaction{
 		makeTransaction(accountID, "2024-01-20", "-50.00", "Kroger"),
@@ -303,7 +304,7 @@ func TestMatch_LowConfidence_DateFar(t *testing.T) {
 
 func TestMatch_LowConfidence_PayeeDifferent(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 	record := makeImportRecord("2024-01-15", "-50.00", "Kroger")
 	existing := []ExistingTransaction{
 		makeTransaction(accountID, "2024-01-15", "-50.00", "Amazon"),
@@ -318,18 +319,18 @@ func TestMatch_LowConfidence_PayeeDifferent(t *testing.T) {
 
 func TestMatch_FITID_Override(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	record := ImportRecord{
 		Date:            makeDate("2024-01-15"),
-		Amount:          models.MustNewMoney("-50.00"),
+		Amount:          types.MustNewMoney("-50.00"),
 		Payee:           "Some Bank Name",
 		BankReferenceID: "FITID123456",
 	}
 
 	existing := []ExistingTransaction{
 		{
-			Transaction:     models.NewTransaction(accountID, makeDate("2024-06-15"), models.MustNewMoney("-999.00")),
+			Transaction:     transaction.NewTransaction(accountID, makeDate("2024-06-15"), types.MustNewMoney("-999.00")),
 			PayeeName:       "Completely Different",
 			BankReferenceID: "FITID123456",
 		},
@@ -349,18 +350,18 @@ func TestMatch_FITID_Override(t *testing.T) {
 
 func TestMatch_FITID_NoMatch(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	record := ImportRecord{
 		Date:            makeDate("2024-01-15"),
-		Amount:          models.MustNewMoney("-50.00"),
+		Amount:          types.MustNewMoney("-50.00"),
 		Payee:           "Kroger",
 		BankReferenceID: "FITID999",
 	}
 
 	existing := []ExistingTransaction{
 		{
-			Transaction:     models.NewTransaction(accountID, makeDate("2024-01-15"), models.MustNewMoney("-50.00")),
+			Transaction:     transaction.NewTransaction(accountID, makeDate("2024-01-15"), types.MustNewMoney("-50.00")),
 			PayeeName:       "Kroger",
 			BankReferenceID: "FITID000",
 		},
@@ -379,7 +380,7 @@ func TestMatch_FITID_NoMatch(t *testing.T) {
 
 func TestMatch_BestCandidateSelected(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 	record := makeImportRecord("2024-01-15", "-50.00", "Kroger")
 
 	existing := []ExistingTransaction{
@@ -400,7 +401,7 @@ func TestMatch_BestCandidateSelected(t *testing.T) {
 
 func TestMatch_OutsideDateWindow(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 	record := makeImportRecord("2024-01-15", "-50.00", "Kroger")
 	existing := []ExistingTransaction{
 		makeTransaction(accountID, "2024-02-15", "-50.00", "Kroger"),
@@ -442,7 +443,7 @@ func TestMatchAll_NoExisting(t *testing.T) {
 
 func TestMatchAll_OneToOneMatch(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	records := []ImportRecord{
 		makeImportRecord("2024-01-15", "-50.00", "Kroger"),
@@ -471,7 +472,7 @@ func TestMatchAll_OneToOneMatch(t *testing.T) {
 
 func TestMatchAll_NoDoubleMatching(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	// Two identical import records
 	records := []ImportRecord{
@@ -499,18 +500,18 @@ func TestMatchAll_NoDoubleMatching(t *testing.T) {
 
 func TestMatchAll_FITID_Matching(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	records := []ImportRecord{
 		{
 			Date:            makeDate("2024-01-15"),
-			Amount:          models.MustNewMoney("-50.00"),
+			Amount:          types.MustNewMoney("-50.00"),
 			Payee:           "Bank Transfer",
 			BankReferenceID: "FIT001",
 		},
 		{
 			Date:            makeDate("2024-01-16"),
-			Amount:          models.MustNewMoney("-30.00"),
+			Amount:          types.MustNewMoney("-30.00"),
 			Payee:           "Bank Transfer 2",
 			BankReferenceID: "FIT002",
 		},
@@ -518,12 +519,12 @@ func TestMatchAll_FITID_Matching(t *testing.T) {
 
 	existing := []ExistingTransaction{
 		{
-			Transaction:     models.NewTransaction(accountID, makeDate("2024-01-15"), models.MustNewMoney("-50.00")),
+			Transaction:     transaction.NewTransaction(accountID, makeDate("2024-01-15"), types.MustNewMoney("-50.00")),
 			PayeeName:       "Some Name",
 			BankReferenceID: "FIT001",
 		},
 		{
-			Transaction:     models.NewTransaction(accountID, makeDate("2024-01-16"), models.MustNewMoney("-30.00")),
+			Transaction:     transaction.NewTransaction(accountID, makeDate("2024-01-16"), types.MustNewMoney("-30.00")),
 			PayeeName:       "Other Name",
 			BankReferenceID: "FIT002",
 		},
@@ -542,7 +543,7 @@ func TestMatchAll_FITID_Matching(t *testing.T) {
 
 func TestMatchAll_MixedMatching(t *testing.T) {
 	m := NewDefaultMatcher()
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	records := []ImportRecord{
 		makeImportRecord("2024-01-15", "-50.00", "Kroger"),
@@ -625,7 +626,7 @@ func TestCustomConfig(t *testing.T) {
 		HighConfidencePayeeThreshold: 0.9,
 	}
 	m := NewMatcher(config)
-	accountID := models.NewID()
+	accountID := types.NewID()
 
 	record := makeImportRecord("2024-01-15", "-50.00", "Kroger")
 	existing := []ExistingTransaction{

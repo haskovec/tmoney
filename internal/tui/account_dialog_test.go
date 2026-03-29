@@ -6,7 +6,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -16,7 +17,7 @@ import (
 func TestBuildAccountTypeOptions(t *testing.T) {
 	options := buildAccountTypeOptions()
 
-	allTypes := models.AllAccountTypes()
+	allTypes := account.AllTypes()
 	if len(options) != len(allTypes) {
 		t.Fatalf("expected %d options, got %d", len(allTypes), len(options))
 	}
@@ -31,17 +32,17 @@ func TestBuildAccountTypeOptions(t *testing.T) {
 func TestAccountTypeFromIndex(t *testing.T) {
 	tests := []struct {
 		index    int
-		expected models.AccountType
+		expected account.Type
 	}{
-		{0, models.AccountTypeChecking},
-		{1, models.AccountTypeSavings},
-		{2, models.AccountTypeCreditCard},
-		{3, models.AccountTypeInvestment},
-		{4, models.AccountTypeCash},
-		{5, models.AccountTypeLoan},
-		{6, models.AccountTypeAsset},
-		{-1, models.AccountTypeChecking},  // out of range defaults to checking
-		{100, models.AccountTypeChecking}, // out of range defaults to checking
+		{0, account.TypeChecking},
+		{1, account.TypeSavings},
+		{2, account.TypeCreditCard},
+		{3, account.TypeInvestment},
+		{4, account.TypeCash},
+		{5, account.TypeLoan},
+		{6, account.TypeAsset},
+		{-1, account.TypeChecking},  // out of range defaults to checking
+		{100, account.TypeChecking}, // out of range defaults to checking
 	}
 
 	for _, tc := range tests {
@@ -54,17 +55,17 @@ func TestAccountTypeFromIndex(t *testing.T) {
 
 func TestAccountTypeToIndex(t *testing.T) {
 	tests := []struct {
-		accountType models.AccountType
+		accountType account.Type
 		expected    int
 	}{
-		{models.AccountTypeChecking, 0},
-		{models.AccountTypeSavings, 1},
-		{models.AccountTypeCreditCard, 2},
-		{models.AccountTypeInvestment, 3},
-		{models.AccountTypeCash, 4},
-		{models.AccountTypeLoan, 5},
-		{models.AccountTypeAsset, 6},
-		{models.AccountType("unknown"), 0}, // unknown defaults to 0
+		{account.TypeChecking, 0},
+		{account.TypeSavings, 1},
+		{account.TypeCreditCard, 2},
+		{account.TypeInvestment, 3},
+		{account.TypeCash, 4},
+		{account.TypeLoan, 5},
+		{account.TypeAsset, 6},
+		{account.Type("unknown"), 0}, // unknown defaults to 0
 	}
 
 	for _, tc := range tests {
@@ -76,7 +77,7 @@ func TestAccountTypeToIndex(t *testing.T) {
 }
 
 func TestAccountTypeRoundTrip(t *testing.T) {
-	for i, at := range models.AllAccountTypes() {
+	for i, at := range account.AllTypes() {
 		idx := accountTypeToIndex(at)
 		if idx != i {
 			t.Errorf("accountTypeToIndex(%q) = %d, want %d", at, idx, i)
@@ -170,18 +171,18 @@ func TestBuildNewAccountDialog_Defaults(t *testing.T) {
 }
 
 func TestBuildEditAccountDialog(t *testing.T) {
-	account := models.NewAccount(
+	acct := account.NewAccount(
 		"My Checking",
-		models.AccountTypeChecking,
+		account.TypeChecking,
 		"USD",
-		models.ZeroMoney,
-		models.Today(),
+		types.ZeroMoney,
+		types.Today(),
 	)
-	account.SetInstitution("First Bank")
-	account.SetAccountNumber("1234")
-	account.SetNotes("Main account")
+	acct.SetInstitution("First Bank")
+	acct.SetAccountNumber("1234")
+	acct.SetNotes("Main account")
 
-	d := buildEditAccountDialog(account)
+	d := buildEditAccountDialog(acct)
 
 	if d.Title() != "Edit Account" {
 		t.Errorf("title = %q, want %q", d.Title(), "Edit Account")
@@ -228,17 +229,17 @@ func TestBuildEditAccountDialog(t *testing.T) {
 }
 
 func TestBuildEditAccountDialog_AlphanumericAccountNumber(t *testing.T) {
-	account := models.NewAccount(
+	acct := account.NewAccount(
 		"Brokerage",
-		models.AccountTypeInvestment,
+		account.TypeInvestment,
 		"USD",
-		models.ZeroMoney,
-		models.Today(),
+		types.ZeroMoney,
+		types.Today(),
 	)
-	account.SetInstitution("Fidelity")
-	account.SetAccountNumber("Z12-345ABC")
+	acct.SetInstitution("Fidelity")
+	acct.SetAccountNumber("Z12-345ABC")
 
-	d := buildEditAccountDialog(account)
+	d := buildEditAccountDialog(acct)
 	fields := d.Fields()
 
 	if fields[acctFieldAccountNumber].Value != "Z12-345ABC" {
@@ -247,17 +248,17 @@ func TestBuildEditAccountDialog_AlphanumericAccountNumber(t *testing.T) {
 }
 
 func TestBuildEditAccountDialog_CreditCard(t *testing.T) {
-	creditLimit, _ := models.NewMoney("5000.00")
-	account := models.NewAccount(
+	creditLimit, _ := types.NewMoney("5000.00")
+	acct := account.NewAccount(
 		"Visa",
-		models.AccountTypeCreditCard,
+		account.TypeCreditCard,
 		"USD",
-		models.ZeroMoney,
-		models.Today(),
+		types.ZeroMoney,
+		types.Today(),
 	)
-	account.SetCreditLimit(creditLimit)
+	acct.SetCreditLimit(creditLimit)
 
-	d := buildEditAccountDialog(account)
+	d := buildEditAccountDialog(acct)
 	fields := d.Fields()
 
 	// Type should be Credit Card (index 2)
@@ -280,17 +281,17 @@ func TestBuildEditAccountDialog_CreditCard(t *testing.T) {
 }
 
 func TestBuildEditAccountDialog_Loan(t *testing.T) {
-	rate, _ := models.NewMoney("4.50")
-	account := models.NewAccount(
+	rate, _ := types.NewMoney("4.50")
+	acct := account.NewAccount(
 		"Mortgage",
-		models.AccountTypeLoan,
+		account.TypeLoan,
 		"USD",
-		models.ZeroMoney,
-		models.Today(),
+		types.ZeroMoney,
+		types.Today(),
 	)
-	account.SetInterestRate(rate)
+	acct.SetInterestRate(rate)
 
-	d := buildEditAccountDialog(account)
+	d := buildEditAccountDialog(acct)
 	fields := d.Fields()
 
 	// Type should be Loan (index 5)
@@ -354,12 +355,12 @@ func TestApp_Update_AccountDialogDataMsg_Edit(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	account := models.NewAccount("Savings", models.AccountTypeSavings, "EUR", models.ZeroMoney, models.Today())
+	acct := account.NewAccount("Savings", account.TypeSavings, "EUR", types.ZeroMoney, types.Today())
 
 	msg := accountDialogDataMsg{
 		data: &accountDialogData{
 			mode:    accountDialogModeEdit,
-			account: account,
+			account: acct,
 		},
 	}
 	model, _ := app.Update(msg)
@@ -560,7 +561,7 @@ func TestApp_SubmitAccountDialog_InvalidCreditLimit(t *testing.T) {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Card"
 			// Set type to Credit Card so credit limit field is visible
-			d.Fields()[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCreditCard)
+			d.Fields()[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeCreditCard)
 			updateAccountFieldVisibility(d)
 			d.Fields()[acctFieldCreditLimit].Value = "abc"
 			return d
@@ -707,7 +708,7 @@ func TestApp_SubmitAccountDialog_ValidNew(t *testing.T) {
 }
 
 func TestApp_SubmitAccountDialog_ValidEdit(t *testing.T) {
-	existing := models.NewAccount("Old Name", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
+	existing := account.NewAccount("Old Name", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 
 	app := &App{
 		currentView: ViewRegister,
@@ -874,7 +875,7 @@ func TestApp_HandleMenuAction_EditAccount_NoSelection(t *testing.T) {
 }
 
 func TestApp_HandleMenuAction_EditAccount_WithSelection(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
@@ -883,8 +884,8 @@ func TestApp_HandleMenuAction_EditAccount_WithSelection(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	app.sidebar.SetAccounts([]*models.Account{
-		{BaseModel: models.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: models.AccountTypeChecking},
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 	}, nil)
 	app.sidebar.MoveDown() // move to account
 	app.sidebar.Select()
@@ -902,16 +903,16 @@ func TestApp_HandleMenuAction_EditAccount_WithSelection(t *testing.T) {
 
 func TestAccountTypeShowsCreditLimit(t *testing.T) {
 	tests := []struct {
-		accountType models.AccountType
+		accountType account.Type
 		expected    bool
 	}{
-		{models.AccountTypeChecking, false},
-		{models.AccountTypeSavings, false},
-		{models.AccountTypeCreditCard, true},
-		{models.AccountTypeInvestment, false},
-		{models.AccountTypeCash, false},
-		{models.AccountTypeLoan, false},
-		{models.AccountTypeAsset, false},
+		{account.TypeChecking, false},
+		{account.TypeSavings, false},
+		{account.TypeCreditCard, true},
+		{account.TypeInvestment, false},
+		{account.TypeCash, false},
+		{account.TypeLoan, false},
+		{account.TypeAsset, false},
 	}
 
 	for _, tc := range tests {
@@ -924,16 +925,16 @@ func TestAccountTypeShowsCreditLimit(t *testing.T) {
 
 func TestAccountTypeShowsInterestRate(t *testing.T) {
 	tests := []struct {
-		accountType models.AccountType
+		accountType account.Type
 		expected    bool
 	}{
-		{models.AccountTypeChecking, true},
-		{models.AccountTypeSavings, true},
-		{models.AccountTypeCreditCard, true},
-		{models.AccountTypeInvestment, true},
-		{models.AccountTypeCash, false},
-		{models.AccountTypeLoan, true},
-		{models.AccountTypeAsset, false},
+		{account.TypeChecking, true},
+		{account.TypeSavings, true},
+		{account.TypeCreditCard, true},
+		{account.TypeInvestment, true},
+		{account.TypeCash, false},
+		{account.TypeLoan, true},
+		{account.TypeAsset, false},
 	}
 
 	for _, tc := range tests {
@@ -962,7 +963,7 @@ func TestNewAccountDialog_FieldVisibility_CreditCard(t *testing.T) {
 	fields := d.Fields()
 
 	// Change type to Credit Card
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCreditCard)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeCreditCard)
 	updateAccountFieldVisibility(d)
 
 	if fields[acctFieldCreditLimit].Hidden {
@@ -978,7 +979,7 @@ func TestNewAccountDialog_FieldVisibility_Cash(t *testing.T) {
 	fields := d.Fields()
 
 	// Change type to Cash
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCash)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeCash)
 	updateAccountFieldVisibility(d)
 
 	if !fields[acctFieldCreditLimit].Hidden {
@@ -994,7 +995,7 @@ func TestNewAccountDialog_FieldVisibility_Asset(t *testing.T) {
 	fields := d.Fields()
 
 	// Change type to Asset
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeAsset)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeAsset)
 	updateAccountFieldVisibility(d)
 
 	if !fields[acctFieldCreditLimit].Hidden {
@@ -1010,7 +1011,7 @@ func TestNewAccountDialog_FieldVisibility_Savings(t *testing.T) {
 	fields := d.Fields()
 
 	// Change type to Savings
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeSavings)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeSavings)
 	updateAccountFieldVisibility(d)
 
 	if !fields[acctFieldCreditLimit].Hidden {
@@ -1026,7 +1027,7 @@ func TestNewAccountDialog_FieldVisibility_Investment(t *testing.T) {
 	fields := d.Fields()
 
 	// Change type to Investment
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeInvestment)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeInvestment)
 	updateAccountFieldVisibility(d)
 
 	if !fields[acctFieldCreditLimit].Hidden {
@@ -1042,7 +1043,7 @@ func TestNewAccountDialog_FieldVisibility_Loan(t *testing.T) {
 	fields := d.Fields()
 
 	// Change type to Loan
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeLoan)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeLoan)
 	updateAccountFieldVisibility(d)
 
 	if !fields[acctFieldCreditLimit].Hidden {
@@ -1058,12 +1059,12 @@ func TestUpdateAccountFieldVisibility_ClearsHiddenValues(t *testing.T) {
 	fields := d.Fields()
 
 	// Set type to Credit Card and fill in credit limit
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCreditCard)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeCreditCard)
 	updateAccountFieldVisibility(d)
 	fields[acctFieldCreditLimit].Value = "5000.00"
 
 	// Now switch to Cash - credit limit and interest rate should be cleared
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCash)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeCash)
 	updateAccountFieldVisibility(d)
 
 	if fields[acctFieldCreditLimit].Value != "" {
@@ -1079,12 +1080,12 @@ func TestUpdateAccountFieldVisibility_ClearsHiddenErrors(t *testing.T) {
 	fields := d.Fields()
 
 	// Set type to Credit Card with an error on credit limit
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCreditCard)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeCreditCard)
 	updateAccountFieldVisibility(d)
 	fields[acctFieldCreditLimit].Error = "Invalid amount"
 
 	// Switch to Checking - error should be cleared
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeChecking)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeChecking)
 	updateAccountFieldVisibility(d)
 
 	if fields[acctFieldCreditLimit].Error != "" {
@@ -1169,7 +1170,7 @@ func TestApp_SubmitAccountDialog_HiddenInterestRateIgnored(t *testing.T) {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "My Cash"
 			// Change type to Cash
-			d.Fields()[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCash)
+			d.Fields()[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeCash)
 			updateAccountFieldVisibility(d)
 			// Interest rate has invalid value but field is hidden
 			d.Fields()[acctFieldInterestRate].Value = "xyz"
@@ -1187,15 +1188,15 @@ func TestApp_SubmitAccountDialog_HiddenInterestRateIgnored(t *testing.T) {
 }
 
 func TestEditAccountDialog_FieldVisibility_Asset(t *testing.T) {
-	account := models.NewAccount(
+	acct := account.NewAccount(
 		"House",
-		models.AccountTypeAsset,
+		account.TypeAsset,
 		"USD",
-		models.ZeroMoney,
-		models.Today(),
+		types.ZeroMoney,
+		types.Today(),
 	)
 
-	d := buildEditAccountDialog(account)
+	d := buildEditAccountDialog(acct)
 	fields := d.Fields()
 
 	if !fields[acctFieldCreditLimit].Hidden {
@@ -1257,7 +1258,7 @@ func TestDialog_Render_SkipsHiddenFields(t *testing.T) {
 func TestDialog_Render_ShowsCreditLimitForCreditCard(t *testing.T) {
 	d := buildNewAccountDialog()
 	fields := d.Fields()
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCreditCard)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeCreditCard)
 	updateAccountFieldVisibility(d)
 
 	styles := NewStyles()
@@ -1276,7 +1277,7 @@ func TestDialog_Render_ShowsCreditLimitForCreditCard(t *testing.T) {
 func TestDialog_Render_HidesBothForCash(t *testing.T) {
 	d := buildNewAccountDialog()
 	fields := d.Fields()
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(models.AccountTypeCash)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeCash)
 	updateAccountFieldVisibility(d)
 
 	styles := NewStyles()

@@ -5,14 +5,16 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // createSplitTestService creates a test database with a TransactionService for split testing.
-func createSplitTestService(t *testing.T) (*service.TransactionService, *db.DB, func()) {
+func createSplitTestService(t *testing.T) (*transaction.Service, *db.DB, func()) {
 	t.Helper()
 
 	tempDir, err := os.MkdirTemp("", "tmoney-split-test-*")
@@ -27,11 +29,11 @@ func createSplitTestService(t *testing.T) (*service.TransactionService, *db.DB, 
 		t.Fatalf("Failed to create database: %v", err)
 	}
 
-	txnRepo := repository.NewTransactionRepository(database)
-	splitRepo := repository.NewSplitRepository(database)
-	transferRepo := repository.NewTransferRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	svc := service.NewTransactionService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	txnRepo := transaction.NewRepository(database)
+	splitRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	svc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
 
 	cleanup := func() {
 		database.Close()
@@ -42,24 +44,24 @@ func createSplitTestService(t *testing.T) (*service.TransactionService, *db.DB, 
 }
 
 // createSplitTestData creates an account and categories for split testing.
-func createSplitTestData(t *testing.T, database *db.DB) (*models.Account, *models.Category, *models.Category) {
+func createSplitTestData(t *testing.T, database *db.DB) (*account.Account, *category.Category, *category.Category) {
 	t.Helper()
 
-	accountRepo := repository.NewAccountRepository(database)
-	categoryRepo := repository.NewCategoryRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
 
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD",
-		models.MustNewMoney("2000.00"), models.NewDate(2024, 1, 1))
+	account := account.NewAccount("Checking", account.TypeChecking, "USD",
+		types.MustNewMoney("2000.00"), types.NewDate(2024, 1, 1))
 	if err := accountRepo.Create(account); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
-	food := models.NewCategory("Food", models.CategoryTypeExpense)
+	food := category.NewCategory("Food", category.TypeExpense)
 	if err := categoryRepo.Create(food); err != nil {
 		t.Fatalf("Failed to create food category: %v", err)
 	}
 
-	household := models.NewCategory("Household", models.CategoryTypeExpense)
+	household := category.NewCategory("Household", category.TypeExpense)
 	if err := categoryRepo.Create(household); err != nil {
 		t.Fatalf("Failed to create household category: %v", err)
 	}
@@ -74,11 +76,11 @@ func TestSplitCreateWithSplits(t *testing.T) {
 	account, food, household := createSplitTestData(t, database)
 
 	t.Run("creates transaction with valid splits", func(t *testing.T) {
-		txn := models.NewTransaction(account.ID, models.NewDate(2024, 1, 15), models.MustNewMoney("-100.00"))
+		txn := transaction.NewTransaction(account.ID, types.NewDate(2024, 1, 15), types.MustNewMoney("-100.00"))
 
-		splits := []*models.Split{
-			models.NewSplit(txn.ID, food.ID, models.MustNewMoney("-60.00")),
-			models.NewSplit(txn.ID, household.ID, models.MustNewMoney("-40.00")),
+		splits := []*transaction.Split{
+			transaction.NewSplit(txn.ID, food.ID, types.MustNewMoney("-60.00")),
+			transaction.NewSplit(txn.ID, household.ID, types.MustNewMoney("-40.00")),
 		}
 
 		err := svc.CreateWithSplits(txn, splits)
@@ -91,7 +93,7 @@ func TestSplitCreateWithSplits(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get transaction: %v", err)
 		}
-		if !retrieved.Amount.Equal(models.MustNewMoney("-100.00")) {
+		if !retrieved.Amount.Equal(types.MustNewMoney("-100.00")) {
 			t.Errorf("Expected amount -100.00, got %s", retrieved.Amount.String())
 		}
 
@@ -106,11 +108,11 @@ func TestSplitCreateWithSplits(t *testing.T) {
 	})
 
 	t.Run("rejects splits that do not sum to transaction amount", func(t *testing.T) {
-		txn := models.NewTransaction(account.ID, models.NewDate(2024, 1, 16), models.MustNewMoney("-100.00"))
+		txn := transaction.NewTransaction(account.ID, types.NewDate(2024, 1, 16), types.MustNewMoney("-100.00"))
 
-		splits := []*models.Split{
-			models.NewSplit(txn.ID, food.ID, models.MustNewMoney("-60.00")),
-			models.NewSplit(txn.ID, household.ID, models.MustNewMoney("-30.00")), // Only -90, not -100
+		splits := []*transaction.Split{
+			transaction.NewSplit(txn.ID, food.ID, types.MustNewMoney("-60.00")),
+			transaction.NewSplit(txn.ID, household.ID, types.MustNewMoney("-30.00")), // Only -90, not -100
 		}
 
 		err := svc.CreateWithSplits(txn, splits)
@@ -120,19 +122,19 @@ func TestSplitCreateWithSplits(t *testing.T) {
 	})
 
 	t.Run("rejects transaction with category and splits", func(t *testing.T) {
-		txn := models.NewTransaction(account.ID, models.NewDate(2024, 1, 17), models.MustNewMoney("-50.00"))
+		txn := transaction.NewTransaction(account.ID, types.NewDate(2024, 1, 17), types.MustNewMoney("-50.00"))
 		txn.SetCategory(food.ID) // Category set - not allowed with splits
 
-		splits := []*models.Split{
-			models.NewSplit(txn.ID, food.ID, models.MustNewMoney("-30.00")),
-			models.NewSplit(txn.ID, household.ID, models.MustNewMoney("-20.00")),
+		splits := []*transaction.Split{
+			transaction.NewSplit(txn.ID, food.ID, types.MustNewMoney("-30.00")),
+			transaction.NewSplit(txn.ID, household.ID, types.MustNewMoney("-20.00")),
 		}
 
 		err := svc.CreateWithSplits(txn, splits)
 		if err == nil {
 			t.Error("Expected error when transaction has both category and splits")
 		}
-		if _, ok := err.(*service.TransactionHasSplitsError); !ok {
+		if _, ok := err.(*transaction.HasSplitsError); !ok {
 			t.Errorf("Expected TransactionHasSplitsError, got %T: %v", err, err)
 		}
 	})
@@ -144,10 +146,10 @@ func TestSplitGetSplits(t *testing.T) {
 
 	account, food, household := createSplitTestData(t, database)
 
-	txn := models.NewTransaction(account.ID, models.NewDate(2024, 2, 1), models.MustNewMoney("-75.00"))
-	splits := []*models.Split{
-		models.NewSplitWithMemo(txn.ID, food.ID, models.MustNewMoney("-50.00"), "Groceries"),
-		models.NewSplitWithMemo(txn.ID, household.ID, models.MustNewMoney("-25.00"), "Cleaning supplies"),
+	txn := transaction.NewTransaction(account.ID, types.NewDate(2024, 2, 1), types.MustNewMoney("-75.00"))
+	splits := []*transaction.Split{
+		transaction.NewSplitWithMemo(txn.ID, food.ID, types.MustNewMoney("-50.00"), "Groceries"),
+		transaction.NewSplitWithMemo(txn.ID, household.ID, types.MustNewMoney("-25.00"), "Cleaning supplies"),
 	}
 
 	if err := svc.CreateWithSplits(txn, splits); err != nil {
@@ -172,8 +174,8 @@ func TestSplitGetSplits(t *testing.T) {
 	})
 
 	t.Run("returns empty for transaction without splits", func(t *testing.T) {
-		noSplitTxn := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-10.00"))
-		txnRepo := repository.NewTransactionRepository(database)
+		noSplitTxn := transaction.NewTransaction(account.ID, types.Today(), types.MustNewMoney("-10.00"))
+		txnRepo := transaction.NewRepository(database)
 		if err := txnRepo.Create(noSplitTxn); err != nil {
 			t.Fatalf("Failed to create transaction: %v", err)
 		}
@@ -195,25 +197,25 @@ func TestSplitAddSplit(t *testing.T) {
 	account, food, household := createSplitTestData(t, database)
 
 	// Create a transaction without splits first
-	txnRepo := repository.NewTransactionRepository(database)
-	txn := models.NewTransaction(account.ID, models.NewDate(2024, 3, 1), models.MustNewMoney("-80.00"))
+	txnRepo := transaction.NewRepository(database)
+	txn := transaction.NewTransaction(account.ID, types.NewDate(2024, 3, 1), types.MustNewMoney("-80.00"))
 	if err := txnRepo.Create(txn); err != nil {
 		t.Fatalf("Failed to create transaction: %v", err)
 	}
 
 	t.Run("adds split and validates total", func(t *testing.T) {
-		split1 := models.NewSplit(txn.ID, food.ID, models.MustNewMoney("-50.00"))
+		split1 := transaction.NewSplit(txn.ID, food.ID, types.MustNewMoney("-50.00"))
 		err := svc.AddSplit(split1)
 		// Should return a mismatch error since -50 != -80
 		if err == nil {
 			t.Error("Expected mismatch error after adding partial split")
 		}
-		if _, ok := err.(*service.SplitTotalMismatchError); !ok {
+		if _, ok := err.(*transaction.SplitTotalMismatchError); !ok {
 			t.Errorf("Expected SplitTotalMismatchError, got %T: %v", err, err)
 		}
 
 		// Add the remaining split to make totals match
-		split2 := models.NewSplit(txn.ID, household.ID, models.MustNewMoney("-30.00"))
+		split2 := transaction.NewSplit(txn.ID, household.ID, types.MustNewMoney("-30.00"))
 		err = svc.AddSplit(split2)
 		if err != nil {
 			t.Fatalf("Failed to add second split: %v", err)
@@ -237,27 +239,27 @@ func TestSplitReplaceSplits(t *testing.T) {
 	account, food, household := createSplitTestData(t, database)
 
 	// Create a third category
-	categoryRepo := repository.NewCategoryRepository(database)
-	transport := models.NewCategory("Transport", models.CategoryTypeExpense)
+	categoryRepo := category.NewRepository(database)
+	transport := category.NewCategory("Transport", category.TypeExpense)
 	if err := categoryRepo.Create(transport); err != nil {
 		t.Fatalf("Failed to create transport category: %v", err)
 	}
 
 	// Create transaction with initial splits
-	txn := models.NewTransaction(account.ID, models.NewDate(2024, 4, 1), models.MustNewMoney("-120.00"))
-	initialSplits := []*models.Split{
-		models.NewSplit(txn.ID, food.ID, models.MustNewMoney("-60.00")),
-		models.NewSplit(txn.ID, household.ID, models.MustNewMoney("-60.00")),
+	txn := transaction.NewTransaction(account.ID, types.NewDate(2024, 4, 1), types.MustNewMoney("-120.00"))
+	initialSplits := []*transaction.Split{
+		transaction.NewSplit(txn.ID, food.ID, types.MustNewMoney("-60.00")),
+		transaction.NewSplit(txn.ID, household.ID, types.MustNewMoney("-60.00")),
 	}
 	if err := svc.CreateWithSplits(txn, initialSplits); err != nil {
 		t.Fatalf("Failed to create transaction with splits: %v", err)
 	}
 
 	t.Run("replaces all splits", func(t *testing.T) {
-		newSplits := []*models.Split{
-			models.NewSplit(txn.ID, food.ID, models.MustNewMoney("-40.00")),
-			models.NewSplit(txn.ID, household.ID, models.MustNewMoney("-30.00")),
-			models.NewSplit(txn.ID, transport.ID, models.MustNewMoney("-50.00")),
+		newSplits := []*transaction.Split{
+			transaction.NewSplit(txn.ID, food.ID, types.MustNewMoney("-40.00")),
+			transaction.NewSplit(txn.ID, household.ID, types.MustNewMoney("-30.00")),
+			transaction.NewSplit(txn.ID, transport.ID, types.MustNewMoney("-50.00")),
 		}
 
 		err := svc.ReplaceSplits(txn.ID, newSplits)
@@ -276,9 +278,9 @@ func TestSplitReplaceSplits(t *testing.T) {
 	})
 
 	t.Run("rejects replacement splits that do not sum correctly", func(t *testing.T) {
-		badSplits := []*models.Split{
-			models.NewSplit(txn.ID, food.ID, models.MustNewMoney("-40.00")),
-			models.NewSplit(txn.ID, household.ID, models.MustNewMoney("-40.00")),
+		badSplits := []*transaction.Split{
+			transaction.NewSplit(txn.ID, food.ID, types.MustNewMoney("-40.00")),
+			transaction.NewSplit(txn.ID, household.ID, types.MustNewMoney("-40.00")),
 			// Total: -80, transaction is -120 - mismatch
 		}
 
@@ -296,10 +298,10 @@ func TestSplitValidateSplitTotals(t *testing.T) {
 	account, food, household := createSplitTestData(t, database)
 
 	t.Run("returns true when splits match transaction amount", func(t *testing.T) {
-		txn := models.NewTransaction(account.ID, models.NewDate(2024, 5, 1), models.MustNewMoney("-100.00"))
-		splits := []*models.Split{
-			models.NewSplit(txn.ID, food.ID, models.MustNewMoney("-70.00")),
-			models.NewSplit(txn.ID, household.ID, models.MustNewMoney("-30.00")),
+		txn := transaction.NewTransaction(account.ID, types.NewDate(2024, 5, 1), types.MustNewMoney("-100.00"))
+		splits := []*transaction.Split{
+			transaction.NewSplit(txn.ID, food.ID, types.MustNewMoney("-70.00")),
+			transaction.NewSplit(txn.ID, household.ID, types.MustNewMoney("-30.00")),
 		}
 		if err := svc.CreateWithSplits(txn, splits); err != nil {
 			t.Fatalf("Failed to create: %v", err)
@@ -321,10 +323,10 @@ func TestSplitDeleteSplit(t *testing.T) {
 
 	account, food, household := createSplitTestData(t, database)
 
-	txn := models.NewTransaction(account.ID, models.NewDate(2024, 6, 1), models.MustNewMoney("-90.00"))
-	split1 := models.NewSplit(txn.ID, food.ID, models.MustNewMoney("-50.00"))
-	split2 := models.NewSplit(txn.ID, household.ID, models.MustNewMoney("-40.00"))
-	if err := svc.CreateWithSplits(txn, []*models.Split{split1, split2}); err != nil {
+	txn := transaction.NewTransaction(account.ID, types.NewDate(2024, 6, 1), types.MustNewMoney("-90.00"))
+	split1 := transaction.NewSplit(txn.ID, food.ID, types.MustNewMoney("-50.00"))
+	split2 := transaction.NewSplit(txn.ID, household.ID, types.MustNewMoney("-40.00"))
+	if err := svc.CreateWithSplits(txn, []*transaction.Split{split1, split2}); err != nil {
 		t.Fatalf("Failed to create: %v", err)
 	}
 
@@ -359,10 +361,10 @@ func TestSplitUpdateSplit(t *testing.T) {
 
 	account, food, household := createSplitTestData(t, database)
 
-	txn := models.NewTransaction(account.ID, models.NewDate(2024, 7, 1), models.MustNewMoney("-100.00"))
-	splits := []*models.Split{
-		models.NewSplitWithMemo(txn.ID, food.ID, models.MustNewMoney("-60.00"), "Original memo"),
-		models.NewSplit(txn.ID, household.ID, models.MustNewMoney("-40.00")),
+	txn := transaction.NewTransaction(account.ID, types.NewDate(2024, 7, 1), types.MustNewMoney("-100.00"))
+	splits := []*transaction.Split{
+		transaction.NewSplitWithMemo(txn.ID, food.ID, types.MustNewMoney("-60.00"), "Original memo"),
+		transaction.NewSplit(txn.ID, household.ID, types.MustNewMoney("-40.00")),
 	}
 	if err := svc.CreateWithSplits(txn, splits); err != nil {
 		t.Fatalf("Failed to create: %v", err)
@@ -375,7 +377,7 @@ func TestSplitUpdateSplit(t *testing.T) {
 		}
 
 		// Find the food split
-		var foodSplit *models.Split
+		var foodSplit *transaction.Split
 		for _, s := range existingSplits {
 			if s.CategoryID == food.ID {
 				foodSplit = s
@@ -386,7 +388,7 @@ func TestSplitUpdateSplit(t *testing.T) {
 			t.Fatal("Could not find food split")
 		}
 
-		foodSplit.Amount = models.MustNewMoney("-65.00")
+		foodSplit.Amount = types.MustNewMoney("-65.00")
 		foodSplit.SetMemo("Updated memo")
 
 		err = svc.UpdateSplit(foodSplit)
@@ -402,7 +404,7 @@ func TestSplitUpdateSplit(t *testing.T) {
 
 		for _, s := range updatedSplits {
 			if s.CategoryID == food.ID {
-				if !s.Amount.Equal(models.MustNewMoney("-65.00")) {
+				if !s.Amount.Equal(types.MustNewMoney("-65.00")) {
 					t.Errorf("Expected updated amount -65.00, got %s", s.Amount.String())
 				}
 				if !s.Memo.Valid || s.Memo.String != "Updated memo" {

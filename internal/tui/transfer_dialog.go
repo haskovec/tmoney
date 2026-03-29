@@ -6,14 +6,16 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/models"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // transferDialogData holds the loaded data needed for the transfer dialog.
 type transferDialogData struct {
-	accounts   []*models.Account
-	accountIDs []models.ID // parallel to account dropdown options
+	accounts   []*account.Account
+	accountIDs []types.ID // parallel to account dropdown options
 }
 
 // transferDialogDataMsg is sent when transfer dialog data has been loaded.
@@ -25,9 +27,9 @@ type transferDialogDataMsg struct {
 type transferDialogSavedMsg struct{}
 
 // buildAccountOptions builds parallel display name and ID slices for account selectors.
-func buildAccountOptions(accounts []*models.Account) ([]string, []models.ID) {
+func buildAccountOptions(accounts []*account.Account) ([]string, []types.ID) {
 	options := make([]string, 0, len(accounts))
-	ids := make([]models.ID, 0, len(accounts))
+	ids := make([]types.ID, 0, len(accounts))
 
 	for _, acct := range accounts {
 		options = append(options, acct.Name)
@@ -133,7 +135,7 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 		fields[0].Error = "Please select a From account"
 		hasErrors = true
 	}
-	fromAccountID := models.NilID
+	fromAccountID := types.NilID
 	if fromIdx >= 0 && fromIdx < len(a.transferDialogAccountIDs) {
 		fromAccountID = a.transferDialogAccountIDs[fromIdx]
 	}
@@ -144,7 +146,7 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 		fields[1].Error = "Please select a To account"
 		hasErrors = true
 	}
-	toAccountID := models.NilID
+	toAccountID := types.NilID
 	if toIdx >= 0 && toIdx < len(a.transferDialogAccountIDs) {
 		toAccountID = a.transferDialogAccountIDs[toIdx]
 	}
@@ -197,7 +199,7 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			pair := cmd.Pair()
 			if pair != nil {
 				transferID := pair.FromTransaction.TransferID.ID
-				if err := a.transactionSvc.UpdateTransfer(transferID, date, amount, memo, models.TransactionStatusUncleared); err != nil {
+				if err := a.transactionSvc.UpdateTransfer(transferID, date, amount, memo, transaction.StatusUncleared); err != nil {
 					return errMsg{err: fmt.Errorf("transfer created but failed to set memo: %w", err)}
 				}
 			}

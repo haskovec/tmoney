@@ -7,8 +7,11 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -87,7 +90,7 @@ func TestParseAmountInput(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseAmountInput(%q) returned error: %v", tt.input, err)
 			}
-			expected := models.MustNewMoney(tt.expected)
+			expected := types.MustNewMoney(tt.expected)
 			if !m.Equal(expected) {
 				t.Errorf("parseAmountInput(%q) = %s, want %s", tt.input, m.String(), expected.String())
 			}
@@ -115,23 +118,23 @@ func TestParseAmountInput_Invalid(t *testing.T) {
 }
 
 func TestBuildCategoryOptions(t *testing.T) {
-	parentID := models.NewID()
-	categories := []*models.Category{
+	parentID := types.NewID()
+	categories := []*category.Category{
 		{
-			BaseModel: models.BaseModel{ID: parentID},
+			BaseModel: types.BaseModel{ID: parentID},
 			Name:      "Food",
-			Type:      models.CategoryTypeExpense,
+			Type:      category.TypeExpense,
 		},
 		{
-			BaseModel: models.BaseModel{ID: models.NewID()},
+			BaseModel: types.BaseModel{ID: types.NewID()},
 			Name:      "Groceries",
-			ParentID:  models.NullableID{ID: parentID, Valid: true},
-			Type:      models.CategoryTypeExpense,
+			ParentID:  types.NullableID{ID: parentID, Valid: true},
+			Type:      category.TypeExpense,
 		},
 		{
-			BaseModel: models.BaseModel{ID: models.NewID()},
+			BaseModel: types.BaseModel{ID: types.NewID()},
 			Name:      "Transfer",
-			Type:      models.CategoryTypeExpense,
+			Type:      category.TypeExpense,
 			IsSystem:  true,
 		},
 	}
@@ -142,7 +145,7 @@ func TestBuildCategoryOptions(t *testing.T) {
 	if options[0] != "(None)" {
 		t.Errorf("first option = %q, want %q", options[0], "(None)")
 	}
-	if ids[0] != models.NilID {
+	if ids[0] != types.NilID {
 		t.Errorf("first ID should be NilID")
 	}
 
@@ -181,7 +184,7 @@ func TestBuildCategoryOptions_Empty(t *testing.T) {
 
 func TestBuildTransactionDialog(t *testing.T) {
 	data := &transactionDialogData{
-		categories: []*models.Category{},
+		categories: []*category.Category{},
 	}
 	options := []string{"(None)"}
 
@@ -242,7 +245,7 @@ func TestBuildTransactionDialog_FieldTypes(t *testing.T) {
 // =============================================================================
 
 func TestApp_HandleRegisterKeys_NewKey(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		width:       120,
@@ -253,15 +256,15 @@ func TestApp_HandleRegisterKeys_NewKey(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: accountID},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
 			},
-			transactions:  []*models.Transaction{},
-			balance:       &service.AccountBalance{AccountID: accountID, CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			transactions:  []*transaction.Transaction{},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 	}
 	app.buildRegisterTable()
@@ -287,9 +290,9 @@ func TestApp_Update_TransactionDialogDataMsg(t *testing.T) {
 	}
 
 	data := &transactionDialogData{
-		payees:     []*models.Payee{},
-		categories: []*models.Category{},
-		payeeMap:   make(map[string]*models.Payee),
+		payees:     []*payee.Payee{},
+		categories: []*category.Category{},
+		payeeMap:   make(map[string]*payee.Payee),
 	}
 
 	msg := transactionDialogDataMsg{data: data}
@@ -324,9 +327,9 @@ func TestApp_HandleTransactionDialogKey_Cancel(t *testing.T) {
 			return d
 		}(),
 		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*models.Payee),
+			payeeMap: make(map[string]*payee.Payee),
 		},
-		txnDialogCategoryIDs: []models.ID{models.NilID},
+		txnDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	// Press Escape to cancel
@@ -354,9 +357,9 @@ func TestApp_HandleTransactionDialogKey_TabCycles(t *testing.T) {
 			return d
 		}(),
 		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*models.Payee),
+			payeeMap: make(map[string]*payee.Payee),
 		},
-		txnDialogCategoryIDs: []models.ID{models.NilID},
+		txnDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	initialFocus := app.txnDialog.FocusIndex()
@@ -375,7 +378,7 @@ func TestApp_HandleTransactionDialogKey_TabCycles(t *testing.T) {
 }
 
 func TestApp_Update_TransactionDialogSavedMsg(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
@@ -384,8 +387,8 @@ func TestApp_Update_TransactionDialogSavedMsg(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 	// Set up sidebar with a selected account
-	app.sidebar.SetAccounts([]*models.Account{
-		{BaseModel: models.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: models.AccountTypeChecking},
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 	}, nil)
 
 	msg := transactionDialogSavedMsg{}
@@ -397,8 +400,8 @@ func TestApp_Update_TransactionDialogSavedMsg(t *testing.T) {
 }
 
 func TestApp_CheckPayeeAutoFill(t *testing.T) {
-	categoryID := models.NewID()
-	payeeID := models.NewID()
+	categoryID := types.NewID()
+	payeeID := types.NewID()
 
 	app := &App{
 		currentView: ViewRegister,
@@ -418,15 +421,15 @@ func TestApp_CheckPayeeAutoFill(t *testing.T) {
 			return d
 		}(),
 		txnDialogData: &transactionDialogData{
-			payeeMap: map[string]*models.Payee{
+			payeeMap: map[string]*payee.Payee{
 				"kroger": {
-					BaseModel:         models.BaseModel{ID: payeeID},
+					BaseModel:         types.BaseModel{ID: payeeID},
 					Name:              "Kroger",
-					DefaultCategoryID: models.NullableID{ID: categoryID, Valid: true},
+					DefaultCategoryID: types.NullableID{ID: categoryID, Valid: true},
 				},
 			},
 		},
-		txnDialogCategoryIDs: []models.ID{models.NilID, categoryID},
+		txnDialogCategoryIDs: []types.ID{types.NilID, categoryID},
 	}
 
 	app.checkPayeeAutoFill()
@@ -457,9 +460,9 @@ func TestApp_CheckPayeeAutoFill_NoMatch(t *testing.T) {
 			return d
 		}(),
 		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*models.Payee),
+			payeeMap: make(map[string]*payee.Payee),
 		},
-		txnDialogCategoryIDs: []models.ID{models.NilID, models.NewID()},
+		txnDialogCategoryIDs: []types.ID{types.NilID, types.NewID()},
 	}
 
 	app.checkPayeeAutoFill()
@@ -490,8 +493,8 @@ func TestApp_SubmitTransactionDialog_InvalidDate(t *testing.T) {
 			d.SetVisible(true)
 			return d
 		}(),
-		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*models.Payee)},
-		txnDialogCategoryIDs: []models.ID{models.NilID},
+		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
+		txnDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	_, cmd := app.submitTransactionDialog()
@@ -525,8 +528,8 @@ func TestApp_SubmitTransactionDialog_InvalidAmount(t *testing.T) {
 			d.SetVisible(true)
 			return d
 		}(),
-		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*models.Payee)},
-		txnDialogCategoryIDs: []models.ID{models.NilID},
+		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
+		txnDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	_, cmd := app.submitTransactionDialog()
@@ -560,8 +563,8 @@ func TestApp_SubmitTransactionDialog_MultipleErrors(t *testing.T) {
 			d.SetVisible(true)
 			return d
 		}(),
-		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*models.Payee)},
-		txnDialogCategoryIDs: []models.ID{models.NilID},
+		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
+		txnDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	_, cmd := app.submitTransactionDialog()
@@ -582,7 +585,7 @@ func TestApp_SubmitTransactionDialog_MultipleErrors(t *testing.T) {
 }
 
 func TestApp_SubmitTransactionDialog_ValidNonSplit(t *testing.T) {
-	accountID := models.NewID()
+	accountID := types.NewID()
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
@@ -602,13 +605,13 @@ func TestApp_SubmitTransactionDialog_ValidNonSplit(t *testing.T) {
 			return d
 		}(),
 		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*models.Payee),
+			payeeMap: make(map[string]*payee.Payee),
 		},
-		txnDialogCategoryIDs: []models.ID{models.NilID, models.NewID()},
+		txnDialogCategoryIDs: []types.ID{types.NilID, types.NewID()},
 	}
 
-	app.sidebar.SetAccounts([]*models.Account{
-		{BaseModel: models.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: models.AccountTypeChecking},
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 	}, nil)
 
 	model, cmd := app.submitTransactionDialog()
@@ -632,8 +635,8 @@ func TestApp_CloseTransactionDialog(t *testing.T) {
 			d.SetVisible(true)
 			return d
 		}(),
-		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*models.Payee)},
-		txnDialogCategoryIDs: []models.ID{models.NilID},
+		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
+		txnDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
 	app.closeTransactionDialog()
@@ -656,7 +659,7 @@ func TestApp_CheckPayeeAutoFill_NilDialog(t *testing.T) {
 }
 
 func TestApp_CheckPayeeAutoFill_EmptyPayee(t *testing.T) {
-	catID := models.NewID()
+	catID := types.NewID()
 	app := &App{
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
@@ -671,15 +674,15 @@ func TestApp_CheckPayeeAutoFill_EmptyPayee(t *testing.T) {
 			return d
 		}(),
 		txnDialogData: &transactionDialogData{
-			payeeMap: map[string]*models.Payee{
+			payeeMap: map[string]*payee.Payee{
 				"coffee shop": {
-					BaseModel:         models.BaseModel{ID: models.NewID()},
+					BaseModel:         types.BaseModel{ID: types.NewID()},
 					Name:              "Coffee Shop",
-					DefaultCategoryID: models.NullableID{ID: catID, Valid: true},
+					DefaultCategoryID: types.NullableID{ID: catID, Valid: true},
 				},
 			},
 		},
-		txnDialogCategoryIDs: []models.ID{models.NilID, catID},
+		txnDialogCategoryIDs: []types.ID{types.NilID, catID},
 	}
 
 	app.checkPayeeAutoFill()
@@ -727,10 +730,10 @@ func TestApp_HandleTransactionDialogKey_NilDialog(t *testing.T) {
 }
 
 func TestBuildCategoryOptions_Sorted(t *testing.T) {
-	categories := []*models.Category{
-		{BaseModel: models.BaseModel{ID: models.NewID()}, Name: "Utilities", Type: models.CategoryTypeExpense},
-		{BaseModel: models.BaseModel{ID: models.NewID()}, Name: "Food", Type: models.CategoryTypeExpense},
-		{BaseModel: models.BaseModel{ID: models.NewID()}, Name: "Housing", Type: models.CategoryTypeExpense},
+	categories := []*category.Category{
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Utilities", Type: category.TypeExpense},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Food", Type: category.TypeExpense},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Housing", Type: category.TypeExpense},
 	}
 
 	options, _ := buildCategoryOptions(categories)
@@ -750,16 +753,16 @@ func TestBuildCategoryOptions_Sorted(t *testing.T) {
 }
 
 func TestBuildCategoryOptions_IDMapping(t *testing.T) {
-	catID := models.NewID()
-	categories := []*models.Category{
-		{BaseModel: models.BaseModel{ID: catID}, Name: "Food", Type: models.CategoryTypeExpense},
+	catID := types.NewID()
+	categories := []*category.Category{
+		{BaseModel: types.BaseModel{ID: catID}, Name: "Food", Type: category.TypeExpense},
 	}
 
 	options, ids := buildCategoryOptions(categories)
 	if len(options) != 2 || len(ids) != 2 {
 		t.Fatalf("Expected 2 options and 2 IDs, got %d and %d", len(options), len(ids))
 	}
-	if ids[0] != models.NilID {
+	if ids[0] != types.NilID {
 		t.Error("First ID should be NilID")
 	}
 	if ids[1] != catID {
@@ -773,7 +776,7 @@ func TestParseAmountInput_DollarNegative(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseAmountInput($-50.00) error = %v", err)
 	}
-	expected := models.MustNewMoney("-50")
+	expected := types.MustNewMoney("-50")
 	if !amount.Equal(expected) {
 		t.Errorf("parseAmountInput($-50.00) = %s, want %s", amount.String(), expected.String())
 	}
@@ -793,15 +796,15 @@ func TestApp_RenderLayout_WithTransactionDialog(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		keys:        defaultKeyMap(),
 		register: &registerData{
-			account: &models.Account{
-				BaseModel: models.BaseModel{ID: models.NewID()},
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: types.NewID()},
 				Name:      "Checking",
 			},
-			transactions:  []*models.Transaction{},
-			balance:       &service.AccountBalance{CurrentBalance: models.ZeroMoney},
-			payeeNames:    make(map[models.ID]string),
-			categoryNames: make(map[models.ID]string),
-			accountNames:  make(map[models.ID]string),
+			transactions:  []*transaction.Transaction{},
+			balance:       &account.Balance{CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
 		},
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")

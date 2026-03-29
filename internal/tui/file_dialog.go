@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/service"
 )
 
 // fileDialogMode indicates which file dialog is active.
@@ -185,12 +185,12 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 
 	// Set new database and reinitialize services
 	a.db = newDB
-	svc := service.NewServices(newDB)
+	svc := app.NewServices(newDB)
 	a.accountSvc = svc.Account
 	a.transactionSvc = svc.Transaction
 	a.categorySvc = svc.Category
 	a.payeeSvc = svc.Payee
-	a.scheduledTxnSvc = svc.ScheduledTxn
+	a.scheduledTxnSvc = svc.Scheduled
 	a.reportSvc = svc.Report
 
 	// Clear all cached view data

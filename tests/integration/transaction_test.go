@@ -5,9 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/repository"
+	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // TestTransactionLifecycle tests the complete transaction lifecycle:
@@ -27,29 +31,29 @@ func TestTransactionLifecycle(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
 	// Create an account first (required for transactions)
-	account := models.NewAccount(
+	acct := account.NewAccount(
 		"Checking",
-		models.AccountTypeChecking,
+		account.TypeChecking,
 		"USD",
-		models.MustNewMoney("1000.00"),
-		models.NewDate(2024, 1, 1),
+		types.MustNewMoney("1000.00"),
+		types.NewDate(2024, 1, 1),
 	)
-	if err := accountRepo.Create(account); err != nil {
+	if err := accountRepo.Create(acct); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
-	var transactionID models.ID
+	var transactionID types.ID
 
 	// Step 1: Create a transaction
 	t.Run("Create transaction", func(t *testing.T) {
-		txn := models.NewTransaction(
-			account.ID,
-			models.NewDate(2024, 1, 15),
-			models.MustNewMoney("-50.00"),
+		txn := transaction.NewTransaction(
+			acct.ID,
+			types.NewDate(2024, 1, 15),
+			types.MustNewMoney("-50.00"),
 		)
 		txn.SetMemo("Coffee shop")
 
@@ -72,13 +76,13 @@ func TestTransactionLifecycle(t *testing.T) {
 		}
 
 		retrieved := transactions[0]
-		if !retrieved.Amount.Equal(models.MustNewMoney("-50.00")) {
+		if !retrieved.Amount.Equal(types.MustNewMoney("-50.00")) {
 			t.Errorf("Expected amount '-50.00', got %q", retrieved.Amount.String())
 		}
 		if !retrieved.Memo.Valid || retrieved.Memo.String != "Coffee shop" {
 			t.Errorf("Expected memo 'Coffee shop', got %v", retrieved.Memo)
 		}
-		if retrieved.Status != models.TransactionStatusUncleared {
+		if retrieved.Status != transaction.StatusUncleared {
 			t.Errorf("Expected status 'uncleared', got %q", retrieved.Status)
 		}
 	})
@@ -114,7 +118,7 @@ func TestTransactionLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get updated transaction: %v", err)
 		}
-		if updated.Status != models.TransactionStatusCleared {
+		if updated.Status != transaction.StatusCleared {
 			t.Errorf("Expected status 'cleared', got %q", updated.Status)
 		}
 		if !updated.Memo.Valid || updated.Memo.String != "Coffee shop - updated" {
@@ -156,12 +160,12 @@ func TestTransactionListByAccount(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
 	// Create two accounts
-	checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	savings := models.NewAccount("Savings", models.AccountTypeSavings, "USD", models.ZeroMoney, models.Today())
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	savings := account.NewAccount("Savings", account.TypeSavings, "USD", types.ZeroMoney, types.Today())
 
 	if err := accountRepo.Create(checking); err != nil {
 		t.Fatalf("Failed to create checking account: %v", err)
@@ -171,11 +175,11 @@ func TestTransactionListByAccount(t *testing.T) {
 	}
 
 	// Create transactions for each account
-	txn1 := models.NewTransaction(checking.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-100.00"))
-	txn2 := models.NewTransaction(checking.ID, models.NewDate(2024, 1, 15), models.MustNewMoney("-50.00"))
-	txn3 := models.NewTransaction(savings.ID, models.NewDate(2024, 1, 12), models.MustNewMoney("500.00"))
+	txn1 := transaction.NewTransaction(checking.ID, types.NewDate(2024, 1, 10), types.MustNewMoney("-100.00"))
+	txn2 := transaction.NewTransaction(checking.ID, types.NewDate(2024, 1, 15), types.MustNewMoney("-50.00"))
+	txn3 := transaction.NewTransaction(savings.ID, types.NewDate(2024, 1, 12), types.MustNewMoney("500.00"))
 
-	for _, txn := range []*models.Transaction{txn1, txn2, txn3} {
+	for _, txn := range []*transaction.Transaction{txn1, txn2, txn3} {
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("Failed to create transaction: %v", err)
 		}
@@ -221,24 +225,24 @@ func TestTransactionListByDateRange(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	if err := accountRepo.Create(account); err != nil {
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	// Create transactions on different dates
-	dates := []models.Date{
-		models.NewDate(2024, 1, 5),
-		models.NewDate(2024, 1, 15),
-		models.NewDate(2024, 1, 25),
-		models.NewDate(2024, 2, 5),
+	dates := []types.Date{
+		types.NewDate(2024, 1, 5),
+		types.NewDate(2024, 1, 15),
+		types.NewDate(2024, 1, 25),
+		types.NewDate(2024, 2, 5),
 	}
 
 	for i, date := range dates {
-		txn := models.NewTransaction(account.ID, date, models.MustNewMoney("-10.00"))
+		txn := transaction.NewTransaction(acct.ID, date, types.MustNewMoney("-10.00"))
 		txn.SetMemo("Transaction " + string(rune('A'+i)))
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("Failed to create transaction: %v", err)
@@ -247,8 +251,8 @@ func TestTransactionListByDateRange(t *testing.T) {
 
 	// Query for January only
 	janTxns, err := txnRepo.ListByDateRange(
-		models.NewDate(2024, 1, 1),
-		models.NewDate(2024, 1, 31),
+		types.NewDate(2024, 1, 1),
+		types.NewDate(2024, 1, 31),
 	)
 	if err != nil {
 		t.Fatalf("Failed to list January transactions: %v", err)
@@ -259,8 +263,8 @@ func TestTransactionListByDateRange(t *testing.T) {
 
 	// Query for mid-January
 	midJanTxns, err := txnRepo.ListByDateRange(
-		models.NewDate(2024, 1, 10),
-		models.NewDate(2024, 1, 20),
+		types.NewDate(2024, 1, 10),
+		types.NewDate(2024, 1, 20),
 	)
 	if err != nil {
 		t.Fatalf("Failed to list mid-January transactions: %v", err)
@@ -286,23 +290,23 @@ func TestTransactionNotFound(t *testing.T) {
 	}
 	defer database.Close()
 
-	txnRepo := repository.NewTransactionRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
 	// Try to get non-existent transaction
-	_, err = txnRepo.GetByID(models.NewID())
+	_, err = txnRepo.GetByID(types.NewID())
 	if err == nil {
 		t.Error("Expected error for non-existent transaction")
 	}
-	if _, ok := err.(*repository.NotFoundError); !ok {
+	if _, ok := err.(*dberrors.NotFoundError); !ok {
 		t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 	}
 
 	// Try to delete non-existent transaction
-	err = txnRepo.Delete(models.NewID())
+	err = txnRepo.Delete(types.NewID())
 	if err == nil {
 		t.Error("Expected error for deleting non-existent transaction")
 	}
-	if _, ok := err.(*repository.NotFoundError); !ok {
+	if _, ok := err.(*dberrors.NotFoundError); !ok {
 		t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 	}
 }
@@ -323,20 +327,20 @@ func TestTransactionRequiresValidAccount(t *testing.T) {
 	}
 	defer database.Close()
 
-	txnRepo := repository.NewTransactionRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
 	// Try to create transaction with non-existent account
-	txn := models.NewTransaction(
-		models.NewID(), // Random account ID that doesn't exist
-		models.Today(),
-		models.MustNewMoney("-50.00"),
+	txn := transaction.NewTransaction(
+		types.NewID(), // Random account ID that doesn't exist
+		types.Today(),
+		types.MustNewMoney("-50.00"),
 	)
 
 	err = txnRepo.Create(txn)
 	if err == nil {
 		t.Error("Expected error when creating transaction with non-existent account")
 	}
-	if _, ok := err.(*repository.NotFoundError); !ok {
+	if _, ok := err.(*dberrors.NotFoundError); !ok {
 		t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 	}
 }
@@ -357,17 +361,17 @@ func TestTransactionCountByAccount(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
 	// Create account
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	if err := accountRepo.Create(account); err != nil {
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	// Initially should be zero
-	count, err := txnRepo.CountByAccount(account.ID)
+	count, err := txnRepo.CountByAccount(acct.ID)
 	if err != nil {
 		t.Fatalf("Failed to count transactions: %v", err)
 	}
@@ -377,14 +381,14 @@ func TestTransactionCountByAccount(t *testing.T) {
 
 	// Create some transactions
 	for range 3 {
-		txn := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-10.00"))
+		txn := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-10.00"))
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("Failed to create transaction: %v", err)
 		}
 	}
 
 	// Should now be 3
-	count, err = txnRepo.CountByAccount(account.ID)
+	count, err = txnRepo.CountByAccount(acct.ID)
 	if err != nil {
 		t.Fatalf("Failed to count transactions: %v", err)
 	}
@@ -409,36 +413,36 @@ func TestTransactionWithAllFields(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
-	categoryRepo := repository.NewCategoryRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+	payeeRepo := payee.NewRepository(database)
 
 	// Create account
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	if err := accountRepo.Create(account); err != nil {
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	// Create category
-	category := models.NewCategory("Food", models.CategoryTypeExpense)
-	if err := categoryRepo.Create(category); err != nil {
+	cat := category.NewCategory("Food", category.TypeExpense)
+	if err := categoryRepo.Create(cat); err != nil {
 		t.Fatalf("Failed to create category: %v", err)
 	}
 
 	// Create payee
-	payee := models.NewPayee("Coffee Shop")
-	if err := payeeRepo.Create(payee); err != nil {
+	py := payee.NewPayee("Coffee Shop")
+	if err := payeeRepo.Create(py); err != nil {
 		t.Fatalf("Failed to create payee: %v", err)
 	}
 
 	// Create transaction with all fields
-	txn := models.NewTransactionFull(
-		account.ID,
-		models.NewDate(2024, 1, 15),
-		models.MustNewMoney("-25.50"),
-		payee.ID,
-		category.ID,
+	txn := transaction.NewTransactionFull(
+		acct.ID,
+		types.NewDate(2024, 1, 15),
+		types.MustNewMoney("-25.50"),
+		py.ID,
+		cat.ID,
 		"Morning coffee",
 	)
 	txn.SetCheckNumber("1234")
@@ -454,11 +458,11 @@ func TestTransactionWithAllFields(t *testing.T) {
 		t.Fatalf("Failed to get transaction: %v", err)
 	}
 
-	if !retrieved.PayeeID.Valid || retrieved.PayeeID.ID != payee.ID {
-		t.Errorf("Expected payee ID %s, got %v", payee.ID.String(), retrieved.PayeeID)
+	if !retrieved.PayeeID.Valid || retrieved.PayeeID.ID != py.ID {
+		t.Errorf("Expected payee ID %s, got %v", py.ID.String(), retrieved.PayeeID)
 	}
-	if !retrieved.CategoryID.Valid || retrieved.CategoryID.ID != category.ID {
-		t.Errorf("Expected category ID %s, got %v", category.ID.String(), retrieved.CategoryID)
+	if !retrieved.CategoryID.Valid || retrieved.CategoryID.ID != cat.ID {
+		t.Errorf("Expected category ID %s, got %v", cat.ID.String(), retrieved.CategoryID)
 	}
 	if !retrieved.Memo.Valid || retrieved.Memo.String != "Morning coffee" {
 		t.Errorf("Expected memo 'Morning coffee', got %v", retrieved.Memo)
@@ -466,7 +470,7 @@ func TestTransactionWithAllFields(t *testing.T) {
 	if !retrieved.CheckNumber.Valid || retrieved.CheckNumber.String != "1234" {
 		t.Errorf("Expected check number '1234', got %v", retrieved.CheckNumber)
 	}
-	if retrieved.Status != models.TransactionStatusCleared {
+	if retrieved.Status != transaction.StatusCleared {
 		t.Errorf("Expected status 'cleared', got %q", retrieved.Status)
 	}
 }
@@ -487,27 +491,27 @@ func TestAccountWithTransactionCannotBeDeleted(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
 	// Create account
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	if err := accountRepo.Create(account); err != nil {
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	// Create transaction
-	txn := models.NewTransaction(account.ID, models.Today(), models.MustNewMoney("-10.00"))
+	txn := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-10.00"))
 	if err := txnRepo.Create(txn); err != nil {
 		t.Fatalf("Failed to create transaction: %v", err)
 	}
 
 	// Try to delete account
-	err = accountRepo.Delete(account.ID)
+	err = accountRepo.Delete(acct.ID)
 	if err == nil {
 		t.Error("Expected error when deleting account with transactions")
 	}
-	if _, ok := err.(*repository.HasDependentsError); !ok {
+	if _, ok := err.(*dberrors.HasDependentsError); !ok {
 		t.Errorf("Expected HasDependentsError, got %T: %v", err, err)
 	}
 }
@@ -528,33 +532,33 @@ func TestTransactionSearchByPayee(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	payeeRepo := payee.NewRepository(database)
 
 	// Create account
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	if err := accountRepo.Create(account); err != nil {
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	// Create payees
-	coffeeShop := models.NewPayee("Coffee Shop")
-	grocery := models.NewPayee("Grocery Store")
-	gasStation := models.NewPayee("Gas Station")
+	coffeeShop := payee.NewPayee("Coffee Shop")
+	grocery := payee.NewPayee("Grocery Store")
+	gasStation := payee.NewPayee("Gas Station")
 
-	for _, payee := range []*models.Payee{coffeeShop, grocery, gasStation} {
-		if err := payeeRepo.Create(payee); err != nil {
+	for _, py := range []*payee.Payee{coffeeShop, grocery, gasStation} {
+		if err := payeeRepo.Create(py); err != nil {
 			t.Fatalf("Failed to create payee: %v", err)
 		}
 	}
 
 	// Create transactions
-	txn1 := models.NewTransactionWithPayee(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-5.00"), coffeeShop.ID)
-	txn2 := models.NewTransactionWithPayee(account.ID, models.NewDate(2024, 1, 11), models.MustNewMoney("-50.00"), grocery.ID)
-	txn3 := models.NewTransactionWithPayee(account.ID, models.NewDate(2024, 1, 12), models.MustNewMoney("-30.00"), gasStation.ID)
+	txn1 := transaction.NewTransactionWithPayee(acct.ID, types.NewDate(2024, 1, 10), types.MustNewMoney("-5.00"), coffeeShop.ID)
+	txn2 := transaction.NewTransactionWithPayee(acct.ID, types.NewDate(2024, 1, 11), types.MustNewMoney("-50.00"), grocery.ID)
+	txn3 := transaction.NewTransactionWithPayee(acct.ID, types.NewDate(2024, 1, 12), types.MustNewMoney("-30.00"), gasStation.ID)
 
-	for _, txn := range []*models.Transaction{txn1, txn2, txn3} {
+	for _, txn := range []*transaction.Transaction{txn1, txn2, txn3} {
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("Failed to create transaction: %v", err)
 		}
@@ -627,26 +631,26 @@ func TestTransactionSearchByMemo(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
 
 	// Create account
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	if err := accountRepo.Create(account); err != nil {
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	// Create transactions with different memos
-	txn1 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-5.00"))
+	txn1 := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 10), types.MustNewMoney("-5.00"))
 	txn1.SetMemo("Morning coffee")
 
-	txn2 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 11), models.MustNewMoney("-50.00"))
+	txn2 := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 11), types.MustNewMoney("-50.00"))
 	txn2.SetMemo("Weekly groceries")
 
-	txn3 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 12), models.MustNewMoney("-3.50"))
+	txn3 := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 12), types.MustNewMoney("-3.50"))
 	txn3.SetMemo("Afternoon coffee break")
 
-	for _, txn := range []*models.Transaction{txn1, txn2, txn3} {
+	for _, txn := range []*transaction.Transaction{txn1, txn2, txn3} {
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("Failed to create transaction: %v", err)
 		}
@@ -699,38 +703,38 @@ func TestTransactionSearchByCategory(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
-	categoryRepo := repository.NewCategoryRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
 
 	// Create account
-	account := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	if err := accountRepo.Create(account); err != nil {
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
 		t.Fatalf("Failed to create account: %v", err)
 	}
 
 	// Create categories
-	food := models.NewCategory("Food & Dining", models.CategoryTypeExpense)
-	transport := models.NewCategory("Transportation", models.CategoryTypeExpense)
-	utilities := models.NewCategory("Utilities", models.CategoryTypeExpense)
+	food := category.NewCategory("Food & Dining", category.TypeExpense)
+	transport := category.NewCategory("Transportation", category.TypeExpense)
+	utilities := category.NewCategory("Utilities", category.TypeExpense)
 
-	for _, cat := range []*models.Category{food, transport, utilities} {
+	for _, cat := range []*category.Category{food, transport, utilities} {
 		if err := categoryRepo.Create(cat); err != nil {
 			t.Fatalf("Failed to create category: %v", err)
 		}
 	}
 
 	// Create transactions
-	txn1 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-25.00"))
+	txn1 := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 10), types.MustNewMoney("-25.00"))
 	txn1.SetCategory(food.ID)
 
-	txn2 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 11), models.MustNewMoney("-40.00"))
+	txn2 := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 11), types.MustNewMoney("-40.00"))
 	txn2.SetCategory(transport.ID)
 
-	txn3 := models.NewTransaction(account.ID, models.NewDate(2024, 1, 12), models.MustNewMoney("-100.00"))
+	txn3 := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 12), types.MustNewMoney("-100.00"))
 	txn3.SetCategory(utilities.ID)
 
-	for _, txn := range []*models.Transaction{txn1, txn2, txn3} {
+	for _, txn := range []*transaction.Transaction{txn1, txn2, txn3} {
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("Failed to create transaction: %v", err)
 		}
@@ -783,56 +787,56 @@ func TestTransactionSearchCombinedCriteria(t *testing.T) {
 	}
 	defer database.Close()
 
-	accountRepo := repository.NewAccountRepository(database)
-	txnRepo := repository.NewTransactionRepository(database)
-	payeeRepo := repository.NewPayeeRepository(database)
-	categoryRepo := repository.NewCategoryRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	payeeRepo := payee.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
 
 	// Create accounts
-	checking := models.NewAccount("Checking", models.AccountTypeChecking, "USD", models.ZeroMoney, models.Today())
-	savings := models.NewAccount("Savings", models.AccountTypeSavings, "USD", models.ZeroMoney, models.Today())
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	savings := account.NewAccount("Savings", account.TypeSavings, "USD", types.ZeroMoney, types.Today())
 
-	for _, acct := range []*models.Account{checking, savings} {
+	for _, acct := range []*account.Account{checking, savings} {
 		if err := accountRepo.Create(acct); err != nil {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 	}
 
 	// Create payees
-	coffeeShop := models.NewPayee("Coffee Shop")
+	coffeeShop := payee.NewPayee("Coffee Shop")
 	if err := payeeRepo.Create(coffeeShop); err != nil {
 		t.Fatalf("Failed to create payee: %v", err)
 	}
 
 	// Create category
-	food := models.NewCategory("Food", models.CategoryTypeExpense)
+	food := category.NewCategory("Food", category.TypeExpense)
 	if err := categoryRepo.Create(food); err != nil {
 		t.Fatalf("Failed to create category: %v", err)
 	}
 
 	// Create transactions with various combinations
-	txn1 := models.NewTransactionWithPayee(checking.ID, models.NewDate(2024, 1, 10), models.MustNewMoney("-5.00"), coffeeShop.ID)
+	txn1 := transaction.NewTransactionWithPayee(checking.ID, types.NewDate(2024, 1, 10), types.MustNewMoney("-5.00"), coffeeShop.ID)
 	txn1.SetCategory(food.ID)
 	txn1.SetMemo("Morning latte")
 
-	txn2 := models.NewTransactionWithPayee(checking.ID, models.NewDate(2024, 2, 15), models.MustNewMoney("-5.50"), coffeeShop.ID)
+	txn2 := transaction.NewTransactionWithPayee(checking.ID, types.NewDate(2024, 2, 15), types.MustNewMoney("-5.50"), coffeeShop.ID)
 	txn2.SetCategory(food.ID)
 	txn2.SetMemo("Afternoon coffee")
 
-	txn3 := models.NewTransactionWithPayee(savings.ID, models.NewDate(2024, 1, 20), models.MustNewMoney("-4.00"), coffeeShop.ID)
+	txn3 := transaction.NewTransactionWithPayee(savings.ID, types.NewDate(2024, 1, 20), types.MustNewMoney("-4.00"), coffeeShop.ID)
 	txn3.SetCategory(food.ID)
 	txn3.SetMemo("Quick espresso")
 
-	for _, txn := range []*models.Transaction{txn1, txn2, txn3} {
+	for _, txn := range []*transaction.Transaction{txn1, txn2, txn3} {
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("Failed to create transaction: %v", err)
 		}
 	}
 
 	t.Run("Search by payee and date range", func(t *testing.T) {
-		startDate := models.NewDate(2024, 1, 1)
-		endDate := models.NewDate(2024, 1, 31)
-		results, err := txnRepo.Search(repository.TransactionSearchCriteria{
+		startDate := types.NewDate(2024, 1, 1)
+		endDate := types.NewDate(2024, 1, 31)
+		results, err := txnRepo.Search(transaction.SearchCriteria{
 			PayeeName: "Coffee",
 			StartDate: &startDate,
 			EndDate:   &endDate,
@@ -846,7 +850,7 @@ func TestTransactionSearchCombinedCriteria(t *testing.T) {
 	})
 
 	t.Run("Search by account and memo", func(t *testing.T) {
-		results, err := txnRepo.Search(repository.TransactionSearchCriteria{
+		results, err := txnRepo.Search(transaction.SearchCriteria{
 			AccountID: &checking.ID,
 			Memo:      "coffee",
 		})
@@ -859,7 +863,7 @@ func TestTransactionSearchCombinedCriteria(t *testing.T) {
 	})
 
 	t.Run("Search by category, payee, and account", func(t *testing.T) {
-		results, err := txnRepo.Search(repository.TransactionSearchCriteria{
+		results, err := txnRepo.Search(transaction.SearchCriteria{
 			CategoryName: "Food",
 			PayeeName:    "Coffee",
 			AccountID:    &savings.ID,
@@ -873,9 +877,9 @@ func TestTransactionSearchCombinedCriteria(t *testing.T) {
 	})
 
 	t.Run("Search with no matching criteria", func(t *testing.T) {
-		startDate := models.NewDate(2024, 3, 1)
-		endDate := models.NewDate(2024, 3, 31)
-		results, err := txnRepo.Search(repository.TransactionSearchCriteria{
+		startDate := types.NewDate(2024, 3, 1)
+		endDate := types.NewDate(2024, 3, 31)
+		results, err := txnRepo.Search(transaction.SearchCriteria{
 			PayeeName: "Coffee",
 			StartDate: &startDate,
 			EndDate:   &endDate,
@@ -889,7 +893,7 @@ func TestTransactionSearchCombinedCriteria(t *testing.T) {
 	})
 
 	t.Run("Empty criteria returns all transactions", func(t *testing.T) {
-		results, err := txnRepo.Search(repository.TransactionSearchCriteria{})
+		results, err := txnRepo.Search(transaction.SearchCriteria{})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}

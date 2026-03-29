@@ -1,8 +1,9 @@
 package undo
 
 import (
-	"github.com/haskovec/tmoney/internal/models"
-	"github.com/haskovec/tmoney/internal/service"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -12,13 +13,13 @@ import (
 // CreateScheduledTransactionCommand creates a scheduled transaction and can
 // undo it by deleting.
 type CreateScheduledTransactionCommand struct {
-	svc *service.ScheduledTransactionService
-	st  *models.ScheduledTransaction
+	svc *scheduled.Service
+	st  *scheduled.Transaction
 }
 
 // NewCreateScheduledTransactionCommand creates a command that will create a
 // scheduled transaction. The entity is created on Execute and deleted on Undo.
-func NewCreateScheduledTransactionCommand(svc *service.ScheduledTransactionService, st *models.ScheduledTransaction) *CreateScheduledTransactionCommand {
+func NewCreateScheduledTransactionCommand(svc *scheduled.Service, st *scheduled.Transaction) *CreateScheduledTransactionCommand {
 	return &CreateScheduledTransactionCommand{
 		svc: svc,
 		st:  st,
@@ -44,15 +45,15 @@ func (c *CreateScheduledTransactionCommand) Description() string {
 // EditScheduledTransactionCommand edits a scheduled transaction and can undo
 // it by restoring the previous state.
 type EditScheduledTransactionCommand struct {
-	svc    *service.ScheduledTransactionService
-	before *models.ScheduledTransaction // state before editing (captured on Execute)
-	after  *models.ScheduledTransaction // desired new state
+	svc    *scheduled.Service
+	before *scheduled.Transaction // state before editing (captured on Execute)
+	after  *scheduled.Transaction // desired new state
 }
 
 // NewEditScheduledTransactionCommand creates a command that will update a
 // scheduled transaction. The before state is captured at execute time by
 // reading from the database.
-func NewEditScheduledTransactionCommand(svc *service.ScheduledTransactionService, after *models.ScheduledTransaction) *EditScheduledTransactionCommand {
+func NewEditScheduledTransactionCommand(svc *scheduled.Service, after *scheduled.Transaction) *EditScheduledTransactionCommand {
 	return &EditScheduledTransactionCommand{
 		svc:   svc,
 		after: after,
@@ -85,15 +86,15 @@ func (c *EditScheduledTransactionCommand) Description() string {
 // DeleteScheduledTransactionCommand deletes a scheduled transaction and can
 // undo it by recreating.
 type DeleteScheduledTransactionCommand struct {
-	svc    *service.ScheduledTransactionService
-	id     models.ID
-	before *models.ScheduledTransaction // full entity captured on Execute for undo
+	svc    *scheduled.Service
+	id     types.ID
+	before *scheduled.Transaction // full entity captured on Execute for undo
 }
 
 // NewDeleteScheduledTransactionCommand creates a command that will delete a
 // scheduled transaction. The full entity is captured at execute time so it
 // can be recreated on undo.
-func NewDeleteScheduledTransactionCommand(svc *service.ScheduledTransactionService, id models.ID) *DeleteScheduledTransactionCommand {
+func NewDeleteScheduledTransactionCommand(svc *scheduled.Service, id types.ID) *DeleteScheduledTransactionCommand {
 	return &DeleteScheduledTransactionCommand{
 		svc: svc,
 		id:  id,
@@ -127,21 +128,21 @@ func (c *DeleteScheduledTransactionCommand) Description() string {
 // real transaction and advances the schedule). Undo deletes the created
 // transaction and restores the schedule to its previous state.
 type PostScheduledTransactionCommand struct {
-	svc       *service.ScheduledTransactionService
-	txnSvc    *service.TransactionService
-	id        models.ID
-	amount    *models.Money // optional override amount
-	beforeST  *models.ScheduledTransaction // schedule state before posting
-	createdTxn *models.Transaction          // transaction created by Post
+	svc        *scheduled.Service
+	txnSvc     *transaction.Service
+	id         types.ID
+	amount     *types.Money              // optional override amount
+	beforeST   *scheduled.Transaction    // schedule state before posting
+	createdTxn *transaction.Transaction  // transaction created by Post
 }
 
 // NewPostScheduledTransactionCommand creates a command that will post a
 // scheduled transaction. Pass nil for amount to use the scheduled amount.
 func NewPostScheduledTransactionCommand(
-	svc *service.ScheduledTransactionService,
-	txnSvc *service.TransactionService,
-	id models.ID,
-	amount *models.Money,
+	svc *scheduled.Service,
+	txnSvc *transaction.Service,
+	id types.ID,
+	amount *types.Money,
 ) *PostScheduledTransactionCommand {
 	return &PostScheduledTransactionCommand{
 		svc:    svc,
@@ -185,7 +186,7 @@ func (c *PostScheduledTransactionCommand) Description() string {
 
 // CreatedTransaction returns the transaction created by Execute. Returns nil
 // if Execute has not been called or failed.
-func (c *PostScheduledTransactionCommand) CreatedTransaction() *models.Transaction {
+func (c *PostScheduledTransactionCommand) CreatedTransaction() *transaction.Transaction {
 	return c.createdTxn
 }
 
@@ -197,14 +198,14 @@ func (c *PostScheduledTransactionCommand) CreatedTransaction() *models.Transacti
 // (advances the schedule without creating a transaction). Undo restores the
 // schedule to its previous state.
 type SkipScheduledTransactionCommand struct {
-	svc      *service.ScheduledTransactionService
-	id       models.ID
-	beforeST *models.ScheduledTransaction // schedule state before skipping
+	svc      *scheduled.Service
+	id       types.ID
+	beforeST *scheduled.Transaction // schedule state before skipping
 }
 
 // NewSkipScheduledTransactionCommand creates a command that will skip a
 // scheduled transaction occurrence.
-func NewSkipScheduledTransactionCommand(svc *service.ScheduledTransactionService, id models.ID) *SkipScheduledTransactionCommand {
+func NewSkipScheduledTransactionCommand(svc *scheduled.Service, id types.ID) *SkipScheduledTransactionCommand {
 	return &SkipScheduledTransactionCommand{
 		svc: svc,
 		id:  id,
