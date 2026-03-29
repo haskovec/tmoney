@@ -282,23 +282,23 @@ Spec: `specs/security-master.md`
 
 ## Phase 15: Lot Repository
 
-- [ ] **SM-055 - LotRepository.Create**
+- [x] **SM-055 - LotRepository.Create**
   - RED: Write test — create lot, verify all fields; verify foreign keys
   - GREEN: Implement `Create` in `internal/repository/lot.go`
 
-- [ ] **SM-056 - LotRepository.GetByID**
+- [x] **SM-056 - LotRepository.GetByID**
   - RED: Write test — get lot by ID; not found returns error
   - GREEN: Implement `GetByID`
 
-- [ ] **SM-057 - LotRepository.ListByAccountAndSecurity**
+- [x] **SM-057 - LotRepository.ListByAccountAndSecurity**
   - RED: Write test — list open lots for account+security ordered by purchase_date; option to include closed lots
   - GREEN: Implement `ListByAccountAndSecurity`
 
-- [ ] **SM-058 - LotRepository.Update (reduce shares)**
+- [x] **SM-058 - LotRepository.Update (reduce shares)**
   - RED: Write test — update shares count; set closed=true when shares=0; verify updated_at changes
   - GREEN: Implement `Update`
 
-- [ ] **SM-059 - LotRepository.GetOpenLotsBySecurity**
+- [x] **SM-059 - LotRepository.GetOpenLotsBySecurity**
   - RED: Write test — returns all open lots across all accounts for a given security (needed for hide validation)
   - GREEN: Implement `GetOpenLotsBySecurity`
 
