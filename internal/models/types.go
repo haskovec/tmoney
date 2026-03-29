@@ -302,6 +302,16 @@ func (q Quantity) IsZero() bool {
 	return q.value.IsZero()
 }
 
+// IsPositive returns true if the Quantity is greater than zero.
+func (q Quantity) IsPositive() bool {
+	return q.value.GreaterThan(alpacadecimal.NewFromInt(0))
+}
+
+// IsNegative returns true if the Quantity is less than zero.
+func (q Quantity) IsNegative() bool {
+	return q.value.LessThan(alpacadecimal.NewFromInt(0))
+}
+
 // Add returns the sum of two Quantities.
 func (q Quantity) Add(other Quantity) Quantity {
 	return Quantity{value: q.value.Add(other.value)}
@@ -684,4 +694,29 @@ func (n *NullableDate) Scan(value any) error {
 	}
 	n.Valid = true
 	return n.Date.Scan(value)
+}
+
+// NullableQuantity is a Quantity that can be null in the database.
+type NullableQuantity struct {
+	Quantity Quantity
+	Valid    bool
+}
+
+// Value implements the driver.Valuer interface.
+func (n NullableQuantity) Value() (driver.Value, error) {
+	if !n.Valid {
+		return nil, nil
+	}
+	return n.Quantity.Value()
+}
+
+// Scan implements the sql.Scanner interface.
+func (n *NullableQuantity) Scan(value any) error {
+	if value == nil {
+		n.Quantity = ZeroQuantity
+		n.Valid = false
+		return nil
+	}
+	n.Valid = true
+	return n.Quantity.Scan(value)
 }

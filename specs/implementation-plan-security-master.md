@@ -212,11 +212,11 @@ Spec: `specs/security-master.md`
   - RED: Write tests for all 12 types (`buy`, `sell`, `dividend`, `reinvest_dividend`, `fee`, `fee_liquidation`, `deposit`, `withdrawal`, `interest`, `transfer_shares`, `transfer_cash`, `exchange`), invalid rejected, `IsValid()`, `RequiresSecurity()`, `RequiresShares()`, `AffectsCash()`
   - GREEN: Implement `InvestmentTransactionType` in `internal/models/investment_transaction.go`
 
-- [ ] **SM-040 - InvestmentTransaction model and validation**
+- [x] **SM-040 - InvestmentTransaction model and validation**
   - RED: Write tests — required fields (account_id, date, type, total_amount); security_id required for security-based types; shares required for share-based types; price_per_share optional; commission >= 0; status enum (pending, cleared, reconciled)
   - GREEN: Implement `InvestmentTransaction` struct with `Validate()`
 
-- [ ] **SM-041 - InvestmentTransaction status methods**
+- [x] **SM-041 - InvestmentTransaction status methods**
   - RED: Write tests — `Clear()`, `Reconcile()`, status transitions
   - GREEN: Implement status methods mirroring existing transaction patterns
 
