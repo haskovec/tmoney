@@ -277,8 +277,8 @@ Spec: `specs/security-master.md`
   - GREEN: Implement `Update`
 
 - [ ] **SM-054 - InvestmentTransactionRepository.Delete**
-  - RED: Write test — delete transaction; verify cascade deletes junction records in investment_transaction_lots
-  - GREEN: Implement `Delete`
+  - RED: Write test — delete transaction; verify junction records in investment_transaction_lots are deleted first
+  - GREEN: Implement `Delete` — must manually delete from investment_transaction_lots before deleting the transaction (DuckDB does not support ON DELETE CASCADE)
 
 ## Phase 15: Lot Repository
 
