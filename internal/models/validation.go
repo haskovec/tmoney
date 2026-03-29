@@ -109,6 +109,22 @@ func (v *Validator) NonNegative(field string, value Money) *Validator {
 	return v
 }
 
+// PositiveQuantity validates that a Quantity value is positive (greater than zero).
+func (v *Validator) PositiveQuantity(field string, value Quantity) *Validator {
+	if !value.IsPositive() {
+		v.errors.Add(field, "must be positive")
+	}
+	return v
+}
+
+// NonNegativeQuantity validates that a Quantity value is not negative.
+func (v *Validator) NonNegativeQuantity(field string, value Quantity) *Validator {
+	if value.IsNegative() {
+		v.errors.Add(field, "must not be negative")
+	}
+	return v
+}
+
 // RequiredID validates that an ID is not nil.
 func (v *Validator) RequiredID(field string, id ID) *Validator {
 	if id.IsNil() {

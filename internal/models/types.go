@@ -327,6 +327,21 @@ func (q Quantity) Mul(multiplier alpacadecimal.Decimal) Quantity {
 	return Quantity{value: q.value.Mul(multiplier)}
 }
 
+// Cmp compares two Quantity values: -1 if q < other, 0 if equal, 1 if q > other.
+func (q Quantity) Cmp(other Quantity) int {
+	return q.value.Cmp(other.value)
+}
+
+// Equal returns true if two Quantity values are equal.
+func (q Quantity) Equal(other Quantity) bool {
+	return q.value.Equal(other.value)
+}
+
+// Decimal returns the underlying decimal value.
+func (q Quantity) Decimal() alpacadecimal.Decimal {
+	return q.value
+}
+
 // Value implements the driver.Valuer interface for database storage.
 func (q Quantity) Value() (driver.Value, error) {
 	return q.value.String(), nil

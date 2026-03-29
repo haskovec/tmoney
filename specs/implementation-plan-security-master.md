@@ -222,21 +222,21 @@ Spec: `specs/security-master.md`
 
 ## Phase 11: Lot Model
 
-- [ ] **SM-042 - Lot model and validation**
+- [x] **SM-042 - Lot model and validation**
   - RED: Write tests — required fields (account_id, security_id, shares > 0, original_shares > 0, cost_per_share > 0, purchase_date, source_transaction_id); closed default false; `CostBasis()` returns shares × cost_per_share; `IsFullyClosed()` returns shares == 0
   - GREEN: Implement `Lot` struct in `internal/models/lot.go`
 
-- [ ] **SM-043 - Lot reduce and close logic**
+- [x] **SM-043 - Lot reduce and close logic**
   - RED: Write tests — `Reduce(shares)` decreases shares; reducing to 0 sets closed=true; reducing more than available returns error; reducing negative amount returns error
   - GREEN: Implement `Reduce()` method on `Lot`
 
 ## Phase 12: Position Model
 
-- [ ] **SM-044 - Position model and validation (non-lot-tracking)**
+- [x] **SM-044 - Position model and validation (non-lot-tracking)**
   - RED: Write tests — required fields (account_id, security_id); shares >= 0; average_cost_per_share >= 0; `CostBasis()` returns shares × average_cost_per_share; `MarketValue(currentPrice)` returns shares × currentPrice
   - GREEN: Implement `Position` struct in `internal/models/position.go`
 
-- [ ] **SM-045 - Position average cost recalculation**
+- [x] **SM-045 - Position average cost recalculation**
   - RED: Write tests — `AddShares(newShares, pricePerShare)` recalculates weighted average; `RemoveShares(shares)` reduces count without changing average; removing more than held returns error
   - GREEN: Implement `AddShares()` and `RemoveShares()` on `Position`
 
