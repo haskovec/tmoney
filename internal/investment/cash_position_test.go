@@ -359,7 +359,7 @@ func TestGetCashBalance_TransactionTypeCashEffects(t *testing.T) {
 
 	t.Run("deposit and withdrawal already tested via service methods", func(t *testing.T) {
 		// deposit, withdrawal, interest, fee are already thoroughly tested
-		// in service_test.go (SM-066 through SM-070).
+		// in investment_service_test.go (SM-066 through SM-070).
 		// This test verifies they are correctly classified as cash-affecting.
 		if !TransactionTypeDeposit.AffectsCash() {
 			t.Error("deposit should affect cash")

@@ -94,8 +94,8 @@ func (ps *Source) Scan(value any) error {
 type Price struct {
 	types.BaseModel
 
-	SecurityID types.ID   `json:"security_id"`
-	Date       types.Date `json:"date"`
+	SecurityID types.ID    `json:"security_id"`
+	Date       types.Date  `json:"date"`
 	Price      types.Money `json:"price"`
 	Source     Source      `json:"source"`
 }

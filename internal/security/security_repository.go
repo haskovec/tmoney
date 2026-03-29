@@ -12,8 +12,8 @@ import (
 
 // Filter defines optional filters for listing securities.
 type Filter struct {
-	SecurityType *Type
-	AssetClass   *AssetClass
+	SecurityType  *Type
+	AssetClass    *AssetClass
 	ExcludeHidden *bool
 }
 

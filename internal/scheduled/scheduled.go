@@ -105,13 +105,13 @@ type Transaction struct {
 	types.BaseModel
 
 	// Core properties (required)
-	AccountID types.ID  `json:"account_id"`
-	Frequency Frequency `json:"frequency"`
+	AccountID types.ID   `json:"account_id"`
+	Frequency Frequency  `json:"frequency"`
 	StartDate types.Date `json:"start_date"`
 	NextDate  types.Date `json:"next_date"`
 
 	// Schedule properties
-	Interval             int               `json:"interval"`              // Every N periods (default: 1)
+	Interval             int                `json:"interval"`              // Every N periods (default: 1)
 	EndDate              types.NullableDate `json:"end_date"`              // When schedule ends (null = indefinite)
 	Occurrences          types.NullableInt  `json:"occurrences"`           // Total number of times to repeat
 	OccurrencesRemaining types.NullableInt  `json:"occurrences_remaining"` // Countdown for fixed occurrences
