@@ -268,6 +268,28 @@ func (e *SecurityHasOpenPositionsError) Error() string {
 	return fmt.Sprintf("cannot hide security %s: has open positions", e.ID)
 }
 
+// AccountNotInvestmentError is returned when an investment operation is attempted on a non-investment account.
+type AccountNotInvestmentError struct {
+	AccountID string
+	Type      string
+}
+
+func (e *AccountNotInvestmentError) Error() string {
+	return fmt.Sprintf("account %s is not an investment account (type: %s)", e.AccountID, e.Type)
+}
+
+// InsufficientCashError is returned when an investment account has insufficient cash for an operation.
+type InsufficientCashError struct {
+	AccountID string
+	Available models.Money
+	Requested models.Money
+}
+
+func (e *InsufficientCashError) Error() string {
+	return fmt.Sprintf("insufficient cash in account %s: available %s, requested %s",
+		e.AccountID, e.Available.String(), e.Requested.String())
+}
+
 // SecurityHasDependentsError is returned when trying to delete a security with prices or transactions.
 // Suggests hiding instead.
 type SecurityHasDependentsError struct {

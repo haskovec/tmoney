@@ -332,23 +332,23 @@ Spec: `specs/security-master.md`
 
 ## Phase 18: Investment Transaction Service — Cash Operations
 
-- [ ] **SM-066 - InvestmentTransactionService.Deposit**
+- [x] **SM-066 - InvestmentTransactionService.Deposit**
   - RED: Write test — deposit increases cash position; verify transaction created; verify account must be investment type
   - GREEN: Implement `Deposit` in `internal/service/investment_transaction.go`
 
-- [ ] **SM-067 - InvestmentTransactionService.Withdrawal**
+- [x] **SM-067 - InvestmentTransactionService.Withdrawal**
   - RED: Write test — withdrawal decreases cash position; insufficient cash returns error; verify transaction created
   - GREEN: Implement `Withdrawal`
 
-- [ ] **SM-068 - InvestmentTransactionService.Interest**
+- [x] **SM-068 - InvestmentTransactionService.Interest**
   - RED: Write test — interest increases cash position; verify transaction created with correct type
   - GREEN: Implement `Interest`
 
-- [ ] **SM-069 - InvestmentTransactionService.Fee**
+- [x] **SM-069 - InvestmentTransactionService.Fee**
   - RED: Write test — fee decreases cash position; insufficient cash returns error; verify memo stored
   - GREEN: Implement `Fee`
 
-- [ ] **SM-070 - Register InvestmentTransactionService in service registry**
+- [x] **SM-070 - Register InvestmentTransactionService in service registry**
   - RED: Write test — `NewServices()` returns non-nil InvestmentTransactionService
   - GREEN: Add to `Services` struct and `NewServices()`
 

@@ -8,28 +8,30 @@ import (
 // Services holds all application services, providing a single point of
 // initialization shared between the CLI and TUI.
 type Services struct {
-	Account        *AccountService
-	Transaction    *TransactionService
-	Category       *CategoryService
-	Payee          *PayeeService
-	ScheduledTxn   *ScheduledTransactionService
-	Report         *ReportService
-	Reconciliation *ReconciliationService
-	Security       *SecurityService
-	Price          *PriceService
+	Account              *AccountService
+	Transaction          *TransactionService
+	Category             *CategoryService
+	Payee                *PayeeService
+	ScheduledTxn         *ScheduledTransactionService
+	Report               *ReportService
+	Reconciliation       *ReconciliationService
+	Security             *SecurityService
+	Price                *PriceService
+	InvestmentTransaction *InvestmentTransactionService
 
 	// Repositories exposed for cases where direct repo access is needed
 	// (e.g. search criteria, category lookups in CLI).
-	AccountRepo          *repository.AccountRepository
-	TransactionRepo      *repository.TransactionRepository
-	SplitRepo            *repository.SplitRepository
-	TransferRepo         *repository.TransferRepository
-	CategoryRepo         *repository.CategoryRepository
-	PayeeRepo            *repository.PayeeRepository
-	ScheduledTxnRepo     *repository.ScheduledTransactionRepository
-	ReconciliationRepo   *repository.ReconciliationRepository
-	SecurityRepo         *repository.SecurityRepository
-	PriceRepo            *repository.PriceRepository
+	AccountRepo                *repository.AccountRepository
+	TransactionRepo            *repository.TransactionRepository
+	SplitRepo                  *repository.SplitRepository
+	TransferRepo               *repository.TransferRepository
+	CategoryRepo               *repository.CategoryRepository
+	PayeeRepo                  *repository.PayeeRepository
+	ScheduledTxnRepo           *repository.ScheduledTransactionRepository
+	ReconciliationRepo         *repository.ReconciliationRepository
+	SecurityRepo               *repository.SecurityRepository
+	PriceRepo                  *repository.PriceRepository
+	InvestmentTransactionRepo  *repository.InvestmentTransactionRepository
 }
 
 // NewServices creates all repositories and services from a database connection.
@@ -46,6 +48,7 @@ func NewServices(database *db.DB) *Services {
 	reconciliationRepo := repository.NewReconciliationRepository(database)
 	securityRepo := repository.NewSecurityRepository(database)
 	priceRepo := repository.NewPriceRepository(database)
+	investmentTxnRepo := repository.NewInvestmentTransactionRepository(database)
 
 	// Create services
 	accountSvc := NewAccountService(accountRepo, database)
@@ -57,6 +60,7 @@ func NewServices(database *db.DB) *Services {
 	reconciliationSvc := NewReconciliationService(reconciliationRepo, transactionRepo, accountRepo, database)
 	securitySvc := NewSecurityService(securityRepo, database)
 	priceSvc := NewPriceService(priceRepo, securityRepo, database)
+	investmentTxnSvc := NewInvestmentTransactionService(investmentTxnRepo, accountRepo, database)
 
 	return &Services{
 		Account:        accountSvc,
@@ -66,8 +70,9 @@ func NewServices(database *db.DB) *Services {
 		ScheduledTxn:   scheduledTxnSvc,
 		Report:         reportSvc,
 		Reconciliation: reconciliationSvc,
-		Security:       securitySvc,
-		Price:          priceSvc,
+		Security:              securitySvc,
+		Price:                 priceSvc,
+		InvestmentTransaction: investmentTxnSvc,
 
 		AccountRepo:        accountRepo,
 		TransactionRepo:    transactionRepo,
@@ -77,7 +82,8 @@ func NewServices(database *db.DB) *Services {
 		PayeeRepo:          payeeRepo,
 		ScheduledTxnRepo:   scheduledRepo,
 		ReconciliationRepo: reconciliationRepo,
-		SecurityRepo:       securityRepo,
-		PriceRepo:          priceRepo,
+		SecurityRepo:              securityRepo,
+		PriceRepo:                 priceRepo,
+		InvestmentTransactionRepo: investmentTxnRepo,
 	}
 }
