@@ -354,25 +354,25 @@ Spec: `specs/security-master.md`
 
 ## Phase 19: Cash Position Tracking
 
-- [ ] **SM-071 - CashPosition model**
+- [x] **SM-071 - CashPosition model**
   - RED: Write test — cash position has account_id and balance; `Deposit(amount)` increases; `Withdraw(amount)` decreases; withdraw more than balance returns error
   - GREEN: Implement cash position tracking (can be a column on the account or a computed value from investment transactions)
 
-- [ ] **SM-072 - CashPosition computation from transactions**
+- [x] **SM-072 - CashPosition computation from transactions**
   - RED: Write test — compute cash balance by summing all cash-affecting investment transactions for an account; verify each transaction type's cash effect matches spec table
   - GREEN: Implement `GetCashBalance(accountID)` in investment transaction service
 
 ## Phase 20: Smart Field Computation
 
-- [ ] **SM-073 - Compute price_per_share from total and shares**
+- [x] **SM-073 - Compute price_per_share from total and shares**
   - RED: Write test — given total_amount=1850 and shares=10, compute price_per_share=185; with commission=50, compute (1850-50)/10=180
   - GREEN: Implement `ComputePricePerShare` helper function
 
-- [ ] **SM-074 - Compute total_amount from shares and price_per_share**
+- [x] **SM-074 - Compute total_amount from shares and price_per_share**
   - RED: Write test — given shares=10 and price_per_share=185, compute total=1850; with commission=4.95, compute (10×185)+4.95=1854.95
   - GREEN: Implement `ComputeTotalAmount` helper function
 
-- [ ] **SM-075 - Smart computation integration in service**
+- [x] **SM-075 - Smart computation integration in service**
   - RED: Write test — creating a buy transaction with only shares+total auto-fills price_per_share; creating with shares+price auto-fills total; at least shares + one of (total, price) required
   - GREEN: Integrate smart computation into buy/sell transaction creation
 
