@@ -260,23 +260,23 @@ Spec: `specs/security-master.md`
 
 ## Phase 14: Investment Transaction Repository
 
-- [ ] **SM-050 - InvestmentTransactionRepository.Create**
+- [x] **SM-050 - InvestmentTransactionRepository.Create**
   - RED: Write test — create transaction, verify returned ID and all fields; verify account_id foreign key enforced
   - GREEN: Implement `Create` in `internal/repository/investment_transaction.go`
 
-- [ ] **SM-051 - InvestmentTransactionRepository.GetByID**
+- [x] **SM-051 - InvestmentTransactionRepository.GetByID**
   - RED: Write test — get existing by ID; not found returns error
   - GREEN: Implement `GetByID`
 
-- [ ] **SM-052 - InvestmentTransactionRepository.ListByAccount**
+- [x] **SM-052 - InvestmentTransactionRepository.ListByAccount**
   - RED: Write test — list all transactions for account ordered by date desc; filter by type; filter by date range; filter by security_id
   - GREEN: Implement `ListByAccount` with `InvestmentTransactionFilter` struct
 
-- [ ] **SM-053 - InvestmentTransactionRepository.Update**
+- [x] **SM-053 - InvestmentTransactionRepository.Update**
   - RED: Write test — update mutable fields; verify updated_at changes
   - GREEN: Implement `Update`
 
-- [ ] **SM-054 - InvestmentTransactionRepository.Delete**
+- [x] **SM-054 - InvestmentTransactionRepository.Delete**
   - RED: Write test — delete transaction; verify junction records in investment_transaction_lots are deleted first
   - GREEN: Implement `Delete` — must manually delete from investment_transaction_lots before deleting the transaction (DuckDB does not support ON DELETE CASCADE)
 
