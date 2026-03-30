@@ -71,7 +71,10 @@ func NewServices(database *db.DB) *Services {
 	accountSvc := account.NewService(accountRepo, database)
 	categorySvc := category.NewService(categoryRepo, database)
 	payeeSvc := payee.NewService(payeeRepo, database)
-	securitySvc := security.NewService(securityRepo, database)
+	securitySvc := security.NewService(securityRepo, database,
+		security.WithLotChecker(lotRepo),
+		security.WithPositionChecker(positionRepo),
+	)
 
 	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
 	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, database)

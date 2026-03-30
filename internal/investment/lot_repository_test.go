@@ -674,3 +674,86 @@ func TestLotRepository_GetOpenLotsBySecurity(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// SM-096: HasOpenLots
+// =============================================================================
+
+func TestLotRepository_HasOpenLots(t *testing.T) {
+	t.Run("returns true when open lots exist", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+		secRepo := security.NewRepository(database)
+		txnRepo := NewRepository(database)
+		lotRepo := NewLotRepository(database)
+
+		acct := createInvestmentAccountForTest(t, accountRepo)
+		sec := createInvestmentSecurityForTest(t, secRepo, "AAPL", "Apple Inc.")
+
+		txn := NewTransactionWithSecurity(acct.ID, types.NewDate(2024, 1, 15), TransactionTypeBuy, types.MustNewMoney("1000.00"), sec.ID, types.MustNewQuantity("5"))
+		if err := txnRepo.Create(txn); err != nil {
+			t.Fatalf("Create transaction error = %v", err)
+		}
+
+		lot := NewLot(acct.ID, sec.ID, types.MustNewQuantity("5"), types.MustNewMoney("200.00"), types.NewDate(2024, 1, 15), txn.ID)
+		if err := lotRepo.Create(&lot); err != nil {
+			t.Fatalf("Create lot error = %v", err)
+		}
+
+		has, err := lotRepo.HasOpenLots(sec.ID)
+		if err != nil {
+			t.Fatalf("HasOpenLots() error = %v", err)
+		}
+		if !has {
+			t.Error("Expected HasOpenLots to return true")
+		}
+	})
+
+	t.Run("returns false when no lots exist", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		lotRepo := NewLotRepository(database)
+
+		sec := createInvestmentSecurityForTest(t, secRepo, "AAPL", "Apple Inc.")
+
+		has, err := lotRepo.HasOpenLots(sec.ID)
+		if err != nil {
+			t.Fatalf("HasOpenLots() error = %v", err)
+		}
+		if has {
+			t.Error("Expected HasOpenLots to return false")
+		}
+	})
+
+	t.Run("returns false when all lots are closed", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+		secRepo := security.NewRepository(database)
+		txnRepo := NewRepository(database)
+		lotRepo := NewLotRepository(database)
+
+		acct := createInvestmentAccountForTest(t, accountRepo)
+		sec := createInvestmentSecurityForTest(t, secRepo, "AAPL", "Apple Inc.")
+
+		txn := NewTransactionWithSecurity(acct.ID, types.NewDate(2024, 1, 15), TransactionTypeBuy, types.MustNewMoney("1000.00"), sec.ID, types.MustNewQuantity("5"))
+		if err := txnRepo.Create(txn); err != nil {
+			t.Fatalf("Create transaction error = %v", err)
+		}
+
+		lot := NewLot(acct.ID, sec.ID, types.MustNewQuantity("5"), types.MustNewMoney("200.00"), types.NewDate(2024, 1, 15), txn.ID)
+		if err := lot.Reduce(types.MustNewQuantity("5")); err != nil {
+			t.Fatalf("Reduce() error = %v", err)
+		}
+		if err := lotRepo.Create(&lot); err != nil {
+			t.Fatalf("Create lot error = %v", err)
+		}
+
+		has, err := lotRepo.HasOpenLots(sec.ID)
+		if err != nil {
+			t.Fatalf("HasOpenLots() error = %v", err)
+		}
+		if has {
+			t.Error("Expected HasOpenLots to return false for closed lots")
+		}
+	})
+}

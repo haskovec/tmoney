@@ -1,10 +1,31 @@
 package security
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/types"
 )
+
+// mockLotChecker implements OpenLotChecker for testing.
+type mockLotChecker struct {
+	hasLots bool
+	err     error
+}
+
+func (m *mockLotChecker) HasOpenLots(_ types.ID) (bool, error) {
+	return m.hasLots, m.err
+}
+
+// mockPositionChecker implements OpenPositionChecker for testing.
+type mockPositionChecker struct {
+	hasPositions bool
+	err          error
+}
+
+func (m *mockPositionChecker) HasOpenPositions(_ types.ID) (bool, error) {
+	return m.hasPositions, m.err
+}
 
 // =============================================================================
 // SM-015: Service.Create
@@ -289,6 +310,122 @@ func TestService_Hide(t *testing.T) {
 		err := svc.Hide(types.NewID())
 		if err == nil {
 			t.Error("Hide() expected error for non-existent security")
+		}
+	})
+
+	// SM-096: Wire SecurityService.Hide to real position check
+
+	t.Run("rejects hiding security with open lots", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database,
+			WithLotChecker(&mockLotChecker{hasLots: true}),
+			WithPositionChecker(&mockPositionChecker{hasPositions: false}),
+		)
+
+		sec := NewSecurity("AAPL", "Apple Inc.", TypeStock)
+		if err := svc.Create(sec); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		err := svc.Hide(sec.ID)
+		if err == nil {
+			t.Fatal("Hide() expected error when security has open lots")
+		}
+		if _, ok := err.(*HasOpenPositionsError); !ok {
+			t.Errorf("Expected HasOpenPositionsError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects hiding security with non-zero positions", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database,
+			WithLotChecker(&mockLotChecker{hasLots: false}),
+			WithPositionChecker(&mockPositionChecker{hasPositions: true}),
+		)
+
+		sec := NewSecurity("MSFT", "Microsoft Corp.", TypeStock)
+		if err := svc.Create(sec); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		err := svc.Hide(sec.ID)
+		if err == nil {
+			t.Fatal("Hide() expected error when security has open positions")
+		}
+		if _, ok := err.(*HasOpenPositionsError); !ok {
+			t.Errorf("Expected HasOpenPositionsError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("allows hiding when all positions are zero and lots are closed", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database,
+			WithLotChecker(&mockLotChecker{hasLots: false}),
+			WithPositionChecker(&mockPositionChecker{hasPositions: false}),
+		)
+
+		sec := NewSecurity("GOOG", "Alphabet Inc.", TypeStock)
+		if err := svc.Create(sec); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := svc.Hide(sec.ID); err != nil {
+			t.Fatalf("Hide() error = %v", err)
+		}
+
+		retrieved, err := svc.GetByID(sec.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if !retrieved.Hidden {
+			t.Error("Security should be hidden")
+		}
+	})
+
+	t.Run("returns error when lot checker fails", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database,
+			WithLotChecker(&mockLotChecker{err: fmt.Errorf("db connection lost")}),
+			WithPositionChecker(&mockPositionChecker{hasPositions: false}),
+		)
+
+		sec := NewSecurity("TSLA", "Tesla Inc.", TypeStock)
+		if err := svc.Create(sec); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		err := svc.Hide(sec.ID)
+		if err == nil {
+			t.Fatal("Hide() expected error when lot checker fails")
+		}
+		if _, ok := err.(*HasOpenPositionsError); ok {
+			t.Error("Should be a wrapped error, not HasOpenPositionsError")
+		}
+	})
+
+	t.Run("returns error when position checker fails", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database,
+			WithLotChecker(&mockLotChecker{hasLots: false}),
+			WithPositionChecker(&mockPositionChecker{err: fmt.Errorf("db connection lost")}),
+		)
+
+		sec := NewSecurity("AMZN", "Amazon.com Inc.", TypeStock)
+		if err := svc.Create(sec); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		err := svc.Hide(sec.ID)
+		if err == nil {
+			t.Fatal("Hide() expected error when position checker fails")
+		}
+		if _, ok := err.(*HasOpenPositionsError); ok {
+			t.Error("Should be a wrapped error, not HasOpenPositionsError")
 		}
 	})
 }

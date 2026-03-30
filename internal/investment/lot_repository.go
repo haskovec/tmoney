@@ -138,6 +138,19 @@ func (r *LotRepository) Update(lot *Lot) error {
 	return nil
 }
 
+// HasOpenLots returns true if any account holds open lots for the given security.
+func (r *LotRepository) HasOpenLots(securityID types.ID) (bool, error) {
+	var count int
+	err := r.db.Conn().QueryRow(
+		`SELECT COUNT(*) FROM investment_lots WHERE CAST(security_id AS VARCHAR) = ? AND closed = false`,
+		securityID.String(),
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("failed to check open lots: %w", err)
+	}
+	return count > 0, nil
+}
+
 // GetOpenLotsBySecurity returns all open (non-closed) lots across all accounts for a given security.
 func (r *LotRepository) GetOpenLotsBySecurity(securityID types.ID) ([]*Lot, error) {
 	query := `

@@ -410,3 +410,65 @@ func TestPositionRepository_Delete(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// SM-096: HasOpenPositions
+// =============================================================================
+
+func TestPositionRepository_HasOpenPositions(t *testing.T) {
+	t.Run("returns true when non-zero positions exist", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+		secRepo := security.NewRepository(database)
+		posRepo := NewPositionRepository(database)
+
+		_, sec, _ := createTestPositionData(t, accountRepo, secRepo, posRepo)
+
+		has, err := posRepo.HasOpenPositions(sec.ID)
+		if err != nil {
+			t.Fatalf("HasOpenPositions() error = %v", err)
+		}
+		if !has {
+			t.Error("Expected HasOpenPositions to return true")
+		}
+	})
+
+	t.Run("returns false when no positions exist", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		posRepo := NewPositionRepository(database)
+
+		sec := createInvestmentSecurityForTest(t, secRepo, "AAPL", "Apple Inc.")
+
+		has, err := posRepo.HasOpenPositions(sec.ID)
+		if err != nil {
+			t.Fatalf("HasOpenPositions() error = %v", err)
+		}
+		if has {
+			t.Error("Expected HasOpenPositions to return false")
+		}
+	})
+
+	t.Run("returns false when all positions have zero shares", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+		secRepo := security.NewRepository(database)
+		posRepo := NewPositionRepository(database)
+
+		acct := createInvestmentAccountForTest(t, accountRepo)
+		sec := createInvestmentSecurityForTest(t, secRepo, "MSFT", "Microsoft Corp.")
+
+		pos := NewPosition(acct.ID, sec.ID) // zero shares
+		if err := posRepo.CreateOrUpdate(&pos); err != nil {
+			t.Fatalf("CreateOrUpdate() error = %v", err)
+		}
+
+		has, err := posRepo.HasOpenPositions(sec.ID)
+		if err != nil {
+			t.Fatalf("HasOpenPositions() error = %v", err)
+		}
+		if has {
+			t.Error("Expected HasOpenPositions to return false for zero-share positions")
+		}
+	})
+}

@@ -9,17 +9,50 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+// OpenLotChecker checks if a security has open lots across any account.
+type OpenLotChecker interface {
+	HasOpenLots(securityID types.ID) (bool, error)
+}
+
+// OpenPositionChecker checks if a security has non-zero positions across any account.
+type OpenPositionChecker interface {
+	HasOpenPositions(securityID types.ID) (bool, error)
+}
+
 // Service provides business logic for security operations.
 type Service struct {
-	repo *Repository
-	db   *db.DB
+	repo            *Repository
+	db              *db.DB
+	lotChecker      OpenLotChecker
+	positionChecker OpenPositionChecker
 }
 
 // NewService creates a new Service.
-func NewService(repo *Repository, database *db.DB) *Service {
-	return &Service{
+func NewService(repo *Repository, database *db.DB, opts ...ServiceOption) *Service {
+	s := &Service{
 		repo: repo,
 		db:   database,
+	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// ServiceOption configures optional dependencies for the security Service.
+type ServiceOption func(*Service)
+
+// WithLotChecker sets the lot checker for position validation.
+func WithLotChecker(checker OpenLotChecker) ServiceOption {
+	return func(s *Service) {
+		s.lotChecker = checker
+	}
+}
+
+// WithPositionChecker sets the position checker for position validation.
+func WithPositionChecker(checker OpenPositionChecker) ServiceOption {
+	return func(s *Service) {
+		s.positionChecker = checker
 	}
 }
 
@@ -80,24 +113,41 @@ func (s *Service) List(filter Filter) ([]*Security, error) {
 // =============================================================================
 
 // Hide marks a security as hidden.
-// Fails if the security has open positions (stub: always succeeds until positions are built).
+// Fails if any account holds shares of this security (via lots or positions).
 func (s *Service) Hide(id types.ID) error {
-	security, err := s.repo.GetByID(id)
+	sec, err := s.repo.GetByID(id)
 	if err != nil {
 		return err
 	}
 
-	if security.Hidden {
+	if sec.Hidden {
 		return &AlreadyHiddenError{ID: id.String()}
 	}
 
-	// Placeholder: check for open positions. Always allows hiding until positions are built.
-	if !security.CanHide() {
-		return &HasOpenPositionsError{ID: id.String()}
+	// Check for open lots (lot-tracking accounts).
+	if s.lotChecker != nil {
+		hasLots, err := s.lotChecker.HasOpenLots(id)
+		if err != nil {
+			return fmt.Errorf("failed to check open lots: %w", err)
+		}
+		if hasLots {
+			return &HasOpenPositionsError{ID: id.String()}
+		}
 	}
 
-	security.Hide()
-	return s.repo.Update(security)
+	// Check for non-zero positions (non-lot-tracking accounts).
+	if s.positionChecker != nil {
+		hasPositions, err := s.positionChecker.HasOpenPositions(id)
+		if err != nil {
+			return fmt.Errorf("failed to check open positions: %w", err)
+		}
+		if hasPositions {
+			return &HasOpenPositionsError{ID: id.String()}
+		}
+	}
+
+	sec.Hide()
+	return s.repo.Update(sec)
 }
 
 // Unhide marks a security as visible.

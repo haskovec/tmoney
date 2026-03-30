@@ -109,6 +109,42 @@ func (r *PositionRepository) ListByAccount(accountID types.ID, excludeZeroShares
 	return positions, nil
 }
 
+// HasOpenPositions returns true if any account holds non-zero shares of the given security.
+func (r *PositionRepository) HasOpenPositions(securityID types.ID) (bool, error) {
+	var count int
+	err := r.db.Conn().QueryRow(
+		`SELECT COUNT(*) FROM investment_positions WHERE CAST(security_id AS VARCHAR) = ? AND shares > 0`,
+		securityID.String(),
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("failed to check open positions: %w", err)
+	}
+	return count > 0, nil
+}
+
+// GetPositionsBySecurity returns all positions with non-zero shares across all accounts for a given security.
+func (r *PositionRepository) GetPositionsBySecurity(securityID types.ID) ([]*Position, error) {
+	query := `SELECT ` + positionColumns + ` FROM investment_positions WHERE CAST(security_id AS VARCHAR) = ? AND shares > 0 ORDER BY created_at ASC`
+	rows, err := r.db.Conn().Query(query, securityID.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get positions by security: %w", err)
+	}
+	defer rows.Close()
+
+	positions := make([]*Position, 0)
+	for rows.Next() {
+		p, err := scanPosition(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan position: %w", err)
+		}
+		positions = append(positions, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating positions: %w", err)
+	}
+	return positions, nil
+}
+
 // Delete removes a position for a given account and security.
 func (r *PositionRepository) Delete(accountID, securityID types.ID) error {
 	var count int
