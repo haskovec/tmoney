@@ -3868,3 +3868,310 @@ func TestService_TransferShares_LotTracking(t *testing.T) {
 		}
 	})
 }
+
+// SM-092: Share transfer: lot-tracking to non-lot-tracking
+// =============================================================================
+
+func TestService_TransferShares_LotToNonLot(t *testing.T) {
+	t.Run("multiple lots closed and destination position gets aggregated cost basis", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createLotTrackingAccount(t, env.accountRepo, "Source LotTrack")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest Average")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date1 := types.NewDate(2024, time.January, 15)
+		date2 := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(srcAcct.ID, date1, types.MustNewMoney("20000.00"), "")
+
+		// Buy two lots at different prices
+		buy1Total := types.MustNewMoney("1000.00") // 10 shares @ $100
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date1, types.MustNewQuantity("10"), &buy1Total, nil, types.ZeroMoney, "")
+		buy2Total := types.MustNewMoney("3000.00") // 10 shares @ $300
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date2, types.MustNewQuantity("10"), &buy2Total, nil, types.ZeroMoney, "")
+
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(srcAcct.ID, sec.ID, false)
+		if len(lots) != 2 {
+			t.Fatalf("Expected 2 lots, got %d", len(lots))
+		}
+
+		// Transfer ALL shares from both lots to non-lot destination
+		allocs := []SellLotAllocation{
+			{LotID: lots[0].ID, Shares: types.MustNewQuantity("10")},
+			{LotID: lots[1].ID, Shares: types.MustNewQuantity("10")},
+		}
+		transferDate := types.NewDate(2024, time.June, 1)
+		_, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, transferDate, types.MustNewQuantity("20"), "", allocs)
+		if err != nil {
+			t.Fatalf("TransferShares() error = %v", err)
+		}
+
+		// Verify both source lots are closed
+		openLots, _ := env.lotRepo.ListByAccountAndSecurity(srcAcct.ID, sec.ID, false)
+		if len(openLots) != 0 {
+			t.Errorf("Expected 0 open source lots, got %d", len(openLots))
+		}
+		allLots, _ := env.lotRepo.ListByAccountAndSecurity(srcAcct.ID, sec.ID, true)
+		if len(allLots) != 2 {
+			t.Fatalf("Expected 2 total source lots (both closed), got %d", len(allLots))
+		}
+		for _, l := range allLots {
+			if !l.Closed {
+				t.Errorf("Expected source lot %s to be closed", l.ID)
+			}
+		}
+
+		// Verify destination position has aggregated cost basis
+		// Total cost = (10 × $100) + (10 × $300) = $4000
+		// Weighted average cost per share = $4000 / 20 = $200
+		dstPos, _ := env.positionRepo.GetByAccountAndSecurity(dstAcct.ID, sec.ID)
+		if dstPos.Shares.String() != "20" {
+			t.Errorf("Expected dest position shares '20', got %q", dstPos.Shares.String())
+		}
+		if dstPos.AverageCostPerShare.String() != "200" {
+			t.Errorf("Expected dest avg cost '200', got %q", dstPos.AverageCostPerShare.String())
+		}
+
+		// Verify no lots created in destination
+		dstLots, _ := env.lotRepo.ListByAccountAndSecurity(dstAcct.ID, sec.ID, false)
+		if len(dstLots) != 0 {
+			t.Errorf("Expected 0 dest lots for non-lot account, got %d", len(dstLots))
+		}
+	})
+
+	t.Run("partial transfer from multiple lots preserves remaining source lots", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createLotTrackingAccount(t, env.accountRepo, "Source LotTrack")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest Average")
+		sec := createSec(t, env.secRepo, "MSFT")
+		date1 := types.NewDate(2024, time.January, 10)
+		date2 := types.NewDate(2024, time.February, 20)
+
+		_, _ = env.svc.Deposit(srcAcct.ID, date1, types.MustNewMoney("20000.00"), "")
+
+		// Lot 1: 10 shares @ $200
+		buy1Total := types.MustNewMoney("2000.00")
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date1, types.MustNewQuantity("10"), &buy1Total, nil, types.ZeroMoney, "")
+		// Lot 2: 10 shares @ $400
+		buy2Total := types.MustNewMoney("4000.00")
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date2, types.MustNewQuantity("10"), &buy2Total, nil, types.ZeroMoney, "")
+
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(srcAcct.ID, sec.ID, false)
+		if len(lots) != 2 {
+			t.Fatalf("Expected 2 lots, got %d", len(lots))
+		}
+
+		// Transfer 3 from each lot (partial)
+		allocs := []SellLotAllocation{
+			{LotID: lots[0].ID, Shares: types.MustNewQuantity("3")},
+			{LotID: lots[1].ID, Shares: types.MustNewQuantity("3")},
+		}
+		transferDate := types.NewDate(2024, time.June, 1)
+		_, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, transferDate, types.MustNewQuantity("6"), "", allocs)
+		if err != nil {
+			t.Fatalf("TransferShares() error = %v", err)
+		}
+
+		// Verify source lots are NOT closed — still have 7 shares each
+		srcLots, _ := env.lotRepo.ListByAccountAndSecurity(srcAcct.ID, sec.ID, false)
+		if len(srcLots) != 2 {
+			t.Fatalf("Expected 2 open source lots, got %d", len(srcLots))
+		}
+		for _, l := range srcLots {
+			if l.Shares.String() != "7" {
+				t.Errorf("Expected source lot shares '7', got %q", l.Shares.String())
+			}
+			if l.Closed {
+				t.Errorf("Source lot should not be closed")
+			}
+		}
+
+		// Verify destination position
+		// Total cost = (3 × $200) + (3 × $400) = $600 + $1200 = $1800
+		// Average cost per share = $1800 / 6 = $300
+		dstPos, _ := env.positionRepo.GetByAccountAndSecurity(dstAcct.ID, sec.ID)
+		if dstPos.Shares.String() != "6" {
+			t.Errorf("Expected dest position shares '6', got %q", dstPos.Shares.String())
+		}
+		if dstPos.AverageCostPerShare.String() != "300" {
+			t.Errorf("Expected dest avg cost '300', got %q", dstPos.AverageCostPerShare.String())
+		}
+	})
+
+	t.Run("transfer to existing destination position merges cost basis", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createLotTrackingAccount(t, env.accountRepo, "Source LotTrack")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest Average")
+		sec := createSec(t, env.secRepo, "GOOG")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(srcAcct.ID, date, types.MustNewMoney("20000.00"), "")
+		_, _ = env.svc.Deposit(dstAcct.ID, date, types.MustNewMoney("20000.00"), "")
+
+		// Destination already holds 10 shares @ $100 average
+		dstBuyTotal := types.MustNewMoney("1000.00")
+		_, _ = env.svc.Buy(dstAcct.ID, sec.ID, date, types.MustNewQuantity("10"), &dstBuyTotal, nil, types.ZeroMoney, "")
+
+		// Source lot: 10 shares @ $300
+		srcBuyTotal := types.MustNewMoney("3000.00")
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date, types.MustNewQuantity("10"), &srcBuyTotal, nil, types.ZeroMoney, "")
+
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(srcAcct.ID, sec.ID, false)
+		allocs := []SellLotAllocation{{LotID: lots[0].ID, Shares: types.MustNewQuantity("10")}}
+
+		_, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date, types.MustNewQuantity("10"), "Consolidate", allocs)
+		if err != nil {
+			t.Fatalf("TransferShares() error = %v", err)
+		}
+
+		// Verify destination position merges correctly
+		// Existing: 10 shares × $100 = $1000
+		// Incoming: 10 shares × $300 = $3000
+		// Total: 20 shares, $4000 cost → $200 avg
+		dstPos, _ := env.positionRepo.GetByAccountAndSecurity(dstAcct.ID, sec.ID)
+		if dstPos.Shares.String() != "20" {
+			t.Errorf("Expected dest position shares '20', got %q", dstPos.Shares.String())
+		}
+		if dstPos.AverageCostPerShare.String() != "200" {
+			t.Errorf("Expected dest avg cost '200', got %q", dstPos.AverageCostPerShare.String())
+		}
+	})
+
+	t.Run("junction records created for source transaction in mixed transfer", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createLotTrackingAccount(t, env.accountRepo, "Source LotTrack")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest Average")
+		sec := createSec(t, env.secRepo, "TSLA")
+		date1 := types.NewDate(2024, time.January, 15)
+		date2 := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(srcAcct.ID, date1, types.MustNewMoney("20000.00"), "")
+
+		// Buy two lots
+		buy1Total := types.MustNewMoney("500.00") // 5 shares @ $100
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date1, types.MustNewQuantity("5"), &buy1Total, nil, types.ZeroMoney, "")
+		buy2Total := types.MustNewMoney("1000.00") // 5 shares @ $200
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date2, types.MustNewQuantity("5"), &buy2Total, nil, types.ZeroMoney, "")
+
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(srcAcct.ID, sec.ID, false)
+		if len(lots) != 2 {
+			t.Fatalf("Expected 2 lots, got %d", len(lots))
+		}
+
+		allocs := []SellLotAllocation{
+			{LotID: lots[0].ID, Shares: types.MustNewQuantity("2")},
+			{LotID: lots[1].ID, Shares: types.MustNewQuantity("3")},
+		}
+
+		result, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date2, types.MustNewQuantity("5"), "", allocs)
+		if err != nil {
+			t.Fatalf("TransferShares() error = %v", err)
+		}
+
+		// Verify junction records exist for the source transaction
+		tls, err := env.transactionLotRepo.GetByTransaction(result.SourceTransaction.ID)
+		if err != nil {
+			t.Fatalf("GetByTransaction() error = %v", err)
+		}
+		if len(tls) != 2 {
+			t.Fatalf("Expected 2 junction records, got %d", len(tls))
+		}
+
+		// Build map of lot ID to shares
+		junctionMap := make(map[types.ID]string)
+		for _, tl := range tls {
+			junctionMap[tl.LotID] = tl.Shares.String()
+		}
+		if junctionMap[lots[0].ID] != "2" {
+			t.Errorf("Expected junction shares '2' for lot 0, got %q", junctionMap[lots[0].ID])
+		}
+		if junctionMap[lots[1].ID] != "3" {
+			t.Errorf("Expected junction shares '3' for lot 1, got %q", junctionMap[lots[1].ID])
+		}
+	})
+
+	t.Run("no cash movement in mixed transfer", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createLotTrackingAccount(t, env.accountRepo, "Source LotTrack")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest Average")
+		sec := createSec(t, env.secRepo, "META")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(srcAcct.ID, date, types.MustNewMoney("10000.00"), "")
+		_, _ = env.svc.Deposit(dstAcct.ID, date, types.MustNewMoney("5000.00"), "")
+
+		buyTotal := types.MustNewMoney("2000.00") // 10 shares @ $200
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date, types.MustNewQuantity("10"), &buyTotal, nil, types.ZeroMoney, "")
+
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(srcAcct.ID, sec.ID, false)
+		allocs := []SellLotAllocation{{LotID: lots[0].ID, Shares: types.MustNewQuantity("10")}}
+
+		_, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date, types.MustNewQuantity("10"), "", allocs)
+		if err != nil {
+			t.Fatalf("TransferShares() error = %v", err)
+		}
+
+		// Source cash should be 10000 - 2000 (buy) = 8000, unchanged by transfer
+		srcCash, _ := env.svc.GetCashBalance(srcAcct.ID)
+		if srcCash.String() != "8000" {
+			t.Errorf("Expected source cash '8000', got %q", srcCash.String())
+		}
+
+		// Dest cash should be 5000, unchanged by transfer
+		dstCash, _ := env.svc.GetCashBalance(dstAcct.ID)
+		if dstCash.String() != "5000" {
+			t.Errorf("Expected dest cash '5000', got %q", dstCash.String())
+		}
+	})
+
+	t.Run("transaction records have correct amounts and types", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createLotTrackingAccount(t, env.accountRepo, "Source LotTrack")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest Average")
+		sec := createSec(t, env.secRepo, "AMD")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(srcAcct.ID, date, types.MustNewMoney("10000.00"), "")
+
+		// 10 shares @ $150
+		buyTotal := types.MustNewMoney("1500.00")
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date, types.MustNewQuantity("10"), &buyTotal, nil, types.ZeroMoney, "")
+
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(srcAcct.ID, sec.ID, false)
+		allocs := []SellLotAllocation{{LotID: lots[0].ID, Shares: types.MustNewQuantity("10")}}
+
+		result, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date, types.MustNewQuantity("10"), "Move shares", allocs)
+		if err != nil {
+			t.Fatalf("TransferShares() error = %v", err)
+		}
+
+		// Source transaction: negative cost basis
+		if result.SourceTransaction.Type != TransactionTypeTransferShares {
+			t.Errorf("Expected source type transfer_shares, got %s", result.SourceTransaction.Type)
+		}
+		if result.SourceTransaction.TotalAmount.String() != "-1500" {
+			t.Errorf("Expected source amount '-1500', got %q", result.SourceTransaction.TotalAmount.String())
+		}
+		if result.SourceTransaction.Shares.Quantity.String() != "10" {
+			t.Errorf("Expected source shares '10', got %q", result.SourceTransaction.Shares.Quantity.String())
+		}
+
+		// Destination transaction: positive cost basis
+		if result.DestinationTransaction.Type != TransactionTypeTransferShares {
+			t.Errorf("Expected dest type transfer_shares, got %s", result.DestinationTransaction.Type)
+		}
+		if result.DestinationTransaction.TotalAmount.String() != "1500" {
+			t.Errorf("Expected dest amount '1500', got %q", result.DestinationTransaction.TotalAmount.String())
+		}
+		if result.DestinationTransaction.Shares.Quantity.String() != "10" {
+			t.Errorf("Expected dest shares '10', got %q", result.DestinationTransaction.Shares.Quantity.String())
+		}
+
+		// Both linked via same transfer ID
+		if !result.SourceTransaction.TransferID.Valid {
+			t.Error("Expected source transaction to have transfer ID")
+		}
+		if result.SourceTransaction.TransferID.ID != result.DestinationTransaction.TransferID.ID {
+			t.Error("Expected matching transfer IDs")
+		}
+	})
+}

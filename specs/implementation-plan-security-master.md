@@ -452,7 +452,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — source lots reduced/closed; new lots created in destination with original purchase_date and cost_per_share; no cash movement
   - GREEN: Implement `TransferShares` for lot-tracking
 
-- [ ] **SM-092 - Share transfer: lot-tracking to non-lot-tracking**
+- [x] **SM-092 - Share transfer: lot-tracking to non-lot-tracking**
   - RED: Write test — source lots closed; destination position updated with aggregated cost basis
   - GREEN: Handle mixed account type transfers
 
