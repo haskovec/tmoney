@@ -102,6 +102,22 @@ type cliOptions struct {
 
 	// Export options
 	exportFile string // --export <file>
+
+	// Security management options
+	listSecurities  bool   // --list-securities flag
+	securityTicker  string // --security <ticker> to show details
+	addSecurity     bool   // --add-security flag
+	editSecurity    string // --edit-security <ticker>
+	hideSecurity    string // --hide-security <ticker>
+	unhideSecurity  string // --unhide-security <ticker>
+	deleteSecurity  string // --delete-security <ticker>
+	secTicker       string // --ticker <ticker> (for add/edit)
+	secName         string // --name reused from acctName
+	secType         string // --type reused from acctType
+	secAssetClass   string // --asset-class <class>
+	secCurrency     string // --currency reused from acctCurrency
+	secExchange     string // --exchange <exchange>
+	includeHidden   bool   // --include-hidden flag
 }
 
 // parseArgs parses command-line arguments and returns options and remaining args.
@@ -439,6 +455,60 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.formatOverride = args[i]
+		case "--list-securities":
+			opts.listSecurities = true
+		case "--security":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--security requires a ticker argument")
+			}
+			i++
+			opts.securityTicker = args[i]
+		case "--add-security":
+			opts.addSecurity = true
+		case "--edit-security":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--edit-security requires a ticker argument")
+			}
+			i++
+			opts.editSecurity = args[i]
+		case "--hide-security":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--hide-security requires a ticker argument")
+			}
+			i++
+			opts.hideSecurity = args[i]
+		case "--unhide-security":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--unhide-security requires a ticker argument")
+			}
+			i++
+			opts.unhideSecurity = args[i]
+		case "--delete-security":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--delete-security requires a ticker argument")
+			}
+			i++
+			opts.deleteSecurity = args[i]
+		case "--ticker":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--ticker requires a value argument")
+			}
+			i++
+			opts.secTicker = args[i]
+		case "--asset-class":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--asset-class requires a value argument")
+			}
+			i++
+			opts.secAssetClass = args[i]
+		case "--exchange":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--exchange requires a value argument")
+			}
+			i++
+			opts.secExchange = args[i]
+		case "--include-hidden":
+			opts.includeHidden = true
 		default:
 			// Check for --flag=value formats
 			if after, ok := strings.CutPrefix(arg, "--file="); ok {
@@ -547,6 +617,22 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.exportFile = after
 			} else if after, ok := strings.CutPrefix(arg, "--format="); ok {
 				opts.formatOverride = after
+			} else if after, ok := strings.CutPrefix(arg, "--security="); ok {
+				opts.securityTicker = after
+			} else if after, ok := strings.CutPrefix(arg, "--edit-security="); ok {
+				opts.editSecurity = after
+			} else if after, ok := strings.CutPrefix(arg, "--hide-security="); ok {
+				opts.hideSecurity = after
+			} else if after, ok := strings.CutPrefix(arg, "--unhide-security="); ok {
+				opts.unhideSecurity = after
+			} else if after, ok := strings.CutPrefix(arg, "--delete-security="); ok {
+				opts.deleteSecurity = after
+			} else if after, ok := strings.CutPrefix(arg, "--ticker="); ok {
+				opts.secTicker = after
+			} else if after, ok := strings.CutPrefix(arg, "--asset-class="); ok {
+				opts.secAssetClass = after
+			} else if after, ok := strings.CutPrefix(arg, "--exchange="); ok {
+				opts.secExchange = after
 			} else {
 				remaining = append(remaining, arg)
 			}

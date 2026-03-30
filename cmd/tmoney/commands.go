@@ -21,6 +21,7 @@ import (
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -1942,4 +1943,278 @@ func (c *cliTransactionCreator) CreateTransactionWithSplits(txn *transaction.Tra
 
 func (c *cliTransactionCreator) UpdateTransaction(txn *transaction.Transaction) error {
 	return c.transactionSvc.Update(txn)
+}
+
+// =============================================================================
+// Security Management Commands
+// =============================================================================
+
+// runListSecurities lists securities from the database.
+func runListSecurities(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--list-securities requires --file to specify a database")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	filter := security.Filter{}
+	if !opts.includeHidden {
+		excludeHidden := true
+		filter.ExcludeHidden = &excludeHidden
+	}
+	if opts.acctType != "" {
+		secType, err := security.ParseType(opts.acctType)
+		if err != nil {
+			return fmt.Errorf("invalid --type: %w", err)
+		}
+		filter.SecurityType = &secType
+	}
+	if opts.secAssetClass != "" {
+		ac, err := security.ParseAssetClass(opts.secAssetClass)
+		if err != nil {
+			return fmt.Errorf("invalid --asset-class: %w", err)
+		}
+		filter.AssetClass = &ac
+	}
+
+	securities, err := svc.Security.List(filter)
+	if err != nil {
+		return fmt.Errorf("failed to list securities: %w", err)
+	}
+
+	printSecuritiesTable(w, securities)
+
+	return nil
+}
+
+// runSecurityDetail shows detailed information for a specific security.
+func runSecurityDetail(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--security requires --file to specify a database")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	sec, err := svc.Security.GetByTicker(opts.securityTicker, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.securityTicker)
+	}
+
+	printSecurityDetails(w, sec)
+
+	return nil
+}
+
+// runAddSecurity creates a new security.
+func runAddSecurity(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--add-security requires --file to specify a database")
+	}
+	if opts.secTicker == "" {
+		return fmt.Errorf("--add-security requires --ticker to specify a ticker symbol")
+	}
+	if opts.acctName == "" {
+		return fmt.Errorf("--add-security requires --name to specify a security name")
+	}
+	if opts.acctType == "" {
+		return fmt.Errorf("--add-security requires --type to specify a security type (stock, etf, mutual_fund, other)")
+	}
+
+	secType, err := security.ParseType(opts.acctType)
+	if err != nil {
+		return fmt.Errorf("invalid --type: %w", err)
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	sec := security.NewSecurity(opts.secTicker, opts.acctName, secType)
+
+	if opts.secAssetClass != "" {
+		ac, err := security.ParseAssetClass(opts.secAssetClass)
+		if err != nil {
+			return fmt.Errorf("invalid --asset-class: %w", err)
+		}
+		sec.AssetClass = ac
+	}
+
+	if opts.acctCurrency != "" {
+		sec.Currency = opts.acctCurrency
+	}
+
+	if opts.secExchange != "" {
+		sec.SetExchange(opts.secExchange)
+	}
+
+	if err := svc.Security.Create(sec); err != nil {
+		return fmt.Errorf("failed to create security: %w", err)
+	}
+
+	fmt.Fprintln(w, "Security created successfully!")
+	fmt.Fprintf(w, "  Ticker:      %s\n", sec.Ticker)
+	fmt.Fprintf(w, "  Name:        %s\n", sec.Name)
+	fmt.Fprintf(w, "  Type:        %s\n", sec.SecurityType.DisplayName())
+	fmt.Fprintf(w, "  Asset Class: %s\n", sec.AssetClass.DisplayName())
+	fmt.Fprintf(w, "  Currency:    %s\n", sec.Currency)
+	if sec.Exchange.Valid {
+		fmt.Fprintf(w, "  Exchange:    %s\n", sec.Exchange.String)
+	}
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runEditSecurity edits an existing security.
+func runEditSecurity(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--edit-security requires --file to specify a database")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	sec, err := svc.Security.GetByTicker(opts.editSecurity, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.editSecurity)
+	}
+
+	// Apply changes
+	if opts.secTicker != "" {
+		sec.Ticker = opts.secTicker
+	}
+	if opts.acctName != "" {
+		sec.Name = opts.acctName
+	}
+	if opts.acctType != "" {
+		secType, err := security.ParseType(opts.acctType)
+		if err != nil {
+			return fmt.Errorf("invalid --type: %w", err)
+		}
+		sec.SecurityType = secType
+	}
+	if opts.secAssetClass != "" {
+		ac, err := security.ParseAssetClass(opts.secAssetClass)
+		if err != nil {
+			return fmt.Errorf("invalid --asset-class: %w", err)
+		}
+		sec.AssetClass = ac
+	}
+	if opts.acctCurrency != "" {
+		sec.Currency = opts.acctCurrency
+	}
+	if opts.secExchange != "" {
+		sec.SetExchange(opts.secExchange)
+	}
+
+	if err := svc.Security.Update(sec); err != nil {
+		return fmt.Errorf("failed to update security: %w", err)
+	}
+
+	fmt.Fprintln(w, "Security updated successfully!")
+	fmt.Fprintf(w, "  Ticker:      %s\n", sec.Ticker)
+	fmt.Fprintf(w, "  Name:        %s\n", sec.Name)
+	fmt.Fprintf(w, "  Type:        %s\n", sec.SecurityType.DisplayName())
+	fmt.Fprintf(w, "  Asset Class: %s\n", sec.AssetClass.DisplayName())
+	fmt.Fprintf(w, "  Currency:    %s\n", sec.Currency)
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runHideSecurity hides a security.
+func runHideSecurity(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--hide-security requires --file to specify a database")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	sec, err := svc.Security.GetByTicker(opts.hideSecurity, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.hideSecurity)
+	}
+
+	if err := svc.Security.Hide(sec.ID); err != nil {
+		return fmt.Errorf("failed to hide security: %w", err)
+	}
+
+	fmt.Fprintf(w, "Security %s (%s) hidden successfully.\n", sec.Ticker, sec.Name)
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runUnhideSecurity unhides a security.
+func runUnhideSecurity(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--unhide-security requires --file to specify a database")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	sec, err := svc.Security.GetByTicker(opts.unhideSecurity, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.unhideSecurity)
+	}
+
+	if err := svc.Security.Unhide(sec.ID); err != nil {
+		return fmt.Errorf("failed to unhide security: %w", err)
+	}
+
+	fmt.Fprintf(w, "Security %s (%s) unhidden successfully.\n", sec.Ticker, sec.Name)
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runDeleteSecurity deletes a security.
+func runDeleteSecurity(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--delete-security requires --file to specify a database")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	sec, err := svc.Security.GetByTicker(opts.deleteSecurity, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.deleteSecurity)
+	}
+
+	if err := svc.Security.Delete(sec.ID); err != nil {
+		if depErr, ok := err.(*security.HasDependentsError); ok {
+			return fmt.Errorf("%s\nUse --hide-security %s instead", depErr.Error(), sec.Ticker)
+		}
+		return fmt.Errorf("failed to delete security: %w", err)
+	}
+
+	fmt.Fprintf(w, "Security %s (%s) deleted successfully.\n", sec.Ticker, sec.Name)
+
+	autoBackupAfterModification(opts.file)
+	return nil
 }

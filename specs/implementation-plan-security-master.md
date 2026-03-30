@@ -478,27 +478,27 @@ Spec: `specs/security-master.md`
 
 ## Phase 29: CLI — Security Management
 
-- [ ] **SM-097 - CLI: --list-securities**
+- [x] **SM-097 - CLI: --list-securities**
   - RED: Write test — lists securities with ticker, name, type, asset_class; respects --include-hidden flag; respects --type and --asset-class filters
   - GREEN: Implement in `cmd/tmoney/commands.go`; add flags to `cliOptions` in `args.go`
 
-- [ ] **SM-098 - CLI: --security (show detail)**
+- [x] **SM-098 - CLI: --security (show detail)**
   - RED: Write test — shows full detail for a security by ticker; not found returns error
   - GREEN: Implement `runSecurityDetail`
 
-- [ ] **SM-099 - CLI: --add-security**
+- [x] **SM-099 - CLI: --add-security**
   - RED: Write test — creates security with --ticker, --name, --type; optional --asset-class, --currency, --exchange; validation errors displayed
   - GREEN: Implement `runAddSecurity`
 
-- [ ] **SM-100 - CLI: --edit-security**
+- [x] **SM-100 - CLI: --edit-security**
   - RED: Write test — edits security fields by ticker; supports ticker change
   - GREEN: Implement `runEditSecurity`
 
-- [ ] **SM-101 - CLI: --hide-security / --unhide-security**
+- [x] **SM-101 - CLI: --hide-security / --unhide-security**
   - RED: Write test — hide sets hidden=true (with position check); unhide sets hidden=false
   - GREEN: Implement `runHideSecurity` and `runUnhideSecurity`
 
-- [ ] **SM-102 - CLI: --delete-security**
+- [x] **SM-102 - CLI: --delete-security**
   - RED: Write test — deletes security with no history; returns error and suggests hiding if history exists
   - GREEN: Implement `runDeleteSecurity`
 

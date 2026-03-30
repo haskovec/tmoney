@@ -117,6 +117,41 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runReconcileStatus(opts, stdout)
 	}
 
+	// Handle --list-securities
+	if opts.listSecurities {
+		return runListSecurities(opts, stdout)
+	}
+
+	// Handle --add-security
+	if opts.addSecurity {
+		return runAddSecurity(opts, stdout)
+	}
+
+	// Handle --edit-security
+	if opts.editSecurity != "" {
+		return runEditSecurity(opts, stdout)
+	}
+
+	// Handle --hide-security
+	if opts.hideSecurity != "" {
+		return runHideSecurity(opts, stdout)
+	}
+
+	// Handle --unhide-security
+	if opts.unhideSecurity != "" {
+		return runUnhideSecurity(opts, stdout)
+	}
+
+	// Handle --delete-security
+	if opts.deleteSecurity != "" {
+		return runDeleteSecurity(opts, stdout)
+	}
+
+	// Handle --security (show detail) — after add/edit/hide/unhide/delete
+	if opts.securityTicker != "" {
+		return runSecurityDetail(opts, stdout)
+	}
+
 	// Handle --import
 	if opts.importFile != "" {
 		return runImport(opts, stdout)
