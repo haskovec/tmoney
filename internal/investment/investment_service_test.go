@@ -3190,3 +3190,327 @@ func TestService_DepositFromAccount(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// SM-090: Share transfer between investment accounts (non-lot)
+// =============================================================================
+
+func TestService_TransferShares_NonLot(t *testing.T) {
+	t.Run("transfer reduces source position and increases destination position", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createInvAccount(t, env.accountRepo, "Source Brokerage")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Deposit cash and buy shares in source account
+		_, err := env.svc.Deposit(srcAcct.ID, date, types.MustNewMoney("10000.00"), "")
+		if err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+		totalAmt := types.MustNewMoney("5000.00")
+		_, err = env.svc.Buy(srcAcct.ID, sec.ID, date, types.MustNewQuantity("50"), &totalAmt, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+
+		// Transfer 20 shares from source to destination
+		result, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date, types.MustNewQuantity("20"), "Move shares")
+		if err != nil {
+			t.Fatalf("TransferShares() error = %v", err)
+		}
+
+		// Verify result has both transactions
+		if result.SourceTransaction == nil {
+			t.Fatal("Expected non-nil source transaction")
+		}
+		if result.DestinationTransaction == nil {
+			t.Fatal("Expected non-nil destination transaction")
+		}
+
+		// Verify source transaction
+		if result.SourceTransaction.Type != TransactionTypeTransferShares {
+			t.Errorf("Expected type transfer_shares, got %s", result.SourceTransaction.Type)
+		}
+		if result.SourceTransaction.AccountID != srcAcct.ID {
+			t.Errorf("Expected source account ID %s, got %s", srcAcct.ID, result.SourceTransaction.AccountID)
+		}
+		if result.SourceTransaction.Shares.Quantity.String() != "20" {
+			t.Errorf("Expected shares '20', got %q", result.SourceTransaction.Shares.Quantity.String())
+		}
+		if result.SourceTransaction.SecurityID.ID != sec.ID {
+			t.Errorf("Expected security ID %s, got %s", sec.ID, result.SourceTransaction.SecurityID.ID)
+		}
+
+		// Verify destination transaction
+		if result.DestinationTransaction.Type != TransactionTypeTransferShares {
+			t.Errorf("Expected type transfer_shares, got %s", result.DestinationTransaction.Type)
+		}
+		if result.DestinationTransaction.AccountID != dstAcct.ID {
+			t.Errorf("Expected dest account ID %s, got %s", dstAcct.ID, result.DestinationTransaction.AccountID)
+		}
+		if result.DestinationTransaction.Shares.Quantity.String() != "20" {
+			t.Errorf("Expected shares '20', got %q", result.DestinationTransaction.Shares.Quantity.String())
+		}
+
+		// Verify linked by transfer_id
+		if !result.SourceTransaction.IsTransfer() {
+			t.Error("Source transaction should be a transfer")
+		}
+		if !result.DestinationTransaction.IsTransfer() {
+			t.Error("Destination transaction should be a transfer")
+		}
+		if result.SourceTransaction.TransferID.ID != result.DestinationTransaction.TransferID.ID {
+			t.Error("Transfer IDs should match")
+		}
+		if result.SourceTransaction.TransferAccountID.ID != dstAcct.ID {
+			t.Error("Source transfer_account_id should point to destination account")
+		}
+		if result.DestinationTransaction.TransferAccountID.ID != srcAcct.ID {
+			t.Error("Destination transfer_account_id should point to source account")
+		}
+
+		// Verify source position reduced to 30 shares
+		srcPos, err := env.positionRepo.GetByAccountAndSecurity(srcAcct.ID, sec.ID)
+		if err != nil {
+			t.Fatalf("GetByAccountAndSecurity() error = %v", err)
+		}
+		if srcPos.Shares.String() != "30" {
+			t.Errorf("Expected source shares '30', got %q", srcPos.Shares.String())
+		}
+		// Average cost should remain at 100
+		if srcPos.AverageCostPerShare.String() != "100" {
+			t.Errorf("Expected source avg cost '100', got %q", srcPos.AverageCostPerShare.String())
+		}
+
+		// Verify destination position has 20 shares with cost basis from source
+		dstPos, err := env.positionRepo.GetByAccountAndSecurity(dstAcct.ID, sec.ID)
+		if err != nil {
+			t.Fatalf("GetByAccountAndSecurity() error = %v", err)
+		}
+		if dstPos.Shares.String() != "20" {
+			t.Errorf("Expected dest shares '20', got %q", dstPos.Shares.String())
+		}
+		// Average cost per share should carry over from source (100)
+		if dstPos.AverageCostPerShare.String() != "100" {
+			t.Errorf("Expected dest avg cost '100', got %q", dstPos.AverageCostPerShare.String())
+		}
+
+		// Verify no cash movement in either account
+		srcCash, _ := env.svc.GetCashBalance(srcAcct.ID)
+		if srcCash.String() != "5000" {
+			t.Errorf("Expected source cash '5000', got %q", srcCash.String())
+		}
+		dstCash, _ := env.svc.GetCashBalance(dstAcct.ID)
+		if dstCash.String() != "0" {
+			t.Errorf("Expected dest cash '0', got %q", dstCash.String())
+		}
+	})
+
+	t.Run("transfer all shares removes source position", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createInvAccount(t, env.accountRepo, "Source")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest")
+		sec := createSec(t, env.secRepo, "MSFT")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Deposit cash and buy shares
+		_, _ = env.svc.Deposit(srcAcct.ID, date, types.MustNewMoney("5000.00"), "")
+		totalAmt := types.MustNewMoney("5000.00")
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date, types.MustNewQuantity("10"), &totalAmt, nil, types.ZeroMoney, "")
+
+		// Transfer all 10 shares
+		_, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date, types.MustNewQuantity("10"), "")
+		if err != nil {
+			t.Fatalf("TransferShares() error = %v", err)
+		}
+
+		// Source position should be gone (zero shares)
+		srcPos, err := env.positionRepo.GetByAccountAndSecurity(srcAcct.ID, sec.ID)
+		if err != nil {
+			t.Fatalf("GetByAccountAndSecurity() error = %v", err)
+		}
+		if !srcPos.Shares.IsZero() {
+			t.Errorf("Expected source shares '0', got %q", srcPos.Shares.String())
+		}
+
+		// Destination should have all 10 shares
+		dstPos, err := env.positionRepo.GetByAccountAndSecurity(dstAcct.ID, sec.ID)
+		if err != nil {
+			t.Fatalf("GetByAccountAndSecurity() error = %v", err)
+		}
+		if dstPos.Shares.String() != "10" {
+			t.Errorf("Expected dest shares '10', got %q", dstPos.Shares.String())
+		}
+		if dstPos.AverageCostPerShare.String() != "500" {
+			t.Errorf("Expected dest avg cost '500', got %q", dstPos.AverageCostPerShare.String())
+		}
+	})
+
+	t.Run("transfer to existing position merges cost basis", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createInvAccount(t, env.accountRepo, "Source")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest")
+		sec := createSec(t, env.secRepo, "GOOG")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Buy 10 shares at $200 in source
+		_, _ = env.svc.Deposit(srcAcct.ID, date, types.MustNewMoney("10000.00"), "")
+		srcTotal := types.MustNewMoney("2000.00")
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date, types.MustNewQuantity("10"), &srcTotal, nil, types.ZeroMoney, "")
+
+		// Buy 10 shares at $100 in destination
+		_, _ = env.svc.Deposit(dstAcct.ID, date, types.MustNewMoney("10000.00"), "")
+		dstTotal := types.MustNewMoney("1000.00")
+		_, _ = env.svc.Buy(dstAcct.ID, sec.ID, date, types.MustNewQuantity("10"), &dstTotal, nil, types.ZeroMoney, "")
+
+		// Transfer 5 shares from source to destination (5 shares at $200 avg cost)
+		_, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date, types.MustNewQuantity("5"), "")
+		if err != nil {
+			t.Fatalf("TransferShares() error = %v", err)
+		}
+
+		// Source should have 5 shares at $200
+		srcPos, _ := env.positionRepo.GetByAccountAndSecurity(srcAcct.ID, sec.ID)
+		if srcPos.Shares.String() != "5" {
+			t.Errorf("Expected source shares '5', got %q", srcPos.Shares.String())
+		}
+
+		// Destination should have 15 shares with merged cost basis
+		// Existing: 10 shares × $100 = $1000
+		// Transferred: 5 shares × $200 = $1000
+		// Total: 15 shares, $2000 total cost → $133.333... avg
+		dstPos, _ := env.positionRepo.GetByAccountAndSecurity(dstAcct.ID, sec.ID)
+		if dstPos.Shares.String() != "15" {
+			t.Errorf("Expected dest shares '15', got %q", dstPos.Shares.String())
+		}
+		// Cost basis should be preserved: (10*100 + 5*200) / 15 ≈ 133.33 avg
+		// Due to decimal division precision, check within tolerance
+		actualCostBasis := dstPos.CostBasis()
+		expectedCostBasis := types.MustNewMoney("2000.00")
+		diff := actualCostBasis.Sub(expectedCostBasis).Abs()
+		tolerance := types.MustNewMoney("0.01")
+		if diff.Cmp(tolerance) > 0 {
+			t.Errorf("Expected dest cost basis ~'%s', got '%s' (diff: %s)", expectedCostBasis.String(), actualCostBasis.String(), diff.String())
+		}
+	})
+
+	t.Run("transfer rejects insufficient shares", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createInvAccount(t, env.accountRepo, "Source")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest")
+		sec := createSec(t, env.secRepo, "TSLA")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Buy only 5 shares
+		_, _ = env.svc.Deposit(srcAcct.ID, date, types.MustNewMoney("5000.00"), "")
+		totalAmt := types.MustNewMoney("500.00")
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date, types.MustNewQuantity("5"), &totalAmt, nil, types.ZeroMoney, "")
+
+		// Try to transfer 10
+		_, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date, types.MustNewQuantity("10"), "")
+		if err == nil {
+			t.Fatal("Expected error for insufficient shares")
+		}
+		if _, ok := err.(*InsufficientSharesError); !ok {
+			t.Errorf("Expected InsufficientSharesError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("transfer rejects non-positive shares", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createInvAccount(t, env.accountRepo, "Source")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest")
+		sec := createSec(t, env.secRepo, "NFLX")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date, types.MustNewQuantity("0"), "")
+		if err == nil {
+			t.Fatal("Expected error for zero shares")
+		}
+
+		_, err = env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date, types.MustNewQuantity("-5"), "")
+		if err == nil {
+			t.Fatal("Expected error for negative shares")
+		}
+	})
+
+	t.Run("transfer rejects non-investment source account", func(t *testing.T) {
+		env := createFullTestService(t)
+		checkAcct := createCheckAccount(t, env.accountRepo, "Checking")
+		invAcct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AMD")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := env.svc.TransferShares(checkAcct.ID, invAcct.ID, sec.ID, date, types.MustNewQuantity("10"), "")
+		if err == nil {
+			t.Fatal("Expected error for non-investment source account")
+		}
+	})
+
+	t.Run("transfer rejects non-investment destination account", func(t *testing.T) {
+		env := createFullTestService(t)
+		invAcct := createInvAccount(t, env.accountRepo, "Brokerage")
+		checkAcct := createCheckAccount(t, env.accountRepo, "Checking")
+		sec := createSec(t, env.secRepo, "NVDA")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := env.svc.TransferShares(invAcct.ID, checkAcct.ID, sec.ID, date, types.MustNewQuantity("10"), "")
+		if err == nil {
+			t.Fatal("Expected error for non-investment destination account")
+		}
+	})
+
+	t.Run("transfer rejects same account", func(t *testing.T) {
+		env := createFullTestService(t)
+		invAcct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "META")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := env.svc.TransferShares(invAcct.ID, invAcct.ID, sec.ID, date, types.MustNewQuantity("10"), "")
+		if err == nil {
+			t.Fatal("Expected error for same account transfer")
+		}
+	})
+
+	t.Run("transfer with memo sets memo on both transactions", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createInvAccount(t, env.accountRepo, "Source")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest")
+		sec := createSec(t, env.secRepo, "AMZN")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(srcAcct.ID, date, types.MustNewMoney("10000.00"), "")
+		totalAmt := types.MustNewMoney("1000.00")
+		_, _ = env.svc.Buy(srcAcct.ID, sec.ID, date, types.MustNewQuantity("10"), &totalAmt, nil, types.ZeroMoney, "")
+
+		result, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date, types.MustNewQuantity("5"), "Account consolidation")
+		if err != nil {
+			t.Fatalf("TransferShares() error = %v", err)
+		}
+
+		if result.SourceTransaction.Memo.String != "Account consolidation" {
+			t.Errorf("Expected source memo 'Account consolidation', got %q", result.SourceTransaction.Memo.String)
+		}
+		if result.DestinationTransaction.Memo.String != "Account consolidation" {
+			t.Errorf("Expected dest memo 'Account consolidation', got %q", result.DestinationTransaction.Memo.String)
+		}
+	})
+
+	t.Run("transfer with no position in source returns insufficient shares", func(t *testing.T) {
+		env := createFullTestService(t)
+		srcAcct := createInvAccount(t, env.accountRepo, "Source")
+		dstAcct := createInvAccount(t, env.accountRepo, "Dest")
+		sec := createSec(t, env.secRepo, "INTC")
+		date := types.NewDate(2024, time.March, 15)
+
+		// No shares bought in source, try to transfer
+		_, err := env.svc.TransferShares(srcAcct.ID, dstAcct.ID, sec.ID, date, types.MustNewQuantity("10"), "")
+		if err == nil {
+			t.Fatal("Expected error for no position")
+		}
+		if _, ok := err.(*InsufficientSharesError); !ok {
+			t.Errorf("Expected InsufficientSharesError, got %T: %v", err, err)
+		}
+	})
+}

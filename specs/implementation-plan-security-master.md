@@ -444,7 +444,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — deposit from checking creates investment_transaction (deposit) + regular transaction (withdrawal) linked by transfer_id; withdrawal to checking creates paired transactions
   - GREEN: Implement `TransferCash` that creates linked transactions across both tables
 
-- [ ] **SM-090 - Share transfer between investment accounts (non-lot)**
+- [x] **SM-090 - Share transfer between investment accounts (non-lot)**
   - RED: Write test — source position reduced; destination position increased with cost basis; no cash movement; shares must be available
   - GREEN: Implement `TransferShares` for non-lot-tracking
 
