@@ -508,6 +508,98 @@ func (s *Service) autoCreatePrice(securityID types.ID, date types.Date, pricePer
 	_ = s.priceRepo.Create(p)
 }
 
+// Dividend creates a cash dividend transaction that increases the cash position.
+// The security and share count are unchanged. The amount is stored as positive (adds cash).
+func (s *Service) Dividend(accountID types.ID, securityID types.ID, date types.Date, amount types.Money, memo string) (*Transaction, error) {
+	if err := s.requireInvestmentAccount(accountID); err != nil {
+		return nil, err
+	}
+
+	if !amount.IsPositive() {
+		return nil, &InvalidTransferAmountError{Amount: amount}
+	}
+
+	txn := NewTransaction(accountID, date, TransactionTypeDividend, amount)
+	txn.SetSecurity(securityID)
+	if memo != "" {
+		txn.SetMemo(memo)
+	}
+
+	if err := s.validateTransaction(txn); err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.Create(txn); err != nil {
+		return nil, fmt.Errorf("failed to create dividend transaction: %w", err)
+	}
+
+	return txn, nil
+}
+
+// ReinvestDividend creates a reinvest dividend transaction that adds shares without cash movement.
+// For non-lot-tracking accounts, it updates the aggregate position.
+// For lot-tracking accounts, it creates a new lot.
+// At least shares + one of (totalAmount, pricePerShare) must be provided.
+func (s *Service) ReinvestDividend(
+	accountID types.ID,
+	securityID types.ID,
+	date types.Date,
+	shares types.Quantity,
+	totalAmount *types.Money,
+	pricePerShare *types.Money,
+	memo string,
+) (*Transaction, error) {
+	acct, err := s.getInvestmentAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Smart compute missing fields (no commission for reinvest)
+	computed, err := SmartCompute(shares, totalAmount, pricePerShare, types.ZeroMoney)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute reinvest dividend fields: %w", err)
+	}
+
+	// Create transaction — no cash movement, so TotalAmount stored as positive for record-keeping
+	txn := NewTransactionWithSecurity(accountID, date, TransactionTypeReinvestDividend, computed.TotalAmount, securityID, shares)
+	txn.SetPricePerShare(computed.PricePerShare)
+	if memo != "" {
+		txn.SetMemo(memo)
+	}
+
+	if err := s.validateTransaction(txn); err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.Create(txn); err != nil {
+		return nil, fmt.Errorf("failed to create reinvest dividend transaction: %w", err)
+	}
+
+	// Update position or create lot based on account tracking mode
+	if acct.TrackLots {
+		lot := NewLot(accountID, securityID, shares, computed.PricePerShare, date, txn.ID)
+		if err := s.lotRepo.Create(&lot); err != nil {
+			return nil, fmt.Errorf("failed to create lot: %w", err)
+		}
+	} else {
+		pos, err := s.positionRepo.GetByAccountAndSecurity(accountID, securityID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get position: %w", err)
+		}
+		if err := pos.AddShares(shares, computed.PricePerShare); err != nil {
+			return nil, fmt.Errorf("failed to update position: %w", err)
+		}
+		if err := s.positionRepo.CreateOrUpdate(pos); err != nil {
+			return nil, fmt.Errorf("failed to save position: %w", err)
+		}
+	}
+
+	// Auto-create price record from transaction
+	s.autoCreatePrice(securityID, date, computed.PricePerShare)
+
+	return txn, nil
+}
+
 // InvalidTransferAmountError is returned when a transfer amount is invalid (not positive).
 type InvalidTransferAmountError struct {
 	Amount types.Money

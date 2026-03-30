@@ -410,21 +410,21 @@ Spec: `specs/security-master.md`
   - RED: Write test — selling shares creates a price record; existing manual/import price preserved
   - GREEN: Add price auto-creation to `Sell` service method
 
-- [ ] **SM-083 - Auto-create price on reinvest dividend** *(blocked by SM-085/SM-086: ReinvestDividend not yet implemented; `autoCreatePrice` helper is ready — just call it from `ReinvestDividend` once built)*
+- [x] **SM-083 - Auto-create price on reinvest dividend**
   - RED: Write test — reinvest creates price record from reinvestment price
   - GREEN: Add price auto-creation to `ReinvestDividend` service method
 
 ## Phase 24: Investment Transaction Service — Dividends
 
-- [ ] **SM-084 - Cash dividend**
+- [x] **SM-084 - Cash dividend**
   - RED: Write test — dividend increases cash by amount; transaction created with security reference; share count unchanged
   - GREEN: Implement `Dividend`
 
-- [ ] **SM-085 - Reinvest dividend (non-lot-tracking)**
+- [x] **SM-085 - Reinvest dividend (non-lot-tracking)**
   - RED: Write test — reinvest adds shares to position; recalculates average cost; no cash movement; transaction created
   - GREEN: Implement `ReinvestDividend` for non-lot-tracking
 
-- [ ] **SM-086 - Reinvest dividend (lot-tracking)**
+- [x] **SM-086 - Reinvest dividend (lot-tracking)**
   - RED: Write test — reinvest creates new lot; no cash movement; lot has correct cost_per_share and purchase_date
   - GREEN: Implement `ReinvestDividend` for lot-tracking
 

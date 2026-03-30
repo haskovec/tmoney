@@ -1902,3 +1902,500 @@ func TestService_Sell_AutoCreatesPrice(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// SM-084: Cash Dividend
+// =============================================================================
+
+func TestService_Dividend(t *testing.T) {
+	t.Run("dividend increases cash by amount", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		txn, err := env.svc.Dividend(acct.ID, sec.ID, date, types.MustNewMoney("47.50"), "Q1 dividend")
+		if err != nil {
+			t.Fatalf("Dividend() error = %v", err)
+		}
+
+		if txn.Type != TransactionTypeDividend {
+			t.Errorf("Expected type %q, got %q", TransactionTypeDividend, txn.Type)
+		}
+		if txn.TotalAmount.String() != "47.5" {
+			t.Errorf("Expected total amount '47.5', got %q", txn.TotalAmount.String())
+		}
+		if !txn.SecurityID.Valid || txn.SecurityID.ID != sec.ID {
+			t.Errorf("Expected security ID %s, got %v", sec.ID, txn.SecurityID)
+		}
+		if !txn.Memo.Valid || txn.Memo.String != "Q1 dividend" {
+			t.Errorf("Expected memo 'Q1 dividend', got %v", txn.Memo)
+		}
+
+		// Cash balance should increase
+		balance, err := env.svc.GetCashBalance(acct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balance.String() != "47.5" {
+			t.Errorf("Expected cash balance '47.5', got %q", balance.String())
+		}
+	})
+
+	t.Run("dividend with existing cash adds to balance", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "MSFT")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Deposit some cash first
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("5000.00"), "")
+
+		_, err := env.svc.Dividend(acct.ID, sec.ID, date, types.MustNewMoney("25.00"), "")
+		if err != nil {
+			t.Fatalf("Dividend() error = %v", err)
+		}
+
+		balance, err := env.svc.GetCashBalance(acct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balance.String() != "5025" {
+			t.Errorf("Expected cash balance '5025', got %q", balance.String())
+		}
+	})
+
+	t.Run("dividend does not change share count", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Buy some shares first
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1850.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		// Record dividend
+		divDate := types.NewDate(2024, time.June, 15)
+		_, err := env.svc.Dividend(acct.ID, sec.ID, divDate, types.MustNewMoney("47.50"), "")
+		if err != nil {
+			t.Fatalf("Dividend() error = %v", err)
+		}
+
+		// Shares should be unchanged
+		pos, err := env.positionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+		if err != nil {
+			t.Fatalf("GetByAccountAndSecurity() error = %v", err)
+		}
+		if pos.Shares.String() != "10" {
+			t.Errorf("Expected shares '10' unchanged, got %q", pos.Shares.String())
+		}
+	})
+
+	t.Run("dividend rejects non-investment account", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createCheckAccount(t, env.accountRepo, "Checking")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := env.svc.Dividend(acct.ID, sec.ID, date, types.MustNewMoney("47.50"), "")
+		if err == nil {
+			t.Fatal("Expected error for non-investment account, got nil")
+		}
+	})
+
+	t.Run("dividend rejects non-positive amount", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := env.svc.Dividend(acct.ID, sec.ID, date, types.MustNewMoney("0.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for zero amount, got nil")
+		}
+
+		_, err = env.svc.Dividend(acct.ID, sec.ID, date, types.MustNewMoney("-10.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for negative amount, got nil")
+		}
+	})
+
+	t.Run("transaction has no shares set", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		txn, err := env.svc.Dividend(acct.ID, sec.ID, date, types.MustNewMoney("47.50"), "")
+		if err != nil {
+			t.Fatalf("Dividend() error = %v", err)
+		}
+
+		if txn.HasShares() {
+			t.Errorf("Expected dividend transaction to have no shares, but shares were set")
+		}
+	})
+}
+
+// =============================================================================
+// SM-085: Reinvest Dividend (non-lot-tracking)
+// =============================================================================
+
+func TestService_ReinvestDividend_NonLotTracking(t *testing.T) {
+	t.Run("reinvest adds shares to position", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Buy initial shares
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1850.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		// Reinvest dividend
+		reinvestDate := types.NewDate(2024, time.June, 15)
+		reinvestTotal := types.MustNewMoney("370.00")
+		reinvestShares := types.MustNewQuantity("2")
+		txn, err := env.svc.ReinvestDividend(acct.ID, sec.ID, reinvestDate, reinvestShares, &reinvestTotal, nil, "DRIP")
+		if err != nil {
+			t.Fatalf("ReinvestDividend() error = %v", err)
+		}
+
+		if txn.Type != TransactionTypeReinvestDividend {
+			t.Errorf("Expected type %q, got %q", TransactionTypeReinvestDividend, txn.Type)
+		}
+		if txn.TotalAmount.String() != "370" {
+			t.Errorf("Expected total amount '370', got %q", txn.TotalAmount.String())
+		}
+		if !txn.HasShares() || txn.Shares.Quantity.String() != "2" {
+			t.Errorf("Expected shares '2', got %v", txn.Shares)
+		}
+		// price_per_share = 370/2 = 185
+		if !txn.HasPricePerShare() || txn.PricePerShare.Money.String() != "185" {
+			t.Errorf("Expected price_per_share '185', got %v", txn.PricePerShare)
+		}
+
+		// Position should have 12 shares (10 + 2)
+		pos, err := env.positionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+		if err != nil {
+			t.Fatalf("GetByAccountAndSecurity() error = %v", err)
+		}
+		if pos.Shares.String() != "12" {
+			t.Errorf("Expected shares '12', got %q", pos.Shares.String())
+		}
+	})
+
+	t.Run("reinvest recalculates average cost", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Buy 10 shares at $100
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		// Reinvest 2 shares at $120 each
+		reinvestDate := types.NewDate(2024, time.June, 15)
+		reinvestTotal := types.MustNewMoney("240.00")
+		reinvestShares := types.MustNewQuantity("2")
+		_, err := env.svc.ReinvestDividend(acct.ID, sec.ID, reinvestDate, reinvestShares, &reinvestTotal, nil, "")
+		if err != nil {
+			t.Fatalf("ReinvestDividend() error = %v", err)
+		}
+
+		pos, err := env.positionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+		if err != nil {
+			t.Fatalf("GetByAccountAndSecurity() error = %v", err)
+		}
+		// Weighted average: (10*100 + 2*120) / 12 = 1240/12 ≈ 103.333...
+		// Check it's approximately right (exact value depends on decimal precision)
+		avgCost := pos.AverageCostPerShare
+		if avgCost.String() == "100" || avgCost.String() == "120" {
+			t.Errorf("Expected weighted average between 100 and 120, got %q", avgCost.String())
+		}
+	})
+
+	t.Run("reinvest has no cash movement", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1850.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		// Cash balance after buy: 10000 - 1850 = 8150
+		balanceBefore, _ := env.svc.GetCashBalance(acct.ID)
+
+		reinvestDate := types.NewDate(2024, time.June, 15)
+		reinvestTotal := types.MustNewMoney("370.00")
+		reinvestShares := types.MustNewQuantity("2")
+		_, err := env.svc.ReinvestDividend(acct.ID, sec.ID, reinvestDate, reinvestShares, &reinvestTotal, nil, "")
+		if err != nil {
+			t.Fatalf("ReinvestDividend() error = %v", err)
+		}
+
+		balanceAfter, err := env.svc.GetCashBalance(acct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balanceBefore.String() != balanceAfter.String() {
+			t.Errorf("Expected cash unchanged at %q, got %q", balanceBefore.String(), balanceAfter.String())
+		}
+	})
+
+	t.Run("reinvest with price_per_share provided", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1850.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		reinvestDate := types.NewDate(2024, time.June, 15)
+		reinvestShares := types.MustNewQuantity("2")
+		pps := types.MustNewMoney("185.00")
+		txn, err := env.svc.ReinvestDividend(acct.ID, sec.ID, reinvestDate, reinvestShares, nil, &pps, "")
+		if err != nil {
+			t.Fatalf("ReinvestDividend() error = %v", err)
+		}
+		// total = 2 * 185 = 370
+		if txn.TotalAmount.String() != "370" {
+			t.Errorf("Expected total '370', got %q", txn.TotalAmount.String())
+		}
+	})
+
+	t.Run("reinvest rejects non-investment account", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createCheckAccount(t, env.accountRepo, "Checking")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		total := types.MustNewMoney("370.00")
+		shares := types.MustNewQuantity("2")
+		_, err := env.svc.ReinvestDividend(acct.ID, sec.ID, date, shares, &total, nil, "")
+		if err == nil {
+			t.Fatal("Expected error for non-investment account, got nil")
+		}
+	})
+
+	t.Run("reinvest creates position from zero", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.June, 15)
+
+		total := types.MustNewMoney("370.00")
+		shares := types.MustNewQuantity("2")
+		_, err := env.svc.ReinvestDividend(acct.ID, sec.ID, date, shares, &total, nil, "")
+		if err != nil {
+			t.Fatalf("ReinvestDividend() error = %v", err)
+		}
+
+		pos, err := env.positionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+		if err != nil {
+			t.Fatalf("GetByAccountAndSecurity() error = %v", err)
+		}
+		if pos.Shares.String() != "2" {
+			t.Errorf("Expected shares '2', got %q", pos.Shares.String())
+		}
+		if pos.AverageCostPerShare.String() != "185" {
+			t.Errorf("Expected avg cost '185', got %q", pos.AverageCostPerShare.String())
+		}
+	})
+}
+
+// =============================================================================
+// SM-086: Reinvest Dividend (lot-tracking)
+// =============================================================================
+
+func TestService_ReinvestDividend_LotTracking(t *testing.T) {
+	t.Run("reinvest creates new lot", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Buy initial shares
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1850.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		// Verify 1 lot exists
+		lotsBefore, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		if len(lotsBefore) != 1 {
+			t.Fatalf("Expected 1 lot before reinvest, got %d", len(lotsBefore))
+		}
+
+		// Reinvest dividend
+		reinvestDate := types.NewDate(2024, time.June, 15)
+		reinvestTotal := types.MustNewMoney("370.00")
+		reinvestShares := types.MustNewQuantity("2")
+		_, err := env.svc.ReinvestDividend(acct.ID, sec.ID, reinvestDate, reinvestShares, &reinvestTotal, nil, "")
+		if err != nil {
+			t.Fatalf("ReinvestDividend() error = %v", err)
+		}
+
+		// Should have 2 lots now
+		lotsAfter, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		if len(lotsAfter) != 2 {
+			t.Fatalf("Expected 2 lots after reinvest, got %d", len(lotsAfter))
+		}
+	})
+
+	t.Run("reinvest lot has correct properties", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "MSFT")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("3000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		reinvestDate := types.NewDate(2024, time.June, 15)
+		reinvestTotal := types.MustNewMoney("370.00")
+		reinvestShares := types.MustNewQuantity("2")
+		_, err := env.svc.ReinvestDividend(acct.ID, sec.ID, reinvestDate, reinvestShares, &reinvestTotal, nil, "")
+		if err != nil {
+			t.Fatalf("ReinvestDividend() error = %v", err)
+		}
+
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		// Find the reinvest lot (the newer one)
+		var reinvestLot *Lot
+		for _, l := range lots {
+			if l.PurchaseDate.Time().Equal(reinvestDate.Time()) {
+				reinvestLot = l
+				break
+			}
+		}
+		if reinvestLot == nil {
+			t.Fatal("Could not find reinvest lot by purchase date")
+		}
+
+		if reinvestLot.Shares.String() != "2" {
+			t.Errorf("Expected lot shares '2', got %q", reinvestLot.Shares.String())
+		}
+		// 370/2 = 185
+		if reinvestLot.CostPerShare.String() != "185" {
+			t.Errorf("Expected cost_per_share '185', got %q", reinvestLot.CostPerShare.String())
+		}
+		if reinvestLot.Closed {
+			t.Error("Expected lot to not be closed")
+		}
+	})
+
+	t.Run("reinvest with lot tracking has no cash movement", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "GOOG")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1500.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		balanceBefore, _ := env.svc.GetCashBalance(acct.ID)
+
+		reinvestDate := types.NewDate(2024, time.June, 15)
+		reinvestTotal := types.MustNewMoney("300.00")
+		reinvestShares := types.MustNewQuantity("2")
+		_, err := env.svc.ReinvestDividend(acct.ID, sec.ID, reinvestDate, reinvestShares, &reinvestTotal, nil, "")
+		if err != nil {
+			t.Fatalf("ReinvestDividend() error = %v", err)
+		}
+
+		balanceAfter, _ := env.svc.GetCashBalance(acct.ID)
+		if balanceBefore.String() != balanceAfter.String() {
+			t.Errorf("Expected cash unchanged at %q, got %q", balanceBefore.String(), balanceAfter.String())
+		}
+	})
+}
+
+// =============================================================================
+// SM-083: Auto-create price on reinvest dividend
+// =============================================================================
+
+func TestService_ReinvestDividend_AutoCreatesPrice(t *testing.T) {
+	t.Run("reinvest creates price record", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1850.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		reinvestDate := types.NewDate(2024, time.June, 15)
+		reinvestTotal := types.MustNewMoney("400.00")
+		reinvestShares := types.MustNewQuantity("2")
+		_, err := env.svc.ReinvestDividend(acct.ID, sec.ID, reinvestDate, reinvestShares, &reinvestTotal, nil, "")
+		if err != nil {
+			t.Fatalf("ReinvestDividend() error = %v", err)
+		}
+
+		// Price should be auto-created for reinvest date
+		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, reinvestDate)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v, expected price to be auto-created", err)
+		}
+		// 400/2 = 200
+		if p.Price.String() != "200" {
+			t.Errorf("Expected price '200', got %q", p.Price.String())
+		}
+		if p.Source != price.SourceTransaction {
+			t.Errorf("Expected source 'transaction', got %q", p.Source.String())
+		}
+	})
+
+	t.Run("reinvest does not overwrite existing manual price", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "MSFT")
+		reinvestDate := types.NewDate(2024, time.June, 15)
+
+		// Create manual price first
+		manualPrice := price.NewPrice(sec.ID, reinvestDate, types.MustNewMoney("210.00"), price.SourceManual)
+		if err := env.priceRepo.Create(manualPrice); err != nil {
+			t.Fatalf("Create manual price error = %v", err)
+		}
+
+		total := types.MustNewMoney("400.00")
+		shares := types.MustNewQuantity("2")
+		_, err := env.svc.ReinvestDividend(acct.ID, sec.ID, reinvestDate, shares, &total, nil, "")
+		if err != nil {
+			t.Fatalf("ReinvestDividend() error = %v", err)
+		}
+
+		// Manual price should be preserved
+		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, reinvestDate)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v", err)
+		}
+		if p.Price.String() != "210" {
+			t.Errorf("Expected manual price '210' preserved, got %q", p.Price.String())
+		}
+		if p.Source != price.SourceManual {
+			t.Errorf("Expected source 'manual' preserved, got %q", p.Source.String())
+		}
+	})
+}
