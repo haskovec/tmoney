@@ -440,7 +440,7 @@ Spec: `specs/security-master.md`
 
 ## Phase 26: Investment Transaction Service — Transfers
 
-- [ ] **SM-089 - Cash transfer between investment and regular account**
+- [x] **SM-089 - Cash transfer between investment and regular account**
   - RED: Write test — deposit from checking creates investment_transaction (deposit) + regular transaction (withdrawal) linked by transfer_id; withdrawal to checking creates paired transactions
   - GREEN: Implement `TransferCash` that creates linked transactions across both tables
 

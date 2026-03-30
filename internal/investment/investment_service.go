@@ -7,6 +7,7 @@ import (
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/price"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -18,6 +19,7 @@ type Service struct {
 	lotRepo            *LotRepository
 	transactionLotRepo *TransactionLotRepository
 	priceRepo          *price.Repository
+	txnRepo            *transaction.Repository
 	db                 *db.DB
 }
 
@@ -29,6 +31,7 @@ func NewService(
 	lotRepo *LotRepository,
 	transactionLotRepo *TransactionLotRepository,
 	priceRepo *price.Repository,
+	txnRepo *transaction.Repository,
 	database *db.DB,
 ) *Service {
 	return &Service{
@@ -38,6 +41,7 @@ func NewService(
 		lotRepo:            lotRepo,
 		transactionLotRepo: transactionLotRepo,
 		priceRepo:          priceRepo,
+		txnRepo:            txnRepo,
 		db:                 database,
 	}
 }
@@ -764,6 +768,172 @@ func (s *Service) feeLiquidationWithLots(txn *Transaction, accountID, securityID
 	return nil
 }
 
+// CashTransferResult contains both sides of a cash transfer between
+// an investment account and a regular account.
+type CashTransferResult struct {
+	InvestmentTransaction *Transaction
+	RegularTransaction    *transaction.Transaction
+	TransferID            types.ID
+}
+
+// TransferCash creates a cash transfer between an investment account and a regular (non-investment) account.
+// When direction is "in" (deposit to investment), the regular account is debited and the investment account is credited.
+// When direction is "out" (withdrawal from investment), the investment account is debited and the regular account is credited.
+// Both transactions are linked by a shared transfer_id.
+func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string) (*CashTransferResult, error) {
+	if s.txnRepo == nil {
+		return nil, fmt.Errorf("transaction repository not configured")
+	}
+
+	if !amount.IsPositive() {
+		return nil, &InvalidTransferAmountError{Amount: amount}
+	}
+
+	// Validate investment account
+	if err := s.requireInvestmentAccount(investmentAccountID); err != nil {
+		return nil, err
+	}
+
+	// Validate regular account exists and is not an investment account
+	regularAcct, err := s.accountRepo.GetByID(regularAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get regular account: %w", err)
+	}
+	if regularAcct.Type == account.TypeInvestment {
+		return nil, &NotRegularAccountError{
+			AccountID: regularAccountID.String(),
+			Type:      string(regularAcct.Type),
+		}
+	}
+
+	// Check that the two accounts are different
+	if investmentAccountID == regularAccountID {
+		return nil, fmt.Errorf("cannot transfer between the same account")
+	}
+
+	// Check cash balance for withdrawals from investment account
+	cashBalance, err := s.GetCashBalance(investmentAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cash balance: %w", err)
+	}
+
+	if cashBalance.Cmp(amount) < 0 {
+		return nil, &InsufficientCashError{
+			AccountID: investmentAccountID.String(),
+			Available: cashBalance,
+			Requested: amount,
+		}
+	}
+
+	transferID := types.NewID()
+
+	// Create investment transaction (withdrawal — negative amount)
+	negAmount := amount.Neg()
+	invTxn := NewTransaction(investmentAccountID, date, TransactionTypeTransferCash, negAmount)
+	invTxn.SetTransfer(transferID, regularAccountID)
+	if memo != "" {
+		invTxn.SetMemo(memo)
+	}
+
+	if err := s.validateTransaction(invTxn); err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.Create(invTxn); err != nil {
+		return nil, fmt.Errorf("failed to create investment transfer transaction: %w", err)
+	}
+
+	// Create regular transaction (deposit — positive amount)
+	regTxn := transaction.NewTransaction(regularAccountID, date, amount)
+	regTxn.SetTransfer(transferID, investmentAccountID)
+	if memo != "" {
+		regTxn.SetMemo(memo)
+	}
+
+	if err := s.txnRepo.Create(regTxn); err != nil {
+		// Cleanup investment side on failure
+		_ = s.repo.Delete(invTxn.ID)
+		return nil, fmt.Errorf("failed to create regular transfer transaction: %w", err)
+	}
+
+	return &CashTransferResult{
+		InvestmentTransaction: invTxn,
+		RegularTransaction:    regTxn,
+		TransferID:            transferID,
+	}, nil
+}
+
+// DepositFromAccount transfers cash from a regular account into an investment account.
+// This creates a deposit in the investment account and a withdrawal in the regular account.
+func (s *Service) DepositFromAccount(investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string) (*CashTransferResult, error) {
+	if s.txnRepo == nil {
+		return nil, fmt.Errorf("transaction repository not configured")
+	}
+
+	if !amount.IsPositive() {
+		return nil, &InvalidTransferAmountError{Amount: amount}
+	}
+
+	// Validate investment account
+	if err := s.requireInvestmentAccount(investmentAccountID); err != nil {
+		return nil, err
+	}
+
+	// Validate regular account exists and is not an investment account
+	regularAcct, err := s.accountRepo.GetByID(regularAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get regular account: %w", err)
+	}
+	if regularAcct.Type == account.TypeInvestment {
+		return nil, &NotRegularAccountError{
+			AccountID: regularAccountID.String(),
+			Type:      string(regularAcct.Type),
+		}
+	}
+
+	// Check that the two accounts are different
+	if investmentAccountID == regularAccountID {
+		return nil, fmt.Errorf("cannot transfer between the same account")
+	}
+
+	transferID := types.NewID()
+
+	// Create investment transaction (deposit — positive amount)
+	invTxn := NewTransaction(investmentAccountID, date, TransactionTypeTransferCash, amount)
+	invTxn.SetTransfer(transferID, regularAccountID)
+	if memo != "" {
+		invTxn.SetMemo(memo)
+	}
+
+	if err := s.validateTransaction(invTxn); err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.Create(invTxn); err != nil {
+		return nil, fmt.Errorf("failed to create investment transfer transaction: %w", err)
+	}
+
+	// Create regular transaction (withdrawal — negative amount)
+	negAmount := amount.Neg()
+	regTxn := transaction.NewTransaction(regularAccountID, date, negAmount)
+	regTxn.SetTransfer(transferID, investmentAccountID)
+	if memo != "" {
+		regTxn.SetMemo(memo)
+	}
+
+	if err := s.txnRepo.Create(regTxn); err != nil {
+		// Cleanup investment side on failure
+		_ = s.repo.Delete(invTxn.ID)
+		return nil, fmt.Errorf("failed to create regular transfer transaction: %w", err)
+	}
+
+	return &CashTransferResult{
+		InvestmentTransaction: invTxn,
+		RegularTransaction:    regTxn,
+		TransferID:            transferID,
+	}, nil
+}
+
 // InvalidTransferAmountError is returned when a transfer amount is invalid (not positive).
 type InvalidTransferAmountError struct {
 	Amount types.Money
@@ -771,4 +941,14 @@ type InvalidTransferAmountError struct {
 
 func (e *InvalidTransferAmountError) Error() string {
 	return fmt.Sprintf("transfer amount must be positive, got %s", e.Amount.String())
+}
+
+// NotRegularAccountError is returned when a cash transfer targets an investment account instead of a regular one.
+type NotRegularAccountError struct {
+	AccountID string
+	Type      string
+}
+
+func (e *NotRegularAccountError) Error() string {
+	return fmt.Sprintf("account %s is not a regular account (type: %s); use transfer between investment accounts instead", e.AccountID, e.Type)
 }

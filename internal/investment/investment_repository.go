@@ -30,7 +30,8 @@ func NewRepository(database *db.DB) *Repository {
 
 // investmentTransactionColumns is the standard column list for investment transactions.
 const investmentTransactionColumns = `id, account_id, date, transaction_type, security_id, shares,
-	price_per_share, total_amount, commission, memo, status, created_at, updated_at`
+	price_per_share, total_amount, commission, memo, status, transfer_id, transfer_account_id,
+	created_at, updated_at`
 
 // scanTransaction scans a row into a Transaction.
 func scanTransaction(row interface{ Scan(...any) error }) (*Transaction, error) {
@@ -47,6 +48,8 @@ func scanTransaction(row interface{ Scan(...any) error }) (*Transaction, error) 
 		&t.Commission,
 		&t.Memo,
 		&t.Status,
+		&t.TransferID,
+		&t.TransferAccountID,
 		&t.CreatedAt,
 		&t.UpdatedAt,
 	)
@@ -59,8 +62,11 @@ func (r *Repository) Create(txn *Transaction) error {
 		INSERT INTO investment_transactions (
 			id, account_id, date, transaction_type, security_id, shares,
 			price_per_share, total_amount, commission, memo, status,
+			transfer_id, transfer_account_id,
 			created_at, updated_at
-		) VALUES (?, CAST(? AS UUID), ?, ?, ` + dbutil.NullUUIDCast(txn.SecurityID) + `, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, CAST(? AS UUID), ?, ?, ` + dbutil.NullUUIDCast(txn.SecurityID) + `, ?, ?, ?, ?, ?, ?,
+			` + dbutil.NullUUIDCast(txn.TransferID) + `, ` + dbutil.NullUUIDCast(txn.TransferAccountID) + `,
+			?, ?)
 	`
 
 	_, err := r.db.Conn().Exec(query,
@@ -75,6 +81,8 @@ func (r *Repository) Create(txn *Transaction) error {
 		dbutil.NullMoney(txn.Commission),
 		dbutil.NullString(txn.Memo),
 		txn.Status.String(),
+		dbutil.NullID(txn.TransferID),
+		dbutil.NullID(txn.TransferAccountID),
 		txn.CreatedAt,
 		txn.UpdatedAt,
 	)
@@ -186,8 +194,11 @@ func (r *Repository) Update(txn *Transaction) error {
 		INSERT INTO investment_transactions (
 			id, account_id, date, transaction_type, security_id, shares,
 			price_per_share, total_amount, commission, memo, status,
+			transfer_id, transfer_account_id,
 			created_at, updated_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ` + dbutil.NullUUIDCast(txn.SecurityID) + `, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ` + dbutil.NullUUIDCast(txn.SecurityID) + `, ?, ?, ?, ?, ?, ?,
+			` + dbutil.NullUUIDCast(txn.TransferID) + `, ` + dbutil.NullUUIDCast(txn.TransferAccountID) + `,
+			?, ?)
 	`
 
 	_, err = r.db.Conn().Exec(query,
@@ -202,6 +213,8 @@ func (r *Repository) Update(txn *Transaction) error {
 		dbutil.NullMoney(txn.Commission),
 		dbutil.NullString(txn.Memo),
 		txn.Status.String(),
+		dbutil.NullID(txn.TransferID),
+		dbutil.NullID(txn.TransferAccountID),
 		txn.CreatedAt.Time(),
 		txn.UpdatedAt.Time(),
 	)

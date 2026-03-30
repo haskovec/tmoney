@@ -7,6 +7,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -23,7 +24,8 @@ func createTestService(t *testing.T) (*Service, *account.Repository) {
 	lotRepo := NewLotRepository(database)
 	transactionLotRepo := NewTransactionLotRepository(database)
 	priceRepo := price.NewRepository(database)
-	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, database)
+	txnRepo := transaction.NewRepository(database)
+	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, database)
 	return svc, accountRepo
 }
 
@@ -66,7 +68,8 @@ func createFullTestService(t *testing.T) *testServiceEnv {
 	positionRepo := NewPositionRepository(database)
 	lotRepo := NewLotRepository(database)
 	transactionLotRepo := NewTransactionLotRepository(database)
-	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, database)
+	txnRepo := transaction.NewRepository(database)
+	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, database)
 	return &testServiceEnv{
 		svc:                svc,
 		accountRepo:        accountRepo,
@@ -2847,6 +2850,343 @@ func TestService_FeeLiquidation_LotTracking(t *testing.T) {
 		}
 		if _, ok := err.(*LotAllocationMismatchError); !ok {
 			t.Errorf("Expected LotAllocationMismatchError, got %T: %v", err, err)
+		}
+	})
+}
+
+// =============================================================================
+// SM-089: Cash transfer between investment and regular account
+// =============================================================================
+
+func TestService_TransferCash(t *testing.T) {
+	t.Run("withdrawal from investment creates paired transactions", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		checkAcct := createCheckAccount(t, accountRepo, "Checking")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Deposit cash to investment account first
+		_, err := svc.Deposit(invAcct.ID, date, types.MustNewMoney("5000.00"), "")
+		if err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+
+		// Transfer cash out of investment into checking
+		result, err := svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1000.00"), "Transfer to checking")
+		if err != nil {
+			t.Fatalf("TransferCash() error = %v", err)
+		}
+
+		// Verify investment transaction
+		if result.InvestmentTransaction == nil {
+			t.Fatal("Expected non-nil investment transaction")
+		}
+		if result.InvestmentTransaction.Type != TransactionTypeTransferCash {
+			t.Errorf("Expected type transfer_cash, got %s", result.InvestmentTransaction.Type)
+		}
+		if result.InvestmentTransaction.TotalAmount.String() != "-1000" {
+			t.Errorf("Expected investment amount '-1000', got %q", result.InvestmentTransaction.TotalAmount.String())
+		}
+		if result.InvestmentTransaction.AccountID != invAcct.ID {
+			t.Errorf("Expected investment account ID %s, got %s", invAcct.ID, result.InvestmentTransaction.AccountID)
+		}
+		if result.InvestmentTransaction.Memo.String != "Transfer to checking" {
+			t.Errorf("Expected memo 'Transfer to checking', got %q", result.InvestmentTransaction.Memo.String)
+		}
+
+		// Verify regular transaction
+		if result.RegularTransaction == nil {
+			t.Fatal("Expected non-nil regular transaction")
+		}
+		if result.RegularTransaction.Amount.String() != "1000" {
+			t.Errorf("Expected regular amount '1000', got %q", result.RegularTransaction.Amount.String())
+		}
+		if result.RegularTransaction.AccountID != checkAcct.ID {
+			t.Errorf("Expected regular account ID %s, got %s", checkAcct.ID, result.RegularTransaction.AccountID)
+		}
+		if result.RegularTransaction.Memo.String != "Transfer to checking" {
+			t.Errorf("Expected memo 'Transfer to checking', got %q", result.RegularTransaction.Memo.String)
+		}
+
+		// Verify linked by transfer_id
+		if !result.InvestmentTransaction.IsTransfer() {
+			t.Error("Investment transaction should be a transfer")
+		}
+		if !result.RegularTransaction.IsTransfer() {
+			t.Error("Regular transaction should be a transfer")
+		}
+		if result.InvestmentTransaction.TransferID.ID != result.RegularTransaction.TransferID.ID {
+			t.Error("Transfer IDs should match")
+		}
+		if result.InvestmentTransaction.TransferAccountID.ID != checkAcct.ID {
+			t.Error("Investment transfer_account_id should point to checking account")
+		}
+		if result.RegularTransaction.TransferAccountID.ID != invAcct.ID {
+			t.Error("Regular transfer_account_id should point to investment account")
+		}
+
+		// Verify cash balance decreased
+		balance, err := svc.GetCashBalance(invAcct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balance.String() != "4000" {
+			t.Errorf("Expected cash balance '4000', got %q", balance.String())
+		}
+	})
+
+	t.Run("withdrawal rejects insufficient cash", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		checkAcct := createCheckAccount(t, accountRepo, "Checking")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Deposit only 500
+		_, _ = svc.Deposit(invAcct.ID, date, types.MustNewMoney("500.00"), "")
+
+		// Try to transfer 1000
+		_, err := svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1000.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for insufficient cash")
+		}
+		if _, ok := err.(*InsufficientCashError); !ok {
+			t.Errorf("Expected InsufficientCashError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("withdrawal rejects non-positive amount", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		checkAcct := createCheckAccount(t, accountRepo, "Checking")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("0.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for zero amount")
+		}
+
+		_, err = svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("-100.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for negative amount")
+		}
+	})
+
+	t.Run("withdrawal rejects non-investment account", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		checkAcct1 := createCheckAccount(t, accountRepo, "Checking1")
+		checkAcct2 := createCheckAccount(t, accountRepo, "Checking2")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := svc.TransferCash(checkAcct1.ID, checkAcct2.ID, date, types.MustNewMoney("100.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for non-investment account")
+		}
+	})
+
+	t.Run("withdrawal rejects investment-to-investment transfer", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct1 := createInvAccount(t, accountRepo, "Brokerage1")
+		invAcct2 := createInvAccount(t, accountRepo, "Brokerage2")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = svc.Deposit(invAcct1.ID, date, types.MustNewMoney("5000.00"), "")
+
+		_, err := svc.TransferCash(invAcct1.ID, invAcct2.ID, date, types.MustNewMoney("1000.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for investment-to-investment transfer")
+		}
+		if _, ok := err.(*NotRegularAccountError); !ok {
+			t.Errorf("Expected NotRegularAccountError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("withdrawal rejects same account", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = svc.Deposit(invAcct.ID, date, types.MustNewMoney("5000.00"), "")
+
+		// This should fail because investment account can't be the regular account
+		_, err := svc.TransferCash(invAcct.ID, invAcct.ID, date, types.MustNewMoney("100.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for same account transfer")
+		}
+	})
+}
+
+func TestService_DepositFromAccount(t *testing.T) {
+	t.Run("deposit from checking creates paired transactions", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		checkAcct := createCheckAccount(t, accountRepo, "Checking")
+		date := types.NewDate(2024, time.March, 15)
+
+		result, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("2000.00"), "Fund account")
+		if err != nil {
+			t.Fatalf("DepositFromAccount() error = %v", err)
+		}
+
+		// Verify investment transaction (deposit — positive amount)
+		if result.InvestmentTransaction.Type != TransactionTypeTransferCash {
+			t.Errorf("Expected type transfer_cash, got %s", result.InvestmentTransaction.Type)
+		}
+		if result.InvestmentTransaction.TotalAmount.String() != "2000" {
+			t.Errorf("Expected investment amount '2000', got %q", result.InvestmentTransaction.TotalAmount.String())
+		}
+		if result.InvestmentTransaction.AccountID != invAcct.ID {
+			t.Errorf("Expected investment account ID %s, got %s", invAcct.ID, result.InvestmentTransaction.AccountID)
+		}
+
+		// Verify regular transaction (withdrawal — negative amount)
+		if result.RegularTransaction.Amount.String() != "-2000" {
+			t.Errorf("Expected regular amount '-2000', got %q", result.RegularTransaction.Amount.String())
+		}
+		if result.RegularTransaction.AccountID != checkAcct.ID {
+			t.Errorf("Expected regular account ID %s, got %s", checkAcct.ID, result.RegularTransaction.AccountID)
+		}
+
+		// Verify linked by transfer_id
+		if result.InvestmentTransaction.TransferID.ID != result.RegularTransaction.TransferID.ID {
+			t.Error("Transfer IDs should match")
+		}
+		if result.InvestmentTransaction.TransferAccountID.ID != checkAcct.ID {
+			t.Error("Investment transfer_account_id should point to checking account")
+		}
+		if result.RegularTransaction.TransferAccountID.ID != invAcct.ID {
+			t.Error("Regular transfer_account_id should point to investment account")
+		}
+
+		// Verify cash balance increased in investment account
+		balance, err := svc.GetCashBalance(invAcct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balance.String() != "2000" {
+			t.Errorf("Expected cash balance '2000', got %q", balance.String())
+		}
+	})
+
+	t.Run("deposit creates transaction with memo", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		checkAcct := createCheckAccount(t, accountRepo, "Checking")
+		date := types.NewDate(2024, time.March, 15)
+
+		result, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("500.00"), "Monthly contribution")
+		if err != nil {
+			t.Fatalf("DepositFromAccount() error = %v", err)
+		}
+
+		if result.InvestmentTransaction.Memo.String != "Monthly contribution" {
+			t.Errorf("Expected memo 'Monthly contribution', got %q", result.InvestmentTransaction.Memo.String)
+		}
+		if result.RegularTransaction.Memo.String != "Monthly contribution" {
+			t.Errorf("Expected memo 'Monthly contribution', got %q", result.RegularTransaction.Memo.String)
+		}
+	})
+
+	t.Run("deposit rejects non-positive amount", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		checkAcct := createCheckAccount(t, accountRepo, "Checking")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("0.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for zero amount")
+		}
+
+		_, err = svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("-100.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for negative amount")
+		}
+	})
+
+	t.Run("deposit rejects non-investment account", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		checkAcct1 := createCheckAccount(t, accountRepo, "Checking1")
+		checkAcct2 := createCheckAccount(t, accountRepo, "Checking2")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := svc.DepositFromAccount(checkAcct1.ID, checkAcct2.ID, date, types.MustNewMoney("100.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for non-investment account")
+		}
+	})
+
+	t.Run("deposit rejects investment-to-investment", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct1 := createInvAccount(t, accountRepo, "Brokerage1")
+		invAcct2 := createInvAccount(t, accountRepo, "Brokerage2")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := svc.DepositFromAccount(invAcct1.ID, invAcct2.ID, date, types.MustNewMoney("100.00"), "")
+		if err == nil {
+			t.Fatal("Expected error for investment-to-investment transfer")
+		}
+		if _, ok := err.(*NotRegularAccountError); !ok {
+			t.Errorf("Expected NotRegularAccountError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("deposit and withdrawal round trip", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		checkAcct := createCheckAccount(t, accountRepo, "Checking")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Deposit from checking into investment
+		_, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("3000.00"), "")
+		if err != nil {
+			t.Fatalf("DepositFromAccount() error = %v", err)
+		}
+
+		balance, _ := svc.GetCashBalance(invAcct.ID)
+		if balance.String() != "3000" {
+			t.Errorf("Expected cash balance '3000' after deposit, got %q", balance.String())
+		}
+
+		// Transfer cash back from investment to checking
+		_, err = svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1000.00"), "")
+		if err != nil {
+			t.Fatalf("TransferCash() error = %v", err)
+		}
+
+		balance, _ = svc.GetCashBalance(invAcct.ID)
+		if balance.String() != "2000" {
+			t.Errorf("Expected cash balance '2000' after withdrawal, got %q", balance.String())
+		}
+	})
+
+	t.Run("investment transaction persisted and readable", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		checkAcct := createCheckAccount(t, accountRepo, "Checking")
+		date := types.NewDate(2024, time.March, 15)
+
+		result, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1500.00"), "Deposit")
+		if err != nil {
+			t.Fatalf("DepositFromAccount() error = %v", err)
+		}
+
+		// Read back the investment transaction from the repo
+		readBack, err := svc.repo.GetByID(result.InvestmentTransaction.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+
+		if readBack.Type != TransactionTypeTransferCash {
+			t.Errorf("Expected type transfer_cash, got %s", readBack.Type)
+		}
+		if !readBack.IsTransfer() {
+			t.Error("Read-back transaction should be a transfer")
+		}
+		if readBack.TransferID.ID != result.TransferID {
+			t.Errorf("Expected transfer_id %s, got %s", result.TransferID, readBack.TransferID.ID)
+		}
+		if readBack.TransferAccountID.ID != checkAcct.ID {
+			t.Errorf("Expected transfer_account_id %s, got %s", checkAcct.ID, readBack.TransferAccountID.ID)
 		}
 	})
 }

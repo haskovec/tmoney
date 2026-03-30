@@ -257,6 +257,10 @@ type Transaction struct {
 	PricePerShare types.NullableMoney    `json:"price_per_share"`
 	Commission    types.NullableMoney    `json:"commission"`
 	Memo          types.NullableString   `json:"memo"`
+
+	// Transfer properties (for linked transfers between investment and regular accounts)
+	TransferID        types.NullableID `json:"transfer_id"`
+	TransferAccountID types.NullableID `json:"transfer_account_id"`
 }
 
 // NewTransaction creates a new Transaction with required fields.
@@ -340,6 +344,25 @@ func (t *Transaction) SetCommission(commission types.Money) {
 func (t *Transaction) ClearCommission() {
 	t.Commission = types.NullableMoney{Valid: false}
 	t.Touch()
+}
+
+// SetTransfer links this transaction to another as a transfer.
+func (t *Transaction) SetTransfer(transferID, transferAccountID types.ID) {
+	t.TransferID = types.NullableID{ID: transferID, Valid: true}
+	t.TransferAccountID = types.NullableID{ID: transferAccountID, Valid: true}
+	t.Touch()
+}
+
+// ClearTransfer removes the transfer link from this transaction.
+func (t *Transaction) ClearTransfer() {
+	t.TransferID = types.NullableID{Valid: false}
+	t.TransferAccountID = types.NullableID{Valid: false}
+	t.Touch()
+}
+
+// IsTransfer returns true if this transaction is part of a transfer.
+func (t *Transaction) IsTransfer() bool {
+	return t.TransferID.Valid && t.TransferAccountID.Valid
 }
 
 // SetMemo sets the memo for this transaction.
