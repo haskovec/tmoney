@@ -402,11 +402,11 @@ Spec: `specs/security-master.md`
 
 ## Phase 23: Price Auto-Creation
 
-- [ ] **SM-081 - Auto-create price on buy**
+- [x] **SM-081 - Auto-create price on buy**
   - RED: Write test — buying shares creates a price record with source=`transaction` for security+date; if manual/import price already exists for that date, do NOT overwrite
   - GREEN: Add price auto-creation to `Buy` service method
 
-- [ ] **SM-082 - Auto-create price on sell**
+- [x] **SM-082 - Auto-create price on sell**
   - RED: Write test — selling shares creates a price record; existing manual/import price preserved
   - GREEN: Add price auto-creation to `Sell` service method
 

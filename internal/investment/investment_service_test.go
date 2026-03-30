@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -21,7 +22,8 @@ func createTestService(t *testing.T) (*Service, *account.Repository) {
 	positionRepo := NewPositionRepository(database)
 	lotRepo := NewLotRepository(database)
 	transactionLotRepo := NewTransactionLotRepository(database)
-	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, database)
+	priceRepo := price.NewRepository(database)
+	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, database)
 	return svc, accountRepo
 }
 
@@ -48,6 +50,7 @@ type testServiceEnv struct {
 	svc                *Service
 	accountRepo        *account.Repository
 	secRepo            *security.Repository
+	priceRepo          *price.Repository
 	positionRepo       *PositionRepository
 	lotRepo            *LotRepository
 	transactionLotRepo *TransactionLotRepository
@@ -59,14 +62,16 @@ func createFullTestService(t *testing.T) *testServiceEnv {
 	invRepo := NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	secRepo := security.NewRepository(database)
+	priceRepo := price.NewRepository(database)
 	positionRepo := NewPositionRepository(database)
 	lotRepo := NewLotRepository(database)
 	transactionLotRepo := NewTransactionLotRepository(database)
-	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, database)
+	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, database)
 	return &testServiceEnv{
 		svc:                svc,
 		accountRepo:        accountRepo,
 		secRepo:            secRepo,
+		priceRepo:          priceRepo,
 		positionRepo:       positionRepo,
 		lotRepo:            lotRepo,
 		transactionLotRepo: transactionLotRepo,
@@ -1644,6 +1649,256 @@ func TestService_Sell_LotValidation(t *testing.T) {
 		}
 		if updatedLots[0].Closed {
 			t.Error("Expected lot to remain open")
+		}
+	})
+}
+
+// =============================================================================
+// SM-081: Auto-create price on buy
+// =============================================================================
+
+func TestService_Buy_AutoCreatesPrice(t *testing.T) {
+	t.Run("buy creates price record with source=transaction", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+
+		totalAmount := types.MustNewMoney("1850.00")
+		shares := types.MustNewQuantity("10")
+		_, err := env.svc.Buy(acct.ID, sec.ID, date, shares, &totalAmount, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+
+		// Verify price was created
+		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, date)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v, expected price to be auto-created", err)
+		}
+		if p.Price.String() != "185" {
+			t.Errorf("Expected price '185', got %q", p.Price.String())
+		}
+		if p.Source != price.SourceTransaction {
+			t.Errorf("Expected source 'transaction', got %q", p.Source.String())
+		}
+	})
+
+	t.Run("buy does not overwrite existing manual price", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Create a manual price first
+		manualPrice := price.NewPrice(sec.ID, date, types.MustNewMoney("190.00"), price.SourceManual)
+		if err := env.priceRepo.Create(manualPrice); err != nil {
+			t.Fatalf("Create manual price error = %v", err)
+		}
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+
+		totalAmount := types.MustNewMoney("1850.00")
+		shares := types.MustNewQuantity("10")
+		_, err := env.svc.Buy(acct.ID, sec.ID, date, shares, &totalAmount, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+
+		// Verify existing manual price was preserved
+		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, date)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v", err)
+		}
+		if p.Price.String() != "190" {
+			t.Errorf("Expected manual price '190' preserved, got %q", p.Price.String())
+		}
+		if p.Source != price.SourceManual {
+			t.Errorf("Expected source 'manual' preserved, got %q", p.Source.String())
+		}
+	})
+
+	t.Run("buy does not overwrite existing import price", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Create an import price first
+		importPrice := price.NewPrice(sec.ID, date, types.MustNewMoney("192.00"), price.SourceImport)
+		if err := env.priceRepo.Create(importPrice); err != nil {
+			t.Fatalf("Create import price error = %v", err)
+		}
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+
+		totalAmount := types.MustNewMoney("1850.00")
+		shares := types.MustNewQuantity("10")
+		_, err := env.svc.Buy(acct.ID, sec.ID, date, shares, &totalAmount, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+
+		// Verify existing import price was preserved
+		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, date)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v", err)
+		}
+		if p.Price.String() != "192" {
+			t.Errorf("Expected import price '192' preserved, got %q", p.Price.String())
+		}
+		if p.Source != price.SourceImport {
+			t.Errorf("Expected source 'import' preserved, got %q", p.Source.String())
+		}
+	})
+
+	t.Run("buy with lot tracking also creates price", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "MSFT")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+
+		totalAmount := types.MustNewMoney("3000.00")
+		shares := types.MustNewQuantity("10")
+		_, err := env.svc.Buy(acct.ID, sec.ID, date, shares, &totalAmount, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+
+		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, date)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v, expected price to be auto-created", err)
+		}
+		if p.Price.String() != "300" {
+			t.Errorf("Expected price '300', got %q", p.Price.String())
+		}
+		if p.Source != price.SourceTransaction {
+			t.Errorf("Expected source 'transaction', got %q", p.Source.String())
+		}
+	})
+}
+
+// =============================================================================
+// SM-082: Auto-create price on sell
+// =============================================================================
+
+func TestService_Sell_AutoCreatesPrice(t *testing.T) {
+	t.Run("sell creates price record with source=transaction", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		buyDate := types.NewDate(2024, time.March, 15)
+		sellDate := types.NewDate(2024, time.April, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, buyDate, types.MustNewMoney("10000.00"), "")
+
+		// Buy shares first
+		buyTotal := types.MustNewMoney("1850.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, buyDate, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		// Sell some shares at a different date
+		sellTotal := types.MustNewMoney("2000.00")
+		sellShares := types.MustNewQuantity("5")
+		_, err := env.svc.Sell(acct.ID, sec.ID, sellDate, sellShares, &sellTotal, nil, types.ZeroMoney, "", nil)
+		if err != nil {
+			t.Fatalf("Sell() error = %v", err)
+		}
+
+		// Verify price was created for the sell date
+		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, sellDate)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v, expected price to be auto-created", err)
+		}
+		// 2000/5 = 400
+		if p.Price.String() != "400" {
+			t.Errorf("Expected price '400', got %q", p.Price.String())
+		}
+		if p.Source != price.SourceTransaction {
+			t.Errorf("Expected source 'transaction', got %q", p.Source.String())
+		}
+	})
+
+	t.Run("sell does not overwrite existing manual price", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		buyDate := types.NewDate(2024, time.March, 15)
+		sellDate := types.NewDate(2024, time.April, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, buyDate, types.MustNewMoney("10000.00"), "")
+
+		buyTotal := types.MustNewMoney("1850.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, buyDate, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		// Create a manual price for the sell date
+		manualPrice := price.NewPrice(sec.ID, sellDate, types.MustNewMoney("410.00"), price.SourceManual)
+		if err := env.priceRepo.Create(manualPrice); err != nil {
+			t.Fatalf("Create manual price error = %v", err)
+		}
+
+		sellTotal := types.MustNewMoney("2000.00")
+		sellShares := types.MustNewQuantity("5")
+		_, err := env.svc.Sell(acct.ID, sec.ID, sellDate, sellShares, &sellTotal, nil, types.ZeroMoney, "", nil)
+		if err != nil {
+			t.Fatalf("Sell() error = %v", err)
+		}
+
+		// Verify existing manual price was preserved
+		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, sellDate)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v", err)
+		}
+		if p.Price.String() != "410" {
+			t.Errorf("Expected manual price '410' preserved, got %q", p.Price.String())
+		}
+		if p.Source != price.SourceManual {
+			t.Errorf("Expected source 'manual' preserved, got %q", p.Source.String())
+		}
+	})
+
+	t.Run("sell with lot tracking also creates price", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "MSFT")
+		buyDate := types.NewDate(2024, time.March, 15)
+		sellDate := types.NewDate(2024, time.April, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, buyDate, types.MustNewMoney("10000.00"), "")
+
+		buyTotal := types.MustNewMoney("3000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, buyDate, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		// Get the lot for the sell allocation
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		if len(lots) == 0 {
+			t.Fatal("Expected at least one lot after buy")
+		}
+
+		sellTotal := types.MustNewMoney("2500.00")
+		sellShares := types.MustNewQuantity("5")
+		allocs := []SellLotAllocation{{LotID: lots[0].ID, Shares: sellShares}}
+		_, err := env.svc.Sell(acct.ID, sec.ID, sellDate, sellShares, &sellTotal, nil, types.ZeroMoney, "", allocs)
+		if err != nil {
+			t.Fatalf("Sell() error = %v", err)
+		}
+
+		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, sellDate)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v, expected price to be auto-created", err)
+		}
+		// 2500/5 = 500
+		if p.Price.String() != "500" {
+			t.Errorf("Expected price '500', got %q", p.Price.String())
+		}
+		if p.Source != price.SourceTransaction {
+			t.Errorf("Expected source 'transaction', got %q", p.Source.String())
 		}
 	})
 }

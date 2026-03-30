@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -20,7 +21,8 @@ func createTestServiceWithSecurity(t *testing.T) (*Service, *account.Repository,
 	positionRepo := NewPositionRepository(database)
 	lotRepo := NewLotRepository(database)
 	transactionLotRepo := NewTransactionLotRepository(database)
-	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, database)
+	priceRepo := price.NewRepository(database)
+	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, database)
 	return svc, accountRepo, secRepo
 }
 

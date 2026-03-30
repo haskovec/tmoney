@@ -5,6 +5,8 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -15,6 +17,7 @@ type Service struct {
 	positionRepo       *PositionRepository
 	lotRepo            *LotRepository
 	transactionLotRepo *TransactionLotRepository
+	priceRepo          *price.Repository
 	db                 *db.DB
 }
 
@@ -25,6 +28,7 @@ func NewService(
 	positionRepo *PositionRepository,
 	lotRepo *LotRepository,
 	transactionLotRepo *TransactionLotRepository,
+	priceRepo *price.Repository,
 	database *db.DB,
 ) *Service {
 	return &Service{
@@ -33,6 +37,7 @@ func NewService(
 		positionRepo:       positionRepo,
 		lotRepo:            lotRepo,
 		transactionLotRepo: transactionLotRepo,
+		priceRepo:          priceRepo,
 		db:                 database,
 	}
 }
@@ -252,6 +257,9 @@ func (s *Service) Buy(
 		}
 	}
 
+	// Auto-create price record from transaction
+	s.autoCreatePrice(securityID, date, computed.PricePerShare)
+
 	return txn, nil
 }
 
@@ -310,6 +318,9 @@ func (s *Service) Sell(
 			return nil, err
 		}
 	}
+
+	// Auto-create price record from transaction
+	s.autoCreatePrice(securityID, date, computed.PricePerShare)
 
 	return txn, nil
 }
@@ -469,6 +480,32 @@ func (s *Service) validateTransaction(txn *Transaction) error {
 		return &types.ServiceValidationError{Errors: errors}
 	}
 	return nil
+}
+
+// autoCreatePrice creates a price record with source=transaction for the given security+date.
+// If a manual or import price already exists for that date, it does NOT overwrite it.
+func (s *Service) autoCreatePrice(securityID types.ID, date types.Date, pricePerShare types.Money) {
+	if s.priceRepo == nil {
+		return
+	}
+
+	// Check if a price already exists for this security+date
+	existing, err := s.priceRepo.GetBySecurityAndDate(securityID, date)
+	if err == nil && existing != nil {
+		// Price already exists — do not overwrite
+		return
+	}
+
+	// Only proceed if the error was NotFoundError (no existing price)
+	if err != nil {
+		if _, ok := err.(*dberrors.NotFoundError); !ok {
+			// Unexpected error — silently skip price creation
+			return
+		}
+	}
+
+	p := price.NewPrice(securityID, date, pricePerShare, price.SourceTransaction)
+	_ = s.priceRepo.Create(p)
 }
 
 // InvalidTransferAmountError is returned when a transfer amount is invalid (not positive).
