@@ -472,7 +472,7 @@ Spec: `specs/security-master.md`
 
 ## Phase 28: Security Hide Validation (wire up positions)
 
-- [ ] **SM-096 - Wire SecurityService.Hide to real position check**
+- [x] **SM-096 - Wire SecurityService.Hide to real position check**
   - RED: Write test — hide fails when any account holds shares (via lots or positions); hide succeeds when all positions are zero/closed
   - GREEN: Update `SecurityService.Hide` to query lot and position repositories
 
