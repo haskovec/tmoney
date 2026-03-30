@@ -410,7 +410,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — selling shares creates a price record; existing manual/import price preserved
   - GREEN: Add price auto-creation to `Sell` service method
 
-- [ ] **SM-083 - Auto-create price on reinvest dividend**
+- [ ] **SM-083 - Auto-create price on reinvest dividend** *(blocked by SM-085/SM-086: ReinvestDividend not yet implemented; `autoCreatePrice` helper is ready — just call it from `ReinvestDividend` once built)*
   - RED: Write test — reinvest creates price record from reinvestment price
   - GREEN: Add price auto-creation to `ReinvestDividend` service method
 
