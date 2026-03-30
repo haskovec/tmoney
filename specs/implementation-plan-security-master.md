@@ -518,31 +518,31 @@ Spec: `specs/security-master.md`
 
 ## Phase 31: CLI — Investment Transactions
 
-- [ ] **SM-106 - CLI: --buy**
+- [x] **SM-106 - CLI: --buy**
   - RED: Write test — buy with --account, --ticker, --shares, --total; optional --price-per-share, --commission; smart computation applies
   - GREEN: Implement `runBuy`
 
-- [ ] **SM-107 - CLI: --sell**
+- [x] **SM-107 - CLI: --sell**
   - RED: Write test — sell with --account, --ticker, --shares, --total; optional --lot for lot-tracking; validates sufficient shares
   - GREEN: Implement `runSell`
 
-- [ ] **SM-108 - CLI: --dividend**
+- [x] **SM-108 - CLI: --dividend**
   - RED: Write test — cash dividend with --account, --ticker, --amount
   - GREEN: Implement `runDividend`
 
-- [ ] **SM-109 - CLI: --reinvest**
+- [x] **SM-109 - CLI: --reinvest**
   - RED: Write test — reinvest with --account, --ticker, --shares, --total
   - GREEN: Implement `runReinvest`
 
-- [ ] **SM-110 - CLI: --investment-fee**
+- [x] **SM-110 - CLI: --investment-fee**
   - RED: Write test — fee with --account, --amount, --memo
   - GREEN: Implement `runInvestmentFee`
 
-- [ ] **SM-111 - CLI: --deposit / --withdraw (investment)**
+- [x] **SM-111 - CLI: --deposit / --withdraw (investment)**
   - RED: Write test — deposit/withdraw cash in investment account
   - GREEN: Implement `runInvestmentDeposit` and `runInvestmentWithdraw`
 
-- [ ] **SM-112 - CLI: --transfer-shares**
+- [x] **SM-112 - CLI: --transfer-shares**
   - RED: Write test — transfer shares with --from, --to, --ticker, --shares
   - GREEN: Implement `runTransferShares`
 

@@ -17,6 +17,7 @@ import (
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/imexport"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/reconciliation"
@@ -2346,5 +2347,607 @@ func runCurrentPrice(opts *cliOptions, w io.Writer) error {
 	fmt.Fprintf(w, "Price:   %s\n", formatMoney(p.Price, sec.Currency))
 	fmt.Fprintf(w, "Source:  %s\n", p.Source.DisplayName())
 
+	return nil
+}
+
+// runBuy executes the --buy command: buy shares of a security in an investment account.
+func runBuy(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--buy requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--buy requires --account to specify an investment account")
+	}
+	if opts.secTicker == "" {
+		return fmt.Errorf("--buy requires --ticker to specify a security")
+	}
+	if opts.shares == "" {
+		return fmt.Errorf("--buy requires --shares to specify the number of shares")
+	}
+	if opts.txAmount == "" && opts.pricePerShare == "" {
+		return fmt.Errorf("--buy requires --amount (total) and/or --price-per-share")
+	}
+
+	shares, err := types.NewQuantity(opts.shares)
+	if err != nil {
+		return fmt.Errorf("invalid --shares: %w", err)
+	}
+
+	var totalAmount *types.Money
+	if opts.txAmount != "" {
+		a, err := types.NewMoney(opts.txAmount)
+		if err != nil {
+			return fmt.Errorf("invalid --amount: %w", err)
+		}
+		totalAmount = &a
+	}
+
+	var pricePerShare *types.Money
+	if opts.pricePerShare != "" {
+		p, err := types.NewMoney(opts.pricePerShare)
+		if err != nil {
+			return fmt.Errorf("invalid --price-per-share: %w", err)
+		}
+		pricePerShare = &p
+	}
+
+	commission := types.ZeroMoney
+	if opts.commission != "" {
+		commission, err = types.NewMoney(opts.commission)
+		if err != nil {
+			return fmt.Errorf("invalid --commission: %w", err)
+		}
+	}
+
+	var date types.Date
+	if opts.txDate != "" {
+		date, err = types.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = types.Today()
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	acct, err := svc.Account.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.secTicker)
+	}
+
+	txn, err := svc.Investment.Buy(acct.ID, sec.ID, date, shares, totalAmount, pricePerShare, commission, opts.txMemo)
+	if err != nil {
+		return fmt.Errorf("failed to create buy transaction: %w", err)
+	}
+
+	fmt.Fprintln(w, "Buy transaction created successfully!")
+	fmt.Fprintf(w, "  Account:  %s\n", acct.Name)
+	fmt.Fprintf(w, "  Security: %s (%s)\n", sec.Ticker, sec.Name)
+	fmt.Fprintf(w, "  Date:     %s\n", date.String())
+	fmt.Fprintf(w, "  Shares:   %s\n", shares.String())
+	if txn.PricePerShare.Valid {
+		fmt.Fprintf(w, "  Price:    %s\n", formatMoney(txn.PricePerShare.Money, acct.Currency))
+	}
+	if txn.Commission.Valid {
+		fmt.Fprintf(w, "  Commission: %s\n", formatMoney(txn.Commission.Money, acct.Currency))
+	}
+	fmt.Fprintf(w, "  Total:    %s\n", formatMoney(txn.TotalAmount.Neg(), acct.Currency))
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runSell executes the --sell command: sell shares of a security in an investment account.
+func runSell(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--sell requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--sell requires --account to specify an investment account")
+	}
+	if opts.secTicker == "" {
+		return fmt.Errorf("--sell requires --ticker to specify a security")
+	}
+	if opts.shares == "" {
+		return fmt.Errorf("--sell requires --shares to specify the number of shares")
+	}
+	if opts.txAmount == "" && opts.pricePerShare == "" {
+		return fmt.Errorf("--sell requires --amount (total) and/or --price-per-share")
+	}
+
+	shares, err := types.NewQuantity(opts.shares)
+	if err != nil {
+		return fmt.Errorf("invalid --shares: %w", err)
+	}
+
+	var totalAmount *types.Money
+	if opts.txAmount != "" {
+		a, err := types.NewMoney(opts.txAmount)
+		if err != nil {
+			return fmt.Errorf("invalid --amount: %w", err)
+		}
+		totalAmount = &a
+	}
+
+	var pricePerShare *types.Money
+	if opts.pricePerShare != "" {
+		p, err := types.NewMoney(opts.pricePerShare)
+		if err != nil {
+			return fmt.Errorf("invalid --price-per-share: %w", err)
+		}
+		pricePerShare = &p
+	}
+
+	commission := types.ZeroMoney
+	if opts.commission != "" {
+		commission, err = types.NewMoney(opts.commission)
+		if err != nil {
+			return fmt.Errorf("invalid --commission: %w", err)
+		}
+	}
+
+	var date types.Date
+	if opts.txDate != "" {
+		date, err = types.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = types.Today()
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	acct, err := svc.Account.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.secTicker)
+	}
+
+	// Parse lot allocations if provided (for lot-tracking accounts)
+	var lotAllocations []investment.SellLotAllocation
+	if opts.lot != "" {
+		lotID, err := types.ParseID(opts.lot)
+		if err != nil {
+			return fmt.Errorf("invalid --lot: %w", err)
+		}
+		lotAllocations = []investment.SellLotAllocation{
+			{LotID: lotID, Shares: shares},
+		}
+	}
+
+	txn, err := svc.Investment.Sell(acct.ID, sec.ID, date, shares, totalAmount, pricePerShare, commission, opts.txMemo, lotAllocations)
+	if err != nil {
+		return fmt.Errorf("failed to create sell transaction: %w", err)
+	}
+
+	fmt.Fprintln(w, "Sell transaction created successfully!")
+	fmt.Fprintf(w, "  Account:  %s\n", acct.Name)
+	fmt.Fprintf(w, "  Security: %s (%s)\n", sec.Ticker, sec.Name)
+	fmt.Fprintf(w, "  Date:     %s\n", date.String())
+	fmt.Fprintf(w, "  Shares:   %s\n", shares.String())
+	if txn.PricePerShare.Valid {
+		fmt.Fprintf(w, "  Price:    %s\n", formatMoney(txn.PricePerShare.Money, acct.Currency))
+	}
+	if txn.Commission.Valid {
+		fmt.Fprintf(w, "  Commission: %s\n", formatMoney(txn.Commission.Money, acct.Currency))
+	}
+	fmt.Fprintf(w, "  Total:    %s\n", formatMoney(txn.TotalAmount, acct.Currency))
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runDividend executes the --dividend command: record a cash dividend for a security.
+func runDividend(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--dividend requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--dividend requires --account to specify an investment account")
+	}
+	if opts.secTicker == "" {
+		return fmt.Errorf("--dividend requires --ticker to specify a security")
+	}
+	if opts.txAmount == "" {
+		return fmt.Errorf("--dividend requires --amount to specify the dividend amount")
+	}
+
+	amount, err := types.NewMoney(opts.txAmount)
+	if err != nil {
+		return fmt.Errorf("invalid --amount: %w", err)
+	}
+
+	var date types.Date
+	if opts.txDate != "" {
+		date, err = types.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = types.Today()
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	acct, err := svc.Account.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.secTicker)
+	}
+
+	_, err = svc.Investment.Dividend(acct.ID, sec.ID, date, amount, opts.txMemo)
+	if err != nil {
+		return fmt.Errorf("failed to create dividend transaction: %w", err)
+	}
+
+	fmt.Fprintln(w, "Dividend transaction created successfully!")
+	fmt.Fprintf(w, "  Account:  %s\n", acct.Name)
+	fmt.Fprintf(w, "  Security: %s (%s)\n", sec.Ticker, sec.Name)
+	fmt.Fprintf(w, "  Date:     %s\n", date.String())
+	fmt.Fprintf(w, "  Amount:   %s\n", formatMoney(amount, acct.Currency))
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runReinvest executes the --reinvest command: reinvest a dividend into additional shares.
+func runReinvest(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--reinvest requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--reinvest requires --account to specify an investment account")
+	}
+	if opts.secTicker == "" {
+		return fmt.Errorf("--reinvest requires --ticker to specify a security")
+	}
+	if opts.shares == "" {
+		return fmt.Errorf("--reinvest requires --shares to specify the number of shares")
+	}
+	if opts.txAmount == "" && opts.pricePerShare == "" {
+		return fmt.Errorf("--reinvest requires --amount (total) and/or --price-per-share")
+	}
+
+	shares, err := types.NewQuantity(opts.shares)
+	if err != nil {
+		return fmt.Errorf("invalid --shares: %w", err)
+	}
+
+	var totalAmount *types.Money
+	if opts.txAmount != "" {
+		a, err := types.NewMoney(opts.txAmount)
+		if err != nil {
+			return fmt.Errorf("invalid --amount: %w", err)
+		}
+		totalAmount = &a
+	}
+
+	var pricePerShare *types.Money
+	if opts.pricePerShare != "" {
+		p, err := types.NewMoney(opts.pricePerShare)
+		if err != nil {
+			return fmt.Errorf("invalid --price-per-share: %w", err)
+		}
+		pricePerShare = &p
+	}
+
+	var date types.Date
+	if opts.txDate != "" {
+		date, err = types.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = types.Today()
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	acct, err := svc.Account.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.secTicker)
+	}
+
+	txn, err := svc.Investment.ReinvestDividend(acct.ID, sec.ID, date, shares, totalAmount, pricePerShare, opts.txMemo)
+	if err != nil {
+		return fmt.Errorf("failed to create reinvest dividend transaction: %w", err)
+	}
+
+	fmt.Fprintln(w, "Reinvest dividend transaction created successfully!")
+	fmt.Fprintf(w, "  Account:  %s\n", acct.Name)
+	fmt.Fprintf(w, "  Security: %s (%s)\n", sec.Ticker, sec.Name)
+	fmt.Fprintf(w, "  Date:     %s\n", date.String())
+	fmt.Fprintf(w, "  Shares:   %s\n", shares.String())
+	if txn.PricePerShare.Valid {
+		fmt.Fprintf(w, "  Price:    %s\n", formatMoney(txn.PricePerShare.Money, acct.Currency))
+	}
+	fmt.Fprintf(w, "  Total:    %s\n", formatMoney(txn.TotalAmount, acct.Currency))
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runInvestmentFee executes the --investment-fee command: record a fee in an investment account.
+func runInvestmentFee(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--investment-fee requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--investment-fee requires --account to specify an investment account")
+	}
+	if opts.txAmount == "" {
+		return fmt.Errorf("--investment-fee requires --amount to specify the fee amount")
+	}
+
+	amount, err := types.NewMoney(opts.txAmount)
+	if err != nil {
+		return fmt.Errorf("invalid --amount: %w", err)
+	}
+
+	var date types.Date
+	if opts.txDate != "" {
+		date, err = types.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = types.Today()
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	acct, err := svc.Account.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	_, err = svc.Investment.Fee(acct.ID, date, amount, opts.txMemo)
+	if err != nil {
+		return fmt.Errorf("failed to create fee transaction: %w", err)
+	}
+
+	fmt.Fprintln(w, "Investment fee transaction created successfully!")
+	fmt.Fprintf(w, "  Account: %s\n", acct.Name)
+	fmt.Fprintf(w, "  Date:    %s\n", date.String())
+	fmt.Fprintf(w, "  Amount:  %s\n", formatMoney(amount, acct.Currency))
+	if opts.txMemo != "" {
+		fmt.Fprintf(w, "  Memo:    %s\n", opts.txMemo)
+	}
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runInvestDeposit executes the --invest-deposit command: deposit cash into an investment account.
+func runInvestDeposit(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--invest-deposit requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--invest-deposit requires --account to specify an investment account")
+	}
+	if opts.txAmount == "" {
+		return fmt.Errorf("--invest-deposit requires --amount to specify the deposit amount")
+	}
+
+	amount, err := types.NewMoney(opts.txAmount)
+	if err != nil {
+		return fmt.Errorf("invalid --amount: %w", err)
+	}
+
+	var date types.Date
+	if opts.txDate != "" {
+		date, err = types.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = types.Today()
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	acct, err := svc.Account.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	_, err = svc.Investment.Deposit(acct.ID, date, amount, opts.txMemo)
+	if err != nil {
+		return fmt.Errorf("failed to create deposit transaction: %w", err)
+	}
+
+	fmt.Fprintln(w, "Investment deposit created successfully!")
+	fmt.Fprintf(w, "  Account: %s\n", acct.Name)
+	fmt.Fprintf(w, "  Date:    %s\n", date.String())
+	fmt.Fprintf(w, "  Amount:  %s\n", formatMoney(amount, acct.Currency))
+	if opts.txMemo != "" {
+		fmt.Fprintf(w, "  Memo:    %s\n", opts.txMemo)
+	}
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runInvestWithdraw executes the --invest-withdraw command: withdraw cash from an investment account.
+func runInvestWithdraw(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--invest-withdraw requires --file to specify a database")
+	}
+	if opts.accountName == "" {
+		return fmt.Errorf("--invest-withdraw requires --account to specify an investment account")
+	}
+	if opts.txAmount == "" {
+		return fmt.Errorf("--invest-withdraw requires --amount to specify the withdrawal amount")
+	}
+
+	amount, err := types.NewMoney(opts.txAmount)
+	if err != nil {
+		return fmt.Errorf("invalid --amount: %w", err)
+	}
+
+	var date types.Date
+	if opts.txDate != "" {
+		date, err = types.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = types.Today()
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	acct, err := svc.Account.GetByName(opts.accountName)
+	if err != nil {
+		return fmt.Errorf("account %q not found", opts.accountName)
+	}
+
+	_, err = svc.Investment.Withdrawal(acct.ID, date, amount, opts.txMemo)
+	if err != nil {
+		return fmt.Errorf("failed to create withdrawal transaction: %w", err)
+	}
+
+	fmt.Fprintln(w, "Investment withdrawal created successfully!")
+	fmt.Fprintf(w, "  Account: %s\n", acct.Name)
+	fmt.Fprintf(w, "  Date:    %s\n", date.String())
+	fmt.Fprintf(w, "  Amount:  %s\n", formatMoney(amount, acct.Currency))
+	if opts.txMemo != "" {
+		fmt.Fprintf(w, "  Memo:    %s\n", opts.txMemo)
+	}
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runTransferShares executes the --transfer-shares command: transfer shares between investment accounts.
+func runTransferShares(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--transfer-shares requires --file to specify a database")
+	}
+	if opts.fromAccount == "" {
+		return fmt.Errorf("--transfer-shares requires --from to specify the source account")
+	}
+	if opts.toAccount == "" {
+		return fmt.Errorf("--transfer-shares requires --to to specify the destination account")
+	}
+	if opts.secTicker == "" {
+		return fmt.Errorf("--transfer-shares requires --ticker to specify a security")
+	}
+	if opts.shares == "" {
+		return fmt.Errorf("--transfer-shares requires --shares to specify the number of shares")
+	}
+
+	shares, err := types.NewQuantity(opts.shares)
+	if err != nil {
+		return fmt.Errorf("invalid --shares: %w", err)
+	}
+
+	var date types.Date
+	if opts.txDate != "" {
+		date, err = types.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = types.Today()
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	fromAcct, err := svc.Account.GetByName(opts.fromAccount)
+	if err != nil {
+		return fmt.Errorf("source account %q not found", opts.fromAccount)
+	}
+
+	toAcct, err := svc.Account.GetByName(opts.toAccount)
+	if err != nil {
+		return fmt.Errorf("destination account %q not found", opts.toAccount)
+	}
+
+	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.secTicker)
+	}
+
+	// Parse lot allocations if provided (for lot-tracking source accounts)
+	var lotAllocations []investment.SellLotAllocation
+	if opts.lot != "" {
+		lotID, err := types.ParseID(opts.lot)
+		if err != nil {
+			return fmt.Errorf("invalid --lot: %w", err)
+		}
+		lotAllocations = []investment.SellLotAllocation{
+			{LotID: lotID, Shares: shares},
+		}
+	}
+
+	result, err := svc.Investment.TransferShares(fromAcct.ID, toAcct.ID, sec.ID, date, shares, opts.txMemo, lotAllocations)
+	if err != nil {
+		return fmt.Errorf("failed to transfer shares: %w", err)
+	}
+
+	_ = result // used for linking; confirmation below covers it
+
+	fmt.Fprintln(w, "Share transfer created successfully!")
+	fmt.Fprintf(w, "  From:     %s\n", fromAcct.Name)
+	fmt.Fprintf(w, "  To:       %s\n", toAcct.Name)
+	fmt.Fprintf(w, "  Security: %s (%s)\n", sec.Ticker, sec.Name)
+	fmt.Fprintf(w, "  Date:     %s\n", date.String())
+	fmt.Fprintf(w, "  Shares:   %s\n", shares.String())
+
+	autoBackupAfterModification(opts.file)
 	return nil
 }

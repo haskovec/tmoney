@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
@@ -7589,6 +7590,898 @@ func TestParseArgs_PriceFlagsMissingArgs(t *testing.T) {
 		args []string
 	}{
 		{"price missing value", []string{"--price"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := parseArgs(tt.args)
+			if err == nil {
+				t.Errorf("parseArgs(%v) expected error for missing argument", tt.args)
+			}
+		})
+	}
+}
+
+// --- Investment transaction CLI tests (SM-106 through SM-112) ---
+
+// createInvestmentTestDB creates a test database with an investment account, a deposit for cash,
+// and a security. Returns the dbPath. The database is closed after setup.
+func createInvestmentTestDB(t *testing.T, trackLots bool) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "invest.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create investment account
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	acct.TrackLots = trackLots
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create investment account: %v", err)
+	}
+
+	// Create a security
+	secRepo := security.NewRepository(database)
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	if err := secRepo.Create(sec); err != nil {
+		t.Fatalf("failed to create security: %v", err)
+	}
+
+	// Deposit cash via the service so the cash balance is set
+	svc := app.NewServices(database)
+	_, err = svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("50000"), "initial deposit")
+	if err != nil {
+		t.Fatalf("failed to deposit cash: %v", err)
+	}
+
+	database.Close()
+	return dbPath
+}
+
+// helper to run and return stdout
+func run2(args []string) (string, error) {
+	stdout := &bytes.Buffer{}
+	err := run(args, stdout, &bytes.Buffer{})
+	return stdout.String(), err
+}
+
+// helper to create pointer to Money
+func ptrMoney(s string) *types.Money {
+	m := types.MustNewMoney(s)
+	return &m
+}
+
+// --- SM-106: CLI --buy ---
+
+func TestRun_BuyMissingFile(t *testing.T) {
+	err := run([]string{"--buy", "--account", "Brokerage", "--ticker", "AAPL", "--shares", "10", "--amount", "1500"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_BuyMissingAccount(t *testing.T) {
+	err := run([]string{"--buy", "--file", "test.tdb", "--ticker", "AAPL", "--shares", "10", "--amount", "1500"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --account") {
+		t.Errorf("expected --account required error, got: %v", err)
+	}
+}
+
+func TestRun_BuyMissingTicker(t *testing.T) {
+	err := run([]string{"--buy", "--file", "test.tdb", "--account", "Brokerage", "--shares", "10", "--amount", "1500"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --ticker") {
+		t.Errorf("expected --ticker required error, got: %v", err)
+	}
+}
+
+func TestRun_BuyMissingShares(t *testing.T) {
+	err := run([]string{"--buy", "--file", "test.tdb", "--account", "Brokerage", "--ticker", "AAPL", "--amount", "1500"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --shares") {
+		t.Errorf("expected --shares required error, got: %v", err)
+	}
+}
+
+func TestRun_BuyMissingAmountAndPrice(t *testing.T) {
+	err := run([]string{"--buy", "--file", "test.tdb", "--account", "Brokerage", "--ticker", "AAPL", "--shares", "10"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --amount") {
+		t.Errorf("expected --amount/--price-per-share required error, got: %v", err)
+	}
+}
+
+func TestRun_BuyWithTotalAmount(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--buy", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "10",
+		"--amount", "1500",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--buy) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Buy transaction created successfully") {
+		t.Error("output should confirm buy creation")
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Error("output should contain ticker")
+	}
+	if !strings.Contains(output, "Brokerage") {
+		t.Error("output should contain account name")
+	}
+	if !strings.Contains(output, "10") {
+		t.Error("output should contain shares")
+	}
+}
+
+func TestRun_BuyWithPricePerShare(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--buy", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "10",
+		"--price-per-share", "150",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--buy with price-per-share) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Buy transaction created successfully") {
+		t.Error("output should confirm buy creation")
+	}
+	if !strings.Contains(output, "$150.00") {
+		t.Error("output should contain price per share")
+	}
+}
+
+func TestRun_BuyWithCommission(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--buy", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "10",
+		"--amount", "1510",
+		"--commission", "10",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--buy with commission) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Commission") {
+		t.Error("output should show commission")
+	}
+}
+
+func TestRun_BuyWithDateAndMemo(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--buy", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "5",
+		"--price-per-share", "150",
+		"--date", "2025-06-15",
+		"--memo", "Buying AAPL dip",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--buy with date/memo) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "2025-06-15") {
+		t.Error("output should contain the specified date")
+	}
+}
+
+func TestRun_BuyAccountNotFound(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	err := run([]string{
+		"--buy", "--file", dbPath,
+		"--account", "NonExistent",
+		"--ticker", "AAPL",
+		"--shares", "10",
+		"--amount", "1500",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected account not found error, got: %v", err)
+	}
+}
+
+func TestRun_BuySecurityNotFound(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	err := run([]string{
+		"--buy", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "FAKE",
+		"--shares", "10",
+		"--amount", "1500",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected security not found error, got: %v", err)
+	}
+}
+
+func TestRun_BuyInsufficientCash(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	err := run([]string{
+		"--buy", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "1000",
+		"--price-per-share", "150",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	// 1000 * 150 = 150,000 > 50,000 cash
+	if err == nil {
+		t.Error("expected insufficient cash error")
+	}
+}
+
+func TestRun_BuyWithLotTracking(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, true)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--buy", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "10",
+		"--price-per-share", "150",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--buy with lot tracking) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Buy transaction created successfully") {
+		t.Error("output should confirm buy creation with lot tracking")
+	}
+
+	// Verify a lot was created
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	defer database.Close()
+
+	svc := app.NewServices(database)
+	sec, _ := svc.Security.GetByTicker("AAPL", "")
+	lots, err := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
+	if err != nil {
+		t.Fatalf("failed to list lots: %v", err)
+	}
+	if len(lots) != 1 {
+		t.Errorf("expected 1 lot, got %d", len(lots))
+	}
+}
+
+// --- SM-107: CLI --sell ---
+
+func TestRun_SellMissingFile(t *testing.T) {
+	err := run([]string{"--sell", "--account", "Brokerage", "--ticker", "AAPL", "--shares", "5", "--amount", "800"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_SellMissingAccount(t *testing.T) {
+	err := run([]string{"--sell", "--file", "test.tdb", "--ticker", "AAPL", "--shares", "5", "--amount", "800"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --account") {
+		t.Errorf("expected --account required error, got: %v", err)
+	}
+}
+
+func TestRun_SellMissingTicker(t *testing.T) {
+	err := run([]string{"--sell", "--file", "test.tdb", "--account", "Brokerage", "--shares", "5", "--amount", "800"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --ticker") {
+		t.Errorf("expected --ticker required error, got: %v", err)
+	}
+}
+
+func TestRun_SellMissingShares(t *testing.T) {
+	err := run([]string{"--sell", "--file", "test.tdb", "--account", "Brokerage", "--ticker", "AAPL", "--amount", "800"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --shares") {
+		t.Errorf("expected --shares required error, got: %v", err)
+	}
+}
+
+func TestRun_SellBasic(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	// First buy some shares
+	_, err := run2([]string{
+		"--buy", "--file", dbPath,
+		"--account", "Brokerage", "--ticker", "AAPL",
+		"--shares", "10", "--price-per-share", "150",
+	})
+	if err != nil {
+		t.Fatalf("failed to buy shares: %v", err)
+	}
+
+	// Now sell some
+	stdout := &bytes.Buffer{}
+	err = run([]string{
+		"--sell", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "5",
+		"--price-per-share", "160",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--sell) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Sell transaction created successfully") {
+		t.Error("output should confirm sell creation")
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Error("output should contain ticker")
+	}
+}
+
+func TestRun_SellInsufficientShares(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	// Buy 10 shares
+	_, err := run2([]string{
+		"--buy", "--file", dbPath,
+		"--account", "Brokerage", "--ticker", "AAPL",
+		"--shares", "10", "--price-per-share", "150",
+	})
+	if err != nil {
+		t.Fatalf("failed to buy shares: %v", err)
+	}
+
+	// Try to sell 20
+	err = run([]string{
+		"--sell", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "20",
+		"--price-per-share", "160",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Error("expected insufficient shares error")
+	}
+}
+
+func TestRun_SellWithLotAllocation(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	acct.TrackLots = true
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create account: %v", err)
+	}
+
+	secRepo := security.NewRepository(database)
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	if err := secRepo.Create(sec); err != nil {
+		t.Fatalf("failed to create security: %v", err)
+	}
+
+	svc := app.NewServices(database)
+	_, err = svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("50000"), "")
+	if err != nil {
+		t.Fatalf("failed to deposit: %v", err)
+	}
+	_, err = svc.Investment.Buy(acct.ID, sec.ID, types.Today(), types.MustNewQuantity("10"), nil, ptrMoney("150"), types.ZeroMoney, "")
+	if err != nil {
+		t.Fatalf("failed to buy: %v", err)
+	}
+
+	// Get the lot ID
+	lots, _ := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
+	if len(lots) == 0 {
+		t.Fatal("no lots found after buy")
+	}
+	lotID := lots[0].ID.String()
+	database.Close()
+
+	// Sell with --lot
+	stdout := &bytes.Buffer{}
+	err = run([]string{
+		"--sell", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "5",
+		"--price-per-share", "160",
+		"--lot", lotID,
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--sell with lot) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Sell transaction created successfully") {
+		t.Error("output should confirm sell with lot allocation")
+	}
+}
+
+// --- SM-108: CLI --dividend ---
+
+func TestRun_DividendMissingFile(t *testing.T) {
+	err := run([]string{"--dividend", "--account", "Brokerage", "--ticker", "AAPL", "--amount", "50"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_DividendMissingAccount(t *testing.T) {
+	err := run([]string{"--dividend", "--file", "test.tdb", "--ticker", "AAPL", "--amount", "50"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --account") {
+		t.Errorf("expected --account required error, got: %v", err)
+	}
+}
+
+func TestRun_DividendMissingTicker(t *testing.T) {
+	err := run([]string{"--dividend", "--file", "test.tdb", "--account", "Brokerage", "--amount", "50"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --ticker") {
+		t.Errorf("expected --ticker required error, got: %v", err)
+	}
+}
+
+func TestRun_DividendMissingAmount(t *testing.T) {
+	err := run([]string{"--dividend", "--file", "test.tdb", "--account", "Brokerage", "--ticker", "AAPL"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --amount") {
+		t.Errorf("expected --amount required error, got: %v", err)
+	}
+}
+
+func TestRun_DividendBasic(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--dividend", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--amount", "125.50",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--dividend) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Dividend transaction created successfully") {
+		t.Error("output should confirm dividend creation")
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Error("output should contain ticker")
+	}
+	if !strings.Contains(output, "$125.50") {
+		t.Error("output should contain amount")
+	}
+}
+
+// --- SM-109: CLI --reinvest ---
+
+func TestRun_ReinvestMissingFile(t *testing.T) {
+	err := run([]string{"--reinvest", "--account", "Brokerage", "--ticker", "AAPL", "--shares", "2", "--amount", "300"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_ReinvestMissingShares(t *testing.T) {
+	err := run([]string{"--reinvest", "--file", "test.tdb", "--account", "Brokerage", "--ticker", "AAPL", "--amount", "300"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --shares") {
+		t.Errorf("expected --shares required error, got: %v", err)
+	}
+}
+
+func TestRun_ReinvestBasic(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--reinvest", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "2",
+		"--price-per-share", "150",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--reinvest) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Reinvest dividend transaction created successfully") {
+		t.Error("output should confirm reinvest creation")
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Error("output should contain ticker")
+	}
+}
+
+// --- SM-110: CLI --investment-fee ---
+
+func TestRun_InvestmentFeeMissingFile(t *testing.T) {
+	err := run([]string{"--investment-fee", "--account", "Brokerage", "--amount", "25"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_InvestmentFeeMissingAccount(t *testing.T) {
+	err := run([]string{"--investment-fee", "--file", "test.tdb", "--amount", "25"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --account") {
+		t.Errorf("expected --account required error, got: %v", err)
+	}
+}
+
+func TestRun_InvestmentFeeMissingAmount(t *testing.T) {
+	err := run([]string{"--investment-fee", "--file", "test.tdb", "--account", "Brokerage"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --amount") {
+		t.Errorf("expected --amount required error, got: %v", err)
+	}
+}
+
+func TestRun_InvestmentFeeBasic(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--investment-fee", "--file", dbPath,
+		"--account", "Brokerage",
+		"--amount", "25.00",
+		"--memo", "Annual fee",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--investment-fee) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Investment fee transaction created successfully") {
+		t.Error("output should confirm fee creation")
+	}
+	if !strings.Contains(output, "$25.00") {
+		t.Error("output should contain fee amount")
+	}
+	if !strings.Contains(output, "Annual fee") {
+		t.Error("output should contain memo")
+	}
+}
+
+func TestRun_InvestmentFeeInsufficientCash(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create account: %v", err)
+	}
+	database.Close()
+
+	err = run([]string{
+		"--investment-fee", "--file", dbPath,
+		"--account", "Brokerage",
+		"--amount", "100",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Error("expected insufficient cash error for fee")
+	}
+}
+
+// --- SM-111: CLI --invest-deposit / --invest-withdraw ---
+
+func TestRun_InvestDepositMissingFile(t *testing.T) {
+	err := run([]string{"--invest-deposit", "--account", "Brokerage", "--amount", "1000"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_InvestDepositMissingAccount(t *testing.T) {
+	err := run([]string{"--invest-deposit", "--file", "test.tdb", "--amount", "1000"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --account") {
+		t.Errorf("expected --account required error, got: %v", err)
+	}
+}
+
+func TestRun_InvestDepositMissingAmount(t *testing.T) {
+	err := run([]string{"--invest-deposit", "--file", "test.tdb", "--account", "Brokerage"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --amount") {
+		t.Errorf("expected --amount required error, got: %v", err)
+	}
+}
+
+func TestRun_InvestDepositBasic(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create account: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	err = run([]string{
+		"--invest-deposit", "--file", dbPath,
+		"--account", "Brokerage",
+		"--amount", "5000",
+		"--memo", "Initial funding",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--invest-deposit) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Investment deposit created successfully") {
+		t.Error("output should confirm deposit creation")
+	}
+	if !strings.Contains(output, "$5000.00") {
+		t.Error("output should contain deposit amount")
+	}
+	if !strings.Contains(output, "Initial funding") {
+		t.Error("output should contain memo")
+	}
+}
+
+func TestRun_InvestWithdrawMissingFile(t *testing.T) {
+	err := run([]string{"--invest-withdraw", "--account", "Brokerage", "--amount", "500"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_InvestWithdrawBasic(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--invest-withdraw", "--file", dbPath,
+		"--account", "Brokerage",
+		"--amount", "500",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--invest-withdraw) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Investment withdrawal created successfully") {
+		t.Error("output should confirm withdrawal creation")
+	}
+	if !strings.Contains(output, "$500.00") {
+		t.Error("output should contain withdrawal amount")
+	}
+}
+
+func TestRun_InvestWithdrawInsufficientCash(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	err := run([]string{
+		"--invest-withdraw", "--file", dbPath,
+		"--account", "Brokerage",
+		"--amount", "999999",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Error("expected insufficient cash error for withdrawal")
+	}
+}
+
+// --- SM-112: CLI --transfer-shares ---
+
+func TestRun_TransferSharesMissingFile(t *testing.T) {
+	err := run([]string{"--transfer-shares", "--from", "A", "--to", "B", "--ticker", "AAPL", "--shares", "10"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_TransferSharesMissingFrom(t *testing.T) {
+	err := run([]string{"--transfer-shares", "--file", "test.tdb", "--to", "B", "--ticker", "AAPL", "--shares", "10"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --from") {
+		t.Errorf("expected --from required error, got: %v", err)
+	}
+}
+
+func TestRun_TransferSharesMissingTo(t *testing.T) {
+	err := run([]string{"--transfer-shares", "--file", "test.tdb", "--from", "A", "--ticker", "AAPL", "--shares", "10"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --to") {
+		t.Errorf("expected --to required error, got: %v", err)
+	}
+}
+
+func TestRun_TransferSharesMissingTicker(t *testing.T) {
+	err := run([]string{"--transfer-shares", "--file", "test.tdb", "--from", "A", "--to", "B", "--shares", "10"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --ticker") {
+		t.Errorf("expected --ticker required error, got: %v", err)
+	}
+}
+
+func TestRun_TransferSharesMissingShares(t *testing.T) {
+	err := run([]string{"--transfer-shares", "--file", "test.tdb", "--from", "A", "--to", "B", "--ticker", "AAPL"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --shares") {
+		t.Errorf("expected --shares required error, got: %v", err)
+	}
+}
+
+func TestRun_TransferSharesBasic(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	src := account.NewAccount("Source IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	if err := acctRepo.Create(src); err != nil {
+		t.Fatalf("failed to create source account: %v", err)
+	}
+	dst := account.NewAccount("Dest 401k", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	if err := acctRepo.Create(dst); err != nil {
+		t.Fatalf("failed to create dest account: %v", err)
+	}
+
+	secRepo := security.NewRepository(database)
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	if err := secRepo.Create(sec); err != nil {
+		t.Fatalf("failed to create security: %v", err)
+	}
+
+	svc := app.NewServices(database)
+	_, err = svc.Investment.Deposit(src.ID, types.Today(), types.MustNewMoney("50000"), "")
+	if err != nil {
+		t.Fatalf("failed to deposit: %v", err)
+	}
+	_, err = svc.Investment.Buy(src.ID, sec.ID, types.Today(), types.MustNewQuantity("10"), nil, ptrMoney("150"), types.ZeroMoney, "")
+	if err != nil {
+		t.Fatalf("failed to buy: %v", err)
+	}
+	database.Close()
+
+	stdout := &bytes.Buffer{}
+	err = run([]string{
+		"--transfer-shares", "--file", dbPath,
+		"--from", "Source IRA",
+		"--to", "Dest 401k",
+		"--ticker", "AAPL",
+		"--shares", "5",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--transfer-shares) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Share transfer created successfully") {
+		t.Error("output should confirm transfer creation")
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Error("output should contain ticker")
+	}
+	if !strings.Contains(output, "Source IRA") {
+		t.Error("output should contain source account")
+	}
+	if !strings.Contains(output, "Dest 401k") {
+		t.Error("output should contain dest account")
+	}
+}
+
+// --- End-to-end: buy then sell verifies cash flow ---
+
+func TestRun_BuyThenSellUpdatesCash(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	// Buy 10 shares at $150 = $1500 deducted from $50000
+	_, err := run2([]string{
+		"--buy", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "10",
+		"--price-per-share", "150",
+	})
+	if err != nil {
+		t.Fatalf("buy failed: %v", err)
+	}
+
+	// Sell 5 shares at $160 = $800 received
+	stdout := &bytes.Buffer{}
+	err = run([]string{
+		"--sell", "--file", dbPath,
+		"--account", "Brokerage",
+		"--ticker", "AAPL",
+		"--shares", "5",
+		"--price-per-share", "160",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("sell failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Sell transaction created successfully") {
+		t.Error("output should confirm sell")
+	}
+	if !strings.Contains(output, "$800.00") {
+		t.Error("output should show sell total of $800.00")
+	}
+}
+
+// --- parseArgs tests for investment flags ---
+
+func TestParseArgs_InvestmentFlags(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		check func(*cliOptions) bool
+	}{
+		{"--buy flag", []string{"--buy"}, func(o *cliOptions) bool { return o.buy }},
+		{"--sell flag", []string{"--sell"}, func(o *cliOptions) bool { return o.sell }},
+		{"--dividend flag", []string{"--dividend"}, func(o *cliOptions) bool { return o.dividend }},
+		{"--reinvest flag", []string{"--reinvest"}, func(o *cliOptions) bool { return o.reinvest }},
+		{"--investment-fee flag", []string{"--investment-fee"}, func(o *cliOptions) bool { return o.investmentFee }},
+		{"--invest-deposit flag", []string{"--invest-deposit"}, func(o *cliOptions) bool { return o.investDeposit }},
+		{"--invest-withdraw flag", []string{"--invest-withdraw"}, func(o *cliOptions) bool { return o.investWithdraw }},
+		{"--transfer-shares flag", []string{"--transfer-shares"}, func(o *cliOptions) bool { return o.transferShares }},
+		{"--shares value", []string{"--shares", "10"}, func(o *cliOptions) bool { return o.shares == "10" }},
+		{"--shares=value", []string{"--shares=10"}, func(o *cliOptions) bool { return o.shares == "10" }},
+		{"--commission value", []string{"--commission", "9.99"}, func(o *cliOptions) bool { return o.commission == "9.99" }},
+		{"--commission=value", []string{"--commission=9.99"}, func(o *cliOptions) bool { return o.commission == "9.99" }},
+		{"--price-per-share value", []string{"--price-per-share", "150"}, func(o *cliOptions) bool { return o.pricePerShare == "150" }},
+		{"--price-per-share=value", []string{"--price-per-share=150"}, func(o *cliOptions) bool { return o.pricePerShare == "150" }},
+		{"--lot value", []string{"--lot", "abc123"}, func(o *cliOptions) bool { return o.lot == "abc123" }},
+		{"--lot=value", []string{"--lot=abc123"}, func(o *cliOptions) bool { return o.lot == "abc123" }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Fatalf("parseArgs(%v) returned error: %v", tt.args, err)
+			}
+			if !tt.check(opts) {
+				t.Errorf("parseArgs(%v) check failed", tt.args)
+			}
+		})
+	}
+}
+
+func TestParseArgs_InvestmentFlagsMissingArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"shares missing value", []string{"--shares"}},
+		{"commission missing value", []string{"--commission"}},
+		{"price-per-share missing value", []string{"--price-per-share"}},
+		{"lot missing value", []string{"--lot"}},
 	}
 
 	for _, tt := range tests {

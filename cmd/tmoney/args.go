@@ -124,6 +124,20 @@ type cliOptions struct {
 	addPrice     bool   // --add-price flag
 	currentPrice bool   // --current-price flag
 	priceValue   string // --price <value>
+
+	// Investment transaction options
+	buy             bool   // --buy flag
+	sell            bool   // --sell flag
+	dividend        bool   // --dividend flag
+	reinvest        bool   // --reinvest flag
+	investmentFee   bool   // --investment-fee flag
+	investDeposit   bool   // --invest-deposit flag
+	investWithdraw  bool   // --invest-withdraw flag
+	transferShares  bool   // --transfer-shares flag
+	shares          string // --shares <quantity>
+	commission      string // --commission <value>
+	pricePerShare   string // --price-per-share <value>
+	lot             string // --lot <lot-id>
 }
 
 // parseArgs parses command-line arguments and returns options and remaining args.
@@ -527,6 +541,46 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.priceValue = args[i]
+		case "--buy":
+			opts.buy = true
+		case "--sell":
+			opts.sell = true
+		case "--dividend":
+			opts.dividend = true
+		case "--reinvest":
+			opts.reinvest = true
+		case "--investment-fee":
+			opts.investmentFee = true
+		case "--invest-deposit":
+			opts.investDeposit = true
+		case "--invest-withdraw":
+			opts.investWithdraw = true
+		case "--transfer-shares":
+			opts.transferShares = true
+		case "--shares":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--shares requires a value argument")
+			}
+			i++
+			opts.shares = args[i]
+		case "--commission":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--commission requires a value argument")
+			}
+			i++
+			opts.commission = args[i]
+		case "--price-per-share":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--price-per-share requires a value argument")
+			}
+			i++
+			opts.pricePerShare = args[i]
+		case "--lot":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--lot requires a lot ID argument")
+			}
+			i++
+			opts.lot = args[i]
 		default:
 			// Check for --flag=value formats
 			if after, ok := strings.CutPrefix(arg, "--file="); ok {
@@ -653,6 +707,14 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.secExchange = after
 			} else if after, ok := strings.CutPrefix(arg, "--price="); ok {
 				opts.priceValue = after
+			} else if after, ok := strings.CutPrefix(arg, "--shares="); ok {
+				opts.shares = after
+			} else if after, ok := strings.CutPrefix(arg, "--commission="); ok {
+				opts.commission = after
+			} else if after, ok := strings.CutPrefix(arg, "--price-per-share="); ok {
+				opts.pricePerShare = after
+			} else if after, ok := strings.CutPrefix(arg, "--lot="); ok {
+				opts.lot = after
 			} else {
 				remaining = append(remaining, arg)
 			}

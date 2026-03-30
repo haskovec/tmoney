@@ -167,6 +167,46 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runCurrentPrice(opts, stdout)
 	}
 
+	// Handle --buy
+	if opts.buy {
+		return runBuy(opts, stdout)
+	}
+
+	// Handle --sell
+	if opts.sell {
+		return runSell(opts, stdout)
+	}
+
+	// Handle --dividend
+	if opts.dividend {
+		return runDividend(opts, stdout)
+	}
+
+	// Handle --reinvest
+	if opts.reinvest {
+		return runReinvest(opts, stdout)
+	}
+
+	// Handle --investment-fee
+	if opts.investmentFee {
+		return runInvestmentFee(opts, stdout)
+	}
+
+	// Handle --invest-deposit
+	if opts.investDeposit {
+		return runInvestDeposit(opts, stdout)
+	}
+
+	// Handle --invest-withdraw
+	if opts.investWithdraw {
+		return runInvestWithdraw(opts, stdout)
+	}
+
+	// Handle --transfer-shares
+	if opts.transferShares {
+		return runTransferShares(opts, stdout)
+	}
+
 	// Handle --import
 	if opts.importFile != "" {
 		return runImport(opts, stdout)
