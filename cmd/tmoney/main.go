@@ -152,6 +152,21 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runSecurityDetail(opts, stdout)
 	}
 
+	// Handle --prices (list prices for a ticker)
+	if opts.listPrices {
+		return runListPrices(opts, stdout)
+	}
+
+	// Handle --add-price
+	if opts.addPrice {
+		return runAddPrice(opts, stdout)
+	}
+
+	// Handle --current-price
+	if opts.currentPrice {
+		return runCurrentPrice(opts, stdout)
+	}
+
 	// Handle --import
 	if opts.importFile != "" {
 		return runImport(opts, stdout)

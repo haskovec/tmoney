@@ -504,15 +504,15 @@ Spec: `specs/security-master.md`
 
 ## Phase 30: CLI — Price Management
 
-- [ ] **SM-103 - CLI: --prices (list)**
+- [x] **SM-103 - CLI: --prices (list)**
   - RED: Write test — lists prices for a ticker ordered by date desc; respects --from and --to filters
   - GREEN: Implement `runListPrices`
 
-- [ ] **SM-104 - CLI: --add-price**
+- [x] **SM-104 - CLI: --add-price**
   - RED: Write test — adds price for --ticker, --date, --price; conflict reported if duplicate
   - GREEN: Implement `runAddPrice`
 
-- [ ] **SM-105 - CLI: --current-price**
+- [x] **SM-105 - CLI: --current-price**
   - RED: Write test — shows most recent price for ticker
   - GREEN: Implement `runCurrentPrice`
 

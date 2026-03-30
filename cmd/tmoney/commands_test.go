@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/security"
@@ -7085,6 +7086,509 @@ func TestParseArgs_SecurityFlagsMissingArgs(t *testing.T) {
 		{"ticker missing value", []string{"--ticker"}},
 		{"asset-class missing value", []string{"--asset-class"}},
 		{"exchange missing value", []string{"--exchange"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := parseArgs(tt.args)
+			if err == nil {
+				t.Errorf("parseArgs(%v) expected error for missing argument", tt.args)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// SM-103: --prices (list prices for a ticker)
+// =============================================================================
+
+func createTestDBWithSecurityAndPrices(t *testing.T) (string, *security.Security) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	secRepo := security.NewRepository(database)
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	sec.AssetClass = security.AssetClassLargeCapStock
+	if err := secRepo.Create(sec); err != nil {
+		t.Fatalf("failed to create test security: %v", err)
+	}
+
+	priceRepo := price.NewRepository(database)
+	p1 := price.NewPrice(sec.ID, types.MustParseDate("2024-01-15"), types.MustNewMoney("150.00"), price.SourceManual)
+	if err := priceRepo.Create(p1); err != nil {
+		t.Fatalf("failed to create price 1: %v", err)
+	}
+	p2 := price.NewPrice(sec.ID, types.MustParseDate("2024-02-15"), types.MustNewMoney("160.50"), price.SourceTransaction)
+	if err := priceRepo.Create(p2); err != nil {
+		t.Fatalf("failed to create price 2: %v", err)
+	}
+	p3 := price.NewPrice(sec.ID, types.MustParseDate("2024-03-15"), types.MustNewMoney("170.25"), price.SourceImport)
+	if err := priceRepo.Create(p3); err != nil {
+		t.Fatalf("failed to create price 3: %v", err)
+	}
+
+	database.Close()
+	return dbPath, sec
+}
+
+func TestRun_ListPricesMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--prices", "--ticker", "AAPL"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--prices) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_ListPricesMissingTicker(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--prices", "--file", "/fake.tdb"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--prices) without --ticker should return error")
+	}
+	if !strings.Contains(err.Error(), "--ticker") {
+		t.Errorf("error should mention --ticker, got: %v", err)
+	}
+}
+
+func TestRun_ListPricesSecurityNotFound(t *testing.T) {
+	dbPath, _ := createTestDBWithSecurity(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--prices", "--ticker", "ZZZZ", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--prices) with unknown ticker should return error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention not found, got: %v", err)
+	}
+}
+
+func TestRun_ListPricesShowsAll(t *testing.T) {
+	dbPath, _ := createTestDBWithSecurityAndPrices(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--prices) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "PRICES: AAPL") {
+		t.Error("output should contain prices header")
+	}
+	if !strings.Contains(output, "2024-01-15") {
+		t.Error("output should contain first price date")
+	}
+	if !strings.Contains(output, "2024-02-15") {
+		t.Error("output should contain second price date")
+	}
+	if !strings.Contains(output, "2024-03-15") {
+		t.Error("output should contain third price date")
+	}
+	if !strings.Contains(output, "150.00") {
+		t.Error("output should contain first price value")
+	}
+	if !strings.Contains(output, "160.50") {
+		t.Error("output should contain second price value")
+	}
+	if !strings.Contains(output, "170.25") {
+		t.Error("output should contain third price value")
+	}
+	if !strings.Contains(output, "Manual") {
+		t.Error("output should contain manual source")
+	}
+	if !strings.Contains(output, "Transaction") {
+		t.Error("output should contain transaction source")
+	}
+	if !strings.Contains(output, "Import") {
+		t.Error("output should contain import source")
+	}
+	if !strings.Contains(output, "Total: 3 price(s)") {
+		t.Error("output should contain total count")
+	}
+}
+
+func TestRun_ListPricesWithFromFilter(t *testing.T) {
+	dbPath, _ := createTestDBWithSecurityAndPrices(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath, "--from", "2024-02-01"}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--prices --from) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if strings.Contains(output, "2024-01-15") {
+		t.Error("output should not contain price before --from date")
+	}
+	if !strings.Contains(output, "2024-02-15") {
+		t.Error("output should contain price on/after --from date")
+	}
+	if !strings.Contains(output, "2024-03-15") {
+		t.Error("output should contain price on/after --from date")
+	}
+	if !strings.Contains(output, "Total: 2 price(s)") {
+		t.Error("output should contain total count of 2")
+	}
+}
+
+func TestRun_ListPricesWithToFilter(t *testing.T) {
+	dbPath, _ := createTestDBWithSecurityAndPrices(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath, "--to", "2024-02-28"}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--prices --to) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "2024-01-15") {
+		t.Error("output should contain price before --to date")
+	}
+	if !strings.Contains(output, "2024-02-15") {
+		t.Error("output should contain price on/before --to date")
+	}
+	if strings.Contains(output, "2024-03-15") {
+		t.Error("output should not contain price after --to date")
+	}
+	if !strings.Contains(output, "Total: 2 price(s)") {
+		t.Error("output should contain total count of 2")
+	}
+}
+
+func TestRun_ListPricesNoPrices(t *testing.T) {
+	dbPath, _ := createTestDBWithSecurity(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--prices) with no prices returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "No prices found") {
+		t.Error("output should indicate no prices found")
+	}
+}
+
+// =============================================================================
+// SM-104: --add-price
+// =============================================================================
+
+func TestRun_AddPriceMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--add-price", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "150.00"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-price) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_AddPriceMissingTicker(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--add-price", "--file", "/fake.tdb", "--date", "2024-01-15", "--price", "150.00"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-price) without --ticker should return error")
+	}
+	if !strings.Contains(err.Error(), "--ticker") {
+		t.Errorf("error should mention --ticker, got: %v", err)
+	}
+}
+
+func TestRun_AddPriceMissingDate(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--add-price", "--file", "/fake.tdb", "--ticker", "AAPL", "--price", "150.00"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-price) without --date should return error")
+	}
+	if !strings.Contains(err.Error(), "--date") {
+		t.Errorf("error should mention --date, got: %v", err)
+	}
+}
+
+func TestRun_AddPriceMissingPrice(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--add-price", "--file", "/fake.tdb", "--ticker", "AAPL", "--date", "2024-01-15"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-price) without --price should return error")
+	}
+	if !strings.Contains(err.Error(), "--price") {
+		t.Errorf("error should mention --price, got: %v", err)
+	}
+}
+
+func TestRun_AddPriceSuccess(t *testing.T) {
+	dbPath, _ := createTestDBWithSecurity(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--add-price", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "150.00", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--add-price) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Price added") {
+		t.Error("output should confirm price was added")
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Error("output should contain ticker")
+	}
+	if !strings.Contains(output, "2024-01-15") {
+		t.Error("output should contain date")
+	}
+	if !strings.Contains(output, "150.00") {
+		t.Error("output should contain price value")
+	}
+
+	// Verify price was actually stored by listing prices
+	stdout.Reset()
+	err = run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--prices) returned error: %v", err)
+		return
+	}
+	if !strings.Contains(stdout.String(), "150.00") {
+		t.Error("price should be visible in --prices listing")
+	}
+}
+
+func TestRun_AddPriceSecurityNotFound(t *testing.T) {
+	dbPath, _ := createTestDBWithSecurity(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--add-price", "--ticker", "ZZZZ", "--date", "2024-01-15", "--price", "150.00", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-price) with unknown ticker should return error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention not found, got: %v", err)
+	}
+}
+
+func TestRun_AddPriceDuplicateConflict(t *testing.T) {
+	dbPath, _ := createTestDBWithSecurityAndPrices(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	// Try to add a price for a date that already has one (2024-01-15)
+	err := run([]string{"--add-price", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "155.00", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-price) with duplicate date should return error")
+	}
+}
+
+func TestRun_AddPriceInvalidDate(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--add-price", "--ticker", "AAPL", "--date", "not-a-date", "--price", "150.00", "--file", "/fake.tdb"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-price) with invalid date should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --date") {
+		t.Errorf("error should mention invalid date, got: %v", err)
+	}
+}
+
+func TestRun_AddPriceInvalidPrice(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--add-price", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "not-a-number", "--file", "/fake.tdb"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--add-price) with invalid price should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --price") {
+		t.Errorf("error should mention invalid price, got: %v", err)
+	}
+}
+
+// =============================================================================
+// SM-105: --current-price
+// =============================================================================
+
+func TestRun_CurrentPriceMissingFile(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--current-price", "--ticker", "AAPL"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--current-price) without --file should return error")
+	}
+	if !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("error should mention --file requirement, got: %v", err)
+	}
+}
+
+func TestRun_CurrentPriceMissingTicker(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--current-price", "--file", "/fake.tdb"}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--current-price) without --ticker should return error")
+	}
+	if !strings.Contains(err.Error(), "--ticker") {
+		t.Errorf("error should mention --ticker, got: %v", err)
+	}
+}
+
+func TestRun_CurrentPriceSecurityNotFound(t *testing.T) {
+	dbPath, _ := createTestDBWithSecurity(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--current-price", "--ticker", "ZZZZ", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--current-price) with unknown ticker should return error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention not found, got: %v", err)
+	}
+}
+
+func TestRun_CurrentPriceShowsMostRecent(t *testing.T) {
+	dbPath, _ := createTestDBWithSecurityAndPrices(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--current-price", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Errorf("run(--current-price) returned error: %v", err)
+		return
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "CURRENT PRICE: AAPL") {
+		t.Error("output should contain current price header")
+	}
+	if !strings.Contains(output, "Apple Inc.") {
+		t.Error("output should contain security name")
+	}
+	// The most recent price is 2024-03-15 at 170.25
+	if !strings.Contains(output, "2024-03-15") {
+		t.Error("output should contain most recent price date")
+	}
+	if !strings.Contains(output, "170.25") {
+		t.Error("output should contain most recent price value")
+	}
+	if !strings.Contains(output, "Import") {
+		t.Error("output should contain price source")
+	}
+}
+
+func TestRun_CurrentPriceNoPriceExists(t *testing.T) {
+	dbPath, _ := createTestDBWithSecurity(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{"--current-price", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Error("run(--current-price) with no prices should return error")
+	}
+	if !strings.Contains(err.Error(), "no price found") {
+		t.Errorf("error should mention no price found, got: %v", err)
+	}
+}
+
+// Args parsing tests for price flags
+
+func TestParseArgs_PriceFlags(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		check func(t *testing.T, opts *cliOptions)
+	}{
+		{
+			"prices flag",
+			[]string{"--prices"},
+			func(t *testing.T, opts *cliOptions) {
+				if !opts.listPrices {
+					t.Error("listPrices should be true")
+				}
+			},
+		},
+		{
+			"add-price flag",
+			[]string{"--add-price"},
+			func(t *testing.T, opts *cliOptions) {
+				if !opts.addPrice {
+					t.Error("addPrice should be true")
+				}
+			},
+		},
+		{
+			"current-price flag",
+			[]string{"--current-price"},
+			func(t *testing.T, opts *cliOptions) {
+				if !opts.currentPrice {
+					t.Error("currentPrice should be true")
+				}
+			},
+		},
+		{
+			"price value flag",
+			[]string{"--price", "150.00"},
+			func(t *testing.T, opts *cliOptions) {
+				if opts.priceValue != "150.00" {
+					t.Errorf("priceValue = %q, want %q", opts.priceValue, "150.00")
+				}
+			},
+		},
+		{
+			"price value equals format",
+			[]string{"--price=99.99"},
+			func(t *testing.T, opts *cliOptions) {
+				if opts.priceValue != "99.99" {
+					t.Errorf("priceValue = %q, want %q", opts.priceValue, "99.99")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
+				return
+			}
+			tt.check(t, opts)
+		})
+	}
+}
+
+func TestParseArgs_PriceFlagsMissingArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"price missing value", []string{"--price"}},
 	}
 
 	for _, tt := range tests {

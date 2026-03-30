@@ -118,6 +118,12 @@ type cliOptions struct {
 	secCurrency     string // --currency reused from acctCurrency
 	secExchange     string // --exchange <exchange>
 	includeHidden   bool   // --include-hidden flag
+
+	// Price management options
+	listPrices   bool   // --prices flag
+	addPrice     bool   // --add-price flag
+	currentPrice bool   // --current-price flag
+	priceValue   string // --price <value>
 }
 
 // parseArgs parses command-line arguments and returns options and remaining args.
@@ -509,6 +515,18 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.secExchange = args[i]
 		case "--include-hidden":
 			opts.includeHidden = true
+		case "--prices":
+			opts.listPrices = true
+		case "--add-price":
+			opts.addPrice = true
+		case "--current-price":
+			opts.currentPrice = true
+		case "--price":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--price requires a value argument")
+			}
+			i++
+			opts.priceValue = args[i]
 		default:
 			// Check for --flag=value formats
 			if after, ok := strings.CutPrefix(arg, "--file="); ok {
@@ -633,6 +651,8 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.secAssetClass = after
 			} else if after, ok := strings.CutPrefix(arg, "--exchange="); ok {
 				opts.secExchange = after
+			} else if after, ok := strings.CutPrefix(arg, "--price="); ok {
+				opts.priceValue = after
 			} else {
 				remaining = append(remaining, arg)
 			}

@@ -18,6 +18,7 @@ import (
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/imexport"
 	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
@@ -2216,5 +2217,134 @@ func runDeleteSecurity(opts *cliOptions, w io.Writer) error {
 	fmt.Fprintf(w, "Security %s (%s) deleted successfully.\n", sec.Ticker, sec.Name)
 
 	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runListPrices lists prices for a security ticker.
+func runListPrices(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--prices requires --file to specify a database")
+	}
+	if opts.secTicker == "" {
+		return fmt.Errorf("--prices requires --ticker to specify a security")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.secTicker)
+	}
+
+	var from, to *types.Date
+	if opts.fromDate != "" {
+		d, err := types.ParseDate(opts.fromDate)
+		if err != nil {
+			return fmt.Errorf("invalid --from date: %w", err)
+		}
+		from = &d
+	}
+	if opts.toDate != "" {
+		d, err := types.ParseDate(opts.toDate)
+		if err != nil {
+			return fmt.Errorf("invalid --to date: %w", err)
+		}
+		to = &d
+	}
+
+	prices, err := svc.Price.GetPriceHistory(sec.ID, from, to)
+	if err != nil {
+		return fmt.Errorf("failed to get prices: %w", err)
+	}
+
+	printPricesTable(w, sec.Ticker, prices)
+
+	return nil
+}
+
+// runAddPrice adds a price for a security.
+func runAddPrice(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--add-price requires --file to specify a database")
+	}
+	if opts.secTicker == "" {
+		return fmt.Errorf("--add-price requires --ticker to specify a security")
+	}
+	if opts.txDate == "" {
+		return fmt.Errorf("--add-price requires --date to specify a price date")
+	}
+	if opts.priceValue == "" {
+		return fmt.Errorf("--add-price requires --price to specify a price value")
+	}
+
+	priceDate, err := types.ParseDate(opts.txDate)
+	if err != nil {
+		return fmt.Errorf("invalid --date: %w", err)
+	}
+
+	priceAmount, err := types.NewMoney(opts.priceValue)
+	if err != nil {
+		return fmt.Errorf("invalid --price: %w", err)
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.secTicker)
+	}
+
+	p := price.NewPrice(sec.ID, priceDate, priceAmount, price.SourceManual)
+	if err := svc.Price.AddPrice(p); err != nil {
+		return fmt.Errorf("failed to add price: %w", err)
+	}
+
+	fmt.Fprintf(w, "Price added for %s on %s: %s\n", sec.Ticker, priceDate.String(), formatMoney(priceAmount, sec.Currency))
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runCurrentPrice shows the most recent price for a security.
+func runCurrentPrice(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--current-price requires --file to specify a database")
+	}
+	if opts.secTicker == "" {
+		return fmt.Errorf("--current-price requires --ticker to specify a security")
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.secTicker)
+	}
+
+	asOf := types.Today()
+	p, err := svc.Price.GetCurrentPrice(sec.ID, asOf)
+	if err != nil {
+		return fmt.Errorf("no price found for %s", sec.Ticker)
+	}
+
+	fmt.Fprintf(w, "CURRENT PRICE: %s\n", sec.Ticker)
+	fmt.Fprintf(w, "Ticker:  %s\n", sec.Ticker)
+	fmt.Fprintf(w, "Name:    %s\n", sec.Name)
+	fmt.Fprintf(w, "Date:    %s\n", p.Date.String())
+	fmt.Fprintf(w, "Price:   %s\n", formatMoney(p.Price, sec.Currency))
+	fmt.Fprintf(w, "Source:  %s\n", p.Source.DisplayName())
+
 	return nil
 }
