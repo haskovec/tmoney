@@ -458,15 +458,15 @@ Spec: `specs/security-master.md`
 
 ## Phase 27: Account Valuation Service
 
-- [ ] **SM-093 - GetAccountValuation**
+- [x] **SM-093 - GetAccountValuation**
   - RED: Write test — returns cash balance + market value of all holdings; market value = Σ(shares × current price); securities with no price use cost basis; total gain/loss calculated
   - GREEN: Implement `GetAccountValuation` in investment transaction service (or a new `PortfolioService`)
 
-- [ ] **SM-094 - GetHoldings (rolled up by security)**
+- [x] **SM-094 - GetHoldings (rolled up by security)**
   - RED: Write test — for each security: total shares, average cost, current price, market value, cost basis, gain/loss ($), gain/loss (%); lot-tracking accounts aggregate across open lots
   - GREEN: Implement `GetHoldings`
 
-- [ ] **SM-095 - GetLotDetail (lot-tracking accounts)**
+- [x] **SM-095 - GetLotDetail (lot-tracking accounts)**
   - RED: Write test — for a given account+security: list all open lots with purchase_date, shares, cost/share, cost basis, current value, gain/loss
   - GREEN: Implement `GetLotDetail`
 
