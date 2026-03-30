@@ -3,6 +3,7 @@ package investment
 import (
 	"fmt"
 
+	"github.com/alpacahq/alpacadecimal"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
@@ -945,12 +946,15 @@ type ShareTransferResult struct {
 // The source position is reduced and the destination position is increased with the same cost basis.
 // No cash movement occurs in either account.
 // Both accounts must be investment accounts and must be different.
+// For lot-tracking source accounts, lotAllocations specifies which lots to transfer from.
+// For lot-tracking destination accounts, new lots are created preserving original purchase_date and cost_per_share.
 func (s *Service) TransferShares(
 	sourceAccountID, destAccountID types.ID,
 	securityID types.ID,
 	date types.Date,
 	shares types.Quantity,
 	memo string,
+	lotAllocations []SellLotAllocation,
 ) (*ShareTransferResult, error) {
 	if !shares.IsPositive() {
 		return nil, fmt.Errorf("shares must be positive, got %s", shares)
@@ -962,7 +966,8 @@ func (s *Service) TransferShares(
 		return nil, err
 	}
 
-	if _, err := s.getInvestmentAccount(destAccountID); err != nil {
+	dstAcct, err := s.getInvestmentAccount(destAccountID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -971,23 +976,76 @@ func (s *Service) TransferShares(
 		return nil, fmt.Errorf("cannot transfer shares between the same account")
 	}
 
-	// Get source position and validate shares available
-	srcPos, err := s.positionRepo.GetByAccountAndSecurity(sourceAccountID, securityID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get source position: %w", err)
-	}
+	// Determine cost basis based on source account type
+	var totalCostBasis types.Money
+	var costPerShare types.Money
+	var srcLots []*Lot
 
-	if srcPos.Shares.Cmp(shares) < 0 {
-		return nil, &InsufficientSharesError{
-			SecurityID: securityID.String(),
-			Available:  srcPos.Shares,
-			Requested:  shares,
+	if srcAcct.TrackLots {
+		// Lot-tracking source: validate lot allocations before any persistence
+		if len(lotAllocations) == 0 {
+			return nil, fmt.Errorf("lot allocations required for lot-tracking account")
 		}
-	}
 
-	// Compute cost basis being transferred: shares × source avg cost per share
-	costPerShare := srcPos.AverageCostPerShare
-	totalCostBasis := costPerShare.Mul(shares.Decimal())
+		totalAllocated := types.ZeroQuantity
+		for _, alloc := range lotAllocations {
+			totalAllocated = totalAllocated.Add(alloc.Shares)
+		}
+		if totalAllocated.Cmp(shares) != 0 {
+			return nil, &LotAllocationMismatchError{
+				Expected: shares,
+				Actual:   totalAllocated,
+			}
+		}
+
+		// Pre-validate all lots
+		srcLots = make([]*Lot, len(lotAllocations))
+		totalCostBasis = types.ZeroMoney
+		for i, alloc := range lotAllocations {
+			lot, err := s.lotRepo.GetByID(alloc.LotID)
+			if err != nil {
+				return nil, &LotNotFoundError{LotID: alloc.LotID.String()}
+			}
+			if lot.AccountID != sourceAccountID {
+				return nil, &LotWrongAccountError{
+					LotID:     alloc.LotID.String(),
+					AccountID: sourceAccountID.String(),
+				}
+			}
+			if lot.SecurityID != securityID {
+				return nil, fmt.Errorf("lot %s is for a different security", alloc.LotID)
+			}
+			if lot.Closed {
+				return nil, fmt.Errorf("lot %s is closed", alloc.LotID)
+			}
+			if lot.Shares.Cmp(alloc.Shares) < 0 {
+				return nil, &LotInsufficientSharesError{
+					LotID:     alloc.LotID.String(),
+					Available: lot.Shares,
+					Requested: alloc.Shares,
+				}
+			}
+			srcLots[i] = lot
+			totalCostBasis = totalCostBasis.Add(lot.CostPerShare.Mul(alloc.Shares.Decimal()))
+		}
+	} else {
+		// Non-lot-tracking source: use position average cost
+		srcPos, err := s.positionRepo.GetByAccountAndSecurity(sourceAccountID, securityID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get source position: %w", err)
+		}
+
+		if srcPos.Shares.Cmp(shares) < 0 {
+			return nil, &InsufficientSharesError{
+				SecurityID: securityID.String(),
+				Available:  srcPos.Shares,
+				Requested:  shares,
+			}
+		}
+
+		costPerShare = srcPos.AverageCostPerShare
+		totalCostBasis = costPerShare.Mul(shares.Decimal())
+	}
 
 	transferID := types.NewID()
 
@@ -1025,38 +1083,75 @@ func (s *Service) TransferShares(
 		return nil, fmt.Errorf("failed to create destination transfer transaction: %w", err)
 	}
 
-	// Update source position
+	// Update source side
 	if srcAcct.TrackLots {
-		// Lot-tracking handled by SM-091
-		return nil, fmt.Errorf("lot-tracking share transfers not yet implemented")
-	}
+		// Reduce source lots and create junction records
+		for i, alloc := range lotAllocations {
+			lot := srcLots[i]
+			if err := lot.Reduce(alloc.Shares); err != nil {
+				return nil, fmt.Errorf("failed to reduce lot: %w", err)
+			}
+			if err := s.lotRepo.Update(lot); err != nil {
+				return nil, fmt.Errorf("failed to update lot: %w", err)
+			}
 
-	if err := srcPos.RemoveShares(shares); err != nil {
-		return nil, fmt.Errorf("failed to reduce source position: %w", err)
-	}
-
-	if srcPos.Shares.IsZero() {
-		if err := s.positionRepo.Delete(sourceAccountID, securityID); err != nil {
-			return nil, fmt.Errorf("failed to delete zero source position: %w", err)
+			tl := NewTransactionLot(srcTxn.ID, lot.ID, alloc.Shares)
+			if err := s.transactionLotRepo.Create(&tl); err != nil {
+				return nil, fmt.Errorf("failed to create transaction lot: %w", err)
+			}
 		}
 	} else {
-		if err := s.positionRepo.CreateOrUpdate(srcPos); err != nil {
-			return nil, fmt.Errorf("failed to save source position: %w", err)
+		// Non-lot-tracking source: reduce position
+		srcPos, err := s.positionRepo.GetByAccountAndSecurity(sourceAccountID, securityID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get source position: %w", err)
+		}
+
+		if err := srcPos.RemoveShares(shares); err != nil {
+			return nil, fmt.Errorf("failed to reduce source position: %w", err)
+		}
+
+		if srcPos.Shares.IsZero() {
+			if err := s.positionRepo.Delete(sourceAccountID, securityID); err != nil {
+				return nil, fmt.Errorf("failed to delete zero source position: %w", err)
+			}
+		} else {
+			if err := s.positionRepo.CreateOrUpdate(srcPos); err != nil {
+				return nil, fmt.Errorf("failed to save source position: %w", err)
+			}
 		}
 	}
 
-	// Update destination position
-	dstPos, err := s.positionRepo.GetByAccountAndSecurity(destAccountID, securityID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get destination position: %w", err)
-	}
+	// Update destination side
+	if dstAcct.TrackLots {
+		// Create new lots in destination preserving original purchase_date and cost_per_share
+		for i, alloc := range lotAllocations {
+			srcLot := srcLots[i]
+			newLot := NewLot(destAccountID, securityID, alloc.Shares, srcLot.CostPerShare, srcLot.PurchaseDate, dstTxn.ID)
+			if err := s.lotRepo.Create(&newLot); err != nil {
+				return nil, fmt.Errorf("failed to create destination lot: %w", err)
+			}
+		}
+	} else {
+		// Non-lot-tracking destination: update position
+		dstPos, err := s.positionRepo.GetByAccountAndSecurity(destAccountID, securityID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get destination position: %w", err)
+		}
 
-	if err := dstPos.AddShares(shares, costPerShare); err != nil {
-		return nil, fmt.Errorf("failed to update destination position: %w", err)
-	}
+		if srcAcct.TrackLots {
+			// Cost per share is the weighted average from lot allocations
+			reciprocal := alpacadecimal.NewFromInt(1).Div(shares.Decimal())
+			costPerShare = totalCostBasis.Mul(reciprocal)
+		}
 
-	if err := s.positionRepo.CreateOrUpdate(dstPos); err != nil {
-		return nil, fmt.Errorf("failed to save destination position: %w", err)
+		if err := dstPos.AddShares(shares, costPerShare); err != nil {
+			return nil, fmt.Errorf("failed to update destination position: %w", err)
+		}
+
+		if err := s.positionRepo.CreateOrUpdate(dstPos); err != nil {
+			return nil, fmt.Errorf("failed to save destination position: %w", err)
+		}
 	}
 
 	return &ShareTransferResult{

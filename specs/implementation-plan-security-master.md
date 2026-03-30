@@ -448,7 +448,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — source position reduced; destination position increased with cost basis; no cash movement; shares must be available
   - GREEN: Implement `TransferShares` for non-lot-tracking
 
-- [ ] **SM-091 - Share transfer between investment accounts (lot-tracking)**
+- [x] **SM-091 - Share transfer between investment accounts (lot-tracking)**
   - RED: Write test — source lots reduced/closed; new lots created in destination with original purchase_date and cost_per_share; no cash movement
   - GREEN: Implement `TransferShares` for lot-tracking
 
