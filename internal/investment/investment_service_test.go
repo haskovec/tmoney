@@ -2399,3 +2399,454 @@ func TestService_ReinvestDividend_AutoCreatesPrice(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// SM-087: Fee via Liquidation (non-lot-tracking)
+// =============================================================================
+
+func TestService_FeeLiquidation_NonLotTracking(t *testing.T) {
+	t.Run("fee liquidation reduces shares", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Deposit and buy 10 shares at $100 each
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		// Fee liquidation: sell 1 share at $110 to cover a $110 fee
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeAmount := types.MustNewMoney("110.00")
+		feeShares := types.MustNewQuantity("1")
+		pps := types.MustNewMoney("110.00")
+		txn, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeAmount, &pps, types.ZeroMoney, "Annual fee", nil)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+
+		// Verify transaction fields
+		if txn.Type != TransactionTypeFeeLiquidation {
+			t.Errorf("Expected type %q, got %q", TransactionTypeFeeLiquidation, txn.Type)
+		}
+		if txn.TotalAmount.String() != "110" {
+			t.Errorf("Expected total amount '110', got %q", txn.TotalAmount.String())
+		}
+		if !txn.HasShares() || txn.Shares.Quantity.String() != "1" {
+			t.Errorf("Expected shares '1', got %v", txn.Shares)
+		}
+		if !txn.HasPricePerShare() || txn.PricePerShare.Money.String() != "110" {
+			t.Errorf("Expected price_per_share '110', got %v", txn.PricePerShare)
+		}
+		if !txn.HasSecurity() {
+			t.Error("Expected transaction to have security set")
+		}
+
+		// Position should now have 9 shares
+		pos, err := env.positionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+		if err != nil {
+			t.Fatalf("GetByAccountAndSecurity() error = %v", err)
+		}
+		if pos.Shares.String() != "9" {
+			t.Errorf("Expected shares '9', got %q", pos.Shares.String())
+		}
+	})
+
+	t.Run("fee liquidation has no net cash effect", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		// Cash after buy: 10000 - 1000 = 9000
+		balanceBefore, _ := env.svc.GetCashBalance(acct.ID)
+
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeAmount := types.MustNewMoney("110.00")
+		feeShares := types.MustNewQuantity("1")
+		_, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeAmount, nil, types.ZeroMoney, "", nil)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+
+		balanceAfter, err := env.svc.GetCashBalance(acct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balanceBefore.String() != balanceAfter.String() {
+			t.Errorf("Expected cash unchanged at %q, got %q", balanceBefore.String(), balanceAfter.String())
+		}
+	})
+
+	t.Run("fee liquidation with price_per_share computes total", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeShares := types.MustNewQuantity("2")
+		pps := types.MustNewMoney("50.00")
+		txn, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, nil, &pps, types.ZeroMoney, "", nil)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+		// total = 2 * 50 = 100
+		if txn.TotalAmount.String() != "100" {
+			t.Errorf("Expected total '100', got %q", txn.TotalAmount.String())
+		}
+	})
+
+	t.Run("fee liquidation with commission", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeShares := types.MustNewQuantity("2")
+		feeTotal := types.MustNewMoney("210.00")
+		commission := types.MustNewMoney("10.00")
+		txn, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, commission, "", nil)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+		// price_per_share = (210 - 10) / 2 = 100
+		if txn.PricePerShare.Money.String() != "100" {
+			t.Errorf("Expected price_per_share '100', got %q", txn.PricePerShare.Money.String())
+		}
+		if txn.Commission.Money.String() != "10" {
+			t.Errorf("Expected commission '10', got %q", txn.Commission.Money.String())
+		}
+	})
+
+	t.Run("fee liquidation fails with insufficient shares", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("500.00")
+		buyShares := types.MustNewQuantity("5")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeTotal := types.MustNewMoney("1000.00")
+		feeShares := types.MustNewQuantity("10") // Only have 5
+		_, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, types.ZeroMoney, "", nil)
+		if err == nil {
+			t.Fatal("Expected error for insufficient shares, got nil")
+		}
+		if _, ok := err.(*InsufficientSharesError); !ok {
+			t.Errorf("Expected InsufficientSharesError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("fee liquidation deletes position when all shares sold", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("500.00")
+		buyShares := types.MustNewQuantity("5")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeTotal := types.MustNewMoney("550.00")
+		feeShares := types.MustNewQuantity("5")
+		_, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, types.ZeroMoney, "", nil)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+
+		pos, err := env.positionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+		if err != nil {
+			t.Fatalf("GetByAccountAndSecurity() error = %v", err)
+		}
+		if !pos.Shares.IsZero() {
+			t.Errorf("Expected zero shares, got %q", pos.Shares.String())
+		}
+	})
+
+	t.Run("fee liquidation rejects non-investment account", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createCheckAccount(t, env.accountRepo, "Checking")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		feeTotal := types.MustNewMoney("100.00")
+		feeShares := types.MustNewQuantity("1")
+		_, err := env.svc.FeeLiquidation(acct.ID, sec.ID, date, feeShares, &feeTotal, nil, types.ZeroMoney, "", nil)
+		if err == nil {
+			t.Fatal("Expected error for non-investment account, got nil")
+		}
+	})
+
+	t.Run("fee liquidation auto-creates price record", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		feeDate := types.NewDate(2024, time.July, 1)
+		feeTotal := types.MustNewMoney("120.00")
+		feeShares := types.MustNewQuantity("1")
+		_, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, types.ZeroMoney, "", nil)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+
+		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, feeDate)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v", err)
+		}
+		if p.Price.String() != "120" {
+			t.Errorf("Expected auto-created price '120', got %q", p.Price.String())
+		}
+		if p.Source != price.SourceTransaction {
+			t.Errorf("Expected source 'transaction', got %q", p.Source.String())
+		}
+	})
+}
+
+// =============================================================================
+// SM-088: Fee via Liquidation (lot-tracking)
+// =============================================================================
+
+func TestService_FeeLiquidation_LotTracking(t *testing.T) {
+	t.Run("fee liquidation reduces lot shares", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Deposit and buy 10 shares
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		// Get the lot
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		if len(lots) != 1 {
+			t.Fatalf("Expected 1 lot, got %d", len(lots))
+		}
+
+		// Fee liquidation: sell 3 shares from the lot
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeTotal := types.MustNewMoney("330.00")
+		feeShares := types.MustNewQuantity("3")
+		allocs := []SellLotAllocation{
+			{LotID: lots[0].ID, Shares: types.MustNewQuantity("3")},
+		}
+		txn, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, types.ZeroMoney, "Fee", allocs)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+
+		if txn.Type != TransactionTypeFeeLiquidation {
+			t.Errorf("Expected type %q, got %q", TransactionTypeFeeLiquidation, txn.Type)
+		}
+
+		// Lot should have 7 shares remaining
+		updatedLot, err := env.lotRepo.GetByID(lots[0].ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if updatedLot.Shares.String() != "7" {
+			t.Errorf("Expected lot shares '7', got %q", updatedLot.Shares.String())
+		}
+		if updatedLot.Closed {
+			t.Error("Expected lot to remain open")
+		}
+	})
+
+	t.Run("fee liquidation creates junction records", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+
+		// Buy two lots
+		buy1Total := types.MustNewMoney("500.00")
+		buy1Shares := types.MustNewQuantity("5")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buy1Shares, &buy1Total, nil, types.ZeroMoney, "")
+
+		date2 := types.NewDate(2024, time.April, 15)
+		buy2Total := types.MustNewMoney("600.00")
+		buy2Shares := types.MustNewQuantity("5")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date2, buy2Shares, &buy2Total, nil, types.ZeroMoney, "")
+
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		if len(lots) != 2 {
+			t.Fatalf("Expected 2 lots, got %d", len(lots))
+		}
+
+		// Fee liquidation from both lots
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeTotal := types.MustNewMoney("440.00")
+		feeShares := types.MustNewQuantity("4")
+		allocs := []SellLotAllocation{
+			{LotID: lots[0].ID, Shares: types.MustNewQuantity("2")},
+			{LotID: lots[1].ID, Shares: types.MustNewQuantity("2")},
+		}
+		txn, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, types.ZeroMoney, "", allocs)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+
+		// Verify junction records
+		junctions, err := env.transactionLotRepo.GetByTransaction(txn.ID)
+		if err != nil {
+			t.Fatalf("GetByTransaction() error = %v", err)
+		}
+		if len(junctions) != 2 {
+			t.Errorf("Expected 2 junction records, got %d", len(junctions))
+		}
+	})
+
+	t.Run("fee liquidation has no net cash effect (lot-tracking)", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		balanceBefore, _ := env.svc.GetCashBalance(acct.ID)
+
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeTotal := types.MustNewMoney("110.00")
+		feeShares := types.MustNewQuantity("1")
+		allocs := []SellLotAllocation{
+			{LotID: lots[0].ID, Shares: types.MustNewQuantity("1")},
+		}
+		_, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, types.ZeroMoney, "", allocs)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+
+		balanceAfter, err := env.svc.GetCashBalance(acct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balanceBefore.String() != balanceAfter.String() {
+			t.Errorf("Expected cash unchanged at %q, got %q", balanceBefore.String(), balanceAfter.String())
+		}
+	})
+
+	t.Run("fee liquidation closes lot when all shares used", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("500.00")
+		buyShares := types.MustNewQuantity("5")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeTotal := types.MustNewMoney("550.00")
+		feeShares := types.MustNewQuantity("5")
+		allocs := []SellLotAllocation{
+			{LotID: lots[0].ID, Shares: types.MustNewQuantity("5")},
+		}
+		_, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, types.ZeroMoney, "", allocs)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+
+		updatedLot, err := env.lotRepo.GetByID(lots[0].ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if !updatedLot.Closed {
+			t.Error("Expected lot to be closed")
+		}
+		if !updatedLot.Shares.IsZero() {
+			t.Errorf("Expected lot shares '0', got %q", updatedLot.Shares.String())
+		}
+	})
+
+	t.Run("fee liquidation requires lot allocations for lot-tracking", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeTotal := types.MustNewMoney("110.00")
+		feeShares := types.MustNewQuantity("1")
+		_, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, types.ZeroMoney, "", nil)
+		if err == nil {
+			t.Fatal("Expected error for missing lot allocations, got nil")
+		}
+	})
+
+	t.Run("fee liquidation rejects allocation mismatch", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		buyTotal := types.MustNewMoney("1000.00")
+		buyShares := types.MustNewQuantity("10")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+
+		feeDate := types.NewDate(2024, time.June, 15)
+		feeTotal := types.MustNewMoney("330.00")
+		feeShares := types.MustNewQuantity("3")
+		allocs := []SellLotAllocation{
+			{LotID: lots[0].ID, Shares: types.MustNewQuantity("2")}, // Only 2, need 3
+		}
+		_, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, types.ZeroMoney, "", allocs)
+		if err == nil {
+			t.Fatal("Expected error for allocation mismatch, got nil")
+		}
+		if _, ok := err.(*LotAllocationMismatchError); !ok {
+			t.Errorf("Expected LotAllocationMismatchError, got %T: %v", err, err)
+		}
+	})
+}

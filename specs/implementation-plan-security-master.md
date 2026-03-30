@@ -430,11 +430,11 @@ Spec: `specs/security-master.md`
 
 ## Phase 25: Investment Transaction Service — Fee via Liquidation
 
-- [ ] **SM-087 - Fee via liquidation (non-lot-tracking)**
+- [x] **SM-087 - Fee via liquidation (non-lot-tracking)**
   - RED: Write test — fee reduces shares; no net cash effect; transaction records fee amount and shares sold
   - GREEN: Implement `FeeLiquidation` for non-lot-tracking
 
-- [ ] **SM-088 - Fee via liquidation (lot-tracking)**
+- [x] **SM-088 - Fee via liquidation (lot-tracking)**
   - RED: Write test — requires lot selection (same as sell); reduces lot shares; no net cash effect; junction records created
   - GREEN: Implement `FeeLiquidation` for lot-tracking
 

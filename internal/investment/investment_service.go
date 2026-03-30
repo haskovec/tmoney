@@ -600,6 +600,170 @@ func (s *Service) ReinvestDividend(
 	return txn, nil
 }
 
+// FeeLiquidation creates a fee-via-liquidation transaction that sells shares to cover a fee.
+// There is no net cash effect — the shares are sold and the proceeds pay the fee.
+// For non-lot-tracking accounts, it reduces the aggregate position.
+// For lot-tracking accounts, lotAllocations specifies which lots to sell from.
+// At least shares + one of (totalAmount, pricePerShare) must be provided.
+func (s *Service) FeeLiquidation(
+	accountID types.ID,
+	securityID types.ID,
+	date types.Date,
+	shares types.Quantity,
+	totalAmount *types.Money,
+	pricePerShare *types.Money,
+	commission types.Money,
+	memo string,
+	lotAllocations []SellLotAllocation,
+) (*Transaction, error) {
+	acct, err := s.getInvestmentAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Smart compute missing fields
+	computed, err := SmartCompute(shares, totalAmount, pricePerShare, commission)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute fee liquidation fields: %w", err)
+	}
+
+	// Create transaction — TotalAmount stored as positive for record-keeping (no cash effect)
+	txn := NewTransactionWithSecurity(accountID, date, TransactionTypeFeeLiquidation, computed.TotalAmount, securityID, shares)
+	txn.SetPricePerShare(computed.PricePerShare)
+	if !commission.IsZero() {
+		txn.SetCommission(commission)
+	}
+	if memo != "" {
+		txn.SetMemo(memo)
+	}
+
+	if err := s.validateTransaction(txn); err != nil {
+		return nil, err
+	}
+
+	if acct.TrackLots {
+		if err := s.feeLiquidationWithLots(txn, accountID, securityID, shares, lotAllocations); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := s.feeLiquidationWithPosition(txn, accountID, securityID, shares); err != nil {
+			return nil, err
+		}
+	}
+
+	// Auto-create price record from transaction
+	s.autoCreatePrice(securityID, date, computed.PricePerShare)
+
+	return txn, nil
+}
+
+// feeLiquidationWithPosition handles fee liquidation for non-lot-tracking accounts.
+func (s *Service) feeLiquidationWithPosition(txn *Transaction, accountID, securityID types.ID, shares types.Quantity) error {
+	pos, err := s.positionRepo.GetByAccountAndSecurity(accountID, securityID)
+	if err != nil {
+		return fmt.Errorf("failed to get position: %w", err)
+	}
+
+	if pos.Shares.Cmp(shares) < 0 {
+		return &InsufficientSharesError{
+			SecurityID: securityID.String(),
+			Available:  pos.Shares,
+			Requested:  shares,
+		}
+	}
+
+	if err := s.repo.Create(txn); err != nil {
+		return fmt.Errorf("failed to create fee liquidation transaction: %w", err)
+	}
+
+	if err := pos.RemoveShares(shares); err != nil {
+		return fmt.Errorf("failed to update position: %w", err)
+	}
+
+	if pos.Shares.IsZero() {
+		if err := s.positionRepo.Delete(accountID, securityID); err != nil {
+			return fmt.Errorf("failed to delete zero position: %w", err)
+		}
+	} else {
+		if err := s.positionRepo.CreateOrUpdate(pos); err != nil {
+			return fmt.Errorf("failed to save position: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// feeLiquidationWithLots handles fee liquidation for lot-tracking accounts.
+func (s *Service) feeLiquidationWithLots(txn *Transaction, accountID, securityID types.ID, shares types.Quantity, lotAllocations []SellLotAllocation) error {
+	if len(lotAllocations) == 0 {
+		return fmt.Errorf("lot allocations required for lot-tracking account")
+	}
+
+	// Validate total shares across allocations equals fee liquidation shares
+	totalAllocated := types.ZeroQuantity
+	for _, alloc := range lotAllocations {
+		totalAllocated = totalAllocated.Add(alloc.Shares)
+	}
+	if totalAllocated.Cmp(shares) != 0 {
+		return &LotAllocationMismatchError{
+			Expected: shares,
+			Actual:   totalAllocated,
+		}
+	}
+
+	// Validate each lot allocation before making any changes
+	lots := make([]*Lot, len(lotAllocations))
+	for i, alloc := range lotAllocations {
+		lot, err := s.lotRepo.GetByID(alloc.LotID)
+		if err != nil {
+			return &LotNotFoundError{LotID: alloc.LotID.String()}
+		}
+		if lot.AccountID != accountID {
+			return &LotWrongAccountError{
+				LotID:     alloc.LotID.String(),
+				AccountID: accountID.String(),
+			}
+		}
+		if lot.SecurityID != securityID {
+			return fmt.Errorf("lot %s is for a different security", alloc.LotID)
+		}
+		if lot.Closed {
+			return fmt.Errorf("lot %s is closed", alloc.LotID)
+		}
+		if lot.Shares.Cmp(alloc.Shares) < 0 {
+			return &LotInsufficientSharesError{
+				LotID:     alloc.LotID.String(),
+				Available: lot.Shares,
+				Requested: alloc.Shares,
+			}
+		}
+		lots[i] = lot
+	}
+
+	// All validations passed — persist the transaction
+	if err := s.repo.Create(txn); err != nil {
+		return fmt.Errorf("failed to create fee liquidation transaction: %w", err)
+	}
+
+	// Reduce lots and create junction records
+	for i, alloc := range lotAllocations {
+		lot := lots[i]
+		if err := lot.Reduce(alloc.Shares); err != nil {
+			return fmt.Errorf("failed to reduce lot: %w", err)
+		}
+		if err := s.lotRepo.Update(lot); err != nil {
+			return fmt.Errorf("failed to update lot: %w", err)
+		}
+
+		tl := NewTransactionLot(txn.ID, lot.ID, alloc.Shares)
+		if err := s.transactionLotRepo.Create(&tl); err != nil {
+			return fmt.Errorf("failed to create transaction lot: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // InvalidTransferAmountError is returned when a transfer amount is invalid (not positive).
 type InvalidTransferAmountError struct {
 	Amount types.Money
