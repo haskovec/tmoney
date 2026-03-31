@@ -616,7 +616,7 @@ Spec: `specs/security-master.md`
 
 ## Phase 36: TUI — Investment Account Register
 
-- [ ] **SM-128 - Investment transaction list**
+- [x] **SM-128 - Investment transaction list**
   - RED: Write test — register for investment account shows investment transactions (not regular transactions); columns: Date, Type, Security, Shares, Price, Total, Status
   - GREEN: Implement investment register rendering in tui
 

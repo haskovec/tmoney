@@ -88,6 +88,11 @@ func (t *Table) SetRows(rows [][]string) {
 	t.clampScroll(0)
 }
 
+// Columns returns the current column definitions.
+func (t *Table) Columns() []Column {
+	return t.columns
+}
+
 // SetColumns replaces the column definitions.
 func (t *Table) SetColumns(columns []Column) {
 	t.columns = columns

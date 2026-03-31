@@ -18,6 +18,7 @@ import (
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/reconciliation"
@@ -47,6 +48,8 @@ const (
 	ViewSecurities
 	// ViewPrices shows the price management view.
 	ViewPrices
+	// ViewInvestmentRegister shows the investment account transaction register.
+	ViewInvestmentRegister
 )
 
 // String returns the display name of the view.
@@ -66,6 +69,8 @@ func (v View) String() string {
 		return "Securities"
 	case ViewPrices:
 		return "Prices"
+	case ViewInvestmentRegister:
+		return "Investment Register"
 	default:
 		return "Unknown"
 	}
@@ -165,6 +170,12 @@ type App struct {
 	priceDialogEditID   types.ID
 	priceImportDialog   *Dialog
 	priceSvc            *price.Service
+
+	// Investment register state
+	investmentRegister *investmentRegisterData
+	investmentTable    *Table
+	investmentSvc      *investment.Service
+	investmentRepo     *investment.Repository
 
 	// File dialog state
 	fileDialog     *Dialog
@@ -387,6 +398,8 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		reconciliationSvc: svc.Reconciliation,
 		securitySvc:       svc.Security,
 		priceSvc:          svc.Price,
+		investmentSvc:     svc.Investment,
+		investmentRepo:    svc.InvestmentRepo,
 	}
 }
 
@@ -742,6 +755,24 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.buildRegisterTable()
 		return a, nil
 
+	case investmentRegisterLoadedMsg:
+		a.investmentRegister = msg.data
+		a.buildInvestmentRegisterTable()
+		return a, nil
+
+	case investmentTransactionDeletedMsg:
+		a.statusbar.AddNotification("Transaction deleted", NotificationInfo)
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		}
+		return a, nil
+
+	case investmentTransactionClearedMsg:
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		}
+		return a, nil
+
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data
 		a.buildScheduledTable()
@@ -952,6 +983,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.currentView == ViewRegister {
 			accountID := a.sidebar.SelectedAccountID()
 			cmds = append(cmds, a.loadRegisterData(accountID))
+		}
+		if a.currentView == ViewInvestmentRegister {
+			accountID := a.sidebar.SelectedAccountID()
+			cmds = append(cmds, a.loadInvestmentRegisterData(accountID))
 		}
 		return a, tea.Batch(cmds...)
 
@@ -1220,6 +1255,8 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handleSecurityViewKeys(msg)
 	case ViewPrices:
 		return a.handlePriceViewKeys(msg)
+	case ViewInvestmentRegister:
+		return a.handleInvestmentRegisterKeys(msg)
 	}
 
 	return a, nil
@@ -1689,9 +1726,16 @@ func (a *App) handleSidebarKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, a.keys.Enter):
 		if a.sidebar.Select() {
+			accountID := a.sidebar.SelectedAccountID()
+			acct := a.sidebar.SelectedAccount()
+			if acct != nil && acct.Type == account.TypeInvestment {
+				a.investmentRegister = nil // Clear old data while loading
+				a.switchView(ViewInvestmentRegister)
+				return a, a.loadInvestmentRegisterData(accountID)
+			}
 			a.register = nil // Clear old data while loading
 			a.switchView(ViewRegister)
-			return a, a.loadRegisterData(a.sidebar.SelectedAccountID())
+			return a, a.loadRegisterData(accountID)
 		}
 		return a, nil
 	}
@@ -1918,6 +1962,12 @@ func (a *App) switchView(v View) {
 				if a.priceTable != nil {
 					a.priceTable.SetFocused(true)
 				}
+			case ViewInvestmentRegister:
+				// Start with investment table focused
+				a.sidebar.SetFocused(false)
+				if a.investmentTable != nil {
+					a.investmentTable.SetFocused(true)
+				}
 			}
 		}
 	}
@@ -2074,6 +2124,8 @@ func (a *App) renderContent(height int) string {
 		viewContent = a.renderSecurityView()
 	case ViewPrices:
 		viewContent = a.renderPriceView()
+	case ViewInvestmentRegister:
+		viewContent = a.renderInvestmentRegister()
 	default:
 		viewContent = "Unknown view"
 	}
@@ -2860,6 +2912,8 @@ func (a *App) getKeyHints() string {
 		return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  / search  esc back  " + common
 	case ViewPrices:
 		return "↑↓ navigate  ←→ security  n new  enter edit  d delete  i import  / search  esc back  " + common
+	case ViewInvestmentRegister:
+		return "↑↓ navigate  c clear  d delete  esc back  " + common
 	default:
 		return common
 	}
