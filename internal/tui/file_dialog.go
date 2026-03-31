@@ -192,6 +192,9 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	a.payeeSvc = svc.Payee
 	a.scheduledTxnSvc = svc.Scheduled
 	a.reportSvc = svc.Report
+	a.reconciliationSvc = svc.Reconciliation
+	a.securitySvc = svc.Security
+	a.priceSvc = svc.Price
 
 	// Clear all cached view data
 	a.dashboard = nil
@@ -200,6 +203,10 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	a.scheduled = nil
 	a.scheduledTable = nil
 	a.reports = nil
+	a.securityView = nil
+	a.securityTable = nil
+	a.priceView = nil
+	a.priceTable = nil
 
 	// Update config
 	if a.cfg != nil {

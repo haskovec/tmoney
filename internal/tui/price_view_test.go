@@ -1,0 +1,995 @@
+package tui
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/haskovec/tmoney/internal/price"
+	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/types"
+)
+
+// =============================================================================
+// SM-123: Price list table component
+// =============================================================================
+
+func TestPriceViewData(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	data := &priceViewData{
+		securities:       []*security.Security{sec},
+		selectedSecurity: sec,
+	}
+
+	if data.selectedSecurity.Ticker != "AAPL" {
+		t.Errorf("selected security ticker = %q, want AAPL", data.selectedSecurity.Ticker)
+	}
+	if len(data.securities) != 1 {
+		t.Errorf("expected 1 security, got %d", len(data.securities))
+	}
+}
+
+func TestPriceViewData_FilteredSecurities(t *testing.T) {
+	sec1 := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	sec2 := security.NewSecurity("MSFT", "Microsoft Corp", security.TypeStock)
+	sec3 := security.NewSecurity("GDX", "VanEck Gold Miners ETF", security.TypeETF)
+	sec3.Hidden = true
+
+	data := &priceViewData{
+		securities: []*security.Security{sec1, sec2, sec3},
+	}
+
+	// Should return all non-hidden by default
+	filtered := data.filteredSecurities()
+	if len(filtered) != 2 {
+		t.Errorf("expected 2 visible securities, got %d", len(filtered))
+	}
+
+	// Search by ticker
+	data.searchQuery = "aapl"
+	filtered = data.filteredSecurities()
+	if len(filtered) != 1 {
+		t.Errorf("expected 1 match for 'aapl', got %d", len(filtered))
+	}
+	if filtered[0].Ticker != "AAPL" {
+		t.Errorf("expected AAPL, got %s", filtered[0].Ticker)
+	}
+
+	// Search by name (case-insensitive)
+	data.searchQuery = "micro"
+	filtered = data.filteredSecurities()
+	if len(filtered) != 1 {
+		t.Errorf("expected 1 match for 'micro', got %d", len(filtered))
+	}
+
+	// No match
+	data.searchQuery = "zzz"
+	filtered = data.filteredSecurities()
+	if len(filtered) != 0 {
+		t.Errorf("expected 0 matches, got %d", len(filtered))
+	}
+}
+
+func TestFormatPriceRow(t *testing.T) {
+	secID := types.NewID()
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+
+	p := price.NewPrice(secID, d, m, price.SourceManual)
+
+	app := &App{}
+	row := app.formatPriceRow(p)
+
+	if len(row) != 3 {
+		t.Fatalf("expected 3 columns, got %d", len(row))
+	}
+
+	if row[0] != "2025-03-15" {
+		t.Errorf("date = %q, want %q", row[0], "2025-03-15")
+	}
+	if row[1] != "$185.50" {
+		t.Errorf("price = %q, want %q", row[1], "$185.50")
+	}
+	if row[2] != "Manual" {
+		t.Errorf("source = %q, want %q", row[2], "Manual")
+	}
+}
+
+func TestFormatPriceRow_Sources(t *testing.T) {
+	secID := types.NewID()
+	d := types.NewDate(2025, time.January, 1)
+	m, _ := types.NewMoney("100.00")
+
+	tests := []struct {
+		source   price.Source
+		expected string
+	}{
+		{price.SourceManual, "Manual"},
+		{price.SourceTransaction, "Transaction"},
+		{price.SourceImport, "Import"},
+		{price.SourceAPI, "API"},
+	}
+
+	for _, tt := range tests {
+		p := price.NewPrice(secID, d, m, tt.source)
+		app := &App{}
+		row := app.formatPriceRow(p)
+		if row[2] != tt.expected {
+			t.Errorf("source %q: got %q, want %q", tt.source, row[2], tt.expected)
+		}
+	}
+}
+
+func TestBuildPriceTable(t *testing.T) {
+	secID := types.NewID()
+	d1 := types.NewDate(2025, time.March, 15)
+	d2 := types.NewDate(2025, time.March, 14)
+	m1, _ := types.NewMoney("185.50")
+	m2, _ := types.NewMoney("184.00")
+
+	p1 := price.NewPrice(secID, d1, m1, price.SourceManual)
+	p2 := price.NewPrice(secID, d2, m2, price.SourceImport)
+
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			prices:           []*price.Price{p1, p2},
+		},
+	}
+
+	app.buildPriceTable()
+
+	if app.priceTable == nil {
+		t.Fatal("priceTable should not be nil after build")
+	}
+	if app.priceTable.RowCount() != 2 {
+		t.Errorf("expected 2 rows, got %d", app.priceTable.RowCount())
+	}
+}
+
+func TestBuildPriceTable_SortedByDateDesc(t *testing.T) {
+	secID := types.NewID()
+	d1 := types.NewDate(2025, time.January, 1)
+	d2 := types.NewDate(2025, time.March, 15)
+	d3 := types.NewDate(2025, time.February, 10)
+	m, _ := types.NewMoney("100.00")
+
+	p1 := price.NewPrice(secID, d1, m, price.SourceManual)
+	p2 := price.NewPrice(secID, d2, m, price.SourceManual)
+	p3 := price.NewPrice(secID, d3, m, price.SourceManual)
+
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			// Prices already sorted desc (as returned by service)
+			prices: []*price.Price{p2, p3, p1},
+		},
+	}
+
+	app.buildPriceTable()
+
+	if app.priceTable == nil {
+		t.Fatal("priceTable should not be nil")
+	}
+
+	// Table should have rows sorted by date desc (newest first)
+	if app.priceTable.RowCount() != 3 {
+		t.Fatalf("expected 3 rows, got %d", app.priceTable.RowCount())
+	}
+}
+
+// =============================================================================
+// SM-124: Price view navigation and keybindings
+// =============================================================================
+
+func TestHandlePriceViewKeys_Navigation(t *testing.T) {
+	secID := types.NewID()
+	d1 := types.NewDate(2025, time.March, 15)
+	d2 := types.NewDate(2025, time.March, 14)
+	m, _ := types.NewMoney("100.00")
+
+	p1 := price.NewPrice(secID, d1, m, price.SourceManual)
+	p2 := price.NewPrice(secID, d2, m, price.SourceManual)
+
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		width:  80,
+		height: 24,
+		keys:   defaultKeyMap(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			prices:           []*price.Price{p1, p2},
+		},
+	}
+	app.buildPriceTable()
+
+	// Move down
+	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	app.handlePriceViewKeys(downKey)
+
+	if app.priceTable.Cursor() != 1 {
+		t.Errorf("cursor = %d, want 1 after down", app.priceTable.Cursor())
+	}
+
+	// Move up
+	upKey := tea.KeyMsg{Type: tea.KeyUp}
+	app.handlePriceViewKeys(upKey)
+
+	if app.priceTable.Cursor() != 0 {
+		t.Errorf("cursor = %d, want 0 after up", app.priceTable.Cursor())
+	}
+}
+
+func TestHandlePriceViewKeys_NewOpensDialog(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		width:  80,
+		height: 24,
+		keys:   defaultKeyMap(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{},
+		},
+	}
+	app.buildPriceTable()
+
+	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	app.handlePriceViewKeys(nKey)
+
+	if app.priceDialog == nil {
+		t.Error("priceDialog should be set after pressing 'n'")
+	}
+	if app.priceDialogMode != priceDialogModeAdd {
+		t.Errorf("priceDialogMode = %d, want %d (add)", app.priceDialogMode, priceDialogModeAdd)
+	}
+}
+
+func TestHandlePriceViewKeys_EnterOpensEditDialog(t *testing.T) {
+	secID := types.NewID()
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+	p := price.NewPrice(secID, d, m, price.SourceManual)
+
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		width:  80,
+		height: 24,
+		keys:   defaultKeyMap(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{p},
+		},
+	}
+	app.buildPriceTable()
+
+	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	app.handlePriceViewKeys(enterKey)
+
+	if app.priceDialog == nil {
+		t.Error("priceDialog should be set after pressing Enter")
+	}
+	if app.priceDialogMode != priceDialogModeEdit {
+		t.Errorf("priceDialogMode = %d, want %d (edit)", app.priceDialogMode, priceDialogModeEdit)
+	}
+}
+
+func TestHandlePriceViewKeys_DeleteShowsConfirm(t *testing.T) {
+	secID := types.NewID()
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+	p := price.NewPrice(secID, d, m, price.SourceManual)
+
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		width:     80,
+		height:    24,
+		keys:      defaultKeyMap(),
+		statusbar: NewStatusBar(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{p},
+		},
+	}
+	app.buildPriceTable()
+
+	dKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+	app.handlePriceViewKeys(dKey)
+
+	if app.confirmDialog == nil {
+		t.Error("confirm dialog should be set after pressing 'd'")
+	}
+}
+
+func TestHandlePriceViewKeys_ImportOpensDialog(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		width:  80,
+		height: 24,
+		keys:   defaultKeyMap(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{},
+		},
+	}
+	app.buildPriceTable()
+
+	iKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}
+	app.handlePriceViewKeys(iKey)
+
+	if app.priceImportDialog == nil {
+		t.Error("priceImportDialog should be set after pressing 'i'")
+	}
+}
+
+func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		width:  80,
+		height: 24,
+		keys:   defaultKeyMap(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{},
+		},
+	}
+	app.buildPriceTable()
+
+	// Enter search mode
+	slashKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}}
+	app.handlePriceViewKeys(slashKey)
+
+	if !app.priceView.searching {
+		t.Error("should be in search mode after pressing '/'")
+	}
+
+	// Type search query
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	app.handlePriceSearchKey(aKey)
+
+	if app.priceView.searchQuery != "a" {
+		t.Errorf("searchQuery = %q, want %q", app.priceView.searchQuery, "a")
+	}
+
+	// Escape exits search
+	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	app.handlePriceSearchKey(escKey)
+
+	if app.priceView.searching {
+		t.Error("should exit search mode after Escape")
+	}
+}
+
+func TestHandlePriceViewKeys_LeftRightCyclesSecurity(t *testing.T) {
+	sec1 := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	sec2 := security.NewSecurity("MSFT", "Microsoft Corp", security.TypeStock)
+
+	app := &App{
+		width:  80,
+		height: 24,
+		keys:   defaultKeyMap(),
+		priceView: &priceViewData{
+			selectedSecurity: sec1,
+			securities:       []*security.Security{sec1, sec2},
+			prices:           []*price.Price{},
+		},
+	}
+	app.buildPriceTable()
+
+	// Right arrow cycles to next security
+	rightKey := tea.KeyMsg{Type: tea.KeyRight}
+	app.handlePriceViewKeys(rightKey)
+
+	if app.priceView.selectedSecurity.Ticker != "MSFT" {
+		t.Errorf("selected = %q, want MSFT after right", app.priceView.selectedSecurity.Ticker)
+	}
+
+	// Right again wraps to first
+	app.handlePriceViewKeys(rightKey)
+
+	if app.priceView.selectedSecurity.Ticker != "AAPL" {
+		t.Errorf("selected = %q, want AAPL after wrap", app.priceView.selectedSecurity.Ticker)
+	}
+
+	// Left wraps to last
+	leftKey := tea.KeyMsg{Type: tea.KeyLeft}
+	app.handlePriceViewKeys(leftKey)
+
+	if app.priceView.selectedSecurity.Ticker != "MSFT" {
+		t.Errorf("selected = %q, want MSFT after left wrap", app.priceView.selectedSecurity.Ticker)
+	}
+}
+
+// =============================================================================
+// SM-125: Add/Edit price dialog
+// =============================================================================
+
+func TestBuildAddPriceDialog(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	d := buildAddPriceDialog(sec)
+
+	if d == nil {
+		t.Fatal("buildAddPriceDialog() returned nil")
+	}
+
+	fields := d.Fields()
+	if len(fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(fields))
+	}
+
+	// Verify field labels
+	if fields[0].Label != "Date" {
+		t.Errorf("field[0].Label = %q, want %q", fields[0].Label, "Date")
+	}
+	if fields[1].Label != "Price" {
+		t.Errorf("field[1].Label = %q, want %q", fields[1].Label, "Price")
+	}
+
+	// Both should be required
+	if !fields[0].Required {
+		t.Error("Date field should be required")
+	}
+	if !fields[1].Required {
+		t.Error("Price field should be required")
+	}
+
+	// Date should default to today
+	today := time.Now().Format("2006-01-02")
+	if fields[0].Value != today {
+		t.Errorf("date default = %q, want %q", fields[0].Value, today)
+	}
+}
+
+func TestBuildEditPriceDialog(t *testing.T) {
+	secID := types.NewID()
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+	p := price.NewPrice(secID, d, m, price.SourceManual)
+
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	dialog := buildEditPriceDialog(sec, p)
+	if dialog == nil {
+		t.Fatal("buildEditPriceDialog() returned nil")
+	}
+
+	fields := dialog.Fields()
+	if len(fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(fields))
+	}
+
+	// Check pre-filled values
+	if fields[0].Value != "2025-03-15" {
+		t.Errorf("date value = %q, want %q", fields[0].Value, "2025-03-15")
+	}
+	if fields[1].Value != "185.50" {
+		t.Errorf("price value = %q, want %q", fields[1].Value, "185.50")
+	}
+}
+
+// =============================================================================
+// SM-126: Bulk import dialog
+// =============================================================================
+
+func TestBuildImportPriceDialog(t *testing.T) {
+	d := buildImportPriceDialog()
+	if d == nil {
+		t.Fatal("buildImportPriceDialog() returned nil")
+	}
+
+	fields := d.Fields()
+	if len(fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(fields))
+	}
+
+	// File path field
+	if fields[0].Label != "CSV File" {
+		t.Errorf("field[0].Label = %q, want %q", fields[0].Label, "CSV File")
+	}
+	if !fields[0].Required {
+		t.Error("CSV File field should be required")
+	}
+
+	// Overwrite checkbox
+	if fields[1].Label != "Overwrite existing" {
+		t.Errorf("field[1].Label = %q, want %q", fields[1].Label, "Overwrite existing")
+	}
+}
+
+// =============================================================================
+// SM-127: Wire prices view to menu and navigation
+// =============================================================================
+
+func TestPriceViewString(t *testing.T) {
+	v := ViewPrices
+	if v.String() != "Prices" {
+		t.Errorf("ViewPrices.String() = %q, want %q", v.String(), "Prices")
+	}
+}
+
+func TestRenderPriceView_Loading(t *testing.T) {
+	app := &App{
+		styles: NewStyles(),
+	}
+	app.styles.Resize(80, 24)
+
+	output := app.renderPriceView()
+	if !strings.Contains(output, "Loading prices") {
+		t.Error("should show loading message when price view data is nil")
+	}
+}
+
+func TestRenderPriceView_NoPrices(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		width:  80,
+		height: 24,
+		styles: NewStyles(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{},
+		},
+	}
+	app.styles.Resize(80, 24)
+
+	output := app.renderPriceView()
+	if !strings.Contains(output, "No prices found") {
+		t.Error("should show 'No prices found' message")
+	}
+}
+
+func TestRenderPriceView_WithData(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	secID := sec.ID
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+	p := price.NewPrice(secID, d, m, price.SourceManual)
+
+	app := &App{
+		width:  100,
+		height: 30,
+		styles: NewStyles(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{p},
+		},
+	}
+	app.styles.Resize(100, 30)
+	app.buildPriceTable()
+
+	output := app.renderPriceView()
+	if !strings.Contains(output, "PRICES") {
+		t.Error("should contain 'PRICES' title")
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Error("should contain security ticker")
+	}
+}
+
+func TestRenderPriceView_ShowsSecurityInfo(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		width:  100,
+		height: 30,
+		styles: NewStyles(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{},
+		},
+	}
+	app.styles.Resize(100, 30)
+
+	output := app.renderPriceView()
+	if !strings.Contains(output, "Apple Inc.") {
+		t.Errorf("should show security name, got: %s", output)
+	}
+}
+
+func TestPriceViewDataLoadedMsg(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	data := &priceViewData{
+		selectedSecurity: sec,
+		securities:       []*security.Security{sec},
+		prices:           []*price.Price{},
+	}
+
+	app := &App{
+		currentView: ViewPrices,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+	}
+
+	msg := priceViewDataLoadedMsg{data: data}
+	model, _ := app.Update(msg)
+
+	updatedApp := model.(*App)
+	if updatedApp.priceView == nil {
+		t.Fatal("price view data should be set")
+	}
+	if updatedApp.priceTable == nil {
+		t.Error("price table should be built")
+	}
+}
+
+func TestPriceViewUpdate_PriceAddedMsg(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	app := &App{
+		currentView: ViewPrices,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{},
+		},
+	}
+
+	msg := priceAddedMsg{}
+	model, cmd := app.Update(msg)
+	updatedApp := model.(*App)
+
+	notifications := updatedApp.statusbar.Notifications()
+	if len(notifications) == 0 {
+		t.Error("should have notification about price added")
+	}
+	if len(notifications) > 0 && !strings.Contains(notifications[0].Text, "Price added") {
+		t.Errorf("notification = %q, should contain 'Price added'", notifications[0].Text)
+	}
+	if cmd == nil {
+		t.Error("should return a command to reload price data")
+	}
+}
+
+func TestPriceViewUpdate_PriceUpdatedMsg(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	app := &App{
+		currentView: ViewPrices,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{},
+		},
+	}
+
+	msg := priceUpdatedMsg{}
+	model, cmd := app.Update(msg)
+	updatedApp := model.(*App)
+
+	notifications := updatedApp.statusbar.Notifications()
+	if len(notifications) == 0 {
+		t.Error("should have notification about price updated")
+	}
+	if cmd == nil {
+		t.Error("should return a command to reload price data")
+	}
+}
+
+func TestPriceViewUpdate_PriceDeletedMsg(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	app := &App{
+		currentView: ViewPrices,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{},
+		},
+	}
+
+	msg := priceDeletedMsg{}
+	model, cmd := app.Update(msg)
+	updatedApp := model.(*App)
+
+	notifications := updatedApp.statusbar.Notifications()
+	if len(notifications) == 0 {
+		t.Error("should have notification about price deleted")
+	}
+	if cmd == nil {
+		t.Error("should return a command to reload price data")
+	}
+}
+
+func TestPriceViewUpdate_PriceImportedMsg(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	app := &App{
+		currentView: ViewPrices,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{},
+		},
+	}
+
+	msg := priceImportedMsg{total: 10, imported: 8, skipped: 2}
+	model, cmd := app.Update(msg)
+	updatedApp := model.(*App)
+
+	notifications := updatedApp.statusbar.Notifications()
+	if len(notifications) == 0 {
+		t.Error("should have notification about price import")
+	}
+	if len(notifications) > 0 && !strings.Contains(notifications[0].Text, "Imported") {
+		t.Errorf("notification = %q, should contain 'Imported'", notifications[0].Text)
+	}
+	if cmd == nil {
+		t.Error("should return a command to reload price data")
+	}
+}
+
+func TestPriceViewSwitchView(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	app.switchView(ViewPrices)
+
+	if app.currentView != ViewPrices {
+		t.Errorf("currentView = %v, want ViewPrices", app.currentView)
+	}
+	if app.previousView != ViewDashboard {
+		t.Errorf("previousView = %v, want ViewDashboard", app.previousView)
+	}
+}
+
+func TestPriceViewNavigateKeyBinding(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		menubar:     NewMenuBar(),
+	}
+
+	// Press '5' to go to prices view
+	fiveKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'5'}}
+	model, cmd := app.Update(fiveKey)
+	updatedApp := model.(*App)
+
+	if updatedApp.currentView != ViewPrices {
+		t.Errorf("currentView = %v, want ViewPrices", updatedApp.currentView)
+	}
+	if cmd == nil {
+		t.Error("should return a command to load price data")
+	}
+}
+
+func TestPriceViewHelpOverlay(t *testing.T) {
+	sections := viewShortcutSections(ViewPrices)
+
+	found := false
+	for _, s := range sections {
+		if s.Title == "Prices" {
+			found = true
+			hasNew := false
+			hasEdit := false
+			hasDelete := false
+			hasImport := false
+			hasSearch := false
+			hasLeftRight := false
+			for _, e := range s.Entries {
+				switch e.Key {
+				case "n":
+					hasNew = true
+				case "Enter":
+					hasEdit = true
+				case "d":
+					hasDelete = true
+				case "i":
+					hasImport = true
+				case "/":
+					hasSearch = true
+				case "Left/Right":
+					hasLeftRight = true
+				}
+			}
+			if !hasNew {
+				t.Error("price shortcuts should include 'n' for new")
+			}
+			if !hasEdit {
+				t.Error("price shortcuts should include 'Enter' for edit")
+			}
+			if !hasDelete {
+				t.Error("price shortcuts should include 'd' for delete")
+			}
+			if !hasImport {
+				t.Error("price shortcuts should include 'i' for import")
+			}
+			if !hasSearch {
+				t.Error("price shortcuts should include '/' for search")
+			}
+			if !hasLeftRight {
+				t.Error("price shortcuts should include 'Left/Right' for security")
+			}
+		}
+	}
+	if !found {
+		t.Error("prices shortcuts section not found in help overlay")
+	}
+}
+
+func TestMenuBarHasPrices(t *testing.T) {
+	mb := NewMenuBar()
+	found := false
+	for _, m := range mb.menus {
+		for _, item := range m.items {
+			if item.action == MenuActionPrices {
+				found = true
+				if item.label != "Prices" {
+					t.Errorf("menu label = %q, want %q", item.label, "Prices")
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("MenuActionPrices not found in menu bar")
+	}
+}
+
+func TestPriceViewKeyHints(t *testing.T) {
+	app := &App{
+		currentView: ViewPrices,
+	}
+
+	hints := app.getKeyHints()
+	if !strings.Contains(hints, "n new") {
+		t.Errorf("hints should contain 'n new', got: %s", hints)
+	}
+	if !strings.Contains(hints, "enter edit") {
+		t.Errorf("hints should contain 'enter edit', got: %s", hints)
+	}
+	if !strings.Contains(hints, "i import") {
+		t.Errorf("hints should contain 'i import', got: %s", hints)
+	}
+}
+
+func TestSelectedPrice(t *testing.T) {
+	secID := types.NewID()
+	d1 := types.NewDate(2025, time.March, 15)
+	d2 := types.NewDate(2025, time.March, 14)
+	m, _ := types.NewMoney("100.00")
+
+	p1 := price.NewPrice(secID, d1, m, price.SourceManual)
+	p2 := price.NewPrice(secID, d2, m, price.SourceManual)
+
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		width:  80,
+		height: 24,
+		keys:   defaultKeyMap(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			prices:           []*price.Price{p1, p2},
+		},
+	}
+	app.buildPriceTable()
+
+	selected := app.selectedPrice()
+	if selected == nil {
+		t.Fatal("selectedPrice() returned nil")
+	}
+
+	// Move down
+	app.priceTable.MoveDown()
+	selected = app.selectedPrice()
+	if selected == nil {
+		t.Fatal("selectedPrice() returned nil after MoveDown")
+	}
+}
+
+func TestSelectedPrice_NilData(t *testing.T) {
+	app := &App{}
+	selected := app.selectedPrice()
+	if selected != nil {
+		t.Error("selectedPrice() should return nil when no price view data")
+	}
+}
+
+func TestPriceView_FullScreenRender(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	secID := sec.ID
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+	p := price.NewPrice(secID, d, m, price.SourceManual)
+
+	styles := NewStyles()
+	styles.Resize(100, 30)
+
+	app := &App{
+		currentView: ViewPrices,
+		width:       100,
+		height:      30,
+		ready:       true,
+		styles:      styles,
+		sidebar:     NewSidebar(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		keys:        defaultKeyMap(),
+		priceView: &priceViewData{
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{p},
+		},
+	}
+	app.buildPriceTable()
+
+	content := app.renderContent(28)
+	if !strings.Contains(content, "PRICES") {
+		t.Error("renderContent should contain prices view content")
+	}
+}
+
+func TestSecurityView_PNavigatesToPrices(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		currentView: ViewSecurities,
+		width:       80,
+		height:      24,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		securityView: &securityViewData{
+			securities: []*security.Security{sec},
+			showHidden: true,
+		},
+	}
+	app.buildSecurityTable()
+
+	// Press 'p' to navigate to prices view
+	pKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}}
+	model, cmd := app.handleSecurityViewKeys(pKey)
+	updatedApp := model.(*App)
+
+	if updatedApp.currentView != ViewPrices {
+		t.Errorf("currentView = %v, want ViewPrices after pressing 'p'", updatedApp.currentView)
+	}
+	if cmd == nil {
+		t.Error("should return a command to load price data")
+	}
+}
+
+func TestPriceView_NoSecuritySelected(t *testing.T) {
+	app := &App{
+		width:  80,
+		height: 24,
+		styles: NewStyles(),
+		priceView: &priceViewData{
+			securities: []*security.Security{},
+		},
+	}
+	app.styles.Resize(80, 24)
+
+	output := app.renderPriceView()
+	if !strings.Contains(output, "No security selected") {
+		t.Error("should show 'No security selected' when no security is set")
+	}
+}

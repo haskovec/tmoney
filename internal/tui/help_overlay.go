@@ -154,6 +154,22 @@ func securitiesShortcuts() shortcutSection {
 	}
 }
 
+// pricesShortcuts returns the prices view keyboard shortcuts.
+func pricesShortcuts() shortcutSection {
+	return shortcutSection{
+		Title: "Prices",
+		Entries: []shortcutEntry{
+			{"n", "New price"},
+			{"Enter", "Edit price"},
+			{"d", "Delete price"},
+			{"i", "Import prices from CSV"},
+			{"/", "Search securities"},
+			{"Left/Right", "Change security"},
+			{"Esc", "Back"},
+		},
+	}
+}
+
 // dialogShortcuts returns the dialog keyboard shortcuts.
 func dialogShortcuts() shortcutSection {
 	return shortcutSection{
@@ -205,6 +221,8 @@ func viewShortcutSections(view View) []shortcutSection {
 		sections = append(sections, reconciliationShortcuts())
 	case ViewSecurities:
 		sections = append(sections, securitiesShortcuts())
+	case ViewPrices:
+		sections = append(sections, pricesShortcuts())
 	}
 
 	sections = append(sections, dialogShortcuts())

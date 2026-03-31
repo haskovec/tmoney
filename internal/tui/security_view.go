@@ -299,8 +299,12 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			)
 		}
 	case msg.String() == "p":
-		// Navigate to prices view for selected security (placeholder for future)
-		// This will be wired when the prices view is implemented
+		// Navigate to prices view for selected security
+		sec := a.selectedSecurity()
+		if sec != nil {
+			a.switchView(ViewPrices)
+			return a, a.loadPriceViewDataForSecurity(sec)
+		}
 	}
 
 	return a, nil

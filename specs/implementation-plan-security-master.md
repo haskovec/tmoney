@@ -594,23 +594,23 @@ Spec: `specs/security-master.md`
 
 ## Phase 35: TUI — Prices View
 
-- [ ] **SM-123 - Price list table component**
+- [x] **SM-123 - Price list table component**
   - RED: Write test — table renders columns: Date, Price, Source; sorted by date desc; security selector at top
   - GREEN: Implement price table in `internal/tui/price_view.go`
 
-- [ ] **SM-124 - Price view navigation and keybindings**
+- [x] **SM-124 - Price view navigation and keybindings**
   - RED: Write test — `n` opens add price form; `Enter` edits; `d` deletes; `i` opens import dialog; `/` searches by security
   - GREEN: Implement key handlers
 
-- [ ] **SM-125 - Add/Edit price dialog**
+- [x] **SM-125 - Add/Edit price dialog**
   - RED: Write test — dialog has fields: Date, Price; pre-selects current security; validates date not future and price > 0
   - GREEN: Implement price dialog
 
-- [ ] **SM-126 - Bulk import dialog**
+- [x] **SM-126 - Bulk import dialog**
   - RED: Write test — file selector for CSV; preview first 10 rows; validation results displayed; conflict resolution option; import button; results summary
   - GREEN: Implement import dialog
 
-- [ ] **SM-127 - Wire prices view to menu and navigation**
+- [x] **SM-127 - Wire prices view to menu and navigation**
   - RED: Write test — prices view accessible from menu and from security view via `p` key
   - GREEN: Add ViewPrices to app views; add menu entry
 

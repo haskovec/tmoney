@@ -47,6 +47,7 @@ const (
 
 	// Investments menu actions
 	MenuActionSecurities
+	MenuActionPrices
 
 	// Help menu actions
 	MenuActionKeyboardShortcuts
@@ -141,6 +142,7 @@ func defaultMenus() []menu {
 				{label: "Net Worth", action: MenuActionNetWorth},
 				{label: "Spending by Category", action: MenuActionSpendingByCategory},
 				{label: "Securities", action: MenuActionSecurities},
+				{label: "Prices", action: MenuActionPrices},
 			},
 		},
 		{

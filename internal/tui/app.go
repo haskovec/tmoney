@@ -19,6 +19,7 @@ import (
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
@@ -44,6 +45,8 @@ const (
 	ViewReconciliation
 	// ViewSecurities shows the security management view.
 	ViewSecurities
+	// ViewPrices shows the price management view.
+	ViewPrices
 )
 
 // String returns the display name of the view.
@@ -61,6 +64,8 @@ func (v View) String() string {
 		return "Reconciliation"
 	case ViewSecurities:
 		return "Securities"
+	case ViewPrices:
+		return "Prices"
 	default:
 		return "Unknown"
 	}
@@ -152,6 +157,15 @@ type App struct {
 	securityDialogEditID   types.ID
 	securitySvc            *security.Service
 
+	// Price view state
+	priceView           *priceViewData
+	priceTable          *Table
+	priceDialog         *Dialog
+	priceDialogMode     priceDialogMode
+	priceDialogEditID   types.ID
+	priceImportDialog   *Dialog
+	priceSvc            *price.Service
+
 	// File dialog state
 	fileDialog     *Dialog
 	fileDialogMode fileDialogMode
@@ -196,6 +210,7 @@ type keyMap struct {
 	Scheduled        key.Binding
 	Reports          key.Binding
 	Securities       key.Binding
+	Prices           key.Binding
 	Menu             key.Binding
 	MenuFile         key.Binding
 	MenuAccounts     key.Binding
@@ -282,6 +297,10 @@ func defaultKeyMap() keyMap {
 			key.WithKeys("4"),
 			key.WithHelp("4", "securities"),
 		),
+		Prices: key.NewBinding(
+			key.WithKeys("5"),
+			key.WithHelp("5", "prices"),
+		),
 		Menu: key.NewBinding(
 			key.WithKeys("f10"),
 			key.WithHelp("F10", "menu"),
@@ -367,6 +386,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		reportSvc:         svc.Report,
 		reconciliationSvc: svc.Reconciliation,
 		securitySvc:       svc.Security,
+		priceSvc:          svc.Price,
 	}
 }
 
@@ -980,6 +1000,30 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, a.loadSecurityViewData()
 
+	case priceViewDataLoadedMsg:
+		a.priceView = msg.data
+		a.buildPriceTable()
+		return a, nil
+
+	case priceAddedMsg:
+		a.statusbar.AddNotification("Price added", NotificationInfo)
+		return a, a.loadPriceViewData()
+
+	case priceUpdatedMsg:
+		a.statusbar.AddNotification("Price updated", NotificationInfo)
+		return a, a.loadPriceViewData()
+
+	case priceDeletedMsg:
+		a.statusbar.AddNotification("Price deleted", NotificationInfo)
+		return a, a.loadPriceViewData()
+
+	case priceImportedMsg:
+		a.statusbar.AddNotification(
+			fmt.Sprintf("Imported %d prices (%d skipped)", msg.imported, msg.skipped),
+			NotificationInfo,
+		)
+		return a, a.loadPriceViewData()
+
 	case errMsg:
 		a.err = msg.err
 		return a, nil
@@ -1052,6 +1096,16 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If security dialog is visible, route all keys to it
 	if a.securityDialog != nil && a.securityDialog.IsVisible() {
 		return a.handleSecurityDialogKey(msg)
+	}
+
+	// If price dialog is visible, route all keys to it
+	if a.priceDialog != nil && a.priceDialog.IsVisible() {
+		return a.handlePriceDialogKey(msg)
+	}
+
+	// If price import dialog is visible, route all keys to it
+	if a.priceImportDialog != nil && a.priceImportDialog.IsVisible() {
+		return a.handlePriceImportDialogKey(msg)
 	}
 
 	// Undo/redo key bindings (handled before menus since they should
@@ -1138,6 +1192,10 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.switchView(ViewSecurities)
 		return a, a.loadSecurityViewData()
 
+	case key.Matches(msg, a.keys.Prices):
+		a.switchView(ViewPrices)
+		return a, a.loadPriceViewData()
+
 	case key.Matches(msg, a.keys.Escape):
 		// Go back to previous view or dashboard
 		if a.currentView != ViewDashboard {
@@ -1160,6 +1218,8 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handleReconciliationKeys(msg)
 	case ViewSecurities:
 		return a.handleSecurityViewKeys(msg)
+	case ViewPrices:
+		return a.handlePriceViewKeys(msg)
 	}
 
 	return a, nil
@@ -1738,6 +1798,10 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 		a.switchView(ViewSecurities)
 		return a, a.loadSecurityViewData()
 
+	case MenuActionPrices:
+		a.switchView(ViewPrices)
+		return a, a.loadPriceViewData()
+
 	case MenuActionNewAccount:
 		return a, a.loadNewAccountDialogData()
 
@@ -1848,6 +1912,12 @@ func (a *App) switchView(v View) {
 				if a.securityTable != nil {
 					a.securityTable.SetFocused(true)
 				}
+			case ViewPrices:
+				// Prices is full-screen, no sidebar
+				a.sidebar.SetFocused(false)
+				if a.priceTable != nil {
+					a.priceTable.SetFocused(true)
+				}
 			}
 		}
 	}
@@ -1954,6 +2024,18 @@ func (a *App) renderLayout() string {
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
+	// Overlay price dialog if visible
+	if a.priceDialog != nil && a.priceDialog.IsVisible() {
+		overlay := a.priceDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay price import dialog if visible
+	if a.priceImportDialog != nil && a.priceImportDialog.IsVisible() {
+		overlay := a.priceImportDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
 	// Overlay confirmation dialog if visible
 	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
 		overlay := a.confirmDialog.Render(a.styles)
@@ -1990,12 +2072,14 @@ func (a *App) renderContent(height int) string {
 		viewContent = a.renderReconciliation()
 	case ViewSecurities:
 		viewContent = a.renderSecurityView()
+	case ViewPrices:
+		viewContent = a.renderPriceView()
 	default:
 		viewContent = "Unknown view"
 	}
 
-	// Reconciliation and Securities views are full-screen (no sidebar)
-	if a.currentView == ViewReconciliation || a.currentView == ViewSecurities {
+	// Reconciliation, Securities, and Prices views are full-screen (no sidebar)
+	if a.currentView == ViewReconciliation || a.currentView == ViewSecurities || a.currentView == ViewPrices {
 		return a.styles.Content.
 			Width(a.width).
 			Height(height).
@@ -2759,7 +2843,7 @@ func (a *App) renderStatusBar() string {
 
 // getKeyHints returns key hints for the current view.
 func (a *App) getKeyHints() string {
-	common := "Alt+key/F10 menu  1 dashboard  2 scheduled  3 reports  4 securities  ? help  ctrl+q quit"
+	common := "Alt+key/F10 menu  1 dashboard  2 scheduled  3 reports  4 securities  5 prices  ? help  ctrl+q quit"
 
 	switch a.currentView {
 	case ViewDashboard:
@@ -2774,6 +2858,8 @@ func (a *App) getKeyHints() string {
 		return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help"
 	case ViewSecurities:
 		return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  / search  esc back  " + common
+	case ViewPrices:
+		return "↑↓ navigate  ←→ security  n new  enter edit  d delete  i import  / search  esc back  " + common
 	default:
 		return common
 	}
