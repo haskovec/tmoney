@@ -475,8 +475,8 @@ func TestMenuBar_ReportsMenuItems(t *testing.T) {
 		t.Fatalf("expected Reports menu at index 4, got %q", reportsMenu.label)
 	}
 
-	if len(reportsMenu.items) != 3 {
-		t.Fatalf("Reports menu: expected 3 items, got %d", len(reportsMenu.items))
+	if len(reportsMenu.items) != 4 {
+		t.Fatalf("Reports menu: expected 4 items, got %d", len(reportsMenu.items))
 	}
 
 	if reportsMenu.items[0].action != MenuActionDashboard {
@@ -487,6 +487,9 @@ func TestMenuBar_ReportsMenuItems(t *testing.T) {
 	}
 	if reportsMenu.items[2].action != MenuActionSpendingByCategory {
 		t.Error("third Reports item should be Spending by Category")
+	}
+	if reportsMenu.items[3].action != MenuActionSecurities {
+		t.Error("fourth Reports item should be Securities")
 	}
 }
 

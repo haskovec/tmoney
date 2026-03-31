@@ -137,6 +137,23 @@ func reconciliationShortcuts() shortcutSection {
 	}
 }
 
+// securitiesShortcuts returns the securities view keyboard shortcuts.
+func securitiesShortcuts() shortcutSection {
+	return shortcutSection{
+		Title: "Securities",
+		Entries: []shortcutEntry{
+			{"n", "New security"},
+			{"Enter", "Edit security"},
+			{"h", "Toggle hidden status"},
+			{"d", "Delete security"},
+			{"f", "Toggle show hidden"},
+			{"/", "Search securities"},
+			{"p", "View prices"},
+			{"Esc", "Back"},
+		},
+	}
+}
+
 // dialogShortcuts returns the dialog keyboard shortcuts.
 func dialogShortcuts() shortcutSection {
 	return shortcutSection{
@@ -161,6 +178,7 @@ func allShortcutSections() []shortcutSection {
 		registerShortcuts(),
 		scheduledShortcuts(),
 		reportsShortcuts(),
+		securitiesShortcuts(),
 		reconciliationShortcuts(),
 		dialogShortcuts(),
 	}
@@ -185,6 +203,8 @@ func viewShortcutSections(view View) []shortcutSection {
 		sections = append(sections, reportsShortcuts())
 	case ViewReconciliation:
 		sections = append(sections, reconciliationShortcuts())
+	case ViewSecurities:
+		sections = append(sections, securitiesShortcuts())
 	}
 
 	sections = append(sections, dialogShortcuts())

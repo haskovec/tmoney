@@ -22,6 +22,7 @@ import (
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -41,6 +42,8 @@ const (
 	ViewReports
 	// ViewReconciliation shows the reconciliation view.
 	ViewReconciliation
+	// ViewSecurities shows the security management view.
+	ViewSecurities
 )
 
 // String returns the display name of the view.
@@ -56,6 +59,8 @@ func (v View) String() string {
 		return "Reports"
 	case ViewReconciliation:
 		return "Reconciliation"
+	case ViewSecurities:
+		return "Securities"
 	default:
 		return "Unknown"
 	}
@@ -139,6 +144,14 @@ type App struct {
 	reconciliationTable *Table
 	reconDialog         *Dialog
 
+	// Security view state
+	securityView           *securityViewData
+	securityTable          *Table
+	securityDialog         *Dialog
+	securityDialogMode     securityDialogMode
+	securityDialogEditID   types.ID
+	securitySvc            *security.Service
+
 	// File dialog state
 	fileDialog     *Dialog
 	fileDialogMode fileDialogMode
@@ -182,6 +195,7 @@ type keyMap struct {
 	Dashboard        key.Binding
 	Scheduled        key.Binding
 	Reports          key.Binding
+	Securities       key.Binding
 	Menu             key.Binding
 	MenuFile         key.Binding
 	MenuAccounts     key.Binding
@@ -263,6 +277,10 @@ func defaultKeyMap() keyMap {
 		Reports: key.NewBinding(
 			key.WithKeys("3"),
 			key.WithHelp("3", "reports"),
+		),
+		Securities: key.NewBinding(
+			key.WithKeys("4"),
+			key.WithHelp("4", "securities"),
 		),
 		Menu: key.NewBinding(
 			key.WithKeys("f10"),
@@ -348,6 +366,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		scheduledTxnSvc:   svc.Scheduled,
 		reportSvc:         svc.Report,
 		reconciliationSvc: svc.Reconciliation,
+		securitySvc:       svc.Security,
 	}
 }
 
@@ -936,6 +955,31 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Reload current view data after undo/redo
 		return a, a.reloadCurrentView()
 
+	case securityViewDataLoadedMsg:
+		a.securityView = msg.data
+		a.buildSecurityTable()
+		return a, nil
+
+	case securityAddedMsg:
+		a.statusbar.AddNotification("Security added", NotificationInfo)
+		return a, a.loadSecurityViewData()
+
+	case securityUpdatedMsg:
+		a.statusbar.AddNotification("Security updated", NotificationInfo)
+		return a, a.loadSecurityViewData()
+
+	case securityDeletedMsg:
+		a.statusbar.AddNotification("Security deleted", NotificationInfo)
+		return a, a.loadSecurityViewData()
+
+	case securityHiddenMsg:
+		if msg.hidden {
+			a.statusbar.AddNotification("Security hidden", NotificationInfo)
+		} else {
+			a.statusbar.AddNotification("Security unhidden", NotificationInfo)
+		}
+		return a, a.loadSecurityViewData()
+
 	case errMsg:
 		a.err = msg.err
 		return a, nil
@@ -1003,6 +1047,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If reconciliation start dialog is visible, route all keys to it
 	if a.reconDialog != nil && a.reconDialog.IsVisible() {
 		return a.handleReconDialogKey(msg)
+	}
+
+	// If security dialog is visible, route all keys to it
+	if a.securityDialog != nil && a.securityDialog.IsVisible() {
+		return a.handleSecurityDialogKey(msg)
 	}
 
 	// Undo/redo key bindings (handled before menus since they should
@@ -1085,6 +1134,10 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case key.Matches(msg, a.keys.Securities):
+		a.switchView(ViewSecurities)
+		return a, a.loadSecurityViewData()
+
 	case key.Matches(msg, a.keys.Escape):
 		// Go back to previous view or dashboard
 		if a.currentView != ViewDashboard {
@@ -1105,6 +1158,8 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handleReportsKeys(msg)
 	case ViewReconciliation:
 		return a.handleReconciliationKeys(msg)
+	case ViewSecurities:
+		return a.handleSecurityViewKeys(msg)
 	}
 
 	return a, nil
@@ -1679,6 +1734,10 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 		now := time.Now()
 		return a, a.loadReportsViewData(reportTypeSpending, now.Year(), int(now.Month()))
 
+	case MenuActionSecurities:
+		a.switchView(ViewSecurities)
+		return a, a.loadSecurityViewData()
+
 	case MenuActionNewAccount:
 		return a, a.loadNewAccountDialogData()
 
@@ -1783,6 +1842,12 @@ func (a *App) switchView(v View) {
 				if a.reconciliationTable != nil {
 					a.reconciliationTable.SetFocused(true)
 				}
+			case ViewSecurities:
+				// Securities is full-screen, no sidebar
+				a.sidebar.SetFocused(false)
+				if a.securityTable != nil {
+					a.securityTable.SetFocused(true)
+				}
 			}
 		}
 	}
@@ -1883,6 +1948,12 @@ func (a *App) renderLayout() string {
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
+	// Overlay security dialog if visible
+	if a.securityDialog != nil && a.securityDialog.IsVisible() {
+		overlay := a.securityDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
 	// Overlay confirmation dialog if visible
 	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
 		overlay := a.confirmDialog.Render(a.styles)
@@ -1917,12 +1988,14 @@ func (a *App) renderContent(height int) string {
 		viewContent = a.renderReports()
 	case ViewReconciliation:
 		viewContent = a.renderReconciliation()
+	case ViewSecurities:
+		viewContent = a.renderSecurityView()
 	default:
 		viewContent = "Unknown view"
 	}
 
-	// Reconciliation view is full-screen (no sidebar)
-	if a.currentView == ViewReconciliation {
+	// Reconciliation and Securities views are full-screen (no sidebar)
+	if a.currentView == ViewReconciliation || a.currentView == ViewSecurities {
 		return a.styles.Content.
 			Width(a.width).
 			Height(height).
@@ -2686,7 +2759,7 @@ func (a *App) renderStatusBar() string {
 
 // getKeyHints returns key hints for the current view.
 func (a *App) getKeyHints() string {
-	common := "Alt+key/F10 menu  1 dashboard  2 scheduled  3 reports  ? help  ctrl+q quit"
+	common := "Alt+key/F10 menu  1 dashboard  2 scheduled  3 reports  4 securities  ? help  ctrl+q quit"
 
 	switch a.currentView {
 	case ViewDashboard:
@@ -2699,6 +2772,8 @@ func (a *App) getKeyHints() string {
 		return "←→ period  n net worth  s spending  y year  m month  esc back  " + common
 	case ViewReconciliation:
 		return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help"
+	case ViewSecurities:
+		return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  / search  esc back  " + common
 	default:
 		return common
 	}
@@ -2884,6 +2959,8 @@ func (a *App) reloadCurrentView() tea.Cmd {
 				a.reports.rtype, a.reports.year, a.reports.month,
 			))
 		}
+	case ViewSecurities:
+		cmds = append(cmds, a.loadSecurityViewData())
 	}
 	return tea.Batch(cmds...)
 }

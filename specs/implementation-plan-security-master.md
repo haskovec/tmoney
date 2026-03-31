@@ -572,23 +572,23 @@ Spec: `specs/security-master.md`
 
 ## Phase 34: TUI — Security Management View
 
-- [ ] **SM-118 - Security list table component**
+- [x] **SM-118 - Security list table component**
   - RED: Write test — table renders columns: Ticker, Name, Type, Asset Class, Currency, Status; sorts by ticker; hidden securities shown/hidden via filter toggle
   - GREEN: Implement security table in `internal/tui/security_view.go`
 
-- [ ] **SM-119 - Security view navigation and keybindings**
+- [x] **SM-119 - Security view navigation and keybindings**
   - RED: Write test — `n` opens add dialog; `Enter` opens edit; `h` toggles hidden; `d` deletes; `/` searches; `f` toggles hidden filter; `p` navigates to prices; `m` opens merge
   - GREEN: Implement key handlers and view routing
 
-- [ ] **SM-120 - Add/Edit security dialog**
+- [x] **SM-120 - Add/Edit security dialog**
   - RED: Write test — dialog has fields: Ticker, Name, Type (dropdown), Asset Class (dropdown), Currency (dropdown), Exchange; Tab navigates fields; Enter submits; Esc cancels
   - GREEN: Implement security dialog
 
-- [ ] **SM-121 - Security search/filter**
+- [x] **SM-121 - Security search/filter**
   - RED: Write test — typing in search bar filters by ticker and name; case-insensitive
   - GREEN: Implement search filter on security view
 
-- [ ] **SM-122 - Wire security view to menu and navigation**
+- [x] **SM-122 - Wire security view to menu and navigation**
   - RED: Write test — security view accessible from menu; navigable via key shortcut
   - GREEN: Add ViewSecurities to app views; add menu entry; add keyboard shortcut
 
