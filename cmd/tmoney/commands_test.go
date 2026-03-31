@@ -8493,3 +8493,317 @@ func TestParseArgs_InvestmentFlagsMissingArgs(t *testing.T) {
 		})
 	}
 }
+
+// --- SM-113: CLI --portfolio ---
+
+func TestParseArgs_PortfolioFlags(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		check func(*cliOptions) bool
+	}{
+		{"--portfolio", []string{"--portfolio"}, func(o *cliOptions) bool { return o.portfolio }},
+		{"--show-lots", []string{"--show-lots"}, func(o *cliOptions) bool { return o.showLots }},
+		{"--portfolio with --show-lots", []string{"--portfolio", "--show-lots"}, func(o *cliOptions) bool {
+			return o.portfolio && o.showLots
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, _, err := parseArgs(tt.args)
+			if err != nil {
+				t.Fatalf("parseArgs(%v) returned error: %v", tt.args, err)
+			}
+			if !tt.check(opts) {
+				t.Errorf("parseArgs(%v) check failed", tt.args)
+			}
+		})
+	}
+}
+
+func TestRun_PortfolioMissingFile(t *testing.T) {
+	err := run([]string{"--portfolio", "--account", "Brokerage"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_PortfolioMissingAccount(t *testing.T) {
+	err := run([]string{"--portfolio", "--file", "test.tdb"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --account") {
+		t.Errorf("expected --account required error, got: %v", err)
+	}
+}
+
+func TestRun_PortfolioAccountNotFound(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+	err := run([]string{"--portfolio", "--file", dbPath, "--account", "NonExistent"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected account not found error, got: %v", err)
+	}
+}
+
+func TestRun_PortfolioEmptyAccount(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{"--portfolio", "--file", dbPath, "--account", "Brokerage"}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--portfolio) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "PORTFOLIO: Brokerage") {
+		t.Error("output should contain portfolio header")
+	}
+	if !strings.Contains(output, "(No holdings)") {
+		t.Error("output should indicate no holdings")
+	}
+	if !strings.Contains(output, "SUMMARY") {
+		t.Error("output should contain summary section")
+	}
+	if !strings.Contains(output, "Cash Balance:") {
+		t.Error("output should show cash balance")
+	}
+}
+
+// createPortfolioTestDB creates a test DB with an investment account, securities,
+// prices, and buy transactions for portfolio testing.
+func createPortfolioTestDB(t *testing.T, trackLots bool) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "portfolio.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	// Create investment account
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	acct.TrackLots = trackLots
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create investment account: %v", err)
+	}
+
+	// Create securities
+	secRepo := security.NewRepository(database)
+	aapl := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	if err := secRepo.Create(aapl); err != nil {
+		t.Fatalf("failed to create AAPL: %v", err)
+	}
+	msft := security.NewSecurity("MSFT", "Microsoft Corp.", security.TypeStock)
+	if err := secRepo.Create(msft); err != nil {
+		t.Fatalf("failed to create MSFT: %v", err)
+	}
+
+	// Add prices
+	priceRepo := price.NewRepository(database)
+	p1 := price.NewPrice(aapl.ID, types.Today(), types.MustNewMoney("175.00"), price.SourceManual)
+	if err := priceRepo.Create(p1); err != nil {
+		t.Fatalf("failed to create AAPL price: %v", err)
+	}
+	p2 := price.NewPrice(msft.ID, types.Today(), types.MustNewMoney("420.00"), price.SourceManual)
+	if err := priceRepo.Create(p2); err != nil {
+		t.Fatalf("failed to create MSFT price: %v", err)
+	}
+
+	// Deposit cash and buy securities via services
+	svc := app.NewServices(database)
+	_, err = svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("100000"), "initial deposit")
+	if err != nil {
+		t.Fatalf("failed to deposit cash: %v", err)
+	}
+
+	// Buy 10 AAPL at $150/share
+	_, err = svc.Investment.Buy(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("10"), nil, ptrMoney("150"), types.ZeroMoney, "")
+	if err != nil {
+		t.Fatalf("failed to buy AAPL: %v", err)
+	}
+
+	// Buy 5 MSFT at $400/share
+	_, err = svc.Investment.Buy(acct.ID, msft.ID, types.Today(), types.MustNewQuantity("5"), nil, ptrMoney("400"), types.ZeroMoney, "")
+	if err != nil {
+		t.Fatalf("failed to buy MSFT: %v", err)
+	}
+
+	database.Close()
+	return dbPath
+}
+
+func TestRun_PortfolioWithHoldings(t *testing.T) {
+	dbPath := createPortfolioTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{"--portfolio", "--file", dbPath, "--account", "Brokerage"}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--portfolio) returned error: %v", err)
+	}
+
+	output := stdout.String()
+
+	// Check header
+	if !strings.Contains(output, "PORTFOLIO: Brokerage") {
+		t.Error("output should contain portfolio header")
+	}
+
+	// Check holdings table columns
+	if !strings.Contains(output, "Ticker") {
+		t.Error("output should contain Ticker column header")
+	}
+	if !strings.Contains(output, "Shares") {
+		t.Error("output should contain Shares column header")
+	}
+	if !strings.Contains(output, "Market Value") {
+		t.Error("output should contain Market Value column header")
+	}
+	if !strings.Contains(output, "Gain/Loss") {
+		t.Error("output should contain Gain/Loss column header")
+	}
+
+	// Check securities appear
+	if !strings.Contains(output, "AAPL") {
+		t.Error("output should contain AAPL ticker")
+	}
+	if !strings.Contains(output, "Apple Inc.") {
+		t.Error("output should contain Apple Inc. name")
+	}
+	if !strings.Contains(output, "MSFT") {
+		t.Error("output should contain MSFT ticker")
+	}
+	if !strings.Contains(output, "Microsoft Corp.") {
+		t.Error("output should contain Microsoft Corp. name")
+	}
+
+	// Check summary section
+	if !strings.Contains(output, "SUMMARY") {
+		t.Error("output should contain SUMMARY section")
+	}
+	if !strings.Contains(output, "Cash Balance:") {
+		t.Error("output should show cash balance")
+	}
+	if !strings.Contains(output, "Market Value:") {
+		t.Error("output should show market value")
+	}
+	if !strings.Contains(output, "Total Value:") {
+		t.Error("output should show total value")
+	}
+	if !strings.Contains(output, "Total Cost Basis:") {
+		t.Error("output should show total cost basis")
+	}
+	if !strings.Contains(output, "Total Gain/Loss:") {
+		t.Error("output should show total gain/loss")
+	}
+}
+
+func TestRun_PortfolioWithAsOf(t *testing.T) {
+	dbPath := createPortfolioTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--portfolio", "--file", dbPath,
+		"--account", "Brokerage",
+		"--as-of", "2099-12-31",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--portfolio --as-of) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "PORTFOLIO: Brokerage") {
+		t.Error("output should contain portfolio header")
+	}
+}
+
+func TestRun_PortfolioInvalidAsOf(t *testing.T) {
+	dbPath := createPortfolioTestDB(t, false)
+
+	err := run([]string{
+		"--portfolio", "--file", dbPath,
+		"--account", "Brokerage",
+		"--as-of", "not-a-date",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "invalid --as-of") {
+		t.Errorf("expected invalid date error, got: %v", err)
+	}
+}
+
+// --- SM-114: CLI --portfolio --show-lots ---
+
+func TestRun_PortfolioShowLotsWithLotTracking(t *testing.T) {
+	dbPath := createPortfolioTestDB(t, true) // lot-tracking enabled
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--portfolio", "--file", dbPath,
+		"--account", "Brokerage",
+		"--show-lots",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--portfolio --show-lots) returned error: %v", err)
+	}
+
+	output := stdout.String()
+
+	// Check header indicates lots
+	if !strings.Contains(output, "PORTFOLIO: Brokerage (with lots)") {
+		t.Error("output should contain portfolio header with lots indicator")
+	}
+
+	// Check lot detail columns
+	if !strings.Contains(output, "Lot") {
+		t.Error("output should contain Lot column header")
+	}
+	if !strings.Contains(output, "Purchase Date") {
+		t.Error("output should contain Purchase Date column header")
+	}
+	if !strings.Contains(output, "Cost/Share") {
+		t.Error("output should contain Cost/Share column header")
+	}
+	if !strings.Contains(output, "Cost Basis") {
+		t.Error("output should contain Cost Basis column header")
+	}
+	if !strings.Contains(output, "Current Value") {
+		t.Error("output should contain Current Value column header")
+	}
+
+	// Check securities still appear
+	if !strings.Contains(output, "AAPL") {
+		t.Error("output should contain AAPL ticker")
+	}
+	if !strings.Contains(output, "MSFT") {
+		t.Error("output should contain MSFT ticker")
+	}
+
+	// Check summary
+	if !strings.Contains(output, "SUMMARY") {
+		t.Error("output should contain SUMMARY section")
+	}
+}
+
+func TestRun_PortfolioShowLotsNonLotTracking(t *testing.T) {
+	// --show-lots on a non-lot-tracking account should fall back to normal display
+	dbPath := createPortfolioTestDB(t, false) // lot-tracking disabled
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--portfolio", "--file", dbPath,
+		"--account", "Brokerage",
+		"--show-lots",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--portfolio --show-lots non-lot) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	// Should show normal portfolio (without lot detail header)
+	if !strings.Contains(output, "PORTFOLIO: Brokerage") {
+		t.Error("output should contain portfolio header")
+	}
+	// Should NOT contain "with lots" since account doesn't track lots
+	if strings.Contains(output, "(with lots)") {
+		t.Error("output should not indicate lots for non-lot-tracking account")
+	}
+}

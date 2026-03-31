@@ -207,6 +207,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runTransferShares(opts, stdout)
 	}
 
+	// Handle --portfolio
+	if opts.portfolio {
+		return runPortfolio(opts, stdout)
+	}
+
 	// Handle --import
 	if opts.importFile != "" {
 		return runImport(opts, stdout)

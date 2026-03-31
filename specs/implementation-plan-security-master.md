@@ -548,11 +548,11 @@ Spec: `specs/security-master.md`
 
 ## Phase 32: CLI — Portfolio Display
 
-- [ ] **SM-113 - CLI: --portfolio**
+- [x] **SM-113 - CLI: --portfolio**
   - RED: Write test — displays holdings table for account (ticker, name, shares, avg cost, current price, market value, cost basis, gain/loss); displays summary (cash, market value, total value)
   - GREEN: Implement `runPortfolio`
 
-- [ ] **SM-114 - CLI: --portfolio --show-lots**
+- [x] **SM-114 - CLI: --portfolio --show-lots**
   - RED: Write test — displays lot detail under each security for lot-tracking accounts
   - GREEN: Add lot detail to `runPortfolio`
 

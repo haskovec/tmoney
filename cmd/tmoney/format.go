@@ -7,6 +7,8 @@ import (
 	"text/tabwriter"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/report"
@@ -643,6 +645,12 @@ Security Commands:
   --unhide-security <tkr> Unhide a hidden security
   --delete-security <tkr> Delete a security (fails if history exists)
 
+Portfolio Commands:
+  --portfolio            Show investment portfolio holdings and summary
+    --account <name>     Investment account name
+    --as-of <date>       Valuation date (YYYY-MM-DD, default: today)
+    --show-lots          Show lot detail for each holding (lot-tracking accounts)
+
 For more information, visit: https://github.com/haskovec/tmoney`)
 }
 
@@ -728,4 +736,136 @@ func printPricesTable(w io.Writer, ticker string, prices []*price.Price) {
 	tw.Flush()
 
 	fmt.Fprintf(w, "\nTotal: %d price(s)\n", len(prices))
+}
+
+// formatGainLoss formats a gain/loss value with percentage.
+func formatGainLoss(gl types.Money, pct float64, currency string) string {
+	s := formatMoney(gl, currency)
+	if pct < 0 {
+		return fmt.Sprintf("%s (%.1f%%)", s, pct)
+	}
+	return fmt.Sprintf("%s (+%.1f%%)", s, pct)
+}
+
+// printPortfolioSummary prints the investment portfolio summary with holdings.
+func printPortfolioSummary(w io.Writer, acct *account.Account, valuation *investment.AccountValuation, securityMap map[types.ID]*security.Security) {
+	fmt.Fprintf(w, "PORTFOLIO: %s\n", acct.Name)
+	fmt.Fprintln(w, strings.Repeat("=", len("PORTFOLIO: ")+len(acct.Name)))
+	fmt.Fprintln(w)
+
+	// Holdings table
+	fmt.Fprintln(w, "HOLDINGS")
+	fmt.Fprintln(w, "--------")
+
+	if len(valuation.Holdings) == 0 {
+		fmt.Fprintln(w, "(No holdings)")
+	} else {
+		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(tw, "Ticker\tName\tShares\tAvg Cost\tPrice\tCost Basis\tMarket Value\tGain/Loss")
+		fmt.Fprintln(tw, "------\t----\t------\t--------\t-----\t----------\t------------\t---------")
+
+		for _, h := range valuation.Holdings {
+			ticker := h.SecurityID.String()[:8]
+			name := ""
+			if sec, ok := securityMap[h.SecurityID]; ok {
+				ticker = sec.Ticker
+				name = sec.Name
+			}
+
+			priceStr := "N/A"
+			if h.HasPricing {
+				priceStr = formatMoney(h.CurrentPrice, acct.Currency)
+			}
+
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				ticker,
+				name,
+				h.Shares.String(),
+				formatMoney(h.AvgCost, acct.Currency),
+				priceStr,
+				formatMoney(h.CostBasis, acct.Currency),
+				formatMoney(h.MarketValue, acct.Currency),
+				formatGainLoss(h.GainLoss, h.GainPct, acct.Currency),
+			)
+		}
+		tw.Flush()
+	}
+
+	// Summary
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "SUMMARY")
+	fmt.Fprintln(w, "-------")
+	fmt.Fprintf(w, "Cash Balance:     %s\n", formatMoney(valuation.CashBalance, acct.Currency))
+	fmt.Fprintf(w, "Market Value:     %s\n", formatMoney(valuation.MarketValue, acct.Currency))
+	fmt.Fprintf(w, "Total Value:      %s\n", formatMoney(valuation.TotalValue, acct.Currency))
+	fmt.Fprintf(w, "Total Cost Basis: %s\n", formatMoney(valuation.TotalCostBasis, acct.Currency))
+	fmt.Fprintf(w, "Total Gain/Loss:  %s\n", formatGainLoss(valuation.TotalGainLoss, valuation.TotalGainPct, acct.Currency))
+}
+
+// printPortfolioWithLots prints the portfolio with lot detail for each holding.
+func printPortfolioWithLots(w io.Writer, acct *account.Account, valuation *investment.AccountValuation, securityMap map[types.ID]*security.Security, svc *app.Services, asOf types.Date) {
+	fmt.Fprintf(w, "PORTFOLIO: %s (with lots)\n", acct.Name)
+	fmt.Fprintln(w, strings.Repeat("=", len("PORTFOLIO: ")+len(acct.Name)+len(" (with lots)")))
+	fmt.Fprintln(w)
+
+	if len(valuation.Holdings) == 0 {
+		fmt.Fprintln(w, "(No holdings)")
+	} else {
+		for _, h := range valuation.Holdings {
+			ticker := h.SecurityID.String()[:8]
+			name := ""
+			if sec, ok := securityMap[h.SecurityID]; ok {
+				ticker = sec.Ticker
+				name = sec.Name
+			}
+
+			fmt.Fprintf(w, "%s - %s\n", ticker, name)
+			fmt.Fprintf(w, "  Shares: %s  Avg Cost: %s  Market Value: %s  Gain/Loss: %s\n",
+				h.Shares.String(),
+				formatMoney(h.AvgCost, acct.Currency),
+				formatMoney(h.MarketValue, acct.Currency),
+				formatGainLoss(h.GainLoss, h.GainPct, acct.Currency),
+			)
+
+			// Get lot details
+			lots, err := svc.Investment.GetLotDetail(acct.ID, h.SecurityID, asOf)
+			if err != nil {
+				fmt.Fprintf(w, "  (could not retrieve lot details: %v)\n", err)
+			} else if len(lots) == 0 {
+				fmt.Fprintln(w, "  (no lots)")
+			} else {
+				tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+				fmt.Fprintln(tw, "  Lot\tPurchase Date\tShares\tCost/Share\tCost Basis\tCurrent Value\tGain/Loss")
+				fmt.Fprintln(tw, "  ---\t-------------\t------\t----------\t----------\t-------------\t---------")
+
+				for _, ld := range lots {
+					lotIDStr := ld.LotID.String()
+					if len(lotIDStr) > 8 {
+						lotIDStr = lotIDStr[:8]
+					}
+
+					fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+						lotIDStr,
+						ld.PurchaseDate.String(),
+						ld.Shares.String(),
+						formatMoney(ld.CostPerShare, acct.Currency),
+						formatMoney(ld.CostBasis, acct.Currency),
+						formatMoney(ld.CurrentValue, acct.Currency),
+						formatGainLoss(ld.GainLoss, ld.GainPct, acct.Currency),
+					)
+				}
+				tw.Flush()
+			}
+			fmt.Fprintln(w)
+		}
+	}
+
+	// Summary
+	fmt.Fprintln(w, "SUMMARY")
+	fmt.Fprintln(w, "-------")
+	fmt.Fprintf(w, "Cash Balance:     %s\n", formatMoney(valuation.CashBalance, acct.Currency))
+	fmt.Fprintf(w, "Market Value:     %s\n", formatMoney(valuation.MarketValue, acct.Currency))
+	fmt.Fprintf(w, "Total Value:      %s\n", formatMoney(valuation.TotalValue, acct.Currency))
+	fmt.Fprintf(w, "Total Cost Basis: %s\n", formatMoney(valuation.TotalCostBasis, acct.Currency))
+	fmt.Fprintf(w, "Total Gain/Loss:  %s\n", formatGainLoss(valuation.TotalGainLoss, valuation.TotalGainPct, acct.Currency))
 }
