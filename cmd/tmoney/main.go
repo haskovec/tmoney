@@ -167,6 +167,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runCurrentPrice(opts, stdout)
 	}
 
+	// Handle --import-prices
+	if opts.importPrices != "" {
+		return runImportPrices(opts, stdout)
+	}
+
 	// Handle --buy
 	if opts.buy {
 		return runBuy(opts, stdout)

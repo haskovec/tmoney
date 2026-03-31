@@ -558,15 +558,15 @@ Spec: `specs/security-master.md`
 
 ## Phase 33: Bulk Price Import
 
-- [ ] **SM-115 - CSV parser for price import**
+- [x] **SM-115 - CSV parser for price import**
   - RED: Write test — parse valid CSV (date,ticker,price); reject missing header; reject invalid date format; reject invalid price; reject unknown ticker; report errors with line numbers
   - GREEN: Implement `ParsePriceCSV` in `internal/imexport/price_import.go`
 
-- [ ] **SM-116 - Bulk import service**
+- [x] **SM-116 - Bulk import service**
   - RED: Write test — import valid CSV creates prices with source=`import`; skip existing by default; overwrite existing when flag set; return summary (total, imported, skipped, errors)
   - GREEN: Implement `PriceService.BulkImport`
 
-- [ ] **SM-117 - CLI: --import-prices**
+- [x] **SM-117 - CLI: --import-prices**
   - RED: Write test — import CSV file; --overwrite flag; display summary
   - GREEN: Implement `runImportPrices`
 

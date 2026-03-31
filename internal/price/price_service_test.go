@@ -373,3 +373,208 @@ func TestService_DeletePrice(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// SM-116: Service.BulkImport
+// =============================================================================
+
+func TestService_BulkImport(t *testing.T) {
+	t.Run("imports valid prices with source=import", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		sec := createTestSecurityForService(t, secRepo)
+		priceRepo := NewRepository(database)
+		svc := NewService(priceRepo, secRepo, database)
+
+		prices := []*Price{
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 10), types.MustNewMoney("145.00"), SourceImport),
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 11), types.MustNewMoney("147.50"), SourceImport),
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 12), types.MustNewMoney("150.00"), SourceImport),
+		}
+
+		result, err := svc.BulkImport(prices, false)
+		if err != nil {
+			t.Fatalf("BulkImport() error = %v", err)
+		}
+		if result.Total != 3 {
+			t.Errorf("Expected Total=3, got %d", result.Total)
+		}
+		if result.Imported != 3 {
+			t.Errorf("Expected Imported=3, got %d", result.Imported)
+		}
+		if result.Skipped != 0 {
+			t.Errorf("Expected Skipped=0, got %d", result.Skipped)
+		}
+
+		// Verify prices were stored with source=import
+		for _, p := range prices {
+			retrieved, err := priceRepo.GetBySecurityAndDate(sec.ID, p.Date)
+			if err != nil {
+				t.Fatalf("GetBySecurityAndDate() error = %v", err)
+			}
+			if retrieved.Source != SourceImport {
+				t.Errorf("Expected source 'import', got %q", retrieved.Source)
+			}
+		}
+	})
+
+	t.Run("skips existing prices by default", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		sec := createTestSecurityForService(t, secRepo)
+		priceRepo := NewRepository(database)
+		svc := NewService(priceRepo, secRepo, database)
+
+		date := types.NewDate(2024, time.March, 15)
+
+		// Add an existing price
+		existing := NewPrice(sec.ID, date, types.MustNewMoney("150.00"), SourceManual)
+		if err := svc.AddPrice(existing); err != nil {
+			t.Fatalf("AddPrice() error = %v", err)
+		}
+
+		// Bulk import with a duplicate and a new one
+		prices := []*Price{
+			NewPrice(sec.ID, date, types.MustNewMoney("155.00"), SourceImport),
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 16), types.MustNewMoney("160.00"), SourceImport),
+		}
+
+		result, err := svc.BulkImport(prices, false)
+		if err != nil {
+			t.Fatalf("BulkImport() error = %v", err)
+		}
+		if result.Total != 2 {
+			t.Errorf("Expected Total=2, got %d", result.Total)
+		}
+		if result.Imported != 1 {
+			t.Errorf("Expected Imported=1, got %d", result.Imported)
+		}
+		if result.Skipped != 1 {
+			t.Errorf("Expected Skipped=1, got %d", result.Skipped)
+		}
+
+		// Verify original price was not overwritten
+		retrieved, err := priceRepo.GetBySecurityAndDate(sec.ID, date)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v", err)
+		}
+		if retrieved.Price.String() != "150" {
+			t.Errorf("Expected original price '150' preserved, got %q", retrieved.Price.String())
+		}
+		if retrieved.Source != SourceManual {
+			t.Errorf("Expected source 'manual' preserved, got %q", retrieved.Source)
+		}
+	})
+
+	t.Run("overwrites existing when flag set", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		sec := createTestSecurityForService(t, secRepo)
+		priceRepo := NewRepository(database)
+		svc := NewService(priceRepo, secRepo, database)
+
+		date := types.NewDate(2024, time.March, 15)
+
+		// Add an existing price
+		existing := NewPrice(sec.ID, date, types.MustNewMoney("150.00"), SourceManual)
+		if err := svc.AddPrice(existing); err != nil {
+			t.Fatalf("AddPrice() error = %v", err)
+		}
+
+		// Bulk import with overwrite
+		prices := []*Price{
+			NewPrice(sec.ID, date, types.MustNewMoney("155.00"), SourceImport),
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 16), types.MustNewMoney("160.00"), SourceImport),
+		}
+
+		result, err := svc.BulkImport(prices, true)
+		if err != nil {
+			t.Fatalf("BulkImport() error = %v", err)
+		}
+		if result.Total != 2 {
+			t.Errorf("Expected Total=2, got %d", result.Total)
+		}
+		if result.Imported != 2 {
+			t.Errorf("Expected Imported=2, got %d", result.Imported)
+		}
+		if result.Skipped != 0 {
+			t.Errorf("Expected Skipped=0, got %d", result.Skipped)
+		}
+
+		// Verify price was overwritten
+		retrieved, err := priceRepo.GetBySecurityAndDate(sec.ID, date)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v", err)
+		}
+		if retrieved.Price.String() != "155" {
+			t.Errorf("Expected overwritten price '155', got %q", retrieved.Price.String())
+		}
+		if retrieved.Source != SourceImport {
+			t.Errorf("Expected source 'import', got %q", retrieved.Source)
+		}
+	})
+
+	t.Run("returns summary counts", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		sec := createTestSecurityForService(t, secRepo)
+		priceRepo := NewRepository(database)
+		svc := NewService(priceRepo, secRepo, database)
+
+		// Pre-populate some prices
+		for _, d := range []types.Date{
+			types.NewDate(2024, time.March, 10),
+			types.NewDate(2024, time.March, 11),
+		} {
+			p := NewPrice(sec.ID, d, types.MustNewMoney("100.00"), SourceManual)
+			if err := svc.AddPrice(p); err != nil {
+				t.Fatalf("AddPrice() error = %v", err)
+			}
+		}
+
+		// Import 5 prices: 2 duplicates + 3 new
+		prices := []*Price{
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 10), types.MustNewMoney("101.00"), SourceImport),
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 11), types.MustNewMoney("102.00"), SourceImport),
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 12), types.MustNewMoney("103.00"), SourceImport),
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 13), types.MustNewMoney("104.00"), SourceImport),
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 14), types.MustNewMoney("105.00"), SourceImport),
+		}
+
+		result, err := svc.BulkImport(prices, false)
+		if err != nil {
+			t.Fatalf("BulkImport() error = %v", err)
+		}
+		if result.Total != 5 {
+			t.Errorf("Expected Total=5, got %d", result.Total)
+		}
+		if result.Imported != 3 {
+			t.Errorf("Expected Imported=3, got %d", result.Imported)
+		}
+		if result.Skipped != 2 {
+			t.Errorf("Expected Skipped=2, got %d", result.Skipped)
+		}
+	})
+
+	t.Run("rejects invalid prices in batch", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		sec := createTestSecurityForService(t, secRepo)
+		priceRepo := NewRepository(database)
+		svc := NewService(priceRepo, secRepo, database)
+
+		// Include an invalid price (zero amount) in the batch
+		prices := []*Price{
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 10), types.MustNewMoney("145.00"), SourceImport),
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 11), types.MustNewMoney("0"), SourceImport),
+		}
+
+		_, err := svc.BulkImport(prices, false)
+		if err == nil {
+			t.Error("BulkImport() expected error for invalid price")
+		}
+		if _, ok := err.(*types.ServiceValidationError); !ok {
+			t.Errorf("Expected ServiceValidationError, got %T: %v", err, err)
+		}
+	})
+}
