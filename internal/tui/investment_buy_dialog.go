@@ -1,0 +1,330 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/types"
+)
+
+// buyDialogData holds the loaded data needed for the buy transaction dialog.
+type buyDialogData struct {
+	securities []*security.Security
+}
+
+// buyDialogDataMsg is sent when buy dialog data has been loaded.
+type buyDialogDataMsg struct {
+	data *buyDialogData
+}
+
+// buyDialogSavedMsg is sent when a buy transaction has been saved.
+type buyDialogSavedMsg struct{}
+
+// buildSecurityOptions builds parallel display name and ID slices for the security selector.
+// Non-hidden securities are listed as "TICKER - Name", sorted by ticker.
+func buildSecurityOptions(securities []*security.Security) ([]string, []types.ID) {
+	type secEntry struct {
+		display string
+		id      types.ID
+	}
+	var entries []secEntry
+
+	for _, sec := range securities {
+		if sec.Hidden {
+			continue
+		}
+		entries = append(entries, secEntry{
+			display: fmt.Sprintf("%s - %s", sec.Ticker, sec.Name),
+			id:      sec.ID,
+		})
+	}
+
+	// Sort by display name (ticker first)
+	for i := 0; i < len(entries); i++ {
+		for j := i + 1; j < len(entries); j++ {
+			if entries[i].display > entries[j].display {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+	}
+
+	options := make([]string, len(entries))
+	ids := make([]types.ID, len(entries))
+	for i, e := range entries {
+		options[i] = e.display
+		ids[i] = e.id
+	}
+
+	return options, ids
+}
+
+// buildBuyDialog creates a Dialog for entering a new buy transaction.
+func buildBuyDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *Dialog {
+	d := NewDialog("Buy Securities")
+	d.SetWidth(50)
+
+	// Security selector
+	selectedIdx := 0
+	if editTxn != nil && editTxn.SecurityID.Valid {
+		for i, id := range securityIDs {
+			if id == editTxn.SecurityID.ID {
+				selectedIdx = i
+				break
+			}
+		}
+	}
+	d.AddSelectField("Security", securityOptions, selectedIdx)
+
+	// Date
+	dateVal := time.Now().Format("01/02/2006")
+	if editTxn != nil {
+		dateVal = editTxn.Date.Time().Format("01/02/2006")
+	}
+	f := d.AddTextField("Date", dateVal, "MM/DD/YYYY", 10)
+	f.Required = true
+
+	// Shares
+	sharesVal := ""
+	if editTxn != nil && editTxn.Shares.Valid && !editTxn.Shares.Quantity.IsZero() {
+		sharesVal = editTxn.Shares.Quantity.String()
+	}
+	f = d.AddTextField("Shares", sharesVal, "10", 12)
+	f.Required = true
+
+	// Price Per Share
+	priceVal := ""
+	if editTxn != nil && editTxn.PricePerShare.Valid {
+		priceVal = fmt.Sprintf("%.2f", editTxn.PricePerShare.Money.Float64())
+	}
+	d.AddTextField("Price/Share", priceVal, "185.00", 12)
+
+	// Total Amount
+	totalVal := ""
+	if editTxn != nil && !editTxn.TotalAmount.IsZero() {
+		// Total is stored as negative for buys; display as positive
+		amt := editTxn.TotalAmount
+		if amt.IsNegative() {
+			amt = amt.Neg()
+		}
+		totalVal = fmt.Sprintf("%.2f", amt.Float64())
+	}
+	d.AddTextField("Total", totalVal, "1850.00", 12)
+
+	// Commission
+	commVal := ""
+	if editTxn != nil && editTxn.Commission.Valid && !editTxn.Commission.Money.IsZero() {
+		commVal = fmt.Sprintf("%.2f", editTxn.Commission.Money.Float64())
+	}
+	d.AddTextField("Commission", commVal, "0.00", 12)
+
+	// Memo
+	memoVal := ""
+	if editTxn != nil && editTxn.Memo.Valid {
+		memoVal = editTxn.Memo.String
+	}
+	d.AddTextField("Memo", memoVal, "Optional memo", 0)
+
+	d.SetVisible(true)
+	return d
+}
+
+// loadBuyDialogData returns a command that loads securities for the buy dialog.
+func (a *App) loadBuyDialogData() tea.Cmd {
+	return func() tea.Msg {
+		data := &buyDialogData{}
+
+		if a.securitySvc != nil {
+			securities, err := a.securitySvc.List(security.Filter{})
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.securities = securities
+		}
+
+		return buyDialogDataMsg{data: data}
+	}
+}
+
+// closeBuyDialog clears the buy dialog state.
+func (a *App) closeBuyDialog() {
+	a.buyDialog = nil
+	a.buyDialogData = nil
+	a.buyDialogSecurityIDs = nil
+}
+
+// handleBuyDialogKey routes key events to the buy dialog.
+func (a *App) handleBuyDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if a.buyDialog == nil {
+		return a, nil
+	}
+
+	action := a.buyDialog.HandleKey(msg)
+	switch action {
+	case DialogActionSubmit:
+		return a.submitBuyDialog()
+	case DialogActionCancel:
+		a.closeBuyDialog()
+		return a, nil
+	}
+
+	return a, nil
+}
+
+// parseSharesInput parses a shares/quantity string.
+func parseSharesInput(input string) (types.Quantity, error) {
+	s := strings.TrimSpace(input)
+	if s == "" {
+		return types.ZeroQuantity, fmt.Errorf("shares is required")
+	}
+	q, err := types.NewQuantity(s)
+	if err != nil {
+		return types.ZeroQuantity, fmt.Errorf("invalid shares: %w", err)
+	}
+	if q.IsZero() || q.IsNegative() {
+		return types.ZeroQuantity, fmt.Errorf("shares must be positive")
+	}
+	return q, nil
+}
+
+// parseOptionalMoneyInput parses an optional money string. Returns nil if empty.
+func parseOptionalMoneyInput(input string) (*types.Money, error) {
+	s := strings.TrimSpace(input)
+	s = strings.TrimPrefix(s, "$")
+	if s == "" {
+		return nil, nil
+	}
+	m, err := types.NewMoney(s)
+	if err != nil {
+		return nil, fmt.Errorf("invalid amount: %w", err)
+	}
+	return &m, nil
+}
+
+// submitBuyDialog parses dialog fields, validates, and saves the buy transaction.
+func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
+	if a.buyDialog == nil || a.buyDialogData == nil {
+		return a, nil
+	}
+
+	fields := a.buyDialog.Fields()
+	if len(fields) < 7 {
+		return a, nil
+	}
+
+	a.buyDialog.ClearErrors()
+	hasErrors := false
+
+	// Security (index 0)
+	if len(a.buyDialogSecurityIDs) == 0 {
+		fields[0].Error = "No securities available"
+		hasErrors = true
+	}
+	secIdx := fields[0].SelectedIndex
+	var securityID types.ID
+	if secIdx >= 0 && secIdx < len(a.buyDialogSecurityIDs) {
+		securityID = a.buyDialogSecurityIDs[secIdx]
+	} else {
+		fields[0].Error = "Select a security"
+		hasErrors = true
+	}
+
+	// Date (index 1)
+	date, err := parseDateInput(fields[1].Value)
+	if err != nil {
+		fields[1].Error = "Invalid date (MM/DD/YYYY)"
+		hasErrors = true
+	}
+
+	// Shares (index 2)
+	shares, err := parseSharesInput(fields[2].Value)
+	if err != nil {
+		fields[2].Error = "Shares must be positive"
+		hasErrors = true
+	}
+
+	// Price/Share (index 3)
+	pricePerShare, err := parseOptionalMoneyInput(fields[3].Value)
+	if err != nil {
+		fields[3].Error = "Invalid price"
+		hasErrors = true
+	}
+
+	// Total (index 4)
+	totalAmount, err := parseOptionalMoneyInput(fields[4].Value)
+	if err != nil {
+		fields[4].Error = "Invalid amount"
+		hasErrors = true
+	}
+
+	// Need at least one of price or total
+	if pricePerShare == nil && totalAmount == nil {
+		fields[3].Error = "Enter price or total"
+		fields[4].Error = "Enter price or total"
+		hasErrors = true
+	}
+
+	// Commission (index 5)
+	commission := types.ZeroMoney
+	commStr := strings.TrimSpace(fields[5].Value)
+	commStr = strings.TrimPrefix(commStr, "$")
+	if commStr != "" {
+		commission, err = types.NewMoney(commStr)
+		if err != nil {
+			fields[5].Error = "Invalid commission"
+			hasErrors = true
+		}
+	}
+
+	if hasErrors {
+		return a, nil
+	}
+
+	// Memo (index 6)
+	memo := strings.TrimSpace(fields[6].Value)
+
+	// Get account ID
+	accountID := types.NilID
+	if a.investmentRegister != nil && a.investmentRegister.account != nil {
+		accountID = a.investmentRegister.account.ID
+	}
+
+	editTxnID := a.investmentEditTxnID
+
+	// Close dialog before async save
+	a.closeBuyDialog()
+
+	return a, func() tea.Msg {
+		if a.investmentSvc == nil {
+			return errMsg{err: fmt.Errorf("investment service not available")}
+		}
+
+		if editTxnID != types.NilID {
+			// Delete the old transaction before creating a new one
+			if a.investmentRepo != nil {
+				if err := a.investmentRepo.Delete(editTxnID); err != nil {
+					return errMsg{err: fmt.Errorf("failed to delete old transaction: %w", err)}
+				}
+			}
+		}
+
+		_, err := a.investmentSvc.Buy(
+			accountID,
+			securityID,
+			date,
+			shares,
+			totalAmount,
+			pricePerShare,
+			commission,
+			memo,
+		)
+		if err != nil {
+			return errMsg{err: fmt.Errorf("failed to create buy transaction: %w", err)}
+		}
+
+		return buyDialogSavedMsg{}
+	}
+}

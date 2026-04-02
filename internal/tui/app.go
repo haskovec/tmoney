@@ -179,6 +179,11 @@ type App struct {
 	investmentTypeSelector *Dialog
 	investmentEditTxnID    types.ID // set when editing an existing transaction
 
+	// Buy dialog state
+	buyDialog            *Dialog
+	buyDialogData        *buyDialogData
+	buyDialogSecurityIDs []types.ID
+
 	// File dialog state
 	fileDialog     *Dialog
 	fileDialogMode fileDialogMode
@@ -775,6 +780,24 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case buyDialogDataMsg:
+		a.buyDialogData = msg.data
+		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
+		a.buyDialogSecurityIDs = secIDs
+		var editTxn *investment.Transaction
+		if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
+			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+		}
+		a.buyDialog = buildBuyDialog(secOptions, editTxn, secIDs)
+		return a, nil
+
+	case buyDialogSavedMsg:
+		a.statusbar.AddNotification("Buy transaction saved", NotificationInfo)
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		}
+		return a, nil
+
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data
 		a.buildScheduledTable()
@@ -1143,6 +1166,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If price import dialog is visible, route all keys to it
 	if a.priceImportDialog != nil && a.priceImportDialog.IsVisible() {
 		return a.handlePriceImportDialogKey(msg)
+	}
+
+	// If buy dialog is visible, route all keys to it
+	if a.buyDialog != nil && a.buyDialog.IsVisible() {
+		return a.handleBuyDialogKey(msg)
 	}
 
 	// If investment type selector is visible, route all keys to it
@@ -2096,6 +2124,12 @@ func (a *App) renderLayout() string {
 	// Overlay investment type selector dialog if visible
 	if a.investmentTypeSelector != nil && a.investmentTypeSelector.IsVisible() {
 		overlay := a.investmentTypeSelector.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay buy dialog if visible
+	if a.buyDialog != nil && a.buyDialog.IsVisible() {
+		overlay := a.buyDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

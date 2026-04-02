@@ -428,16 +428,18 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyMsg) (tea.Model, tea.Cm
 		a.investmentTypeSelector.SetVisible(false)
 		a.investmentTypeSelector = nil
 
-		// Emit the appropriate message for the selected type
-		_ = selectedType // Will be used by future dialog implementations (SM-130+)
-
-		// For now, show a notification about the selected type
-		if a.investmentEditTxnID == types.NilID {
-			a.statusbar.AddNotification(fmt.Sprintf("New %s (dialog not yet implemented)", selectedType.DisplayName()), NotificationInfo)
-		} else {
-			a.statusbar.AddNotification(fmt.Sprintf("Edit %s (dialog not yet implemented)", selectedType.DisplayName()), NotificationInfo)
+		switch selectedType {
+		case investment.TransactionTypeBuy:
+			return a, a.loadBuyDialogData()
+		default:
+			// Other transaction type dialogs not yet implemented (SM-131+)
+			if a.investmentEditTxnID == types.NilID {
+				a.statusbar.AddNotification(fmt.Sprintf("New %s (dialog not yet implemented)", selectedType.DisplayName()), NotificationInfo)
+			} else {
+				a.statusbar.AddNotification(fmt.Sprintf("Edit %s (dialog not yet implemented)", selectedType.DisplayName()), NotificationInfo)
+			}
+			return a, nil
 		}
-		return a, nil
 
 	case DialogActionCancel:
 		a.investmentTypeSelector.SetVisible(false)

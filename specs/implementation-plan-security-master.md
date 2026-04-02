@@ -624,7 +624,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — `n` opens transaction type selector; `Enter` edits; `d` deletes; `c` toggles cleared
   - GREEN: Implement key handlers for investment register
 
-- [ ] **SM-130 - Buy transaction dialog**
+- [x] **SM-130 - Buy transaction dialog**
   - RED: Write test — dialog: Security (searchable dropdown), Shares, Price/Share, Total, Commission, Date, Memo; smart field computation updates fields as user types
   - GREEN: Implement buy dialog
 
