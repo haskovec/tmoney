@@ -628,7 +628,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — dialog: Security (searchable dropdown), Shares, Price/Share, Total, Commission, Date, Memo; smart field computation updates fields as user types
   - GREEN: Implement buy dialog
 
-- [ ] **SM-131 - Sell transaction dialog**
+- [x] **SM-131 - Sell transaction dialog**
   - RED: Write test — same as buy but with lot selection panel for lot-tracking accounts; shows available lots with purchase date, shares, cost
   - GREEN: Implement sell dialog
 

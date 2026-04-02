@@ -184,6 +184,15 @@ type App struct {
 	buyDialogData        *buyDialogData
 	buyDialogSecurityIDs []types.ID
 
+	// Sell dialog state
+	sellDialog            *Dialog
+	sellDialogData        *sellDialogData
+	sellDialogSecurityIDs []types.ID
+	sellDialogLots        []*investment.Lot
+
+	// Lot repository for sell dialog lot loading
+	lotRepo *investment.LotRepository
+
 	// File dialog state
 	fileDialog     *Dialog
 	fileDialogMode fileDialogMode
@@ -407,6 +416,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		priceSvc:          svc.Price,
 		investmentSvc:     svc.Investment,
 		investmentRepo:    svc.InvestmentRepo,
+		lotRepo:           svc.LotRepo,
 	}
 }
 
@@ -798,6 +808,25 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case sellDialogDataMsg:
+		a.sellDialogData = msg.data
+		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
+		a.sellDialogSecurityIDs = secIDs
+		a.sellDialogLots = msg.data.lots
+		var editTxn *investment.Transaction
+		if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
+			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+		}
+		a.sellDialog = buildSellDialog(secOptions, editTxn, secIDs, msg.data.lots)
+		return a, nil
+
+	case sellDialogSavedMsg:
+		a.statusbar.AddNotification("Sell transaction saved", NotificationInfo)
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		}
+		return a, nil
+
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data
 		a.buildScheduledTable()
@@ -1171,6 +1200,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If buy dialog is visible, route all keys to it
 	if a.buyDialog != nil && a.buyDialog.IsVisible() {
 		return a.handleBuyDialogKey(msg)
+	}
+
+	// If sell dialog is visible, route all keys to it
+	if a.sellDialog != nil && a.sellDialog.IsVisible() {
+		return a.handleSellDialogKey(msg)
 	}
 
 	// If investment type selector is visible, route all keys to it
@@ -2130,6 +2164,12 @@ func (a *App) renderLayout() string {
 	// Overlay buy dialog if visible
 	if a.buyDialog != nil && a.buyDialog.IsVisible() {
 		overlay := a.buyDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay sell dialog if visible
+	if a.sellDialog != nil && a.sellDialog.IsVisible() {
+		overlay := a.sellDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
