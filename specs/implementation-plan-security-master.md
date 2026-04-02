@@ -620,7 +620,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — register for investment account shows investment transactions (not regular transactions); columns: Date, Type, Security, Shares, Price, Total, Status
   - GREEN: Implement investment register rendering in tui
 
-- [ ] **SM-129 - Investment transaction keybindings**
+- [x] **SM-129 - Investment transaction keybindings**
   - RED: Write test — `n` opens transaction type selector; `Enter` edits; `d` deletes; `c` toggles cleared
   - GREEN: Implement key handlers for investment register
 

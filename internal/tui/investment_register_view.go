@@ -258,6 +258,13 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-6, 1)
 		a.investmentTable.PageDown(tableHeight)
+	case key.Matches(msg, a.keys.New):
+		a.openInvestmentTypeSelector(false)
+	case key.Matches(msg, a.keys.Enter):
+		txn := a.selectedInvestmentTransaction()
+		if txn != nil {
+			a.openInvestmentTypeSelector(true)
+		}
 	case msg.String() == "c":
 		return a.toggleInvestmentTransactionStatus()
 	case key.Matches(msg, a.keys.Delete):
@@ -325,11 +332,129 @@ type investmentTransactionDeletedMsg struct{}
 // investmentTransactionClearedMsg is sent when an investment transaction's status has been toggled.
 type investmentTransactionClearedMsg struct{}
 
+// investmentTransactionTypeOptions returns the display names for the investment type selector.
+func investmentTransactionTypeOptions() []string {
+	return []string{
+		investment.TransactionTypeBuy.DisplayName(),
+		investment.TransactionTypeSell.DisplayName(),
+		investment.TransactionTypeDividend.DisplayName(),
+		investment.TransactionTypeReinvestDividend.DisplayName(),
+		investment.TransactionTypeDeposit.DisplayName(),
+		investment.TransactionTypeWithdrawal.DisplayName(),
+		investment.TransactionTypeInterest.DisplayName(),
+		investment.TransactionTypeFee.DisplayName(),
+	}
+}
+
+// investmentTransactionTypeFromIndex maps a selector index back to an InvestmentTransactionType.
+func investmentTransactionTypeFromIndex(idx int) investment.TransactionType {
+	types := []investment.TransactionType{
+		investment.TransactionTypeBuy,
+		investment.TransactionTypeSell,
+		investment.TransactionTypeDividend,
+		investment.TransactionTypeReinvestDividend,
+		investment.TransactionTypeDeposit,
+		investment.TransactionTypeWithdrawal,
+		investment.TransactionTypeInterest,
+		investment.TransactionTypeFee,
+	}
+	if idx >= 0 && idx < len(types) {
+		return types[idx]
+	}
+	return investment.TransactionTypeBuy
+}
+
+// investmentTransactionTypeIndex returns the selector index for the given transaction type.
+func investmentTransactionTypeIndex(txnType investment.TransactionType) int {
+	types := []investment.TransactionType{
+		investment.TransactionTypeBuy,
+		investment.TransactionTypeSell,
+		investment.TransactionTypeDividend,
+		investment.TransactionTypeReinvestDividend,
+		investment.TransactionTypeDeposit,
+		investment.TransactionTypeWithdrawal,
+		investment.TransactionTypeInterest,
+		investment.TransactionTypeFee,
+	}
+	for i, t := range types {
+		if t == txnType {
+			return i
+		}
+	}
+	return 0
+}
+
+// openInvestmentTypeSelector opens the transaction type selector dialog.
+// If editing is true, the selector is pre-set to the currently selected transaction's type.
+func (a *App) openInvestmentTypeSelector(editing bool) {
+	options := investmentTransactionTypeOptions()
+	selectedIdx := 0
+
+	if editing {
+		txn := a.selectedInvestmentTransaction()
+		if txn != nil {
+			a.investmentEditTxnID = txn.ID
+			selectedIdx = investmentTransactionTypeIndex(txn.Type)
+		}
+	} else {
+		a.investmentEditTxnID = types.NilID
+	}
+
+	title := "New Transaction"
+	if editing {
+		title = "Edit Transaction"
+	}
+
+	d := NewDialog(title)
+	d.SetWidth(40)
+	d.AddSelectField("Type", options, selectedIdx)
+	d.SetButtons([]DialogButton{
+		{Label: "Cancel"},
+		{Label: "OK", Primary: true},
+	})
+	d.SetVisible(true)
+	a.investmentTypeSelector = d
+}
+
+// handleInvestmentTypeSelectorKey handles key presses in the investment type selector dialog.
+func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	action := a.investmentTypeSelector.HandleKey(msg)
+
+	switch action {
+	case DialogActionSubmit:
+		// Get the selected type
+		fields := a.investmentTypeSelector.Fields()
+		selectedType := investmentTransactionTypeFromIndex(fields[0].SelectedIndex)
+		a.investmentTypeSelector.SetVisible(false)
+		a.investmentTypeSelector = nil
+
+		// Emit the appropriate message for the selected type
+		_ = selectedType // Will be used by future dialog implementations (SM-130+)
+
+		// For now, show a notification about the selected type
+		if a.investmentEditTxnID == types.NilID {
+			a.statusbar.AddNotification(fmt.Sprintf("New %s (dialog not yet implemented)", selectedType.DisplayName()), NotificationInfo)
+		} else {
+			a.statusbar.AddNotification(fmt.Sprintf("Edit %s (dialog not yet implemented)", selectedType.DisplayName()), NotificationInfo)
+		}
+		return a, nil
+
+	case DialogActionCancel:
+		a.investmentTypeSelector.SetVisible(false)
+		a.investmentTypeSelector = nil
+		return a, nil
+	}
+
+	return a, nil
+}
+
 // investmentRegisterShortcuts returns the shortcut section for the investment register help overlay.
 func investmentRegisterShortcuts() shortcutSection {
 	return shortcutSection{
 		Title: "Investment Register",
 		Entries: []shortcutEntry{
+			{Key: "n", Description: "New transaction"},
+			{Key: "Enter", Description: "Edit transaction"},
 			{Key: "c", Description: "Toggle cleared"},
 			{Key: "d", Description: "Delete transaction"},
 			{Key: "Tab", Description: "Switch sidebar/table"},

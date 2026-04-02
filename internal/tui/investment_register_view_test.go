@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -644,6 +645,208 @@ func TestInvestmentRegisterView_FullScreenRender(t *testing.T) {
 	}
 }
 
+func TestHandleInvestmentRegisterKeys_NewOpensTypeSelector(t *testing.T) {
+	acctID := types.NewID()
+	secID := types.NewID()
+	date := types.NewDate(2024, time.March, 15)
+
+	txn := investment.NewTransactionWithSecurity(
+		acctID, date, investment.TransactionTypeBuy, types.MustNewMoney("1000.00"), secID, types.MustNewQuantity("5"),
+	)
+
+	sidebar := NewSidebar()
+	sidebar.SetFocused(false)
+
+	app := &App{
+		width:   80,
+		height:  24,
+		keys:    defaultKeyMap(),
+		sidebar: sidebar,
+		investmentRegister: &investmentRegisterData{
+			account: &account.Account{
+				BaseModel: types.NewBaseModel(),
+				Name:      "Brokerage",
+				Type:      account.TypeInvestment,
+			},
+			transactions:  []*investment.Transaction{txn},
+			securityNames: map[types.ID]string{secID: "AAPL"},
+		},
+	}
+	app.buildInvestmentRegisterTable()
+
+	// Press 'n' to open transaction type selector
+	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	app.handleInvestmentRegisterKeys(nKey)
+
+	// Should open the investment type selector dialog
+	if app.investmentTypeSelector == nil {
+		t.Fatal("pressing 'n' should open the investment type selector dialog")
+	}
+	if !app.investmentTypeSelector.IsVisible() {
+		t.Error("investment type selector dialog should be visible")
+	}
+	// Verify it has options for transaction types
+	fields := app.investmentTypeSelector.Fields()
+	if len(fields) != 1 {
+		t.Fatalf("expected 1 field (type selector), got %d", len(fields))
+	}
+	if fields[0].Type != FieldSelect {
+		t.Errorf("field type = %d, want FieldSelect (%d)", fields[0].Type, FieldSelect)
+	}
+	if len(fields[0].Options) == 0 {
+		t.Error("type selector should have options")
+	}
+}
+
+func TestHandleInvestmentRegisterKeys_EnterEditsTransaction(t *testing.T) {
+	acctID := types.NewID()
+	secID := types.NewID()
+	date := types.NewDate(2024, time.March, 15)
+
+	txn := investment.NewTransactionWithSecurity(
+		acctID, date, investment.TransactionTypeBuy, types.MustNewMoney("1000.00"), secID, types.MustNewQuantity("5"),
+	)
+
+	sidebar := NewSidebar()
+	sidebar.SetFocused(false)
+
+	app := &App{
+		width:   80,
+		height:  24,
+		keys:    defaultKeyMap(),
+		sidebar: sidebar,
+		investmentRegister: &investmentRegisterData{
+			account: &account.Account{
+				BaseModel: types.NewBaseModel(),
+				Name:      "Brokerage",
+				Type:      account.TypeInvestment,
+			},
+			transactions:  []*investment.Transaction{txn},
+			securityNames: map[types.ID]string{secID: "AAPL"},
+		},
+	}
+	app.buildInvestmentRegisterTable()
+
+	// Press Enter to edit the selected transaction
+	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	app.handleInvestmentRegisterKeys(enterKey)
+
+	// Should open the investment type selector in edit mode with the transaction's type pre-selected
+	if app.investmentTypeSelector == nil {
+		t.Fatal("pressing Enter should open the investment type selector dialog in edit mode")
+	}
+	if !app.investmentTypeSelector.IsVisible() {
+		t.Error("investment type selector dialog should be visible")
+	}
+	// In edit mode, the type should be pre-selected to the transaction's type (Buy)
+	fields := app.investmentTypeSelector.Fields()
+	if len(fields) != 1 {
+		t.Fatalf("expected 1 field, got %d", len(fields))
+	}
+	// Find the Buy option index
+	buyIdx := -1
+	for i, opt := range fields[0].Options {
+		if opt == "Buy" {
+			buyIdx = i
+			break
+		}
+	}
+	if buyIdx < 0 {
+		t.Fatal("Buy should be in the type selector options")
+	}
+	if fields[0].SelectedIndex != buyIdx {
+		t.Errorf("selected index = %d, want %d (Buy)", fields[0].SelectedIndex, buyIdx)
+	}
+}
+
+func TestHandleInvestmentRegisterKeys_EnterNoOpsWithNoTransaction(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetFocused(false)
+
+	app := &App{
+		width:   80,
+		height:  24,
+		keys:    defaultKeyMap(),
+		sidebar: sidebar,
+		investmentRegister: &investmentRegisterData{
+			account: &account.Account{
+				BaseModel: types.NewBaseModel(),
+				Name:      "Brokerage",
+				Type:      account.TypeInvestment,
+			},
+			transactions:  []*investment.Transaction{},
+			securityNames: map[types.ID]string{},
+		},
+	}
+	app.buildInvestmentRegisterTable()
+
+	// Press Enter with no transactions
+	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	app.handleInvestmentRegisterKeys(enterKey)
+
+	// Should not open any dialog
+	if app.investmentTypeSelector != nil {
+		t.Error("pressing Enter with no transactions should not open the type selector")
+	}
+}
+
+func TestHandleInvestmentRegisterKeys_DeleteExistingTransaction(t *testing.T) {
+	acctID := types.NewID()
+	secID := types.NewID()
+	date := types.NewDate(2024, time.March, 15)
+
+	txn := investment.NewTransactionWithSecurity(
+		acctID, date, investment.TransactionTypeBuy, types.MustNewMoney("1000.00"), secID, types.MustNewQuantity("5"),
+	)
+
+	sidebar := NewSidebar()
+	sidebar.SetFocused(false)
+
+	app := &App{
+		width:   80,
+		height:  24,
+		keys:    defaultKeyMap(),
+		sidebar: sidebar,
+		investmentRegister: &investmentRegisterData{
+			account: &account.Account{
+				BaseModel: types.NewBaseModel(),
+				Name:      "Brokerage",
+				Type:      account.TypeInvestment,
+			},
+			transactions:  []*investment.Transaction{txn},
+			securityNames: map[types.ID]string{secID: "AAPL"},
+		},
+	}
+	app.buildInvestmentRegisterTable()
+
+	// Press 'd' to delete
+	dKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+	app.handleInvestmentRegisterKeys(dKey)
+
+	// Should show confirmation dialog
+	if app.confirmDialog == nil {
+		t.Fatal("pressing 'd' should show confirmation dialog")
+	}
+	if !app.confirmDialog.IsVisible() {
+		t.Error("confirmation dialog should be visible")
+	}
+}
+
+func TestInvestmentTypeSelectorOptions(t *testing.T) {
+	// Verify all expected transaction types are available in the selector
+	options := investmentTransactionTypeOptions()
+	expectedTypes := []string{
+		"Buy", "Sell", "Dividend", "Reinvest Dividend",
+		"Deposit", "Withdrawal", "Interest", "Fee",
+	}
+	for _, exp := range expectedTypes {
+		found := slices.Contains(options, exp)
+		if !found {
+			t.Errorf("expected option %q not found in type selector", exp)
+		}
+	}
+}
+
 func TestInvestmentRegisterKeyHints(t *testing.T) {
 	app := &App{
 		currentView: ViewInvestmentRegister,
@@ -656,6 +859,12 @@ func TestInvestmentRegisterKeyHints(t *testing.T) {
 	if !strings.Contains(hints, "c clear") {
 		t.Errorf("hints should contain 'c clear', got: %s", hints)
 	}
+	if !strings.Contains(hints, "n new") {
+		t.Errorf("hints should contain 'n new', got: %s", hints)
+	}
+	if !strings.Contains(hints, "enter edit") {
+		t.Errorf("hints should contain 'enter edit', got: %s", hints)
+	}
 }
 
 func TestInvestmentRegisterHelpOverlay(t *testing.T) {
@@ -667,12 +876,18 @@ func TestInvestmentRegisterHelpOverlay(t *testing.T) {
 			found = true
 			hasClear := false
 			hasDelete := false
+			hasNew := false
+			hasEdit := false
 			for _, e := range s.Entries {
 				switch e.Key {
 				case "c":
 					hasClear = true
 				case "d":
 					hasDelete = true
+				case "n":
+					hasNew = true
+				case "Enter":
+					hasEdit = true
 				}
 			}
 			if !hasClear {
@@ -680,6 +895,12 @@ func TestInvestmentRegisterHelpOverlay(t *testing.T) {
 			}
 			if !hasDelete {
 				t.Error("investment register shortcuts should include 'd' for delete")
+			}
+			if !hasNew {
+				t.Error("investment register shortcuts should include 'n' for new transaction")
+			}
+			if !hasEdit {
+				t.Error("investment register shortcuts should include 'Enter' for edit")
 			}
 		}
 	}

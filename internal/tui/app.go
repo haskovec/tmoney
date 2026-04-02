@@ -172,10 +172,12 @@ type App struct {
 	priceSvc            *price.Service
 
 	// Investment register state
-	investmentRegister *investmentRegisterData
-	investmentTable    *Table
-	investmentSvc      *investment.Service
-	investmentRepo     *investment.Repository
+	investmentRegister     *investmentRegisterData
+	investmentTable        *Table
+	investmentSvc          *investment.Service
+	investmentRepo         *investment.Repository
+	investmentTypeSelector *Dialog
+	investmentEditTxnID    types.ID // set when editing an existing transaction
 
 	// File dialog state
 	fileDialog     *Dialog
@@ -1143,6 +1145,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handlePriceImportDialogKey(msg)
 	}
 
+	// If investment type selector is visible, route all keys to it
+	if a.investmentTypeSelector != nil && a.investmentTypeSelector.IsVisible() {
+		return a.handleInvestmentTypeSelectorKey(msg)
+	}
+
 	// Undo/redo key bindings (handled before menus since they should
 	// work from any non-dialog context)
 	switch {
@@ -2086,6 +2093,12 @@ func (a *App) renderLayout() string {
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
+	// Overlay investment type selector dialog if visible
+	if a.investmentTypeSelector != nil && a.investmentTypeSelector.IsVisible() {
+		overlay := a.investmentTypeSelector.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
 	// Overlay confirmation dialog if visible
 	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
 		overlay := a.confirmDialog.Render(a.styles)
@@ -2913,7 +2926,7 @@ func (a *App) getKeyHints() string {
 	case ViewPrices:
 		return "↑↓ navigate  ←→ security  n new  enter edit  d delete  i import  / search  esc back  " + common
 	case ViewInvestmentRegister:
-		return "↑↓ navigate  c clear  d delete  esc back  " + common
+		return "↑↓ navigate  enter edit  n new  c clear  d delete  esc back  " + common
 	default:
 		return common
 	}
