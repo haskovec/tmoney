@@ -3084,3 +3084,219 @@ func runPortfolio(opts *cliOptions, w io.Writer) error {
 
 	return nil
 }
+
+// runSplit executes the --split command: apply a stock split or reverse split.
+func runSplit(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--split requires --file to specify a database")
+	}
+	if opts.secTicker == "" {
+		return fmt.Errorf("--split requires --ticker to specify a security")
+	}
+	if opts.splitRatio == "" {
+		return fmt.Errorf("--split requires --ratio to specify the split ratio (e.g. 4:1)")
+	}
+
+	params, err := investment.ParseSplitRatio(opts.splitRatio)
+	if err != nil {
+		return fmt.Errorf("invalid --ratio: %w", err)
+	}
+
+	var date types.Date
+	if opts.txDate != "" {
+		date, err = types.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = types.Today()
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	if err != nil {
+		return fmt.Errorf("security %q not found", opts.secTicker)
+	}
+
+	action, err := svc.CorporateAction.Split(sec.ID, date, *params)
+	if err != nil {
+		return fmt.Errorf("failed to apply stock split: %w", err)
+	}
+
+	fmt.Fprintln(w, "Stock split applied successfully!")
+	fmt.Fprintf(w, "  Security: %s (%s)\n", sec.Ticker, sec.Name)
+	fmt.Fprintf(w, "  Date:     %s\n", date.String())
+	fmt.Fprintf(w, "  Ratio:    %s\n", params.RatioString())
+	fmt.Fprintf(w, "  Action ID: %s\n", action.ID.String())
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runMergeSecurity executes the --merge-security command: apply a merger/acquisition.
+func runMergeSecurity(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--merge-security requires --file to specify a database")
+	}
+	if opts.mergeSource == "" {
+		return fmt.Errorf("--merge-security requires --source to specify the source security ticker")
+	}
+	if opts.mergeTarget == "" {
+		return fmt.Errorf("--merge-security requires --target to specify the target security ticker")
+	}
+	if opts.exchangeRatio == "" {
+		return fmt.Errorf("--merge-security requires --exchange-ratio to specify the exchange ratio")
+	}
+
+	ratio, err := strconv.ParseFloat(opts.exchangeRatio, 64)
+	if err != nil {
+		return fmt.Errorf("invalid --exchange-ratio: %w", err)
+	}
+
+	var cashPerShare float64
+	if opts.cashPerShare != "" {
+		cashPerShare, err = strconv.ParseFloat(opts.cashPerShare, 64)
+		if err != nil {
+			return fmt.Errorf("invalid --cash-per-share: %w", err)
+		}
+	}
+
+	var date types.Date
+	if opts.txDate != "" {
+		date, err = types.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = types.Today()
+	}
+
+	params := investment.MergerParams{
+		ExchangeRatio: ratio,
+		CashPerShare:  cashPerShare,
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	sourceSec, err := svc.Security.GetByTicker(opts.mergeSource, "")
+	if err != nil {
+		return fmt.Errorf("source security %q not found", opts.mergeSource)
+	}
+
+	targetSec, err := svc.Security.GetByTicker(opts.mergeTarget, "")
+	if err != nil {
+		return fmt.Errorf("target security %q not found", opts.mergeTarget)
+	}
+
+	action, err := svc.CorporateAction.Merger(sourceSec.ID, targetSec.ID, date, params)
+	if err != nil {
+		return fmt.Errorf("failed to apply merger: %w", err)
+	}
+
+	fmt.Fprintln(w, "Merger applied successfully!")
+	fmt.Fprintf(w, "  Source:   %s (%s)\n", sourceSec.Ticker, sourceSec.Name)
+	fmt.Fprintf(w, "  Target:   %s (%s)\n", targetSec.Ticker, targetSec.Name)
+	fmt.Fprintf(w, "  Date:     %s\n", date.String())
+	fmt.Fprintf(w, "  Exchange Ratio: %s\n", opts.exchangeRatio)
+	if params.HasCashConsideration() {
+		fmt.Fprintf(w, "  Cash/Share: $%.2f\n", cashPerShare)
+	}
+	fmt.Fprintf(w, "  Action ID: %s\n", action.ID.String())
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// runSpinOff executes the --spin-off command: apply a corporate spin-off.
+func runSpinOff(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--spin-off requires --file to specify a database")
+	}
+	if opts.spinOffParent == "" {
+		return fmt.Errorf("--spin-off requires --parent to specify the parent security ticker")
+	}
+	if opts.spinOffChild == "" {
+		return fmt.Errorf("--spin-off requires --spinoff to specify the spin-off security ticker")
+	}
+	if opts.shareRatio == "" {
+		return fmt.Errorf("--spin-off requires --share-ratio to specify the share ratio")
+	}
+	if opts.parentAllocation == "" {
+		return fmt.Errorf("--spin-off requires --parent-allocation to specify the parent cost basis allocation percentage")
+	}
+	if opts.spinOffPrice == "" {
+		return fmt.Errorf("--spin-off requires --spin-off-price to specify the spin-off security price")
+	}
+
+	shareRatio, err := strconv.ParseFloat(opts.shareRatio, 64)
+	if err != nil {
+		return fmt.Errorf("invalid --share-ratio: %w", err)
+	}
+
+	parentAlloc, err := strconv.ParseFloat(opts.parentAllocation, 64)
+	if err != nil {
+		return fmt.Errorf("invalid --parent-allocation: %w", err)
+	}
+
+	spinPrice, err := types.NewMoney(opts.spinOffPrice)
+	if err != nil {
+		return fmt.Errorf("invalid --spin-off-price: %w", err)
+	}
+
+	var date types.Date
+	if opts.txDate != "" {
+		date, err = types.ParseDate(opts.txDate)
+		if err != nil {
+			return fmt.Errorf("invalid --date: %w", err)
+		}
+	} else {
+		date = types.Today()
+	}
+
+	params := investment.SpinOffParams{
+		ShareRatio:          shareRatio,
+		ParentAllocationPct: parentAlloc,
+	}
+
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	parentSec, err := svc.Security.GetByTicker(opts.spinOffParent, "")
+	if err != nil {
+		return fmt.Errorf("parent security %q not found", opts.spinOffParent)
+	}
+
+	childSec, err := svc.Security.GetByTicker(opts.spinOffChild, "")
+	if err != nil {
+		return fmt.Errorf("spin-off security %q not found", opts.spinOffChild)
+	}
+
+	action, err := svc.CorporateAction.SpinOff(parentSec.ID, childSec.ID, date, params, spinPrice)
+	if err != nil {
+		return fmt.Errorf("failed to apply spin-off: %w", err)
+	}
+
+	fmt.Fprintln(w, "Spin-off applied successfully!")
+	fmt.Fprintf(w, "  Parent:   %s (%s)\n", parentSec.Ticker, parentSec.Name)
+	fmt.Fprintf(w, "  Spin-off: %s (%s)\n", childSec.Ticker, childSec.Name)
+	fmt.Fprintf(w, "  Date:     %s\n", date.String())
+	fmt.Fprintf(w, "  Share Ratio: %s\n", opts.shareRatio)
+	fmt.Fprintf(w, "  Parent Allocation: %s%%\n", opts.parentAllocation)
+	fmt.Fprintf(w, "  Spin-off Price: %s\n", formatMoney(spinPrice, "USD"))
+	fmt.Fprintf(w, "  Action ID: %s\n", action.ID.String())
+
+	autoBackupAfterModification(opts.file)
+	return nil
+}

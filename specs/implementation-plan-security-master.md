@@ -772,15 +772,15 @@ Spec: `specs/security-master.md`
 
 ## Phase 44: CLI — Corporate Actions
 
-- [ ] **SM-163 - CLI: --split**
+- [x] **SM-163 - CLI: --split**
   - RED: Write test — stock split with --ticker, --date, --ratio (format "4:1"); reverse split with "1:10"
   - GREEN: Implement `runSplit`
 
-- [ ] **SM-164 - CLI: --merge-security**
+- [x] **SM-164 - CLI: --merge-security**
   - RED: Write test — merger with --source, --target, --date, --ratio; optional --cash-per-share
   - GREEN: Implement `runMergeSecurity`
 
-- [ ] **SM-165 - CLI: --spin-off**
+- [x] **SM-165 - CLI: --spin-off**
   - RED: Write test — spin-off with --parent, --spinoff, --date, --share-ratio, --parent-allocation
   - GREEN: Implement `runSpinOff`
 

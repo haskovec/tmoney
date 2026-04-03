@@ -9029,3 +9029,718 @@ func TestParseArgs_ImportPricesEqualsFormat(t *testing.T) {
 		t.Errorf("importPrices should be prices.csv, got %q", opts.importPrices)
 	}
 }
+
+// --- Helper for corporate action tests ---
+
+// createCorporateActionTestDB creates a DB with an investment account holding shares.
+// Returns the DB path. If withSecondSecurity is true, also creates a "GOOG" security.
+func createCorporateActionTestDB(t *testing.T, trackLots bool, withSecondSecurity bool) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "corp.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	acct.TrackLots = trackLots
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create investment account: %v", err)
+	}
+
+	secRepo := security.NewRepository(database)
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	if err := secRepo.Create(sec); err != nil {
+		t.Fatalf("failed to create security: %v", err)
+	}
+
+	if withSecondSecurity {
+		sec2 := security.NewSecurity("GOOG", "Alphabet Inc.", security.TypeStock)
+		if err := secRepo.Create(sec2); err != nil {
+			t.Fatalf("failed to create second security: %v", err)
+		}
+	}
+
+	svc := app.NewServices(database)
+
+	// Deposit cash
+	_, err = svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("100000"), "initial deposit")
+	if err != nil {
+		t.Fatalf("failed to deposit cash: %v", err)
+	}
+
+	// Buy 100 shares of AAPL at $150/share
+	totalAmount := types.MustNewMoney("15000")
+	_, err = svc.Investment.Buy(acct.ID, sec.ID, types.Today(), types.MustNewQuantity("100"), &totalAmount, nil, types.ZeroMoney, "")
+	if err != nil {
+		t.Fatalf("failed to buy shares: %v", err)
+	}
+
+	database.Close()
+	return dbPath
+}
+
+// --- SM-163: CLI --split ---
+
+func TestRun_SplitMissingFile(t *testing.T) {
+	err := run([]string{"--split", "--ticker", "AAPL", "--ratio", "4:1"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_SplitMissingTicker(t *testing.T) {
+	err := run([]string{"--split", "--file", "test.tdb", "--ratio", "4:1"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --ticker") {
+		t.Errorf("expected --ticker required error, got: %v", err)
+	}
+}
+
+func TestRun_SplitMissingRatio(t *testing.T) {
+	err := run([]string{"--split", "--file", "test.tdb", "--ticker", "AAPL"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --ratio") {
+		t.Errorf("expected --ratio required error, got: %v", err)
+	}
+}
+
+func TestRun_SplitInvalidRatio(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, false)
+	err := run([]string{"--split", "--file", dbPath, "--ticker", "AAPL", "--ratio", "invalid"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "invalid --ratio") {
+		t.Errorf("expected invalid ratio error, got: %v", err)
+	}
+}
+
+func TestRun_SplitSecurityNotFound(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, false)
+	err := run([]string{"--split", "--file", dbPath, "--ticker", "ZZZZ", "--ratio", "4:1"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected security not found error, got: %v", err)
+	}
+}
+
+func TestRun_SplitForwardSplit(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--split", "--file", dbPath,
+		"--ticker", "AAPL",
+		"--ratio", "4:1",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--split) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Stock split applied successfully") {
+		t.Error("output should confirm split")
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Error("output should contain ticker")
+	}
+	if !strings.Contains(output, "4:1") {
+		t.Error("output should contain ratio")
+	}
+	if !strings.Contains(output, "Action ID") {
+		t.Error("output should contain action ID")
+	}
+}
+
+func TestRun_SplitReverseSplit(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--split", "--file", dbPath,
+		"--ticker", "AAPL",
+		"--ratio", "1:10",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--split reverse) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Stock split applied successfully") {
+		t.Error("output should confirm split")
+	}
+	if !strings.Contains(output, "1:10") {
+		t.Error("output should contain ratio")
+	}
+}
+
+func TestRun_SplitWithDate(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--split", "--file", dbPath,
+		"--ticker", "AAPL",
+		"--ratio", "2:1",
+		"--date", "2025-01-15",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--split with date) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "2025-01-15") {
+		t.Error("output should contain the specified date")
+	}
+}
+
+func TestRun_SplitWithLotTracking(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, true, false)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--split", "--file", dbPath,
+		"--ticker", "AAPL",
+		"--ratio", "4:1",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--split lot-tracking) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Stock split applied successfully") {
+		t.Error("output should confirm split for lot-tracking account")
+	}
+}
+
+func TestRun_SplitInvalidDate(t *testing.T) {
+	err := run([]string{
+		"--split", "--file", "test.tdb",
+		"--ticker", "AAPL",
+		"--ratio", "4:1",
+		"--date", "not-a-date",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "invalid --date") {
+		t.Errorf("expected invalid date error, got: %v", err)
+	}
+}
+
+// --- SM-164: CLI --merge-security ---
+
+func TestRun_MergeSecurityMissingFile(t *testing.T) {
+	err := run([]string{"--merge-security", "--source", "AAPL", "--target", "GOOG", "--exchange-ratio", "0.5"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_MergeSecurityMissingSource(t *testing.T) {
+	err := run([]string{"--merge-security", "--file", "test.tdb", "--target", "GOOG", "--exchange-ratio", "0.5"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --source") {
+		t.Errorf("expected --source required error, got: %v", err)
+	}
+}
+
+func TestRun_MergeSecurityMissingTarget(t *testing.T) {
+	err := run([]string{"--merge-security", "--file", "test.tdb", "--source", "AAPL", "--exchange-ratio", "0.5"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --target") {
+		t.Errorf("expected --target required error, got: %v", err)
+	}
+}
+
+func TestRun_MergeSecurityMissingRatio(t *testing.T) {
+	err := run([]string{"--merge-security", "--file", "test.tdb", "--source", "AAPL", "--target", "GOOG"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --exchange-ratio") {
+		t.Errorf("expected --exchange-ratio required error, got: %v", err)
+	}
+}
+
+func TestRun_MergeSecurityInvalidRatio(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, true)
+	err := run([]string{
+		"--merge-security", "--file", dbPath,
+		"--source", "AAPL", "--target", "GOOG",
+		"--exchange-ratio", "not-a-number",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "invalid --exchange-ratio") {
+		t.Errorf("expected invalid exchange ratio error, got: %v", err)
+	}
+}
+
+func TestRun_MergeSecuritySourceNotFound(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, true)
+	err := run([]string{
+		"--merge-security", "--file", dbPath,
+		"--source", "ZZZZ", "--target", "GOOG",
+		"--exchange-ratio", "0.5",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected source not found error, got: %v", err)
+	}
+}
+
+func TestRun_MergeSecurityTargetNotFound(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, true)
+	err := run([]string{
+		"--merge-security", "--file", dbPath,
+		"--source", "AAPL", "--target", "ZZZZ",
+		"--exchange-ratio", "0.5",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected target not found error, got: %v", err)
+	}
+}
+
+func TestRun_MergeSecurityBasic(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, true)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--merge-security", "--file", dbPath,
+		"--source", "AAPL", "--target", "GOOG",
+		"--exchange-ratio", "0.5",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--merge-security) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Merger applied successfully") {
+		t.Error("output should confirm merger")
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Error("output should contain source ticker")
+	}
+	if !strings.Contains(output, "GOOG") {
+		t.Error("output should contain target ticker")
+	}
+	if !strings.Contains(output, "0.5") {
+		t.Error("output should contain exchange ratio")
+	}
+	if !strings.Contains(output, "Action ID") {
+		t.Error("output should contain action ID")
+	}
+}
+
+func TestRun_MergeSecurityWithCashPerShare(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, true)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--merge-security", "--file", dbPath,
+		"--source", "AAPL", "--target", "GOOG",
+		"--exchange-ratio", "0.5",
+		"--cash-per-share", "10.50",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--merge-security with cash) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Merger applied successfully") {
+		t.Error("output should confirm merger")
+	}
+	if !strings.Contains(output, "Cash/Share") {
+		t.Error("output should show cash per share")
+	}
+}
+
+func TestRun_MergeSecurityWithDate(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, true)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--merge-security", "--file", dbPath,
+		"--source", "AAPL", "--target", "GOOG",
+		"--exchange-ratio", "0.5",
+		"--date", "2025-06-01",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--merge-security with date) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "2025-06-01") {
+		t.Error("output should contain the specified date")
+	}
+}
+
+func TestRun_MergeSecurityWithLotTracking(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, true, true)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--merge-security", "--file", dbPath,
+		"--source", "AAPL", "--target", "GOOG",
+		"--exchange-ratio", "0.5",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--merge-security lot-tracking) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Merger applied successfully") {
+		t.Error("output should confirm merger for lot-tracking account")
+	}
+}
+
+func TestRun_MergeSecurityInvalidCashPerShare(t *testing.T) {
+	err := run([]string{
+		"--merge-security", "--file", "test.tdb",
+		"--source", "AAPL", "--target", "GOOG",
+		"--exchange-ratio", "0.5",
+		"--cash-per-share", "abc",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "invalid --cash-per-share") {
+		t.Errorf("expected invalid cash-per-share error, got: %v", err)
+	}
+}
+
+// --- SM-165: CLI --spin-off ---
+
+func TestRun_SpinOffMissingFile(t *testing.T) {
+	err := run([]string{
+		"--spin-off", "--parent", "AAPL", "--spinoff", "GOOG",
+		"--share-ratio", "0.5", "--parent-allocation", "80",
+		"--spin-off-price", "25",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --file") {
+		t.Errorf("expected --file required error, got: %v", err)
+	}
+}
+
+func TestRun_SpinOffMissingParent(t *testing.T) {
+	err := run([]string{
+		"--spin-off", "--file", "test.tdb", "--spinoff", "GOOG",
+		"--share-ratio", "0.5", "--parent-allocation", "80",
+		"--spin-off-price", "25",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --parent") {
+		t.Errorf("expected --parent required error, got: %v", err)
+	}
+}
+
+func TestRun_SpinOffMissingSpinoff(t *testing.T) {
+	err := run([]string{
+		"--spin-off", "--file", "test.tdb", "--parent", "AAPL",
+		"--share-ratio", "0.5", "--parent-allocation", "80",
+		"--spin-off-price", "25",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --spinoff") {
+		t.Errorf("expected --spinoff required error, got: %v", err)
+	}
+}
+
+func TestRun_SpinOffMissingShareRatio(t *testing.T) {
+	err := run([]string{
+		"--spin-off", "--file", "test.tdb", "--parent", "AAPL", "--spinoff", "GOOG",
+		"--parent-allocation", "80", "--spin-off-price", "25",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --share-ratio") {
+		t.Errorf("expected --share-ratio required error, got: %v", err)
+	}
+}
+
+func TestRun_SpinOffMissingParentAllocation(t *testing.T) {
+	err := run([]string{
+		"--spin-off", "--file", "test.tdb", "--parent", "AAPL", "--spinoff", "GOOG",
+		"--share-ratio", "0.5", "--spin-off-price", "25",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --parent-allocation") {
+		t.Errorf("expected --parent-allocation required error, got: %v", err)
+	}
+}
+
+func TestRun_SpinOffMissingPrice(t *testing.T) {
+	err := run([]string{
+		"--spin-off", "--file", "test.tdb", "--parent", "AAPL", "--spinoff", "GOOG",
+		"--share-ratio", "0.5", "--parent-allocation", "80",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires --spin-off-price") {
+		t.Errorf("expected --spin-off-price required error, got: %v", err)
+	}
+}
+
+func TestRun_SpinOffInvalidShareRatio(t *testing.T) {
+	err := run([]string{
+		"--spin-off", "--file", "test.tdb", "--parent", "AAPL", "--spinoff", "GOOG",
+		"--share-ratio", "abc", "--parent-allocation", "80",
+		"--spin-off-price", "25",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "invalid --share-ratio") {
+		t.Errorf("expected invalid share-ratio error, got: %v", err)
+	}
+}
+
+func TestRun_SpinOffInvalidParentAllocation(t *testing.T) {
+	err := run([]string{
+		"--spin-off", "--file", "test.tdb", "--parent", "AAPL", "--spinoff", "GOOG",
+		"--share-ratio", "0.5", "--parent-allocation", "xyz",
+		"--spin-off-price", "25",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "invalid --parent-allocation") {
+		t.Errorf("expected invalid parent-allocation error, got: %v", err)
+	}
+}
+
+func TestRun_SpinOffInvalidPrice(t *testing.T) {
+	err := run([]string{
+		"--spin-off", "--file", "test.tdb", "--parent", "AAPL", "--spinoff", "GOOG",
+		"--share-ratio", "0.5", "--parent-allocation", "80",
+		"--spin-off-price", "abc",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "invalid --spin-off-price") {
+		t.Errorf("expected invalid spin-off-price error, got: %v", err)
+	}
+}
+
+func TestRun_SpinOffParentNotFound(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, true)
+	err := run([]string{
+		"--spin-off", "--file", dbPath, "--parent", "ZZZZ", "--spinoff", "GOOG",
+		"--share-ratio", "0.5", "--parent-allocation", "80",
+		"--spin-off-price", "25",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected parent not found error, got: %v", err)
+	}
+}
+
+func TestRun_SpinOffChildNotFound(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, true)
+	err := run([]string{
+		"--spin-off", "--file", dbPath, "--parent", "AAPL", "--spinoff", "ZZZZ",
+		"--share-ratio", "0.5", "--parent-allocation", "80",
+		"--spin-off-price", "25",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected spin-off security not found error, got: %v", err)
+	}
+}
+
+func TestRun_SpinOffBasic(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, true)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--spin-off", "--file", dbPath,
+		"--parent", "AAPL", "--spinoff", "GOOG",
+		"--share-ratio", "0.5",
+		"--parent-allocation", "80",
+		"--spin-off-price", "25",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--spin-off) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Spin-off applied successfully") {
+		t.Error("output should confirm spin-off")
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Error("output should contain parent ticker")
+	}
+	if !strings.Contains(output, "GOOG") {
+		t.Error("output should contain spin-off ticker")
+	}
+	if !strings.Contains(output, "0.5") {
+		t.Error("output should contain share ratio")
+	}
+	if !strings.Contains(output, "80%") {
+		t.Error("output should contain parent allocation")
+	}
+	if !strings.Contains(output, "Action ID") {
+		t.Error("output should contain action ID")
+	}
+}
+
+func TestRun_SpinOffWithDate(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, false, true)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--spin-off", "--file", dbPath,
+		"--parent", "AAPL", "--spinoff", "GOOG",
+		"--share-ratio", "0.5",
+		"--parent-allocation", "80",
+		"--spin-off-price", "25",
+		"--date", "2025-03-15",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--spin-off with date) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "2025-03-15") {
+		t.Error("output should contain the specified date")
+	}
+}
+
+func TestRun_SpinOffWithLotTracking(t *testing.T) {
+	dbPath := createCorporateActionTestDB(t, true, true)
+
+	stdout := &bytes.Buffer{}
+	err := run([]string{
+		"--spin-off", "--file", dbPath,
+		"--parent", "AAPL", "--spinoff", "GOOG",
+		"--share-ratio", "0.5",
+		"--parent-allocation", "80",
+		"--spin-off-price", "25",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run(--spin-off lot-tracking) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Spin-off applied successfully") {
+		t.Error("output should confirm spin-off for lot-tracking account")
+	}
+}
+
+func TestRun_SpinOffInvalidDate(t *testing.T) {
+	err := run([]string{
+		"--spin-off", "--file", "test.tdb",
+		"--parent", "AAPL", "--spinoff", "GOOG",
+		"--share-ratio", "0.5", "--parent-allocation", "80",
+		"--spin-off-price", "25", "--date", "bad-date",
+	}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "invalid --date") {
+		t.Errorf("expected invalid date error, got: %v", err)
+	}
+}
+
+// --- Parse args tests for corporate actions ---
+
+func TestParseArgs_SplitFlags(t *testing.T) {
+	opts, _, err := parseArgs([]string{"--split", "--file", "test.tdb", "--ticker", "AAPL", "--ratio", "4:1", "--date", "2025-01-15"})
+	if err != nil {
+		t.Fatalf("parseArgs() error = %v", err)
+	}
+	if !opts.split {
+		t.Error("split should be true")
+	}
+	if opts.secTicker != "AAPL" {
+		t.Errorf("ticker should be AAPL, got %q", opts.secTicker)
+	}
+	if opts.splitRatio != "4:1" {
+		t.Errorf("splitRatio should be 4:1, got %q", opts.splitRatio)
+	}
+	if opts.txDate != "2025-01-15" {
+		t.Errorf("date should be 2025-01-15, got %q", opts.txDate)
+	}
+}
+
+func TestParseArgs_SplitEqualsFormat(t *testing.T) {
+	opts, _, err := parseArgs([]string{"--split", "--file", "test.tdb", "--ticker=AAPL", "--ratio=4:1"})
+	if err != nil {
+		t.Fatalf("parseArgs() error = %v", err)
+	}
+	if opts.splitRatio != "4:1" {
+		t.Errorf("splitRatio should be 4:1, got %q", opts.splitRatio)
+	}
+}
+
+func TestParseArgs_MergeSecurityFlags(t *testing.T) {
+	opts, _, err := parseArgs([]string{
+		"--merge-security", "--file", "test.tdb",
+		"--source", "AAPL", "--target", "GOOG",
+		"--exchange-ratio", "0.5", "--cash-per-share", "10.50",
+		"--date", "2025-06-01",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs() error = %v", err)
+	}
+	if !opts.mergeSecurity {
+		t.Error("mergeSecurity should be true")
+	}
+	if opts.mergeSource != "AAPL" {
+		t.Errorf("mergeSource should be AAPL, got %q", opts.mergeSource)
+	}
+	if opts.mergeTarget != "GOOG" {
+		t.Errorf("mergeTarget should be GOOG, got %q", opts.mergeTarget)
+	}
+	if opts.exchangeRatio != "0.5" {
+		t.Errorf("exchangeRatio should be 0.5, got %q", opts.exchangeRatio)
+	}
+	if opts.cashPerShare != "10.50" {
+		t.Errorf("cashPerShare should be 10.50, got %q", opts.cashPerShare)
+	}
+}
+
+func TestParseArgs_MergeSecurityEqualsFormat(t *testing.T) {
+	opts, _, err := parseArgs([]string{
+		"--merge-security", "--file", "test.tdb",
+		"--source=AAPL", "--target=GOOG",
+		"--exchange-ratio=0.5", "--cash-per-share=10.50",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs() error = %v", err)
+	}
+	if opts.mergeSource != "AAPL" {
+		t.Errorf("mergeSource should be AAPL, got %q", opts.mergeSource)
+	}
+	if opts.mergeTarget != "GOOG" {
+		t.Errorf("mergeTarget should be GOOG, got %q", opts.mergeTarget)
+	}
+	if opts.exchangeRatio != "0.5" {
+		t.Errorf("exchangeRatio should be 0.5, got %q", opts.exchangeRatio)
+	}
+	if opts.cashPerShare != "10.50" {
+		t.Errorf("cashPerShare should be 10.50, got %q", opts.cashPerShare)
+	}
+}
+
+func TestParseArgs_SpinOffFlags(t *testing.T) {
+	opts, _, err := parseArgs([]string{
+		"--spin-off", "--file", "test.tdb",
+		"--parent", "AAPL", "--spinoff", "GOOG",
+		"--share-ratio", "0.5", "--parent-allocation", "80",
+		"--spin-off-price", "25",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs() error = %v", err)
+	}
+	if !opts.spinOff {
+		t.Error("spinOff should be true")
+	}
+	if opts.spinOffParent != "AAPL" {
+		t.Errorf("spinOffParent should be AAPL, got %q", opts.spinOffParent)
+	}
+	if opts.spinOffChild != "GOOG" {
+		t.Errorf("spinOffChild should be GOOG, got %q", opts.spinOffChild)
+	}
+	if opts.shareRatio != "0.5" {
+		t.Errorf("shareRatio should be 0.5, got %q", opts.shareRatio)
+	}
+	if opts.parentAllocation != "80" {
+		t.Errorf("parentAllocation should be 80, got %q", opts.parentAllocation)
+	}
+	if opts.spinOffPrice != "25" {
+		t.Errorf("spinOffPrice should be 25, got %q", opts.spinOffPrice)
+	}
+}
+
+func TestParseArgs_SpinOffEqualsFormat(t *testing.T) {
+	opts, _, err := parseArgs([]string{
+		"--spin-off", "--file", "test.tdb",
+		"--parent=AAPL", "--spinoff=GOOG",
+		"--share-ratio=0.5", "--parent-allocation=80",
+		"--spin-off-price=25",
+	})
+	if err != nil {
+		t.Fatalf("parseArgs() error = %v", err)
+	}
+	if opts.spinOffParent != "AAPL" {
+		t.Errorf("spinOffParent should be AAPL, got %q", opts.spinOffParent)
+	}
+	if opts.spinOffChild != "GOOG" {
+		t.Errorf("spinOffChild should be GOOG, got %q", opts.spinOffChild)
+	}
+	if opts.shareRatio != "0.5" {
+		t.Errorf("shareRatio should be 0.5, got %q", opts.shareRatio)
+	}
+	if opts.parentAllocation != "80" {
+		t.Errorf("parentAllocation should be 80, got %q", opts.parentAllocation)
+	}
+	if opts.spinOffPrice != "25" {
+		t.Errorf("spinOffPrice should be 25, got %q", opts.spinOffPrice)
+	}
+}

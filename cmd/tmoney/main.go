@@ -212,6 +212,21 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runTransferShares(opts, stdout)
 	}
 
+	// Handle --split
+	if opts.split {
+		return runSplit(opts, stdout)
+	}
+
+	// Handle --merge-security
+	if opts.mergeSecurity {
+		return runMergeSecurity(opts, stdout)
+	}
+
+	// Handle --spin-off
+	if opts.spinOff {
+		return runSpinOff(opts, stdout)
+	}
+
 	// Handle --portfolio
 	if opts.portfolio {
 		return runPortfolio(opts, stdout)

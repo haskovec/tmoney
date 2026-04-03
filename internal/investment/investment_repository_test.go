@@ -1,7 +1,6 @@
 package investment
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
@@ -13,14 +12,7 @@ import (
 
 func createTestDB(t *testing.T) *db.DB {
 	t.Helper()
-	tempDir := t.TempDir()
-	path := filepath.Join(tempDir, "test.tdb")
-	database, err := db.Create(path)
-	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
-	return database
+	return createTestDBFromTemplate(t)
 }
 
 func createInvestmentAccountForTest(t *testing.T, repo *account.Repository) *account.Account {

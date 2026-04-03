@@ -144,6 +144,21 @@ type cliOptions struct {
 	// Portfolio options
 	portfolio bool // --portfolio flag
 	showLots  bool // --show-lots flag
+
+	// Corporate action options
+	split              bool   // --split flag
+	splitRatio         string // --ratio <N:D> (for split)
+	mergeSecurity      bool   // --merge-security flag
+	mergeSource        string // --source <ticker>
+	mergeTarget        string // --target <ticker>
+	exchangeRatio      string // --exchange-ratio <ratio>
+	cashPerShare       string // --cash-per-share <amount>
+	spinOff            bool   // --spin-off flag
+	spinOffParent      string // --parent <ticker>
+	spinOffChild       string // --spinoff <ticker>
+	shareRatio         string // --share-ratio <ratio>
+	parentAllocation   string // --parent-allocation <percent>
+	spinOffPrice       string // --spin-off-price <price>
 }
 
 // parseArgs parses command-line arguments and returns options and remaining args.
@@ -599,6 +614,72 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.portfolio = true
 		case "--show-lots":
 			opts.showLots = true
+		case "--split":
+			opts.split = true
+		case "--ratio":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--ratio requires a value argument (e.g. 4:1)")
+			}
+			i++
+			opts.splitRatio = args[i]
+		case "--merge-security":
+			opts.mergeSecurity = true
+		case "--source":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--source requires a ticker argument")
+			}
+			i++
+			opts.mergeSource = args[i]
+		case "--target":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--target requires a ticker argument")
+			}
+			i++
+			opts.mergeTarget = args[i]
+		case "--exchange-ratio":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--exchange-ratio requires a value argument")
+			}
+			i++
+			opts.exchangeRatio = args[i]
+		case "--cash-per-share":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--cash-per-share requires a value argument")
+			}
+			i++
+			opts.cashPerShare = args[i]
+		case "--spin-off":
+			opts.spinOff = true
+		case "--parent":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--parent requires a ticker argument")
+			}
+			i++
+			opts.spinOffParent = args[i]
+		case "--spinoff":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--spinoff requires a ticker argument")
+			}
+			i++
+			opts.spinOffChild = args[i]
+		case "--share-ratio":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--share-ratio requires a value argument")
+			}
+			i++
+			opts.shareRatio = args[i]
+		case "--parent-allocation":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--parent-allocation requires a percentage value")
+			}
+			i++
+			opts.parentAllocation = args[i]
+		case "--spin-off-price":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--spin-off-price requires a value argument")
+			}
+			i++
+			opts.spinOffPrice = args[i]
 		default:
 			// Check for --flag=value formats
 			if after, ok := strings.CutPrefix(arg, "--file="); ok {
@@ -735,6 +816,26 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.pricePerShare = after
 			} else if after, ok := strings.CutPrefix(arg, "--lot="); ok {
 				opts.lot = after
+			} else if after, ok := strings.CutPrefix(arg, "--ratio="); ok {
+				opts.splitRatio = after
+			} else if after, ok := strings.CutPrefix(arg, "--source="); ok {
+				opts.mergeSource = after
+			} else if after, ok := strings.CutPrefix(arg, "--target="); ok {
+				opts.mergeTarget = after
+			} else if after, ok := strings.CutPrefix(arg, "--exchange-ratio="); ok {
+				opts.exchangeRatio = after
+			} else if after, ok := strings.CutPrefix(arg, "--cash-per-share="); ok {
+				opts.cashPerShare = after
+			} else if after, ok := strings.CutPrefix(arg, "--parent="); ok {
+				opts.spinOffParent = after
+			} else if after, ok := strings.CutPrefix(arg, "--spinoff="); ok {
+				opts.spinOffChild = after
+			} else if after, ok := strings.CutPrefix(arg, "--share-ratio="); ok {
+				opts.shareRatio = after
+			} else if after, ok := strings.CutPrefix(arg, "--parent-allocation="); ok {
+				opts.parentAllocation = after
+			} else if after, ok := strings.CutPrefix(arg, "--spin-off-price="); ok {
+				opts.spinOffPrice = after
 			} else {
 				remaining = append(remaining, arg)
 			}
