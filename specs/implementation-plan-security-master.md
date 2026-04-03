@@ -786,7 +786,7 @@ Spec: `specs/security-master.md`
 
 ## Phase 45: TUI — Corporate Actions
 
-- [ ] **SM-166 - Stock split dialog**
+- [x] **SM-166 - Stock split dialog**
   - RED: Write test — dialog: Security (pre-selected or searchable), Date, Ratio (text input "4:1"); confirms affected accounts before executing
   - GREEN: Implement split dialog accessible from security view
 

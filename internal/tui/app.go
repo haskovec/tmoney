@@ -223,6 +223,13 @@ type App struct {
 	portfolioLotsTable     *Table
 	portfolioMode          portfolioViewMode
 
+	// Corporate action service and stock split dialog state
+	corporateActionSvc              *investment.CorporateActionService
+	stockSplitDialog                *Dialog
+	stockSplitDialogData            *stockSplitDialogData
+	stockSplitDialogSecurityIDs     []types.ID
+	stockSplitDialogPreSelectedID   *types.ID
+
 	// Lot repository for sell dialog lot loading
 	lotRepo *investment.LotRepository
 
@@ -448,8 +455,9 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		securitySvc:       svc.Security,
 		priceSvc:          svc.Price,
 		investmentSvc:     svc.Investment,
-		investmentRepo:    svc.InvestmentRepo,
-		lotRepo:           svc.LotRepo,
+		investmentRepo:     svc.InvestmentRepo,
+		lotRepo:            svc.LotRepo,
+		corporateActionSvc: svc.CorporateAction,
 	}
 }
 
@@ -962,6 +970,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case stockSplitDialogDataMsg:
+		a.stockSplitDialogData = msg.data
+		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
+		a.stockSplitDialogSecurityIDs = secIDs
+		a.stockSplitDialog = buildStockSplitDialog(secOptions, secIDs, a.stockSplitDialogPreSelectedID)
+		a.stockSplitDialogPreSelectedID = nil
+		return a, nil
+
+	case stockSplitDialogSavedMsg:
+		a.statusbar.AddNotification("Stock split executed", NotificationInfo)
+		return a, a.loadSecurityViewData()
+
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data
 		a.buildScheduledTable()
@@ -1358,6 +1378,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If transfer shares dialog is visible, route all keys to it
 	if a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible() {
 		return a.handleTransferSharesDialogKey(msg)
+	}
+
+	// If stock split dialog is visible, route all keys to it
+	if a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible() {
+		return a.handleStockSplitDialogKey(msg)
 	}
 
 	// If cash operation dialog is visible, route all keys to it
@@ -2358,6 +2383,12 @@ func (a *App) renderLayout() string {
 	// Overlay transfer shares dialog if visible
 	if a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible() {
 		overlay := a.transferSharesDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay stock split dialog if visible
+	if a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible() {
+		overlay := a.stockSplitDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

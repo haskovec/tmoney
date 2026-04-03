@@ -298,6 +298,14 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				},
 			)
 		}
+	case msg.String() == "s":
+		// Open stock split dialog for selected security
+		sec := a.selectedSecurity()
+		if sec != nil {
+			secID := sec.ID
+			a.stockSplitDialogPreSelectedID = &secID
+		}
+		return a, a.loadStockSplitDialogData()
 	case msg.String() == "p":
 		// Navigate to prices view for selected security
 		sec := a.selectedSecurity()
