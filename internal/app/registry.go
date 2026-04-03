@@ -27,7 +27,8 @@ type Services struct {
 	Reconciliation *reconciliation.Service
 	Security       *security.Service
 	Price          *price.Service
-	Investment     *investment.Service
+	Investment      *investment.Service
+	CorporateAction *investment.CorporateActionService
 
 	// Repositories (exposed for direct use by CLI/TUI when needed)
 	AccountRepo        *account.Repository
@@ -84,6 +85,7 @@ func NewServices(database *db.DB) *Services {
 	reportSvc := report.NewService(accountRepo, database)
 	priceSvc := price.NewService(priceRepo, securityRepo, database)
 	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, database)
+	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, database)
 
 	return &Services{
 		Account:        accountSvc,
@@ -95,7 +97,8 @@ func NewServices(database *db.DB) *Services {
 		Reconciliation: reconciliationSvc,
 		Security:       securitySvc,
 		Price:          priceSvc,
-		Investment:     investmentSvc,
+		Investment:      investmentSvc,
+		CorporateAction: corporateActionSvc,
 
 		AccountRepo:        accountRepo,
 		TransactionRepo:    txnRepo,

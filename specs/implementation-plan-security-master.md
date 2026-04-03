@@ -702,23 +702,23 @@ Spec: `specs/security-master.md`
 
 ## Phase 41: Corporate Action Service — Stock Split
 
-- [ ] **SM-147 - Stock split: adjust lots**
+- [x] **SM-147 - Stock split: adjust lots**
   - RED: Write test — 4:1 split on security with lot of 10 shares at $100/share → 40 shares at $25/share; original_shares unchanged; multiple lots all adjusted
   - GREEN: Implement lot adjustment in `CorporateActionService.Split`
 
-- [ ] **SM-148 - Stock split: adjust positions (non-lot)**
+- [x] **SM-148 - Stock split: adjust positions (non-lot)**
   - RED: Write test — 4:1 split on position of 10 shares at $100 avg → 40 shares at $25 avg
   - GREEN: Implement position adjustment in `Split`
 
-- [ ] **SM-149 - Stock split: adjust price history**
+- [x] **SM-149 - Stock split: adjust price history**
   - RED: Write test — all prices on or before split date divided by ratio; prices after split date unchanged
   - GREEN: Implement price history adjustment in `Split`
 
-- [ ] **SM-150 - Stock split: audit log**
+- [x] **SM-150 - Stock split: audit log**
   - RED: Write test — split creates corporate_actions record with correct parameters
   - GREEN: Record audit entry in `Split`
 
-- [ ] **SM-151 - Reverse split**
+- [x] **SM-151 - Reverse split**
   - RED: Write test — 1:10 reverse split on 100 shares at $5 → 10 shares at $50; prices multiplied; verify same code path with inverted ratio
   - GREEN: Verify `Split` handles reverse splits (ratio < 1)
 
