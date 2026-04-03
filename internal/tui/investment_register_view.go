@@ -343,6 +343,8 @@ func investmentTransactionTypeOptions() []string {
 		investment.TransactionTypeWithdrawal.DisplayName(),
 		investment.TransactionTypeInterest.DisplayName(),
 		investment.TransactionTypeFee.DisplayName(),
+		investment.TransactionTypeTransferCash.DisplayName(),
+		investment.TransactionTypeTransferShares.DisplayName(),
 	}
 }
 
@@ -357,6 +359,8 @@ func investmentTransactionTypeFromIndex(idx int) investment.TransactionType {
 		investment.TransactionTypeWithdrawal,
 		investment.TransactionTypeInterest,
 		investment.TransactionTypeFee,
+		investment.TransactionTypeTransferCash,
+		investment.TransactionTypeTransferShares,
 	}
 	if idx >= 0 && idx < len(types) {
 		return types[idx]
@@ -375,6 +379,8 @@ func investmentTransactionTypeIndex(txnType investment.TransactionType) int {
 		investment.TransactionTypeWithdrawal,
 		investment.TransactionTypeInterest,
 		investment.TransactionTypeFee,
+		investment.TransactionTypeTransferCash,
+		investment.TransactionTypeTransferShares,
 	}
 	for i, t := range types {
 		if t == txnType {
@@ -450,6 +456,11 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyMsg) (tea.Model, tea.Cm
 			}
 			a.cashOperationDialog = buildCashOperationDialog(selectedType.DisplayName(), editTxn)
 			return a, nil
+		case investment.TransactionTypeTransferCash:
+			a.transferCashDirection = "deposit"
+			return a, a.loadTransferCashDialogData()
+		case investment.TransactionTypeTransferShares:
+			return a, a.loadTransferSharesDialogData()
 		}
 
 	case DialogActionCancel:

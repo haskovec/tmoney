@@ -200,6 +200,19 @@ type App struct {
 	cashOperationDialog *Dialog
 	cashOperationType   investment.TransactionType
 
+	// Transfer cash dialog state (between investment and regular accounts)
+	transferCashDialog           *Dialog
+	transferCashDialogData       *transferCashDialogData
+	transferCashDialogAccountIDs []types.ID
+	transferCashDirection        string // "deposit" or "withdraw"
+
+	// Transfer shares dialog state (between investment accounts)
+	transferSharesDialog            *Dialog
+	transferSharesDialogData        *transferSharesDialogData
+	transferSharesDialogAccountIDs  []types.ID
+	transferSharesDialogSecurityIDs []types.ID
+	transferSharesDialogLots        []*investment.Lot
+
 	// Lot repository for sell dialog lot loading
 	lotRepo *investment.LotRepository
 
@@ -876,6 +889,49 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case transferCashDialogDataMsg:
+		a.transferCashDialogData = msg.data
+		acctOptions, acctIDs := buildNonInvestmentAccountOptions(msg.data.accounts)
+		a.transferCashDialogAccountIDs = acctIDs
+		var editTxn *investment.Transaction
+		if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
+			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+		}
+		a.transferCashDialog = buildTransferCashDialog(a.transferCashDirection, acctOptions, editTxn, acctIDs)
+		return a, nil
+
+	case transferCashDialogSavedMsg:
+		a.statusbar.AddNotification("Cash transfer saved", NotificationInfo)
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		}
+		return a, nil
+
+	case transferSharesDialogDataMsg:
+		a.transferSharesDialogData = msg.data
+		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
+		a.transferSharesDialogSecurityIDs = secIDs
+		excludeID := types.NilID
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			excludeID = a.investmentRegister.account.ID
+		}
+		acctOptions, acctIDs := buildInvestmentAccountOptions(msg.data.investmentAccounts, excludeID)
+		a.transferSharesDialogAccountIDs = acctIDs
+		a.transferSharesDialogLots = msg.data.lots
+		var editTxn *investment.Transaction
+		if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
+			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+		}
+		a.transferSharesDialog = buildTransferSharesDialog(acctOptions, secOptions, editTxn, acctIDs, secIDs, msg.data.lots)
+		return a, nil
+
+	case transferSharesDialogSavedMsg:
+		a.statusbar.AddNotification("Share transfer saved", NotificationInfo)
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		}
+		return a, nil
+
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data
 		a.buildScheduledTable()
@@ -1259,6 +1315,16 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If dividend dialog is visible, route all keys to it
 	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
 		return a.handleDividendDialogKey(msg)
+	}
+
+	// If transfer cash dialog is visible, route all keys to it
+	if a.transferCashDialog != nil && a.transferCashDialog.IsVisible() {
+		return a.handleTransferCashDialogKey(msg)
+	}
+
+	// If transfer shares dialog is visible, route all keys to it
+	if a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible() {
+		return a.handleTransferSharesDialogKey(msg)
 	}
 
 	// If cash operation dialog is visible, route all keys to it
@@ -2241,6 +2307,18 @@ func (a *App) renderLayout() string {
 	// Overlay cash operation dialog if visible
 	if a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible() {
 		overlay := a.cashOperationDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay transfer cash dialog if visible
+	if a.transferCashDialog != nil && a.transferCashDialog.IsVisible() {
+		overlay := a.transferCashDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay transfer shares dialog if visible
+	if a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible() {
+		overlay := a.transferSharesDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

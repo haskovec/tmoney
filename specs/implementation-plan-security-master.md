@@ -640,7 +640,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — simple dialogs for cash-only operations; Amount, Date, Memo fields
   - GREEN: Implement cash operation dialogs
 
-- [ ] **SM-134 - Transfer dialogs (cash and shares)**
+- [x] **SM-134 - Transfer dialogs (cash and shares)**
   - RED: Write test — cash transfer: select linked account, amount; share transfer: select destination account, security, shares
   - GREEN: Implement transfer dialogs
 
