@@ -692,11 +692,11 @@ Spec: `specs/security-master.md`
 
 ## Phase 40: Corporate Action Repository
 
-- [ ] **SM-145 - CorporateActionRepository.Create**
+- [x] **SM-145 - CorporateActionRepository.Create**
   - RED: Write test — create action, verify fields and JSON parameters stored correctly
   - GREEN: Implement `Create` in `internal/investment/corporate_action_repository.go`
 
-- [ ] **SM-146 - CorporateActionRepository.ListBySecurity**
+- [x] **SM-146 - CorporateActionRepository.ListBySecurity**
   - RED: Write test — list actions for a security ordered by date; includes actions where security is source or target
   - GREEN: Implement `ListBySecurity`
 

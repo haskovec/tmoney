@@ -43,7 +43,8 @@ type Services struct {
 	InvestmentRepo     *investment.Repository
 	LotRepo            *investment.LotRepository
 	PositionRepo       *investment.PositionRepository
-	TransactionLotRepo *investment.TransactionLotRepository
+	TransactionLotRepo     *investment.TransactionLotRepository
+	CorporateActionRepo *investment.CorporateActionRepository
 }
 
 // NewServices creates all repositories and services with proper dependency wiring.
@@ -66,6 +67,7 @@ func NewServices(database *db.DB) *Services {
 	lotRepo := investment.NewLotRepository(database)
 	positionRepo := investment.NewPositionRepository(database)
 	transactionLotRepo := investment.NewTransactionLotRepository(database)
+	corporateActionRepo := investment.NewCorporateActionRepository(database)
 
 	// Create services (inject cross-slice repo dependencies)
 	accountSvc := account.NewService(accountRepo, database)
@@ -108,6 +110,7 @@ func NewServices(database *db.DB) *Services {
 		InvestmentRepo:     investmentRepo,
 		LotRepo:            lotRepo,
 		PositionRepo:       positionRepo,
-		TransactionLotRepo: transactionLotRepo,
+		TransactionLotRepo:     transactionLotRepo,
+		CorporateActionRepo: corporateActionRepo,
 	}
 }
