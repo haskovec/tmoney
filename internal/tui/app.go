@@ -190,6 +190,12 @@ type App struct {
 	sellDialogSecurityIDs []types.ID
 	sellDialogLots        []*investment.Lot
 
+	// Dividend dialog state
+	dividendDialog            *Dialog
+	dividendDialogData        *dividendDialogData
+	dividendDialogSecurityIDs []types.ID
+	dividendDialogReinvest    bool // true when dialog is for reinvest dividend
+
 	// Lot repository for sell dialog lot loading
 	lotRepo *investment.LotRepository
 
@@ -827,6 +833,32 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case dividendDialogDataMsg:
+		a.dividendDialogData = msg.data
+		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
+		a.dividendDialogSecurityIDs = secIDs
+		var editTxn *investment.Transaction
+		if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
+			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+		}
+		if a.dividendDialogReinvest {
+			a.dividendDialog = buildReinvestDividendDialog(secOptions, editTxn, secIDs)
+		} else {
+			a.dividendDialog = buildDividendDialog(secOptions, editTxn, secIDs)
+		}
+		return a, nil
+
+	case dividendDialogSavedMsg:
+		label := "Dividend"
+		if a.dividendDialogReinvest {
+			label = "Reinvest dividend"
+		}
+		a.statusbar.AddNotification(label+" transaction saved", NotificationInfo)
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		}
+		return a, nil
+
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data
 		a.buildScheduledTable()
@@ -1205,6 +1237,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If sell dialog is visible, route all keys to it
 	if a.sellDialog != nil && a.sellDialog.IsVisible() {
 		return a.handleSellDialogKey(msg)
+	}
+
+	// If dividend dialog is visible, route all keys to it
+	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
+		return a.handleDividendDialogKey(msg)
 	}
 
 	// If investment type selector is visible, route all keys to it
@@ -2170,6 +2207,12 @@ func (a *App) renderLayout() string {
 	// Overlay sell dialog if visible
 	if a.sellDialog != nil && a.sellDialog.IsVisible() {
 		overlay := a.sellDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay dividend dialog if visible
+	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
+		overlay := a.dividendDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

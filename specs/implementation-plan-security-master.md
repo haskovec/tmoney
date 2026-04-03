@@ -632,7 +632,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — same as buy but with lot selection panel for lot-tracking accounts; shows available lots with purchase date, shares, cost
   - GREEN: Implement sell dialog
 
-- [ ] **SM-132 - Dividend dialog**
+- [x] **SM-132 - Dividend dialog**
   - RED: Write test — dialog: Security (dropdown), Amount, Date, Memo; for reinvest: adds Shares and Price fields
   - GREEN: Implement dividend/reinvest dialog
 
