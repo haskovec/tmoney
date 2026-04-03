@@ -1301,3 +1301,625 @@ func TestCorporateActionService_Merger_Validation(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// SM-157: Spin-off — cost basis allocation to parent
+// =============================================================================
+
+func TestCorporateActionService_SpinOff_CostBasisAllocation(t *testing.T) {
+	t.Run("parent lot cost reduced by allocation percentage", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		date := types.NewDate(2024, time.January, 15)
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		// Deposit cash and buy 100 shares at $100/share
+		_, err := env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("20000.00"), "")
+		if err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+		total := types.MustNewMoney("10000.00")
+		_, err = env.invSvc.Buy(acct.ID, parentSec.ID, date, types.MustNewQuantity("100"), &total, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+
+		// Verify lot before spin-off
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, parentSec.ID, false)
+		if len(lots) != 1 {
+			t.Fatalf("expected 1 lot, got %d", len(lots))
+		}
+		if !lots[0].CostPerShare.Equal(types.MustNewMoney("100")) {
+			t.Fatalf("pre-spinoff cost_per_share = %s, want 100", lots[0].CostPerShare.String())
+		}
+
+		// Apply spin-off: 80% allocation to parent, 20% to spin-off
+		params := SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}
+		_, err = env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("25.00"))
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		// Parent lot cost should be reduced: $100 × 0.80 = $80
+		parentLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, parentSec.ID, false)
+		if len(parentLots) != 1 {
+			t.Fatalf("expected 1 parent lot, got %d", len(parentLots))
+		}
+		if !parentLots[0].CostPerShare.Equal(types.MustNewMoney("80")) {
+			t.Errorf("parent lot cost_per_share = %s, want 80", parentLots[0].CostPerShare.String())
+		}
+		// Parent shares unchanged
+		if !parentLots[0].Shares.Equal(types.MustNewQuantity("100")) {
+			t.Errorf("parent lot shares = %s, want 100", parentLots[0].Shares.String())
+		}
+	})
+
+	t.Run("multiple lots each reduced by allocation percentage", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		date1 := types.NewDate(2024, time.January, 15)
+		date2 := types.NewDate(2024, time.March, 1)
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date1, types.MustNewMoney("30000.00"), "")
+
+		// Lot 1: 10 shares at $100
+		total1 := types.MustNewMoney("1000.00")
+		_, _ = env.invSvc.Buy(acct.ID, parentSec.ID, date1, types.MustNewQuantity("10"), &total1, nil, types.ZeroMoney, "")
+
+		// Lot 2: 20 shares at $150
+		total2 := types.MustNewMoney("3000.00")
+		_, _ = env.invSvc.Buy(acct.ID, parentSec.ID, date2, types.MustNewQuantity("20"), &total2, nil, types.ZeroMoney, "")
+
+		// 80% parent allocation
+		params := SpinOffParams{ShareRatio: 1.0, ParentAllocationPct: 80}
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("10.00"))
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		parentLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, parentSec.ID, false)
+		if len(parentLots) != 2 {
+			t.Fatalf("expected 2 parent lots, got %d", len(parentLots))
+		}
+		// Lot 1: $100 × 0.80 = $80
+		if !parentLots[0].CostPerShare.Equal(types.MustNewMoney("80")) {
+			t.Errorf("lot 1 cost_per_share = %s, want 80", parentLots[0].CostPerShare.String())
+		}
+		// Lot 2: $150 × 0.80 = $120
+		if !parentLots[1].CostPerShare.Equal(types.MustNewMoney("120")) {
+			t.Errorf("lot 2 cost_per_share = %s, want 120", parentLots[1].CostPerShare.String())
+		}
+	})
+}
+
+// =============================================================================
+// SM-158: Spin-off — create spin-off lots
+// =============================================================================
+
+func TestCorporateActionService_SpinOff_CreateLots(t *testing.T) {
+	t.Run("spin-off lots created with correct shares and cost", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		date := types.NewDate(2024, time.January, 15)
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("20000.00"), "")
+
+		// Buy 100 shares at $100
+		total := types.MustNewMoney("10000.00")
+		_, _ = env.invSvc.Buy(acct.ID, parentSec.ID, date, types.MustNewQuantity("100"), &total, nil, types.ZeroMoney, "")
+
+		// Spin-off: 0.5 share ratio, 80/20 allocation, price $25
+		params := SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("25.00"))
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		// Spin-off lot: shares = 100 × 0.5 = 50
+		spinOffLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, spinOffSec.ID, false)
+		if len(spinOffLots) != 1 {
+			t.Fatalf("expected 1 spin-off lot, got %d", len(spinOffLots))
+		}
+		if !spinOffLots[0].Shares.Equal(types.MustNewQuantity("50")) {
+			t.Errorf("spin-off lot shares = %s, want 50", spinOffLots[0].Shares.String())
+		}
+
+		// Cost basis allocated to spin-off: $100 × 0.20 × 100 shares = $2000
+		// Cost per share: $2000 / 50 = $40
+		if !spinOffLots[0].CostPerShare.Equal(types.MustNewMoney("40")) {
+			t.Errorf("spin-off lot cost_per_share = %s, want 40", spinOffLots[0].CostPerShare.String())
+		}
+
+		// Total cost basis preserved: parent $8000 + spinoff $2000 = $10000
+		parentLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, parentSec.ID, false)
+		totalCostBasis := parentLots[0].CostBasis().Add(spinOffLots[0].CostBasis())
+		if !totalCostBasis.Equal(types.MustNewMoney("10000")) {
+			t.Errorf("total cost basis = %s, want 10000", totalCostBasis.String())
+		}
+	})
+
+	t.Run("spin-off preserves purchase date from parent lot", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		purchaseDate := types.NewDate(2024, time.January, 15)
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, purchaseDate, types.MustNewMoney("10000.00"), "")
+		total := types.MustNewMoney("1000.00")
+		_, _ = env.invSvc.Buy(acct.ID, parentSec.ID, purchaseDate, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, "")
+
+		params := SpinOffParams{ShareRatio: 1.0, ParentAllocationPct: 80}
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("10.00"))
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		spinOffLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, spinOffSec.ID, false)
+		if len(spinOffLots) != 1 {
+			t.Fatalf("expected 1 spin-off lot, got %d", len(spinOffLots))
+		}
+		if !spinOffLots[0].PurchaseDate.Equal(purchaseDate) {
+			t.Errorf("spin-off lot purchase_date = %s, want %s", spinOffLots[0].PurchaseDate.String(), purchaseDate.String())
+		}
+	})
+
+	t.Run("spin-off across multiple accounts", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct1 := createLotTrackingAccount(t, env.accountRepo, "Brokerage1")
+		acct2 := createLotTrackingAccount(t, env.accountRepo, "Brokerage2")
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		date := types.NewDate(2024, time.January, 15)
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		for _, acct := range []*account.Account{acct1, acct2} {
+			_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+			total := types.MustNewMoney("1000.00")
+			_, _ = env.invSvc.Buy(acct.ID, parentSec.ID, date, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, "")
+		}
+
+		params := SpinOffParams{ShareRatio: 1.0, ParentAllocationPct: 80}
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("10.00"))
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		for _, acct := range []*account.Account{acct1, acct2} {
+			spinOffLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, spinOffSec.ID, false)
+			if len(spinOffLots) != 1 {
+				t.Errorf("account %s: expected 1 spin-off lot, got %d", acct.Name, len(spinOffLots))
+			}
+			if !spinOffLots[0].Shares.Equal(types.MustNewQuantity("10")) {
+				t.Errorf("account %s: spin-off shares = %s, want 10", acct.Name, spinOffLots[0].Shares.String())
+			}
+		}
+	})
+}
+
+// =============================================================================
+// SM-159: Spin-off — fractional shares handling
+// =============================================================================
+
+func TestCorporateActionService_SpinOff_FractionalShares(t *testing.T) {
+	t.Run("fractional shares rounded down with cash-in-lieu", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		date := types.NewDate(2024, time.January, 15)
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("20000.00"), "")
+
+		// Buy 10 shares at $100
+		total := types.MustNewMoney("1000.00")
+		_, _ = env.invSvc.Buy(acct.ID, parentSec.ID, date, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, "")
+
+		cashBefore, _ := env.invSvc.GetCashBalance(acct.ID)
+
+		// Share ratio 0.33 → 10 × 0.33 = 3.3 → 3 whole + 0.3 fractional
+		params := SpinOffParams{ShareRatio: 0.33, ParentAllocationPct: 80}
+		spinOffPrice := types.MustNewMoney("25.00")
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, spinOffPrice)
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		// Should get 3 whole shares (floor of 3.3)
+		spinOffLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, spinOffSec.ID, false)
+		if len(spinOffLots) != 1 {
+			t.Fatalf("expected 1 spin-off lot, got %d", len(spinOffLots))
+		}
+		if !spinOffLots[0].Shares.Equal(types.MustNewQuantity("3")) {
+			t.Errorf("spin-off shares = %s, want 3", spinOffLots[0].Shares.String())
+		}
+
+		// Cash-in-lieu: 0.3 shares × $25 = $7.50
+		cashAfter, _ := env.invSvc.GetCashBalance(acct.ID)
+		expectedCash := cashBefore.Add(types.MustNewMoney("7.5"))
+		if !cashAfter.Equal(expectedCash) {
+			t.Errorf("cash balance = %s, want %s (cash-in-lieu for fractional shares)", cashAfter.String(), expectedCash.String())
+		}
+	})
+
+	t.Run("no cash-in-lieu when shares are whole", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		date := types.NewDate(2024, time.January, 15)
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("20000.00"), "")
+		total := types.MustNewMoney("1000.00")
+		_, _ = env.invSvc.Buy(acct.ID, parentSec.ID, date, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, "")
+
+		cashBefore, _ := env.invSvc.GetCashBalance(acct.ID)
+
+		// 10 × 0.5 = 5.0 exactly — no fractional
+		params := SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("25.00"))
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		cashAfter, _ := env.invSvc.GetCashBalance(acct.ID)
+		if !cashAfter.Equal(cashBefore) {
+			t.Errorf("cash balance changed: before %s, after %s (no fractional expected)", cashBefore.String(), cashAfter.String())
+		}
+	})
+}
+
+// =============================================================================
+// SM-160: Spin-off — non-lot-tracking accounts (positions)
+// =============================================================================
+
+func TestCorporateActionService_SpinOff_Positions(t *testing.T) {
+	t.Run("parent position cost adjusted and spin-off position created", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		date := types.NewDate(2024, time.January, 15)
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("20000.00"), "")
+		total := types.MustNewMoney("10000.00") // 100 shares at $100
+		_, _ = env.invSvc.Buy(acct.ID, parentSec.ID, date, types.MustNewQuantity("100"), &total, nil, types.ZeroMoney, "")
+
+		// Verify position before spin-off
+		pos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, parentSec.ID)
+		costBasisBefore := pos.CostBasis()
+
+		// 80% parent, 20% spin-off, 0.5 share ratio
+		params := SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("25.00"))
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		// Parent position: avg cost = $100 × 0.80 = $80, shares unchanged
+		parentPos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, parentSec.ID)
+		if !parentPos.AverageCostPerShare.Equal(types.MustNewMoney("80")) {
+			t.Errorf("parent avg cost = %s, want 80", parentPos.AverageCostPerShare.String())
+		}
+		if !parentPos.Shares.Equal(types.MustNewQuantity("100")) {
+			t.Errorf("parent shares = %s, want 100", parentPos.Shares.String())
+		}
+
+		// Spin-off position: 100 × 0.5 = 50 shares
+		// Cost basis: $100 × 0.20 × 100 = $2000
+		// Cost per share: $2000 / 50 = $40
+		spinOffPos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, spinOffSec.ID)
+		if !spinOffPos.Shares.Equal(types.MustNewQuantity("50")) {
+			t.Errorf("spin-off shares = %s, want 50", spinOffPos.Shares.String())
+		}
+		if !spinOffPos.AverageCostPerShare.Equal(types.MustNewMoney("40")) {
+			t.Errorf("spin-off avg cost = %s, want 40", spinOffPos.AverageCostPerShare.String())
+		}
+
+		// Total cost basis preserved
+		totalCostBasis := parentPos.CostBasis().Add(spinOffPos.CostBasis())
+		if !totalCostBasis.Equal(costBasisBefore) {
+			t.Errorf("total cost basis = %s, want %s", totalCostBasis.String(), costBasisBefore.String())
+		}
+	})
+
+	t.Run("non-lot position with fractional shares gets cash-in-lieu", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		date := types.NewDate(2024, time.January, 15)
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("20000.00"), "")
+		total := types.MustNewMoney("1000.00") // 10 shares at $100
+		_, _ = env.invSvc.Buy(acct.ID, parentSec.ID, date, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, "")
+
+		cashBefore, _ := env.invSvc.GetCashBalance(acct.ID)
+
+		// 10 × 0.33 = 3.3 → 3 whole + 0.3 fractional
+		params := SpinOffParams{ShareRatio: 0.33, ParentAllocationPct: 80}
+		spinOffPrice := types.MustNewMoney("25.00")
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, spinOffPrice)
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		spinOffPos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, spinOffSec.ID)
+		if !spinOffPos.Shares.Equal(types.MustNewQuantity("3")) {
+			t.Errorf("spin-off shares = %s, want 3", spinOffPos.Shares.String())
+		}
+
+		// Cash-in-lieu: 0.3 × $25 = $7.50
+		cashAfter, _ := env.invSvc.GetCashBalance(acct.ID)
+		expectedCash := cashBefore.Add(types.MustNewMoney("7.5"))
+		if !cashAfter.Equal(expectedCash) {
+			t.Errorf("cash balance = %s, want %s", cashAfter.String(), expectedCash.String())
+		}
+	})
+
+	t.Run("spin-off across multiple non-lot accounts", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct1 := createInvAccount(t, env.accountRepo, "Brokerage1")
+		acct2 := createInvAccount(t, env.accountRepo, "Brokerage2")
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		date := types.NewDate(2024, time.January, 15)
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		for _, acct := range []*account.Account{acct1, acct2} {
+			_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+			total := types.MustNewMoney("500.00")
+			_, _ = env.invSvc.Buy(acct.ID, parentSec.ID, date, types.MustNewQuantity("5"), &total, nil, types.ZeroMoney, "")
+		}
+
+		params := SpinOffParams{ShareRatio: 1.0, ParentAllocationPct: 80}
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("10.00"))
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		for _, acct := range []*account.Account{acct1, acct2} {
+			spinOffPos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, spinOffSec.ID)
+			if !spinOffPos.Shares.Equal(types.MustNewQuantity("5")) {
+				t.Errorf("account %s: spin-off shares = %s, want 5", acct.Name, spinOffPos.Shares.String())
+			}
+		}
+	})
+}
+
+// =============================================================================
+// SM-161: Spin-off — price record for spin-off security
+// =============================================================================
+
+func TestCorporateActionService_SpinOff_PriceRecord(t *testing.T) {
+	t.Run("price record created for spin-off security on spin-off date", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		date := types.NewDate(2024, time.January, 15)
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		total := types.MustNewMoney("1000.00")
+		_, _ = env.invSvc.Buy(acct.ID, parentSec.ID, date, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, "")
+
+		spinOffPrice := types.MustNewMoney("25.00")
+		params := SpinOffParams{ShareRatio: 1.0, ParentAllocationPct: 80}
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, spinOffPrice)
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		// Verify price record exists for spin-off security
+		p, err := env.priceRepo.GetBySecurityAndDate(spinOffSec.ID, spinOffDate)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v", err)
+		}
+		if p == nil {
+			t.Fatal("expected price record for spin-off security")
+		}
+		if !p.Price.Equal(spinOffPrice) {
+			t.Errorf("spin-off price = %s, want %s", p.Price.String(), spinOffPrice.String())
+		}
+	})
+
+	t.Run("price record created even with no holdings", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		spinOffPrice := types.MustNewMoney("25.00")
+		params := SpinOffParams{ShareRatio: 1.0, ParentAllocationPct: 80}
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, spinOffPrice)
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		p, err := env.priceRepo.GetBySecurityAndDate(spinOffSec.ID, spinOffDate)
+		if err != nil {
+			t.Fatalf("GetBySecurityAndDate() error = %v", err)
+		}
+		if p == nil {
+			t.Fatal("expected price record even with no holdings")
+		}
+	})
+}
+
+// =============================================================================
+// SM-162: Spin-off — audit log
+// =============================================================================
+
+func TestCorporateActionService_SpinOff_AuditLog(t *testing.T) {
+	t.Run("spin-off creates corporate action record", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		spinOffDate := types.NewDate(2024, time.June, 15)
+
+		params := SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}
+		ca, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("25.00"))
+		if err != nil {
+			t.Fatalf("SpinOff() error = %v", err)
+		}
+
+		if ca == nil {
+			t.Fatal("SpinOff() returned nil corporate action")
+		}
+		if ca.ActionType != ActionTypeSpinOff {
+			t.Errorf("action_type = %s, want %s", ca.ActionType, ActionTypeSpinOff)
+		}
+		if ca.SecurityID != parentSec.ID {
+			t.Error("security_id should be parent security")
+		}
+		if !ca.TargetSecurityID.Valid || ca.TargetSecurityID.ID != spinOffSec.ID {
+			t.Error("target_security_id should be set to spin-off security")
+		}
+		if !ca.ActionDate.Equal(spinOffDate) {
+			t.Error("action_date mismatch")
+		}
+
+		// Verify parameters deserialize correctly
+		parsedParams, err := ParseSpinOffParams(ca.Parameters)
+		if err != nil {
+			t.Fatalf("ParseSpinOffParams() error = %v", err)
+		}
+		if parsedParams.ShareRatio != 0.5 {
+			t.Errorf("share_ratio = %f, want 0.5", parsedParams.ShareRatio)
+		}
+		if parsedParams.ParentAllocationPct != 80 {
+			t.Errorf("parent_allocation_pct = %f, want 80", parsedParams.ParentAllocationPct)
+		}
+	})
+
+	t.Run("audit log persisted and queryable", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		spinOffDate := types.NewDate(2024, time.June, 15)
+
+		params := SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}
+		ca, _ := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("25.00"))
+
+		// Verify persisted
+		retrieved, err := env.caRepo.GetByID(ca.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if retrieved.ActionType != ActionTypeSpinOff {
+			t.Errorf("persisted action_type = %s, want %s", retrieved.ActionType, ActionTypeSpinOff)
+		}
+
+		// Queryable by parent security
+		actions, err := env.caRepo.ListBySecurity(parentSec.ID)
+		if err != nil {
+			t.Fatalf("ListBySecurity(parent) error = %v", err)
+		}
+		if len(actions) != 1 {
+			t.Errorf("expected 1 action for parent, got %d", len(actions))
+		}
+
+		// Queryable by spin-off security
+		actions, err = env.caRepo.ListBySecurity(spinOffSec.ID)
+		if err != nil {
+			t.Fatalf("ListBySecurity(spinoff) error = %v", err)
+		}
+		if len(actions) != 1 {
+			t.Errorf("expected 1 action for spin-off, got %d", len(actions))
+		}
+	})
+}
+
+// =============================================================================
+// Spin-off validation
+// =============================================================================
+
+func TestCorporateActionService_SpinOff_Validation(t *testing.T) {
+	t.Run("invalid params rejected", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		// Zero share ratio
+		params := SpinOffParams{ShareRatio: 0, ParentAllocationPct: 80}
+		_, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("25.00"))
+		if err == nil {
+			t.Error("SpinOff() with zero share ratio should error")
+		}
+
+		// Negative share ratio
+		params = SpinOffParams{ShareRatio: -1.0, ParentAllocationPct: 80}
+		_, err = env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("25.00"))
+		if err == nil {
+			t.Error("SpinOff() with negative share ratio should error")
+		}
+
+		// Allocation at 0%
+		params = SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 0}
+		_, err = env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("25.00"))
+		if err == nil {
+			t.Error("SpinOff() with 0% allocation should error")
+		}
+
+		// Allocation at 100%
+		params = SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 100}
+		_, err = env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("25.00"))
+		if err == nil {
+			t.Error("SpinOff() with 100% allocation should error")
+		}
+
+		// Zero spin-off price
+		params = SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}
+		_, err = env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.ZeroMoney)
+		if err == nil {
+			t.Error("SpinOff() with zero price should error")
+		}
+	})
+
+	t.Run("spin-off with no holdings succeeds", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		parentSec := createSec(t, env.secRepo, "PARENT")
+		spinOffSec := createSec(t, env.secRepo, "SPINOFF")
+		spinOffDate := types.NewDate(2024, time.June, 1)
+
+		params := SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}
+		ca, err := env.caSvc.SpinOff(parentSec.ID, spinOffSec.ID, spinOffDate, params, types.MustNewMoney("25.00"))
+		if err != nil {
+			t.Fatalf("SpinOff() with no holdings error = %v", err)
+		}
+		if ca == nil {
+			t.Error("SpinOff() should return corporate action even with no holdings")
+		}
+	})
+}

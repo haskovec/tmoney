@@ -337,6 +337,11 @@ func (q Quantity) Equal(other Quantity) bool {
 	return q.value.Equal(other.value)
 }
 
+// Floor returns the largest integer value less than or equal to this quantity.
+func (q Quantity) Floor() Quantity {
+	return Quantity{value: q.value.Floor()}
+}
+
 // Decimal returns the underlying decimal value.
 func (q Quantity) Decimal() alpacadecimal.Decimal {
 	return q.value

@@ -746,27 +746,27 @@ Spec: `specs/security-master.md`
 
 ## Phase 43: Corporate Action Service — Spin-Off
 
-- [ ] **SM-157 - Spin-off: cost basis allocation to parent**
+- [x] **SM-157 - Spin-off: cost basis allocation to parent**
   - RED: Write test — parent lot cost_per_share reduced by allocation percentage (e.g., 80% allocation means new cost = old cost × 0.80)
   - GREEN: Implement parent cost basis adjustment in `CorporateActionService.SpinOff`
 
-- [ ] **SM-158 - Spin-off: create spin-off lots**
+- [x] **SM-158 - Spin-off: create spin-off lots**
   - RED: Write test — new lots created for spin-off security; shares = parent_shares × share_ratio; cost = remaining allocation; purchase_date preserved from parent lot
   - GREEN: Implement spin-off lot creation
 
-- [ ] **SM-159 - Spin-off: fractional shares handling**
+- [x] **SM-159 - Spin-off: fractional shares handling**
   - RED: Write test — fractional shares rounded down; cash-in-lieu recorded for fractional portion at spin-off price
   - GREEN: Implement fractional share handling
 
-- [ ] **SM-160 - Spin-off: non-lot-tracking accounts**
+- [x] **SM-160 - Spin-off: non-lot-tracking accounts**
   - RED: Write test — parent position cost adjusted; new position created for spin-off security
   - GREEN: Handle non-lot accounts in `SpinOff`
 
-- [ ] **SM-161 - Spin-off: price record for spin-off security**
+- [x] **SM-161 - Spin-off: price record for spin-off security**
   - RED: Write test — price record created for spin-off on spin-off date
   - GREEN: Add price creation to `SpinOff`
 
-- [ ] **SM-162 - Spin-off: audit log**
+- [x] **SM-162 - Spin-off: audit log**
   - RED: Write test — spin-off creates corporate_actions record
   - GREEN: Record audit entry
 
