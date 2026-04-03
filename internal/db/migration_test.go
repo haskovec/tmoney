@@ -146,6 +146,7 @@ func TestMigrate(t *testing.T) {
 			"investment_transactions",
 			"investment_positions",
 			"investment_transaction_lots",
+			"corporate_actions",
 		}
 
 		for _, table := range tables {
@@ -1942,6 +1943,234 @@ func TestMigration008InvestmentTables(t *testing.T) {
 		`)
 		if err == nil {
 			t.Error("Expected foreign key error for non-existent transaction")
+		}
+	})
+}
+
+func TestMigration009CorporateActions(t *testing.T) {
+	t.Run("corporate_actions table exists after migration", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		var tableName string
+		err = db.Conn().QueryRow(`
+			SELECT table_name FROM information_schema.tables
+			WHERE table_name = 'corporate_actions'
+		`).Scan(&tableName)
+		if err != nil {
+			t.Fatalf("corporate_actions table not found: %v", err)
+		}
+		if tableName != "corporate_actions" {
+			t.Errorf("expected table name 'corporate_actions', got %q", tableName)
+		}
+	})
+
+	t.Run("insert and read back corporate action", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Create a security first
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type, asset_class, currency)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'AAPL', 'Apple Inc', 'stock', 'large_cap_stock', 'USD')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to create security: %v", err)
+		}
+
+		// Insert a corporate action (split)
+		_, err = db.Conn().Exec(`
+			INSERT INTO corporate_actions (id, action_type, security_id, action_date, parameters)
+			VALUES (
+				'22222222-2222-2222-2222-222222222222',
+				'split',
+				'11111111-1111-1111-1111-111111111111',
+				'2024-08-01',
+				'{"numerator":4,"denominator":1}'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert corporate action: %v", err)
+		}
+
+		// Read it back
+		var actionType, params string
+		err = db.Conn().QueryRow(`
+			SELECT action_type, parameters FROM corporate_actions
+			WHERE id = '22222222-2222-2222-2222-222222222222'
+		`).Scan(&actionType, &params)
+		if err != nil {
+			t.Fatalf("Failed to read back corporate action: %v", err)
+		}
+		if actionType != "split" {
+			t.Errorf("expected action_type 'split', got %q", actionType)
+		}
+		if params != `{"numerator":4,"denominator":1}` {
+			t.Errorf("expected parameters JSON, got %q", params)
+		}
+	})
+
+	t.Run("action_type constraint rejects invalid types", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type, asset_class, currency)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'AAPL', 'Apple Inc', 'stock', 'large_cap_stock', 'USD')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to create security: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO corporate_actions (action_type, security_id, action_date, parameters)
+			VALUES ('invalid_type', '11111111-1111-1111-1111-111111111111', '2024-08-01', '{}')
+		`)
+		if err == nil {
+			t.Error("Expected error for invalid action_type, got nil")
+		}
+	})
+
+	t.Run("all valid action types accepted", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type, asset_class, currency)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'AAPL', 'Apple Inc', 'stock', 'large_cap_stock', 'USD')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to create security: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type, asset_class, currency)
+			VALUES ('33333333-3333-3333-3333-333333333333', 'GOOG', 'Alphabet Inc', 'stock', 'large_cap_stock', 'USD')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to create target security: %v", err)
+		}
+
+		validTypes := []string{"split", "reverse_split", "merger", "spin_off"}
+		for _, actionType := range validTypes {
+			_, err = db.Conn().Exec(`
+				INSERT INTO corporate_actions (action_type, security_id, target_security_id, action_date, parameters)
+				VALUES (?, '11111111-1111-1111-1111-111111111111', '33333333-3333-3333-3333-333333333333', '2024-08-01', '{}')
+			`, actionType)
+			if err != nil {
+				t.Errorf("Failed to insert action_type %q: %v", actionType, err)
+			}
+		}
+	})
+
+	t.Run("target_security_id is nullable", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type, asset_class, currency)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'AAPL', 'Apple Inc', 'stock', 'large_cap_stock', 'USD')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to create security: %v", err)
+		}
+
+		// Split doesn't require target_security_id
+		_, err = db.Conn().Exec(`
+			INSERT INTO corporate_actions (action_type, security_id, action_date, parameters)
+			VALUES ('split', '11111111-1111-1111-1111-111111111111', '2024-08-01', '{"numerator":4,"denominator":1}')
+		`)
+		if err != nil {
+			t.Fatalf("Expected NULL target_security_id to be allowed: %v", err)
+		}
+	})
+
+	t.Run("security_id foreign key enforced", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO corporate_actions (action_type, security_id, action_date, parameters)
+			VALUES ('split', '99999999-9999-9999-9999-999999999999', '2024-08-01', '{}')
+		`)
+		if err == nil {
+			t.Error("Expected foreign key error for non-existent security_id")
+		}
+	})
+
+	t.Run("parameters column stores JSON", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type, asset_class, currency)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'AAPL', 'Apple Inc', 'stock', 'large_cap_stock', 'USD')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to create security: %v", err)
+		}
+
+		jsonParams := `{"exchange_ratio":"2.5","cash_per_share":"5.00"}`
+		_, err = db.Conn().Exec(`
+			INSERT INTO corporate_actions (id, action_type, security_id, action_date, parameters)
+			VALUES ('44444444-4444-4444-4444-444444444444', 'merger', '11111111-1111-1111-1111-111111111111', '2024-06-15', ?)
+		`, jsonParams)
+		if err != nil {
+			t.Fatalf("Failed to insert JSON parameters: %v", err)
+		}
+
+		var readParams string
+		err = db.Conn().QueryRow(`
+			SELECT parameters FROM corporate_actions
+			WHERE id = '44444444-4444-4444-4444-444444444444'
+		`).Scan(&readParams)
+		if err != nil {
+			t.Fatalf("Failed to read parameters: %v", err)
+		}
+		if readParams != jsonParams {
+			t.Errorf("expected parameters %q, got %q", jsonParams, readParams)
 		}
 	})
 }

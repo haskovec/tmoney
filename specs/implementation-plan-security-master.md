@@ -664,29 +664,29 @@ Spec: `specs/security-master.md`
 
 ## Phase 38: Corporate Actions Migration
 
-- [ ] **SM-139 - Migration: corporate_actions table**
+- [x] **SM-139 - Migration: corporate_actions table**
   - RED: Write integration test — insert corporate action record; verify action_type constraint; verify JSON parameters column
   - GREEN: Create migration `009_corporate_actions.sql`
 
 ## Phase 39: Corporate Action Models
 
-- [ ] **SM-140 - CorporateActionType enum**
+- [x] **SM-140 - CorporateActionType enum**
   - RED: Write tests — valid types (`split`, `reverse_split`, `merger`, `spin_off`); invalid rejected
   - GREEN: Implement `CorporateActionType` in `internal/investment/corporate_action.go`
 
-- [ ] **SM-141 - CorporateAction model**
+- [x] **SM-141 - CorporateAction model**
   - RED: Write tests — required fields (action_type, security_id, action_date, parameters); parameters is JSON string; target_security_id required for merger and spin_off
   - GREEN: Implement `CorporateAction` struct with `Validate()`
 
-- [ ] **SM-142 - Split parameters model**
+- [x] **SM-142 - Split parameters model**
   - RED: Write tests — `SplitParams` with numerator and denominator (e.g., 4:1); `Ratio()` returns decimal; validate both > 0
   - GREEN: Implement `SplitParams` struct with JSON serialization
 
-- [ ] **SM-143 - Merger parameters model**
+- [x] **SM-143 - Merger parameters model**
   - RED: Write tests — `MergerParams` with exchange_ratio and optional cash_per_share; validate ratio > 0
   - GREEN: Implement `MergerParams` struct
 
-- [ ] **SM-144 - Spin-off parameters model**
+- [x] **SM-144 - Spin-off parameters model**
   - RED: Write tests — `SpinOffParams` with share_ratio and parent_allocation_pct (0-100); validate allocation + remainder = 100
   - GREEN: Implement `SpinOffParams` struct
 
