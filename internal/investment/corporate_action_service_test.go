@@ -39,7 +39,7 @@ func createCATestEnv(t *testing.T) *testCAServiceEnv {
 	invRepo := NewRepository(database)
 
 	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, nil, database)
-	caSvc := NewCorporateActionService(caRepo, lotRepo, positionRepo, priceRepo, database)
+	caSvc := NewCorporateActionService(caRepo, lotRepo, positionRepo, priceRepo, invRepo, secRepo, database)
 
 	return &testCAServiceEnv{
 		caSvc:        caSvc,
@@ -676,6 +676,628 @@ func TestCorporateActionService_Split_Validation(t *testing.T) {
 
 		if !costBasisBefore.Equal(costBasisAfter) {
 			t.Errorf("cost basis changed: before %s, after %s", costBasisBefore.String(), costBasisAfter.String())
+		}
+	})
+}
+
+// =============================================================================
+// SM-152: Merger — exchange shares across accounts (lot-tracking)
+// =============================================================================
+
+func TestCorporateActionService_Merger_ExchangeShares(t *testing.T) {
+	t.Run("2:1 merger exchanges lots correctly", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		date := types.NewDate(2024, time.January, 15)
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		// Deposit cash and buy 100 shares of source at $50/share
+		_, err := env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		if err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+		total := types.MustNewMoney("5000.00")
+		_, err = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("100"), &total, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+
+		// Verify source lot before merger
+		lots, err := env.lotRepo.ListByAccountAndSecurity(acct.ID, sourceSec.ID, false)
+		if err != nil {
+			t.Fatalf("ListByAccountAndSecurity() error = %v", err)
+		}
+		if len(lots) != 1 {
+			t.Fatalf("expected 1 source lot, got %d", len(lots))
+		}
+		costBasisBefore := lots[0].CostBasis()
+
+		// Apply 2:1 merger (2 old shares = 1 new share)
+		params := MergerParams{ExchangeRatio: 2.0}
+		_, err = env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		// Source lots should be closed
+		sourceLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sourceSec.ID, true)
+		if len(sourceLots) != 1 {
+			t.Fatalf("expected 1 source lot (closed), got %d", len(sourceLots))
+		}
+		if !sourceLots[0].Closed {
+			t.Error("source lot should be closed")
+		}
+		if !sourceLots[0].Shares.IsZero() {
+			t.Errorf("source lot shares = %s, want 0", sourceLots[0].Shares.String())
+		}
+
+		// Target lots should be created: 100/2 = 50 shares
+		targetLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, targetSec.ID, false)
+		if len(targetLots) != 1 {
+			t.Fatalf("expected 1 target lot, got %d", len(targetLots))
+		}
+		if !targetLots[0].Shares.Equal(types.MustNewQuantity("50")) {
+			t.Errorf("target lot shares = %s, want 50", targetLots[0].Shares.String())
+		}
+		// Cost per share should be 50*2=100 to preserve cost basis
+		if !targetLots[0].CostPerShare.Equal(types.MustNewMoney("100")) {
+			t.Errorf("target lot cost_per_share = %s, want 100", targetLots[0].CostPerShare.String())
+		}
+		// Cost basis preserved: 50 × $100 = $5000 = 100 × $50
+		costBasisAfter := targetLots[0].CostBasis()
+		if !costBasisBefore.Equal(costBasisAfter) {
+			t.Errorf("cost basis changed: before %s, after %s", costBasisBefore.String(), costBasisAfter.String())
+		}
+	})
+
+	t.Run("merger exchanges multiple lots", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		date1 := types.NewDate(2024, time.January, 15)
+		date2 := types.NewDate(2024, time.March, 1)
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		// Deposit cash
+		_, err := env.invSvc.Deposit(acct.ID, date1, types.MustNewMoney("20000.00"), "")
+		if err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+
+		// Buy two lots at different prices
+		total1 := types.MustNewMoney("1000.00") // 10 shares at $100
+		_, err = env.invSvc.Buy(acct.ID, sourceSec.ID, date1, types.MustNewQuantity("10"), &total1, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy() lot 1 error = %v", err)
+		}
+		total2 := types.MustNewMoney("3000.00") // 20 shares at $150
+		_, err = env.invSvc.Buy(acct.ID, sourceSec.ID, date2, types.MustNewQuantity("20"), &total2, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy() lot 2 error = %v", err)
+		}
+
+		// Apply 2:1 merger
+		params := MergerParams{ExchangeRatio: 2.0}
+		_, err = env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		// Source lots should all be closed
+		sourceLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sourceSec.ID, false)
+		if len(sourceLots) != 0 {
+			t.Errorf("expected 0 open source lots, got %d", len(sourceLots))
+		}
+
+		// Target lots created: lot1: 10/2=5 at $200, lot2: 20/2=10 at $300
+		targetLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, targetSec.ID, false)
+		if len(targetLots) != 2 {
+			t.Fatalf("expected 2 target lots, got %d", len(targetLots))
+		}
+
+		// Lot 1: 5 shares at $200 (cost basis = $1000)
+		if !targetLots[0].Shares.Equal(types.MustNewQuantity("5")) {
+			t.Errorf("target lot 1 shares = %s, want 5", targetLots[0].Shares.String())
+		}
+		if !targetLots[0].CostPerShare.Equal(types.MustNewMoney("200")) {
+			t.Errorf("target lot 1 cost_per_share = %s, want 200", targetLots[0].CostPerShare.String())
+		}
+
+		// Lot 2: 10 shares at $300 (cost basis = $3000)
+		if !targetLots[1].Shares.Equal(types.MustNewQuantity("10")) {
+			t.Errorf("target lot 2 shares = %s, want 10", targetLots[1].Shares.String())
+		}
+		if !targetLots[1].CostPerShare.Equal(types.MustNewMoney("300")) {
+			t.Errorf("target lot 2 cost_per_share = %s, want 300", targetLots[1].CostPerShare.String())
+		}
+	})
+
+	t.Run("merger preserves purchase date on target lots", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		purchaseDate := types.NewDate(2024, time.January, 15)
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, purchaseDate, types.MustNewMoney("10000.00"), "")
+		total := types.MustNewMoney("1000.00")
+		_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, purchaseDate, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, "")
+
+		params := MergerParams{ExchangeRatio: 2.0}
+		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		targetLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, targetSec.ID, false)
+		if len(targetLots) != 1 {
+			t.Fatalf("expected 1 target lot, got %d", len(targetLots))
+		}
+		if !targetLots[0].PurchaseDate.Equal(purchaseDate) {
+			t.Errorf("target lot purchase_date = %s, want %s", targetLots[0].PurchaseDate.String(), purchaseDate.String())
+		}
+	})
+
+	t.Run("merger across multiple accounts", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct1 := createLotTrackingAccount(t, env.accountRepo, "Brokerage1")
+		acct2 := createLotTrackingAccount(t, env.accountRepo, "Brokerage2")
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		date := types.NewDate(2024, time.January, 15)
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		// Both accounts buy source security
+		for _, acct := range []*account.Account{acct1, acct2} {
+			_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+			total := types.MustNewMoney("1000.00")
+			_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, "")
+		}
+
+		// Apply merger
+		params := MergerParams{ExchangeRatio: 2.0}
+		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		// Both accounts should have target lots
+		for _, acct := range []*account.Account{acct1, acct2} {
+			targetLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, targetSec.ID, false)
+			if len(targetLots) != 1 {
+				t.Errorf("account %s: expected 1 target lot, got %d", acct.Name, len(targetLots))
+			}
+			if !targetLots[0].Shares.Equal(types.MustNewQuantity("5")) {
+				t.Errorf("account %s target shares = %s, want 5", acct.Name, targetLots[0].Shares.String())
+			}
+		}
+	})
+}
+
+// =============================================================================
+// SM-153: Merger — cash consideration
+// =============================================================================
+
+func TestCorporateActionService_Merger_CashConsideration(t *testing.T) {
+	t.Run("cash consideration adds to cash balance (lot-tracking)", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		date := types.NewDate(2024, time.January, 15)
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		total := types.MustNewMoney("5000.00") // 100 shares at $50
+		_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("100"), &total, nil, types.ZeroMoney, "")
+
+		// Cash balance before merger: 10000 - 5000 = 5000
+		cashBefore, _ := env.invSvc.GetCashBalance(acct.ID)
+
+		// Apply merger with $5/share cash consideration
+		params := MergerParams{ExchangeRatio: 2.0, CashPerShare: 5.0}
+		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		// Cash consideration: $5 × 100 old shares = $500
+		cashAfter, _ := env.invSvc.GetCashBalance(acct.ID)
+		expectedCash := cashBefore.Add(types.MustNewMoney("500"))
+		if !cashAfter.Equal(expectedCash) {
+			t.Errorf("cash balance = %s, want %s", cashAfter.String(), expectedCash.String())
+		}
+	})
+
+	t.Run("cash consideration adds to cash balance (non-lot-tracking)", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		date := types.NewDate(2024, time.January, 15)
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		total := types.MustNewMoney("5000.00")
+		_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("100"), &total, nil, types.ZeroMoney, "")
+
+		cashBefore, _ := env.invSvc.GetCashBalance(acct.ID)
+
+		params := MergerParams{ExchangeRatio: 2.0, CashPerShare: 5.0}
+		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		cashAfter, _ := env.invSvc.GetCashBalance(acct.ID)
+		expectedCash := cashBefore.Add(types.MustNewMoney("500"))
+		if !cashAfter.Equal(expectedCash) {
+			t.Errorf("cash balance = %s, want %s", cashAfter.String(), expectedCash.String())
+		}
+	})
+
+	t.Run("no cash consideration when not specified", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		date := types.NewDate(2024, time.January, 15)
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		total := types.MustNewMoney("5000.00")
+		_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("100"), &total, nil, types.ZeroMoney, "")
+
+		cashBefore, _ := env.invSvc.GetCashBalance(acct.ID)
+
+		params := MergerParams{ExchangeRatio: 2.0} // No cash
+		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		cashAfter, _ := env.invSvc.GetCashBalance(acct.ID)
+		if !cashAfter.Equal(cashBefore) {
+			t.Errorf("cash balance changed: before %s, after %s", cashBefore.String(), cashAfter.String())
+		}
+	})
+}
+
+// =============================================================================
+// SM-154: Merger — auto-hide source security
+// =============================================================================
+
+func TestCorporateActionService_Merger_AutoHide(t *testing.T) {
+	t.Run("source security hidden after merger", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		date := types.NewDate(2024, time.January, 15)
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		total := types.MustNewMoney("1000.00")
+		_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, "")
+
+		// Source not hidden before merger
+		sec, _ := env.secRepo.GetByID(sourceSec.ID)
+		if sec.Hidden {
+			t.Fatal("source security should not be hidden before merger")
+		}
+
+		params := MergerParams{ExchangeRatio: 2.0}
+		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		// Source should be hidden after merger
+		sec, _ = env.secRepo.GetByID(sourceSec.ID)
+		if !sec.Hidden {
+			t.Error("source security should be hidden after merger")
+		}
+
+		// Target should not be hidden
+		tgtSec, _ := env.secRepo.GetByID(targetSec.ID)
+		if tgtSec.Hidden {
+			t.Error("target security should not be hidden")
+		}
+	})
+
+	t.Run("already hidden source stays hidden", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+
+		// Pre-hide source security
+		sourceSec.Hide()
+		_ = env.secRepo.Update(sourceSec)
+
+		mergerDate := types.NewDate(2024, time.June, 1)
+		params := MergerParams{ExchangeRatio: 2.0}
+		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		sec, _ := env.secRepo.GetByID(sourceSec.ID)
+		if !sec.Hidden {
+			t.Error("source security should remain hidden")
+		}
+	})
+}
+
+// =============================================================================
+// SM-155: Merger — non-lot-tracking accounts (positions)
+// =============================================================================
+
+func TestCorporateActionService_Merger_Positions(t *testing.T) {
+	t.Run("2:1 merger converts position shares and cost", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		date := types.NewDate(2024, time.January, 15)
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		// Deposit and buy 100 shares at $50
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+		total := types.MustNewMoney("5000.00")
+		_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("100"), &total, nil, types.ZeroMoney, "")
+
+		// Verify position before merger
+		pos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, sourceSec.ID)
+		costBasisBefore := pos.CostBasis()
+
+		// Apply 2:1 merger
+		params := MergerParams{ExchangeRatio: 2.0}
+		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		// Source position should be zeroed
+		sourcePos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, sourceSec.ID)
+		if !sourcePos.Shares.IsZero() {
+			t.Errorf("source position shares = %s, want 0", sourcePos.Shares.String())
+		}
+
+		// Target position: 100/2 = 50 shares at $100 avg cost
+		targetPos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, targetSec.ID)
+		if !targetPos.Shares.Equal(types.MustNewQuantity("50")) {
+			t.Errorf("target position shares = %s, want 50", targetPos.Shares.String())
+		}
+		if !targetPos.AverageCostPerShare.Equal(types.MustNewMoney("100")) {
+			t.Errorf("target position avg cost = %s, want 100", targetPos.AverageCostPerShare.String())
+		}
+
+		// Cost basis preserved
+		costBasisAfter := targetPos.CostBasis()
+		if !costBasisBefore.Equal(costBasisAfter) {
+			t.Errorf("cost basis changed: before %s, after %s", costBasisBefore.String(), costBasisAfter.String())
+		}
+	})
+
+	t.Run("merger across multiple non-lot accounts", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct1 := createInvAccount(t, env.accountRepo, "Brokerage1")
+		acct2 := createInvAccount(t, env.accountRepo, "Brokerage2")
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		date := types.NewDate(2024, time.January, 15)
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		for _, acct := range []*account.Account{acct1, acct2} {
+			_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+			total := types.MustNewMoney("500.00")
+			_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("5"), &total, nil, types.ZeroMoney, "")
+		}
+
+		params := MergerParams{ExchangeRatio: 1.0} // 1:1 exchange for simplicity
+		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		for _, acct := range []*account.Account{acct1, acct2} {
+			targetPos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, targetSec.ID)
+			if !targetPos.Shares.Equal(types.MustNewQuantity("5")) {
+				t.Errorf("account %s target shares = %s, want 5", acct.Name, targetPos.Shares.String())
+			}
+			if !targetPos.AverageCostPerShare.Equal(types.MustNewMoney("100")) {
+				t.Errorf("account %s target avg cost = %s, want 100", acct.Name, targetPos.AverageCostPerShare.String())
+			}
+		}
+	})
+
+	t.Run("merger into existing target position merges cost basis", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		date := types.NewDate(2024, time.January, 15)
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("20000.00"), "")
+
+		// Already holding 10 shares of target at $200
+		targetTotal := types.MustNewMoney("2000.00")
+		_, _ = env.invSvc.Buy(acct.ID, targetSec.ID, date, types.MustNewQuantity("10"), &targetTotal, nil, types.ZeroMoney, "")
+
+		// Buy 20 shares of source at $50
+		sourceTotal := types.MustNewMoney("1000.00")
+		_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("20"), &sourceTotal, nil, types.ZeroMoney, "")
+
+		// Apply 2:1 merger: 20 source → 10 target at $100 each
+		params := MergerParams{ExchangeRatio: 2.0}
+		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		// Target: existing 10@$200 + merged 10@$100 = 20 shares
+		// Weighted avg: ($2000 + $1000) / 20 = $150
+		targetPos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, targetSec.ID)
+		if !targetPos.Shares.Equal(types.MustNewQuantity("20")) {
+			t.Errorf("target shares = %s, want 20", targetPos.Shares.String())
+		}
+		if !targetPos.AverageCostPerShare.Equal(types.MustNewMoney("150")) {
+			t.Errorf("target avg cost = %s, want 150", targetPos.AverageCostPerShare.String())
+		}
+	})
+}
+
+// =============================================================================
+// SM-156: Merger — audit log
+// =============================================================================
+
+func TestCorporateActionService_Merger_AuditLog(t *testing.T) {
+	t.Run("merger creates corporate action record", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		mergerDate := types.NewDate(2024, time.June, 15)
+
+		params := MergerParams{ExchangeRatio: 2.0, CashPerShare: 5.0}
+		ca, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+
+		if ca == nil {
+			t.Fatal("Merger() returned nil corporate action")
+		}
+		if ca.ActionType != ActionTypeMerger {
+			t.Errorf("action_type = %s, want %s", ca.ActionType, ActionTypeMerger)
+		}
+		if ca.SecurityID != sourceSec.ID {
+			t.Error("security_id should be source security")
+		}
+		if !ca.TargetSecurityID.Valid || ca.TargetSecurityID.ID != targetSec.ID {
+			t.Error("target_security_id should be set to target security")
+		}
+		if !ca.ActionDate.Equal(mergerDate) {
+			t.Error("action_date mismatch")
+		}
+
+		// Verify parameters deserialize correctly
+		parsedParams, err := ParseMergerParams(ca.Parameters)
+		if err != nil {
+			t.Fatalf("ParseMergerParams() error = %v", err)
+		}
+		if parsedParams.ExchangeRatio != 2.0 {
+			t.Errorf("exchange_ratio = %f, want 2.0", parsedParams.ExchangeRatio)
+		}
+		if parsedParams.CashPerShare != 5.0 {
+			t.Errorf("cash_per_share = %f, want 5.0", parsedParams.CashPerShare)
+		}
+	})
+
+	t.Run("audit log persisted and queryable", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		mergerDate := types.NewDate(2024, time.June, 15)
+
+		params := MergerParams{ExchangeRatio: 2.0}
+		ca, _ := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+
+		// Verify persisted
+		retrieved, err := env.caRepo.GetByID(ca.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if retrieved.ActionType != ActionTypeMerger {
+			t.Errorf("persisted action_type = %s, want %s", retrieved.ActionType, ActionTypeMerger)
+		}
+
+		// Queryable by source security
+		actions, err := env.caRepo.ListBySecurity(sourceSec.ID)
+		if err != nil {
+			t.Fatalf("ListBySecurity(source) error = %v", err)
+		}
+		if len(actions) != 1 {
+			t.Errorf("expected 1 action for source, got %d", len(actions))
+		}
+
+		// Queryable by target security
+		actions, err = env.caRepo.ListBySecurity(targetSec.ID)
+		if err != nil {
+			t.Fatalf("ListBySecurity(target) error = %v", err)
+		}
+		if len(actions) != 1 {
+			t.Errorf("expected 1 action for target, got %d", len(actions))
+		}
+	})
+}
+
+// =============================================================================
+// Merger validation
+// =============================================================================
+
+func TestCorporateActionService_Merger_Validation(t *testing.T) {
+	t.Run("invalid params rejected", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		// Zero exchange ratio
+		params := MergerParams{ExchangeRatio: 0}
+		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err == nil {
+			t.Error("Merger() with zero exchange ratio should error")
+		}
+
+		// Negative exchange ratio
+		params = MergerParams{ExchangeRatio: -1.0}
+		_, err = env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err == nil {
+			t.Error("Merger() with negative exchange ratio should error")
+		}
+
+		// Negative cash per share
+		params = MergerParams{ExchangeRatio: 2.0, CashPerShare: -5.0}
+		_, err = env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err == nil {
+			t.Error("Merger() with negative cash per share should error")
+		}
+	})
+
+	t.Run("merger with no holdings succeeds", func(t *testing.T) {
+		env := createCATestEnv(t)
+
+		sourceSec := createSec(t, env.secRepo, "OLD")
+		targetSec := createSec(t, env.secRepo, "NEW")
+		mergerDate := types.NewDate(2024, time.June, 1)
+
+		params := MergerParams{ExchangeRatio: 2.0}
+		ca, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
+		if err != nil {
+			t.Fatalf("Merger() with no holdings error = %v", err)
+		}
+		if ca == nil {
+			t.Error("Merger() should return corporate action even with no holdings")
 		}
 	})
 }

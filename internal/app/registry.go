@@ -85,7 +85,7 @@ func NewServices(database *db.DB) *Services {
 	reportSvc := report.NewService(accountRepo, database)
 	priceSvc := price.NewService(priceRepo, securityRepo, database)
 	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, database)
-	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, database)
+	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, investmentRepo, securityRepo, database)
 
 	return &Services{
 		Account:        accountSvc,

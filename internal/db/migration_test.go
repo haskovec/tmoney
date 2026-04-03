@@ -1172,13 +1172,14 @@ func TestMigration006Securities(t *testing.T) {
 		}
 		defer db.Close()
 
-		// Insert a price for a non-existent security
+		// security_id FK on security_prices was removed in migration 010 for DuckDB UPDATE compatibility.
+		// Validation is enforced at the application level.
 		_, err = db.Conn().Exec(`
 			INSERT INTO security_prices (security_id, date, price, source)
 			VALUES ('99999999-9999-9999-9999-999999999999', '2024-06-15', 100.00, 'manual')
 		`)
-		if err == nil {
-			t.Error("Expected foreign key error when inserting price for non-existent security")
+		if err != nil {
+			t.Errorf("Insert should succeed (security_id FK removed in migration 010): %v", err)
 		}
 	})
 }
@@ -1390,12 +1391,13 @@ func TestMigration008InvestmentTables(t *testing.T) {
 			t.Fatalf("Failed to insert test account: %v", err)
 		}
 
+		// security_id FK on investment_transactions was removed in migration 010 for DuckDB UPDATE compatibility.
 		_, err = db.Conn().Exec(`
 			INSERT INTO investment_transactions (account_id, date, transaction_type, security_id, total_amount)
 			VALUES ('11111111-1111-1111-1111-111111111111', '2024-06-15', 'buy', '99999999-9999-9999-9999-999999999999', 1000.00)
 		`)
-		if err == nil {
-			t.Error("Expected foreign key error for non-existent security")
+		if err != nil {
+			t.Errorf("Insert should succeed (security_id FK removed in migration 010): %v", err)
 		}
 	})
 
@@ -1583,8 +1585,9 @@ func TestMigration008InvestmentTables(t *testing.T) {
 				'33333333-3333-3333-3333-333333333333'
 			)
 		`)
-		if err == nil {
-			t.Error("Expected foreign key error for non-existent security")
+		// security_id FK on investment_lots was removed in migration 010 for DuckDB UPDATE compatibility.
+		if err != nil {
+			t.Errorf("Insert should succeed (security_id FK removed in migration 010): %v", err)
 		}
 	})
 
@@ -1719,12 +1722,13 @@ func TestMigration008InvestmentTables(t *testing.T) {
 			t.Fatalf("Failed to insert test account: %v", err)
 		}
 
+		// security_id FK on investment_positions was removed in migration 010 for DuckDB UPDATE compatibility.
 		_, err = db.Conn().Exec(`
 			INSERT INTO investment_positions (account_id, security_id, shares, average_cost_per_share)
 			VALUES ('11111111-1111-1111-1111-111111111111', '99999999-9999-9999-9999-999999999999', 10.0, 100.00)
 		`)
-		if err == nil {
-			t.Error("Expected foreign key error for non-existent security")
+		if err != nil {
+			t.Errorf("Insert should succeed (security_id FK removed in migration 010): %v", err)
 		}
 	})
 
@@ -2115,7 +2119,9 @@ func TestMigration009CorporateActions(t *testing.T) {
 		}
 	})
 
-	t.Run("security_id foreign key enforced", func(t *testing.T) {
+	// security_id FK was removed in migration 010 for DuckDB UPDATE compatibility;
+	// validation is now enforced at the application level.
+	t.Run("security_id foreign key not enforced after migration 010", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		dbPath := filepath.Join(tmpDir, "test.tdb")
 
@@ -2129,8 +2135,8 @@ func TestMigration009CorporateActions(t *testing.T) {
 			INSERT INTO corporate_actions (action_type, security_id, action_date, parameters)
 			VALUES ('split', '99999999-9999-9999-9999-999999999999', '2024-08-01', '{}')
 		`)
-		if err == nil {
-			t.Error("Expected foreign key error for non-existent security_id")
+		if err != nil {
+			t.Errorf("Expected insert to succeed (FK removed in migration 010), got error: %v", err)
 		}
 	})
 

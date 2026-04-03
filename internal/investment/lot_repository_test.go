@@ -140,7 +140,9 @@ func TestLotRepository_Create(t *testing.T) {
 		}
 	})
 
-	t.Run("verifies security_id foreign key", func(t *testing.T) {
+	// security_id FK was removed in migration 010 for DuckDB UPDATE compatibility;
+	// validation is now enforced at the application level.
+	t.Run("security_id foreign key not enforced after migration 010", func(t *testing.T) {
 		database := createTestDB(t)
 		accountRepo := account.NewRepository(database)
 		lotRepo := NewLotRepository(database)
@@ -159,8 +161,8 @@ func TestLotRepository_Create(t *testing.T) {
 		)
 
 		err := lotRepo.Create(&lot)
-		if err == nil {
-			t.Fatal("Expected error for invalid security_id foreign key, got nil")
+		if err != nil {
+			t.Fatalf("Expected insert to succeed (FK removed in migration 010), got error: %v", err)
 		}
 	})
 }

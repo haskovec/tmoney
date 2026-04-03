@@ -724,23 +724,23 @@ Spec: `specs/security-master.md`
 
 ## Phase 42: Corporate Action Service — Merger
 
-- [ ] **SM-152 - Merger: exchange shares across accounts**
+- [x] **SM-152 - Merger: exchange shares across accounts**
   - RED: Write test — source security lots removed; target security lots created with transferred cost basis; new shares = old_shares / exchange_ratio; cost_per_share adjusted to preserve total cost basis
   - GREEN: Implement `CorporateActionService.Merger`
 
-- [ ] **SM-153 - Merger: cash consideration**
+- [x] **SM-153 - Merger: cash consideration**
   - RED: Write test — merger with cash_per_share adds cash to investment account; cash = cash_per_share × old_shares
   - GREEN: Add cash consideration handling to `Merger`
 
-- [ ] **SM-154 - Merger: source security hidden after merge**
+- [x] **SM-154 - Merger: source security hidden after merge**
   - RED: Write test — after all positions exchanged, source security marked hidden
   - GREEN: Add auto-hide to `Merger`
 
-- [ ] **SM-155 - Merger: non-lot-tracking accounts**
+- [x] **SM-155 - Merger: non-lot-tracking accounts**
   - RED: Write test — position shares converted; average cost recalculated to preserve total cost basis
   - GREEN: Handle non-lot accounts in `Merger`
 
-- [ ] **SM-156 - Merger: audit log**
+- [x] **SM-156 - Merger: audit log**
   - RED: Write test — merger creates corporate_actions record
   - GREEN: Record audit entry
 
