@@ -225,6 +225,8 @@ func viewShortcutSections(view View) []shortcutSection {
 		sections = append(sections, pricesShortcuts())
 	case ViewInvestmentRegister:
 		sections = append(sections, investmentRegisterShortcuts())
+	case ViewPortfolio:
+		sections = append(sections, portfolioShortcuts())
 	}
 
 	sections = append(sections, dialogShortcuts())

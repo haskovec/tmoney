@@ -267,6 +267,13 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 		}
 	case msg.String() == "c":
 		return a.toggleInvestmentTransactionStatus()
+	case msg.String() == "p":
+		// Switch to portfolio view
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			a.portfolioData = nil // Clear old data while loading
+			a.switchView(ViewPortfolio)
+			return a, a.loadPortfolioData(a.investmentRegister.account.ID)
+		}
 	case key.Matches(msg, a.keys.Delete):
 		txn := a.selectedInvestmentTransaction()
 		if txn != nil {
@@ -481,6 +488,7 @@ func investmentRegisterShortcuts() shortcutSection {
 			{Key: "Enter", Description: "Edit transaction"},
 			{Key: "c", Description: "Toggle cleared"},
 			{Key: "d", Description: "Delete transaction"},
+			{Key: "p", Description: "Portfolio view"},
 			{Key: "Tab", Description: "Switch sidebar/table"},
 			{Key: "Esc", Description: "Go back"},
 		},

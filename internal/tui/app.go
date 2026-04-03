@@ -50,6 +50,8 @@ const (
 	ViewPrices
 	// ViewInvestmentRegister shows the investment account transaction register.
 	ViewInvestmentRegister
+	// ViewPortfolio shows the investment account portfolio (holdings) view.
+	ViewPortfolio
 )
 
 // String returns the display name of the view.
@@ -71,6 +73,8 @@ func (v View) String() string {
 		return "Prices"
 	case ViewInvestmentRegister:
 		return "Investment Register"
+	case ViewPortfolio:
+		return "Portfolio"
 	default:
 		return "Unknown"
 	}
@@ -212,6 +216,12 @@ type App struct {
 	transferSharesDialogAccountIDs  []types.ID
 	transferSharesDialogSecurityIDs []types.ID
 	transferSharesDialogLots        []*investment.Lot
+
+	// Portfolio view state
+	portfolioData          *portfolioViewData
+	portfolioHoldingsTable *Table
+	portfolioLotsTable     *Table
+	portfolioMode          portfolioViewMode
 
 	// Lot repository for sell dialog lot loading
 	lotRepo *investment.LotRepository
@@ -800,6 +810,26 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.buildInvestmentRegisterTable()
 		return a, nil
 
+	case portfolioLoadedMsg:
+		a.portfolioData = msg.data
+		a.portfolioMode = portfolioViewHoldings
+		a.buildPortfolioHoldingsTable()
+		return a, nil
+
+	case portfolioLotDetailMsg:
+		if a.portfolioData != nil {
+			a.portfolioData.lotDetails = msg.lots
+			a.portfolioData.lotSecurityID = msg.securityID
+			a.buildPortfolioLotsTable()
+			if a.portfolioLotsTable != nil {
+				a.portfolioLotsTable.SetFocused(true)
+			}
+			if a.portfolioHoldingsTable != nil {
+				a.portfolioHoldingsTable.SetFocused(false)
+			}
+		}
+		return a, nil
+
 	case investmentTransactionDeletedMsg:
 		a.statusbar.AddNotification("Transaction deleted", NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
@@ -1147,6 +1177,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			accountID := a.sidebar.SelectedAccountID()
 			cmds = append(cmds, a.loadInvestmentRegisterData(accountID))
 		}
+		if a.currentView == ViewPortfolio && a.portfolioData != nil && a.portfolioData.account != nil {
+			cmds = append(cmds, a.loadPortfolioData(a.portfolioData.account.ID))
+		}
 		return a, tea.Batch(cmds...)
 
 	case undoResultMsg:
@@ -1451,6 +1484,8 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handlePriceViewKeys(msg)
 	case ViewInvestmentRegister:
 		return a.handleInvestmentRegisterKeys(msg)
+	case ViewPortfolio:
+		return a.handlePortfolioKeys(msg)
 	}
 
 	return a, nil
@@ -2162,6 +2197,10 @@ func (a *App) switchView(v View) {
 				if a.investmentTable != nil {
 					a.investmentTable.SetFocused(true)
 				}
+			case ViewPortfolio:
+				// Start with portfolio table focused
+				a.sidebar.SetFocused(false)
+				a.setPortfolioTableFocused(true)
 			}
 		}
 	}
@@ -2362,6 +2401,8 @@ func (a *App) renderContent(height int) string {
 		viewContent = a.renderPriceView()
 	case ViewInvestmentRegister:
 		viewContent = a.renderInvestmentRegister()
+	case ViewPortfolio:
+		viewContent = a.renderPortfolioView()
 	default:
 		viewContent = "Unknown view"
 	}
@@ -3149,7 +3190,9 @@ func (a *App) getKeyHints() string {
 	case ViewPrices:
 		return "↑↓ navigate  ←→ security  n new  enter edit  d delete  i import  / search  esc back  " + common
 	case ViewInvestmentRegister:
-		return "↑↓ navigate  enter edit  n new  c clear  d delete  esc back  " + common
+		return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + common
+	case ViewPortfolio:
+		return "↑↓ navigate  enter lot detail  r register  esc back  " + common
 	default:
 		return common
 	}

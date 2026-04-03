@@ -646,19 +646,19 @@ Spec: `specs/security-master.md`
 
 ## Phase 37: TUI — Portfolio View
 
-- [ ] **SM-135 - Portfolio summary bar**
+- [x] **SM-135 - Portfolio summary bar**
   - RED: Write test — displays: Cash Balance, Market Value, Total Value, Total Cost Basis, Total Gain/Loss ($), Total Gain/Loss (%)
   - GREEN: Implement summary bar component
 
-- [ ] **SM-136 - Holdings table**
+- [x] **SM-136 - Holdings table**
   - RED: Write test — displays rolled-up holdings: Ticker, Name, Shares, Avg Cost, Current Price, Price Date, Market Value, Cost Basis, Gain/Loss ($), Gain/Loss (%); securities without pricing show "~" prefix
   - GREEN: Implement holdings table
 
-- [ ] **SM-137 - Lot detail drill-down**
+- [x] **SM-137 - Lot detail drill-down**
   - RED: Write test — selecting a security and pressing Enter shows lot detail: Purchase Date, Shares, Cost/Share, Cost Basis, Current Value, Gain/Loss ($), Gain/Loss (%); only for lot-tracking accounts
   - GREEN: Implement lot detail sub-view
 
-- [ ] **SM-138 - Toggle between register and portfolio views**
+- [x] **SM-138 - Toggle between register and portfolio views**
   - RED: Write test — investment account has two sub-views: Register (transaction list) and Portfolio (holdings); Tab or keybinding switches between them
   - GREEN: Implement view toggle for investment accounts
 
