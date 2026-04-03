@@ -439,13 +439,16 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyMsg) (tea.Model, tea.Cm
 		case investment.TransactionTypeReinvestDividend:
 			a.dividendDialogReinvest = true
 			return a, a.loadDividendDialogData()
-		default:
-			// Other transaction type dialogs not yet implemented (SM-133+)
-			if a.investmentEditTxnID == types.NilID {
-				a.statusbar.AddNotification(fmt.Sprintf("New %s (dialog not yet implemented)", selectedType.DisplayName()), NotificationInfo)
-			} else {
-				a.statusbar.AddNotification(fmt.Sprintf("Edit %s (dialog not yet implemented)", selectedType.DisplayName()), NotificationInfo)
+		case investment.TransactionTypeDeposit,
+			investment.TransactionTypeWithdrawal,
+			investment.TransactionTypeFee,
+			investment.TransactionTypeInterest:
+			a.cashOperationType = selectedType
+			var editTxn *investment.Transaction
+			if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
+				editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
 			}
+			a.cashOperationDialog = buildCashOperationDialog(selectedType.DisplayName(), editTxn)
 			return a, nil
 		}
 

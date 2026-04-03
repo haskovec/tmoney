@@ -196,6 +196,10 @@ type App struct {
 	dividendDialogSecurityIDs []types.ID
 	dividendDialogReinvest    bool // true when dialog is for reinvest dividend
 
+	// Cash operation dialog state (deposit, withdrawal, fee, interest)
+	cashOperationDialog *Dialog
+	cashOperationType   investment.TransactionType
+
 	// Lot repository for sell dialog lot loading
 	lotRepo *investment.LotRepository
 
@@ -859,6 +863,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case cashOperationDialogSavedMsg:
+		label := string(a.cashOperationType)
+		if label == "" {
+			label = "Cash operation"
+		} else {
+			label = a.cashOperationType.DisplayName()
+		}
+		a.statusbar.AddNotification(label+" transaction saved", NotificationInfo)
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		}
+		return a, nil
+
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data
 		a.buildScheduledTable()
@@ -1242,6 +1259,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If dividend dialog is visible, route all keys to it
 	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
 		return a.handleDividendDialogKey(msg)
+	}
+
+	// If cash operation dialog is visible, route all keys to it
+	if a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible() {
+		return a.handleCashOperationDialogKey(msg)
 	}
 
 	// If investment type selector is visible, route all keys to it
@@ -2213,6 +2235,12 @@ func (a *App) renderLayout() string {
 	// Overlay dividend dialog if visible
 	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
 		overlay := a.dividendDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay cash operation dialog if visible
+	if a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible() {
+		overlay := a.cashOperationDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

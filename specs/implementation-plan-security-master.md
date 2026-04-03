@@ -636,7 +636,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — dialog: Security (dropdown), Amount, Date, Memo; for reinvest: adds Shares and Price fields
   - GREEN: Implement dividend/reinvest dialog
 
-- [ ] **SM-133 - Deposit/Withdrawal/Fee/Interest dialogs**
+- [x] **SM-133 - Deposit/Withdrawal/Fee/Interest dialogs**
   - RED: Write test — simple dialogs for cash-only operations; Amount, Date, Memo fields
   - GREEN: Implement cash operation dialogs
 
