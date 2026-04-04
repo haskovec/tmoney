@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -1391,11 +1392,11 @@ func TestApp_RenderScheduled_WithDueAndUpcoming(t *testing.T) {
 		height:      30,
 		styles:      styles,
 		scheduled: &scheduledViewData{
-			dueTxns:      []*scheduled.Transaction{dueTxn},
-			upcomingTxns: []*scheduled.Transaction{upcomingTxn},
-			allTxns:      []*scheduled.Transaction{dueTxn, upcomingTxn},
-			dueCount:     1,
-			payeeNames:   map[types.ID]string{payeeID1: "Landlord", payeeID2: "Netflix"},
+			dueTxns:       []*scheduled.Transaction{dueTxn},
+			upcomingTxns:  []*scheduled.Transaction{upcomingTxn},
+			allTxns:       []*scheduled.Transaction{dueTxn, upcomingTxn},
+			dueCount:      1,
+			payeeNames:    map[types.ID]string{payeeID1: "Landlord", payeeID2: "Netflix"},
 			accountNames:  map[types.ID]string{accountID: "Checking"},
 			categoryNames: make(map[types.ID]string),
 		},
@@ -1924,7 +1925,7 @@ func TestApp_RenderSpendingReport(t *testing.T) {
 			year:  2024,
 			month: 1,
 			spending: &report.Spending{
-				Period:    "January 2024",
+				Period:        "January 2024",
 				TotalSpending: types.MustNewMoney("3000.00"),
 				Categories: []report.CategorySpending{
 					{
@@ -2035,11 +2036,11 @@ func TestApp_RenderSpendingReport_NoData(t *testing.T) {
 
 func TestRenderSpendingBar(t *testing.T) {
 	tests := []struct {
-		name      string
-		pct       float64
-		maxWidth  int
-		filled    int
-		unfilled  int
+		name     string
+		pct      float64
+		maxWidth int
+		filled   int
+		unfilled int
 	}{
 		{"50% of 20", 50.0, 20, 10, 10},
 		{"100% of 10", 100.0, 10, 10, 0},
@@ -3652,6 +3653,343 @@ func TestApp_UndoKeyBindingNotActiveInDialogs(t *testing.T) {
 		if _, ok := result.(undoResultMsg); ok {
 			t.Error("Ctrl+Z should not trigger undo when dialog is open")
 		}
+	}
+}
+
+// =============================================================================
+// Dashboard Investment Holdings Tests (SM-175)
+// =============================================================================
+
+func TestApp_RenderDashboard_InvestmentAccountWithHoldings(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(120, 40)
+
+	investAccountID := types.NewID()
+	securityID1 := types.NewID()
+	securityID2 := types.NewID()
+
+	app := &App{
+		currentView:               ViewDashboard,
+		width:                     120,
+		height:                    40,
+		styles:                    styles,
+		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: types.NewID(), Name: "Checking", Type: "checking", Balance: types.MustNewMoney("5000.00")},
+					{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+				},
+				Liabilities:      nil,
+				TotalAssets:      types.MustNewMoney("30000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("30000.00"),
+			},
+			investmentHoldings: map[types.ID]*investment.AccountValuation{
+				investAccountID: {
+					AccountID:   investAccountID,
+					CashBalance: types.MustNewMoney("5000.00"),
+					MarketValue: types.MustNewMoney("20000.00"),
+					TotalValue:  types.MustNewMoney("25000.00"),
+					Holdings: []investment.Holding{
+						{SecurityID: securityID1, MarketValue: types.MustNewMoney("12000.00"), HasPricing: true},
+						{SecurityID: securityID2, MarketValue: types.MustNewMoney("8000.00"), HasPricing: true},
+					},
+				},
+			},
+			securityTickers: map[types.ID]string{
+				securityID1: "AAPL",
+				securityID2: "GOOG",
+			},
+			payeeNames:   make(map[types.ID]string),
+			accountNames: make(map[types.ID]string),
+		},
+	}
+
+	view := app.renderDashboard()
+
+	// Investment account should show total value
+	if !contains(view, "Brokerage") {
+		t.Error("dashboard should show investment account name 'Brokerage'")
+	}
+	if !contains(view, "$25000.00") {
+		t.Error("dashboard should show investment account total value '$25000.00'")
+	}
+
+	// When expanded, top holdings should be visible
+	if !contains(view, "AAPL") {
+		t.Error("dashboard should show holding ticker 'AAPL' when expanded")
+	}
+	if !contains(view, "GOOG") {
+		t.Error("dashboard should show holding ticker 'GOOG' when expanded")
+	}
+	if !contains(view, "$12000.00") {
+		t.Error("dashboard should show AAPL market value '$12000.00'")
+	}
+	if !contains(view, "$8000.00") {
+		t.Error("dashboard should show GOOG market value '$8000.00'")
+	}
+
+	// Regular accounts should still display normally
+	if !contains(view, "Checking") {
+		t.Error("dashboard should show regular account 'Checking'")
+	}
+}
+
+func TestApp_RenderDashboard_InvestmentAccountCollapsed(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(120, 40)
+
+	investAccountID := types.NewID()
+	securityID := types.NewID()
+
+	app := &App{
+		currentView:               ViewDashboard,
+		width:                     120,
+		height:                    40,
+		styles:                    styles,
+		dashboardExpandedAccounts: map[types.ID]bool{}, // not expanded
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+				},
+				TotalAssets:      types.MustNewMoney("25000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("25000.00"),
+			},
+			investmentHoldings: map[types.ID]*investment.AccountValuation{
+				investAccountID: {
+					AccountID:   investAccountID,
+					CashBalance: types.MustNewMoney("5000.00"),
+					MarketValue: types.MustNewMoney("20000.00"),
+					TotalValue:  types.MustNewMoney("25000.00"),
+					Holdings: []investment.Holding{
+						{SecurityID: securityID, MarketValue: types.MustNewMoney("20000.00"), HasPricing: true},
+					},
+				},
+			},
+			securityTickers: map[types.ID]string{securityID: "AAPL"},
+			payeeNames:      make(map[types.ID]string),
+			accountNames:    make(map[types.ID]string),
+		},
+	}
+
+	view := app.renderDashboard()
+
+	// Account total should show
+	if !contains(view, "Brokerage") {
+		t.Error("dashboard should show investment account name even when collapsed")
+	}
+	if !contains(view, "$25000.00") {
+		t.Error("dashboard should show investment total value even when collapsed")
+	}
+
+	// Holdings should NOT show when collapsed
+	if contains(view, "AAPL") {
+		t.Error("dashboard should NOT show holding tickers when collapsed")
+	}
+}
+
+func TestApp_RenderDashboard_InvestmentAccountEstimatedValue(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(120, 40)
+
+	investAccountID := types.NewID()
+	securityID := types.NewID()
+
+	app := &App{
+		currentView:               ViewDashboard,
+		width:                     120,
+		height:                    40,
+		styles:                    styles,
+		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: investAccountID, Name: "401k", Type: "investment", Balance: types.MustNewMoney("10000.00"), EstimatedValue: true},
+				},
+				TotalAssets:      types.MustNewMoney("10000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("10000.00"),
+			},
+			investmentHoldings: map[types.ID]*investment.AccountValuation{
+				investAccountID: {
+					AccountID:   investAccountID,
+					CashBalance: types.ZeroMoney,
+					MarketValue: types.MustNewMoney("10000.00"),
+					TotalValue:  types.MustNewMoney("10000.00"),
+					Holdings: []investment.Holding{
+						{SecurityID: securityID, MarketValue: types.MustNewMoney("10000.00"), HasPricing: false},
+					},
+				},
+			},
+			securityTickers: map[types.ID]string{securityID: "VXUS"},
+			payeeNames:      make(map[types.ID]string),
+			accountNames:    make(map[types.ID]string),
+		},
+	}
+
+	view := app.renderDashboard()
+
+	// Estimated value indicator should show
+	if !contains(view, "~$10000.00") {
+		t.Error("dashboard should show estimated value prefix '~' for accounts with missing pricing")
+	}
+	// Holding without pricing should show tilde
+	if !contains(view, "~$10000.00") {
+		t.Error("holding without pricing should show estimated value indicator")
+	}
+}
+
+func TestApp_RenderDashboard_InvestmentNoHoldings(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(120, 40)
+
+	investAccountID := types.NewID()
+
+	app := &App{
+		currentView:               ViewDashboard,
+		width:                     120,
+		height:                    40,
+		styles:                    styles,
+		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: investAccountID, Name: "Empty Fund", Type: "investment", Balance: types.MustNewMoney("1000.00")},
+				},
+				TotalAssets:      types.MustNewMoney("1000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("1000.00"),
+			},
+			investmentHoldings: map[types.ID]*investment.AccountValuation{
+				investAccountID: {
+					AccountID:   investAccountID,
+					CashBalance: types.MustNewMoney("1000.00"),
+					MarketValue: types.ZeroMoney,
+					TotalValue:  types.MustNewMoney("1000.00"),
+					Holdings:    nil,
+				},
+			},
+			securityTickers: make(map[types.ID]string),
+			payeeNames:      make(map[types.ID]string),
+			accountNames:    make(map[types.ID]string),
+		},
+	}
+
+	view := app.renderDashboard()
+
+	// Should show cash only note when expanded but no holdings
+	if !contains(view, "Empty Fund") {
+		t.Error("dashboard should show investment account name")
+	}
+	if !contains(view, "cash only") {
+		t.Error("dashboard should show 'cash only' when investment account has no holdings")
+	}
+}
+
+func TestApp_RenderDashboard_InvestmentTopHoldingsLimit(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(120, 40)
+
+	investAccountID := types.NewID()
+
+	// Create 7 holdings - only top 5 should show
+	holdings := make([]investment.Holding, 7)
+	tickers := make(map[types.ID]string)
+	for i := range 7 {
+		secID := types.NewID()
+		holdings[i] = investment.Holding{
+			SecurityID:  secID,
+			MarketValue: types.MustNewMoney(fmt.Sprintf("%d.00", (7-i)*1000)),
+			HasPricing:  true,
+		}
+		tickers[secID] = fmt.Sprintf("STK%d", i+1)
+	}
+
+	app := &App{
+		currentView:               ViewDashboard,
+		width:                     120,
+		height:                    40,
+		styles:                    styles,
+		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: investAccountID, Name: "Big Portfolio", Type: "investment", Balance: types.MustNewMoney("28000.00")},
+				},
+				TotalAssets:      types.MustNewMoney("28000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("28000.00"),
+			},
+			investmentHoldings: map[types.ID]*investment.AccountValuation{
+				investAccountID: {
+					AccountID: investAccountID,
+					Holdings:  holdings,
+				},
+			},
+			securityTickers: tickers,
+			payeeNames:      make(map[types.ID]string),
+			accountNames:    make(map[types.ID]string),
+		},
+	}
+
+	view := app.renderDashboard()
+
+	// Top 5 should be visible (STK1 through STK5 have highest values)
+	if !contains(view, "STK1") {
+		t.Error("dashboard should show top holding STK1")
+	}
+	if !contains(view, "STK5") {
+		t.Error("dashboard should show 5th holding STK5")
+	}
+
+	// 6th and 7th should be hidden, replaced by "+2 more" indicator
+	if contains(view, "STK6") {
+		t.Error("dashboard should NOT show 6th holding STK6 (limit is 5)")
+	}
+	if contains(view, "STK7") {
+		t.Error("dashboard should NOT show 7th holding STK7 (limit is 5)")
+	}
+	if !contains(view, "+2 more") {
+		t.Error("dashboard should show '+2 more' indicator for hidden holdings")
+	}
+}
+
+func TestApp_RenderDashboard_InvestmentHoldingsNilMap(t *testing.T) {
+	// Dashboard should handle nil investmentHoldings gracefully
+	styles := NewStyles()
+	styles.Resize(120, 40)
+
+	investAccountID := types.NewID()
+
+	app := &App{
+		currentView:               ViewDashboard,
+		width:                     120,
+		height:                    40,
+		styles:                    styles,
+		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("10000.00")},
+				},
+				TotalAssets:      types.MustNewMoney("10000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("10000.00"),
+			},
+			investmentHoldings: nil, // nil map
+			securityTickers:    nil,
+			payeeNames:         make(map[types.ID]string),
+			accountNames:       make(map[types.ID]string),
+		},
+	}
+
+	// Should not panic
+	view := app.renderDashboard()
+	if !contains(view, "Brokerage") {
+		t.Error("dashboard should show investment account even with nil holdings map")
 	}
 }
 

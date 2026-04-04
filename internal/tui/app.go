@@ -116,7 +116,8 @@ type App struct {
 	reconciliationSvc  *reconciliation.Service
 
 	// Dashboard data (loaded asynchronously)
-	dashboard *dashboardData
+	dashboard                 *dashboardData
+	dashboardExpandedAccounts map[types.ID]bool // tracks expanded investment accounts on dashboard
 
 	// Register data (loaded when account is selected)
 	register *registerData
@@ -475,8 +476,9 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		reconciliationSvc: svc.Reconciliation,
 		securitySvc:       svc.Security,
 		priceSvc:          svc.Price,
-		investmentSvc:     svc.Investment,
-		investmentRepo:     svc.InvestmentRepo,
+		investmentSvc:             svc.Investment,
+		investmentRepo:             svc.InvestmentRepo,
+		dashboardExpandedAccounts: make(map[types.ID]bool),
 		lotRepo:            svc.LotRepo,
 		positionRepo:       svc.PositionRepo,
 		corporateActionSvc: svc.CorporateAction,
@@ -611,6 +613,38 @@ func (a *App) loadDashboardData() tea.Cmd {
 			if err == nil {
 				for _, acc := range accounts {
 					data.accountNames[acc.ID] = acc.Name
+				}
+			}
+		}
+
+		// Load investment account valuations with holdings for dashboard display
+		if a.investmentSvc != nil && data.netWorth != nil {
+			data.investmentHoldings = make(map[types.ID]*investment.AccountValuation)
+			data.securityTickers = make(map[types.ID]string)
+
+			for _, acct := range data.netWorth.Assets {
+				if acct.Type != string(account.TypeInvestment) {
+					continue
+				}
+				val, err := a.investmentSvc.GetAccountValuation(acct.AccountID, types.Today())
+				if err == nil {
+					data.investmentHoldings[acct.AccountID] = val
+				}
+			}
+
+			// Load security tickers for all holdings
+			if a.securitySvc != nil {
+				securityIDs := make(map[types.ID]bool)
+				for _, val := range data.investmentHoldings {
+					for _, h := range val.Holdings {
+						securityIDs[h.SecurityID] = true
+					}
+				}
+				for secID := range securityIDs {
+					sec, err := a.securitySvc.GetByID(secID)
+					if err == nil {
+						data.securityTickers[secID] = sec.Ticker
+					}
 				}
 			}
 		}
@@ -828,6 +862,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dashboardLoadedMsg:
 		a.dashboard = msg.data
+		// Auto-expand investment accounts that have holdings
+		if a.dashboardExpandedAccounts == nil {
+			a.dashboardExpandedAccounts = make(map[types.ID]bool)
+		}
+		if msg.data != nil && msg.data.investmentHoldings != nil {
+			for accountID, val := range msg.data.investmentHoldings {
+				if len(val.Holdings) > 0 {
+					// Only set if not already explicitly toggled by user
+					if _, exists := a.dashboardExpandedAccounts[accountID]; !exists {
+						a.dashboardExpandedAccounts[accountID] = true
+					}
+				}
+			}
+		}
 		return a, nil
 
 	case registerLoadedMsg:
@@ -2615,6 +2663,9 @@ func (a *App) renderDashboard() string {
 		Render(strings.Join(sections, "\n"))
 }
 
+// maxDashboardHoldings is the maximum number of top holdings to display per investment account.
+const maxDashboardHoldings = 5
+
 // renderAssetLiabilityColumns renders the assets and liabilities side by side.
 func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth int) string {
 	colWidth := max(
@@ -2632,8 +2683,26 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 			if acct.EstimatedValue {
 				amount = "~" + amount
 			}
-			line := fmt.Sprintf("  %-*s %s", colWidth-len(amount)-4, name, a.styles.Positive.Render(amount))
+
+			// Investment accounts get an expand/collapse indicator
+			prefix := "  "
+			if acct.Type == string(account.TypeInvestment) && a.dashboard != nil && a.dashboard.investmentHoldings != nil {
+				if _, hasHoldings := a.dashboard.investmentHoldings[acct.AccountID]; hasHoldings {
+					if a.dashboardExpandedAccounts[acct.AccountID] {
+						prefix = "▾ "
+					} else {
+						prefix = "▸ "
+					}
+				}
+			}
+
+			line := fmt.Sprintf("%s%-*s %s", prefix, colWidth-len(amount)-len(prefix)-2, name, a.styles.Positive.Render(amount))
 			assetsLines = append(assetsLines, line)
+
+			// Show top holdings if investment account is expanded
+			if acct.Type == string(account.TypeInvestment) && a.dashboardExpandedAccounts[acct.AccountID] {
+				assetsLines = append(assetsLines, a.renderDashboardHoldings(acct.AccountID, colWidth)...)
+			}
 		}
 	}
 	assetsLines = append(assetsLines, a.styles.Muted.Render("  "+strings.Repeat("─", colWidth-4)))
@@ -2677,6 +2746,58 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	}
 
 	return strings.Join(rows, "\n")
+}
+
+// renderDashboardHoldings renders the top holdings for an investment account on the dashboard.
+func (a *App) renderDashboardHoldings(accountID types.ID, colWidth int) []string {
+	if a.dashboard == nil || a.dashboard.investmentHoldings == nil {
+		return nil
+	}
+
+	val, ok := a.dashboard.investmentHoldings[accountID]
+	if !ok {
+		return nil
+	}
+
+	if len(val.Holdings) == 0 {
+		return []string{a.styles.Muted.Render("    cash only")}
+	}
+
+	// Sort holdings by market value descending (they may already be sorted, but ensure)
+	sorted := make([]investment.Holding, len(val.Holdings))
+	copy(sorted, val.Holdings)
+	for i := 0; i < len(sorted)-1; i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			if sorted[j].MarketValue.Cmp(sorted[i].MarketValue) > 0 {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+
+	var lines []string
+	displayCount := min(len(sorted), maxDashboardHoldings)
+
+	for _, h := range sorted[:displayCount] {
+		ticker := "???"
+		if a.dashboard.securityTickers != nil {
+			if t, ok := a.dashboard.securityTickers[h.SecurityID]; ok {
+				ticker = t
+			}
+		}
+		ticker = truncate(ticker, colWidth-20)
+		amount := formatDashboardMoney(h.MarketValue)
+		if !h.HasPricing {
+			amount = "~" + amount
+		}
+		line := fmt.Sprintf("    %-*s %s", colWidth-len(amount)-6, ticker, a.styles.Muted.Render(amount))
+		lines = append(lines, line)
+	}
+
+	if remaining := len(sorted) - displayCount; remaining > 0 {
+		lines = append(lines, a.styles.Muted.Render(fmt.Sprintf("    +%d more", remaining)))
+	}
+
+	return lines
 }
 
 // renderDashboardScheduled renders the scheduled transactions section of the dashboard.
@@ -3357,11 +3478,13 @@ type scheduledDueCountMsg struct {
 
 // dashboardData holds the loaded data for the dashboard view.
 type dashboardData struct {
-	netWorth     *report.NetWorth
-	dueTxns      []*scheduled.Transaction
-	upcomingTxns []*scheduled.Transaction
-	payeeNames   map[types.ID]string
-	accountNames map[types.ID]string
+	netWorth           *report.NetWorth
+	dueTxns            []*scheduled.Transaction
+	upcomingTxns       []*scheduled.Transaction
+	payeeNames         map[types.ID]string
+	accountNames       map[types.ID]string
+	investmentHoldings map[types.ID]*investment.AccountValuation // account ID -> valuation with holdings
+	securityTickers    map[types.ID]string                      // security ID -> ticker
 }
 
 // dashboardLoadedMsg is sent when dashboard data has been loaded.

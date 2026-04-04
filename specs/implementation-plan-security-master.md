@@ -830,7 +830,7 @@ Spec: `specs/security-master.md`
 
 ## Phase 49: Dashboard Integration
 
-- [ ] **SM-175 - Investment accounts on dashboard**
+- [x] **SM-175 - Investment accounts on dashboard**
   - RED: Write test — dashboard shows investment accounts with total value (cash + holdings); expandable to show top holdings
   - GREEN: Update dashboard data loading to include investment account valuations
 
