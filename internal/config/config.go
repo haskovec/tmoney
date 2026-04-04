@@ -8,7 +8,7 @@ import (
 )
 
 // maxRecentFiles is the maximum number of recent files to track.
-const maxRecentFiles = 10
+const maxRecentFiles = 5
 
 // Config holds TMoney application settings persisted across sessions.
 type Config struct {
@@ -21,16 +21,18 @@ type Config struct {
 }
 
 // Dir returns the configuration directory for TMoney.
-// Uses os.UserConfigDir() which maps to:
-//   - macOS: ~/Library/Application Support/tmoney
-//   - Linux: ~/.config/tmoney
-//   - Windows: %AppData%/tmoney
+// Follows the XDG Base Directory Specification:
+//   - If $XDG_CONFIG_HOME is set, uses $XDG_CONFIG_HOME/tmoney
+//   - Otherwise, uses $HOME/.config/tmoney (all platforms)
 func Dir() (string, error) {
-	base, err := os.UserConfigDir()
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "tmoney"), nil
+	}
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "tmoney"), nil
+	return filepath.Join(home, ".config", "tmoney"), nil
 }
 
 // Path returns the full path to the config file.

@@ -294,6 +294,16 @@ tmoney --report spending --from 2024-01-01 --to 2024-06-30
 
 TMoney uses `.tdb` files (DuckDB databases) stored in `~/Documents/TMoney/` by default. Each file is self-contained and versioned with automatic schema migrations.
 
+## Configuration
+
+TMoney stores its configuration at `~/.config/tmoney/config.json`, following the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/). If `$XDG_CONFIG_HOME` is set, it uses `$XDG_CONFIG_HOME/tmoney/` instead.
+
+The config file tracks:
+- **Last opened file** — automatically reopened when you launch `tmoney` without specifying a file
+- **Recent files** — the 5 most recently opened database files (available via File > Open Recent in the TUI)
+
+This means you can simply run `tmoney` after your first session and it will reopen the last file you were working with. Specifying `-f <path>` or a positional argument always takes priority over the saved default.
+
 ## Tech Stack
 
 - **Go**: Performance, single binary, cross-platform

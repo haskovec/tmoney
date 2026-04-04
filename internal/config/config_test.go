@@ -130,8 +130,8 @@ func TestAddRecentFile_Deduplicates(t *testing.T) {
 func TestAddRecentFile_CapsAtMax(t *testing.T) {
 	cfg := &Config{}
 
-	// Add 12 files
-	for i := range 12 {
+	// Add 7 files, expect only 5 retained
+	for i := range 7 {
 		cfg.AddRecentFile(filepath.Join("/tmp", string(rune('a'+i))+".tdb"))
 	}
 
@@ -139,7 +139,7 @@ func TestAddRecentFile_CapsAtMax(t *testing.T) {
 		t.Errorf("RecentFiles length = %d, want %d", len(cfg.RecentFiles), maxRecentFiles)
 	}
 	// Most recent should be first
-	want := filepath.Join("/tmp", "l.tdb")
+	want := filepath.Join("/tmp", "g.tdb")
 	if cfg.RecentFiles[0] != want {
 		t.Errorf("RecentFiles[0] = %q, want %q", cfg.RecentFiles[0], want)
 	}
@@ -197,6 +197,40 @@ func TestDir(t *testing.T) {
 	}
 	if filepath.Base(dir) != "tmoney" {
 		t.Errorf("Dir() = %q, want directory named 'tmoney'", dir)
+	}
+}
+
+func TestDir_XDGConfigHome(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	dir, err := Dir()
+	if err != nil {
+		t.Fatalf("Dir() error: %v", err)
+	}
+
+	want := filepath.Join(tmp, "tmoney")
+	if dir != want {
+		t.Errorf("Dir() = %q, want %q (should respect $XDG_CONFIG_HOME)", dir, want)
+	}
+}
+
+func TestDir_FallbackDotConfig(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir() error: %v", err)
+	}
+
+	dir, err := Dir()
+	if err != nil {
+		t.Fatalf("Dir() error: %v", err)
+	}
+
+	want := filepath.Join(home, ".config", "tmoney")
+	if dir != want {
+		t.Errorf("Dir() = %q, want %q (should fall back to $HOME/.config/tmoney)", dir, want)
 	}
 }
 

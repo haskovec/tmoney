@@ -238,8 +238,9 @@ Session-scoped undo/redo via an `Operation` interface with `Do()` and `Undo()` m
 
 ### Configuration (`internal/config/`)
 
-User preferences stored in `~/.config/tmoney/config.json`:
-- Recent files list
+User preferences stored in `~/.config/tmoney/config.json` (or `$XDG_CONFIG_HOME/tmoney/config.json`):
+- Last opened file (auto-reopened on next launch)
+- Recent files list (5 most recent)
 - Default database location
 
 ## Key Design Decisions
