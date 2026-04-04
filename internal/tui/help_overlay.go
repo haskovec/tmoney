@@ -64,12 +64,24 @@ func navigationShortcuts() shortcutSection {
 	}
 }
 
+// mouseShortcuts returns the mouse interaction hints.
+func mouseShortcuts() shortcutSection {
+	return shortcutSection{
+		Title: "Mouse",
+		Entries: []shortcutEntry{
+			{"Click", "Menu items, accounts, rows"},
+			{"Scroll", "Navigate lists and tables"},
+		},
+	}
+}
+
 // dashboardShortcuts returns the dashboard view keyboard shortcuts.
 func dashboardShortcuts() shortcutSection {
 	return shortcutSection{
 		Title: "Dashboard",
 		Entries: []shortcutEntry{
 			{"Enter", "Open selected account"},
+			{"n", "New account"},
 			{"Up/Down", "Navigate accounts"},
 			{"Left/Right", "Collapse/expand groups"},
 		},
@@ -230,6 +242,7 @@ func viewShortcutSections(view View) []shortcutSection {
 	}
 
 	sections = append(sections, dialogShortcuts())
+	sections = append(sections, mouseShortcuts())
 	return sections
 }
 

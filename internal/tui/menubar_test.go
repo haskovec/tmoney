@@ -702,6 +702,151 @@ func TestMenuBar_Render_ShortcutUnderline(t *testing.T) {
 	}
 }
 
+func TestMenuBar_HitTestBar(t *testing.T) {
+	m := NewMenuBar()
+	// Menu labels: " File " (6), " Edit " (6), " Accounts " (10), " Transactions " (14), " Reports " (9), " Help " (6)
+	// Cumulative: 0-5=File, 6-11=Edit, 12-21=Accounts, 22-35=Transactions, 36-44=Reports, 45-50=Help
+
+	tests := []struct {
+		name string
+		x    int
+		want int
+	}{
+		{"File start", 0, 0},
+		{"File end", 5, 0},
+		{"Edit start", 6, 1},
+		{"Edit end", 11, 1},
+		{"Accounts start", 12, 2},
+		{"Accounts end", 21, 2},
+		{"Transactions start", 22, 3},
+		{"Transactions end", 35, 3},
+		{"Reports start", 36, 4},
+		{"Reports end", 44, 4},
+		{"Help start", 45, 5},
+		{"Help end", 50, 5},
+		{"Beyond menus", 51, -1},
+		{"Negative x", -1, -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := m.HitTestBar(tt.x)
+			if got != tt.want {
+				t.Errorf("HitTestBar(%d) = %d, want %d", tt.x, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMenuBar_HitTestBar_EmptyMenuBar(t *testing.T) {
+	m := &MenuBar{}
+	if got := m.HitTestBar(0); got != -1 {
+		t.Errorf("HitTestBar(0) on empty menu bar = %d, want -1", got)
+	}
+}
+
+func TestMenuBar_HitTestDropdown(t *testing.T) {
+	m := NewMenuBar()
+	m.Activate() // File menu active (7 items)
+
+	tests := []struct {
+		name string
+		y    int
+		want int
+	}{
+		{"first item", 0, 0},
+		{"third item", 2, 2},
+		{"last item", 6, 6},
+		{"out of range", 7, -1},
+		{"negative", -1, -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := m.HitTestDropdown(tt.y)
+			if got != tt.want {
+				t.Errorf("HitTestDropdown(%d) = %d, want %d", tt.y, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMenuBar_HitTestDropdown_NotActive(t *testing.T) {
+	m := NewMenuBar()
+	if got := m.HitTestDropdown(0); got != -1 {
+		t.Errorf("HitTestDropdown when not active = %d, want -1", got)
+	}
+}
+
+func TestMenuBar_HitTestDropdown_EditMenu(t *testing.T) {
+	m := NewMenuBar()
+	m.ActivateMenu(1) // Edit menu (2 items: Undo, Redo)
+
+	if got := m.HitTestDropdown(0); got != 0 {
+		t.Errorf("HitTestDropdown(0) on Edit = %d, want 0", got)
+	}
+	if got := m.HitTestDropdown(1); got != 1 {
+		t.Errorf("HitTestDropdown(1) on Edit = %d, want 1", got)
+	}
+	if got := m.HitTestDropdown(2); got != -1 {
+		t.Errorf("HitTestDropdown(2) on Edit = %d, want -1", got)
+	}
+}
+
+func TestMenuBar_DropdownBounds(t *testing.T) {
+	m := NewMenuBar()
+
+	// Not active
+	colOffset, dropdownWidth, itemCount := m.DropdownBounds()
+	if colOffset != 0 || dropdownWidth != 0 || itemCount != 0 {
+		t.Errorf("DropdownBounds when not active = (%d, %d, %d), want (0, 0, 0)",
+			colOffset, dropdownWidth, itemCount)
+	}
+
+	// Activate File menu (index 0)
+	m.Activate()
+	colOffset, dropdownWidth, itemCount = m.DropdownBounds()
+	if colOffset != 0 {
+		t.Errorf("File menu colOffset = %d, want 0", colOffset)
+	}
+	if itemCount != 7 {
+		t.Errorf("File menu itemCount = %d, want 7", itemCount)
+	}
+	// Widest item is "Restore from Backup" (19 chars) + 4 padding = 23
+	if dropdownWidth != 23 {
+		t.Errorf("File menu dropdownWidth = %d, want 23", dropdownWidth)
+	}
+}
+
+func TestMenuBar_DropdownBounds_SecondMenu(t *testing.T) {
+	m := NewMenuBar()
+	m.ActivateMenu(1) // Edit menu
+
+	colOffset, dropdownWidth, itemCount := m.DropdownBounds()
+	// Offset = " File " = 6
+	if colOffset != 6 {
+		t.Errorf("Edit menu colOffset = %d, want 6", colOffset)
+	}
+	if itemCount != 2 {
+		t.Errorf("Edit menu itemCount = %d, want 2", itemCount)
+	}
+	// Widest item is "Undo" or "Redo" (4 chars) + 4 padding = 8
+	if dropdownWidth != 8 {
+		t.Errorf("Edit menu dropdownWidth = %d, want 8", dropdownWidth)
+	}
+}
+
+func TestMenuBar_DropdownBounds_ThirdMenu(t *testing.T) {
+	m := NewMenuBar()
+	m.ActivateMenu(2) // Accounts menu
+
+	colOffset, _, _ := m.DropdownBounds()
+	// Offset = " File " + " Edit " = 6 + 6 = 12
+	if colOffset != 12 {
+		t.Errorf("Accounts menu colOffset = %d, want 12", colOffset)
+	}
+}
+
 func TestStripAnsi(t *testing.T) {
 	tests := []struct {
 		input    string

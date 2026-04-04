@@ -135,6 +135,7 @@ Press `?` at any time to show the help overlay.
 | Key | Action |
 |-----|--------|
 | `Enter` | Open selected account register |
+| `n` | New account |
 | `Up/Down` | Navigate accounts |
 | `Left/Right` | Collapse/expand account groups |
 
@@ -179,6 +180,20 @@ Press `?` at any time to show the help overlay.
 | `Esc` | Cancel / close |
 | `Up/Down` | Navigate options |
 | `Space` | Type space in text fields / toggle checkbox |
+
+### Mouse Support
+
+TMoney supports mouse interaction for common operations:
+
+| Action | Effect |
+|--------|--------|
+| Click menu label | Open/close menu dropdown |
+| Click dropdown item | Execute menu action |
+| Click account in sidebar | Open account register |
+| Click group header in sidebar | Collapse/expand group |
+| Click transaction row | Select transaction |
+| Click sidebar/table area | Switch focus between panes |
+| Scroll wheel | Navigate lists and tables |
 
 ## CLI Reference
 

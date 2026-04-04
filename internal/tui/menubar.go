@@ -204,6 +204,11 @@ func (m *MenuBar) CurrentMenu() *menu {
 	return &m.menus[m.cursor]
 }
 
+// SetItemCursor sets the dropdown item cursor to the given position.
+func (m *MenuBar) SetItemCursor(pos int) {
+	m.itemCursor = pos
+}
+
 // MoveLeft moves the cursor to the previous top-level menu.
 func (m *MenuBar) MoveLeft() {
 	if m.cursor > 0 {
@@ -251,6 +256,70 @@ func (m *MenuBar) Select() MenuAction {
 	action := current.items[m.itemCursor].action
 	m.Deactivate()
 	return action
+}
+
+// HitTestBar determines which top-level menu label was clicked at position x.
+// Returns the menu index (0-based), or -1 if no menu was hit.
+// x is relative to the start of the menu bar (column 0).
+func (m *MenuBar) HitTestBar(x int) int {
+	if x < 0 {
+		return -1
+	}
+	offset := 0
+	for i, mn := range m.menus {
+		w := len(mn.label) + 2 // " label " format
+		if x >= offset && x < offset+w {
+			return i
+		}
+		offset += w
+	}
+	return -1
+}
+
+// HitTestDropdown determines which dropdown item was clicked at row y.
+// y is the row offset within the dropdown (0-based, where 0 is the first item).
+// Returns the item index, or -1 if out of range or menu is not active.
+func (m *MenuBar) HitTestDropdown(y int) int {
+	if !m.active {
+		return -1
+	}
+	current := m.CurrentMenu()
+	if current == nil {
+		return -1
+	}
+	if y >= 0 && y < len(current.items) {
+		return y
+	}
+	return -1
+}
+
+// DropdownBounds returns the column offset, width, and item count for the active dropdown.
+// Returns (0, 0, 0) if the menu bar is not active.
+func (m *MenuBar) DropdownBounds() (colOffset, dropdownWidth, itemCount int) {
+	if !m.active {
+		return 0, 0, 0
+	}
+	current := m.CurrentMenu()
+	if current == nil {
+		return 0, 0, 0
+	}
+
+	// Calculate column offset (same as RenderDropdown)
+	for i := 0; i < m.cursor; i++ {
+		colOffset += len(m.menus[i].label) + 2
+	}
+
+	// Calculate dropdown width (same as RenderDropdown)
+	maxWidth := 0
+	for _, item := range current.items {
+		if len(item.label) > maxWidth {
+			maxWidth = len(item.label)
+		}
+	}
+	dropdownWidth = maxWidth + 4
+
+	itemCount = len(current.items)
+	return
 }
 
 // Render renders the menu bar (just the top-level labels) for the given width.

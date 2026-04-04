@@ -550,6 +550,125 @@ func TestSidebar_NavigationWithCollapseState(t *testing.T) {
 	}
 }
 
+func TestSidebar_SetCursor(t *testing.T) {
+	s := NewSidebar()
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
+	}
+	s.SetAccounts(accounts, nil)
+	// items: [Bank Accounts, Checking, Savings] = 3 items
+
+	s.SetCursor(1)
+	if s.cursor != 1 {
+		t.Errorf("SetCursor(1): cursor = %d, want 1", s.cursor)
+	}
+
+	s.SetCursor(2)
+	if s.cursor != 2 {
+		t.Errorf("SetCursor(2): cursor = %d, want 2", s.cursor)
+	}
+
+	// Clamps to valid range
+	s.SetCursor(10)
+	if s.cursor != 2 {
+		t.Errorf("SetCursor(10): cursor = %d, want 2 (clamped)", s.cursor)
+	}
+
+	s.SetCursor(-1)
+	if s.cursor != 0 {
+		t.Errorf("SetCursor(-1): cursor = %d, want 0 (clamped)", s.cursor)
+	}
+}
+
+func TestSidebar_SetCursor_Empty(t *testing.T) {
+	s := NewSidebar()
+
+	s.SetCursor(5)
+	if s.cursor != 0 {
+		t.Errorf("SetCursor on empty sidebar: cursor = %d, want 0", s.cursor)
+	}
+}
+
+func TestSidebar_ItemCount(t *testing.T) {
+	s := NewSidebar()
+
+	if s.ItemCount() != 0 {
+		t.Errorf("ItemCount on empty sidebar = %d, want 0", s.ItemCount())
+	}
+
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Visa", account.TypeCreditCard),
+	}
+	s.SetAccounts(accounts, nil)
+	// items: [Bank Accounts, Checking, Credit Cards, Visa] = 4 items
+
+	if s.ItemCount() != 4 {
+		t.Errorf("ItemCount = %d, want 4", s.ItemCount())
+	}
+}
+
+func TestSidebar_HitTest(t *testing.T) {
+	s := NewSidebar()
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
+	}
+	s.SetAccounts(accounts, nil)
+	// items: [Bank Accounts, Checking, Savings] = 3 items
+
+	tests := []struct {
+		name string
+		y    int
+		want int
+	}{
+		{"first item (group header)", 0, 0},
+		{"second item (Checking)", 1, 1},
+		{"third item (Savings)", 2, 2},
+		{"out of range", 3, -1},
+		{"negative", -1, -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.HitTest(tt.y)
+			if got != tt.want {
+				t.Errorf("HitTest(%d) = %d, want %d", tt.y, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSidebar_HitTest_Empty(t *testing.T) {
+	s := NewSidebar()
+
+	if got := s.HitTest(0); got != -1 {
+		t.Errorf("HitTest(0) on empty sidebar = %d, want -1", got)
+	}
+}
+
+func TestSidebar_HitTest_AfterCollapse(t *testing.T) {
+	s := NewSidebar()
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Visa", account.TypeCreditCard),
+	}
+	s.SetAccounts(accounts, nil)
+	// items: [Bank Accounts, Checking, Credit Cards, Visa] = 4 items
+
+	// Collapse first group
+	s.CollapseGroup()
+	// items: [Bank Accounts, Credit Cards, Visa] = 3 items
+
+	if got := s.HitTest(2); got != 2 {
+		t.Errorf("HitTest(2) after collapse = %d, want 2", got)
+	}
+	if got := s.HitTest(3); got != -1 {
+		t.Errorf("HitTest(3) after collapse = %d, want -1", got)
+	}
+}
+
 func TestSidebar_SelectPreservesAcrossReload(t *testing.T) {
 	s := NewSidebar()
 	checking := testAccount("Checking", account.TypeChecking)

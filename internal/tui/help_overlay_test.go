@@ -114,9 +114,9 @@ func TestViewShortcutSections(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.view.String(), func(t *testing.T) {
 			sections := viewShortcutSections(tt.view)
-			// Should always have Global, Navigation, view-specific, and Dialog sections
-			if len(sections) != 4 {
-				t.Errorf("expected 4 sections for %v, got %d", tt.view, len(sections))
+			// Should always have Global, Navigation, view-specific, Dialog, and Mouse sections
+			if len(sections) != 5 {
+				t.Errorf("expected 5 sections for %v, got %d", tt.view, len(sections))
 			}
 
 			// First two should be Global and Navigation
@@ -132,9 +132,14 @@ func TestViewShortcutSections(t *testing.T) {
 				t.Errorf("view section = %q, want %q", sections[2].Title, tt.wantViewName)
 			}
 
-			// Last should be Dialogs
+			// Fourth should be Dialogs
 			if sections[3].Title != "Dialogs" {
-				t.Errorf("last section = %q, want Dialogs", sections[3].Title)
+				t.Errorf("fourth section = %q, want Dialogs", sections[3].Title)
+			}
+
+			// Last should be Mouse
+			if sections[4].Title != "Mouse" {
+				t.Errorf("last section = %q, want Mouse", sections[4].Title)
 			}
 		})
 	}

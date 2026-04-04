@@ -296,6 +296,27 @@ func (s *Sidebar) clampCursor() {
 	}
 }
 
+// SetCursor sets the cursor to the given position, clamping to valid bounds.
+func (s *Sidebar) SetCursor(pos int) {
+	s.cursor = pos
+	s.clampCursor()
+}
+
+// ItemCount returns the number of visible items.
+func (s *Sidebar) ItemCount() int {
+	return len(s.items)
+}
+
+// HitTest determines which sidebar item was clicked at row y.
+// y is relative to the top of the sidebar content (0-based).
+// Returns the item index, or -1 if out of range.
+func (s *Sidebar) HitTest(y int) int {
+	if y >= 0 && y < len(s.items) {
+		return y
+	}
+	return -1
+}
+
 // Render renders the sidebar content for the given dimensions.
 func (s *Sidebar) Render(styles Styles, width, height int) string {
 	if width <= 0 || height <= 0 {

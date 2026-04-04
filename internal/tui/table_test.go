@@ -792,6 +792,99 @@ func TestTable_SetRows_ClearsRowStyles(t *testing.T) {
 	}
 }
 
+func TestTable_HitTest_Header(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 5}})
+	tbl.SetRows([][]string{{"one"}, {"two"}, {"three"}})
+
+	if got := tbl.HitTest(0); got != -1 {
+		t.Errorf("HitTest(0) = %d, want -1 (header)", got)
+	}
+}
+
+func TestTable_HitTest_FirstRow(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 5}})
+	tbl.SetRows([][]string{{"one"}, {"two"}, {"three"}})
+
+	if got := tbl.HitTest(1); got != 0 {
+		t.Errorf("HitTest(1) = %d, want 0", got)
+	}
+}
+
+func TestTable_HitTest_SecondRow(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 5}})
+	tbl.SetRows([][]string{{"one"}, {"two"}, {"three"}})
+
+	if got := tbl.HitTest(2); got != 1 {
+		t.Errorf("HitTest(2) = %d, want 1", got)
+	}
+}
+
+func TestTable_HitTest_WithScroll(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 5}})
+	rows := make([][]string, 20)
+	for i := range rows {
+		rows[i] = []string{"row"}
+	}
+	tbl.SetRows(rows)
+	tbl.scrollOffset = 5
+
+	// y=1 should map to data row 5 (scrollOffset + 0)
+	if got := tbl.HitTest(1); got != 5 {
+		t.Errorf("HitTest(1) with scrollOffset=5 = %d, want 5", got)
+	}
+
+	// y=3 should map to data row 7
+	if got := tbl.HitTest(3); got != 7 {
+		t.Errorf("HitTest(3) with scrollOffset=5 = %d, want 7", got)
+	}
+}
+
+func TestTable_HitTest_OutOfRange(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 5}})
+	tbl.SetRows([][]string{{"one"}, {"two"}})
+
+	// y=3 with 2 rows and scrollOffset=0 -> data row 2, which is out of range
+	if got := tbl.HitTest(3); got != -1 {
+		t.Errorf("HitTest(3) with 2 rows = %d, want -1", got)
+	}
+}
+
+func TestTable_HitTest_Negative(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 5}})
+	tbl.SetRows([][]string{{"one"}})
+
+	if got := tbl.HitTest(-1); got != -1 {
+		t.Errorf("HitTest(-1) = %d, want -1", got)
+	}
+}
+
+func TestTable_HitTest_EmptyTable(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 5}})
+
+	if got := tbl.HitTest(0); got != -1 {
+		t.Errorf("HitTest(0) on empty table = %d, want -1", got)
+	}
+	if got := tbl.HitTest(1); got != -1 {
+		t.Errorf("HitTest(1) on empty table = %d, want -1", got)
+	}
+}
+
+func TestTable_HitTest_ScrollPastEnd(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 5}})
+	tbl.SetRows([][]string{{"one"}, {"two"}, {"three"}})
+	tbl.scrollOffset = 2
+
+	// y=1 -> data row 2 (valid, last row)
+	if got := tbl.HitTest(1); got != 2 {
+		t.Errorf("HitTest(1) with scrollOffset=2 = %d, want 2", got)
+	}
+
+	// y=2 -> data row 3 (out of range)
+	if got := tbl.HitTest(2); got != -1 {
+		t.Errorf("HitTest(2) with scrollOffset=2 = %d, want -1", got)
+	}
+}
+
 func TestTable_Render_VoidRowStyle(t *testing.T) {
 	styles := NewStyles()
 	cols := []Column{{Header: "Name", Width: 20}}

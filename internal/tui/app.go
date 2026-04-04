@@ -846,6 +846,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return a.handleKeyPress(msg)
 
+	case tea.MouseMsg:
+		return a.handleMouseEvent(msg)
+
 	case sidebarLoadedMsg:
 		a.sidebar.SetAccounts(msg.accounts, msg.balances)
 		return a, nil
@@ -2116,9 +2119,257 @@ func (a *App) handleSidebarKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, a.loadRegisterData(accountID)
 		}
 		return a, nil
+
+	case key.Matches(msg, a.keys.New):
+		return a, a.loadNewAccountDialogData()
 	}
 
 	return a, nil
+}
+
+// handleMouseEvent handles mouse events (clicks, wheel scrolling).
+func (a *App) handleMouseEvent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Only handle press events for left click, and wheel events
+	switch msg.Button {
+	case tea.MouseButtonWheelUp, tea.MouseButtonWheelDown:
+		return a.handleMouseWheel(msg)
+	case tea.MouseButtonLeft:
+		if msg.Action != tea.MouseActionPress {
+			return a, nil
+		}
+	default:
+		return a, nil
+	}
+
+	// Ignore mouse clicks when any modal dialog is visible
+	if a.isDialogVisible() {
+		return a, nil
+	}
+
+	// Menu bar (row 0)
+	if msg.Y == 0 {
+		return a.handleMouseMenuBar(msg)
+	}
+
+	// If menu dropdown is open, check if click is on dropdown
+	if a.menubar.IsActive() {
+		colOffset, dropdownWidth, itemCount := a.menubar.DropdownBounds()
+		if msg.Y >= 1 && msg.Y <= itemCount &&
+			msg.X >= colOffset && msg.X < colOffset+dropdownWidth {
+			itemIdx := a.menubar.HitTestDropdown(msg.Y - 1)
+			if itemIdx >= 0 {
+				a.menubar.SetItemCursor(itemIdx)
+				action := a.menubar.Select()
+				return a.handleMenuAction(action)
+			}
+		}
+		// Click outside dropdown closes it
+		a.menubar.Deactivate()
+		// Fall through to handle the click in the content area
+	}
+
+	// Status bar (last row) - ignore
+	if msg.Y >= a.height-1 {
+		return a, nil
+	}
+
+	// Content area
+	if msg.Y >= 1 && msg.Y < a.height-1 {
+		return a.handleMouseContent(msg)
+	}
+
+	return a, nil
+}
+
+// handleMouseMenuBar handles mouse clicks on the menu bar (row 0).
+func (a *App) handleMouseMenuBar(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	idx := a.menubar.HitTestBar(msg.X)
+	if idx >= 0 {
+		if a.menubar.IsActive() && a.menubar.Cursor() == idx {
+			a.menubar.Deactivate()
+		} else {
+			a.menubar.ActivateMenu(idx)
+		}
+	} else if a.menubar.IsActive() {
+		a.menubar.Deactivate()
+	}
+	return a, nil
+}
+
+// handleMouseContent handles mouse clicks in the content area.
+func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	contentY := msg.Y - 1 // Offset for header row
+
+	sidebarWidth := a.styles.SidebarWidth()
+
+	// Full-screen views (no sidebar)
+	if sidebarWidth == 0 || a.currentView == ViewReconciliation ||
+		a.currentView == ViewSecurities || a.currentView == ViewPrices {
+		return a.handleMouseTable(msg, contentY)
+	}
+
+	// Sidebar zone
+	if msg.X < sidebarWidth {
+		return a.handleMouseSidebar(msg, contentY)
+	}
+
+	// Border column - ignore
+	if msg.X == sidebarWidth {
+		return a, nil
+	}
+
+	// Content zone (right of sidebar)
+	a.focusContent()
+	return a.handleMouseTable(msg, contentY)
+}
+
+// handleMouseSidebar handles mouse clicks in the sidebar area.
+func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd) {
+	idx := a.sidebar.HitTest(contentY)
+	if idx < 0 {
+		return a, nil
+	}
+
+	a.focusSidebar()
+	a.sidebar.SetCursor(idx)
+
+	item := a.sidebar.CursorItem()
+	if item == nil {
+		return a, nil
+	}
+
+	if item.kind == sidebarItemGroup {
+		a.sidebar.ToggleCollapse()
+		return a, nil
+	}
+
+	// Account item - select and open register/portfolio
+	if a.sidebar.Select() {
+		accountID := a.sidebar.SelectedAccountID()
+		acct := a.sidebar.SelectedAccount()
+		if acct != nil && acct.Type == account.TypeInvestment {
+			a.portfolioData = nil
+			a.switchView(ViewPortfolio)
+			return a, a.loadPortfolioData(accountID)
+		}
+		a.register = nil
+		a.switchView(ViewRegister)
+		return a, a.loadRegisterData(accountID)
+	}
+
+	return a, nil
+}
+
+// handleMouseTable handles mouse clicks in the table/content area.
+func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd) {
+	// Table offset within content: 1 (top padding) + 1 (title) + 1 (separator) = 3
+	const tableContentOffset = 3
+	tableY := contentY - tableContentOffset
+
+	tbl := a.activeTable()
+	if tbl == nil {
+		return a, nil
+	}
+
+	rowIdx := tbl.HitTest(tableY)
+	if rowIdx >= 0 {
+		tbl.SetCursor(rowIdx)
+	}
+
+	return a, nil
+}
+
+// handleMouseWheel handles mouse wheel scrolling.
+func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if a.isDialogVisible() {
+		return a, nil
+	}
+
+	if a.sidebar.IsFocused() {
+		if msg.Button == tea.MouseButtonWheelUp {
+			a.sidebar.MoveUp()
+		} else {
+			a.sidebar.MoveDown()
+		}
+		return a, nil
+	}
+
+	tbl := a.activeTable()
+	if tbl != nil {
+		if msg.Button == tea.MouseButtonWheelUp {
+			tbl.MoveUp()
+		} else {
+			tbl.MoveDown()
+		}
+	}
+
+	return a, nil
+}
+
+// activeTable returns the currently active table for the current view, or nil.
+func (a *App) activeTable() *Table {
+	switch a.currentView {
+	case ViewRegister:
+		return a.table
+	case ViewScheduled:
+		return a.scheduledTable
+	case ViewInvestmentRegister:
+		return a.investmentTable
+	case ViewPortfolio:
+		if a.portfolioData != nil {
+			return a.activePortfolioTable()
+		}
+	case ViewSecurities:
+		return a.securityTable
+	case ViewPrices:
+		return a.priceTable
+	}
+	return nil
+}
+
+// focusSidebar switches focus to the sidebar and unfocuses the active table.
+func (a *App) focusSidebar() {
+	a.sidebar.SetFocused(true)
+	if tbl := a.activeTable(); tbl != nil {
+		tbl.SetFocused(false)
+	}
+}
+
+// focusContent switches focus to the content table and unfocuses the sidebar.
+func (a *App) focusContent() {
+	a.sidebar.SetFocused(false)
+	if tbl := a.activeTable(); tbl != nil {
+		tbl.SetFocused(true)
+	}
+}
+
+// isDialogVisible returns true if any modal dialog is currently visible.
+func (a *App) isDialogVisible() bool {
+	return (a.confirmDialog != nil && a.confirmDialog.IsVisible()) ||
+		(a.backupDialog != nil && a.backupDialog.dialog.IsVisible()) ||
+		(a.fileDialog != nil && a.fileDialog.IsVisible()) ||
+		(a.splitDialog != nil && a.splitDialog.IsVisible()) ||
+		(a.txnDialog != nil && a.txnDialog.IsVisible()) ||
+		(a.transferDialog != nil && a.transferDialog.IsVisible()) ||
+		(a.schedDialog != nil && a.schedDialog.IsVisible()) ||
+		(a.acctDialog != nil && a.acctDialog.IsVisible()) ||
+		(a.reconDialog != nil && a.reconDialog.IsVisible()) ||
+		(a.securityDialog != nil && a.securityDialog.IsVisible()) ||
+		(a.priceDialog != nil && a.priceDialog.IsVisible()) ||
+		(a.priceImportDialog != nil && a.priceImportDialog.IsVisible()) ||
+		(a.buyDialog != nil && a.buyDialog.IsVisible()) ||
+		(a.sellDialog != nil && a.sellDialog.IsVisible()) ||
+		(a.dividendDialog != nil && a.dividendDialog.IsVisible()) ||
+		(a.transferCashDialog != nil && a.transferCashDialog.IsVisible()) ||
+		(a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible()) ||
+		(a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible()) ||
+		(a.mergerDialog != nil && a.mergerDialog.IsVisible()) ||
+		(a.spinOffDialog != nil && a.spinOffDialog.IsVisible()) ||
+		(a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible()) ||
+		(a.investmentTypeSelector != nil && a.investmentTypeSelector.IsVisible()) ||
+		a.mergerConfirmData != nil ||
+		a.corporateActionHistory != nil ||
+		a.showHelp
 }
 
 // handleMenuKeys handles keyboard input when the menu bar is active.
@@ -3679,7 +3930,7 @@ func (a *App) performRedo() tea.Cmd {
 // Run starts the TUI application.
 func Run(database *db.DB, cfg *config.Config) error {
 	app := NewApp(database, cfg)
-	p := tea.NewProgram(app, tea.WithAltScreen())
+	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	_, err := p.Run()
 

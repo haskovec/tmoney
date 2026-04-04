@@ -4078,3 +4078,464 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+func TestApp_HandleSidebarKeys_NewAccountShortcut(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+	}
+	// Sidebar is focused by default in NewSidebar()
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	_, cmd := app.Update(msg)
+
+	// The 'n' key in dashboard view (sidebar focused) should return a command
+	// to load the new account dialog data
+	if cmd == nil {
+		t.Error("pressing 'n' in dashboard with sidebar focused should return a command")
+	}
+}
+
+func TestApp_MouseClick_MenuBar_OpensDropdown(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       80,
+		height:      24,
+	}
+	app.styles.Resize(80, 24)
+
+	// Click on "File" label (x=2, y=0)
+	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if !updatedApp.menubar.IsActive() {
+		t.Error("menu bar should be active after clicking File label")
+	}
+	if updatedApp.menubar.Cursor() != 0 {
+		t.Errorf("cursor = %d, want 0 (File)", updatedApp.menubar.Cursor())
+	}
+}
+
+func TestApp_MouseClick_MenuBar_ToggleDropdown(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       80,
+		height:      24,
+	}
+	app.styles.Resize(80, 24)
+
+	// Click File to open
+	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if !updatedApp.menubar.IsActive() {
+		t.Fatal("menu should be active after first click")
+	}
+
+	// Click File again to close
+	model, _ = updatedApp.Update(msg)
+	updatedApp = model.(*App)
+
+	if updatedApp.menubar.IsActive() {
+		t.Error("menu should be deactivated after clicking same label again")
+	}
+}
+
+func TestApp_MouseClick_MenuBar_SwitchMenu(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       80,
+		height:      24,
+	}
+	app.styles.Resize(80, 24)
+
+	// Click File to open
+	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	// Click Edit (x=8, offset for " File " = 6)
+	msg = tea.MouseMsg{X: 8, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ = updatedApp.Update(msg)
+	updatedApp = model.(*App)
+
+	if !updatedApp.menubar.IsActive() {
+		t.Error("menu should still be active")
+	}
+	if updatedApp.menubar.Cursor() != 1 {
+		t.Errorf("cursor = %d, want 1 (Edit)", updatedApp.menubar.Cursor())
+	}
+}
+
+func TestApp_MouseClick_Dropdown_SelectsItem(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       80,
+		height:      24,
+	}
+	app.styles.Resize(80, 24)
+
+	// Open Edit menu
+	app.menubar.ActivateMenu(1)
+
+	// Click first item in Edit dropdown (Undo) at y=1 (first dropdown row)
+	// Edit dropdown offset = 6 (width of " File ")
+	msg := tea.MouseMsg{X: 8, Y: 1, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	// Menu should be deactivated after selection
+	if updatedApp.menubar.IsActive() {
+		t.Error("menu should be deactivated after selecting a dropdown item")
+	}
+}
+
+func TestApp_MouseClick_OutsideMenu_ClosesDropdown(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       80,
+		height:      24,
+	}
+	app.styles.Resize(80, 24)
+
+	// Open File menu
+	app.menubar.Activate()
+
+	// Click in content area (far from menu)
+	msg := tea.MouseMsg{X: 50, Y: 10, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.menubar.IsActive() {
+		t.Error("menu should close when clicking outside dropdown")
+	}
+}
+
+func TestApp_MouseClick_Sidebar_SelectsAccount(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       100,
+		height:      24,
+	}
+	app.styles.Resize(100, 24)
+
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+	}
+	app.sidebar.SetAccounts(accounts, nil)
+	// items: [Bank Accounts, Checking]
+
+	// Click on the account row (y=2 = content row 1 = Checking item)
+	msg := tea.MouseMsg{X: 5, Y: 2, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, cmd := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.sidebar.cursor != 1 {
+		t.Errorf("sidebar cursor = %d, want 1", updatedApp.sidebar.cursor)
+	}
+	// Should return a command to load register data
+	if cmd == nil {
+		t.Error("clicking an account should return a command to load register")
+	}
+}
+
+func TestApp_MouseClick_Sidebar_GroupToggle(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       100,
+		height:      24,
+	}
+	app.styles.Resize(100, 24)
+
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
+	}
+	app.sidebar.SetAccounts(accounts, nil)
+	// items: [Bank Accounts, Checking, Savings] = 3 items
+
+	// Click on group header (y=1 = content row 0 = Bank Accounts)
+	msg := tea.MouseMsg{X: 5, Y: 1, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	// Group should be collapsed
+	if updatedApp.sidebar.ItemCount() != 1 {
+		t.Errorf("ItemCount = %d, want 1 (group collapsed)", updatedApp.sidebar.ItemCount())
+	}
+}
+
+func TestApp_MouseClick_Table_SelectsRow(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		table:       NewTable([]Column{{Header: "A", Width: 10}}),
+		register:    &registerData{},
+		width:       100,
+		height:      24,
+	}
+	app.styles.Resize(100, 24)
+	app.sidebar.SetFocused(false)
+	app.table.SetRows([][]string{{"row1"}, {"row2"}, {"row3"}})
+
+	sidebarWidth := app.styles.SidebarWidth()
+
+	// Click on the second data row in the table
+	// Table starts at content-relative row 3 (1 padding + 1 title + 1 separator)
+	// So screen row = 1 (header) + 3 (offset) + 1 (header row of table) + 1 (second data row) = row 5+1=6
+	// Actually: screen Y = 1 (menu bar) + 3 (content offset) + 0 (table header) + 2 (second data row)
+	// contentY = Y - 1 = 4, tableY = contentY - 3 = 1, which is the header. For data row 1, we need tableY=2
+	// So Y = 1 + 3 + 2 = 6
+	msg := tea.MouseMsg{
+		X:      sidebarWidth + 5,
+		Y:      6,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+	}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.table.Cursor() != 1 {
+		t.Errorf("table cursor = %d, want 1", updatedApp.table.Cursor())
+	}
+}
+
+func TestApp_MouseClick_FocusSwitchToTable(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		table:       NewTable([]Column{{Header: "A", Width: 10}}),
+		register:    &registerData{},
+		width:       100,
+		height:      24,
+	}
+	app.styles.Resize(100, 24)
+	// Start with sidebar focused
+	app.sidebar.SetFocused(true)
+	app.table.SetFocused(false)
+
+	sidebarWidth := app.styles.SidebarWidth()
+
+	// Click in content area (right of sidebar)
+	msg := tea.MouseMsg{
+		X:      sidebarWidth + 5,
+		Y:      5,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+	}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.sidebar.IsFocused() {
+		t.Error("sidebar should not be focused after clicking content area")
+	}
+	if !updatedApp.table.IsFocused() {
+		t.Error("table should be focused after clicking content area")
+	}
+}
+
+func TestApp_MouseClick_FocusSwitchToSidebar(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		table:       NewTable([]Column{{Header: "A", Width: 10}}),
+		register:    &registerData{},
+		width:       100,
+		height:      24,
+	}
+	app.styles.Resize(100, 24)
+
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+	}
+	app.sidebar.SetAccounts(accounts, nil)
+
+	// Start with table focused
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+
+	// Click in sidebar area
+	msg := tea.MouseMsg{X: 5, Y: 2, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if !updatedApp.sidebar.IsFocused() {
+		t.Error("sidebar should be focused after clicking in sidebar area")
+	}
+	if updatedApp.table.IsFocused() {
+		t.Error("table should not be focused after clicking in sidebar area")
+	}
+}
+
+func TestApp_MouseWheel_ScrollsTable(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		table:       NewTable([]Column{{Header: "A", Width: 10}}),
+		register:    &registerData{},
+		width:       100,
+		height:      24,
+	}
+	app.styles.Resize(100, 24)
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+	app.table.SetRows([][]string{{"a"}, {"b"}, {"c"}, {"d"}, {"e"}})
+
+	// Scroll down
+	msg := tea.MouseMsg{X: 50, Y: 10, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.table.Cursor() != 1 {
+		t.Errorf("after wheel down, cursor = %d, want 1", updatedApp.table.Cursor())
+	}
+
+	// Scroll up
+	msg = tea.MouseMsg{X: 50, Y: 10, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp}
+	model, _ = updatedApp.Update(msg)
+	updatedApp = model.(*App)
+
+	if updatedApp.table.Cursor() != 0 {
+		t.Errorf("after wheel up, cursor = %d, want 0", updatedApp.table.Cursor())
+	}
+}
+
+func TestApp_MouseWheel_ScrollsSidebar(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       100,
+		height:      24,
+	}
+	app.styles.Resize(100, 24)
+
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
+		testAccount("Visa", account.TypeCreditCard),
+	}
+	app.sidebar.SetAccounts(accounts, nil)
+	// Sidebar focused by default
+
+	// Scroll down
+	msg := tea.MouseMsg{X: 5, Y: 5, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.sidebar.cursor != 1 {
+		t.Errorf("after wheel down, sidebar cursor = %d, want 1", updatedApp.sidebar.cursor)
+	}
+}
+
+func TestApp_MouseClick_IgnoredDuringDialog(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		showHelp:    true,
+		width:       80,
+		height:      24,
+	}
+	app.styles.Resize(80, 24)
+
+	// Click on menu bar while help overlay is visible
+	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	// Menu should not open
+	if updatedApp.menubar.IsActive() {
+		t.Error("menu should not open while help overlay is visible")
+	}
+}
+
+func TestApp_MouseRelease_Ignored(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       80,
+		height:      24,
+	}
+	app.styles.Resize(80, 24)
+
+	// Mouse release should be ignored
+	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.menubar.IsActive() {
+		t.Error("mouse release should not activate menu")
+	}
+}
+
+func TestApp_HandleSidebarKeys_NewAccountNotWhenUnfocused(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+	}
+	app.sidebar.SetFocused(false)
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	_, cmd := app.Update(msg)
+
+	// When sidebar is not focused, 'n' should not trigger anything
+	if cmd != nil {
+		t.Error("pressing 'n' with sidebar unfocused should not return a command")
+	}
+}
