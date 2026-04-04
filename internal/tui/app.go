@@ -2629,6 +2629,9 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 		for _, acct := range report.Assets {
 			name := truncate(acct.Name, colWidth-14)
 			amount := formatDashboardMoney(acct.Balance)
+			if acct.EstimatedValue {
+				amount = "~" + amount
+			}
 			line := fmt.Sprintf("  %-*s %s", colWidth-len(amount)-4, name, a.styles.Positive.Render(amount))
 			assetsLines = append(assetsLines, line)
 		}
@@ -2646,6 +2649,9 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 		for _, acct := range report.Liabilities {
 			name := truncate(acct.Name, colWidth-14)
 			amount := formatDashboardMoney(acct.Balance)
+			if acct.EstimatedValue {
+				amount = "~" + amount
+			}
 			line := fmt.Sprintf("  %-*s %s", colWidth-len(amount)-4, name, a.styles.Negative.Render(amount))
 			liabLines = append(liabLines, line)
 		}

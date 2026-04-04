@@ -124,10 +124,23 @@ type investmentValuerAdapter struct {
 	svc *investment.Service
 }
 
-func (a *investmentValuerAdapter) GetAccountValuation(accountID types.ID, asOf types.Date) (types.Money, error) {
+func (a *investmentValuerAdapter) GetAccountValuation(accountID types.ID, asOf types.Date) (*report.ValuationResult, error) {
 	val, err := a.svc.GetAccountValuation(accountID, asOf)
 	if err != nil {
-		return types.ZeroMoney, err
+		return nil, err
 	}
-	return val.TotalValue, nil
+
+	// Check if any holdings lack pricing data (using cost basis as estimate)
+	hasMissingPrices := false
+	for _, h := range val.Holdings {
+		if !h.HasPricing {
+			hasMissingPrices = true
+			break
+		}
+	}
+
+	return &report.ValuationResult{
+		TotalValue:       val.TotalValue,
+		HasMissingPrices: hasMissingPrices,
+	}, nil
 }

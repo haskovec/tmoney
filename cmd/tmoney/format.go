@@ -365,7 +365,11 @@ func printNetWorthReport(w io.Writer, rpt *report.NetWorth) {
 	} else {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		for _, ab := range rpt.Assets {
-			fmt.Fprintf(tw, "  %s\t%s\n", ab.Name, formatMoney(ab.Balance, "USD"))
+			balStr := formatMoney(ab.Balance, "USD")
+			if ab.EstimatedValue {
+				balStr = "~" + balStr
+			}
+			fmt.Fprintf(tw, "  %s\t%s\n", ab.Name, balStr)
 		}
 		tw.Flush()
 	}
@@ -379,7 +383,11 @@ func printNetWorthReport(w io.Writer, rpt *report.NetWorth) {
 	} else {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		for _, ab := range rpt.Liabilities {
-			fmt.Fprintf(tw, "  %s\t%s\n", ab.Name, formatMoney(ab.Balance, "USD"))
+			balStr := formatMoney(ab.Balance, "USD")
+			if ab.EstimatedValue {
+				balStr = "~" + balStr
+			}
+			fmt.Fprintf(tw, "  %s\t%s\n", ab.Name, balStr)
 		}
 		tw.Flush()
 	}

@@ -9,9 +9,15 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+// ValuationResult holds the total value of an investment account and flags missing pricing.
+type ValuationResult struct {
+	TotalValue       types.Money
+	HasMissingPrices bool // true if any holdings used cost basis instead of market price
+}
+
 // InvestmentValuer computes the total value of an investment account (cash + holdings).
 type InvestmentValuer interface {
-	GetAccountValuation(accountID types.ID, asOf types.Date) (totalValue types.Money, err error)
+	GetAccountValuation(accountID types.ID, asOf types.Date) (*ValuationResult, error)
 }
 
 // Service provides business logic for generating reports.
@@ -118,10 +124,11 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 		// (cash + holdings market value) instead of the raw transaction balance.
 		if accountType == account.TypeInvestment && s.investmentValue != nil {
 			asOfDate := types.NewDate(asOf.Year(), asOf.Month(), asOf.Day())
-			totalValue, err := s.investmentValue.GetAccountValuation(accountID, asOfDate)
+			result, err := s.investmentValue.GetAccountValuation(accountID, asOfDate)
 			if err == nil {
-				accountBalance.Balance = totalValue
-				balance = totalValue
+				accountBalance.Balance = result.TotalValue
+				accountBalance.EstimatedValue = result.HasMissingPrices
+				balance = result.TotalValue
 			}
 			// On error, fall through to use the transaction-based balance
 		}

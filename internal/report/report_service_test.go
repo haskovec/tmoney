@@ -522,18 +522,27 @@ func TestService_NetWorth_AccountBalanceDetails(t *testing.T) {
 
 // mockInvestmentValuer is a test double for InvestmentValuer.
 type mockInvestmentValuer struct {
-	valuations map[string]types.Money // accountID string -> total value
-	err        error
+	valuations       map[string]types.Money // accountID string -> total value
+	missingPrices    map[string]bool        // accountID string -> has missing prices
+	err              error
 }
 
-func (m *mockInvestmentValuer) GetAccountValuation(accountID types.ID, _ types.Date) (types.Money, error) {
+func (m *mockInvestmentValuer) GetAccountValuation(accountID types.ID, _ types.Date) (*ValuationResult, error) {
 	if m.err != nil {
-		return types.ZeroMoney, m.err
+		return nil, m.err
 	}
+	value := types.ZeroMoney
 	if v, ok := m.valuations[accountID.String()]; ok {
-		return v, nil
+		value = v
 	}
-	return types.ZeroMoney, nil
+	hasMissing := false
+	if m.missingPrices != nil {
+		hasMissing = m.missingPrices[accountID.String()]
+	}
+	return &ValuationResult{
+		TotalValue:       value,
+		HasMissingPrices: hasMissing,
+	}, nil
 }
 
 func TestService_NetWorth_InvestmentAccountValuation(t *testing.T) {
@@ -729,9 +738,213 @@ type dateCapturingValuer struct {
 	capturedDate *types.Date
 }
 
-func (v *dateCapturingValuer) GetAccountValuation(_ types.ID, asOf types.Date) (types.Money, error) {
+func (v *dateCapturingValuer) GetAccountValuation(_ types.ID, asOf types.Date) (*ValuationResult, error) {
 	*v.capturedDate = asOf
-	return v.value, nil
+	return &ValuationResult{TotalValue: v.value}, nil
+}
+
+func TestService_NetWorth_MissingPriceFallback(t *testing.T) {
+	t.Run("flags account as estimated when holdings have missing prices", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+
+		// Create an investment account
+		investBalance, _ := types.NewMoney("500.00")
+		invest := account.NewAccount("Brokerage", account.TypeInvestment, "USD", investBalance, types.Today())
+		if err := accountRepo.Create(invest); err != nil {
+			t.Fatalf("Failed to create investment account: %v", err)
+		}
+
+		// Mock valuer returns a value but flags missing prices (cost basis used)
+		investTotal, _ := types.NewMoney("10000.00")
+		valuer := &mockInvestmentValuer{
+			valuations: map[string]types.Money{
+				invest.ID.String(): investTotal,
+			},
+			missingPrices: map[string]bool{
+				invest.ID.String(): true,
+			},
+		}
+
+		svc := NewService(accountRepo, database, WithInvestmentValuer(valuer))
+
+		report, err := svc.NetWorthReport()
+		if err != nil {
+			t.Fatalf("NetWorthReport() error = %v", err)
+		}
+
+		// Find the investment account in assets
+		var found bool
+		for _, a := range report.Assets {
+			if a.AccountID == invest.ID {
+				found = true
+				if !a.EstimatedValue {
+					t.Error("Expected EstimatedValue=true for account with missing prices")
+				}
+				if !a.Balance.Equal(investTotal) {
+					t.Errorf("Expected balance %s, got %s", investTotal.String(), a.Balance.String())
+				}
+			}
+		}
+		if !found {
+			t.Error("Investment account not found in assets")
+		}
+	})
+
+	t.Run("account not flagged as estimated when all holdings have prices", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+
+		investBalance, _ := types.NewMoney("500.00")
+		invest := account.NewAccount("Brokerage", account.TypeInvestment, "USD", investBalance, types.Today())
+		if err := accountRepo.Create(invest); err != nil {
+			t.Fatalf("Failed to create investment account: %v", err)
+		}
+
+		// Mock valuer returns a value with no missing prices
+		investTotal, _ := types.NewMoney("15000.00")
+		valuer := &mockInvestmentValuer{
+			valuations: map[string]types.Money{
+				invest.ID.String(): investTotal,
+			},
+			missingPrices: map[string]bool{
+				invest.ID.String(): false,
+			},
+		}
+
+		svc := NewService(accountRepo, database, WithInvestmentValuer(valuer))
+
+		report, err := svc.NetWorthReport()
+		if err != nil {
+			t.Fatalf("NetWorthReport() error = %v", err)
+		}
+
+		for _, a := range report.Assets {
+			if a.AccountID == invest.ID {
+				if a.EstimatedValue {
+					t.Error("Expected EstimatedValue=false when all holdings have pricing")
+				}
+			}
+		}
+	})
+
+	t.Run("non-investment accounts never flagged as estimated", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+
+		checkingBalance, _ := types.NewMoney("5000.00")
+		checking := account.NewAccount("Checking", account.TypeChecking, "USD", checkingBalance, types.Today())
+		if err := accountRepo.Create(checking); err != nil {
+			t.Fatalf("Failed to create checking: %v", err)
+		}
+
+		svc := NewService(accountRepo, database)
+
+		report, err := svc.NetWorthReport()
+		if err != nil {
+			t.Fatalf("NetWorthReport() error = %v", err)
+		}
+
+		for _, a := range report.Assets {
+			if a.AccountID == checking.ID {
+				if a.EstimatedValue {
+					t.Error("Non-investment account should not have EstimatedValue=true")
+				}
+			}
+		}
+	})
+
+	t.Run("valuer error falls back to transaction balance with no estimated flag", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+
+		investBalance, _ := types.NewMoney("1000.00")
+		invest := account.NewAccount("Brokerage", account.TypeInvestment, "USD", investBalance, types.Today())
+		if err := accountRepo.Create(invest); err != nil {
+			t.Fatalf("Failed to create investment account: %v", err)
+		}
+
+		valuer := &mockInvestmentValuer{
+			err: fmt.Errorf("valuation failed"),
+		}
+
+		svc := NewService(accountRepo, database, WithInvestmentValuer(valuer))
+
+		report, err := svc.NetWorthReport()
+		if err != nil {
+			t.Fatalf("NetWorthReport() error = %v", err)
+		}
+
+		for _, a := range report.Assets {
+			if a.AccountID == invest.ID {
+				if a.EstimatedValue {
+					t.Error("On valuer error, should not flag EstimatedValue (using transaction balance instead)")
+				}
+				expectedBalance, _ := types.NewMoney("1000.00")
+				if !a.Balance.Equal(expectedBalance) {
+					t.Errorf("Expected fallback balance %s, got %s", expectedBalance.String(), a.Balance.String())
+				}
+			}
+		}
+	})
+
+	t.Run("mixed accounts with one estimated and one fully priced", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+
+		// Investment account 1: has all prices
+		inv1Balance, _ := types.NewMoney("0.00")
+		inv1 := account.NewAccount("Brokerage A", account.TypeInvestment, "USD", inv1Balance, types.Today())
+		if err := accountRepo.Create(inv1); err != nil {
+			t.Fatalf("Failed to create investment account 1: %v", err)
+		}
+
+		// Investment account 2: has missing prices
+		inv2Balance, _ := types.NewMoney("0.00")
+		inv2 := account.NewAccount("Brokerage B", account.TypeInvestment, "USD", inv2Balance, types.Today())
+		if err := accountRepo.Create(inv2); err != nil {
+			t.Fatalf("Failed to create investment account 2: %v", err)
+		}
+
+		inv1Total, _ := types.NewMoney("20000.00")
+		inv2Total, _ := types.NewMoney("5000.00")
+		valuer := &mockInvestmentValuer{
+			valuations: map[string]types.Money{
+				inv1.ID.String(): inv1Total,
+				inv2.ID.String(): inv2Total,
+			},
+			missingPrices: map[string]bool{
+				inv1.ID.String(): false, // all priced
+				inv2.ID.String(): true,  // missing prices
+			},
+		}
+
+		svc := NewService(accountRepo, database, WithInvestmentValuer(valuer))
+
+		report, err := svc.NetWorthReport()
+		if err != nil {
+			t.Fatalf("NetWorthReport() error = %v", err)
+		}
+
+		for _, a := range report.Assets {
+			if a.AccountID == inv1.ID {
+				if a.EstimatedValue {
+					t.Error("Brokerage A should not have EstimatedValue=true (all prices available)")
+				}
+			}
+			if a.AccountID == inv2.ID {
+				if !a.EstimatedValue {
+					t.Error("Brokerage B should have EstimatedValue=true (missing prices)")
+				}
+			}
+		}
+
+		// Total assets still correct: 20000 + 5000 = 25000
+		expectedAssets, _ := types.NewMoney("25000.00")
+		if !report.TotalAssets.Equal(expectedAssets) {
+			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), report.TotalAssets.String())
+		}
+	})
 }
 
 func TestService_SpendingByCategoryMonth_EmptyDatabase(t *testing.T) {

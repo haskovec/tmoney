@@ -18,10 +18,11 @@ type NetWorth struct {
 
 // AccountBalance holds balance information for an account in a report.
 type AccountBalance struct {
-	AccountID types.ID
-	Name      string
-	Type      string
-	Balance   types.Money
+	AccountID      types.ID
+	Name           string
+	Type           string
+	Balance        types.Money
+	EstimatedValue bool // true when any holding uses cost basis due to missing pricing data
 }
 
 // Spending represents spending by category for a given time period.

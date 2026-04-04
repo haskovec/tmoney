@@ -814,7 +814,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — net worth includes investment account total value (cash + holdings market value); existing asset/liability classification works (investment = asset)
   - GREEN: Update `ReportService.NetWorth` to include investment account valuations
 
-- [ ] **SM-172 - Net worth: handle missing prices**
+- [x] **SM-172 - Net worth: handle missing prices**
   - RED: Write test — securities with no pricing data use cost basis as conservative estimate; flagged in report output
   - GREEN: Handle missing price fallback in net worth calculation
 
