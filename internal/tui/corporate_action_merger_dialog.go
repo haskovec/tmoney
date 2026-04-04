@@ -1,13 +1,11 @@
 package tui
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -195,24 +193,17 @@ func (a *App) submitMergerDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	params := investment.MergerParams{
-		ExchangeRatio: exchangeRatio,
-		CashPerShare:  cashPerShare,
+	// Store parameters and transition to confirmation step
+	a.mergerConfirmParams = &mergerConfirmParams{
+		sourceSecurityID: sourceSecurityID,
+		targetSecurityID: targetSecurityID,
+		mergerDate:       mergerDate,
+		exchangeRatio:    exchangeRatio,
+		cashPerShare:     cashPerShare,
 	}
 
-	// Close dialog before async execution
+	// Close dialog and load confirmation data
 	a.closeMergerDialog()
 
-	return a, func() tea.Msg {
-		if a.corporateActionSvc == nil {
-			return errMsg{err: fmt.Errorf("corporate action service not available")}
-		}
-
-		_, err := a.corporateActionSvc.Merger(sourceSecurityID, targetSecurityID, mergerDate, params)
-		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to execute merger: %w", err)}
-		}
-
-		return mergerDialogSavedMsg{}
-	}
+	return a, a.loadMergerConfirmData()
 }

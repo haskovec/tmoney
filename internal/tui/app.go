@@ -236,6 +236,10 @@ type App struct {
 	mergerDialogSecurityIDs   []types.ID
 	mergerDialogPreSelectedID *types.ID
 
+	// Merger confirmation overlay state
+	mergerConfirmData   *mergerConfirmData
+	mergerConfirmParams *mergerConfirmParams
+
 	// Spin-off dialog state
 	spinOffDialog              *Dialog
 	spinOffDialogData          *spinOffDialogData
@@ -246,8 +250,9 @@ type App struct {
 	corporateActionHistory      *corporateActionHistoryData
 	corporateActionHistoryTable *Table
 
-	// Lot repository for sell dialog lot loading
-	lotRepo *investment.LotRepository
+	// Repositories for investment dialogs
+	lotRepo      *investment.LotRepository
+	positionRepo *investment.PositionRepository
 
 	// File dialog state
 	fileDialog     *Dialog
@@ -473,6 +478,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		investmentSvc:     svc.Investment,
 		investmentRepo:     svc.InvestmentRepo,
 		lotRepo:            svc.LotRepo,
+		positionRepo:       svc.PositionRepo,
 		corporateActionSvc: svc.CorporateAction,
 	}
 }
@@ -1006,6 +1012,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.mergerDialogPreSelectedID = nil
 		return a, nil
 
+	case mergerConfirmDataMsg:
+		a.mergerConfirmData = msg.data
+		return a, nil
+
 	case mergerDialogSavedMsg:
 		a.statusbar.AddNotification("Merger executed", NotificationInfo)
 		return a, a.loadSecurityViewData()
@@ -1428,6 +1438,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If stock split dialog is visible, route all keys to it
 	if a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible() {
 		return a.handleStockSplitDialogKey(msg)
+	}
+
+	// If merger confirmation overlay is visible, route all keys to it
+	if a.mergerConfirmData != nil {
+		return a.handleMergerConfirmKey(msg)
 	}
 
 	// If merger dialog is visible, route all keys to it
@@ -2455,6 +2470,12 @@ func (a *App) renderLayout() string {
 	// Overlay merger dialog if visible
 	if a.mergerDialog != nil && a.mergerDialog.IsVisible() {
 		overlay := a.mergerDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay merger confirmation if visible
+	if a.mergerConfirmData != nil {
+		overlay := a.renderMergerConfirmation()
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

@@ -804,7 +804,7 @@ Spec: `specs/security-master.md`
 
 ## Phase 46: Security Merge Workflow (TUI)
 
-- [ ] **SM-170 - Merge security dialog**
+- [x] **SM-170 - Merge security dialog**
   - RED: Write test — select source and target security; enter merge date and exchange ratio; optional cash per share; confirmation step showing affected accounts and lots
   - GREEN: Implement merge dialog accessible via `m` key in security view
 
