@@ -19,6 +19,8 @@ const (
 	FieldRadio
 	// FieldCheckbox is a checkbox field toggled with space.
 	FieldCheckbox
+	// FieldList is a vertical scrollable list showing multiple items at once.
+	FieldList
 )
 
 // Field represents a form field in a dialog.
@@ -45,6 +47,8 @@ type Field struct {
 	Error string
 	// Hidden indicates this field should not be rendered or focusable.
 	Hidden bool
+	// VisibleCount is the number of items to display at once (for FieldList).
+	VisibleCount int
 	// cursorPos is the cursor position within the text value.
 	cursorPos int
 }
@@ -138,7 +142,7 @@ func (f *Field) CursorPos() int {
 
 // SelectNext moves to the next option (FieldSelect and FieldRadio).
 func (f *Field) SelectNext() {
-	if (f.Type != FieldSelect && f.Type != FieldRadio) || len(f.Options) == 0 {
+	if (f.Type != FieldSelect && f.Type != FieldRadio && f.Type != FieldList) || len(f.Options) == 0 {
 		return
 	}
 	if f.SelectedIndex < len(f.Options)-1 {
@@ -146,9 +150,9 @@ func (f *Field) SelectNext() {
 	}
 }
 
-// SelectPrev moves to the previous option (FieldSelect and FieldRadio).
+// SelectPrev moves to the previous option (FieldSelect, FieldRadio, and FieldList).
 func (f *Field) SelectPrev() {
-	if (f.Type != FieldSelect && f.Type != FieldRadio) || len(f.Options) == 0 {
+	if (f.Type != FieldSelect && f.Type != FieldRadio && f.Type != FieldList) || len(f.Options) == 0 {
 		return
 	}
 	if f.SelectedIndex > 0 {
@@ -166,7 +170,7 @@ func (f *Field) Toggle() {
 
 // SelectedOption returns the currently selected option text.
 func (f *Field) SelectedOption() string {
-	if (f.Type != FieldSelect && f.Type != FieldRadio) || len(f.Options) == 0 {
+	if (f.Type != FieldSelect && f.Type != FieldRadio && f.Type != FieldList) || len(f.Options) == 0 {
 		return ""
 	}
 	if f.SelectedIndex < 0 || f.SelectedIndex >= len(f.Options) {
@@ -356,6 +360,29 @@ func (d *Dialog) AddCheckboxField(label string, checked bool) *Field {
 	return f
 }
 
+// AddListField adds a vertical scrollable list field and returns it.
+// visibleCount controls how many items are shown at once.
+func (d *Dialog) AddListField(label string, items []string, selected int, visibleCount int) *Field {
+	if selected < 0 {
+		selected = 0
+	}
+	if selected >= len(items) && len(items) > 0 {
+		selected = len(items) - 1
+	}
+	if visibleCount <= 0 {
+		visibleCount = 10
+	}
+	f := &Field{
+		Label:         label,
+		Type:          FieldList,
+		Options:       items,
+		SelectedIndex: selected,
+		VisibleCount:  visibleCount,
+	}
+	d.fields = append(d.fields, f)
+	return f
+}
+
 // FocusIndex returns the current focus index.
 func (d *Dialog) FocusIndex() int {
 	return d.focusIndex
@@ -489,6 +516,8 @@ func (d *Dialog) HandleKey(msg tea.KeyMsg) DialogAction {
 		d.handleRadioFieldKey(field, msg)
 	case FieldCheckbox:
 		d.handleCheckboxFieldKey(field, msg)
+	case FieldList:
+		d.handleListFieldKey(field, msg)
 	}
 	return DialogActionNone
 }
@@ -545,6 +574,17 @@ func (d *Dialog) handleRadioFieldKey(field *Field, msg tea.KeyMsg) {
 func (d *Dialog) handleCheckboxFieldKey(field *Field, msg tea.KeyMsg) {
 	if msg.Type == tea.KeySpace || (msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == ' ') {
 		field.Toggle()
+		field.Error = ""
+	}
+}
+
+func (d *Dialog) handleListFieldKey(field *Field, msg tea.KeyMsg) {
+	switch msg.Type {
+	case tea.KeyUp:
+		field.SelectPrev()
+		field.Error = ""
+	case tea.KeyDown:
+		field.SelectNext()
 		field.Error = ""
 	}
 }
@@ -653,6 +693,15 @@ func (d *Dialog) renderField(styles Styles, field *Field, focused bool, labelWid
 		fieldContent = d.renderTextFieldContent(field, focused, available)
 	case FieldSelect:
 		fieldContent = d.renderSelectFieldContent(styles, field, focused, available)
+	case FieldList:
+		// FieldList renders vertically below the label line
+		listContent := d.renderListFieldContent(styles, field, focused, available)
+		line := paddedLabel
+		if field.Error != "" {
+			errorIndent := strings.Repeat(" ", labelWidth+1+gap)
+			line += "\n" + errorIndent + styles.FieldError.Render(field.Error)
+		}
+		return line + "\n" + listContent
 	case FieldRadio:
 		fieldContent = d.renderRadioFieldContent(styles, field, focused, available)
 	default:
@@ -740,6 +789,62 @@ func (d *Dialog) renderSelectFieldContent(_ Styles, field *Field, focused bool, 
 		return lipgloss.NewStyle().Reverse(true).Render(" "+opt+" ") + " ▼"
 	}
 	return opt + " ▼"
+}
+
+func (d *Dialog) renderListFieldContent(styles Styles, field *Field, focused bool, contentWidth int) string {
+	if len(field.Options) == 0 {
+		return "  (empty)"
+	}
+
+	visible := field.VisibleCount
+	if visible <= 0 {
+		visible = 10
+	}
+	if visible > len(field.Options) {
+		visible = len(field.Options)
+	}
+
+	// Calculate scroll offset to keep selection visible
+	scrollOffset := 0
+	if field.SelectedIndex >= visible {
+		scrollOffset = field.SelectedIndex - visible + 1
+	}
+	if scrollOffset+visible > len(field.Options) {
+		scrollOffset = len(field.Options) - visible
+	}
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+
+	end := min(scrollOffset+visible, len(field.Options))
+
+	// Item width: indent (4) + "> " or "  " (2) + item text
+	maxItemWidth := max(contentWidth-6, 5)
+
+	var lines []string
+	for i := scrollOffset; i < end; i++ {
+		item := truncateRunes(field.Options[i], maxItemWidth)
+		if i == field.SelectedIndex {
+			if focused {
+				line := "    " + lipgloss.NewStyle().Reverse(true).Render("> "+item)
+				lines = append(lines, line)
+			} else {
+				lines = append(lines, "    > "+item)
+			}
+		} else {
+			lines = append(lines, "      "+item)
+		}
+	}
+
+	// Show scroll indicators
+	if scrollOffset > 0 {
+		lines[0] = "  ↑ " + strings.TrimLeft(lines[0], " ")
+	}
+	if end < len(field.Options) {
+		lines[len(lines)-1] = "  ↓ " + strings.TrimLeft(lines[len(lines)-1], " ")
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 func (d *Dialog) renderRadioFieldContent(styles Styles, field *Field, focused bool, available int) string {

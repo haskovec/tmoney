@@ -258,6 +258,7 @@ type App struct {
 	// File dialog state
 	fileDialog     *Dialog
 	fileDialogMode fileDialogMode
+	browseDir      string
 
 	// Confirmation dialog state
 	confirmDialog *Dialog
@@ -2166,8 +2167,11 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 
 	case MenuActionOpenFile:
 		a.menubar.Deactivate()
-		a.fileDialogMode = fileDialogModeOpen
-		a.fileDialog = buildOpenFileDialog()
+		startDir := db.DefaultDirectory()
+		if a.db != nil {
+			startDir = filepath.Dir(a.db.Path())
+		}
+		a.openBrowseDialog(startDir)
 		return a, nil
 
 	case MenuActionOpenRecent:

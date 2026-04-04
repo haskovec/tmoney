@@ -1327,3 +1327,91 @@ func TestDialog_Render_RadioFieldTruncatesLongOptions(t *testing.T) {
 		t.Error("Render() should still show radio bullets")
 	}
 }
+
+// =============================================================================
+// FieldList Tests
+// =============================================================================
+
+func TestDialog_AddListField(t *testing.T) {
+	d := NewDialog("Test")
+	items := []string{"file1.tdb", "file2.tdb", "file3.tdb"}
+	f := d.AddListField("File", items, 0, 10)
+
+	if f.Type != FieldList {
+		t.Errorf("Type = %v, want FieldList", f.Type)
+	}
+	if len(f.Options) != 3 {
+		t.Errorf("Options length = %d, want 3", len(f.Options))
+	}
+	if f.SelectedIndex != 0 {
+		t.Errorf("SelectedIndex = %d, want 0", f.SelectedIndex)
+	}
+	if f.VisibleCount != 10 {
+		t.Errorf("VisibleCount = %d, want 10", f.VisibleCount)
+	}
+}
+
+func TestFieldList_SelectNavigation(t *testing.T) {
+	f := &Field{
+		Type:          FieldList,
+		Options:       []string{"a", "b", "c"},
+		SelectedIndex: 0,
+	}
+
+	f.SelectNext()
+	if f.SelectedIndex != 1 {
+		t.Errorf("after SelectNext: SelectedIndex = %d, want 1", f.SelectedIndex)
+	}
+
+	f.SelectNext()
+	if f.SelectedIndex != 2 {
+		t.Errorf("after SelectNext: SelectedIndex = %d, want 2", f.SelectedIndex)
+	}
+
+	// Should not go past end
+	f.SelectNext()
+	if f.SelectedIndex != 2 {
+		t.Errorf("past end: SelectedIndex = %d, want 2", f.SelectedIndex)
+	}
+
+	f.SelectPrev()
+	if f.SelectedIndex != 1 {
+		t.Errorf("after SelectPrev: SelectedIndex = %d, want 1", f.SelectedIndex)
+	}
+}
+
+func TestDialog_HandleKey_UpDownInListField(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddListField("File", []string{"a.tdb", "b.tdb", "c.tdb"}, 0, 10)
+	d.SetFocusIndex(0) // Focus on list field
+
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyDown})
+	if d.Fields()[0].SelectedIndex != 1 {
+		t.Errorf("after Down: SelectedIndex = %d, want 1", d.Fields()[0].SelectedIndex)
+	}
+
+	d.HandleKey(tea.KeyMsg{Type: tea.KeyUp})
+	if d.Fields()[0].SelectedIndex != 0 {
+		t.Errorf("after Up: SelectedIndex = %d, want 0", d.Fields()[0].SelectedIndex)
+	}
+}
+
+func TestDialog_Render_ListFieldShowsItems(t *testing.T) {
+	d := NewDialog("Test")
+	d.SetWidth(60)
+	d.AddListField("File", []string{"../", "backups/", "default.tdb"}, 1, 10)
+	d.SetFocusIndex(0)
+
+	styles := NewStyles()
+	result := d.Render(styles)
+
+	if !strings.Contains(result, "../") {
+		t.Error("Render should show '../' entry")
+	}
+	if !strings.Contains(result, "backups/") {
+		t.Error("Render should show 'backups/' entry")
+	}
+	if !strings.Contains(result, "default.tdb") {
+		t.Error("Render should show 'default.tdb' entry")
+	}
+}

@@ -18,6 +18,7 @@ const (
 	fileDialogModeNew fileDialogMode = iota
 	fileDialogModeOpen
 	fileDialogModeOpenRecent
+	fileDialogModeBrowse
 )
 
 // fileDialogSavedMsg is sent when a file operation completes with a new database.
@@ -39,6 +40,10 @@ func buildNewFileDialog() *Dialog {
 	f := d.AddTextField("Path", defaultPath, "Path to new .tdb file", 0)
 	f.Required = true
 
+	d.SetButtons([]DialogButton{
+		{Label: "Cancel"},
+		{Label: "Create", Primary: true},
+	})
 	d.SetVisible(true)
 	return d
 }
@@ -51,6 +56,10 @@ func buildOpenFileDialog() *Dialog {
 	f := d.AddTextField("Path", defaultPath, "Path to .tdb file", 0)
 	f.Required = true
 
+	d.SetButtons([]DialogButton{
+		{Label: "Cancel"},
+		{Label: "Open", Primary: true},
+	})
 	d.SetVisible(true)
 	return d
 }
@@ -67,6 +76,10 @@ func buildOpenRecentDialog(recentFiles []string) *Dialog {
 		d.AddSelectField("File", options, 0)
 	}
 
+	d.SetButtons([]DialogButton{
+		{Label: "Cancel"},
+		{Label: "Open", Primary: true},
+	})
 	d.SetVisible(true)
 	return d
 }
@@ -140,6 +153,31 @@ func (a *App) submitFileDialog() (tea.Model, tea.Cmd) {
 		}
 		a.closeFileDialog()
 		return a, a.submitOpenFile(selected)
+
+	case fileDialogModeBrowse:
+		if len(fields) < 1 {
+			return a, nil
+		}
+		selected := fields[0].SelectedOption()
+		if selected == "" || selected == "(empty directory)" {
+			return a, nil
+		}
+		if selected == "../" {
+			// Navigate to parent directory
+			parent := filepath.Dir(a.browseDir)
+			a.openBrowseDialog(parent)
+			return a, nil
+		}
+		if dirName, ok := strings.CutSuffix(selected, "/"); ok {
+			// Navigate into subdirectory
+			subdir := filepath.Join(a.browseDir, dirName)
+			a.openBrowseDialog(subdir)
+			return a, nil
+		}
+		// It's a .tdb file — open it
+		fullPath := filepath.Join(a.browseDir, selected)
+		a.closeFileDialog()
+		return a, a.submitOpenFile(fullPath)
 	}
 
 	return a, nil
@@ -224,4 +262,74 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 		a.loadScheduledDueCount(),
 		a.loadDashboardData(),
 	)
+}
+
+// listDirectoryEntries returns entries for a file browser dialog.
+// Returns sorted: "../" first, then directories (with "/" suffix), then .tdb files.
+// Hidden files/directories (starting with ".") are excluded.
+func listDirectoryEntries(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var dirs []string
+	var files []string
+
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		if e.IsDir() {
+			dirs = append(dirs, name+"/")
+		} else if strings.HasSuffix(strings.ToLower(name), ".tdb") {
+			files = append(files, name)
+		}
+	}
+
+	// Build result: ../ first, then dirs, then files
+	var result []string
+	result = append(result, "../")
+	result = append(result, dirs...)
+	result = append(result, files...)
+
+	// If only "../" (no real entries), show empty message
+	if len(result) == 1 {
+		return []string{"(empty directory)"}, nil
+	}
+
+	return result, nil
+}
+
+// buildBrowseDialog creates a file browser dialog for the given directory.
+func buildBrowseDialog(dir string, entries []string) *Dialog {
+	// Truncate long directory paths for the title
+	title := "Open File — " + dir
+	if len(title) > 52 {
+		title = "Open File — ..." + dir[len(dir)-37:]
+	}
+
+	d := NewDialog(title)
+	d.SetWidth(60)
+	d.AddListField("File", entries, 0, 12)
+	d.SetButtons([]DialogButton{
+		{Label: "Cancel"},
+		{Label: "Open", Primary: true},
+	})
+	d.SetVisible(true)
+	return d
+}
+
+// openBrowseDialog builds and sets the browse dialog for the given directory.
+func (a *App) openBrowseDialog(dir string) {
+	entries, err := listDirectoryEntries(dir)
+	if err != nil {
+		a.err = fmt.Errorf("failed to read directory: %w", err)
+		return
+	}
+
+	a.browseDir = dir
+	a.fileDialogMode = fileDialogModeBrowse
+	a.fileDialog = buildBrowseDialog(dir, entries)
 }

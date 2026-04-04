@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -495,8 +496,8 @@ func TestApp_HandleMenuAction_OpenFile(t *testing.T) {
 	if app.fileDialog == nil {
 		t.Error("MenuActionOpenFile should open the file dialog")
 	}
-	if app.fileDialogMode != fileDialogModeOpen {
-		t.Errorf("fileDialogMode = %d, want fileDialogModeOpen", app.fileDialogMode)
+	if app.fileDialogMode != fileDialogModeBrowse {
+		t.Errorf("fileDialogMode = %d, want fileDialogModeBrowse", app.fileDialogMode)
 	}
 }
 
@@ -516,5 +517,148 @@ func TestApp_HandleMenuAction_OpenRecent(t *testing.T) {
 	}
 	if app.fileDialogMode != fileDialogModeOpenRecent {
 		t.Errorf("fileDialogMode = %d, want fileDialogModeOpenRecent", app.fileDialogMode)
+	}
+}
+
+// =============================================================================
+// Button Label Tests
+// =============================================================================
+
+func TestBuildNewFileDialog_ButtonLabel(t *testing.T) {
+	d := buildNewFileDialog()
+	buttons := d.Buttons()
+	if len(buttons) < 2 {
+		t.Fatalf("expected at least 2 buttons, got %d", len(buttons))
+	}
+	if buttons[1].Label != "Create" {
+		t.Errorf("primary button label = %q, want 'Create'", buttons[1].Label)
+	}
+}
+
+func TestBuildOpenFileDialog_ButtonLabel(t *testing.T) {
+	d := buildOpenFileDialog()
+	buttons := d.Buttons()
+	if len(buttons) < 2 {
+		t.Fatalf("expected at least 2 buttons, got %d", len(buttons))
+	}
+	if buttons[1].Label != "Open" {
+		t.Errorf("primary button label = %q, want 'Open'", buttons[1].Label)
+	}
+}
+
+func TestBuildOpenRecentDialog_ButtonLabel(t *testing.T) {
+	d := buildOpenRecentDialog([]string{"/a.tdb"})
+	buttons := d.Buttons()
+	if len(buttons) < 2 {
+		t.Fatalf("expected at least 2 buttons, got %d", len(buttons))
+	}
+	if buttons[1].Label != "Open" {
+		t.Errorf("primary button label = %q, want 'Open'", buttons[1].Label)
+	}
+}
+
+// =============================================================================
+// listDirectoryEntries Tests
+// =============================================================================
+
+func TestListDirectoryEntries(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create .tdb files
+	os.WriteFile(filepath.Join(dir, "finances.tdb"), []byte{}, 0644)
+	os.WriteFile(filepath.Join(dir, "personal.tdb"), []byte{}, 0644)
+
+	// Create non-.tdb files (should be excluded)
+	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte{}, 0644)
+	os.WriteFile(filepath.Join(dir, "data.csv"), []byte{}, 0644)
+
+	// Create subdirectory
+	os.Mkdir(filepath.Join(dir, "backups"), 0755)
+
+	entries, err := listDirectoryEntries(dir)
+	if err != nil {
+		t.Fatalf("listDirectoryEntries() error: %v", err)
+	}
+
+	// Expected: ../, backups/, finances.tdb, personal.tdb
+	if len(entries) != 4 {
+		t.Fatalf("expected 4 entries, got %d: %v", len(entries), entries)
+	}
+	if entries[0] != "../" {
+		t.Errorf("entries[0] = %q, want '../'", entries[0])
+	}
+	if entries[1] != "backups/" {
+		t.Errorf("entries[1] = %q, want 'backups/'", entries[1])
+	}
+	if entries[2] != "finances.tdb" {
+		t.Errorf("entries[2] = %q, want 'finances.tdb'", entries[2])
+	}
+	if entries[3] != "personal.tdb" {
+		t.Errorf("entries[3] = %q, want 'personal.tdb'", entries[3])
+	}
+}
+
+func TestListDirectoryEntries_Empty(t *testing.T) {
+	dir := t.TempDir()
+
+	entries, err := listDirectoryEntries(dir)
+	if err != nil {
+		t.Fatalf("listDirectoryEntries() error: %v", err)
+	}
+	if len(entries) != 1 || entries[0] != "(empty directory)" {
+		t.Errorf("expected ['(empty directory)'], got %v", entries)
+	}
+}
+
+func TestListDirectoryEntries_HiddenFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	os.WriteFile(filepath.Join(dir, ".hidden.tdb"), []byte{}, 0644)
+	os.Mkdir(filepath.Join(dir, ".hidden_dir"), 0755)
+	os.WriteFile(filepath.Join(dir, "visible.tdb"), []byte{}, 0644)
+
+	entries, err := listDirectoryEntries(dir)
+	if err != nil {
+		t.Fatalf("listDirectoryEntries() error: %v", err)
+	}
+
+	// Should have: ../, visible.tdb (hidden entries excluded)
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d: %v", len(entries), entries)
+	}
+	if entries[0] != "../" {
+		t.Errorf("entries[0] = %q, want '../'", entries[0])
+	}
+	if entries[1] != "visible.tdb" {
+		t.Errorf("entries[1] = %q, want 'visible.tdb'", entries[1])
+	}
+}
+
+// =============================================================================
+// Browse Dialog Tests
+// =============================================================================
+
+func TestBuildBrowseDialog(t *testing.T) {
+	entries := []string{"../", "backups/", "default.tdb", "personal.tdb"}
+	d := buildBrowseDialog("/tmp/test", entries)
+
+	if !strings.Contains(d.Title(), "Open File") {
+		t.Errorf("title = %q, should contain 'Open File'", d.Title())
+	}
+
+	fields := d.Fields()
+	if len(fields) != 1 {
+		t.Fatalf("expected 1 field, got %d", len(fields))
+	}
+	if fields[0].Type != FieldList {
+		t.Errorf("field type = %v, want FieldList", fields[0].Type)
+	}
+	if len(fields[0].Options) != 4 {
+		t.Errorf("expected 4 options, got %d", len(fields[0].Options))
+	}
+
+	buttons := d.Buttons()
+	if buttons[1].Label != "Open" {
+		t.Errorf("primary button = %q, want 'Open'", buttons[1].Label)
 	}
 }
