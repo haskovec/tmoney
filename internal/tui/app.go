@@ -236,6 +236,12 @@ type App struct {
 	mergerDialogSecurityIDs   []types.ID
 	mergerDialogPreSelectedID *types.ID
 
+	// Spin-off dialog state
+	spinOffDialog              *Dialog
+	spinOffDialogData          *spinOffDialogData
+	spinOffDialogSecurityIDs   []types.ID
+	spinOffDialogPreSelectedID *types.ID
+
 	// Lot repository for sell dialog lot loading
 	lotRepo *investment.LotRepository
 
@@ -1000,6 +1006,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.statusbar.AddNotification("Merger executed", NotificationInfo)
 		return a, a.loadSecurityViewData()
 
+	case spinOffDialogDataMsg:
+		a.spinOffDialogData = msg.data
+		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
+		a.spinOffDialogSecurityIDs = secIDs
+		a.spinOffDialog = buildSpinOffDialog(secOptions, secIDs, a.spinOffDialogPreSelectedID)
+		a.spinOffDialogPreSelectedID = nil
+		return a, nil
+
+	case spinOffDialogSavedMsg:
+		a.statusbar.AddNotification("Spin-off executed", NotificationInfo)
+		return a, a.loadSecurityViewData()
+
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data
 		a.buildScheduledTable()
@@ -1406,6 +1424,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If merger dialog is visible, route all keys to it
 	if a.mergerDialog != nil && a.mergerDialog.IsVisible() {
 		return a.handleMergerDialogKey(msg)
+	}
+
+	// If spin-off dialog is visible, route all keys to it
+	if a.spinOffDialog != nil && a.spinOffDialog.IsVisible() {
+		return a.handleSpinOffDialogKey(msg)
 	}
 
 	// If cash operation dialog is visible, route all keys to it
@@ -2418,6 +2441,12 @@ func (a *App) renderLayout() string {
 	// Overlay merger dialog if visible
 	if a.mergerDialog != nil && a.mergerDialog.IsVisible() {
 		overlay := a.mergerDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay spin-off dialog if visible
+	if a.spinOffDialog != nil && a.spinOffDialog.IsVisible() {
+		overlay := a.spinOffDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

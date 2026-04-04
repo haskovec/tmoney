@@ -794,7 +794,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — dialog: Source Security, Target Security, Date, Exchange Ratio, Cash Per Share (optional); shows preview of affected accounts
   - GREEN: Implement merger dialog
 
-- [ ] **SM-168 - Spin-off dialog**
+- [x] **SM-168 - Spin-off dialog**
   - RED: Write test — dialog: Parent Security, Spin-off Security, Date, Share Ratio, Parent Allocation %; shows preview
   - GREEN: Implement spin-off dialog
 

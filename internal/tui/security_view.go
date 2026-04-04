@@ -314,6 +314,14 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.mergerDialogPreSelectedID = &secID
 		}
 		return a, a.loadMergerDialogData()
+	case msg.String() == "o":
+		// Open spin-off dialog for selected security
+		sec := a.selectedSecurity()
+		if sec != nil {
+			secID := sec.ID
+			a.spinOffDialogPreSelectedID = &secID
+		}
+		return a, a.loadSpinOffDialogData()
 	case msg.String() == "p":
 		// Navigate to prices view for selected security
 		sec := a.selectedSecurity()
