@@ -338,6 +338,14 @@ func TestSchemaTablesExist(t *testing.T) {
 		}
 		rows.Close()
 	})
+
+	t.Run("portfolio_holdings view exists", func(t *testing.T) {
+		rows, err := db.Conn().Query(`SELECT * FROM portfolio_holdings`)
+		if err != nil {
+			t.Errorf("Failed to query portfolio_holdings view: %v", err)
+		}
+		rows.Close()
+	})
 }
 
 func TestMigration002TransactionStatus(t *testing.T) {
@@ -2177,6 +2185,361 @@ func TestMigration009CorporateActions(t *testing.T) {
 		}
 		if readParams != jsonParams {
 			t.Errorf("expected parameters %q, got %q", jsonParams, readParams)
+		}
+	})
+}
+
+func TestMigration011PortfolioHoldingsView(t *testing.T) {
+	t.Run("view returns correct shares and cost basis for lot-tracking account", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Create a lot-tracking investment account
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date, track_lots, active)
+			VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Brokerage', 'investment', '2024-01-01', TRUE, TRUE)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert account: %v", err)
+		}
+
+		// Create a security
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'AAPL', 'Apple Inc', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		// Create an investment transaction (needed for lot source_transaction_id)
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_transactions (id, account_id, date, transaction_type, security_id, shares, price_per_share, total_amount)
+			VALUES ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2024-01-15', 'buy', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 10, 150.00, 1500.00)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert investment transaction: %v", err)
+		}
+
+		// Create open lots: 10 shares @ $150, 5 shares @ $160
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_lots (id, account_id, security_id, shares, original_shares, cost_per_share, purchase_date, source_transaction_id, closed)
+			VALUES
+				('dddddddd-dddd-dddd-dddd-dddddddddddd', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 10, 10, 150.00, '2024-01-15', 'cccccccc-cccc-cccc-cccc-cccccccccccc', FALSE),
+				('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 5, 5, 160.00, '2024-02-15', 'cccccccc-cccc-cccc-cccc-cccccccccccc', FALSE)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert lots: %v", err)
+		}
+
+		// Create a closed lot (should be excluded)
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_lots (id, account_id, security_id, shares, original_shares, cost_per_share, purchase_date, source_transaction_id, closed)
+			VALUES ('ffffffff-ffff-ffff-ffff-ffffffffffff', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 0, 3, 140.00, '2024-01-10', 'cccccccc-cccc-cccc-cccc-cccccccccccc', TRUE)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert closed lot: %v", err)
+		}
+
+		var totalShares, totalCostBasis float64
+		err = db.Conn().QueryRow(`
+			SELECT total_shares, total_cost_basis FROM portfolio_holdings
+			WHERE account_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+			  AND security_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+		`).Scan(&totalShares, &totalCostBasis)
+		if err != nil {
+			t.Fatalf("Failed to query portfolio_holdings: %v", err)
+		}
+
+		// Expected: 10 + 5 = 15 shares (closed lot excluded)
+		if totalShares != 15.0 {
+			t.Errorf("total_shares = %v, want 15.0", totalShares)
+		}
+
+		// Expected: (10 * 150) + (5 * 160) = 1500 + 800 = 2300
+		if totalCostBasis != 2300.0 {
+			t.Errorf("total_cost_basis = %v, want 2300.0", totalCostBasis)
+		}
+	})
+
+	t.Run("view returns correct shares and cost basis for non-lot-tracking account", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Create a non-lot-tracking investment account
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date, track_lots, active)
+			VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '401k', 'investment', '2024-01-01', FALSE, TRUE)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert account: %v", err)
+		}
+
+		// Create a security
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'VTI', 'Vanguard Total Stock', 'etf')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		// Create a position (used for non-lot accounts)
+		_, err = db.Conn().Exec(`
+			INSERT INTO investment_positions (id, account_id, security_id, shares, average_cost_per_share)
+			VALUES ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 25.5, 200.00)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert position: %v", err)
+		}
+
+		var totalShares, totalCostBasis float64
+		err = db.Conn().QueryRow(`
+			SELECT total_shares, total_cost_basis FROM portfolio_holdings
+			WHERE account_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+			  AND security_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+		`).Scan(&totalShares, &totalCostBasis)
+		if err != nil {
+			t.Fatalf("Failed to query portfolio_holdings: %v", err)
+		}
+
+		if totalShares != 25.5 {
+			t.Errorf("total_shares = %v, want 25.5", totalShares)
+		}
+
+		// Expected: 25.5 * 200.00 = 5100
+		if totalCostBasis != 5100.0 {
+			t.Errorf("total_cost_basis = %v, want 5100.0", totalCostBasis)
+		}
+	})
+
+	t.Run("view correctly joins security fields", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date, track_lots, active)
+			VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Brokerage', 'investment', '2024-01-01', FALSE, TRUE)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'MSFT', 'Microsoft Corp', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		var accountName, ticker, securityName string
+		err = db.Conn().QueryRow(`
+			SELECT account_name, ticker, security_name FROM portfolio_holdings
+			WHERE account_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+			  AND security_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+		`).Scan(&accountName, &ticker, &securityName)
+		if err != nil {
+			t.Fatalf("Failed to query portfolio_holdings: %v", err)
+		}
+
+		if accountName != "Brokerage" {
+			t.Errorf("account_name = %q, want %q", accountName, "Brokerage")
+		}
+		if ticker != "MSFT" {
+			t.Errorf("ticker = %q, want %q", ticker, "MSFT")
+		}
+		if securityName != "Microsoft Corp" {
+			t.Errorf("security_name = %q, want %q", securityName, "Microsoft Corp")
+		}
+	})
+
+	t.Run("view excludes non-investment accounts", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Create a checking account (should be excluded)
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date, active)
+			VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Checking', 'checking', '2024-01-01', TRUE)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert checking account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'AAPL', 'Apple Inc', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		var count int
+		err = db.Conn().QueryRow(`
+			SELECT COUNT(*) FROM portfolio_holdings
+			WHERE account_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+		`).Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to count portfolio_holdings: %v", err)
+		}
+
+		if count != 0 {
+			t.Errorf("expected 0 rows for checking account, got %d", count)
+		}
+	})
+
+	t.Run("view excludes inactive accounts", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		// Create an inactive investment account
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date, track_lots, active)
+			VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Old Brokerage', 'investment', '2024-01-01', FALSE, FALSE)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert inactive account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'AAPL', 'Apple Inc', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		var count int
+		err = db.Conn().QueryRow(`
+			SELECT COUNT(*) FROM portfolio_holdings
+			WHERE account_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+		`).Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to count portfolio_holdings: %v", err)
+		}
+
+		if count != 0 {
+			t.Errorf("expected 0 rows for inactive account, got %d", count)
+		}
+	})
+
+	t.Run("view returns zero shares when no lots or positions exist", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date, track_lots, active)
+			VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Empty Brokerage', 'investment', '2024-01-01', TRUE, TRUE)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert account: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'AAPL', 'Apple Inc', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security: %v", err)
+		}
+
+		var totalShares, totalCostBasis float64
+		err = db.Conn().QueryRow(`
+			SELECT total_shares, total_cost_basis FROM portfolio_holdings
+			WHERE account_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+			  AND security_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+		`).Scan(&totalShares, &totalCostBasis)
+		if err != nil {
+			t.Fatalf("Failed to query portfolio_holdings: %v", err)
+		}
+
+		if totalShares != 0 {
+			t.Errorf("total_shares = %v, want 0", totalShares)
+		}
+		if totalCostBasis != 0 {
+			t.Errorf("total_cost_basis = %v, want 0", totalCostBasis)
+		}
+	})
+
+	t.Run("view produces cross join of all securities per investment account", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date, track_lots, active)
+			VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Brokerage', 'investment', '2024-01-01', FALSE, TRUE)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert account: %v", err)
+		}
+
+		// Insert 3 securities
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (id, ticker, name, security_type)
+			VALUES
+				('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'AAPL', 'Apple Inc', 'stock'),
+				('cccccccc-cccc-cccc-cccc-cccccccccccc', 'MSFT', 'Microsoft Corp', 'stock'),
+				('dddddddd-dddd-dddd-dddd-dddddddddddd', 'GOOG', 'Alphabet Inc', 'stock')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert securities: %v", err)
+		}
+
+		var count int
+		err = db.Conn().QueryRow(`
+			SELECT COUNT(*) FROM portfolio_holdings
+			WHERE account_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+		`).Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to count portfolio_holdings: %v", err)
+		}
+
+		// Should have 3 rows (1 account x 3 securities)
+		if count != 3 {
+			t.Errorf("expected 3 rows (cross join), got %d", count)
 		}
 	})
 }
