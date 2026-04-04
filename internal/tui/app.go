@@ -230,6 +230,12 @@ type App struct {
 	stockSplitDialogSecurityIDs     []types.ID
 	stockSplitDialogPreSelectedID   *types.ID
 
+	// Merger dialog state
+	mergerDialog              *Dialog
+	mergerDialogData          *mergerDialogData
+	mergerDialogSecurityIDs   []types.ID
+	mergerDialogPreSelectedID *types.ID
+
 	// Lot repository for sell dialog lot loading
 	lotRepo *investment.LotRepository
 
@@ -982,6 +988,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.statusbar.AddNotification("Stock split executed", NotificationInfo)
 		return a, a.loadSecurityViewData()
 
+	case mergerDialogDataMsg:
+		a.mergerDialogData = msg.data
+		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
+		a.mergerDialogSecurityIDs = secIDs
+		a.mergerDialog = buildMergerDialog(secOptions, secIDs, a.mergerDialogPreSelectedID)
+		a.mergerDialogPreSelectedID = nil
+		return a, nil
+
+	case mergerDialogSavedMsg:
+		a.statusbar.AddNotification("Merger executed", NotificationInfo)
+		return a, a.loadSecurityViewData()
+
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data
 		a.buildScheduledTable()
@@ -1383,6 +1401,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If stock split dialog is visible, route all keys to it
 	if a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible() {
 		return a.handleStockSplitDialogKey(msg)
+	}
+
+	// If merger dialog is visible, route all keys to it
+	if a.mergerDialog != nil && a.mergerDialog.IsVisible() {
+		return a.handleMergerDialogKey(msg)
 	}
 
 	// If cash operation dialog is visible, route all keys to it
@@ -2389,6 +2412,12 @@ func (a *App) renderLayout() string {
 	// Overlay stock split dialog if visible
 	if a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible() {
 		overlay := a.stockSplitDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay merger dialog if visible
+	if a.mergerDialog != nil && a.mergerDialog.IsVisible() {
+		overlay := a.mergerDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

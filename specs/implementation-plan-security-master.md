@@ -790,7 +790,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — dialog: Security (pre-selected or searchable), Date, Ratio (text input "4:1"); confirms affected accounts before executing
   - GREEN: Implement split dialog accessible from security view
 
-- [ ] **SM-167 - Merger dialog**
+- [x] **SM-167 - Merger dialog**
   - RED: Write test — dialog: Source Security, Target Security, Date, Exchange Ratio, Cash Per Share (optional); shows preview of affected accounts
   - GREEN: Implement merger dialog
 
