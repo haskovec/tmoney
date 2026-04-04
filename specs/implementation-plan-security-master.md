@@ -810,7 +810,7 @@ Spec: `specs/security-master.md`
 
 ## Phase 47: Net Worth Integration
 
-- [ ] **SM-171 - Include investment accounts in net worth report**
+- [x] **SM-171 - Include investment accounts in net worth report**
   - RED: Write test — net worth includes investment account total value (cash + holdings market value); existing asset/liability classification works (investment = asset)
   - GREEN: Update `ReportService.NetWorth` to include investment account valuations
 

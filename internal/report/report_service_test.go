@@ -1,6 +1,7 @@
 package report
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -517,6 +518,220 @@ func TestService_NetWorth_AccountBalanceDetails(t *testing.T) {
 			t.Errorf("Expected balance %s, got %s", balance.String(), asset.Balance.String())
 		}
 	})
+}
+
+// mockInvestmentValuer is a test double for InvestmentValuer.
+type mockInvestmentValuer struct {
+	valuations map[string]types.Money // accountID string -> total value
+	err        error
+}
+
+func (m *mockInvestmentValuer) GetAccountValuation(accountID types.ID, _ types.Date) (types.Money, error) {
+	if m.err != nil {
+		return types.ZeroMoney, m.err
+	}
+	if v, ok := m.valuations[accountID.String()]; ok {
+		return v, nil
+	}
+	return types.ZeroMoney, nil
+}
+
+func TestService_NetWorth_InvestmentAccountValuation(t *testing.T) {
+	t.Run("uses investment valuer for investment account total value", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+
+		// Create a checking account with $5000
+		checkingBalance, _ := types.NewMoney("5000.00")
+		checking := account.NewAccount("Checking", account.TypeChecking, "USD", checkingBalance, types.Today())
+		if err := accountRepo.Create(checking); err != nil {
+			t.Fatalf("Failed to create checking: %v", err)
+		}
+
+		// Create an investment account with $1000 opening balance (cash)
+		investBalance, _ := types.NewMoney("1000.00")
+		invest := account.NewAccount("Brokerage", account.TypeInvestment, "USD", investBalance, types.Today())
+		if err := accountRepo.Create(invest); err != nil {
+			t.Fatalf("Failed to create investment account: %v", err)
+		}
+
+		// Mock valuer returns $15000 for the investment account (cash + market value)
+		investTotal, _ := types.NewMoney("15000.00")
+		valuer := &mockInvestmentValuer{
+			valuations: map[string]types.Money{
+				invest.ID.String(): investTotal,
+			},
+		}
+
+		svc := NewService(accountRepo, database, WithInvestmentValuer(valuer))
+
+		report, err := svc.NetWorthReport()
+		if err != nil {
+			t.Fatalf("NetWorthReport() error = %v", err)
+		}
+
+		// Total assets: checking $5000 + investment $15000 = $20000
+		expectedAssets, _ := types.NewMoney("20000.00")
+		if !report.TotalAssets.Equal(expectedAssets) {
+			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), report.TotalAssets.String())
+		}
+		if !report.NetWorth.Equal(expectedAssets) {
+			t.Errorf("Expected net worth %s, got %s", expectedAssets.String(), report.NetWorth.String())
+		}
+
+		// Verify the investment account balance shows valuation, not opening balance
+		for _, a := range report.Assets {
+			if a.AccountID == invest.ID {
+				if !a.Balance.Equal(investTotal) {
+					t.Errorf("Expected investment balance %s, got %s", investTotal.String(), a.Balance.String())
+				}
+			}
+		}
+	})
+
+	t.Run("falls back to transaction balance when valuer returns error", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+
+		investBalance, _ := types.NewMoney("1000.00")
+		invest := account.NewAccount("Brokerage", account.TypeInvestment, "USD", investBalance, types.Today())
+		if err := accountRepo.Create(invest); err != nil {
+			t.Fatalf("Failed to create investment account: %v", err)
+		}
+
+		valuer := &mockInvestmentValuer{
+			err: fmt.Errorf("valuation failed"),
+		}
+
+		svc := NewService(accountRepo, database, WithInvestmentValuer(valuer))
+
+		report, err := svc.NetWorthReport()
+		if err != nil {
+			t.Fatalf("NetWorthReport() error = %v", err)
+		}
+
+		// Should fall back to the transaction-based balance of $1000
+		expectedAssets, _ := types.NewMoney("1000.00")
+		if !report.TotalAssets.Equal(expectedAssets) {
+			t.Errorf("Expected total assets %s (fallback), got %s", expectedAssets.String(), report.TotalAssets.String())
+		}
+	})
+
+	t.Run("without valuer uses transaction-based balance for investment accounts", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+
+		investBalance, _ := types.NewMoney("1000.00")
+		invest := account.NewAccount("Brokerage", account.TypeInvestment, "USD", investBalance, types.Today())
+		if err := accountRepo.Create(invest); err != nil {
+			t.Fatalf("Failed to create investment account: %v", err)
+		}
+
+		// No valuer provided — should use transaction-based balance
+		svc := NewService(accountRepo, database)
+
+		report, err := svc.NetWorthReport()
+		if err != nil {
+			t.Fatalf("NetWorthReport() error = %v", err)
+		}
+
+		expectedAssets, _ := types.NewMoney("1000.00")
+		if !report.TotalAssets.Equal(expectedAssets) {
+			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), report.TotalAssets.String())
+		}
+	})
+
+	t.Run("investment valuation with liabilities computes correct net worth", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+
+		// Investment account
+		investBalance, _ := types.NewMoney("500.00")
+		invest := account.NewAccount("Brokerage", account.TypeInvestment, "USD", investBalance, types.Today())
+		if err := accountRepo.Create(invest); err != nil {
+			t.Fatalf("Failed to create investment account: %v", err)
+		}
+
+		// Credit card liability
+		ccBalance, _ := types.NewMoney("3000.00")
+		cc := account.NewAccount("Visa", account.TypeCreditCard, "USD", ccBalance, types.Today())
+		if err := accountRepo.Create(cc); err != nil {
+			t.Fatalf("Failed to create credit card: %v", err)
+		}
+
+		// Mock valuer: investment worth $25000 (cash + holdings)
+		investTotal, _ := types.NewMoney("25000.00")
+		valuer := &mockInvestmentValuer{
+			valuations: map[string]types.Money{
+				invest.ID.String(): investTotal,
+			},
+		}
+
+		svc := NewService(accountRepo, database, WithInvestmentValuer(valuer))
+
+		report, err := svc.NetWorthReport()
+		if err != nil {
+			t.Fatalf("NetWorthReport() error = %v", err)
+		}
+
+		expectedAssets, _ := types.NewMoney("25000.00")
+		if !report.TotalAssets.Equal(expectedAssets) {
+			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), report.TotalAssets.String())
+		}
+
+		expectedLiabilities, _ := types.NewMoney("3000.00")
+		if !report.TotalLiabilities.Equal(expectedLiabilities) {
+			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), report.TotalLiabilities.String())
+		}
+
+		// Net worth: 25000 - 3000 = 22000
+		expectedNetWorth, _ := types.NewMoney("22000.00")
+		if !report.NetWorth.Equal(expectedNetWorth) {
+			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), report.NetWorth.String())
+		}
+	})
+
+	t.Run("as-of date is passed to investment valuer", func(t *testing.T) {
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+
+		investBalance, _ := types.NewMoney("0.00")
+		invest := account.NewAccount("Brokerage", account.TypeInvestment, "USD", investBalance, types.Today())
+		if err := accountRepo.Create(invest); err != nil {
+			t.Fatalf("Failed to create investment account: %v", err)
+		}
+
+		investTotal, _ := types.NewMoney("10000.00")
+		var capturedDate types.Date
+		valuer := &dateCapturingValuer{
+			value:        investTotal,
+			capturedDate: &capturedDate,
+		}
+
+		svc := NewService(accountRepo, database, WithInvestmentValuer(valuer))
+
+		asOf := time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)
+		_, err := svc.NetWorthAsOf(asOf)
+		if err != nil {
+			t.Fatalf("NetWorthAsOf() error = %v", err)
+		}
+
+		expectedDate := types.NewDate(2024, 6, 15)
+		if capturedDate != expectedDate {
+			t.Errorf("Expected valuer to receive date %s, got %s", expectedDate.String(), capturedDate.String())
+		}
+	})
+}
+
+// dateCapturingValuer captures the date passed to GetAccountValuation.
+type dateCapturingValuer struct {
+	value        types.Money
+	capturedDate *types.Date
+}
+
+func (v *dateCapturingValuer) GetAccountValuation(_ types.ID, asOf types.Date) (types.Money, error) {
+	*v.capturedDate = asOf
+	return v.value, nil
 }
 
 func TestService_SpendingByCategoryMonth_EmptyDatabase(t *testing.T) {

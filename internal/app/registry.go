@@ -12,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // Services is the central registry for all application services and repositories.
@@ -82,9 +83,9 @@ func NewServices(database *db.DB) *Services {
 	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
 	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, database)
 	reconciliationSvc := reconciliation.NewService(reconciliationRepo, txnRepo, accountRepo, database)
-	reportSvc := report.NewService(accountRepo, database)
 	priceSvc := price.NewService(priceRepo, securityRepo, database)
 	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, database)
+	reportSvc := report.NewService(accountRepo, database, report.WithInvestmentValuer(&investmentValuerAdapter{svc: investmentSvc}))
 	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, investmentRepo, securityRepo, database)
 
 	return &Services{
@@ -116,4 +117,17 @@ func NewServices(database *db.DB) *Services {
 		TransactionLotRepo:     transactionLotRepo,
 		CorporateActionRepo: corporateActionRepo,
 	}
+}
+
+// investmentValuerAdapter adapts *investment.Service to report.InvestmentValuer.
+type investmentValuerAdapter struct {
+	svc *investment.Service
+}
+
+func (a *investmentValuerAdapter) GetAccountValuation(accountID types.ID, asOf types.Date) (types.Money, error) {
+	val, err := a.svc.GetAccountValuation(accountID, asOf)
+	if err != nil {
+		return types.ZeroMoney, err
+	}
+	return val.TotalValue, nil
 }

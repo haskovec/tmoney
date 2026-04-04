@@ -9,18 +9,38 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+// InvestmentValuer computes the total value of an investment account (cash + holdings).
+type InvestmentValuer interface {
+	GetAccountValuation(accountID types.ID, asOf types.Date) (totalValue types.Money, err error)
+}
+
 // Service provides business logic for generating reports.
 type Service struct {
-	accountRepo *account.Repository
-	db          *db.DB
+	accountRepo     *account.Repository
+	db              *db.DB
+	investmentValue InvestmentValuer
+}
+
+// ServiceOption configures optional dependencies for the report Service.
+type ServiceOption func(*Service)
+
+// WithInvestmentValuer sets the investment valuation provider.
+func WithInvestmentValuer(v InvestmentValuer) ServiceOption {
+	return func(s *Service) {
+		s.investmentValue = v
+	}
 }
 
 // NewService creates a new Service.
-func NewService(accountRepo *account.Repository, database *db.DB) *Service {
-	return &Service{
+func NewService(accountRepo *account.Repository, database *db.DB, opts ...ServiceOption) *Service {
+	s := &Service{
 		accountRepo: accountRepo,
 		db:          database,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // NetWorthReport generates a net worth report as of the current date.
@@ -92,6 +112,18 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 			Name:      name,
 			Type:      string(accountType),
 			Balance:   balance,
+		}
+
+		// For investment accounts, use the investment valuer to get total value
+		// (cash + holdings market value) instead of the raw transaction balance.
+		if accountType == account.TypeInvestment && s.investmentValue != nil {
+			asOfDate := types.NewDate(asOf.Year(), asOf.Month(), asOf.Day())
+			totalValue, err := s.investmentValue.GetAccountValuation(accountID, asOfDate)
+			if err == nil {
+				accountBalance.Balance = totalValue
+				balance = totalValue
+			}
+			// On error, fall through to use the transaction-based balance
 		}
 
 		if accountType.IsAssetType() {
