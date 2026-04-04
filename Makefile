@@ -4,6 +4,9 @@
 export CGO_ENABLED=1
 
 # Default target
+build:
+	CGO_ENABLED=1 go build -o tmoney ./cmd/tmoney
+
 help:
 	@echo "Available targets:"
 	@echo "  build          - Build the tmoney executable"
@@ -12,10 +15,6 @@ help:
 	@echo "  coverage-html  - Generate HTML coverage report (opens in browser)"
 	@echo "  coverage-func  - Show function-level coverage breakdown"
 	@echo "  clean          - Remove coverage files and built executable"
-
-# Build the tmoney executable
-build:
-	CGO_ENABLED=1 go build -o tmoney ./cmd/tmoney
 
 # Run all tests
 test:
