@@ -130,6 +130,98 @@ func TestService_AddPrice(t *testing.T) {
 			t.Error("AddPrice() expected error for non-existent security")
 		}
 	})
+
+	t.Run("rejects price for hidden security", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		sec := createTestSecurityForService(t, secRepo)
+		priceRepo := NewRepository(database)
+		svc := NewService(priceRepo, secRepo, database)
+
+		// Hide the security
+		secSvc := security.NewService(secRepo, database)
+		if err := secSvc.Hide(sec.ID); err != nil {
+			t.Fatalf("Hide() error = %v", err)
+		}
+
+		date := types.NewDate(2024, time.March, 15)
+		p := NewPrice(sec.ID, date, types.MustNewMoney("150.00"), SourceManual)
+
+		err := svc.AddPrice(p)
+		if err == nil {
+			t.Error("AddPrice() expected error for hidden security")
+		}
+		if _, ok := err.(*HiddenSecurityError); !ok {
+			t.Errorf("Expected HiddenSecurityError, got %T: %v", err, err)
+		}
+	})
+}
+
+// =============================================================================
+// SM-177: UpdatePrice rejects hidden security
+// =============================================================================
+
+func TestService_UpdatePrice_HiddenSecurity(t *testing.T) {
+	t.Run("rejects update for hidden security", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		sec := createTestSecurityForService(t, secRepo)
+		priceRepo := NewRepository(database)
+		svc := NewService(priceRepo, secRepo, database)
+
+		// Add a price while visible
+		date := types.NewDate(2024, time.March, 15)
+		price1 := NewPrice(sec.ID, date, types.MustNewMoney("150.00"), SourceManual)
+		if err := svc.AddPrice(price1); err != nil {
+			t.Fatalf("AddPrice() error = %v", err)
+		}
+
+		// Now hide the security
+		secSvc := security.NewService(secRepo, database)
+		if err := secSvc.Hide(sec.ID); err != nil {
+			t.Fatalf("Hide() error = %v", err)
+		}
+
+		// Updating price should fail
+		price2 := NewPrice(sec.ID, date, types.MustNewMoney("155.00"), SourceManual)
+		err := svc.UpdatePrice(price2)
+		if err == nil {
+			t.Error("UpdatePrice() expected error for hidden security")
+		}
+		if _, ok := err.(*HiddenSecurityError); !ok {
+			t.Errorf("Expected HiddenSecurityError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("existing price history preserved for hidden security", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		sec := createTestSecurityForService(t, secRepo)
+		priceRepo := NewRepository(database)
+		svc := NewService(priceRepo, secRepo, database)
+
+		// Add prices while visible
+		date := types.NewDate(2024, time.March, 15)
+		p := NewPrice(sec.ID, date, types.MustNewMoney("150.00"), SourceManual)
+		if err := svc.AddPrice(p); err != nil {
+			t.Fatalf("AddPrice() error = %v", err)
+		}
+
+		// Hide the security
+		secSvc := security.NewService(secRepo, database)
+		if err := secSvc.Hide(sec.ID); err != nil {
+			t.Fatalf("Hide() error = %v", err)
+		}
+
+		// Price history should still be readable
+		retrieved, err := svc.GetCurrentPrice(sec.ID, date)
+		if err != nil {
+			t.Fatalf("GetCurrentPrice() error = %v", err)
+		}
+		if retrieved.Price.String() != "150" {
+			t.Errorf("Expected price '150' preserved, got %q", retrieved.Price.String())
+		}
+	})
 }
 
 // =============================================================================
@@ -553,6 +645,32 @@ func TestService_BulkImport(t *testing.T) {
 		}
 		if result.Skipped != 2 {
 			t.Errorf("Expected Skipped=2, got %d", result.Skipped)
+		}
+	})
+
+	t.Run("rejects batch with hidden security", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		sec := createTestSecurityForService(t, secRepo)
+		priceRepo := NewRepository(database)
+		svc := NewService(priceRepo, secRepo, database)
+
+		// Hide the security
+		secSvc := security.NewService(secRepo, database)
+		if err := secSvc.Hide(sec.ID); err != nil {
+			t.Fatalf("Hide() error = %v", err)
+		}
+
+		prices := []*Price{
+			NewPrice(sec.ID, types.NewDate(2024, time.March, 10), types.MustNewMoney("145.00"), SourceImport),
+		}
+
+		_, err := svc.BulkImport(prices, false)
+		if err == nil {
+			t.Error("BulkImport() expected error for hidden security")
+		}
+		if _, ok := err.(*HiddenSecurityError); !ok {
+			t.Errorf("Expected HiddenSecurityError, got %T: %v", err, err)
 		}
 	})
 

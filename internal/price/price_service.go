@@ -40,10 +40,13 @@ func (s *Service) AddPrice(price *Price) error {
 		return err
 	}
 
-	// Verify the security exists
-	_, err := s.secRepo.GetByID(price.SecurityID)
+	// Verify the security exists and is not hidden
+	sec, err := s.secRepo.GetByID(price.SecurityID)
 	if err != nil {
 		return err
+	}
+	if sec.Hidden {
+		return &HiddenSecurityError{SecurityID: price.SecurityID.String()}
 	}
 
 	err = s.repo.Create(price)
@@ -66,10 +69,13 @@ func (s *Service) UpdatePrice(price *Price) error {
 		return err
 	}
 
-	// Verify the security exists
-	_, err := s.secRepo.GetByID(price.SecurityID)
+	// Verify the security exists and is not hidden
+	sec, err := s.secRepo.GetByID(price.SecurityID)
 	if err != nil {
 		return err
+	}
+	if sec.Hidden {
+		return &HiddenSecurityError{SecurityID: price.SecurityID.String()}
 	}
 
 	return s.repo.CreateOrUpdate(price)
@@ -92,10 +98,17 @@ func (s *Service) DeletePrice(id types.ID) error {
 
 // BulkImport imports multiple prices with optional overwrite behavior.
 func (s *Service) BulkImport(prices []*Price, overwrite bool) (*BulkImportResult, error) {
-	// Validate all prices before importing
+	// Validate all prices and check for hidden securities before importing
 	for _, p := range prices {
 		if err := s.validatePrice(p); err != nil {
 			return nil, err
+		}
+		sec, err := s.secRepo.GetByID(p.SecurityID)
+		if err != nil {
+			return nil, err
+		}
+		if sec.Hidden {
+			return nil, &HiddenSecurityError{SecurityID: p.SecurityID.String()}
 		}
 	}
 	return s.repo.BulkCreate(prices, overwrite)

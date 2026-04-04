@@ -711,6 +711,109 @@ func TestService_Search(t *testing.T) {
 }
 
 // =============================================================================
+// SM-177: Hidden security enforcement
+// =============================================================================
+
+func TestService_SearchExcludesHidden(t *testing.T) {
+	t.Run("search excludes hidden securities", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database)
+
+		visible := NewSecurity("AAPL", "Apple Inc.", TypeStock)
+		hidden := NewSecurity("GOOG", "Alphabet Inc.", TypeStock)
+		if err := svc.Create(visible); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.Create(hidden); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.Hide(hidden.ID); err != nil {
+			t.Fatalf("Hide() error = %v", err)
+		}
+
+		// Search by partial name should not return hidden security
+		results, err := svc.Search("alpha")
+		if err != nil {
+			t.Fatalf("Search() error = %v", err)
+		}
+		if len(results) != 0 {
+			t.Errorf("Expected 0 results (hidden excluded), got %d", len(results))
+		}
+
+		// Search that matches visible security should return it
+		results, err = svc.Search("apple")
+		if err != nil {
+			t.Fatalf("Search() error = %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("Expected 1 result, got %d", len(results))
+		}
+		if results[0].Ticker != "AAPL" {
+			t.Errorf("Expected ticker 'AAPL', got %q", results[0].Ticker)
+		}
+	})
+
+	t.Run("empty search query excludes hidden securities", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database)
+
+		sec1 := NewSecurity("AAPL", "Apple Inc.", TypeStock)
+		sec2 := NewSecurity("GOOG", "Alphabet Inc.", TypeStock)
+		sec3 := NewSecurity("MSFT", "Microsoft Corp.", TypeStock)
+		for _, s := range []*Security{sec1, sec2, sec3} {
+			if err := svc.Create(s); err != nil {
+				t.Fatalf("Create() error = %v", err)
+			}
+		}
+		// Hide GOOG
+		if err := svc.Hide(sec2.ID); err != nil {
+			t.Fatalf("Hide() error = %v", err)
+		}
+
+		results, err := svc.Search("")
+		if err != nil {
+			t.Fatalf("Search() error = %v", err)
+		}
+		if len(results) != 2 {
+			t.Errorf("Expected 2 results (hidden excluded), got %d", len(results))
+		}
+		for _, r := range results {
+			if r.Ticker == "GOOG" {
+				t.Error("Hidden security GOOG should not appear in search results")
+			}
+		}
+	})
+
+	t.Run("hidden security still retrievable by GetByID", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database)
+
+		sec := NewSecurity("GOOG", "Alphabet Inc.", TypeStock)
+		if err := svc.Create(sec); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		if err := svc.Hide(sec.ID); err != nil {
+			t.Fatalf("Hide() error = %v", err)
+		}
+
+		// GetByID should still return hidden securities (for portfolio/historical)
+		retrieved, err := svc.GetByID(sec.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if retrieved.Ticker != "GOOG" {
+			t.Errorf("Expected ticker 'GOOG', got %q", retrieved.Ticker)
+		}
+		if !retrieved.Hidden {
+			t.Error("Expected Hidden to be true")
+		}
+	})
+}
+
+// =============================================================================
 // Helpers
 // =============================================================================
 

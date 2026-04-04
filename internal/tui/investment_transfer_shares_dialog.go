@@ -124,7 +124,8 @@ func (a *App) loadTransferSharesDialogData() tea.Cmd {
 
 		// Load securities
 		if a.securitySvc != nil {
-			securities, err := a.securitySvc.List(security.Filter{})
+			excludeHidden := true
+			securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
 				return errMsg{err: err}
 			}

@@ -2389,11 +2389,17 @@ func runImportPrices(opts *cliOptions, w io.Writer) error {
 	// Resolve tickers to security IDs and build price objects
 	var prices []*price.Price
 	tickerErrors := 0
+	hiddenSkipped := 0
 	for _, rec := range parseResult.Records {
 		sec, secErr := svc.Security.GetByTicker(rec.Ticker, "")
 		if secErr != nil {
 			fmt.Fprintf(w, "  Warning: line %d: unknown ticker %q\n", rec.SourceLine, rec.Ticker)
 			tickerErrors++
+			continue
+		}
+		if sec.Hidden {
+			fmt.Fprintf(w, "  Warning: line %d: skipping hidden security %q\n", rec.SourceLine, rec.Ticker)
+			hiddenSkipped++
 			continue
 		}
 
@@ -2502,6 +2508,9 @@ func runBuy(opts *cliOptions, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("security %q not found", opts.secTicker)
 	}
+	if sec.Hidden {
+		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.secTicker)
+	}
 
 	txn, err := svc.Investment.Buy(acct.ID, sec.ID, date, shares, totalAmount, pricePerShare, commission, opts.txMemo)
 	if err != nil {
@@ -2599,6 +2608,9 @@ func runSell(opts *cliOptions, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("security %q not found", opts.secTicker)
 	}
+	if sec.Hidden {
+		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.secTicker)
+	}
 
 	// Parse lot allocations if provided (for lot-tracking accounts)
 	var lotAllocations []investment.SellLotAllocation
@@ -2678,6 +2690,9 @@ func runDividend(opts *cliOptions, w io.Writer) error {
 	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
 	if err != nil {
 		return fmt.Errorf("security %q not found", opts.secTicker)
+	}
+	if sec.Hidden {
+		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.secTicker)
 	}
 
 	_, err = svc.Investment.Dividend(acct.ID, sec.ID, date, amount, opts.txMemo)
@@ -2760,6 +2775,9 @@ func runReinvest(opts *cliOptions, w io.Writer) error {
 	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
 	if err != nil {
 		return fmt.Errorf("security %q not found", opts.secTicker)
+	}
+	if sec.Hidden {
+		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.secTicker)
 	}
 
 	txn, err := svc.Investment.ReinvestDividend(acct.ID, sec.ID, date, shares, totalAmount, pricePerShare, opts.txMemo)
@@ -2999,6 +3017,9 @@ func runTransferShares(opts *cliOptions, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("security %q not found", opts.secTicker)
 	}
+	if sec.Hidden {
+		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.secTicker)
+	}
 
 	// Parse lot allocations if provided (for lot-tracking source accounts)
 	var lotAllocations []investment.SellLotAllocation
@@ -3122,6 +3143,9 @@ func runSplit(opts *cliOptions, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("security %q not found", opts.secTicker)
 	}
+	if sec.Hidden {
+		return fmt.Errorf("security %q is hidden; unhide it first to apply corporate actions", opts.secTicker)
+	}
 
 	action, err := svc.CorporateAction.Split(sec.ID, date, *params)
 	if err != nil {
@@ -3191,10 +3215,16 @@ func runMergeSecurity(opts *cliOptions, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("source security %q not found", opts.mergeSource)
 	}
+	if sourceSec.Hidden {
+		return fmt.Errorf("source security %q is hidden; unhide it first to apply corporate actions", opts.mergeSource)
+	}
 
 	targetSec, err := svc.Security.GetByTicker(opts.mergeTarget, "")
 	if err != nil {
 		return fmt.Errorf("target security %q not found", opts.mergeTarget)
+	}
+	if targetSec.Hidden {
+		return fmt.Errorf("target security %q is hidden; unhide it first to apply corporate actions", opts.mergeTarget)
 	}
 
 	action, err := svc.CorporateAction.Merger(sourceSec.ID, targetSec.ID, date, params)
@@ -3277,10 +3307,16 @@ func runSpinOff(opts *cliOptions, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("parent security %q not found", opts.spinOffParent)
 	}
+	if parentSec.Hidden {
+		return fmt.Errorf("parent security %q is hidden; unhide it first to apply corporate actions", opts.spinOffParent)
+	}
 
 	childSec, err := svc.Security.GetByTicker(opts.spinOffChild, "")
 	if err != nil {
 		return fmt.Errorf("spin-off security %q not found", opts.spinOffChild)
+	}
+	if childSec.Hidden {
+		return fmt.Errorf("spin-off security %q is hidden; unhide it first to apply corporate actions", opts.spinOffChild)
 	}
 
 	action, err := svc.CorporateAction.SpinOff(parentSec.ID, childSec.ID, date, params, spinPrice)

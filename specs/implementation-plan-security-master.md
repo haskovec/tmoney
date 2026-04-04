@@ -840,7 +840,7 @@ Spec: `specs/security-master.md`
 
 ## Phase 50: Edge Cases and Polish
 
-- [ ] **SM-177 - Hidden security enforcement**
+- [x] **SM-177 - Hidden security enforcement**
   - RED: Write test — hidden securities excluded from security dropdowns in transaction dialogs; excluded from price update operations; still visible in portfolio if historically held
   - GREEN: Wire hidden flag filtering into all relevant UI components and service methods
 

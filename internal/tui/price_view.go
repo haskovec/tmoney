@@ -74,7 +74,8 @@ func (a *App) loadPriceViewData() tea.Cmd {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
-		securities, err := a.securitySvc.List(security.Filter{})
+		excludeHidden := true
+		securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
 		}
@@ -126,7 +127,8 @@ func (a *App) loadPriceViewDataForSecurity(sec *security.Security) tea.Cmd {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
-		securities, err := a.securitySvc.List(security.Filter{})
+		excludeHidden := true
+		securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
 		}

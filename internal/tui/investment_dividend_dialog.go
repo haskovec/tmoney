@@ -140,7 +140,8 @@ func (a *App) loadDividendDialogData() tea.Cmd {
 		data := &dividendDialogData{}
 
 		if a.securitySvc != nil {
-			securities, err := a.securitySvc.List(security.Filter{})
+			excludeHidden := true
+			securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
 				return errMsg{err: err}
 			}

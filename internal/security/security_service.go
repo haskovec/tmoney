@@ -170,9 +170,11 @@ func (s *Service) Unhide(id types.ID) error {
 // =============================================================================
 
 // Search finds securities matching a partial ticker or name (case-insensitive).
+// Hidden securities are excluded from search results.
 func (s *Service) Search(query string) ([]*Security, error) {
 	if strings.TrimSpace(query) == "" {
-		return s.repo.List(Filter{})
+		excludeHidden := true
+		return s.repo.List(Filter{ExcludeHidden: &excludeHidden})
 	}
 
 	pattern := "%" + strings.ToLower(strings.TrimSpace(query)) + "%"
@@ -181,7 +183,8 @@ func (s *Service) Search(query string) ([]*Security, error) {
 		SELECT id, ticker, name, security_type, asset_class, currency,
 			exchange, hidden, created_at, updated_at
 		FROM securities
-		WHERE LOWER(ticker) LIKE ? OR LOWER(name) LIKE ?
+		WHERE (LOWER(ticker) LIKE ? OR LOWER(name) LIKE ?)
+			AND hidden = FALSE
 		ORDER BY ticker
 	`
 
