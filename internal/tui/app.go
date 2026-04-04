@@ -242,6 +242,10 @@ type App struct {
 	spinOffDialogSecurityIDs   []types.ID
 	spinOffDialogPreSelectedID *types.ID
 
+	// Corporate action history overlay state
+	corporateActionHistory      *corporateActionHistoryData
+	corporateActionHistoryTable *Table
+
 	// Lot repository for sell dialog lot loading
 	lotRepo *investment.LotRepository
 
@@ -1018,6 +1022,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.statusbar.AddNotification("Spin-off executed", NotificationInfo)
 		return a, a.loadSecurityViewData()
 
+	case corporateActionHistoryDataLoadedMsg:
+		a.corporateActionHistory = msg.data
+		a.buildCorporateActionHistoryTable()
+		return a, nil
+
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data
 		a.buildScheduledTable()
@@ -1429,6 +1438,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If spin-off dialog is visible, route all keys to it
 	if a.spinOffDialog != nil && a.spinOffDialog.IsVisible() {
 		return a.handleSpinOffDialogKey(msg)
+	}
+
+	// If corporate action history overlay is visible, route all keys to it
+	if a.corporateActionHistory != nil {
+		return a.handleCorporateActionHistoryKeys(msg)
 	}
 
 	// If cash operation dialog is visible, route all keys to it
@@ -2450,6 +2464,12 @@ func (a *App) renderLayout() string {
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
+	// Overlay corporate action history if visible
+	if a.corporateActionHistory != nil {
+		overlay := a.renderCorporateActionHistory()
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
 	// Overlay confirmation dialog if visible
 	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
 		overlay := a.confirmDialog.Render(a.styles)
@@ -3275,7 +3295,7 @@ func (a *App) getKeyHints() string {
 	case ViewReconciliation:
 		return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help"
 	case ViewSecurities:
-		return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  / search  esc back  " + common
+		return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  a actions  / search  esc back  " + common
 	case ViewPrices:
 		return "↑↓ navigate  ←→ security  n new  enter edit  d delete  i import  / search  esc back  " + common
 	case ViewInvestmentRegister:

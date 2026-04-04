@@ -798,7 +798,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — dialog: Parent Security, Spin-off Security, Date, Share Ratio, Parent Allocation %; shows preview
   - GREEN: Implement spin-off dialog
 
-- [ ] **SM-169 - Corporate action history view**
+- [x] **SM-169 - Corporate action history view**
   - RED: Write test — accessible from security detail; lists all corporate actions for a security with type, date, parameters
   - GREEN: Implement corporate action history display
 

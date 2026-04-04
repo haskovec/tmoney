@@ -486,6 +486,11 @@ func (s *CorporateActionService) spinOffProcessPositions(parentSecurityID, spinO
 	return nil
 }
 
+// ListBySecurity retrieves all corporate actions for a security (as source or target).
+func (s *CorporateActionService) ListBySecurity(securityID types.ID) ([]*CorporateAction, error) {
+	return s.caRepo.ListBySecurity(securityID)
+}
+
 // mergerHideSource marks the source security as hidden after all positions are exchanged.
 func (s *CorporateActionService) mergerHideSource(securityID types.ID) error {
 	sec, err := s.secRepo.GetByID(securityID)

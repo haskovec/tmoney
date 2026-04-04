@@ -329,6 +329,12 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.switchView(ViewPrices)
 			return a, a.loadPriceViewDataForSecurity(sec)
 		}
+	case msg.String() == "a":
+		// Open corporate action history for selected security
+		sec := a.selectedSecurity()
+		if sec != nil {
+			return a, a.loadCorporateActionHistory(sec)
+		}
 	}
 
 	return a, nil
