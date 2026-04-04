@@ -424,6 +424,7 @@ func (t *Transaction) Validate() types.ValidationErrors {
 	// Required fields
 	v.RequiredID("account_id", t.AccountID)
 	v.RequiredDate("date", t.Date)
+	v.NotFutureDate("date", t.Date)
 
 	// Type must be valid
 	if !t.Type.IsValid() {

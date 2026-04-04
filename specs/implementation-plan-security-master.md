@@ -844,18 +844,18 @@ Spec: `specs/security-master.md`
   - RED: Write test — hidden securities excluded from security dropdowns in transaction dialogs; excluded from price update operations; still visible in portfolio if historically held
   - GREEN: Wire hidden flag filtering into all relevant UI components and service methods
 
-- [ ] **SM-178 - Zero-position cleanup**
+- [x] **SM-178 - Zero-position cleanup**
   - RED: Write test — positions with zero shares are excluded from portfolio display; lots with zero shares show as closed; no orphaned data
   - GREEN: Add cleanup/filter logic
 
-- [ ] **SM-179 - Multi-currency securities**
+- [x] **SM-179 - Multi-currency securities**
   - RED: Write test — same company can have tickers in different currencies (e.g., "RY" USD and "RY.TO" CAD); unique constraint is on ticker+currency, not ticker alone
   - GREEN: Verify all queries respect the currency dimension
 
-- [ ] **SM-180 - Price date validation**
+- [x] **SM-180 - Price date validation**
   - RED: Write test — cannot add price with future date; cannot create transaction with future date; boundary: today is valid
   - GREEN: Verify date validation across all entry points
 
-- [ ] **SM-181 - Commission handling edge cases**
+- [x] **SM-181 - Commission handling edge cases**
   - RED: Write test — zero commission works; commission > total_amount rejected; commission precision (2 decimal places for USD)
   - GREEN: Verify commission validation and computation

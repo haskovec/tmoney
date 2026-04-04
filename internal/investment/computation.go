@@ -59,6 +59,10 @@ func SmartCompute(
 	if hasTotalAmount {
 		// Total given — compute price_per_share from it
 		result.TotalAmount = *totalAmount
+		// Reject commission that meets or exceeds total amount (net must be positive)
+		if totalAmount.IsPositive() && commission.Cmp(*totalAmount) >= 0 {
+			return nil, fmt.Errorf("commission (%s) must be less than total amount (%s)", commission, *totalAmount)
+		}
 		price, err := ComputePricePerShare(*totalAmount, shares, commission)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compute price_per_share: %w", err)
