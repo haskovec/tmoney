@@ -109,11 +109,62 @@ func (s *Service) GetLotDetail(accountID types.ID, securityID types.ID, asOf typ
 }
 
 // getHoldings builds holdings for an account based on its tracking mode.
+// When the holdings repository is available, it uses the portfolio_holdings
+// database view for better performance. Otherwise falls back to manual computation.
 func (s *Service) getHoldings(acct *account.Account, asOf types.Date) ([]Holding, error) {
+	if s.holdingsRepo != nil {
+		return s.getHoldingsFromView(acct.ID, asOf)
+	}
 	if acct.TrackLots {
 		return s.getHoldingsFromLots(acct.ID, asOf)
 	}
 	return s.getHoldingsFromPositions(acct.ID, asOf)
+}
+
+// getHoldingsFromView builds holdings using the portfolio_holdings database view.
+// The view handles both lot-tracking and non-lot-tracking accounts, returning
+// pre-aggregated shares and cost basis. Pricing is enriched on top.
+func (s *Service) getHoldingsFromView(accountID types.ID, asOf types.Date) ([]Holding, error) {
+	viewHoldings, err := s.holdingsRepo.ListByAccount(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query holdings view: %w", err)
+	}
+
+	holdings := make([]Holding, 0, len(viewHoldings))
+	for _, vh := range viewHoldings {
+		currentPrice, hasPricing := s.getCurrentPrice(vh.SecurityID, asOf)
+		costBasis := vh.TotalCostBasis
+
+		// Compute average cost per share
+		reciprocal := alpacadecimal.NewFromInt(1).Div(vh.TotalShares.Decimal())
+		avgCost := costBasis.Mul(reciprocal)
+
+		var marketValue types.Money
+		var priceDate types.Date
+		if hasPricing {
+			marketValue = currentPrice.Mul(vh.TotalShares.Decimal())
+			priceDate = s.getPriceDate(vh.SecurityID, asOf)
+		} else {
+			marketValue = costBasis
+		}
+
+		gainLoss := marketValue.Sub(costBasis)
+
+		holdings = append(holdings, Holding{
+			SecurityID:   vh.SecurityID,
+			Shares:       vh.TotalShares,
+			AvgCost:      avgCost,
+			CurrentPrice: currentPrice,
+			PriceDate:    priceDate,
+			MarketValue:  marketValue,
+			CostBasis:    costBasis,
+			GainLoss:     gainLoss,
+			GainPct:      computeGainPct(marketValue, costBasis),
+			HasPricing:   hasPricing,
+		})
+	}
+
+	return holdings, nil
 }
 
 // getHoldingsFromPositions builds holdings from positions (non-lot-tracking).

@@ -441,6 +441,317 @@ func TestService_GetHoldings(t *testing.T) {
 }
 
 // =============================================================================
+// SM-174: GetHoldings via portfolio_holdings view matches manual computation
+// =============================================================================
+
+func TestService_GetHoldingsViewMatchesManual(t *testing.T) {
+	t.Run("non-lot-tracking: view results match manual computation", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "ViewTest")
+		sec1 := createSec(t, env.secRepo, "VTI")
+		sec2 := createSec(t, env.secRepo, "BND")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("50000"), "")
+		if err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+
+		// Buy VTI: 20 shares, $4000 total
+		totalVTI := types.MustNewMoney("4000")
+		_, err = env.svc.Buy(acct.ID, sec1.ID, date, types.MustNewQuantity("20"), &totalVTI, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy VTI error = %v", err)
+		}
+
+		// Buy BND: 50 shares, $5000 total
+		totalBND := types.MustNewMoney("5000")
+		_, err = env.svc.Buy(acct.ID, sec2.ID, date, types.MustNewQuantity("50"), &totalBND, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy BND error = %v", err)
+		}
+
+		// Add prices
+		p1 := price.NewPrice(sec1.ID, types.NewDate(2024, time.March, 20), types.MustNewMoney("220"), price.SourceManual)
+		if err := env.priceRepo.Create(p1); err != nil {
+			t.Fatalf("Create VTI price error = %v", err)
+		}
+		p2 := price.NewPrice(sec2.ID, types.NewDate(2024, time.March, 20), types.MustNewMoney("95"), price.SourceManual)
+		if err := env.priceRepo.Create(p2); err != nil {
+			t.Fatalf("Create BND price error = %v", err)
+		}
+
+		asOf := types.NewDate(2024, time.March, 20)
+
+		// Get holdings via view (default path since holdingsRepo is wired)
+		viewHoldings, err := env.svc.GetHoldings(acct.ID, asOf)
+		if err != nil {
+			t.Fatalf("GetHoldings() (view) error = %v", err)
+		}
+
+		// Get holdings via manual path by temporarily disabling the view
+		env.svc.holdingsRepo = nil
+		manualHoldings, err := env.svc.GetHoldings(acct.ID, asOf)
+		if err != nil {
+			t.Fatalf("GetHoldings() (manual) error = %v", err)
+		}
+
+		if len(viewHoldings) != len(manualHoldings) {
+			t.Fatalf("Holdings count mismatch: view=%d manual=%d", len(viewHoldings), len(manualHoldings))
+		}
+
+		// Build maps by security ID for comparison
+		viewMap := make(map[string]Holding)
+		for _, h := range viewHoldings {
+			viewMap[h.SecurityID.String()] = h
+		}
+		manualMap := make(map[string]Holding)
+		for _, h := range manualHoldings {
+			manualMap[h.SecurityID.String()] = h
+		}
+
+		for secID, vh := range viewMap {
+			mh, ok := manualMap[secID]
+			if !ok {
+				t.Errorf("Security %s in view results but not manual", secID)
+				continue
+			}
+			if vh.Shares.String() != mh.Shares.String() {
+				t.Errorf("Security %s shares mismatch: view=%q manual=%q", secID, vh.Shares.String(), mh.Shares.String())
+			}
+			if vh.CostBasis.String() != mh.CostBasis.String() {
+				t.Errorf("Security %s cost basis mismatch: view=%q manual=%q", secID, vh.CostBasis.String(), mh.CostBasis.String())
+			}
+			if vh.MarketValue.String() != mh.MarketValue.String() {
+				t.Errorf("Security %s market value mismatch: view=%q manual=%q", secID, vh.MarketValue.String(), mh.MarketValue.String())
+			}
+			if vh.GainLoss.String() != mh.GainLoss.String() {
+				t.Errorf("Security %s gain/loss mismatch: view=%q manual=%q", secID, vh.GainLoss.String(), mh.GainLoss.String())
+			}
+			if vh.HasPricing != mh.HasPricing {
+				t.Errorf("Security %s has_pricing mismatch: view=%v manual=%v", secID, vh.HasPricing, mh.HasPricing)
+			}
+			if math.Abs(vh.GainPct-mh.GainPct) > 0.01 {
+				t.Errorf("Security %s gain pct mismatch: view=%f manual=%f", secID, vh.GainPct, mh.GainPct)
+			}
+		}
+	})
+
+	t.Run("lot-tracking: view results match manual computation", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "LotViewTest")
+		sec := createSec(t, env.secRepo, "NVDA")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("50000"), "")
+		if err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+
+		// Lot 1: 10 shares at $800
+		total1 := types.MustNewMoney("8000")
+		_, err = env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"), &total1, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy lot 1 error = %v", err)
+		}
+
+		// Lot 2: 5 shares at $850
+		date2 := types.NewDate(2024, time.March, 18)
+		total2 := types.MustNewMoney("4250")
+		_, err = env.svc.Buy(acct.ID, sec.ID, date2, types.MustNewQuantity("5"), &total2, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy lot 2 error = %v", err)
+		}
+
+		// Add current price
+		p := price.NewPrice(sec.ID, types.NewDate(2024, time.March, 20), types.MustNewMoney("900"), price.SourceManual)
+		if err := env.priceRepo.Create(p); err != nil {
+			t.Fatalf("Create price error = %v", err)
+		}
+
+		asOf := types.NewDate(2024, time.March, 20)
+
+		// Get holdings via view
+		viewHoldings, err := env.svc.GetHoldings(acct.ID, asOf)
+		if err != nil {
+			t.Fatalf("GetHoldings() (view) error = %v", err)
+		}
+
+		// Get holdings via manual path
+		env.svc.holdingsRepo = nil
+		manualHoldings, err := env.svc.GetHoldings(acct.ID, asOf)
+		if err != nil {
+			t.Fatalf("GetHoldings() (manual) error = %v", err)
+		}
+
+		if len(viewHoldings) != len(manualHoldings) {
+			t.Fatalf("Holdings count mismatch: view=%d manual=%d", len(viewHoldings), len(manualHoldings))
+		}
+
+		if len(viewHoldings) != 1 {
+			t.Fatalf("Expected 1 holding, got %d", len(viewHoldings))
+		}
+
+		vh := viewHoldings[0]
+		mh := manualHoldings[0]
+
+		// Shares: 10 + 5 = 15
+		if vh.Shares.String() != mh.Shares.String() {
+			t.Errorf("Shares mismatch: view=%q manual=%q", vh.Shares.String(), mh.Shares.String())
+		}
+		if vh.Shares.String() != "15" {
+			t.Errorf("Expected shares '15', got %q", vh.Shares.String())
+		}
+
+		// Cost basis: 8000 + 4250 = 12250
+		if vh.CostBasis.String() != mh.CostBasis.String() {
+			t.Errorf("CostBasis mismatch: view=%q manual=%q", vh.CostBasis.String(), mh.CostBasis.String())
+		}
+		if vh.CostBasis.String() != "12250" {
+			t.Errorf("Expected cost basis '12250', got %q", vh.CostBasis.String())
+		}
+
+		// Market value: 15 × 900 = 13500
+		if vh.MarketValue.String() != mh.MarketValue.String() {
+			t.Errorf("MarketValue mismatch: view=%q manual=%q", vh.MarketValue.String(), mh.MarketValue.String())
+		}
+		if vh.MarketValue.String() != "13500" {
+			t.Errorf("Expected market value '13500', got %q", vh.MarketValue.String())
+		}
+
+		// Gain/loss: 13500 - 12250 = 1250
+		if vh.GainLoss.String() != mh.GainLoss.String() {
+			t.Errorf("GainLoss mismatch: view=%q manual=%q", vh.GainLoss.String(), mh.GainLoss.String())
+		}
+
+		if vh.HasPricing != mh.HasPricing {
+			t.Errorf("HasPricing mismatch: view=%v manual=%v", vh.HasPricing, mh.HasPricing)
+		}
+
+		if math.Abs(vh.GainPct-mh.GainPct) > 0.01 {
+			t.Errorf("GainPct mismatch: view=%f manual=%f", vh.GainPct, mh.GainPct)
+		}
+	})
+
+	t.Run("view path: no pricing falls back to cost basis", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "NoPriceView")
+		sec := createSec(t, env.secRepo, "NOPV")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000"), "")
+		if err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+
+		total := types.MustNewMoney("500")
+		_, err = env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("5"), &total, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+
+		// Query as-of date before buy to avoid transaction-created price
+		asOf := types.NewDate(2024, time.March, 14)
+
+		viewHoldings, err := env.svc.GetHoldings(acct.ID, asOf)
+		if err != nil {
+			t.Fatalf("GetHoldings() (view) error = %v", err)
+		}
+
+		env.svc.holdingsRepo = nil
+		manualHoldings, err := env.svc.GetHoldings(acct.ID, asOf)
+		if err != nil {
+			t.Fatalf("GetHoldings() (manual) error = %v", err)
+		}
+
+		if len(viewHoldings) != len(manualHoldings) {
+			t.Fatalf("Holdings count mismatch: view=%d manual=%d", len(viewHoldings), len(manualHoldings))
+		}
+
+		for i := range viewHoldings {
+			if viewHoldings[i].HasPricing != manualHoldings[i].HasPricing {
+				t.Errorf("HasPricing mismatch: view=%v manual=%v", viewHoldings[i].HasPricing, manualHoldings[i].HasPricing)
+			}
+			if viewHoldings[i].MarketValue.String() != manualHoldings[i].MarketValue.String() {
+				t.Errorf("MarketValue mismatch: view=%q manual=%q", viewHoldings[i].MarketValue.String(), manualHoldings[i].MarketValue.String())
+			}
+		}
+	})
+
+	t.Run("view path: empty account returns no holdings", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "EmptyView")
+
+		asOf := types.NewDate(2024, time.March, 15)
+		holdings, err := env.svc.GetHoldings(acct.ID, asOf)
+		if err != nil {
+			t.Fatalf("GetHoldings() error = %v", err)
+		}
+
+		if len(holdings) != 0 {
+			t.Errorf("Expected 0 holdings, got %d", len(holdings))
+		}
+	})
+
+	t.Run("view-based GetAccountValuation matches manual computation", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "ValuationView")
+		sec := createSec(t, env.secRepo, "SPY")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("20000"), "")
+		if err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+
+		total := types.MustNewMoney("5000")
+		_, err = env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, "")
+		if err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+
+		p := price.NewPrice(sec.ID, types.NewDate(2024, time.March, 20), types.MustNewMoney("520"), price.SourceManual)
+		if err := env.priceRepo.Create(p); err != nil {
+			t.Fatalf("Create price error = %v", err)
+		}
+
+		asOf := types.NewDate(2024, time.March, 20)
+
+		// View-based valuation
+		viewVal, err := env.svc.GetAccountValuation(acct.ID, asOf)
+		if err != nil {
+			t.Fatalf("GetAccountValuation() (view) error = %v", err)
+		}
+
+		// Manual-based valuation
+		env.svc.holdingsRepo = nil
+		manualVal, err := env.svc.GetAccountValuation(acct.ID, asOf)
+		if err != nil {
+			t.Fatalf("GetAccountValuation() (manual) error = %v", err)
+		}
+
+		if viewVal.CashBalance.String() != manualVal.CashBalance.String() {
+			t.Errorf("Cash balance mismatch: view=%q manual=%q", viewVal.CashBalance.String(), manualVal.CashBalance.String())
+		}
+		if viewVal.MarketValue.String() != manualVal.MarketValue.String() {
+			t.Errorf("Market value mismatch: view=%q manual=%q", viewVal.MarketValue.String(), manualVal.MarketValue.String())
+		}
+		if viewVal.TotalValue.String() != manualVal.TotalValue.String() {
+			t.Errorf("Total value mismatch: view=%q manual=%q", viewVal.TotalValue.String(), manualVal.TotalValue.String())
+		}
+		if viewVal.TotalCostBasis.String() != manualVal.TotalCostBasis.String() {
+			t.Errorf("Cost basis mismatch: view=%q manual=%q", viewVal.TotalCostBasis.String(), manualVal.TotalCostBasis.String())
+		}
+		if viewVal.TotalGainLoss.String() != manualVal.TotalGainLoss.String() {
+			t.Errorf("Gain/loss mismatch: view=%q manual=%q", viewVal.TotalGainLoss.String(), manualVal.TotalGainLoss.String())
+		}
+		if math.Abs(viewVal.TotalGainPct-manualVal.TotalGainPct) > 0.01 {
+			t.Errorf("Gain pct mismatch: view=%f manual=%f", viewVal.TotalGainPct, manualVal.TotalGainPct)
+		}
+	})
+}
+
+// =============================================================================
 // SM-095: GetLotDetail
 // =============================================================================
 

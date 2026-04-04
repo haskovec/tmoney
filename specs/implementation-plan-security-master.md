@@ -820,11 +820,11 @@ Spec: `specs/security-master.md`
 
 ## Phase 48: Portfolio Holdings Database View
 
-- [ ] **SM-173 - Migration: portfolio_holdings view**
+- [x] **SM-173 - Migration: portfolio_holdings view**
   - RED: Write integration test — view returns correct total_shares and total_cost_basis for both lot-tracking and non-lot-tracking accounts; correctly joins securities
   - GREEN: Create migration `010_portfolio_holdings_view.sql` with the `portfolio_holdings` view per spec
 
-- [ ] **SM-174 - Use portfolio_holdings view in service layer**
+- [x] **SM-174 - Use portfolio_holdings view in service layer**
   - RED: Write test — `GetHoldings` can optionally use the database view for performance; results match manual computation
   - GREEN: Add repository method to query the view; wire into portfolio service
 

@@ -21,6 +21,7 @@ type Service struct {
 	transactionLotRepo *TransactionLotRepository
 	priceRepo          *price.Repository
 	txnRepo            *transaction.Repository
+	holdingsRepo       *HoldingsRepository
 	db                 *db.DB
 }
 
@@ -43,6 +44,7 @@ func NewService(
 		transactionLotRepo: transactionLotRepo,
 		priceRepo:          priceRepo,
 		txnRepo:            txnRepo,
+		holdingsRepo:       NewHoldingsRepository(database),
 		db:                 database,
 	}
 }
