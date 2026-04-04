@@ -834,7 +834,7 @@ Spec: `specs/security-master.md`
   - RED: Write test — dashboard shows investment accounts with total value (cash + holdings); expandable to show top holdings
   - GREEN: Update dashboard data loading to include investment account valuations
 
-- [ ] **SM-176 - Navigate from dashboard to investment account**
+- [x] **SM-176 - Navigate from dashboard to investment account**
   - RED: Write test — selecting an investment account on dashboard opens portfolio view (not regular register)
   - GREEN: Route investment accounts to portfolio/investment register view
 

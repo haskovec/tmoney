@@ -3993,6 +3993,78 @@ func TestApp_RenderDashboard_InvestmentHoldingsNilMap(t *testing.T) {
 	}
 }
 
+func TestApp_DashboardInvestmentAccountOpensPortfolioView(t *testing.T) {
+	// SM-176: Selecting an investment account on the dashboard should open the
+	// portfolio view (ViewPortfolio), not the regular register or investment register.
+	investAcctID := types.NewID()
+	investAcct := &account.Account{
+		BaseModel: types.BaseModel{ID: investAcctID},
+		Name:      "Brokerage",
+		Type:      account.TypeInvestment,
+	}
+
+	sidebar := NewSidebar()
+	sidebar.SetAccounts([]*account.Account{investAcct}, map[types.ID]*account.Balance{
+		investAcctID: {AccountID: investAcctID, CurrentBalance: types.MustNewMoney("10000.00")},
+	})
+	// Move cursor to the account item (index 0 = group header, index 1 = account)
+	sidebar.cursor = 1
+
+	app := &App{
+		currentView: ViewDashboard,
+		sidebar:     sidebar,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+	}
+
+	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	model, cmd := app.Update(enterKey)
+	updatedApp := model.(*App)
+
+	if updatedApp.currentView != ViewPortfolio {
+		t.Errorf("expected ViewPortfolio (%d), got %v (%d)", ViewPortfolio, updatedApp.currentView, updatedApp.currentView)
+	}
+	if cmd == nil {
+		t.Error("expected a command to load portfolio data")
+	}
+}
+
+func TestApp_DashboardNonInvestmentAccountOpensRegisterView(t *testing.T) {
+	// Verify that non-investment accounts still open the regular register.
+	checkAcctID := types.NewID()
+	checkAcct := &account.Account{
+		BaseModel: types.BaseModel{ID: checkAcctID},
+		Name:      "Checking",
+		Type:      account.TypeChecking,
+	}
+
+	sidebar := NewSidebar()
+	sidebar.SetAccounts([]*account.Account{checkAcct}, map[types.ID]*account.Balance{
+		checkAcctID: {AccountID: checkAcctID, CurrentBalance: types.MustNewMoney("5000.00")},
+	})
+	sidebar.cursor = 1
+
+	app := &App{
+		currentView: ViewDashboard,
+		sidebar:     sidebar,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+	}
+
+	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	model, cmd := app.Update(enterKey)
+	updatedApp := model.(*App)
+
+	if updatedApp.currentView != ViewRegister {
+		t.Errorf("expected ViewRegister (%d), got %v (%d)", ViewRegister, updatedApp.currentView, updatedApp.currentView)
+	}
+	if cmd == nil {
+		t.Error("expected a command to load register data")
+	}
+}
+
 // Helper function
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))

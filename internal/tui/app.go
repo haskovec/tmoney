@@ -2106,9 +2106,9 @@ func (a *App) handleSidebarKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			accountID := a.sidebar.SelectedAccountID()
 			acct := a.sidebar.SelectedAccount()
 			if acct != nil && acct.Type == account.TypeInvestment {
-				a.investmentRegister = nil // Clear old data while loading
-				a.switchView(ViewInvestmentRegister)
-				return a, a.loadInvestmentRegisterData(accountID)
+				a.portfolioData = nil // Clear old data while loading
+				a.switchView(ViewPortfolio)
+				return a, a.loadPortfolioData(accountID)
 			}
 			a.register = nil // Clear old data while loading
 			a.switchView(ViewRegister)
