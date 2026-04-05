@@ -190,7 +190,7 @@ TMoney supports mouse interaction for common operations:
 | Click menu label | Open/close menu dropdown |
 | Click dropdown item | Execute menu action |
 | Click account in sidebar | Open account register |
-| Click group header in sidebar | Collapse/expand group |
+| Click group header in sidebar | Select group (use keyboard to collapse/expand) |
 | Click transaction row | Select transaction |
 | Click sidebar/table area | Switch focus between panes |
 | Scroll wheel | Navigate lists and tables |

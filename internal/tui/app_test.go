@@ -4268,7 +4268,7 @@ func TestApp_MouseClick_Sidebar_SelectsAccount(t *testing.T) {
 	}
 }
 
-func TestApp_MouseClick_Sidebar_GroupToggle(t *testing.T) {
+func TestApp_MouseClick_Sidebar_GroupHeader_JustMovesCursor(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
@@ -4292,9 +4292,12 @@ func TestApp_MouseClick_Sidebar_GroupToggle(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	// Group should be collapsed
-	if updatedApp.sidebar.ItemCount() != 1 {
-		t.Errorf("ItemCount = %d, want 1 (group collapsed)", updatedApp.sidebar.ItemCount())
+	// Group should NOT be collapsed - clicking just moves the cursor
+	if updatedApp.sidebar.ItemCount() != 3 {
+		t.Errorf("ItemCount = %d, want 3 (group should not collapse on click)", updatedApp.sidebar.ItemCount())
+	}
+	if updatedApp.sidebar.cursor != 0 {
+		t.Errorf("cursor = %d, want 0 (group header)", updatedApp.sidebar.cursor)
 	}
 }
 

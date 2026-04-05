@@ -2224,6 +2224,8 @@ func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleMouseSidebar handles mouse clicks in the sidebar area.
+// Single click on a group header moves the cursor without toggling collapse.
+// Single click on an account selects it and opens the register/portfolio.
 func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd) {
 	idx := a.sidebar.HitTest(contentY)
 	if idx < 0 {
@@ -2238,8 +2240,8 @@ func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.C
 		return a, nil
 	}
 
+	// Group headers: just move cursor, use keyboard Left/Right to collapse/expand
 	if item.kind == sidebarItemGroup {
-		a.sidebar.ToggleCollapse()
 		return a, nil
 	}
 
