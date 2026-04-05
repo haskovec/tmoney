@@ -695,7 +695,7 @@ func (d *Dialog) renderField(styles Styles, field *Field, focused bool, labelWid
 		fieldContent = d.renderSelectFieldContent(styles, field, focused, available)
 	case FieldList:
 		// FieldList renders vertically below the label line
-		listContent := d.renderListFieldContent(styles, field, focused, available)
+		listContent := d.renderListFieldContent(field, focused, available)
 		line := paddedLabel
 		if field.Error != "" {
 			errorIndent := strings.Repeat(" ", labelWidth+1+gap)
@@ -791,7 +791,7 @@ func (d *Dialog) renderSelectFieldContent(_ Styles, field *Field, focused bool, 
 	return opt + " ▼"
 }
 
-func (d *Dialog) renderListFieldContent(styles Styles, field *Field, focused bool, contentWidth int) string {
+func (d *Dialog) renderListFieldContent(field *Field, focused bool, contentWidth int) string {
 	if len(field.Options) == 0 {
 		return "  (empty)"
 	}
@@ -922,6 +922,368 @@ func (d *Dialog) renderButtonRow(contentWidth int) string {
 	}
 
 	return result.String()
+}
+
+// DialogHitZone represents the type of element hit by a mouse click within a dialog.
+type DialogHitZone int
+
+const (
+	// DialogHitNone means the click did not hit any interactive element.
+	DialogHitNone DialogHitZone = iota
+	// DialogHitCloseButton means the [x] close button was clicked.
+	DialogHitCloseButton
+	// DialogHitField means a form field was clicked.
+	DialogHitField
+	// DialogHitButton means an action button was clicked.
+	DialogHitButton
+)
+
+// DialogHitResult describes what was hit by a mouse click within a dialog.
+type DialogHitResult struct {
+	// Zone is the type of element hit.
+	Zone DialogHitZone
+	// FieldIndex is the index of the field hit (valid when Zone == DialogHitField).
+	FieldIndex int
+	// ButtonIndex is the index of the button hit (valid when Zone == DialogHitButton).
+	ButtonIndex int
+	// ListItemIndex is the absolute item index for FieldList clicks (-1 if not applicable).
+	ListItemIndex int
+	// ContentX is the x offset within the hit element (for text cursor positioning).
+	ContentX int
+}
+
+// dialogVerticalOverhead is the vertical space used by dialog border (2) and padding (2).
+const dialogVerticalOverhead = 4
+
+// ContentHeight returns the number of content lines inside the dialog (excluding border and padding).
+func (d *Dialog) ContentHeight() int {
+	h := 0
+	// Title row
+	h++
+	// Separator after title
+	h++
+
+	// Fields
+	for _, field := range d.fields {
+		if field.Hidden {
+			continue
+		}
+		// Blank line before each field
+		h++
+		// Field content rows
+		h += d.fieldContentRows(field)
+		// Error row
+		if field.Error != "" {
+			h++
+		}
+	}
+	// Blank line after all fields (if any visible fields exist)
+	if d.hasVisibleFields() {
+		h++
+	}
+
+	// Dialog-level error
+	if d.errorMsg != "" {
+		h += 2 // error line + blank line
+	}
+
+	// Separator before buttons
+	h++
+	// Button row
+	if len(d.buttons) > 0 {
+		h++
+	}
+
+	return h
+}
+
+// hasVisibleFields returns true if any field is not hidden.
+func (d *Dialog) hasVisibleFields() bool {
+	for _, f := range d.fields {
+		if !f.Hidden {
+			return true
+		}
+	}
+	return false
+}
+
+// fieldContentRows returns how many content rows a field occupies (excluding blank line before and error row).
+func (d *Dialog) fieldContentRows(field *Field) int {
+	if field.Type == FieldList {
+		visible := field.VisibleCount
+		if visible <= 0 {
+			visible = 10
+		}
+		if len(field.Options) == 0 {
+			return 2 // label line + "(empty)" line
+		}
+		if visible > len(field.Options) {
+			visible = len(field.Options)
+		}
+		return 1 + visible // label line + visible item lines
+	}
+	return 1
+}
+
+// RenderedHeight returns the total rendered height of the dialog including border and padding.
+func (d *Dialog) RenderedHeight() int {
+	return d.ContentHeight() + dialogVerticalOverhead
+}
+
+// DialogBounds returns the bounding box of the dialog in screen coordinates.
+func (d *Dialog) DialogBounds(screenWidth, screenHeight int) (startCol, startRow, endCol, endRow int) {
+	overlayHeight := d.RenderedHeight()
+	overlayWidth := d.width
+	startCol = max((screenWidth-overlayWidth)/2, 0)
+	startRow = max((screenHeight-overlayHeight)/2, 0)
+	endCol = startCol + overlayWidth
+	endRow = startRow + overlayHeight
+	return
+}
+
+// listScrollOffset computes the scroll offset for a FieldList, mirroring renderListFieldContent logic.
+func listScrollOffset(field *Field) int {
+	visible := field.VisibleCount
+	if visible <= 0 {
+		visible = 10
+	}
+	if visible > len(field.Options) {
+		visible = len(field.Options)
+	}
+	scrollOffset := 0
+	if field.SelectedIndex >= visible {
+		scrollOffset = field.SelectedIndex - visible + 1
+	}
+	if scrollOffset+visible > len(field.Options) {
+		scrollOffset = len(field.Options) - visible
+	}
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+	return scrollOffset
+}
+
+// HitTestContent maps dialog-content-local coordinates to the element at that position.
+// x and y are 0-based coordinates relative to the first content line inside border+padding.
+// contentWidth is the usable content width (d.width - dialogHorizontalOverhead).
+func (d *Dialog) HitTestContent(x, y, contentWidth int) DialogHitResult {
+	none := DialogHitResult{Zone: DialogHitNone, ListItemIndex: -1}
+
+	if y < 0 || x < 0 || x >= contentWidth {
+		return none
+	}
+
+	row := 0
+
+	// Title row (row 0)
+	if y == row {
+		// Close button is right-aligned: "[x]" = 3 chars at end
+		if x >= contentWidth-3 {
+			return DialogHitResult{Zone: DialogHitCloseButton, ListItemIndex: -1}
+		}
+		return none
+	}
+	row++
+
+	// Separator (row 1)
+	if y == row {
+		return none
+	}
+	row++
+
+	// Fields
+	for i, field := range d.fields {
+		if field.Hidden {
+			continue
+		}
+		// Blank line before field
+		if y == row {
+			return none
+		}
+		row++
+
+		// Field content rows
+		contentRows := d.fieldContentRows(field)
+		if y >= row && y < row+contentRows {
+			result := DialogHitResult{
+				Zone:          DialogHitField,
+				FieldIndex:    i,
+				ListItemIndex: -1,
+				ContentX:      x,
+			}
+			if field.Type == FieldList && y > row {
+				// y == row is the label line; y > row is a list item
+				itemRow := y - row - 1 // 0-based row within visible items
+				scrollOffset := listScrollOffset(field)
+				absIdx := scrollOffset + itemRow
+				if absIdx >= 0 && absIdx < len(field.Options) {
+					result.ListItemIndex = absIdx
+				}
+			}
+			return result
+		}
+		row += contentRows
+
+		// Error row
+		if field.Error != "" {
+			if y == row {
+				return DialogHitResult{Zone: DialogHitField, FieldIndex: i, ListItemIndex: -1, ContentX: x}
+			}
+			row++
+		}
+	}
+
+	// Blank line after fields
+	if d.hasVisibleFields() {
+		if y == row {
+			return none
+		}
+		row++
+	}
+
+	// Dialog-level error
+	if d.errorMsg != "" {
+		// Error line + blank line
+		if y == row || y == row+1 {
+			return none
+		}
+		row += 2
+	}
+
+	// Separator before buttons
+	if y == row {
+		return none
+	}
+	row++
+
+	// Button row
+	if y == row && len(d.buttons) > 0 {
+		return d.hitTestButtonRow(x, contentWidth)
+	}
+
+	return none
+}
+
+// hitTestButtonRow maps an x coordinate to a button in the button row.
+func (d *Dialog) hitTestButtonRow(x, contentWidth int) DialogHitResult {
+	none := DialogHitResult{Zone: DialogHitNone, ListItemIndex: -1}
+	if len(d.buttons) == 0 {
+		return none
+	}
+
+	// Calculate button widths (matching renderButtonRow)
+	btnWidths := make([]int, len(d.buttons))
+	totalBtnWidth := 0
+	for i, btn := range d.buttons {
+		w := len([]rune(btn.Label)) + 4 // "[ " + label + " ]"
+		btnWidths[i] = w
+		totalBtnWidth += w
+	}
+
+	numGaps := len(d.buttons) + 1
+	totalGapSpace := max(contentWidth-totalBtnWidth, numGaps)
+	gapSize := totalGapSpace / numGaps
+	extraGap := totalGapSpace % numGaps
+
+	pos := 0
+	for i := range d.buttons {
+		gap := gapSize
+		if i < extraGap {
+			gap++
+		}
+		pos += gap
+		if x >= pos && x < pos+btnWidths[i] {
+			return DialogHitResult{
+				Zone:          DialogHitButton,
+				ButtonIndex:   i,
+				ListItemIndex: -1,
+			}
+		}
+		pos += btnWidths[i]
+	}
+
+	return none
+}
+
+// HandleMouse processes a mouse event and returns the resulting action.
+// screenWidth and screenHeight are the terminal dimensions for computing dialog position.
+func (d *Dialog) HandleMouse(msg tea.MouseMsg, screenWidth, screenHeight int) DialogAction {
+	startCol, startRow, endCol, endRow := d.DialogBounds(screenWidth, screenHeight)
+	contentWidth := max(d.width-dialogHorizontalOverhead, 10)
+
+	// Handle wheel events on focused list field
+	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+		// Only scroll if wheel is within dialog bounds
+		if msg.X >= startCol && msg.X < endCol && msg.Y >= startRow && msg.Y < endRow {
+			field := d.FocusedField()
+			if field != nil && field.Type == FieldList {
+				if msg.Button == tea.MouseButtonWheelUp {
+					field.SelectPrev()
+				} else {
+					field.SelectNext()
+				}
+			}
+		}
+		return DialogActionNone
+	}
+
+	// Only handle left-click press
+	if msg.Button != tea.MouseButtonLeft || msg.Action != tea.MouseActionPress {
+		return DialogActionNone
+	}
+
+	// Check if click is within dialog bounds
+	if msg.X < startCol || msg.X >= endCol || msg.Y < startRow || msg.Y >= endRow {
+		return DialogActionNone
+	}
+
+	// Convert screen coords to content-local coords
+	// border (1) + padding (2) = 3 horizontal offset
+	// border (1) + padding (1) = 2 vertical offset
+	localX := msg.X - startCol - 3
+	localY := msg.Y - startRow - 2
+
+	hit := d.HitTestContent(localX, localY, contentWidth)
+
+	switch hit.Zone {
+	case DialogHitCloseButton:
+		return DialogActionCancel
+
+	case DialogHitField:
+		if hit.FieldIndex >= 0 && hit.FieldIndex < len(d.fields) {
+			field := d.fields[hit.FieldIndex]
+			if !field.Hidden {
+				d.focusIndex = hit.FieldIndex
+
+				switch field.Type {
+				case FieldCheckbox:
+					field.Toggle()
+				case FieldList:
+					if hit.ListItemIndex >= 0 && hit.ListItemIndex < len(field.Options) {
+						field.SelectedIndex = hit.ListItemIndex
+					}
+				case FieldText:
+					// Position cursor based on click position within text field
+					labelWidth := d.maxLabelWidth()
+					textStart := labelWidth + 1 + 2 + 2 // label + colon + gap + "[ "
+					cursorPos := max(hit.ContentX-textStart, 0)
+					field.cursorPos = min(cursorPos, len([]rune(field.Value)))
+				}
+			}
+		}
+		return DialogActionNone
+
+	case DialogHitButton:
+		if hit.ButtonIndex >= 0 && hit.ButtonIndex < len(d.buttons) {
+			d.focusIndex = len(d.fields) + hit.ButtonIndex
+			if d.buttons[hit.ButtonIndex].Primary {
+				return DialogActionSubmit
+			}
+			return DialogActionCancel
+		}
+	}
+
+	return DialogActionNone
 }
 
 // OverlayCenter places the overlay string centered on top of the background string.

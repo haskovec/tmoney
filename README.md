@@ -193,6 +193,12 @@ TMoney supports mouse interaction for common operations:
 | Click transaction row | Select transaction |
 | Click sidebar/table area | Switch focus between panes |
 | Scroll wheel | Navigate lists and tables |
+| Click dialog field | Focus field (text fields position cursor) |
+| Click dialog checkbox | Toggle checkbox |
+| Click dialog list item | Select item |
+| Click dialog button | Activate button (OK, Cancel, etc.) |
+| Click dialog `[x]` | Close dialog |
+| Scroll wheel in dialog | Scroll list fields |
 
 ## CLI Reference
 

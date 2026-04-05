@@ -2144,9 +2144,9 @@ func (a *App) handleMouseEvent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	// Ignore mouse clicks when any modal dialog is visible
+	// Route mouse clicks to dialog when a modal dialog is visible
 	if a.isDialogVisible() {
-		return a, nil
+		return a.handleDialogMouse(msg)
 	}
 
 	// Menu bar (row 0)
@@ -2283,7 +2283,7 @@ func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd
 // handleMouseWheel handles mouse wheel scrolling.
 func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.isDialogVisible() {
-		return a, nil
+		return a.handleDialogMouse(msg)
 	}
 
 	if a.sidebar.IsFocused() {
@@ -2302,6 +2302,309 @@ func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		} else {
 			tbl.MoveDown()
 		}
+	}
+
+	return a, nil
+}
+
+// handleDialogMouse routes mouse events to the currently visible dialog.
+// For non-Dialog overlays (SplitDialog, help, mergerConfirm, corporateActionHistory),
+// mouse events are blocked (returns no-op).
+func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Non-Dialog overlays: block mouse events
+	if a.showHelp || a.mergerConfirmData != nil || a.corporateActionHistory != nil {
+		return a, nil
+	}
+	if a.splitDialog != nil && a.splitDialog.IsVisible() {
+		return a, nil
+	}
+
+	// Dialog cascade (same order as handleKeyPress)
+	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
+		action := a.confirmDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			a.confirmDialog.SetVisible(false)
+			fn := a.confirmAction
+			a.confirmDialog = nil
+			a.confirmAction = nil
+			return a, func() tea.Msg { return fn() }
+		case DialogActionCancel:
+			a.confirmDialog.SetVisible(false)
+			a.confirmDialog = nil
+			a.confirmAction = nil
+		}
+		return a, nil
+	}
+
+	if a.backupDialog != nil && a.backupDialog.dialog.IsVisible() {
+		action := a.backupDialog.dialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitBackupDialog()
+		case DialogActionCancel:
+			a.backupDialog.dialog.SetVisible(false)
+			a.backupDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.fileDialog != nil && a.fileDialog.IsVisible() {
+		action := a.fileDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitFileDialog()
+		case DialogActionCancel:
+			a.closeFileDialog()
+		}
+		return a, nil
+	}
+
+	if a.txnDialog != nil && a.txnDialog.IsVisible() {
+		action := a.txnDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitTransactionDialog()
+		case DialogActionCancel:
+			a.txnDialog.SetVisible(false)
+			a.txnDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.transferDialog != nil && a.transferDialog.IsVisible() {
+		action := a.transferDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitTransferDialog()
+		case DialogActionCancel:
+			a.transferDialog.SetVisible(false)
+			a.transferDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.schedDialog != nil && a.schedDialog.IsVisible() {
+		action := a.schedDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitScheduledDialog()
+		case DialogActionCancel:
+			a.schedDialog.SetVisible(false)
+			a.schedDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.acctDialog != nil && a.acctDialog.IsVisible() {
+		action := a.acctDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitAccountDialog()
+		case DialogActionCancel:
+			a.acctDialog.SetVisible(false)
+			a.acctDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.reconDialog != nil && a.reconDialog.IsVisible() {
+		action := a.reconDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitStartReconciliation()
+		case DialogActionCancel:
+			a.reconDialog.SetVisible(false)
+			a.reconDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.securityDialog != nil && a.securityDialog.IsVisible() {
+		action := a.securityDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitSecurityDialog()
+		case DialogActionCancel:
+			a.securityDialog.SetVisible(false)
+			a.securityDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.priceDialog != nil && a.priceDialog.IsVisible() {
+		action := a.priceDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitPriceDialog()
+		case DialogActionCancel:
+			a.priceDialog.SetVisible(false)
+			a.priceDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.priceImportDialog != nil && a.priceImportDialog.IsVisible() {
+		action := a.priceImportDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitImportPriceDialog()
+		case DialogActionCancel:
+			a.priceImportDialog.SetVisible(false)
+			a.priceImportDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.buyDialog != nil && a.buyDialog.IsVisible() {
+		action := a.buyDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitBuyDialog()
+		case DialogActionCancel:
+			a.buyDialog.SetVisible(false)
+			a.buyDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.sellDialog != nil && a.sellDialog.IsVisible() {
+		action := a.sellDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitSellDialog()
+		case DialogActionCancel:
+			a.sellDialog.SetVisible(false)
+			a.sellDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
+		action := a.dividendDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitDividendDialog()
+		case DialogActionCancel:
+			a.dividendDialog.SetVisible(false)
+			a.dividendDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.transferCashDialog != nil && a.transferCashDialog.IsVisible() {
+		action := a.transferCashDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitTransferCashDialog()
+		case DialogActionCancel:
+			a.transferCashDialog.SetVisible(false)
+			a.transferCashDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible() {
+		action := a.transferSharesDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitTransferSharesDialog()
+		case DialogActionCancel:
+			a.transferSharesDialog.SetVisible(false)
+			a.transferSharesDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible() {
+		action := a.stockSplitDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitStockSplitDialog()
+		case DialogActionCancel:
+			a.stockSplitDialog.SetVisible(false)
+			a.stockSplitDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.mergerDialog != nil && a.mergerDialog.IsVisible() {
+		action := a.mergerDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitMergerDialog()
+		case DialogActionCancel:
+			a.mergerDialog.SetVisible(false)
+			a.mergerDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.spinOffDialog != nil && a.spinOffDialog.IsVisible() {
+		action := a.spinOffDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitSpinOffDialog()
+		case DialogActionCancel:
+			a.spinOffDialog.SetVisible(false)
+			a.spinOffDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible() {
+		action := a.cashOperationDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitCashOperationDialog()
+		case DialogActionCancel:
+			a.cashOperationDialog.SetVisible(false)
+			a.cashOperationDialog = nil
+		}
+		return a, nil
+	}
+
+	if a.investmentTypeSelector != nil && a.investmentTypeSelector.IsVisible() {
+		action := a.investmentTypeSelector.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			fields := a.investmentTypeSelector.Fields()
+			selectedType := investmentTransactionTypeFromIndex(fields[0].SelectedIndex)
+			a.investmentTypeSelector.SetVisible(false)
+			a.investmentTypeSelector = nil
+			switch selectedType {
+			case investment.TransactionTypeBuy:
+				return a, a.loadBuyDialogData()
+			case investment.TransactionTypeSell:
+				return a, a.loadSellDialogData()
+			case investment.TransactionTypeDividend:
+				a.dividendDialogReinvest = false
+				return a, a.loadDividendDialogData()
+			case investment.TransactionTypeReinvestDividend:
+				a.dividendDialogReinvest = true
+				return a, a.loadDividendDialogData()
+			case investment.TransactionTypeDeposit,
+				investment.TransactionTypeWithdrawal,
+				investment.TransactionTypeFee,
+				investment.TransactionTypeInterest:
+				a.cashOperationType = selectedType
+				var editTxn *investment.Transaction
+				if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
+					editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+				}
+				a.cashOperationDialog = buildCashOperationDialog(selectedType.DisplayName(), editTxn)
+				return a, nil
+			case investment.TransactionTypeTransferCash:
+				a.transferCashDirection = "deposit"
+				return a, a.loadTransferCashDialogData()
+			case investment.TransactionTypeTransferShares:
+				return a, a.loadTransferSharesDialogData()
+			}
+		case DialogActionCancel:
+			a.investmentTypeSelector.SetVisible(false)
+			a.investmentTypeSelector = nil
+		}
+		return a, nil
 	}
 
 	return a, nil

@@ -4513,7 +4513,7 @@ func TestApp_MouseWheel_ScrollsSidebar(t *testing.T) {
 	}
 }
 
-func TestApp_MouseClick_IgnoredDuringDialog(t *testing.T) {
+func TestApp_MouseClick_IgnoredDuringHelpOverlay(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
@@ -4534,6 +4534,224 @@ func TestApp_MouseClick_IgnoredDuringDialog(t *testing.T) {
 	// Menu should not open
 	if updatedApp.menubar.IsActive() {
 		t.Error("menu should not open while help overlay is visible")
+	}
+}
+
+func TestApp_MouseClick_Dialog_CloseButton(t *testing.T) {
+	dlg := NewDialog("Confirm")
+	dlg.SetButtons([]DialogButton{{Label: "Cancel"}, {Label: "OK", Primary: true}})
+	dlg.SetVisible(true)
+
+	app := &App{
+		currentView:   ViewDashboard,
+		keys:          defaultKeyMap(),
+		menubar:       NewMenuBar(),
+		sidebar:       NewSidebar(),
+		statusbar:     NewStatusBar(),
+		confirmDialog: dlg,
+		confirmAction: func() tea.Msg { return nil },
+		width:         80,
+		height:        24,
+	}
+	app.styles.Resize(80, 24)
+
+	// Click the [x] close button
+	contentWidth := dlg.Width() - dialogHorizontalOverhead
+	startCol, startRow, _, _ := dlg.DialogBounds(80, 24)
+	clickX := startCol + 3 + contentWidth - 2
+	clickY := startRow + 2
+
+	msg := tea.MouseMsg{X: clickX, Y: clickY, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.confirmDialog != nil {
+		t.Error("confirm dialog should be closed after clicking [x]")
+	}
+}
+
+func TestApp_MouseClick_Dialog_SubmitButton(t *testing.T) {
+	dlg := NewDialog("Confirm")
+	dlg.SetButtons([]DialogButton{{Label: "Cancel"}, {Label: "OK", Primary: true}})
+	dlg.SetVisible(true)
+
+	submitted := false
+	app := &App{
+		currentView:   ViewDashboard,
+		keys:          defaultKeyMap(),
+		menubar:       NewMenuBar(),
+		sidebar:       NewSidebar(),
+		statusbar:     NewStatusBar(),
+		confirmDialog: dlg,
+		confirmAction: func() tea.Msg { submitted = true; return nil },
+		width:         80,
+		height:        24,
+	}
+	app.styles.Resize(80, 24)
+
+	contentWidth := dlg.Width() - dialogHorizontalOverhead
+	buttonRow := dlg.ContentHeight() - 1
+	startCol, startRow, _, _ := dlg.DialogBounds(80, 24)
+
+	// Find OK button position
+	var okX int
+	for x := range contentWidth {
+		hit := dlg.HitTestContent(x, buttonRow, contentWidth)
+		if hit.Zone == DialogHitButton && hit.ButtonIndex == 1 {
+			okX = x
+			break
+		}
+	}
+
+	msg := tea.MouseMsg{
+		X:      startCol + 3 + okX,
+		Y:      startRow + 2 + buttonRow,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+	}
+	model, cmd := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.confirmDialog != nil {
+		t.Error("confirm dialog should be closed after clicking OK")
+	}
+	// Execute the command to trigger the confirm action
+	if cmd != nil {
+		cmd()
+	}
+	if !submitted {
+		t.Error("confirm action should have been triggered")
+	}
+}
+
+func TestApp_MouseClick_Dialog_CancelButton(t *testing.T) {
+	dlg := NewDialog("Confirm")
+	dlg.SetButtons([]DialogButton{{Label: "Cancel"}, {Label: "OK", Primary: true}})
+	dlg.SetVisible(true)
+
+	app := &App{
+		currentView:   ViewDashboard,
+		keys:          defaultKeyMap(),
+		menubar:       NewMenuBar(),
+		sidebar:       NewSidebar(),
+		statusbar:     NewStatusBar(),
+		confirmDialog: dlg,
+		confirmAction: func() tea.Msg { return nil },
+		width:         80,
+		height:        24,
+	}
+	app.styles.Resize(80, 24)
+
+	contentWidth := dlg.Width() - dialogHorizontalOverhead
+	buttonRow := dlg.ContentHeight() - 1
+	startCol, startRow, _, _ := dlg.DialogBounds(80, 24)
+
+	// Find Cancel button position
+	var cancelX int
+	for x := range contentWidth {
+		hit := dlg.HitTestContent(x, buttonRow, contentWidth)
+		if hit.Zone == DialogHitButton && hit.ButtonIndex == 0 {
+			cancelX = x
+			break
+		}
+	}
+
+	msg := tea.MouseMsg{
+		X:      startCol + 3 + cancelX,
+		Y:      startRow + 2 + buttonRow,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+	}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.confirmDialog != nil {
+		t.Error("confirm dialog should be closed after clicking Cancel")
+	}
+}
+
+func TestApp_MouseClick_Dialog_OutsideNoAction(t *testing.T) {
+	dlg := NewDialog("Confirm")
+	dlg.SetVisible(true)
+
+	app := &App{
+		currentView:   ViewDashboard,
+		keys:          defaultKeyMap(),
+		menubar:       NewMenuBar(),
+		sidebar:       NewSidebar(),
+		statusbar:     NewStatusBar(),
+		confirmDialog: dlg,
+		confirmAction: func() tea.Msg { return nil },
+		width:         80,
+		height:        24,
+	}
+	app.styles.Resize(80, 24)
+
+	// Click outside the dialog (top-left corner)
+	msg := tea.MouseMsg{X: 0, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.confirmDialog == nil || !updatedApp.confirmDialog.IsVisible() {
+		t.Error("dialog should remain open when clicking outside")
+	}
+}
+
+func TestApp_MouseClick_HelpOverlay_StillBlocked(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		showHelp:    true,
+		width:       80,
+		height:      24,
+	}
+	app.styles.Resize(80, 24)
+
+	// Click on menu bar while help overlay is visible
+	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	// Menu should not open
+	if updatedApp.menubar.IsActive() {
+		t.Error("menu should not open while help overlay is visible")
+	}
+}
+
+func TestApp_MouseWheel_Dialog_ListField(t *testing.T) {
+	dlg := NewDialog("Browse")
+	dlg.AddListField("File", []string{"../", "docs/", "main.go", "go.mod", "go.sum"}, 0, 3)
+	dlg.SetFocusIndex(0) // Focus on list field
+	dlg.SetVisible(true)
+
+	app := &App{
+		currentView:   ViewDashboard,
+		keys:          defaultKeyMap(),
+		menubar:       NewMenuBar(),
+		sidebar:       NewSidebar(),
+		statusbar:     NewStatusBar(),
+		confirmDialog: dlg,
+		confirmAction: func() tea.Msg { return nil },
+		width:         80,
+		height:        24,
+	}
+	app.styles.Resize(80, 24)
+
+	startCol, startRow, _, _ := dlg.DialogBounds(80, 24)
+
+	// Wheel down within dialog bounds
+	msg := tea.MouseMsg{
+		X:      startCol + 10,
+		Y:      startRow + 5,
+		Button: tea.MouseButtonWheelDown,
+	}
+	app.Update(msg)
+
+	if dlg.Fields()[0].SelectedIndex != 1 {
+		t.Errorf("SelectedIndex after wheel down = %d, want 1", dlg.Fields()[0].SelectedIndex)
 	}
 }
 
