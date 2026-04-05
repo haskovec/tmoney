@@ -4636,6 +4636,72 @@ func TestApp_View_ComponentWidths(t *testing.T) {
 	}
 }
 
+func TestApp_View_RegisterLoadedWidths(t *testing.T) {
+	checking := testAccount("Discover Checking", account.TypeChecking)
+
+	for _, termWidth := range []int{100, 120, 160, 200} {
+		t.Run(fmt.Sprintf("width=%d", termWidth), func(t *testing.T) {
+			app := &App{
+				currentView: ViewRegister,
+				keys:        defaultKeyMap(),
+				menubar:     NewMenuBar(),
+				sidebar:     NewSidebar(),
+				statusbar:   NewStatusBar(),
+				width:       termWidth,
+				height:      24,
+				ready:       true,
+				register: &registerData{
+					account:       checking,
+					balance:       &account.Balance{CurrentBalance: types.MustNewMoney("0.00")},
+					transactions:  nil,
+					payeeNames:    map[types.ID]string{},
+					categoryNames: map[types.ID]string{},
+					accountNames:  map[types.ID]string{},
+				},
+			}
+			app.styles = NewStyles()
+			app.styles.Resize(termWidth, 24)
+			app.sidebar.SetAccounts([]*account.Account{checking}, nil)
+			app.sidebar.SetFocused(false)
+			// Build the register table
+			app.buildRegisterTable()
+
+			view := app.View()
+			viewLines := strings.Split(view, "\n")
+			maxLineWidth := 0
+			widestLine := 0
+			for i, line := range viewLines {
+				w := lipgloss.Width(line)
+				if w > maxLineWidth {
+					maxLineWidth = w
+					widestLine = i
+				}
+			}
+			t.Logf("View: %d lines, max width: %d (line %d), terminal: %d",
+				len(viewLines), maxLineWidth, widestLine, termWidth)
+
+			if maxLineWidth > termWidth {
+				t.Errorf("Line %d is %d cols, exceeds terminal width %d", widestLine, maxLineWidth, termWidth)
+				t.Logf("Line content: %q", stripAnsi(viewLines[widestLine]))
+			}
+			if len(viewLines) != 24 {
+				t.Errorf("View has %d lines, want 24", len(viewLines))
+			}
+
+			// Check component line counts
+			header := app.renderHeader()
+			hLines := len(strings.Split(header, "\n"))
+			contentHeight := app.height - 2
+			content := app.renderContent(contentHeight)
+			cLines := len(strings.Split(content, "\n"))
+			statusBar := app.renderStatusBar()
+			sLines := len(strings.Split(statusBar, "\n"))
+			t.Logf("Header: %d lines, Content: %d lines (want %d), StatusBar: %d lines",
+				hLines, cLines, contentHeight, sLines)
+		})
+	}
+}
+
 func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
 	checking := testAccount("Discover Checking", account.TypeChecking)
 	app := &App{

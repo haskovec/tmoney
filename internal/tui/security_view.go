@@ -198,7 +198,7 @@ func (a *App) renderSecurityView() string {
 	if a.securityTable != nil && len(filtered) > 0 {
 		tableWidth := max(contentWidth-4, 1)
 		sections = append(sections, a.securityTable.Render(a.styles, tableWidth, tableHeight))
-		if info := a.securityTable.ScrollInfo(tableHeight - 1); info != "" {
+		if info := a.securityTable.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	} else {

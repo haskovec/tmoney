@@ -360,7 +360,7 @@ func (a *App) renderReconciliation() string {
 	if a.reconciliationTable != nil && len(a.reconciliation.candidates) > 0 {
 		tableWidth := max(contentWidth-4, 1)
 		sections = append(sections, a.reconciliationTable.Render(a.styles, tableWidth, tableHeight))
-		if info := a.reconciliationTable.ScrollInfo(tableHeight - 1); info != "" {
+		if info := a.reconciliationTable.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	} else if len(a.reconciliation.candidates) == 0 {

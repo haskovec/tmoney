@@ -715,11 +715,11 @@ func TestTable_ScrollInfo_Scrolled(t *testing.T) {
 
 	styles := NewStyles()
 	// Render to set scroll offset (cursor at 0)
-	tbl.Render(styles, 10, 11) // height 11 = 1 header + 10 data rows
+	tbl.Render(styles, 10, 11) // height 11 = 1 header + 1 border + 9 data rows
 
-	info := tbl.ScrollInfo(10)
-	if info != "1-10 of 50" {
-		t.Errorf("ScrollInfo() = %q, want %q", info, "1-10 of 50")
+	info := tbl.ScrollInfo(9)
+	if info != "1-9 of 50" {
+		t.Errorf("ScrollInfo() = %q, want %q", info, "1-9 of 50")
 	}
 }
 
@@ -733,11 +733,11 @@ func TestTable_ScrollInfo_AtEnd(t *testing.T) {
 	tbl.MoveToBottom()
 
 	styles := NewStyles()
-	tbl.Render(styles, 10, 11) // height 11 = 1 header + 10 data rows
+	tbl.Render(styles, 10, 11) // height 11 = 1 header + 1 border + 9 data rows
 
-	info := tbl.ScrollInfo(10)
-	if info != "16-25 of 25" {
-		t.Errorf("ScrollInfo() = %q, want %q", info, "16-25 of 25")
+	info := tbl.ScrollInfo(9)
+	if info != "17-25 of 25" {
+		t.Errorf("ScrollInfo() = %q, want %q", info, "17-25 of 25")
 	}
 }
 

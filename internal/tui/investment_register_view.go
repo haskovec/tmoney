@@ -200,7 +200,7 @@ func (a *App) renderInvestmentRegister() string {
 	if a.investmentTable != nil && len(a.investmentRegister.transactions) > 0 {
 		tableWidth := max(contentWidth-4, 1)
 		sections = append(sections, a.investmentTable.Render(a.styles, tableWidth, tableHeight))
-		if info := a.investmentTable.ScrollInfo(tableHeight - 1); info != "" {
+		if info := a.investmentTable.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	} else if len(a.investmentRegister.transactions) == 0 {

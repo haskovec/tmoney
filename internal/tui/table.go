@@ -194,12 +194,12 @@ func (t *Table) Render(styles Styles, width, height int) string {
 
 	var lines []string
 
-	// Render header
+	// Render header (BorderBottom adds a border line, so header is 2 visual lines)
 	headerLine := t.renderHeader(styles, colWidths, width)
 	lines = append(lines, headerLine)
 
-	// Available height for data rows (subtract header)
-	rowHeight := max(height-1, 0)
+	// Available height for data rows (subtract header + border line)
+	rowHeight := max(height-2, 0)
 
 	// Adjust scroll offset to keep cursor visible
 	t.clampScroll(rowHeight)

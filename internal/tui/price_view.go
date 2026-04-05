@@ -254,7 +254,7 @@ func (a *App) renderPriceView() string {
 	if a.priceTable != nil && len(a.priceView.prices) > 0 {
 		tableWidth := max(contentWidth-4, 1)
 		sections = append(sections, a.priceTable.Render(a.styles, tableWidth, tableHeight))
-		if info := a.priceTable.ScrollInfo(tableHeight - 1); info != "" {
+		if info := a.priceTable.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	} else {

@@ -3318,7 +3318,7 @@ func (a *App) renderRegister() string {
 	if a.table != nil {
 		tableWidth := max(contentWidth-4, 1)
 		sections = append(sections, a.table.Render(a.styles, tableWidth, tableHeight))
-		if info := a.table.ScrollInfo(tableHeight - 1); info != "" {
+		if info := a.table.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	} else if len(a.register.transactions) == 0 {
@@ -3382,7 +3382,7 @@ func (a *App) renderScheduled() string {
 	if a.scheduledTable != nil {
 		tableWidth := max(contentWidth-4, 1)
 		sections = append(sections, a.scheduledTable.Render(a.styles, tableWidth, tableHeight))
-		if info := a.scheduledTable.ScrollInfo(tableHeight - 1); info != "" {
+		if info := a.scheduledTable.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	}

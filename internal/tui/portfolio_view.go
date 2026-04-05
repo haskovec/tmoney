@@ -321,7 +321,7 @@ func (a *App) renderPortfolioView() string {
 		if a.portfolioHoldingsTable != nil && len(a.portfolioData.valuation.Holdings) > 0 {
 			tableWidth := max(contentWidth-4, 1)
 			sections = append(sections, a.portfolioHoldingsTable.Render(a.styles, tableWidth, tableHeight))
-			if info := a.portfolioHoldingsTable.ScrollInfo(tableHeight - 1); info != "" {
+			if info := a.portfolioHoldingsTable.ScrollInfo(tableHeight - 2); info != "" {
 				sections = append(sections, a.styles.Muted.Render("  "+info))
 			}
 		} else {

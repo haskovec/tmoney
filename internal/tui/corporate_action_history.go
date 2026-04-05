@@ -166,7 +166,7 @@ func (a *App) renderCorporateActionHistory() string {
 	if a.corporateActionHistoryTable != nil && len(a.corporateActionHistory.actions) > 0 {
 		tableHeight := max(min(len(a.corporateActionHistory.actions)+1, a.height-10), 2) // +1 for header row
 		sections = append(sections, a.corporateActionHistoryTable.Render(a.styles, innerWidth, tableHeight))
-		if info := a.corporateActionHistoryTable.ScrollInfo(tableHeight - 1); info != "" {
+		if info := a.corporateActionHistoryTable.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render(info))
 		}
 	} else {
