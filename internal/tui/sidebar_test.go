@@ -112,6 +112,32 @@ func TestSidebar_SetAccounts_MultipleGroups(t *testing.T) {
 	}
 }
 
+func TestSidebar_AllGroupsAlwaysExpanded(t *testing.T) {
+	s := NewSidebar()
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
+		testAccount("Visa", account.TypeCreditCard),
+	}
+	s.SetAccounts(accounts, nil)
+
+	// All groups always expanded: Bank Accounts + 2 accounts + Credit Cards + 1 account = 5
+	if len(s.items) != 5 {
+		t.Errorf("expected 5 items (all expanded), got %d", len(s.items))
+	}
+
+	// Verify all accounts are present
+	accountNames := []string{}
+	for _, item := range s.items {
+		if item.kind == sidebarItemAccount {
+			accountNames = append(accountNames, item.account.Name)
+		}
+	}
+	if len(accountNames) != 3 {
+		t.Errorf("expected 3 accounts, got %d", len(accountNames))
+	}
+}
+
 func TestSidebar_MoveUpDown(t *testing.T) {
 	s := NewSidebar()
 	accounts := []*account.Account{
@@ -158,77 +184,6 @@ func TestSidebar_MoveUpDown(t *testing.T) {
 	}
 }
 
-func TestSidebar_CollapseExpand(t *testing.T) {
-	s := NewSidebar()
-	accounts := []*account.Account{
-		testAccount("Checking", account.TypeChecking),
-		testAccount("Savings", account.TypeSavings),
-	}
-	s.SetAccounts(accounts, nil)
-	// items: [Bank Accounts, Checking, Savings] -> 3 items
-
-	// Cursor is on group header "Bank Accounts"
-	s.CollapseGroup()
-
-	if len(s.items) != 1 {
-		t.Errorf("after collapse, expected 1 item (group header only), got %d", len(s.items))
-	}
-
-	// Expand it
-	s.ExpandGroup()
-
-	if len(s.items) != 3 {
-		t.Errorf("after expand, expected 3 items, got %d", len(s.items))
-	}
-}
-
-func TestSidebar_CollapseFromAccount(t *testing.T) {
-	s := NewSidebar()
-	accounts := []*account.Account{
-		testAccount("Checking", account.TypeChecking),
-		testAccount("Savings", account.TypeSavings),
-	}
-	s.SetAccounts(accounts, nil)
-
-	// Move to account "Checking"
-	s.MoveDown()
-	if s.cursor != 1 {
-		t.Fatalf("cursor = %d, want 1", s.cursor)
-	}
-
-	// Left arrow on an account should move cursor to group header
-	s.CollapseGroup()
-
-	if s.cursor != 0 {
-		t.Errorf("cursor should move to group header (0), got %d", s.cursor)
-	}
-	// Items should still show (not collapsed yet)
-	if len(s.items) != 3 {
-		t.Errorf("items should still be 3, got %d", len(s.items))
-	}
-}
-
-func TestSidebar_ToggleCollapse(t *testing.T) {
-	s := NewSidebar()
-	accounts := []*account.Account{
-		testAccount("Checking", account.TypeChecking),
-	}
-	s.SetAccounts(accounts, nil)
-	// items: [Bank Accounts, Checking]
-
-	// Toggle collapse (on group header)
-	s.ToggleCollapse()
-	if len(s.items) != 1 {
-		t.Errorf("after toggle, expected 1 item, got %d", len(s.items))
-	}
-
-	// Toggle again to expand
-	s.ToggleCollapse()
-	if len(s.items) != 2 {
-		t.Errorf("after second toggle, expected 2 items, got %d", len(s.items))
-	}
-}
-
 func TestSidebar_Select_Account(t *testing.T) {
 	s := NewSidebar()
 	checking := testAccount("Checking", account.TypeChecking)
@@ -258,12 +213,12 @@ func TestSidebar_Select_Group(t *testing.T) {
 	// Cursor is on group header
 	selected := s.Select()
 	if selected {
-		t.Error("Select() should return false for group item (toggles collapse instead)")
+		t.Error("Select() should return false for group item")
 	}
 
-	// Group should be collapsed now
-	if len(s.items) != 1 {
-		t.Errorf("expected 1 item after selecting group (collapsed), got %d", len(s.items))
+	// Items should remain unchanged (no collapse)
+	if len(s.items) != 2 {
+		t.Errorf("expected 2 items after selecting group, got %d", len(s.items))
 	}
 }
 
@@ -403,153 +358,6 @@ func TestSidebar_Render_WithAccounts(t *testing.T) {
 	}
 }
 
-func TestSidebar_ClampCursor_AfterCollapse(t *testing.T) {
-	s := NewSidebar()
-	accounts := []*account.Account{
-		testAccount("Checking", account.TypeChecking),
-		testAccount("Savings", account.TypeSavings),
-	}
-	s.SetAccounts(accounts, nil)
-	// items: [Bank Accounts, Checking, Savings]
-
-	// Move cursor to last item (Savings)
-	s.cursor = 2
-
-	// Collapse the group - cursor should clamp to 0
-	s.collapsed["Bank Accounts"] = true
-	s.rebuildItems()
-	s.clampCursor()
-
-	if s.cursor != 0 {
-		t.Errorf("cursor should clamp to 0 after collapse, got %d", s.cursor)
-	}
-}
-
-func TestBuildGroups_EmptyAccounts(t *testing.T) {
-	groups := buildGroups(nil)
-	if len(groups) != 0 {
-		t.Errorf("expected 0 groups, got %d", len(groups))
-	}
-}
-
-func TestBuildGroups_OrderAndGrouping(t *testing.T) {
-	accounts := []*account.Account{
-		testAccount("Brokerage", account.TypeInvestment),
-		testAccount("Visa", account.TypeCreditCard),
-		testAccount("Checking", account.TypeChecking),
-		testAccount("Savings", account.TypeSavings),
-		testAccount("Cash", account.TypeCash),
-	}
-
-	groups := buildGroups(accounts)
-
-	// Expected: Bank Accounts (Checking, Savings), Cash (Cash), Credit Cards (Visa), Investments (Brokerage)
-	if len(groups) != 4 {
-		t.Fatalf("expected 4 groups, got %d", len(groups))
-	}
-
-	expectedLabels := []string{"Bank Accounts", "Cash", "Credit Cards", "Investments"}
-	for i, g := range groups {
-		if g.label != expectedLabels[i] {
-			t.Errorf("group[%d].label = %q, want %q", i, g.label, expectedLabels[i])
-		}
-	}
-
-	// Bank Accounts should have 2 accounts
-	if len(groups[0].accounts) != 2 {
-		t.Errorf("Bank Accounts group should have 2 accounts, got %d", len(groups[0].accounts))
-	}
-}
-
-func TestBuildGroups_AllTypes(t *testing.T) {
-	accounts := []*account.Account{
-		testAccount("Checking", account.TypeChecking),
-		testAccount("Savings", account.TypeSavings),
-		testAccount("Cash", account.TypeCash),
-		testAccount("Visa", account.TypeCreditCard),
-		testAccount("Brokerage", account.TypeInvestment),
-		testAccount("Mortgage", account.TypeLoan),
-		testAccount("House", account.TypeAsset),
-	}
-
-	groups := buildGroups(accounts)
-
-	// Bank Accounts, Cash, Credit Cards, Investments, Loans, Assets
-	if len(groups) != 6 {
-		t.Fatalf("expected 6 groups, got %d", len(groups))
-	}
-
-	expectedLabels := []string{"Bank Accounts", "Cash", "Credit Cards", "Investments", "Loans", "Assets"}
-	for i, g := range groups {
-		if g.label != expectedLabels[i] {
-			t.Errorf("group[%d].label = %q, want %q", i, g.label, expectedLabels[i])
-		}
-	}
-}
-
-func TestSidebar_MultipleGroupCollapseExpand(t *testing.T) {
-	s := NewSidebar()
-	accounts := []*account.Account{
-		testAccount("Checking", account.TypeChecking),
-		testAccount("Visa", account.TypeCreditCard),
-	}
-	s.SetAccounts(accounts, nil)
-	// items: [Bank Accounts, Checking, Credit Cards, Visa] = 4 items
-
-	if len(s.items) != 4 {
-		t.Fatalf("expected 4 items, got %d", len(s.items))
-	}
-
-	// Collapse first group (cursor at 0)
-	s.CollapseGroup()
-	// items: [Bank Accounts, Credit Cards, Visa] = 3 items
-	if len(s.items) != 3 {
-		t.Errorf("after collapsing first group, expected 3 items, got %d", len(s.items))
-	}
-
-	// Move to Credit Cards group and collapse it too
-	s.MoveDown()
-	s.CollapseGroup()
-	// items: [Bank Accounts, Credit Cards] = 2 items
-	if len(s.items) != 2 {
-		t.Errorf("after collapsing both groups, expected 2 items, got %d", len(s.items))
-	}
-
-	// Expand first group
-	s.cursor = 0
-	s.ExpandGroup()
-	// items: [Bank Accounts, Checking, Credit Cards] = 3 items
-	if len(s.items) != 3 {
-		t.Errorf("after expanding first group, expected 3 items, got %d", len(s.items))
-	}
-}
-
-func TestSidebar_NavigationWithCollapseState(t *testing.T) {
-	s := NewSidebar()
-	accounts := []*account.Account{
-		testAccount("Checking", account.TypeChecking),
-		testAccount("Visa", account.TypeCreditCard),
-	}
-	s.SetAccounts(accounts, nil)
-
-	// Collapse first group
-	s.CollapseGroup()
-
-	// Move down to Credit Cards
-	s.MoveDown()
-	item := s.CursorItem()
-	if item == nil || item.kind != sidebarItemGroup || item.groupKey != "Credit Cards" {
-		t.Error("after collapse + MoveDown, should be on Credit Cards group")
-	}
-
-	// Move down to Visa
-	s.MoveDown()
-	item = s.CursorItem()
-	if item == nil || item.kind != sidebarItemAccount || item.account.Name != "Visa" {
-		t.Error("after collapse + 2x MoveDown, should be on Visa account")
-	}
-}
-
 func TestSidebar_SetCursor(t *testing.T) {
 	s := NewSidebar()
 	accounts := []*account.Account{
@@ -648,24 +456,108 @@ func TestSidebar_HitTest_Empty(t *testing.T) {
 	}
 }
 
-func TestSidebar_HitTest_AfterCollapse(t *testing.T) {
+func TestSidebar_HitTest_WithScroll(t *testing.T) {
+	s := NewSidebar()
+	// Create enough accounts to require scrolling
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
+		testAccount("Visa", account.TypeCreditCard),
+		testAccount("MC", account.TypeCreditCard),
+		testAccount("Brokerage", account.TypeInvestment),
+	}
+	s.SetAccounts(accounts, nil)
+	// items: [Bank Accounts, Checking, Savings, Credit Cards, Visa, MC, Investments, Brokerage] = 8
+
+	s.scrollOffset = 3 // Start from "Credit Cards"
+
+	// y=0 should map to item 3 (Credit Cards)
+	if got := s.HitTest(0); got != 3 {
+		t.Errorf("HitTest(0) with scrollOffset=3 = %d, want 3", got)
+	}
+
+	// y=2 should map to item 5 (MC)
+	if got := s.HitTest(2); got != 5 {
+		t.Errorf("HitTest(2) with scrollOffset=3 = %d, want 5", got)
+	}
+}
+
+func TestSidebar_ScrollOnMoveDown(t *testing.T) {
 	s := NewSidebar()
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
 		testAccount("Visa", account.TypeCreditCard),
+		testAccount("MC", account.TypeCreditCard),
+		testAccount("Brokerage", account.TypeInvestment),
 	}
 	s.SetAccounts(accounts, nil)
-	// items: [Bank Accounts, Checking, Credit Cards, Visa] = 4 items
+	// 8 items total
 
-	// Collapse first group
-	s.CollapseGroup()
-	// items: [Bank Accounts, Credit Cards, Visa] = 3 items
+	styles := NewStyles()
+	styles.Resize(80, 24)
 
-	if got := s.HitTest(2); got != 2 {
-		t.Errorf("HitTest(2) after collapse = %d, want 2", got)
+	// Move cursor to the bottom and render with small viewport
+	for range 7 {
+		s.MoveDown()
 	}
-	if got := s.HitTest(3); got != -1 {
-		t.Errorf("HitTest(3) after collapse = %d, want -1", got)
+	if s.cursor != 7 {
+		t.Fatalf("cursor = %d, want 7", s.cursor)
+	}
+
+	// Render with viewport of 5 lines
+	s.Render(styles, 20, 5)
+
+	// scrollOffset should have adjusted so cursor is visible
+	if s.scrollOffset < 3 {
+		t.Errorf("scrollOffset = %d, should be >= 3 to show cursor at 7 in viewport of 5", s.scrollOffset)
+	}
+}
+
+func TestSidebar_ScrollClamp(t *testing.T) {
+	s := NewSidebar()
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+	}
+	s.SetAccounts(accounts, nil)
+	// 2 items: [Bank Accounts, Checking]
+
+	// Force scroll offset beyond items
+	s.scrollOffset = 10
+	s.clampScroll(5)
+
+	if s.scrollOffset != 0 {
+		t.Errorf("scrollOffset should clamp to 0 when all items fit, got %d", s.scrollOffset)
+	}
+}
+
+func TestSidebar_ScrollFollowsCursor(t *testing.T) {
+	s := NewSidebar()
+	accounts := []*account.Account{
+		testAccount("A", account.TypeChecking),
+		testAccount("B", account.TypeSavings),
+		testAccount("C", account.TypeCreditCard),
+		testAccount("D", account.TypeInvestment),
+		testAccount("E", account.TypeLoan),
+	}
+	s.SetAccounts(accounts, nil)
+	// 4 groups + 5 accounts = 9 items (Checking/Savings share Bank Accounts group)
+
+	// Set cursor near end
+	s.cursor = 8
+	s.clampScroll(4)
+
+	// Cursor should be visible
+	if s.cursor < s.scrollOffset || s.cursor >= s.scrollOffset+4 {
+		t.Errorf("cursor %d not visible with scrollOffset=%d viewport=4", s.cursor, s.scrollOffset)
+	}
+
+	// Now move cursor to top
+	s.cursor = 0
+	s.clampScroll(4)
+
+	if s.scrollOffset != 0 {
+		t.Errorf("scrollOffset should be 0 when cursor is at top, got %d", s.scrollOffset)
 	}
 }
 
@@ -689,5 +581,67 @@ func TestSidebar_SelectPreservesAcrossReload(t *testing.T) {
 	// Selection should persist
 	if s.selectedAccountID != checking.ID {
 		t.Error("selectedAccountID should persist after SetAccounts")
+	}
+}
+
+func TestBuildGroups_EmptyAccounts(t *testing.T) {
+	groups := buildGroups(nil)
+	if len(groups) != 0 {
+		t.Errorf("expected 0 groups, got %d", len(groups))
+	}
+}
+
+func TestBuildGroups_OrderAndGrouping(t *testing.T) {
+	accounts := []*account.Account{
+		testAccount("Brokerage", account.TypeInvestment),
+		testAccount("Visa", account.TypeCreditCard),
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
+		testAccount("Cash", account.TypeCash),
+	}
+
+	groups := buildGroups(accounts)
+
+	// Expected: Bank Accounts (Checking, Savings), Cash (Cash), Credit Cards (Visa), Investments (Brokerage)
+	if len(groups) != 4 {
+		t.Fatalf("expected 4 groups, got %d", len(groups))
+	}
+
+	expectedLabels := []string{"Bank Accounts", "Cash", "Credit Cards", "Investments"}
+	for i, g := range groups {
+		if g.label != expectedLabels[i] {
+			t.Errorf("group[%d].label = %q, want %q", i, g.label, expectedLabels[i])
+		}
+	}
+
+	// Bank Accounts should have 2 accounts
+	if len(groups[0].accounts) != 2 {
+		t.Errorf("Bank Accounts group should have 2 accounts, got %d", len(groups[0].accounts))
+	}
+}
+
+func TestBuildGroups_AllTypes(t *testing.T) {
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+		testAccount("Savings", account.TypeSavings),
+		testAccount("Cash", account.TypeCash),
+		testAccount("Visa", account.TypeCreditCard),
+		testAccount("Brokerage", account.TypeInvestment),
+		testAccount("Mortgage", account.TypeLoan),
+		testAccount("House", account.TypeAsset),
+	}
+
+	groups := buildGroups(accounts)
+
+	// Bank Accounts, Cash, Credit Cards, Investments, Loans, Assets
+	if len(groups) != 6 {
+		t.Fatalf("expected 6 groups, got %d", len(groups))
+	}
+
+	expectedLabels := []string{"Bank Accounts", "Cash", "Credit Cards", "Investments", "Loans", "Assets"}
+	for i, g := range groups {
+		if g.label != expectedLabels[i] {
+			t.Errorf("group[%d].label = %q, want %q", i, g.label, expectedLabels[i])
+		}
 	}
 }

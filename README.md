@@ -123,8 +123,8 @@ Press `?` at any time to show the help overlay.
 |-----|--------|
 | `Up` / `k` | Move up |
 | `Down` / `j` | Move down |
-| `Left` / `h` | Collapse / previous |
-| `Right` / `l` | Expand / next |
+| `Left` / `h` | Previous |
+| `Right` / `l` | Next |
 | `Home` / `g` | Go to first item |
 | `End` / `G` | Go to last item |
 | `PgUp` | Page up |
@@ -137,7 +137,6 @@ Press `?` at any time to show the help overlay.
 | `Enter` | Open selected account register |
 | `n` | New account |
 | `Up/Down` | Navigate accounts |
-| `Left/Right` | Collapse/expand account groups |
 
 #### Register (Account Transactions)
 
@@ -190,7 +189,7 @@ TMoney supports mouse interaction for common operations:
 | Click menu label | Open/close menu dropdown |
 | Click dropdown item | Execute menu action |
 | Click account in sidebar | Open account register |
-| Click group header in sidebar | Select group (use keyboard to collapse/expand) |
+| Click group header in sidebar | Select group heading |
 | Click transaction row | Select transaction |
 | Click sidebar/table area | Switch focus between panes |
 | Scroll wheel | Navigate lists and tables |

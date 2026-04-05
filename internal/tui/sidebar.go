@@ -34,16 +34,16 @@ var accountGroupLabels = map[account.Type]string{
 type sidebarItemKind int
 
 const (
-	sidebarItemGroup   sidebarItemKind = iota
+	sidebarItemGroup sidebarItemKind = iota
 	sidebarItemAccount
 )
 
 // sidebarItem represents a single navigable item in the sidebar.
 type sidebarItem struct {
 	kind      sidebarItemKind
-	groupKey  string           // group label (used as key for collapse state)
-	account   *account.Account  // non-nil for account items
-	accountID types.ID        // shortcut for account items
+	groupKey  string           // group label
+	account   *account.Account // non-nil for account items
+	accountID types.ID         // shortcut for account items
 }
 
 // accountGroup holds a named group of accounts for sidebar display.
@@ -58,10 +58,8 @@ type Sidebar struct {
 	items []sidebarItem
 
 	// Navigation state
-	cursor int
-
-	// Collapse state: group label -> collapsed
-	collapsed map[string]bool
+	cursor       int
+	scrollOffset int
 
 	// Selected account (persists across navigation)
 	selectedAccountID types.ID
@@ -77,9 +75,8 @@ type Sidebar struct {
 // NewSidebar creates a new Sidebar with default state.
 func NewSidebar() *Sidebar {
 	return &Sidebar{
-		collapsed: make(map[string]bool),
-		balances:  make(map[types.ID]*account.Balance),
-		focused:   true,
+		balances: make(map[types.ID]*account.Balance),
+		focused:  true,
 	}
 }
 
@@ -142,68 +139,6 @@ func (s *Sidebar) MoveDown() {
 	}
 }
 
-// ToggleCollapse toggles the collapse state of the group at the cursor.
-func (s *Sidebar) ToggleCollapse() {
-	item := s.CursorItem()
-	if item == nil {
-		return
-	}
-
-	groupKey := item.groupKey
-	if item.kind == sidebarItemAccount {
-		// Use the group key of the account's parent group
-		groupKey = item.groupKey
-	}
-
-	s.collapsed[groupKey] = !s.collapsed[groupKey]
-	s.rebuildItems()
-	s.clampCursor()
-}
-
-// CollapseGroup collapses the group at the cursor (left arrow).
-func (s *Sidebar) CollapseGroup() {
-	item := s.CursorItem()
-	if item == nil {
-		return
-	}
-
-	groupKey := item.groupKey
-
-	if item.kind == sidebarItemAccount {
-		// If on an account, move cursor to the group header
-		for i, it := range s.items {
-			if it.kind == sidebarItemGroup && it.groupKey == groupKey {
-				s.cursor = i
-				break
-			}
-		}
-		return
-	}
-
-	// If on a group header, collapse it
-	if !s.collapsed[groupKey] {
-		s.collapsed[groupKey] = true
-		s.rebuildItems()
-		s.clampCursor()
-	}
-}
-
-// ExpandGroup expands the group at the cursor (right arrow).
-func (s *Sidebar) ExpandGroup() {
-	item := s.CursorItem()
-	if item == nil {
-		return
-	}
-
-	groupKey := item.groupKey
-
-	if item.kind == sidebarItemGroup && s.collapsed[groupKey] {
-		s.collapsed[groupKey] = false
-		s.rebuildItems()
-		s.clampCursor()
-	}
-}
-
 // Select selects the item at the cursor. Returns true if an account was selected.
 func (s *Sidebar) Select() bool {
 	item := s.CursorItem()
@@ -211,11 +146,7 @@ func (s *Sidebar) Select() bool {
 		return false
 	}
 
-	switch item.kind {
-	case sidebarItemGroup:
-		s.ToggleCollapse()
-		return false
-	case sidebarItemAccount:
+	if item.kind == sidebarItemAccount {
 		s.selectedAccountID = item.accountID
 		return true
 	}
@@ -257,7 +188,8 @@ func buildGroups(accounts []*account.Account) []accountGroup {
 	return groups
 }
 
-// rebuildItems reconstructs the flat item list from accounts and collapse state.
+// rebuildItems reconstructs the flat item list from accounts.
+// All groups are always expanded — no collapse support.
 func (s *Sidebar) rebuildItems() {
 	groups := buildGroups(s.accounts)
 
@@ -268,18 +200,17 @@ func (s *Sidebar) rebuildItems() {
 			groupKey: g.label,
 		})
 
-		if !s.collapsed[g.label] {
-			for _, a := range g.accounts {
-				items = append(items, sidebarItem{
-					kind:      sidebarItemAccount,
-					groupKey:  g.label,
-					account:   a,
-					accountID: a.ID,
-				})
-			}
+		for _, a := range g.accounts {
+			items = append(items, sidebarItem{
+				kind:      sidebarItemAccount,
+				groupKey:  g.label,
+				account:   a,
+				accountID: a.ID,
+			})
 		}
 	}
 	s.items = items
+	s.clampCursor()
 }
 
 // clampCursor ensures the cursor is within valid bounds.
@@ -296,6 +227,31 @@ func (s *Sidebar) clampCursor() {
 	}
 }
 
+// clampScroll adjusts scrollOffset so the cursor is visible within the viewport.
+func (s *Sidebar) clampScroll(viewportHeight int) {
+	if viewportHeight <= 0 || len(s.items) == 0 {
+		s.scrollOffset = 0
+		return
+	}
+
+	// Ensure cursor is visible
+	if s.cursor < s.scrollOffset {
+		s.scrollOffset = s.cursor
+	}
+	if s.cursor >= s.scrollOffset+viewportHeight {
+		s.scrollOffset = s.cursor - viewportHeight + 1
+	}
+
+	// Clamp scroll offset
+	maxOffset := max(len(s.items)-viewportHeight, 0)
+	if s.scrollOffset > maxOffset {
+		s.scrollOffset = maxOffset
+	}
+	if s.scrollOffset < 0 {
+		s.scrollOffset = 0
+	}
+}
+
 // SetCursor sets the cursor to the given position, clamping to valid bounds.
 func (s *Sidebar) SetCursor(pos int) {
 	s.cursor = pos
@@ -309,10 +265,12 @@ func (s *Sidebar) ItemCount() int {
 
 // HitTest determines which sidebar item was clicked at row y.
 // y is relative to the top of the sidebar content (0-based).
+// Accounts for the current scroll offset.
 // Returns the item index, or -1 if out of range.
 func (s *Sidebar) HitTest(y int) int {
-	if y >= 0 && y < len(s.items) {
-		return y
+	idx := s.scrollOffset + y
+	if idx >= 0 && idx < len(s.items) {
+		return idx
 	}
 	return -1
 }
@@ -323,6 +281,8 @@ func (s *Sidebar) Render(styles Styles, width, height int) string {
 		return ""
 	}
 
+	s.clampScroll(height)
+
 	var lines []string
 
 	if len(s.items) == 0 {
@@ -331,8 +291,10 @@ func (s *Sidebar) Render(styles Styles, width, height int) string {
 		lines = append(lines, styles.Muted.Render("  Press 'n' to add"))
 	}
 
-	for i, item := range s.items {
-		line := s.renderItem(styles, item, i, width)
+	// Render only the visible window of items
+	end := min(s.scrollOffset+height, len(s.items))
+	for i := s.scrollOffset; i < end; i++ {
+		line := s.renderItem(styles, s.items[i], i, width)
 		lines = append(lines, line)
 	}
 
@@ -370,12 +332,7 @@ func (s *Sidebar) renderItem(styles Styles, item sidebarItem, index int, width i
 
 // renderGroupHeader renders a group header line.
 func (s *Sidebar) renderGroupHeader(styles Styles, item sidebarItem, isCursor bool, width int) string {
-	arrow := "▼"
-	if s.collapsed[item.groupKey] {
-		arrow = "▶"
-	}
-
-	text := fmt.Sprintf("%s %s", arrow, item.groupKey)
+	text := fmt.Sprintf(" %s", item.groupKey)
 
 	// Truncate if needed
 	if len(text) > width-1 {

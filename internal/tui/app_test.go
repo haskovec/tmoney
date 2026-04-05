@@ -4292,9 +4292,9 @@ func TestApp_MouseClick_Sidebar_GroupHeader_JustMovesCursor(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	// Group should NOT be collapsed - clicking just moves the cursor
+	// Items should remain unchanged (no collapse ever)
 	if updatedApp.sidebar.ItemCount() != 3 {
-		t.Errorf("ItemCount = %d, want 3 (group should not collapse on click)", updatedApp.sidebar.ItemCount())
+		t.Errorf("ItemCount = %d, want 3", updatedApp.sidebar.ItemCount())
 	}
 	if updatedApp.sidebar.cursor != 0 {
 		t.Errorf("cursor = %d, want 0 (group header)", updatedApp.sidebar.cursor)

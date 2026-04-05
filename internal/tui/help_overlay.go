@@ -54,8 +54,8 @@ func navigationShortcuts() shortcutSection {
 		Entries: []shortcutEntry{
 			{"Up / k", "Move up"},
 			{"Down / j", "Move down"},
-			{"Left / h", "Collapse / Previous"},
-			{"Right / l", "Expand / Next"},
+			{"Left / h", "Previous"},
+			{"Right / l", "Next"},
 			{"Home / g", "Go to first item"},
 			{"End / G", "Go to last item"},
 			{"PgUp", "Page up"},
@@ -83,7 +83,6 @@ func dashboardShortcuts() shortcutSection {
 			{"Enter", "Open selected account"},
 			{"n", "New account"},
 			{"Up/Down", "Navigate accounts"},
-			{"Left/Right", "Collapse/expand groups"},
 		},
 	}
 }

@@ -2097,14 +2097,6 @@ func (a *App) handleSidebarKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.sidebar.MoveDown()
 		return a, nil
 
-	case key.Matches(msg, a.keys.Left):
-		a.sidebar.CollapseGroup()
-		return a, nil
-
-	case key.Matches(msg, a.keys.Right):
-		a.sidebar.ExpandGroup()
-		return a, nil
-
 	case key.Matches(msg, a.keys.Enter):
 		if a.sidebar.Select() {
 			accountID := a.sidebar.SelectedAccountID()
@@ -2224,7 +2216,7 @@ func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleMouseSidebar handles mouse clicks in the sidebar area.
-// Single click on a group header moves the cursor without toggling collapse.
+// Single click on a group header just moves the cursor.
 // Single click on an account selects it and opens the register/portfolio.
 func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd) {
 	idx := a.sidebar.HitTest(contentY)
@@ -2240,7 +2232,7 @@ func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.C
 		return a, nil
 	}
 
-	// Group headers: just move cursor, use keyboard Left/Right to collapse/expand
+	// Group headers: just move cursor
 	if item.kind == sidebarItemGroup {
 		return a, nil
 	}
@@ -2252,11 +2244,11 @@ func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.C
 		if acct != nil && acct.Type == account.TypeInvestment {
 			a.portfolioData = nil
 			a.switchView(ViewPortfolio)
-			return a, a.loadPortfolioData(accountID)
+			return a, tea.Batch(func() tea.Msg { return tea.ClearScreen() }, a.loadPortfolioData(accountID))
 		}
 		a.register = nil
 		a.switchView(ViewRegister)
-		return a, a.loadRegisterData(accountID)
+		return a, tea.Batch(func() tea.Msg { return tea.ClearScreen() }, a.loadRegisterData(accountID))
 	}
 
 	return a, nil
