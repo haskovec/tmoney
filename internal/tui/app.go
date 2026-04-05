@@ -849,6 +849,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return a.handleMouseEvent(msg)
 
+	case mouseOpenAccountMsg:
+		acct := a.sidebar.SelectedAccount()
+		if acct != nil && acct.Type == account.TypeInvestment {
+			a.portfolioData = nil
+			a.switchView(ViewPortfolio)
+			return a, a.loadPortfolioData(msg.accountID)
+		}
+		a.register = nil
+		a.switchView(ViewRegister)
+		return a, a.loadRegisterData(msg.accountID)
+
 	case sidebarLoadedMsg:
 		a.sidebar.SetAccounts(msg.accounts, msg.balances)
 		return a, nil
@@ -2237,18 +2248,14 @@ func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.C
 		return a, nil
 	}
 
-	// Account item - select and open register/portfolio
+	// Account item - select and defer the view switch to the next Update cycle.
+	// This avoids a Bubbletea renderer issue where switching views directly
+	// inside a mouse event handler causes the menu bar to disappear.
 	if a.sidebar.Select() {
 		accountID := a.sidebar.SelectedAccountID()
-		acct := a.sidebar.SelectedAccount()
-		if acct != nil && acct.Type == account.TypeInvestment {
-			a.portfolioData = nil
-			a.switchView(ViewPortfolio)
-			return a, tea.Batch(func() tea.Msg { return tea.ClearScreen() }, a.loadPortfolioData(accountID))
+		return a, func() tea.Msg {
+			return mouseOpenAccountMsg{accountID: accountID}
 		}
-		a.register = nil
-		a.switchView(ViewRegister)
-		return a, tea.Batch(func() tea.Msg { return tea.ClearScreen() }, a.loadRegisterData(accountID))
 	}
 
 	return a, nil
@@ -3712,6 +3719,12 @@ func (a *App) renderError() string {
 // errMsg is a message type for errors.
 type errMsg struct {
 	err error
+}
+
+// mouseOpenAccountMsg is sent to defer a view switch from a mouse click
+// to a separate Update cycle, avoiding Bubbletea renderer issues.
+type mouseOpenAccountMsg struct {
+	accountID types.ID
 }
 
 // sidebarLoadedMsg is sent when sidebar data has been loaded.

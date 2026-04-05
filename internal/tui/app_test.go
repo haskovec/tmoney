@@ -4262,9 +4262,42 @@ func TestApp_MouseClick_Sidebar_SelectsAccount(t *testing.T) {
 	if updatedApp.sidebar.cursor != 1 {
 		t.Errorf("sidebar cursor = %d, want 1", updatedApp.sidebar.cursor)
 	}
-	// Should return a command to load register data
+	// Should return a deferred command (mouseOpenAccountMsg)
 	if cmd == nil {
-		t.Error("clicking an account should return a command to load register")
+		t.Error("clicking an account should return a command")
+	}
+	// View should NOT switch yet (deferred to next Update cycle)
+	if updatedApp.currentView != ViewDashboard {
+		t.Errorf("view should still be Dashboard (deferred switch), got %v", updatedApp.currentView)
+	}
+}
+
+func TestApp_MouseOpenAccountMsg_SwitchesView(t *testing.T) {
+	checking := testAccount("Checking", account.TypeChecking)
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       100,
+		height:      24,
+	}
+	app.styles.Resize(100, 24)
+	app.sidebar.SetAccounts([]*account.Account{checking}, nil)
+	app.sidebar.MoveDown()
+	app.sidebar.Select()
+
+	// Simulate the deferred message
+	msg := mouseOpenAccountMsg{accountID: checking.ID}
+	model, cmd := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if updatedApp.currentView != ViewRegister {
+		t.Errorf("currentView = %v, want ViewRegister", updatedApp.currentView)
+	}
+	if cmd == nil {
+		t.Error("should return a command to load register data")
 	}
 }
 
