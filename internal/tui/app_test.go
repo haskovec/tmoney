@@ -3,9 +3,11 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/report"
@@ -4573,5 +4575,60 @@ func TestApp_HandleSidebarKeys_NewAccountNotWhenUnfocused(t *testing.T) {
 	// When sidebar is not focused, 'n' should not trigger anything
 	if cmd != nil {
 		t.Error("pressing 'n' with sidebar unfocused should not return a command")
+	}
+}
+
+func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
+	checking := testAccount("Discover Checking", account.TypeChecking)
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       120,
+		height:      24,
+		ready:       true,
+	}
+	app.styles = NewStyles()
+	app.styles.Resize(120, 24)
+	app.sidebar.SetAccounts([]*account.Account{checking}, nil)
+
+	// Step 1: Render dashboard - should have exactly 24 lines
+	dashView := app.View()
+	dashLines := strings.Split(dashView, "\n")
+	t.Logf("Dashboard view: %d lines", len(dashLines))
+	if len(dashLines) != 24 {
+		t.Errorf("Dashboard View() has %d lines, want 24", len(dashLines))
+	}
+
+	// Step 2: Simulate mouse click on account
+	clickMsg := tea.MouseMsg{X: 5, Y: 2, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	model, _ := app.Update(clickMsg)
+	app = model.(*App)
+
+	// Step 3: Simulate the deferred open account message
+	openMsg := mouseOpenAccountMsg{accountID: checking.ID}
+	model, _ = app.Update(openMsg)
+	app = model.(*App)
+
+	// Step 4: Render register view - should have exactly 24 lines
+	regView := app.View()
+	regLines := strings.Split(regView, "\n")
+	t.Logf("Register view: %d lines", len(regLines))
+	if len(regLines) != 24 {
+		t.Errorf("Register View() has %d lines, want 24", len(regLines))
+	}
+
+	// Check first line contains menu bar content
+	if !strings.Contains(regLines[0], "File") && !strings.Contains(regLines[0], "\033") {
+		t.Logf("First line (raw bytes): %q", regLines[0])
+		t.Logf("First line visual width: %d", lipgloss.Width(regLines[0]))
+		t.Errorf("First line should contain menu bar, got visual content: %q", stripAnsi(regLines[0]))
+	}
+
+	// Log the first few lines for debugging
+	for i := 0; i < min(5, len(regLines)); i++ {
+		t.Logf("Line %d (width=%d): %q", i, lipgloss.Width(regLines[i]), stripAnsi(regLines[i]))
 	}
 }

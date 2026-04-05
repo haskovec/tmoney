@@ -1,9 +1,9 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -330,24 +330,36 @@ func (s *Sidebar) renderItem(styles Styles, item sidebarItem, index int, width i
 	return ""
 }
 
+// padToWidth pads or truncates text to exactly the given visual width.
+func padToWidth(text string, width int) string {
+	w := lipgloss.Width(text)
+	if w >= width {
+		// Truncate to fit (simple rune-based truncation)
+		result := ""
+		for _, r := range text {
+			if lipgloss.Width(result+string(r)) > width {
+				break
+			}
+			result += string(r)
+		}
+		// Pad if truncation left us short
+		if rem := width - lipgloss.Width(result); rem > 0 {
+			result += strings.Repeat(" ", rem)
+		}
+		return result
+	}
+	return text + strings.Repeat(" ", width-w)
+}
+
 // renderGroupHeader renders a group header line.
 func (s *Sidebar) renderGroupHeader(styles Styles, item sidebarItem, isCursor bool, width int) string {
-	text := fmt.Sprintf(" %s", item.groupKey)
-
-	// Truncate if needed
-	if len(text) > width-1 {
-		text = text[:width-1]
-	}
-
-	// Pad to width
-	if len(text) < width {
-		text = text + strings.Repeat(" ", width-len(text))
-	}
+	text := padToWidth(" "+item.groupKey, width)
 
 	if isCursor {
 		return styles.SelectedRow.Render(text)
 	}
-	return styles.SidebarGroup.Render(text)
+	// Render without SidebarGroup style padding — we handle width ourselves
+	return styles.SidebarGroup.UnsetPaddingLeft().Render(text)
 }
 
 // renderAccountItem renders an account line.
@@ -357,22 +369,29 @@ func (s *Sidebar) renderAccountItem(styles Styles, item sidebarItem, isCursor, i
 		indicator = "◀"
 	}
 
+	prefix := "  ▸ "
+	suffix := " " + indicator
+	// Calculate available space for the name using visual widths
+	nameWidth := max(width-lipgloss.Width(prefix)-lipgloss.Width(suffix), 3)
+
 	name := item.account.Name
-	// Leave room for "  ▸ " prefix and " ◀" suffix
-	maxNameLen := max(width-6, 3)
-	if len(name) > maxNameLen {
-		name = name[:maxNameLen-1] + "…"
+	if lipgloss.Width(name) > nameWidth {
+		// Truncate name to fit
+		truncated := ""
+		for _, r := range name {
+			if lipgloss.Width(truncated+string(r)) > nameWidth-1 {
+				break
+			}
+			truncated += string(r)
+		}
+		name = truncated + "…"
 	}
 
-	text := fmt.Sprintf("  ▸ %s %s", name, indicator)
-
-	// Pad to width
-	if len(text) < width {
-		text = text + strings.Repeat(" ", width-len(text))
-	}
+	text := padToWidth(prefix+name+suffix, width)
 
 	if isCursor {
 		return styles.SelectedRow.Render(text)
 	}
-	return styles.SidebarItem.Render(text)
+	// Render without SidebarItem style padding — we handle width ourselves
+	return styles.SidebarItem.UnsetPaddingLeft().Render(text)
 }
