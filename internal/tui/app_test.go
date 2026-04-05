@@ -4578,6 +4578,64 @@ func TestApp_HandleSidebarKeys_NewAccountNotWhenUnfocused(t *testing.T) {
 	}
 }
 
+func TestApp_View_ComponentWidths(t *testing.T) {
+	checking := testAccount("Discover Checking", account.TypeChecking)
+
+	for _, termWidth := range []int{100, 120, 160, 200} {
+		t.Run(fmt.Sprintf("width=%d", termWidth), func(t *testing.T) {
+			app := &App{
+				currentView: ViewDashboard,
+				keys:        defaultKeyMap(),
+				menubar:     NewMenuBar(),
+				sidebar:     NewSidebar(),
+				statusbar:   NewStatusBar(),
+				width:       termWidth,
+				height:      24,
+				ready:       true,
+			}
+			app.styles = NewStyles()
+			app.styles.Resize(termWidth, 24)
+			app.sidebar.SetAccounts([]*account.Account{checking}, nil)
+
+			header := app.renderHeader()
+			headerWidth := lipgloss.Width(header)
+			headerLines := len(strings.Split(header, "\n"))
+
+			contentHeight := app.height - 2
+			content := app.renderContent(contentHeight)
+			contentWidth := lipgloss.Width(content)
+			contentLines := len(strings.Split(content, "\n"))
+
+			statusBar := app.renderStatusBar()
+			statusWidth := lipgloss.Width(statusBar)
+			statusLines := len(strings.Split(statusBar, "\n"))
+
+			t.Logf("Terminal width: %d", termWidth)
+			t.Logf("Header: %d cols x %d lines", headerWidth, headerLines)
+			t.Logf("Content: %d cols x %d lines", contentWidth, contentLines)
+			t.Logf("StatusBar: %d cols x %d lines", statusWidth, statusLines)
+
+			view := app.View()
+			viewLines := strings.Split(view, "\n")
+			maxLineWidth := 0
+			for _, line := range viewLines {
+				w := lipgloss.Width(line)
+				if w > maxLineWidth {
+					maxLineWidth = w
+				}
+			}
+			t.Logf("View: %d lines, max line width: %d", len(viewLines), maxLineWidth)
+
+			if maxLineWidth > termWidth {
+				t.Errorf("View lines (%d cols) wider than terminal (%d cols)", maxLineWidth, termWidth)
+			}
+			if len(viewLines) != 24 {
+				t.Errorf("View has %d lines, want 24", len(viewLines))
+			}
+		})
+	}
+}
+
 func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
 	checking := testAccount("Discover Checking", account.TypeChecking)
 	app := &App{

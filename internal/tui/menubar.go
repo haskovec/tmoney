@@ -344,11 +344,15 @@ func (m *MenuBar) Render(styles Styles, width int) string {
 
 	bar := lipgloss.JoinHorizontal(lipgloss.Top, parts...)
 
-	// Pad the rest of the bar with the header background
+	// Pad the rest of the bar with the header background.
+	// Use a plain style with just the background color to avoid the Header
+	// style's Width/Padding adding extra columns.
 	barWidth := lipgloss.Width(bar)
 	if barWidth < width {
+		padStyle := lipgloss.NewStyle().
+			Background(styles.Header.GetBackground())
 		padding := strings.Repeat(" ", width-barWidth)
-		bar = bar + styles.Header.Render(padding)
+		bar = bar + padStyle.Render(padding)
 	}
 
 	return bar
