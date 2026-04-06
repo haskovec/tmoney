@@ -569,8 +569,8 @@ func TestMenuBarHasSecurities(t *testing.T) {
 		for _, item := range m.items {
 			if item.action == MenuActionSecurities {
 				found = true
-				if item.label != "Securities Master" {
-					t.Errorf("menu label = %q, want %q", item.label, "Securities Master")
+				if item.label != "Security Master" {
+					t.Errorf("menu label = %q, want %q", item.label, "Security Master")
 				}
 			}
 		}

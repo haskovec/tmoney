@@ -480,7 +480,7 @@ func TestMenuBar_SecuritiesMenuItems(t *testing.T) {
 	}
 
 	if securitiesMenu.items[0].action != MenuActionSecurities {
-		t.Error("first Securities item should be Securities Master")
+		t.Error("first Securities item should be Security Master")
 	}
 	if securitiesMenu.items[1].action != MenuActionPrices {
 		t.Error("second Securities item should be Prices")

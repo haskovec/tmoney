@@ -138,7 +138,7 @@ func defaultMenus() []menu {
 			label:       "Securities",
 			shortcutKey: 'S',
 			items: []menuItem{
-				{label: "Securities Master", action: MenuActionSecurities},
+				{label: "Security Master", action: MenuActionSecurities},
 				{label: "Prices", action: MenuActionPrices},
 			},
 		},
