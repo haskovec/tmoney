@@ -25,11 +25,11 @@ func TestNewMenuBar(t *testing.T) {
 func TestMenuBar_DefaultMenus(t *testing.T) {
 	m := NewMenuBar()
 
-	if m.MenuCount() != 6 {
-		t.Fatalf("expected 6 menus, got %d", m.MenuCount())
+	if m.MenuCount() != 7 {
+		t.Fatalf("expected 7 menus, got %d", m.MenuCount())
 	}
 
-	expectedLabels := []string{"File", "Edit", "Accounts", "Transactions", "Reports", "Help"}
+	expectedLabels := []string{"File", "Edit", "Accounts", "Transactions", "Securities", "Reports", "Help"}
 	for i, mn := range m.menus {
 		if mn.label != expectedLabels[i] {
 			t.Errorf("menu[%d].label = %q, want %q", i, mn.label, expectedLabels[i])
@@ -467,16 +467,36 @@ func TestMenuBar_TransactionsMenuItems(t *testing.T) {
 	}
 }
 
+func TestMenuBar_SecuritiesMenuItems(t *testing.T) {
+	m := NewMenuBar()
+
+	securitiesMenu := m.menus[4]
+	if securitiesMenu.label != "Securities" {
+		t.Fatalf("expected Securities menu at index 4, got %q", securitiesMenu.label)
+	}
+
+	if len(securitiesMenu.items) != 2 {
+		t.Fatalf("Securities menu: expected 2 items, got %d", len(securitiesMenu.items))
+	}
+
+	if securitiesMenu.items[0].action != MenuActionSecurities {
+		t.Error("first Securities item should be Securities Master")
+	}
+	if securitiesMenu.items[1].action != MenuActionPrices {
+		t.Error("second Securities item should be Prices")
+	}
+}
+
 func TestMenuBar_ReportsMenuItems(t *testing.T) {
 	m := NewMenuBar()
 
-	reportsMenu := m.menus[4]
+	reportsMenu := m.menus[5]
 	if reportsMenu.label != "Reports" {
-		t.Fatalf("expected Reports menu at index 4, got %q", reportsMenu.label)
+		t.Fatalf("expected Reports menu at index 5, got %q", reportsMenu.label)
 	}
 
-	if len(reportsMenu.items) != 5 {
-		t.Fatalf("Reports menu: expected 5 items, got %d", len(reportsMenu.items))
+	if len(reportsMenu.items) != 3 {
+		t.Fatalf("Reports menu: expected 3 items, got %d", len(reportsMenu.items))
 	}
 
 	if reportsMenu.items[0].action != MenuActionDashboard {
@@ -488,20 +508,14 @@ func TestMenuBar_ReportsMenuItems(t *testing.T) {
 	if reportsMenu.items[2].action != MenuActionSpendingByCategory {
 		t.Error("third Reports item should be Spending by Category")
 	}
-	if reportsMenu.items[3].action != MenuActionSecurities {
-		t.Error("fourth Reports item should be Securities")
-	}
-	if reportsMenu.items[4].action != MenuActionPrices {
-		t.Error("fifth Reports item should be Prices")
-	}
 }
 
 func TestMenuBar_HelpMenuItems(t *testing.T) {
 	m := NewMenuBar()
 
-	helpMenu := m.menus[5]
+	helpMenu := m.menus[6]
 	if helpMenu.label != "Help" {
-		t.Fatalf("expected Help menu at index 5, got %q", helpMenu.label)
+		t.Fatalf("expected Help menu at index 6, got %q", helpMenu.label)
 	}
 
 	if len(helpMenu.items) != 2 {
@@ -562,6 +576,7 @@ func TestMenuBar_ShortcutKeys(t *testing.T) {
 		{"Edit", 'E'},
 		{"Accounts", 'A'},
 		{"Transactions", 'T'},
+		{"Securities", 'S'},
 		{"Reports", 'R'},
 		{"Help", 'H'},
 	}
@@ -704,8 +719,8 @@ func TestMenuBar_Render_ShortcutUnderline(t *testing.T) {
 
 func TestMenuBar_HitTestBar(t *testing.T) {
 	m := NewMenuBar()
-	// Menu labels: " File " (6), " Edit " (6), " Accounts " (10), " Transactions " (14), " Reports " (9), " Help " (6)
-	// Cumulative: 0-5=File, 6-11=Edit, 12-21=Accounts, 22-35=Transactions, 36-44=Reports, 45-50=Help
+	// Menu labels: " File " (6), " Edit " (6), " Accounts " (10), " Transactions " (14), " Securities " (12), " Reports " (9), " Help " (6)
+	// Cumulative: 0-5=File, 6-11=Edit, 12-21=Accounts, 22-35=Transactions, 36-47=Securities, 48-56=Reports, 57-62=Help
 
 	tests := []struct {
 		name string
@@ -720,11 +735,13 @@ func TestMenuBar_HitTestBar(t *testing.T) {
 		{"Accounts end", 21, 2},
 		{"Transactions start", 22, 3},
 		{"Transactions end", 35, 3},
-		{"Reports start", 36, 4},
-		{"Reports end", 44, 4},
-		{"Help start", 45, 5},
-		{"Help end", 50, 5},
-		{"Beyond menus", 51, -1},
+		{"Securities start", 36, 4},
+		{"Securities end", 47, 4},
+		{"Reports start", 48, 5},
+		{"Reports end", 56, 5},
+		{"Help start", 57, 6},
+		{"Help end", 62, 6},
+		{"Beyond menus", 63, -1},
 		{"Negative x", -1, -1},
 	}
 

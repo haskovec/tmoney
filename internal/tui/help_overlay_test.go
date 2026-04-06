@@ -147,10 +147,10 @@ func TestViewShortcutSections(t *testing.T) {
 
 func TestRenderHelpOverlay(t *testing.T) {
 	styles := NewStyles()
-	styles.Resize(120, 40)
+	styles.Resize(120, 50)
 
 	t.Run("renders for dashboard view", func(t *testing.T) {
-		result := renderHelpOverlay(styles, ViewDashboard, 120, 40)
+		result := renderHelpOverlay(styles, ViewDashboard, 120, 50)
 		if result == "" {
 			t.Error("renderHelpOverlay returned empty string")
 		}
@@ -168,28 +168,28 @@ func TestRenderHelpOverlay(t *testing.T) {
 	})
 
 	t.Run("renders for register view", func(t *testing.T) {
-		result := renderHelpOverlay(styles, ViewRegister, 120, 40)
+		result := renderHelpOverlay(styles, ViewRegister, 120, 50)
 		if !strings.Contains(result, "Register") {
 			t.Error("overlay should contain 'Register' section for register view")
 		}
 	})
 
 	t.Run("renders for scheduled view", func(t *testing.T) {
-		result := renderHelpOverlay(styles, ViewScheduled, 120, 40)
+		result := renderHelpOverlay(styles, ViewScheduled, 120, 50)
 		if !strings.Contains(result, "Scheduled Transactions") {
 			t.Error("overlay should contain 'Scheduled Transactions' section for scheduled view")
 		}
 	})
 
 	t.Run("renders for reports view", func(t *testing.T) {
-		result := renderHelpOverlay(styles, ViewReports, 120, 40)
+		result := renderHelpOverlay(styles, ViewReports, 120, 50)
 		if !strings.Contains(result, "Reports") {
 			t.Error("overlay should contain 'Reports' section for reports view")
 		}
 	})
 
 	t.Run("contains close hint", func(t *testing.T) {
-		result := renderHelpOverlay(styles, ViewDashboard, 120, 40)
+		result := renderHelpOverlay(styles, ViewDashboard, 120, 50)
 		// The close hint text goes through lipgloss styling, so check for key parts
 		stripped := stripAnsi(result)
 		if !strings.Contains(stripped, "Esc to close") {
@@ -198,7 +198,7 @@ func TestRenderHelpOverlay(t *testing.T) {
 	})
 
 	t.Run("adapts to narrow screen", func(t *testing.T) {
-		result := renderHelpOverlay(styles, ViewDashboard, 40, 40)
+		result := renderHelpOverlay(styles, ViewDashboard, 40, 50)
 		if result == "" {
 			t.Error("renderHelpOverlay should work on narrow screens")
 		}

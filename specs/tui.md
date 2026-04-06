@@ -37,7 +37,7 @@ The default view showing financial overview.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│ File  Accounts  Transactions  Reports  Help                         │
+│ File  Accounts  Transactions  Securities  Reports  Help              │
 ├──────────────────┬──────────────────────────────────────────────────┤
 │ ▼ Bank Accounts  │  DASHBOARD                          Jan 15, 2024 │
 │   ▸ Checking     │  ─────────────────────────────────────────────── │
@@ -67,7 +67,7 @@ Transaction list for a specific account.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│ File  Accounts  Transactions  Reports  Help                         │
+│ File  Accounts  Transactions  Securities  Reports  Help              │
 ├──────────────────┬──────────────────────────────────────────────────┤
 │ ▼ Bank Accounts  │  CHECKING ACCOUNT                   Bal: $5,234  │
 │   ▸ Checking  ◀  │  ─────────────────────────────────────────────── │
@@ -149,7 +149,7 @@ When "Split transaction" is checked:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│ File  Accounts  Transactions  Reports  Help                         │
+│ File  Accounts  Transactions  Securities  Reports  Help              │
 ├──────────────────┬──────────────────────────────────────────────────┤
 │ ▼ Bank Accounts  │  SCHEDULED TRANSACTIONS                          │
 │   ▸ Checking     │  ─────────────────────────────────────────────── │
@@ -175,7 +175,7 @@ When "Split transaction" is checked:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│ File  Accounts  Transactions  Reports  Help                         │
+│ File  Accounts  Transactions  Securities  Reports  Help              │
 ├──────────────────┬──────────────────────────────────────────────────┤
 │                  │  SPENDING BY CATEGORY              January 2024  │
 │ ▸ Net Worth      │  ─────────────────────────────────────────────── │
@@ -220,6 +220,10 @@ Each menu label has its shortcut letter underlined to indicate the `Alt+key` sho
 - Delete Transaction
 - Search...
 
+### Securities Menu
+- Securities Master
+- Prices
+
 ### Reports Menu
 - Dashboard
 - Net Worth
@@ -244,6 +248,7 @@ Each menu label has its shortcut letter underlined to indicate the `Alt+key` sho
 | `Alt+F` | Open File menu |
 | `Alt+A` | Open Accounts menu |
 | `Alt+T` | Open Transactions menu |
+| `Alt+S` | Open Securities menu |
 | `Alt+R` | Open Reports menu |
 | `Alt+H` | Open Help menu |
 | `F10` | Activate menu bar |

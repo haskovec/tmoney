@@ -45,7 +45,7 @@ const (
 	MenuActionUndo
 	MenuActionRedo
 
-	// Investments menu actions
+	// Securities menu actions
 	MenuActionSecurities
 	MenuActionPrices
 
@@ -135,14 +135,20 @@ func defaultMenus() []menu {
 			},
 		},
 		{
+			label:       "Securities",
+			shortcutKey: 'S',
+			items: []menuItem{
+				{label: "Securities Master", action: MenuActionSecurities},
+				{label: "Prices", action: MenuActionPrices},
+			},
+		},
+		{
 			label:       "Reports",
 			shortcutKey: 'R',
 			items: []menuItem{
 				{label: "Dashboard", action: MenuActionDashboard},
 				{label: "Net Worth", action: MenuActionNetWorth},
 				{label: "Spending by Category", action: MenuActionSpendingByCategory},
-				{label: "Securities", action: MenuActionSecurities},
-				{label: "Prices", action: MenuActionPrices},
 			},
 		},
 		{

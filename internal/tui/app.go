@@ -306,6 +306,7 @@ type keyMap struct {
 	MenuFile         key.Binding
 	MenuAccounts     key.Binding
 	MenuTransactions key.Binding
+	MenuSecurities   key.Binding
 	MenuEdit         key.Binding
 	MenuReports      key.Binding
 	MenuHelp         key.Binding
@@ -407,6 +408,10 @@ func defaultKeyMap() keyMap {
 		MenuTransactions: key.NewBinding(
 			key.WithKeys("alt+t"),
 			key.WithHelp("Alt+T", "transactions menu"),
+		),
+		MenuSecurities: key.NewBinding(
+			key.WithKeys("alt+s"),
+			key.WithHelp("Alt+S", "securities menu"),
 		),
 		MenuReports: key.NewBinding(
 			key.WithKeys("alt+r"),
@@ -1557,11 +1562,14 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, a.keys.MenuTransactions):
 		a.toggleMenu(3)
 		return a, nil
-	case key.Matches(msg, a.keys.MenuReports):
+	case key.Matches(msg, a.keys.MenuSecurities):
 		a.toggleMenu(4)
 		return a, nil
-	case key.Matches(msg, a.keys.MenuHelp):
+	case key.Matches(msg, a.keys.MenuReports):
 		a.toggleMenu(5)
+		return a, nil
+	case key.Matches(msg, a.keys.MenuHelp):
+		a.toggleMenu(6)
 		return a, nil
 	}
 

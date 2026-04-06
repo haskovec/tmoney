@@ -84,13 +84,15 @@ tmoney                                    # Default file
 tmoney ~/Documents/TMoney/personal.tdb    # Specific file
 ```
 
-The TUI has four main views accessible via number keys or the menu bar:
+The TUI has several views accessible via number keys or the menu bar:
 
 | Key | View | Description |
 |-----|------|-------------|
 | `1` | Dashboard | Net worth, account balances, due scheduled transactions |
 | `2` | Scheduled | Due and upcoming scheduled transactions |
 | `3` | Reports | Net worth and spending by category reports |
+| `4` | Securities | Security master list with add/edit/hide/delete |
+| `5` | Prices | Price history per security with add/edit/delete/import |
 | - | Register | Transaction list for a selected account (open from Dashboard) |
 
 ### Keyboard Shortcuts
@@ -110,10 +112,13 @@ Press `?` at any time to show the help overlay.
 | `1` | Dashboard view |
 | `2` | Scheduled view |
 | `3` | Reports view |
+| `4` | Securities view |
+| `5` | Prices view |
 | `F10` | Activate menu bar |
 | `Alt+F` | File menu |
 | `Alt+A` | Accounts menu |
 | `Alt+T` | Transactions menu |
+| `Alt+S` | Securities menu |
 | `Alt+R` | Reports menu |
 | `Alt+H` | Help menu |
 

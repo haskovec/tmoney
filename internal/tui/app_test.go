@@ -369,14 +369,19 @@ func TestApp_Update_AltKeyMenuShortcuts(t *testing.T) {
 			3, "Transactions",
 		},
 		{
+			"Alt+S opens Securities menu",
+			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}, Alt: true},
+			4, "Securities",
+		},
+		{
 			"Alt+R opens Reports menu",
 			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}, Alt: true},
-			4, "Reports",
+			5, "Reports",
 		},
 		{
 			"Alt+H opens Help menu",
 			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}, Alt: true},
-			5, "Help",
+			6, "Help",
 		},
 	}
 
