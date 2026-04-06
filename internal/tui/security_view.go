@@ -395,6 +395,7 @@ const (
 // buildAddSecurityDialog builds the dialog for adding a new security.
 func buildAddSecurityDialog() *Dialog {
 	d := NewDialog("Add Security")
+	d.SetWidth(76)
 
 	f := d.AddTextField("Ticker", "", "e.g. AAPL", 20)
 	f.Required = true
@@ -430,6 +431,7 @@ func buildAddSecurityDialog() *Dialog {
 // buildEditSecurityDialog builds the dialog for editing an existing security.
 func buildEditSecurityDialog(sec *security.Security) *Dialog {
 	d := NewDialog("Edit Security")
+	d.SetWidth(76)
 
 	f := d.AddTextField("Ticker", sec.Ticker, "e.g. AAPL", 20)
 	f.Required = true
