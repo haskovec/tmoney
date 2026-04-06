@@ -216,12 +216,16 @@ func (a *App) submitOpenFile(path string) tea.Cmd {
 // switchDatabase closes the old database, sets the new one, reinitializes
 // services, clears cached view data, and returns commands to reload everything.
 func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
-	// Close old database
-	if a.db != nil {
-		a.db.Close()
+	// Close the previously deferred database (from an earlier switch).
+	// The current a.db is kept alive as prevDB so that any in-flight
+	// goroutines from loadDashboardData/loadSidebarData/etc. that still
+	// hold service references to it won't panic on a nil *sql.DB conn.
+	if a.prevDB != nil {
+		a.prevDB.Close()
 	}
+	a.prevDB = a.db
 
-	// Set new database and reinitialize services
+	// Set new database and reinitialize ALL services
 	a.db = newDB
 	svc := app.NewServices(newDB)
 	a.accountSvc = svc.Account
@@ -233,6 +237,11 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	a.reconciliationSvc = svc.Reconciliation
 	a.securitySvc = svc.Security
 	a.priceSvc = svc.Price
+	a.investmentSvc = svc.Investment
+	a.investmentRepo = svc.InvestmentRepo
+	a.corporateActionSvc = svc.CorporateAction
+	a.lotRepo = svc.LotRepo
+	a.positionRepo = svc.PositionRepo
 
 	// Clear all cached view data
 	a.dashboard = nil
@@ -245,6 +254,11 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	a.securityTable = nil
 	a.priceView = nil
 	a.priceTable = nil
+	a.investmentRegister = nil
+	a.investmentTable = nil
+	a.portfolioData = nil
+	a.portfolioHoldingsTable = nil
+	a.portfolioLotsTable = nil
 
 	// Update config
 	if a.cfg != nil {

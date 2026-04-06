@@ -83,7 +83,8 @@ func (v View) String() string {
 // App is the main TUI application model.
 type App struct {
 	// Database connection
-	db *db.DB
+	db     *db.DB
+	prevDB *db.DB // deferred close: kept alive until next switch so in-flight goroutines don't hit a nil conn
 
 	// Current view state
 	currentView  View
@@ -4243,6 +4244,11 @@ func Run(database *db.DB, cfg *config.Config) error {
 	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	_, err := p.Run()
+
+	// Close any database deferred during a database switch
+	if app.prevDB != nil {
+		app.prevDB.Close()
+	}
 
 	// Auto-backup on quit (best-effort)
 	createAutoBackupOnQuit(database.Path())
