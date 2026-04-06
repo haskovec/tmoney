@@ -399,7 +399,7 @@ func buildAddSecurityDialog() *Dialog {
 	f := d.AddTextField("Ticker", "", "e.g. AAPL", 20)
 	f.Required = true
 
-	f = d.AddTextField("Name", "", "e.g. Apple Inc.", 40)
+	f = d.AddTextField("Name", "", "e.g. Apple Inc.", 45)
 	f.Required = true
 
 	typeOptions := make([]string, len(security.AllTypes()))
@@ -434,7 +434,7 @@ func buildEditSecurityDialog(sec *security.Security) *Dialog {
 	f := d.AddTextField("Ticker", sec.Ticker, "e.g. AAPL", 20)
 	f.Required = true
 
-	f = d.AddTextField("Name", sec.Name, "e.g. Apple Inc.", 40)
+	f = d.AddTextField("Name", sec.Name, "e.g. Apple Inc.", 45)
 	f.Required = true
 
 	// Type selection
