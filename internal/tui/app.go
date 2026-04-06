@@ -3264,7 +3264,7 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 				}
 			}
 
-			line := fmt.Sprintf("%s%-*s %s", prefix, colWidth-len(amount)-len(prefix)-2, name, a.styles.Positive.Render(amount))
+			line := fmt.Sprintf("%s%-*s %s", prefix, colWidth-len(amount)-lipgloss.Width(prefix)-2, name, a.styles.Positive.Render(amount))
 			assetsLines = append(assetsLines, line)
 
 			// Show top holdings if investment account is expanded
