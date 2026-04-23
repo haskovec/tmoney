@@ -1,0 +1,18 @@
+version: "2"
+
+linters:
+  exclusions:
+    rules:
+      # defer X.Close() / defer X.Rollback() are canonical Go idioms.
+      - linters: [errcheck]
+        source: '^\s*defer\s+.+\.(Close|Rollback)\(\)$'
+
+      # Writes to CLI stdout/tabwriter aren't actionable.
+      - linters: [errcheck]
+        source: 'fmt\.Fprint(f|ln)?\('
+      - linters: [errcheck]
+        source: '\.Flush\(\)$'
+
+      # Errcheck in tests: setup/cleanup calls fail the test loudly anyway.
+      - linters: [errcheck]
+        path: _test\.go

@@ -4255,7 +4255,7 @@ func Run(database *db.DB, cfg *config.Config) error {
 
 	// Close any database deferred during a database switch
 	if app.prevDB != nil {
-		app.prevDB.Close()
+		_ = app.prevDB.Close()
 	}
 
 	// Auto-backup on quit (best-effort)

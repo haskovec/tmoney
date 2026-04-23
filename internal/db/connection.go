@@ -40,7 +40,7 @@ func Open(path string) (*DB, error) {
 
 	// Verify connection works
 	if err := conn.Ping(); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, &CorruptedFileError{Path: path, Err: err}
 	}
 
@@ -51,13 +51,13 @@ func Open(path string) (*DB, error) {
 
 	// Validate this is a TMoney file
 	if err := db.validateTMoneyFile(); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
 	// Run any pending migrations
 	if err := db.Migrate(); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
@@ -96,8 +96,8 @@ func Create(path string) (*DB, error) {
 
 	// Verify connection works
 	if err := conn.Ping(); err != nil {
-		conn.Close()
-		os.Remove(path)
+		_ = conn.Close()
+		_ = os.Remove(path)
 		return nil, &DatabaseError{Op: "initialize", Err: err}
 	}
 
@@ -108,15 +108,15 @@ func Create(path string) (*DB, error) {
 
 	// Initialize metadata table
 	if err := db.initializeMetadata(); err != nil {
-		conn.Close()
-		os.Remove(path)
+		_ = conn.Close()
+		_ = os.Remove(path)
 		return nil, err
 	}
 
 	// Run migrations to create schema
 	if err := db.Migrate(); err != nil {
-		conn.Close()
-		os.Remove(path)
+		_ = conn.Close()
+		_ = os.Remove(path)
 		return nil, err
 	}
 
@@ -124,7 +124,7 @@ func Create(path string) (*DB, error) {
 	// DuckDB has issues with UPDATE operations on tables with indexes
 	// when using the same connection that created them
 	if err := db.reconnect(); err != nil {
-		os.Remove(path)
+		_ = os.Remove(path)
 		return nil, err
 	}
 
@@ -155,7 +155,7 @@ func (db *DB) reconnect() error {
 	}
 
 	if err := conn.Ping(); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return &DatabaseError{Op: "reconnect ping", Err: err}
 	}
 

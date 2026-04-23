@@ -1594,7 +1594,7 @@ func runReconcileStatus(opts *cliOptions, w io.Writer) error {
 // autoBackupAfterModification creates an auto-backup after a data-modifying CLI command.
 func autoBackupAfterModification(dbPath string) {
 	// Best-effort: don't fail the CLI command if backup fails
-	backup.CreateAutoBackup(dbPath)
+	_, _ = backup.CreateAutoBackup(dbPath)
 }
 
 // runImport handles the --import command.
@@ -1785,8 +1785,8 @@ func runExport(opts *cliOptions, w io.Writer) error {
 	result, err := exportSvc.Export(outFile, exportOpts)
 	if err != nil {
 		// Clean up the file on error
-		outFile.Close()
-		os.Remove(opts.exportFile)
+		_ = outFile.Close()
+		_ = os.Remove(opts.exportFile)
 		return fmt.Errorf("export failed: %w", err)
 	}
 

@@ -221,7 +221,7 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	// goroutines from loadDashboardData/loadSidebarData/etc. that still
 	// hold service references to it won't panic on a nil *sql.DB conn.
 	if a.prevDB != nil {
-		a.prevDB.Close()
+		_ = a.prevDB.Close()
 	}
 	a.prevDB = a.db
 
