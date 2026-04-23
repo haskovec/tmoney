@@ -276,4 +276,3 @@ func TestPrintHelp_IncludesReports(t *testing.T) {
 		t.Error("help output should have Report Commands section")
 	}
 }
-

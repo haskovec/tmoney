@@ -906,4 +906,3 @@ func TestTable_Render_VoidRowStyle(t *testing.T) {
 		t.Error("void row content should still be visible in rendered output")
 	}
 }
-

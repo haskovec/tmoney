@@ -13,8 +13,8 @@ import (
 
 // CreateTransactionCommand creates a transaction and can undo it by deleting.
 type CreateTransactionCommand struct {
-	svc  *transaction.Service
-	txn  *transaction.Transaction
+	svc    *transaction.Service
+	txn    *transaction.Transaction
 	splits []*transaction.Split // optional splits for split transactions
 }
 
@@ -310,8 +310,8 @@ func (c *DeleteTransferCommand) Description() string {
 // restoring the original amounts, memos, and statuses.
 type VoidTransferCommand struct {
 	svc           *transaction.Service
-	transactionID types.ID               // any transaction ID in the transfer pair
-	transferID    types.ID               // populated during Execute
+	transactionID types.ID // any transaction ID in the transfer pair
+	transferID    types.ID // populated during Execute
 	beforeFrom    txnSnapshot
 	beforeTo      txnSnapshot
 	captured      bool

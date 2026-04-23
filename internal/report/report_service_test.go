@@ -65,29 +65,6 @@ func (r *transactionRepo) createTransactionWithCategory(t *testing.T, accountID 
 	}
 }
 
-func (r *transactionRepo) createSplit(t *testing.T, transactionID types.ID, categoryID types.ID, amount types.Money) {
-	t.Helper()
-	id := types.NewID()
-	now := types.Now()
-	query := `INSERT INTO transaction_splits (id, transaction_id, category_id, amount, created_at, updated_at) VALUES (?, CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?)`
-	_, err := r.db.Conn().Exec(query, id, transactionID.String(), categoryID.String(), amount.String(), now.Time(), now.Time())
-	if err != nil {
-		t.Fatalf("Failed to create split: %v", err)
-	}
-}
-
-func (r *transactionRepo) createTransactionRaw(t *testing.T, accountID types.ID, date types.Date, amount types.Money) types.ID {
-	t.Helper()
-	id := types.NewID()
-	now := types.Now()
-	query := `INSERT INTO transactions (id, account_id, date, amount, status, created_at, updated_at) VALUES (?, CAST(? AS UUID), ?, ?, 'uncleared', ?, ?)`
-	_, err := r.db.Conn().Exec(query, id, accountID.String(), date.Time(), amount.String(), now.Time(), now.Time())
-	if err != nil {
-		t.Fatalf("Failed to create transaction: %v", err)
-	}
-	return id
-}
-
 type categoryRepo struct {
 	db *db.DB
 }
@@ -100,18 +77,6 @@ func (r *categoryRepo) createCategory(t *testing.T, name string, catType string)
 	_, err := r.db.Conn().Exec(query, id, name, catType, now.Time(), now.Time())
 	if err != nil {
 		t.Fatalf("Failed to create category: %v", err)
-	}
-	return id
-}
-
-func (r *categoryRepo) createSubcategory(t *testing.T, name string, parentID types.ID, catType string) types.ID {
-	t.Helper()
-	id := types.NewID()
-	now := types.Now()
-	query := `INSERT INTO categories (id, name, type, parent_id, system_category, created_at, updated_at) VALUES (?, ?, ?, CAST(? AS UUID), false, ?, ?)`
-	_, err := r.db.Conn().Exec(query, id, name, catType, parentID.String(), now.Time(), now.Time())
-	if err != nil {
-		t.Fatalf("Failed to create subcategory: %v", err)
 	}
 	return id
 }
@@ -522,9 +487,9 @@ func TestService_NetWorth_AccountBalanceDetails(t *testing.T) {
 
 // mockInvestmentValuer is a test double for InvestmentValuer.
 type mockInvestmentValuer struct {
-	valuations       map[string]types.Money // accountID string -> total value
-	missingPrices    map[string]bool        // accountID string -> has missing prices
-	err              error
+	valuations    map[string]types.Money // accountID string -> total value
+	missingPrices map[string]bool        // accountID string -> has missing prices
+	err           error
 }
 
 func (m *mockInvestmentValuer) GetAccountValuation(accountID types.ID, _ types.Date) (*ValuationResult, error) {

@@ -18,10 +18,6 @@ func TestBuildStartReconciliationDialog(t *testing.T) {
 		t.Fatal("buildStartReconciliationDialog() returned nil")
 	}
 
-	if !d.IsVisible() {
-		// Not yet visible until shown - that's OK
-	}
-
 	fields := d.Fields()
 	if len(fields) != 2 {
 		t.Fatalf("expected 2 fields, got %d", len(fields))
@@ -399,11 +395,11 @@ func TestRenderReconciliation_NoCandidates(t *testing.T) {
 		height: 24,
 		styles: NewStyles(),
 		reconciliation: &reconciliationViewData{
-			session: session,
-			account: &account.Account{Name: "Checking"},
-			candidates:    []*transaction.Transaction{},
-			checkedIDs:    make(map[types.ID]bool),
-			clearedTotal:  types.ZeroMoney,
+			session:      session,
+			account:      &account.Account{Name: "Checking"},
+			candidates:   []*transaction.Transaction{},
+			checkedIDs:   make(map[types.ID]bool),
+			clearedTotal: types.ZeroMoney,
 		},
 	}
 	app.styles.Resize(80, 24)
@@ -710,8 +706,8 @@ func TestReconciliationUpdate_LoadedMsg(t *testing.T) {
 	txn.Date = types.Today()
 
 	data := &reconciliationViewData{
-		session: &reconciliation.Session{},
-		account: &account.Account{Name: "Checking"},
+		session:       &reconciliation.Session{},
+		account:       &account.Account{Name: "Checking"},
 		candidates:    []*transaction.Transaction{txn},
 		checkedIDs:    make(map[types.ID]bool),
 		payeeNames:    make(map[types.ID]string),
@@ -843,11 +839,11 @@ func TestReconciliationFullScreen(t *testing.T) {
 		statusbar:   NewStatusBar(),
 		keys:        defaultKeyMap(),
 		reconciliation: &reconciliationViewData{
-			session:       session,
-			account:       &account.Account{Name: "Test Account"},
-			candidates:    []*transaction.Transaction{},
-			checkedIDs:    make(map[types.ID]bool),
-			clearedTotal:  types.ZeroMoney,
+			session:      session,
+			account:      &account.Account{Name: "Test Account"},
+			candidates:   []*transaction.Transaction{},
+			checkedIDs:   make(map[types.ID]bool),
+			clearedTotal: types.ZeroMoney,
 		},
 	}
 
@@ -950,4 +946,3 @@ func TestMenuBarHasReconcileAccount(t *testing.T) {
 		t.Error("MenuActionReconcileAccount not found in menu bar")
 	}
 }
-

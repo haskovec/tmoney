@@ -27,8 +27,8 @@ func TestMergerConfirmData_Empty(t *testing.T) {
 func TestMergerConfirmData_WithAccountsAndLots(t *testing.T) {
 	acctID := types.NewID()
 	data := &mergerConfirmData{
-		sourceTicker: "AAPL",
-		targetTicker: "MSFT",
+		sourceTicker:  "AAPL",
+		targetTicker:  "MSFT",
 		exchangeRatio: 2.0,
 		cashPerShare:  5.00,
 		accounts: []mergerAffectedAccount{
@@ -67,8 +67,8 @@ func TestMergerConfirmData_WithPositions(t *testing.T) {
 	acctID := types.NewID()
 	secID := types.NewID()
 	data := &mergerConfirmData{
-		sourceTicker: "AAPL",
-		targetTicker: "MSFT",
+		sourceTicker:  "AAPL",
+		targetTicker:  "MSFT",
 		exchangeRatio: 2.0,
 		accounts: []mergerAffectedAccount{
 			{
@@ -534,4 +534,3 @@ func TestApp_Update_MergerConfirmDataMsg(t *testing.T) {
 		t.Errorf("source ticker = %q, want AAPL", updatedApp.mergerConfirmData.sourceTicker)
 	}
 }
-

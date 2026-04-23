@@ -22,17 +22,17 @@ const (
 
 // qifDateFormats lists the date formats to try when parsing QIF dates.
 var qifDateFormats = []string{
-	"01/02/2006",  // MM/DD/YYYY (most common)
-	"1/2/2006",    // M/D/YYYY
-	"01/02/06",    // MM/DD/YY
-	"1/2/06",      // M/D/YY
-	"01-02-2006",  // MM-DD-YYYY
-	"1-2-2006",    // M-D-YYYY
-	"01/02'2006",  // MM/DD'YYYY (Quicken variant)
-	"1/2'2006",    // M/D'YYYY
-	"2006-01-02",  // YYYY-MM-DD (ISO)
-	"01/02'06",    // MM/DD'YY
-	"1/2'06",      // M/D'YY
+	"01/02/2006", // MM/DD/YYYY (most common)
+	"1/2/2006",   // M/D/YYYY
+	"01/02/06",   // MM/DD/YY
+	"1/2/06",     // M/D/YY
+	"01-02-2006", // MM-DD-YYYY
+	"1-2-2006",   // M-D-YYYY
+	"01/02'2006", // MM/DD'YYYY (Quicken variant)
+	"1/2'2006",   // M/D'YYYY
+	"2006-01-02", // YYYY-MM-DD (ISO)
+	"01/02'06",   // MM/DD'YY
+	"1/2'06",     // M/D'YY
 }
 
 // QIF field code prefixes.
@@ -108,18 +108,18 @@ func ParseQIF(r io.Reader) (*ParseResult, error) {
 
 	// Current record fields being accumulated
 	var (
-		dateStr    string
-		amountStr  string
-		payee      string
-		category   string
-		memo       string
-		cleared    string
-		checkNum   string
-		splits     []ImportSplit
+		dateStr      string
+		amountStr    string
+		payee        string
+		category     string
+		memo         string
+		cleared      string
+		checkNum     string
+		splits       []ImportSplit
 		curSplitCat  string
 		curSplitAmt  string
 		curSplitMemo string
-		inRecord   bool
+		inRecord     bool
 	)
 
 	flushSplit := func() {

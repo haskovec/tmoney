@@ -108,12 +108,12 @@ type Styles struct {
 	DialogButton lipgloss.Style
 
 	// Menu bar
-	MenuBarItem            lipgloss.Style
-	MenuBarActive          lipgloss.Style
-	MenuBarShortcut        lipgloss.Style
-	MenuBarActiveShortcut  lipgloss.Style
-	MenuDropdownItem       lipgloss.Style
-	MenuDropdownActive     lipgloss.Style
+	MenuBarItem           lipgloss.Style
+	MenuBarActive         lipgloss.Style
+	MenuBarShortcut       lipgloss.Style
+	MenuBarActiveShortcut lipgloss.Style
+	MenuDropdownItem      lipgloss.Style
+	MenuDropdownActive    lipgloss.Style
 
 	// Borders
 	Border lipgloss.Style

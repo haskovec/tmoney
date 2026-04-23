@@ -63,11 +63,11 @@ func (m *mockTransactionStore) GetBankReferenceID(txn *transaction.Transaction) 
 }
 
 type mockTransactionCreator struct {
-	created  []*transaction.Transaction
-	splits   map[string][]*transaction.Split // txnID -> splits
-	updated  []*transaction.Transaction
-	failOn   int // fail on the Nth create (1-based, 0 = don't fail)
-	createN  int
+	created []*transaction.Transaction
+	splits  map[string][]*transaction.Split // txnID -> splits
+	updated []*transaction.Transaction
+	failOn  int // fail on the Nth create (1-based, 0 = don't fail)
+	createN int
 }
 
 func (m *mockTransactionCreator) CreateTransaction(txn *transaction.Transaction) error {

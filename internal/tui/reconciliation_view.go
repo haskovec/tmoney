@@ -243,9 +243,9 @@ func (a *App) buildReconciliationTable() {
 	}
 
 	columns := []Column{
-		{Header: " ", Width: 3, Align: AlignCenter},   // Checkbox
+		{Header: " ", Width: 3, Align: AlignCenter}, // Checkbox
 		{Header: "Date", Width: 10, Align: AlignLeft},
-		{Header: "S", Width: 1, Align: AlignCenter},    // Cleared indicator
+		{Header: "S", Width: 1, Align: AlignCenter}, // Cleared indicator
 		{Header: "Payee", MinWidth: 12, Align: AlignLeft},
 		{Header: "Category", MinWidth: 10, Align: AlignLeft},
 		{Header: "Amount", Width: 12, Align: AlignRight},

@@ -15,7 +15,7 @@ import (
 type accountDialogMode int
 
 const (
-	accountDialogModeNew  accountDialogMode = iota
+	accountDialogModeNew accountDialogMode = iota
 	accountDialogModeEdit
 )
 

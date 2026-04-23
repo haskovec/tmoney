@@ -145,30 +145,34 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 		return safetyPath, fmt.Errorf("failed to create temp file for restore: %w", err)
 	}
 	tempPath := tempFile.Name()
-	tempFile.Close()
+	_ = tempFile.Close()
 
 	if err := copyFile(backupPath, tempPath); err != nil {
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath)
 		return safetyPath, fmt.Errorf("failed to copy backup to temp file: %w", err)
 	}
 
 	// 2. Rename current database to .restoring
 	restoringPath := dbPath + restoringExtension
 	if err := os.Rename(dbPath, restoringPath); err != nil {
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath)
 		return safetyPath, fmt.Errorf("failed to move current database aside: %w", err)
 	}
 
 	// 3. Rename temp file to database name
 	if err := os.Rename(tempPath, dbPath); err != nil {
-		// Roll back: restore the .restoring file
-		os.Rename(restoringPath, dbPath)
-		os.Remove(tempPath)
+		// Roll back: restore the .restoring file. If the rollback itself
+		// fails the original database is still accessible at restoringPath;
+		// surface both errors so the user can recover manually.
+		_ = os.Remove(tempPath)
+		if rollbackErr := os.Rename(restoringPath, dbPath); rollbackErr != nil {
+			return safetyPath, fmt.Errorf("failed to move restored file into place: %w; rollback also failed, original database is at %s: %v", err, restoringPath, rollbackErr)
+		}
 		return safetyPath, fmt.Errorf("failed to move restored file into place: %w", err)
 	}
 
 	// 4. Delete the .restoring file
-	os.Remove(restoringPath)
+	_ = os.Remove(restoringPath)
 
 	return safetyPath, nil
 }
@@ -246,7 +250,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	srcInfo, err := srcFile.Stat()
 	if err != nil {
@@ -257,13 +261,16 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		_ = dstFile.Close()
 		return err
 	}
-
-	return dstFile.Sync()
+	if err := dstFile.Sync(); err != nil {
+		_ = dstFile.Close()
+		return err
+	}
+	return dstFile.Close()
 }
 
 // FormatSize formats a file size in human-readable form.

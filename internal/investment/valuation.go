@@ -6,28 +6,28 @@ import (
 
 // AccountValuation represents the total valuation of an investment account.
 type AccountValuation struct {
-	AccountID     types.ID    `json:"account_id"`
-	CashBalance   types.Money `json:"cash_balance"`
-	MarketValue   types.Money `json:"market_value"`
-	TotalValue    types.Money `json:"total_value"`
+	AccountID      types.ID    `json:"account_id"`
+	CashBalance    types.Money `json:"cash_balance"`
+	MarketValue    types.Money `json:"market_value"`
+	TotalValue     types.Money `json:"total_value"`
 	TotalCostBasis types.Money `json:"total_cost_basis"`
-	TotalGainLoss types.Money `json:"total_gain_loss"`
-	TotalGainPct  float64     `json:"total_gain_pct"`
-	Holdings      []Holding   `json:"holdings"`
+	TotalGainLoss  types.Money `json:"total_gain_loss"`
+	TotalGainPct   float64     `json:"total_gain_pct"`
+	Holdings       []Holding   `json:"holdings"`
 }
 
 // Holding represents a rolled-up holding of a single security in an account.
 type Holding struct {
-	SecurityID  types.ID       `json:"security_id"`
-	Shares      types.Quantity `json:"shares"`
-	AvgCost     types.Money    `json:"avg_cost"`
-	CurrentPrice types.Money   `json:"current_price"`
-	PriceDate   types.Date     `json:"price_date"`
-	MarketValue types.Money    `json:"market_value"`
-	CostBasis   types.Money    `json:"cost_basis"`
-	GainLoss    types.Money    `json:"gain_loss"`
-	GainPct     float64        `json:"gain_pct"`
-	HasPricing  bool           `json:"has_pricing"`
+	SecurityID   types.ID       `json:"security_id"`
+	Shares       types.Quantity `json:"shares"`
+	AvgCost      types.Money    `json:"avg_cost"`
+	CurrentPrice types.Money    `json:"current_price"`
+	PriceDate    types.Date     `json:"price_date"`
+	MarketValue  types.Money    `json:"market_value"`
+	CostBasis    types.Money    `json:"cost_basis"`
+	GainLoss     types.Money    `json:"gain_loss"`
+	GainPct      float64        `json:"gain_pct"`
+	HasPricing   bool           `json:"has_pricing"`
 }
 
 // LotDetail represents a single lot's valuation detail for lot-tracking accounts.

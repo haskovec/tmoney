@@ -18,7 +18,7 @@ import (
 type scheduledDialogMode int
 
 const (
-	scheduledDialogModeNew  scheduledDialogMode = iota
+	scheduledDialogModeNew scheduledDialogMode = iota
 	scheduledDialogModeEdit
 )
 
@@ -95,9 +95,9 @@ const (
 
 // leadDays constants for the radio field.
 const (
-	leadDaysOnTheDay  = 0
-	leadDays3Days     = 1
-	leadDays1Week     = 2
+	leadDaysOnTheDay = 0
+	leadDays3Days    = 1
+	leadDays1Week    = 2
 )
 
 // leadDaysToIndex converts PostLeadDays value to radio index.

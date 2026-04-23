@@ -287,7 +287,7 @@ func TestSubmitTransferSharesDialog_NoAccounts(t *testing.T) {
 		transferSharesDialog: buildTransferSharesDialog(
 			[]string{}, []string{"AAPL - Apple"}, nil, nil, secIDs, nil,
 		),
-		transferSharesDialogData: &transferSharesDialogData{},
+		transferSharesDialogData:        &transferSharesDialogData{},
 		transferSharesDialogAccountIDs:  nil,
 		transferSharesDialogSecurityIDs: secIDs,
 		investmentRegister: &investmentRegisterData{

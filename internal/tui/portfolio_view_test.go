@@ -812,9 +812,9 @@ func TestPortfolioKeys_LotDrillDown_NonLotTracking(t *testing.T) {
 			valuation: &investment.AccountValuation{
 				Holdings: []investment.Holding{
 					{
-						SecurityID:   secID,
-						Shares:       types.MustNewQuantity("100"),
-						HasPricing:   true,
+						SecurityID: secID,
+						Shares:     types.MustNewQuantity("100"),
+						HasPricing: true,
 					},
 				},
 			},

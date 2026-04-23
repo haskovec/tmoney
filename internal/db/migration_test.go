@@ -1,7 +1,6 @@
 package db
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
@@ -2542,10 +2541,4 @@ func TestMigration011PortfolioHoldingsView(t *testing.T) {
 			t.Errorf("expected 3 rows (cross join), got %d", count)
 		}
 	})
-}
-
-// Helper to remove test file if it exists
-func removeIfExists(path string) {
-	os.Remove(path)
-	os.Remove(path + ".wal")
 }

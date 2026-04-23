@@ -582,4 +582,3 @@ func (a *App) updateSecurity(id types.ID, ticker, name string, secType security.
 		return securityUpdatedMsg{}
 	}
 }
-

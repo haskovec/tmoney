@@ -374,12 +374,12 @@ func TestWriteCSV_BasicTransactions(t *testing.T) {
 			Status:   "C",
 		},
 		{
-			Date:    "2024-01-16",
-			Account: "Checking",
-			Payee:   "Employer Inc",
+			Date:     "2024-01-16",
+			Account:  "Checking",
+			Payee:    "Employer Inc",
 			Category: "Income:Salary",
-			Amount:  "3500.00",
-			Status:  "C",
+			Amount:   "3500.00",
+			Status:   "C",
 		},
 	}
 

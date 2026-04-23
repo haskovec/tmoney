@@ -86,8 +86,8 @@ func (c *EditPayeeCommand) Description() string {
 type DeletePayeeCommand struct {
 	svc     *payee.Service
 	id      types.ID
-	before  *payee.Payee    // full entity captured on Execute for undo
-	aliases []*payee.Alias  // aliases captured on Execute for undo
+	before  *payee.Payee   // full entity captured on Execute for undo
+	aliases []*payee.Alias // aliases captured on Execute for undo
 }
 
 // NewDeletePayeeCommand creates a command that will delete a payee.

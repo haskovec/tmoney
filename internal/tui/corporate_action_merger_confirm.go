@@ -25,8 +25,8 @@ type mergerAffectedAccount struct {
 	accountID   types.ID
 	accountName string
 	trackLots   bool
-	lots        []*investment.Lot     // populated for lot-tracking accounts
-	position    *investment.Position  // populated for non-lot-tracking accounts
+	lots        []*investment.Lot    // populated for lot-tracking accounts
+	position    *investment.Position // populated for non-lot-tracking accounts
 }
 
 // mergerConfirmData holds the loaded data for the merger confirmation overlay.

@@ -350,10 +350,10 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 
 	// Set invalid values
 	fields := app.buyDialog.Fields()
-	fields[1].Value = "not-a-date"  // invalid date
-	fields[2].Value = ""            // empty shares
-	fields[3].Value = ""            // no price
-	fields[4].Value = ""            // no total
+	fields[1].Value = "not-a-date" // invalid date
+	fields[2].Value = ""           // empty shares
+	fields[3].Value = ""           // no price
+	fields[4].Value = ""           // no total
 
 	model, cmd := app.submitBuyDialog()
 	updatedApp := model.(*App)
@@ -497,7 +497,7 @@ func TestSubmitBuyDialog_InvalidCommission(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 		),
-		buyDialogData: &buyDialogData{},
+		buyDialogData:        &buyDialogData{},
 		buyDialogSecurityIDs: []types.ID{secID},
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
@@ -534,7 +534,7 @@ func TestHandleBuyDialogKey_Cancel(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 		),
-		buyDialogData: &buyDialogData{},
+		buyDialogData:        &buyDialogData{},
 		buyDialogSecurityIDs: []types.ID{secID},
 	}
 
@@ -725,8 +725,8 @@ func TestSubmitBuyDialog_WithCommissionAndMemo(t *testing.T) {
 	fields[1].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "185.00"
-	fields[5].Value = "4.95"       // commission
-	fields[6].Value = "Buy Apple"  // memo
+	fields[5].Value = "4.95"      // commission
+	fields[6].Value = "Buy Apple" // memo
 
 	model, cmd := app.submitBuyDialog()
 	updatedApp := model.(*App)
@@ -762,8 +762,8 @@ func TestSubmitBuyDialog_DollarSignInCommission(t *testing.T) {
 	fields := app.buyDialog.Fields()
 	fields[1].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "$185.00"    // dollar sign in price
-	fields[5].Value = "$4.95"      // dollar sign in commission
+	fields[3].Value = "$185.00" // dollar sign in price
+	fields[5].Value = "$4.95"   // dollar sign in commission
 
 	model, cmd := app.submitBuyDialog()
 	updatedApp := model.(*App)

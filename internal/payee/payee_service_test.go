@@ -13,7 +13,7 @@ func TestNewService(t *testing.T) {
 		svc := NewService(repo, database)
 
 		if svc == nil {
-			t.Error("NewService should not return nil")
+			t.Fatal("NewService should not return nil")
 		}
 		if svc.repo != repo {
 			t.Error("NewService should store repository")

@@ -104,20 +104,17 @@ type cliOptions struct {
 	exportFile string // --export <file>
 
 	// Security management options
-	listSecurities  bool   // --list-securities flag
-	securityTicker  string // --security <ticker> to show details
-	addSecurity     bool   // --add-security flag
-	editSecurity    string // --edit-security <ticker>
-	hideSecurity    string // --hide-security <ticker>
-	unhideSecurity  string // --unhide-security <ticker>
-	deleteSecurity  string // --delete-security <ticker>
-	secTicker       string // --ticker <ticker> (for add/edit)
-	secName         string // --name reused from acctName
-	secType         string // --type reused from acctType
-	secAssetClass   string // --asset-class <class>
-	secCurrency     string // --currency reused from acctCurrency
-	secExchange     string // --exchange <exchange>
-	includeHidden   bool   // --include-hidden flag
+	listSecurities bool   // --list-securities flag
+	securityTicker string // --security <ticker> to show details
+	addSecurity    bool   // --add-security flag
+	editSecurity   string // --edit-security <ticker>
+	hideSecurity   string // --hide-security <ticker>
+	unhideSecurity string // --unhide-security <ticker>
+	deleteSecurity string // --delete-security <ticker>
+	secTicker      string // --ticker <ticker> (for add/edit)
+	secAssetClass  string // --asset-class <class>
+	secExchange    string // --exchange <exchange>
+	includeHidden  bool   // --include-hidden flag
 
 	// Price management options
 	listPrices   bool   // --prices flag
@@ -128,37 +125,37 @@ type cliOptions struct {
 	overwrite    bool   // --overwrite flag
 
 	// Investment transaction options
-	buy             bool   // --buy flag
-	sell            bool   // --sell flag
-	dividend        bool   // --dividend flag
-	reinvest        bool   // --reinvest flag
-	investmentFee   bool   // --investment-fee flag
-	investDeposit   bool   // --invest-deposit flag
-	investWithdraw  bool   // --invest-withdraw flag
-	transferShares  bool   // --transfer-shares flag
-	shares          string // --shares <quantity>
-	commission      string // --commission <value>
-	pricePerShare   string // --price-per-share <value>
-	lot             string // --lot <lot-id>
+	buy            bool   // --buy flag
+	sell           bool   // --sell flag
+	dividend       bool   // --dividend flag
+	reinvest       bool   // --reinvest flag
+	investmentFee  bool   // --investment-fee flag
+	investDeposit  bool   // --invest-deposit flag
+	investWithdraw bool   // --invest-withdraw flag
+	transferShares bool   // --transfer-shares flag
+	shares         string // --shares <quantity>
+	commission     string // --commission <value>
+	pricePerShare  string // --price-per-share <value>
+	lot            string // --lot <lot-id>
 
 	// Portfolio options
 	portfolio bool // --portfolio flag
 	showLots  bool // --show-lots flag
 
 	// Corporate action options
-	split              bool   // --split flag
-	splitRatio         string // --ratio <N:D> (for split)
-	mergeSecurity      bool   // --merge-security flag
-	mergeSource        string // --source <ticker>
-	mergeTarget        string // --target <ticker>
-	exchangeRatio      string // --exchange-ratio <ratio>
-	cashPerShare       string // --cash-per-share <amount>
-	spinOff            bool   // --spin-off flag
-	spinOffParent      string // --parent <ticker>
-	spinOffChild       string // --spinoff <ticker>
-	shareRatio         string // --share-ratio <ratio>
-	parentAllocation   string // --parent-allocation <percent>
-	spinOffPrice       string // --spin-off-price <price>
+	split            bool   // --split flag
+	splitRatio       string // --ratio <N:D> (for split)
+	mergeSecurity    bool   // --merge-security flag
+	mergeSource      string // --source <ticker>
+	mergeTarget      string // --target <ticker>
+	exchangeRatio    string // --exchange-ratio <ratio>
+	cashPerShare     string // --cash-per-share <amount>
+	spinOff          bool   // --spin-off flag
+	spinOffParent    string // --parent <ticker>
+	spinOffChild     string // --spinoff <ticker>
+	shareRatio       string // --share-ratio <ratio>
+	parentAllocation string // --parent-allocation <percent>
+	spinOffPrice     string // --spin-off-price <price>
 }
 
 // parseArgs parses command-line arguments and returns options and remaining args.

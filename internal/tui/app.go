@@ -108,13 +108,13 @@ type App struct {
 	statusbar *StatusBar
 
 	// Services (initialized on start)
-	accountSvc      *account.Service
-	transactionSvc  *transaction.Service
-	categorySvc     *category.Service
-	payeeSvc        *payee.Service
-	scheduledTxnSvc    *scheduled.Service
-	reportSvc          *report.Service
-	reconciliationSvc  *reconciliation.Service
+	accountSvc        *account.Service
+	transactionSvc    *transaction.Service
+	categorySvc       *category.Service
+	payeeSvc          *payee.Service
+	scheduledTxnSvc   *scheduled.Service
+	reportSvc         *report.Service
+	reconciliationSvc *reconciliation.Service
 
 	// Dashboard data (loaded asynchronously)
 	dashboard                 *dashboardData
@@ -161,21 +161,21 @@ type App struct {
 	reconDialog         *Dialog
 
 	// Security view state
-	securityView           *securityViewData
-	securityTable          *Table
-	securityDialog         *Dialog
-	securityDialogMode     securityDialogMode
-	securityDialogEditID   types.ID
-	securitySvc            *security.Service
+	securityView         *securityViewData
+	securityTable        *Table
+	securityDialog       *Dialog
+	securityDialogMode   securityDialogMode
+	securityDialogEditID types.ID
+	securitySvc          *security.Service
 
 	// Price view state
-	priceView           *priceViewData
-	priceTable          *Table
-	priceDialog         *Dialog
-	priceDialogMode     priceDialogMode
-	priceDialogEditID   types.ID
-	priceImportDialog   *Dialog
-	priceSvc            *price.Service
+	priceView         *priceViewData
+	priceTable        *Table
+	priceDialog       *Dialog
+	priceDialogMode   priceDialogMode
+	priceDialogEditID types.ID
+	priceImportDialog *Dialog
+	priceSvc          *price.Service
 
 	// Investment register state
 	investmentRegister     *investmentRegisterData
@@ -226,11 +226,11 @@ type App struct {
 	portfolioMode          portfolioViewMode
 
 	// Corporate action service and stock split dialog state
-	corporateActionSvc              *investment.CorporateActionService
-	stockSplitDialog                *Dialog
-	stockSplitDialogData            *stockSplitDialogData
-	stockSplitDialogSecurityIDs     []types.ID
-	stockSplitDialogPreSelectedID   *types.ID
+	corporateActionSvc            *investment.CorporateActionService
+	stockSplitDialog              *Dialog
+	stockSplitDialogData          *stockSplitDialogData
+	stockSplitDialogSecurityIDs   []types.ID
+	stockSplitDialogPreSelectedID *types.ID
 
 	// Merger dialog state
 	mergerDialog              *Dialog
@@ -465,30 +465,30 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 	svc := app.NewServices(database)
 
 	return &App{
-		db:              database,
-		cfg:             cfg,
-		currentView:     ViewDashboard,
-		styles:          NewStyles(),
-		sidebar:         NewSidebar(),
-		menubar:         NewMenuBar(),
-		statusbar:       NewStatusBar(),
-		undoManager:     undo.NewManager(),
-		keys:            defaultKeyMap(),
-		accountSvc:      svc.Account,
-		transactionSvc:  svc.Transaction,
-		categorySvc:     svc.Category,
-		payeeSvc:        svc.Payee,
-		scheduledTxnSvc:   svc.Scheduled,
-		reportSvc:         svc.Report,
-		reconciliationSvc: svc.Reconciliation,
-		securitySvc:       svc.Security,
-		priceSvc:          svc.Price,
+		db:                        database,
+		cfg:                       cfg,
+		currentView:               ViewDashboard,
+		styles:                    NewStyles(),
+		sidebar:                   NewSidebar(),
+		menubar:                   NewMenuBar(),
+		statusbar:                 NewStatusBar(),
+		undoManager:               undo.NewManager(),
+		keys:                      defaultKeyMap(),
+		accountSvc:                svc.Account,
+		transactionSvc:            svc.Transaction,
+		categorySvc:               svc.Category,
+		payeeSvc:                  svc.Payee,
+		scheduledTxnSvc:           svc.Scheduled,
+		reportSvc:                 svc.Report,
+		reconciliationSvc:         svc.Reconciliation,
+		securitySvc:               svc.Security,
+		priceSvc:                  svc.Price,
 		investmentSvc:             svc.Investment,
-		investmentRepo:             svc.InvestmentRepo,
+		investmentRepo:            svc.InvestmentRepo,
 		dashboardExpandedAccounts: make(map[types.ID]bool),
-		lotRepo:            svc.LotRepo,
-		positionRepo:       svc.PositionRepo,
-		corporateActionSvc: svc.CorporateAction,
+		lotRepo:                   svc.LotRepo,
+		positionRepo:              svc.PositionRepo,
+		corporateActionSvc:        svc.CorporateAction,
 	}
 }
 
@@ -4058,7 +4058,7 @@ type dashboardData struct {
 	payeeNames         map[types.ID]string
 	accountNames       map[types.ID]string
 	investmentHoldings map[types.ID]*investment.AccountValuation // account ID -> valuation with holdings
-	securityTickers    map[types.ID]string                      // security ID -> ticker
+	securityTickers    map[types.ID]string                       // security ID -> ticker
 }
 
 // dashboardLoadedMsg is sent when dashboard data has been loaded.
@@ -4086,7 +4086,7 @@ type scheduledViewData struct {
 	dueTxns       []*scheduled.Transaction
 	upcomingTxns  []*scheduled.Transaction
 	allTxns       []*scheduled.Transaction // combined: due first, then upcoming
-	dueCount      int                            // number of due items (index boundary)
+	dueCount      int                      // number of due items (index boundary)
 	payeeNames    map[types.ID]string
 	accountNames  map[types.ID]string
 	categoryNames map[types.ID]string

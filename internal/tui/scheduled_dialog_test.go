@@ -504,8 +504,8 @@ func TestApp_HandleScheduledDialogKey_Cancel(t *testing.T) {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			return d
 		}(),
-		schedDialogData:       &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs: []types.ID{types.NewID()},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{types.NewID()},
 		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
@@ -541,8 +541,8 @@ func TestApp_HandleScheduledDialogKey_TabCycles(t *testing.T) {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			return d
 		}(),
-		schedDialogData:       &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs: []types.ID{types.NewID()},
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{types.NewID()},
 		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
@@ -1287,10 +1287,10 @@ func TestFormatScheduledRow_AutoPostIndicator(t *testing.T) {
 	styles.Resize(120, 30)
 
 	tests := []struct {
-		name      string
-		autoPost  bool
-		leadDays  int
-		wantAuto  string
+		name     string
+		autoPost bool
+		leadDays int
+		wantAuto string
 	}{
 		{"no auto-post", false, 0, ""},
 		{"auto-post 0 lead", true, 0, "[Auto]"},

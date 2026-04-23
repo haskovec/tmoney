@@ -102,8 +102,8 @@ func (s *ExportService) Export(w io.Writer, opts ExportOptions) (*ExportResult, 
 	}
 
 	// Build lookup caches to avoid repeated DB queries
-	payeeCache := make(map[string]string)   // payeeID -> name
-	categoryCache := make(map[string]string) // categoryID -> full path
+	payeeCache := make(map[string]string)       // payeeID -> name
+	categoryCache := make(map[string]string)    // categoryID -> full path
 	accountNameCache := make(map[string]string) // accountID -> name
 
 	for _, acct := range accounts {

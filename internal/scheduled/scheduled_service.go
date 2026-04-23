@@ -283,11 +283,9 @@ func (s *Service) Post(id types.ID, amount *types.Money) (*transaction.Transacti
 		return nil, fmt.Errorf("failed to create transaction: %w", err)
 	}
 
-	// Advance the schedule
-	if !st.AdvanceSchedule() {
-		// Schedule is now completed, but transaction was created successfully
-		// We still need to update the scheduled transaction to reflect completion
-	}
+	// Advance the schedule. If AdvanceSchedule returns false the series is
+	// complete; either way we persist the updated state below.
+	st.AdvanceSchedule()
 
 	// Update the scheduled transaction
 	if err := s.repo.Update(st); err != nil {

@@ -131,9 +131,9 @@ type PostScheduledTransactionCommand struct {
 	svc        *scheduled.Service
 	txnSvc     *transaction.Service
 	id         types.ID
-	amount     *types.Money              // optional override amount
-	beforeST   *scheduled.Transaction    // schedule state before posting
-	createdTxn *transaction.Transaction  // transaction created by Post
+	amount     *types.Money             // optional override amount
+	beforeST   *scheduled.Transaction   // schedule state before posting
+	createdTxn *transaction.Transaction // transaction created by Post
 }
 
 // NewPostScheduledTransactionCommand creates a command that will post a

@@ -60,9 +60,10 @@ func (a *App) createManualBackupCmd() tea.Cmd {
 }
 
 // createAutoBackupOnQuit creates an auto-backup before the TUI exits.
-// This is best-effort; errors are silently ignored.
+// This is best-effort; errors are silently ignored because the TUI is
+// already tearing down and has no surface to report them on.
 func createAutoBackupOnQuit(dbPath string) {
-	backup.CreateAutoBackup(dbPath)
+	_, _ = backup.CreateAutoBackup(dbPath)
 }
 
 // backupDialogState holds the state for the restore backup dialog.

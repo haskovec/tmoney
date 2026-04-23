@@ -19,33 +19,33 @@ import (
 // This is the single source of truth for wiring up the application layer.
 type Services struct {
 	// Services
-	Account        *account.Service
-	Transaction    *transaction.Service
-	Category       *category.Service
-	Payee          *payee.Service
-	Scheduled      *scheduled.Service
-	Report         *report.Service
-	Reconciliation *reconciliation.Service
-	Security       *security.Service
-	Price          *price.Service
+	Account         *account.Service
+	Transaction     *transaction.Service
+	Category        *category.Service
+	Payee           *payee.Service
+	Scheduled       *scheduled.Service
+	Report          *report.Service
+	Reconciliation  *reconciliation.Service
+	Security        *security.Service
+	Price           *price.Service
 	Investment      *investment.Service
 	CorporateAction *investment.CorporateActionService
 
 	// Repositories (exposed for direct use by CLI/TUI when needed)
-	AccountRepo        *account.Repository
-	TransactionRepo    *transaction.Repository
-	SplitRepo          *transaction.SplitRepository
-	TransferRepo       *transaction.TransferRepository
-	CategoryRepo       *category.Repository
-	PayeeRepo          *payee.Repository
-	ScheduledTxnRepo   *scheduled.Repository
-	ReconciliationRepo *reconciliation.Repository
-	SecurityRepo       *security.Repository
-	PriceRepo          *price.Repository
-	InvestmentRepo     *investment.Repository
-	LotRepo            *investment.LotRepository
-	PositionRepo       *investment.PositionRepository
-	TransactionLotRepo     *investment.TransactionLotRepository
+	AccountRepo         *account.Repository
+	TransactionRepo     *transaction.Repository
+	SplitRepo           *transaction.SplitRepository
+	TransferRepo        *transaction.TransferRepository
+	CategoryRepo        *category.Repository
+	PayeeRepo           *payee.Repository
+	ScheduledTxnRepo    *scheduled.Repository
+	ReconciliationRepo  *reconciliation.Repository
+	SecurityRepo        *security.Repository
+	PriceRepo           *price.Repository
+	InvestmentRepo      *investment.Repository
+	LotRepo             *investment.LotRepository
+	PositionRepo        *investment.PositionRepository
+	TransactionLotRepo  *investment.TransactionLotRepository
 	CorporateActionRepo *investment.CorporateActionRepository
 }
 
@@ -89,32 +89,32 @@ func NewServices(database *db.DB) *Services {
 	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, investmentRepo, securityRepo, database)
 
 	return &Services{
-		Account:        accountSvc,
-		Transaction:    txnSvc,
-		Category:       categorySvc,
-		Payee:          payeeSvc,
-		Scheduled:      scheduledSvc,
-		Report:         reportSvc,
-		Reconciliation: reconciliationSvc,
-		Security:       securitySvc,
-		Price:          priceSvc,
+		Account:         accountSvc,
+		Transaction:     txnSvc,
+		Category:        categorySvc,
+		Payee:           payeeSvc,
+		Scheduled:       scheduledSvc,
+		Report:          reportSvc,
+		Reconciliation:  reconciliationSvc,
+		Security:        securitySvc,
+		Price:           priceSvc,
 		Investment:      investmentSvc,
 		CorporateAction: corporateActionSvc,
 
-		AccountRepo:        accountRepo,
-		TransactionRepo:    txnRepo,
-		SplitRepo:          splitRepo,
-		TransferRepo:       transferRepo,
-		CategoryRepo:       categoryRepo,
-		PayeeRepo:          payeeRepo,
-		ScheduledTxnRepo:   scheduledRepo,
-		ReconciliationRepo: reconciliationRepo,
-		SecurityRepo:       securityRepo,
-		PriceRepo:          priceRepo,
-		InvestmentRepo:     investmentRepo,
-		LotRepo:            lotRepo,
-		PositionRepo:       positionRepo,
-		TransactionLotRepo:     transactionLotRepo,
+		AccountRepo:         accountRepo,
+		TransactionRepo:     txnRepo,
+		SplitRepo:           splitRepo,
+		TransferRepo:        transferRepo,
+		CategoryRepo:        categoryRepo,
+		PayeeRepo:           payeeRepo,
+		ScheduledTxnRepo:    scheduledRepo,
+		ReconciliationRepo:  reconciliationRepo,
+		SecurityRepo:        securityRepo,
+		PriceRepo:           priceRepo,
+		InvestmentRepo:      investmentRepo,
+		LotRepo:             lotRepo,
+		PositionRepo:        positionRepo,
+		TransactionLotRepo:  transactionLotRepo,
 		CorporateActionRepo: corporateActionRepo,
 	}
 }

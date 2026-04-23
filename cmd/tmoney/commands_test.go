@@ -6924,9 +6924,9 @@ func TestRun_DeleteSecurityWithPricesSuggestsHide(t *testing.T) {
 
 func TestParseArgs_SecurityFlags(t *testing.T) {
 	tests := []struct {
-		name   string
-		args   []string
-		check  func(t *testing.T, opts *cliOptions)
+		name  string
+		args  []string
+		check func(t *testing.T, opts *cliOptions)
 	}{
 		{
 			"list-securities flag",

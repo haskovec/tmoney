@@ -436,7 +436,7 @@ func TestSM180_PriceDateValidation(t *testing.T) {
 		if !errs.HasErrors() {
 			t.Fatal("Expected validation error for future date price")
 		}
-		if !hasFieldError(errs,"date") {
+		if !hasFieldError(errs, "date") {
 			t.Error("Expected 'date' field error")
 		}
 	})
@@ -446,7 +446,7 @@ func TestSM180_PriceDateValidation(t *testing.T) {
 		p := price.NewPrice(secID, types.Today(), types.MustNewMoney("100.00"), price.SourceManual)
 
 		errs := p.Validate()
-		if hasFieldError(errs,"date") {
+		if hasFieldError(errs, "date") {
 			t.Errorf("Today should be valid for price date, got error: %v", errs)
 		}
 	})
@@ -457,7 +457,7 @@ func TestSM180_PriceDateValidation(t *testing.T) {
 		p := price.NewPrice(secID, pastDate, types.MustNewMoney("50.00"), price.SourceManual)
 
 		errs := p.Validate()
-		if hasFieldError(errs,"date") {
+		if hasFieldError(errs, "date") {
 			t.Errorf("Past date should be valid for price, got error: %v", errs)
 		}
 	})
@@ -470,7 +470,7 @@ func TestSM180_PriceDateValidation(t *testing.T) {
 		if !errs.HasErrors() {
 			t.Fatal("Expected validation error for future date transaction")
 		}
-		if !hasFieldError(errs,"date") {
+		if !hasFieldError(errs, "date") {
 			t.Error("Expected 'date' field error")
 		}
 	})
@@ -479,7 +479,7 @@ func TestSM180_PriceDateValidation(t *testing.T) {
 		txn := NewTransaction(types.NewID(), types.Today(), TransactionTypeDeposit, types.MustNewMoney("100.00"))
 
 		errs := txn.Validate()
-		if hasFieldError(errs,"date") {
+		if hasFieldError(errs, "date") {
 			t.Errorf("Today should be valid for transaction date, got error: %v", errs)
 		}
 	})
@@ -650,7 +650,7 @@ func TestSM181_CommissionEdgeCases(t *testing.T) {
 		txn.Commission = types.NullableMoney{Money: types.MustNewMoney("-5.00"), Valid: true}
 
 		errs := txn.Validate()
-		if !hasFieldError(errs,"commission") {
+		if !hasFieldError(errs, "commission") {
 			t.Error("Expected validation error for negative commission")
 		}
 	})

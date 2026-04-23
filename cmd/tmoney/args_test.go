@@ -795,24 +795,24 @@ func TestParseArgs_TransferFlag(t *testing.T) {
 
 func TestParseArgs_TransferWithFromTo(t *testing.T) {
 	tests := []struct {
-		name        string
-		args        []string
-		wantFrom    string
-		wantTo      string
+		name         string
+		args         []string
+		wantFrom     string
+		wantTo       string
 		wantTransfer bool
 	}{
 		{
-			name:        "transfer with from and to",
-			args:        []string{"--transfer", "--from", "Checking", "--to", "Savings"},
-			wantFrom:    "Checking",
-			wantTo:      "Savings",
+			name:         "transfer with from and to",
+			args:         []string{"--transfer", "--from", "Checking", "--to", "Savings"},
+			wantFrom:     "Checking",
+			wantTo:       "Savings",
 			wantTransfer: true,
 		},
 		{
-			name:        "transfer with equals syntax",
-			args:        []string{"--transfer", "--from=Checking", "--to=Savings"},
-			wantFrom:    "Checking",
-			wantTo:      "Savings",
+			name:         "transfer with equals syntax",
+			args:         []string{"--transfer", "--from=Checking", "--to=Savings"},
+			wantFrom:     "Checking",
+			wantTo:       "Savings",
 			wantTransfer: true,
 		},
 	}
@@ -925,8 +925,8 @@ func TestParseArgs_MaxFlagMissingValue(t *testing.T) {
 
 func TestParseArgs_ScheduledFlags(t *testing.T) {
 	tests := []struct {
-		name             string
-		args             []string
+		name              string
+		args              []string
 		expectedScheduled bool
 		expectedDue       bool
 	}{
@@ -1260,4 +1260,3 @@ func TestParseYearMonth(t *testing.T) {
 		})
 	}
 }
-
