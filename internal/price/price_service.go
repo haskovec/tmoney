@@ -1,27 +1,35 @@
 package price
 
 import (
+	"time"
+
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+// defaultRefreshSleep is the polite delay between consecutive provider
+// requests during RefreshPrices.
+const defaultRefreshSleep = 200 * time.Millisecond
+
 // Service provides business logic for security price operations.
 type Service struct {
-	repo     *Repository
-	secRepo  *security.Repository
-	db       *db.DB
-	registry *ProviderRegistry
+	repo         *Repository
+	secRepo      *security.Repository
+	db           *db.DB
+	registry     *ProviderRegistry
+	refreshSleep time.Duration
 }
 
 // NewService creates a new Service.
 func NewService(repo *Repository, secRepo *security.Repository, database *db.DB) *Service {
 	return &Service{
-		repo:     repo,
-		secRepo:  secRepo,
-		db:       database,
-		registry: NewProviderRegistry(),
+		repo:         repo,
+		secRepo:      secRepo,
+		db:           database,
+		registry:     NewProviderRegistry(),
+		refreshSleep: defaultRefreshSleep,
 	}
 }
 
