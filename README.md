@@ -96,7 +96,7 @@ The TUI has several views accessible via number keys or the menu bar:
 | `2` | Scheduled | Due and upcoming scheduled transactions |
 | `3` | Reports | Net worth and spending by category reports |
 | `4` | Securities | Security master list with add/edit/hide/delete and `u` to refresh prices |
-| `5` | Prices | Price history per security with add/edit/delete/import |
+| `5` | Prices | Latest price per security; Enter or double-click drills into one ticker's full history |
 | - | Register | Transaction list for a selected account (open from Dashboard) |
 
 ### Keyboard Shortcuts
@@ -191,6 +191,22 @@ Press `?` at any time to show the help overlay.
 | `p` | View prices for selected security |
 | `u` | Update prices for all visible securities from the default provider |
 
+#### Prices
+
+The Prices view (`5`) opens on a summary list — one row per security
+with prices, showing ticker, name, latest price, and the date of that
+latest price. Drill into a ticker to see its full price history; press
+Esc to return to the list.
+
+| Key | Action |
+|-----|--------|
+| `Enter` | (List) View history for selected ticker · (History) Edit selected price |
+| `Esc` | Return to the prices list |
+| `n` | New price (history view) |
+| `d` | Delete selected price (history view) |
+| `i` | Import prices from CSV (history view) |
+| `/` | Search |
+
 #### Dialogs
 
 | Key | Action |
@@ -204,14 +220,22 @@ Press `?` at any time to show the help overlay.
 
 ### Mouse Support
 
-TMoney supports mouse interaction for common operations:
+TMoney supports mouse interaction for common operations. The general
+rule is *single click selects, double click opens* — single-clicking a
+list or table row only moves the cursor; a double-click on the same
+row drills in (open account register, open ticker price history,
+etc.). Buttons, menu items, and other affordances activate on a single
+click as you'd expect.
 
 | Action | Effect |
 |--------|--------|
 | Click menu label | Open/close menu dropdown |
 | Click dropdown item | Execute menu action |
-| Click account in sidebar | Open account register |
+| Click account in sidebar | Select account |
+| Double-click account in sidebar | Open account register |
 | Click group header in sidebar | Select group heading |
+| Click row in prices list | Select ticker |
+| Double-click row in prices list | View that ticker's price history |
 | Click transaction row | Select transaction |
 | Click sidebar/table area | Switch focus between panes |
 | Scroll wheel | Navigate lists and tables |
