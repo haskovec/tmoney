@@ -117,12 +117,15 @@ type cliOptions struct {
 	includeHidden  bool   // --include-hidden flag
 
 	// Price management options
-	listPrices   bool   // --prices flag
-	addPrice     bool   // --add-price flag
-	currentPrice bool   // --current-price flag
-	priceValue   string // --price <value>
-	importPrices string // --import-prices <file>
-	overwrite    bool   // --overwrite flag
+	listPrices    bool     // --prices flag
+	addPrice      bool     // --add-price flag
+	currentPrice  bool     // --current-price flag
+	priceValue    string   // --price <value>
+	importPrices  string   // --import-prices <file>
+	overwrite     bool     // --overwrite flag
+	updatePrices  bool     // --update-prices flag
+	updateTickers []string // optional positional tickers after --update-prices
+	provider      string   // --provider <name> for --update-prices
 
 	// Investment transaction options
 	buy            bool   // --buy flag
@@ -567,6 +570,19 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.importPrices = args[i]
 		case "--overwrite":
 			opts.overwrite = true
+		case "--update-prices":
+			opts.updatePrices = true
+			// Collect any following non-flag arguments as ticker filters.
+			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+				opts.updateTickers = append(opts.updateTickers, args[i])
+			}
+		case "--provider":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--provider requires a name argument")
+			}
+			i++
+			opts.provider = args[i]
 		case "--buy":
 			opts.buy = true
 		case "--sell":
@@ -805,6 +821,8 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.priceValue = after
 			} else if after, ok := strings.CutPrefix(arg, "--import-prices="); ok {
 				opts.importPrices = after
+			} else if after, ok := strings.CutPrefix(arg, "--provider="); ok {
+				opts.provider = after
 			} else if after, ok := strings.CutPrefix(arg, "--shares="); ok {
 				opts.shares = after
 			} else if after, ok := strings.CutPrefix(arg, "--commission="); ok {

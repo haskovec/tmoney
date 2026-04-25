@@ -172,6 +172,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runImportPrices(opts, stdout)
 	}
 
+	// Handle --update-prices
+	if opts.updatePrices {
+		return runUpdatePrices(opts, stdout)
+	}
+
 	// Handle --buy
 	if opts.buy {
 		return runBuy(opts, stdout)
