@@ -2,6 +2,10 @@ package tui
 
 import "time"
 
+// doubleClickThreshold is the maximum time between two clicks on the same
+// row that still counts as a double click. Tuned by feel — adjust if needed.
+const doubleClickThreshold = 400 * time.Millisecond
+
 // ClickTracker detects double-clicks on the same row within a configurable
 // time threshold. Bubbletea v1 mouse messages do not carry a click count,
 // so views that want to distinguish a single click (selection) from a

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -4243,7 +4244,7 @@ func TestApp_MouseClick_OutsideMenu_ClosesDropdown(t *testing.T) {
 	}
 }
 
-func TestApp_MouseClick_Sidebar_SelectsAccount(t *testing.T) {
+func TestApp_MouseClick_Sidebar_SingleClick_OnlySelects(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
@@ -4269,13 +4270,62 @@ func TestApp_MouseClick_Sidebar_SelectsAccount(t *testing.T) {
 	if updatedApp.sidebar.cursor != 1 {
 		t.Errorf("sidebar cursor = %d, want 1", updatedApp.sidebar.cursor)
 	}
-	// Should return a deferred command (mouseOpenAccountMsg)
-	if cmd == nil {
-		t.Error("clicking an account should return a command")
+	// Single click selects only — no open command, view does not switch.
+	if cmd != nil {
+		t.Error("single click should not return an open command")
 	}
-	// View should NOT switch yet (deferred to next Update cycle)
 	if updatedApp.currentView != ViewDashboard {
-		t.Errorf("view should still be Dashboard (deferred switch), got %v", updatedApp.currentView)
+		t.Errorf("view should still be Dashboard, got %v", updatedApp.currentView)
+	}
+}
+
+func TestApp_MouseClick_Sidebar_DoubleClick_OpensAccount(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       100,
+		height:      24,
+	}
+	app.styles.Resize(100, 24)
+
+	now := time.Unix(0, 0)
+	app.sidebarClicks = NewClickTracker(400 * time.Millisecond)
+	app.sidebarClicks.SetNowFn(func() time.Time { return now })
+
+	accounts := []*account.Account{
+		testAccount("Checking", account.TypeChecking),
+	}
+	app.sidebar.SetAccounts(accounts, nil)
+
+	click := tea.MouseMsg{X: 5, Y: 2, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+
+	// First click — selects only.
+	_, cmd := app.Update(click)
+	if cmd != nil {
+		t.Fatal("first click should not return an open command")
+	}
+
+	// Second click within threshold on same row — drills in.
+	now = now.Add(100 * time.Millisecond)
+	model, cmd := app.Update(click)
+	updatedApp := model.(*App)
+
+	if cmd == nil {
+		t.Fatal("double click should return an open command")
+	}
+	openMsg, ok := cmd().(mouseOpenAccountMsg)
+	if !ok {
+		t.Fatalf("expected mouseOpenAccountMsg, got %T", cmd())
+	}
+	if openMsg.accountID != accounts[0].ID {
+		t.Errorf("opened account = %v, want %v", openMsg.accountID, accounts[0].ID)
+	}
+	// View switch is still deferred — currentView only changes on the message.
+	if updatedApp.currentView != ViewDashboard {
+		t.Errorf("view should still be Dashboard before message processed, got %v", updatedApp.currentView)
 	}
 }
 

@@ -279,6 +279,9 @@ type App struct {
 
 	// Key bindings
 	keys keyMap
+
+	// Mouse double-click trackers (lazy-initialized on first click).
+	sidebarClicks *ClickTracker
 }
 
 // keyMap defines the key bindings for the application.
@@ -2264,7 +2267,8 @@ func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 // handleMouseSidebar handles mouse clicks in the sidebar area.
 // Single click on a group header just moves the cursor.
-// Single click on an account selects it and opens the register/portfolio.
+// Single click on an account moves the cursor; a double click on the same
+// account opens the register/portfolio.
 func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd) {
 	idx := a.sidebar.HitTest(contentY)
 	if idx < 0 {
@@ -2284,7 +2288,15 @@ func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.C
 		return a, nil
 	}
 
-	// Account item - select and defer the view switch to the next Update cycle.
+	// Account item - require a double click to drill in.
+	if a.sidebarClicks == nil {
+		a.sidebarClicks = NewClickTracker(doubleClickThreshold)
+	}
+	if !a.sidebarClicks.Click(idx) {
+		return a, nil
+	}
+
+	// Defer the view switch to the next Update cycle.
 	// This avoids a Bubbletea renderer issue where switching views directly
 	// inside a mouse event handler causes the menu bar to disappear.
 	if a.sidebar.Select() {
