@@ -163,6 +163,7 @@ func securitiesShortcuts() shortcutSection {
 			{"f", "Toggle show hidden"},
 			{"/", "Search securities"},
 			{"p", "View prices"},
+			{"u", "Update prices from provider"},
 			{"Esc", "Back"},
 		},
 	}

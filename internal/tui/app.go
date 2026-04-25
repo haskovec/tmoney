@@ -463,6 +463,7 @@ func redoKeyBinding() key.Binding {
 // NewApp creates a new TUI application with the given database and optional config.
 func NewApp(database *db.DB, cfg *config.Config) *App {
 	svc := app.NewServices(database)
+	svc.Price.ProviderRegistry().Register(price.NewYahooProvider())
 
 	return &App{
 		db:                        database,
@@ -1394,6 +1395,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			NotificationInfo,
 		)
 		return a, a.loadPriceViewData()
+
+	case priceRefreshCompleteMsg:
+		if msg.err != nil {
+			a.err = msg.err
+			return a, nil
+		}
+		a.statusbar.AddNotification(summarizeRefreshResult(msg.result), NotificationInfo)
+		// Re-load any data views that may now be stale.
+		var cmds []tea.Cmd
+		if a.currentView == ViewSecurities {
+			cmds = append(cmds, a.loadSecurityViewData())
+		}
+		if a.currentView == ViewPrices {
+			cmds = append(cmds, a.loadPriceViewData())
+		}
+		return a, tea.Batch(cmds...)
 
 	case errMsg:
 		a.err = msg.err
@@ -4011,7 +4028,7 @@ func (a *App) getKeyHints() string {
 	case ViewReconciliation:
 		return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help"
 	case ViewSecurities:
-		return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  a actions  / search  esc back  " + common
+		return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  u update prices  a actions  / search  esc back  " + common
 	case ViewPrices:
 		return "↑↓ navigate  ←→ security  n new  enter edit  d delete  i import  / search  esc back  " + common
 	case ViewInvestmentRegister:
