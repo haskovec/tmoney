@@ -75,6 +75,10 @@ tmoney -f personal.tdb --balance
 - Net worth calculation (assets vs liabilities)
 - Spending by category with monthly/yearly aggregation and visual bars
 
+### Prices
+- Manual entry, CSV import, and history per security
+- Bulk refresh from an online provider (Yahoo Finance by default) — only stores the latest closed-session price, so reruns on the same day are idempotent
+
 ## TUI Interface
 
 Launch the TUI by running `tmoney` with a database file (or no arguments for the default file):
@@ -91,7 +95,7 @@ The TUI has several views accessible via number keys or the menu bar:
 | `1` | Dashboard | Net worth, account balances, due scheduled transactions |
 | `2` | Scheduled | Due and upcoming scheduled transactions |
 | `3` | Reports | Net worth and spending by category reports |
-| `4` | Securities | Security master list with add/edit/hide/delete |
+| `4` | Securities | Security master list with add/edit/hide/delete and `u` to refresh prices |
 | `5` | Prices | Price history per security with add/edit/delete/import |
 | - | Register | Transaction list for a selected account (open from Dashboard) |
 
@@ -173,6 +177,19 @@ Press `?` at any time to show the help overlay.
 | `s` | Spending report |
 | `y` | Yearly view |
 | `m` | Monthly view |
+
+#### Securities
+
+| Key | Action |
+|-----|--------|
+| `n` | New security |
+| `Enter` | Edit security |
+| `h` | Toggle hidden status |
+| `d` | Delete security |
+| `f` | Toggle show hidden |
+| `/` | Search |
+| `p` | View prices for selected security |
+| `u` | Update prices for all visible securities from the default provider |
 
 #### Dialogs
 
@@ -314,6 +331,23 @@ tmoney --report spending --year 2024
 # Spending by category - custom date range
 tmoney --report spending --from 2024-01-01 --to 2024-06-30
 ```
+
+### Update Prices
+
+```bash
+# Refresh prices for all visible securities with a ticker (default: yahoo)
+tmoney -f personal.tdb --update-prices
+
+# Refresh only specific tickers
+tmoney -f personal.tdb --update-prices AAPL MSFT
+
+# Choose a different provider (must be registered)
+tmoney -f personal.tdb --update-prices --provider yahoo
+```
+
+Each run fetches the latest *closed-session* price from the provider and upserts it as `source = api`. Hidden securities, securities without a ticker, and securities whose currency does not match the provider's are skipped silently or with a note. If the date the provider returned is already on file, the row is left alone (so re-running the same day is a no-op).
+
+The command prints a per-ticker table followed by a summary like `4 updated, 1 up-to-date, 0 skipped, 0 failed` and exits non-zero if any ticker failed.
 
 ## File Format
 

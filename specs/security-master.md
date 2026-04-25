@@ -116,7 +116,7 @@ When one company acquires another or a ticker changes in a way that requires his
 | `manual` | User entered manually |
 | `transaction` | Derived from a buy/sell transaction |
 | `import` | Loaded via bulk import |
-| `api` | Retrieved from external API (future) |
+| `api` | Retrieved from an external price provider (e.g., Yahoo Finance) |
 
 ### Price Validation Rules
 
@@ -158,6 +158,33 @@ For a given security, return the most recent price on or before a given date (de
 #### Get Price History
 
 Return all prices for a security within an optional date range, ordered by date.
+
+#### Update Prices from a Provider
+
+Bulk-fetch the latest closed-session price for every visible security with a non-empty ticker. Available from both the CLI (`--update-prices`) and the TUI (`u` on the securities view).
+
+**Provider interface.** Providers implement `FetchQuote(ticker) (*Quote, error)` and a `Name()`. They are looked up on the price service's `ProviderRegistry`. The default and only built-in network provider is `yahoo` (Yahoo Finance's `query1.finance.yahoo.com/v8/finance/chart` endpoint, called with `interval=1d&range=5d`). The registry is open: additional providers can be registered without modifying core code.
+
+**Last closed session only.** A provider must never return an in-progress (intraday) price. `YahooProvider` walks the response's daily-bar `timestamp[]` and `close[]` arrays from the end, picking the most recent bar that is guaranteed to be closed:
+
+- If the bar's date in the exchange tz is strictly before today's date there → closed.
+- If the bar's date is today and `now >= currentTradingPeriod.regular.end` → closed (today's session has already ended).
+- Otherwise the bar is intraday; the provider falls back to the prior bar.
+
+This makes runs idempotent: invoking the refresh twice on the same calendar day fetches the same quote, and the orchestrator notices the date is already on file and skips the second write.
+
+**Skip rules.** The orchestrator (`price.Service.RefreshPrices`) iterates over the security master and applies these rules per security:
+
+1. Hidden security → skipped silently.
+2. Empty ticker → skipped silently.
+3. Provider error (HTTP failure, unknown ticker, malformed body) → recorded as a per-ticker failure; the run continues with the next security.
+4. Provider currency does not match the security's `currency` → skipped with a `provider X vs security Y` note. The price is **not** written.
+5. The most recent price already on file has the same date the provider returned → recorded as `up-to-date`; nothing is written.
+6. Otherwise → upsert via `(security_id, date)` with `source = api`.
+
+**Polite delay.** A 200ms sleep is inserted between consecutive provider requests to stay below upstream rate-limit thresholds. Tests disable it via `Service.SetRefreshSleep(0)`.
+
+**Result aggregation.** `RefreshPrices` returns a `RefreshResult` with one entry per security processed: `{Ticker, Outcome, Date, Price, Error, Note}`. Outcomes are `updated`, `up_to_date`, `skipped_hidden`, `skipped_no_ticker`, `skipped_currency_mismatch`, `failed`. The CLI prints a tabwriter table plus a one-line aggregate summary; the TUI posts the summary to the status bar and lists up to three failing tickers when present.
 
 ## Prices View
 
