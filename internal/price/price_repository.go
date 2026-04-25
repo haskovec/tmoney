@@ -213,6 +213,43 @@ func (r *Repository) GetPriceHistory(securityID types.ID, from *types.Date, to *
 	return prices, nil
 }
 
+// GetLatestPrices returns one row per non-hidden security that has at
+// least one price, with the most recent price and its date. Rows are
+// sorted by ticker ascending so the prices view can render the top-level
+// list in stable order.
+func (r *Repository) GetLatestPrices() ([]*LatestPrice, error) {
+	query := `
+		SELECT s.id, s.ticker, s.name, p.date, p.price
+		FROM securities s
+		JOIN (
+			SELECT security_id, date, price,
+			       ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY date DESC) AS rn
+			FROM security_prices
+		) p ON p.security_id = s.id AND p.rn = 1
+		WHERE s.hidden = FALSE
+		ORDER BY s.ticker
+	`
+
+	rows, err := r.db.Conn().Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query latest prices: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]*LatestPrice, 0)
+	for rows.Next() {
+		lp := &LatestPrice{}
+		if err := rows.Scan(&lp.SecurityID, &lp.Ticker, &lp.Name, &lp.Date, &lp.Price); err != nil {
+			return nil, fmt.Errorf("failed to scan latest price: %w", err)
+		}
+		out = append(out, lp)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating latest prices: %w", err)
+	}
+	return out, nil
+}
+
 // Delete removes a security price by its ID.
 func (r *Repository) Delete(id types.ID) error {
 	result, err := r.db.Conn().Exec(

@@ -395,6 +395,38 @@ func TestService_GetPriceHistory(t *testing.T) {
 	})
 }
 
+func TestService_GetLatestPrices(t *testing.T) {
+	database := createTestDB(t)
+	secRepo := security.NewRepository(database)
+	priceRepo := NewRepository(database)
+	svc := NewService(priceRepo, secRepo, database)
+
+	sec := createTestSecurityForService(t, secRepo)
+	for _, d := range []types.Date{
+		types.NewDate(2024, time.January, 10),
+		types.NewDate(2024, time.January, 20),
+	} {
+		p := NewPrice(sec.ID, d, types.MustNewMoney("100.00"), SourceManual)
+		if err := svc.AddPrice(p); err != nil {
+			t.Fatalf("AddPrice() error = %v", err)
+		}
+	}
+
+	got, err := svc.GetLatestPrices()
+	if err != nil {
+		t.Fatalf("GetLatestPrices() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(got))
+	}
+	if got[0].SecurityID != sec.ID {
+		t.Errorf("SecurityID mismatch")
+	}
+	if got[0].Date.Time().Day() != 20 {
+		t.Errorf("date day = %d, want 20", got[0].Date.Time().Day())
+	}
+}
+
 // =============================================================================
 // SM-034: Service.DeletePrice
 // =============================================================================

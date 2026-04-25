@@ -536,3 +536,158 @@ func TestRepository_BulkCreate(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// Repository.GetLatestPrices Tests
+// =============================================================================
+
+func TestRepository_GetLatestPrices(t *testing.T) {
+	t.Run("returns empty slice when no securities exist", func(t *testing.T) {
+		database := createTestDB(t)
+		priceRepo := NewRepository(database)
+
+		got, err := priceRepo.GetLatestPrices()
+		if err != nil {
+			t.Fatalf("GetLatestPrices() error = %v", err)
+		}
+		if got == nil {
+			t.Fatal("expected empty slice, got nil")
+		}
+		if len(got) != 0 {
+			t.Errorf("expected 0 rows, got %d", len(got))
+		}
+	})
+
+	t.Run("excludes securities that have no prices", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		priceRepo := NewRepository(database)
+
+		// AAPL has prices, MSFT does not.
+		aapl := createTestSecurity(t, secRepo)
+		msft := security.NewSecurity("MSFT", "Microsoft", security.TypeStock)
+		if err := secRepo.Create(msft); err != nil {
+			t.Fatalf("create MSFT: %v", err)
+		}
+		p := NewPrice(aapl.ID, types.NewDate(2024, time.January, 15), mustMoney(t, "185.50"), SourceManual)
+		if err := priceRepo.Create(p); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		got, err := priceRepo.GetLatestPrices()
+		if err != nil {
+			t.Fatalf("GetLatestPrices() error = %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("expected 1 row, got %d", len(got))
+		}
+		if got[0].Ticker != "AAPL" {
+			t.Errorf("ticker = %q, want AAPL", got[0].Ticker)
+		}
+	})
+
+	t.Run("excludes hidden securities", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		priceRepo := NewRepository(database)
+
+		visible := createTestSecurity(t, secRepo)
+		hidden := security.NewSecurity("HIDE", "Hidden Inc", security.TypeStock)
+		hidden.Hide()
+		if err := secRepo.Create(hidden); err != nil {
+			t.Fatalf("create hidden: %v", err)
+		}
+		if err := priceRepo.Create(NewPrice(visible.ID, types.NewDate(2024, time.January, 15), mustMoney(t, "100.00"), SourceManual)); err != nil {
+			t.Fatalf("create visible price: %v", err)
+		}
+		if err := priceRepo.Create(NewPrice(hidden.ID, types.NewDate(2024, time.January, 15), mustMoney(t, "50.00"), SourceManual)); err != nil {
+			t.Fatalf("create hidden price: %v", err)
+		}
+
+		got, err := priceRepo.GetLatestPrices()
+		if err != nil {
+			t.Fatalf("GetLatestPrices() error = %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("expected 1 row, got %d", len(got))
+		}
+		if got[0].Ticker == "HIDE" {
+			t.Error("hidden security should be excluded")
+		}
+	})
+
+	t.Run("returns latest date when a security has multiple prices", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		priceRepo := NewRepository(database)
+		sec := createTestSecurity(t, secRepo)
+
+		for _, day := range []int{10, 15, 20} {
+			p := NewPrice(sec.ID, types.NewDate(2024, time.January, day), mustMoney(t, "100.00"), SourceManual)
+			// Differentiate the price so we can verify the right row was picked.
+			p.Price = mustMoney(t, "10"+itoaPad(day))
+			if err := priceRepo.Create(p); err != nil {
+				t.Fatalf("Create() error = %v", err)
+			}
+		}
+
+		got, err := priceRepo.GetLatestPrices()
+		if err != nil {
+			t.Fatalf("GetLatestPrices() error = %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("expected 1 row, got %d", len(got))
+		}
+		if got[0].Date.Time().Day() != 20 {
+			t.Errorf("date day = %d, want 20", got[0].Date.Time().Day())
+		}
+		if got[0].Price.String() != "1020" {
+			t.Errorf("price = %q, want 1020", got[0].Price.String())
+		}
+	})
+
+	t.Run("sorts rows by ticker", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		priceRepo := NewRepository(database)
+
+		zeb := security.NewSecurity("ZEB", "Zebra", security.TypeStock)
+		if err := secRepo.Create(zeb); err != nil {
+			t.Fatalf("create zeb: %v", err)
+		}
+		ant := security.NewSecurity("ANT", "Anteater", security.TypeStock)
+		if err := secRepo.Create(ant); err != nil {
+			t.Fatalf("create ant: %v", err)
+		}
+		mid := security.NewSecurity("MID", "Middle", security.TypeStock)
+		if err := secRepo.Create(mid); err != nil {
+			t.Fatalf("create mid: %v", err)
+		}
+		for _, sec := range []*security.Security{zeb, ant, mid} {
+			if err := priceRepo.Create(NewPrice(sec.ID, types.NewDate(2024, time.January, 15), mustMoney(t, "100.00"), SourceManual)); err != nil {
+				t.Fatalf("create price: %v", err)
+			}
+		}
+
+		got, err := priceRepo.GetLatestPrices()
+		if err != nil {
+			t.Fatalf("GetLatestPrices() error = %v", err)
+		}
+		want := []string{"ANT", "MID", "ZEB"}
+		if len(got) != len(want) {
+			t.Fatalf("len = %d, want %d", len(got), len(want))
+		}
+		for i, w := range want {
+			if got[i].Ticker != w {
+				t.Errorf("got[%d].Ticker = %q, want %q", i, got[i].Ticker, w)
+			}
+		}
+	})
+}
+
+func itoaPad(n int) string {
+	if n < 10 {
+		return "0" + string(rune('0'+n))
+	}
+	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}

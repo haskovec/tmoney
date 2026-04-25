@@ -99,6 +99,13 @@ func (s *Service) GetPriceHistory(securityID types.ID, from *types.Date, to *typ
 	return s.repo.GetPriceHistory(securityID, from, to)
 }
 
+// GetLatestPrices returns the most recent price per non-hidden security
+// that has any prices, sorted by ticker. Used by the prices view's top-
+// level list.
+func (s *Service) GetLatestPrices() ([]*LatestPrice, error) {
+	return s.repo.GetLatestPrices()
+}
+
 // DeletePrice removes a security price by its ID.
 func (s *Service) DeletePrice(id types.ID) error {
 	return s.repo.Delete(id)

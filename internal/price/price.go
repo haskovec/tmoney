@@ -134,3 +134,14 @@ func (sp *Price) Validate() types.ValidationErrors {
 func (sp *Price) IsValid() bool {
 	return !sp.Validate().HasErrors()
 }
+
+// LatestPrice is a row in the "latest price per security" summary used by
+// the prices view's top-level list. It pairs the security identity needed
+// to drill in (ID, ticker, name) with the most recent price on file.
+type LatestPrice struct {
+	SecurityID types.ID
+	Ticker     string
+	Name       string
+	Date       types.Date
+	Price      types.Money
+}
