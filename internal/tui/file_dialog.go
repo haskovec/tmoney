@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/db"
 )
 
@@ -227,7 +226,7 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 
 	// Set new database and reinitialize ALL services
 	a.db = newDB
-	svc := app.NewServices(newDB)
+	svc := newTUIServices(newDB)
 	a.accountSvc = svc.Account
 	a.transactionSvc = svc.Transaction
 	a.categorySvc = svc.Category

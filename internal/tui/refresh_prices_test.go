@@ -193,6 +193,59 @@ func TestSummarizeRefreshResult_ListsFailures(t *testing.T) {
 	}
 }
 
+// TestNewApp_RegistersYahooProvider verifies the production NewApp path
+// wires the yahoo price provider into the registry so the securities-view
+// "u" shortcut can find it.
+func TestNewApp_RegistersYahooProvider(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "newapp.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	a := NewApp(database, nil)
+	if _, err := a.priceSvc.ProviderRegistry().Get(defaultRefreshProviderName); err != nil {
+		t.Errorf("yahoo provider missing after NewApp: %v", err)
+	}
+}
+
+// TestSwitchDatabase_RegistersYahooProvider catches the regression where
+// opening a different file via File > Open / Open Recent rebuilt the
+// price service but forgot to register yahoo, causing the "u" shortcut
+// to fail with `price provider "yahoo" not found`.
+func TestSwitchDatabase_RegistersYahooProvider(t *testing.T) {
+	tmpDir := t.TempDir()
+	firstPath := filepath.Join(tmpDir, "first.tdb")
+	secondPath := filepath.Join(tmpDir, "second.tdb")
+
+	firstDB, err := db.Create(firstPath)
+	if err != nil {
+		t.Fatalf("db.Create first: %v", err)
+	}
+	t.Cleanup(func() { firstDB.Close() })
+
+	a := NewApp(firstDB, nil)
+
+	secondDB, err := db.Create(secondPath)
+	if err != nil {
+		t.Fatalf("db.Create second: %v", err)
+	}
+	t.Cleanup(func() {
+		if a.prevDB != nil {
+			_ = a.prevDB.Close()
+		}
+		secondDB.Close()
+	})
+
+	a.switchDatabase(secondDB)
+
+	if _, err := a.priceSvc.ProviderRegistry().Get(defaultRefreshProviderName); err != nil {
+		t.Errorf("yahoo provider missing after switchDatabase: %v", err)
+	}
+}
+
 func TestRefreshCompleteMsg_AddsStatusBarNotification(t *testing.T) {
 	a, _, _ := setupRefreshTUITest(t)
 	a.currentView = ViewSecurities
