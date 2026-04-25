@@ -2,8 +2,6 @@ package price
 
 import (
 	"testing"
-
-	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -11,51 +9,29 @@ import (
 // =============================================================================
 
 func TestManualProvider_ImplementsInterface(t *testing.T) {
-	// Compile-time check that ManualProvider implements Provider.
 	var _ Provider = &ManualProvider{}
 }
 
-func TestManualProvider_FetchPrice(t *testing.T) {
+func TestManualProvider_FetchQuote(t *testing.T) {
 	t.Run("returns error requiring manual entry", func(t *testing.T) {
-		provider := &ManualProvider{}
-		date := types.NewDate(2024, 3, 15)
-
-		p, err := provider.FetchPrice("AAPL", date)
+		p := &ManualProvider{}
+		quote, err := p.FetchQuote("AAPL")
 		if err == nil {
-			t.Error("FetchPrice() expected error for manual provider")
+			t.Fatal("FetchQuote() expected error for manual provider")
 		}
-		if p != nil {
-			t.Error("FetchPrice() expected nil price for manual provider")
+		if quote != nil {
+			t.Errorf("FetchQuote() expected nil quote, got %+v", quote)
 		}
 		if err.Error() != "manual entry required" {
-			t.Errorf("Expected 'manual entry required', got %q", err.Error())
-		}
-	})
-}
-
-func TestManualProvider_FetchPriceHistory(t *testing.T) {
-	t.Run("returns error requiring manual entry", func(t *testing.T) {
-		provider := &ManualProvider{}
-		from := types.NewDate(2024, 1, 1)
-		to := types.NewDate(2024, 3, 31)
-
-		prices, err := provider.FetchPriceHistory("AAPL", from, to)
-		if err == nil {
-			t.Error("FetchPriceHistory() expected error for manual provider")
-		}
-		if prices != nil {
-			t.Error("FetchPriceHistory() expected nil prices for manual provider")
+			t.Errorf("error = %q, want %q", err.Error(), "manual entry required")
 		}
 	})
 }
 
 func TestManualProvider_Name(t *testing.T) {
-	t.Run("returns 'manual'", func(t *testing.T) {
-		provider := &ManualProvider{}
-		if provider.Name() != "manual" {
-			t.Errorf("Expected name 'manual', got %q", provider.Name())
-		}
-	})
+	if (&ManualProvider{}).Name() != "manual" {
+		t.Errorf("Name() = %q, want %q", (&ManualProvider{}).Name(), "manual")
+	}
 }
 
 // =============================================================================
@@ -127,15 +103,13 @@ func TestProviderRegistry_List(t *testing.T) {
 
 // mockProvider is a test helper implementing Provider.
 type mockProvider struct {
-	name string
+	name  string
+	quote *Quote
+	err   error
 }
 
-func (m *mockProvider) FetchPrice(ticker string, date types.Date) (*Price, error) {
-	return nil, nil
-}
-
-func (m *mockProvider) FetchPriceHistory(ticker string, from, to types.Date) ([]*Price, error) {
-	return nil, nil
+func (m *mockProvider) FetchQuote(_ string) (*Quote, error) {
+	return m.quote, m.err
 }
 
 func (m *mockProvider) Name() string {

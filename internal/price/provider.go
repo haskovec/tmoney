@@ -6,32 +6,38 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// Provider defines the interface for fetching security prices.
+// Quote is a single price observation returned by a Provider.
+// Currency is the currency the provider reports the price in; the service
+// layer is responsible for verifying it matches the security's currency
+// before persisting.
+type Quote struct {
+	Date     types.Date
+	Price    types.Money
+	Currency string
+}
+
+// Provider fetches the most recent closed-session price for a ticker.
 type Provider interface {
-	// FetchPrice fetches a single price for a ticker on a given date.
-	FetchPrice(ticker string, date types.Date) (*Price, error)
+	// FetchQuote returns the latest closed-session quote for ticker.
+	// Implementations must never return an in-progress (intraday) price;
+	// they should fall back to the previous closed session if the current
+	// one has not yet closed.
+	FetchQuote(ticker string) (*Quote, error)
 
-	// FetchPriceHistory fetches prices for a ticker within a date range.
-	FetchPriceHistory(ticker string, from, to types.Date) ([]*Price, error)
-
-	// Name returns the name of the price provider.
+	// Name returns the provider's identifier (e.g., "yahoo", "manual").
 	Name() string
 }
 
-// ManualProvider is a no-op provider that requires manual entry.
+// ManualProvider is a no-op provider used as a sentinel when prices must
+// be entered by hand. FetchQuote always returns an error.
 type ManualProvider struct{}
 
-// FetchPrice returns an error indicating manual entry is required.
-func (m *ManualProvider) FetchPrice(ticker string, date types.Date) (*Price, error) {
+// FetchQuote returns an error indicating manual entry is required.
+func (m *ManualProvider) FetchQuote(_ string) (*Quote, error) {
 	return nil, fmt.Errorf("manual entry required")
 }
 
-// FetchPriceHistory returns an error indicating manual entry is required.
-func (m *ManualProvider) FetchPriceHistory(ticker string, from, to types.Date) ([]*Price, error) {
-	return nil, fmt.Errorf("manual entry required")
-}
-
-// Name returns the name of the manual price provider.
+// Name returns "manual".
 func (m *ManualProvider) Name() string {
 	return "manual"
 }
@@ -72,4 +78,20 @@ func (r *ProviderRegistry) List() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// UnsupportedTickerError is returned by a Provider when the upstream
+// service has no data for the requested ticker (e.g., Yahoo 404 or an
+// empty result set). The orchestrator treats this as a per-ticker
+// failure and continues with the rest of the run.
+type UnsupportedTickerError struct {
+	Ticker string
+	Detail string
+}
+
+func (e *UnsupportedTickerError) Error() string {
+	if e.Detail != "" {
+		return fmt.Sprintf("ticker %q not supported by provider: %s", e.Ticker, e.Detail)
+	}
+	return fmt.Sprintf("ticker %q not supported by provider", e.Ticker)
 }
