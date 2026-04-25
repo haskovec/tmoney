@@ -174,13 +174,12 @@ func pricesShortcuts() shortcutSection {
 	return shortcutSection{
 		Title: "Prices",
 		Entries: []shortcutEntry{
-			{"n", "New price"},
-			{"Enter", "Edit price"},
-			{"d", "Delete price"},
-			{"i", "Import prices from CSV"},
-			{"/", "Search securities"},
-			{"Left/Right", "Change security"},
-			{"Esc", "Back"},
+			{"Enter", "View history (list) / Edit price (history)"},
+			{"Esc", "Back to list"},
+			{"n", "New price (history view)"},
+			{"d", "Delete price (history view)"},
+			{"i", "Import prices from CSV (history view)"},
+			{"/", "Search"},
 		},
 	}
 }

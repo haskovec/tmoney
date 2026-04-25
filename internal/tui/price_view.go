@@ -16,13 +16,34 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+// pricesViewMode is the prices view's top-level mode: a summary list of
+// the latest price per security, or the price history of a single
+// drilled-in security.
+type pricesViewMode int
+
+const (
+	pricesViewList   pricesViewMode = iota // landing page: latest price per ticker
+	pricesViewDetail                       // price history for one security
+)
+
 // priceViewData holds the loaded data for the price management view.
+// Both list and detail modes share this struct; mode tells which slice
+// is the source of truth.
 type priceViewData struct {
-	securities       []*security.Security
+	mode pricesViewMode
+
+	// List mode: the most recent price per non-hidden security with
+	// any prices, sorted by ticker. selectedSecurity is nil here.
+	latestPrices []*price.LatestPrice
+
+	// Detail mode: full history for selectedSecurity (newest first).
 	selectedSecurity *security.Security
 	prices           []*price.Price
-	searchQuery      string
-	searching        bool
+
+	// Shared
+	securities  []*security.Security
+	searchQuery string
+	searching   bool
 }
 
 // filteredSecurities returns securities filtered by search query (hidden excluded).
@@ -67,7 +88,8 @@ type priceImportedMsg struct {
 	skipped  int
 }
 
-// loadPriceViewData returns a command that loads price view data.
+// loadPriceViewData returns a command that loads the prices landing page:
+// the list of latest prices per non-hidden security with any prices.
 func (a *App) loadPriceViewData() tea.Cmd {
 	return func() tea.Msg {
 		if a.securitySvc == nil || a.priceSvc == nil {
@@ -80,47 +102,34 @@ func (a *App) loadPriceViewData() tea.Cmd {
 			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
 		}
 
-		// Preserve selected security from previous state
-		var selectedSec *security.Security
-		if a.priceView != nil && a.priceView.selectedSecurity != nil {
-			// Find the same security in the refreshed list
-			for _, sec := range securities {
-				if sec.ID == a.priceView.selectedSecurity.ID {
-					selectedSec = sec
-					break
-				}
-			}
-		}
-
-		// Default to first non-hidden security if none selected
-		if selectedSec == nil {
-			for _, sec := range securities {
-				if !sec.Hidden {
-					selectedSec = sec
-					break
-				}
-			}
-		}
-
-		var prices []*price.Price
-		if selectedSec != nil {
-			prices, err = a.priceSvc.GetPriceHistory(selectedSec.ID, nil, nil)
-			if err != nil {
-				return errMsg{err: fmt.Errorf("failed to load prices: %w", err)}
-			}
+		latest, err := a.priceSvc.GetLatestPrices()
+		if err != nil {
+			return errMsg{err: fmt.Errorf("failed to load latest prices: %w", err)}
 		}
 
 		data := &priceViewData{
-			securities:       securities,
-			selectedSecurity: selectedSec,
-			prices:           prices,
+			mode:         pricesViewList,
+			securities:   securities,
+			latestPrices: latest,
 		}
 
 		return priceViewDataLoadedMsg{data: data}
 	}
 }
 
-// loadPriceViewDataForSecurity returns a command that loads price data for a specific security.
+// reloadPriceViewKeepingMode refreshes the prices view in whichever mode
+// it is currently showing. Used after a CRUD operation so the user stays
+// in detail mode (instead of being kicked back to the landing list) when
+// they add/edit/delete a price for a specific ticker.
+func (a *App) reloadPriceViewKeepingMode() tea.Cmd {
+	if a.priceView != nil && a.priceView.mode == pricesViewDetail && a.priceView.selectedSecurity != nil {
+		return a.loadPriceViewDataForSecurity(a.priceView.selectedSecurity)
+	}
+	return a.loadPriceViewData()
+}
+
+// loadPriceViewDataForSecurity returns a command that drills into a single
+// security's price history (detail mode).
 func (a *App) loadPriceViewDataForSecurity(sec *security.Security) tea.Cmd {
 	return func() tea.Msg {
 		if a.securitySvc == nil || a.priceSvc == nil {
@@ -142,6 +151,7 @@ func (a *App) loadPriceViewDataForSecurity(sec *security.Security) tea.Cmd {
 		}
 
 		data := &priceViewData{
+			mode:             pricesViewDetail,
 			securities:       securities,
 			selectedSecurity: sec,
 			prices:           prices,
@@ -149,6 +159,39 @@ func (a *App) loadPriceViewDataForSecurity(sec *security.Security) tea.Cmd {
 
 		return priceViewDataLoadedMsg{data: data}
 	}
+}
+
+// buildPriceListTable creates and populates the list-mode summary table
+// (one row per security with its latest price).
+func (a *App) buildPriceListTable() {
+	if a.priceView == nil {
+		return
+	}
+
+	columns := []Column{
+		{Header: "Ticker", Width: 10, Align: AlignLeft},
+		{Header: "Name", Width: 32, Align: AlignLeft},
+		{Header: "Latest Price", Width: 15, Align: AlignRight},
+		{Header: "Date", Width: 12, Align: AlignLeft},
+	}
+
+	if a.priceListTable == nil {
+		a.priceListTable = NewTable(columns)
+	} else {
+		a.priceListTable.SetColumns(columns)
+	}
+
+	rows := make([][]string, len(a.priceView.latestPrices))
+	for i, lp := range a.priceView.latestPrices {
+		rows[i] = []string{
+			lp.Ticker,
+			lp.Name,
+			fmt.Sprintf("$%.2f", lp.Price.Float64()),
+			lp.Date.Time().Format("2006-01-02"),
+		}
+	}
+	a.priceListTable.SetRows(rows)
+	a.priceListTable.SetFocused(true)
 }
 
 // buildPriceTable creates and populates the table for the price view.
@@ -199,7 +242,7 @@ func (a *App) selectedPrice() *price.Price {
 	return a.priceView.prices[cursor]
 }
 
-// renderPriceView renders the price management view.
+// renderPriceView renders the prices view in either list or detail mode.
 func (a *App) renderPriceView() string {
 	if a.priceView == nil {
 		return lipgloss.NewStyle().
@@ -207,17 +250,68 @@ func (a *App) renderPriceView() string {
 			Render("Loading prices...")
 	}
 
+	if a.priceView.mode == pricesViewDetail {
+		return a.renderPriceDetail()
+	}
+	return a.renderPriceList()
+}
+
+// renderPriceList renders the landing-page summary table.
+func (a *App) renderPriceList() string {
 	contentWidth := a.styles.ContentWidth()
 
 	var sections []string
 
-	// Header: PRICES — TICKER (Name)
+	titleText := "PRICES"
+	hint := "Enter: view history  ·  /: search"
+	if a.priceView.searchQuery != "" {
+		hint += "  Search: " + a.priceView.searchQuery
+	}
+	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(hint)-4, 1)
+	headerRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render(hint)
+	sections = append(sections, headerRow)
+
+	sepWidth := max(contentWidth-4, 1)
+	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
+
+	if len(a.priceView.latestPrices) == 0 {
+		sections = append(sections, "")
+		sections = append(sections, a.styles.Muted.Render("  No prices on file. Press 'p' on a security to start."))
+		return lipgloss.NewStyle().
+			Padding(1, 2).
+			Render(strings.Join(sections, "\n"))
+	}
+
+	headerHeight := 1
+	statusBarHeight := 1
+	titleHeight := 2 // title + separator
+	footerHeight := 1
+	paddingHeight := 2
+	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-footerHeight-paddingHeight, 1)
+
+	if a.priceListTable != nil {
+		tableWidth := max(contentWidth-4, 1)
+		sections = append(sections, a.priceListTable.Render(a.styles, tableWidth, tableHeight))
+		if info := a.priceListTable.ScrollInfo(tableHeight - 2); info != "" {
+			sections = append(sections, a.styles.Muted.Render("  "+info))
+		}
+	}
+
+	return lipgloss.NewStyle().
+		Padding(1, 2).
+		Render(strings.Join(sections, "\n"))
+}
+
+// renderPriceDetail renders the per-security price history (drill-in).
+func (a *App) renderPriceDetail() string {
+	contentWidth := a.styles.ContentWidth()
+
+	var sections []string
+
 	titleText := "PRICES"
 	var secInfo string
 	if a.priceView.selectedSecurity != nil {
 		secInfo = fmt.Sprintf("%s (%s)", a.priceView.selectedSecurity.Ticker, a.priceView.selectedSecurity.Name)
-	} else {
-		secInfo = "No security selected"
 	}
 	if a.priceView.searchQuery != "" {
 		secInfo += "  Search: " + a.priceView.searchQuery
@@ -226,28 +320,15 @@ func (a *App) renderPriceView() string {
 	headerRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render(secInfo)
 	sections = append(sections, headerRow)
 
-	// Security nav hint
-	navHint := "← → change security"
-	sections = append(sections, a.styles.Muted.Render("  "+navHint))
+	sections = append(sections, a.styles.Muted.Render("  Esc: back to list"))
 
-	// Separator
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
-	if a.priceView.selectedSecurity == nil {
-		sections = append(sections, "")
-		sections = append(sections, a.styles.Muted.Render("  No security selected"))
-
-		return lipgloss.NewStyle().
-			Padding(1, 2).
-			Render(strings.Join(sections, "\n"))
-	}
-
-	// Table
 	headerHeight := 1
 	statusBarHeight := 1
-	titleHeight := 3  // title + nav hint + separator
-	footerHeight := 1 // hint line
+	titleHeight := 3 // title + back hint + separator
+	footerHeight := 1
 	paddingHeight := 2
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-footerHeight-paddingHeight, 1)
 
@@ -267,17 +348,60 @@ func (a *App) renderPriceView() string {
 		Render(strings.Join(sections, "\n"))
 }
 
-// handlePriceViewKeys handles key presses in the prices view.
+// handlePriceViewKeys dispatches key presses to the list- or detail-mode
+// handler.
 func (a *App) handlePriceViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if a.priceView == nil {
 		return a, nil
 	}
-
-	// Handle search mode
 	if a.priceView.searching {
 		return a.handlePriceSearchKey(msg)
 	}
+	if a.priceView.mode == pricesViewDetail {
+		return a.handlePriceDetailKeys(msg)
+	}
+	return a.handlePriceListKeys(msg)
+}
 
+// handlePriceListKeys handles keys on the prices landing page.
+func (a *App) handlePriceListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	tbl := a.priceListTable
+	switch {
+	case key.Matches(msg, a.keys.Up):
+		if tbl != nil {
+			tbl.MoveUp()
+		}
+	case key.Matches(msg, a.keys.Down):
+		if tbl != nil {
+			tbl.MoveDown()
+		}
+	case msg.String() == "home" || msg.String() == "g":
+		if tbl != nil {
+			tbl.MoveToTop()
+		}
+	case msg.String() == "end" || msg.String() == "G":
+		if tbl != nil {
+			tbl.MoveToBottom()
+		}
+	case msg.String() == "pgup":
+		if tbl != nil {
+			tbl.PageUp(max(a.height-10, 1))
+		}
+	case msg.String() == "pgdown":
+		if tbl != nil {
+			tbl.PageDown(max(a.height-10, 1))
+		}
+	case key.Matches(msg, a.keys.Search):
+		a.priceView.searching = true
+		a.priceView.searchQuery = ""
+	case key.Matches(msg, a.keys.Enter):
+		return a, a.drillIntoSelectedListRow()
+	}
+	return a, nil
+}
+
+// handlePriceDetailKeys handles keys on a single security's price history.
+func (a *App) handlePriceDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, a.keys.Up):
 		if a.priceTable != nil {
@@ -297,26 +421,23 @@ func (a *App) handlePriceViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case msg.String() == "pgup":
 		if a.priceTable != nil {
-			tableHeight := max(a.height-10, 1)
-			a.priceTable.PageUp(tableHeight)
+			a.priceTable.PageUp(max(a.height-10, 1))
 		}
 	case msg.String() == "pgdown":
 		if a.priceTable != nil {
-			tableHeight := max(a.height-10, 1)
-			a.priceTable.PageDown(tableHeight)
+			a.priceTable.PageDown(max(a.height-10, 1))
 		}
-	case key.Matches(msg, a.keys.Left):
-		// Cycle to previous security
-		return a, a.cyclePriceSecurity(-1)
-	case key.Matches(msg, a.keys.Right):
-		// Cycle to next security
-		return a, a.cyclePriceSecurity(1)
+	case key.Matches(msg, a.keys.Escape):
+		// Flip back to list mode synchronously so the next render is the
+		// landing page; loadPriceViewData refreshes the data behind it.
+		a.priceView.mode = pricesViewList
+		a.priceView.selectedSecurity = nil
+		a.priceView.prices = nil
+		return a, a.loadPriceViewData()
 	case key.Matches(msg, a.keys.Search):
-		// Enter search mode for security selection
 		a.priceView.searching = true
 		a.priceView.searchQuery = ""
 	case key.Matches(msg, a.keys.New):
-		// Open add price dialog
 		if a.priceView.selectedSecurity != nil {
 			a.priceDialog = buildAddPriceDialog(a.priceView.selectedSecurity)
 			a.priceDialogMode = priceDialogModeAdd
@@ -324,7 +445,6 @@ func (a *App) handlePriceViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	case key.Matches(msg, a.keys.Enter):
-		// Open edit dialog for selected price
 		p := a.selectedPrice()
 		if p != nil && a.priceView.selectedSecurity != nil {
 			a.priceDialog = buildEditPriceDialog(a.priceView.selectedSecurity, p)
@@ -334,7 +454,6 @@ func (a *App) handlePriceViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	case key.Matches(msg, a.keys.Delete):
-		// Delete selected price with confirmation
 		p := a.selectedPrice()
 		if p != nil {
 			priceID := p.ID
@@ -354,13 +473,42 @@ func (a *App) handlePriceViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			)
 		}
 	case msg.String() == "i":
-		// Open import dialog
 		a.priceImportDialog = buildImportPriceDialog()
 		a.priceImportDialog.SetVisible(true)
 		return a, nil
 	}
-
 	return a, nil
+}
+
+// drillIntoSelectedListRow loads detail mode for the security at the
+// list-table cursor.
+func (a *App) drillIntoSelectedListRow() tea.Cmd {
+	if a.priceView == nil || a.priceListTable == nil {
+		return nil
+	}
+	cursor := a.priceListTable.Cursor()
+	if cursor < 0 || cursor >= len(a.priceView.latestPrices) {
+		return nil
+	}
+	targetID := a.priceView.latestPrices[cursor].SecurityID
+
+	// Resolve to a *security.Security from the cached list so the loader
+	// can populate ticker/name without an extra round-trip.
+	var sec *security.Security
+	for _, s := range a.priceView.securities {
+		if s.ID == targetID {
+			sec = s
+			break
+		}
+	}
+	if sec == nil {
+		// Fall back: synthesize from the LatestPrice row.
+		sec = &security.Security{Ticker: a.priceView.latestPrices[cursor].Ticker, Name: a.priceView.latestPrices[cursor].Name}
+		sec.ID = targetID
+	}
+	a.priceView.mode = pricesViewDetail
+	a.priceView.selectedSecurity = sec
+	return a.loadPriceViewDataForSecurity(sec)
 }
 
 // handlePriceSearchKey handles key presses while in search mode.
@@ -387,45 +535,6 @@ func (a *App) handlePriceSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.priceView.searchQuery += string(msg.Runes)
 	}
 	return a, nil
-}
-
-// cyclePriceSecurity cycles to the next/previous security and reloads prices.
-func (a *App) cyclePriceSecurity(direction int) tea.Cmd {
-	if a.priceView == nil || len(a.priceView.securities) == 0 {
-		return nil
-	}
-
-	// Get non-hidden securities sorted by ticker
-	var visible []*security.Security
-	for _, sec := range a.priceView.securities {
-		if !sec.Hidden {
-			visible = append(visible, sec)
-		}
-	}
-	sort.Slice(visible, func(i, j int) bool {
-		return visible[i].Ticker < visible[j].Ticker
-	})
-
-	if len(visible) == 0 {
-		return nil
-	}
-
-	// Find current index
-	currentIdx := 0
-	if a.priceView.selectedSecurity != nil {
-		for i, sec := range visible {
-			if sec.ID == a.priceView.selectedSecurity.ID {
-				currentIdx = i
-				break
-			}
-		}
-	}
-
-	// Cycle
-	newIdx := (currentIdx + direction + len(visible)) % len(visible)
-	a.priceView.selectedSecurity = visible[newIdx]
-
-	return a.loadPriceViewDataForSecurity(visible[newIdx])
 }
 
 // Price dialog types and builders

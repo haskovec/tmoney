@@ -170,7 +170,8 @@ type App struct {
 
 	// Price view state
 	priceView         *priceViewData
-	priceTable        *Table
+	priceTable        *Table // detail-mode: history for one security
+	priceListTable    *Table // list-mode: latest price per ticker
 	priceDialog       *Dialog
 	priceDialogMode   priceDialogMode
 	priceDialogEditID types.ID
@@ -281,7 +282,8 @@ type App struct {
 	keys keyMap
 
 	// Mouse double-click trackers (lazy-initialized on first click).
-	sidebarClicks *ClickTracker
+	sidebarClicks   *ClickTracker
+	priceListClicks *ClickTracker
 }
 
 // keyMap defines the key bindings for the application.
@@ -1387,27 +1389,32 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case priceViewDataLoadedMsg:
 		a.priceView = msg.data
-		a.buildPriceTable()
+		switch msg.data.mode {
+		case pricesViewList:
+			a.buildPriceListTable()
+		case pricesViewDetail:
+			a.buildPriceTable()
+		}
 		return a, nil
 
 	case priceAddedMsg:
 		a.statusbar.AddNotification("Price added", NotificationInfo)
-		return a, a.loadPriceViewData()
+		return a, a.reloadPriceViewKeepingMode()
 
 	case priceUpdatedMsg:
 		a.statusbar.AddNotification("Price updated", NotificationInfo)
-		return a, a.loadPriceViewData()
+		return a, a.reloadPriceViewKeepingMode()
 
 	case priceDeletedMsg:
 		a.statusbar.AddNotification("Price deleted", NotificationInfo)
-		return a, a.loadPriceViewData()
+		return a, a.reloadPriceViewKeepingMode()
 
 	case priceImportedMsg:
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Imported %d prices (%d skipped)", msg.imported, msg.skipped),
 			NotificationInfo,
 		)
-		return a, a.loadPriceViewData()
+		return a, a.reloadPriceViewKeepingMode()
 
 	case priceRefreshCompleteMsg:
 		if msg.err != nil {
@@ -2310,6 +2317,9 @@ func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.C
 }
 
 // handleMouseTable handles mouse clicks in the table/content area.
+// Single click moves the cursor; on tables that support drill-in
+// (currently the prices list), a second click on the same row within
+// the double-click threshold opens the row.
 func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd) {
 	// Table offset within content: 1 (top padding) + 1 (title) + 1 (separator) = 3
 	const tableContentOffset = 3
@@ -2321,8 +2331,19 @@ func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd
 	}
 
 	rowIdx := tbl.HitTest(tableY)
-	if rowIdx >= 0 {
-		tbl.SetCursor(rowIdx)
+	if rowIdx < 0 {
+		return a, nil
+	}
+	tbl.SetCursor(rowIdx)
+
+	// Prices landing list: double-click drills into a ticker's history.
+	if a.currentView == ViewPrices && a.priceView != nil && a.priceView.mode == pricesViewList {
+		if a.priceListClicks == nil {
+			a.priceListClicks = NewClickTracker(doubleClickThreshold)
+		}
+		if a.priceListClicks.Click(rowIdx) {
+			return a, a.drillIntoSelectedListRow()
+		}
 	}
 
 	return a, nil
@@ -2674,6 +2695,9 @@ func (a *App) activeTable() *Table {
 	case ViewSecurities:
 		return a.securityTable
 	case ViewPrices:
+		if a.priceView != nil && a.priceView.mode == pricesViewList {
+			return a.priceListTable
+		}
 		return a.priceTable
 	}
 	return nil
@@ -4052,7 +4076,10 @@ func (a *App) getKeyHints() string {
 	case ViewSecurities:
 		return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  u update prices  a actions  / search  esc back  " + common
 	case ViewPrices:
-		return "↑↓ navigate  ←→ security  n new  enter edit  d delete  i import  / search  esc back  " + common
+		if a.priceView != nil && a.priceView.mode == pricesViewDetail {
+			return "↑↓ navigate  enter edit  n new  d delete  i import  / search  esc back  " + common
+		}
+		return "↑↓ navigate  enter view history  / search  esc back  " + common
 	case ViewInvestmentRegister:
 		return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + common
 	case ViewPortfolio:

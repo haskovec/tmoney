@@ -203,6 +203,7 @@ func TestHandlePriceViewKeys_Navigation(t *testing.T) {
 		height: 24,
 		keys:   defaultKeyMap(),
 		priceView: &priceViewData{
+			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			prices:           []*price.Price{p1, p2},
 		},
@@ -234,6 +235,7 @@ func TestHandlePriceViewKeys_NewOpensDialog(t *testing.T) {
 		height: 24,
 		keys:   defaultKeyMap(),
 		priceView: &priceViewData{
+			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
@@ -265,6 +267,7 @@ func TestHandlePriceViewKeys_EnterOpensEditDialog(t *testing.T) {
 		height: 24,
 		keys:   defaultKeyMap(),
 		priceView: &priceViewData{
+			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{p},
@@ -297,6 +300,7 @@ func TestHandlePriceViewKeys_DeleteShowsConfirm(t *testing.T) {
 		keys:      defaultKeyMap(),
 		statusbar: NewStatusBar(),
 		priceView: &priceViewData{
+			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{p},
@@ -320,6 +324,7 @@ func TestHandlePriceViewKeys_ImportOpensDialog(t *testing.T) {
 		height: 24,
 		keys:   defaultKeyMap(),
 		priceView: &priceViewData{
+			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
@@ -375,45 +380,6 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 	}
 }
 
-func TestHandlePriceViewKeys_LeftRightCyclesSecurity(t *testing.T) {
-	sec1 := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	sec2 := security.NewSecurity("MSFT", "Microsoft Corp", security.TypeStock)
-
-	app := &App{
-		width:  80,
-		height: 24,
-		keys:   defaultKeyMap(),
-		priceView: &priceViewData{
-			selectedSecurity: sec1,
-			securities:       []*security.Security{sec1, sec2},
-			prices:           []*price.Price{},
-		},
-	}
-	app.buildPriceTable()
-
-	// Right arrow cycles to next security
-	rightKey := tea.KeyMsg{Type: tea.KeyRight}
-	app.handlePriceViewKeys(rightKey)
-
-	if app.priceView.selectedSecurity.Ticker != "MSFT" {
-		t.Errorf("selected = %q, want MSFT after right", app.priceView.selectedSecurity.Ticker)
-	}
-
-	// Right again wraps to first
-	app.handlePriceViewKeys(rightKey)
-
-	if app.priceView.selectedSecurity.Ticker != "AAPL" {
-		t.Errorf("selected = %q, want AAPL after wrap", app.priceView.selectedSecurity.Ticker)
-	}
-
-	// Left wraps to last
-	leftKey := tea.KeyMsg{Type: tea.KeyLeft}
-	app.handlePriceViewKeys(leftKey)
-
-	if app.priceView.selectedSecurity.Ticker != "MSFT" {
-		t.Errorf("selected = %q, want MSFT after left wrap", app.priceView.selectedSecurity.Ticker)
-	}
-}
 
 // =============================================================================
 // SM-125: Add/Edit price dialog
@@ -542,6 +508,7 @@ func TestRenderPriceView_NoPrices(t *testing.T) {
 		height: 24,
 		styles: NewStyles(),
 		priceView: &priceViewData{
+			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
@@ -567,6 +534,7 @@ func TestRenderPriceView_WithData(t *testing.T) {
 		height: 30,
 		styles: NewStyles(),
 		priceView: &priceViewData{
+			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{p},
@@ -592,6 +560,7 @@ func TestRenderPriceView_ShowsSecurityInfo(t *testing.T) {
 		height: 30,
 		styles: NewStyles(),
 		priceView: &priceViewData{
+			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
@@ -608,6 +577,7 @@ func TestRenderPriceView_ShowsSecurityInfo(t *testing.T) {
 func TestPriceViewDataLoadedMsg(t *testing.T) {
 	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
 	data := &priceViewData{
+		mode:             pricesViewDetail,
 		selectedSecurity: sec,
 		securities:       []*security.Security{sec},
 		prices:           []*price.Price{},
@@ -627,7 +597,28 @@ func TestPriceViewDataLoadedMsg(t *testing.T) {
 		t.Fatal("price view data should be set")
 	}
 	if updatedApp.priceTable == nil {
-		t.Error("price table should be built")
+		t.Error("detail-mode price table should be built")
+	}
+}
+
+func TestPriceViewDataLoadedMsg_ListMode(t *testing.T) {
+	data := &priceViewData{
+		mode:         pricesViewList,
+		latestPrices: []*price.LatestPrice{},
+	}
+
+	app := &App{
+		currentView: ViewPrices,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+	}
+
+	msg := priceViewDataLoadedMsg{data: data}
+	model, _ := app.Update(msg)
+
+	updatedApp := model.(*App)
+	if updatedApp.priceListTable == nil {
+		t.Error("list-mode price list table should be built")
 	}
 }
 
@@ -788,18 +779,21 @@ func TestPriceViewHelpOverlay(t *testing.T) {
 	for _, s := range sections {
 		if s.Title == "Prices" {
 			found = true
+			hasEnter := false
+			hasEsc := false
 			hasNew := false
-			hasEdit := false
 			hasDelete := false
 			hasImport := false
 			hasSearch := false
 			hasLeftRight := false
 			for _, e := range s.Entries {
 				switch e.Key {
+				case "Enter":
+					hasEnter = true
+				case "Esc":
+					hasEsc = true
 				case "n":
 					hasNew = true
-				case "Enter":
-					hasEdit = true
 				case "d":
 					hasDelete = true
 				case "i":
@@ -810,11 +804,14 @@ func TestPriceViewHelpOverlay(t *testing.T) {
 					hasLeftRight = true
 				}
 			}
+			if !hasEnter {
+				t.Error("price shortcuts should include 'Enter' (drill in / edit)")
+			}
+			if !hasEsc {
+				t.Error("price shortcuts should include 'Esc' (back to list)")
+			}
 			if !hasNew {
 				t.Error("price shortcuts should include 'n' for new")
-			}
-			if !hasEdit {
-				t.Error("price shortcuts should include 'Enter' for edit")
 			}
 			if !hasDelete {
 				t.Error("price shortcuts should include 'd' for delete")
@@ -825,8 +822,8 @@ func TestPriceViewHelpOverlay(t *testing.T) {
 			if !hasSearch {
 				t.Error("price shortcuts should include '/' for search")
 			}
-			if !hasLeftRight {
-				t.Error("price shortcuts should include 'Left/Right' for security")
+			if hasLeftRight {
+				t.Error("Left/Right cycling was removed; help overlay should not list it")
 			}
 		}
 	}
@@ -853,9 +850,10 @@ func TestMenuBarHasPrices(t *testing.T) {
 	}
 }
 
-func TestPriceViewKeyHints(t *testing.T) {
+func TestPriceViewKeyHints_DetailMode(t *testing.T) {
 	app := &App{
 		currentView: ViewPrices,
+		priceView:   &priceViewData{mode: pricesViewDetail},
 	}
 
 	hints := app.getKeyHints()
@@ -867,6 +865,21 @@ func TestPriceViewKeyHints(t *testing.T) {
 	}
 	if !strings.Contains(hints, "i import") {
 		t.Errorf("hints should contain 'i import', got: %s", hints)
+	}
+}
+
+func TestPriceViewKeyHints_ListMode(t *testing.T) {
+	app := &App{
+		currentView: ViewPrices,
+		priceView:   &priceViewData{mode: pricesViewList},
+	}
+
+	hints := app.getKeyHints()
+	if !strings.Contains(hints, "view history") {
+		t.Errorf("list-mode hints should mention 'view history', got: %s", hints)
+	}
+	if strings.Contains(hints, "n new") {
+		t.Errorf("list-mode hints should not advertise 'n new', got: %s", hints)
 	}
 }
 
@@ -977,19 +990,195 @@ func TestSecurityView_PNavigatesToPrices(t *testing.T) {
 	}
 }
 
-func TestPriceView_NoSecuritySelected(t *testing.T) {
+func TestPriceViewData_DefaultModeIsList(t *testing.T) {
+	d := &priceViewData{}
+	if d.mode != pricesViewList {
+		t.Errorf("zero-value mode = %v, want pricesViewList", d.mode)
+	}
+}
+
+func TestBuildPriceListTable(t *testing.T) {
+	secID := types.NewID()
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+
+	app := &App{
+		priceView: &priceViewData{
+			mode: pricesViewList,
+			latestPrices: []*price.LatestPrice{
+				{SecurityID: secID, Ticker: "AAPL", Name: "Apple Inc.", Date: d, Price: m},
+			},
+		},
+	}
+	app.buildPriceListTable()
+
+	if app.priceListTable == nil {
+		t.Fatal("priceListTable should be built")
+	}
+	if app.priceListTable.RowCount() != 1 {
+		t.Errorf("row count = %d, want 1", app.priceListTable.RowCount())
+	}
+}
+
+func TestRenderPriceView_ListMode_ShowsLatestPrices(t *testing.T) {
+	secID := types.NewID()
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+
+	app := &App{
+		width:  100,
+		height: 30,
+		styles: NewStyles(),
+		priceView: &priceViewData{
+			mode: pricesViewList,
+			latestPrices: []*price.LatestPrice{
+				{SecurityID: secID, Ticker: "AAPL", Name: "Apple Inc.", Date: d, Price: m},
+			},
+		},
+	}
+	app.styles.Resize(100, 30)
+	app.buildPriceListTable()
+
+	output := app.renderPriceView()
+	if !strings.Contains(output, "AAPL") {
+		t.Error("list-mode render should show ticker")
+	}
+	if !strings.Contains(output, "Apple Inc.") {
+		t.Error("list-mode render should show name")
+	}
+	if !strings.Contains(output, "2025-03-15") {
+		t.Error("list-mode render should show latest date")
+	}
+}
+
+func TestRenderPriceView_ListMode_EmptyShowsHint(t *testing.T) {
 	app := &App{
 		width:  80,
 		height: 24,
 		styles: NewStyles(),
 		priceView: &priceViewData{
-			securities: []*security.Security{},
+			mode:         pricesViewList,
+			latestPrices: nil,
 		},
 	}
 	app.styles.Resize(80, 24)
 
 	output := app.renderPriceView()
-	if !strings.Contains(output, "No security selected") {
-		t.Error("should show 'No security selected' when no security is set")
+	if !strings.Contains(strings.ToLower(output), "no prices") {
+		t.Errorf("empty list-mode should hint at the absence of prices, got: %s", output)
+	}
+}
+
+func TestHandlePriceViewKeys_ListMode_EnterDrillsIn(t *testing.T) {
+	secID := types.NewID()
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+
+	sec := &security.Security{Ticker: "AAPL", Name: "Apple Inc."}
+	sec.ID = secID
+
+	app := &App{
+		width:  80,
+		height: 24,
+		keys:   defaultKeyMap(),
+		priceView: &priceViewData{
+			mode:       pricesViewList,
+			securities: []*security.Security{sec},
+			latestPrices: []*price.LatestPrice{
+				{SecurityID: secID, Ticker: "AAPL", Name: "Apple Inc.", Date: d, Price: m},
+			},
+		},
+	}
+	app.buildPriceListTable()
+
+	enter := tea.KeyMsg{Type: tea.KeyEnter}
+	_, cmd := app.handlePriceViewKeys(enter)
+
+	if cmd == nil {
+		t.Fatal("Enter in list mode should return a command to load detail")
+	}
+	if app.priceView.mode != pricesViewDetail {
+		t.Errorf("mode = %v, want pricesViewDetail after Enter", app.priceView.mode)
+	}
+	if app.priceView.selectedSecurity == nil || app.priceView.selectedSecurity.ID != secID {
+		t.Error("selectedSecurity should be set to the row's security")
+	}
+}
+
+func TestHandlePriceViewKeys_DetailMode_EscReturnsToList(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		width:  80,
+		height: 24,
+		keys:   defaultKeyMap(),
+		priceView: &priceViewData{
+			mode:             pricesViewDetail,
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{},
+		},
+	}
+	app.buildPriceTable()
+
+	esc := tea.KeyMsg{Type: tea.KeyEscape}
+	_, cmd := app.handlePriceViewKeys(esc)
+
+	if cmd == nil {
+		t.Fatal("Esc in detail mode should return a command to reload list")
+	}
+	if app.priceView.mode != pricesViewList {
+		t.Errorf("mode = %v, want pricesViewList after Esc", app.priceView.mode)
+	}
+}
+
+func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
+	secID := types.NewID()
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+
+	sec := &security.Security{Ticker: "AAPL", Name: "Apple Inc."}
+	sec.ID = secID
+
+	now := time.Unix(0, 0)
+
+	app := &App{
+		currentView: ViewPrices,
+		width:       100,
+		height:      30,
+		keys:        defaultKeyMap(),
+		styles:      NewStyles(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		priceView: &priceViewData{
+			mode:       pricesViewList,
+			securities: []*security.Security{sec},
+			latestPrices: []*price.LatestPrice{
+				{SecurityID: secID, Ticker: "AAPL", Name: "Apple Inc.", Date: d, Price: m},
+			},
+		},
+	}
+	app.styles.Resize(100, 30)
+	app.priceListClicks = NewClickTracker(400 * time.Millisecond)
+	app.priceListClicks.SetNowFn(func() time.Time { return now })
+	app.buildPriceListTable()
+
+	// Click coordinates: content offset 3 (padding+title+separator) + table header 1 = row 0 of data at y=4 (contentY).
+	// Convert to msg.Y = contentY + 1 (header row).
+	click := tea.MouseMsg{X: 5, Y: 5, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+
+	_, cmd := app.Update(click)
+	if cmd != nil {
+		t.Fatal("first click should not drill in")
+	}
+
+	now = now.Add(100 * time.Millisecond)
+	_, cmd = app.Update(click)
+	if cmd == nil {
+		t.Fatal("double click should return a drill-in command")
+	}
+	if app.priceView.mode != pricesViewDetail {
+		t.Errorf("mode = %v, want pricesViewDetail", app.priceView.mode)
 	}
 }
