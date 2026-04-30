@@ -5,10 +5,17 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"testing"
 )
 
 // maxRecentFiles is the maximum number of recent files to track.
 const maxRecentFiles = 5
+
+// saveDisabled gates Save() so that test runs don't pollute the real on-disk
+// config. Defaults to true under `go test` (testing.Testing()), false in the
+// production binary. Tests that exercise the persistence path must opt in via
+// EnableSaveForTest.
+var saveDisabled = testing.Testing()
 
 // Config holds TMoney application settings persisted across sessions.
 type Config struct {
@@ -75,7 +82,13 @@ func LoadFrom(path string) (*Config, error) {
 }
 
 // Save writes the config to disk atomically (write to .tmp, then rename).
+// Skipped during `go test` to keep test runs from overwriting the user's
+// on-disk config (e.g. setting LastFile to a temp path that vanishes after
+// the test ends). See EnableSaveForTest for the opt-in escape hatch.
 func (c *Config) Save() error {
+	if saveDisabled {
+		return nil
+	}
 	if c.path == "" {
 		p, err := Path()
 		if err != nil {
@@ -121,6 +134,17 @@ func (c *Config) AddRecentFile(path string) {
 	}
 
 	c.RecentFiles = recent
+}
+
+// EnableSaveForTest opts a single test in to actually persisting to disk by
+// re-enabling Save() for the test's duration. Use this only in tests that
+// directly exercise the on-disk format; everything else benefits from the
+// default no-op Save() that protects the user's real config from test runs.
+func EnableSaveForTest(t *testing.T) {
+	t.Helper()
+	prev := saveDisabled
+	saveDisabled = false
+	t.Cleanup(func() { saveDisabled = prev })
 }
 
 // ResolveDefaultFile returns the best file path to open.

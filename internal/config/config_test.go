@@ -29,6 +29,8 @@ func TestLoad_NoFile(t *testing.T) {
 }
 
 func TestSaveAndLoad_Roundtrip(t *testing.T) {
+	EnableSaveForTest(t)
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 
@@ -72,6 +74,8 @@ func TestSaveAndLoad_Roundtrip(t *testing.T) {
 }
 
 func TestSave_CreatesDirectory(t *testing.T) {
+	EnableSaveForTest(t)
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subdir", "config.json")
 
@@ -82,6 +86,24 @@ func TestSave_CreatesDirectory(t *testing.T) {
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Fatal("config file was not created in subdirectory")
+	}
+}
+
+// TestSave_SkippedUnderGoTest documents that Save() is a no-op when running
+// inside `go test`. This prevents the test suite from polluting the user's
+// real config (e.g. setting LastFile to a temp .tdb that vanishes after the
+// test ends).
+func TestSave_SkippedUnderGoTest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &Config{LastFile: "/tmp/should-not-be-saved.tdb", path: path}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("config file should not have been written under go test, stat err = %v", err)
 	}
 }
 

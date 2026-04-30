@@ -334,6 +334,29 @@ func buildBrowseDialog(dir string, entries []string) *Dialog {
 	return d
 }
 
+// browseDialogListHit returns the absolute list-item index a mouse event lands
+// on inside the browse dialog's list field, or -1 when the click is outside the
+// list (title, padding, buttons, etc.). Callers use this to drive double-click
+// activation on directory entries.
+func (a *App) browseDialogListHit(msg tea.MouseMsg) int {
+	if a.fileDialog == nil || !a.fileDialog.IsVisible() {
+		return -1
+	}
+	d := a.fileDialog
+	startCol, startRow, endCol, endRow := d.DialogBounds(a.width, a.height)
+	if msg.X < startCol || msg.X >= endCol || msg.Y < startRow || msg.Y >= endRow {
+		return -1
+	}
+	contentWidth := max(d.Width()-dialogHorizontalOverhead, 10)
+	localX := msg.X - startCol - 3
+	localY := msg.Y - startRow - 2
+	hit := d.HitTestContent(localX, localY, contentWidth)
+	if hit.Zone != DialogHitField || hit.ListItemIndex < 0 {
+		return -1
+	}
+	return hit.ListItemIndex
+}
+
 // openBrowseDialog builds and sets the browse dialog for the given directory.
 func (a *App) openBrowseDialog(dir string) {
 	entries, err := listDirectoryEntries(dir)

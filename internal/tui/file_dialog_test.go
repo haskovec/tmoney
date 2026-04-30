@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/haskovec/tmoney/internal/db"
@@ -660,5 +661,180 @@ func TestBuildBrowseDialog(t *testing.T) {
 	buttons := d.Buttons()
 	if buttons[1].Label != "Open" {
 		t.Errorf("primary button = %q, want 'Open'", buttons[1].Label)
+	}
+}
+
+// TestApp_HandleMenuAction_OpenFile_AlwaysStartsInDefaultDir asserts that File>Open
+// starts in db.DefaultDirectory() regardless of which file is currently open. The
+// previous behavior used filepath.Dir(a.db.Path()), which left users stranded in
+// temp directories when tests had run earlier.
+func TestApp_HandleMenuAction_OpenFile_AlwaysStartsInDefaultDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	defaultDir := db.DefaultDirectory()
+	if err := os.MkdirAll(defaultDir, 0o755); err != nil {
+		t.Fatalf("setup: mkdir default dir: %v", err)
+	}
+
+	// Open a real DB in some other location so a.db is non-nil and points elsewhere.
+	otherDir := t.TempDir()
+	dbPath := filepath.Join(otherDir, "current.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("setup: db.Create: %v", err)
+	}
+	defer database.Close()
+
+	app := &App{
+		db:          database,
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	app.handleMenuAction(MenuActionOpenFile)
+
+	if app.browseDir != defaultDir {
+		t.Errorf("browseDir = %q, want %q (Open File should start in DefaultDirectory, not the current file's directory)",
+			app.browseDir, defaultDir)
+	}
+}
+
+// TestApp_BrowseDialog_DoubleClickOnDotDot_NavigatesUp asserts that a double-click
+// on the "../" list entry in the Open File browse dialog navigates to the parent
+// directory without requiring a separate Open button press.
+func TestApp_BrowseDialog_DoubleClickOnDotDot_NavigatesUp(t *testing.T) {
+	parent := t.TempDir()
+	child := filepath.Join(parent, "child")
+	if err := os.Mkdir(child, 0o755); err != nil {
+		t.Fatalf("setup: mkdir child: %v", err)
+	}
+	// Put a stub .tdb so listDirectoryEntries returns the real "../" row
+	// rather than the "(empty directory)" placeholder it falls back to.
+	if err := os.WriteFile(filepath.Join(child, "stub.tdb"), []byte{}, 0o644); err != nil {
+		t.Fatalf("setup: write stub: %v", err)
+	}
+
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		width:       100,
+		height:      40,
+	}
+	app.styles.Resize(100, 40)
+
+	app.openBrowseDialog(child)
+	if app.fileDialog == nil {
+		t.Fatal("setup: openBrowseDialog did not set fileDialog")
+	}
+	if app.browseDir != child {
+		t.Fatalf("setup: browseDir = %q, want %q", app.browseDir, child)
+	}
+
+	now := time.Unix(0, 0)
+	app.browseDialogClicks = NewClickTracker(400 * time.Millisecond)
+	app.browseDialogClicks.SetNowFn(func() time.Time { return now })
+
+	d := app.fileDialog
+	startCol, startRow, _, _ := d.DialogBounds(app.width, app.height)
+	contentWidth := d.Width() - dialogHorizontalOverhead
+
+	// Locate the screen row of the first list item ("../").
+	dotDotY := -1
+	for y := 0; y < d.ContentHeight(); y++ {
+		hit := d.HitTestContent(5, y, contentWidth)
+		if hit.Zone == DialogHitField && hit.ListItemIndex == 0 {
+			dotDotY = y
+			break
+		}
+	}
+	if dotDotY < 0 {
+		t.Fatal("setup: could not locate ../ list row in browse dialog")
+	}
+	clickMsg := tea.MouseMsg{
+		X:      startCol + 3 + 5,
+		Y:      startRow + 2 + dotDotY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	}
+
+	// First click: selects only, does not navigate.
+	if _, cmd := app.Update(clickMsg); cmd != nil {
+		t.Fatal("first click should not return a navigation command")
+	}
+	if app.browseDir != child {
+		t.Fatalf("after first click, browseDir = %q, want %q (no navigation yet)", app.browseDir, child)
+	}
+
+	// Second click within threshold: triggers navigation up.
+	now = now.Add(100 * time.Millisecond)
+	app.Update(clickMsg)
+
+	if app.browseDir != parent {
+		t.Errorf("after double-click on ../, browseDir = %q, want %q", app.browseDir, parent)
+	}
+}
+
+// TestApp_BrowseDialog_DoubleClickOnSubdir_NavigatesIn asserts double-clicking
+// a subdirectory list row drills into it without a separate Open press.
+func TestApp_BrowseDialog_DoubleClickOnSubdir_NavigatesIn(t *testing.T) {
+	parent := t.TempDir()
+	subdir := filepath.Join(parent, "sub")
+	if err := os.Mkdir(subdir, 0o755); err != nil {
+		t.Fatalf("setup: mkdir sub: %v", err)
+	}
+
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		width:       100,
+		height:      40,
+	}
+	app.styles.Resize(100, 40)
+
+	app.openBrowseDialog(parent)
+
+	// Entries: ["../", "sub/"] — sub/ is index 1.
+	now := time.Unix(0, 0)
+	app.browseDialogClicks = NewClickTracker(400 * time.Millisecond)
+	app.browseDialogClicks.SetNowFn(func() time.Time { return now })
+
+	d := app.fileDialog
+	startCol, startRow, _, _ := d.DialogBounds(app.width, app.height)
+	contentWidth := d.Width() - dialogHorizontalOverhead
+
+	subY := -1
+	for y := 0; y < d.ContentHeight(); y++ {
+		hit := d.HitTestContent(5, y, contentWidth)
+		if hit.Zone == DialogHitField && hit.ListItemIndex == 1 {
+			subY = y
+			break
+		}
+	}
+	if subY < 0 {
+		t.Fatal("setup: could not locate sub/ list row")
+	}
+	clickMsg := tea.MouseMsg{
+		X:      startCol + 3 + 5,
+		Y:      startRow + 2 + subY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	}
+
+	app.Update(clickMsg)
+	now = now.Add(100 * time.Millisecond)
+	app.Update(clickMsg)
+
+	if app.browseDir != subdir {
+		t.Errorf("after double-click on sub/, browseDir = %q, want %q", app.browseDir, subdir)
 	}
 }

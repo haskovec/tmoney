@@ -282,8 +282,9 @@ type App struct {
 	keys keyMap
 
 	// Mouse double-click trackers (lazy-initialized on first click).
-	sidebarClicks   *ClickTracker
-	priceListClicks *ClickTracker
+	sidebarClicks      *ClickTracker
+	priceListClicks    *ClickTracker
+	browseDialogClicks *ClickTracker
 }
 
 // keyMap defines the key bindings for the application.
@@ -2424,7 +2425,26 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if a.fileDialog != nil && a.fileDialog.IsVisible() {
+		// In browse mode, a double-click on a list row activates that entry
+		// (navigate into a directory or open a .tdb file) without requiring
+		// a separate Open button press.
+		listItemRow := -1
+		if a.fileDialogMode == fileDialogModeBrowse &&
+			msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+			listItemRow = a.browseDialogListHit(msg)
+		}
+
 		action := a.fileDialog.HandleMouse(msg, a.width, a.height)
+
+		if listItemRow >= 0 {
+			if a.browseDialogClicks == nil {
+				a.browseDialogClicks = NewClickTracker(doubleClickThreshold)
+			}
+			if a.browseDialogClicks.Click(listItemRow) {
+				return a.submitFileDialog()
+			}
+		}
+
 		switch action {
 		case DialogActionSubmit:
 			return a.submitFileDialog()
@@ -2799,11 +2819,7 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 
 	case MenuActionOpenFile:
 		a.menubar.Deactivate()
-		startDir := db.DefaultDirectory()
-		if a.db != nil {
-			startDir = filepath.Dir(a.db.Path())
-		}
-		a.openBrowseDialog(startDir)
+		a.openBrowseDialog(db.DefaultDirectory())
 		return a, nil
 
 	case MenuActionOpenRecent:
