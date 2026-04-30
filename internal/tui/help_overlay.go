@@ -179,6 +179,7 @@ func pricesShortcuts() shortcutSection {
 			{"n", "New price (history view)"},
 			{"d", "Delete price (history view)"},
 			{"i", "Import prices from CSV (history view)"},
+			{"u", "Update prices from provider"},
 			{"/", "Search"},
 		},
 	}

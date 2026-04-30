@@ -162,6 +162,57 @@ func TestHandleSecurityViewKeys_UTriggersRefresh(t *testing.T) {
 	}
 }
 
+func TestHandlePriceListKeys_UTriggersRefresh(t *testing.T) {
+	a, fp, _ := setupRefreshTUITest(t, "AAPL")
+	fp.quotes["AAPL"] = quoteUSD("2026-04-22", "271.06")
+
+	a.priceView = &priceViewData{mode: pricesViewList}
+	a.buildPriceListTable()
+
+	uKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}}
+	_, cmd := a.handlePriceViewKeys(uKey)
+	if cmd == nil {
+		t.Fatal("u keypress on prices list returned nil cmd")
+	}
+	completed, ok := cmd().(priceRefreshCompleteMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want priceRefreshCompleteMsg", cmd())
+	}
+	if completed.err != nil {
+		t.Errorf("unexpected err: %v", completed.err)
+	}
+	if completed.result.CountByOutcome()[price.OutcomeUpdated] != 1 {
+		t.Errorf("updated count = %d, want 1", completed.result.CountByOutcome()[price.OutcomeUpdated])
+	}
+}
+
+func TestHandlePriceDetailKeys_UTriggersRefresh(t *testing.T) {
+	a, fp, secs := setupRefreshTUITest(t, "AAPL")
+	fp.quotes["AAPL"] = quoteUSD("2026-04-22", "271.06")
+
+	a.priceView = &priceViewData{
+		mode:             pricesViewDetail,
+		selectedSecurity: secs[0],
+	}
+	a.buildPriceTable()
+
+	uKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}}
+	_, cmd := a.handlePriceViewKeys(uKey)
+	if cmd == nil {
+		t.Fatal("u keypress on prices detail returned nil cmd")
+	}
+	completed, ok := cmd().(priceRefreshCompleteMsg)
+	if !ok {
+		t.Fatalf("msg type = %T, want priceRefreshCompleteMsg", cmd())
+	}
+	if completed.err != nil {
+		t.Errorf("unexpected err: %v", completed.err)
+	}
+	if completed.result.CountByOutcome()[price.OutcomeUpdated] != 1 {
+		t.Errorf("updated count = %d, want 1", completed.result.CountByOutcome()[price.OutcomeUpdated])
+	}
+}
+
 func TestSummarizeRefreshResult_AllUpdated(t *testing.T) {
 	r := &price.RefreshResult{Entries: []price.RefreshEntry{
 		{Ticker: "AAPL", Outcome: price.OutcomeUpdated},

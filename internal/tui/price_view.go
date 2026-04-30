@@ -263,7 +263,7 @@ func (a *App) renderPriceList() string {
 	var sections []string
 
 	titleText := "PRICES"
-	hint := "Enter: view history  ·  /: search"
+	hint := "Enter: view history  ·  u: update prices  ·  /: search"
 	if a.priceView.searchQuery != "" {
 		hint += "  Search: " + a.priceView.searchQuery
 	}
@@ -396,6 +396,8 @@ func (a *App) handlePriceListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.priceView.searchQuery = ""
 	case key.Matches(msg, a.keys.Enter):
 		return a, a.drillIntoSelectedListRow()
+	case msg.String() == "u":
+		return a, a.refreshPricesCmd()
 	}
 	return a, nil
 }
@@ -476,6 +478,8 @@ func (a *App) handlePriceDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.priceImportDialog = buildImportPriceDialog()
 		a.priceImportDialog.SetVisible(true)
 		return a, nil
+	case msg.String() == "u":
+		return a, a.refreshPricesCmd()
 	}
 	return a, nil
 }

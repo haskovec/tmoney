@@ -96,7 +96,7 @@ The TUI has several views accessible via number keys or the menu bar:
 | `2` | Scheduled | Due and upcoming scheduled transactions |
 | `3` | Reports | Net worth and spending by category reports |
 | `4` | Securities | Security master list with add/edit/hide/delete and `u` to refresh prices |
-| `5` | Prices | Latest price per security; Enter or double-click drills into one ticker's full history |
+| `5` | Prices | Latest price per security; Enter or double-click drills into one ticker's full history; `u` to refresh prices |
 | - | Register | Transaction list for a selected account (open from Dashboard) |
 
 ### Keyboard Shortcuts
@@ -205,6 +205,7 @@ Esc to return to the list.
 | `n` | New price (history view) |
 | `d` | Delete selected price (history view) |
 | `i` | Import prices from CSV (history view) |
+| `u` | Update prices for all visible securities from the default provider |
 | `/` | Search |
 
 #### Dialogs
