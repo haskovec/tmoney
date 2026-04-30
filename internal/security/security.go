@@ -104,6 +104,7 @@ const (
 	AssetClassCommodity          AssetClass = "commodity"
 	AssetClassCrypto             AssetClass = "crypto"
 	AssetClassAssetMixture       AssetClass = "asset_mixture"
+	AssetClassRealEstate         AssetClass = "real_estate"
 	AssetClassUnclassified       AssetClass = "unclassified"
 )
 
@@ -120,6 +121,7 @@ func AllAssetClasses() []AssetClass {
 		AssetClassCommodity,
 		AssetClassCrypto,
 		AssetClassAssetMixture,
+		AssetClassRealEstate,
 		AssetClassUnclassified,
 	}
 }
@@ -135,7 +137,7 @@ func (ac AssetClass) IsValid() bool {
 	case AssetClassLargeCapStock, AssetClassSmallCapStock, AssetClassInternationalStock,
 		AssetClassIndex, AssetClassDomesticBond, AssetClassForeignBond,
 		AssetClassCash, AssetClassCommodity, AssetClassCrypto,
-		AssetClassAssetMixture, AssetClassUnclassified:
+		AssetClassAssetMixture, AssetClassRealEstate, AssetClassUnclassified:
 		return true
 	}
 	return false
@@ -164,6 +166,8 @@ func (ac AssetClass) DisplayName() string {
 		return "Crypto"
 	case AssetClassAssetMixture:
 		return "Asset Mixture"
+	case AssetClassRealEstate:
+		return "Real Estate"
 	case AssetClassUnclassified:
 		return "Unclassified"
 	default:

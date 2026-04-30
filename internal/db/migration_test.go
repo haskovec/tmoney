@@ -983,10 +983,10 @@ func TestMigration006Securities(t *testing.T) {
 
 		_, err = db.Conn().Exec(`
 			INSERT INTO securities (ticker, name, security_type, asset_class)
-			VALUES ('BAD', 'Bad Security', 'stock', 'real_estate')
+			VALUES ('BAD', 'Bad Security', 'stock', 'not_a_class')
 		`)
 		if err == nil {
-			t.Error("Expected error when inserting invalid asset_class 'real_estate'")
+			t.Error("Expected error when inserting invalid asset_class 'not_a_class'")
 		}
 	})
 
@@ -1020,6 +1020,36 @@ func TestMigration006Securities(t *testing.T) {
 		}
 		if currency != "USD" {
 			t.Errorf("Expected default currency 'USD', got %q", currency)
+		}
+	})
+
+	t.Run("accepts real_estate asset_class", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO securities (ticker, name, security_type, asset_class)
+			VALUES ('VNQ', 'Vanguard Real Estate ETF', 'etf', 'real_estate')
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert security with real_estate asset_class: %v", err)
+		}
+
+		var assetClass string
+		err = db.Conn().QueryRow(`
+			SELECT asset_class FROM securities WHERE ticker = 'VNQ'
+		`).Scan(&assetClass)
+		if err != nil {
+			t.Fatalf("Failed to read security: %v", err)
+		}
+		if assetClass != "real_estate" {
+			t.Errorf("Expected asset_class 'real_estate', got %q", assetClass)
 		}
 	})
 

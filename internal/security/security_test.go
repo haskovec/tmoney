@@ -162,7 +162,7 @@ func TestTypeScanValue(t *testing.T) {
 func TestAssetClass(t *testing.T) {
 	t.Run("AllAssetClasses returns all classes", func(t *testing.T) {
 		classes := AllAssetClasses()
-		expected := 11
+		expected := 12
 		if len(classes) != expected {
 			t.Errorf("Expected %d asset classes, got %d", expected, len(classes))
 		}
@@ -186,9 +186,9 @@ func TestAssetClass(t *testing.T) {
 	})
 
 	t.Run("IsValid returns false for invalid class", func(t *testing.T) {
-		invalid := AssetClass("real_estate")
+		invalid := AssetClass("not_a_class")
 		if invalid.IsValid() {
-			t.Error("IsValid should return false for 'real_estate'")
+			t.Error("IsValid should return false for 'not_a_class'")
 		}
 	})
 
@@ -207,6 +207,7 @@ func TestAssetClass(t *testing.T) {
 			{AssetClassCommodity, "Commodity"},
 			{AssetClassCrypto, "Crypto"},
 			{AssetClassAssetMixture, "Asset Mixture"},
+			{AssetClassRealEstate, "Real Estate"},
 			{AssetClassUnclassified, "Unclassified"},
 		}
 		for _, tc := range tests {
@@ -229,10 +230,20 @@ func TestParseAssetClass(t *testing.T) {
 		}
 	})
 
+	t.Run("Parses real_estate", func(t *testing.T) {
+		ac, err := ParseAssetClass("real_estate")
+		if err != nil {
+			t.Fatalf("ParseAssetClass returned error: %v", err)
+		}
+		if ac != AssetClassRealEstate {
+			t.Errorf("Expected AssetClassRealEstate, got %q", ac)
+		}
+	})
+
 	t.Run("Rejects invalid classes", func(t *testing.T) {
-		_, err := ParseAssetClass("real_estate")
+		_, err := ParseAssetClass("not_a_class")
 		if err == nil {
-			t.Error("ParseAssetClass('real_estate') should return error")
+			t.Error("ParseAssetClass('not_a_class') should return error")
 		}
 	})
 }
@@ -379,7 +390,7 @@ func TestSecurityValidation(t *testing.T) {
 
 	t.Run("Invalid asset class fails validation", func(t *testing.T) {
 		sec := validSecurity()
-		sec.AssetClass = AssetClass("real_estate")
+		sec.AssetClass = AssetClass("not_a_class")
 		errs := sec.Validate()
 		if !errs.HasErrors() {
 			t.Error("Invalid asset class should fail validation")

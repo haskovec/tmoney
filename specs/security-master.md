@@ -44,6 +44,7 @@ The Security Master is a centralized registry of financial instruments (stocks, 
 | `commodity` | Commodities (gold, oil, etc.) |
 | `crypto` | Cryptocurrency |
 | `asset_mixture` | Balanced/target-date/multi-asset funds |
+| `real_estate` | Real estate (REITs, real estate funds, direct property) |
 | `unclassified` | Default for uncategorized securities |
 
 ### Security Validation Rules
@@ -797,7 +798,7 @@ CREATE TABLE securities (
     asset_class TEXT NOT NULL DEFAULT 'unclassified' CHECK (asset_class IN (
         'large_cap_stock', 'small_cap_stock', 'international_stock',
         'index', 'domestic_bond', 'foreign_bond', 'cash',
-        'commodity', 'crypto', 'asset_mixture', 'unclassified'
+        'commodity', 'crypto', 'asset_mixture', 'real_estate', 'unclassified'
     )),
     currency TEXT NOT NULL DEFAULT 'USD',
     exchange TEXT,
