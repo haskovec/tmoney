@@ -79,6 +79,28 @@ tmoney -f personal.tdb --balance
 - Manual entry, CSV import, and history per security
 - Bulk refresh from an online provider (Yahoo Finance by default) — only stores the latest closed-session price, so reruns on the same day are idempotent
 
+### Import / Export
+- Import transactions from CSV, QIF, or OFX/QFX files (Quicken / bank
+  downloads). Available from File → Import Transactions… in the TUI or
+  via `--import` on the CLI. Quicken Mac users export via File →
+  Export → Register Transactions to CSV File…
+- Multi-account CSVs (one file containing every account, as Quicken Mac
+  emits) are detected automatically: the importer asks you to pick
+  which source account to import this pass and which tmoney account it
+  maps to. Re-run once per source account.
+- Optional duplicate detection: skip or update matched rows
+- Preview-then-confirm flow shows what will be created/updated/skipped
+  before any changes are written
+- Export to CSV or QIF via `--export` on the CLI
+- **Link Transfers** (Transactions → Link Transfers… or
+  `--link-transfers`): when each side of a transfer is imported as a
+  separate transaction (typical when importing one account at a time
+  from Quicken), this scans for unlinked transactions across accounts
+  whose amounts cancel and whose dates are within a few days, and joins
+  the matched pairs into proper transfers. Pairs with multiple possible
+  partners are flagged as ambiguous and left untouched for manual
+  review.
+
 ## TUI Interface
 
 Launch the TUI by running `tmoney` with a database file (or no arguments for the default file):
@@ -119,9 +141,9 @@ Press `?` at any time to show the help overlay.
 | `4` | Securities view |
 | `5` | Prices view |
 | `F10` | Activate menu bar |
-| `Alt+F` | File menu |
+| `Alt+F` | File menu (also has Import Transactions…) |
 | `Alt+A` | Accounts menu |
-| `Alt+T` | Transactions menu |
+| `Alt+T` | Transactions menu (also has Link Transfers…) |
 | `Alt+S` | Securities menu |
 | `Alt+R` | Reports menu |
 | `Alt+H` | Help menu |
@@ -373,6 +395,65 @@ tmoney -f personal.tdb --update-prices --provider yahoo
 Each run fetches the latest *closed-session* price from the provider and upserts it as `source = api`. Hidden securities, securities without a ticker, and securities whose currency does not match the provider's are skipped silently or with a note. If the date the provider returned is already on file, the row is left alone (so re-running the same day is a no-op).
 
 The command prints a per-ticker table followed by a summary like `4 updated, 1 up-to-date, 0 skipped, 0 failed` and exits non-zero if any ticker failed.
+
+### Import Transactions
+
+```bash
+# Dry-run preview (default — shows what would happen without changing anything)
+tmoney -f personal.tdb --import statements.qif --account "Checking"
+
+# Execute the import
+tmoney -f personal.tdb --import statements.qif --account "Checking" --confirm
+
+# Force a format if auto-detection from the extension fails
+tmoney -f personal.tdb --import data.txt --account "Checking" --format qif
+
+# Skip duplicates (matched rows are not imported)
+tmoney -f personal.tdb --import file.qif --account "Checking" --confirm --skip-duplicates
+
+# Update duplicates (matched rows update existing transactions: cleared status, FITID, etc.)
+tmoney -f personal.tdb --import file.ofx --account "Checking" --confirm --update-duplicates
+
+# Multi-account CSV (e.g. Quicken Mac's "Register Transactions to CSV"):
+# the import refuses to run without --source-account when the file
+# contains rows for more than one account.
+tmoney -f personal.tdb --import register.csv --account "BoA Checking" \
+  --source-account "Checking" --confirm
+```
+
+Supported formats: CSV, QIF (Quicken), and OFX/QFX (bank downloads). The same flow is also available in the TUI via File → Import Transactions… — when the file contains multiple source accounts, the TUI inserts a picker step between the options and confirm dialogs.
+
+### Export Transactions
+
+```bash
+# Export full database as CSV (or QIF with --format qif)
+tmoney -f personal.tdb --export finances.csv
+
+# Export a single account, date range
+tmoney -f personal.tdb --export checking_q1.csv --account "Checking" \
+  --from 2024-01-01 --to 2024-03-31
+```
+
+### Link Transfers
+
+```bash
+# Dry-run preview (default)
+tmoney -f personal.tdb --link-transfers
+
+# Widen or narrow the date-tolerance window (default: 5 days)
+tmoney -f personal.tdb --link-transfers --max-days 3
+
+# Execute the linking
+tmoney -f personal.tdb --link-transfers --confirm
+```
+
+Useful after importing each account's QIF/OFX separately: it scans for
+pairs of unlinked transactions across accounts whose amounts cancel and
+whose dates are within `--max-days`, then joins the matched pairs into
+real transfers. Pairs with multiple possible counterparts are listed as
+"ambiguous" and left alone — you can review and link those by hand. The
+preview lists every candidate; `--confirm` only links the unambiguous
+ones.
 
 ## File Format
 

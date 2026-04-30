@@ -12,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -30,6 +31,7 @@ type Services struct {
 	Price           *price.Service
 	Investment      *investment.Service
 	CorporateAction *investment.CorporateActionService
+	TransferLink    *transferlink.Service
 
 	// Repositories (exposed for direct use by CLI/TUI when needed)
 	AccountRepo         *account.Repository
@@ -87,6 +89,7 @@ func NewServices(database *db.DB) *Services {
 	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, database)
 	reportSvc := report.NewService(accountRepo, database, report.WithInvestmentValuer(&investmentValuerAdapter{svc: investmentSvc}))
 	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, investmentRepo, securityRepo, database)
+	transferLinkSvc := transferlink.NewService(txnRepo, transferRepo, splitRepo, accountRepo)
 
 	return &Services{
 		Account:         accountSvc,
@@ -100,6 +103,7 @@ func NewServices(database *db.DB) *Services {
 		Price:           priceSvc,
 		Investment:      investmentSvc,
 		CorporateAction: corporateActionSvc,
+		TransferLink:    transferLinkSvc,
 
 		AccountRepo:         accountRepo,
 		TransactionRepo:     txnRepo,

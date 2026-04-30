@@ -41,8 +41,8 @@ func TestMenuBar_FileMenuItems(t *testing.T) {
 	m := NewMenuBar()
 
 	fileMenu := m.menus[0]
-	if len(fileMenu.items) != 7 {
-		t.Fatalf("File menu: expected 7 items, got %d", len(fileMenu.items))
+	if len(fileMenu.items) != 8 {
+		t.Fatalf("File menu: expected 8 items, got %d", len(fileMenu.items))
 	}
 
 	expectedItems := []struct {
@@ -52,6 +52,7 @@ func TestMenuBar_FileMenuItems(t *testing.T) {
 		{"New File", MenuActionNewFile},
 		{"Open File", MenuActionOpenFile},
 		{"Open Recent", MenuActionOpenRecent},
+		{"Import Transactions...", MenuActionImportTransactions},
 		{"Create Backup", MenuActionCreateBackup},
 		{"Restore from Backup", MenuActionRestoreBackup},
 		{"Close File", MenuActionCloseFile},
@@ -169,7 +170,7 @@ func TestMenuBar_MoveUpDown(t *testing.T) {
 	m := NewMenuBar()
 	m.Activate()
 
-	// File menu has 7 items
+	// File menu has 8 items
 	m.MoveDown()
 	if m.ItemCursor() != 1 {
 		t.Errorf("after MoveDown, itemCursor = %d, want 1", m.ItemCursor())
@@ -180,22 +181,24 @@ func TestMenuBar_MoveUpDown(t *testing.T) {
 	m.MoveDown()
 	m.MoveDown()
 	m.MoveDown()
-	if m.ItemCursor() != 6 {
-		t.Errorf("after 6x MoveDown, itemCursor = %d, want 6", m.ItemCursor())
+	m.MoveDown()
+	if m.ItemCursor() != 7 {
+		t.Errorf("after 7x MoveDown, itemCursor = %d, want 7", m.ItemCursor())
 	}
 
 	// Should not go past last item
 	m.MoveDown()
-	if m.ItemCursor() != 6 {
-		t.Errorf("itemCursor should stay at 6, got %d", m.ItemCursor())
+	if m.ItemCursor() != 7 {
+		t.Errorf("itemCursor should stay at 7, got %d", m.ItemCursor())
 	}
 
 	m.MoveUp()
-	if m.ItemCursor() != 5 {
-		t.Errorf("after MoveUp, itemCursor = %d, want 5", m.ItemCursor())
+	if m.ItemCursor() != 6 {
+		t.Errorf("after MoveUp, itemCursor = %d, want 6", m.ItemCursor())
 	}
 
 	// Move all the way up
+	m.MoveUp()
 	m.MoveUp()
 	m.MoveUp()
 	m.MoveUp()
@@ -227,7 +230,8 @@ func TestMenuBar_SelectExitAction(t *testing.T) {
 	m := NewMenuBar()
 	m.Activate()
 
-	// Move to "Exit" (index 6 in File menu)
+	// Move to "Exit" (index 7 in File menu)
+	m.MoveDown()
 	m.MoveDown()
 	m.MoveDown()
 	m.MoveDown()
@@ -451,6 +455,7 @@ func TestMenuBar_TransactionsMenuItems(t *testing.T) {
 		{"Edit Transaction", MenuActionEditTransaction},
 		{"Delete Transaction", MenuActionDeleteTransaction},
 		{"Search...", MenuActionSearch},
+		{"Link Transfers...", MenuActionLinkTransfers},
 	}
 
 	if len(txnMenu.items) != len(expectedItems) {
@@ -773,8 +778,8 @@ func TestMenuBar_HitTestDropdown(t *testing.T) {
 	}{
 		{"first item", 0, 0},
 		{"third item", 2, 2},
-		{"last item", 6, 6},
-		{"out of range", 7, -1},
+		{"last item", 7, 7},
+		{"out of range", 8, -1},
 		{"negative", -1, -1},
 	}
 
@@ -826,12 +831,12 @@ func TestMenuBar_DropdownBounds(t *testing.T) {
 	if colOffset != 0 {
 		t.Errorf("File menu colOffset = %d, want 0", colOffset)
 	}
-	if itemCount != 7 {
-		t.Errorf("File menu itemCount = %d, want 7", itemCount)
+	if itemCount != 8 {
+		t.Errorf("File menu itemCount = %d, want 8", itemCount)
 	}
-	// Widest item is "Restore from Backup" (19 chars) + 4 padding = 23
-	if dropdownWidth != 23 {
-		t.Errorf("File menu dropdownWidth = %d, want 23", dropdownWidth)
+	// Widest item is "Import Transactions..." (22 chars) + 4 padding = 26
+	if dropdownWidth != 26 {
+		t.Errorf("File menu dropdownWidth = %d, want 26", dropdownWidth)
 	}
 }
 

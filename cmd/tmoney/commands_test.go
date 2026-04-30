@@ -9744,3 +9744,107 @@ func TestParseArgs_SpinOffEqualsFormat(t *testing.T) {
 		t.Errorf("spinOffPrice should be 25, got %q", opts.spinOffPrice)
 	}
 }
+
+// setupMultiAccountImportFixture creates a test database with two
+// accounts and a CSV file containing transactions for both. Returns the
+// database and CSV paths.
+func setupMultiAccountImportFixture(t *testing.T) (dbPath, csvPath string) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	dbPath = filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create database: %v", err)
+	}
+	acctRepo := account.NewRepository(database)
+	for _, name := range []string{"Checking", "Savings"} {
+		acct := account.NewAccount(name, account.TypeChecking, "USD",
+			types.MustNewMoney("0"), types.NewDate(2024, 1, 1))
+		if err := acctRepo.Create(acct); err != nil {
+			database.Close()
+			t.Fatalf("failed to create account %s: %v", name, err)
+		}
+	}
+	database.Close()
+
+	csvPath = filepath.Join(tmpDir, "register.csv")
+	csv := "Date,Account,Payee,Category,Amount,Memo,Check Number,Status,Transfer Account\n" +
+		"2024-01-10,Checking,Coffee Shop,,-5.00,,,,\n" +
+		"2024-01-11,Checking,Employer,,3000.00,,,,\n" +
+		"2024-01-12,Savings,Interest,,5.00,,,,\n"
+	if err := os.WriteFile(csvPath, []byte(csv), 0o644); err != nil {
+		t.Fatalf("failed to write CSV: %v", err)
+	}
+	return dbPath, csvPath
+}
+
+func TestRun_ImportMultiAccountCSV_RequiresSourceAccount(t *testing.T) {
+	dbPath, csvPath := setupMultiAccountImportFixture(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{
+		"--file", dbPath,
+		"--import", csvPath,
+		"--account", "Checking",
+	}, stdout, stderr)
+
+	if err == nil {
+		t.Fatal("expected error when CSV contains multiple accounts and no --source-account")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "transactions for 2 accounts") {
+		t.Errorf("error should mention multiple accounts, got: %v", err)
+	}
+	if !strings.Contains(msg, "Checking") || !strings.Contains(msg, "Savings") {
+		t.Errorf("error should list account names, got: %v", err)
+	}
+	if !strings.Contains(msg, "--source-account") {
+		t.Errorf("error should suggest --source-account, got: %v", err)
+	}
+}
+
+func TestRun_ImportMultiAccountCSV_FiltersBySourceAccount(t *testing.T) {
+	dbPath, csvPath := setupMultiAccountImportFixture(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{
+		"--file", dbPath,
+		"--import", csvPath,
+		"--account", "Checking",
+		"--source-account", "Checking",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "IMPORT PREVIEW") {
+		t.Errorf("expected dry-run preview output, got: %s", out)
+	}
+	if !strings.Contains(out, "Parsed: 2 transactions") {
+		t.Errorf("expected 2 parsed (Checking only), got: %s", out)
+	}
+}
+
+func TestRun_ImportMultiAccountCSV_UnknownSourceAccount(t *testing.T) {
+	dbPath, csvPath := setupMultiAccountImportFixture(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := run([]string{
+		"--file", dbPath,
+		"--import", csvPath,
+		"--account", "Checking",
+		"--source-account", "Brokerage",
+	}, stdout, stderr)
+
+	if err == nil {
+		t.Fatal("expected error when --source-account is not in the CSV")
+	}
+	if !strings.Contains(err.Error(), "not found in import file") {
+		t.Errorf("error should mention source-account not found, got: %v", err)
+	}
+}

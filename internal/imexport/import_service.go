@@ -185,11 +185,23 @@ func (s *ImportService) Parse(r io.Reader, format Format) (*ParseResult, error) 
 
 // Preview parses the file, runs matching and auto-categorization, and returns
 // the import result ready for user review. No changes are made to the database.
+//
+// Callers that need to inspect or filter the parsed records before running
+// the preview (e.g. picking one source account out of a multi-account CSV)
+// should use Parse + PreviewRecords instead.
 func (s *ImportService) Preview(r io.Reader, format Format, accountID types.ID, opts ImportOptions) (*ImportResult, error) {
-	// Parse the file
 	parseResult, err := s.Parse(r, format)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse import file: %w", err)
+	}
+	return s.PreviewRecords(parseResult, accountID, opts)
+}
+
+// PreviewRecords runs matching and auto-categorization against an already
+// parsed (and optionally filtered) ParseResult.
+func (s *ImportService) PreviewRecords(parseResult *ParseResult, accountID types.ID, opts ImportOptions) (*ImportResult, error) {
+	if parseResult == nil {
+		return nil, fmt.Errorf("parseResult is nil")
 	}
 
 	if len(parseResult.Records) == 0 && !parseResult.HasErrors() {

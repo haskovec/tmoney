@@ -26,6 +26,7 @@ import (
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -261,6 +262,14 @@ type App struct {
 	fileDialog     *Dialog
 	fileDialogMode fileDialogMode
 	browseDir      string
+
+	// Import dialog state (transaction import via File → Import)
+	importDialog      *Dialog
+	importDialogState *importDialogState
+
+	// Link Transfers dialog state (Transactions → Link Transfers)
+	linkTransfersDialog *Dialog
+	linkTransfersResult *transferlink.Result
 
 	// Confirmation dialog state
 	confirmDialog *Dialog
@@ -1417,6 +1426,75 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 		return a, a.reloadPriceViewKeepingMode()
 
+	case importDialogOpenMsg:
+		d, ids := buildImportOptionsDialog(msg.accounts, msg.defaultAccountID)
+		a.importDialog = d
+		a.importDialogState = &importDialogState{
+			step:       importStepOptions,
+			accountIDs: ids,
+		}
+		return a, nil
+
+	case importPreviewedMsg:
+		state := msg.state
+		state.preview = msg.result
+		state.step = importStepConfirm
+		a.importDialog = buildImportConfirmDialog(state)
+		a.importDialogState = state
+		return a, nil
+
+	case importNeedsSourceMsg:
+		state := msg.state
+		state.step = importStepSourcePicker
+		state.sourceOptions = msg.sources
+		a.importDialog = buildImportSourcePickerDialog(msg.sources, state.accountName)
+		a.importDialogState = state
+		return a, nil
+
+	case importCompletedMsg:
+		a.statusbar.AddNotification(
+			fmt.Sprintf("Imported: %d created, %d updated, %d skipped", msg.created, msg.updated, msg.skipped),
+			NotificationInfo,
+		)
+		// Reload data so the new transactions appear in the dashboard /
+		// register without the user having to navigate away and back.
+		var cmds []tea.Cmd
+		cmds = append(cmds, a.loadSidebarData(), a.loadDashboardData())
+		if a.currentView == ViewRegister && a.register != nil {
+			cmds = append(cmds, a.loadRegisterData(a.register.account.ID))
+		}
+		if len(msg.errors) > 0 {
+			a.err = fmt.Errorf("import completed with %d errors:\n%s",
+				len(msg.errors), strings.Join(msg.errors, "\n"))
+		}
+		return a, tea.Batch(cmds...)
+
+	case linkTransfersPreviewedMsg:
+		a.linkTransfersResult = msg.result
+		a.linkTransfersDialog = buildLinkTransfersDialog(msg.result)
+		return a, nil
+
+	case linkTransfersCompletedMsg:
+		summary := fmt.Sprintf("Linked %d transfer pairs", msg.linked)
+		if msg.ambiguous > 0 {
+			summary += fmt.Sprintf(" (%d ambiguous left for review)", msg.ambiguous)
+		}
+		a.statusbar.AddNotification(summary, NotificationInfo)
+		var cmds []tea.Cmd
+		cmds = append(cmds, a.loadSidebarData(), a.loadDashboardData())
+		if a.currentView == ViewRegister && a.register != nil {
+			cmds = append(cmds, a.loadRegisterData(a.register.account.ID))
+		}
+		if len(msg.errors) > 0 {
+			parts := make([]string, len(msg.errors))
+			for i, e := range msg.errors {
+				parts[i] = e.Error()
+			}
+			a.err = fmt.Errorf("link transfers had %d errors:\n%s",
+				len(msg.errors), strings.Join(parts, "\n"))
+		}
+		return a, tea.Batch(cmds...)
+
 	case priceRefreshCompleteMsg:
 		if msg.err != nil {
 			a.err = msg.err
@@ -1470,6 +1548,16 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If file dialog is visible, route all keys to it
 	if a.fileDialog != nil && a.fileDialog.IsVisible() {
 		return a.handleFileDialogKey(msg)
+	}
+
+	// If transaction import dialog is visible, route all keys to it
+	if a.importDialog != nil && a.importDialog.IsVisible() {
+		return a.handleImportDialogKey(msg)
+	}
+
+	// If link-transfers dialog is visible, route all keys to it
+	if a.linkTransfersDialog != nil && a.linkTransfersDialog.IsVisible() {
+		return a.handleLinkTransfersDialogKey(msg)
 	}
 
 	// If split dialog is visible, route all keys to it
@@ -2454,6 +2542,28 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	if a.importDialog != nil && a.importDialog.IsVisible() {
+		action := a.importDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitImportDialog()
+		case DialogActionCancel:
+			a.closeImportDialog()
+		}
+		return a, nil
+	}
+
+	if a.linkTransfersDialog != nil && a.linkTransfersDialog.IsVisible() {
+		action := a.linkTransfersDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitLinkTransfersDialog()
+		case DialogActionCancel:
+			a.closeLinkTransfersDialog()
+		}
+		return a, nil
+	}
+
 	if a.txnDialog != nil && a.txnDialog.IsVisible() {
 		action := a.txnDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
@@ -2832,6 +2942,10 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 		a.fileDialog = buildOpenRecentDialog(recent)
 		return a, nil
 
+	case MenuActionImportTransactions:
+		a.menubar.Deactivate()
+		return a, a.startImport()
+
 	case MenuActionCreateBackup:
 		a.menubar.Deactivate()
 		return a, a.createManualBackupCmd()
@@ -2909,6 +3023,10 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 		if a.currentView == ViewRegister {
 			return a, a.loadTransferDialogData()
 		}
+
+	case MenuActionLinkTransfers:
+		a.menubar.Deactivate()
+		return a, a.startLinkTransfers()
 
 	case MenuActionUndo:
 		a.menubar.Deactivate()

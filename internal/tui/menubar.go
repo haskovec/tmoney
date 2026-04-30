@@ -17,6 +17,7 @@ const (
 	MenuActionNewFile
 	MenuActionOpenFile
 	MenuActionOpenRecent
+	MenuActionImportTransactions
 	MenuActionCreateBackup
 	MenuActionRestoreBackup
 	MenuActionCloseFile
@@ -35,6 +36,7 @@ const (
 	MenuActionEditTransaction
 	MenuActionDeleteTransaction
 	MenuActionSearch
+	MenuActionLinkTransfers
 
 	// Reports menu actions
 	MenuActionDashboard
@@ -98,6 +100,7 @@ func defaultMenus() []menu {
 				{label: "New File", action: MenuActionNewFile},
 				{label: "Open File", action: MenuActionOpenFile},
 				{label: "Open Recent", action: MenuActionOpenRecent},
+				{label: "Import Transactions...", action: MenuActionImportTransactions},
 				{label: "Create Backup", action: MenuActionCreateBackup},
 				{label: "Restore from Backup", action: MenuActionRestoreBackup},
 				{label: "Close File", action: MenuActionCloseFile},
@@ -132,6 +135,7 @@ func defaultMenus() []menu {
 				{label: "Edit Transaction", action: MenuActionEditTransaction},
 				{label: "Delete Transaction", action: MenuActionDeleteTransaction},
 				{label: "Search...", action: MenuActionSearch},
+				{label: "Link Transfers...", action: MenuActionLinkTransfers},
 			},
 		},
 		{

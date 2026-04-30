@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -18,13 +19,13 @@ import (
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/imexport"
 	"github.com/haskovec/tmoney/internal/investment"
-	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -1663,21 +1664,40 @@ func runImport(opts *cliOptions, w io.Writer) error {
 
 	// Create import service with adapters
 	importSvc := imexport.NewImportService(
-		&cliCategoryResolver{categorySvc: svc.Category},
-		&cliPayeeResolver{payeeSvc: svc.Payee},
-		&cliTransactionStore{
-			transactionRepo: svc.TransactionRepo,
-			payeeRepo:       svc.PayeeRepo,
-		},
-		&cliTransactionCreator{transactionSvc: svc.Transaction},
+		imexport.NewServiceCategoryResolver(svc.Category),
+		imexport.NewServicePayeeResolver(svc.Payee),
+		imexport.NewRepoTransactionStore(svc.TransactionRepo, svc.PayeeRepo),
+		imexport.NewServiceTransactionCreator(svc.Transaction),
 	)
 
-	// Run preview
+	// Parse the file once, then check whether it contains rows for more
+	// than one source account (Quicken Mac's "Register Transactions to
+	// CSV" emits a single file covering every account). If so, the user
+	// must pick which one to import via --source-account.
+	parseResult, err := importSvc.Parse(file, format)
+	if err != nil {
+		return fmt.Errorf("import parse failed: %w", err)
+	}
+	sources := imexport.DistinctAccounts(parseResult)
+	if len(sources) > 1 && opts.sourceAccount == "" {
+		return fmt.Errorf("import file contains transactions for %d accounts: %s\n"+
+			"Pass --source-account \"<name>\" to choose which one to import (run once per account)",
+			len(sources), strings.Join(sources, ", "))
+	}
+	if opts.sourceAccount != "" {
+		if len(sources) > 0 && !slices.Contains(sources, opts.sourceAccount) {
+			return fmt.Errorf("source account %q not found in import file (available: %s)",
+				opts.sourceAccount, strings.Join(sources, ", "))
+		}
+		parseResult = imexport.FilterByAccount(parseResult, opts.sourceAccount)
+	}
+
+	// Run preview from the (possibly filtered) records
 	importOpts := imexport.ImportOptions{
 		Format:            format,
 		DuplicateHandling: dupHandling,
 	}
-	result, err := importSvc.Preview(file, format, account.ID, importOpts)
+	result, err := importSvc.PreviewRecords(parseResult, account.ID, importOpts)
 	if err != nil {
 		return fmt.Errorf("import preview failed: %w", err)
 	}
@@ -1842,109 +1862,90 @@ func printImportResult(w io.Writer, importFile, accountName string, result *imex
 	}
 }
 
-// --- Import adapter types ---
-// These adapt the existing service/repository types to the interfaces expected
-// by imexport.ImportService.
+// runLinkTransfers handles the --link-transfers command. By default it
+// performs a dry-run preview of the candidate pairs that would be linked;
+// passing --confirm executes the linking.
+func runLinkTransfers(opts *cliOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--link-transfers requires --file to specify a database")
+	}
 
-// cliCategoryResolver adapts CategoryService to imexport.CategoryResolver.
-type cliCategoryResolver struct {
-	categorySvc *category.Service
-}
+	database, svc, err := openServices(opts.file)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
 
-func (r *cliCategoryResolver) ResolveCategoryByName(name string) (types.ID, error) {
-	// Handle hierarchical names like "Food:Groceries"
-	parts := strings.SplitN(name, ":", 2)
+	maxDays := opts.maxDateDiffDays
+	if maxDays == 0 {
+		maxDays = transferlink.DefaultMaxDateDiffDays
+	}
 
-	if len(parts) == 1 {
-		// Top-level category
-		cat, err := r.categorySvc.GetByName(name, nil)
-		if err != nil {
-			return types.ID{}, err
+	result, err := svc.TransferLink.FindUnlinked(maxDays)
+	if err != nil {
+		return fmt.Errorf("scan for transfer candidates failed: %w", err)
+	}
+
+	if !opts.confirm {
+		printLinkTransferPreview(w, result, maxDays)
+		return nil
+	}
+
+	linked, errs := svc.TransferLink.Link(result.Clean)
+	fmt.Fprintf(w, "LINK TRANSFERS COMPLETE\n")
+	fmt.Fprintf(w, "%s\n", strings.Repeat("=", 40))
+	fmt.Fprintf(w, "Linked:    %d pairs\n", linked)
+	fmt.Fprintf(w, "Ambiguous: %d pairs (left untouched — review by hand)\n", len(result.Ambiguous))
+	if len(errs) > 0 {
+		fmt.Fprintf(w, "\nErrors:\n")
+		for _, e := range errs {
+			fmt.Fprintf(w, "  - %s\n", e)
 		}
-		return cat.ID, nil
+		return fmt.Errorf("%d link errors", len(errs))
 	}
 
-	// Find parent first, then child
-	parent, err := r.categorySvc.GetByName(parts[0], nil)
-	if err != nil {
-		return types.ID{}, fmt.Errorf("parent category %q not found: %w", parts[0], err)
+	autoBackupAfterModification(opts.file)
+	return nil
+}
+
+// printLinkTransferPreview renders a dry-run summary of FindUnlinked.
+func printLinkTransferPreview(w io.Writer, result *transferlink.Result, maxDays int) {
+	fmt.Fprintf(w, "LINK TRANSFERS PREVIEW (window: %d days)\n", maxDays)
+	fmt.Fprintf(w, "%s\n", strings.Repeat("=", 40))
+	fmt.Fprintf(w, "Scanned:   %d eligible transactions\n", result.Scanned)
+	fmt.Fprintf(w, "Clean:     %d pairs (will be linked)\n", len(result.Clean))
+	fmt.Fprintf(w, "Ambiguous: %d pairs (need manual review)\n\n", len(result.Ambiguous))
+
+	if len(result.Clean) > 0 {
+		fmt.Fprintln(w, "Clean pairs:")
+		writeCandidateTable(w, result.Clean)
+	}
+	if len(result.Ambiguous) > 0 {
+		fmt.Fprintln(w, "\nAmbiguous pairs:")
+		writeCandidateTable(w, result.Ambiguous)
 	}
 
-	child, err := r.categorySvc.GetByName(parts[1], &parent.ID)
-	if err != nil {
-		return types.ID{}, fmt.Errorf("subcategory %q not found under %q: %w", parts[1], parts[0], err)
+	if len(result.Clean) > 0 {
+		fmt.Fprintf(w, "\nRun with --confirm to link the %d clean pairs.\n", len(result.Clean))
+	} else {
+		fmt.Fprintln(w, "\nNothing to link.")
 	}
-
-	return child.ID, nil
 }
 
-// cliPayeeResolver adapts PayeeService to imexport.PayeeResolver.
-type cliPayeeResolver struct {
-	payeeSvc *payee.Service
-}
-
-func (r *cliPayeeResolver) ResolvePayee(name string) (types.ID, types.NullableID, error) {
-	payee, created, err := r.payeeSvc.ResolveOrCreate(name)
-	if err != nil {
-		return types.ID{}, types.NullableID{}, err
+func writeCandidateTable(w io.Writer, cs []*transferlink.Candidate) {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "  From date\tFrom account\tAmount\tTo date\tTo account\tΔ days")
+	for _, c := range cs {
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%d\n",
+			c.From.Date.String(),
+			c.FromAccount,
+			c.From.Amount.String(),
+			c.To.Date.String(),
+			c.ToAccount,
+			c.DateDiffDays,
+		)
 	}
-	_ = created
-
-	if payee == nil {
-		return types.ID{}, types.NullableID{}, nil
-	}
-
-	var defaultCatID types.NullableID
-	if payee.DefaultCategoryID.Valid {
-		defaultCatID = payee.DefaultCategoryID
-	}
-
-	return payee.ID, defaultCatID, nil
-}
-
-// cliTransactionStore adapts repositories to imexport.TransactionStore.
-type cliTransactionStore struct {
-	transactionRepo *transaction.Repository
-	payeeRepo       *payee.Repository
-}
-
-func (s *cliTransactionStore) ListByAccount(accountID types.ID) ([]*transaction.Transaction, error) {
-	return s.transactionRepo.ListByAccount(accountID)
-}
-
-func (s *cliTransactionStore) GetPayeeName(payeeID types.ID) string {
-	if payeeID.IsNil() {
-		return ""
-	}
-	payee, err := s.payeeRepo.GetByID(payeeID)
-	if err != nil {
-		return ""
-	}
-	return payee.Name
-}
-
-func (s *cliTransactionStore) GetBankReferenceID(txn *transaction.Transaction) string {
-	if txn.HasBankReferenceID() {
-		return txn.BankReferenceID.String
-	}
-	return ""
-}
-
-// cliTransactionCreator adapts TransactionService to imexport.TransactionCreator.
-type cliTransactionCreator struct {
-	transactionSvc *transaction.Service
-}
-
-func (c *cliTransactionCreator) CreateTransaction(txn *transaction.Transaction) error {
-	return c.transactionSvc.Create(txn)
-}
-
-func (c *cliTransactionCreator) CreateTransactionWithSplits(txn *transaction.Transaction, splits []*transaction.Split) error {
-	return c.transactionSvc.CreateWithSplits(txn, splits)
-}
-
-func (c *cliTransactionCreator) UpdateTransaction(txn *transaction.Transaction) error {
-	return c.transactionSvc.Update(txn)
+	tw.Flush()
 }
 
 // =============================================================================
