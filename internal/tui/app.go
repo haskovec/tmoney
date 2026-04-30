@@ -1668,6 +1668,11 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, a.loadPriceViewData()
 
 	case key.Matches(msg, a.keys.Escape):
+		// In prices detail mode, Esc returns to the prices list within the
+		// view; let the view-specific handler claim the key.
+		if a.currentView == ViewPrices && a.priceView != nil && a.priceView.mode == pricesViewDetail {
+			return a.handlePriceViewKeys(msg)
+		}
 		// Go back to previous view or dashboard
 		if a.currentView != ViewDashboard {
 			a.switchView(a.previousView)

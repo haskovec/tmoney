@@ -1132,6 +1132,43 @@ func TestHandlePriceViewKeys_DetailMode_EscReturnsToList(t *testing.T) {
 	}
 }
 
+// TestHandleKeyPress_PricesDetail_EscStaysInPricesView verifies that pressing
+// Esc while drilled into a ticker on the Prices view returns to the Prices
+// list (mode = pricesViewList) rather than switching back to the previously
+// active view (e.g. ViewSecurities). The global Escape handler in
+// handleKeyPress runs before view-specific handlers, so it must defer to the
+// price view when in detail mode.
+func TestHandleKeyPress_PricesDetail_EscStaysInPricesView(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+
+	app := &App{
+		currentView:  ViewPrices,
+		previousView: ViewSecurities,
+		width:        80,
+		height:       24,
+		keys:         defaultKeyMap(),
+		menubar:      NewMenuBar(),
+		statusbar:    NewStatusBar(),
+		priceView: &priceViewData{
+			mode:             pricesViewDetail,
+			selectedSecurity: sec,
+			securities:       []*security.Security{sec},
+			prices:           []*price.Price{},
+		},
+	}
+	app.buildPriceTable()
+
+	esc := tea.KeyMsg{Type: tea.KeyEscape}
+	_, _ = app.handleKeyPress(esc)
+
+	if app.currentView != ViewPrices {
+		t.Errorf("currentView = %v, want ViewPrices (Esc in price detail must not switch views)", app.currentView)
+	}
+	if app.priceView.mode != pricesViewList {
+		t.Errorf("mode = %v, want pricesViewList after Esc", app.priceView.mode)
+	}
+}
+
 func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 	secID := types.NewID()
 	d := types.NewDate(2025, time.March, 15)
