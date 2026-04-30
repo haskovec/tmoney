@@ -23,7 +23,15 @@ const (
 // Sidebar width constants.
 const (
 	SidebarWidthMedium = 20
-	SidebarWidthLarge  = 24
+	// SidebarWidthLarge is the floor used at the large-layout breakpoint.
+	// Beyond that breakpoint the sidebar grows with terminal width up to
+	// SidebarWidthMax so long account names like "Wealthfront Joint
+	// Checking" stop getting truncated on wide terminals.
+	SidebarWidthLarge = 24
+	SidebarWidthMax   = 40
+	// sidebarGrowthDivisor controls how aggressively the sidebar grows
+	// past BreakpointLarge: one extra column per N extra terminal columns.
+	sidebarGrowthDivisor = 8
 )
 
 // Color palette using ANSI 256 color codes for broad terminal compatibility.
@@ -281,44 +289,38 @@ func (s *Styles) Resize(width, height int) {
 	s.StatusBar = s.StatusBar.Width(width)
 	s.Content = s.Content.Width(width)
 
-	mode := GetLayoutMode(width)
-	switch mode {
-	case LayoutSmall:
-		// No sidebar — full width for content
-		s.Sidebar = s.Sidebar.Width(0)
-	case LayoutMedium:
-		s.Sidebar = s.Sidebar.Width(SidebarWidthMedium)
-	case LayoutLarge:
-		s.Sidebar = s.Sidebar.Width(SidebarWidthLarge)
-	}
+	s.Sidebar = s.Sidebar.Width(computeSidebarWidth(width))
 }
 
 // ContentWidth returns the available width for the main content area,
 // accounting for the sidebar in two-pane layouts.
 func (s *Styles) ContentWidth() int {
-	mode := GetLayoutMode(s.width)
-	switch mode {
-	case LayoutSmall:
+	sw := computeSidebarWidth(s.width)
+	if sw == 0 {
 		return s.width
-	case LayoutMedium:
-		// Sidebar width + 1 for border
-		return s.width - SidebarWidthMedium - 1
-	case LayoutLarge:
-		return s.width - SidebarWidthLarge - 1
 	}
-	return s.width
+	// Sidebar width + 1 for the border column.
+	return s.width - sw - 1
 }
 
 // SidebarWidth returns the sidebar width for the current layout mode.
 func (s *Styles) SidebarWidth() int {
-	mode := GetLayoutMode(s.width)
-	switch mode {
+	return computeSidebarWidth(s.width)
+}
+
+// computeSidebarWidth picks a sidebar width given terminal width. Below
+// the medium breakpoint it returns 0 (no sidebar); at the medium
+// breakpoint it returns SidebarWidthMedium; at the large breakpoint and
+// above it grows past SidebarWidthLarge proportionally with terminal
+// width, capped at SidebarWidthMax.
+func computeSidebarWidth(width int) int {
+	switch GetLayoutMode(width) {
 	case LayoutSmall:
 		return 0
 	case LayoutMedium:
 		return SidebarWidthMedium
 	case LayoutLarge:
-		return SidebarWidthLarge
+		return min(SidebarWidthLarge+(width-BreakpointLarge)/sidebarGrowthDivisor, SidebarWidthMax)
 	}
 	return 0
 }

@@ -84,14 +84,42 @@ func TestStyles_Resize_Medium(t *testing.T) {
 
 func TestStyles_Resize_Large(t *testing.T) {
 	s := NewStyles()
-	s.Resize(150, 40)
+	s.Resize(120, 40)
 
+	// At the exact large-layout breakpoint the sidebar is the floor value.
 	if s.SidebarWidth() != SidebarWidthLarge {
-		t.Errorf("SidebarWidth() = %d, want %d for large layout", s.SidebarWidth(), SidebarWidthLarge)
+		t.Errorf("SidebarWidth() = %d, want %d at the large breakpoint", s.SidebarWidth(), SidebarWidthLarge)
 	}
-	expectedContent := 150 - SidebarWidthLarge - 1
+	expectedContent := 120 - SidebarWidthLarge - 1
 	if s.ContentWidth() != expectedContent {
 		t.Errorf("ContentWidth() = %d, want %d for large layout", s.ContentWidth(), expectedContent)
+	}
+}
+
+// TestStyles_Resize_LargeScales verifies the sidebar grows with terminal
+// width once we're past the large breakpoint, so wide terminals get
+// extra room to show long account names.
+func TestStyles_Resize_LargeScales(t *testing.T) {
+	tests := []struct {
+		width        int
+		wantSidebar  int
+		wantContent  int
+	}{
+		{120, SidebarWidthLarge, 120 - SidebarWidthLarge - 1},                 // breakpoint: floor
+		{150, SidebarWidthLarge + (150-120)/sidebarGrowthDivisor, 150 - 27 - 1}, // 27
+		{200, SidebarWidthLarge + (200-120)/sidebarGrowthDivisor, 200 - 34 - 1}, // 34
+		{400, SidebarWidthMax, 400 - SidebarWidthMax - 1},                       // capped
+	}
+
+	for _, tt := range tests {
+		s := NewStyles()
+		s.Resize(tt.width, 40)
+		if s.SidebarWidth() != tt.wantSidebar {
+			t.Errorf("SidebarWidth(width=%d) = %d, want %d", tt.width, s.SidebarWidth(), tt.wantSidebar)
+		}
+		if s.ContentWidth() != tt.wantContent {
+			t.Errorf("ContentWidth(width=%d) = %d, want %d", tt.width, s.ContentWidth(), tt.wantContent)
+		}
 	}
 }
 
