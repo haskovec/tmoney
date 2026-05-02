@@ -27,19 +27,19 @@ Phases 4–5 could be reversed or combined; the spec's debounce-then-cache desig
 
 ## Phase 1: Pure Helpers
 
-- [ ] **PC-001 — Width threshold function**
+- [x] **PC-001 — Width threshold function**
   - RED: tests in `internal/tui/price_chart_test.go` for `shouldShowChartPanel(contentWidth int) bool` — `119 → false`, `120 → true`, `200 → true`, `0 → false`.
   - GREEN: implement `shouldShowChartPanel` in a new `internal/tui/price_chart.go` returning `contentWidth >= 120`.
 
-- [ ] **PC-002 — Edge-case placeholder strings**
+- [x] **PC-002 — Edge-case placeholder strings**
   - RED: tests for `noPriceHistoryMessage()` returning `"No price history"` and `singlePriceMessage(p *price.Price)` returning `"Only one price on file — chart needs ≥ 2 points\n$185.50 on 2026-04-15"` (or equivalent format).
   - GREEN: implement both functions in `price_chart.go` using existing `formatPriceRow` helpers for consistency.
 
-- [ ] **PC-003 — Price history → time-series converter**
+- [x] **PC-003 — Price history → time-series converter**
   - RED: tests for `priceHistoryToSeries(prices []*price.Price) (times []time.Time, values []float64)` covering: empty input → empty slices; single element → length-1 slices; multi-element preserves order; reverse-chronological input is rendered chronologically (ntcharts wants ascending time).
   - GREEN: implement converter in `price_chart.go`. Note: `GetPriceHistory` returns newest first, so the converter reverses.
 
-- [ ] **PC-004 — Flat-line Y-range clamp**
+- [x] **PC-004 — Flat-line Y-range clamp**
   - RED: tests for `clampYRange(values []float64) (min, max float64)` — distinct values pass through; all-equal values produce `[v − 0.5%·v, v + 0.5%·v]` with a non-zero spread; all-zero values produce `[-0.5, 0.5]` (avoid divide-by-zero in the percentage).
   - GREEN: implement `clampYRange` in `price_chart.go`.
 

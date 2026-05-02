@@ -101,11 +101,11 @@ func TestStyles_Resize_Large(t *testing.T) {
 // extra room to show long account names.
 func TestStyles_Resize_LargeScales(t *testing.T) {
 	tests := []struct {
-		width        int
-		wantSidebar  int
-		wantContent  int
+		width       int
+		wantSidebar int
+		wantContent int
 	}{
-		{120, SidebarWidthLarge, 120 - SidebarWidthLarge - 1},                 // breakpoint: floor
+		{120, SidebarWidthLarge, 120 - SidebarWidthLarge - 1},                   // breakpoint: floor
 		{150, SidebarWidthLarge + (150-120)/sidebarGrowthDivisor, 150 - 27 - 1}, // 27
 		{200, SidebarWidthLarge + (200-120)/sidebarGrowthDivisor, 200 - 34 - 1}, // 34
 		{400, SidebarWidthMax, 400 - SidebarWidthMax - 1},                       // capped
