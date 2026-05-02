@@ -1,5 +1,5 @@
 study README.md
-study specs/implementation-plan-security-master.md and pick the most important thing to do
+study specs/implementation-plan-prices-chart.md and pick the most important thing to do
 
 IMPORTANT:
 - author property based tests or unit tests (whichever is best)
