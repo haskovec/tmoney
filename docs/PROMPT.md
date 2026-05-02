@@ -9,5 +9,5 @@ IMPORTANT:
 - always run go fmt before committing files
 - lint the code with golangci-lint
 - when tests pass commit the changes and push
-- updated the implementation-plan-security-master.md file marking the task as done
+- updated the implementation-plan-prices-chart.md file marking the task as done
 - at the end of the process display the code coverage metrics for the project
