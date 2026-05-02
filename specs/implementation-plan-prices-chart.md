@@ -65,9 +65,11 @@ Scope of v1 surface in this codebase (informs sequencing):
 
 Strategy: do the upgrade in a single working branch but as small, individually-reviewable commits. Between each commit, the tree must `go build ./...` and `go test ./...` clean. The order below is chosen so the compiler tells you exactly what is left to fix at each step.
 
-- [ ] **PC-U01 — Snapshot baseline**
+- [x] **PC-U01 — Snapshot baseline**
   - RED: not applicable.
   - GREEN: confirm `go build ./...`, `go test ./...`, and `golangci-lint run` are all green on `main` before starting. Capture current code coverage from `go test -cover ./...` so we have a regression baseline.
+  - Baseline captured 2026-05-02 (commit `b8f2a24`): `go build ./...` clean; `go test ./...` 4734 pass / 0 fail across 23 packages; `golangci-lint run` 0 issues. Per-package coverage:
+    - `cmd/tmoney` 82.7% · `internal/account` 86.1% · `internal/app` 75.7% · `internal/backup` 76.3% · `internal/category` 78.6% · `internal/config` 75.0% · `internal/db` 68.9% · `internal/dberrors` 0.0% (no test file) · `internal/dbutil` 0.0% (no test file) · `internal/imexport` 87.7% · `internal/investment` 81.1% · `internal/payee` 83.8% · `internal/price` 87.2% · `internal/reconciliation` 72.5% · `internal/report` 83.0% · `internal/scheduled` 76.9% · `internal/security` 89.6% · `internal/transaction` 77.1% · `internal/transferlink` 0.0% (no test file) · `internal/tui` 68.7% · `internal/types` 64.6% · `internal/undo` 88.0% · `tests/integration` no statements.
 
 - [ ] **PC-U02 — Bubble Tea + Lip Gloss + Bubbles module bumps**
   - RED: not applicable (dependency-only step; build will be red after this until PC-U03+ land).
