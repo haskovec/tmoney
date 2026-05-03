@@ -1230,6 +1230,65 @@ func TestRenderPriceView_ListMode_OnePriceSecurityShowsPlaceholder(t *testing.T)
 	}
 }
 
+// PC-009: at content width >= chartPanelMinContentWidth, when the
+// highlighted security has a flat-line price history (all values equal),
+// the chart panel renders a real chart — not a placeholder — without
+// panicking. The clampYRange helper pads the all-equal values by ±0.5%
+// so ntcharts has a non-zero Y spread; this test pins that wiring at the
+// renderPriceView level. The unit-level guard lives in
+// TestBuildChartPanel_FlatLineDoesNotPanic; this is the end-to-end pin.
+func TestRenderPriceView_ListMode_FlatLinePriceHistoryRendersChart(t *testing.T) {
+	a, _, secs := setupRefreshTUITest(t, "AAPL")
+	a.width = 200
+	a.height = 30
+	a.styles.Resize(200, 30)
+
+	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
+			chartPanelMinContentWidth, a.styles.ContentWidth())
+	}
+
+	flat, _ := types.NewMoney("100.00")
+	dates := []string{"2026-04-01", "2026-04-08", "2026-04-15"}
+	for _, ds := range dates {
+		d := types.MustParseDate(ds)
+		if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d, flat, price.SourceManual)); err != nil {
+			t.Fatalf("AddPrice(%s): %v", ds, err)
+		}
+	}
+
+	latestDate := types.MustParseDate("2026-04-15")
+	a.priceView = &priceViewData{
+		mode:       pricesViewList,
+		securities: secs,
+		latestPrices: []*price.LatestPrice{
+			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: latestDate, Price: flat},
+		},
+	}
+	a.buildPriceListTable()
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("renderPriceView panicked on flat-line input: %v", r)
+		}
+	}()
+
+	output := a.renderPriceView()
+
+	if !strings.Contains(output, "AAPL — AAPL Inc.") {
+		t.Errorf("flat-line chart panel must render with title; got:\n%s", output)
+	}
+	if strings.Contains(output, "No price history") {
+		t.Errorf("flat-line panel should not render the 0-price placeholder; got:\n%s", output)
+	}
+	if strings.Contains(output, "Only one price on file") {
+		t.Errorf("flat-line panel should not render the 1-price placeholder; got:\n%s", output)
+	}
+	if !strings.ContainsRune(output, '│') {
+		t.Errorf("flat-line panel must contain box-drawing border; got:\n%s", output)
+	}
+}
+
 func TestRenderPriceView_ListMode_EmptyShowsHint(t *testing.T) {
 	app := &App{
 		width:  80,
