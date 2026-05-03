@@ -1881,6 +1881,103 @@ func TestPriceChartDebounceTick_CursorMismatchIsDropped(t *testing.T) {
 	}
 }
 
+// PC-014: every cursor-moving key on the prices list returns a
+// debounce-scheduling cmd. The PC-013(a) test pins Down specifically;
+// this table covers the remaining five (Up, Home, g, End, G, PgUp,
+// PgDown) so the wiring stays symmetric.
+func TestHandlePriceListKeys_CursorMovingKeysScheduleDebounce(t *testing.T) {
+	cases := []struct {
+		name        string
+		msg         tea.KeyPressMsg
+		startCursor int
+		wantSecIdx  int
+	}{
+		{"Up", tea.KeyPressMsg{Code: tea.KeyUp}, 1, 0},
+		{"Home", tea.KeyPressMsg{Code: tea.KeyHome}, 1, 0},
+		{"g", tea.KeyPressMsg{Code: 'g', Text: "g"}, 1, 0},
+		{"End", tea.KeyPressMsg{Code: tea.KeyEnd}, 0, 1},
+		{"G", tea.KeyPressMsg{Code: 'G', Text: "G"}, 0, 1},
+		{"PgUp", tea.KeyPressMsg{Code: tea.KeyPgUp}, 1, 0},
+		{"PgDown", tea.KeyPressMsg{Code: tea.KeyPgDown}, 0, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withShortPriceChartDebounce(t, time.Millisecond)
+
+			a, _, secs := setupAppWithTwoSecurities(t)
+			a.buildPriceListTable()
+			for a.priceListTable.Cursor() < tc.startCursor {
+				a.priceListTable.MoveDown()
+			}
+			for a.priceListTable.Cursor() > tc.startCursor {
+				a.priceListTable.MoveUp()
+			}
+			if a.priceListTable.Cursor() != tc.startCursor {
+				t.Fatalf("test premise: failed to position cursor at %d, got %d",
+					tc.startCursor, a.priceListTable.Cursor())
+			}
+
+			beforeGen := a.priceView.chartDebounceGen
+			_, cmd := a.handlePriceListKeys(tc.msg)
+			if cmd == nil {
+				t.Fatalf("%s keypress on price list must return a debounce-scheduling cmd, got nil", tc.name)
+			}
+			if a.priceView.chartDebounceGen <= beforeGen {
+				t.Errorf("%s must bump chartDebounceGen: before=%d after=%d",
+					tc.name, beforeGen, a.priceView.chartDebounceGen)
+			}
+
+			wantID := secs[tc.wantSecIdx].ID
+			if a.listCursorSecurityID() != wantID {
+				t.Fatalf("cursor landed on %v, want %v (idx %d)",
+					a.listCursorSecurityID(), wantID, tc.wantSecIdx)
+			}
+			tick := runDebounceTick(t, cmd)
+			if tick.secID != wantID {
+				t.Errorf("tick.secID = %v, want %v", tick.secID, wantID)
+			}
+			if tick.gen != a.priceView.chartDebounceGen {
+				t.Errorf("tick.gen = %d, want current chartDebounceGen %d",
+					tick.gen, a.priceView.chartDebounceGen)
+			}
+		})
+	}
+}
+
+// PC-014: keys that are not cursor moves on the prices list must not
+// schedule a debounce — chartDebounceGen must not bump. Covers `/`
+// (search) and `u` (refresh).
+func TestHandlePriceListKeys_NonCursorKeysDoNotScheduleDebounce(t *testing.T) {
+	cases := []struct {
+		name string
+		msg  tea.KeyPressMsg
+	}{
+		{"slash-search", tea.KeyPressMsg{Code: '/', Text: "/"}},
+		{"u-refresh", tea.KeyPressMsg{Code: 'u', Text: "u"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withShortPriceChartDebounce(t, time.Millisecond)
+
+			a, _, _ := setupAppWithTwoSecurities(t)
+			a.buildPriceListTable()
+			beforeCursor := a.priceListTable.Cursor()
+			beforeGen := a.priceView.chartDebounceGen
+
+			a.handlePriceListKeys(tc.msg)
+
+			if a.priceView.chartDebounceGen != beforeGen {
+				t.Errorf("%s must not bump chartDebounceGen: before=%d after=%d",
+					tc.name, beforeGen, a.priceView.chartDebounceGen)
+			}
+			if a.priceListTable.Cursor() != beforeCursor {
+				t.Errorf("%s must not move cursor: before=%d after=%d",
+					tc.name, beforeCursor, a.priceListTable.Cursor())
+			}
+		})
+	}
+}
+
 // setupAppWithTwoSecurities builds a wide TUI with two rows in the
 // price list (AAPL, MSFT) but no prices loaded into the cache. The
 // resulting App is ready to drive cursor-movement key handlers and
