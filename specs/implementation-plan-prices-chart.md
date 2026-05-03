@@ -134,11 +134,12 @@ Strategy: do the upgrade in a single working branch but as small, individually-r
 
 ## Phase 3: Visible MVP
 
-- [ ] **PC-005 — Add ntcharts v2 dependency**
+- [x] **PC-005 — Add ntcharts v2 dependency**
   - RED: not applicable (dependency-only step).
   - GREEN: `go get github.com/NimbleMarkets/ntcharts/v2`, run `go mod tidy`. Verify `go build ./...`. (Now safe because the surrounding `bubbletea`/`lipgloss` are v2.)
+  - Completed 2026-05-03 bundled with PC-006: a standalone `go get` + `go mod tidy` produces a no-op commit because tidy strips an unused module — the dep only persists once a `.go` file imports it. Bundled with PC-006 (which adds the first real import) under a single commit.
 
-- [ ] **PC-006 — Render chart panel beside the list (synchronous fetch)**
+- [x] **PC-006 — Render chart panel beside the list (synchronous fetch)**
   - RED: contract tests in `price_view_test.go` — at content width 120 with a security selected and ≥ 2 prices on file, the rendered list view contains the ticker and name in a bordered panel to the right of the table; at content width 119, no panel appears (output identical to today). Use existing TUI test helpers (`buildTestApp` or whatever pattern `price_view_test.go` already uses).
   - GREEN: in `renderPriceList`, when `shouldShowChartPanel(contentWidth)` is true:
     1. Identify the highlighted security from `priceListTable.Cursor()`.
@@ -147,6 +148,7 @@ Strategy: do the upgrade in a single working branch but as small, individually-r
     4. Wrap in a lipgloss bordered box with embedded title `<ticker> — <name>`.
     5. Compose with the existing table via `lipgloss.JoinHorizontal(lipgloss.Top, table, chartBox)`.
   - Verify visually: launch the TUI on a wide terminal against a real `.tdb` with prices.
+  - Completed 2026-05-03. Stack pinned `github.com/NimbleMarkets/ntcharts/v2 v2.0.3`. New file split: `internal/tui/price_chart.go` got `buildChartPanel`, `renderTimeSeriesChart`, `composeChartBox`, and the unicode-aware `truncateToDisplayWidth` / `padOrTruncateToDisplayWidth` helpers. `internal/tui/price_view.go` factored the body of `renderPriceList` into `composePriceListBody` (chooses between full-width table and table+chart layout) and `buildPriceListChartPanel` (resolves the cursor's security, synchronously fetches `priceSvc.GetPriceHistory`, feeds `buildChartPanel`). Layout split: when `ContentWidth ≥ 120` the table is pinned at 75 columns (10+32+15+12 cols + 3 separators + 3 gutter) and the chart fills the remainder; below threshold the table fills the full content area exactly as before. Edge-case handling baked in from the start (0/1-price placeholders, flat-line clamp via `clampYRange`, nil-sec / too-small-area guards) so PC-007/008/009 are essentially already covered behaviorally — the explicit contract tests for those still need to land. Tests: 9 new tests added (`buildChartPanel` direct unit tests + 2 integration tests through `renderPriceView` driven by a real DB-backed `priceSvc` via `setupRefreshTUITest`). `go build ./...`, `go test ./...` (4743 pass / 0 fail across 23 packages, +9 net), `golangci-lint run` all clean.
 
 ## Phase 4: Edge Cases
 

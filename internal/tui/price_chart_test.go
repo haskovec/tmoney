@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/haskovec/tmoney/internal/price"
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -210,3 +211,128 @@ func TestClampYRangeEmpty(t *testing.T) {
 
 // Compile-time guard that time package usage stays meaningful.
 var _ = time.Time{}
+
+// =============================================================================
+// PC-006: Chart panel rendering
+// =============================================================================
+
+func mkPrice(t *testing.T, secID types.ID, dateStr, val string) *price.Price {
+	t.Helper()
+	d, err := types.ParseDate(dateStr)
+	if err != nil {
+		t.Fatalf("ParseDate(%q): %v", dateStr, err)
+	}
+	m, err := types.NewMoney(val)
+	if err != nil {
+		t.Fatalf("NewMoney(%q): %v", val, err)
+	}
+	p := price.NewPrice(secID, d, m, price.SourceManual)
+	return p
+}
+
+func TestBuildChartPanel_NilSecurityReturnsEmpty(t *testing.T) {
+	got := buildChartPanel(40, 12, nil, nil)
+	if got != "" {
+		t.Errorf("buildChartPanel(nil sec) = %q, want empty", got)
+	}
+}
+
+func TestBuildChartPanel_TooSmallReturnsEmpty(t *testing.T) {
+	sec := newAAPL()
+	for _, dim := range []struct{ w, h int }{
+		{0, 10},
+		{10, 0},
+		{5, 5},   // below the minimum useful width
+		{40, 2},  // not tall enough for top + middle + bottom border
+		{-1, 12}, // pathological
+	} {
+		got := buildChartPanel(dim.w, dim.h, sec, nil)
+		if got != "" {
+			t.Errorf("buildChartPanel(w=%d, h=%d) = %q, want empty", dim.w, dim.h, got)
+		}
+	}
+}
+
+func TestBuildChartPanel_TitleEmbedsTickerAndName(t *testing.T) {
+	sec := newAAPL()
+	prices := []*price.Price{
+		mkPrice(t, sec.ID, "2026-04-15", "300.00"),
+		mkPrice(t, sec.ID, "2026-04-10", "200.00"),
+		mkPrice(t, sec.ID, "2026-04-01", "100.00"),
+	}
+	out := buildChartPanel(50, 12, sec, prices)
+	if out == "" {
+		t.Fatal("buildChartPanel returned empty for valid input")
+	}
+	if !strings.Contains(out, "AAPL") {
+		t.Errorf("chart panel missing ticker; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Apple Inc.") {
+		t.Errorf("chart panel missing security name; got:\n%s", out)
+	}
+}
+
+func TestBuildChartPanel_HasBoxBorder(t *testing.T) {
+	sec := newAAPL()
+	prices := []*price.Price{
+		mkPrice(t, sec.ID, "2026-04-01", "100.00"),
+		mkPrice(t, sec.ID, "2026-04-15", "300.00"),
+	}
+	out := buildChartPanel(50, 12, sec, prices)
+	// Must contain both vertical and horizontal box-drawing runes.
+	if !strings.ContainsRune(out, '─') {
+		t.Errorf("chart panel missing horizontal border rune; got:\n%s", out)
+	}
+	if !strings.ContainsRune(out, '│') {
+		t.Errorf("chart panel missing vertical border rune; got:\n%s", out)
+	}
+}
+
+func TestBuildChartPanel_ZeroPricesShowsPlaceholder(t *testing.T) {
+	sec := newAAPL()
+	out := buildChartPanel(50, 12, sec, nil)
+	if !strings.Contains(out, "No price history") {
+		t.Errorf("0-price panel must show placeholder; got:\n%s", out)
+	}
+	if !strings.Contains(out, "AAPL") {
+		t.Errorf("0-price panel must still show ticker title; got:\n%s", out)
+	}
+}
+
+func TestBuildChartPanel_OnePriceShowsPlaceholder(t *testing.T) {
+	sec := newAAPL()
+	p := mkPrice(t, sec.ID, "2026-04-15", "185.50")
+	out := buildChartPanel(50, 12, sec, []*price.Price{p})
+	if !strings.Contains(out, "Only one price on file") {
+		t.Errorf("1-price panel must show placeholder; got:\n%s", out)
+	}
+	if !strings.Contains(out, "$185.50") {
+		t.Errorf("1-price panel must show formatted value; got:\n%s", out)
+	}
+	if !strings.Contains(out, "2026-04-15") {
+		t.Errorf("1-price panel must show formatted date; got:\n%s", out)
+	}
+}
+
+func TestBuildChartPanel_FlatLineDoesNotPanic(t *testing.T) {
+	sec := newAAPL()
+	prices := []*price.Price{
+		mkPrice(t, sec.ID, "2026-04-01", "100.00"),
+		mkPrice(t, sec.ID, "2026-04-08", "100.00"),
+		mkPrice(t, sec.ID, "2026-04-15", "100.00"),
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("buildChartPanel panicked on flat-line input: %v", r)
+		}
+	}()
+	out := buildChartPanel(50, 12, sec, prices)
+	if out == "" {
+		t.Errorf("flat-line input should still produce a non-empty panel render")
+	}
+}
+
+func newAAPL() *security.Security {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	return sec
+}

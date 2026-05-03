@@ -256,7 +256,17 @@ func (a *App) renderPriceView() string {
 	return a.renderPriceList()
 }
 
-// renderPriceList renders the landing-page summary table.
+// priceListNaturalTableWidth is the width the prices list table is
+// rendered at when the chart panel is shown beside it. It is the sum of
+// the four column widths (10 + 32 + 15 + 12 = 69) plus the three
+// inter-column separators (3) plus a small visual gutter (3) so the
+// chart border doesn't sit directly against the last column. Below
+// chartPanelMinContentWidth the table reverts to filling the full
+// content area as before.
+const priceListNaturalTableWidth = 75
+
+// renderPriceList renders the landing-page summary table, optionally
+// composing the price-history chart panel beside it on wide terminals.
 func (a *App) renderPriceList() string {
 	contentWidth := a.styles.ContentWidth()
 
@@ -290,8 +300,8 @@ func (a *App) renderPriceList() string {
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-footerHeight-paddingHeight, 1)
 
 	if a.priceListTable != nil {
-		tableWidth := max(contentWidth-4, 1)
-		sections = append(sections, a.priceListTable.Render(a.styles, tableWidth, tableHeight))
+		body := a.composePriceListBody(contentWidth, tableHeight)
+		sections = append(sections, body)
 		if info := a.priceListTable.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
@@ -300,6 +310,68 @@ func (a *App) renderPriceList() string {
 	return lipgloss.NewStyle().
 		Padding(1, 2).
 		Render(strings.Join(sections, "\n"))
+}
+
+// composePriceListBody renders the list table on its own at narrow
+// content widths, or joined horizontally with the chart panel for the
+// highlighted ticker on wide terminals.
+func (a *App) composePriceListBody(contentWidth, height int) string {
+	if !shouldShowChartPanel(contentWidth) {
+		tableWidth := max(contentWidth-4, 1)
+		return a.priceListTable.Render(a.styles, tableWidth, height)
+	}
+
+	tableWidth := priceListNaturalTableWidth
+	if tableWidth >= contentWidth {
+		tableWidth = max(contentWidth-4, 1)
+		return a.priceListTable.Render(a.styles, tableWidth, height)
+	}
+	chartWidth := contentWidth - tableWidth
+	chartHeight := height
+
+	chartPanel := a.buildPriceListChartPanel(chartWidth, chartHeight)
+	tableStr := a.priceListTable.Render(a.styles, tableWidth, height)
+	if chartPanel == "" {
+		return tableStr
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, tableStr, chartPanel)
+}
+
+// buildPriceListChartPanel resolves the highlighted security from the
+// list cursor, fetches its price history synchronously via priceSvc,
+// and returns the rendered chart panel. Returns "" when the cursor is
+// out of range, the price service is unavailable, or the requested
+// chart area is too small.
+func (a *App) buildPriceListChartPanel(width, height int) string {
+	if a.priceView == nil || a.priceListTable == nil || a.priceSvc == nil {
+		return ""
+	}
+	cursor := a.priceListTable.Cursor()
+	if cursor < 0 || cursor >= len(a.priceView.latestPrices) {
+		return ""
+	}
+	targetID := a.priceView.latestPrices[cursor].SecurityID
+
+	var sec *security.Security
+	for _, s := range a.priceView.securities {
+		if s.ID == targetID {
+			sec = s
+			break
+		}
+	}
+	if sec == nil {
+		// Fall back: synthesize from the LatestPrice row so we can still
+		// title the panel even if the security cache is out of sync.
+		lp := a.priceView.latestPrices[cursor]
+		sec = &security.Security{Ticker: lp.Ticker, Name: lp.Name}
+		sec.ID = targetID
+	}
+
+	prices, err := a.priceSvc.GetPriceHistory(targetID, nil, nil)
+	if err != nil {
+		return ""
+	}
+	return buildChartPanel(width, height, sec, prices)
 }
 
 // renderPriceDetail renders the per-security price history (drill-in).

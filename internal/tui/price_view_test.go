@@ -1050,6 +1050,92 @@ func TestRenderPriceView_ListMode_ShowsLatestPrices(t *testing.T) {
 	}
 }
 
+// TestRenderPriceView_ListMode_NarrowOmitsChartPanel asserts that on
+// terminals where the prices content area is below the chart-panel
+// threshold, the list view renders exactly as it did before the chart
+// feature — no border-decorated chart title appears.
+func TestRenderPriceView_ListMode_NarrowOmitsChartPanel(t *testing.T) {
+	a, _, secs := setupRefreshTUITest(t, "AAPL")
+	a.width = 100
+	a.height = 30
+	a.styles.Resize(100, 30)
+
+	if a.styles.ContentWidth() >= chartPanelMinContentWidth {
+		t.Fatalf("test premise: width=100 should yield ContentWidth < %d, got %d",
+			chartPanelMinContentWidth, a.styles.ContentWidth())
+	}
+
+	d := types.MustParseDate("2026-04-15")
+	m1, _ := types.NewMoney("100.00")
+	m2, _ := types.NewMoney("110.00")
+	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d, m1, price.SourceManual)); err != nil {
+		t.Fatalf("AddPrice: %v", err)
+	}
+	d2 := types.MustParseDate("2026-04-22")
+	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d2, m2, price.SourceManual)); err != nil {
+		t.Fatalf("AddPrice: %v", err)
+	}
+
+	a.priceView = &priceViewData{
+		mode:       pricesViewList,
+		securities: secs,
+		latestPrices: []*price.LatestPrice{
+			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d2, Price: m2},
+		},
+	}
+	a.buildPriceListTable()
+
+	output := a.renderPriceView()
+	// The chart-panel title format `─ TICKER — NAME ─` must not appear
+	// when the panel is suppressed.
+	if strings.Contains(output, "─ AAPL — AAPL Inc.") {
+		t.Errorf("narrow render should not include chart-panel title; got:\n%s", output)
+	}
+}
+
+// TestRenderPriceView_ListMode_WideShowsChartPanel asserts that on a
+// terminal whose content area is at or above the chart threshold, the
+// rendered list view includes the chart panel for the highlighted
+// ticker — identifiable by the title decoration in the top border.
+func TestRenderPriceView_ListMode_WideShowsChartPanel(t *testing.T) {
+	a, _, secs := setupRefreshTUITest(t, "AAPL")
+	a.width = 200
+	a.height = 30
+	a.styles.Resize(200, 30)
+
+	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
+			chartPanelMinContentWidth, a.styles.ContentWidth())
+	}
+
+	d1 := types.MustParseDate("2026-04-15")
+	d2 := types.MustParseDate("2026-04-22")
+	m1, _ := types.NewMoney("100.00")
+	m2, _ := types.NewMoney("110.00")
+	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d1, m1, price.SourceManual)); err != nil {
+		t.Fatalf("AddPrice: %v", err)
+	}
+	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d2, m2, price.SourceManual)); err != nil {
+		t.Fatalf("AddPrice: %v", err)
+	}
+
+	a.priceView = &priceViewData{
+		mode:       pricesViewList,
+		securities: secs,
+		latestPrices: []*price.LatestPrice{
+			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d2, Price: m2},
+		},
+	}
+	a.buildPriceListTable()
+
+	output := a.renderPriceView()
+	// The chart-panel title decoration is unique to the panel — it
+	// won't appear in the table row, which uses no em-dash separator.
+	if !strings.Contains(output, "AAPL — AAPL Inc.") {
+		t.Errorf("wide render should include chart-panel title `AAPL — AAPL Inc.`; got:\n%s", output)
+	}
+}
+
 func TestRenderPriceView_ListMode_EmptyShowsHint(t *testing.T) {
 	app := &App{
 		width:  80,
