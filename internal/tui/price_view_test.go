@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -211,7 +211,7 @@ func TestHandlePriceViewKeys_Navigation(t *testing.T) {
 	app.buildPriceTable()
 
 	// Move down
-	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.handlePriceViewKeys(downKey)
 
 	if app.priceTable.Cursor() != 1 {
@@ -219,7 +219,7 @@ func TestHandlePriceViewKeys_Navigation(t *testing.T) {
 	}
 
 	// Move up
-	upKey := tea.KeyMsg{Type: tea.KeyUp}
+	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.handlePriceViewKeys(upKey)
 
 	if app.priceTable.Cursor() != 0 {
@@ -243,7 +243,7 @@ func TestHandlePriceViewKeys_NewOpensDialog(t *testing.T) {
 	}
 	app.buildPriceTable()
 
-	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	nKey := tea.KeyPressMsg{Code: 'n', Text: "n"}
 	app.handlePriceViewKeys(nKey)
 
 	if app.priceDialog == nil {
@@ -275,7 +275,7 @@ func TestHandlePriceViewKeys_EnterOpensEditDialog(t *testing.T) {
 	}
 	app.buildPriceTable()
 
-	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
 	app.handlePriceViewKeys(enterKey)
 
 	if app.priceDialog == nil {
@@ -308,7 +308,7 @@ func TestHandlePriceViewKeys_DeleteShowsConfirm(t *testing.T) {
 	}
 	app.buildPriceTable()
 
-	dKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+	dKey := tea.KeyPressMsg{Code: 'd', Text: "d"}
 	app.handlePriceViewKeys(dKey)
 
 	if app.confirmDialog == nil {
@@ -332,7 +332,7 @@ func TestHandlePriceViewKeys_ImportOpensDialog(t *testing.T) {
 	}
 	app.buildPriceTable()
 
-	iKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}
+	iKey := tea.KeyPressMsg{Code: 'i', Text: "i"}
 	app.handlePriceViewKeys(iKey)
 
 	if app.priceImportDialog == nil {
@@ -356,7 +356,7 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 	app.buildPriceTable()
 
 	// Enter search mode
-	slashKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}}
+	slashKey := tea.KeyPressMsg{Code: '/', Text: "/"}
 	app.handlePriceViewKeys(slashKey)
 
 	if !app.priceView.searching {
@@ -364,7 +364,7 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 	}
 
 	// Type search query
-	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	aKey := tea.KeyPressMsg{Code: 'a', Text: "a"}
 	app.handlePriceSearchKey(aKey)
 
 	if app.priceView.searchQuery != "a" {
@@ -372,7 +372,7 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 	}
 
 	// Escape exits search
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	app.handlePriceSearchKey(escKey)
 
 	if app.priceView.searching {
@@ -759,7 +759,7 @@ func TestPriceViewNavigateKeyBinding(t *testing.T) {
 	}
 
 	// Press '5' to go to prices view
-	fiveKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'5'}}
+	fiveKey := tea.KeyPressMsg{Code: '5', Text: "5"}
 	model, cmd := app.Update(fiveKey)
 	updatedApp := model.(*App)
 
@@ -977,7 +977,7 @@ func TestSecurityView_PNavigatesToPrices(t *testing.T) {
 	app.buildSecurityTable()
 
 	// Press 'p' to navigate to prices view
-	pKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}}
+	pKey := tea.KeyPressMsg{Code: 'p', Text: "p"}
 	model, cmd := app.handleSecurityViewKeys(pKey)
 	updatedApp := model.(*App)
 
@@ -1090,7 +1090,7 @@ func TestHandlePriceViewKeys_ListMode_EnterDrillsIn(t *testing.T) {
 	}
 	app.buildPriceListTable()
 
-	enter := tea.KeyMsg{Type: tea.KeyEnter}
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handlePriceViewKeys(enter)
 
 	if cmd == nil {
@@ -1120,7 +1120,7 @@ func TestHandlePriceViewKeys_DetailMode_EscReturnsToList(t *testing.T) {
 	}
 	app.buildPriceTable()
 
-	esc := tea.KeyMsg{Type: tea.KeyEscape}
+	esc := tea.KeyPressMsg{Code: tea.KeyEscape}
 	_, cmd := app.handlePriceViewKeys(esc)
 
 	if cmd == nil {
@@ -1157,7 +1157,7 @@ func TestHandleKeyPress_PricesDetail_EscStaysInPricesView(t *testing.T) {
 	}
 	app.buildPriceTable()
 
-	esc := tea.KeyMsg{Type: tea.KeyEscape}
+	esc := tea.KeyPressMsg{Code: tea.KeyEscape}
 	_, _ = app.handleKeyPress(esc)
 
 	if app.currentView != ViewPrices {
@@ -1202,7 +1202,7 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 
 	// Click coordinates: content offset 3 (padding+title+separator) + table header 1 = row 0 of data at y=4 (contentY).
 	// Convert to msg.Y = contentY + 1 (header row).
-	click := tea.MouseMsg{X: 5, Y: 5, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	click := tea.MouseClickMsg{X: 5, Y: 5, Button: tea.MouseLeft}
 
 	_, cmd := app.Update(click)
 	if cmd != nil {

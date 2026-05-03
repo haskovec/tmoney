@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -161,7 +161,7 @@ func (a *App) closeDividendDialog() {
 }
 
 // handleDividendDialogKey routes key events to the dividend dialog.
-func (a *App) handleDividendDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleDividendDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.dividendDialog == nil {
 		return a, nil
 	}

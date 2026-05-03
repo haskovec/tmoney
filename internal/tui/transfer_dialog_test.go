@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -200,7 +200,7 @@ func TestApp_HandleRegisterKeys_TransferKey(t *testing.T) {
 	app.table.SetFocused(true)
 
 	// Press 't' for transfer
-	tKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}
+	tKey := tea.KeyPressMsg{Code: 't', Text: "t"}
 	_, cmd := app.Update(tKey)
 
 	if cmd == nil {
@@ -279,7 +279,7 @@ func TestApp_HandleTransferDialogKey_Cancel(t *testing.T) {
 	}
 
 	// Press Escape to cancel
-	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
@@ -323,7 +323,7 @@ func TestApp_HandleTransferDialogKey_TabCycles(t *testing.T) {
 	}
 
 	// Press Tab to advance focus
-	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	model, _ := app.Update(tabKey)
 	updatedApp := model.(*App)
 

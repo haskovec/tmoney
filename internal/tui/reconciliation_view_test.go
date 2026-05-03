@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -495,7 +495,7 @@ func TestHandleReconciliationKeys_Navigation(t *testing.T) {
 	app.buildReconciliationTable()
 
 	// Move down
-	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.handleReconciliationKeys(downKey)
 
 	if app.reconciliationTable.Cursor() != 1 {
@@ -503,7 +503,7 @@ func TestHandleReconciliationKeys_Navigation(t *testing.T) {
 	}
 
 	// Move up
-	upKey := tea.KeyMsg{Type: tea.KeyUp}
+	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.handleReconciliationKeys(upKey)
 
 	if app.reconciliationTable.Cursor() != 0 {
@@ -535,7 +535,7 @@ func TestHandleReconciliationKeys_Space(t *testing.T) {
 	app.buildReconciliationTable()
 
 	// Press space to toggle
-	spaceKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}
+	spaceKey := tea.KeyPressMsg{Code: tea.KeySpace}
 	app.handleReconciliationKeys(spaceKey)
 
 	if !app.reconciliation.checkedIDs[txn.ID] {
@@ -572,7 +572,7 @@ func TestHandleReconciliationKeys_CheckAll(t *testing.T) {
 	app.buildReconciliationTable()
 
 	// Press 'a' to check all
-	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	aKey := tea.KeyPressMsg{Code: 'a', Text: "a"}
 	app.handleReconciliationKeys(aKey)
 
 	if !app.reconciliation.checkedIDs[txn1.ID] {
@@ -583,7 +583,7 @@ func TestHandleReconciliationKeys_CheckAll(t *testing.T) {
 	}
 
 	// Press 'u' to uncheck all
-	uKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}}
+	uKey := tea.KeyPressMsg{Code: 'u', Text: "u"}
 	app.handleReconciliationKeys(uKey)
 
 	if app.reconciliation.checkedIDs[txn1.ID] {
@@ -619,7 +619,7 @@ func TestHandleReconciliationKeys_FinishWithDifference(t *testing.T) {
 	app.buildReconciliationTable()
 
 	// Press Enter to finish (should fail because difference is not $0)
-	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handleReconciliationKeys(enterKey)
 
 	// Should not return a command (difference is not zero)
@@ -870,7 +870,7 @@ func TestReconciliationBlocksViewSwitching(t *testing.T) {
 	app.buildReconciliationTable()
 
 	// Pressing '1' should not switch to Dashboard
-	dashKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}}
+	dashKey := tea.KeyPressMsg{Code: '1', Text: "1"}
 	model, _ := app.Update(dashKey)
 	updatedApp := model.(*App)
 	if updatedApp.currentView != ViewReconciliation {
@@ -878,7 +878,7 @@ func TestReconciliationBlocksViewSwitching(t *testing.T) {
 	}
 
 	// Pressing '2' should not switch to Scheduled
-	schedKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}}
+	schedKey := tea.KeyPressMsg{Code: '2', Text: "2"}
 	model, _ = app.Update(schedKey)
 	updatedApp = model.(*App)
 	if updatedApp.currentView != ViewReconciliation {

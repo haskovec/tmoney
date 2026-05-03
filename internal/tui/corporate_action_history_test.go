@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -217,7 +217,7 @@ func TestHandleCorporateActionHistoryKeys_Escape(t *testing.T) {
 		corporateActionHistoryTable: NewTable([]Column{{Header: "Test"}}),
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleCorporateActionHistoryKeys(escKey)
 	updatedApp := model.(*App)
 
@@ -232,7 +232,7 @@ func TestHandleCorporateActionHistoryKeys_Escape(t *testing.T) {
 func TestHandleCorporateActionHistoryKeys_NilData(t *testing.T) {
 	app := &App{}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, cmd := app.handleCorporateActionHistoryKeys(escKey)
 
 	if model.(*App) != app {

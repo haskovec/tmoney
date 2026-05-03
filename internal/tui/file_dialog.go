@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/db"
 )
 
@@ -89,7 +89,7 @@ func (a *App) closeFileDialog() {
 }
 
 // handleFileDialogKey routes key events to the file dialog.
-func (a *App) handleFileDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleFileDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.fileDialog == nil {
 		return a, nil
 	}
@@ -344,12 +344,13 @@ func (a *App) browseDialogListHit(msg tea.MouseMsg) int {
 	}
 	d := a.fileDialog
 	startCol, startRow, endCol, endRow := d.DialogBounds(a.width, a.height)
-	if msg.X < startCol || msg.X >= endCol || msg.Y < startRow || msg.Y >= endRow {
+	m := msg.Mouse()
+	if m.X < startCol || m.X >= endCol || m.Y < startRow || m.Y >= endRow {
 		return -1
 	}
 	contentWidth := max(d.Width()-dialogHorizontalOverhead, 10)
-	localX := msg.X - startCol - 3
-	localY := msg.Y - startRow - 2
+	localX := m.X - startCol - 3
+	localY := m.Y - startRow - 2
 	hit := d.HitTestContent(localX, localY, contentWidth)
 	if hit.Zone != DialogHitField || hit.ListItemIndex < 0 {
 		return -1

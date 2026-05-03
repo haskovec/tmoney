@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -591,7 +591,7 @@ func TestHandleMergerDialogKey_Cancel(t *testing.T) {
 		mergerDialogSecurityIDs: secIDs,
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleMergerDialogKey(escKey)
 	updatedApp := model.(*App)
 
@@ -609,7 +609,7 @@ func TestHandleMergerDialogKey_Cancel(t *testing.T) {
 func TestHandleMergerDialogKey_NilDialog(t *testing.T) {
 	app := &App{}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, cmd := app.handleMergerDialogKey(escKey)
 
 	if model.(*App) != app {
@@ -729,7 +729,7 @@ func TestHandleMergerDialogKey_TabNavigates(t *testing.T) {
 		t.Errorf("initial focus = %d, want 0", app.mergerDialog.FocusIndex())
 	}
 
-	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	app.handleMergerDialogKey(tabKey)
 
 	if app.mergerDialog.FocusIndex() != 1 {

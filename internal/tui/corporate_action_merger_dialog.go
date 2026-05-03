@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -90,7 +90,7 @@ func (a *App) closeMergerDialog() {
 }
 
 // handleMergerDialogKey routes key events to the merger dialog.
-func (a *App) handleMergerDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleMergerDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.mergerDialog == nil {
 		return a, nil
 	}

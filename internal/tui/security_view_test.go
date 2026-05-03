@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -301,7 +301,7 @@ func TestHandleSecurityViewKeys_Navigation(t *testing.T) {
 	app.buildSecurityTable()
 
 	// Move down
-	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.handleSecurityViewKeys(downKey)
 
 	if app.securityTable.Cursor() != 1 {
@@ -309,7 +309,7 @@ func TestHandleSecurityViewKeys_Navigation(t *testing.T) {
 	}
 
 	// Move up
-	upKey := tea.KeyMsg{Type: tea.KeyUp}
+	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.handleSecurityViewKeys(upKey)
 
 	if app.securityTable.Cursor() != 0 {
@@ -334,7 +334,7 @@ func TestHandleSecurityViewKeys_ToggleHidden(t *testing.T) {
 	app.buildSecurityTable()
 
 	// Press 'f' to toggle hidden filter
-	fKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}}
+	fKey := tea.KeyPressMsg{Code: 'f', Text: "f"}
 	app.handleSecurityViewKeys(fKey)
 
 	if !app.securityView.showHidden {
@@ -749,7 +749,7 @@ func TestSecurityView_NavigateKeyBinding(t *testing.T) {
 	}
 
 	// Press '4' to go to securities view
-	fourKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}}
+	fourKey := tea.KeyPressMsg{Code: '4', Text: "4"}
 	model, cmd := app.Update(fourKey)
 	updatedApp := model.(*App)
 
@@ -813,7 +813,7 @@ func TestSecurityDialogDeleteConfirm(t *testing.T) {
 	app.buildSecurityTable()
 
 	// Pressing 'd' should set up a confirm dialog for delete
-	dKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+	dKey := tea.KeyPressMsg{Code: 'd', Text: "d"}
 	app.handleSecurityViewKeys(dKey)
 
 	if app.confirmDialog == nil {

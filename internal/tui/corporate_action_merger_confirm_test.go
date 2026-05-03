@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -263,7 +263,7 @@ func TestHandleMergerConfirmKey_Escape(t *testing.T) {
 		keys: defaultKeyMap(),
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleMergerConfirmKey(escKey)
 	updatedApp := model.(*App)
 
@@ -280,7 +280,7 @@ func TestHandleMergerConfirmKey_NilData(t *testing.T) {
 		keys: defaultKeyMap(),
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, cmd := app.handleMergerConfirmKey(escKey)
 
 	if model.(*App) != app {
@@ -314,7 +314,7 @@ func TestHandleMergerConfirmKey_Enter(t *testing.T) {
 		keys: defaultKeyMap(),
 	}
 
-	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, cmd := app.handleMergerConfirmKey(enterKey)
 	updatedApp := model.(*App)
 

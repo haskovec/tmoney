@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -158,7 +158,7 @@ func (a *App) closeBuyDialog() {
 }
 
 // handleBuyDialogKey routes key events to the buy dialog.
-func (a *App) handleBuyDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleBuyDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.buyDialog == nil {
 		return a, nil
 	}

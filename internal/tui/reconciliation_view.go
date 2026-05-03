@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -75,7 +75,7 @@ func (a *App) showStartReconciliationDialog() {
 }
 
 // handleReconDialogKey handles key presses in the reconciliation start dialog.
-func (a *App) handleReconDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleReconDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.reconDialog.HandleKey(msg)
 	switch action {
 	case DialogActionCancel:
@@ -404,7 +404,7 @@ func (a *App) renderReconciliation() string {
 }
 
 // handleReconciliationKeys handles key presses in the reconciliation view.
-func (a *App) handleReconciliationKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleReconciliationKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.reconciliation == nil || a.reconciliationTable == nil {
 		return a, nil
 	}
@@ -424,7 +424,7 @@ func (a *App) handleReconciliationKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-10, 1)
 		a.reconciliationTable.PageDown(tableHeight)
-	case msg.String() == " ":
+	case msg.String() == "space":
 		// Toggle checkbox on selected transaction
 		return a.toggleReconciliationCheck()
 	case msg.String() == "a":

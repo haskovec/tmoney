@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -220,7 +220,7 @@ func (a *App) checkPayeeAutoFill() {
 }
 
 // handleTransactionDialogKey routes key events to the transaction dialog.
-func (a *App) handleTransactionDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleTransactionDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.txnDialog == nil {
 		return a, nil
 	}

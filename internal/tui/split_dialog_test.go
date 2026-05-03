@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
@@ -252,7 +252,7 @@ func TestSplitDialog_BuildSplits(t *testing.T) {
 func TestSplitDialog_HandleKey_EscCancels(t *testing.T) {
 	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
-	action := sd.HandleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	action := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if action != DialogActionCancel {
 		t.Errorf("Esc should return DialogActionCancel, got %d", action)
 	}
@@ -267,37 +267,37 @@ func TestSplitDialog_HandleKey_TabCycles(t *testing.T) {
 	}
 
 	// Tab -> amount
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyTab})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	if sd.focus != splitFocusRows || sd.fieldFocus != splitFieldAmount {
 		t.Errorf("after tab 1: focus=%d, field=%d", sd.focus, sd.fieldFocus)
 	}
 
 	// Tab -> memo
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyTab})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	if sd.focus != splitFocusRows || sd.fieldFocus != splitFieldMemo {
 		t.Errorf("after tab 2: focus=%d, field=%d", sd.focus, sd.fieldFocus)
 	}
 
 	// Tab -> add button
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyTab})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	if sd.focus != splitFocusAddBtn {
 		t.Errorf("after tab 3: focus=%d, want splitFocusAddBtn", sd.focus)
 	}
 
 	// Tab -> cancel button
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyTab})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	if sd.focus != splitFocusCancelBtn {
 		t.Errorf("after tab 4: focus=%d, want splitFocusCancelBtn", sd.focus)
 	}
 
 	// Tab -> save button
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyTab})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	if sd.focus != splitFocusSaveBtn {
 		t.Errorf("after tab 5: focus=%d, want splitFocusSaveBtn", sd.focus)
 	}
 
 	// Tab -> wrap to first row
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyTab})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	if sd.focus != splitFocusRows || sd.rowIndex != 0 || sd.fieldFocus != splitFieldCategory {
 		t.Errorf("after tab 6: focus=%d, row=%d, field=%d", sd.focus, sd.rowIndex, sd.fieldFocus)
 	}
@@ -308,25 +308,25 @@ func TestSplitDialog_HandleKey_ShiftTabCycles(t *testing.T) {
 
 	// Start at rows, row 0, category
 	// Shift-Tab should wrap to save button
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	if sd.focus != splitFocusSaveBtn {
 		t.Errorf("shift-tab from start: focus=%d, want splitFocusSaveBtn", sd.focus)
 	}
 
 	// Shift-Tab -> cancel
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	if sd.focus != splitFocusCancelBtn {
 		t.Errorf("shift-tab: focus=%d, want splitFocusCancelBtn", sd.focus)
 	}
 
 	// Shift-Tab -> add
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	if sd.focus != splitFocusAddBtn {
 		t.Errorf("shift-tab: focus=%d, want splitFocusAddBtn", sd.focus)
 	}
 
 	// Shift-Tab -> back to rows, last row, last field (memo)
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	if sd.focus != splitFocusRows || sd.fieldFocus != splitFieldMemo {
 		t.Errorf("shift-tab: focus=%d, field=%d", sd.focus, sd.fieldFocus)
 	}
@@ -339,7 +339,7 @@ func TestSplitDialog_HandleKey_EnterOnSave_Valid(t *testing.T) {
 	sd.rows[0].amountField.Value = "-100.00"
 
 	sd.focus = splitFocusSaveBtn
-	action := sd.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	action := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if action != DialogActionSubmit {
 		t.Errorf("Enter on Save with valid data should return DialogActionSubmit, got %d", action)
 	}
@@ -349,7 +349,7 @@ func TestSplitDialog_HandleKey_EnterOnSave_Invalid(t *testing.T) {
 	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
 
 	sd.focus = splitFocusSaveBtn
-	action := sd.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	action := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if action != DialogActionNone {
 		t.Errorf("Enter on Save with invalid data should return DialogActionNone, got %d", action)
 	}
@@ -362,7 +362,7 @@ func TestSplitDialog_HandleKey_EnterOnCancel(t *testing.T) {
 	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
 	sd.focus = splitFocusCancelBtn
-	action := sd.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	action := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if action != DialogActionCancel {
 		t.Errorf("Enter on Cancel should return DialogActionCancel, got %d", action)
 	}
@@ -372,7 +372,7 @@ func TestSplitDialog_HandleKey_EnterOnAdd(t *testing.T) {
 	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
 	sd.focus = splitFocusAddBtn
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	if len(sd.rows) != 2 {
 		t.Errorf("expected 2 rows after Enter on Add, got %d", len(sd.rows))
@@ -390,25 +390,25 @@ func TestSplitDialog_HandleKey_CategoryUpDown(t *testing.T) {
 	}
 
 	// Down
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyDown})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	if sd.rows[0].categoryIndex != 1 {
 		t.Errorf("categoryIndex after down = %d, want 1", sd.rows[0].categoryIndex)
 	}
 
 	// Down again
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyDown})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	if sd.rows[0].categoryIndex != 2 {
 		t.Errorf("categoryIndex after down = %d, want 2", sd.rows[0].categoryIndex)
 	}
 
 	// Down at max (should stay)
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyDown})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	if sd.rows[0].categoryIndex != 2 {
 		t.Errorf("categoryIndex should stay at 2, got %d", sd.rows[0].categoryIndex)
 	}
 
 	// Up
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyUp})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp})
 	if sd.rows[0].categoryIndex != 1 {
 		t.Errorf("categoryIndex after up = %d, want 1", sd.rows[0].categoryIndex)
 	}
@@ -421,15 +421,15 @@ func TestSplitDialog_HandleKey_TextEditing(t *testing.T) {
 	sd.fieldFocus = splitFieldAmount
 
 	// Type some characters
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'5'}})
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'0'}})
+	sd.HandleKey(tea.KeyPressMsg{Code: '5', Text: "5"})
+	sd.HandleKey(tea.KeyPressMsg{Code: '0', Text: "0"})
 
 	if sd.rows[0].amountField.Value != "50" {
 		t.Errorf("amount value = %q, want '50'", sd.rows[0].amountField.Value)
 	}
 
 	// Backspace
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if sd.rows[0].amountField.Value != "5" {
 		t.Errorf("amount value after backspace = %q, want '5'", sd.rows[0].amountField.Value)
 	}
@@ -443,7 +443,7 @@ func TestSplitDialog_HandleKey_CtrlD_RemovesRow(t *testing.T) {
 		t.Fatal("expected 2 rows")
 	}
 
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyCtrlD})
+	sd.HandleKey(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	if len(sd.rows) != 1 {
 		t.Errorf("expected 1 row after Ctrl+D, got %d", len(sd.rows))
 	}
@@ -452,7 +452,7 @@ func TestSplitDialog_HandleKey_CtrlD_RemovesRow(t *testing.T) {
 func TestSplitDialog_HandleKey_CtrlD_NoRemoveLastRow(t *testing.T) {
 	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
-	sd.HandleKey(tea.KeyMsg{Type: tea.KeyCtrlD})
+	sd.HandleKey(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	if len(sd.rows) != 1 {
 		t.Errorf("should not remove last row, got %d", len(sd.rows))
 	}
@@ -586,7 +586,7 @@ func TestApp_HandleSplitDialogKey_Cancel(t *testing.T) {
 	}
 
 	// Press Escape to cancel
-	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
@@ -670,7 +670,7 @@ func TestApp_SplitDialogKeyRouting(t *testing.T) {
 	}
 
 	// Tab key should be routed to split dialog, not to register view
-	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	app.Update(tabKey)
 
 	// After tab, split dialog should have advanced focus

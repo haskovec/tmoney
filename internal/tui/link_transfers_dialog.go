@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/transferlink"
@@ -113,7 +113,7 @@ func (a *App) closeLinkTransfersDialog() {
 }
 
 // handleLinkTransfersDialogKey routes keys to the dialog.
-func (a *App) handleLinkTransfersDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleLinkTransfersDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.linkTransfersDialog == nil {
 		return a, nil
 	}

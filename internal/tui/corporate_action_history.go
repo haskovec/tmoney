@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -190,7 +190,7 @@ func (a *App) renderCorporateActionHistory() string {
 }
 
 // handleCorporateActionHistoryKeys handles key presses in the corporate action history overlay.
-func (a *App) handleCorporateActionHistoryKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleCorporateActionHistoryKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.corporateActionHistory == nil {
 		return a, nil
 	}

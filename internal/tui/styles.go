@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 // LayoutMode represents the responsive layout mode based on terminal width.
 type LayoutMode int

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -394,7 +394,7 @@ func TestApp_HandleAccountDialogKey_Cancel(t *testing.T) {
 		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
@@ -425,7 +425,7 @@ func TestApp_HandleAccountDialogKey_TabCycles(t *testing.T) {
 		t.Fatalf("initial focus = %d, want 0", initialFocus)
 	}
 
-	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	model, _ := app.Update(tabKey)
 	updatedApp := model.(*App)
 
@@ -1117,7 +1117,7 @@ func TestApp_HandleAccountDialogKey_TypeChangeUpdatesVisibility(t *testing.T) {
 	}
 
 	// Press down to change type to Savings (index 1)
-	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.Update(downKey)
 
 	// Still Savings - credit limit should still be hidden

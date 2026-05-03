@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
@@ -852,7 +852,7 @@ func TestHandleSellDialogKey_Cancel(t *testing.T) {
 		sellDialogSecurityIDs: []types.ID{secID},
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleSellDialogKey(escKey)
 	updatedApp := model.(*App)
 
@@ -873,7 +873,7 @@ func TestHandleSellDialogKey_Cancel(t *testing.T) {
 func TestHandleSellDialogKey_NilDialog(t *testing.T) {
 	app := &App{}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, cmd := app.handleSellDialogKey(escKey)
 
 	if model.(*App) != app {

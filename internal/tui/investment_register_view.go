@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
@@ -216,7 +216,7 @@ func (a *App) renderInvestmentRegister() string {
 }
 
 // handleInvestmentRegisterKeys handles key presses in the investment register view.
-func (a *App) handleInvestmentRegisterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Handle Tab to switch focus between sidebar and table
 	if key.Matches(msg, a.keys.Tab) || key.Matches(msg, a.keys.ShiftTab) {
 		if a.sidebar.IsFocused() {
@@ -430,7 +430,7 @@ func (a *App) openInvestmentTypeSelector(editing bool) {
 }
 
 // handleInvestmentTypeSelectorKey handles key presses in the investment type selector dialog.
-func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.investmentTypeSelector.HandleKey(msg)
 
 	switch action {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -212,31 +212,23 @@ func (sd *SplitDialog) buildSplits() ([]*transaction.Split, error) {
 }
 
 // HandleKey processes a key event and returns the resulting action.
-func (sd *SplitDialog) HandleKey(msg tea.KeyMsg) DialogAction {
-	// Escape always cancels
-	if msg.Type == tea.KeyEsc {
+func (sd *SplitDialog) HandleKey(msg tea.KeyPressMsg) DialogAction {
+	switch msg.String() {
+	case "esc":
 		return DialogActionCancel
-	}
-
-	// Ctrl+D removes current row (if more than 1)
-	if msg.Type == tea.KeyCtrlD && sd.focus == splitFocusRows && len(sd.rows) > 1 {
-		sd.removeRow(sd.rowIndex)
-		sd.errorMsg = ""
+	case "ctrl+d":
+		if sd.focus == splitFocusRows && len(sd.rows) > 1 {
+			sd.removeRow(sd.rowIndex)
+			sd.errorMsg = ""
+		}
 		return DialogActionNone
-	}
-
-	// Tab/Shift-Tab cycle through all focusable elements
-	if msg.Type == tea.KeyTab {
+	case "tab":
 		sd.focusNext()
 		return DialogActionNone
-	}
-	if msg.Type == tea.KeyShiftTab {
+	case "shift+tab":
 		sd.focusPrev()
 		return DialogActionNone
-	}
-
-	// Enter behavior depends on focus
-	if msg.Type == tea.KeyEnter {
+	case "enter":
 		return sd.handleEnter()
 	}
 
@@ -276,17 +268,17 @@ func (sd *SplitDialog) handleEnter() DialogAction {
 }
 
 // handleRowFieldKey handles key input for the currently focused row field.
-func (sd *SplitDialog) handleRowFieldKey(msg tea.KeyMsg) {
+func (sd *SplitDialog) handleRowFieldKey(msg tea.KeyPressMsg) {
 	row := &sd.rows[sd.rowIndex]
 
 	switch sd.fieldFocus {
 	case splitFieldCategory:
-		switch msg.Type {
-		case tea.KeyUp:
+		switch msg.String() {
+		case "up":
 			if row.categoryIndex > 0 {
 				row.categoryIndex--
 			}
-		case tea.KeyDown:
+		case "down":
 			if row.categoryIndex < len(sd.categoryOptions)-1 {
 				row.categoryIndex++
 			}
@@ -299,22 +291,29 @@ func (sd *SplitDialog) handleRowFieldKey(msg tea.KeyMsg) {
 }
 
 // handleFieldTextKey applies text editing keys to a Field.
-func handleFieldTextKey(f *Field, msg tea.KeyMsg) {
-	switch msg.Type {
-	case tea.KeyBackspace:
+func handleFieldTextKey(f *Field, msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "backspace":
 		f.DeleteBack()
-	case tea.KeyDelete:
+		return
+	case "delete":
 		f.DeleteForward()
-	case tea.KeyLeft:
+		return
+	case "left":
 		f.MoveCursorLeft()
-	case tea.KeyRight:
+		return
+	case "right":
 		f.MoveCursorRight()
-	case tea.KeyHome, tea.KeyCtrlA:
+		return
+	case "home", "ctrl+a":
 		f.MoveCursorHome()
-	case tea.KeyEnd, tea.KeyCtrlE:
+		return
+	case "end", "ctrl+e":
 		f.MoveCursorEnd()
-	case tea.KeyRunes:
-		for _, r := range msg.Runes {
+		return
+	}
+	if msg.Text != "" {
+		for _, r := range msg.Text {
 			f.InsertChar(r)
 		}
 	}
@@ -530,7 +529,7 @@ func (sd *SplitDialog) renderTextField(f *Field, focused bool, width int) string
 }
 
 // handleSplitDialogKey routes key events to the split dialog.
-func (a *App) handleSplitDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.splitDialog == nil {
 		return a, nil
 	}

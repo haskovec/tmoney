@@ -71,7 +71,7 @@ Strategy: do the upgrade in a single working branch but as small, individually-r
   - Baseline captured 2026-05-02 (commit `b8f2a24`): `go build ./...` clean; `go test ./...` 4734 pass / 0 fail across 23 packages; `golangci-lint run` 0 issues. Per-package coverage:
     - `cmd/tmoney` 82.7% · `internal/account` 86.1% · `internal/app` 75.7% · `internal/backup` 76.3% · `internal/category` 78.6% · `internal/config` 75.0% · `internal/db` 68.9% · `internal/dberrors` 0.0% (no test file) · `internal/dbutil` 0.0% (no test file) · `internal/imexport` 87.7% · `internal/investment` 81.1% · `internal/payee` 83.8% · `internal/price` 87.2% · `internal/reconciliation` 72.5% · `internal/report` 83.0% · `internal/scheduled` 76.9% · `internal/security` 89.6% · `internal/transaction` 77.1% · `internal/transferlink` 0.0% (no test file) · `internal/tui` 68.7% · `internal/types` 64.6% · `internal/undo` 88.0% · `tests/integration` no statements.
 
-- [ ] **PC-U02 — Bubble Tea + Lip Gloss + Bubbles module bumps**
+- [x] **PC-U02 — Bubble Tea + Lip Gloss + Bubbles module bumps**
   - RED: not applicable (dependency-only step; build will be red after this until PC-U03+ land).
   - GREEN: in `go.mod`, replace
     - `github.com/charmbracelet/bubbletea v1.3.10` → `charm.land/bubbletea/v2 vX.Y.Z` (latest stable; v2.0.6 at time of writing)
@@ -79,7 +79,7 @@ Strategy: do the upgrade in a single working branch but as small, individually-r
     - `github.com/charmbracelet/bubbles v1.0.0` → `charm.land/bubbles/v2 vX.Y.Z`
   - Run `go get charm.land/bubbletea/v2@latest charm.land/lipgloss/v2@latest charm.land/bubbles/v2@latest`, then `go mod tidy`. Expect `go build` to fail — that's the to-do list for PC-U03+.
 
-- [ ] **PC-U03 — Mechanical import-path rewrite**
+- [x] **PC-U03 — Mechanical import-path rewrite**
   - RED: not applicable (mechanical).
   - GREEN: in every `.go` file, replace
     - `github.com/charmbracelet/bubbletea` → `charm.land/bubbletea/v2`
@@ -88,7 +88,7 @@ Strategy: do the upgrade in a single working branch but as small, individually-r
     - `github.com/charmbracelet/bubbles/...` → `charm.land/bubbles/v2/...`
   - Run `go fix ./...` then `go build ./...`. Build will still be red on the API changes covered by PC-U04 onward, but every import error should be gone.
 
-- [ ] **PC-U04 — `App.View()` returns `tea.View`**
+- [x] **PC-U04 — `App.View()` returns `tea.View`**
   - RED: extend the existing app render tests so they call `App.View()` and assert on `.Content` (or call `String()` on the returned `tea.View`). Existing assertions on the rendered string must continue to pass.
   - GREEN: in `internal/tui/app.go`:
     - Change signature `func (a *App) View() string` → `func (a *App) View() tea.View`, build the existing string into `tea.NewView(...)`.
@@ -97,15 +97,15 @@ Strategy: do the upgrade in a single working branch but as small, individually-r
     - Strip `tea.WithAltScreen()`, `tea.WithMouseCellMotion()` from the `tea.NewProgram(...)` call site.
     - Strip `tea.EnterAltScreen` and `tea.SetWindowTitle(...)` from the `Init()`/startup `tea.Batch`.
 
-- [ ] **PC-U05 — Production key-handling migration**
+- [x] **PC-U05 — Production key-handling migration**
   - RED: keep existing key handler tests passing. Where a test today builds `tea.KeyMsg{Type: tea.KeyEnter}` to drive a handler, do not change those tests yet — they live behind PC-U07.
   - GREEN: in every non-test handler that does `case tea.KeyMsg:` or accepts `tea.KeyMsg` as a parameter, switch the type to `tea.KeyPressMsg` (interface narrowing). Handlers continue to call `msg.String()` for matching, which keeps working — that is the safe migration path. Verify the app builds after this step.
 
-- [ ] **PC-U06 — Production mouse-handling migration**
+- [x] **PC-U06 — Production mouse-handling migration**
   - RED: as above, leave production-driving mouse tests for PC-U07.
   - GREEN: rewrite `Dialog.HandleMouse(msg tea.MouseMsg, ...)` to take the v2 `tea.MouseMsg` interface, extract `mouse := msg.Mouse()` for `X`/`Y`, and switch matching from `msg.Action == tea.MouseActionPress` + `msg.Button` to type-switch on `tea.MouseClickMsg` / `tea.MouseReleaseMsg` / `tea.MouseWheelMsg`. Update every caller. Replace `tea.MouseButtonLeft` with `tea.MouseLeft`, etc., per the v2 button-name table.
 
-- [ ] **PC-U07 — Test-fixture migration for keys and mice**
+- [x] **PC-U07 — Test-fixture migration for keys and mice**
   - RED: tests will fail to compile after PC-U05/U06 land — this step is the green wave that brings them back.
   - GREEN: rewrite test fixtures:
     - `tea.KeyMsg{Type: tea.KeyEnter}` → `tea.KeyPressMsg{Code: tea.KeyEnter}`
@@ -115,11 +115,11 @@ Strategy: do the upgrade in a single working branch but as small, individually-r
     - `tea.MouseMsg{… Button: tea.MouseButtonWheelDown}` → `tea.MouseWheelMsg{Mouse: tea.Mouse{Button: tea.MouseWheelDown}}`
   - This is mechanical but voluminous (≥80 sites). Consider a single `gofmt`-friendly sed pass per pattern, then hand-fix outliers.
 
-- [ ] **PC-U08 — Lipgloss color-type adjustment**
+- [x] **PC-U08 — Lipgloss color-type adjustment**
   - RED: not applicable.
   - GREEN: `lipgloss.Color("214")` in v2 returns `image/color.Color`, not the v1 named-string type. The 13 package-level color constants in `internal/tui/styles.go` keep the same call shape, but their declared types may need to change (`lipgloss.Color` → `color.Color` from `image/color`) — `go build` will tell you. Add `import "image/color"` where needed.
 
-- [ ] **PC-U09 — Renames and removed APIs cleanup**
+- [x] **PC-U09 — Renames and removed APIs cleanup**
   - RED: not applicable.
   - GREEN: search-and-replace:
     - `tea.Sequentially(` → `tea.Sequence(` (none expected here, but verify)
@@ -127,9 +127,10 @@ Strategy: do the upgrade in a single working branch but as small, individually-r
     - `case " ":` (literal space match) → `case "space":` if the surrounding code matches on `msg.String()`. Audit every `case " ":` to see whether it was matching the rune or the `String()` form.
   - Re-run `go fix ./...`, `go build ./...`, `go test ./...`, `golangci-lint run`. Tree must be fully green.
 
-- [ ] **PC-U10 — Coverage and behavioral regression check**
+- [x] **PC-U10 — Coverage and behavioral regression check**
   - RED: not applicable.
   - GREEN: re-run `go test -cover ./...`, compare to PC-U01 baseline; investigate any new regressions. Manually launch the TUI against a real `.tdb`, exercise alt-screen entry, mouse clicks, key handling for the major views (dashboard, register, scheduled, prices). Commit, push, and merge before moving on to Phase 3.
+  - Completed 2026-05-03: charm.land v2 migration landed in a single bundled commit (PC-U02 through PC-U10) because PC-U02 alone could not stand green between commits. Stack: `charm.land/bubbletea/v2 v2.0.6`, `charm.land/lipgloss/v2 v2.0.3`, `charm.land/bubbles/v2 v2.1.0`. Result: `go build ./...` clean; `go test ./...` 4734 pass / 0 fail across 23 packages (zero regression vs baseline); `golangci-lint run` 0 issues. Per-package coverage held at the PC-U01 baseline values exactly: `cmd/tmoney` 82.7% · `internal/account` 86.1% · `internal/app` 75.7% · `internal/backup` 76.3% · `internal/category` 78.6% · `internal/config` 75.0% · `internal/db` 68.9% · `internal/dberrors` 0.0% · `internal/dbutil` 0.0% · `internal/imexport` 87.7% · `internal/investment` 81.1% · `internal/payee` 83.8% · `internal/price` 87.2% · `internal/reconciliation` 72.5% · `internal/report` 83.0% · `internal/scheduled` 76.9% · `internal/security` 89.6% · `internal/transaction` 77.1% · `internal/transferlink` 0.0% · `internal/tui` 68.7% · `internal/types` 64.6% · `internal/undo` 88.0% · `tests/integration` no statements. Two test fixes were required: `reconciliation_view.go` matched `msg.String() == " "` for space, which in v2 returns `"space"` instead — fixed under PC-U09; `TestTable_Render_VoidRowStyle` asserted on the literal substring `"Void"` in rendered output, but lipgloss v2 wraps each strikethrough rune in its own ANSI escape, so the test was updated to `stripAnsi` first.
 
 ## Phase 3: Visible MVP
 

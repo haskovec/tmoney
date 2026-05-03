@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/imexport"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
@@ -350,7 +350,7 @@ func (a *App) renderPriceDetail() string {
 
 // handlePriceViewKeys dispatches key presses to the list- or detail-mode
 // handler.
-func (a *App) handlePriceViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handlePriceViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.priceView == nil {
 		return a, nil
 	}
@@ -364,7 +364,7 @@ func (a *App) handlePriceViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handlePriceListKeys handles keys on the prices landing page.
-func (a *App) handlePriceListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handlePriceListKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	tbl := a.priceListTable
 	switch {
 	case key.Matches(msg, a.keys.Up):
@@ -403,7 +403,7 @@ func (a *App) handlePriceListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handlePriceDetailKeys handles keys on a single security's price history.
-func (a *App) handlePriceDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handlePriceDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, a.keys.Up):
 		if a.priceTable != nil {
@@ -516,7 +516,7 @@ func (a *App) drillIntoSelectedListRow() tea.Cmd {
 }
 
 // handlePriceSearchKey handles key presses while in search mode.
-func (a *App) handlePriceSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handlePriceSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, a.keys.Escape):
 		a.priceView.searching = false
@@ -531,12 +531,12 @@ func (a *App) handlePriceSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, a.loadPriceViewDataForSecurity(filtered[0])
 		}
 		a.priceView.searchQuery = ""
-	case msg.Type == tea.KeyBackspace:
+	case msg.String() == "backspace":
 		if len(a.priceView.searchQuery) > 0 {
 			a.priceView.searchQuery = a.priceView.searchQuery[:len(a.priceView.searchQuery)-1]
 		}
-	case msg.Type == tea.KeyRunes:
-		a.priceView.searchQuery += string(msg.Runes)
+	case msg.Text != "":
+		a.priceView.searchQuery += msg.Text
 	}
 	return a, nil
 }
@@ -590,7 +590,7 @@ func buildEditPriceDialog(sec *security.Security, p *price.Price) *Dialog {
 }
 
 // handlePriceDialogKey handles key presses in the price add/edit dialog.
-func (a *App) handlePriceDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handlePriceDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.priceDialog.HandleKey(msg)
 	switch action {
 	case DialogActionCancel:
@@ -700,7 +700,7 @@ func buildImportPriceDialog() *Dialog {
 }
 
 // handlePriceImportDialogKey handles key presses in the import dialog.
-func (a *App) handlePriceImportDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handlePriceImportDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.priceImportDialog.HandleKey(msg)
 	switch action {
 	case DialogActionCancel:

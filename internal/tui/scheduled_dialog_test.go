@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
@@ -370,7 +370,7 @@ func TestApp_HandleScheduledKeys_NewKey(t *testing.T) {
 	app.scheduledTable.SetFocused(true)
 
 	// Press 'n' for new scheduled
-	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	nKey := tea.KeyPressMsg{Code: 'n', Text: "n"}
 	_, cmd := app.Update(nKey)
 
 	if cmd == nil {
@@ -402,7 +402,7 @@ func TestApp_HandleScheduledKeys_EditKey(t *testing.T) {
 	app.scheduledTable.SetFocused(true)
 
 	// Press 'e' for edit scheduled
-	eKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}}
+	eKey := tea.KeyPressMsg{Code: 'e', Text: "e"}
 	_, cmd := app.Update(eKey)
 
 	if cmd == nil {
@@ -509,7 +509,7 @@ func TestApp_HandleScheduledDialogKey_Cancel(t *testing.T) {
 		schedDialogCategoryIDs: []types.ID{types.NilID},
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
@@ -551,7 +551,7 @@ func TestApp_HandleScheduledDialogKey_TabCycles(t *testing.T) {
 		t.Fatalf("initial focus = %d, want 0", initialFocus)
 	}
 
-	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	model, _ := app.Update(tabKey)
 	updatedApp := model.(*App)
 

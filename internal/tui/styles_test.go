@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"image/color"
 	"testing"
 )
 
@@ -192,30 +193,30 @@ func TestStyles_RenderDoesNotPanic(t *testing.T) {
 }
 
 func TestColorConstants(t *testing.T) {
-	// Verify color constants are non-empty strings
+	// Verify color constants are non-nil
 	colors := []struct {
 		name  string
-		color string
+		color color.Color
 	}{
-		{"ColorPositive", string(ColorPositive)},
-		{"ColorNegative", string(ColorNegative)},
-		{"ColorPending", string(ColorPending)},
-		{"ColorAlert", string(ColorAlert)},
-		{"ColorBorder", string(ColorBorder)},
-		{"ColorHeaderFg", string(ColorHeaderFg)},
-		{"ColorHeaderBg", string(ColorHeaderBg)},
-		{"ColorStatusFg", string(ColorStatusFg)},
-		{"ColorStatusBg", string(ColorStatusBg)},
-		{"ColorSelectedFg", string(ColorSelectedFg)},
-		{"ColorSelectedBg", string(ColorSelectedBg)},
-		{"ColorMuted", string(ColorMuted)},
-		{"ColorTitle", string(ColorTitle)},
+		{"ColorPositive", ColorPositive},
+		{"ColorNegative", ColorNegative},
+		{"ColorPending", ColorPending},
+		{"ColorAlert", ColorAlert},
+		{"ColorBorder", ColorBorder},
+		{"ColorHeaderFg", ColorHeaderFg},
+		{"ColorHeaderBg", ColorHeaderBg},
+		{"ColorStatusFg", ColorStatusFg},
+		{"ColorStatusBg", ColorStatusBg},
+		{"ColorSelectedFg", ColorSelectedFg},
+		{"ColorSelectedBg", ColorSelectedBg},
+		{"ColorMuted", ColorMuted},
+		{"ColorTitle", ColorTitle},
 	}
 
 	for _, tt := range colors {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.color == "" {
-				t.Errorf("%s should not be empty", tt.name)
+			if tt.color == nil {
+				t.Errorf("%s should not be nil", tt.name)
 			}
 		})
 	}

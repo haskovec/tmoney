@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestShortcutSections(t *testing.T) {
@@ -246,7 +246,7 @@ func TestApp_HelpOverlayToggle(t *testing.T) {
 	}
 
 	// Press ? to show help
-	helpKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}}
+	helpKey := tea.KeyPressMsg{Code: '?', Text: "?"}
 	app.Update(helpKey)
 	if !app.showHelp {
 		t.Error("showHelp should be true after pressing ?")
@@ -263,7 +263,7 @@ func TestApp_HelpOverlayToggle(t *testing.T) {
 	if !app.showHelp {
 		t.Error("showHelp should be true after pressing ?")
 	}
-	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
 	app.Update(escKey)
 	if app.showHelp {
 		t.Error("showHelp should be false after pressing Esc")
@@ -284,21 +284,21 @@ func TestApp_HelpOverlayBlocksOtherKeys(t *testing.T) {
 	}
 
 	// Show help
-	helpKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}}
+	helpKey := tea.KeyPressMsg{Code: '?', Text: "?"}
 	app.Update(helpKey)
 	if !app.showHelp {
 		t.Fatal("showHelp should be true")
 	}
 
 	// Press '1' - should not switch view while help is shown
-	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	app.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
 	if !app.showHelp {
 		t.Error("help should still be visible (non-dismiss keys should not close it)")
 	}
 
 	// Other keys should not change state while help is shown
 	startView := app.currentView
-	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	app.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
 	if app.currentView != startView {
 		t.Error("view should not change while help is shown")
 	}
@@ -324,11 +324,11 @@ func TestApp_HelpOverlayRendered(t *testing.T) {
 	app.showHelp = true
 	viewWith := app.View()
 
-	if viewWithout == viewWith {
+	if viewWithout.Content == viewWith.Content {
 		t.Error("view output should differ when help overlay is visible")
 	}
 
-	if !strings.Contains(viewWith, "KEYBOARD SHORTCUTS") {
+	if !strings.Contains(viewWith.Content, "KEYBOARD SHORTCUTS") {
 		t.Error("view with help should contain 'KEYBOARD SHORTCUTS'")
 	}
 }
@@ -362,7 +362,7 @@ func TestApp_HelpKeyBinding(t *testing.T) {
 	km := defaultKeyMap()
 
 	// Verify the ? key binding exists
-	if !key.Matches(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}}, km.Help) {
+	if !key.Matches(tea.KeyPressMsg{Code: '?', Text: "?"}, km.Help) {
 		t.Error("? should match the Help key binding")
 	}
 }

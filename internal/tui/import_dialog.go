@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
@@ -253,7 +253,7 @@ func (a *App) closeImportDialog() {
 
 // handleImportDialogKey routes keys to the import dialog and dispatches
 // the appropriate submit handler based on which step the dialog is on.
-func (a *App) handleImportDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleImportDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.importDialog == nil {
 		return a, nil
 	}

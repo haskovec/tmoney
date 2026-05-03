@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -333,7 +333,7 @@ func TestHandleStockSplitDialogKey_Cancel(t *testing.T) {
 		stockSplitDialogSecurityIDs: []types.ID{secID},
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleStockSplitDialogKey(escKey)
 	updatedApp := model.(*App)
 
@@ -351,7 +351,7 @@ func TestHandleStockSplitDialogKey_Cancel(t *testing.T) {
 func TestHandleStockSplitDialogKey_NilDialog(t *testing.T) {
 	app := &App{}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, cmd := app.handleStockSplitDialogKey(escKey)
 
 	if model.(*App) != app {
@@ -502,7 +502,7 @@ func TestHandleStockSplitDialogKey_TabNavigates(t *testing.T) {
 	}
 
 	// Tab to next field
-	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	app.handleStockSplitDialogKey(tabKey)
 
 	if app.stockSplitDialog.FocusIndex() != 1 {

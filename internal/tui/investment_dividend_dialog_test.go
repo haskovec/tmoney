@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
@@ -610,7 +610,7 @@ func TestHandleDividendDialogKey_Cancel(t *testing.T) {
 		dividendDialogSecurityIDs: []types.ID{secID},
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleDividendDialogKey(escKey)
 	updatedApp := model.(*App)
 
@@ -628,7 +628,7 @@ func TestHandleDividendDialogKey_Cancel(t *testing.T) {
 func TestHandleDividendDialogKey_NilDialog(t *testing.T) {
 	app := &App{}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, cmd := app.handleDividendDialogKey(escKey)
 
 	if model.(*App) != app {

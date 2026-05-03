@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // shortcutEntry represents a single keyboard shortcut for display in the help overlay.

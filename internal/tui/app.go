@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
@@ -522,8 +522,6 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 func (a *App) Init() tea.Cmd {
 	a.updateStatusBar()
 	return tea.Batch(
-		tea.EnterAltScreen,
-		tea.SetWindowTitle("TMoney - Personal Finance Manager"),
 		a.autoPostOnFileOpen(),
 		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
@@ -875,7 +873,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ready = true
 		return a, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return a.handleKeyPress(msg)
 
 	case tea.MouseMsg:
@@ -1520,7 +1518,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleKeyPress handles keyboard input.
-func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// If an error is displayed, any key press dismisses it
 	if a.err != nil {
 		a.err = nil
@@ -1795,12 +1793,12 @@ func (a *App) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleDashboardKeys handles key presses in the dashboard view.
-func (a *App) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleDashboardKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a.handleSidebarKeys(msg)
 }
 
 // handleRegisterKeys handles key presses in the register view.
-func (a *App) handleRegisterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Handle Tab to switch focus between sidebar and table
 	if key.Matches(msg, a.keys.Tab) || key.Matches(msg, a.keys.ShiftTab) {
 		if a.sidebar.IsFocused() {
@@ -1988,7 +1986,7 @@ func (a *App) showConfirmDialog(title, message string, action func() tea.Msg) {
 }
 
 // handleConfirmDialogKey handles key input for the confirmation dialog.
-func (a *App) handleConfirmDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleConfirmDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.confirmDialog.HandleKey(msg)
 
 	switch action {
@@ -2011,7 +2009,7 @@ func (a *App) handleConfirmDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleScheduledKeys handles key presses in the scheduled transactions view.
-func (a *App) handleScheduledKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleScheduledKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Handle Tab to switch focus between sidebar and table
 	if key.Matches(msg, a.keys.Tab) || key.Matches(msg, a.keys.ShiftTab) {
 		if a.sidebar.IsFocused() {
@@ -2141,7 +2139,7 @@ func (a *App) deleteSelectedScheduled() (tea.Model, tea.Cmd) {
 }
 
 // handleReportsKeys handles key presses in the reports view.
-func (a *App) handleReportsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleReportsKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.reports == nil {
 		return a, nil
 	}
@@ -2234,7 +2232,7 @@ func (a *App) reportsNextPeriod() (tea.Model, tea.Cmd) {
 }
 
 // handleSidebarKeys handles keyboard navigation for the sidebar.
-func (a *App) handleSidebarKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleSidebarKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if !a.sidebar.IsFocused() {
 		return a, nil
 	}
@@ -2272,17 +2270,18 @@ func (a *App) handleSidebarKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // handleMouseEvent handles mouse events (clicks, wheel scrolling).
 func (a *App) handleMouseEvent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	// Only handle press events for left click, and wheel events
-	switch msg.Button {
-	case tea.MouseButtonWheelUp, tea.MouseButtonWheelDown:
+	switch msg.(type) {
+	case tea.MouseWheelMsg:
 		return a.handleMouseWheel(msg)
-	case tea.MouseButtonLeft:
-		if msg.Action != tea.MouseActionPress {
+	case tea.MouseClickMsg:
+		if msg.Mouse().Button != tea.MouseLeft {
 			return a, nil
 		}
 	default:
 		return a, nil
 	}
+
+	m := msg.Mouse()
 
 	// Route mouse clicks to dialog when a modal dialog is visible
 	if a.isDialogVisible() {
@@ -2290,16 +2289,16 @@ func (a *App) handleMouseEvent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Menu bar (row 0)
-	if msg.Y == 0 {
+	if m.Y == 0 {
 		return a.handleMouseMenuBar(msg)
 	}
 
 	// If menu dropdown is open, check if click is on dropdown
 	if a.menubar.IsActive() {
 		colOffset, dropdownWidth, itemCount := a.menubar.DropdownBounds()
-		if msg.Y >= 1 && msg.Y <= itemCount &&
-			msg.X >= colOffset && msg.X < colOffset+dropdownWidth {
-			itemIdx := a.menubar.HitTestDropdown(msg.Y - 1)
+		if m.Y >= 1 && m.Y <= itemCount &&
+			m.X >= colOffset && m.X < colOffset+dropdownWidth {
+			itemIdx := a.menubar.HitTestDropdown(m.Y - 1)
 			if itemIdx >= 0 {
 				a.menubar.SetItemCursor(itemIdx)
 				action := a.menubar.Select()
@@ -2312,12 +2311,12 @@ func (a *App) handleMouseEvent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Status bar (last row) - ignore
-	if msg.Y >= a.height-1 {
+	if m.Y >= a.height-1 {
 		return a, nil
 	}
 
 	// Content area
-	if msg.Y >= 1 && msg.Y < a.height-1 {
+	if m.Y >= 1 && m.Y < a.height-1 {
 		return a.handleMouseContent(msg)
 	}
 
@@ -2326,7 +2325,7 @@ func (a *App) handleMouseEvent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 // handleMouseMenuBar handles mouse clicks on the menu bar (row 0).
 func (a *App) handleMouseMenuBar(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	idx := a.menubar.HitTestBar(msg.X)
+	idx := a.menubar.HitTestBar(msg.Mouse().X)
 	if idx >= 0 {
 		if a.menubar.IsActive() && a.menubar.Cursor() == idx {
 			a.menubar.Deactivate()
@@ -2341,7 +2340,8 @@ func (a *App) handleMouseMenuBar(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 // handleMouseContent handles mouse clicks in the content area.
 func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	contentY := msg.Y - 1 // Offset for header row
+	m := msg.Mouse()
+	contentY := m.Y - 1 // Offset for header row
 
 	sidebarWidth := a.styles.SidebarWidth()
 
@@ -2352,12 +2352,12 @@ func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Sidebar zone
-	if msg.X < sidebarWidth {
+	if m.X < sidebarWidth {
 		return a.handleMouseSidebar(msg, contentY)
 	}
 
 	// Border column - ignore
-	if msg.X == sidebarWidth {
+	if m.X == sidebarWidth {
 		return a, nil
 	}
 
@@ -2449,8 +2449,10 @@ func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a.handleDialogMouse(msg)
 	}
 
+	wheelUp := msg.Mouse().Button == tea.MouseWheelUp
+
 	if a.sidebar.IsFocused() {
-		if msg.Button == tea.MouseButtonWheelUp {
+		if wheelUp {
 			a.sidebar.MoveUp()
 		} else {
 			a.sidebar.MoveDown()
@@ -2460,7 +2462,7 @@ func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	tbl := a.activeTable()
 	if tbl != nil {
-		if msg.Button == tea.MouseButtonWheelUp {
+		if wheelUp {
 			tbl.MoveUp()
 		} else {
 			tbl.MoveDown()
@@ -2517,8 +2519,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// (navigate into a directory or open a .tdb file) without requiring
 		// a separate Open button press.
 		listItemRow := -1
-		if a.fileDialogMode == fileDialogModeBrowse &&
-			msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+		if click, ok := msg.(tea.MouseClickMsg); ok &&
+			a.fileDialogMode == fileDialogModeBrowse &&
+			click.Button == tea.MouseLeft {
 			listItemRow = a.browseDialogListHit(msg)
 		}
 
@@ -2884,7 +2887,7 @@ func (a *App) isDialogVisible() bool {
 }
 
 // handleMenuKeys handles keyboard input when the menu bar is active.
-func (a *App) handleMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, a.keys.Escape), key.Matches(msg, a.keys.Menu):
 		a.menubar.Deactivate()
@@ -3125,7 +3128,15 @@ func (a *App) switchView(v View) {
 }
 
 // View implements tea.Model.
-func (a *App) View() string {
+func (a *App) View() tea.View {
+	v := tea.NewView(a.viewContent())
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	v.WindowTitle = "TMoney - Personal Finance Manager"
+	return v
+}
+
+func (a *App) viewContent() string {
 	if a.quitting {
 		return "Goodbye!\n"
 	}
@@ -4454,7 +4465,7 @@ func (a *App) performRedo() tea.Cmd {
 // Run starts the TUI application.
 func Run(database *db.DB, cfg *config.Config) error {
 	app := NewApp(database, cfg)
-	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	p := tea.NewProgram(app)
 
 	_, err := p.Run()
 

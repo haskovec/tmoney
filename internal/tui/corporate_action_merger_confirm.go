@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -151,7 +151,7 @@ func (a *App) closeMergerConfirmation() {
 }
 
 // handleMergerConfirmKey handles key events in the merger confirmation overlay.
-func (a *App) handleMergerConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleMergerConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.mergerConfirmData == nil {
 		return a, nil
 	}
@@ -161,7 +161,7 @@ func (a *App) handleMergerConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.closeMergerConfirmation()
 		return a, nil
 
-	case msg.Type == tea.KeyEnter || msg.String() == "y":
+	case msg.String() == "enter" || msg.String() == "y":
 		return a.executeMerger()
 	}
 

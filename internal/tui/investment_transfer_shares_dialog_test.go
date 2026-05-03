@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
@@ -598,7 +598,7 @@ func TestHandleTransferSharesDialogKey_Cancel(t *testing.T) {
 		),
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleTransferSharesDialogKey(escKey)
 	updatedApp := model.(*App)
 
@@ -610,7 +610,7 @@ func TestHandleTransferSharesDialogKey_Cancel(t *testing.T) {
 func TestHandleTransferSharesDialogKey_NilDialog(t *testing.T) {
 	app := &App{}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, cmd := app.handleTransferSharesDialogKey(escKey)
 
 	if model.(*App) != app {

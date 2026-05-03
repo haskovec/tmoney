@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/db"
 )
@@ -73,7 +73,7 @@ type backupDialogState struct {
 }
 
 // handleBackupDialogKey handles key input for the backup restore dialog.
-func (a *App) handleBackupDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleBackupDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.backupDialog == nil {
 		return a, nil
 	}

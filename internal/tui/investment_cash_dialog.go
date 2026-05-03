@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -57,7 +57,7 @@ func (a *App) closeCashOperationDialog() {
 }
 
 // handleCashOperationDialogKey routes key events to the cash operation dialog.
-func (a *App) handleCashOperationDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleCashOperationDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.cashOperationDialog == nil {
 		return a, nil
 	}

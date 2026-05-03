@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -98,7 +98,7 @@ func (a *App) closeTransferDialog() {
 }
 
 // handleTransferDialogKey routes key events to the transfer dialog.
-func (a *App) handleTransferDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleTransferDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.transferDialog == nil {
 		return a, nil
 	}

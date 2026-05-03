@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
@@ -178,7 +178,7 @@ func (a *App) closeTransferSharesDialog() {
 }
 
 // handleTransferSharesDialogKey routes key events to the share transfer dialog.
-func (a *App) handleTransferSharesDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleTransferSharesDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.transferSharesDialog == nil {
 		return a, nil
 	}

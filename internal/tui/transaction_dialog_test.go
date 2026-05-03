@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
@@ -272,7 +272,7 @@ func TestApp_HandleRegisterKeys_NewKey(t *testing.T) {
 	app.table.SetFocused(true)
 
 	// Press 'n' for new transaction
-	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	nKey := tea.KeyPressMsg{Code: 'n', Text: "n"}
 	_, cmd := app.Update(nKey)
 
 	if cmd == nil {
@@ -333,7 +333,7 @@ func TestApp_HandleTransactionDialogKey_Cancel(t *testing.T) {
 	}
 
 	// Press Escape to cancel
-	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
@@ -368,7 +368,7 @@ func TestApp_HandleTransactionDialogKey_TabCycles(t *testing.T) {
 	}
 
 	// Press Tab to advance focus
-	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	model, _ := app.Update(tabKey)
 	updatedApp := model.(*App)
 
@@ -720,7 +720,7 @@ func TestApp_HandleTransactionDialogKey_NilDialog(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	model, cmd := app.handleTransactionDialogKey(tea.KeyMsg{Type: tea.KeyEnter})
+	model, cmd := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if model != app {
 		t.Error("should return same app when dialog is nil")
 	}

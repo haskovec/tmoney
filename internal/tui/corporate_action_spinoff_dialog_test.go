@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -788,7 +788,7 @@ func TestHandleSpinOffDialogKey_Cancel(t *testing.T) {
 		spinOffDialogSecurityIDs: secIDs,
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleSpinOffDialogKey(escKey)
 	updatedApp := model.(*App)
 
@@ -806,7 +806,7 @@ func TestHandleSpinOffDialogKey_Cancel(t *testing.T) {
 func TestHandleSpinOffDialogKey_NilDialog(t *testing.T) {
 	app := &App{}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, cmd := app.handleSpinOffDialogKey(escKey)
 
 	if model.(*App) != app {
@@ -928,7 +928,7 @@ func TestHandleSpinOffDialogKey_TabNavigates(t *testing.T) {
 		t.Errorf("initial focus = %d, want 0", app.spinOffDialog.FocusIndex())
 	}
 
-	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	app.handleSpinOffDialogKey(tabKey)
 
 	if app.spinOffDialog.FocusIndex() != 1 {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
@@ -685,7 +685,7 @@ func TestPortfolioViewToggle_RegisterToPortfolio(t *testing.T) {
 	}
 
 	// Simulate pressing 'p' to switch to portfolio
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}}
+	msg := tea.KeyPressMsg{Code: 'p', Text: "p"}
 	_, cmd := app.handleInvestmentRegisterKeys(msg)
 
 	if app.currentView != ViewPortfolio {
@@ -722,7 +722,7 @@ func TestPortfolioViewToggle_PortfolioToRegister(t *testing.T) {
 	}
 
 	// Simulate pressing 'r' to switch to register
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}}
+	msg := tea.KeyPressMsg{Code: 'r', Text: "r"}
 	_, cmd := app.handlePortfolioKeys(msg)
 
 	if app.currentView != ViewInvestmentRegister {
@@ -778,7 +778,7 @@ func TestPortfolioKeys_LotDrillDown(t *testing.T) {
 	app.portfolioHoldingsTable.SetFocused(true)
 
 	// Press Enter to drill down
-	msg := tea.KeyMsg{Type: tea.KeyEnter}
+	msg := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handlePortfolioKeys(msg)
 
 	if app.portfolioMode != portfolioViewLots {
@@ -827,7 +827,7 @@ func TestPortfolioKeys_LotDrillDown_NonLotTracking(t *testing.T) {
 	app.portfolioHoldingsTable.SetFocused(true)
 
 	// Press Enter - should NOT drill down for non-lot-tracking
-	msg := tea.KeyMsg{Type: tea.KeyEnter}
+	msg := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handlePortfolioKeys(msg)
 
 	if app.portfolioMode != portfolioViewHoldings {
@@ -863,7 +863,7 @@ func TestPortfolioKeys_EscapeFromLots(t *testing.T) {
 	}
 
 	// Press Escape from lot view - should go back to holdings
-	msg := tea.KeyMsg{Type: tea.KeyEscape}
+	msg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	_, _ = app.handlePortfolioKeys(msg)
 
 	if app.portfolioMode != portfolioViewHoldings {
@@ -896,7 +896,7 @@ func TestPortfolioKeys_EscapeFromHoldings(t *testing.T) {
 	}
 
 	// Press Escape from holdings - should go to investment register
-	msg := tea.KeyMsg{Type: tea.KeyEscape}
+	msg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	_, cmd := app.handlePortfolioKeys(msg)
 
 	if app.currentView != ViewInvestmentRegister {
@@ -940,14 +940,14 @@ func TestPortfolioKeys_Navigation(t *testing.T) {
 	app.portfolioHoldingsTable.SetFocused(true)
 
 	// Move down
-	downMsg := tea.KeyMsg{Type: tea.KeyDown}
+	downMsg := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.handlePortfolioKeys(downMsg)
 	if app.portfolioHoldingsTable.Cursor() != 1 {
 		t.Errorf("cursor = %d after down, want 1", app.portfolioHoldingsTable.Cursor())
 	}
 
 	// Move up
-	upMsg := tea.KeyMsg{Type: tea.KeyUp}
+	upMsg := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.handlePortfolioKeys(upMsg)
 	if app.portfolioHoldingsTable.Cursor() != 0 {
 		t.Errorf("cursor = %d after up, want 0", app.portfolioHoldingsTable.Cursor())

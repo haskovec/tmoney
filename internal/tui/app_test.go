@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/report"
@@ -140,7 +140,7 @@ func TestApp_Update_QuitKey(t *testing.T) {
 		menubar:     NewMenuBar(),
 	}
 
-	msg := tea.KeyMsg{Type: tea.KeyCtrlQ}
+	msg := tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl}
 	model, cmd := app.Update(msg)
 
 	updatedApp := model.(*App)
@@ -158,9 +158,9 @@ func TestApp_Update_ViewSwitchKeys(t *testing.T) {
 		key          tea.KeyMsg
 		expectedView View
 	}{
-		{"Dashboard key", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}}, ViewDashboard},
-		{"Scheduled key", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}}, ViewScheduled},
-		{"Reports key", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}}, ViewReports},
+		{"Dashboard key", tea.KeyPressMsg{Code: '1', Text: "1"}, ViewDashboard},
+		{"Scheduled key", tea.KeyPressMsg{Code: '2', Text: "2"}, ViewScheduled},
+		{"Reports key", tea.KeyPressMsg{Code: '3', Text: "3"}, ViewReports},
 	}
 
 	for _, tt := range tests {
@@ -191,7 +191,7 @@ func TestApp_Update_EscapeKey(t *testing.T) {
 		statusbar:    NewStatusBar(),
 	}
 
-	msg := tea.KeyMsg{Type: tea.KeyEsc}
+	msg := tea.KeyPressMsg{Code: tea.KeyEsc}
 	model, _ := app.Update(msg)
 
 	updatedApp := model.(*App)
@@ -206,8 +206,8 @@ func TestApp_View_NotReady(t *testing.T) {
 	}
 
 	view := app.View()
-	if view != "Loading..." {
-		t.Errorf("View() = %q, want %q", view, "Loading...")
+	if view.Content != "Loading..." {
+		t.Errorf("View().Content = %q, want %q", view.Content, "Loading...")
 	}
 }
 
@@ -218,8 +218,8 @@ func TestApp_View_Quitting(t *testing.T) {
 	}
 
 	view := app.View()
-	if view != "Goodbye!\n" {
-		t.Errorf("View() = %q, want %q", view, "Goodbye!\n")
+	if view.Content != "Goodbye!\n" {
+		t.Errorf("View().Content = %q, want %q", view.Content, "Goodbye!\n")
 	}
 }
 
@@ -351,37 +351,37 @@ func TestApp_Update_AltKeyMenuShortcuts(t *testing.T) {
 	}{
 		{
 			"Alt+F opens File menu",
-			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}, Alt: true},
+			tea.KeyPressMsg{Code: 'f', Mod: tea.ModAlt},
 			0, "File",
 		},
 		{
 			"Alt+E opens Edit menu",
-			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}, Alt: true},
+			tea.KeyPressMsg{Code: 'e', Mod: tea.ModAlt},
 			1, "Edit",
 		},
 		{
 			"Alt+A opens Accounts menu",
-			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}, Alt: true},
+			tea.KeyPressMsg{Code: 'a', Mod: tea.ModAlt},
 			2, "Accounts",
 		},
 		{
 			"Alt+T opens Transactions menu",
-			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}, Alt: true},
+			tea.KeyPressMsg{Code: 't', Mod: tea.ModAlt},
 			3, "Transactions",
 		},
 		{
 			"Alt+S opens Securities menu",
-			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}, Alt: true},
+			tea.KeyPressMsg{Code: 's', Mod: tea.ModAlt},
 			4, "Securities",
 		},
 		{
 			"Alt+R opens Reports menu",
-			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}, Alt: true},
+			tea.KeyPressMsg{Code: 'r', Mod: tea.ModAlt},
 			5, "Reports",
 		},
 		{
 			"Alt+H opens Help menu",
-			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}, Alt: true},
+			tea.KeyPressMsg{Code: 'h', Mod: tea.ModAlt},
 			6, "Help",
 		},
 	}
@@ -417,7 +417,7 @@ func TestApp_ToggleMenu_ClosesSameMenu(t *testing.T) {
 	}
 
 	// Open File menu
-	altF := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}, Alt: true}
+	altF := tea.KeyPressMsg{Code: 'f', Mod: tea.ModAlt}
 	model, _ := app.Update(altF)
 	updatedApp := model.(*App)
 
@@ -443,7 +443,7 @@ func TestApp_ToggleMenu_SwitchesToDifferentMenu(t *testing.T) {
 	}
 
 	// Open File menu
-	altF := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}, Alt: true}
+	altF := tea.KeyPressMsg{Code: 'f', Mod: tea.ModAlt}
 	model, _ := app.Update(altF)
 	updatedApp := model.(*App)
 
@@ -452,7 +452,7 @@ func TestApp_ToggleMenu_SwitchesToDifferentMenu(t *testing.T) {
 	}
 
 	// Press Alt+A to switch to Accounts
-	altA := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}, Alt: true}
+	altA := tea.KeyPressMsg{Code: 'a', Mod: tea.ModAlt}
 	model, _ = updatedApp.Update(altA)
 	updatedApp = model.(*App)
 
@@ -1055,7 +1055,7 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 	app.table.SetFocused(true)
 
 	// Move down
-	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.Update(downKey)
 	if app.table.Cursor() != 1 {
 		t.Errorf("cursor should be 1 after down, got %d", app.table.Cursor())
@@ -1068,7 +1068,7 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 	}
 
 	// Move up
-	upKey := tea.KeyMsg{Type: tea.KeyUp}
+	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.Update(upKey)
 	if app.table.Cursor() != 1 {
 		t.Errorf("cursor should be 1 after up, got %d", app.table.Cursor())
@@ -1105,7 +1105,7 @@ func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
 	app.table.SetFocused(true)
 
 	// Tab should switch focus to sidebar
-	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	app.Update(tabKey)
 
 	if !app.sidebar.IsFocused() {
@@ -1615,7 +1615,7 @@ func TestApp_HandleScheduledKeys_TableNavigation(t *testing.T) {
 	app.scheduledTable.SetFocused(true)
 
 	// Move down
-	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.Update(downKey)
 	if app.scheduledTable.Cursor() != 1 {
 		t.Errorf("cursor should be 1 after down, got %d", app.scheduledTable.Cursor())
@@ -1628,7 +1628,7 @@ func TestApp_HandleScheduledKeys_TableNavigation(t *testing.T) {
 	}
 
 	// Move up
-	upKey := tea.KeyMsg{Type: tea.KeyUp}
+	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.Update(upKey)
 	if app.scheduledTable.Cursor() != 1 {
 		t.Errorf("cursor should be 1 after up, got %d", app.scheduledTable.Cursor())
@@ -1662,7 +1662,7 @@ func TestApp_HandleScheduledKeys_TabFocus(t *testing.T) {
 	app.scheduledTable.SetFocused(true)
 
 	// Tab should switch focus to sidebar
-	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	app.Update(tabKey)
 
 	if !app.sidebar.IsFocused() {
@@ -2167,7 +2167,7 @@ func TestApp_HandleReportsKeys_SwitchReportTypes(t *testing.T) {
 	}
 
 	// Press 's' to switch to spending
-	sKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}
+	sKey := tea.KeyPressMsg{Code: 's', Text: "s"}
 	_, cmd := app.Update(sKey)
 	if cmd == nil {
 		t.Error("pressing 's' should return a command to load spending data")
@@ -2175,7 +2175,7 @@ func TestApp_HandleReportsKeys_SwitchReportTypes(t *testing.T) {
 
 	// Now set to spending and press 'n' to switch to net worth
 	app.reports.rtype = reportTypeSpending
-	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	nKey := tea.KeyPressMsg{Code: 'n', Text: "n"}
 	_, cmd = app.Update(nKey)
 	if cmd == nil {
 		t.Error("pressing 'n' should return a command to load net worth data")
@@ -2197,14 +2197,14 @@ func TestApp_HandleReportsKeys_PeriodNavigation(t *testing.T) {
 	}
 
 	// Press left to go to previous period
-	leftKey := tea.KeyMsg{Type: tea.KeyLeft}
+	leftKey := tea.KeyPressMsg{Code: tea.KeyLeft}
 	_, cmd := app.Update(leftKey)
 	if cmd == nil {
 		t.Error("pressing left should return a command for previous period")
 	}
 
 	// Press right to go to next period
-	rightKey := tea.KeyMsg{Type: tea.KeyRight}
+	rightKey := tea.KeyPressMsg{Code: tea.KeyRight}
 	_, cmd = app.Update(rightKey)
 	if cmd == nil {
 		t.Error("pressing right should return a command for next period")
@@ -2226,7 +2226,7 @@ func TestApp_HandleReportsKeys_PeriodNav_NetWorthIgnored(t *testing.T) {
 	}
 
 	// Period navigation should be ignored for net worth reports
-	leftKey := tea.KeyMsg{Type: tea.KeyLeft}
+	leftKey := tea.KeyPressMsg{Code: tea.KeyLeft}
 	_, cmd := app.Update(leftKey)
 	if cmd != nil {
 		t.Error("period navigation should be ignored for net worth reports")
@@ -2248,7 +2248,7 @@ func TestApp_HandleReportsKeys_YearlyToggle(t *testing.T) {
 	}
 
 	// Press 'y' to toggle to yearly view
-	yKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}}
+	yKey := tea.KeyPressMsg{Code: 'y', Text: "y"}
 	_, cmd := app.Update(yKey)
 	if cmd == nil {
 		t.Error("pressing 'y' should return a command to load yearly data")
@@ -2270,7 +2270,7 @@ func TestApp_HandleReportsKeys_MonthlyToggle(t *testing.T) {
 	}
 
 	// Press 'm' to toggle to monthly view
-	mKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}}
+	mKey := tea.KeyPressMsg{Code: 'm', Text: "m"}
 	_, cmd := app.Update(mKey)
 	if cmd == nil {
 		t.Error("pressing 'm' should return a command to load monthly data")
@@ -2288,7 +2288,7 @@ func TestApp_HandleReportsKeys_NilReports(t *testing.T) {
 	}
 
 	// Should not panic
-	leftKey := tea.KeyMsg{Type: tea.KeyLeft}
+	leftKey := tea.KeyPressMsg{Code: tea.KeyLeft}
 	_, cmd := app.Update(leftKey)
 	if cmd != nil {
 		t.Error("should return nil command when reports is nil")
@@ -2516,13 +2516,13 @@ func TestApp_View_Error(t *testing.T) {
 	}
 
 	view := app.View()
-	if !contains(view, "Error") {
+	if !contains(view.Content, "Error") {
 		t.Error("View() should contain 'Error' when err is set")
 	}
-	if !contains(view, "failed to open database") {
+	if !contains(view.Content, "failed to open database") {
 		t.Error("View() should contain the error message")
 	}
-	if !contains(view, "Press any key to continue") {
+	if !contains(view.Content, "Press any key to continue") {
 		t.Error("View() should contain 'Press any key to continue'")
 	}
 }
@@ -2537,7 +2537,7 @@ func TestApp_Update_ErrorDismissedByKeyPress(t *testing.T) {
 	}
 
 	// Any key press should clear the error
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	msg := tea.KeyPressMsg{Code: 'a', Text: "a"}
 	model, cmd := app.Update(msg)
 
 	updatedApp := model.(*App)
@@ -2558,7 +2558,7 @@ func TestApp_Update_ErrorDismissedByEnter(t *testing.T) {
 		err:         fmt.Errorf("some error"),
 	}
 
-	msg := tea.KeyMsg{Type: tea.KeyEnter}
+	msg := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.Update(msg)
 
 	updatedApp := model.(*App)
@@ -2576,7 +2576,7 @@ func TestApp_Update_ErrorDismissedByEscape(t *testing.T) {
 		err:         fmt.Errorf("some error"),
 	}
 
-	msg := tea.KeyMsg{Type: tea.KeyEsc}
+	msg := tea.KeyPressMsg{Code: tea.KeyEsc}
 	model, _ := app.Update(msg)
 
 	updatedApp := model.(*App)
@@ -2594,7 +2594,7 @@ func TestApp_Update_ErrorDismissedBySpace(t *testing.T) {
 		err:         fmt.Errorf("some error"),
 	}
 
-	msg := tea.KeyMsg{Type: tea.KeySpace}
+	msg := tea.KeyPressMsg{Code: tea.KeySpace}
 	model, _ := app.Update(msg)
 
 	updatedApp := model.(*App)
@@ -2613,7 +2613,7 @@ func TestApp_Update_ErrorDoesNotQuit(t *testing.T) {
 	}
 
 	// Ctrl+Q should dismiss the error, not quit the app
-	msg := tea.KeyMsg{Type: tea.KeyCtrlQ}
+	msg := tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl}
 	model, cmd := app.Update(msg)
 
 	updatedApp := model.(*App)
@@ -2661,7 +2661,7 @@ func TestApp_Update_ErrorThenNormalOperation(t *testing.T) {
 	}
 
 	// First key press dismisses the error
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	msg := tea.KeyPressMsg{Code: 'a', Text: "a"}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -2670,7 +2670,7 @@ func TestApp_Update_ErrorThenNormalOperation(t *testing.T) {
 	}
 
 	// Second key press should work normally (not get stuck)
-	msg = tea.KeyMsg{Type: tea.KeyCtrlQ}
+	msg = tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl}
 	model, cmd := updatedApp.Update(msg)
 	updatedApp = model.(*App)
 
@@ -3239,7 +3239,7 @@ func TestApp_HandleConfirmDialogKey_Cancel(t *testing.T) {
 	app.confirmAction = func() tea.Msg { return nil }
 
 	// Press Escape to cancel
-	_, _ = app.handleConfirmDialogKey(tea.KeyMsg{Type: tea.KeyEsc})
+	_, _ = app.handleConfirmDialogKey(tea.KeyPressMsg{Code: tea.KeyEsc})
 
 	if app.confirmDialog != nil {
 		t.Error("confirmDialog should be nil after cancel")
@@ -3272,7 +3272,7 @@ func TestApp_HandleConfirmDialogKey_Confirm(t *testing.T) {
 	}
 
 	// Press Enter on Yes button
-	_, cmd := app.handleConfirmDialogKey(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := app.handleConfirmDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	if app.confirmDialog != nil {
 		t.Error("confirmDialog should be nil after confirm")
@@ -3323,7 +3323,7 @@ func TestApp_VoidKey_InRegisterView(t *testing.T) {
 	app.buildRegisterTable()
 
 	// Press 'v' key
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}}
+	msg := tea.KeyPressMsg{Code: 'v', Text: "v"}
 	_, _ = app.handleRegisterKeys(msg)
 
 	// Should show confirmation dialog
@@ -3400,7 +3400,7 @@ func TestApp_UndoKeyBinding(t *testing.T) {
 	}
 
 	// Press Ctrl+Z with nothing to undo
-	msg := tea.KeyMsg{Type: tea.KeyCtrlZ}
+	msg := tea.KeyPressMsg{Code: 'z', Mod: tea.ModCtrl}
 	_, cmd := app.handleKeyPress(msg)
 
 	if cmd == nil {
@@ -3432,7 +3432,7 @@ func TestApp_RedoKeyBinding(t *testing.T) {
 	}
 
 	// Press Ctrl+Y with nothing to redo
-	msg := tea.KeyMsg{Type: tea.KeyCtrlY}
+	msg := tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl}
 	_, cmd := app.handleKeyPress(msg)
 
 	if cmd == nil {
@@ -3651,7 +3651,7 @@ func TestApp_UndoKeyBindingNotActiveInDialogs(t *testing.T) {
 	app.txnDialogCategoryIDs = []types.ID{}
 
 	// Press Ctrl+Z - should be routed to dialog, not undo
-	msg := tea.KeyMsg{Type: tea.KeyCtrlZ}
+	msg := tea.KeyPressMsg{Code: 'z', Mod: tea.ModCtrl}
 	_, cmd := app.handleKeyPress(msg)
 
 	// The dialog should handle it (Ctrl+Z is not a dialog action, so it may just be consumed)
@@ -4026,7 +4026,7 @@ func TestApp_DashboardInvestmentAccountOpensPortfolioView(t *testing.T) {
 		statusbar:   NewStatusBar(),
 	}
 
-	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, cmd := app.Update(enterKey)
 	updatedApp := model.(*App)
 
@@ -4061,7 +4061,7 @@ func TestApp_DashboardNonInvestmentAccountOpensRegisterView(t *testing.T) {
 		statusbar:   NewStatusBar(),
 	}
 
-	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, cmd := app.Update(enterKey)
 	updatedApp := model.(*App)
 
@@ -4097,7 +4097,7 @@ func TestApp_HandleSidebarKeys_NewAccountShortcut(t *testing.T) {
 	}
 	// Sidebar is focused by default in NewSidebar()
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	msg := tea.KeyPressMsg{Code: 'n', Text: "n"}
 	_, cmd := app.Update(msg)
 
 	// The 'n' key in dashboard view (sidebar focused) should return a command
@@ -4120,7 +4120,7 @@ func TestApp_MouseClick_MenuBar_OpensDropdown(t *testing.T) {
 	app.styles.Resize(80, 24)
 
 	// Click on "File" label (x=2, y=0)
-	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: 2, Y: 0, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4145,7 +4145,7 @@ func TestApp_MouseClick_MenuBar_ToggleDropdown(t *testing.T) {
 	app.styles.Resize(80, 24)
 
 	// Click File to open
-	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: 2, Y: 0, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4175,12 +4175,12 @@ func TestApp_MouseClick_MenuBar_SwitchMenu(t *testing.T) {
 	app.styles.Resize(80, 24)
 
 	// Click File to open
-	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: 2, Y: 0, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
 	// Click Edit (x=8, offset for " File " = 6)
-	msg = tea.MouseMsg{X: 8, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg = tea.MouseClickMsg{X: 8, Y: 0, Button: tea.MouseLeft}
 	model, _ = updatedApp.Update(msg)
 	updatedApp = model.(*App)
 
@@ -4209,7 +4209,7 @@ func TestApp_MouseClick_Dropdown_SelectsItem(t *testing.T) {
 
 	// Click first item in Edit dropdown (Undo) at y=1 (first dropdown row)
 	// Edit dropdown offset = 6 (width of " File ")
-	msg := tea.MouseMsg{X: 8, Y: 1, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: 8, Y: 1, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4235,7 +4235,7 @@ func TestApp_MouseClick_OutsideMenu_ClosesDropdown(t *testing.T) {
 	app.menubar.Activate()
 
 	// Click in content area (far from menu)
-	msg := tea.MouseMsg{X: 50, Y: 10, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: 50, Y: 10, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4263,7 +4263,7 @@ func TestApp_MouseClick_Sidebar_SingleClick_OnlySelects(t *testing.T) {
 	// items: [Bank Accounts, Checking]
 
 	// Click on the account row (y=2 = content row 1 = Checking item)
-	msg := tea.MouseMsg{X: 5, Y: 2, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: 5, Y: 2, Button: tea.MouseLeft}
 	model, cmd := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4300,7 +4300,7 @@ func TestApp_MouseClick_Sidebar_DoubleClick_OpensAccount(t *testing.T) {
 	}
 	app.sidebar.SetAccounts(accounts, nil)
 
-	click := tea.MouseMsg{X: 5, Y: 2, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	click := tea.MouseClickMsg{X: 5, Y: 2, Button: tea.MouseLeft}
 
 	// First click — selects only.
 	_, cmd := app.Update(click)
@@ -4378,7 +4378,7 @@ func TestApp_MouseClick_Sidebar_GroupHeader_JustMovesCursor(t *testing.T) {
 	// items: [Bank Accounts, Checking, Savings] = 3 items
 
 	// Click on group header (y=1 = content row 0 = Bank Accounts)
-	msg := tea.MouseMsg{X: 5, Y: 1, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: 5, Y: 1, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4415,11 +4415,10 @@ func TestApp_MouseClick_Table_SelectsRow(t *testing.T) {
 	// Actually: screen Y = 1 (menu bar) + 3 (content offset) + 0 (table header) + 2 (second data row)
 	// contentY = Y - 1 = 4, tableY = contentY - 3 = 1, which is the header. For data row 1, we need tableY=2
 	// So Y = 1 + 3 + 2 = 6
-	msg := tea.MouseMsg{
+	msg := tea.MouseClickMsg{
 		X:      sidebarWidth + 5,
 		Y:      6,
-		Action: tea.MouseActionPress,
-		Button: tea.MouseButtonLeft,
+		Button: tea.MouseLeft,
 	}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
@@ -4449,11 +4448,10 @@ func TestApp_MouseClick_FocusSwitchToTable(t *testing.T) {
 	sidebarWidth := app.styles.SidebarWidth()
 
 	// Click in content area (right of sidebar)
-	msg := tea.MouseMsg{
+	msg := tea.MouseClickMsg{
 		X:      sidebarWidth + 5,
 		Y:      5,
-		Action: tea.MouseActionPress,
-		Button: tea.MouseButtonLeft,
+		Button: tea.MouseLeft,
 	}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
@@ -4490,7 +4488,7 @@ func TestApp_MouseClick_FocusSwitchToSidebar(t *testing.T) {
 	app.table.SetFocused(true)
 
 	// Click in sidebar area
-	msg := tea.MouseMsg{X: 5, Y: 2, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: 5, Y: 2, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4520,7 +4518,7 @@ func TestApp_MouseWheel_ScrollsTable(t *testing.T) {
 	app.table.SetRows([][]string{{"a"}, {"b"}, {"c"}, {"d"}, {"e"}})
 
 	// Scroll down
-	msg := tea.MouseMsg{X: 50, Y: 10, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}
+	msg := tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelDown}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4529,7 +4527,7 @@ func TestApp_MouseWheel_ScrollsTable(t *testing.T) {
 	}
 
 	// Scroll up
-	msg = tea.MouseMsg{X: 50, Y: 10, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp}
+	msg = tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelUp}
 	model, _ = updatedApp.Update(msg)
 	updatedApp = model.(*App)
 
@@ -4559,7 +4557,7 @@ func TestApp_MouseWheel_ScrollsSidebar(t *testing.T) {
 	// Sidebar focused by default
 
 	// Scroll down
-	msg := tea.MouseMsg{X: 5, Y: 5, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}
+	msg := tea.MouseWheelMsg{X: 5, Y: 5, Button: tea.MouseWheelDown}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4582,7 +4580,7 @@ func TestApp_MouseClick_IgnoredDuringHelpOverlay(t *testing.T) {
 	app.styles.Resize(80, 24)
 
 	// Click on menu bar while help overlay is visible
-	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: 2, Y: 0, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4616,7 +4614,7 @@ func TestApp_MouseClick_Dialog_CloseButton(t *testing.T) {
 	clickX := startCol + 3 + contentWidth - 2
 	clickY := startRow + 2
 
-	msg := tea.MouseMsg{X: clickX, Y: clickY, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4658,11 +4656,10 @@ func TestApp_MouseClick_Dialog_SubmitButton(t *testing.T) {
 		}
 	}
 
-	msg := tea.MouseMsg{
+	msg := tea.MouseClickMsg{
 		X:      startCol + 3 + okX,
 		Y:      startRow + 2 + buttonRow,
-		Action: tea.MouseActionPress,
-		Button: tea.MouseButtonLeft,
+		Button: tea.MouseLeft,
 	}
 	model, cmd := app.Update(msg)
 	updatedApp := model.(*App)
@@ -4711,11 +4708,10 @@ func TestApp_MouseClick_Dialog_CancelButton(t *testing.T) {
 		}
 	}
 
-	msg := tea.MouseMsg{
+	msg := tea.MouseClickMsg{
 		X:      startCol + 3 + cancelX,
 		Y:      startRow + 2 + buttonRow,
-		Action: tea.MouseActionPress,
-		Button: tea.MouseButtonLeft,
+		Button: tea.MouseLeft,
 	}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
@@ -4743,7 +4739,7 @@ func TestApp_MouseClick_Dialog_OutsideNoAction(t *testing.T) {
 	app.styles.Resize(80, 24)
 
 	// Click outside the dialog (top-left corner)
-	msg := tea.MouseMsg{X: 0, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: 0, Y: 0, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4766,7 +4762,7 @@ func TestApp_MouseClick_HelpOverlay_StillBlocked(t *testing.T) {
 	app.styles.Resize(80, 24)
 
 	// Click on menu bar while help overlay is visible
-	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	msg := tea.MouseClickMsg{X: 2, Y: 0, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4798,10 +4794,10 @@ func TestApp_MouseWheel_Dialog_ListField(t *testing.T) {
 	startCol, startRow, _, _ := dlg.DialogBounds(80, 24)
 
 	// Wheel down within dialog bounds
-	msg := tea.MouseMsg{
+	msg := tea.MouseWheelMsg{
 		X:      startCol + 10,
 		Y:      startRow + 5,
-		Button: tea.MouseButtonWheelDown,
+		Button: tea.MouseWheelDown,
 	}
 	app.Update(msg)
 
@@ -4823,7 +4819,7 @@ func TestApp_MouseRelease_Ignored(t *testing.T) {
 	app.styles.Resize(80, 24)
 
 	// Mouse release should be ignored
-	msg := tea.MouseMsg{X: 2, Y: 0, Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft}
+	msg := tea.MouseReleaseMsg{X: 2, Y: 0, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
@@ -4842,7 +4838,7 @@ func TestApp_HandleSidebarKeys_NewAccountNotWhenUnfocused(t *testing.T) {
 	}
 	app.sidebar.SetFocused(false)
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	msg := tea.KeyPressMsg{Code: 'n', Text: "n"}
 	_, cmd := app.Update(msg)
 
 	// When sidebar is not focused, 'n' should not trigger anything
@@ -4889,7 +4885,7 @@ func TestApp_View_ComponentWidths(t *testing.T) {
 			t.Logf("StatusBar: %d cols x %d lines", statusWidth, statusLines)
 
 			view := app.View()
-			viewLines := strings.Split(view, "\n")
+			viewLines := strings.Split(view.Content, "\n")
 			maxLineWidth := 0
 			for _, line := range viewLines {
 				w := lipgloss.Width(line)
@@ -4940,7 +4936,7 @@ func TestApp_View_RegisterLoadedWidths(t *testing.T) {
 			app.buildRegisterTable()
 
 			view := app.View()
-			viewLines := strings.Split(view, "\n")
+			viewLines := strings.Split(view.Content, "\n")
 			maxLineWidth := 0
 			widestLine := 0
 			for i, line := range viewLines {
@@ -4993,14 +4989,14 @@ func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
 
 	// Step 1: Render dashboard - should have exactly 24 lines
 	dashView := app.View()
-	dashLines := strings.Split(dashView, "\n")
+	dashLines := strings.Split(dashView.Content, "\n")
 	t.Logf("Dashboard view: %d lines", len(dashLines))
 	if len(dashLines) != 24 {
 		t.Errorf("Dashboard View() has %d lines, want 24", len(dashLines))
 	}
 
 	// Step 2: Simulate mouse click on account
-	clickMsg := tea.MouseMsg{X: 5, Y: 2, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	clickMsg := tea.MouseClickMsg{X: 5, Y: 2, Button: tea.MouseLeft}
 	model, _ := app.Update(clickMsg)
 	app = model.(*App)
 
@@ -5011,7 +5007,7 @@ func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
 
 	// Step 4: Render register view - should have exactly 24 lines
 	regView := app.View()
-	regLines := strings.Split(regView, "\n")
+	regLines := strings.Split(regView.Content, "\n")
 	t.Logf("Register view: %d lines", len(regLines))
 	if len(regLines) != 24 {
 		t.Errorf("Register View() has %d lines, want 24", len(regLines))

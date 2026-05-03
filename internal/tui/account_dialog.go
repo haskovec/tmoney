@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -274,7 +274,7 @@ func (a *App) closeAccountDialog() {
 }
 
 // handleAccountDialogKey routes key events to the account dialog.
-func (a *App) handleAccountDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleAccountDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.acctDialog == nil {
 		return a, nil
 	}

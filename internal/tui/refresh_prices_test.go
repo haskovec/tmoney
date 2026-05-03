@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
@@ -143,7 +143,7 @@ func TestHandleSecurityViewKeys_UTriggersRefresh(t *testing.T) {
 	}
 	a.buildSecurityTable()
 
-	uKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}}
+	uKey := tea.KeyPressMsg{Code: 'u', Text: "u"}
 	_, cmd := a.handleSecurityViewKeys(uKey)
 	if cmd == nil {
 		t.Fatal("u keypress returned nil cmd")
@@ -169,7 +169,7 @@ func TestHandlePriceListKeys_UTriggersRefresh(t *testing.T) {
 	a.priceView = &priceViewData{mode: pricesViewList}
 	a.buildPriceListTable()
 
-	uKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}}
+	uKey := tea.KeyPressMsg{Code: 'u', Text: "u"}
 	_, cmd := a.handlePriceViewKeys(uKey)
 	if cmd == nil {
 		t.Fatal("u keypress on prices list returned nil cmd")
@@ -196,7 +196,7 @@ func TestHandlePriceDetailKeys_UTriggersRefresh(t *testing.T) {
 	}
 	a.buildPriceTable()
 
-	uKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}}
+	uKey := tea.KeyPressMsg{Code: 'u', Text: "u"}
 	_, cmd := a.handlePriceViewKeys(uKey)
 	if cmd == nil {
 		t.Fatal("u keypress on prices detail returned nil cmd")

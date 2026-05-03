@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/db"
 )
 
@@ -224,7 +224,7 @@ func TestApp_HandleFileDialogKey_Cancel(t *testing.T) {
 		fileDialogMode: fileDialogModeNew,
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
@@ -242,7 +242,7 @@ func TestApp_HandleFileDialogKey_NilDialog(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	model, cmd := app.handleFileDialogKey(tea.KeyMsg{Type: tea.KeyEnter})
+	model, cmd := app.handleFileDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if model != app {
 		t.Error("should return same app")
 	}
@@ -757,11 +757,10 @@ func TestApp_BrowseDialog_DoubleClickOnDotDot_NavigatesUp(t *testing.T) {
 	if dotDotY < 0 {
 		t.Fatal("setup: could not locate ../ list row in browse dialog")
 	}
-	clickMsg := tea.MouseMsg{
+	clickMsg := tea.MouseClickMsg{
 		X:      startCol + 3 + 5,
 		Y:      startRow + 2 + dotDotY,
-		Button: tea.MouseButtonLeft,
-		Action: tea.MouseActionPress,
+		Button: tea.MouseLeft,
 	}
 
 	// First click: selects only, does not navigate.
@@ -823,11 +822,10 @@ func TestApp_BrowseDialog_DoubleClickOnSubdir_NavigatesIn(t *testing.T) {
 	if subY < 0 {
 		t.Fatal("setup: could not locate sub/ list row")
 	}
-	clickMsg := tea.MouseMsg{
+	clickMsg := tea.MouseClickMsg{
 		X:      startCol + 3 + 5,
 		Y:      startRow + 2 + subY,
-		Button: tea.MouseButtonLeft,
-		Action: tea.MouseActionPress,
+		Button: tea.MouseLeft,
 	}
 
 	app.Update(clickMsg)

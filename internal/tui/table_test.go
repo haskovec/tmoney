@@ -901,8 +901,10 @@ func TestTable_Render_VoidRowStyle(t *testing.T) {
 		t.Error("Render() should produce output with void row styles")
 	}
 
-	// Verify the void row content is still present (even if styled)
-	if !strings.Contains(rendered, "Void") {
+	// Verify the void row content is still present (even if styled).
+	// Lipgloss v2 wraps each strikethrough rune with its own ANSI escape,
+	// so the literal substring "Void" won't appear in the raw output.
+	if !strings.Contains(stripAnsi(rendered), "Void") {
 		t.Error("void row content should still be visible in rendered output")
 	}
 }

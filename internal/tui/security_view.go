@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -212,7 +212,7 @@ func (a *App) renderSecurityView() string {
 }
 
 // handleSecurityViewKeys handles key presses in the securities view.
-func (a *App) handleSecurityViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.securityView == nil {
 		return a, nil
 	}
@@ -344,7 +344,7 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleSecuritySearchKey handles key presses while in search mode.
-func (a *App) handleSecuritySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleSecuritySearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, a.keys.Escape):
 		a.securityView.searching = false
@@ -353,13 +353,13 @@ func (a *App) handleSecuritySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, a.keys.Enter):
 		a.securityView.searching = false
 		// Keep the search query active
-	case msg.Type == tea.KeyBackspace:
+	case msg.String() == "backspace":
 		if len(a.securityView.searchQuery) > 0 {
 			a.securityView.searchQuery = a.securityView.searchQuery[:len(a.securityView.searchQuery)-1]
 			a.buildSecurityTable()
 		}
-	case msg.Type == tea.KeyRunes:
-		a.securityView.searchQuery += string(msg.Runes)
+	case msg.Text != "":
+		a.securityView.searchQuery += msg.Text
 		a.buildSecurityTable()
 	}
 	return a, nil
@@ -492,7 +492,7 @@ func buildEditSecurityDialog(sec *security.Security) *Dialog {
 }
 
 // handleSecurityDialogKey handles key presses in the security add/edit dialog.
-func (a *App) handleSecurityDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleSecurityDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.securityDialog.HandleKey(msg)
 	switch action {
 	case DialogActionCancel:

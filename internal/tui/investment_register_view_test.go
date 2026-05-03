@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
@@ -469,7 +469,7 @@ func TestHandleInvestmentRegisterKeys_Navigation(t *testing.T) {
 	app.buildInvestmentRegisterTable()
 
 	// Move down
-	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.handleInvestmentRegisterKeys(downKey)
 
 	if app.investmentTable.Cursor() != 1 {
@@ -477,7 +477,7 @@ func TestHandleInvestmentRegisterKeys_Navigation(t *testing.T) {
 	}
 
 	// Move up
-	upKey := tea.KeyMsg{Type: tea.KeyUp}
+	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.handleInvestmentRegisterKeys(upKey)
 
 	if app.investmentTable.Cursor() != 0 {
@@ -516,7 +516,7 @@ func TestHandleInvestmentRegisterKeys_ToggleClear(t *testing.T) {
 	app.buildInvestmentRegisterTable()
 
 	// Press 'c' to toggle cleared - should return a command since it requires service call
-	cKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}}
+	cKey := tea.KeyPressMsg{Code: 'c', Text: "c"}
 	_, cmd := app.handleInvestmentRegisterKeys(cKey)
 
 	// Without an investmentSvc, the command may be nil, but the key should be handled
@@ -675,7 +675,7 @@ func TestHandleInvestmentRegisterKeys_NewOpensTypeSelector(t *testing.T) {
 	app.buildInvestmentRegisterTable()
 
 	// Press 'n' to open transaction type selector
-	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	nKey := tea.KeyPressMsg{Code: 'n', Text: "n"}
 	app.handleInvestmentRegisterKeys(nKey)
 
 	// Should open the investment type selector dialog
@@ -728,7 +728,7 @@ func TestHandleInvestmentRegisterKeys_EnterEditsTransaction(t *testing.T) {
 	app.buildInvestmentRegisterTable()
 
 	// Press Enter to edit the selected transaction
-	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
 	app.handleInvestmentRegisterKeys(enterKey)
 
 	// Should open the investment type selector in edit mode with the transaction's type pre-selected
@@ -781,7 +781,7 @@ func TestHandleInvestmentRegisterKeys_EnterNoOpsWithNoTransaction(t *testing.T) 
 	app.buildInvestmentRegisterTable()
 
 	// Press Enter with no transactions
-	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
 	app.handleInvestmentRegisterKeys(enterKey)
 
 	// Should not open any dialog
@@ -820,7 +820,7 @@ func TestHandleInvestmentRegisterKeys_DeleteExistingTransaction(t *testing.T) {
 	app.buildInvestmentRegisterTable()
 
 	// Press 'd' to delete
-	dKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+	dKey := tea.KeyPressMsg{Code: 'd', Text: "d"}
 	app.handleInvestmentRegisterKeys(dKey)
 
 	// Should show confirmation dialog

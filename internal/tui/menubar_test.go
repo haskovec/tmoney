@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 func TestNewMenuBar(t *testing.T) {

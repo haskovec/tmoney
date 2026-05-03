@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
@@ -347,7 +347,7 @@ func (a *App) closeScheduledDialog() {
 }
 
 // handleScheduledDialogKey routes key events to the scheduled dialog.
-func (a *App) handleScheduledDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.schedDialog == nil {
 		return a, nil
 	}

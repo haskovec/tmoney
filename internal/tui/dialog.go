@@ -3,8 +3,8 @@ package tui
 import (
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // FieldType represents the type of a form field in a dialog.
@@ -480,17 +480,17 @@ func (d *Dialog) clampFocusIndex() {
 }
 
 // HandleKey processes a key event and returns the resulting action.
-func (d *Dialog) HandleKey(msg tea.KeyMsg) DialogAction {
-	switch msg.Type {
-	case tea.KeyEsc:
+func (d *Dialog) HandleKey(msg tea.KeyPressMsg) DialogAction {
+	switch msg.String() {
+	case "esc":
 		return DialogActionCancel
-	case tea.KeyTab:
+	case "tab":
 		d.FocusNext()
 		return DialogActionNone
-	case tea.KeyShiftTab:
+	case "shift+tab":
 		d.FocusPrev()
 		return DialogActionNone
-	case tea.KeyEnter:
+	case "enter":
 		if d.IsFocusOnButton() {
 			btnIdx := d.FocusedButtonIndex()
 			if btnIdx >= 0 && btnIdx < len(d.buttons) && d.buttons[btnIdx].Primary {
@@ -522,68 +522,76 @@ func (d *Dialog) HandleKey(msg tea.KeyMsg) DialogAction {
 	return DialogActionNone
 }
 
-func (d *Dialog) handleTextFieldKey(field *Field, msg tea.KeyMsg) {
-	switch msg.Type {
-	case tea.KeyBackspace:
+func (d *Dialog) handleTextFieldKey(field *Field, msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "backspace":
 		field.DeleteBack()
 		field.Error = ""
-	case tea.KeyDelete:
+		return
+	case "delete":
 		field.DeleteForward()
 		field.Error = ""
-	case tea.KeyLeft:
+		return
+	case "left":
 		field.MoveCursorLeft()
-	case tea.KeyRight:
+		return
+	case "right":
 		field.MoveCursorRight()
-	case tea.KeyHome, tea.KeyCtrlA:
+		return
+	case "home", "ctrl+a":
 		field.MoveCursorHome()
-	case tea.KeyEnd, tea.KeyCtrlE:
+		return
+	case "end", "ctrl+e":
 		field.MoveCursorEnd()
-	case tea.KeySpace:
+		return
+	case "space":
 		field.InsertChar(' ')
 		field.Error = ""
-	case tea.KeyRunes:
-		for _, r := range msg.Runes {
+		return
+	}
+	if msg.Text != "" {
+		for _, r := range msg.Text {
 			field.InsertChar(r)
 		}
 		field.Error = ""
 	}
 }
 
-func (d *Dialog) handleSelectFieldKey(field *Field, msg tea.KeyMsg) {
-	switch msg.Type {
-	case tea.KeyUp:
+func (d *Dialog) handleSelectFieldKey(field *Field, msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "up":
 		field.SelectPrev()
 		field.Error = ""
-	case tea.KeyDown:
+	case "down":
 		field.SelectNext()
 		field.Error = ""
 	}
 }
 
-func (d *Dialog) handleRadioFieldKey(field *Field, msg tea.KeyMsg) {
-	switch msg.Type {
-	case tea.KeyUp, tea.KeyLeft:
+func (d *Dialog) handleRadioFieldKey(field *Field, msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "up", "left":
 		field.SelectPrev()
 		field.Error = ""
-	case tea.KeyDown, tea.KeyRight:
+	case "down", "right":
 		field.SelectNext()
 		field.Error = ""
 	}
 }
 
-func (d *Dialog) handleCheckboxFieldKey(field *Field, msg tea.KeyMsg) {
-	if msg.Type == tea.KeySpace || (msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == ' ') {
+func (d *Dialog) handleCheckboxFieldKey(field *Field, msg tea.KeyPressMsg) {
+	if msg.String() == "space" || msg.Text == " " {
 		field.Toggle()
 		field.Error = ""
 	}
 }
 
-func (d *Dialog) handleListFieldKey(field *Field, msg tea.KeyMsg) {
-	switch msg.Type {
-	case tea.KeyUp:
+func (d *Dialog) handleListFieldKey(field *Field, msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "up":
 		field.SelectPrev()
 		field.Error = ""
-	case tea.KeyDown:
+	case "down":
 		field.SelectNext()
 		field.Error = ""
 	}
@@ -1210,14 +1218,15 @@ func (d *Dialog) hitTestButtonRow(x, contentWidth int) DialogHitResult {
 func (d *Dialog) HandleMouse(msg tea.MouseMsg, screenWidth, screenHeight int) DialogAction {
 	startCol, startRow, endCol, endRow := d.DialogBounds(screenWidth, screenHeight)
 	contentWidth := max(d.width-dialogHorizontalOverhead, 10)
+	m := msg.Mouse()
 
 	// Handle wheel events on focused list field
-	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+	if _, ok := msg.(tea.MouseWheelMsg); ok {
 		// Only scroll if wheel is within dialog bounds
-		if msg.X >= startCol && msg.X < endCol && msg.Y >= startRow && msg.Y < endRow {
+		if m.X >= startCol && m.X < endCol && m.Y >= startRow && m.Y < endRow {
 			field := d.FocusedField()
 			if field != nil && field.Type == FieldList {
-				if msg.Button == tea.MouseButtonWheelUp {
+				if m.Button == tea.MouseWheelUp {
 					field.SelectPrev()
 				} else {
 					field.SelectNext()
@@ -1228,20 +1237,21 @@ func (d *Dialog) HandleMouse(msg tea.MouseMsg, screenWidth, screenHeight int) Di
 	}
 
 	// Only handle left-click press
-	if msg.Button != tea.MouseButtonLeft || msg.Action != tea.MouseActionPress {
+	click, ok := msg.(tea.MouseClickMsg)
+	if !ok || click.Button != tea.MouseLeft {
 		return DialogActionNone
 	}
 
 	// Check if click is within dialog bounds
-	if msg.X < startCol || msg.X >= endCol || msg.Y < startRow || msg.Y >= endRow {
+	if m.X < startCol || m.X >= endCol || m.Y < startRow || m.Y >= endRow {
 		return DialogActionNone
 	}
 
 	// Convert screen coords to content-local coords
 	// border (1) + padding (2) = 3 horizontal offset
 	// border (1) + padding (1) = 2 vertical offset
-	localX := msg.X - startCol - 3
-	localY := msg.Y - startRow - 2
+	localX := m.X - startCol - 3
+	localY := m.Y - startRow - 2
 
 	hit := d.HitTestContent(localX, localY, contentWidth)
 

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
@@ -346,7 +346,7 @@ func TestHandleCashOperationDialogKey_Cancel(t *testing.T) {
 		cashOperationType:   investment.TransactionTypeDeposit,
 	}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleCashOperationDialogKey(escKey)
 	updatedApp := model.(*App)
 
@@ -361,7 +361,7 @@ func TestHandleCashOperationDialogKey_Cancel(t *testing.T) {
 func TestHandleCashOperationDialogKey_NilDialog(t *testing.T) {
 	app := &App{}
 
-	escKey := tea.KeyMsg{Type: tea.KeyEscape}
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, cmd := app.handleCashOperationDialogKey(escKey)
 
 	if model.(*App) != app {
