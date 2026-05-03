@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/db"
@@ -294,6 +295,42 @@ func TestSwitchDatabase_RegistersYahooProvider(t *testing.T) {
 
 	if _, err := a.priceSvc.ProviderRegistry().Get(defaultRefreshProviderName); err != nil {
 		t.Errorf("yahoo provider missing after switchDatabase: %v", err)
+	}
+}
+
+// TestRefreshCompleteMsg_ClearsHistoryCache pins PC-016: a bulk refresh
+// can silently update prices for any number of tickers, so the per-row
+// chart cache must drop every entry on completion. A surgical evict
+// won't do — the refresh result doesn't carry the list of securities
+// whose prices actually changed; Clear() is the only correct response.
+func TestRefreshCompleteMsg_ClearsHistoryCache(t *testing.T) {
+	a, _, _ := setupRefreshTUITest(t)
+	a.currentView = ViewPrices
+
+	secA := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	secB := security.NewSecurity("MSFT", "Microsoft Corp", security.TypeStock)
+	cache := newHistoryCache()
+	cache.Put(secA.ID, []*price.Price{
+		price.NewPrice(secA.ID, types.NewDate(2026, time.April, 15), types.NewMoneyFromFloat(180.00), price.SourceManual),
+	})
+	cache.Put(secB.ID, []*price.Price{
+		price.NewPrice(secB.ID, types.NewDate(2026, time.April, 15), types.NewMoneyFromFloat(420.00), price.SourceManual),
+	})
+	a.priceView = &priceViewData{
+		mode:         pricesViewList,
+		historyCache: cache,
+	}
+
+	result := &price.RefreshResult{Entries: []price.RefreshEntry{
+		{Ticker: "AAPL", Outcome: price.OutcomeUpdated},
+	}}
+	a.Update(priceRefreshCompleteMsg{result: result})
+
+	if _, ok := a.priceView.historyCache.Lookup(secA.ID); ok {
+		t.Errorf("priceRefreshCompleteMsg should clear cache entry for %v (AAPL)", secA.ID)
+	}
+	if _, ok := a.priceView.historyCache.Lookup(secB.ID); ok {
+		t.Errorf("priceRefreshCompleteMsg should clear cache entry for %v (MSFT)", secB.ID)
 	}
 }
 

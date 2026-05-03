@@ -1553,6 +1553,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.statusbar.AddNotification(summarizeRefreshResult(msg.result), NotificationInfo)
+		// PC-016: bulk refresh can silently change any subset of
+		// tickers' prices, and the result doesn't enumerate which.
+		// Drop every chart-history cache entry so the next render
+		// re-fetches from the price service.
+		if a.priceView != nil && a.priceView.historyCache != nil {
+			a.priceView.historyCache.Clear()
+		}
 		// Re-load any data views that may now be stale.
 		var cmds []tea.Cmd
 		if a.currentView == ViewSecurities {
