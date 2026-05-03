@@ -1136,6 +1136,48 @@ func TestRenderPriceView_ListMode_WideShowsChartPanel(t *testing.T) {
 	}
 }
 
+// PC-007: at content width >= chartPanelMinContentWidth, when the
+// highlighted security has zero prices on file, the chart panel renders
+// the "No price history" placeholder inside a still-titled box rather
+// than a chart. Today's loadPriceViewData filters 0-price securities
+// out of latestPrices, so the test injects a synthetic LatestPrice row
+// pointing at a security with no prices in the DB to drive the case.
+func TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder(t *testing.T) {
+	a, _, secs := setupRefreshTUITest(t, "AAPL")
+	a.width = 200
+	a.height = 30
+	a.styles.Resize(200, 30)
+
+	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
+			chartPanelMinContentWidth, a.styles.ContentWidth())
+	}
+
+	// Note: no prices added for secs[0]. priceSvc.GetPriceHistory will
+	// return an empty slice, which routes buildChartPanel to the
+	// 0-price placeholder branch.
+	d := types.MustParseDate("2026-04-22")
+	placeholder, _ := types.NewMoney("0.00")
+	a.priceView = &priceViewData{
+		mode:       pricesViewList,
+		securities: secs,
+		latestPrices: []*price.LatestPrice{
+			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d, Price: placeholder},
+		},
+	}
+	a.buildPriceListTable()
+
+	output := a.renderPriceView()
+	if !strings.Contains(output, "No price history") {
+		t.Errorf("0-price chart panel should render `No price history` placeholder; got:\n%s", output)
+	}
+	// Title decoration must still be present — the panel renders, it
+	// just shows a placeholder instead of a line chart.
+	if !strings.Contains(output, "AAPL — AAPL Inc.") {
+		t.Errorf("0-price chart panel must still render with title; got:\n%s", output)
+	}
+}
+
 func TestRenderPriceView_ListMode_EmptyShowsHint(t *testing.T) {
 	app := &App{
 		width:  80,

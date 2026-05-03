@@ -152,9 +152,10 @@ Strategy: do the upgrade in a single working branch but as small, individually-r
 
 ## Phase 4: Edge Cases
 
-- [ ] **PC-007 — Render `No price history` for 0-price selection**
+- [x] **PC-007 — Render `No price history` for 0-price selection**
   - RED: contract test — at width 120 with a security selected that has 0 prices, the chart panel renders the `No price history` muted message instead of a chart. (Triggerable in tests by adding a security with no prices and selecting it; today's `latestPrices` excludes these so the test must inject directly.)
   - GREEN: branch in the chart-render path: if `len(prices) == 0`, render `noPriceHistoryMessage()` inside the box instead of the ntcharts canvas.
+  - Completed 2026-05-03. The rendering branch already shipped under PC-006 (`buildChartPanel`'s `case 0`). PC-007 added the missing contract test `TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder` in `internal/tui/price_view_test.go`: drives `renderPriceView` through `composePriceListBody` → `buildPriceListChartPanel` → `priceSvc.GetPriceHistory` (returns empty) → `buildChartPanel` 0-price branch → `noPriceHistoryMessage()`, and asserts the rendered output contains both `No price history` and the bordered title `AAPL — AAPL Inc.` so the panel still renders (it just shows the placeholder instead of a line chart). Test injects a synthetic `LatestPrice` row pointing at a security with zero prices in the DB, since today's `loadPriceViewData` would otherwise filter it out. Tests: `go build ./...`, `go test ./...` 4744 pass / 0 fail across 23 packages (+1 net), `golangci-lint run` 0 issues. Coverage held at the PC-006 baseline; `internal/tui` ticked 68.7% → 68.8%.
 
 - [ ] **PC-008 — Render single-price message for 1-price selection**
   - RED: contract test — at width 120 with a 1-price security selected, the panel contains the `Only one price on file — chart needs ≥ 2 points` string and the value/date.
