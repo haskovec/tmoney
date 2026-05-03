@@ -1178,6 +1178,58 @@ func TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder(t *testing.T
 	}
 }
 
+// PC-008: at content width >= chartPanelMinContentWidth, when the
+// highlighted security has exactly one price on file, the chart panel
+// renders the "Only one price on file — chart needs ≥ 2 points"
+// placeholder with the value and date inside a still-titled box rather
+// than a chart. The 1-price routing branch shipped under PC-006; this
+// test pins the end-to-end contract through renderPriceView.
+func TestRenderPriceView_ListMode_OnePriceSecurityShowsPlaceholder(t *testing.T) {
+	a, _, secs := setupRefreshTUITest(t, "AAPL")
+	a.width = 200
+	a.height = 30
+	a.styles.Resize(200, 30)
+
+	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
+			chartPanelMinContentWidth, a.styles.ContentWidth())
+	}
+
+	d := types.MustParseDate("2026-04-22")
+	m, _ := types.NewMoney("185.50")
+	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d, m, price.SourceManual)); err != nil {
+		t.Fatalf("AddPrice: %v", err)
+	}
+
+	a.priceView = &priceViewData{
+		mode:       pricesViewList,
+		securities: secs,
+		latestPrices: []*price.LatestPrice{
+			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d, Price: m},
+		},
+	}
+	a.buildPriceListTable()
+
+	output := a.renderPriceView()
+	if !strings.Contains(output, "Only one price on file") {
+		t.Errorf("1-price chart panel should render `Only one price on file` placeholder; got:\n%s", output)
+	}
+	if !strings.Contains(output, "≥ 2 points") {
+		t.Errorf("1-price chart panel should render the minimum-points note; got:\n%s", output)
+	}
+	if !strings.Contains(output, "$185.50") {
+		t.Errorf("1-price chart panel should render the formatted value; got:\n%s", output)
+	}
+	if !strings.Contains(output, "2026-04-22") {
+		t.Errorf("1-price chart panel should render the formatted date; got:\n%s", output)
+	}
+	// Title decoration must still be present — the panel renders, it
+	// just shows a placeholder instead of a line chart.
+	if !strings.Contains(output, "AAPL — AAPL Inc.") {
+		t.Errorf("1-price chart panel must still render with title; got:\n%s", output)
+	}
+}
+
 func TestRenderPriceView_ListMode_EmptyShowsHint(t *testing.T) {
 	app := &App{
 		width:  80,
