@@ -174,9 +174,10 @@ Strategy: do the upgrade in a single working branch but as small, individually-r
 
 ## Phase 5: Memoized Cache
 
-- [ ] **PC-011 — `historyCache` type with `Get`/`Evict`/`Clear`**
+- [x] **PC-011 — `historyCache` type with `Get`/`Evict`/`Clear`**
   - RED: unit tests in `price_chart_test.go` — `Get(id, loader)` calls `loader` once on first call and returns the cached slice on subsequent calls; `Evict(id)` causes the next `Get(id, loader)` to call `loader` again; `Clear()` evicts all entries; concurrent calls are safe (sync.Mutex).
   - GREEN: implement `historyCache` in `price_chart.go` as a `map[types.ID][]*price.Price` guarded by a `sync.Mutex`.
+  - Completed 2026-05-03. Added `priceHistoryLoader` (a `func() ([]*price.Price, error)` alias) plus `historyCache` with `newHistoryCache()`, `Get(id, loader)`, `Evict(id)`, and `Clear()` in `internal/tui/price_chart.go`. Implementation guards a `map[types.ID][]*price.Price` with a `sync.Mutex`; the loader runs *outside* the lock to avoid serializing concurrent fetches across distinct ids, and the success result is then re-locked in. Loader errors are intentionally not cached so the next `Get` retries — this lets a transient DB/service failure not get pinned for the lifetime of the cache. 7 new tests in `price_chart_test.go` cover the contract: loader-once-per-id, distinct-ids-load-independently, post-`Evict` reload, unknown-`Evict` no-op, post-`Clear` reload-of-everything, error-not-cached (with recovery semantics), and a `-race`-driven concurrent stress test (32 goroutines × 50 iterations interleaving `Get`/`Evict`/`Clear` across 4 ids). Tests: `go fmt ./...` clean; `go build ./...` clean; `go test -race ./internal/tui/ -run 'TestHistoryCache'` 7 pass; `go test ./...` 4755 pass / 0 fail across 23 packages (+7 net vs PC-010 baseline of 4748); `golangci-lint run` 0 issues.
 
 - [ ] **PC-012 — Wire chart-render through the cache**
   - RED: integration-style test — render the list view twice with the same selection; assert the underlying price service is called exactly once. Use a counting fake `priceSvc` or wrap the existing one.

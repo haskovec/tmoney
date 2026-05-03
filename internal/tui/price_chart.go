@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/NimbleMarkets/ntcharts/v2/linechart/timeserieslinechart"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // chartPanelMinContentWidth is the minimum content-area width (after
@@ -212,6 +214,62 @@ func padOrTruncateToDisplayWidth(s string, w int) string {
 		t += strings.Repeat(" ", pad)
 	}
 	return t
+}
+
+// priceHistoryLoader fetches a security's full price history. The
+// historyCache calls this on a miss; errors propagate to the caller and
+// are deliberately not cached so the next Get retries the load.
+type priceHistoryLoader func() ([]*price.Price, error)
+
+// historyCache memoizes price-history slices per security so repeated
+// chart renders for the same ticker don't re-query the price service.
+// All operations are safe for concurrent use; entries are evicted only
+// via Evict (per-security) or Clear (all).
+type historyCache struct {
+	mu      sync.Mutex
+	entries map[types.ID][]*price.Price
+}
+
+// newHistoryCache returns an empty, ready-to-use cache.
+func newHistoryCache() *historyCache {
+	return &historyCache{entries: make(map[types.ID][]*price.Price)}
+}
+
+// Get returns the cached history for id, calling loader exactly once on
+// a miss to populate it. Loader errors are returned without caching, so
+// the next Get on the same id retries.
+func (c *historyCache) Get(id types.ID, loader priceHistoryLoader) ([]*price.Price, error) {
+	c.mu.Lock()
+	if entry, ok := c.entries[id]; ok {
+		c.mu.Unlock()
+		return entry, nil
+	}
+	c.mu.Unlock()
+
+	prices, err := loader()
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	c.entries[id] = prices
+	c.mu.Unlock()
+	return prices, nil
+}
+
+// Evict removes the cached entry for id, if any. Unknown ids are a
+// no-op.
+func (c *historyCache) Evict(id types.ID) {
+	c.mu.Lock()
+	delete(c.entries, id)
+	c.mu.Unlock()
+}
+
+// Clear removes every cached entry.
+func (c *historyCache) Clear() {
+	c.mu.Lock()
+	c.entries = make(map[types.ID][]*price.Price)
+	c.mu.Unlock()
 }
 
 // clampYRange returns a (min, max) pair suitable for the chart's Y
