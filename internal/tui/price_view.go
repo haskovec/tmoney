@@ -44,6 +44,14 @@ type priceViewData struct {
 	securities  []*security.Security
 	searchQuery string
 	searching   bool
+
+	// historyCache memoizes per-security price history slices so the
+	// list-mode chart panel doesn't re-query the price service when the
+	// cursor lands on the same row twice. Lifecycle is tied to the
+	// priceViewData instance — full reload (loadPriceViewData) creates
+	// a new cache; per-security CRUD invalidations call Evict; bulk
+	// refresh calls Clear (see PC-015 / PC-016).
+	historyCache *historyCache
 }
 
 // filteredSecurities returns securities filtered by search query (hidden excluded).
@@ -111,6 +119,7 @@ func (a *App) loadPriceViewData() tea.Cmd {
 			mode:         pricesViewList,
 			securities:   securities,
 			latestPrices: latest,
+			historyCache: newHistoryCache(),
 		}
 
 		return priceViewDataLoadedMsg{data: data}
@@ -155,6 +164,7 @@ func (a *App) loadPriceViewDataForSecurity(sec *security.Security) tea.Cmd {
 			securities:       securities,
 			selectedSecurity: sec,
 			prices:           prices,
+			historyCache:     newHistoryCache(),
 		}
 
 		return priceViewDataLoadedMsg{data: data}
@@ -367,7 +377,18 @@ func (a *App) buildPriceListChartPanel(width, height int) string {
 		sec.ID = targetID
 	}
 
-	prices, err := a.priceSvc.GetPriceHistory(targetID, nil, nil)
+	loader := func() ([]*price.Price, error) {
+		return a.priceSvc.GetPriceHistory(targetID, nil, nil)
+	}
+	var (
+		prices []*price.Price
+		err    error
+	)
+	if a.priceView.historyCache != nil {
+		prices, err = a.priceView.historyCache.Get(targetID, loader)
+	} else {
+		prices, err = loader()
+	}
 	if err != nil {
 		return ""
 	}

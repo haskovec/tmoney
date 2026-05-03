@@ -1541,3 +1541,89 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 		t.Errorf("mode = %v, want pricesViewDetail", app.priceView.mode)
 	}
 }
+
+// TestRenderPriceView_ListMode_ChartUsesHistoryCache pins PC-012's
+// contract: rendering the list view twice for the same selection serves
+// the second chart panel from priceView.historyCache, not from the
+// price service. The test detects the cache by mutating the underlying
+// store between renders — a behavior that's only invisible to the
+// chart if the second render bypasses GetPriceHistory.
+//
+// Setup: AAPL with two prices, so the first render produces a line
+// chart (no edge-case placeholder). After the first render, delete one
+// price directly via priceSvc; if the chart re-fetched, the second
+// render would show the "Only one price on file" placeholder. With the
+// cache wired, the chart still reflects the original 2-price slice.
+// Finally, calling historyCache.Clear() must drop the entry so the
+// next render *does* see the deletion (proves the cache also responds
+// to invalidation, not just hides the underlying store).
+func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
+	a, _, secs := setupRefreshTUITest(t, "AAPL")
+	a.width = 200
+	a.height = 30
+	a.styles.Resize(200, 30)
+
+	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
+			chartPanelMinContentWidth, a.styles.ContentWidth())
+	}
+
+	d1 := types.MustParseDate("2026-04-15")
+	d2 := types.MustParseDate("2026-04-22")
+	m1, _ := types.NewMoney("100.00")
+	m2, _ := types.NewMoney("110.00")
+	older := price.NewPrice(secs[0].ID, d1, m1, price.SourceManual)
+	newer := price.NewPrice(secs[0].ID, d2, m2, price.SourceManual)
+	if err := a.priceSvc.AddPrice(older); err != nil {
+		t.Fatalf("AddPrice older: %v", err)
+	}
+	if err := a.priceSvc.AddPrice(newer); err != nil {
+		t.Fatalf("AddPrice newer: %v", err)
+	}
+
+	a.priceView = &priceViewData{
+		mode:       pricesViewList,
+		securities: secs,
+		latestPrices: []*price.LatestPrice{
+			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d2, Price: m2},
+		},
+		historyCache: newHistoryCache(),
+	}
+	a.buildPriceListTable()
+
+	// First render — populates the cache with the 2-price slice.
+	out1 := a.renderPriceView()
+	if !strings.Contains(out1, "AAPL — AAPL Inc.") {
+		t.Fatalf("first render missing chart-panel title; got:\n%s", out1)
+	}
+	if strings.Contains(out1, "Only one price on file") {
+		t.Fatalf("first render should show full chart, not 1-price placeholder; got:\n%s", out1)
+	}
+
+	// Mutate the underlying store: delete the older price, leaving only
+	// d2 on disk. A non-cached re-fetch would now route to the 1-price
+	// placeholder branch.
+	if err := a.priceSvc.DeletePrice(older.ID); err != nil {
+		t.Fatalf("DeletePrice: %v", err)
+	}
+
+	// Second render — must serve from cache, so the placeholder must
+	// NOT appear.
+	out2 := a.renderPriceView()
+	if !strings.Contains(out2, "AAPL — AAPL Inc.") {
+		t.Fatalf("second render missing chart-panel title; got:\n%s", out2)
+	}
+	if strings.Contains(out2, "Only one price on file") {
+		t.Errorf("second render hit the price service instead of the cache "+
+			"(saw 1-price placeholder after deleting one price); got:\n%s", out2)
+	}
+
+	// Clear the cache — the next render must reflect the post-delete
+	// state, proving Clear actually evicts the wired-in entry.
+	a.priceView.historyCache.Clear()
+
+	out3 := a.renderPriceView()
+	if !strings.Contains(out3, "Only one price on file") {
+		t.Errorf("post-Clear render should re-fetch and show 1-price placeholder; got:\n%s", out3)
+	}
+}
