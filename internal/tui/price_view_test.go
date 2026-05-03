@@ -1307,6 +1307,90 @@ func TestRenderPriceView_ListMode_EmptyShowsHint(t *testing.T) {
 	}
 }
 
+// PC-010: at content width >= chartPanelMinContentWidth, when latestPrices
+// is empty, the chart panel must not render — the empty hint stands alone
+// just as it does at narrow widths. The chart-panel title decoration `─ X
+// — Y ─` is unique to the panel; its absence proves the early-return path
+// fires before composePriceListBody is reached.
+func TestRenderPriceView_ListMode_WideEmptyOmitsChartPanel(t *testing.T) {
+	a, _, secs := setupRefreshTUITest(t, "AAPL")
+	a.width = 200
+	a.height = 30
+	a.styles.Resize(200, 30)
+
+	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
+			chartPanelMinContentWidth, a.styles.ContentWidth())
+	}
+
+	a.priceView = &priceViewData{
+		mode:         pricesViewList,
+		securities:   secs,
+		latestPrices: nil,
+	}
+	a.buildPriceListTable()
+
+	output := a.renderPriceView()
+	if !strings.Contains(strings.ToLower(output), "no prices") {
+		t.Errorf("wide empty list-mode should still show the empty hint; got:\n%s", output)
+	}
+	if strings.Contains(output, "AAPL — AAPL Inc.") {
+		t.Errorf("wide empty list-mode must not render a chart panel; got:\n%s", output)
+	}
+	if strings.ContainsRune(output, '│') {
+		t.Errorf("wide empty list-mode must not render box-drawing borders; got:\n%s", output)
+	}
+}
+
+// PC-010: when the priceListTable cursor is past the end of latestPrices
+// (a transient inconsistency that can happen if the data slice shrinks
+// between rebuilds), buildPriceListChartPanel must return "" so no chart
+// panel renders. The render falls back to just the table.
+func TestRenderPriceView_ListMode_OutOfRangeCursorOmitsChartPanel(t *testing.T) {
+	a, _, secs := setupRefreshTUITest(t, "AAPL")
+	a.width = 200
+	a.height = 30
+	a.styles.Resize(200, 30)
+
+	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
+			chartPanelMinContentWidth, a.styles.ContentWidth())
+	}
+
+	d := types.MustParseDate("2026-04-22")
+	m, _ := types.NewMoney("100.00")
+	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d, m, price.SourceManual)); err != nil {
+		t.Fatalf("AddPrice: %v", err)
+	}
+
+	// Build with two rows so the table holds two slots, then move the
+	// cursor to slot 1, then shrink latestPrices to one row without
+	// rebuilding the table. The table cursor (1) is now >= len(latestPrices) (1),
+	// which is the out-of-range case PC-010 guards against.
+	a.priceView = &priceViewData{
+		mode:       pricesViewList,
+		securities: secs,
+		latestPrices: []*price.LatestPrice{
+			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d, Price: m},
+			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d, Price: m},
+		},
+	}
+	a.buildPriceListTable()
+	a.priceListTable.MoveDown()
+	if a.priceListTable.Cursor() != 1 {
+		t.Fatalf("test premise: expected cursor=1 after MoveDown, got %d", a.priceListTable.Cursor())
+	}
+	a.priceView.latestPrices = a.priceView.latestPrices[:1]
+
+	output := a.renderPriceView()
+	if strings.Contains(output, "AAPL — AAPL Inc.") {
+		t.Errorf("out-of-range cursor must suppress the chart panel; got:\n%s", output)
+	}
+	if strings.Contains(output, "No price history") {
+		t.Errorf("out-of-range cursor must not render placeholder either; got:\n%s", output)
+	}
+}
+
 func TestHandlePriceViewKeys_ListMode_EnterDrillsIn(t *testing.T) {
 	secID := types.NewID()
 	d := types.NewDate(2025, time.March, 15)
