@@ -164,6 +164,22 @@ func (a *App) loadPriceViewData() tea.Cmd {
 	}
 }
 
+// evictSelectedSecurityFromHistoryCache invalidates the chart-history
+// cache entry for the security currently being mutated by a CRUD action
+// (PC-015). The CRUD handlers all run in detail mode where
+// selectedSecurity is set, but this guards anyway so a stray dispatch
+// doesn't panic. Other entries are intentionally left alone — only the
+// modified ticker needs to re-fetch.
+func (a *App) evictSelectedSecurityFromHistoryCache() {
+	if a.priceView == nil || a.priceView.historyCache == nil {
+		return
+	}
+	if a.priceView.selectedSecurity == nil {
+		return
+	}
+	a.priceView.historyCache.Evict(a.priceView.selectedSecurity.ID)
+}
+
 // reloadPriceViewKeepingMode refreshes the prices view in whichever mode
 // it is currently showing. Used after a CRUD operation so the user stays
 // in detail mode (instead of being kicked back to the landing list) when

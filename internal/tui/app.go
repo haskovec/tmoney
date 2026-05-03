@@ -1396,6 +1396,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.loadSecurityViewData()
 
 	case priceViewDataLoadedMsg:
+		// Preserve the existing historyCache across reload so that the
+		// per-security evictions performed by the price-CRUD handlers
+		// (PC-015) and the full clear performed by bulk refresh (PC-016)
+		// are not silently undone by the fresh empty cache that
+		// loadPriceViewData/loadPriceViewDataForSecurity construct.
+		if a.priceView != nil && a.priceView.historyCache != nil {
+			msg.data.historyCache = a.priceView.historyCache
+		}
 		a.priceView = msg.data
 		var cmd tea.Cmd
 		switch msg.data.mode {
@@ -1449,14 +1457,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case priceAddedMsg:
 		a.statusbar.AddNotification("Price added", NotificationInfo)
+		a.evictSelectedSecurityFromHistoryCache()
 		return a, a.reloadPriceViewKeepingMode()
 
 	case priceUpdatedMsg:
 		a.statusbar.AddNotification("Price updated", NotificationInfo)
+		a.evictSelectedSecurityFromHistoryCache()
 		return a, a.reloadPriceViewKeepingMode()
 
 	case priceDeletedMsg:
 		a.statusbar.AddNotification("Price deleted", NotificationInfo)
+		a.evictSelectedSecurityFromHistoryCache()
 		return a, a.reloadPriceViewKeepingMode()
 
 	case priceImportedMsg:
@@ -1464,6 +1475,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fmt.Sprintf("Imported %d prices (%d skipped)", msg.imported, msg.skipped),
 			NotificationInfo,
 		)
+		a.evictSelectedSecurityFromHistoryCache()
 		return a, a.reloadPriceViewKeepingMode()
 
 	case importDialogOpenMsg:

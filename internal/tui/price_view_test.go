@@ -731,6 +731,135 @@ func TestPriceViewUpdate_PriceImportedMsg(t *testing.T) {
 	}
 }
 
+// PC-015: each price-CRUD message must evict the affected security's
+// chart-history cache entry while leaving other entries intact, so the
+// chart re-fetches for the modified ticker on next render but unrelated
+// tickers keep their memoized history.
+
+// pc015TestApp returns an App + the IDs of the selected (target of CRUD)
+// and other (must remain cached) securities, with the historyCache
+// pre-populated for both.
+func pc015TestApp(t *testing.T) (app *App, selectedID, otherID types.ID) {
+	t.Helper()
+	selectedSec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	otherSec := security.NewSecurity("MSFT", "Microsoft Corp", security.TypeStock)
+
+	cache := newHistoryCache()
+	cache.Put(selectedSec.ID, []*price.Price{
+		price.NewPrice(selectedSec.ID, types.NewDate(2026, time.April, 15), types.NewMoneyFromFloat(180.00), price.SourceManual),
+	})
+	cache.Put(otherSec.ID, []*price.Price{
+		price.NewPrice(otherSec.ID, types.NewDate(2026, time.April, 15), types.NewMoneyFromFloat(420.00), price.SourceManual),
+	})
+
+	app = &App{
+		currentView: ViewPrices,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		priceView: &priceViewData{
+			mode:             pricesViewDetail,
+			selectedSecurity: selectedSec,
+			securities:       []*security.Security{selectedSec, otherSec},
+			prices:           []*price.Price{},
+			historyCache:     cache,
+		},
+	}
+	return app, selectedSec.ID, otherSec.ID
+}
+
+func TestPriceViewUpdate_PriceAddedMsg_EvictsSelectedSecurityFromCache(t *testing.T) {
+	app, selectedID, otherID := pc015TestApp(t)
+
+	app.Update(priceAddedMsg{})
+
+	if _, ok := app.priceView.historyCache.Lookup(selectedID); ok {
+		t.Errorf("priceAddedMsg should evict cache entry for selected security %v", selectedID)
+	}
+	if _, ok := app.priceView.historyCache.Lookup(otherID); !ok {
+		t.Errorf("priceAddedMsg must not evict unrelated cache entry for security %v", otherID)
+	}
+}
+
+func TestPriceViewUpdate_PriceUpdatedMsg_EvictsSelectedSecurityFromCache(t *testing.T) {
+	app, selectedID, otherID := pc015TestApp(t)
+
+	app.Update(priceUpdatedMsg{})
+
+	if _, ok := app.priceView.historyCache.Lookup(selectedID); ok {
+		t.Errorf("priceUpdatedMsg should evict cache entry for selected security %v", selectedID)
+	}
+	if _, ok := app.priceView.historyCache.Lookup(otherID); !ok {
+		t.Errorf("priceUpdatedMsg must not evict unrelated cache entry for security %v", otherID)
+	}
+}
+
+func TestPriceViewUpdate_PriceDeletedMsg_EvictsSelectedSecurityFromCache(t *testing.T) {
+	app, selectedID, otherID := pc015TestApp(t)
+
+	app.Update(priceDeletedMsg{})
+
+	if _, ok := app.priceView.historyCache.Lookup(selectedID); ok {
+		t.Errorf("priceDeletedMsg should evict cache entry for selected security %v", selectedID)
+	}
+	if _, ok := app.priceView.historyCache.Lookup(otherID); !ok {
+		t.Errorf("priceDeletedMsg must not evict unrelated cache entry for security %v", otherID)
+	}
+}
+
+func TestPriceViewUpdate_PriceImportedMsg_EvictsSelectedSecurityFromCache(t *testing.T) {
+	app, selectedID, otherID := pc015TestApp(t)
+
+	app.Update(priceImportedMsg{total: 5, imported: 3, skipped: 2})
+
+	if _, ok := app.priceView.historyCache.Lookup(selectedID); ok {
+		t.Errorf("priceImportedMsg should evict cache entry for selected security %v", selectedID)
+	}
+	if _, ok := app.priceView.historyCache.Lookup(otherID); !ok {
+		t.Errorf("priceImportedMsg must not evict unrelated cache entry for security %v", otherID)
+	}
+}
+
+// PC-015 also requires that the priceViewDataLoadedMsg reload triggered
+// by these CRUD handlers preserves the existing cache rather than
+// replacing it with a fresh empty one — otherwise the surgical Evict is
+// immediately overridden by a Clear-equivalent. This test pins that
+// contract: when the priceView already has a cache, a subsequent
+// priceViewDataLoadedMsg must keep its entries.
+func TestPriceViewDataLoadedMsg_PreservesExistingHistoryCache(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	cache := newHistoryCache()
+	cache.Put(sec.ID, []*price.Price{
+		price.NewPrice(sec.ID, types.NewDate(2026, time.April, 15), types.NewMoneyFromFloat(180.00), price.SourceManual),
+	})
+
+	app := &App{
+		currentView: ViewPrices,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		priceView: &priceViewData{
+			mode:         pricesViewList,
+			latestPrices: []*price.LatestPrice{},
+			historyCache: cache,
+		},
+	}
+
+	// Reload yields fresh data with its own (empty) historyCache; the
+	// handler must re-attach the existing cache to the new data.
+	freshData := &priceViewData{
+		mode:         pricesViewList,
+		latestPrices: []*price.LatestPrice{},
+		historyCache: newHistoryCache(),
+	}
+	app.Update(priceViewDataLoadedMsg{data: freshData})
+
+	if app.priceView.historyCache == nil {
+		t.Fatal("historyCache should not be nil after reload")
+	}
+	if _, ok := app.priceView.historyCache.Lookup(sec.ID); !ok {
+		t.Errorf("reload dropped cached entry for %v; PC-015 requires preserving the cache across reload", sec.ID)
+	}
+}
+
 func TestPriceViewSwitchView(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
