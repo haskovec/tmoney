@@ -1397,12 +1397,54 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case priceViewDataLoadedMsg:
 		a.priceView = msg.data
+		var cmd tea.Cmd
 		switch msg.data.mode {
 		case pricesViewList:
 			a.buildPriceListTable()
+			// Kick off the initial debounced fetch for the row under the
+			// cursor so the chart panel populates without requiring a
+			// keystroke. Subsequent cursor movement reschedules.
+			if secID := a.listCursorSecurityID(); !secID.IsNil() {
+				cmd = a.schedulePriceChartFetch(secID)
+			}
 		case pricesViewDetail:
 			a.buildPriceTable()
 		}
+		return a, cmd
+
+	case priceChartDebounceTickMsg:
+		if a.priceView == nil {
+			return a, nil
+		}
+		// Stale: a later schedule has superseded this tick.
+		if msg.gen != a.priceView.chartDebounceGen {
+			return a, nil
+		}
+		// Cursor moved off the row this tick was scheduled for. Drop
+		// silently — the move that triggered the change scheduled its
+		// own fresh tick.
+		if a.listCursorSecurityID() != msg.secID {
+			return a, nil
+		}
+		// Already cached (e.g. user scrolled away and back, or a CRUD
+		// invalidation re-fired before the tick). No fetch needed; just
+		// promote to displayed.
+		if a.priceView.historyCache != nil {
+			if _, ok := a.priceView.historyCache.Lookup(msg.secID); ok {
+				a.priceView.chartDisplayedID = msg.secID
+				return a, nil
+			}
+		}
+		return a, a.fetchPriceChartHistory(msg.secID)
+
+	case priceChartHistoryLoadedMsg:
+		if a.priceView == nil {
+			return a, nil
+		}
+		if a.priceView.historyCache != nil {
+			a.priceView.historyCache.Put(msg.secID, msg.prices)
+		}
+		a.priceView.chartDisplayedID = msg.secID
 		return a, nil
 
 	case priceAddedMsg:

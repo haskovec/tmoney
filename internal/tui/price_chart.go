@@ -257,6 +257,25 @@ func (c *historyCache) Get(id types.ID, loader priceHistoryLoader) ([]*price.Pri
 	return prices, nil
 }
 
+// Lookup returns the cached history for id without invoking any loader.
+// ok is false on a miss. The chart-render path uses Lookup so rendering
+// never blocks on the price service; the async debounce path is what
+// populates the cache via Put.
+func (c *historyCache) Lookup(id types.ID) ([]*price.Price, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	p, ok := c.entries[id]
+	return p, ok
+}
+
+// Put stores prices for id, overwriting any existing entry. Called by
+// the debounced fetch path once the price service responds.
+func (c *historyCache) Put(id types.ID, prices []*price.Price) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries[id] = prices
+}
+
 // Evict removes the cached entry for id, if any. Unknown ids are a
 // no-op.
 func (c *historyCache) Evict(id types.ID) {

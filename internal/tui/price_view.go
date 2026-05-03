@@ -52,6 +52,20 @@ type priceViewData struct {
 	// a new cache; per-security CRUD invalidations call Evict; bulk
 	// refresh calls Clear (see PC-015 / PC-016).
 	historyCache *historyCache
+
+	// chartDebounceGen increments each time a new debounced chart fetch
+	// is scheduled. The tick message carries the gen it was scheduled
+	// under; the tick handler ignores ticks whose gen has been
+	// superseded by a later schedule (rapid cursor movement).
+	chartDebounceGen int
+
+	// chartDisplayedID is the security ID of the chart currently shown
+	// to the user. It's updated only when an async fetch resolves
+	// successfully. While a debounced fetch for a freshly-highlighted
+	// ticker is in flight, the chart panel falls back to rendering this
+	// id's cached history so the user doesn't see a blank panel during
+	// the debounce window.
+	chartDisplayedID types.ID
 }
 
 // filteredSecurities returns securities filtered by search query (hidden excluded).
@@ -94,6 +108,30 @@ type priceImportedMsg struct {
 	total    int
 	imported int
 	skipped  int
+}
+
+// priceChartDebounceDelay is the time a cursor must dwell on a row
+// before the chart panel issues a fetch for the highlighted ticker.
+// Declared as a var so tests can shorten it; user-facing default is 150 ms.
+var priceChartDebounceDelay = 150 * time.Millisecond
+
+// priceChartDebounceTickMsg is delivered when a scheduled debounce timer
+// fires. The handler in app.go's Update verifies (a) gen still matches
+// priceView.chartDebounceGen (i.e. no later schedule has superseded
+// this one), and (b) the cursor is still on secID; if both hold, it
+// dispatches the actual price-history fetch. Otherwise it drops the
+// tick — that's how rapid cursor movement collapses to a single fetch.
+type priceChartDebounceTickMsg struct {
+	gen   int
+	secID types.ID
+}
+
+// priceChartHistoryLoadedMsg carries the result of a debounced fetch.
+// Its handler stores prices in priceView.historyCache and sets
+// chartDisplayedID = secID so the next render shows the new ticker.
+type priceChartHistoryLoadedMsg struct {
+	secID  types.ID
+	prices []*price.Price
 }
 
 // loadPriceViewData returns a command that loads the prices landing page:
@@ -347,52 +385,125 @@ func (a *App) composePriceListBody(contentWidth, height int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, tableStr, chartPanel)
 }
 
-// buildPriceListChartPanel resolves the highlighted security from the
-// list cursor, fetches its price history synchronously via priceSvc,
-// and returns the rendered chart panel. Returns "" when the cursor is
-// out of range, the price service is unavailable, or the requested
-// chart area is too small.
+// buildPriceListChartPanel renders the chart panel for the highlighted
+// list row. The render path NEVER calls the price service — it only
+// reads from priceView.historyCache, which is populated asynchronously
+// by the debounce/fetch flow (see schedulePriceChartFetch and the
+// priceChartDebounceTickMsg / priceChartHistoryLoadedMsg handlers).
+//
+// Resolution order for "what ticker to show":
+//  1. Highlighted row's security, if its history is cached.
+//  2. priceView.chartDisplayedID (the most recently fetched ticker), if
+//     its history is still cached. This keeps the panel populated during
+//     the 150 ms debounce window after the user moves to a not-yet-fetched
+//     ticker — no `Loading…` placeholder needed.
+//  3. "" — the panel is omitted entirely until a fetch resolves.
+//
+// Returns "" if the cursor is out of range or the chart area is too
+// small.
 func (a *App) buildPriceListChartPanel(width, height int) string {
-	if a.priceView == nil || a.priceListTable == nil || a.priceSvc == nil {
+	if a.priceView == nil || a.priceListTable == nil {
 		return ""
 	}
 	cursor := a.priceListTable.Cursor()
 	if cursor < 0 || cursor >= len(a.priceView.latestPrices) {
 		return ""
 	}
-	targetID := a.priceView.latestPrices[cursor].SecurityID
+	if a.priceView.historyCache == nil {
+		return ""
+	}
 
-	var sec *security.Security
-	for _, s := range a.priceView.securities {
-		if s.ID == targetID {
-			sec = s
-			break
+	highlightedID := a.priceView.latestPrices[cursor].SecurityID
+
+	var (
+		displayID types.ID
+		prices    []*price.Price
+		ok        bool
+	)
+	if prices, ok = a.priceView.historyCache.Lookup(highlightedID); ok {
+		displayID = highlightedID
+	} else if !a.priceView.chartDisplayedID.IsNil() {
+		if prices, ok = a.priceView.historyCache.Lookup(a.priceView.chartDisplayedID); ok {
+			displayID = a.priceView.chartDisplayedID
 		}
 	}
-	if sec == nil {
-		// Fall back: synthesize from the LatestPrice row so we can still
-		// title the panel even if the security cache is out of sync.
-		lp := a.priceView.latestPrices[cursor]
-		sec = &security.Security{Ticker: lp.Ticker, Name: lp.Name}
-		sec.ID = targetID
+	if !ok {
+		return ""
 	}
 
-	loader := func() ([]*price.Price, error) {
-		return a.priceSvc.GetPriceHistory(targetID, nil, nil)
-	}
-	var (
-		prices []*price.Price
-		err    error
-	)
-	if a.priceView.historyCache != nil {
-		prices, err = a.priceView.historyCache.Get(targetID, loader)
-	} else {
-		prices, err = loader()
-	}
-	if err != nil {
+	sec := a.resolveListPriceSecurity(displayID)
+	if sec == nil {
 		return ""
 	}
 	return buildChartPanel(width, height, sec, prices)
+}
+
+// resolveListPriceSecurity locates the *security.Security for id from
+// priceView.securities, falling back to a synthesized stub built from
+// the matching latestPrices row so the chart-panel title can still
+// render when the security cache and latestPrices are momentarily out
+// of sync.
+func (a *App) resolveListPriceSecurity(id types.ID) *security.Security {
+	for _, s := range a.priceView.securities {
+		if s.ID == id {
+			return s
+		}
+	}
+	for _, lp := range a.priceView.latestPrices {
+		if lp.SecurityID == id {
+			sec := &security.Security{Ticker: lp.Ticker, Name: lp.Name}
+			sec.ID = id
+			return sec
+		}
+	}
+	return nil
+}
+
+// listCursorSecurityID returns the SecurityID of the row currently under
+// the price-list table cursor, or types.NilID if no priceView, no table,
+// or the cursor is out of range.
+func (a *App) listCursorSecurityID() types.ID {
+	if a.priceView == nil || a.priceListTable == nil {
+		return types.NilID
+	}
+	cursor := a.priceListTable.Cursor()
+	if cursor < 0 || cursor >= len(a.priceView.latestPrices) {
+		return types.NilID
+	}
+	return a.priceView.latestPrices[cursor].SecurityID
+}
+
+// schedulePriceChartFetch returns a debounced tea.Cmd that, after
+// priceChartDebounceDelay elapses, emits a priceChartDebounceTickMsg
+// for secID. Each call bumps priceView.chartDebounceGen so any earlier
+// in-flight tick becomes stale (the tick handler drops mismatched gen).
+// Returns nil when there is no priceView to schedule against.
+func (a *App) schedulePriceChartFetch(secID types.ID) tea.Cmd {
+	if a.priceView == nil {
+		return nil
+	}
+	a.priceView.chartDebounceGen++
+	gen := a.priceView.chartDebounceGen
+	return tea.Tick(priceChartDebounceDelay, func(_ time.Time) tea.Msg {
+		return priceChartDebounceTickMsg{gen: gen, secID: secID}
+	})
+}
+
+// fetchPriceChartHistory returns a tea.Cmd that synchronously calls the
+// price service for secID's full history and emits a
+// priceChartHistoryLoadedMsg. On error, it returns no message — the
+// chart simply stays in its current state until the next cursor move.
+func (a *App) fetchPriceChartHistory(secID types.ID) tea.Cmd {
+	return func() tea.Msg {
+		if a.priceSvc == nil {
+			return nil
+		}
+		prices, err := a.priceSvc.GetPriceHistory(secID, nil, nil)
+		if err != nil {
+			return nil
+		}
+		return priceChartHistoryLoadedMsg{secID: secID, prices: prices}
+	}
 }
 
 // renderPriceDetail renders the per-security price history (drill-in).
@@ -459,30 +570,37 @@ func (a *App) handlePriceViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // handlePriceListKeys handles keys on the prices landing page.
 func (a *App) handlePriceListKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	tbl := a.priceListTable
+	cursorMoved := false
 	switch {
 	case key.Matches(msg, a.keys.Up):
 		if tbl != nil {
 			tbl.MoveUp()
+			cursorMoved = true
 		}
 	case key.Matches(msg, a.keys.Down):
 		if tbl != nil {
 			tbl.MoveDown()
+			cursorMoved = true
 		}
 	case msg.String() == "home" || msg.String() == "g":
 		if tbl != nil {
 			tbl.MoveToTop()
+			cursorMoved = true
 		}
 	case msg.String() == "end" || msg.String() == "G":
 		if tbl != nil {
 			tbl.MoveToBottom()
+			cursorMoved = true
 		}
 	case msg.String() == "pgup":
 		if tbl != nil {
 			tbl.PageUp(max(a.height-10, 1))
+			cursorMoved = true
 		}
 	case msg.String() == "pgdown":
 		if tbl != nil {
 			tbl.PageDown(max(a.height-10, 1))
+			cursorMoved = true
 		}
 	case key.Matches(msg, a.keys.Search):
 		a.priceView.searching = true
@@ -491,6 +609,9 @@ func (a *App) handlePriceListKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, a.drillIntoSelectedListRow()
 	case msg.String() == "u":
 		return a, a.refreshPricesCmd()
+	}
+	if cursorMoved {
+		return a, a.schedulePriceChartFetch(a.listCursorSecurityID())
 	}
 	return a, nil
 }

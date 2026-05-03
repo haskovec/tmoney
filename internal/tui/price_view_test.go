@@ -1112,12 +1112,8 @@ func TestRenderPriceView_ListMode_WideShowsChartPanel(t *testing.T) {
 	d2 := types.MustParseDate("2026-04-22")
 	m1, _ := types.NewMoney("100.00")
 	m2, _ := types.NewMoney("110.00")
-	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d1, m1, price.SourceManual)); err != nil {
-		t.Fatalf("AddPrice: %v", err)
-	}
-	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d2, m2, price.SourceManual)); err != nil {
-		t.Fatalf("AddPrice: %v", err)
-	}
+	hp1 := price.NewPrice(secs[0].ID, d1, m1, price.SourceManual)
+	hp2 := price.NewPrice(secs[0].ID, d2, m2, price.SourceManual)
 
 	a.priceView = &priceViewData{
 		mode:       pricesViewList,
@@ -1125,7 +1121,12 @@ func TestRenderPriceView_ListMode_WideShowsChartPanel(t *testing.T) {
 		latestPrices: []*price.LatestPrice{
 			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d2, Price: m2},
 		},
+		historyCache: newHistoryCache(),
 	}
+	// Under PC-013 the chart-render path no longer calls priceSvc; it
+	// reads only from priceView.historyCache. Pre-populate the cache so
+	// renderPriceView has data to draw.
+	a.priceView.historyCache.Put(secs[0].ID, []*price.Price{hp2, hp1})
 	a.buildPriceListTable()
 
 	output := a.renderPriceView()
@@ -1153,9 +1154,8 @@ func TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder(t *testing.T
 			chartPanelMinContentWidth, a.styles.ContentWidth())
 	}
 
-	// Note: no prices added for secs[0]. priceSvc.GetPriceHistory will
-	// return an empty slice, which routes buildChartPanel to the
-	// 0-price placeholder branch.
+	// Drive the 0-price branch by caching an empty history slice for
+	// secs[0]. Under PC-013 the cache is the chart's source of truth.
 	d := types.MustParseDate("2026-04-22")
 	placeholder, _ := types.NewMoney("0.00")
 	a.priceView = &priceViewData{
@@ -1164,7 +1164,9 @@ func TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder(t *testing.T
 		latestPrices: []*price.LatestPrice{
 			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d, Price: placeholder},
 		},
+		historyCache: newHistoryCache(),
 	}
+	a.priceView.historyCache.Put(secs[0].ID, nil)
 	a.buildPriceListTable()
 
 	output := a.renderPriceView()
@@ -1197,9 +1199,7 @@ func TestRenderPriceView_ListMode_OnePriceSecurityShowsPlaceholder(t *testing.T)
 
 	d := types.MustParseDate("2026-04-22")
 	m, _ := types.NewMoney("185.50")
-	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d, m, price.SourceManual)); err != nil {
-		t.Fatalf("AddPrice: %v", err)
-	}
+	hp := price.NewPrice(secs[0].ID, d, m, price.SourceManual)
 
 	a.priceView = &priceViewData{
 		mode:       pricesViewList,
@@ -1207,7 +1207,9 @@ func TestRenderPriceView_ListMode_OnePriceSecurityShowsPlaceholder(t *testing.T)
 		latestPrices: []*price.LatestPrice{
 			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d, Price: m},
 		},
+		historyCache: newHistoryCache(),
 	}
+	a.priceView.historyCache.Put(secs[0].ID, []*price.Price{hp})
 	a.buildPriceListTable()
 
 	output := a.renderPriceView()
@@ -1250,11 +1252,10 @@ func TestRenderPriceView_ListMode_FlatLinePriceHistoryRendersChart(t *testing.T)
 
 	flat, _ := types.NewMoney("100.00")
 	dates := []string{"2026-04-01", "2026-04-08", "2026-04-15"}
+	flatPrices := make([]*price.Price, 0, len(dates))
 	for _, ds := range dates {
 		d := types.MustParseDate(ds)
-		if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d, flat, price.SourceManual)); err != nil {
-			t.Fatalf("AddPrice(%s): %v", ds, err)
-		}
+		flatPrices = append(flatPrices, price.NewPrice(secs[0].ID, d, flat, price.SourceManual))
 	}
 
 	latestDate := types.MustParseDate("2026-04-15")
@@ -1264,7 +1265,9 @@ func TestRenderPriceView_ListMode_FlatLinePriceHistoryRendersChart(t *testing.T)
 		latestPrices: []*price.LatestPrice{
 			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: latestDate, Price: flat},
 		},
+		historyCache: newHistoryCache(),
 	}
+	a.priceView.historyCache.Put(secs[0].ID, flatPrices)
 	a.buildPriceListTable()
 
 	defer func() {
@@ -1543,20 +1546,17 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 }
 
 // TestRenderPriceView_ListMode_ChartUsesHistoryCache pins PC-012's
-// contract: rendering the list view twice for the same selection serves
-// the second chart panel from priceView.historyCache, not from the
-// price service. The test detects the cache by mutating the underlying
-// store between renders — a behavior that's only invisible to the
-// chart if the second render bypasses GetPriceHistory.
+// contract under the PC-013 model: the chart-render path reads ONLY
+// from priceView.historyCache and never queries priceSvc. The test
+// proves this by mutating the price service between renders — if the
+// chart bypassed the cache, the second render would reflect the
+// mutation; with the cache as the source of truth, it does not.
 //
-// Setup: AAPL with two prices, so the first render produces a line
-// chart (no edge-case placeholder). After the first render, delete one
-// price directly via priceSvc; if the chart re-fetched, the second
-// render would show the "Only one price on file" placeholder. With the
-// cache wired, the chart still reflects the original 2-price slice.
-// Finally, calling historyCache.Clear() must drop the entry so the
-// next render *does* see the deletion (proves the cache also responds
-// to invalidation, not just hides the underlying store).
+// Setup: AAPL with two prices in priceSvc AND in the cache. After the
+// first render, delete one price directly via priceSvc — the chart
+// must continue to show the original 2-price slice on subsequent
+// renders. Finally, historyCache.Clear() drops the entry so the next
+// render shows no chart panel at all (the cache is the sole source).
 func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 	a, _, secs := setupRefreshTUITest(t, "AAPL")
 	a.width = 200
@@ -1589,9 +1589,12 @@ func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 		},
 		historyCache: newHistoryCache(),
 	}
+	// Mirror what the async fetch path would do: cache the 2-price
+	// slice (newest-first, matching priceSvc.GetPriceHistory contract).
+	a.priceView.historyCache.Put(secs[0].ID, []*price.Price{newer, older})
 	a.buildPriceListTable()
 
-	// First render — populates the cache with the 2-price slice.
+	// First render — the cache has the 2-price slice, full chart shows.
 	out1 := a.renderPriceView()
 	if !strings.Contains(out1, "AAPL — AAPL Inc.") {
 		t.Fatalf("first render missing chart-panel title; got:\n%s", out1)
@@ -1600,30 +1603,305 @@ func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 		t.Fatalf("first render should show full chart, not 1-price placeholder; got:\n%s", out1)
 	}
 
-	// Mutate the underlying store: delete the older price, leaving only
-	// d2 on disk. A non-cached re-fetch would now route to the 1-price
-	// placeholder branch.
+	// Mutate the underlying store: delete the older price. If the
+	// chart-render path queried priceSvc, the next render would route
+	// to the 1-price placeholder. With the cache as the sole source,
+	// the chart is unaffected.
 	if err := a.priceSvc.DeletePrice(older.ID); err != nil {
 		t.Fatalf("DeletePrice: %v", err)
 	}
 
-	// Second render — must serve from cache, so the placeholder must
-	// NOT appear.
 	out2 := a.renderPriceView()
 	if !strings.Contains(out2, "AAPL — AAPL Inc.") {
 		t.Fatalf("second render missing chart-panel title; got:\n%s", out2)
 	}
 	if strings.Contains(out2, "Only one price on file") {
-		t.Errorf("second render hit the price service instead of the cache "+
+		t.Errorf("second render must read from cache, not priceSvc "+
 			"(saw 1-price placeholder after deleting one price); got:\n%s", out2)
 	}
 
-	// Clear the cache — the next render must reflect the post-delete
-	// state, proving Clear actually evicts the wired-in entry.
+	// Clear the cache. With no fallback (chartDisplayedID is also
+	// dropped because Clear evicts every entry), the chart panel
+	// disappears entirely — proving the cache is the only source.
 	a.priceView.historyCache.Clear()
 
 	out3 := a.renderPriceView()
-	if !strings.Contains(out3, "Only one price on file") {
-		t.Errorf("post-Clear render should re-fetch and show 1-price placeholder; got:\n%s", out3)
+	if strings.Contains(out3, "AAPL — AAPL Inc.") {
+		t.Errorf("post-Clear render must omit the chart panel "+
+			"(no cache entry, no fallback); got:\n%s", out3)
 	}
+	if strings.Contains(out3, "Only one price on file") {
+		t.Errorf("post-Clear render must not re-fetch from priceSvc; got:\n%s", out3)
+	}
+}
+
+// =============================================================================
+// PC-013: Debounced fetch on cursor change
+// =============================================================================
+
+// withShortPriceChartDebounce swaps priceChartDebounceDelay for d for
+// the duration of the test, then restores it. Tests use this to drive
+// real tea.Tick commands without a 150 ms wait.
+func withShortPriceChartDebounce(t *testing.T, d time.Duration) {
+	t.Helper()
+	prev := priceChartDebounceDelay
+	priceChartDebounceDelay = d
+	t.Cleanup(func() { priceChartDebounceDelay = prev })
+}
+
+// runDebounceTick blocks until cmd produces a priceChartDebounceTickMsg
+// (or t.Fatals after 1 s). The caller must have shortened
+// priceChartDebounceDelay first via withShortPriceChartDebounce.
+func runDebounceTick(t *testing.T, cmd tea.Cmd) priceChartDebounceTickMsg {
+	t.Helper()
+	if cmd == nil {
+		t.Fatal("expected non-nil tea.Cmd from schedule, got nil")
+	}
+	type result struct{ msg tea.Msg }
+	ch := make(chan result, 1)
+	go func() { ch <- result{msg: cmd()} }()
+	select {
+	case r := <-ch:
+		tick, ok := r.msg.(priceChartDebounceTickMsg)
+		if !ok {
+			t.Fatalf("debounce cmd produced %T, want priceChartDebounceTickMsg", r.msg)
+		}
+		return tick
+	case <-time.After(time.Second):
+		t.Fatal("debounce cmd did not fire within 1 s")
+	}
+	return priceChartDebounceTickMsg{}
+}
+
+// PC-013(a): a cursor-moving keypress on the prices list returns a
+// non-nil tea.Cmd which, when invoked, produces a
+// priceChartDebounceTickMsg targeting the row the cursor landed on.
+func TestHandlePriceListKeys_DownSchedulesDebounceTick(t *testing.T) {
+	withShortPriceChartDebounce(t, time.Millisecond)
+
+	a, _, secs := setupAppWithTwoSecurities(t)
+	a.buildPriceListTable()
+
+	startCursor := a.priceListTable.Cursor()
+	if startCursor != 0 {
+		t.Fatalf("test premise: expected initial cursor 0, got %d", startCursor)
+	}
+
+	_, cmd := a.handlePriceListKeys(tea.KeyPressMsg{Code: tea.KeyDown})
+	if cmd == nil {
+		t.Fatal("Down keypress on price list must return a debounce-scheduling cmd, got nil")
+	}
+	if a.priceListTable.Cursor() != 1 {
+		t.Fatalf("Down should advance cursor to 1, got %d", a.priceListTable.Cursor())
+	}
+	tick := runDebounceTick(t, cmd)
+	if tick.secID != secs[1].ID {
+		t.Errorf("tick.secID = %v, want %v (the row Down moved to)", tick.secID, secs[1].ID)
+	}
+	if tick.gen != a.priceView.chartDebounceGen {
+		t.Errorf("tick.gen = %d, want current chartDebounceGen %d",
+			tick.gen, a.priceView.chartDebounceGen)
+	}
+}
+
+// PC-013(b): two consecutive cursor changes within the debounce window
+// produce two scheduled ticks, but only the second one's gen matches
+// chartDebounceGen — the first is silently dropped by the tick handler.
+func TestPriceChartDebounceTick_StaleGenIsDropped(t *testing.T) {
+	withShortPriceChartDebounce(t, time.Millisecond)
+
+	a, _, secs := setupAppWithTwoSecurities(t)
+	a.buildPriceListTable()
+
+	// First schedule (cursor still on row 0).
+	cmd1 := a.schedulePriceChartFetch(secs[0].ID)
+	tick1 := runDebounceTick(t, cmd1)
+
+	// Second schedule, before tick1 has been routed through Update.
+	// chartDebounceGen bumps; tick1 is now stale.
+	cmd2 := a.schedulePriceChartFetch(secs[1].ID)
+	tick2 := runDebounceTick(t, cmd2)
+
+	if tick1.gen >= tick2.gen {
+		t.Fatalf("expected tick2.gen > tick1.gen, got %d vs %d", tick2.gen, tick1.gen)
+	}
+	if a.priceView.chartDebounceGen != tick2.gen {
+		t.Fatalf("expected chartDebounceGen=%d, got %d", tick2.gen, a.priceView.chartDebounceGen)
+	}
+
+	// Move cursor onto secs[1] so tick2 (which targets secs[1]) won't
+	// be dropped by the cursor-mismatch guard, isolating the gen check.
+	a.priceListTable.MoveDown()
+
+	// Stale tick1 must be ignored — Update returns no cmd, no state change.
+	prevDisplayed := a.priceView.chartDisplayedID
+	_, c1 := a.Update(tick1)
+	if c1 != nil {
+		t.Errorf("stale tick must produce no cmd, got %T", c1)
+	}
+	if a.priceView.chartDisplayedID != prevDisplayed {
+		t.Errorf("stale tick must not mutate chartDisplayedID")
+	}
+
+	// Current-gen tick must produce a fetch cmd (cache miss path).
+	_, c2 := a.Update(tick2)
+	if c2 == nil {
+		t.Errorf("current-gen tick on uncached row must return a fetch cmd, got nil")
+	}
+}
+
+// PC-013(c): a tick whose gen matches chartDebounceGen and whose secID
+// matches the cursor produces the actual fetch command. Running that
+// command yields a priceChartHistoryLoadedMsg carrying the prices that
+// priceSvc.GetPriceHistory returns.
+func TestPriceChartDebounceTick_DispatchesFetchOnMatch(t *testing.T) {
+	withShortPriceChartDebounce(t, time.Millisecond)
+
+	a, _, secs := setupAppWithTwoSecurities(t)
+	a.buildPriceListTable()
+
+	d := types.MustParseDate("2026-04-22")
+	m, _ := types.NewMoney("180.00")
+	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d, m, price.SourceManual)); err != nil {
+		t.Fatalf("AddPrice: %v", err)
+	}
+
+	cmd := a.schedulePriceChartFetch(secs[0].ID)
+	tick := runDebounceTick(t, cmd)
+
+	_, fetchCmd := a.Update(tick)
+	if fetchCmd == nil {
+		t.Fatal("matching tick on uncached row must return a fetch cmd")
+	}
+	msg := fetchCmd()
+	loaded, ok := msg.(priceChartHistoryLoadedMsg)
+	if !ok {
+		t.Fatalf("fetch cmd produced %T, want priceChartHistoryLoadedMsg", msg)
+	}
+	if loaded.secID != secs[0].ID {
+		t.Errorf("loaded.secID = %v, want %v", loaded.secID, secs[0].ID)
+	}
+	if len(loaded.prices) != 1 {
+		t.Errorf("loaded.prices has %d entries, want 1", len(loaded.prices))
+	}
+}
+
+// PC-013(d): the priceChartHistoryLoadedMsg handler stores the prices
+// in the cache and sets chartDisplayedID. It returns no further cmd —
+// the debounce/fetch chain terminates here.
+func TestPriceChartHistoryLoadedMsg_UpdatesStateAndStops(t *testing.T) {
+	a, _, secs := setupAppWithTwoSecurities(t)
+	a.buildPriceListTable()
+	a.priceView.historyCache = newHistoryCache()
+
+	d := types.MustParseDate("2026-04-22")
+	m, _ := types.NewMoney("180.00")
+	hp := price.NewPrice(secs[0].ID, d, m, price.SourceManual)
+
+	loaded := priceChartHistoryLoadedMsg{
+		secID:  secs[0].ID,
+		prices: []*price.Price{hp},
+	}
+	_, cmd := a.Update(loaded)
+
+	if cmd != nil {
+		t.Errorf("loaded handler must return no further cmd, got %T", cmd)
+	}
+	if a.priceView.chartDisplayedID != secs[0].ID {
+		t.Errorf("chartDisplayedID = %v, want %v", a.priceView.chartDisplayedID, secs[0].ID)
+	}
+	cached, ok := a.priceView.historyCache.Lookup(secs[0].ID)
+	if !ok {
+		t.Fatalf("cache must contain entry for %v after loaded msg", secs[0].ID)
+	}
+	if len(cached) != 1 || cached[0] != hp {
+		t.Errorf("cache stored %v, want [%v]", cached, hp)
+	}
+}
+
+// PC-013: when the row under the cursor is already cached, the tick
+// handler skips the fetch and just promotes that entry to displayed.
+// This lets the user scroll back to a previously-viewed ticker without
+// re-querying the price service.
+func TestPriceChartDebounceTick_CacheHitSkipsFetch(t *testing.T) {
+	withShortPriceChartDebounce(t, time.Millisecond)
+
+	a, _, secs := setupAppWithTwoSecurities(t)
+	a.buildPriceListTable()
+
+	d := types.MustParseDate("2026-04-22")
+	m, _ := types.NewMoney("180.00")
+	hp := price.NewPrice(secs[0].ID, d, m, price.SourceManual)
+	a.priceView.historyCache = newHistoryCache()
+	a.priceView.historyCache.Put(secs[0].ID, []*price.Price{hp})
+
+	cmd := a.schedulePriceChartFetch(secs[0].ID)
+	tick := runDebounceTick(t, cmd)
+
+	_, fetchCmd := a.Update(tick)
+	if fetchCmd != nil {
+		t.Errorf("cache-hit tick must return no fetch cmd, got %T", fetchCmd)
+	}
+	if a.priceView.chartDisplayedID != secs[0].ID {
+		t.Errorf("cache-hit tick must promote chartDisplayedID to %v, got %v",
+			secs[0].ID, a.priceView.chartDisplayedID)
+	}
+}
+
+// PC-013: a tick whose gen matches but whose secID no longer matches
+// the cursor (the user moved off in the debounce window) is dropped —
+// no fetch, no state change.
+func TestPriceChartDebounceTick_CursorMismatchIsDropped(t *testing.T) {
+	withShortPriceChartDebounce(t, time.Millisecond)
+
+	a, _, secs := setupAppWithTwoSecurities(t)
+	a.buildPriceListTable()
+
+	cmd := a.schedulePriceChartFetch(secs[0].ID)
+	tick := runDebounceTick(t, cmd)
+
+	// Move cursor off secs[0] without scheduling a new tick (test
+	// fixture; in production the move would itself schedule).
+	a.priceListTable.MoveDown()
+	if a.listCursorSecurityID() != secs[1].ID {
+		t.Fatalf("test premise: cursor should be on secs[1] after MoveDown")
+	}
+
+	prevGen := a.priceView.chartDebounceGen
+	prevDisplayed := a.priceView.chartDisplayedID
+	_, c := a.Update(tick)
+	if c != nil {
+		t.Errorf("cursor-mismatch tick must produce no cmd, got %T", c)
+	}
+	if a.priceView.chartDebounceGen != prevGen {
+		t.Errorf("cursor-mismatch tick must not bump gen")
+	}
+	if a.priceView.chartDisplayedID != prevDisplayed {
+		t.Errorf("cursor-mismatch tick must not mutate chartDisplayedID")
+	}
+}
+
+// setupAppWithTwoSecurities builds a wide TUI with two rows in the
+// price list (AAPL, MSFT) but no prices loaded into the cache. The
+// resulting App is ready to drive cursor-movement key handlers and
+// dispatch debounce ticks through Update.
+func setupAppWithTwoSecurities(t *testing.T) (*App, *fakeRefreshProvider, []*security.Security) {
+	t.Helper()
+	a, fp, secs := setupRefreshTUITest(t, "AAPL", "MSFT")
+	a.width = 200
+	a.height = 30
+	a.styles.Resize(200, 30)
+
+	d := types.MustParseDate("2026-04-22")
+	m, _ := types.NewMoney("100.00")
+	a.priceView = &priceViewData{
+		mode:       pricesViewList,
+		securities: secs,
+		latestPrices: []*price.LatestPrice{
+			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d, Price: m},
+			{SecurityID: secs[1].ID, Ticker: "MSFT", Name: "MSFT Inc.", Date: d, Price: m},
+		},
+		historyCache: newHistoryCache(),
+	}
+	return a, fp, secs
 }
