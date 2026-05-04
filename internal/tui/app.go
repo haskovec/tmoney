@@ -534,8 +534,10 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 	// Apply the persisted theme (TH-029). Failure is silent here —
 	// the styles stay on the embedded default and Phase 9 will route
 	// the underlying issue to a status-bar toast and the log file.
+	// LoadTheme (TH-026) lets a user-dir file shadow the embedded
+	// built-in of the same ID, so overrides are picked up here too.
 	if cfg != nil && cfg.Theme != "" {
-		if t, _, err := theme.LoadBuiltin(cfg.Theme); err == nil {
+		if t, _, err := theme.LoadTheme(cfg.Theme); err == nil {
 			a.styles.applyTheme(t)
 		}
 	}
@@ -4576,12 +4578,13 @@ type themeReloadFailedMsg struct {
 // emits a tea.WindowSizeMsg matching the App's current dimensions so
 // the next render reflects the new palette.
 //
-// Built-in themes only for now; user-directory discovery is wired in
-// Phase 7 (TH-025/TH-026). On failure (unknown ID, parse error) the
-// styles, palette, and config are left unchanged and the returned cmd
-// emits a themeReloadFailedMsg.
+// LoadTheme (TH-026) consults the user theme directory first and
+// falls back to the embedded built-ins, so user overrides take effect
+// without any extra wiring here. On failure (unknown ID, parse error)
+// the styles, palette, and config are left unchanged and the returned
+// cmd emits a themeReloadFailedMsg.
 func (a *App) reloadTheme(id string) tea.Cmd {
-	t, _, err := theme.LoadBuiltin(id)
+	t, _, err := theme.LoadTheme(id)
 	if err != nil {
 		return func() tea.Msg {
 			return themeReloadFailedMsg{id: id, err: err}

@@ -190,7 +190,7 @@ First user-facing way to switch themes.
   - RED: test `TestDiscoverUserThemes` with a fixture directory containing `wal.toml` and `mine.toml` returns IDs `["mine", "wal"]`.
   - GREEN: implement `DiscoverUserThemes() ([]string, error)` that scans `~/.config/tmoney/themes/*.toml` (respecting `XDG_CONFIG_HOME`) and returns sorted filename stems. Missing directory is not an error (returns empty list).
 
-- [ ] **TH-026 — User themes override built-ins by ID**
+- [x] **TH-026 — User themes override built-ins by ID**
   - RED: test `TestLoadTheme_UserOverride` — with a user dir containing `default.toml` (with a distinct color), `LoadTheme("default")` returns the user version, not the embedded one.
   - GREEN: implement `LoadTheme(id string) (*Theme, []Issue, error)` that checks the user dir first, falls back to embedded.
 
