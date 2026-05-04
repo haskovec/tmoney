@@ -473,7 +473,7 @@ func TestApp_HandleMenuAction_NewFile(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	app.handleMenuAction(MenuActionNewFile)
+	app.handleMenuAction(MenuActionNewFile, "")
 
 	if app.fileDialog == nil {
 		t.Error("MenuActionNewFile should open the file dialog")
@@ -492,7 +492,7 @@ func TestApp_HandleMenuAction_OpenFile(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	app.handleMenuAction(MenuActionOpenFile)
+	app.handleMenuAction(MenuActionOpenFile, "")
 
 	if app.fileDialog == nil {
 		t.Error("MenuActionOpenFile should open the file dialog")
@@ -511,7 +511,7 @@ func TestApp_HandleMenuAction_OpenRecent(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	app.handleMenuAction(MenuActionOpenRecent)
+	app.handleMenuAction(MenuActionOpenRecent, "")
 
 	if app.fileDialog == nil {
 		t.Error("MenuActionOpenRecent should open the file dialog")
@@ -695,7 +695,7 @@ func TestApp_HandleMenuAction_OpenFile_AlwaysStartsInDefaultDir(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	app.handleMenuAction(MenuActionOpenFile)
+	app.handleMenuAction(MenuActionOpenFile, "")
 
 	if app.browseDir != defaultDir {
 		t.Errorf("browseDir = %q, want %q (Open File should start in DefaultDirectory, not the current file's directory)",

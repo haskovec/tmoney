@@ -215,9 +215,12 @@ func TestMenuBar_Select(t *testing.T) {
 	m.Activate()
 
 	// First item in File menu is "New File"
-	action := m.Select()
+	action, data := m.Select()
 	if action != MenuActionNewFile {
 		t.Errorf("expected MenuActionNewFile, got %d", action)
+	}
+	if data != "" {
+		t.Errorf("expected empty data, got %q", data)
 	}
 
 	// Select should deactivate the menu
@@ -239,7 +242,7 @@ func TestMenuBar_SelectExitAction(t *testing.T) {
 	m.MoveDown()
 	m.MoveDown()
 
-	action := m.Select()
+	action, _ := m.Select()
 	if action != MenuActionExit {
 		t.Errorf("expected MenuActionExit, got %d", action)
 	}
@@ -255,7 +258,7 @@ func TestMenuBar_SelectFromDifferentMenu(t *testing.T) {
 	m.MoveRight()
 
 	// First item is "New Account"
-	action := m.Select()
+	action, _ := m.Select()
 	if action != MenuActionNewAccount {
 		t.Errorf("expected MenuActionNewAccount, got %d", action)
 	}
@@ -264,9 +267,12 @@ func TestMenuBar_SelectFromDifferentMenu(t *testing.T) {
 func TestMenuBar_SelectNoMenu(t *testing.T) {
 	m := &MenuBar{} // Empty menu bar
 
-	action := m.Select()
+	action, data := m.Select()
 	if action != MenuActionNone {
 		t.Errorf("expected MenuActionNone from empty menu bar, got %d", action)
+	}
+	if data != "" {
+		t.Errorf("expected empty data, got %q", data)
 	}
 }
 

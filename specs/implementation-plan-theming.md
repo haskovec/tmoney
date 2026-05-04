@@ -177,7 +177,7 @@ First user-facing way to switch themes.
   - RED: test that opening the View → Theme submenu populates items from `BuiltinIDs()` (Phase 3) — for now, just built-ins; user dir wired in Phase 7. The active theme has a `✓` prefix in its label.
   - GREEN: extend `MenuBar` to support dynamic submenu population (current `menu` struct is static). Either: (a) make `items` a func returning items, or (b) re-build menus on each open. Option (b) is simpler and only runs on user input.
 
-- [ ] **TH-023 — Selecting a theme triggers `reloadTheme`**
+- [x] **TH-023 — Selecting a theme triggers `reloadTheme`**
   - RED: test asserts that selecting `"turbo-vision"` from the submenu emits the `tea.Cmd` produced by `reloadTheme("turbo-vision")`.
   - GREEN: wire menu selection in `app.go`'s `handleMenuAction` (or equivalent) to call `a.reloadTheme(themeID)`.
 

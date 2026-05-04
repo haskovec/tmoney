@@ -316,19 +316,22 @@ func (m *MenuBar) MoveDown() {
 	}
 }
 
-// Select returns the action for the currently highlighted dropdown item.
-// Returns MenuActionNone if no valid selection.
-func (m *MenuBar) Select() MenuAction {
+// Select returns the action and data payload for the currently
+// highlighted dropdown item, then deactivates the menu. The data
+// payload carries action-specific context (e.g. the theme ID for
+// MenuActionLoadTheme); it is empty for actions that don't need it.
+// Returns (MenuActionNone, "") if no valid selection.
+func (m *MenuBar) Select() (MenuAction, string) {
 	current := m.CurrentMenu()
 	if current == nil {
-		return MenuActionNone
+		return MenuActionNone, ""
 	}
 	if m.itemCursor < 0 || m.itemCursor >= len(current.items) {
-		return MenuActionNone
+		return MenuActionNone, ""
 	}
-	action := current.items[m.itemCursor].action
+	item := current.items[m.itemCursor]
 	m.Deactivate()
-	return action
+	return item.action, item.data
 }
 
 // HitTestBar determines which top-level menu label was clicked at position x.

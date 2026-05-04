@@ -348,7 +348,7 @@ func TestApp_MenuActionKeyboardShortcuts(t *testing.T) {
 
 	// Simulate selecting Keyboard Shortcuts from Help menu
 	app.menubar.Activate()
-	_, _ = app.handleMenuAction(MenuActionKeyboardShortcuts)
+	_, _ = app.handleMenuAction(MenuActionKeyboardShortcuts, "")
 
 	if !app.showHelp {
 		t.Error("showHelp should be true after MenuActionKeyboardShortcuts")

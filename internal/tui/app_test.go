@@ -3608,7 +3608,7 @@ func TestApp_MenuUndo(t *testing.T) {
 	}
 
 	// Simulate menu action
-	_, cmd := app.handleMenuAction(MenuActionUndo)
+	_, cmd := app.handleMenuAction(MenuActionUndo, "")
 	if cmd == nil {
 		t.Fatal("MenuActionUndo should return a command")
 	}
@@ -3629,7 +3629,7 @@ func TestApp_MenuRedo(t *testing.T) {
 		undoManager: mgr,
 	}
 
-	_, cmd := app.handleMenuAction(MenuActionRedo)
+	_, cmd := app.handleMenuAction(MenuActionRedo, "")
 	if cmd == nil {
 		t.Fatal("MenuActionRedo should return a command")
 	}
@@ -5117,5 +5117,110 @@ func TestApp_ReloadTheme_UnknownID(t *testing.T) {
 	}
 	if failed.err == nil {
 		t.Error("themeReloadFailedMsg.err = nil, want non-nil error describing the failure")
+	}
+}
+
+// TestApp_HandleMenuAction_LoadTheme covers TH-023: dispatching
+// MenuActionLoadTheme with a theme ID payload routes to reloadTheme,
+// which repaints styles, persists the ID onto cfg, and returns a
+// tea.Cmd that emits a tea.WindowSizeMsg matching the App's dims.
+func TestApp_HandleMenuAction_LoadTheme(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		styles:      NewStyles(),
+		cfg:         &config.Config{},
+		width:       100,
+		height:      30,
+	}
+
+	_, cmd := app.handleMenuAction(MenuActionLoadTheme, "turbo-vision")
+	if cmd == nil {
+		t.Fatal("handleMenuAction(MenuActionLoadTheme, ...) returned nil cmd")
+	}
+
+	if app.cfg.Theme != "turbo-vision" {
+		t.Errorf("cfg.Theme = %q, want %q", app.cfg.Theme, "turbo-vision")
+	}
+
+	wantHeaderFg := lipgloss.Color("#000000")
+	if got := app.styles.Header.GetForeground(); got != wantHeaderFg {
+		t.Errorf("Header.GetForeground() = %v, want %v", got, wantHeaderFg)
+	}
+
+	msg := cmd()
+	sz, ok := msg.(tea.WindowSizeMsg)
+	if !ok {
+		t.Fatalf("cmd() = %T, want tea.WindowSizeMsg", msg)
+	}
+	if sz.Width != 100 || sz.Height != 30 {
+		t.Errorf("WindowSizeMsg = %+v, want {Width:100 Height:30}", sz)
+	}
+}
+
+// TestApp_MenuSelect_LoadTheme covers the full submenu flow for TH-023:
+// activating the View menu and selecting the entry whose data payload
+// is "turbo-vision" emits the same cmd that reloadTheme would have
+// produced. This proves the menu dispatch carries the theme ID payload
+// through Select() into handleMenuAction.
+func TestApp_MenuSelect_LoadTheme(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		styles:      NewStyles(),
+		cfg:         &config.Config{},
+		width:       100,
+		height:      30,
+	}
+	app.menubar.SetMenuItemsBuilder(viewMenuIndex, func() []menuItem {
+		return buildThemeMenuItems(app.cfg.Theme)
+	})
+
+	app.menubar.ActivateMenu(viewMenuIndex)
+
+	// Find the index of the turbo-vision item in the freshly-built submenu.
+	current := app.menubar.CurrentMenu()
+	if current == nil {
+		t.Fatal("CurrentMenu() returned nil after ActivateMenu(viewMenuIndex)")
+	}
+	target := -1
+	for i, item := range current.items {
+		if item.data == "turbo-vision" {
+			target = i
+			break
+		}
+	}
+	if target < 0 {
+		t.Fatalf("no menu item with data=%q found in View submenu", "turbo-vision")
+	}
+	app.menubar.SetItemCursor(target)
+
+	action, data := app.menubar.Select()
+	if action != MenuActionLoadTheme {
+		t.Fatalf("Select() action = %v, want MenuActionLoadTheme", action)
+	}
+	if data != "turbo-vision" {
+		t.Fatalf("Select() data = %q, want %q", data, "turbo-vision")
+	}
+
+	_, cmd := app.handleMenuAction(action, data)
+	if cmd == nil {
+		t.Fatal("handleMenuAction(MenuActionLoadTheme, ...) returned nil cmd")
+	}
+	if app.cfg.Theme != "turbo-vision" {
+		t.Errorf("cfg.Theme = %q, want %q", app.cfg.Theme, "turbo-vision")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(tea.WindowSizeMsg); !ok {
+		t.Fatalf("cmd() = %T, want tea.WindowSizeMsg", msg)
 	}
 }

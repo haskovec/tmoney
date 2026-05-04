@@ -850,7 +850,7 @@ func TestApp_HandleMenuAction_NewAccount(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	_, cmd := app.handleMenuAction(MenuActionNewAccount)
+	_, cmd := app.handleMenuAction(MenuActionNewAccount, "")
 
 	if cmd == nil {
 		t.Error("MenuActionNewAccount should return a non-nil cmd")
@@ -866,7 +866,7 @@ func TestApp_HandleMenuAction_EditAccount_NoSelection(t *testing.T) {
 		sidebar:     NewSidebar(),
 	}
 
-	_, cmd := app.handleMenuAction(MenuActionEditAccount)
+	_, cmd := app.handleMenuAction(MenuActionEditAccount, "")
 
 	// No account selected, should not return a cmd
 	if cmd != nil {
@@ -890,7 +890,7 @@ func TestApp_HandleMenuAction_EditAccount_WithSelection(t *testing.T) {
 	app.sidebar.MoveDown() // move to account
 	app.sidebar.Select()
 
-	_, cmd := app.handleMenuAction(MenuActionEditAccount)
+	_, cmd := app.handleMenuAction(MenuActionEditAccount, "")
 
 	if cmd == nil {
 		t.Error("MenuActionEditAccount with selection should return a non-nil cmd")

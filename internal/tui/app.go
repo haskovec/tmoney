@@ -2381,8 +2381,8 @@ func (a *App) handleMouseEvent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			itemIdx := a.menubar.HitTestDropdown(m.Y - 1)
 			if itemIdx >= 0 {
 				a.menubar.SetItemCursor(itemIdx)
-				action := a.menubar.Select()
-				return a.handleMenuAction(action)
+				action, data := a.menubar.Select()
+				return a.handleMenuAction(action, data)
 			}
 		}
 		// Click outside dropdown closes it
@@ -2990,8 +2990,8 @@ func (a *App) handleMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case key.Matches(msg, a.keys.Enter):
-		action := a.menubar.Select()
-		return a.handleMenuAction(action)
+		action, data := a.menubar.Select()
+		return a.handleMenuAction(action, data)
 
 	case key.Matches(msg, a.keys.Quit):
 		a.quitting = true
@@ -3001,8 +3001,11 @@ func (a *App) handleMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// handleMenuAction processes a menu item selection.
-func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
+// handleMenuAction processes a menu item selection. The data string
+// carries action-specific context populated from menuItem.data — for
+// example, MenuActionLoadTheme uses it to carry the theme ID. It is
+// the empty string for actions that don't need a payload.
+func (a *App) handleMenuAction(action MenuAction, data string) (tea.Model, tea.Cmd) {
 	switch action {
 	case MenuActionNewFile:
 		a.menubar.Deactivate()
@@ -3123,6 +3126,13 @@ func (a *App) handleMenuAction(action MenuAction) (tea.Model, tea.Cmd) {
 		a.menubar.Deactivate()
 		a.showHelp = true
 		return a, nil
+
+	case MenuActionLoadTheme:
+		a.menubar.Deactivate()
+		if data == "" {
+			return a, nil
+		}
+		return a, a.reloadTheme(data)
 
 	case MenuActionNone:
 		// No action
