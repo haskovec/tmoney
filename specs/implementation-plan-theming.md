@@ -229,7 +229,7 @@ First user-facing way to switch themes.
   - Test missing file returns the documented error message.
   - GREEN: implement `internal/cli/wal.go` with a struct and JSON unmarshal mirroring pywal's `colors.json` shape.
 
-- [ ] **TH-034 — Pywal → theme TOML converter**
+- [x] **TH-034 — Pywal → theme TOML converter**
   - RED: test `TestWalToTheme_GeneratesExpectedTOML` runs the converter on the fixture and asserts the produced TOML contains the expected slot mappings per the table in `specs/theming.md`. Includes the comment header.
   - GREEN: implement `walToThemeTOML(walColors *WalColors, sourcePath string, ts time.Time) string`. Plain string concatenation is fine for output; we control the format.
 

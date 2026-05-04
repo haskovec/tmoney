@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/haskovec/tmoney/internal/tui/theme"
 )
 
 func TestReadWalColors_Sample(t *testing.T) {
@@ -92,5 +95,98 @@ func TestReadWalColors_MalformedJSON(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "parse pywal colors") {
 		t.Errorf("error message should mention parse failure; got %q", err.Error())
+	}
+}
+
+func TestWalToTheme_GeneratesExpectedTOML(t *testing.T) {
+	wc, err := ReadWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
+	if err != nil {
+		t.Fatalf("ReadWalColors: %v", err)
+	}
+	ts := time.Date(2026, 5, 3, 14, 22, 1, 0, time.UTC)
+	src := "/home/alice/.cache/wal/colors.json"
+	got := walToThemeTOML(wc, src, ts)
+
+	wantSubstrings := []string{
+		"# Generated from /home/alice/.cache/wal/colors.json on 2026-05-03T14:22:01Z.",
+		"# Re-run `tmoney theme generate-from-wal` to regenerate after pywal updates.",
+		"# Live-swap is not automatic — re-select 'wal' in View → Theme to apply.",
+		`name = "wal"`,
+		`description = "Generated from pywal palette"`,
+		`border_style = "single"`,
+		// desktop.bg is commented out — not painted in v1.
+		`# desktop.bg = "#1d1f21"`,
+		// window slots
+		`window.bg = "#1d1f21"`,
+		`window.fg = "#c5c8c6"`,
+		`window.border.fg = "#c5c8c6"`,
+		`window.title.fg = "#fabd2f"`,
+		// menubar slots
+		`menubar.bg = "#1d1f21"`,
+		`menubar.fg = "#c5c8c6"`,
+		`menubar.active.bg = "#81a2be"`,
+		`menubar.active.fg = "#1d1f21"`,
+		`menubar.shortcut.fg = "#cc6666"`,
+		// statusbar slots
+		`statusbar.bg = "#1d1f21"`,
+		`statusbar.fg = "#c5c8c6"`,
+		// dialog slots
+		`dialog.bg = "#969896"`,
+		`dialog.fg = "#c5c8c6"`,
+		`dialog.border.fg = "#c5c8c6"`,
+		`dialog.title.fg = "#fabd2f"`,
+		// table slots
+		`table.header.fg = "#fabd2f"`,
+		`table.row.fg = "#c5c8c6"`,
+		`table.selected.bg = "#81a2be"`,
+		`table.selected.fg = "#1d1f21"`,
+		// semantic text slots
+		`text.positive = "#b5bd68"`,
+		`text.negative = "#cc6666"`,
+		`text.alert = "#fabd2f"`,
+		`text.muted = "#969896"`,
+		`text.title = "#c5c8c6"`,
+		`text.error = "#cc6666"`,
+	}
+	for _, s := range wantSubstrings {
+		if !strings.Contains(got, s) {
+			t.Errorf("walToThemeTOML output missing substring %q.\nGot:\n%s", s, got)
+		}
+	}
+}
+
+func TestWalToTheme_OmitsSymbolAndShortcutSlots(t *testing.T) {
+	wc, err := ReadWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
+	if err != nil {
+		t.Fatalf("ReadWalColors: %v", err)
+	}
+	got := walToThemeTOML(wc, "irrelevant", time.Unix(0, 0).UTC())
+	for _, forbidden := range []string{
+		"symbols.menu_separator",
+		"symbols.focus_indicator",
+		"symbols.checkmark",
+		"shortcut.underline",
+	} {
+		if strings.Contains(got, forbidden) {
+			t.Errorf("walToThemeTOML output should not contain %q (helper omits so default fills in).\nGot:\n%s", forbidden, got)
+		}
+	}
+}
+
+func TestWalToTheme_OutputParsesAsValidTheme(t *testing.T) {
+	wc, err := ReadWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
+	if err != nil {
+		t.Fatalf("ReadWalColors: %v", err)
+	}
+	out := walToThemeTOML(wc, "src", time.Unix(0, 0).UTC())
+	th, issues, err := theme.Parse([]byte(out))
+	if err != nil {
+		t.Fatalf("generated TOML failed to parse: %v", err)
+	}
+	if len(issues) > 0 {
+		t.Fatalf("generated TOML produced parser issues: %+v", issues)
+	}
+	if th.Name != "wal" {
+		t.Errorf("parsed theme name = %q, want %q", th.Name, "wal")
 	}
 }
