@@ -5,7 +5,7 @@ export CGO_ENABLED=1
 
 # Default target
 build:
-	CGO_ENABLED=1 go build -o tmoney ./cmd/tmoney
+	CGO_ENABLED=1 go build -o tmoney .
 
 help:
 	@echo "Available targets:"

@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -12,21 +12,16 @@ import (
 	"github.com/haskovec/tmoney/internal/tui"
 )
 
-// Version information - will be set via build flags in production
-var (
-	Version   = "dev"
-	BuildTime = "unknown"
-	GitCommit = "unknown"
-)
+// run is a private alias for RunLegacy preserved for the existing test
+// suite that predates the cli package extraction.
+var run = RunLegacy
 
-func main() {
-	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-func run(args []string, stdout, stderr io.Writer) error {
+// RunLegacy executes the legacy flag-style CLI dispatcher. It parses the
+// pre-Cobra `--flag` style invocation and dispatches to the appropriate
+// run* handler in commands.go. New subcommands should be added to the Cobra
+// router in root.go; RunLegacy stays in place until every legacy flag has
+// been migrated.
+func RunLegacy(args []string, stdout, stderr io.Writer) error {
 	opts, remaining, err := parseArgs(args)
 	if err != nil {
 		return err

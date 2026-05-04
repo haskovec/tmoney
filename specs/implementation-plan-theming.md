@@ -38,18 +38,18 @@ Phases 9 (error surfacing) is intentionally late: the system works without it, b
 
 This phase introduces the Cobra-based command router and moves `main.go` to the module root. **No legacy flag handling changes** — the existing `parseArgs`/`run()` flow is preserved verbatim; the Cobra root command's no-subcommand path delegates to it. After this phase the build is reorganized but behavior is identical except that `tmoney version` and `tmoney --help` now produce Cobra-generated output.
 
-- [ ] **TH-001 — Add Cobra dependency**
+- [x] **TH-001 — Add Cobra dependency**
   - GREEN: `go get github.com/spf13/cobra@latest`, then `go mod tidy`. Confirm `go build ./...` is still clean.
   - No tests; pure dependency addition.
 
-- [ ] **TH-002 — Create `internal/cli/` package and move existing files**
+- [x] **TH-002 — Create `internal/cli/` package and move existing files**
   - GREEN: create `internal/cli/`. Move (with `git mv` to preserve history) `cmd/tmoney/args.go`, `cmd/tmoney/args_test.go`, `cmd/tmoney/commands.go`, `cmd/tmoney/commands_test.go`, `cmd/tmoney/format.go`, `cmd/tmoney/format_test.go`, `cmd/tmoney/update_prices.go`, `cmd/tmoney/update_prices_test.go`, `cmd/tmoney/main_test.go` to `internal/cli/`.
   - Update package declaration from `package main` to `package cli` in each file.
   - Move `cmd/tmoney/main.go` content (the body of `run()`) into a new `internal/cli/legacy.go` exposing a `RunLegacy(args []string, stdout, stderr io.Writer) error` function. The version vars (`Version`, `BuildTime`, `GitCommit`) move to `internal/cli/version.go`.
   - Delete `cmd/tmoney/some-file.tdb` (test artifact) and add `*.tdb` to `.gitignore` if not already present.
   - Confirm `go build ./internal/cli/...` clean. Tests run via `go test ./internal/cli/...`.
 
-- [ ] **TH-003 — Add `main.go` at module root**
+- [x] **TH-003 — Add `main.go` at module root**
   - RED: not applicable.
   - GREEN: write `/main.go`:
     ```go
@@ -70,7 +70,7 @@ This phase introduces the Cobra-based command router and moves `main.go` to the 
   - Delete the now-empty `cmd/tmoney/` directory.
   - Confirm `make build` produces a working binary.
 
-- [ ] **TH-004 — Cobra root command with no-args fallback**
+- [x] **TH-004 — Cobra root command with no-args fallback**
   - RED: tests in `internal/cli/root_test.go` for `Execute()`:
     - `tmoney` (no args) → calls TUI launcher (mock the launcher and assert it was invoked).
     - `tmoney foo.tdb` → calls TUI launcher with file set to `foo.tdb`.
@@ -79,11 +79,11 @@ This phase introduces the Cobra-based command router and moves `main.go` to the 
     - `tmoney --help` → exits 0, output contains "Usage:".
   - GREEN: implement `internal/cli/root.go` with a Cobra root command. Persistent flag `--file/-f`. The root's `RunE` checks: if `args` looks like a legacy flag invocation (starts with `--`) call `RunLegacy(os.Args[1:], os.Stdout, os.Stderr)`; else launch TUI with the resolved file path (positional arg or `--file` flag, falling back to config). `Execute()` returns the Cobra command's error.
 
-- [ ] **TH-005 — `tmoney version` subcommand**
+- [x] **TH-005 — `tmoney version` subcommand**
   - RED: test in `internal/cli/version_test.go` that `tmoney version` prints the `Version`, `BuildTime`, `GitCommit` values.
   - GREEN: implement `internal/cli/version.go` registering a `version` subcommand on the root. Format: `tmoney <version>` plus build/commit metadata on subsequent lines.
 
-- [ ] **TH-006 — `tmoney --help` smoke test**
+- [x] **TH-006 — `tmoney --help` smoke test**
   - RED: test asserts `tmoney --help` output contains the strings `version`, `Available Commands`, and `Usage:`.
   - GREEN: ensure root command has a `Short` description and at least one example.
 
