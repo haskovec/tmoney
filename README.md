@@ -476,6 +476,73 @@ The config file tracks:
 
 This means you can simply run `tmoney` after your first session and it will reopen the last file you were working with. Specifying `-f <path>` or a positional argument always takes priority over the saved default.
 
+## Themes
+
+TMoney's TUI is skinnable via a theme system. Three themes ship built in, and users can author their own theme files or generate one from a pywal palette.
+
+### Built-in themes
+
+| ID | Description |
+|----|-------------|
+| `default` | The original TMoney palette. Transparent backgrounds (terminal shows through), single borders. The fallback used when a user theme is missing slots. |
+| `turbo-vision` | Faithful to the Borland Turbo Vision aesthetic — yellow titles on blue, red shortcut letters, double borders, black-on-cyan selected rows. |
+| `light` | Designed for light-background terminals; dark text on near-white panels, single borders. |
+
+### Switching themes
+
+In the TUI, open **View → Theme** (or `Alt+V`) and select a theme. The change applies immediately — no restart — and the active theme is persisted to `~/.config/tmoney/config.json` so it's restored on the next launch. The active theme is marked with a `✓` in the submenu.
+
+From the CLI:
+
+```bash
+tmoney theme list                # list built-ins and user themes; * marks active
+tmoney theme generate-from-wal   # create ~/.config/tmoney/themes/wal.toml from pywal
+```
+
+### Authoring a custom theme
+
+Drop a TOML file into `~/.config/tmoney/themes/` (or `$XDG_CONFIG_HOME/tmoney/themes/` if that env var is set). The filename stem becomes the theme ID — e.g., `mine.toml` → ID `mine`. User themes with the same ID as a built-in override it.
+
+```toml
+# ~/.config/tmoney/themes/mine.toml
+name = "Mine"
+description = "My personal palette"
+border_style = "rounded"   # one of: single, double, rounded, thick
+
+window.title.fg     = "#ffcc66"
+table.selected.bg   = "#264f78"
+text.negative       = "#ff6b6b"
+# ... any slots you don't set fall back to the default theme
+```
+
+Theme files are hand-editable. Missing slots inherit from `default`, so a custom theme can be as small as a single override. The full slot list is documented in [`specs/theming.md`](specs/theming.md).
+
+### Pywal integration
+
+Users running [pywal](https://github.com/dylanaraps/pywal) (Omarchy, etc.) can generate a theme from their current system palette:
+
+```bash
+tmoney theme generate-from-wal              # writes ~/.config/tmoney/themes/wal.toml
+tmoney theme generate-from-wal --output -   # write to stdout
+```
+
+To regenerate automatically when pywal updates, add a one-liner to `~/.config/wal/postrun.sh` (make it executable):
+
+```bash
+#!/bin/sh
+tmoney theme generate-from-wal
+```
+
+The TUI does not auto-pick-up the regenerated file — re-select `wal` in **View → Theme** to apply the new colors.
+
+### Misconfigured themes
+
+If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), the offending slot falls back to its `default` value rather than rejecting the whole theme. A status-bar toast surfaces the issue count, and details are appended to `~/.config/tmoney/log.txt` with the slot name and reason. If the file is unparseable TOML entirely, the app falls back to `default` and shows the error in the toast.
+
+## CLI
+
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — only `tmoney version`, `tmoney theme list`, and `tmoney theme generate-from-wal` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+
 ## Tech Stack
 
 - **Go**: Performance, single binary, cross-platform

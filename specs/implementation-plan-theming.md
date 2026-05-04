@@ -253,7 +253,7 @@ First user-facing way to switch themes.
 
 ## Phase 12: Documentation
 
-- [ ] **TH-038 — README updates**
+- [x] **TH-038 — README updates**
   - GREEN: add a `## Themes` section to `README.md` documenting:
     - The three built-in themes with one-sentence descriptions.
     - How to switch via View → Theme.
