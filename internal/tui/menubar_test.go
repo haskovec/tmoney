@@ -25,11 +25,11 @@ func TestNewMenuBar(t *testing.T) {
 func TestMenuBar_DefaultMenus(t *testing.T) {
 	m := NewMenuBar()
 
-	if m.MenuCount() != 7 {
-		t.Fatalf("expected 7 menus, got %d", m.MenuCount())
+	if m.MenuCount() != 8 {
+		t.Fatalf("expected 8 menus, got %d", m.MenuCount())
 	}
 
-	expectedLabels := []string{"File", "Edit", "Accounts", "Transactions", "Securities", "Reports", "Help"}
+	expectedLabels := []string{"File", "Edit", "View", "Accounts", "Transactions", "Securities", "Reports", "Help"}
 	for i, mn := range m.menus {
 		if mn.label != expectedLabels[i] {
 			t.Errorf("menu[%d].label = %q, want %q", i, mn.label, expectedLabels[i])
@@ -249,7 +249,8 @@ func TestMenuBar_SelectFromDifferentMenu(t *testing.T) {
 	m := NewMenuBar()
 	m.Activate()
 
-	// Move to Accounts menu (index 2, past Edit)
+	// Move to Accounts menu (index 3, past Edit and View)
+	m.MoveRight()
 	m.MoveRight()
 	m.MoveRight()
 
@@ -438,12 +439,34 @@ func TestMenuBar_EditMenuItems(t *testing.T) {
 	}
 }
 
+func TestMenuBar_ViewMenuItems(t *testing.T) {
+	m := NewMenuBar()
+
+	viewMenu := m.menus[2]
+	if viewMenu.label != "View" {
+		t.Fatalf("expected View menu at index 2, got %q", viewMenu.label)
+	}
+	if viewMenu.shortcutKey != 'V' {
+		t.Errorf("View menu shortcutKey = %q, want %q", string(viewMenu.shortcutKey), "V")
+	}
+
+	if len(viewMenu.items) != 1 {
+		t.Fatalf("View menu: expected 1 item, got %d", len(viewMenu.items))
+	}
+	if viewMenu.items[0].label != "Theme" {
+		t.Errorf("View[0].label = %q, want %q", viewMenu.items[0].label, "Theme")
+	}
+	if viewMenu.items[0].action != MenuActionThemeSubmenu {
+		t.Errorf("View[0].action = %d, want MenuActionThemeSubmenu", viewMenu.items[0].action)
+	}
+}
+
 func TestMenuBar_TransactionsMenuItems(t *testing.T) {
 	m := NewMenuBar()
 
-	txnMenu := m.menus[3]
+	txnMenu := m.menus[4]
 	if txnMenu.label != "Transactions" {
-		t.Fatalf("expected Transactions menu at index 3, got %q", txnMenu.label)
+		t.Fatalf("expected Transactions menu at index 4, got %q", txnMenu.label)
 	}
 
 	expectedItems := []struct {
@@ -475,9 +498,9 @@ func TestMenuBar_TransactionsMenuItems(t *testing.T) {
 func TestMenuBar_SecuritiesMenuItems(t *testing.T) {
 	m := NewMenuBar()
 
-	securitiesMenu := m.menus[4]
+	securitiesMenu := m.menus[5]
 	if securitiesMenu.label != "Securities" {
-		t.Fatalf("expected Securities menu at index 4, got %q", securitiesMenu.label)
+		t.Fatalf("expected Securities menu at index 5, got %q", securitiesMenu.label)
 	}
 
 	if len(securitiesMenu.items) != 2 {
@@ -495,9 +518,9 @@ func TestMenuBar_SecuritiesMenuItems(t *testing.T) {
 func TestMenuBar_ReportsMenuItems(t *testing.T) {
 	m := NewMenuBar()
 
-	reportsMenu := m.menus[5]
+	reportsMenu := m.menus[6]
 	if reportsMenu.label != "Reports" {
-		t.Fatalf("expected Reports menu at index 5, got %q", reportsMenu.label)
+		t.Fatalf("expected Reports menu at index 6, got %q", reportsMenu.label)
 	}
 
 	if len(reportsMenu.items) != 3 {
@@ -518,9 +541,9 @@ func TestMenuBar_ReportsMenuItems(t *testing.T) {
 func TestMenuBar_HelpMenuItems(t *testing.T) {
 	m := NewMenuBar()
 
-	helpMenu := m.menus[6]
+	helpMenu := m.menus[7]
 	if helpMenu.label != "Help" {
-		t.Fatalf("expected Help menu at index 6, got %q", helpMenu.label)
+		t.Fatalf("expected Help menu at index 7, got %q", helpMenu.label)
 	}
 
 	if len(helpMenu.items) != 2 {
@@ -579,6 +602,7 @@ func TestMenuBar_ShortcutKeys(t *testing.T) {
 	}{
 		{"File", 'F'},
 		{"Edit", 'E'},
+		{"View", 'V'},
 		{"Accounts", 'A'},
 		{"Transactions", 'T'},
 		{"Securities", 'S'},
@@ -724,8 +748,8 @@ func TestMenuBar_Render_ShortcutUnderline(t *testing.T) {
 
 func TestMenuBar_HitTestBar(t *testing.T) {
 	m := NewMenuBar()
-	// Menu labels: " File " (6), " Edit " (6), " Accounts " (10), " Transactions " (14), " Securities " (12), " Reports " (9), " Help " (6)
-	// Cumulative: 0-5=File, 6-11=Edit, 12-21=Accounts, 22-35=Transactions, 36-47=Securities, 48-56=Reports, 57-62=Help
+	// Menu labels: " File " (6), " Edit " (6), " View " (6), " Accounts " (10), " Transactions " (14), " Securities " (12), " Reports " (9), " Help " (6)
+	// Cumulative: 0-5=File, 6-11=Edit, 12-17=View, 18-27=Accounts, 28-41=Transactions, 42-53=Securities, 54-62=Reports, 63-68=Help
 
 	tests := []struct {
 		name string
@@ -736,17 +760,19 @@ func TestMenuBar_HitTestBar(t *testing.T) {
 		{"File end", 5, 0},
 		{"Edit start", 6, 1},
 		{"Edit end", 11, 1},
-		{"Accounts start", 12, 2},
-		{"Accounts end", 21, 2},
-		{"Transactions start", 22, 3},
-		{"Transactions end", 35, 3},
-		{"Securities start", 36, 4},
-		{"Securities end", 47, 4},
-		{"Reports start", 48, 5},
-		{"Reports end", 56, 5},
-		{"Help start", 57, 6},
-		{"Help end", 62, 6},
-		{"Beyond menus", 63, -1},
+		{"View start", 12, 2},
+		{"View end", 17, 2},
+		{"Accounts start", 18, 3},
+		{"Accounts end", 27, 3},
+		{"Transactions start", 28, 4},
+		{"Transactions end", 41, 4},
+		{"Securities start", 42, 5},
+		{"Securities end", 53, 5},
+		{"Reports start", 54, 6},
+		{"Reports end", 62, 6},
+		{"Help start", 63, 7},
+		{"Help end", 68, 7},
+		{"Beyond menus", 69, -1},
 		{"Negative x", -1, -1},
 	}
 
@@ -860,12 +886,12 @@ func TestMenuBar_DropdownBounds_SecondMenu(t *testing.T) {
 
 func TestMenuBar_DropdownBounds_ThirdMenu(t *testing.T) {
 	m := NewMenuBar()
-	m.ActivateMenu(2) // Accounts menu
+	m.ActivateMenu(3) // Accounts menu
 
 	colOffset, _, _ := m.DropdownBounds()
-	// Offset = " File " + " Edit " = 6 + 6 = 12
-	if colOffset != 12 {
-		t.Errorf("Accounts menu colOffset = %d, want 12", colOffset)
+	// Offset = " File " + " Edit " + " View " = 6 + 6 + 6 = 18
+	if colOffset != 18 {
+		t.Errorf("Accounts menu colOffset = %d, want 18", colOffset)
 	}
 }
 

@@ -142,6 +142,8 @@ Press `?` at any time to show the help overlay.
 | `5` | Prices view |
 | `F10` | Activate menu bar |
 | `Alt+F` | File menu (also has Import Transactions…) |
+| `Alt+E` | Edit menu |
+| `Alt+V` | View menu (Theme switcher) |
 | `Alt+A` | Accounts menu |
 | `Alt+T` | Transactions menu (also has Link Transfers…) |
 | `Alt+S` | Securities menu |

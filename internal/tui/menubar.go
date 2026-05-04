@@ -51,6 +51,9 @@ const (
 	MenuActionSecurities
 	MenuActionPrices
 
+	// View menu actions
+	MenuActionThemeSubmenu
+
 	// Help menu actions
 	MenuActionKeyboardShortcuts
 	MenuActionAbout
@@ -113,6 +116,13 @@ func defaultMenus() []menu {
 			items: []menuItem{
 				{label: "Undo", action: MenuActionUndo},
 				{label: "Redo", action: MenuActionRedo},
+			},
+		},
+		{
+			label:       "View",
+			shortcutKey: 'V',
+			items: []menuItem{
+				{label: "Theme", action: MenuActionThemeSubmenu},
 			},
 		},
 		{

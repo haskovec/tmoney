@@ -324,6 +324,7 @@ type keyMap struct {
 	MenuTransactions key.Binding
 	MenuSecurities   key.Binding
 	MenuEdit         key.Binding
+	MenuView         key.Binding
 	MenuReports      key.Binding
 	MenuHelp         key.Binding
 	Undo             key.Binding
@@ -436,6 +437,10 @@ func defaultKeyMap() keyMap {
 		MenuEdit: key.NewBinding(
 			key.WithKeys("alt+e"),
 			key.WithHelp("Alt+E", "edit menu"),
+		),
+		MenuView: key.NewBinding(
+			key.WithKeys("alt+v"),
+			key.WithHelp("Alt+V", "view menu"),
 		),
 		MenuHelp: key.NewBinding(
 			key.WithKeys("alt+h"),
@@ -1742,20 +1747,23 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, a.keys.MenuEdit):
 		a.toggleMenu(1)
 		return a, nil
-	case key.Matches(msg, a.keys.MenuAccounts):
+	case key.Matches(msg, a.keys.MenuView):
 		a.toggleMenu(2)
 		return a, nil
-	case key.Matches(msg, a.keys.MenuTransactions):
+	case key.Matches(msg, a.keys.MenuAccounts):
 		a.toggleMenu(3)
 		return a, nil
-	case key.Matches(msg, a.keys.MenuSecurities):
+	case key.Matches(msg, a.keys.MenuTransactions):
 		a.toggleMenu(4)
 		return a, nil
-	case key.Matches(msg, a.keys.MenuReports):
+	case key.Matches(msg, a.keys.MenuSecurities):
 		a.toggleMenu(5)
 		return a, nil
-	case key.Matches(msg, a.keys.MenuHelp):
+	case key.Matches(msg, a.keys.MenuReports):
 		a.toggleMenu(6)
+		return a, nil
+	case key.Matches(msg, a.keys.MenuHelp):
+		a.toggleMenu(7)
 		return a, nil
 	}
 

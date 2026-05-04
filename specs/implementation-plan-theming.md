@@ -169,7 +169,7 @@ Wire `applyTheme` and `reloadTheme` so theme changes propagate to a running TUI.
 
 First user-facing way to switch themes.
 
-- [ ] **TH-021 — Add View top-level menu**
+- [x] **TH-021 — Add View top-level menu**
   - RED: test in `internal/tui/menubar_test.go` asserts `defaultMenus()` returns a menu with label `"View"` and shortcut key `'V'`, positioned between `"Edit"` and `"Accounts"`.
   - GREEN: insert the View menu in `defaultMenus()`. Initially contains a single submenu placeholder labeled `"Theme"` with action `MenuActionThemeSubmenu` (new `MenuAction` constant).
 

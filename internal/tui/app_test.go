@@ -361,29 +361,34 @@ func TestApp_Update_AltKeyMenuShortcuts(t *testing.T) {
 			1, "Edit",
 		},
 		{
+			"Alt+V opens View menu",
+			tea.KeyPressMsg{Code: 'v', Mod: tea.ModAlt},
+			2, "View",
+		},
+		{
 			"Alt+A opens Accounts menu",
 			tea.KeyPressMsg{Code: 'a', Mod: tea.ModAlt},
-			2, "Accounts",
+			3, "Accounts",
 		},
 		{
 			"Alt+T opens Transactions menu",
 			tea.KeyPressMsg{Code: 't', Mod: tea.ModAlt},
-			3, "Transactions",
+			4, "Transactions",
 		},
 		{
 			"Alt+S opens Securities menu",
 			tea.KeyPressMsg{Code: 's', Mod: tea.ModAlt},
-			4, "Securities",
+			5, "Securities",
 		},
 		{
 			"Alt+R opens Reports menu",
 			tea.KeyPressMsg{Code: 'r', Mod: tea.ModAlt},
-			5, "Reports",
+			6, "Reports",
 		},
 		{
 			"Alt+H opens Help menu",
 			tea.KeyPressMsg{Code: 'h', Mod: tea.ModAlt},
-			6, "Help",
+			7, "Help",
 		},
 	}
 
@@ -460,8 +465,8 @@ func TestApp_ToggleMenu_SwitchesToDifferentMenu(t *testing.T) {
 	if !updatedApp.menubar.IsActive() {
 		t.Error("menu should still be active")
 	}
-	if updatedApp.menubar.Cursor() != 2 {
-		t.Errorf("menu cursor = %d, want 2 (Accounts)", updatedApp.menubar.Cursor())
+	if updatedApp.menubar.Cursor() != 3 {
+		t.Errorf("menu cursor = %d, want 3 (Accounts)", updatedApp.menubar.Cursor())
 	}
 }
 
