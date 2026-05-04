@@ -26,17 +26,3 @@ func newThemeCmd() *cobra.Command {
 	cmd.AddCommand(newThemeGenerateFromWalCmd())
 	return cmd
 }
-
-// newThemeListCmd is a stub; TH-037 replaces this with the real
-// implementation in internal/cli/theme_list.go.
-func newThemeListCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "list",
-		Short: "List available themes (built-in and user)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.PrintErrln("theme list: not yet implemented")
-			return nil
-		},
-	}
-}

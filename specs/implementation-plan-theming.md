@@ -247,7 +247,7 @@ First user-facing way to switch themes.
 
 ## Phase 11: `tmoney theme list`
 
-- [ ] **TH-037 — `tmoney theme list` subcommand**
+- [x] **TH-037 — `tmoney theme list` subcommand**
   - RED: test that `tmoney theme list` with a fixture user dir prints a table with columns `ID`, `SOURCE`, `NAME`, `ACTIVE`. Built-ins appear with source `built-in`; user themes with source `user`. The current theme (read from config) has `*` in the ACTIVE column.
   - GREEN: implement `internal/cli/theme_list.go`. Uses Go's `text/tabwriter` for column alignment.
 
