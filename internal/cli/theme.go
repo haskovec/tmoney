@@ -40,17 +40,3 @@ func newThemeListCmd() *cobra.Command {
 		},
 	}
 }
-
-// newThemeGenerateFromWalCmd is a stub; TH-036 replaces this with the
-// real implementation in internal/cli/theme_wal.go.
-func newThemeGenerateFromWalCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "generate-from-wal",
-		Short: "Generate a theme TOML file from the pywal cache",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.PrintErrln("theme generate-from-wal: not yet implemented")
-			return nil
-		},
-	}
-}

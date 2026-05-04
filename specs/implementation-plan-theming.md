@@ -237,7 +237,7 @@ First user-facing way to switch themes.
   - RED: test `tmoney theme --help` lists `list` and `generate-from-wal` as subcommands.
   - GREEN: implement `internal/cli/theme.go` registering the `theme` parent subcommand on the root.
 
-- [ ] **TH-036 — `tmoney theme generate-from-wal` subcommand**
+- [x] **TH-036 — `tmoney theme generate-from-wal` subcommand**
   - RED: test invocations:
     - default writes to `~/.config/tmoney/themes/wal.toml` (use a temp HOME for the test).
     - `--output -` writes to stdout.
