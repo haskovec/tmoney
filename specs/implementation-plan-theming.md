@@ -210,9 +210,9 @@ First user-facing way to switch themes.
 
 ## Phase 9: Error Surfacing
 
-- [ ] **TH-030 — Log file infrastructure**
+- [x] **TH-030 — Log file infrastructure**
   - RED: test `TestLogTheme_AppendsEntries` writes two issues, reads the file back, asserts both timestamped lines are present.
-  - GREEN: introduce `internal/log/` package with `LogPath()` returning `~/.config/tmoney/log.txt` (XDG-aware) and `Append(category, message string) error`. Append-only, plain text, RFC3339 timestamps.
+  - GREEN: introduce `internal/applog/` package with `LogPath()` returning `~/.config/tmoney/log.txt` (XDG-aware) and `Append(category, message string) error`. Append-only, plain text, RFC3339 timestamps. (Directory/package named `applog` instead of `log` to avoid shadowing the stdlib.)
 
 - [ ] **TH-031 — Status-bar toast component**
   - RED: test that adding a toast to the status bar renders in the status bar area for the configured duration, then disappears on the next render after the timeout.
