@@ -1,5 +1,7 @@
 # Theme System Specification
 
+> **Status (2026-05-04):** v1 implemented. The three built-in themes (`default`, `turbo-vision`, `light`), the TOML parser with per-slot fallback, the user theme directory at `~/.config/tmoney/themes/`, the View → Theme menu with live-swap, config persistence, the status-bar toast + `~/.config/tmoney/log.txt` error surface, and the `tmoney theme list` / `tmoney theme generate-from-wal` subcommands are all shipped. Items in the **Future Work** / **Non-goals** sections (solid `desktop.bg` painting, OSC color queries, per-region border styles, file-watch auto-reload, adaptive light/dark, `tmoney theme show|validate`) remain explicitly deferred. Implementation tracking lives in [`implementation-plan-theming.md`](implementation-plan-theming.md).
+
 ## Overview
 
 TMoney's TUI currently uses a single hard-coded color palette in `internal/tui/styles.go`. This spec defines a skinnable theme system that lets users choose between built-in themes (including a faithful Turbo Vision look) and define their own theme files. A pywal helper subcommand generates a theme from the user's system color scheme for Omarchy/pywal users.

@@ -1,5 +1,7 @@
 # CLI Router Specification
 
+> **Status (2026-05-04):** scaffold implemented. `main.go` lives at the module root; command code is in `internal/cli/`; the Cobra root command dispatches `tmoney version`, `tmoney theme list`, and `tmoney theme generate-from-wal` natively while routing every other invocation to the legacy `--flag` handler unchanged. The remaining ~50 verbs (`--add-account`, `--backup`, `--import`, …) have **not** been migrated yet — see the **Migration Strategy** section below for the planned batch sequencing.
+
 ## Overview
 
 TMoney's current CLI exposes ~50 verbs as flat top-level flags (`--add-account`, `--backup`, `--buy`, `--import`, etc.) parsed in `cmd/tmoney/main.go`'s `run()` function. This specification replaces that flag-based dispatch with a Cobra-based subcommand router using a noun-verb taxonomy (`tmoney account add`, `tmoney db backup`, `tmoney investment buy`).

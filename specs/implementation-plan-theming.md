@@ -262,7 +262,7 @@ First user-facing way to switch themes.
     - The behavior on a misconfigured theme (toast + log file).
   - Add a `## CLI` section update mentioning the noun-verb subcommand structure is in progress; for now, `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal` are the only Cobra-native commands; legacy `--flag` style still works for everything else.
 
-- [ ] **TH-039 — Mark spec files as implemented**
+- [x] **TH-039 — Mark spec files as implemented**
   - GREEN: add a status note at the top of `specs/theming.md` and `specs/cli-router.md` indicating the v1 / scaffold portions are implemented and pointing to the next migration batches.
 
 ---
