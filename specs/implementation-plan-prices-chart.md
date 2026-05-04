@@ -210,8 +210,9 @@ Strategy: do the upgrade in a single working branch but as small, individually-r
 
 ## Phase 8: Documentation
 
-- [ ] **PC-017 — README update**
+- [x] **PC-017 — README update**
   - GREEN: add ~2 lines under the README's `#### Prices` section noting that on terminals where the prices content area is at least 120 columns wide, a chart panel renders to the right of the list showing the highlighted ticker's full price history. No new keyboard shortcut.
+  - Completed 2026-05-03. Inserted a 4-line paragraph between the existing intro paragraph and the keyboard table in `README.md`'s `#### Prices` section: states the 120-column threshold, that the chart renders to the right of the list, that it shows the highlighted ticker's full price history, and explicitly that there is no new keyboard shortcut (the panel tracks the cursor automatically). Docs-only change — no code or test modifications. Tests: `go fix ./...`, `go fmt ./...` clean (no-op); `go build ./...` clean; `go test ./...` 4779 pass / 0 fail across 23 packages (held vs PC-016 baseline of 4779); `golangci-lint run` 0 issues. Coverage held at the PC-016 baseline exactly across all 23 packages: `cmd/tmoney` 82.7% · `internal/account` 86.1% · `internal/app` 75.7% · `internal/backup` 76.3% · `internal/category` 78.6% · `internal/config` 75.0% · `internal/db` 68.9% · `internal/dberrors` 0.0% · `internal/dbutil` 0.0% · `internal/imexport` 87.7% · `internal/investment` 81.1% · `internal/payee` 83.8% · `internal/price` 87.2% · `internal/reconciliation` 72.5% · `internal/report` 83.0% · `internal/scheduled` 76.9% · `internal/security` 89.6% · `internal/transaction` 77.1% · `internal/transferlink` 0.0% · `internal/tui` 69.2% · `internal/types` 64.6% · `internal/undo` 88.0% · `tests/integration` no statements. **Plan complete: all 17 PC-* items + 10 PC-U* items done.**
 
 ---
 

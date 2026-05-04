@@ -220,6 +220,11 @@ with prices, showing ticker, name, latest price, and the date of that
 latest price. Drill into a ticker to see its full price history; press
 Esc to return to the list.
 
+When the prices content area is at least 120 columns wide, a chart
+panel renders to the right of the list showing the highlighted
+ticker's full price history. No keyboard shortcut — it tracks the
+cursor automatically.
+
 | Key | Action |
 |-----|--------|
 | `Enter` | (List) View history for selected ticker · (History) Edit selected price |
