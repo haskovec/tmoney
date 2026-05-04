@@ -214,7 +214,7 @@ First user-facing way to switch themes.
   - RED: test `TestLogTheme_AppendsEntries` writes two issues, reads the file back, asserts both timestamped lines are present.
   - GREEN: introduce `internal/applog/` package with `LogPath()` returning `~/.config/tmoney/log.txt` (XDG-aware) and `Append(category, message string) error`. Append-only, plain text, RFC3339 timestamps. (Directory/package named `applog` instead of `log` to avoid shadowing the stdlib.)
 
-- [ ] **TH-031 — Status-bar toast component**
+- [x] **TH-031 — Status-bar toast component**
   - RED: test that adding a toast to the status bar renders in the status bar area for the configured duration, then disappears on the next render after the timeout.
   - GREEN: extend `StatusBar` with an optional transient message field plus a tea.Cmd that clears it after ~5s. Toast persists across re-renders within its window.
 

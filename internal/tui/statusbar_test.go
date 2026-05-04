@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/lipgloss/v2"
 )
@@ -292,5 +293,135 @@ func TestNotificationLevel_Values(t *testing.T) {
 	}
 	if NotificationAlert != 1 {
 		t.Errorf("NotificationAlert = %d, want 1", NotificationAlert)
+	}
+}
+
+// TestStatusBar_NewBar_NoToast asserts a fresh status bar has no toast.
+func TestStatusBar_NewBar_NoToast(t *testing.T) {
+	sb := NewStatusBar()
+	if sb.Toast() != nil {
+		t.Errorf("Toast() = %+v, want nil", sb.Toast())
+	}
+}
+
+// TestStatusBar_SetToast verifies SetToast / Toast / ClearToast.
+func TestStatusBar_SetToast(t *testing.T) {
+	sb := NewStatusBar()
+
+	sb.SetToast("theme load failed", NotificationAlert)
+	got := sb.Toast()
+	if got == nil {
+		t.Fatal("Toast() = nil, want non-nil after SetToast")
+	}
+	if got.Text != "theme load failed" {
+		t.Errorf("Toast().Text = %q, want %q", got.Text, "theme load failed")
+	}
+	if got.Level != NotificationAlert {
+		t.Errorf("Toast().Level = %d, want %d", got.Level, NotificationAlert)
+	}
+
+	sb.ClearToast()
+	if sb.Toast() != nil {
+		t.Errorf("Toast() = %+v after ClearToast, want nil", sb.Toast())
+	}
+}
+
+// TestStatusBar_SetToast_Replaces verifies a second SetToast replaces
+// the first rather than queuing.
+func TestStatusBar_SetToast_Replaces(t *testing.T) {
+	sb := NewStatusBar()
+
+	sb.SetToast("first", NotificationInfo)
+	sb.SetToast("second", NotificationAlert)
+
+	got := sb.Toast()
+	if got == nil || got.Text != "second" {
+		t.Errorf("Toast().Text = %v, want %q (replacement)", got, "second")
+	}
+	if got != nil && got.Level != NotificationAlert {
+		t.Errorf("Toast().Level = %d, want %d", got.Level, NotificationAlert)
+	}
+}
+
+// TestStatusBar_Render_WithToast asserts the toast appears in rendered
+// output.
+func TestStatusBar_Render_WithToast(t *testing.T) {
+	sb := NewStatusBar()
+	sb.SetToast("Theme 'broken': 2 issues, see log", NotificationAlert)
+	styles := NewStyles()
+	styles.Resize(120, 24)
+
+	result := sb.Render(styles, 120)
+	stripped := stripAnsi(result)
+	if !strings.Contains(stripped, "Theme 'broken': 2 issues, see log") {
+		t.Errorf("Render() should contain toast text, got: %q", stripped)
+	}
+}
+
+// TestStatusBar_Render_ToastPersistsAcrossRenders confirms the toast
+// stays put across consecutive Render calls (no auto-clearing on
+// render).
+func TestStatusBar_Render_ToastPersistsAcrossRenders(t *testing.T) {
+	sb := NewStatusBar()
+	sb.SetToast("hello", NotificationInfo)
+	styles := NewStyles()
+	styles.Resize(80, 24)
+
+	for i := range 3 {
+		result := sb.Render(styles, 80)
+		stripped := stripAnsi(result)
+		if !strings.Contains(stripped, "hello") {
+			t.Errorf("render #%d missing toast: %q", i, stripped)
+		}
+	}
+}
+
+// TestStatusBar_Render_ToastOverridesNotifications asserts that while a
+// toast is set the notifications slot shows only the toast text. Once
+// cleared, the queued notifications resurface.
+func TestStatusBar_Render_ToastOverridesNotifications(t *testing.T) {
+	sb := NewStatusBar()
+	sb.AddNotification("3 scheduled due", NotificationAlert)
+	sb.SetToast("file saved", NotificationInfo)
+	styles := NewStyles()
+	styles.Resize(120, 24)
+
+	result := sb.Render(styles, 120)
+	stripped := stripAnsi(result)
+
+	if !strings.Contains(stripped, "file saved") {
+		t.Errorf("Render() should contain toast text, got: %q", stripped)
+	}
+	if strings.Contains(stripped, "3 scheduled due") {
+		t.Errorf("Render() should NOT contain notification while toast is set, got: %q", stripped)
+	}
+
+	sb.ClearToast()
+	result = sb.Render(styles, 120)
+	stripped = stripAnsi(result)
+	if !strings.Contains(stripped, "3 scheduled due") {
+		t.Errorf("Render() should contain notification after ClearToast, got: %q", stripped)
+	}
+	if strings.Contains(stripped, "file saved") {
+		t.Errorf("Render() should NOT contain toast text after ClearToast, got: %q", stripped)
+	}
+}
+
+// TestClearToastCmd_FiresClearMsg drives the tea.Cmd produced by
+// ClearToastCmd with a tiny ToastDuration so the test doesn't wait the
+// real ~5s; the resulting message must be a ToastClearMsg.
+func TestClearToastCmd_FiresClearMsg(t *testing.T) {
+	orig := ToastDuration
+	ToastDuration = 1 * time.Millisecond
+	t.Cleanup(func() { ToastDuration = orig })
+
+	cmd := ClearToastCmd()
+	if cmd == nil {
+		t.Fatal("ClearToastCmd() returned nil")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(ToastClearMsg); !ok {
+		t.Errorf("cmd() = %T, want ToastClearMsg", msg)
 	}
 }

@@ -2,12 +2,19 @@ package tui
 
 import (
 	"strings"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
 // maxNotifications is the maximum number of notifications displayed in the status bar.
 const maxNotifications = 3
+
+// ToastDuration is how long a toast stays visible before auto-clearing.
+// Phase 9 (TH-031): the user-facing default is ~5s; tests override the
+// var below to avoid waiting in real time.
+var ToastDuration = 5 * time.Second
 
 // Notification represents an alert or notification shown in the status bar.
 type Notification struct {
@@ -25,6 +32,27 @@ const (
 	NotificationAlert
 )
 
+// Toast is a transient message shown in place of regular notifications
+// for a short window (see ToastDuration). Used by Phase 9 to surface
+// theme-load issues and similar one-shot events.
+type Toast struct {
+	Text  string
+	Level NotificationLevel
+}
+
+// ToastClearMsg signals the status bar should clear its current toast.
+// Emitted by the tea.Cmd returned from ClearToastCmd after ToastDuration.
+type ToastClearMsg struct{}
+
+// ClearToastCmd returns a tea.Cmd that fires a ToastClearMsg after
+// ToastDuration. Pair with StatusBar.SetToast: set the toast, return
+// this cmd, and let the message handler call StatusBar.ClearToast.
+func ClearToastCmd() tea.Cmd {
+	return tea.Tick(ToastDuration, func(_ time.Time) tea.Msg {
+		return ToastClearMsg{}
+	})
+}
+
 // StatusBar manages the bottom status bar state and rendering.
 type StatusBar struct {
 	// Context is the current view/context label (e.g., "Dashboard", "Checking").
@@ -35,6 +63,11 @@ type StatusBar struct {
 
 	// Notifications are alert messages shown on the right side.
 	notifications []Notification
+
+	// toast is an optional transient message that takes the
+	// notifications slot until cleared. Notifications underneath
+	// remain queued and reappear once the toast is cleared.
+	toast *Toast
 }
 
 // NewStatusBar creates a new StatusBar with default state.
@@ -82,6 +115,23 @@ func (sb *StatusBar) ClearNotifications() {
 // Notifications returns the current notifications.
 func (sb *StatusBar) Notifications() []Notification {
 	return sb.notifications
+}
+
+// SetToast replaces the current toast with the given text and level.
+// While set, the toast is rendered in place of any pending notifications.
+func (sb *StatusBar) SetToast(text string, level NotificationLevel) {
+	sb.toast = &Toast{Text: text, Level: level}
+}
+
+// ClearToast removes the active toast so queued notifications can be
+// rendered again.
+func (sb *StatusBar) ClearToast() {
+	sb.toast = nil
+}
+
+// Toast returns the active toast or nil.
+func (sb *StatusBar) Toast() *Toast {
+	return sb.toast
 }
 
 // Render renders the status bar at the given width using the provided styles.
@@ -154,7 +204,17 @@ func (sb *StatusBar) renderContext(styles Styles) string {
 }
 
 // renderNotifications renders the notification section (right side).
+// An active toast takes precedence over the queued notifications: while
+// the toast is set, only the toast text appears in this slot.
 func (sb *StatusBar) renderNotifications(styles Styles) string {
+	if sb.toast != nil {
+		text := sb.toast.Text
+		if sb.toast.Level == NotificationAlert {
+			text = styles.Alert.Render(text)
+		}
+		return text
+	}
+
 	if len(sb.notifications) == 0 {
 		return ""
 	}

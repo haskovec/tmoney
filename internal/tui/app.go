@@ -932,6 +932,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case ToastClearMsg:
+		// Auto-clear after ToastDuration. If a newer toast was set in
+		// the meantime, it carries its own clear cmd, so dropping the
+		// current toast here is safe — the next clear will fire when
+		// that one's timer expires.
+		a.statusbar.ClearToast()
+		return a, nil
+
 	case dashboardLoadedMsg:
 		a.dashboard = msg.data
 		// Auto-expand investment accounts that have holdings

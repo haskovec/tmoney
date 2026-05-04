@@ -5284,3 +5284,32 @@ func TestNewApp_UnknownThemeFallsBackToDefault(t *testing.T) {
 			got, wantHeaderFg)
 	}
 }
+
+// TestApp_Update_ToastClearMsg covers TH-031's clearing leg: a
+// ToastClearMsg (delivered by the tea.Cmd ClearToastCmd produces) must
+// drop whatever toast is currently set on the status bar. We pre-set a
+// toast on a minimally-constructed App, dispatch the message through
+// Update, and assert the status bar is back to no-toast state.
+func TestApp_Update_ToastClearMsg(t *testing.T) {
+	a := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		styles:      NewStyles(),
+		width:       80,
+		height:      24,
+	}
+	a.statusbar.SetToast("hello", NotificationInfo)
+	if a.statusbar.Toast() == nil {
+		t.Fatal("precondition: SetToast did not register a toast")
+	}
+
+	model, cmd := a.Update(ToastClearMsg{})
+	if cmd != nil {
+		t.Errorf("Update(ToastClearMsg) cmd = %T, want nil", cmd)
+	}
+	got := model.(*App)
+	if got.statusbar.Toast() != nil {
+		t.Errorf("Toast() = %+v after ToastClearMsg, want nil", got.statusbar.Toast())
+	}
+}
