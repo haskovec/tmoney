@@ -1,17 +1,42 @@
 package tui
 
-import "github.com/haskovec/tmoney/internal/tui/theme"
+import (
+	"sort"
+
+	"github.com/haskovec/tmoney/internal/tui/theme"
+)
 
 // buildThemeMenuItems returns the View → Theme dropdown contents:
-// one entry per built-in theme, in the order BuiltinIDs() returns
-// them. The entry whose ID matches activeID is prefixed with "✓ ";
-// the others use a 2-space prefix so the IDs stay column-aligned in
-// the dropdown.
+// every embedded built-in plus every theme discovered in the user
+// theme directory, deduped by ID and sorted alphabetically. The entry
+// whose ID matches activeID is prefixed with "✓ "; the others use a
+// 2-space prefix so the IDs stay column-aligned in the dropdown.
 //
-// User-directory themes are folded in by Phase 7 (TH-027); this build
-// covers built-ins only.
+// User-directory themes whose ID matches a built-in (e.g. a user
+// `default.toml`) appear once: theme.LoadTheme already prefers the
+// user file at load time, so showing the ID twice would only be
+// noise. A failure to read the user dir falls back to built-ins
+// only — first-run users with no themes installed should still see
+// the menu work.
 func buildThemeMenuItems(activeID string) []menuItem {
-	ids := theme.BuiltinIDs()
+	seen := map[string]bool{}
+	ids := make([]string, 0)
+	for _, id := range theme.BuiltinIDs() {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if userIDs, err := theme.DiscoverUserThemes(); err == nil {
+		for _, id := range userIDs {
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	sort.Strings(ids)
+
 	items := make([]menuItem, 0, len(ids))
 	for _, id := range ids {
 		prefix := "  "

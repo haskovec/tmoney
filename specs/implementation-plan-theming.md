@@ -194,7 +194,7 @@ First user-facing way to switch themes.
   - RED: test `TestLoadTheme_UserOverride` — with a user dir containing `default.toml` (with a distinct color), `LoadTheme("default")` returns the user version, not the embedded one.
   - GREEN: implement `LoadTheme(id string) (*Theme, []Issue, error)` that checks the user dir first, falls back to embedded.
 
-- [ ] **TH-027 — Submenu lists user themes alongside built-ins**
+- [x] **TH-027 — Submenu lists user themes alongside built-ins**
   - RED: test that the View → Theme submenu, given a fixture user dir, lists both built-ins and user themes. Active theme marker still works.
   - GREEN: update Phase 6's submenu builder to include user themes.
 
