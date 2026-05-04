@@ -1,0 +1,52 @@
+name = "Turbo Vision"
+description = "Classic Borland Turbo Vision blue + double borders"
+
+border_style = "double"
+
+# Desktop
+desktop.bg = ""
+
+# Menu bar
+menubar.fg = "#000000"
+menubar.bg = "#aaaaaa"
+menubar.active.fg = "#ffffff"
+menubar.active.bg = "#000000"
+menubar.shortcut.fg = "#aa0000"
+menubar.shortcut.underline = false
+
+# Status bar
+statusbar.fg = "#000000"
+statusbar.bg = "#aaaaaa"
+statusbar.shortcut.fg = "#aa0000"
+statusbar.shortcut.underline = false
+
+# Windows
+window.bg = "#0000aa"
+window.fg = "#aaaaaa"
+window.border.fg = "#ffffff"
+window.title.fg = "#ffff55"
+
+# Dialogs
+dialog.bg = "#aaaaaa"
+dialog.fg = "#000000"
+dialog.border.fg = "#000000"
+dialog.title.fg = "#000000"
+
+# Tables
+table.header.fg = "#ffff55"
+table.row.fg = "#aaaaaa"
+table.selected.fg = "#000000"
+table.selected.bg = "#00aaaa"
+
+# Semantic text
+text.positive = "#55ff55"
+text.negative = "#ff5555"
+text.alert = "#ffff55"
+text.muted = "#5555ff"
+text.title = "#ffffff"
+text.error = "#ff5555"
+
+# Symbols
+symbols.menu_separator = " │ "
+symbols.focus_indicator = "▶ "
+symbols.checkmark = "✓"

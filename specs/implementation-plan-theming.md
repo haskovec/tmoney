@@ -91,33 +91,33 @@ This phase introduces the Cobra-based command router and moves `main.go` to the 
 
 Pure logic, no UI. Builds the schema definition, TOML parser, and validation/fallback machinery.
 
-- [ ] **TH-007 — `internal/tui/theme/theme.go` package skeleton**
+- [x] **TH-007 — `internal/tui/theme/theme.go` package skeleton**
   - GREEN: create new package `internal/tui/theme`. Define the `Theme` struct with all 27 color slots, `BorderStyle` enum (`single`/`double`/`rounded`/`thick`), symbol fields, and shortcut display options. Include a `defaultTheme()` constructor returning a `Theme` populated with the existing `Color*` values from `internal/tui/styles.go` (this is the fallback used when slots are missing).
   - Test: `TestDefaultTheme_AllSlotsPopulated` — every field on the struct is non-zero (or the documented sentinel for transparent backgrounds).
 
-- [ ] **TH-008 — TOML parser: valid input**
+- [x] **TH-008 — TOML parser: valid input**
   - RED: test `TestParse_ValidTheme` parses a fixture `testdata/turbo-vision-min.toml` (full Turbo Vision theme as documented in the spec) and asserts every slot has the expected value.
   - GREEN: add `github.com/BurntSushi/toml` dependency. Implement `Parse(data []byte) (*Theme, []Issue, error)` in `theme/parser.go`. Returns the parsed theme, a list of non-fatal `Issue`s, and an error (only for unparseable TOML).
 
-- [ ] **TH-009 — TOML parser: malformed values fall back per-slot**
+- [x] **TH-009 — TOML parser: malformed values fall back per-slot**
   - RED: test `TestParse_MalformedHex` with a theme containing `text.negative = "not-a-color"` — assert the parsed theme has `text.negative` equal to the default theme's value, and one `Issue` is reported with the slot name.
   - Test `TestParse_OutOfRange256` with `text.muted = "999"` — same expectation.
   - Test `TestParse_BadBorderStyle` with `border_style = "wavy"` — falls back to `single`, issue reported.
   - GREEN: implement value validation. Hex regex `^#[0-9a-fA-F]{6}$`. ANSI 256: integer 0-255 from string. `border_style` must be one of the four enum values. On any parse failure for a slot, copy the default theme's value and append an `Issue`.
 
-- [ ] **TH-010 — TOML parser: unknown keys logged, ignored**
+- [x] **TH-010 — TOML parser: unknown keys logged, ignored**
   - RED: test `TestParse_UnknownKey` with a theme containing `windows.bg = "#000"` (typo). Assert the theme still loads and an `Issue` of kind `IssueUnknownKey` lists the offending key.
   - GREEN: BurntSushi/toml's `MetaData.Undecoded()` lists keys that didn't match any struct field; iterate it and emit issues.
 
-- [ ] **TH-011 — TOML parser: missing slots fall back to default**
+- [x] **TH-011 — TOML parser: missing slots fall back to default**
   - RED: test `TestParse_MinimalTheme` with `name = "Just Red"\ntext.negative = "#ff0000"` — assert all slots except `text.negative` and `name` equal the default theme's values.
   - GREEN: parser starts from `defaultTheme()` and selectively overwrites slots that the TOML provides.
 
-- [ ] **TH-012 — TOML parser: empty `*.bg` slots preserved as transparent**
+- [x] **TH-012 — TOML parser: empty `*.bg` slots preserved as transparent**
   - RED: test `TestParse_EmptyBackground` with `window.bg = ""` — assert the parsed theme's `Window.Bg` is the sentinel value meaning "transparent" (e.g., `lipgloss.Color("")` or a typed nullable). Distinct from "key not present" which means "fall back to default."
   - GREEN: model background slots as `*string` or use a sentinel.
 
-- [ ] **TH-013 — TOML parser: name fallback to filename stem**
+- [x] **TH-013 — TOML parser: name fallback to filename stem**
   - RED: test `TestParseFromFile_NoName` parses a theme file with no `name` field and asserts the returned theme's `Name` is the filename stem.
   - GREEN: add `ParseFromFile(path string) (*Theme, []Issue, error)` that reads the file and falls back to the stem if `name` is empty.
 
