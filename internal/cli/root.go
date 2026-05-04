@@ -52,6 +52,7 @@ var cobraKnownFlags = map[string]bool{
 // in the command line cannot misroute a real subcommand call.
 var cobraSubcommands = map[string]bool{
 	"version": true,
+	"theme":   true,
 }
 
 // isLegacyInvocation reports whether args contains any `--flag` that
@@ -103,5 +104,6 @@ func newRootCmd() *cobra.Command {
 	}
 	cmd.PersistentFlags().StringVarP(&fileFlag, "file", "f", "", "Database file path")
 	cmd.AddCommand(newVersionCmd())
+	cmd.AddCommand(newThemeCmd())
 	return cmd
 }

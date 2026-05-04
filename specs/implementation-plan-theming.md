@@ -233,7 +233,7 @@ First user-facing way to switch themes.
   - RED: test `TestWalToTheme_GeneratesExpectedTOML` runs the converter on the fixture and asserts the produced TOML contains the expected slot mappings per the table in `specs/theming.md`. Includes the comment header.
   - GREEN: implement `walToThemeTOML(walColors *WalColors, sourcePath string, ts time.Time) string`. Plain string concatenation is fine for output; we control the format.
 
-- [ ] **TH-035 — `tmoney theme` parent command**
+- [x] **TH-035 — `tmoney theme` parent command**
   - RED: test `tmoney theme --help` lists `list` and `generate-from-wal` as subcommands.
   - GREEN: implement `internal/cli/theme.go` registering the `theme` parent subcommand on the root.
 
