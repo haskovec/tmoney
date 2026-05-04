@@ -156,7 +156,7 @@ Promote the ~12 inline `lipgloss.NewStyle().Foreground(Color*)` call sites to fi
 
 Wire `applyTheme` and `reloadTheme` so theme changes propagate to a running TUI.
 
-- [ ] **TH-019 — `Styles.applyTheme(theme *Theme)`**
+- [x] **TH-019 — `Styles.applyTheme(theme *Theme)`**
   - RED: test `TestStyles_ApplyTheme` constructs a `Styles`, calls `applyTheme(turboVisionTheme)`, then asserts `Styles.Header.GetForeground()` returns the Turbo Vision header foreground color and `Styles.SelectedRow.GetBackground()` returns the Turbo Vision selected background.
   - GREEN: implement `(*Styles).applyTheme(t *theme.Theme)` which re-runs the equivalent of `initBaseStyles()` but pulling values from the theme. The package-level `Color*` vars stay (used as the in-code reference for the *current* theme so inline call sites that haven't been refactored — there shouldn't be any after Phase 4 — would still work; defensive).
 

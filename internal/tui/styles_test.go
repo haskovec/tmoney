@@ -3,6 +3,9 @@ package tui
 import (
 	"image/color"
 	"testing"
+
+	"charm.land/lipgloss/v2"
+	"github.com/haskovec/tmoney/internal/tui/theme"
 )
 
 func TestGetLayoutMode(t *testing.T) {
@@ -221,6 +224,101 @@ func TestColorConstants(t *testing.T) {
 				t.Errorf("%s should not be nil", tt.name)
 			}
 		})
+	}
+}
+
+// restoreDefaultTheme reapplies the embedded default theme. Use as a
+// t.Cleanup so a test that calls applyTheme doesn't leak palette state
+// into the package-level Color* vars and confuse later tests.
+func restoreDefaultTheme(t *testing.T) {
+	t.Helper()
+	def, _, err := theme.LoadBuiltin("default")
+	if err != nil {
+		t.Fatalf("restoreDefaultTheme: load default: %v", err)
+	}
+	s := NewStyles()
+	s.applyTheme(def)
+}
+
+// TestStyles_ApplyTheme verifies that applying a theme rebuilds the
+// Styles fields from the theme's slot values. Specifically: turbo-vision
+// has menubar.fg = "#000000" and table.selected.bg = "#00aaaa", and
+// after applyTheme those colors are reflected on the Header and
+// SelectedRow styles. This is the load-bearing property the live-swap
+// mechanism in Phase 5 depends on.
+func TestStyles_ApplyTheme(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+
+	turbo, _, err := theme.LoadBuiltin("turbo-vision")
+	if err != nil {
+		t.Fatalf("LoadBuiltin: %v", err)
+	}
+
+	s := NewStyles()
+	s.applyTheme(turbo)
+
+	wantHeaderFg := lipgloss.Color("#000000")
+	if got := s.Header.GetForeground(); got != wantHeaderFg {
+		t.Errorf("Header.GetForeground() = %v, want %v", got, wantHeaderFg)
+	}
+
+	wantSelectedBg := lipgloss.Color("#00aaaa")
+	if got := s.SelectedRow.GetBackground(); got != wantSelectedBg {
+		t.Errorf("SelectedRow.GetBackground() = %v, want %v", got, wantSelectedBg)
+	}
+
+	// Turbo Vision: text.positive = "#55ff55"
+	wantPositive := lipgloss.Color("#55ff55")
+	if got := s.Positive.GetForeground(); got != wantPositive {
+		t.Errorf("Positive.GetForeground() = %v, want %v", got, wantPositive)
+	}
+
+	// Turbo Vision: window.border.fg = "#ffffff"
+	wantBorder := lipgloss.Color("#ffffff")
+	if got := s.OverlayBox.GetBorderTopForeground(); got != wantBorder {
+		t.Errorf("OverlayBox.GetBorderTopForeground() = %v, want %v", got, wantBorder)
+	}
+
+	// Turbo Vision: text.muted = "#5555ff" — Placeholder should follow.
+	wantMuted := lipgloss.Color("#5555ff")
+	if got := s.Placeholder.GetForeground(); got != wantMuted {
+		t.Errorf("Placeholder.GetForeground() = %v, want %v", got, wantMuted)
+	}
+}
+
+// TestStyles_ApplyTheme_DefaultRoundtrip applies the default theme and
+// asserts the package-level Color* vars match the values shipped by
+// styles.go. This protects against accidental drift between the
+// embedded `themes/default.toml` and the in-code defaults.
+func TestStyles_ApplyTheme_DefaultRoundtrip(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+
+	def, _, err := theme.LoadBuiltin("default")
+	if err != nil {
+		t.Fatalf("LoadBuiltin: %v", err)
+	}
+
+	s := NewStyles()
+	s.applyTheme(def)
+
+	cases := []struct {
+		name string
+		got  color.Color
+		want color.Color
+	}{
+		{"Header.fg", s.Header.GetForeground(), lipgloss.Color("15")},
+		{"Header.bg", s.Header.GetBackground(), lipgloss.Color("62")},
+		{"Positive.fg", s.Positive.GetForeground(), lipgloss.Color("34")},
+		{"Negative.fg", s.Negative.GetForeground(), lipgloss.Color("160")},
+		{"Alert.fg", s.Alert.GetForeground(), lipgloss.Color("214")},
+		{"StatusBar.fg", s.StatusBar.GetForeground(), lipgloss.Color("252")},
+		{"StatusBar.bg", s.StatusBar.GetBackground(), lipgloss.Color("236")},
+		{"SelectedRow.bg", s.SelectedRow.GetBackground(), lipgloss.Color("62")},
+	}
+	for _, c := range cases {
+		if c.got != c.want {
+			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
+		}
 	}
 }
 

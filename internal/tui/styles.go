@@ -1,6 +1,11 @@
 package tui
 
-import "charm.land/lipgloss/v2"
+import (
+	"image/color"
+
+	"charm.land/lipgloss/v2"
+	"github.com/haskovec/tmoney/internal/tui/theme"
+)
 
 // LayoutMode represents the responsive layout mode based on terminal width.
 type LayoutMode int
@@ -293,6 +298,43 @@ func (s *Styles) initBaseStyles() {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(ColorBorder).
 		Padding(1, 2)
+}
+
+// themeColor turns a theme slot string into a renderable color.
+// Empty input means "transparent / use the terminal default" and is
+// represented by lipgloss.NoColor{}.
+func themeColor(s string) color.Color {
+	if s == "" {
+		return lipgloss.NoColor{}
+	}
+	return lipgloss.Color(s)
+}
+
+// applyTheme reseeds the package-level Color* vars from t and rebuilds
+// every Style field in s from those vars. This is the live-swap entry
+// point: Phase 5's reloadTheme calls applyTheme followed by Resize so
+// the next render reflects the new palette.
+//
+// The Color* vars are kept up to date defensively — every theme-relevant
+// inline call site was promoted to a Styles field in TH-018, but if a
+// new inline slips in it will still see the active theme's color rather
+// than a stale boot-time value.
+func (s *Styles) applyTheme(t *theme.Theme) {
+	ColorPositive = themeColor(t.Text.Positive)
+	ColorNegative = themeColor(t.Text.Negative)
+	ColorPending = themeColor(t.Text.Muted)
+	ColorAlert = themeColor(t.Text.Alert)
+	ColorBorder = themeColor(t.Window.Border.Fg)
+	ColorHeaderFg = themeColor(t.Menubar.Fg)
+	ColorHeaderBg = themeColor(t.Menubar.Bg)
+	ColorStatusFg = themeColor(t.Statusbar.Fg)
+	ColorStatusBg = themeColor(t.Statusbar.Bg)
+	ColorSelectedFg = themeColor(t.Table.Selected.Fg)
+	ColorSelectedBg = themeColor(t.Table.Selected.Bg)
+	ColorMuted = themeColor(t.Text.Muted)
+	ColorTitle = themeColor(t.Text.Title)
+
+	s.initBaseStyles()
 }
 
 // Resize updates all width-dependent styles for the given terminal dimensions.
