@@ -27,6 +27,7 @@ import (
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transferlink"
+	"github.com/haskovec/tmoney/internal/tui/theme"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -4520,6 +4521,50 @@ func (a *App) performRedo() tea.Cmd {
 	return func() tea.Msg {
 		desc, err := a.undoManager.Redo()
 		return undoResultMsg{action: "Redo", description: desc, err: err}
+	}
+}
+
+// themeReloadFailedMsg is sent when reloadTheme cannot load or apply
+// the requested theme — the active palette and cfg are left untouched.
+// Phase 9 will surface this as a status-bar toast and a log entry; for
+// now the App.Update path ignores it. Keeping a stable message shape
+// here lets later phases plug in without changing reloadTheme's API.
+type themeReloadFailedMsg struct {
+	id  string
+	err error
+}
+
+// reloadTheme loads the theme with the given ID, applies it to
+// a.styles, persists the ID into a.cfg, and returns a tea.Cmd that
+// emits a tea.WindowSizeMsg matching the App's current dimensions so
+// the next render reflects the new palette.
+//
+// Built-in themes only for now; user-directory discovery is wired in
+// Phase 7 (TH-025/TH-026). On failure (unknown ID, parse error) the
+// styles, palette, and config are left unchanged and the returned cmd
+// emits a themeReloadFailedMsg.
+func (a *App) reloadTheme(id string) tea.Cmd {
+	t, _, err := theme.LoadBuiltin(id)
+	if err != nil {
+		return func() tea.Msg {
+			return themeReloadFailedMsg{id: id, err: err}
+		}
+	}
+
+	a.styles.applyTheme(t)
+	a.styles.Resize(a.width, a.height)
+
+	if a.cfg != nil {
+		a.cfg.Theme = id
+		// Save is best-effort: under `go test` it's a no-op, and
+		// in production a write failure is non-fatal — the theme is
+		// already live in memory.
+		_ = a.cfg.Save()
+	}
+
+	width, height := a.width, a.height
+	return func() tea.Msg {
+		return tea.WindowSizeMsg{Width: width, Height: height}
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
@@ -5023,5 +5024,93 @@ func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
 	// Log the first few lines for debugging
 	for i := 0; i < min(5, len(regLines)); i++ {
 		t.Logf("Line %d (width=%d): %q", i, lipgloss.Width(regLines[i]), stripAnsi(regLines[i]))
+	}
+}
+
+// TestApp_ReloadTheme_Builtin exercises the success path of TH-020:
+// loading a known built-in theme repaints app.styles, persists the ID
+// onto cfg, and returns a tea.Cmd that emits a tea.WindowSizeMsg with
+// the App's current dimensions so the next render reflects the new
+// palette.
+func TestApp_ReloadTheme_Builtin(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+
+	a := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		styles:      NewStyles(),
+		cfg:         &config.Config{},
+		width:       100,
+		height:      30,
+	}
+
+	cmd := a.reloadTheme("turbo-vision")
+	if cmd == nil {
+		t.Fatal("reloadTheme() returned nil cmd")
+	}
+
+	// (a) styles reflect Turbo Vision: header.fg = "#000000",
+	// table.selected.bg = "#00aaaa".
+	wantHeaderFg := lipgloss.Color("#000000")
+	if got := a.styles.Header.GetForeground(); got != wantHeaderFg {
+		t.Errorf("Header.GetForeground() = %v, want %v", got, wantHeaderFg)
+	}
+	wantSelectedBg := lipgloss.Color("#00aaaa")
+	if got := a.styles.SelectedRow.GetBackground(); got != wantSelectedBg {
+		t.Errorf("SelectedRow.GetBackground() = %v, want %v", got, wantSelectedBg)
+	}
+
+	// (c) cfg updated.
+	if a.cfg.Theme != "turbo-vision" {
+		t.Errorf("cfg.Theme = %q, want %q", a.cfg.Theme, "turbo-vision")
+	}
+
+	// (b) returned cmd produces a WindowSizeMsg matching current dimensions.
+	msg := cmd()
+	sz, ok := msg.(tea.WindowSizeMsg)
+	if !ok {
+		t.Fatalf("cmd() = %T, want tea.WindowSizeMsg", msg)
+	}
+	if sz.Width != 100 || sz.Height != 30 {
+		t.Errorf("WindowSizeMsg = %+v, want {Width:100 Height:30}", sz)
+	}
+}
+
+// TestApp_ReloadTheme_UnknownID exercises the failure path: an unknown
+// theme ID leaves cfg.Theme and the active palette untouched and the
+// returned cmd produces a themeReloadFailedMsg. Phase 9 will wire that
+// into a status-bar toast and a log entry; for now we just assert the
+// message kind so later wiring has a stable shape to plug into.
+func TestApp_ReloadTheme_UnknownID(t *testing.T) {
+	a := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		styles:      NewStyles(),
+		cfg:         &config.Config{Theme: "default"},
+		width:       80,
+		height:      24,
+	}
+
+	cmd := a.reloadTheme("nonexistent")
+	if cmd == nil {
+		t.Fatal("reloadTheme() returned nil cmd")
+	}
+
+	if a.cfg.Theme != "default" {
+		t.Errorf("cfg.Theme = %q, want %q (must not change on failure)", a.cfg.Theme, "default")
+	}
+
+	msg := cmd()
+	failed, ok := msg.(themeReloadFailedMsg)
+	if !ok {
+		t.Fatalf("cmd() = %T, want themeReloadFailedMsg", msg)
+	}
+	if failed.id != "nonexistent" {
+		t.Errorf("themeReloadFailedMsg.id = %q, want %q", failed.id, "nonexistent")
+	}
+	if failed.err == nil {
+		t.Error("themeReloadFailedMsg.err = nil, want non-nil error describing the failure")
 	}
 }

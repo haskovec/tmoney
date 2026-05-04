@@ -160,7 +160,7 @@ Wire `applyTheme` and `reloadTheme` so theme changes propagate to a running TUI.
   - RED: test `TestStyles_ApplyTheme` constructs a `Styles`, calls `applyTheme(turboVisionTheme)`, then asserts `Styles.Header.GetForeground()` returns the Turbo Vision header foreground color and `Styles.SelectedRow.GetBackground()` returns the Turbo Vision selected background.
   - GREEN: implement `(*Styles).applyTheme(t *theme.Theme)` which re-runs the equivalent of `initBaseStyles()` but pulling values from the theme. The package-level `Color*` vars stay (used as the in-code reference for the *current* theme so inline call sites that haven't been refactored — there shouldn't be any after Phase 4 — would still work; defensive).
 
-- [ ] **TH-020 — `App.reloadTheme(id string) tea.Cmd`**
+- [x] **TH-020 — `App.reloadTheme(id string) tea.Cmd`**
   - RED: test in `internal/tui/app_test.go`: construct an `App`, call `reloadTheme("turbo-vision")`, assert (a) `app.styles` reflects Turbo Vision colors, (b) the returned `tea.Cmd` produces a `tea.WindowSizeMsg` matching the current width/height, (c) `app.cfg.Theme == "turbo-vision"` and the cfg was saved.
   - Test failure path: `reloadTheme("nonexistent")` returns a cmd that produces a status-bar toast message (Phase 9 wires the actual toast; for now assert the message kind).
   - GREEN: implement `(*App).reloadTheme(id string) tea.Cmd`. Loads the theme (built-in first; user dir wired in Phase 7), calls `app.styles.applyTheme()`, sets `app.cfg.Theme = id`, calls `app.cfg.Save()` (best-effort), returns a cmd emitting `tea.WindowSizeMsg`.

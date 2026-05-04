@@ -22,6 +22,11 @@ type Config struct {
 	DefaultFile string   `json:"default_file,omitempty"`
 	RecentFiles []string `json:"recent_files,omitempty"`
 	LastFile    string   `json:"last_file,omitempty"`
+	// Theme is the ID of the active theme (e.g. "turbo-vision",
+	// "default", "light", or a user-installed theme stem). Empty
+	// means "use the embedded default" — old config files without
+	// this key keep working unchanged.
+	Theme string `json:"theme,omitempty"`
 
 	// path is the file path where this config is stored (not serialized).
 	path string `json:"-"`
