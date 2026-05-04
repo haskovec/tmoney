@@ -146,7 +146,7 @@ Author the three TOML files and embed them.
 
 Promote the ~12 inline `lipgloss.NewStyle().Foreground(Color*)` call sites to fields on `Styles` so live-swap propagates uniformly. This is mechanical but must be done before Phase 5 to avoid stale colors leaking into renders after a theme swap.
 
-- [ ] **TH-018 — Inventory and add `Styles` fields**
+- [x] **TH-018 — Inventory and add `Styles` fields**
   - RED: not applicable (refactor).
   - GREEN: walk the codebase, identify every inline `lipgloss.NewStyle().Foreground(...)` / `BorderForeground(...)` referencing a package-level `Color*` var. For each, either: (a) replace with an existing field on `Styles` if one fits, or (b) add a new field (e.g., `Styles.OverlayBox`, `Styles.Placeholder`) and use it. Inventory list in `specs/theming.md` is the starting point.
   - Run all existing tests; visual output must be unchanged (we're not changing colors yet, just where they're stored).

@@ -431,11 +431,11 @@ func (sd *SplitDialog) Render(styles Styles) string {
 
 		// Amount
 		amtFocused := rowFocused && sd.fieldFocus == splitFieldAmount
-		amtText := sd.renderTextField(&row.amountField, amtFocused, amtColW-4)
+		amtText := sd.renderTextField(styles, &row.amountField, amtFocused, amtColW-4)
 
 		// Memo
 		memoFocused := rowFocused && sd.fieldFocus == splitFieldMemo
-		memoText := sd.renderTextField(&row.memoField, memoFocused, memoColW-4)
+		memoText := sd.renderTextField(styles, &row.memoField, memoFocused, memoColW-4)
 
 		lines = append(lines, catText+" "+amtText+" "+memoText)
 	}
@@ -478,7 +478,7 @@ func (sd *SplitDialog) Render(styles Styles) string {
 }
 
 // renderTextField renders a text field inline with cursor support.
-func (sd *SplitDialog) renderTextField(f *Field, focused bool, width int) string {
+func (sd *SplitDialog) renderTextField(styles Styles, f *Field, focused bool, width int) string {
 	if width < 1 {
 		width = 1
 	}
@@ -517,7 +517,7 @@ func (sd *SplitDialog) renderTextField(f *Field, focused bool, width int) string
 			phRunes = phRunes[:width]
 		}
 		pad := max(width-len(phRunes), 0)
-		return "[ " + lipgloss.NewStyle().Foreground(ColorMuted).Render(ph) + strings.Repeat(" ", pad) + " ]"
+		return "[ " + styles.Placeholder.Render(ph) + strings.Repeat(" ", pad) + " ]"
 	}
 
 	displayRunes := runes

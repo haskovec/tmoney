@@ -180,6 +180,8 @@ func TestStyles_RenderDoesNotPanic(t *testing.T) {
 		{"Border", func() string { return s.Border.Render("box") }},
 		{"Bold", func() string { return s.Bold.Render("bold") }},
 		{"Muted", func() string { return s.Muted.Render("muted") }},
+		{"Placeholder", func() string { return s.Placeholder.Render("placeholder") }},
+		{"OverlayBox", func() string { return s.OverlayBox.Render("box") }},
 	}
 
 	for _, tt := range styles {
@@ -219,6 +221,30 @@ func TestColorConstants(t *testing.T) {
 				t.Errorf("%s should not be nil", tt.name)
 			}
 		})
+	}
+}
+
+// TestStyles_PlaceholderAndOverlayBox verifies the Placeholder and
+// OverlayBox fields are wired to the muted/border palette so live-swap
+// in Phase 5 will actually propagate the theme to field placeholders
+// and corporate-action overlay popups.
+func TestStyles_PlaceholderAndOverlayBox(t *testing.T) {
+	s := NewStyles()
+
+	if got := s.Placeholder.GetForeground(); got != ColorMuted {
+		t.Errorf("Placeholder foreground = %v, want %v", got, ColorMuted)
+	}
+	if got := s.OverlayBox.GetBorderTopForeground(); got != ColorBorder {
+		t.Errorf("OverlayBox border foreground = %v, want %v", got, ColorBorder)
+	}
+	if !s.OverlayBox.GetBorderTop() {
+		t.Error("OverlayBox should have a top border")
+	}
+	if got := s.OverlayBox.GetPaddingTop(); got != 1 {
+		t.Errorf("OverlayBox padding-top = %d, want 1", got)
+	}
+	if got := s.OverlayBox.GetPaddingLeft(); got != 2 {
+		t.Errorf("OverlayBox padding-left = %d, want 2", got)
 	}
 }
 

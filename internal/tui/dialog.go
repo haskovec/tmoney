@@ -698,7 +698,7 @@ func (d *Dialog) renderField(styles Styles, field *Field, focused bool, labelWid
 	var fieldContent string
 	switch field.Type {
 	case FieldText:
-		fieldContent = d.renderTextFieldContent(field, focused, available)
+		fieldContent = d.renderTextFieldContent(styles, field, focused, available)
 	case FieldSelect:
 		fieldContent = d.renderSelectFieldContent(styles, field, focused, available)
 	case FieldList:
@@ -725,7 +725,7 @@ func (d *Dialog) renderField(styles Styles, field *Field, focused bool, labelWid
 	return line
 }
 
-func (d *Dialog) renderTextFieldContent(field *Field, focused bool, available int) string {
+func (d *Dialog) renderTextFieldContent(styles Styles, field *Field, focused bool, available int) string {
 	bracketOverhead := 4 // "[ " and " ]"
 	fw := field.Width
 	maxFW := max(available-bracketOverhead, 1)
@@ -768,7 +768,7 @@ func (d *Dialog) renderTextFieldContent(field *Field, focused bool, available in
 			phRunes = phRunes[:fw]
 		}
 		pad := max(fw-len(phRunes), 0)
-		return "[ " + lipgloss.NewStyle().Foreground(ColorMuted).Render(ph) + strings.Repeat(" ", pad) + " ]"
+		return "[ " + styles.Placeholder.Render(ph) + strings.Repeat(" ", pad) + " ]"
 	}
 
 	displayRunes := runes

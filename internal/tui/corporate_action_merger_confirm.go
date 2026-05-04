@@ -6,7 +6,6 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -265,11 +264,5 @@ func (a *App) renderMergerConfirmation() string {
 
 	content := strings.Join(sections, "\n")
 
-	boxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorBorder).
-		Padding(1, 2).
-		Width(overlayWidth)
-
-	return boxStyle.Render(content)
+	return a.styles.OverlayBox.Width(overlayWidth).Render(content)
 }

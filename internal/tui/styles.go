@@ -129,6 +129,13 @@ type Styles struct {
 	// General text styles
 	Bold  lipgloss.Style
 	Muted lipgloss.Style
+
+	// Placeholder is used for placeholder text inside text fields.
+	Placeholder lipgloss.Style
+
+	// OverlayBox is the base style for overlay popups (corporate action
+	// history, merger confirmation, etc.). Callers add a .Width(...).
+	OverlayBox lipgloss.Style
 }
 
 // NewStyles creates a new Styles instance with default dimensions.
@@ -278,6 +285,14 @@ func (s *Styles) initBaseStyles() {
 
 	s.Muted = lipgloss.NewStyle().
 		Foreground(ColorMuted)
+
+	s.Placeholder = lipgloss.NewStyle().
+		Foreground(ColorMuted)
+
+	s.OverlayBox = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorBorder).
+		Padding(1, 2)
 }
 
 // Resize updates all width-dependent styles for the given terminal dimensions.
