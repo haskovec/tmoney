@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/applog"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/investment"
@@ -5090,6 +5092,10 @@ func TestApp_ReloadTheme_Builtin(t *testing.T) {
 // into a status-bar toast and a log entry; for now we just assert the
 // message kind so later wiring has a stable shape to plug into.
 func TestApp_ReloadTheme_UnknownID(t *testing.T) {
+	// Isolate the applog write so the test doesn't pollute the user's
+	// real ~/.config/tmoney/log.txt — TH-032 logs theme failures.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
 	a := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
@@ -5109,10 +5115,9 @@ func TestApp_ReloadTheme_UnknownID(t *testing.T) {
 		t.Errorf("cfg.Theme = %q, want %q (must not change on failure)", a.cfg.Theme, "default")
 	}
 
-	msg := cmd()
-	failed, ok := msg.(themeReloadFailedMsg)
+	failed, ok := findMsgInBatch[themeReloadFailedMsg](cmd)
 	if !ok {
-		t.Fatalf("cmd() = %T, want themeReloadFailedMsg", msg)
+		t.Fatalf("themeReloadFailedMsg not found in cmd output")
 	}
 	if failed.id != "nonexistent" {
 		t.Errorf("themeReloadFailedMsg.id = %q, want %q", failed.id, "nonexistent")
@@ -5120,6 +5125,35 @@ func TestApp_ReloadTheme_UnknownID(t *testing.T) {
 	if failed.err == nil {
 		t.Error("themeReloadFailedMsg.err = nil, want non-nil error describing the failure")
 	}
+}
+
+// findMsgInBatch invokes cmd, then if the result is a tea.BatchMsg it
+// invokes each contained Cmd and returns the first message that
+// matches type T. If cmd's direct result is already a T, returns it.
+// Useful for tests that need to dig a specific message out of a
+// reloadTheme-style batched response.
+func findMsgInBatch[T any](cmd tea.Cmd) (T, bool) {
+	var zero T
+	if cmd == nil {
+		return zero, false
+	}
+	msg := cmd()
+	if v, ok := msg.(T); ok {
+		return v, true
+	}
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return zero, false
+	}
+	for _, c := range batch {
+		if c == nil {
+			continue
+		}
+		if v, ok := c().(T); ok {
+			return v, true
+		}
+	}
+	return zero, false
 }
 
 // TestApp_HandleMenuAction_LoadTheme covers TH-023: dispatching
@@ -5261,9 +5295,12 @@ func TestNewApp_AppliesPersistedTheme(t *testing.T) {
 // fallback behavior: when cfg.Theme names a theme that no longer
 // exists (e.g. a user-installed theme that was deleted), NewApp must
 // not crash and must leave the styles on the embedded default palette.
-// Phase 9 wires the toast/log surfacing of the failure.
+// TH-032 also surfaces the failure as a toast + log entry.
 func TestNewApp_UnknownThemeFallsBackToDefault(t *testing.T) {
 	t.Cleanup(func() { restoreDefaultTheme(t) })
+	// Isolate the applog write triggered by TH-032's failure surfacing
+	// so the test doesn't pollute the user's real config dir.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "newapp_unknown_theme.tdb")
@@ -5311,5 +5348,228 @@ func TestApp_Update_ToastClearMsg(t *testing.T) {
 	got := model.(*App)
 	if got.statusbar.Toast() != nil {
 		t.Errorf("Toast() = %+v after ToastClearMsg, want nil", got.statusbar.Toast())
+	}
+}
+
+// TestApp_ReloadTheme_LogsAndToastsOnIssues covers TH-032's happy path:
+// loading a user-dir theme that contains a malformed slot value should
+// (a) still apply the partially-recovered theme, (b) append the parse
+// issue to the applog file, and (c) set a status-bar toast naming the
+// theme and counting the issues. Successful loads with no issues
+// produce no toast (asserted in a sibling test).
+func TestApp_ReloadTheme_LogsAndToastsOnIssues(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	themesDir := filepath.Join(tmp, "tmoney", "themes")
+	if err := os.MkdirAll(themesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// One malformed slot value plus one unknown key — each should log
+	// a separate line. Picking a top-level unknown key ("typo") avoids
+	// the BurntSushi toml parser reporting both the section *and* the
+	// nested key as undecoded entries (which would inflate the count).
+	body := `name = "broken"
+typo = "ignored"
+[text]
+negative = "not-a-color"
+`
+	themePath := filepath.Join(themesDir, "broken.toml")
+	if err := os.WriteFile(themePath, []byte(body), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	a := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		styles:      NewStyles(),
+		cfg:         &config.Config{},
+		width:       80,
+		height:      24,
+	}
+
+	cmd := a.reloadTheme("broken")
+	if cmd == nil {
+		t.Fatal("reloadTheme() returned nil cmd")
+	}
+
+	// Toast on the status bar describes the issue count.
+	toast := a.statusbar.Toast()
+	if toast == nil {
+		t.Fatal("Toast() = nil, want non-nil after reloadTheme with issues")
+	}
+	if !strings.Contains(toast.Text, `"broken"`) {
+		t.Errorf("toast text missing theme id: %q", toast.Text)
+	}
+	if !strings.Contains(toast.Text, "2 issues") {
+		t.Errorf("toast text missing issue count: %q", toast.Text)
+	}
+	if toast.Level != NotificationAlert {
+		t.Errorf("toast level = %d, want %d", toast.Level, NotificationAlert)
+	}
+
+	// Log file contains an entry for each issue.
+	logPath, err := applog.LogPath()
+	if err != nil {
+		t.Fatalf("LogPath: %v", err)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", logPath, err)
+	}
+	if !strings.Contains(toast.Text, logPath) {
+		t.Errorf("toast text missing log path %q: %q", logPath, toast.Text)
+	}
+	logged := string(data)
+	if !strings.Contains(logged, "text.negative") {
+		t.Errorf("log missing malformed-value entry: %q", logged)
+	}
+	if !strings.Contains(logged, "typo") {
+		t.Errorf("log missing unknown-key entry: %q", logged)
+	}
+	if !strings.Contains(logged, "[theme]") {
+		t.Errorf("log entries missing [theme] category: %q", logged)
+	}
+
+	// The cmd batch must still carry the WindowSizeMsg (for the live
+	// repaint) plus a ToastClearMsg producer (for auto-clear).
+	if _, ok := findMsgInBatch[tea.WindowSizeMsg](cmd); !ok {
+		t.Error("cmd batch missing tea.WindowSizeMsg")
+	}
+	// findMsgInBatch needs a fresh cmd because invocation is one-shot.
+	cmd = a.reloadTheme("broken")
+	if _, ok := findMsgInBatch[ToastClearMsg](cmd); !ok {
+		t.Error("cmd batch missing ToastClearMsg producer")
+	}
+}
+
+// TestApp_ReloadTheme_NoIssues_NoToast covers the spec's negative
+// requirement: a clean built-in load must not surface a toast.
+func TestApp_ReloadTheme_NoIssues_NoToast(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	a := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		styles:      NewStyles(),
+		cfg:         &config.Config{},
+		width:       80,
+		height:      24,
+	}
+
+	a.reloadTheme("turbo-vision")
+	if got := a.statusbar.Toast(); got != nil {
+		t.Errorf("Toast() = %+v, want nil for clean built-in load", got)
+	}
+}
+
+// TestApp_ReloadTheme_FailureLogsAndToasts asserts that the failure
+// path (unknown ID, no user-dir match) also writes a log entry and
+// raises a toast — the user's ID was wrong, so silence isn't helpful.
+func TestApp_ReloadTheme_FailureLogsAndToasts(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	a := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		styles:      NewStyles(),
+		cfg:         &config.Config{Theme: "default"},
+		width:       80,
+		height:      24,
+	}
+
+	cmd := a.reloadTheme("nonexistent")
+	if cmd == nil {
+		t.Fatal("reloadTheme() returned nil cmd")
+	}
+
+	toast := a.statusbar.Toast()
+	if toast == nil {
+		t.Fatal("Toast() = nil, want non-nil after failure path")
+	}
+	if !strings.Contains(toast.Text, `"nonexistent"`) {
+		t.Errorf("toast missing theme id: %q", toast.Text)
+	}
+	if !strings.Contains(toast.Text, "failed to load") {
+		t.Errorf("toast missing failure verb: %q", toast.Text)
+	}
+
+	logPath, err := applog.LogPath()
+	if err != nil {
+		t.Fatalf("LogPath: %v", err)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", logPath, err)
+	}
+	logged := string(data)
+	if !strings.Contains(logged, "nonexistent") {
+		t.Errorf("log missing theme id: %q", logged)
+	}
+	if !strings.Contains(logged, "failed to load") {
+		t.Errorf("log missing failure phrase: %q", logged)
+	}
+}
+
+// TestNewApp_PersistedThemeWithIssues_Surfaces covers the TH-029 +
+// TH-032 join: a persisted theme that parses with issues must apply
+// (best-effort) and surface the issues via toast + log so the user
+// notices on next launch instead of silently inheriting a broken
+// palette.
+func TestNewApp_PersistedThemeWithIssues_Surfaces(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	themesDir := filepath.Join(tmp, "tmoney", "themes")
+	if err := os.MkdirAll(themesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	body := `name = "broken-startup"
+[text]
+negative = "not-a-color"
+`
+	if err := os.WriteFile(filepath.Join(themesDir, "broken-startup.toml"), []byte(body), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	dbPath := filepath.Join(tmp, "newapp_persisted_issues.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	cfg := &config.Config{Theme: "broken-startup"}
+	a := NewApp(database, cfg)
+
+	if a.statusbar.Toast() == nil {
+		t.Error("startup toast not set for theme with issues")
+	}
+
+	// Init() should batch in a ClearToastCmd so the startup toast
+	// auto-clears like any other.
+	cmd := a.Init()
+	if _, ok := findMsgInBatch[ToastClearMsg](cmd); !ok {
+		t.Error("Init() batch missing ToastClearMsg producer for startup toast")
+	}
+
+	logPath, err := applog.LogPath()
+	if err != nil {
+		t.Fatalf("LogPath: %v", err)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", logPath, err)
+	}
+	if !strings.Contains(string(data), "text.negative") {
+		t.Errorf("startup log missing parse issue: %q", data)
 	}
 }

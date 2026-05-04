@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/applog"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
@@ -531,13 +532,24 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		return buildThemeMenuItems(active)
 	})
 
-	// Apply the persisted theme (TH-029). Failure is silent here —
-	// the styles stay on the embedded default and Phase 9 will route
-	// the underlying issue to a status-bar toast and the log file.
+	// Apply the persisted theme (TH-029). On a clean load the styles
+	// adopt the new palette and we're done. On parse issues the styles
+	// adopt the partially-recovered theme and TH-032 surfaces the issue
+	// list to the log file plus a toast on the status bar (the toast's
+	// ClearToastCmd is added to the Init batch below). On an outright
+	// load failure (unknown ID, unreadable file) the styles stay on the
+	// embedded default and the user sees the same toast/log pair.
 	// LoadTheme (TH-026) lets a user-dir file shadow the embedded
 	// built-in of the same ID, so overrides are picked up here too.
 	if cfg != nil && cfg.Theme != "" {
-		if t, _, err := theme.LoadTheme(cfg.Theme); err == nil {
+		t, issues, err := theme.LoadTheme(cfg.Theme)
+		switch {
+		case err != nil:
+			a.surfaceThemeFailure(cfg.Theme, err)
+		case len(issues) > 0:
+			a.styles.applyTheme(t)
+			a.surfaceThemeIssues(cfg.Theme, issues)
+		default:
 			a.styles.applyTheme(t)
 		}
 	}
@@ -548,12 +560,19 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 // Init implements tea.Model.
 func (a *App) Init() tea.Cmd {
 	a.updateStatusBar()
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		a.autoPostOnFileOpen(),
 		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
 		a.loadDashboardData(),
-	)
+	}
+	// If NewApp surfaced a startup theme issue/failure, the toast is
+	// already on the status bar — schedule its auto-clear here so it
+	// disappears after ToastDuration like any other toast.
+	if a.statusbar != nil && a.statusbar.Toast() != nil {
+		cmds = append(cmds, ClearToastCmd())
+	}
+	return tea.Batch(cmds...)
 }
 
 // autoPostOnFileOpen returns a command that runs auto-posting on startup.
@@ -4573,9 +4592,9 @@ func (a *App) performRedo() tea.Cmd {
 
 // themeReloadFailedMsg is sent when reloadTheme cannot load or apply
 // the requested theme — the active palette and cfg are left untouched.
-// Phase 9 will surface this as a status-bar toast and a log entry; for
-// now the App.Update path ignores it. Keeping a stable message shape
-// here lets later phases plug in without changing reloadTheme's API.
+// reloadTheme also surfaces the failure synchronously (toast + log) so
+// downstream consumers can ignore this message; it stays for tests and
+// any future handler that wants to react explicitly.
 type themeReloadFailedMsg struct {
 	id  string
 	err error
@@ -4591,12 +4610,21 @@ type themeReloadFailedMsg struct {
 // without any extra wiring here. On failure (unknown ID, parse error)
 // the styles, palette, and config are left unchanged and the returned
 // cmd emits a themeReloadFailedMsg.
+//
+// TH-032: parse issues encountered during a successful load and any
+// failure-path error are appended to the applog and surfaced as a
+// status-bar toast describing the issue count. The returned cmd is
+// batched with a ClearToastCmd so the toast clears after ToastDuration.
+// Successful loads with zero issues set no toast and return the bare
+// WindowSizeMsg cmd.
 func (a *App) reloadTheme(id string) tea.Cmd {
-	t, _, err := theme.LoadTheme(id)
+	t, issues, err := theme.LoadTheme(id)
 	if err != nil {
-		return func() tea.Msg {
-			return themeReloadFailedMsg{id: id, err: err}
-		}
+		a.surfaceThemeFailure(id, err)
+		return tea.Batch(
+			func() tea.Msg { return themeReloadFailedMsg{id: id, err: err} },
+			ClearToastCmd(),
+		)
 	}
 
 	a.styles.applyTheme(t)
@@ -4611,9 +4639,65 @@ func (a *App) reloadTheme(id string) tea.Cmd {
 	}
 
 	width, height := a.width, a.height
-	return func() tea.Msg {
+	sizeCmd := func() tea.Msg {
 		return tea.WindowSizeMsg{Width: width, Height: height}
 	}
+
+	if len(issues) == 0 {
+		return sizeCmd
+	}
+	a.surfaceThemeIssues(id, issues)
+	return tea.Batch(sizeCmd, ClearToastCmd())
+}
+
+// surfaceThemeIssues appends each parse issue to the applog file and
+// sets a status-bar toast summarizing the count. Format mirrors the
+// spec: "Theme '<id>': <N> issues, see <log path>".
+func (a *App) surfaceThemeIssues(id string, issues []theme.Issue) {
+	for _, iss := range issues {
+		_ = applog.Append("theme", formatThemeIssue(id, iss))
+	}
+	if a.statusbar != nil {
+		a.statusbar.SetToast(formatThemeToast(id, len(issues)), NotificationAlert)
+	}
+}
+
+// surfaceThemeFailure logs an unparseable / missing-theme failure and
+// sets a toast pointing the user at the log file.
+func (a *App) surfaceThemeFailure(id string, err error) {
+	_ = applog.Append("theme", fmt.Sprintf("%s: failed to load: %v", id, err))
+	if a.statusbar != nil {
+		text := fmt.Sprintf("Theme %q: failed to load", id)
+		if path, perr := applog.LogPath(); perr == nil {
+			text = fmt.Sprintf("%s, see %s", text, path)
+		}
+		a.statusbar.SetToast(text, NotificationAlert)
+	}
+}
+
+// formatThemeIssue renders one parse issue as a single log line.
+// Includes the theme ID, slot kind, key, the offending raw value (if
+// any), and the parser's reason text.
+func formatThemeIssue(id string, iss theme.Issue) string {
+	if iss.Value != "" {
+		return fmt.Sprintf("%s: %s %s=%q (%s)", id, iss.Kind, iss.Key, iss.Value, iss.Reason)
+	}
+	return fmt.Sprintf("%s: %s %s (%s)", id, iss.Kind, iss.Key, iss.Reason)
+}
+
+// formatThemeToast renders the user-facing toast text for a theme load
+// that produced N parse issues. Includes the log path so users know
+// where to look for details.
+func formatThemeToast(id string, n int) string {
+	noun := "issues"
+	if n == 1 {
+		noun = "issue"
+	}
+	base := fmt.Sprintf("Theme %q: %d %s", id, n, noun)
+	if path, err := applog.LogPath(); err == nil {
+		return fmt.Sprintf("%s, see %s", base, path)
+	}
+	return base
 }
 
 // Run starts the TUI application.

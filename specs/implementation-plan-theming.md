@@ -218,7 +218,7 @@ First user-facing way to switch themes.
   - RED: test that adding a toast to the status bar renders in the status bar area for the configured duration, then disappears on the next render after the timeout.
   - GREEN: extend `StatusBar` with an optional transient message field plus a tea.Cmd that clears it after ~5s. Toast persists across re-renders within its window.
 
-- [ ] **TH-032 — Wire theme-load issues to log + toast**
+- [x] **TH-032 — Wire theme-load issues to log + toast**
   - RED: test that `reloadTheme("brokenfile")` (where the user-dir theme has a malformed value) appends an entry to the log file and emits a toast message describing the issue count.
   - GREEN: connect Phase 2's `Issue` list output to the log writer; when issues exist, emit a toast `Theme '<id>': <N> issues, see <log path>`. Successful loads with zero issues do not toast.
 
