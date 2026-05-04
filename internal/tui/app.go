@@ -531,6 +531,15 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		return buildThemeMenuItems(active)
 	})
 
+	// Apply the persisted theme (TH-029). Failure is silent here —
+	// the styles stay on the embedded default and Phase 9 will route
+	// the underlying issue to a status-bar toast and the log file.
+	if cfg != nil && cfg.Theme != "" {
+		if t, _, err := theme.LoadBuiltin(cfg.Theme); err == nil {
+			a.styles.applyTheme(t)
+		}
+	}
+
 	return a
 }
 

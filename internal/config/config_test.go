@@ -268,3 +268,48 @@ func TestPath(t *testing.T) {
 		t.Errorf("Path() = %q, want file named 'config.json'", p)
 	}
 }
+
+// TestLoad_NoThemeKey covers TH-028: an existing config file written
+// before the Theme field was added must still load cleanly, with
+// cfg.Theme defaulting to the empty string ("use the embedded default").
+func TestLoad_NoThemeKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	// Pre-existing config without the "theme" key.
+	prior := []byte(`{"default_file":"/x.tdb","last_file":"/x.tdb"}`)
+	if err := os.WriteFile(path, prior, 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom() error: %v", err)
+	}
+	if cfg.Theme != "" {
+		t.Errorf("cfg.Theme = %q, want empty (no theme key in file)", cfg.Theme)
+	}
+}
+
+// TestSaveAndLoad_ThemeRoundtrip covers TH-028: writing a config with
+// Theme = "turbo-vision" and reloading produces the same value, so the
+// next launch can apply the persisted theme (TH-029).
+func TestSaveAndLoad_ThemeRoundtrip(t *testing.T) {
+	EnableSaveForTest(t)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &Config{Theme: "turbo-vision", path: path}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	loaded, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom() error: %v", err)
+	}
+	if loaded.Theme != "turbo-vision" {
+		t.Errorf("loaded.Theme = %q, want %q", loaded.Theme, "turbo-vision")
+	}
+}

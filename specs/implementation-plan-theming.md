@@ -200,11 +200,11 @@ First user-facing way to switch themes.
 
 ## Phase 8: Persistence
 
-- [ ] **TH-028 — Add `Theme` field to `config.Config`**
+- [x] **TH-028 — Add `Theme` field to `config.Config`**
   - RED: test that an existing `config.json` without a `theme` key loads with `cfg.Theme == ""`. Test that saving a config with `Theme = "turbo-vision"` and reloading produces the same value.
   - GREEN: add `Theme string \`json:"theme,omitempty"\`` to `Config`.
 
-- [ ] **TH-029 — Apply persisted theme on startup**
+- [x] **TH-029 — Apply persisted theme on startup**
   - RED: test that `App` constructed with `cfg.Theme = "turbo-vision"` has Turbo Vision colors applied to `app.styles`.
   - GREEN: in `NewApp`, after `NewStyles()`, if `cfg.Theme != ""`, call `app.styles.applyTheme(loadedTheme)`. If the configured theme fails to load, fall back to default (issue surfaced by Phase 9).
 

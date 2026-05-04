@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/config"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
@@ -5222,5 +5224,63 @@ func TestApp_MenuSelect_LoadTheme(t *testing.T) {
 	msg := cmd()
 	if _, ok := msg.(tea.WindowSizeMsg); !ok {
 		t.Fatalf("cmd() = %T, want tea.WindowSizeMsg", msg)
+	}
+}
+
+// TestNewApp_AppliesPersistedTheme covers TH-029: an App constructed
+// with cfg.Theme = "turbo-vision" must have the Turbo Vision palette
+// applied to its styles, otherwise the View → Theme menu's checkmark
+// disagrees with what the user actually sees on screen.
+func TestNewApp_AppliesPersistedTheme(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "newapp_theme.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	cfg := &config.Config{Theme: "turbo-vision"}
+	a := NewApp(database, cfg)
+
+	wantHeaderFg := lipgloss.Color("#000000")
+	if got := a.styles.Header.GetForeground(); got != wantHeaderFg {
+		t.Errorf("Header.GetForeground() = %v, want %v (turbo-vision header fg) — persisted theme not applied",
+			got, wantHeaderFg)
+	}
+	wantSelectedBg := lipgloss.Color("#00aaaa")
+	if got := a.styles.SelectedRow.GetBackground(); got != wantSelectedBg {
+		t.Errorf("SelectedRow.GetBackground() = %v, want %v (turbo-vision selected bg)",
+			got, wantSelectedBg)
+	}
+}
+
+// TestNewApp_UnknownThemeFallsBackToDefault covers TH-029's documented
+// fallback behavior: when cfg.Theme names a theme that no longer
+// exists (e.g. a user-installed theme that was deleted), NewApp must
+// not crash and must leave the styles on the embedded default palette.
+// Phase 9 wires the toast/log surfacing of the failure.
+func TestNewApp_UnknownThemeFallsBackToDefault(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "newapp_unknown_theme.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	defaultStyles := NewStyles()
+	wantHeaderFg := defaultStyles.Header.GetForeground()
+
+	cfg := &config.Config{Theme: "nonexistent"}
+	a := NewApp(database, cfg)
+
+	if got := a.styles.Header.GetForeground(); got != wantHeaderFg {
+		t.Errorf("Header.GetForeground() = %v, want %v (default; unknown theme should fall back)",
+			got, wantHeaderFg)
 	}
 }
