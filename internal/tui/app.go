@@ -496,7 +496,7 @@ func newTUIServices(database *db.DB) *app.Services {
 func NewApp(database *db.DB, cfg *config.Config) *App {
 	svc := newTUIServices(database)
 
-	return &App{
+	a := &App{
 		db:                        database,
 		cfg:                       cfg,
 		currentView:               ViewDashboard,
@@ -522,6 +522,16 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		positionRepo:              svc.PositionRepo,
 		corporateActionSvc:        svc.CorporateAction,
 	}
+
+	a.menubar.SetMenuItemsBuilder(viewMenuIndex, func() []menuItem {
+		var active string
+		if a.cfg != nil {
+			active = a.cfg.Theme
+		}
+		return buildThemeMenuItems(active)
+	})
+
+	return a
 }
 
 // Init implements tea.Model.

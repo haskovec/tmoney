@@ -173,7 +173,7 @@ First user-facing way to switch themes.
   - RED: test in `internal/tui/menubar_test.go` asserts `defaultMenus()` returns a menu with label `"View"` and shortcut key `'V'`, positioned between `"Edit"` and `"Accounts"`.
   - GREEN: insert the View menu in `defaultMenus()`. Initially contains a single submenu placeholder labeled `"Theme"` with action `MenuActionThemeSubmenu` (new `MenuAction` constant).
 
-- [ ] **TH-022 — Theme submenu population**
+- [x] **TH-022 — Theme submenu population**
   - RED: test that opening the View → Theme submenu populates items from `BuiltinIDs()` (Phase 3) — for now, just built-ins; user dir wired in Phase 7. The active theme has a `✓` prefix in its label.
   - GREEN: extend `MenuBar` to support dynamic submenu population (current `menu` struct is static). Either: (a) make `items` a func returning items, or (b) re-build menus on each open. Option (b) is simpler and only runs on user input.
 

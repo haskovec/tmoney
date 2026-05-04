@@ -8,6 +8,10 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// viewMenuIndex is the position of the View menu in defaultMenus(),
+// used by the App when registering the dynamic theme-list builder.
+const viewMenuIndex = 2
+
 // MenuAction identifies a menu item action to be handled by the application.
 type MenuAction int
 
@@ -53,16 +57,21 @@ const (
 
 	// View menu actions
 	MenuActionThemeSubmenu
+	MenuActionLoadTheme
 
 	// Help menu actions
 	MenuActionKeyboardShortcuts
 	MenuActionAbout
 )
 
-// menuItem represents a single item in a dropdown menu.
+// menuItem represents a single item in a dropdown menu. The optional
+// `data` payload carries action-specific context — for theme items it
+// holds the theme ID so the dispatch path can call reloadTheme without
+// re-parsing the label.
 type menuItem struct {
 	label  string
 	action MenuAction
+	data   string
 }
 
 // menu represents a top-level menu with a label and dropdown items.
@@ -84,6 +93,13 @@ type MenuBar struct {
 
 	// Index of the currently highlighted item within the open dropdown
 	itemCursor int
+
+	// itemsBuilders maps a top-level menu index to a function that
+	// produces a fresh items slice every time the user opens (or
+	// arrows onto) that menu. Used for menus whose contents depend on
+	// runtime state — e.g. View → Theme reflecting the discovered
+	// themes and the currently active one.
+	itemsBuilders map[int]func() []menuItem
 }
 
 // NewMenuBar creates a new MenuBar with the default menu structure.
@@ -176,6 +192,40 @@ func defaultMenus() []menu {
 	}
 }
 
+// SetMenuItemsBuilder registers a builder that produces the items
+// for the menu at `index` whenever it is opened or navigated onto.
+// Passing a nil fn unregisters the builder for that index, leaving
+// the menu's static items in place.
+func (m *MenuBar) SetMenuItemsBuilder(index int, fn func() []menuItem) {
+	if index < 0 || index >= len(m.menus) {
+		return
+	}
+	if fn == nil {
+		if m.itemsBuilders != nil {
+			delete(m.itemsBuilders, index)
+		}
+		return
+	}
+	if m.itemsBuilders == nil {
+		m.itemsBuilders = make(map[int]func() []menuItem)
+	}
+	m.itemsBuilders[index] = fn
+}
+
+// refreshCurrentItems re-runs the registered builder (if any) for the
+// currently focused menu, replacing its items in-place.
+func (m *MenuBar) refreshCurrentItems() {
+	if m.cursor < 0 || m.cursor >= len(m.menus) {
+		return
+	}
+	if m.itemsBuilders == nil {
+		return
+	}
+	if fn, ok := m.itemsBuilders[m.cursor]; ok && fn != nil {
+		m.menus[m.cursor].items = fn()
+	}
+}
+
 // IsActive returns whether the menu bar is active (a dropdown is open).
 func (m *MenuBar) IsActive() bool {
 	return m.active
@@ -185,6 +235,7 @@ func (m *MenuBar) IsActive() bool {
 func (m *MenuBar) Activate() {
 	m.active = true
 	m.itemCursor = 0
+	m.refreshCurrentItems()
 }
 
 // Deactivate closes the menu bar.
@@ -234,6 +285,7 @@ func (m *MenuBar) MoveLeft() {
 	if m.cursor > 0 {
 		m.cursor--
 		m.itemCursor = 0
+		m.refreshCurrentItems()
 	}
 }
 
@@ -242,6 +294,7 @@ func (m *MenuBar) MoveRight() {
 	if m.cursor < len(m.menus)-1 {
 		m.cursor++
 		m.itemCursor = 0
+		m.refreshCurrentItems()
 	}
 }
 

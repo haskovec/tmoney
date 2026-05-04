@@ -895,6 +895,110 @@ func TestMenuBar_DropdownBounds_ThirdMenu(t *testing.T) {
 	}
 }
 
+// TestMenuBar_SetMenuItemsBuilder_RebuildOnActivate covers TH-022's
+// dynamic-population path: when a builder is registered for a menu
+// index, opening that menu via Activate() replaces its items with the
+// builder's output. The View menu starts as a single "Theme"
+// placeholder; once the App registers a builder, opening the menu
+// shows the actual list of themes.
+func TestMenuBar_SetMenuItemsBuilder_RebuildOnActivate(t *testing.T) {
+	m := NewMenuBar()
+	m.SetMenuItemsBuilder(2, func() []menuItem {
+		return []menuItem{
+			{label: "default", action: MenuActionLoadTheme, data: "default"},
+			{label: "✓ light", action: MenuActionLoadTheme, data: "light"},
+		}
+	})
+
+	// Before activation the placeholder is still in place — the builder
+	// only fires on user-triggered open.
+	if len(m.menus[2].items) != 1 || m.menus[2].items[0].label != "Theme" {
+		t.Fatalf("View menu initial items = %+v, want the static Theme placeholder", m.menus[2].items)
+	}
+
+	m.ActivateMenu(2)
+
+	got := m.menus[2].items
+	if len(got) != 2 {
+		t.Fatalf("after ActivateMenu(2), len(items) = %d, want 2", len(got))
+	}
+	if got[1].label != "✓ light" {
+		t.Errorf("got[1].label = %q, want %q", got[1].label, "✓ light")
+	}
+	if got[1].data != "light" {
+		t.Errorf("got[1].data = %q, want %q", got[1].data, "light")
+	}
+}
+
+// TestMenuBar_SetMenuItemsBuilder_RebuildOnNavigate — moving the
+// cursor onto a menu with a builder via MoveLeft/MoveRight triggers a
+// rebuild too, so the dropdown shows fresh content even when the user
+// arrows over from a sibling menu instead of activating directly.
+func TestMenuBar_SetMenuItemsBuilder_RebuildOnNavigate(t *testing.T) {
+	m := NewMenuBar()
+	calls := 0
+	m.SetMenuItemsBuilder(2, func() []menuItem {
+		calls++
+		return []menuItem{{label: "fresh", action: MenuActionLoadTheme, data: "fresh"}}
+	})
+
+	m.ActivateMenu(0) // File
+	if calls != 0 {
+		t.Errorf("activating File should not call View's builder; calls = %d", calls)
+	}
+
+	m.MoveRight() // Edit
+	m.MoveRight() // View
+	if calls == 0 {
+		t.Error("arrowing onto View should rebuild its items")
+	}
+	if got := m.menus[2].items[0].label; got != "fresh" {
+		t.Errorf("View items[0].label = %q, want %q", got, "fresh")
+	}
+
+	prevCalls := calls
+	m.MoveLeft()  // back to Edit
+	m.MoveRight() // back onto View — should rebuild again
+	if calls <= prevCalls {
+		t.Error("returning to View should rebuild again so the active marker stays current")
+	}
+}
+
+// TestMenuBar_SetMenuItemsBuilder_StaticMenusUnaffected — menus
+// without a registered builder must keep their statically defined
+// items even after activation, so the existing File/Edit/etc menus
+// don't accidentally get cleared.
+func TestMenuBar_SetMenuItemsBuilder_StaticMenusUnaffected(t *testing.T) {
+	m := NewMenuBar()
+	m.SetMenuItemsBuilder(2, func() []menuItem {
+		return []menuItem{{label: "fresh", action: MenuActionLoadTheme, data: "fresh"}}
+	})
+
+	originalFileLen := len(m.menus[0].items)
+
+	m.ActivateMenu(0)
+
+	if got := len(m.menus[0].items); got != originalFileLen {
+		t.Errorf("File items len = %d, want %d (no builder = unchanged)", got, originalFileLen)
+	}
+	if m.menus[0].items[0].label != "New File" {
+		t.Errorf("File items[0].label = %q, want %q", m.menus[0].items[0].label, "New File")
+	}
+}
+
+// TestMenuBar_SetMenuItemsBuilder_NilBuilder — passing a nil builder
+// effectively unregisters; opening the menu must not panic and the
+// static items must remain.
+func TestMenuBar_SetMenuItemsBuilder_NilBuilder(t *testing.T) {
+	m := NewMenuBar()
+	m.SetMenuItemsBuilder(2, nil)
+	m.ActivateMenu(2)
+
+	if len(m.menus[2].items) != 1 || m.menus[2].items[0].label != "Theme" {
+		t.Errorf("nil builder should leave static items intact, got %+v", m.menus[2].items)
+	}
+}
+
 func TestStripAnsi(t *testing.T) {
 	tests := []struct {
 		input    string
