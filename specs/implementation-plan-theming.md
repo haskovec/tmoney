@@ -181,7 +181,7 @@ First user-facing way to switch themes.
   - RED: test asserts that selecting `"turbo-vision"` from the submenu emits the `tea.Cmd` produced by `reloadTheme("turbo-vision")`.
   - GREEN: wire menu selection in `app.go`'s `handleMenuAction` (or equivalent) to call `a.reloadTheme(themeID)`.
 
-- [ ] **TH-024 — Visual smoke check**
+- [x] **TH-024 — Visual smoke check**
   - Manual: launch `tmoney`, open View → Theme, select Turbo Vision, confirm colors change immediately. Repeat for `light` and `default`. Document any visual issues.
 
 ## Phase 7: User Theme Directory Discovery
@@ -224,7 +224,7 @@ First user-facing way to switch themes.
 
 ## Phase 10: Pywal Helper
 
-- [ ] **TH-033 — `colors.json` reader**
+- [x] **TH-033 — `colors.json` reader**
   - RED: test `TestReadWalColors_Sample` reads a fixture `testdata/wal-sample-colors.json` and returns a struct with `Special.Background == "#1d1f21"` and `Colors.Color3 == "#fabd2f"` (or whatever the sample contains).
   - Test missing file returns the documented error message.
   - GREEN: implement `internal/cli/wal.go` with a struct and JSON unmarshal mirroring pywal's `colors.json` shape.
