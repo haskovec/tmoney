@@ -125,19 +125,20 @@ Pure logic, no UI. Builds the schema definition, TOML parser, and validation/fal
 
 Author the three TOML files and embed them.
 
-- [ ] **TH-014 — Author `default.toml`**
-  - GREEN: create `internal/tui/themes/default.toml` exactly reproducing today's palette from `styles.go`. Background slots empty for transparency. `border_style = "single"`. `*.shortcut.underline = true`, `*.shortcut.fg` unset.
+- [x] **TH-014 — Author `default.toml`**
+  - GREEN: create `internal/tui/theme/themes/default.toml` exactly reproducing today's palette from `styles.go`. Background slots empty for transparency. `border_style = "single"`. `*.shortcut.underline = true`, `*.shortcut.fg` unset.
   - Test: `TestEmbeddedDefault_MatchesCurrentPalette` parses the embedded file and asserts every `Color*` from `styles.go` matches the corresponding slot.
+  - Note: TOML files live at `internal/tui/theme/themes/` (subdirectory of the theme Go package) so `//go:embed` in TH-017 can resolve them.
 
-- [ ] **TH-015 — Author `turbo-vision.toml`**
-  - GREEN: create `internal/tui/themes/turbo-vision.toml` per the spec's Turbo Vision section.
+- [x] **TH-015 — Author `turbo-vision.toml`**
+  - GREEN: create `internal/tui/theme/themes/turbo-vision.toml` per the spec's Turbo Vision section.
   - Test: `TestEmbeddedTurboVision_Parses` parses it without issues and the parsed theme has `border_style = double`, `window.title.fg = "#ffff55"`, `menubar.shortcut.fg = "#aa0000"`, `menubar.shortcut.underline = false`.
 
-- [ ] **TH-016 — Author `light.toml`**
-  - GREEN: create `internal/tui/themes/light.toml` with a light-background palette.
+- [x] **TH-016 — Author `light.toml`**
+  - GREEN: create `internal/tui/theme/themes/light.toml` with a light-background palette.
   - Test: `TestEmbeddedLight_Parses` parses without issues; spot-check a few slot values are bright/white-ish.
 
-- [ ] **TH-017 — `//go:embed` the built-in themes**
+- [x] **TH-017 — `//go:embed` the built-in themes**
   - RED: test `TestBuiltinIDs` returns exactly `["default", "light", "turbo-vision"]` (alphabetical).
   - GREEN: in `internal/tui/theme/builtin.go`, embed `themes/*.toml` and expose `BuiltinIDs() []string` and `LoadBuiltin(id string) (*Theme, []Issue, error)`.
 

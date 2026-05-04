@@ -1,0 +1,60 @@
+# TMoney Turbo Vision theme — Borland TV aesthetic. Blue windows with
+# yellow titles, light-gray menu/status bars with red shortcut letters,
+# and double-line borders throughout.
+#
+# Note: v1 does not paint a solid blue desktop fill (would require
+# layout-level chrome work). Window content areas show terminal default
+# behind any unbordered region.
+
+name = "Turbo Vision"
+description = "Classic Borland Turbo Vision blue + double borders"
+
+border_style = "double"
+
+# Desktop — reserved; not painted in v1 (would be solid blue).
+desktop.bg = ""
+
+# Menu bar — black on light gray, with red shortcut letters (no underline).
+menubar.fg = "#000000"
+menubar.bg = "#aaaaaa"
+menubar.active.fg = "#ffffff"
+menubar.active.bg = "#000000"
+menubar.shortcut.fg = "#aa0000"
+menubar.shortcut.underline = false
+
+# Status bar — same chrome as the menu bar.
+statusbar.fg = "#000000"
+statusbar.bg = "#aaaaaa"
+statusbar.shortcut.fg = "#aa0000"
+statusbar.shortcut.underline = false
+
+# Windows — Turbo Vision blue with yellow titles and white borders.
+window.bg = "#0000aa"
+window.fg = "#aaaaaa"
+window.border.fg = "#ffffff"
+window.title.fg = "#ffff55"
+
+# Dialogs — black on light gray, dark borders.
+dialog.bg = "#aaaaaa"
+dialog.fg = "#000000"
+dialog.border.fg = "#000000"
+dialog.title.fg = "#000000"
+
+# Tables — yellow headers, black-on-cyan selected row.
+table.header.fg = "#ffff55"
+table.row.fg = "#aaaaaa"
+table.selected.fg = "#000000"
+table.selected.bg = "#00aaaa"
+
+# Semantic text — bright variants typical of TV.
+text.positive = "#55ff55"
+text.negative = "#ff5555"
+text.alert = "#ffff55"
+text.muted = "#5555ff"
+text.title = "#ffffff"
+text.error = "#ff5555"
+
+# Symbols.
+symbols.menu_separator = " │ "
+symbols.focus_indicator = "▶ "
+symbols.checkmark = "✓"

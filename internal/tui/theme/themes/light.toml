@@ -1,0 +1,59 @@
+# TMoney light theme — readable on light-background terminals. Dark
+# text on near-white panels, single borders, muted slate gray for
+# de-emphasized text.
+#
+# Designed to fix the gray-on-gray status bar contrast issue that the
+# default palette has on light terminals.
+
+name = "Light"
+description = "Light theme for bright terminals — dark text on near-white panels"
+
+border_style = "single"
+
+# Desktop — transparent (light terminal default shows through).
+desktop.bg = ""
+
+# Menu bar — dark blue accent on near-white.
+menubar.fg = "#1a1a1a"
+menubar.bg = "#e6e6e6"
+menubar.active.fg = "#ffffff"
+menubar.active.bg = "#1f4f8a"
+menubar.shortcut.fg = "#a30000"
+menubar.shortcut.underline = true
+
+# Status bar — slightly darker chrome to separate from content.
+statusbar.fg = "#1a1a1a"
+statusbar.bg = "#cccccc"
+statusbar.shortcut.fg = "#a30000"
+statusbar.shortcut.underline = true
+
+# Windows — transparent background (terminal light), dark text.
+window.bg = ""
+window.fg = "#1a1a1a"
+window.border.fg = "#7a7a7a"
+window.title.fg = "#1f4f8a"
+
+# Dialogs — slight off-white panel to lift off the terminal background.
+dialog.bg = "#f5f5f5"
+dialog.fg = "#1a1a1a"
+dialog.border.fg = "#7a7a7a"
+dialog.title.fg = "#1f4f8a"
+
+# Tables — selected row is the menu-bar accent.
+table.header.fg = "#1a1a1a"
+table.row.fg = "#1a1a1a"
+table.selected.fg = "#ffffff"
+table.selected.bg = "#1f4f8a"
+
+# Semantic text — darker variants for contrast on light background.
+text.positive = "#006400"
+text.negative = "#a30000"
+text.alert = "#b86b00"
+text.muted = "#6a6a6a"
+text.title = "#1f4f8a"
+text.error = "#a30000"
+
+# Symbols.
+symbols.menu_separator = " │ "
+symbols.focus_indicator = "▶ "
+symbols.checkmark = "✓"

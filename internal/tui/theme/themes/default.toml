@@ -1,0 +1,58 @@
+# TMoney default theme — reproduces today's color palette from
+# internal/tui/styles.go. Uses ANSI 256 color codes for broad terminal
+# compatibility. Background slots are empty so the terminal default
+# shows through (transparent passthrough).
+#
+# This theme is also the fallback for any slot a user theme leaves
+# unset, so changes here are user-visible changes to the app default.
+
+name = "Default"
+description = "TMoney's default palette (transparent backgrounds, ANSI 256 accents)"
+
+border_style = "single"
+
+# Desktop — reserved; not painted in v1.
+desktop.bg = ""
+
+# Menu bar — purple background with white text (ColorHeaderBg/Fg).
+menubar.fg = "15"
+menubar.bg = "62"
+menubar.active.fg = "62"
+menubar.active.bg = "15"
+menubar.shortcut.underline = true
+
+# Status bar — dim gray with light gray text (ColorStatusBg/Fg).
+statusbar.fg = "252"
+statusbar.bg = "236"
+statusbar.shortcut.underline = true
+
+# Windows — transparent background, white text, dim borders.
+window.bg = ""
+window.fg = "15"
+window.border.fg = "240"
+window.title.fg = "15"
+
+# Dialogs — same as windows in the default look.
+dialog.bg = ""
+dialog.fg = "15"
+dialog.border.fg = "240"
+dialog.title.fg = "15"
+
+# Tables — selected rows match the menu-bar accent.
+table.header.fg = "15"
+table.row.fg = "15"
+table.selected.fg = "15"
+table.selected.bg = "62"
+
+# Semantic text — green/red/yellow/gray accents.
+text.positive = "34"
+text.negative = "160"
+text.alert = "214"
+text.muted = "245"
+text.title = "15"
+text.error = "160"
+
+# Symbols.
+symbols.menu_separator = " │ "
+symbols.focus_indicator = "▶ "
+symbols.checkmark = "✓"
