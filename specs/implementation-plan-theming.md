@@ -186,7 +186,7 @@ First user-facing way to switch themes.
 
 ## Phase 7: User Theme Directory Discovery
 
-- [ ] **TH-025 — Discover user themes**
+- [x] **TH-025 — Discover user themes**
   - RED: test `TestDiscoverUserThemes` with a fixture directory containing `wal.toml` and `mine.toml` returns IDs `["mine", "wal"]`.
   - GREEN: implement `DiscoverUserThemes() ([]string, error)` that scans `~/.config/tmoney/themes/*.toml` (respecting `XDG_CONFIG_HOME`) and returns sorted filename stems. Missing directory is not an error (returns empty list).
 
