@@ -380,6 +380,67 @@ func TestRenderViewContent_TurboVisionFillsGaps(t *testing.T) {
 	}
 }
 
+// TestStyles_ApplyTheme_MenubarShortcut_TurboVision asserts that the
+// menu-bar shortcut style picks up the theme's explicit shortcut color
+// and underline setting. Turbo Vision uses red letters with no
+// underline (menubar.shortcut.fg = "#aa0000",
+// menubar.shortcut.underline = false), distinct from the default
+// theme's same-color-underlined treatment.
+func TestStyles_ApplyTheme_MenubarShortcut_TurboVision(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+
+	turbo, _, err := theme.LoadBuiltin("turbo-vision")
+	if err != nil {
+		t.Fatalf("LoadBuiltin(turbo-vision): %v", err)
+	}
+	s := NewStyles()
+	s.applyTheme(turbo)
+
+	wantRed := lipgloss.Color("#aa0000")
+	if got := s.MenuBarShortcut.GetForeground(); got != wantRed {
+		t.Errorf("MenuBarShortcut.GetForeground() = %v, want %v", got, wantRed)
+	}
+	if s.MenuBarShortcut.GetUnderline() {
+		t.Error("MenuBarShortcut.GetUnderline() = true, want false (TV uses color-only)")
+	}
+	if got := s.MenuBarActiveShortcut.GetForeground(); got != wantRed {
+		t.Errorf("MenuBarActiveShortcut.GetForeground() = %v, want %v", got, wantRed)
+	}
+	if s.MenuBarActiveShortcut.GetUnderline() {
+		t.Error("MenuBarActiveShortcut.GetUnderline() = true, want false")
+	}
+}
+
+// TestStyles_ApplyTheme_MenubarShortcut_DefaultInherits asserts that
+// when menubar.shortcut.fg is empty (default theme), the shortcut
+// foreground inherits ColorHeaderFg so the letter is the same color
+// as the rest of the menu — distinguished only by the underline. The
+// active variant inherits ColorHeaderBg so it stays visible against
+// the flipped active background.
+func TestStyles_ApplyTheme_MenubarShortcut_DefaultInherits(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+
+	def, _, err := theme.LoadBuiltin("default")
+	if err != nil {
+		t.Fatalf("LoadBuiltin(default): %v", err)
+	}
+	s := NewStyles()
+	s.applyTheme(def)
+
+	if got := s.MenuBarShortcut.GetForeground(); got != ColorHeaderFg {
+		t.Errorf("MenuBarShortcut.GetForeground() = %v, want ColorHeaderFg=%v (inherited)", got, ColorHeaderFg)
+	}
+	if !s.MenuBarShortcut.GetUnderline() {
+		t.Error("MenuBarShortcut.GetUnderline() = false, want true (default theme uses underline)")
+	}
+	if got := s.MenuBarActiveShortcut.GetForeground(); got != ColorHeaderBg {
+		t.Errorf("MenuBarActiveShortcut.GetForeground() = %v, want ColorHeaderBg=%v (inverted)", got, ColorHeaderBg)
+	}
+	if !s.MenuBarActiveShortcut.GetUnderline() {
+		t.Error("MenuBarActiveShortcut.GetUnderline() = false, want true")
+	}
+}
+
 // TestStyles_ApplyTheme_DefaultDesktopTransparent asserts that the
 // default theme's empty desktop.bg leaves Content and Sidebar with no
 // background paint, so terminals show their own background through.

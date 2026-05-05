@@ -74,7 +74,30 @@ var (
 	// rows and unused vertical space show the terminal default. A real
 	// color gives the Turbo Vision "blue desktop" look.
 	ColorDesktopBg color.Color = lipgloss.NoColor{}
+	// ColorMenubarShortcutFg is the foreground for the shortcut letter
+	// in menu-bar items (e.g. the "F" in "File"). NoColor{} means
+	// "inherit from ColorHeaderFg" — the default theme look where the
+	// letter is the same color as the rest, distinguished only by the
+	// underline. Turbo Vision sets this to red so the shortcut letter
+	// stands out on the gray menu bar without an underline.
+	ColorMenubarShortcutFg color.Color = lipgloss.NoColor{}
 )
+
+// MenubarShortcutUnderline controls whether the menu-bar shortcut
+// letter is underlined. Themes set this via `menubar.shortcut.underline`
+// — Turbo Vision turns it off because the red color already
+// distinguishes the letter; the default theme keeps it on.
+var MenubarShortcutUnderline = true
+
+// menubarShortcutInherits is true when the theme's shortcut fg is the
+// same color as the menu bar's main fg (or unset). In that case the
+// shortcut letter is meant to look identical to the rest in the
+// inactive state, distinguished only by the underline; the active
+// variant then inverts to ColorHeaderBg so the letter stays visible
+// against the flipped active background. Themes that override
+// shortcut.fg with a contrasting color (Turbo Vision red) opt out of
+// the inversion and keep the explicit color in both states.
+var menubarShortcutInherits = true
 
 // Styles holds all the reusable lipgloss styles for the application.
 type Styles struct {
@@ -271,16 +294,37 @@ func (s *Styles) initBaseStyles() {
 		Foreground(ColorHeaderBg).
 		Background(ColorHeaderFg)
 
+	// Shortcut letter on the inactive (normal) menu bar. When the theme
+	// sets menubar.shortcut.fg, use that explicit color (e.g. red for
+	// Turbo Vision). When it's unset, inherit ColorHeaderFg so the
+	// letter is the same color as the rest and only the underline marks
+	// it — today's default look.
+	shortcutFg := ColorMenubarShortcutFg
+	if _, transparent := shortcutFg.(lipgloss.NoColor); transparent {
+		shortcutFg = ColorHeaderFg
+	}
 	s.MenuBarShortcut = lipgloss.NewStyle().
-		Foreground(ColorHeaderFg).
+		Foreground(shortcutFg).
 		Background(ColorHeaderBg).
-		Underline(true)
+		Underline(MenubarShortcutUnderline)
 
+	// Shortcut letter on the active (highlighted) menu item. When the
+	// theme's shortcut fg matches menubar.fg (or is empty), the user
+	// wants the inherited "underline-only" treatment, so we invert to
+	// ColorHeaderBg to stay visible on the flipped active background.
+	// When the theme overrides shortcut.fg with a contrasting color
+	// (Turbo Vision's red), reuse it in the active state too — the
+	// letter color is consistent across states and was chosen to be
+	// readable on both the inactive and active backgrounds.
+	activeShortcutFg := shortcutFg
+	if menubarShortcutInherits {
+		activeShortcutFg = ColorHeaderBg
+	}
 	s.MenuBarActiveShortcut = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(ColorHeaderBg).
+		Foreground(activeShortcutFg).
 		Background(ColorHeaderFg).
-		Underline(true)
+		Underline(MenubarShortcutUnderline)
 
 	s.MenuDropdownItem = lipgloss.NewStyle().
 		Foreground(ColorStatusFg).
@@ -345,6 +389,9 @@ func (s *Styles) applyTheme(t *theme.Theme) {
 	ColorMuted = themeColor(t.Text.Muted)
 	ColorTitle = themeColor(t.Text.Title)
 	ColorDesktopBg = themeColor(t.Desktop.Bg)
+	ColorMenubarShortcutFg = themeColor(t.Menubar.Shortcut.Fg)
+	MenubarShortcutUnderline = t.Menubar.Shortcut.Underline
+	menubarShortcutInherits = t.Menubar.Shortcut.Fg == "" || t.Menubar.Shortcut.Fg == t.Menubar.Fg
 
 	s.initBaseStyles()
 }
