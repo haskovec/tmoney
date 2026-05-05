@@ -332,7 +332,12 @@ const priceListNaturalTableWidth = 75
 // renderPriceList renders the landing-page summary table, optionally
 // composing the price-history chart panel beside it on wide terminals.
 func (a *App) renderPriceList() string {
-	contentWidth := a.styles.ContentWidth()
+	// Prices is a full-screen view (see renderView in app.go) — no
+	// sidebar is rendered, so use the full terminal width minus the
+	// Padding(1, 2) wrapper applied below (2 cols left + 2 cols right).
+	// ContentWidth() would over-subtract a sidebar that isn't there,
+	// leaving ~30 cols of wasted space on the right at large layouts.
+	contentWidth := max(a.width-4, 1)
 
 	var sections []string
 
@@ -524,7 +529,8 @@ func (a *App) fetchPriceChartHistory(secID types.ID) tea.Cmd {
 
 // renderPriceDetail renders the per-security price history (drill-in).
 func (a *App) renderPriceDetail() string {
-	contentWidth := a.styles.ContentWidth()
+	// Full-screen view — see comment in renderPriceList above.
+	contentWidth := max(a.width-4, 1)
 
 	var sections []string
 
