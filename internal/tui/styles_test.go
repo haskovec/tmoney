@@ -2,6 +2,7 @@ package tui
 
 import (
 	"image/color"
+	"strings"
 	"testing"
 
 	"charm.land/lipgloss/v2"
@@ -294,6 +295,88 @@ func TestStyles_ApplyTheme(t *testing.T) {
 	}
 	if got := s.Sidebar.GetBackground(); got != wantDesktop {
 		t.Errorf("Sidebar.GetBackground() = %v, want %v", got, wantDesktop)
+	}
+}
+
+// TestRepaintDesktop_TransparentNoop verifies that with the default
+// theme's empty desktop.bg, repaintDesktop returns the input unchanged
+// (lipgloss.NoColor short-circuit). This protects the default look —
+// no extra SGR codes leak into output that would display on
+// non-Turbo-Vision setups.
+func TestRepaintDesktop_TransparentNoop(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+	def, _, err := theme.LoadBuiltin("default")
+	if err != nil {
+		t.Fatalf("LoadBuiltin(default): %v", err)
+	}
+	s := NewStyles()
+	s.applyTheme(def)
+
+	in := "\x1b[1mDASH\x1b[m  raw  \x1b[38;5;240mMay\x1b[m"
+	got := repaintDesktop(in)
+	if got != in {
+		t.Errorf("repaintDesktop on transparent desktop should be a no-op\n got=%q\nwant=%q", got, in)
+	}
+}
+
+// TestRepaintDesktop_RestoresBgAfterResets is the load-bearing fix for
+// the Turbo Vision blue desktop. lipgloss's outer Content.Background
+// only emits the bg SGR at the start and end of each line; inner
+// `\x1b[m` resets from Bold/Muted/Title renders wipe it. This test
+// asserts that after repaintDesktop, every reset is followed by the
+// bg-set SGR so subsequent raw text and styled chunks render on blue
+// rather than terminal default.
+func TestRepaintDesktop_RestoresBgAfterResets(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+	turbo, _, err := theme.LoadBuiltin("turbo-vision")
+	if err != nil {
+		t.Fatalf("LoadBuiltin(turbo-vision): %v", err)
+	}
+	s := NewStyles()
+	s.applyTheme(turbo)
+
+	bgSGR := desktopBgSGR(ColorDesktopBg)
+	if bgSGR == "" {
+		t.Fatalf("desktopBgSGR should be non-empty for Turbo Vision; ColorDesktopBg=%v", ColorDesktopBg)
+	}
+
+	in := "\x1b[1mDASH\x1b[m  raw  \x1b[38;5;240mMay\x1b[m"
+	got := repaintDesktop(in)
+
+	// Each `\x1b[m` should now be immediately followed by the bg SGR.
+	want := "\x1b[1mDASH\x1b[m" + bgSGR + "  raw  \x1b[38;5;240mMay\x1b[m" + bgSGR
+	if got != want {
+		t.Errorf("repaintDesktop did not restore bg after resets\n got=%q\nwant=%q", got, want)
+	}
+}
+
+// TestRenderViewContent_TurboVisionFillsGaps is the end-to-end guard:
+// rendering a multi-chunk dashboard-shaped row through RenderViewContent
+// under Turbo Vision should produce output where every cell carries the
+// blue bg SGR — no terminal-default bands. We verify by checking that
+// the line, after stripping the bg SGR, contains no remaining `\x1b[m`
+// resets that aren't immediately followed by another SGR set (i.e. no
+// "naked" resets that would expose terminal default).
+func TestRenderViewContent_TurboVisionFillsGaps(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+	turbo, _, err := theme.LoadBuiltin("turbo-vision")
+	if err != nil {
+		t.Fatalf("LoadBuiltin(turbo-vision): %v", err)
+	}
+	s := NewStyles()
+	s.applyTheme(turbo)
+
+	// Mimic dashboard's title row shape: bold title + raw spaces + muted date.
+	title := s.Bold.Render("DASHBOARD") + "                              " + s.Muted.Render("May 4")
+	out := s.RenderViewContent(title, 60, 3)
+
+	// After repaintDesktop, every `\x1b[m` should be followed either
+	// by another SGR open (`\x1b[`) or by the trailing pad/end of
+	// string. There must NOT be a `\x1b[m` immediately followed by a
+	// space — that would mean a raw-text gap is back to terminal
+	// default.
+	if idx := strings.Index(out, "\x1b[m "); idx >= 0 {
+		t.Errorf("found naked reset followed by raw space at %d (terminal-default gap):\n%q", idx, out)
 	}
 }
 

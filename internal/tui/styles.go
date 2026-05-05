@@ -2,6 +2,7 @@ package tui
 
 import (
 	"image/color"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/tui/theme"
@@ -346,6 +347,55 @@ func (s *Styles) applyTheme(t *theme.Theme) {
 	ColorDesktopBg = themeColor(t.Desktop.Bg)
 
 	s.initBaseStyles()
+}
+
+// desktopBgSGR returns the "set background" SGR sequence lipgloss emits
+// for c, or "" when c is transparent. We render a marker character with
+// c as the background and split off the prefix; this gives a bit-for-bit
+// match with what lipgloss would emit so re-emitting it in repaintDesktop
+// is idempotent.
+func desktopBgSGR(c color.Color) string {
+	if _, transparent := c.(lipgloss.NoColor); transparent {
+		return ""
+	}
+	sample := lipgloss.NewStyle().Background(c).Render("\x00")
+	idx := strings.IndexByte(sample, 0)
+	if idx <= 0 {
+		return ""
+	}
+	return sample[:idx]
+}
+
+// repaintDesktop re-emits the desktop background SGR after every SGR
+// full-reset in s. Without this, inner Bold/Muted/SectionHead renders
+// close with `\x1b[m` which clears the outer Content.Background, and
+// any raw-text gap or following styled chunk shows terminal-default
+// until the next render boundary — visible as black bands inside the
+// Turbo Vision desktop fill.
+//
+// No-op when ColorDesktopBg is transparent (default and light themes).
+func repaintDesktop(s string) string {
+	bg := desktopBgSGR(ColorDesktopBg)
+	if bg == "" {
+		return s
+	}
+	// `\x1b[0m` is checked first; `\x1b[m` is not a substring of
+	// `\x1b[0m` (third byte differs) so the second pass is safe.
+	s = strings.ReplaceAll(s, "\x1b[0m", "\x1b[0m"+bg)
+	s = strings.ReplaceAll(s, "\x1b[m", "\x1b[m"+bg)
+	return s
+}
+
+// RenderViewContent wraps viewContent in the Content style at the given
+// dimensions, repainting the desktop background on inner SGR resets so
+// styled chunks and raw-text gaps don't punch holes through the fill.
+// Use this in place of `s.Content.Width(...).Height(...).Render(...)`
+// for any string that holds the main content area for a view.
+func (s *Styles) RenderViewContent(viewContent string, width, height int) string {
+	return s.Content.
+		Width(width).
+		Height(height).
+		Render(repaintDesktop(viewContent))
 }
 
 // Resize updates all width-dependent styles for the given terminal dimensions.

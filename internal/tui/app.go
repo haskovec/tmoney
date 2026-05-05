@@ -3496,28 +3496,18 @@ func (a *App) renderContent(height int) string {
 
 	// Reconciliation, Securities, and Prices views are full-screen (no sidebar)
 	if a.currentView == ViewReconciliation || a.currentView == ViewSecurities || a.currentView == ViewPrices {
-		return a.styles.Content.
-			Width(a.width).
-			Height(height).
-			Render(viewContent)
+		return a.styles.RenderViewContent(viewContent, a.width, height)
 	}
 
 	sidebarWidth := a.styles.SidebarWidth()
 	if sidebarWidth == 0 {
 		// Small layout: no sidebar, full-width content
-		return a.styles.Content.
-			Width(a.width).
-			Height(height).
-			Render(viewContent)
+		return a.styles.RenderViewContent(viewContent, a.width, height)
 	}
 
 	// Two-pane layout: sidebar + content
 	sidebar := a.sidebar.Render(a.styles, sidebarWidth, height)
-	contentWidth := a.styles.ContentWidth()
-	content := a.styles.Content.
-		Width(contentWidth).
-		Height(height).
-		Render(viewContent)
+	content := a.styles.RenderViewContent(viewContent, a.styles.ContentWidth(), height)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 }
