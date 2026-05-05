@@ -130,6 +130,9 @@ func TestEmbeddedTurboVision_Parses(t *testing.T) {
 	if tm.Menubar.Shortcut.Underline {
 		t.Error("Menubar.Shortcut.Underline = true, want false (TV uses color-only shortcut letters)")
 	}
+	if tm.Desktop.Bg != "#0000aa" {
+		t.Errorf("Desktop.Bg = %q, want #0000aa (Turbo Vision desktop fill)", tm.Desktop.Bg)
+	}
 }
 
 func TestEmbeddedLight_Parses(t *testing.T) {

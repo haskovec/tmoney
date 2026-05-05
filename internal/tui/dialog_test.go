@@ -1028,6 +1028,45 @@ func TestOverlayCenter_EmptyOverlay(t *testing.T) {
 	}
 }
 
+// TestOverlayCenter_PreservesBackgroundANSI guards the Turbo Vision
+// "blue desktop" use case: when the background lines carry an SGR
+// background color (here \x1b[44m for blue), the prefix and suffix
+// bands on either side of a centered overlay must still carry the
+// background ANSI. The previous implementation stripped ANSI from
+// bgLine before slicing prefix/suffix, which collapsed the bands to
+// terminal default and produced a black band around dialogs on
+// colored desktops.
+func TestOverlayCenter_PreservesBackgroundANSI(t *testing.T) {
+	const blueBg = "\x1b[44m"
+	const reset = "\x1b[0m"
+	bgRow := blueBg + strings.Repeat(" ", 20) + reset
+	background := strings.Join([]string{bgRow, bgRow, bgRow, bgRow, bgRow}, "\n")
+
+	overlay := "DIALOG" // visible width 6
+
+	result := OverlayCenter(background, overlay, 20, 5)
+	lines := strings.Split(result, "\n")
+	if len(lines) != 5 {
+		t.Fatalf("expected 5 lines, got %d", len(lines))
+	}
+
+	// Overlay sits on the middle row: startRow=(5-1)/2=2.
+	middle := lines[2]
+	if !strings.Contains(middle, "DIALOG") {
+		t.Fatalf("middle row should contain overlay, got %q", middle)
+	}
+	if !strings.Contains(middle, blueBg) {
+		t.Errorf("middle row should preserve blue-bg ANSI on prefix/suffix, got %q", middle)
+	}
+
+	// Sanity: untouched rows still carry the blue ANSI.
+	for _, idx := range []int{0, 1, 3, 4} {
+		if !strings.Contains(lines[idx], blueBg) {
+			t.Errorf("row %d should still carry blue-bg ANSI, got %q", idx, lines[idx])
+		}
+	}
+}
+
 // Unicode text editing tests
 
 func TestField_InsertChar_Unicode(t *testing.T) {

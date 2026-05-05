@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // FieldType represents the type of a form field in a dialog.
@@ -1310,42 +1311,48 @@ func OverlayCenter(background, overlay string, screenWidth, screenHeight int) st
 	}
 	overlayHeight := len(ovLines)
 
-	startCol := (screenWidth - overlayWidth) / 2
-	startRow := (screenHeight - overlayHeight) / 2
-	if startCol < 0 {
-		startCol = 0
-	}
-	if startRow < 0 {
-		startRow = 0
-	}
+	startCol := max((screenWidth-overlayWidth)/2, 0)
+	startRow := max((screenHeight-overlayHeight)/2, 0)
 
 	for i, ovLine := range ovLines {
 		targetRow := startRow + i
 		if targetRow >= len(bgLines) {
 			break
 		}
-
-		bgLine := bgLines[targetRow]
-		bgRunes := []rune(stripAnsi(bgLine))
-
-		prefix := ""
-		if startCol > 0 {
-			if startCol <= len(bgRunes) {
-				prefix = string(bgRunes[:startCol])
-			} else {
-				prefix = string(bgRunes) + strings.Repeat(" ", startCol-len(bgRunes))
-			}
-		}
-
-		ovWidth := lipgloss.Width(ovLine)
-		endCol := startCol + ovWidth
-		suffix := ""
-		if endCol < len(bgRunes) {
-			suffix = string(bgRunes[endCol:])
-		}
-
-		bgLines[targetRow] = prefix + ovLine + suffix
+		bgLines[targetRow] = spliceLine(bgLines[targetRow], startCol, ovLine)
 	}
 
 	return strings.Join(bgLines, "\n")
+}
+
+// spliceLine overlays ovLine onto bgLine at visible column startCol,
+// preserving ANSI escape sequences (notably background colors) in the
+// prefix and suffix bands. ansi.Cut handles the SGR-aware slicing so a
+// blue desktop fill behind the dialog stays blue on either side of the
+// overlay rather than collapsing to terminal default.
+//
+// If startCol is past bgLine's visible end, the gap is padded with
+// plain spaces — those cells weren't painted by the background to begin
+// with, so we have nothing to extend.
+func spliceLine(bgLine string, startCol int, ovLine string) string {
+	bgWidth := lipgloss.Width(bgLine)
+	ovWidth := lipgloss.Width(ovLine)
+	endCol := startCol + ovWidth
+
+	var prefix string
+	switch {
+	case startCol <= 0:
+		prefix = ""
+	case startCol >= bgWidth:
+		prefix = bgLine + strings.Repeat(" ", startCol-bgWidth)
+	default:
+		prefix = ansi.Cut(bgLine, 0, startCol)
+	}
+
+	suffix := ""
+	if endCol < bgWidth {
+		suffix = ansi.Cut(bgLine, endCol, bgWidth)
+	}
+
+	return prefix + ovLine + suffix
 }

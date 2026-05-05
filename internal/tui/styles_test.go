@@ -284,6 +284,41 @@ func TestStyles_ApplyTheme(t *testing.T) {
 	if got := s.Placeholder.GetForeground(); got != wantMuted {
 		t.Errorf("Placeholder.GetForeground() = %v, want %v", got, wantMuted)
 	}
+
+	// Turbo Vision: desktop.bg = "#0000aa" → Content and Sidebar paint
+	// their empty cells blue so short rows and unused vertical space
+	// match the classic TV desktop fill.
+	wantDesktop := lipgloss.Color("#0000aa")
+	if got := s.Content.GetBackground(); got != wantDesktop {
+		t.Errorf("Content.GetBackground() = %v, want %v", got, wantDesktop)
+	}
+	if got := s.Sidebar.GetBackground(); got != wantDesktop {
+		t.Errorf("Sidebar.GetBackground() = %v, want %v", got, wantDesktop)
+	}
+}
+
+// TestStyles_ApplyTheme_DefaultDesktopTransparent asserts that the
+// default theme's empty desktop.bg leaves Content and Sidebar with no
+// background paint, so terminals show their own background through.
+// This protects the "transparent passthrough" promise of the default
+// palette across live-swap.
+func TestStyles_ApplyTheme_DefaultDesktopTransparent(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+
+	def, _, err := theme.LoadBuiltin("default")
+	if err != nil {
+		t.Fatalf("LoadBuiltin(default): %v", err)
+	}
+
+	s := NewStyles()
+	s.applyTheme(def)
+
+	if got := s.Content.GetBackground(); got != (lipgloss.NoColor{}) {
+		t.Errorf("Content.GetBackground() = %v, want NoColor", got)
+	}
+	if got := s.Sidebar.GetBackground(); got != (lipgloss.NoColor{}) {
+		t.Errorf("Sidebar.GetBackground() = %v, want NoColor", got)
+	}
 }
 
 // TestStyles_ApplyTheme_DefaultRoundtrip applies the default theme and

@@ -1,18 +1,17 @@
 # TMoney Turbo Vision theme — Borland TV aesthetic. Blue windows with
 # yellow titles, light-gray menu/status bars with red shortcut letters,
 # and double-line borders throughout.
-#
-# Note: v1 does not paint a solid blue desktop fill (would require
-# layout-level chrome work). Window content areas show terminal default
-# behind any unbordered region.
 
 name = "Turbo Vision"
 description = "Classic Borland Turbo Vision blue + double borders"
 
 border_style = "double"
 
-# Desktop — reserved; not painted in v1 (would be solid blue).
-desktop.bg = ""
+# Desktop — solid blue fill behind the main content area and sidebar,
+# matching the original Turbo Vision look. Empty cells (short content
+# rows, gaps below content) paint blue rather than showing terminal
+# default.
+desktop.bg = "#0000aa"
 
 # Menu bar — black on light gray, with red shortcut letters (no underline).
 menubar.fg = "#000000"

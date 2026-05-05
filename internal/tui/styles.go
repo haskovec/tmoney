@@ -68,6 +68,11 @@ var (
 	ColorMuted = lipgloss.Color("245")
 	// ColorTitle is bold white for section titles.
 	ColorTitle = lipgloss.Color("15")
+	// ColorDesktopBg paints the otherwise-empty cells in the main content
+	// area and the sidebar. lipgloss.NoColor{} means "transparent" — short
+	// rows and unused vertical space show the terminal default. A real
+	// color gives the Turbo Vision "blue desktop" look.
+	ColorDesktopBg color.Color = lipgloss.NoColor{}
 )
 
 // Styles holds all the reusable lipgloss styles for the application.
@@ -165,14 +170,19 @@ func (s *Styles) initBaseStyles() {
 		Background(ColorStatusBg).
 		Padding(0, 1)
 
-	// Content area
-	s.Content = lipgloss.NewStyle()
+	// Content area. Background paints empty cells (short content rows
+	// and unused rows below content) when the active theme sets
+	// `desktop.bg`. NoColor leaves the terminal default visible.
+	s.Content = lipgloss.NewStyle().
+		Background(ColorDesktopBg)
 
-	// Sidebar
+	// Sidebar. Same desktop-bg treatment as Content so the two panes
+	// share a continuous backdrop.
 	s.Sidebar = lipgloss.NewStyle().
 		BorderRight(true).
 		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(ColorBorder)
+		BorderForeground(ColorBorder).
+		Background(ColorDesktopBg)
 
 	s.SidebarItem = lipgloss.NewStyle().
 		PaddingLeft(2)
@@ -333,6 +343,7 @@ func (s *Styles) applyTheme(t *theme.Theme) {
 	ColorSelectedBg = themeColor(t.Table.Selected.Bg)
 	ColorMuted = themeColor(t.Text.Muted)
 	ColorTitle = themeColor(t.Text.Title)
+	ColorDesktopBg = themeColor(t.Desktop.Bg)
 
 	s.initBaseStyles()
 }

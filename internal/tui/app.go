@@ -4479,6 +4479,7 @@ type reportsViewDataLoadedMsg struct {
 
 // overlayDropdown places a dropdown string on top of the layout at the given row and column offset.
 func overlayDropdown(layout, dropdown string, colOffset, rowOffset, totalWidth int) string {
+	_ = totalWidth // reserved for future right-edge clipping; kept to avoid touching call sites.
 	layoutLines := strings.Split(layout, "\n")
 	dropdownLines := strings.Split(dropdown, "\n")
 
@@ -4487,31 +4488,7 @@ func overlayDropdown(layout, dropdown string, colOffset, rowOffset, totalWidth i
 		if targetRow >= len(layoutLines) {
 			break
 		}
-
-		// Build the new line: prefix + dropdown + suffix
-		bgLine := layoutLines[targetRow]
-		bgRunes := []rune(stripAnsi(bgLine))
-
-		// Build prefix (characters before the dropdown)
-		prefix := ""
-		if colOffset > 0 {
-			if colOffset <= len(bgRunes) {
-				prefix = string(bgRunes[:colOffset])
-			} else {
-				prefix = string(bgRunes) + strings.Repeat(" ", colOffset-len(bgRunes))
-			}
-		}
-
-		// Build suffix (characters after the dropdown)
-		dropdownWidth := lipgloss.Width(dLine)
-		endCol := colOffset + dropdownWidth
-		suffix := ""
-		if endCol < len(bgRunes) {
-			suffix = string(bgRunes[endCol:])
-		}
-
-		_ = totalWidth
-		layoutLines[targetRow] = prefix + dLine + suffix
+		layoutLines[targetRow] = spliceLine(layoutLines[targetRow], colOffset, dLine)
 	}
 
 	return strings.Join(layoutLines, "\n")

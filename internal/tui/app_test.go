@@ -5573,3 +5573,31 @@ negative = "not-a-color"
 		t.Errorf("startup log missing parse issue: %q", data)
 	}
 }
+
+// TestOverlayDropdown_PreservesBackgroundANSI mirrors the OverlayCenter
+// guard: the View → Theme submenu (and any other dropdown) lands on top
+// of a colored desktop, and the prefix/suffix bands around the dropdown
+// must keep the desktop SGR background. Otherwise dropdowns gain a
+// black halo on Turbo Vision.
+func TestOverlayDropdown_PreservesBackgroundANSI(t *testing.T) {
+	const blueBg = "\x1b[44m"
+	const reset = "\x1b[0m"
+	bgRow := blueBg + strings.Repeat(" ", 30) + reset
+	layout := strings.Join([]string{bgRow, bgRow, bgRow, bgRow}, "\n")
+
+	dropdown := "MENU" // visible width 4
+
+	result := overlayDropdown(layout, dropdown, 5, 1, 30)
+	lines := strings.Split(result, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines, got %d", len(lines))
+	}
+
+	row := lines[1]
+	if !strings.Contains(row, "MENU") {
+		t.Fatalf("dropdown row should contain overlay, got %q", row)
+	}
+	if !strings.Contains(row, blueBg) {
+		t.Errorf("dropdown row should preserve blue-bg ANSI on prefix/suffix, got %q", row)
+	}
+}
