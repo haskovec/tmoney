@@ -2,12 +2,14 @@ package tui
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/NimbleMarkets/ntcharts/v2/linechart"
 	"github.com/NimbleMarkets/ntcharts/v2/linechart/timeserieslinechart"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
@@ -126,12 +128,18 @@ func renderTimeSeriesChart(innerW, innerH int, prices []*price.Price) string {
 	if len(times) < 2 {
 		return ""
 	}
-	minY, maxY := clampYRange(values)
+	minY, maxY, step := clampYRange(values)
 
-	chart := timeserieslinechart.New(innerW, innerH)
+	chart := timeserieslinechart.New(
+		innerW, innerH,
+		timeserieslinechart.WithYLabelFormatter(niceYLabelFormatter(step)),
+	)
 	chart.SetTimeRange(times[0], times[len(times)-1])
 	chart.SetViewTimeRange(times[0], times[len(times)-1])
 	chart.SetYRange(minY, maxY)
+	// SetViewYRange reruns UpdateGraphSizes against the now-correct Y
+	// range and our wider formatter, reserving enough left-margin
+	// columns so labels like "82.0" don't get clipped.
 	chart.SetViewYRange(minY, maxY)
 	for i, t := range times {
 		chart.Push(timeserieslinechart.TimePoint{Time: t, Value: values[i]})
@@ -291,13 +299,18 @@ func (c *historyCache) Clear() {
 	c.mu.Unlock()
 }
 
-// clampYRange returns a (min, max) pair suitable for the chart's Y
-// axis. Distinct values pass through. Identical values get padded by
-// ±0.5% so the chart renders a horizontal line instead of dividing by
-// zero. All-zero (or empty) input returns a fixed ±0.5 fallback.
-func clampYRange(values []float64) (float64, float64) {
+// clampYRange returns (min, max, step) for the chart's Y axis. For
+// distinct values, min and max are snapped outward to multiples of a
+// "nice" step (1/2/5 × power of 10) so labels drawn at step boundaries
+// fall at evenly-spaced rows — without this, ntcharts' default %.0f
+// formatter places labels at whichever rows the integer-rounding
+// boundary first appears, which can clump them unevenly when the raw
+// data range straddles a half-integer (e.g. 81.49 → 83.40 puts "81" and
+// "82" on adjacent rows). Identical values get padded by ±0.5% with
+// step 1; all-zero or empty input returns a fixed ±0.5 fallback.
+func clampYRange(values []float64) (float64, float64, float64) {
 	if len(values) == 0 {
-		return -0.5, 0.5
+		return -0.5, 0.5, 1
 	}
 
 	min, max := values[0], values[0]
@@ -310,19 +323,61 @@ func clampYRange(values []float64) (float64, float64) {
 		}
 	}
 
-	if min != max {
-		return min, max
+	if min == max {
+		v := min
+		if v == 0 {
+			return -0.5, 0.5, 1
+		}
+		pad := 0.005 * v
+		if pad < 0 {
+			pad = -pad
+		}
+		return v - pad, v + pad, 1
 	}
 
-	// All equal: pad by 0.5% of the value, falling back to ±0.5 when
-	// the value itself is zero (so we never produce a zero spread).
-	v := min
-	if v == 0 {
-		return -0.5, 0.5
+	step := niceStep(max-min, 4)
+	snappedMin := math.Floor(min/step) * step
+	snappedMax := math.Ceil(max/step) * step
+	if snappedMin == snappedMax {
+		snappedMax = snappedMin + step
 	}
-	pad := 0.005 * v
-	if pad < 0 {
-		pad = -pad
+	return snappedMin, snappedMax, step
+}
+
+// niceStep returns a "nice" axis step (1, 2, or 5 × power of 10) that
+// produces roughly targetTicks intervals across rangeSize. Used to snap
+// chart Y ranges so that label boundaries fall at evenly-spaced rows.
+func niceStep(rangeSize float64, targetTicks int) float64 {
+	if rangeSize <= 0 || targetTicks <= 0 {
+		return 1
 	}
-	return v - pad, v + pad
+	rough := rangeSize / float64(targetTicks)
+	mag := math.Pow(10, math.Floor(math.Log10(rough)))
+	switch norm := rough / mag; {
+	case norm < 1.5:
+		return 1 * mag
+	case norm < 3:
+		return 2 * mag
+	case norm < 7:
+		return 5 * mag
+	default:
+		return 10 * mag
+	}
+}
+
+// niceYLabelFormatter returns a LabelFormatter that snaps each row's
+// value down to the nearest multiple of step and formats with enough
+// decimal precision to express step exactly. ntcharts dedupes
+// consecutive identical labels, so this produces evenly-spaced labels
+// at clean step boundaries (e.g. 81.50, 82.00, 82.50) instead of the
+// uneven default placement.
+func niceYLabelFormatter(step float64) linechart.LabelFormatter {
+	decimals := 0
+	for s := step; s > 0 && s < 1 && decimals < 6; s *= 10 {
+		decimals++
+	}
+	format := fmt.Sprintf("%%.%df", decimals)
+	return func(_ int, v float64) string {
+		return fmt.Sprintf(format, math.Floor(v/step)*step)
+	}
 }

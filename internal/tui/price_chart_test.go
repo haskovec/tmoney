@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -164,20 +165,44 @@ func TestPriceHistoryToSeriesAlreadyAscending(t *testing.T) {
 }
 
 func TestClampYRangeDistinct(t *testing.T) {
-	min, max := clampYRange([]float64{100, 110, 105})
-	if min != 100 || max != 110 {
-		t.Errorf("clampYRange distinct values = (%v, %v), want (100, 110)", min, max)
+	// 100..110 has range 10, target=4 → step 2; min/max already on
+	// step boundaries so they pass through unchanged.
+	min, max, step := clampYRange([]float64{100, 110, 105})
+	if min != 100 || max != 110 || step != 2 {
+		t.Errorf("clampYRange distinct = (%v, %v, %v), want (100, 110, 2)", min, max, step)
+	}
+}
+
+func TestClampYRangeSnapsToStepBoundaries(t *testing.T) {
+	// Reproduces the screenshot bug: AGTHX prices ~81.5..83.4 used to
+	// produce uneven label spacing because the raw min straddled an
+	// integer-rounding boundary. Snapped range must land on step.
+	min, max, step := clampYRange([]float64{81.55, 82.10, 82.97, 83.41})
+	if step <= 0 {
+		t.Fatalf("step must be positive; got %v", step)
+	}
+	if min > 81.55 {
+		t.Errorf("snapped min=%v should be <= raw min 81.55", min)
+	}
+	if max < 83.41 {
+		t.Errorf("snapped max=%v should be >= raw max 83.41", max)
+	}
+	if mod := math.Mod(min, step); math.Abs(mod) > 1e-9 && math.Abs(mod-step) > 1e-9 {
+		t.Errorf("snapped min=%v not a multiple of step %v", min, step)
+	}
+	if mod := math.Mod(max, step); math.Abs(mod) > 1e-9 && math.Abs(mod-step) > 1e-9 {
+		t.Errorf("snapped max=%v not a multiple of step %v", max, step)
 	}
 }
 
 func TestClampYRangeAllEqual(t *testing.T) {
 	v := 200.0
-	min, max := clampYRange([]float64{v, v, v})
-	// Spec: ±0.5% of value
+	min, max, step := clampYRange([]float64{v, v, v})
+	// Spec: ±0.5% of value, step 1 fallback.
 	wantMin := v - 0.005*v
 	wantMax := v + 0.005*v
-	if min != wantMin || max != wantMax {
-		t.Errorf("clampYRange all-equal = (%v, %v), want (%v, %v)", min, max, wantMin, wantMax)
+	if min != wantMin || max != wantMax || step != 1 {
+		t.Errorf("clampYRange all-equal = (%v, %v, %v), want (%v, %v, 1)", min, max, step, wantMin, wantMax)
 	}
 	if max <= min {
 		t.Errorf("clampYRange all-equal must produce non-zero spread; got min=%v max=%v", min, max)
@@ -185,30 +210,76 @@ func TestClampYRangeAllEqual(t *testing.T) {
 }
 
 func TestClampYRangeAllZero(t *testing.T) {
-	min, max := clampYRange([]float64{0, 0, 0})
-	if min != -0.5 || max != 0.5 {
-		t.Errorf("clampYRange all-zero = (%v, %v), want (-0.5, 0.5)", min, max)
-	}
-	if max <= min {
-		t.Errorf("clampYRange all-zero must produce non-zero spread")
+	min, max, step := clampYRange([]float64{0, 0, 0})
+	if min != -0.5 || max != 0.5 || step != 1 {
+		t.Errorf("clampYRange all-zero = (%v, %v, %v), want (-0.5, 0.5, 1)", min, max, step)
 	}
 }
 
 func TestClampYRangeSingle(t *testing.T) {
-	// Single value behaves like all-equal: pad ±0.5%.
-	min, max := clampYRange([]float64{50})
+	min, max, step := clampYRange([]float64{50})
 	wantMin := 50 - 0.005*50
 	wantMax := 50 + 0.005*50
-	if min != wantMin || max != wantMax {
-		t.Errorf("clampYRange single = (%v, %v), want (%v, %v)", min, max, wantMin, wantMax)
+	if min != wantMin || max != wantMax || step != 1 {
+		t.Errorf("clampYRange single = (%v, %v, %v), want (%v, %v, 1)", min, max, step, wantMin, wantMax)
 	}
 }
 
 func TestClampYRangeEmpty(t *testing.T) {
-	// Defensive: empty input shouldn't panic; return a sane default.
-	min, max := clampYRange(nil)
+	min, max, step := clampYRange(nil)
 	if max <= min {
 		t.Errorf("clampYRange empty must still produce non-zero spread; got min=%v max=%v", min, max)
+	}
+	if step <= 0 {
+		t.Errorf("clampYRange empty must return positive step; got %v", step)
+	}
+}
+
+func TestNiceStep(t *testing.T) {
+	cases := []struct {
+		rangeSize float64
+		ticks     int
+		want      float64
+	}{
+		{10, 4, 2},      // rough=2.5 → norm=2.5 → "2"
+		{2.5, 4, 0.5},   // rough=0.625 → mag=0.1, norm=6.25 → "5"
+		{1, 4, 0.2},     // rough=0.25 → mag=0.1, norm=2.5 → "2"
+		{100, 4, 20},    // rough=25 → mag=10, norm=2.5 → "2"
+		{0, 4, 1},       // degenerate
+		{-5, 4, 1},      // negative
+		{10, 0, 1},      // zero ticks
+	}
+	for _, tc := range cases {
+		if got := niceStep(tc.rangeSize, tc.ticks); got != tc.want {
+			t.Errorf("niceStep(%v, %d) = %v, want %v", tc.rangeSize, tc.ticks, got, tc.want)
+		}
+	}
+}
+
+func TestNiceYLabelFormatter(t *testing.T) {
+	// Integer step: zero decimals.
+	f := niceYLabelFormatter(1)
+	if got := f(0, 81.7); got != "81" {
+		t.Errorf("formatter(step=1, 81.7) = %q, want %q", got, "81")
+	}
+	// Sub-integer step picks decimals from the step width.
+	f = niceYLabelFormatter(0.5)
+	if got := f(0, 81.7); got != "81.5" {
+		t.Errorf("formatter(step=0.5, 81.7) = %q, want %q", got, "81.5")
+	}
+	if got := f(0, 82.0); got != "82.0" {
+		t.Errorf("formatter(step=0.5, 82.0) = %q, want %q", got, "82.0")
+	}
+	// Floor (not round) so adjacent rows on the same step bucket render
+	// the same label — that's how ntcharts dedupes into evenly-spaced
+	// labels. step=0.5 buckets [81.5, 82.0): all should format as "81.5".
+	f = niceYLabelFormatter(0.5)
+	if a, b := f(0, 81.51), f(0, 81.99); a != b {
+		t.Errorf("values within the same step bucket should format identically; got %q vs %q", a, b)
+	}
+	// Crossing the bucket boundary changes the label.
+	if a, b := f(0, 81.49), f(0, 81.51); a == b {
+		t.Errorf("values across a bucket boundary should differ; both formatted as %q", a)
 	}
 }
 
