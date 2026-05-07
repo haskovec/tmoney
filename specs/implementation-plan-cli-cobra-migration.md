@@ -72,7 +72,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 
 ## Phase 2: account
 
-- [ ] **CM-006 — Phase prep: split `account` handlers into per-verb files**
+- [x] **CM-006 — Phase prep: split `account` handlers into per-verb files** (completed 2026-05-06)
   - GREEN: create `account_add.go`, `account_list.go`, `account_show.go`, `account_balance.go`. Each contains exactly one of `runAddAccount`, `runListAccounts`, `runAccountDetails`, `runBalance`, cut verbatim.
 
 - [ ] **CM-007 — `tmoney account add`**
