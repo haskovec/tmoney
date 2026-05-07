@@ -116,8 +116,8 @@ func TestPrintHelp_IncludesAddTransaction(t *testing.T) {
 	printHelp(buf)
 	output := buf.String()
 
-	if !strings.Contains(output, "--add-transaction") {
-		t.Error("help output should document --add-transaction flag")
+	if !strings.Contains(output, "transaction add") {
+		t.Error("help output should document `transaction add` subcommand")
 	}
 	if !strings.Contains(output, "--amount") {
 		t.Error("help output should document --amount flag")

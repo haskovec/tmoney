@@ -516,7 +516,7 @@ Transaction Commands:
 
   --void <txn-id>      Void a transaction (sets amount to 0, status to void)
 
-  --add-transaction    Add a new transaction (requires --account, --amount)
+  transaction add      Add a new transaction (requires --account, --amount)
     --account <name>   Account for the transaction
     --amount <value>   Transaction amount (negative for expenses)
     --payee <name>     Payee name (auto-created if new)

@@ -104,10 +104,10 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 - [x] **CM-011 — Phase prep: split `transaction` handlers into per-verb files** (completed 2026-05-07)
   - GREEN: create `transaction_add.go`, `transaction_list.go`, `transaction_void.go`, `transaction_search.go` containing `runAddTransaction`, `runTransactions`, `runVoidTransaction`, `runSearch` respectively, cut verbatim.
 
-- [ ] **CM-012 — `tmoney transaction add`**
+- [x] **CM-012 — `tmoney transaction add`** (completed 2026-05-07)
   - RED: tests covering `TestRun_AddTransaction*` (missing required, invalid amount, invalid date, payee auto-create, category resolution, etc.).
   - GREEN: create `transaction.go` (parent). `transaction_add.go` with `transactionAddOptions` (account, amount, payee, category, date, memo, check, status), `newTransactionAddCmd()` with `MarkFlagRequired("account")`, `MarkFlagRequired("amount")`. Register on root; add `"transaction"` to `cobraSubcommands`. Add help smoke test.
-  - CLEANUP: delete `--add-transaction` and `tx*` fields from `cliOptions`.
+  - CLEANUP: delete `--add-transaction` and `tx*` fields from `cliOptions`. (`tx*` fields are still referenced by `--transfer`, `--void`, `--add-scheduled`, `--post-scheduled`, `--search`, etc., so they remain until those verbs migrate.)
   - DOCS: README "Transactions" section.
 
 - [ ] **CM-013 — `tmoney transaction list`**

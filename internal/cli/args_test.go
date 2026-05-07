@@ -232,17 +232,6 @@ func TestParseArgs_FromToMissingValue(t *testing.T) {
 	}
 }
 
-func TestParseArgs_AddTransactionFlag(t *testing.T) {
-	opts, _, err := parseArgs([]string{"--add-transaction"})
-	if err != nil {
-		t.Errorf("parseArgs returned error: %v", err)
-		return
-	}
-	if !opts.addTransaction {
-		t.Error("parseArgs did not set addTransaction flag")
-	}
-}
-
 func TestParseArgs_AmountFlag(t *testing.T) {
 	tests := []struct {
 		name           string

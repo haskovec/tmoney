@@ -32,11 +32,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runVoidTransaction(opts, stdout)
 	}
 
-	// Handle --add-transaction
-	if opts.addTransaction {
-		return runAddTransaction(opts, stdout)
-	}
-
 	// Handle --transfer
 	if opts.transfer {
 		return runTransfer(opts, stdout)

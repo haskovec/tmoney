@@ -17,13 +17,14 @@ type cliOptions struct {
 	fromDate      string // --from <YYYY-MM-DD> start date filter
 	toDate        string // --to <YYYY-MM-DD> end date filter
 
-	// Add transaction options
-	addTransaction bool   // --add-transaction flag
-	txAmount       string // --amount <value>
-	txPayee        string // --payee <name>
-	txCategory     string // --category <name>
-	txDate         string // --date <YYYY-MM-DD>
-	txMemo         string // --memo <text>
+	// Transaction options shared by legacy verbs (--transfer, --void,
+	// --add-scheduled, --post-scheduled, --search, etc.). Retired as
+	// each verb migrates to Cobra.
+	txAmount   string // --amount <value>
+	txPayee    string // --payee <name>
+	txCategory string // --category <name>
+	txDate     string // --date <YYYY-MM-DD>
+	txMemo     string // --memo <text>
 
 	// Transfer options
 	transfer    bool   // --transfer flag
@@ -215,8 +216,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			i++
 			opts.toDate = args[i]
 			opts.toAccount = args[i] // Also used for transfer destination account
-		case "--add-transaction":
-			opts.addTransaction = true
 		case "--transfer":
 			opts.transfer = true
 		case "--search":

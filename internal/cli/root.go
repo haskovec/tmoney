@@ -51,10 +51,11 @@ var cobraKnownFlags = map[string]bool{
 // root. Used by isLegacyInvocation so a legacy-flag-looking arg later
 // in the command line cannot misroute a real subcommand call.
 var cobraSubcommands = map[string]bool{
-	"version": true,
-	"theme":   true,
-	"db":      true,
-	"account": true,
+	"version":     true,
+	"theme":       true,
+	"db":          true,
+	"account":     true,
+	"transaction": true,
 }
 
 // isLegacyInvocation reports whether args contains any `--flag` that
@@ -109,5 +110,6 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newThemeCmd())
 	cmd.AddCommand(newDBCmd())
 	cmd.AddCommand(newAccountCmd())
+	cmd.AddCommand(newTransactionCmd())
 	return cmd
 }

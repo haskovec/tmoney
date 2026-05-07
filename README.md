@@ -34,7 +34,7 @@ tmoney ~/Documents/TMoney/personal.tdb
 
 # Or use the CLI to add data
 tmoney -f personal.tdb --add-account --name "My Checking" --type checking --opening-balance 1000
-tmoney -f personal.tdb --add-transaction --account "My Checking" --amount -45.50 --payee "Grocery Store" --category "Food:Groceries"
+tmoney -f personal.tdb transaction add --account "My Checking" --amount -45.50 --payee "Grocery Store" --category "Food:Groceries"
 tmoney -f personal.tdb --balance
 ```
 
@@ -338,13 +338,13 @@ tmoney --transactions --account Checking --limit 20
 tmoney --transactions --account Checking --from 2024-01-01 --to 2024-01-31
 
 # Add a transaction (negative amounts for expenses)
-tmoney --add-transaction --account Checking --amount -50.00 --payee "Coffee Shop"
-tmoney --add-transaction --account Checking --amount -120.00 \
+tmoney transaction add --account Checking --amount -50.00 --payee "Coffee Shop"
+tmoney transaction add --account Checking --amount -120.00 \
   --payee "Electric Co" --category "Bills:Utilities" \
   --date 2024-03-15 --memo "March electric bill"
 
 # Add income
-tmoney --add-transaction --account Checking --amount 3500.00 \
+tmoney transaction add --account Checking --amount 3500.00 \
   --payee "Employer Inc" --category "Income:Salary"
 
 # Create a transfer between accounts
@@ -551,7 +551,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), and `tmoney account add`/`list`/`show`/`balance` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, and `tmoney transaction add` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 
