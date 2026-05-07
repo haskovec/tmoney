@@ -101,7 +101,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 
 ## Phase 3: transaction
 
-- [ ] **CM-011 — Phase prep: split `transaction` handlers into per-verb files**
+- [x] **CM-011 — Phase prep: split `transaction` handlers into per-verb files** (completed 2026-05-07)
   - GREEN: create `transaction_add.go`, `transaction_list.go`, `transaction_void.go`, `transaction_search.go` containing `runAddTransaction`, `runTransactions`, `runVoidTransaction`, `runSearch` respectively, cut verbatim.
 
 - [ ] **CM-012 — `tmoney transaction add`**
