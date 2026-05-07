@@ -1,6 +1,6 @@
-# TMoney
+# Terminal Money
 
-A personal finance management application that runs in the terminal. TMoney is designed for users who prefer keyboard-driven interfaces and want full control over their financial data.
+A personal finance management application that runs in the terminal. Terminal Money is designed for users who prefer keyboard-driven interfaces and want full control over their financial data.
 
 ## Core Philosophy
 
