@@ -110,7 +110,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--add-transaction` and `tx*` fields from `cliOptions`. (`tx*` fields are still referenced by `--transfer`, `--void`, `--add-scheduled`, `--post-scheduled`, `--search`, etc., so they remain until those verbs migrate.)
   - DOCS: README "Transactions" section.
 
-- [ ] **CM-013 — `tmoney transaction list`**
+- [x] **CM-013 — `tmoney transaction list`** (completed 2026-05-07)
   - RED: tests covering `TestRun_Transactions*` (account filter, limit, date range, status filter, invalid dates).
   - GREEN: `transaction_list.go` with `transactionListOptions{ file, account, fromDate, toDate, status string; limit int }`, `newTransactionListCmd()` (`MarkFlagRequired("account")`).
   - CLEANUP: delete `--transactions`, `--limit`, `--from`/`--to`/`--status` parsing branches that are exclusive to this verb.

@@ -333,9 +333,9 @@ Account types: `checking`, `savings`, `credit_card`, `investment`, `cash`, `loan
 
 ```bash
 # List transactions for an account
-tmoney --transactions --account Checking
-tmoney --transactions --account Checking --limit 20
-tmoney --transactions --account Checking --from 2024-01-01 --to 2024-01-31
+tmoney transaction list --account Checking
+tmoney transaction list --account Checking --limit 20
+tmoney transaction list --account Checking --from 2024-01-01 --to 2024-01-31
 
 # Add a transaction (negative amounts for expenses)
 tmoney transaction add --account Checking --amount -50.00 --payee "Coffee Shop"
@@ -551,7 +551,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, and `tmoney transaction add` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, and `tmoney transaction add`/`list` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

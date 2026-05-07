@@ -222,11 +222,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runSearch(opts, stdout)
 	}
 
-	// Handle --transactions (check before --account since it uses --account as argument)
-	if opts.transactions {
-		return runTransactions(opts, stdout)
-	}
-
 	// If remaining args include a file path, use it as the file
 	if len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
 		if opts.file == "" {

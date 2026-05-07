@@ -12,8 +12,6 @@ type cliOptions struct {
 	file          string
 	includeClosed bool
 	accountName   string // --account <name> to show details
-	transactions  bool   // --transactions to list transactions
-	limit         int    // --limit <n> to limit results
 	fromDate      string // --from <YYYY-MM-DD> start date filter
 	toDate        string // --to <YYYY-MM-DD> end date filter
 
@@ -187,21 +185,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.accountName = args[i]
-		case "--transactions":
-			opts.transactions = true
-		case "--limit":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--limit requires a number argument")
-			}
-			i++
-			limit, err := strconv.Atoi(args[i])
-			if err != nil {
-				return nil, nil, fmt.Errorf("--limit requires a valid number: %w", err)
-			}
-			if limit < 1 {
-				return nil, nil, fmt.Errorf("--limit must be a positive number")
-			}
-			opts.limit = limit
 		case "--from":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--from requires an argument")
@@ -692,16 +675,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.file = after
 			} else if after, ok := strings.CutPrefix(arg, "--account="); ok {
 				opts.accountName = after
-			} else if after, ok := strings.CutPrefix(arg, "--limit="); ok {
-				limitStr := after
-				limit, err := strconv.Atoi(limitStr)
-				if err != nil {
-					return nil, nil, fmt.Errorf("--limit requires a valid number: %w", err)
-				}
-				if limit < 1 {
-					return nil, nil, fmt.Errorf("--limit must be a positive number")
-				}
-				opts.limit = limit
 			} else if after, ok := strings.CutPrefix(arg, "--from="); ok {
 				val := after
 				opts.fromDate = val

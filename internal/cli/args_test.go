@@ -126,62 +126,6 @@ func TestParseArgs_AccountFlagMissingName(t *testing.T) {
 	}
 }
 
-func TestParseArgs_TransactionsFlag(t *testing.T) {
-	opts, _, err := parseArgs([]string{"--transactions"})
-	if err != nil {
-		t.Errorf("parseArgs returned error: %v", err)
-		return
-	}
-	if !opts.transactions {
-		t.Error("parseArgs did not set transactions flag")
-	}
-}
-
-func TestParseArgs_LimitFlag(t *testing.T) {
-	tests := []struct {
-		name          string
-		args          []string
-		expectedLimit int
-	}{
-		{"long flag with space", []string{"--limit", "10"}, 10},
-		{"long flag with equals", []string{"--limit=25"}, 25},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opts, _, err := parseArgs(tt.args)
-			if err != nil {
-				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
-				return
-			}
-			if opts.limit != tt.expectedLimit {
-				t.Errorf("parseArgs(%v) limit = %d, want %d", tt.args, opts.limit, tt.expectedLimit)
-			}
-		})
-	}
-}
-
-func TestParseArgs_LimitFlagInvalid(t *testing.T) {
-	tests := []struct {
-		name string
-		args []string
-	}{
-		{"missing value", []string{"--limit"}},
-		{"not a number", []string{"--limit", "abc"}},
-		{"zero", []string{"--limit", "0"}},
-		{"negative", []string{"--limit", "-5"}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := parseArgs(tt.args)
-			if err == nil {
-				t.Errorf("parseArgs(%v) should return error", tt.args)
-			}
-		})
-	}
-}
-
 func TestParseArgs_FromToFlags(t *testing.T) {
 	tests := []struct {
 		name         string

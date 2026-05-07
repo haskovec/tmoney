@@ -6,15 +6,51 @@ import (
 
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runTransactions lists transactions for an account.
-func runTransactions(opts *cliOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--transactions requires --file to specify a database")
+// transactionListOptions are the inputs to `tmoney transaction list`.
+type transactionListOptions struct {
+	file     string
+	account  string
+	limit    int
+	fromDate string
+	toDate   string
+	status   string
+}
+
+// newTransactionListCmd registers `tmoney transaction list`. The
+// database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command. `--account` is required.
+func newTransactionListCmd() *cobra.Command {
+	opts := &transactionListOptions{}
+	cmd := &cobra.Command{
+		Use:          "list",
+		Short:        "List transactions for an account",
+		Long:         "List transactions on an account, optionally filtered by date range, cleared status, or row limit.",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			if opts.limit < 0 {
+				return fmt.Errorf("--limit must be a non-negative number")
+			}
+			return runTransactionList(opts, cmd.OutOrStdout())
+		},
 	}
-	if opts.accountName == "" {
-		return fmt.Errorf("--transactions requires --account to specify an account")
+	cmd.Flags().StringVar(&opts.account, "account", "", "Account name (required)")
+	cmd.Flags().IntVar(&opts.limit, "limit", 0, "Maximum number of transactions to display (0 = no limit)")
+	cmd.Flags().StringVar(&opts.fromDate, "from", "", "Earliest date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&opts.toDate, "to", "", "Latest date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&opts.status, "status", "", "Filter by status: uncleared, cleared, reconciled, void")
+	_ = cmd.MarkFlagRequired("account")
+	return cmd
+}
+
+// runTransactionList lists transactions for an account.
+func runTransactionList(opts *transactionListOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -23,13 +59,11 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// Get account by name
-	acct, err := svc.Account.GetByName(opts.accountName)
+	acct, err := svc.Account.GetByName(opts.account)
 	if err != nil {
-		return fmt.Errorf("account %q not found", opts.accountName)
+		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	// Parse date filters if provided
 	var startDate, endDate types.Date
 	hasDateFilter := false
 
@@ -49,15 +83,13 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 		hasDateFilter = true
 	}
 
-	// Fetch transactions
 	var transactions []*transaction.Transaction
 	if hasDateFilter {
-		// If only one date provided, use it for both bounds
 		if opts.fromDate == "" {
-			startDate = types.Date{} // Zero date (far past)
+			startDate = types.Date{}
 		}
 		if opts.toDate == "" {
-			endDate = types.Today() // Today
+			endDate = types.Today()
 		}
 		transactions, err = svc.Transaction.ListByAccountAndDateRange(acct.ID, startDate, endDate)
 	} else {
@@ -67,11 +99,10 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("failed to list transactions: %w", err)
 	}
 
-	// Filter by status if specified
-	if opts.txStatus != "" {
-		status, err := transaction.ParseStatus(opts.txStatus)
-		if err != nil {
-			return fmt.Errorf("invalid --status: %w", err)
+	if opts.status != "" {
+		status, perr := transaction.ParseStatus(opts.status)
+		if perr != nil {
+			return fmt.Errorf("invalid --status: %w", perr)
 		}
 		var filtered []*transaction.Transaction
 		for _, txn := range transactions {
@@ -82,16 +113,13 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 		transactions = filtered
 	}
 
-	// Apply limit if specified
 	if opts.limit > 0 && len(transactions) > opts.limit {
 		transactions = transactions[:opts.limit]
 	}
 
-	// Build payee and category lookup maps
 	payeeNames := make(map[types.ID]string)
 	categoryNames := make(map[types.ID]string)
 
-	// Fetch all payees and categories for name lookup
 	payees, _ := svc.PayeeRepo.List()
 	for _, p := range payees {
 		payeeNames[p.ID] = p.Name
@@ -102,7 +130,6 @@ func runTransactions(opts *cliOptions, w io.Writer) error {
 		categoryNames[c.ID] = c.Name
 	}
 
-	// Print transactions table
 	printTransactionsTable(w, acct, transactions, payeeNames, categoryNames)
 
 	return nil
