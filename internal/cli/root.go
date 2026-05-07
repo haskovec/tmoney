@@ -53,6 +53,7 @@ var cobraKnownFlags = map[string]bool{
 var cobraSubcommands = map[string]bool{
 	"version": true,
 	"theme":   true,
+	"db":      true,
 }
 
 // isLegacyInvocation reports whether args contains any `--flag` that
@@ -105,5 +106,6 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVarP(&fileFlag, "file", "f", "", "Database file path")
 	cmd.AddCommand(newVersionCmd())
 	cmd.AddCommand(newThemeCmd())
+	cmd.AddCommand(newDBCmd())
 	return cmd
 }

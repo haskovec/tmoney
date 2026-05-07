@@ -106,40 +106,6 @@ func TestParseArgs_RemainingArgs(t *testing.T) {
 	}
 }
 
-func TestParseArgs_CreateFlag(t *testing.T) {
-	tests := []struct {
-		name           string
-		args           []string
-		expectedCreate string
-	}{
-		{"long flag with space", []string{"--create", "/path/to/new.tdb"}, "/path/to/new.tdb"},
-		{"long flag with equals", []string{"--create=/path/to/new.tdb"}, "/path/to/new.tdb"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opts, _, err := parseArgs(tt.args)
-			if err != nil {
-				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
-				return
-			}
-			if opts.createDB != tt.expectedCreate {
-				t.Errorf("parseArgs(%v) createDB = %q, want %q", tt.args, opts.createDB, tt.expectedCreate)
-			}
-		})
-	}
-}
-
-func TestParseArgs_CreateFlagMissingPath(t *testing.T) {
-	_, _, err := parseArgs([]string{"--create"})
-	if err == nil {
-		t.Error("parseArgs(--create) without path should return error")
-	}
-	if !strings.Contains(err.Error(), "requires a path") {
-		t.Errorf("error should mention path requirement, got: %v", err)
-	}
-}
-
 func TestParseArgs_AccountFlag(t *testing.T) {
 	tests := []struct {
 		name            string

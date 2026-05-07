@@ -46,7 +46,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 - [x] **CM-001 — Phase prep: split `db` handlers into per-verb files** (completed 2026-05-06)
   - GREEN: create `internal/cli/db_create.go`, `db_backup.go`, `db_restore.go`, `db_list_backups.go`. Each contains exactly one of the legacy handlers (`runCreateDB`, `runBackup`, `runRestore`, `runListBackups`) cut verbatim from `commands.go`. No tests added.
 
-- [ ] **CM-002 — `tmoney db create <path>`**
+- [x] **CM-002 — `tmoney db create <path>`** (completed 2026-05-06)
   - RED: tests in `internal/cli/db_create_test.go` cover the scenarios currently in `TestRun_CreateDB`, `TestRun_CreateDBWithEqualsFormat`, `TestRun_CreateDBAlreadyExists`, `TestRun_CreateDBAddsExtension`, `TestRun_CreateThenListAccounts`. The "missing path" case asserts on Cobra's `accepts 1 arg(s)` error. Add `TestDBCmd_Help` smoke test asserting `executeWith([]string{"db", "--help"}, …)` lists all four verbs.
   - GREEN: create `internal/cli/db.go` (parent `db` command). Create `db_create.go` with `dbCreateOptions{ path string }`, `newDBCreateCmd()` (`Use: "create <path>"`, `Args: cobra.ExactArgs(1)`), and `runDBCreate`. Register `db` on the root in `root.go`; add `"db"` to `cobraSubcommands`.
   - CLEANUP: delete `--create` parsing in `parseArgs`; delete the `if opts.createDB != ""` branch in `legacy.go`; delete `createDB` field from `cliOptions`; delete migrated tests from `commands_test.go`.

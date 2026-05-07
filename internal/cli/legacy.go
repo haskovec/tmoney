@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --create
-	if opts.createDB != "" {
-		return runCreateDB(opts, stdout)
-	}
-
 	// Handle --list-accounts
 	if opts.listAccounts {
 		return runListAccounts(opts, stdout)

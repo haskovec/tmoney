@@ -27,7 +27,7 @@ The resulting `tmoney` binary is self-contained with no runtime dependencies.
 
 ```bash
 # Create a new database file
-tmoney --create ~/Documents/TMoney/personal.tdb
+tmoney db create ~/Documents/TMoney/personal.tdb
 
 # Launch the TUI
 tmoney ~/Documents/TMoney/personal.tdb
@@ -292,7 +292,7 @@ The CLI provides full access to all features for scripting and automation.
 
 ```bash
 # Create a new database file
-tmoney --create ~/Documents/TMoney/finances.tdb
+tmoney db create ~/Documents/TMoney/finances.tdb
 ```
 
 ### Accounts
@@ -541,7 +541,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — only `tmoney version`, `tmoney theme list`, and `tmoney theme generate-from-wal` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — only `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, and `tmoney db create` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

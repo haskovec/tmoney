@@ -12,7 +12,6 @@ type cliOptions struct {
 	file          string
 	listAccounts  bool
 	includeClosed bool
-	createDB      string
 	accountName   string // --account <name> to show details
 	showBalance   bool   // --balance to show all balances
 	transactions  bool   // --transactions to list transactions
@@ -228,12 +227,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			i++
 			opts.toDate = args[i]
 			opts.toAccount = args[i] // Also used for transfer destination account
-		case "--create":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--create requires a path argument")
-			}
-			i++
-			opts.createDB = args[i]
 		case "--add-transaction":
 			opts.addTransaction = true
 		case "--transfer":
@@ -722,8 +715,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.file = after
 			} else if after, ok := strings.CutPrefix(arg, "-f="); ok {
 				opts.file = after
-			} else if after, ok := strings.CutPrefix(arg, "--create="); ok {
-				opts.createDB = after
 			} else if after, ok := strings.CutPrefix(arg, "--account="); ok {
 				opts.accountName = after
 			} else if after, ok := strings.CutPrefix(arg, "--limit="); ok {
