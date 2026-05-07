@@ -126,17 +126,6 @@ func TestParseArgs_AccountFlagMissingName(t *testing.T) {
 	}
 }
 
-func TestParseArgs_BalanceFlag(t *testing.T) {
-	opts, _, err := parseArgs([]string{"--balance"})
-	if err != nil {
-		t.Errorf("parseArgs returned error: %v", err)
-		return
-	}
-	if !opts.showBalance {
-		t.Error("parseArgs did not set showBalance flag")
-	}
-}
-
 func TestParseArgs_TransactionsFlag(t *testing.T) {
 	opts, _, err := parseArgs([]string{"--transactions"})
 	if err != nil {

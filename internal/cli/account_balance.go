@@ -3,12 +3,39 @@ package cli
 import (
 	"fmt"
 	"io"
+
+	"github.com/spf13/cobra"
 )
 
-// runBalance shows balances for all accounts with net worth.
-func runBalance(opts *cliOptions, w io.Writer) error {
+// accountBalanceOptions are the inputs to `tmoney account balance`.
+type accountBalanceOptions struct {
+	file string
+}
+
+// newAccountBalanceCmd registers `tmoney account balance`. It prints
+// the balance for every active account and the resulting net worth.
+// The database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command.
+func newAccountBalanceCmd() *cobra.Command {
+	opts := &accountBalanceOptions{}
+	cmd := &cobra.Command{
+		Use:          "balance",
+		Short:        "Show balances for all active accounts",
+		Long:         "Show the current balance of every active account along with overall net worth.",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runAccountBalance(opts, cmd.OutOrStdout())
+		},
+	}
+	return cmd
+}
+
+// runAccountBalance shows balances for all accounts with net worth.
+func runAccountBalance(opts *accountBalanceOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--balance requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -17,19 +44,16 @@ func runBalance(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// List accounts (active only)
 	accounts, err := svc.Account.List(true)
 	if err != nil {
 		return fmt.Errorf("failed to list accounts: %w", err)
 	}
 
-	// Get all balances
 	balances, err := svc.Account.GetAllBalances()
 	if err != nil {
 		return fmt.Errorf("failed to get balances: %w", err)
 	}
 
-	// Print balances table
 	printBalancesTable(w, accounts, balances)
 
 	return nil

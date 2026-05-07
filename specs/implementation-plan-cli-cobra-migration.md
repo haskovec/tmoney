@@ -93,7 +93,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--account` plumbing (the `accountName` field on `cliOptions` is also used by other verbs as a filter — only delete the standalone-show usage; field stays until those verbs migrate).
   - DOCS: README.
 
-- [ ] **CM-010 — `tmoney account balance`**
+- [x] **CM-010 — `tmoney account balance`** (completed 2026-05-07)
   - RED: tests covering `TestRun_Balance*`.
   - GREEN: `account_balance.go` with `accountBalanceOptions{ file string }`, `newAccountBalanceCmd()` (`Args: cobra.NoArgs`).
   - CLEANUP: delete `--balance` plumbing.

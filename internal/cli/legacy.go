@@ -232,11 +232,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runTransactions(opts, stdout)
 	}
 
-	// Handle --balance
-	if opts.showBalance {
-		return runBalance(opts, stdout)
-	}
-
 	// If remaining args include a file path, use it as the file
 	if len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
 		if opts.file == "" {

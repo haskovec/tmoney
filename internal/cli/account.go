@@ -23,5 +23,6 @@ func newAccountCmd() *cobra.Command {
 	cmd.AddCommand(newAccountAddCmd())
 	cmd.AddCommand(newAccountListCmd())
 	cmd.AddCommand(newAccountShowCmd())
+	cmd.AddCommand(newAccountBalanceCmd())
 	return cmd
 }

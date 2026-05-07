@@ -12,7 +12,6 @@ type cliOptions struct {
 	file          string
 	includeClosed bool
 	accountName   string // --account <name> to show details
-	showBalance   bool   // --balance to show all balances
 	transactions  bool   // --transactions to list transactions
 	limit         int    // --limit <n> to limit results
 	fromDate      string // --from <YYYY-MM-DD> start date filter
@@ -187,8 +186,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.accountName = args[i]
-		case "--balance":
-			opts.showBalance = true
 		case "--transactions":
 			opts.transactions = true
 		case "--limit":

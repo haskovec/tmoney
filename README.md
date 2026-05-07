@@ -316,7 +316,7 @@ tmoney account list --include-closed
 tmoney account show Checking
 
 # Show all balances with net worth
-tmoney --balance
+tmoney account balance
 
 # Create a new account
 tmoney account add --name "Checking" --type checking
@@ -551,7 +551,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), and `tmoney account add`/`list`/`show` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), and `tmoney account add`/`list`/`show`/`balance` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 
