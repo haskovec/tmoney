@@ -623,7 +623,6 @@ Export Commands:
 
 Backup/Restore Commands:
   --backup               Create a manual backup of the database
-  --list-backups         List available backups
   --restore <file>       Restore database from a backup file
 
 Security Commands:

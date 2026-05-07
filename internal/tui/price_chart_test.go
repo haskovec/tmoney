@@ -241,13 +241,13 @@ func TestNiceStep(t *testing.T) {
 		ticks     int
 		want      float64
 	}{
-		{10, 4, 2},      // rough=2.5 → norm=2.5 → "2"
-		{2.5, 4, 0.5},   // rough=0.625 → mag=0.1, norm=6.25 → "5"
-		{1, 4, 0.2},     // rough=0.25 → mag=0.1, norm=2.5 → "2"
-		{100, 4, 20},    // rough=25 → mag=10, norm=2.5 → "2"
-		{0, 4, 1},       // degenerate
-		{-5, 4, 1},      // negative
-		{10, 0, 1},      // zero ticks
+		{10, 4, 2},    // rough=2.5 → norm=2.5 → "2"
+		{2.5, 4, 0.5}, // rough=0.625 → mag=0.1, norm=6.25 → "5"
+		{1, 4, 0.2},   // rough=0.25 → mag=0.1, norm=2.5 → "2"
+		{100, 4, 20},  // rough=25 → mag=10, norm=2.5 → "2"
+		{0, 4, 1},     // degenerate
+		{-5, 4, 1},    // negative
+		{10, 0, 1},    // zero ticks
 	}
 	for _, tc := range cases {
 		if got := niceStep(tc.rangeSize, tc.ticks); got != tc.want {

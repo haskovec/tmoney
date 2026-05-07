@@ -64,7 +64,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--restore` plumbing.
   - DOCS: README.
 
-- [ ] **CM-005 — `tmoney db list-backups`**
+- [x] **CM-005 — `tmoney db list-backups`** (completed 2026-05-06)
   - RED: tests in `internal/cli/db_list_backups_test.go` covering `TestRun_ListBackups*`.
   - GREEN: `db_list_backups.go` with `dbListBackupsOptions{ file string }`, `newDBListBackupsCmd()` (`Args: cobra.NoArgs`).
   - CLEANUP: delete `--list-backups` plumbing.

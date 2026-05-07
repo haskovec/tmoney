@@ -78,9 +78,6 @@ type cliOptions struct {
 	reportYear  int    // --year YYYY for spending
 	reportAsOf  string // --as-of YYYY-MM-DD for net-worth
 
-	// Backup/restore options
-	listBackups bool // --list-backups flag
-
 	// Reconciliation options
 	startReconcile   bool     // --start-reconcile flag
 	markReconciled   []string // --mark-reconciled <txn-id>... (remaining args)
@@ -429,8 +426,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.reportAsOf = args[i]
-		case "--list-backups":
-			opts.listBackups = true
 		case "--start-reconcile":
 			opts.startReconcile = true
 		case "--finish-reconcile":

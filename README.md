@@ -300,6 +300,9 @@ tmoney -f ~/Documents/TMoney/finances.tdb db backup
 # Restore the database from a backup file (a safety backup of the
 # current state is created automatically before the swap)
 tmoney -f ~/Documents/TMoney/finances.tdb db restore /path/to/backup.tdb
+
+# List backups for the database file
+tmoney -f ~/Documents/TMoney/finances.tdb db list-backups
 ```
 
 ### Accounts
@@ -548,7 +551,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — only `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, and `tmoney db create` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, and the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`) are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

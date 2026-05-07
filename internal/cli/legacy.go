@@ -72,11 +72,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runScheduled(opts, stdout)
 	}
 
-	// Handle --list-backups
-	if opts.listBackups {
-		return runListBackups(opts, stdout)
-	}
-
 	// Handle --start-reconcile
 	if opts.startReconcile {
 		return runStartReconcile(opts, stdout)
