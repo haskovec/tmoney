@@ -87,7 +87,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--list-accounts` plumbing. Keep `--include-closed` legacy parsing (still used by `--report net-worth`); retire when reports migrate.
   - DOCS: README.
 
-- [ ] **CM-009 — `tmoney account show <name>`**
+- [x] **CM-009 — `tmoney account show <name>`** (completed 2026-05-06)
   - RED: tests covering `TestRun_Account*` (account-details).
   - GREEN: `account_show.go` with `accountShowOptions{ file, name string }`, `newAccountShowCmd()` (`Args: cobra.ExactArgs(1)`).
   - CLEANUP: delete `--account` plumbing (the `accountName` field on `cliOptions` is also used by other verbs as a filter — only delete the standalone-show usage; field stays until those verbs migrate).

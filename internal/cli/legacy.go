@@ -232,11 +232,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runTransactions(opts, stdout)
 	}
 
-	// Handle --account <name>
-	if opts.accountName != "" {
-		return runAccountDetails(opts, stdout)
-	}
-
 	// Handle --balance
 	if opts.showBalance {
 		return runBalance(opts, stdout)
