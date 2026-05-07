@@ -43,7 +43,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 
 ## Phase 1: db
 
-- [ ] **CM-001 — Phase prep: split `db` handlers into per-verb files**
+- [x] **CM-001 — Phase prep: split `db` handlers into per-verb files** (completed 2026-05-06)
   - GREEN: create `internal/cli/db_create.go`, `db_backup.go`, `db_restore.go`, `db_list_backups.go`. Each contains exactly one of the legacy handlers (`runCreateDB`, `runBackup`, `runRestore`, `runListBackups`) cut verbatim from `commands.go`. No tests added.
 
 - [ ] **CM-002 — `tmoney db create <path>`**
