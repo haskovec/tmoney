@@ -3,12 +3,42 @@ package cli
 import (
 	"fmt"
 	"io"
+
+	"github.com/spf13/cobra"
 )
 
-// runListAccounts lists accounts from the database.
-func runListAccounts(opts *cliOptions, w io.Writer) error {
+// accountListOptions are the inputs to `tmoney account list`.
+type accountListOptions struct {
+	file          string
+	includeClosed bool
+}
+
+// newAccountListCmd registers `tmoney account list`. The database
+// file is taken from the persistent `--file` / `-f` flag inherited
+// from the root command.
+func newAccountListCmd() *cobra.Command {
+	opts := &accountListOptions{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List accounts",
+		Long: "List accounts in the TMoney database. By default only " +
+			"active accounts are shown; pass `--include-closed` to " +
+			"include closed accounts.",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runAccountList(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().BoolVar(&opts.includeClosed, "include-closed", false, "Include closed accounts in the listing")
+	return cmd
+}
+
+// runAccountList lists accounts from the database.
+func runAccountList(opts *accountListOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--list-accounts requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -17,19 +47,16 @@ func runListAccounts(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// List accounts (activeOnly = !includeClosed)
 	accounts, err := svc.Account.List(!opts.includeClosed)
 	if err != nil {
 		return fmt.Errorf("failed to list accounts: %w", err)
 	}
 
-	// Get all balances
 	balances, err := svc.Account.GetAllBalances()
 	if err != nil {
 		return fmt.Errorf("failed to get balances: %w", err)
 	}
 
-	// Print accounts table
 	printAccountsTable(w, accounts, balances)
 
 	return nil

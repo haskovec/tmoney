@@ -10,7 +10,6 @@ import (
 // CLI option flags
 type cliOptions struct {
 	file          string
-	listAccounts  bool
 	includeClosed bool
 	accountName   string // --account <name> to show details
 	showBalance   bool   // --balance to show all balances
@@ -180,8 +179,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.file = args[i]
-		case "--list-accounts":
-			opts.listAccounts = true
 		case "--include-closed":
 			opts.includeClosed = true
 		case "--account":

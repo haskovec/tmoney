@@ -61,9 +61,6 @@ func TestPrintHelp(t *testing.T) {
 	if !strings.Contains(output, "--file") {
 		t.Error("help output should document --file flag")
 	}
-	if !strings.Contains(output, "--list-accounts") {
-		t.Error("help output should document --list-accounts flag")
-	}
 	if !strings.Contains(output, "--include-closed") {
 		t.Error("help output should document --include-closed flag")
 	}

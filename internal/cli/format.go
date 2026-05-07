@@ -503,8 +503,6 @@ Database Commands:
   --create <path>      Create a new database file
 
 Account Commands:
-  --list-accounts      List all accounts
-    --include-closed   Include closed accounts in listing
   --account <name>     Show details for a specific account
   --balance            Show balances for all accounts with net worth
 

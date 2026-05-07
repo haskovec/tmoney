@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --list-accounts
-	if opts.listAccounts {
-		return runListAccounts(opts, stdout)
-	}
-
 	// Handle --void
 	if opts.voidTxn != "" {
 		return runVoidTransaction(opts, stdout)

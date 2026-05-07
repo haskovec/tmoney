@@ -86,8 +86,8 @@ func TestDBCreate_ThenListAccounts(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := executeWith([]string{"--list-accounts", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(--list-accounts) after db create: %v", err)
+	if err := executeWith([]string{"account", "list", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("executeWith(account list) after db create: %v", err)
 	}
 
 	if !strings.Contains(stdout.String(), "No accounts found") {

@@ -50,17 +50,6 @@ func TestParseArgs_FileFlagMissingPath(t *testing.T) {
 	}
 }
 
-func TestParseArgs_ListAccountsFlag(t *testing.T) {
-	opts, _, err := parseArgs([]string{"--list-accounts"})
-	if err != nil {
-		t.Errorf("parseArgs returned error: %v", err)
-		return
-	}
-	if !opts.listAccounts {
-		t.Error("parseArgs did not set listAccounts flag")
-	}
-}
-
 func TestParseArgs_IncludeClosedFlag(t *testing.T) {
 	opts, _, err := parseArgs([]string{"--include-closed"})
 	if err != nil {
@@ -73,16 +62,13 @@ func TestParseArgs_IncludeClosedFlag(t *testing.T) {
 }
 
 func TestParseArgs_CombinedFlags(t *testing.T) {
-	opts, remaining, err := parseArgs([]string{"--file", "test.tdb", "--list-accounts", "--include-closed"})
+	opts, remaining, err := parseArgs([]string{"--file", "test.tdb", "--include-closed"})
 	if err != nil {
 		t.Errorf("parseArgs returned error: %v", err)
 		return
 	}
 	if opts.file != "test.tdb" {
 		t.Errorf("file = %q, want %q", opts.file, "test.tdb")
-	}
-	if !opts.listAccounts {
-		t.Error("listAccounts flag not set")
 	}
 	if !opts.includeClosed {
 		t.Error("includeClosed flag not set")

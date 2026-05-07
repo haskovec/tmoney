@@ -81,10 +81,10 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--add-account` plumbing and the `addAccount bool` field from `cliOptions` (the shared `acct*` fields are still referenced by security verbs and stay until those migrate).
   - DOCS: README "Accounts" section — replace `tmoney --add-account …` with `tmoney account add …`.
 
-- [ ] **CM-008 — `tmoney account list`**
+- [x] **CM-008 — `tmoney account list`** (completed 2026-05-06)
   - RED: tests covering `TestRun_ListAccounts*` including `--include-closed`.
-  - GREEN: `account_list.go` with `accountListOptions{ file string; includeClosed bool }`, `newAccountListCmd()` (`Args: cobra.NoArgs`, persistent `--include-closed`).
-  - CLEANUP: delete `--list-accounts`, `--include-closed` plumbing.
+  - GREEN: `account_list.go` with `accountListOptions{ file string; includeClosed bool }`, `newAccountListCmd()` (`Args: cobra.NoArgs`, local `--include-closed` flag).
+  - CLEANUP: delete `--list-accounts` plumbing. Keep `--include-closed` legacy parsing (still used by `--report net-worth`); retire when reports migrate.
   - DOCS: README.
 
 - [ ] **CM-009 — `tmoney account show <name>`**
