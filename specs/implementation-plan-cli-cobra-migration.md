@@ -52,7 +52,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--create` parsing in `parseArgs`; delete the `if opts.createDB != ""` branch in `legacy.go`; delete `createDB` field from `cliOptions`; delete migrated tests from `commands_test.go`.
   - DOCS: README "Database" section under CLI Reference — replace `tmoney --create <path>` with `tmoney db create <path>`.
 
-- [ ] **CM-003 — `tmoney db backup`**
+- [x] **CM-003 — `tmoney db backup`** (completed 2026-05-06)
   - RED: tests in `internal/cli/db_backup_test.go` covering the scenarios in `TestRun_Backup*`.
   - GREEN: `db_backup.go` with `dbBackupOptions{ file string }`, `newDBBackupCmd()` (`Args: cobra.NoArgs`, `MarkFlagRequired("file")` on the persistent `--file` if applicable per existing semantics), and `runDBBackup`.
   - CLEANUP: delete `--backup` plumbing as in CM-002.

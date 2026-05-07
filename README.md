@@ -293,6 +293,9 @@ The CLI provides full access to all features for scripting and automation.
 ```bash
 # Create a new database file
 tmoney db create ~/Documents/TMoney/finances.tdb
+
+# Create a manual backup of the database
+tmoney -f ~/Documents/TMoney/finances.tdb db backup
 ```
 
 ### Accounts

@@ -79,7 +79,6 @@ type cliOptions struct {
 	reportAsOf  string // --as-of YYYY-MM-DD for net-worth
 
 	// Backup/restore options
-	backup      bool   // --backup flag
 	listBackups bool   // --list-backups flag
 	restore     string // --restore <backup-file>
 
@@ -431,8 +430,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.reportAsOf = args[i]
-		case "--backup":
-			opts.backup = true
 		case "--list-backups":
 			opts.listBackups = true
 		case "--restore":

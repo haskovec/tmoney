@@ -5,12 +5,38 @@ import (
 	"io"
 
 	"github.com/haskovec/tmoney/internal/backup"
+	"github.com/spf13/cobra"
 )
 
-// runBackup creates a manual backup of the database file.
-func runBackup(opts *cliOptions, w io.Writer) error {
+// dbBackupOptions are the inputs to `tmoney db backup`.
+type dbBackupOptions struct {
+	file string
+}
+
+// newDBBackupCmd registers `tmoney db backup`. The database file is
+// taken from the persistent `--file` / `-f` flag inherited from the
+// root command.
+func newDBBackupCmd() *cobra.Command {
+	opts := &dbBackupOptions{}
+	cmd := &cobra.Command{
+		Use:   "backup",
+		Short: "Create a manual backup of the database file",
+		Long: "Create a manual backup of the TMoney database. Manual " +
+			"backups are never auto-deleted by rolling retention.",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runDBBackup(opts, cmd.OutOrStdout())
+		},
+	}
+	return cmd
+}
+
+// runDBBackup creates a manual backup of the database file.
+func runDBBackup(opts *dbBackupOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--backup requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	backupPath, err := backup.CreateManualBackup(opts.file)
