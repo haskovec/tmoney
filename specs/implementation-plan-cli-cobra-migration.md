@@ -75,10 +75,10 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 - [x] **CM-006 — Phase prep: split `account` handlers into per-verb files** (completed 2026-05-06)
   - GREEN: create `account_add.go`, `account_list.go`, `account_show.go`, `account_balance.go`. Each contains exactly one of `runAddAccount`, `runListAccounts`, `runAccountDetails`, `runBalance`, cut verbatim.
 
-- [ ] **CM-007 — `tmoney account add`**
+- [x] **CM-007 — `tmoney account add`** (completed 2026-05-06)
   - RED: tests in `internal/cli/account_add_test.go` cover the scenarios in `TestRun_AddAccount*` (missing required flags, invalid type, duplicate name, credit-limit on non-credit-card, etc.). Required-flag-missing cases assert on Cobra's error format.
   - GREEN: create `account.go` (parent). `account_add.go` with `accountAddOptions{ file, name, accountType, currency, openingBal, openingDate, institution, accountNumber, notes, creditLimit, interestRate string }`, `newAccountAddCmd()` (flags via `StringVar`, `MarkFlagRequired("name")`, `MarkFlagRequired("type")`), and `runAccountAdd`. Add `"account"` to `cobraSubcommands`. Add `TestAccountCmd_Help` smoke test.
-  - CLEANUP: delete `--add-account` plumbing and all `acct*` fields from `cliOptions`.
+  - CLEANUP: delete `--add-account` plumbing and the `addAccount bool` field from `cliOptions` (the shared `acct*` fields are still referenced by security verbs and stay until those migrate).
   - DOCS: README "Accounts" section — replace `tmoney --add-account …` with `tmoney account add …`.
 
 - [ ] **CM-008 — `tmoney account list`**

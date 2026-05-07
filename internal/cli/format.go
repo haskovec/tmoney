@@ -508,19 +508,6 @@ Account Commands:
   --account <name>     Show details for a specific account
   --balance            Show balances for all accounts with net worth
 
-  --add-account        Create a new account (requires --name, --type)
-    --name <name>            Account name
-    --type <type>            Account type (checking, savings, credit_card,
-                             investment, cash, loan, asset)
-    --currency <code>        Currency code (default: USD)
-    --opening-balance <amt>  Opening balance (default: 0)
-    --opening-date <date>    Opening date (YYYY-MM-DD, default: today)
-    --institution <name>     Financial institution name
-    --account-number <num>   Account number
-    --notes <text>           Account notes
-    --credit-limit <amt>     Credit limit (credit_card only)
-    --interest-rate <rate>   Interest rate % (loan only)
-
 Transaction Commands:
   --transactions       List transactions (requires --account)
     --account <name>   Account to show transactions for

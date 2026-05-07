@@ -319,10 +319,10 @@ tmoney --account Checking
 tmoney --balance
 
 # Create a new account
-tmoney --add-account --name "Checking" --type checking
-tmoney --add-account --name "Visa" --type credit_card --credit-limit 5000
-tmoney --add-account --name "Mortgage" --type loan --interest-rate 6.5
-tmoney --add-account --name "Savings" --type savings \
+tmoney account add --name "Checking" --type checking
+tmoney account add --name "Visa" --type credit_card --credit-limit 5000
+tmoney account add --name "Mortgage" --type loan --interest-rate 6.5
+tmoney account add --name "Savings" --type savings \
   --opening-balance 10000 --opening-date 2024-01-15 \
   --institution "First Bank" --currency USD
 ```
@@ -551,7 +551,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, and the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`) are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), and `tmoney account add` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

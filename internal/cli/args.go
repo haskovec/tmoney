@@ -52,8 +52,7 @@ type cliOptions struct {
 	autoPost      bool   // --auto-post flag
 	leadDays      string // --lead-days <0|3|7>
 
-	// Add account options
-	addAccount       bool   // --add-account flag
+	// Add account / shared --name+--type/etc. options
 	acctName         string // --name <name>
 	acctType         string // --type <type>
 	acctCurrency     string // --currency <code>
@@ -336,8 +335,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.txMemo = args[i]
-		case "--add-account":
-			opts.addAccount = true
 		case "--name":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--name requires a value argument")

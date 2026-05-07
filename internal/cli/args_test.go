@@ -427,17 +427,6 @@ func TestParseArgs_MemoFlagMissingValue(t *testing.T) {
 	}
 }
 
-func TestParseArgs_AddAccountFlag(t *testing.T) {
-	opts, _, err := parseArgs([]string{"--add-account"})
-	if err != nil {
-		t.Errorf("parseArgs returned error: %v", err)
-		return
-	}
-	if !opts.addAccount {
-		t.Error("parseArgs did not set addAccount flag")
-	}
-}
-
 func TestParseArgs_NameFlag(t *testing.T) {
 	tests := []struct {
 		name         string

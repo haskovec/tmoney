@@ -32,11 +32,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runListAccounts(opts, stdout)
 	}
 
-	// Handle --add-account
-	if opts.addAccount {
-		return runAddAccount(opts, stdout)
-	}
-
 	// Handle --void
 	if opts.voidTxn != "" {
 		return runVoidTransaction(opts, stdout)

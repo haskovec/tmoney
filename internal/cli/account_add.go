@@ -7,39 +7,82 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-func runAddAccount(opts *cliOptions, w io.Writer) error {
+// accountAddOptions are the inputs to `tmoney account add`.
+type accountAddOptions struct {
+	file          string
+	name          string
+	accountType   string
+	currency      string
+	openingBal    string
+	openingDate   string
+	institution   string
+	accountNumber string
+	notes         string
+	creditLimit   string
+	interestRate  string
+}
+
+// newAccountAddCmd registers `tmoney account add`. The database file
+// is taken from the persistent `--file` / `-f` flag inherited from
+// the root command. `--name` and `--type` are required.
+func newAccountAddCmd() *cobra.Command {
+	opts := &accountAddOptions{}
+	cmd := &cobra.Command{
+		Use:   "add",
+		Short: "Create a new account",
+		Long: "Create a new account in the TMoney database. " +
+			"`--name` and `--type` are required; other fields take sensible defaults.",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runAccountAdd(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.name, "name", "", "Account name (required)")
+	cmd.Flags().StringVar(&opts.accountType, "type", "", "Account type: checking, savings, credit_card, investment, cash, loan, asset (required)")
+	cmd.Flags().StringVar(&opts.currency, "currency", "", "Currency code (default USD)")
+	cmd.Flags().StringVar(&opts.openingBal, "opening-balance", "", "Opening balance (default 0)")
+	cmd.Flags().StringVar(&opts.openingDate, "opening-date", "", "Opening date YYYY-MM-DD (default today)")
+	cmd.Flags().StringVar(&opts.institution, "institution", "", "Institution name")
+	cmd.Flags().StringVar(&opts.accountNumber, "account-number", "", "Account number")
+	cmd.Flags().StringVar(&opts.notes, "notes", "", "Free-form notes")
+	cmd.Flags().StringVar(&opts.creditLimit, "credit-limit", "", "Credit limit (credit_card accounts only)")
+	cmd.Flags().StringVar(&opts.interestRate, "interest-rate", "", "Interest rate / APR (loan accounts only)")
+	_ = cmd.MarkFlagRequired("name")
+	_ = cmd.MarkFlagRequired("type")
+	return cmd
+}
+
+// runAccountAdd creates a new account.
+func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--add-account requires --file to specify a database")
-	}
-	if opts.acctName == "" {
-		return fmt.Errorf("--add-account requires --name to specify an account name")
-	}
-	if opts.acctType == "" {
-		return fmt.Errorf("--add-account requires --type to specify an account type")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	// Parse account type
-	acctType, err := account.ParseType(opts.acctType)
+	acctType, err := account.ParseType(opts.accountType)
 	if err != nil {
 		validTypes := []string{}
 		for _, t := range account.AllTypes() {
 			validTypes = append(validTypes, string(t))
 		}
-		return fmt.Errorf("invalid --type %q: valid types are %s", opts.acctType, strings.Join(validTypes, ", "))
+		return fmt.Errorf("invalid --type %q: valid types are %s", opts.accountType, strings.Join(validTypes, ", "))
 	}
 
 	// Parse currency (default to USD)
 	currency := "USD"
-	if opts.acctCurrency != "" {
-		currency = strings.ToUpper(opts.acctCurrency)
+	if opts.currency != "" {
+		currency = strings.ToUpper(opts.currency)
 	}
 
 	// Parse opening balance (default to 0)
 	openingBalance := types.MustNewMoney("0")
-	if opts.acctOpeningBal != "" {
-		openingBalance, err = types.NewMoney(opts.acctOpeningBal)
+	if opts.openingBal != "" {
+		openingBalance, err = types.NewMoney(opts.openingBal)
 		if err != nil {
 			return fmt.Errorf("invalid --opening-balance: %w", err)
 		}
@@ -47,8 +90,8 @@ func runAddAccount(opts *cliOptions, w io.Writer) error {
 
 	// Parse opening date (default to today)
 	openingDate := types.Today()
-	if opts.acctOpeningDate != "" {
-		openingDate, err = types.ParseDate(opts.acctOpeningDate)
+	if opts.openingDate != "" {
+		openingDate, err = types.ParseDate(opts.openingDate)
 		if err != nil {
 			return fmt.Errorf("invalid --opening-date: %w", err)
 		}
@@ -61,41 +104,41 @@ func runAddAccount(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Check if account name already exists
-	if _, err := svc.Account.GetByName(opts.acctName); err == nil {
-		return fmt.Errorf("account %q already exists", opts.acctName)
+	if _, err := svc.Account.GetByName(opts.name); err == nil {
+		return fmt.Errorf("account %q already exists", opts.name)
 	}
 
 	// Create account
-	acct := account.NewAccount(opts.acctName, acctType, currency, openingBalance, openingDate)
+	acct := account.NewAccount(opts.name, acctType, currency, openingBalance, openingDate)
 
 	// Set optional fields
-	if opts.acctInstitution != "" {
-		acct.SetInstitution(opts.acctInstitution)
+	if opts.institution != "" {
+		acct.SetInstitution(opts.institution)
 	}
-	if opts.acctNumber != "" {
-		acct.SetAccountNumber(opts.acctNumber)
+	if opts.accountNumber != "" {
+		acct.SetAccountNumber(opts.accountNumber)
 	}
-	if opts.acctNotes != "" {
-		acct.SetNotes(opts.acctNotes)
+	if opts.notes != "" {
+		acct.SetNotes(opts.notes)
 	}
 
 	// Handle type-specific fields
-	if opts.acctCreditLimit != "" {
+	if opts.creditLimit != "" {
 		if acctType != account.TypeCreditCard {
 			return fmt.Errorf("--credit-limit is only valid for credit_card accounts")
 		}
-		creditLimit, err := types.NewMoney(opts.acctCreditLimit)
+		creditLimit, err := types.NewMoney(opts.creditLimit)
 		if err != nil {
 			return fmt.Errorf("invalid --credit-limit: %w", err)
 		}
 		acct.SetCreditLimit(creditLimit)
 	}
 
-	if opts.acctInterestRate != "" {
+	if opts.interestRate != "" {
 		if acctType != account.TypeLoan {
 			return fmt.Errorf("--interest-rate is only valid for loan accounts")
 		}
-		interestRate, err := types.NewMoney(opts.acctInterestRate)
+		interestRate, err := types.NewMoney(opts.interestRate)
 		if err != nil {
 			return fmt.Errorf("invalid --interest-rate: %w", err)
 		}

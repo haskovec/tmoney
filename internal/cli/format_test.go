@@ -139,46 +139,6 @@ func TestPrintHelp_IncludesAddTransaction(t *testing.T) {
 	}
 }
 
-func TestPrintHelp_IncludesAddAccount(t *testing.T) {
-	buf := &bytes.Buffer{}
-	printHelp(buf)
-	output := buf.String()
-
-	if !strings.Contains(output, "--add-account") {
-		t.Error("help output should document --add-account flag")
-	}
-	if !strings.Contains(output, "--name") {
-		t.Error("help output should document --name flag")
-	}
-	if !strings.Contains(output, "--type") {
-		t.Error("help output should document --type flag")
-	}
-	if !strings.Contains(output, "--currency") {
-		t.Error("help output should document --currency flag")
-	}
-	if !strings.Contains(output, "--opening-balance") {
-		t.Error("help output should document --opening-balance flag")
-	}
-	if !strings.Contains(output, "--opening-date") {
-		t.Error("help output should document --opening-date flag")
-	}
-	if !strings.Contains(output, "--institution") {
-		t.Error("help output should document --institution flag")
-	}
-	if !strings.Contains(output, "--account-number") {
-		t.Error("help output should document --account-number flag")
-	}
-	if !strings.Contains(output, "--notes") {
-		t.Error("help output should document --notes flag")
-	}
-	if !strings.Contains(output, "--credit-limit") {
-		t.Error("help output should document --credit-limit flag")
-	}
-	if !strings.Contains(output, "--interest-rate") {
-		t.Error("help output should document --interest-rate flag")
-	}
-}
-
 func TestPrintHelp_IncludesTransfer(t *testing.T) {
 	buf := &bytes.Buffer{}
 	printHelp(buf)
