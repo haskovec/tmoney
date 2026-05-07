@@ -296,6 +296,10 @@ tmoney db create ~/Documents/TMoney/finances.tdb
 
 # Create a manual backup of the database
 tmoney -f ~/Documents/TMoney/finances.tdb db backup
+
+# Restore the database from a backup file (a safety backup of the
+# current state is created automatically before the swap)
+tmoney -f ~/Documents/TMoney/finances.tdb db restore /path/to/backup.tdb
 ```
 
 ### Accounts

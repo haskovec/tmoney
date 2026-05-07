@@ -79,8 +79,7 @@ type cliOptions struct {
 	reportAsOf  string // --as-of YYYY-MM-DD for net-worth
 
 	// Backup/restore options
-	listBackups bool   // --list-backups flag
-	restore     string // --restore <backup-file>
+	listBackups bool // --list-backups flag
 
 	// Reconciliation options
 	startReconcile   bool     // --start-reconcile flag
@@ -432,12 +431,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.reportAsOf = args[i]
 		case "--list-backups":
 			opts.listBackups = true
-		case "--restore":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--restore requires a backup file path argument")
-			}
-			i++
-			opts.restore = args[i]
 		case "--start-reconcile":
 			opts.startReconcile = true
 		case "--finish-reconcile":
@@ -800,8 +793,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.reportYear = year
 			} else if after, ok := strings.CutPrefix(arg, "--as-of="); ok {
 				opts.reportAsOf = after
-			} else if after, ok := strings.CutPrefix(arg, "--restore="); ok {
-				opts.restore = after
 			} else if after, ok := strings.CutPrefix(arg, "--statement-date="); ok {
 				opts.statementDate = after
 			} else if after, ok := strings.CutPrefix(arg, "--statement-balance="); ok {

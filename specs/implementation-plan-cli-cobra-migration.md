@@ -58,7 +58,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--backup` plumbing as in CM-002.
   - DOCS: README — replace `tmoney --backup` with `tmoney db backup`.
 
-- [ ] **CM-004 — `tmoney db restore <path>`**
+- [x] **CM-004 — `tmoney db restore <path>`** (completed 2026-05-06)
   - RED: tests in `internal/cli/db_restore_test.go` covering `TestRun_Restore*`.
   - GREEN: `db_restore.go` with `dbRestoreOptions{ file, backupPath string }`, `newDBRestoreCmd()` (`Args: cobra.ExactArgs(1)`).
   - CLEANUP: delete `--restore` plumbing.
