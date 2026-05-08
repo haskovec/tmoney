@@ -205,7 +205,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 
 ## Phase 7: security
 
-- [ ] **CM-029 — Phase prep: split `security` handlers**
+- [x] **CM-029 — Phase prep: split `security` handlers** (completed 2026-05-08)
   - GREEN: create `security_add.go`, `security_list.go`, `security_show.go`, `security_edit.go`, `security_hide.go`, `security_unhide.go`, `security_delete.go` containing `runAddSecurity`, `runListSecurities`, `runSecurityDetail`, `runEditSecurity`, `runHideSecurity`, `runUnhideSecurity`, `runDeleteSecurity` cut verbatim.
 
 - [ ] **CM-030 — `tmoney security add`**
