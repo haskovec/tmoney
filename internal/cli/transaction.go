@@ -22,5 +22,6 @@ func newTransactionCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newTransactionAddCmd())
 	cmd.AddCommand(newTransactionListCmd())
+	cmd.AddCommand(newTransactionVoidCmd())
 	return cmd
 }

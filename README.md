@@ -347,6 +347,9 @@ tmoney transaction add --account Checking --amount -120.00 \
 tmoney transaction add --account Checking --amount 3500.00 \
   --payee "Employer Inc" --category "Income:Salary"
 
+# Void a transaction by ID (transfer counterparts are voided too)
+tmoney transaction void <id>
+
 # Create a transfer between accounts
 tmoney --transfer --from Checking --to Savings --amount 500.00
 tmoney --transfer --from Checking --to Savings --amount 500.00 \
@@ -551,7 +554,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, and `tmoney transaction add`/`list` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, and `tmoney transaction add`/`list`/`void` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --void
-	if opts.voidTxn != "" {
-		return runVoidTransaction(opts, stdout)
-	}
-
 	// Handle --transfer
 	if opts.transfer {
 		return runTransfer(opts, stdout)

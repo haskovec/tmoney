@@ -61,9 +61,6 @@ type cliOptions struct {
 	acctCreditLimit  string // --credit-limit <value>
 	acctInterestRate string // --interest-rate <value>
 
-	// Void transaction
-	voidTxn string // --void <txn-id>
-
 	// Status filter
 	txStatus string // --status <uncleared|cleared|reconciled|void>
 
@@ -269,12 +266,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.leadDays = args[i]
-		case "--void":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--void requires a transaction ID argument")
-			}
-			i++
-			opts.voidTxn = args[i]
 		case "--status":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--status requires a status value (uncleared, cleared, reconciled, void)")
@@ -713,8 +704,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.acctCreditLimit = after
 			} else if after, ok := strings.CutPrefix(arg, "--interest-rate="); ok {
 				opts.acctInterestRate = after
-			} else if after, ok := strings.CutPrefix(arg, "--void="); ok {
-				opts.voidTxn = after
 			} else if after, ok := strings.CutPrefix(arg, "--status="); ok {
 				opts.txStatus = after
 			} else if after, ok := strings.CutPrefix(arg, "--search="); ok {

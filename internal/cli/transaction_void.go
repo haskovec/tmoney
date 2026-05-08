@@ -5,12 +5,39 @@ import (
 	"io"
 
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runVoidTransaction voids a transaction by ID.
-func runVoidTransaction(opts *cliOptions, w io.Writer) error {
+// transactionVoidOptions are the inputs to `tmoney transaction void <id>`.
+type transactionVoidOptions struct {
+	file  string
+	txnID string
+}
+
+// newTransactionVoidCmd registers `tmoney transaction void <id>`. The
+// database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command.
+func newTransactionVoidCmd() *cobra.Command {
+	opts := &transactionVoidOptions{}
+	cmd := &cobra.Command{
+		Use:          "void <id>",
+		Short:        "Void a transaction by ID",
+		Long:         "Void a transaction, zeroing its amount and marking it as void. If the transaction is part of a transfer, the counterpart is voided as well.",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			opts.txnID = args[0]
+			return runTransactionVoid(opts, cmd.OutOrStdout())
+		},
+	}
+	return cmd
+}
+
+// runTransactionVoid voids a transaction by ID.
+func runTransactionVoid(opts *transactionVoidOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--void requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -19,19 +46,16 @@ func runVoidTransaction(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// Parse the transaction ID
-	txnID, err := types.ParseID(opts.voidTxn)
+	txnID, err := types.ParseID(opts.txnID)
 	if err != nil {
 		return fmt.Errorf("invalid transaction ID: %w", err)
 	}
 
-	// Get the transaction first to show details
 	txn, err := svc.TransactionRepo.GetByID(txnID)
 	if err != nil {
 		return fmt.Errorf("transaction not found: %w", err)
 	}
 
-	// Get account info for display
 	acct, _ := svc.AccountRepo.GetByID(txn.AccountID)
 	accountName := "Unknown"
 	currency := "USD"
@@ -40,15 +64,12 @@ func runVoidTransaction(opts *cliOptions, w io.Writer) error {
 		currency = acct.Currency
 	}
 
-	// Remember original amount for confirmation display
 	originalAmount := txn.Amount
 
-	// Void the transaction
 	if err := svc.Transaction.VoidTransaction(txnID); err != nil {
 		return fmt.Errorf("failed to void transaction: %w", err)
 	}
 
-	// Print confirmation
 	fmt.Fprintln(w, "Transaction voided successfully!")
 	fmt.Fprintf(w, "  Account:  %s\n", accountName)
 	fmt.Fprintf(w, "  Date:     %s\n", txn.Date.String())

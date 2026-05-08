@@ -116,7 +116,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--transactions`, `--limit`, `--from`/`--to`/`--status` parsing branches that are exclusive to this verb.
   - DOCS: README.
 
-- [ ] **CM-014 — `tmoney transaction void <id>`**
+- [x] **CM-014 — `tmoney transaction void <id>`** (completed 2026-05-07)
   - RED: tests covering `TestRun_VoidTransaction*`.
   - GREEN: `transaction_void.go` with `transactionVoidOptions{ file, txnID string }`, `newTransactionVoidCmd()` (`Args: cobra.ExactArgs(1)`).
   - CLEANUP: delete `--void` plumbing.

@@ -1012,40 +1012,6 @@ func TestParseArgs_ReportAsOfMissingValue(t *testing.T) {
 	}
 }
 
-func TestParseArgs_VoidFlag(t *testing.T) {
-	tests := []struct {
-		name     string
-		args     []string
-		expected string
-	}{
-		{"with space", []string{"--void", "abc123"}, "abc123"},
-		{"with equals", []string{"--void=abc123"}, "abc123"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opts, _, err := parseArgs(tt.args)
-			if err != nil {
-				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
-				return
-			}
-			if opts.voidTxn != tt.expected {
-				t.Errorf("parseArgs(%v) voidTxn = %q, want %q", tt.args, opts.voidTxn, tt.expected)
-			}
-		})
-	}
-}
-
-func TestParseArgs_VoidFlagMissingID(t *testing.T) {
-	_, _, err := parseArgs([]string{"--void"})
-	if err == nil {
-		t.Error("parseArgs(--void) without ID should return error")
-	}
-	if !strings.Contains(err.Error(), "requires a transaction ID") {
-		t.Errorf("error should mention transaction ID requirement, got: %v", err)
-	}
-}
-
 func TestParseArgs_StatusFlag(t *testing.T) {
 	tests := []struct {
 		name     string
