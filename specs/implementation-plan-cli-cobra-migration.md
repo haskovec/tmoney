@@ -214,11 +214,11 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--add-security` boolean and the `addSecurity` field from `cliOptions`. The shared `sec*` fields (`secTicker`, `secAssetClass`, `secExchange`) are still referenced by `--edit-security` and stay until that verb migrates.
   - DOCS: README "Securities" CLI Reference subsection added.
 
-- [ ] **CM-031 — `tmoney security list`**
+- [x] **CM-031 — `tmoney security list`** (completed 2026-05-08)
   - RED: tests covering `TestRun_ListSecurities*`.
-  - GREEN: `security_list.go` with `securityListOptions{ file string; showHidden bool }`, `newSecurityListCmd()`.
-  - CLEANUP: delete `--list-securities` plumbing.
-  - DOCS: README.
+  - GREEN: `security_list.go` with `securityListOptions{ file string; includeHidden bool; secType, assetClass string }`, `newSecurityListCmd()`.
+  - CLEANUP: delete `--list-securities`, `--include-hidden`, and `listSecurities`/`includeHidden` fields from `cliOptions`.
+  - DOCS: README "Securities" CLI subsection extended with `security list` examples.
 
 - [ ] **CM-032 — `tmoney security show <ticker>`**
   - RED: tests covering `TestRun_SecurityDetail*`.

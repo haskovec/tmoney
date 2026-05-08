@@ -611,10 +611,6 @@ Backup/Restore Commands:
   --restore <file>       Restore database from a backup file
 
 Security Commands:
-  --list-securities      List all securities
-    --include-hidden     Include hidden securities in listing
-    --type <type>        Filter by type (stock, etf, mutual_fund, other)
-    --asset-class <cls>  Filter by asset class
   --security <ticker>    Show details for a specific security
 
   --edit-security <tkr>  Edit a security by ticker

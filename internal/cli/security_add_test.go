@@ -134,11 +134,10 @@ func TestSecurityAdd_Success(t *testing.T) {
 		}
 	}
 
-	// Verify security is persisted by listing via the legacy command
-	// (still in place until CM-031 migrates `security list`).
+	// Verify security is persisted by listing via the Cobra command.
 	stdout.Reset()
-	if err := run([]string{"--list-securities", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("run(--list-securities): %v", err)
+	if err := executeWith([]string{"security", "list", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("executeWith(security list): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "AAPL") {
 		t.Error("security should be persisted and visible in list")

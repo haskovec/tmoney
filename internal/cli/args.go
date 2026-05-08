@@ -64,7 +64,6 @@ type cliOptions struct {
 	exportFile string // --export <file>
 
 	// Security management options
-	listSecurities bool   // --list-securities flag
 	securityTicker string // --security <ticker> to show details
 	editSecurity   string // --edit-security <ticker>
 	hideSecurity   string // --hide-security <ticker>
@@ -73,7 +72,6 @@ type cliOptions struct {
 	secTicker      string // --ticker <ticker> (for add/edit)
 	secAssetClass  string // --asset-class <class>
 	secExchange    string // --exchange <exchange>
-	includeHidden  bool   // --include-hidden flag
 
 	// Price management options
 	listPrices    bool     // --prices flag
@@ -317,8 +315,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.sourceAccount = args[i]
-		case "--list-securities":
-			opts.listSecurities = true
 		case "--security":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--security requires a ticker argument")
@@ -367,8 +363,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.secExchange = args[i]
-		case "--include-hidden":
-			opts.includeHidden = true
 		case "--prices":
 			opts.listPrices = true
 		case "--add-price":

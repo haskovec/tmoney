@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --list-securities
-	if opts.listSecurities {
-		return runListSecurities(opts, stdout)
-	}
-
 	// Handle --edit-security
 	if opts.editSecurity != "" {
 		return runEditSecurity(opts, stdout)
