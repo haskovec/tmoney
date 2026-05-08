@@ -7,14 +7,53 @@ import (
 	"text/tabwriter"
 
 	"github.com/haskovec/tmoney/internal/transferlink"
+	"github.com/spf13/cobra"
 )
 
-// runLinkTransfers handles the --link-transfers command. By default it
-// performs a dry-run preview of the candidate pairs that would be linked;
-// passing --confirm executes the linking.
-func runLinkTransfers(opts *cliOptions, w io.Writer) error {
+// transferLinkOptions are the inputs to `tmoney transfer link`.
+type transferLinkOptions struct {
+	file    string
+	confirm bool
+	maxDays int
+}
+
+// newTransferLinkCmd registers `tmoney transfer link`. The database file
+// is taken from the persistent `--file` / `-f` flag inherited from the
+// root command. Default behavior is a dry-run preview; `--confirm`
+// executes the linking.
+func newTransferLinkCmd() *cobra.Command {
+	opts := &transferLinkOptions{}
+	cmd := &cobra.Command{
+		Use:   "link",
+		Short: "Link unlinked transfer pairs across accounts",
+		Long: "Scan for pairs of unlinked transactions across accounts " +
+			"whose amounts cancel and whose dates are within --max-days, " +
+			"and join the matched pairs into proper transfers. By default " +
+			"prints a dry-run preview; pass --confirm to apply the changes.",
+		Example: "  tmoney transfer link --file personal.tdb\n" +
+			"  tmoney transfer link --file personal.tdb --confirm\n" +
+			"  tmoney transfer link --file personal.tdb --max-days 3 --confirm",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runTransferLink(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().BoolVar(&opts.confirm, "confirm", false, "Execute the linking (default is dry-run preview)")
+	cmd.Flags().IntVar(&opts.maxDays, "max-days", transferlink.DefaultMaxDateDiffDays,
+		"Maximum days between the two postings of a candidate pair")
+	return cmd
+}
+
+// runTransferLink performs a dry-run preview of candidate transfer pairs
+// and, when opts.confirm is set, links the clean pairs.
+func runTransferLink(opts *transferLinkOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--link-transfers requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
+	}
+	if opts.maxDays < 0 {
+		return fmt.Errorf("--max-days must be a non-negative integer, got %d", opts.maxDays)
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -23,7 +62,7 @@ func runLinkTransfers(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	maxDays := opts.maxDateDiffDays
+	maxDays := opts.maxDays
 	if maxDays == 0 {
 		maxDays = transferlink.DefaultMaxDateDiffDays
 	}

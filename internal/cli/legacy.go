@@ -197,11 +197,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runExport(opts, stdout)
 	}
 
-	// Handle --link-transfers
-	if opts.linkTransfers {
-		return runLinkTransfers(opts, stdout)
-	}
-
 	// Handle --report
 	if opts.report {
 		return runReport(opts, stdout)

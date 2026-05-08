@@ -458,13 +458,13 @@ tmoney -f personal.tdb --export checking_q1.csv --account "Checking" \
 
 ```bash
 # Dry-run preview (default)
-tmoney -f personal.tdb --link-transfers
+tmoney -f personal.tdb transfer link
 
 # Widen or narrow the date-tolerance window (default: 5 days)
-tmoney -f personal.tdb --link-transfers --max-days 3
+tmoney -f personal.tdb transfer link --max-days 3
 
 # Execute the linking
-tmoney -f personal.tdb --link-transfers --confirm
+tmoney -f personal.tdb transfer link --confirm
 ```
 
 Useful after importing each account's QIF/OFX separately: it scans for
@@ -554,7 +554,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

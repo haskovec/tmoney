@@ -139,7 +139,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--transfer`, `--from`, `--to` (transfer-only usage) plumbing.
   - DOCS: README.
 
-- [ ] **CM-018 — `tmoney transfer link`**
+- [x] **CM-018 — `tmoney transfer link`** (completed 2026-05-07)
   - RED: tests covering `TestRun_LinkTransfers*` (dry-run preview, --confirm, --max-days override, ambiguous pairs).
   - GREEN: `transfer_link.go` with `transferLinkOptions{ file string; confirm bool; maxDays int }`, `newTransferLinkCmd()`.
   - CLEANUP: delete `--link-transfers`, `--max-days`, `--confirm` (link-only usage) plumbing.

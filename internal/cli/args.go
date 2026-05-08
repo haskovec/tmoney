@@ -87,10 +87,6 @@ type cliOptions struct {
 	// Export options
 	exportFile string // --export <file>
 
-	// Link transfers options
-	linkTransfers   bool // --link-transfers flag
-	maxDateDiffDays int  // --max-days <n> (default 5)
-
 	// Security management options
 	listSecurities bool   // --list-securities flag
 	securityTicker string // --security <ticker> to show details
@@ -407,18 +403,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.exportFile = args[i]
-		case "--link-transfers":
-			opts.linkTransfers = true
-		case "--max-days":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--max-days requires a number argument")
-			}
-			i++
-			n, perr := strconv.Atoi(args[i])
-			if perr != nil || n < 0 {
-				return nil, nil, fmt.Errorf("--max-days must be a non-negative integer, got %q", args[i])
-			}
-			opts.maxDateDiffDays = n
 		case "--confirm":
 			opts.confirm = true
 		case "--skip-duplicates":

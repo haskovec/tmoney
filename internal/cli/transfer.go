@@ -12,13 +12,15 @@ func newTransferCmd() *cobra.Command {
 		Short: "Manage transfers between accounts",
 		Long: "Subcommands for creating new transfers and linking " +
 			"unlinked transfer pairs across accounts after import.",
-		Example: "  tmoney transfer add --from Checking --to Savings --amount 500.00",
-		Args:    cobra.NoArgs,
+		Example: "  tmoney transfer add --from Checking --to Savings --amount 500.00\n" +
+			"  tmoney transfer link --confirm",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newTransferAddCmd())
+	cmd.AddCommand(newTransferLinkCmd())
 	return cmd
 }
