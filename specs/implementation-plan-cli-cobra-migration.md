@@ -273,10 +273,10 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--current-price` plumbing.
   - DOCS: README.
 
-- [ ] **CM-041 — `tmoney price import <file>`**
+- [x] **CM-041 — `tmoney price import <file>`** (completed 2026-05-08)
   - RED: tests covering `TestRun_ImportPrices*`.
-  - GREEN: `price_import.go` with `priceImportOptions{ file, csvPath string }`, `newPriceImportCmd()` (`Args: cobra.ExactArgs(1)`).
-  - CLEANUP: delete `--import-prices` plumbing.
+  - GREEN: `price_import.go` with `priceImportOptions{ file, csvPath string; overwrite bool }`, `newPriceImportCmd()` (`Args: cobra.ExactArgs(1)`).
+  - CLEANUP: delete `--import-prices` plumbing; also delete the `--overwrite` plumbing and `importPrices`/`overwrite` fields from `cliOptions` (only used by this verb).
   - DOCS: README.
 
 - [ ] **CM-042 — `tmoney price update`**

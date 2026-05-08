@@ -8,27 +8,56 @@ import (
 
 	"github.com/haskovec/tmoney/internal/imexport"
 	"github.com/haskovec/tmoney/internal/price"
+	"github.com/spf13/cobra"
 )
 
-// runImportPrices imports prices from a CSV file.
-func runImportPrices(opts *cliOptions, w io.Writer) error {
+// priceImportOptions are the inputs to `tmoney price import`.
+type priceImportOptions struct {
+	file      string
+	csvPath   string
+	overwrite bool
+}
+
+// newPriceImportCmd registers `tmoney price import <file>`. The
+// database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command. `--overwrite` causes existing
+// prices on matching dates to be replaced instead of skipped.
+func newPriceImportCmd() *cobra.Command {
+	opts := &priceImportOptions{}
+	cmd := &cobra.Command{
+		Use:          "import <file>",
+		Short:        "Import prices from a CSV file",
+		Long:         "Bulk-import prices from a CSV file. The CSV must have Date, Ticker, and Price columns. Existing prices on matching dates are skipped unless --overwrite is set.",
+		Example:      "  tmoney price import prices.csv\n  tmoney price import prices.csv --overwrite",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			opts.csvPath = args[0]
+			return runPriceImport(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().BoolVar(&opts.overwrite, "overwrite", false, "Overwrite existing prices on matching dates")
+	return cmd
+}
+
+// runPriceImport imports prices from a CSV file.
+func runPriceImport(opts *priceImportOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--import-prices requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
-	file, err := os.Open(opts.importPrices)
+	file, err := os.Open(opts.csvPath)
 	if err != nil {
 		return fmt.Errorf("failed to open import file: %w", err)
 	}
 	defer file.Close()
 
-	// Parse the CSV
 	parseResult, err := imexport.ParsePriceCSV(file)
 	if err != nil {
 		return fmt.Errorf("failed to parse price CSV: %w", err)
 	}
 
-	// Report parse errors
 	if parseResult.HasErrors() {
 		for _, e := range parseResult.Errors {
 			fmt.Fprintf(w, "  Warning: %s\n", e.Error())
@@ -46,7 +75,6 @@ func runImportPrices(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// Resolve tickers to security IDs and build price objects
 	var prices []*price.Price
 	tickerErrors := 0
 	hiddenSkipped := 0
@@ -72,14 +100,12 @@ func runImportPrices(opts *cliOptions, w io.Writer) error {
 		return nil
 	}
 
-	// Import prices
 	result, err := svc.Price.BulkImport(prices, opts.overwrite)
 	if err != nil {
 		return fmt.Errorf("failed to import prices: %w", err)
 	}
 
-	// Display summary
-	fmt.Fprintf(w, "IMPORT COMPLETE: %s\n", filepath.Base(opts.importPrices))
+	fmt.Fprintf(w, "IMPORT COMPLETE: %s\n", filepath.Base(opts.csvPath))
 	fmt.Fprintf(w, "  Total rows:     %d\n", result.Total+tickerErrors+len(parseResult.Errors))
 	fmt.Fprintf(w, "  Imported:       %d\n", result.Imported)
 	fmt.Fprintf(w, "  Skipped:        %d\n", result.Skipped)

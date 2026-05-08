@@ -70,8 +70,6 @@ type cliOptions struct {
 
 	// Price management options
 	priceValue    string   // --price <value>
-	importPrices  string   // --import-prices <file>
-	overwrite     bool     // --overwrite flag
 	updatePrices  bool     // --update-prices flag
 	updateTickers []string // optional positional tickers after --update-prices
 	provider      string   // --provider <name> for --update-prices
@@ -331,14 +329,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.priceValue = args[i]
-		case "--import-prices":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--import-prices requires a file path argument")
-			}
-			i++
-			opts.importPrices = args[i]
-		case "--overwrite":
-			opts.overwrite = true
 		case "--update-prices":
 			opts.updatePrices = true
 			// Collect any following non-flag arguments as ticker filters.
@@ -538,8 +528,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.secExchange = after
 			} else if after, ok := strings.CutPrefix(arg, "--price="); ok {
 				opts.priceValue = after
-			} else if after, ok := strings.CutPrefix(arg, "--import-prices="); ok {
-				opts.importPrices = after
 			} else if after, ok := strings.CutPrefix(arg, "--provider="); ok {
 				opts.provider = after
 			} else if after, ok := strings.CutPrefix(arg, "--shares="); ok {
