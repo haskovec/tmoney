@@ -147,7 +147,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 
 ## Phase 5: scheduled
 
-- [ ] **CM-019 — Phase prep: split `scheduled` handlers**
+- [x] **CM-019 — Phase prep: split `scheduled` handlers** (completed 2026-05-07)
   - GREEN: create `scheduled_add.go`, `scheduled_list.go`, `scheduled_post.go`, `scheduled_skip.go` containing `runAddScheduled`, `runScheduled`, `runPostScheduled`, `runSkipScheduled` cut verbatim.
 
 - [ ] **CM-020 — `tmoney scheduled add`**
