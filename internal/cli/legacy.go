@@ -32,11 +32,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runListSecurities(opts, stdout)
 	}
 
-	// Handle --add-security
-	if opts.addSecurity {
-		return runAddSecurity(opts, stdout)
-	}
-
 	// Handle --edit-security
 	if opts.editSecurity != "" {
 		return runEditSecurity(opts, stdout)

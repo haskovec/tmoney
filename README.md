@@ -423,6 +423,19 @@ if the cleared total still differs from the statement balance, unless
 `--force` is supplied. `reconcile status` shows the last completed
 reconciliation and any active session for the account.
 
+### Securities
+
+```bash
+# Add a new security
+tmoney -f personal.tdb security add --ticker AAPL --name "Apple Inc." --type stock
+tmoney -f personal.tdb security add --ticker VTI --name "Vanguard Total Stock Market" \
+  --type etf --asset-class large_cap_stock --exchange NYSE
+```
+
+Security types: `stock`, `etf`, `mutual_fund`, `other`. `--ticker`,
+`--name`, and `--type` are required. `--currency` defaults to `USD`
+and `--asset-class` defaults to `unclassified`.
+
 ### Reports
 
 ```bash
@@ -596,7 +609,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, and `tmoney reconcile start`/`mark`/`finish`/`status` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

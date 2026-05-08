@@ -617,14 +617,6 @@ Security Commands:
     --asset-class <cls>  Filter by asset class
   --security <ticker>    Show details for a specific security
 
-  --add-security         Create a new security (requires --ticker, --name, --type)
-    --ticker <ticker>    Ticker symbol (max 20 characters)
-    --name <name>        Security name
-    --type <type>        Security type (stock, etf, mutual_fund, other)
-    --asset-class <cls>  Asset class (default: unclassified)
-    --currency <code>    Currency code (default: USD)
-    --exchange <name>    Exchange name
-
   --edit-security <tkr>  Edit a security by ticker
     --ticker <ticker>    New ticker symbol
     --name <name>        New security name

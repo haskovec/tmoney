@@ -208,11 +208,11 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 - [x] **CM-029 — Phase prep: split `security` handlers** (completed 2026-05-08)
   - GREEN: create `security_add.go`, `security_list.go`, `security_show.go`, `security_edit.go`, `security_hide.go`, `security_unhide.go`, `security_delete.go` containing `runAddSecurity`, `runListSecurities`, `runSecurityDetail`, `runEditSecurity`, `runHideSecurity`, `runUnhideSecurity`, `runDeleteSecurity` cut verbatim.
 
-- [ ] **CM-030 — `tmoney security add`**
+- [x] **CM-030 — `tmoney security add`** (completed 2026-05-08)
   - RED: tests covering `TestRun_AddSecurity*`.
   - GREEN: create `security.go` (parent). `security_add.go` with `securityAddOptions` (ticker, asset class, name, currency, etc.), `newSecurityAddCmd()` with required flags. Register on root; add `"security"` to `cobraSubcommands`. Add help smoke test.
-  - CLEANUP: delete `--add-security` and `sec*` fields from `cliOptions`.
-  - DOCS: README "Securities" section under CLI Reference (note: Securities currently live under TUI section in README; add CLI subsection if missing).
+  - CLEANUP: delete `--add-security` boolean and the `addSecurity` field from `cliOptions`. The shared `sec*` fields (`secTicker`, `secAssetClass`, `secExchange`) are still referenced by `--edit-security` and stay until that verb migrates.
+  - DOCS: README "Securities" CLI Reference subsection added.
 
 - [ ] **CM-031 — `tmoney security list`**
   - RED: tests covering `TestRun_ListSecurities*`.

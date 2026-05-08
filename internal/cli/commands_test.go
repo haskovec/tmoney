@@ -1674,174 +1674,6 @@ func TestRun_SecurityDetailShowsFull(t *testing.T) {
 	}
 }
 
-// SM-099: --add-security
-
-func TestRun_AddSecurityMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-security", "--ticker", "AAPL", "--name", "Apple", "--type", "stock"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-security) without --file should return error")
-	}
-}
-
-func TestRun_AddSecurityMissingTicker(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-security", "--file", "/fake.tdb", "--name", "Apple", "--type", "stock"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-security) without --ticker should return error")
-	}
-	if !strings.Contains(err.Error(), "--ticker") {
-		t.Errorf("error should mention --ticker, got: %v", err)
-	}
-}
-
-func TestRun_AddSecurityMissingName(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-security", "--file", "/fake.tdb", "--ticker", "AAPL", "--type", "stock"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-security) without --name should return error")
-	}
-	if !strings.Contains(err.Error(), "--name") {
-		t.Errorf("error should mention --name, got: %v", err)
-	}
-}
-
-func TestRun_AddSecurityMissingType(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-security", "--file", "/fake.tdb", "--ticker", "AAPL", "--name", "Apple"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-security) without --type should return error")
-	}
-	if !strings.Contains(err.Error(), "--type") {
-		t.Errorf("error should mention --type, got: %v", err)
-	}
-}
-
-func TestRun_AddSecurityInvalidType(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{"--add-security", "--file", dbPath, "--ticker", "AAPL", "--name", "Apple", "--type", "invalid_type"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-security) with invalid --type should return error")
-	}
-	if !strings.Contains(err.Error(), "invalid --type") {
-		t.Errorf("error should mention invalid type, got: %v", err)
-	}
-}
-
-func TestRun_AddSecuritySuccess(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{
-		"--add-security",
-		"--file", dbPath,
-		"--ticker", "AAPL",
-		"--name", "Apple Inc.",
-		"--type", "stock",
-		"--asset-class", "large_cap_stock",
-		"--currency", "USD",
-		"--exchange", "NASDAQ",
-	}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--add-security) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Security created successfully") {
-		t.Error("output should confirm creation")
-	}
-	if !strings.Contains(output, "AAPL") {
-		t.Error("output should contain ticker")
-	}
-	if !strings.Contains(output, "Apple Inc.") {
-		t.Error("output should contain name")
-	}
-	if !strings.Contains(output, "NASDAQ") {
-		t.Error("output should contain exchange")
-	}
-
-	// Verify security is persisted by listing
-	stdout.Reset()
-	err = run([]string{"--list-securities", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--list-securities) returned error: %v", err)
-		return
-	}
-	if !strings.Contains(stdout.String(), "AAPL") {
-		t.Error("security should be persisted and visible in list")
-	}
-}
-
-func TestRun_AddSecurityDefaultValues(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{
-		"--add-security",
-		"--file", dbPath,
-		"--ticker", "GOOG",
-		"--name", "Alphabet Inc.",
-		"--type", "stock",
-	}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--add-security) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "USD") {
-		t.Error("default currency should be USD")
-	}
-	if !strings.Contains(output, "Unclassified") {
-		t.Error("default asset class should be Unclassified")
-	}
-}
-
-func TestRun_AddSecurityDuplicate(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{
-		"--add-security",
-		"--file", dbPath,
-		"--ticker", "AAPL",
-		"--name", "Apple Again",
-		"--type", "stock",
-	}, stdout, stderr)
-	if err == nil {
-		t.Error("adding duplicate ticker should return error")
-	}
-}
-
 // SM-100: --edit-security
 
 func TestRun_EditSecurityMissingFile(t *testing.T) {
@@ -2246,15 +2078,6 @@ func TestParseArgs_SecurityFlags(t *testing.T) {
 			},
 		},
 		{
-			"add-security flag",
-			[]string{"--add-security"},
-			func(t *testing.T, opts *cliOptions) {
-				if !opts.addSecurity {
-					t.Error("addSecurity should be true")
-				}
-			},
-		},
-		{
 			"edit-security flag",
 			[]string{"--edit-security", "AAPL"},
 			func(t *testing.T, opts *cliOptions) {
@@ -2328,13 +2151,13 @@ func TestParseArgs_SecurityFlags(t *testing.T) {
 		},
 		{
 			"combined security flags",
-			[]string{"--add-security", "--ticker", "AAPL", "--name", "Apple", "--type", "stock", "--asset-class", "large_cap_stock", "--exchange", "NASDAQ"},
+			[]string{"--edit-security", "AAPL", "--ticker", "MSFT", "--name", "Apple", "--type", "stock", "--asset-class", "large_cap_stock", "--exchange", "NASDAQ"},
 			func(t *testing.T, opts *cliOptions) {
-				if !opts.addSecurity {
-					t.Error("addSecurity should be true")
+				if opts.editSecurity != "AAPL" {
+					t.Errorf("editSecurity = %q, want AAPL", opts.editSecurity)
 				}
-				if opts.secTicker != "AAPL" {
-					t.Errorf("secTicker = %q, want AAPL", opts.secTicker)
+				if opts.secTicker != "MSFT" {
+					t.Errorf("secTicker = %q, want MSFT", opts.secTicker)
 				}
 				if opts.acctName != "Apple" {
 					t.Errorf("acctName = %q, want Apple", opts.acctName)

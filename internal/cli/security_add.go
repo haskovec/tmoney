@@ -5,24 +5,57 @@ import (
 	"io"
 
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/spf13/cobra"
 )
 
-// runAddSecurity creates a new security.
-func runAddSecurity(opts *cliOptions, w io.Writer) error {
+// securityAddOptions are the inputs to `tmoney security add`.
+type securityAddOptions struct {
+	file       string
+	ticker     string
+	name       string
+	secType    string
+	assetClass string
+	currency   string
+	exchange   string
+}
+
+// newSecurityAddCmd registers `tmoney security add`. The database file
+// is taken from the persistent `--file` / `-f` flag inherited from the
+// root command. `--ticker`, `--name`, and `--type` are required.
+func newSecurityAddCmd() *cobra.Command {
+	opts := &securityAddOptions{}
+	cmd := &cobra.Command{
+		Use:   "add",
+		Short: "Create a new security",
+		Long: "Create a new security in the TMoney database. " +
+			"`--ticker`, `--name`, and `--type` are required; other fields take sensible defaults.",
+		Example:      "  tmoney security add --ticker AAPL --name \"Apple Inc.\" --type stock --exchange NASDAQ",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runSecurityAdd(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Ticker symbol (required)")
+	cmd.Flags().StringVar(&opts.name, "name", "", "Security name (required)")
+	cmd.Flags().StringVar(&opts.secType, "type", "", "Security type: stock, etf, mutual_fund, other (required)")
+	cmd.Flags().StringVar(&opts.assetClass, "asset-class", "", "Asset class (default unclassified)")
+	cmd.Flags().StringVar(&opts.currency, "currency", "", "Currency code (default USD)")
+	cmd.Flags().StringVar(&opts.exchange, "exchange", "", "Exchange (e.g. NASDAQ, NYSE)")
+	_ = cmd.MarkFlagRequired("ticker")
+	_ = cmd.MarkFlagRequired("name")
+	_ = cmd.MarkFlagRequired("type")
+	return cmd
+}
+
+// runSecurityAdd creates a new security.
+func runSecurityAdd(opts *securityAddOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--add-security requires --file to specify a database")
-	}
-	if opts.secTicker == "" {
-		return fmt.Errorf("--add-security requires --ticker to specify a ticker symbol")
-	}
-	if opts.acctName == "" {
-		return fmt.Errorf("--add-security requires --name to specify a security name")
-	}
-	if opts.acctType == "" {
-		return fmt.Errorf("--add-security requires --type to specify a security type (stock, etf, mutual_fund, other)")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
-	secType, err := security.ParseType(opts.acctType)
+	secType, err := security.ParseType(opts.secType)
 	if err != nil {
 		return fmt.Errorf("invalid --type: %w", err)
 	}
@@ -33,22 +66,22 @@ func runAddSecurity(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	sec := security.NewSecurity(opts.secTicker, opts.acctName, secType)
+	sec := security.NewSecurity(opts.ticker, opts.name, secType)
 
-	if opts.secAssetClass != "" {
-		ac, err := security.ParseAssetClass(opts.secAssetClass)
+	if opts.assetClass != "" {
+		ac, err := security.ParseAssetClass(opts.assetClass)
 		if err != nil {
 			return fmt.Errorf("invalid --asset-class: %w", err)
 		}
 		sec.AssetClass = ac
 	}
 
-	if opts.acctCurrency != "" {
-		sec.Currency = opts.acctCurrency
+	if opts.currency != "" {
+		sec.Currency = opts.currency
 	}
 
-	if opts.secExchange != "" {
-		sec.SetExchange(opts.secExchange)
+	if opts.exchange != "" {
+		sec.SetExchange(opts.exchange)
 	}
 
 	if err := svc.Security.Create(sec); err != nil {

@@ -66,7 +66,6 @@ type cliOptions struct {
 	// Security management options
 	listSecurities bool   // --list-securities flag
 	securityTicker string // --security <ticker> to show details
-	addSecurity    bool   // --add-security flag
 	editSecurity   string // --edit-security <ticker>
 	hideSecurity   string // --hide-security <ticker>
 	unhideSecurity string // --unhide-security <ticker>
@@ -326,8 +325,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.securityTicker = args[i]
-		case "--add-security":
-			opts.addSecurity = true
 		case "--edit-security":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--edit-security requires a ticker argument")
