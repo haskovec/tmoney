@@ -1706,145 +1706,6 @@ func TestRun_ListPricesNoPrices(t *testing.T) {
 }
 
 // =============================================================================
-// SM-104: --add-price
-// =============================================================================
-
-func TestRun_AddPriceMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-price", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "150.00"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-price) without --file should return error")
-	}
-	if !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("error should mention --file requirement, got: %v", err)
-	}
-}
-
-func TestRun_AddPriceMissingTicker(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-price", "--file", "/fake.tdb", "--date", "2024-01-15", "--price", "150.00"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-price) without --ticker should return error")
-	}
-	if !strings.Contains(err.Error(), "--ticker") {
-		t.Errorf("error should mention --ticker, got: %v", err)
-	}
-}
-
-func TestRun_AddPriceMissingDate(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-price", "--file", "/fake.tdb", "--ticker", "AAPL", "--price", "150.00"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-price) without --date should return error")
-	}
-	if !strings.Contains(err.Error(), "--date") {
-		t.Errorf("error should mention --date, got: %v", err)
-	}
-}
-
-func TestRun_AddPriceMissingPrice(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-price", "--file", "/fake.tdb", "--ticker", "AAPL", "--date", "2024-01-15"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-price) without --price should return error")
-	}
-	if !strings.Contains(err.Error(), "--price") {
-		t.Errorf("error should mention --price, got: %v", err)
-	}
-}
-
-func TestRun_AddPriceSuccess(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-price", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "150.00", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--add-price) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Price added") {
-		t.Error("output should confirm price was added")
-	}
-	if !strings.Contains(output, "AAPL") {
-		t.Error("output should contain ticker")
-	}
-	if !strings.Contains(output, "2024-01-15") {
-		t.Error("output should contain date")
-	}
-	if !strings.Contains(output, "150.00") {
-		t.Error("output should contain price value")
-	}
-
-	// Verify price was actually stored by listing prices
-	stdout.Reset()
-	err = run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--prices) returned error: %v", err)
-		return
-	}
-	if !strings.Contains(stdout.String(), "150.00") {
-		t.Error("price should be visible in --prices listing")
-	}
-}
-
-func TestRun_AddPriceSecurityNotFound(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-price", "--ticker", "ZZZZ", "--date", "2024-01-15", "--price", "150.00", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-price) with unknown ticker should return error")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error should mention not found, got: %v", err)
-	}
-}
-
-func TestRun_AddPriceDuplicateConflict(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurityAndPrices(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	// Try to add a price for a date that already has one (2024-01-15)
-	err := run([]string{"--add-price", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "155.00", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-price) with duplicate date should return error")
-	}
-}
-
-func TestRun_AddPriceInvalidDate(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-price", "--ticker", "AAPL", "--date", "not-a-date", "--price", "150.00", "--file", "/fake.tdb"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-price) with invalid date should return error")
-	}
-	if !strings.Contains(err.Error(), "invalid --date") {
-		t.Errorf("error should mention invalid date, got: %v", err)
-	}
-}
-
-func TestRun_AddPriceInvalidPrice(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-price", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "not-a-number", "--file", "/fake.tdb"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--add-price) with invalid price should return error")
-	}
-	if !strings.Contains(err.Error(), "invalid --price") {
-		t.Errorf("error should mention invalid price, got: %v", err)
-	}
-}
-
-// =============================================================================
 // SM-105: --current-price
 // =============================================================================
 
@@ -1944,15 +1805,6 @@ func TestParseArgs_PriceFlags(t *testing.T) {
 			func(t *testing.T, opts *cliOptions) {
 				if !opts.listPrices {
 					t.Error("listPrices should be true")
-				}
-			},
-		},
-		{
-			"add-price flag",
-			[]string{"--add-price"},
-			func(t *testing.T, opts *cliOptions) {
-				if !opts.addPrice {
-					t.Error("addPrice should be true")
 				}
 			},
 		},
@@ -3301,9 +3153,9 @@ func TestRun_ImportPricesWithOverwrite(t *testing.T) {
 	// First, add a price manually
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := run([]string{"--add-price", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "150.00", "--file", dbPath}, stdout, stderr)
+	err := executeWith([]string{"price", "add", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "150.00", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("run(--add-price) returned error: %v", err)
+		t.Fatalf("executeWith(price add) returned error: %v", err)
 	}
 
 	// Create CSV with same date but different price

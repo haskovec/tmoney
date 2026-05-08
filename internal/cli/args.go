@@ -70,7 +70,6 @@ type cliOptions struct {
 
 	// Price management options
 	listPrices    bool     // --prices flag
-	addPrice      bool     // --add-price flag
 	currentPrice  bool     // --current-price flag
 	priceValue    string   // --price <value>
 	importPrices  string   // --import-prices <file>
@@ -330,8 +329,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.secExchange = args[i]
 		case "--prices":
 			opts.listPrices = true
-		case "--add-price":
-			opts.addPrice = true
 		case "--current-price":
 			opts.currentPrice = true
 		case "--price":

@@ -32,11 +32,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runListPrices(opts, stdout)
 	}
 
-	// Handle --add-price
-	if opts.addPrice {
-		return runAddPrice(opts, stdout)
-	}
-
 	// Handle --current-price
 	if opts.currentPrice {
 		return runCurrentPrice(opts, stdout)
