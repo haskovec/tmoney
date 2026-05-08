@@ -447,6 +447,9 @@ tmoney -f personal.tdb security edit VTI --asset-class total_market
 
 # Hide a security from default listings (data is preserved)
 tmoney -f personal.tdb security hide AAPL
+
+# Restore a hidden security to default listings
+tmoney -f personal.tdb security unhide AAPL
 ```
 
 Security types: `stock`, `etf`, `mutual_fund`, `other`. `--ticker`,
@@ -460,7 +463,7 @@ single security (errors if the ticker is unknown). `security edit
 `--ticker` to rename the security to a new symbol. `security hide
 <ticker>` marks the security as hidden so it no longer appears in
 default listings (use `--include-hidden` on `security list` to see it,
-or `--unhide-security <tkr>` to restore visibility).
+or `security unhide <ticker>` to restore visibility).
 
 ### Reports
 
@@ -635,7 +638,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

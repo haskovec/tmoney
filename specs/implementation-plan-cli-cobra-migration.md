@@ -238,7 +238,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--hide-security` plumbing.
   - DOCS: README.
 
-- [ ] **CM-035 — `tmoney security unhide <ticker>`**
+- [x] **CM-035 — `tmoney security unhide <ticker>`** (completed 2026-05-08)
   - RED: tests covering `TestRun_UnhideSecurity*`.
   - GREEN: `security_unhide.go` with `securityUnhideOptions{ file, ticker string }`, `newSecurityUnhideCmd()` (`Args: cobra.ExactArgs(1)`).
   - CLEANUP: delete `--unhide-security` plumbing.

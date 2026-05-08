@@ -1422,68 +1422,6 @@ func createTestDBWithSecurity(t *testing.T) (string, *security.Security) {
 	return dbPath, sec
 }
 
-// SM-101: --unhide-security
-
-func TestRun_UnhideSecurityMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--unhide-security", "AAPL"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--unhide-security) without --file should return error")
-	}
-}
-
-func TestRun_UnhideSecuritySuccess(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-
-	repo := security.NewRepository(database)
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	sec.Hide()
-	if err := repo.Create(sec); err != nil {
-		t.Fatalf("failed to create security: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{"--unhide-security", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--unhide-security) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "unhidden successfully") {
-		t.Error("output should confirm unhiding")
-	}
-
-	// Security should now appear in default list
-	stdout.Reset()
-	if err := executeWith([]string{"security", "list", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Errorf("executeWith(security list) returned error: %v", err)
-		return
-	}
-	if !strings.Contains(stdout.String(), "AAPL") {
-		t.Error("unhidden security should appear in default listing")
-	}
-}
-
-func TestRun_UnhideSecurityNotHidden(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--unhide-security", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("unhiding visible security should return error")
-	}
-}
-
 // SM-102: --delete-security
 
 func TestRun_DeleteSecurityMissingFile(t *testing.T) {
@@ -1581,15 +1519,6 @@ func TestParseArgs_SecurityFlags(t *testing.T) {
 		check func(t *testing.T, opts *cliOptions)
 	}{
 		{
-			"unhide-security flag",
-			[]string{"--unhide-security", "AAPL"},
-			func(t *testing.T, opts *cliOptions) {
-				if opts.unhideSecurity != "AAPL" {
-					t.Errorf("unhideSecurity = %q, want AAPL", opts.unhideSecurity)
-				}
-			},
-		},
-		{
 			"delete-security flag",
 			[]string{"--delete-security", "AAPL"},
 			func(t *testing.T, opts *cliOptions) {
@@ -1627,10 +1556,10 @@ func TestParseArgs_SecurityFlags(t *testing.T) {
 		},
 		{
 			"combined security flags",
-			[]string{"--unhide-security", "AAPL", "--ticker", "MSFT", "--name", "Apple", "--type", "stock", "--asset-class", "large_cap_stock", "--exchange", "NASDAQ"},
+			[]string{"--delete-security", "AAPL", "--ticker", "MSFT", "--name", "Apple", "--type", "stock", "--asset-class", "large_cap_stock", "--exchange", "NASDAQ"},
 			func(t *testing.T, opts *cliOptions) {
-				if opts.unhideSecurity != "AAPL" {
-					t.Errorf("unhideSecurity = %q, want AAPL", opts.unhideSecurity)
+				if opts.deleteSecurity != "AAPL" {
+					t.Errorf("deleteSecurity = %q, want AAPL", opts.deleteSecurity)
 				}
 				if opts.secTicker != "MSFT" {
 					t.Errorf("secTicker = %q, want MSFT", opts.secTicker)
@@ -1668,7 +1597,6 @@ func TestParseArgs_SecurityFlagsMissingArgs(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"unhide-security missing ticker", []string{"--unhide-security"}},
 		{"delete-security missing ticker", []string{"--delete-security"}},
 		{"ticker missing value", []string{"--ticker"}},
 		{"asset-class missing value", []string{"--asset-class"}},

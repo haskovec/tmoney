@@ -24,5 +24,6 @@ func newSecurityCmd() *cobra.Command {
 	cmd.AddCommand(newSecurityShowCmd())
 	cmd.AddCommand(newSecurityEditCmd())
 	cmd.AddCommand(newSecurityHideCmd())
+	cmd.AddCommand(newSecurityUnhideCmd())
 	return cmd
 }
