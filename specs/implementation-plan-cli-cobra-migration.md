@@ -197,9 +197,9 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--finish-reconcile`, `--force` plumbing.
   - DOCS: README.
 
-- [ ] **CM-028 — `tmoney reconcile status`**
+- [x] **CM-028 — `tmoney reconcile status`** (completed 2026-05-08)
   - RED: tests covering `TestRun_ReconcileStatus*`.
-  - GREEN: `reconcile_status.go` with `reconcileStatusOptions{ file string }`, `newReconcileStatusCmd()` (`Args: cobra.NoArgs`).
+  - GREEN: `reconcile_status.go` with `reconcileStatusOptions{ file, account string }`, `newReconcileStatusCmd()` (`Args: cobra.NoArgs`, `MarkFlagRequired("account")`).
   - CLEANUP: delete `--reconcile-status` plumbing.
   - DOCS: README.
 

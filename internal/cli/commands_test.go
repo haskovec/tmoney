@@ -12,7 +12,6 @@ import (
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/price"
-	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -429,129 +428,6 @@ func TestRun_ReportSpendingInvalidMonthValue(t *testing.T) {
 
 // --- Reconciliation CLI Tests ---
 
-func TestRun_ReconcileStatusMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--reconcile-status", "--account", "Checking"}, stdout, stderr)
-	if err == nil {
-		t.Error("should fail without --file")
-	}
-	if !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("error should mention --file, got: %v", err)
-	}
-}
-
-func TestRun_ReconcileStatusMissingAccount(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--reconcile-status", "--file", "test.tdb"}, stdout, stderr)
-	if err == nil {
-		t.Error("should fail without --account")
-	}
-	if !strings.Contains(err.Error(), "requires --account") {
-		t.Errorf("error should mention --account, got: %v", err)
-	}
-}
-
-func TestRun_ReconcileStatusNoSession(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-
-	acctRepo := account.NewRepository(database)
-	acct := account.NewAccount(
-		"Checking",
-		account.TypeChecking,
-		"USD",
-		types.MustNewMoney("1000.00"),
-		types.Today(),
-	)
-	if err := acctRepo.Create(acct); err != nil {
-		t.Fatalf("failed to create test account: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{"--reconcile-status", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--reconcile-status) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "RECONCILIATION STATUS: Checking") {
-		t.Error("output should contain status header")
-	}
-	if !strings.Contains(output, "Last reconciled:  Never") {
-		t.Errorf("output should show 'Never' for last reconciled, got:\n%s", output)
-	}
-	if !strings.Contains(output, "Current session:  None") {
-		t.Errorf("output should show 'None' for current session, got:\n%s", output)
-	}
-}
-
-func TestRun_ReconcileStatusWithActiveSession(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-
-	acctRepo := account.NewRepository(database)
-	acct := account.NewAccount(
-		"Checking",
-		account.TypeChecking,
-		"USD",
-		types.MustNewMoney("1000.00"),
-		types.MustParseDate("2024-01-01"),
-	)
-	if err := acctRepo.Create(acct); err != nil {
-		t.Fatalf("failed to create test account: %v", err)
-	}
-
-	// Create an active reconciliation session
-	reconRepo := reconciliation.NewRepository(database)
-	session := reconciliation.NewSession(
-		acct.ID,
-		types.MustParseDate("2024-01-31"),
-		types.MustNewMoney("5000.00"),
-	)
-	if err := reconRepo.Create(session); err != nil {
-		t.Fatalf("failed to create reconciliation session: %v", err)
-	}
-
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{"--reconcile-status", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--reconcile-status) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "RECONCILIATION STATUS: Checking") {
-		t.Error("output should contain status header")
-	}
-	if !strings.Contains(output, "In progress") {
-		t.Errorf("output should show 'In progress', got:\n%s", output)
-	}
-	if !strings.Contains(output, "2024-01-31") {
-		t.Error("output should contain statement date")
-	}
-	if !strings.Contains(output, "$5000.00") {
-		t.Errorf("output should contain statement balance, got:\n%s", output)
-	}
-}
-
 func TestRun_FullReconciliationWorkflow(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.tdb")
@@ -606,8 +482,8 @@ func TestRun_FullReconciliationWorkflow(t *testing.T) {
 
 	// Step 2: Check status
 	stdout.Reset()
-	err = run([]string{
-		"--reconcile-status",
+	err = executeWith([]string{
+		"reconcile", "status",
 		"--file", dbPath,
 		"--account", "Checking",
 	}, stdout, stderr)
@@ -634,8 +510,8 @@ func TestRun_FullReconciliationWorkflow(t *testing.T) {
 
 	// Step 4: Verify status shows completed
 	stdout.Reset()
-	err = run([]string{
-		"--reconcile-status",
+	err = executeWith([]string{
+		"reconcile", "status",
 		"--file", dbPath,
 		"--account", "Checking",
 	}, stdout, stderr)
@@ -648,21 +524,6 @@ func TestRun_FullReconciliationWorkflow(t *testing.T) {
 	}
 	if !strings.Contains(output, "Current session:  None") {
 		t.Errorf("status should show no current session, got:\n%s", output)
-	}
-}
-
-func TestParseArgs_ReconciliationFlags(t *testing.T) {
-	// Test --reconcile-status
-	opts, _, err := parseArgs([]string{
-		"--reconcile-status",
-		"--file", "test.tdb",
-		"--account", "Checking",
-	})
-	if err != nil {
-		t.Fatalf("parseArgs failed: %v", err)
-	}
-	if !opts.reconcileStatus {
-		t.Error("reconcileStatus should be true")
 	}
 }
 

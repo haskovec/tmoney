@@ -3,15 +3,43 @@ package cli
 import (
 	"fmt"
 	"io"
+
+	"github.com/spf13/cobra"
 )
 
-// runReconcileStatus shows the reconciliation status for an account.
-func runReconcileStatus(opts *cliOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--reconcile-status requires --file to specify a database")
+// reconcileStatusOptions are the inputs to `tmoney reconcile status`.
+type reconcileStatusOptions struct {
+	file    string
+	account string
+}
+
+// newReconcileStatusCmd registers `tmoney reconcile status`. The
+// database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command.
+func newReconcileStatusCmd() *cobra.Command {
+	opts := &reconcileStatusOptions{}
+	cmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show reconciliation status for an account",
+		Long: "Display the last completed reconciliation and any active " +
+			"session for the named account.",
+		Example:      "  tmoney reconcile status --account Checking --file personal.tdb",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runReconcileStatus(opts, cmd.OutOrStdout())
+		},
 	}
-	if opts.accountName == "" {
-		return fmt.Errorf("--reconcile-status requires --account to specify an account")
+	cmd.Flags().StringVar(&opts.account, "account", "", "Account name to show status for (required)")
+	_ = cmd.MarkFlagRequired("account")
+	return cmd
+}
+
+// runReconcileStatus shows the reconciliation status for an account.
+func runReconcileStatus(opts *reconcileStatusOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -20,13 +48,11 @@ func runReconcileStatus(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// Get account by name
-	account, err := svc.Account.GetByName(opts.accountName)
+	account, err := svc.Account.GetByName(opts.account)
 	if err != nil {
-		return fmt.Errorf("account %q not found", opts.accountName)
+		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	// Get reconciliation status
 	status, err := svc.Reconciliation.GetReconciliationStatus(account.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get reconciliation status: %w", err)
