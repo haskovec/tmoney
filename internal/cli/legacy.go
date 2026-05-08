@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --add-scheduled
-	if opts.addScheduled {
-		return runAddScheduled(opts, stdout)
-	}
-
 	// Handle --post-scheduled
 	if opts.postScheduled != "" {
 		return runPostScheduled(opts, stdout)

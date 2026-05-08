@@ -36,15 +36,6 @@ type cliOptions struct {
 	postScheduled string // --post-scheduled <id>
 	skipScheduled string // --skip-scheduled <id>
 
-	// Add scheduled transaction options
-	addScheduled  bool   // --add-scheduled flag
-	stFrequency   string // --frequency <daily|weekly|biweekly|monthly|quarterly|yearly>
-	stDay         string // --day <1-31 or -1 for last day>
-	stOccurrences string // --occurrences <n>
-	stEndDate     string // --end-date <YYYY-MM-DD>
-	autoPost      bool   // --auto-post flag
-	leadDays      string // --lead-days <0|3|7>
-
 	// Add account / shared --name+--type/etc. options
 	acctName         string // --name <name>
 	acctType         string // --type <type>
@@ -204,40 +195,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.skipScheduled = args[i]
-		case "--add-scheduled":
-			opts.addScheduled = true
-		case "--frequency":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--frequency requires a value argument")
-			}
-			i++
-			opts.stFrequency = args[i]
-		case "--day":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--day requires a value argument")
-			}
-			i++
-			opts.stDay = args[i]
-		case "--occurrences":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--occurrences requires a value argument")
-			}
-			i++
-			opts.stOccurrences = args[i]
-		case "--end-date":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--end-date requires a date argument (YYYY-MM-DD)")
-			}
-			i++
-			opts.stEndDate = args[i]
-		case "--auto-post":
-			opts.autoPost = true
-		case "--lead-days":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--lead-days requires a value argument (0, 3, or 7)")
-			}
-			i++
-			opts.leadDays = args[i]
 		case "--status":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--status requires a status value (uncleared, cleared, reconciled, void)")
@@ -670,16 +627,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.postScheduled = after
 			} else if after, ok := strings.CutPrefix(arg, "--skip-scheduled="); ok {
 				opts.skipScheduled = after
-			} else if after, ok := strings.CutPrefix(arg, "--frequency="); ok {
-				opts.stFrequency = after
-			} else if after, ok := strings.CutPrefix(arg, "--day="); ok {
-				opts.stDay = after
-			} else if after, ok := strings.CutPrefix(arg, "--occurrences="); ok {
-				opts.stOccurrences = after
-			} else if after, ok := strings.CutPrefix(arg, "--end-date="); ok {
-				opts.stEndDate = after
-			} else if after, ok := strings.CutPrefix(arg, "--lead-days="); ok {
-				opts.leadDays = after
 			} else if strings.HasPrefix(arg, "--report=") {
 				opts.report = true
 				opts.reportType = strings.TrimPrefix(arg, "--report=")

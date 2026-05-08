@@ -150,7 +150,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 - [x] **CM-019 — Phase prep: split `scheduled` handlers** (completed 2026-05-07)
   - GREEN: create `scheduled_add.go`, `scheduled_list.go`, `scheduled_post.go`, `scheduled_skip.go` containing `runAddScheduled`, `runScheduled`, `runPostScheduled`, `runSkipScheduled` cut verbatim.
 
-- [ ] **CM-020 — `tmoney scheduled add`**
+- [x] **CM-020 — `tmoney scheduled add`** (completed 2026-05-07)
   - RED: tests covering `TestRun_AddScheduled*`.
   - GREEN: create `scheduled.go` (parent). `scheduled_add.go` with `scheduledAddOptions` (account, amount, payee, category, frequency, day, occurrences, endDate, autoPost, leadDays, etc.), `newScheduledAddCmd()` with the appropriate `MarkFlagRequired` calls. Register on root; add `"scheduled"` to `cobraSubcommands`. Add help smoke test.
   - CLEANUP: delete `--add-scheduled` and `st*` fields from `cliOptions`.
