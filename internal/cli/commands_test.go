@@ -1655,62 +1655,6 @@ func ptrMoney(s string) *types.Money {
 	return &m
 }
 
-// --- SM-108: CLI --dividend ---
-
-func TestRun_DividendMissingFile(t *testing.T) {
-	err := run([]string{"--dividend", "--account", "Brokerage", "--ticker", "AAPL", "--amount", "50"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("expected --file required error, got: %v", err)
-	}
-}
-
-func TestRun_DividendMissingAccount(t *testing.T) {
-	err := run([]string{"--dividend", "--file", "test.tdb", "--ticker", "AAPL", "--amount", "50"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --account") {
-		t.Errorf("expected --account required error, got: %v", err)
-	}
-}
-
-func TestRun_DividendMissingTicker(t *testing.T) {
-	err := run([]string{"--dividend", "--file", "test.tdb", "--account", "Brokerage", "--amount", "50"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --ticker") {
-		t.Errorf("expected --ticker required error, got: %v", err)
-	}
-}
-
-func TestRun_DividendMissingAmount(t *testing.T) {
-	err := run([]string{"--dividend", "--file", "test.tdb", "--account", "Brokerage", "--ticker", "AAPL"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --amount") {
-		t.Errorf("expected --amount required error, got: %v", err)
-	}
-}
-
-func TestRun_DividendBasic(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	stdout := &bytes.Buffer{}
-	err := run([]string{
-		"--dividend", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "AAPL",
-		"--amount", "125.50",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--dividend) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Dividend transaction created successfully") {
-		t.Error("output should confirm dividend creation")
-	}
-	if !strings.Contains(output, "AAPL") {
-		t.Error("output should contain ticker")
-	}
-	if !strings.Contains(output, "$125.50") {
-		t.Error("output should contain amount")
-	}
-}
-
 // --- SM-109: CLI --reinvest ---
 
 func TestRun_ReinvestMissingFile(t *testing.T) {
@@ -2073,7 +2017,6 @@ func TestParseArgs_InvestmentFlags(t *testing.T) {
 		args  []string
 		check func(*cliOptions) bool
 	}{
-		{"--dividend flag", []string{"--dividend"}, func(o *cliOptions) bool { return o.dividend }},
 		{"--reinvest flag", []string{"--reinvest"}, func(o *cliOptions) bool { return o.reinvest }},
 		{"--investment-fee flag", []string{"--investment-fee"}, func(o *cliOptions) bool { return o.investmentFee }},
 		{"--invest-deposit flag", []string{"--invest-deposit"}, func(o *cliOptions) bool { return o.investDeposit }},

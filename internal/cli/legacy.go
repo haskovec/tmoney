@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --dividend
-	if opts.dividend {
-		return runDividend(opts, stdout)
-	}
-
 	// Handle --reinvest
 	if opts.reinvest {
 		return runReinvest(opts, stdout)

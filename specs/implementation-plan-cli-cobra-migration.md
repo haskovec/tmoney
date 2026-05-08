@@ -299,7 +299,7 @@ The largest phase: 12 verbs, all under `tmoney investment …`. Verbs cluster as
   - DOCS: README "Investment" CLI subsection (add if missing).
 
 - [x] **CM-045 — `tmoney investment sell`** (completed 2026-05-08) — RED/GREEN/CLEANUP/DOCS per the standard pattern; covers `TestRun_Sell*`.
-- [ ] **CM-046 — `tmoney investment dividend`** — covers `TestRun_Dividend*`.
+- [x] **CM-046 — `tmoney investment dividend`** (completed 2026-05-08) — covers `TestRun_Dividend*`.
 - [ ] **CM-047 — `tmoney investment reinvest`** — covers `TestRun_Reinvest*`.
 - [ ] **CM-048 — `tmoney investment fee`** — covers `TestRun_InvestmentFee*`. Replaces `--investment-fee`.
 - [ ] **CM-049 — `tmoney investment deposit`** — covers `TestRun_InvestDeposit*`. Replaces `--invest-deposit`.
