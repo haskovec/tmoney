@@ -162,7 +162,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--scheduled`, `--due` plumbing.
   - DOCS: README.
 
-- [ ] **CM-022 — `tmoney scheduled post <id>`**
+- [x] **CM-022 — `tmoney scheduled post <id>`** (completed 2026-05-07)
   - RED: tests covering `TestRun_PostScheduled*` (with --amount and --date overrides).
   - GREEN: `scheduled_post.go` with `scheduledPostOptions{ file, id, amount, date string }`, `newScheduledPostCmd()` (`Args: cobra.ExactArgs(1)`).
   - CLEANUP: delete `--post-scheduled` plumbing.

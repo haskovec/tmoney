@@ -31,7 +31,6 @@ type cliOptions struct {
 	toAccount   string // --to <account> for transfers
 
 	// Scheduled transaction options
-	postScheduled string // --post-scheduled <id>
 	skipScheduled string // --skip-scheduled <id>
 
 	// Add account / shared --name+--type/etc. options
@@ -177,12 +176,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			i++
 			opts.toDate = args[i]
 			opts.toAccount = args[i] // Also used for transfer destination account
-		case "--post-scheduled":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--post-scheduled requires a scheduled transaction ID argument")
-			}
-			i++
-			opts.postScheduled = args[i]
 		case "--skip-scheduled":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--skip-scheduled requires a scheduled transaction ID argument")
@@ -617,8 +610,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.acctInterestRate = after
 			} else if after, ok := strings.CutPrefix(arg, "--status="); ok {
 				opts.txStatus = after
-			} else if after, ok := strings.CutPrefix(arg, "--post-scheduled="); ok {
-				opts.postScheduled = after
 			} else if after, ok := strings.CutPrefix(arg, "--skip-scheduled="); ok {
 				opts.skipScheduled = after
 			} else if strings.HasPrefix(arg, "--report=") {

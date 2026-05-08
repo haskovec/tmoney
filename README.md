@@ -384,9 +384,9 @@ tmoney scheduled list --account Checking
 tmoney scheduled list --due
 
 # Post a scheduled transaction (create real transaction from it)
-tmoney --post-scheduled <id>
-tmoney --post-scheduled <id> --amount 150.00    # Override amount
-tmoney --post-scheduled <id> --date 2024-03-20  # Override date
+tmoney scheduled post <id>
+tmoney scheduled post <id> --amount 150.00    # Override amount
+tmoney scheduled post <id> --date 2024-03-20  # Override date
 
 # Skip a scheduled transaction (advance to next occurrence)
 tmoney --skip-scheduled <id>
@@ -567,7 +567,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, and `tmoney scheduled add`/`list` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, and `tmoney scheduled add`/`list`/`post` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

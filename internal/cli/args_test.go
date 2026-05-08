@@ -645,30 +645,6 @@ func TestParseArgs_InterestRateFlagMissingValue(t *testing.T) {
 	}
 }
 
-func TestParseArgs_PostScheduledFlag(t *testing.T) {
-	tests := []struct {
-		name     string
-		args     []string
-		expected string
-	}{
-		{"with space", []string{"--post-scheduled", "abc123"}, "abc123"},
-		{"with equals", []string{"--post-scheduled=abc123"}, "abc123"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opts, _, err := parseArgs(tt.args)
-			if err != nil {
-				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
-				return
-			}
-			if opts.postScheduled != tt.expected {
-				t.Errorf("parseArgs(%v) postScheduled = %q, want %q", tt.args, opts.postScheduled, tt.expected)
-			}
-		})
-	}
-}
-
 func TestParseArgs_SkipScheduledFlag(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -690,16 +666,6 @@ func TestParseArgs_SkipScheduledFlag(t *testing.T) {
 				t.Errorf("parseArgs(%v) skipScheduled = %q, want %q", tt.args, opts.skipScheduled, tt.expected)
 			}
 		})
-	}
-}
-
-func TestParseArgs_PostScheduledMissingID(t *testing.T) {
-	_, _, err := parseArgs([]string{"--post-scheduled"})
-	if err == nil {
-		t.Error("parseArgs(--post-scheduled) without ID should return error")
-	}
-	if !strings.Contains(err.Error(), "requires a scheduled transaction ID") {
-		t.Errorf("error should mention ID requirement, got: %v", err)
 	}
 }
 
