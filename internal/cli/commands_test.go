@@ -1422,142 +1422,6 @@ func createTestDBWithSecurity(t *testing.T) (string, *security.Security) {
 	return dbPath, sec
 }
 
-// SM-100: --edit-security
-
-func TestRun_EditSecurityMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--edit-security", "AAPL"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--edit-security) without --file should return error")
-	}
-}
-
-func TestRun_EditSecurityNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{"--edit-security", "FAKE", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("editing non-existent security should return error")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error should mention not found, got: %v", err)
-	}
-}
-
-func TestRun_EditSecurityChangeName(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{
-		"--edit-security", "AAPL",
-		"--file", dbPath,
-		"--name", "Apple Corporation",
-	}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--edit-security) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Security updated successfully") {
-		t.Error("output should confirm update")
-	}
-	if !strings.Contains(output, "Apple Corporation") {
-		t.Error("output should show updated name")
-	}
-
-	// Verify the change was persisted
-	stdout.Reset()
-	err = executeWith([]string{"security", "show", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("executeWith(security show) returned error: %v", err)
-		return
-	}
-	if !strings.Contains(stdout.String(), "Apple Corporation") {
-		t.Error("name change should be persisted")
-	}
-}
-
-func TestRun_EditSecurityChangeTicker(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{
-		"--edit-security", "AAPL",
-		"--file", dbPath,
-		"--ticker", "AAPL2",
-	}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--edit-security) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "AAPL2") {
-		t.Error("output should show new ticker")
-	}
-
-	// Old ticker should not be found
-	stdout.Reset()
-	err = executeWith([]string{"security", "show", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("old ticker should not be found after rename")
-	}
-
-	// New ticker should be found
-	stdout.Reset()
-	err = executeWith([]string{"security", "show", "AAPL2", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("new ticker should be found, got error: %v", err)
-	}
-}
-
-func TestRun_EditSecurityChangeType(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{
-		"--edit-security", "AAPL",
-		"--file", dbPath,
-		"--type", "etf",
-	}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--edit-security) returned error: %v", err)
-		return
-	}
-
-	if !strings.Contains(stdout.String(), "ETF") {
-		t.Error("output should show updated type")
-	}
-}
-
-func TestRun_EditSecurityInvalidType(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{
-		"--edit-security", "AAPL",
-		"--file", dbPath,
-		"--type", "invalid",
-	}, stdout, stderr)
-	if err == nil {
-		t.Error("editing with invalid type should return error")
-	}
-}
-
 // SM-101: --hide-security / --unhide-security
 
 func TestRun_HideSecurityMissingFile(t *testing.T) {
@@ -1797,15 +1661,6 @@ func TestParseArgs_SecurityFlags(t *testing.T) {
 		check func(t *testing.T, opts *cliOptions)
 	}{
 		{
-			"edit-security flag",
-			[]string{"--edit-security", "AAPL"},
-			func(t *testing.T, opts *cliOptions) {
-				if opts.editSecurity != "AAPL" {
-					t.Errorf("editSecurity = %q, want AAPL", opts.editSecurity)
-				}
-			},
-		},
-		{
 			"hide-security flag",
 			[]string{"--hide-security", "AAPL"},
 			func(t *testing.T, opts *cliOptions) {
@@ -1861,10 +1716,10 @@ func TestParseArgs_SecurityFlags(t *testing.T) {
 		},
 		{
 			"combined security flags",
-			[]string{"--edit-security", "AAPL", "--ticker", "MSFT", "--name", "Apple", "--type", "stock", "--asset-class", "large_cap_stock", "--exchange", "NASDAQ"},
+			[]string{"--hide-security", "AAPL", "--ticker", "MSFT", "--name", "Apple", "--type", "stock", "--asset-class", "large_cap_stock", "--exchange", "NASDAQ"},
 			func(t *testing.T, opts *cliOptions) {
-				if opts.editSecurity != "AAPL" {
-					t.Errorf("editSecurity = %q, want AAPL", opts.editSecurity)
+				if opts.hideSecurity != "AAPL" {
+					t.Errorf("hideSecurity = %q, want AAPL", opts.hideSecurity)
 				}
 				if opts.secTicker != "MSFT" {
 					t.Errorf("secTicker = %q, want MSFT", opts.secTicker)
@@ -1902,7 +1757,6 @@ func TestParseArgs_SecurityFlagsMissingArgs(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"edit-security missing ticker", []string{"--edit-security"}},
 		{"hide-security missing ticker", []string{"--hide-security"}},
 		{"unhide-security missing ticker", []string{"--unhide-security"}},
 		{"delete-security missing ticker", []string{"--delete-security"}},

@@ -5,12 +5,58 @@ import (
 	"io"
 
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/spf13/cobra"
 )
 
-// runEditSecurity edits an existing security.
-func runEditSecurity(opts *cliOptions, w io.Writer) error {
+// securityEditOptions are the inputs to `tmoney security edit`.
+type securityEditOptions struct {
+	file       string
+	lookup     string // positional ticker (the security to edit)
+	newTicker  string // --ticker (rename)
+	name       string
+	secType    string
+	assetClass string
+	currency   string
+	exchange   string
+}
+
+// newSecurityEditCmd registers `tmoney security edit <ticker>`. The
+// database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command. The positional `<ticker>` selects
+// the security to edit; only fields whose flag is supplied are
+// updated. Pass `--ticker` to rename the security to a new ticker.
+func newSecurityEditCmd() *cobra.Command {
+	opts := &securityEditOptions{}
+	cmd := &cobra.Command{
+		Use:   "edit <ticker>",
+		Short: "Edit fields of an existing security",
+		Long: "Edit fields on an existing security identified by ticker. " +
+			"Only flags that are supplied take effect; other fields are left as-is. " +
+			"Pass `--ticker` to rename the security to a new symbol.",
+		Example: "  tmoney security edit AAPL --name \"Apple Corporation\"\n" +
+			"  tmoney security edit AAPL --ticker AAPL2\n" +
+			"  tmoney security edit VTI --asset-class total_market",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			opts.lookup = args[0]
+			return runSecurityEdit(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.newTicker, "ticker", "", "New ticker symbol (rename)")
+	cmd.Flags().StringVar(&opts.name, "name", "", "New security name")
+	cmd.Flags().StringVar(&opts.secType, "type", "", "New security type: stock, etf, mutual_fund, other")
+	cmd.Flags().StringVar(&opts.assetClass, "asset-class", "", "New asset class")
+	cmd.Flags().StringVar(&opts.currency, "currency", "", "New currency code")
+	cmd.Flags().StringVar(&opts.exchange, "exchange", "", "New exchange")
+	return cmd
+}
+
+// runSecurityEdit edits an existing security.
+func runSecurityEdit(opts *securityEditOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--edit-security requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -19,37 +65,36 @@ func runEditSecurity(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	sec, err := svc.Security.GetByTicker(opts.editSecurity, "")
+	sec, err := svc.Security.GetByTicker(opts.lookup, "")
 	if err != nil {
-		return fmt.Errorf("security %q not found", opts.editSecurity)
+		return fmt.Errorf("security %q not found", opts.lookup)
 	}
 
-	// Apply changes
-	if opts.secTicker != "" {
-		sec.Ticker = opts.secTicker
+	if opts.newTicker != "" {
+		sec.Ticker = opts.newTicker
 	}
-	if opts.acctName != "" {
-		sec.Name = opts.acctName
+	if opts.name != "" {
+		sec.Name = opts.name
 	}
-	if opts.acctType != "" {
-		secType, err := security.ParseType(opts.acctType)
+	if opts.secType != "" {
+		secType, err := security.ParseType(opts.secType)
 		if err != nil {
 			return fmt.Errorf("invalid --type: %w", err)
 		}
 		sec.SecurityType = secType
 	}
-	if opts.secAssetClass != "" {
-		ac, err := security.ParseAssetClass(opts.secAssetClass)
+	if opts.assetClass != "" {
+		ac, err := security.ParseAssetClass(opts.assetClass)
 		if err != nil {
 			return fmt.Errorf("invalid --asset-class: %w", err)
 		}
 		sec.AssetClass = ac
 	}
-	if opts.acctCurrency != "" {
-		sec.Currency = opts.acctCurrency
+	if opts.currency != "" {
+		sec.Currency = opts.currency
 	}
-	if opts.secExchange != "" {
-		sec.SetExchange(opts.secExchange)
+	if opts.exchange != "" {
+		sec.SetExchange(opts.exchange)
 	}
 
 	if err := svc.Security.Update(sec); err != nil {

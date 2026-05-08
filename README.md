@@ -439,6 +439,11 @@ tmoney -f personal.tdb security list --asset-class large_cap_stock
 
 # Show details for one security
 tmoney -f personal.tdb security show AAPL
+
+# Edit fields on an existing security (only supplied flags take effect)
+tmoney -f personal.tdb security edit AAPL --name "Apple Corporation"
+tmoney -f personal.tdb security edit AAPL --ticker AAPL2          # rename
+tmoney -f personal.tdb security edit VTI --asset-class total_market
 ```
 
 Security types: `stock`, `etf`, `mutual_fund`, `other`. `--ticker`,
@@ -447,7 +452,9 @@ defaults to `USD` and `--asset-class` defaults to `unclassified`.
 `security list` excludes hidden securities by default; pass
 `--include-hidden` to show them, and filter the list with `--type` or
 `--asset-class`. `security show <ticker>` prints the full record for a
-single security (errors if the ticker is unknown).
+single security (errors if the ticker is unknown). `security edit
+<ticker>` updates only the fields whose flag is supplied; pass
+`--ticker` to rename the security to a new symbol.
 
 ### Reports
 
@@ -622,7 +629,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

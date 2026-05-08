@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --edit-security
-	if opts.editSecurity != "" {
-		return runEditSecurity(opts, stdout)
-	}
-
 	// Handle --hide-security
 	if opts.hideSecurity != "" {
 		return runHideSecurity(opts, stdout)

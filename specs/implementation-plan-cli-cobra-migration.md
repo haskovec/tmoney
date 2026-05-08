@@ -226,7 +226,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--security` (detail-show) plumbing.
   - DOCS: README.
 
-- [ ] **CM-033 — `tmoney security edit <ticker>`**
+- [x] **CM-033 — `tmoney security edit <ticker>`** (completed 2026-05-08)
   - RED: tests covering `TestRun_EditSecurity*`.
   - GREEN: `security_edit.go` with `securityEditOptions` (ticker positional, then optional fields to update), `newSecurityEditCmd()` (`Args: cobra.ExactArgs(1)`).
   - CLEANUP: delete `--edit-security` plumbing.
