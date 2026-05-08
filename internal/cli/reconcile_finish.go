@@ -6,15 +6,46 @@ import (
 
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runFinishReconcile completes the reconciliation for an account.
-func runFinishReconcile(opts *cliOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--finish-reconcile requires --file to specify a database")
+// reconcileFinishOptions are the inputs to `tmoney reconcile finish`.
+type reconcileFinishOptions struct {
+	file    string
+	account string
+	force   bool
+}
+
+// newReconcileFinishCmd registers `tmoney reconcile finish`. The
+// database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command.
+func newReconcileFinishCmd() *cobra.Command {
+	opts := &reconcileFinishOptions{}
+	cmd := &cobra.Command{
+		Use:   "finish",
+		Short: "Finish the active reconciliation session for an account",
+		Long: "Complete the active reconciliation session: marks every " +
+			"candidate transaction reconciled and closes the session. " +
+			"Refuses to finish when the cleared total does not match the " +
+			"statement balance unless --force is given.",
+		Example:      "  tmoney reconcile finish --account Checking --file personal.tdb",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runReconcileFinish(opts, cmd.OutOrStdout())
+		},
 	}
-	if opts.accountName == "" {
-		return fmt.Errorf("--finish-reconcile requires --account to specify an account")
+	cmd.Flags().StringVar(&opts.account, "account", "", "Account name to finish reconciliation for (required)")
+	cmd.Flags().BoolVar(&opts.force, "force", false, "Finish even if the cleared total differs from the statement balance")
+	_ = cmd.MarkFlagRequired("account")
+	return cmd
+}
+
+// runReconcileFinish completes the reconciliation for an account.
+func runReconcileFinish(opts *reconcileFinishOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -23,13 +54,11 @@ func runFinishReconcile(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// Get account by name
-	account, err := svc.Account.GetByName(opts.accountName)
+	account, err := svc.Account.GetByName(opts.account)
 	if err != nil {
-		return fmt.Errorf("account %q not found", opts.accountName)
+		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	// Get active session
 	session, err := svc.Reconciliation.GetActiveSession(account.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get reconciliation session: %w", err)
@@ -38,24 +67,20 @@ func runFinishReconcile(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("no active reconciliation session for %s", account.Name)
 	}
 
-	// Get all candidate transactions to mark as reconciled
 	candidates, err := svc.Reconciliation.GetCandidateTransactions(account.ID, session.StatementDate)
 	if err != nil {
 		return fmt.Errorf("failed to get candidate transactions: %w", err)
 	}
 
-	// Collect all candidate transaction IDs
 	var txnIDs []types.ID
 	for _, txn := range candidates {
 		txnIDs = append(txnIDs, txn.ID)
 	}
 
-	// Finish reconciliation
-	err = svc.Reconciliation.FinishReconciliation(account.ID, txnIDs, opts.reconcileForce)
+	err = svc.Reconciliation.FinishReconciliation(account.ID, txnIDs, opts.force)
 	if err != nil {
-		// Check for difference error and provide helpful message
 		if diffErr, ok := err.(*reconciliation.DifferenceError); ok {
-			return fmt.Errorf("cannot complete reconciliation. Difference: %s\nUse --mark-reconciled to mark additional transactions, or --force to complete anyway",
+			return fmt.Errorf("cannot complete reconciliation. Difference: %s\nUse `tmoney reconcile mark` to mark additional transactions, or --force to complete anyway",
 				formatMoney(diffErr.Difference, account.Currency))
 		}
 		return fmt.Errorf("failed to finish reconciliation: %w", err)

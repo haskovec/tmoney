@@ -191,9 +191,9 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--mark-reconciled` plumbing.
   - DOCS: README.
 
-- [ ] **CM-027 — `tmoney reconcile finish`**
+- [x] **CM-027 — `tmoney reconcile finish`** (completed 2026-05-08)
   - RED: tests covering `TestRun_FinishReconcile*` (force flag, non-zero diff).
-  - GREEN: `reconcile_finish.go` with `reconcileFinishOptions{ file string; force bool }`, `newReconcileFinishCmd()`.
+  - GREEN: `reconcile_finish.go` with `reconcileFinishOptions{ file, account string; force bool }`, `newReconcileFinishCmd()`.
   - CLEANUP: delete `--finish-reconcile`, `--force` plumbing.
   - DOCS: README.
 

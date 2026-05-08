@@ -53,9 +53,7 @@ type cliOptions struct {
 	reportAsOf  string // --as-of YYYY-MM-DD for net-worth
 
 	// Reconciliation options
-	finishReconcile bool // --finish-reconcile flag
 	reconcileStatus bool // --reconcile-status flag
-	reconcileForce  bool // --force flag (for finish with non-zero diff)
 
 	// Import options
 	importFile       string // --import <file>
@@ -293,12 +291,8 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.reportAsOf = args[i]
-		case "--finish-reconcile":
-			opts.finishReconcile = true
 		case "--reconcile-status":
 			opts.reconcileStatus = true
-		case "--force":
-			opts.reconcileForce = true
 		case "--import":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--import requires a file path argument")
