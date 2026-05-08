@@ -69,7 +69,6 @@ type cliOptions struct {
 	secExchange   string // --exchange <exchange>
 
 	// Price management options
-	currentPrice  bool     // --current-price flag
 	priceValue    string   // --price <value>
 	importPrices  string   // --import-prices <file>
 	overwrite     bool     // --overwrite flag
@@ -326,8 +325,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.secExchange = args[i]
-		case "--current-price":
-			opts.currentPrice = true
 		case "--price":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--price requires a value argument")

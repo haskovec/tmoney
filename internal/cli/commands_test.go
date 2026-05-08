@@ -1551,92 +1551,6 @@ func createTestDBWithSecurityAndPrices(t *testing.T) (string, *security.Security
 	return dbPath, sec
 }
 
-// =============================================================================
-// SM-105: --current-price
-// =============================================================================
-
-func TestRun_CurrentPriceMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--current-price", "--ticker", "AAPL"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--current-price) without --file should return error")
-	}
-	if !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("error should mention --file requirement, got: %v", err)
-	}
-}
-
-func TestRun_CurrentPriceMissingTicker(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--current-price", "--file", "/fake.tdb"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--current-price) without --ticker should return error")
-	}
-	if !strings.Contains(err.Error(), "--ticker") {
-		t.Errorf("error should mention --ticker, got: %v", err)
-	}
-}
-
-func TestRun_CurrentPriceSecurityNotFound(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--current-price", "--ticker", "ZZZZ", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--current-price) with unknown ticker should return error")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error should mention not found, got: %v", err)
-	}
-}
-
-func TestRun_CurrentPriceShowsMostRecent(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurityAndPrices(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--current-price", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--current-price) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "CURRENT PRICE: AAPL") {
-		t.Error("output should contain current price header")
-	}
-	if !strings.Contains(output, "Apple Inc.") {
-		t.Error("output should contain security name")
-	}
-	// The most recent price is 2024-03-15 at 170.25
-	if !strings.Contains(output, "2024-03-15") {
-		t.Error("output should contain most recent price date")
-	}
-	if !strings.Contains(output, "170.25") {
-		t.Error("output should contain most recent price value")
-	}
-	if !strings.Contains(output, "Import") {
-		t.Error("output should contain price source")
-	}
-}
-
-func TestRun_CurrentPriceNoPriceExists(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--current-price", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--current-price) with no prices should return error")
-	}
-	if !strings.Contains(err.Error(), "no price found") {
-		t.Errorf("error should mention no price found, got: %v", err)
-	}
-}
-
 // Args parsing tests for price flags
 
 func TestParseArgs_PriceFlags(t *testing.T) {
@@ -1645,15 +1559,6 @@ func TestParseArgs_PriceFlags(t *testing.T) {
 		args  []string
 		check func(t *testing.T, opts *cliOptions)
 	}{
-		{
-			"current-price flag",
-			[]string{"--current-price"},
-			func(t *testing.T, opts *cliOptions) {
-				if !opts.currentPrice {
-					t.Error("currentPrice should be true")
-				}
-			},
-		},
 		{
 			"price value flag",
 			[]string{"--price", "150.00"},

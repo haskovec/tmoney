@@ -267,7 +267,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--prices` plumbing.
   - DOCS: README.
 
-- [ ] **CM-040 — `tmoney price current <ticker>`**
+- [x] **CM-040 — `tmoney price current <ticker>`** (completed 2026-05-08)
   - RED: tests covering `TestRun_CurrentPrice*`.
   - GREEN: `price_current.go` with `priceCurrentOptions{ file, ticker string }`, `newPriceCurrentCmd()` (`Args: cobra.ExactArgs(1)`).
   - CLEANUP: delete `--current-price` plumbing.

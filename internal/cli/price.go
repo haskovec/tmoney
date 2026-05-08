@@ -21,5 +21,6 @@ func newPriceCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newPriceAddCmd())
 	cmd.AddCommand(newPriceListCmd())
+	cmd.AddCommand(newPriceCurrentCmd())
 	return cmd
 }

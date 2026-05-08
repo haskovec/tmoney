@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --current-price
-	if opts.currentPrice {
-		return runCurrentPrice(opts, stdout)
-	}
-
 	// Handle --import-prices
 	if opts.importPrices != "" {
 		return runImportPrices(opts, stdout)
