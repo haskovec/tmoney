@@ -185,7 +185,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--start-reconcile`, `--statement-date`, `--statement-balance` plumbing.
   - DOCS: README "Reconciliation" section.
 
-- [ ] **CM-026 — `tmoney reconcile mark <id>...`**
+- [x] **CM-026 — `tmoney reconcile mark <id>...`** (completed 2026-05-08)
   - RED: tests covering `TestRun_MarkReconciled*`. Variadic positional.
   - GREEN: `reconcile_mark.go` with `reconcileMarkOptions{ file string; ids []string }`, `newReconcileMarkCmd()` (`Args: cobra.MinimumNArgs(1)`).
   - CLEANUP: delete `--mark-reconciled` plumbing.

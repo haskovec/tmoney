@@ -400,13 +400,18 @@ Frequencies: `daily`, `weekly`, `biweekly`, `monthly`, `quarterly`, `yearly`. `-
 # Start a reconciliation session against a statement
 tmoney -f personal.tdb reconcile start --account "Checking" \
   --statement-date 2024-01-31 --statement-balance 850.00
+
+# Mark one or more transactions against the active session
+tmoney -f personal.tdb reconcile mark <id> [<id> ...]
 ```
 
 `reconcile start` records the statement date and balance and reports
 the count of unreconciled transactions on or before the statement
-date. Use `--mark-reconciled <id>...`, `--finish-reconcile`, and
-`--reconcile-status` (still legacy `--flag` form, pending migration)
-to mark transactions, finish the session, and inspect status.
+date. `reconcile mark` marks transactions against the active session
+and reports the running difference between the cleared total and the
+statement balance. Use `--finish-reconcile` and `--reconcile-status`
+(still legacy `--flag` form, pending migration) to finish the session
+and inspect status.
 
 ### Reports
 
@@ -581,7 +586,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, and `tmoney reconcile start` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, and `tmoney reconcile start`/`mark` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

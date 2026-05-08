@@ -429,26 +429,6 @@ func TestRun_ReportSpendingInvalidMonthValue(t *testing.T) {
 
 // --- Reconciliation CLI Tests ---
 
-func TestRun_MarkReconciledMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--mark-reconciled", "some-id", "--file", ""}, stdout, stderr)
-	// --mark-reconciled without --file should fail
-	if err == nil {
-		t.Error("should fail without proper --file")
-	}
-}
-
-func TestRun_MarkReconciledNoIDs(t *testing.T) {
-	_, _, err := parseArgs([]string{"--mark-reconciled"})
-	if err == nil {
-		t.Error("--mark-reconciled without IDs should return parse error")
-	}
-	if !strings.Contains(err.Error(), "requires at least one") {
-		t.Errorf("error should mention requiring IDs, got: %v", err)
-	}
-}
-
 func TestRun_FinishReconcileMissingFile(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -942,18 +922,6 @@ func TestParseArgs_ReconciliationFlags(t *testing.T) {
 	}
 	if !opts.reconcileForce {
 		t.Error("reconcileForce should be true")
-	}
-
-	// Test --mark-reconciled with multiple IDs
-	opts, _, err = parseArgs([]string{
-		"--mark-reconciled", "id1", "id2", "id3",
-		"--file", "test.tdb",
-	})
-	if err != nil {
-		t.Fatalf("parseArgs failed: %v", err)
-	}
-	if len(opts.markReconciled) != 3 {
-		t.Errorf("markReconciled should have 3 IDs, got %d", len(opts.markReconciled))
 	}
 
 	// Test --reconcile-status

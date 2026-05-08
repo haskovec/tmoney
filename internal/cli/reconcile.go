@@ -20,5 +20,6 @@ func newReconcileCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newReconcileStartCmd())
+	cmd.AddCommand(newReconcileMarkCmd())
 	return cmd
 }

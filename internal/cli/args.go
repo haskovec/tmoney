@@ -53,10 +53,9 @@ type cliOptions struct {
 	reportAsOf  string // --as-of YYYY-MM-DD for net-worth
 
 	// Reconciliation options
-	markReconciled  []string // --mark-reconciled <txn-id>... (remaining args)
-	finishReconcile bool     // --finish-reconcile flag
-	reconcileStatus bool     // --reconcile-status flag
-	reconcileForce  bool     // --force flag (for finish with non-zero diff)
+	finishReconcile bool // --finish-reconcile flag
+	reconcileStatus bool // --reconcile-status flag
+	reconcileForce  bool // --force flag (for finish with non-zero diff)
 
 	// Import options
 	importFile       string // --import <file>
@@ -300,15 +299,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.reconcileStatus = true
 		case "--force":
 			opts.reconcileForce = true
-		case "--mark-reconciled":
-			// Collect all following non-flag arguments as transaction IDs
-			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				i++
-				opts.markReconciled = append(opts.markReconciled, args[i])
-			}
-			if len(opts.markReconciled) == 0 {
-				return nil, nil, fmt.Errorf("--mark-reconciled requires at least one transaction ID")
-			}
 		case "--import":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--import requires a file path argument")
