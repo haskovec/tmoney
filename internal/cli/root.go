@@ -56,6 +56,7 @@ var cobraSubcommands = map[string]bool{
 	"db":          true,
 	"account":     true,
 	"transaction": true,
+	"transfer":    true,
 }
 
 // isLegacyInvocation reports whether args contains any `--flag` that
@@ -111,5 +112,6 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newDBCmd())
 	cmd.AddCommand(newAccountCmd())
 	cmd.AddCommand(newTransactionCmd())
+	cmd.AddCommand(newTransferCmd())
 	return cmd
 }

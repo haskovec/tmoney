@@ -133,7 +133,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 - [x] **CM-016 — Phase prep: split `transfer` handlers** (completed 2026-05-07)
   - GREEN: create `transfer_add.go`, `transfer_link.go` containing `runTransfer`, `runLinkTransfers` cut verbatim.
 
-- [ ] **CM-017 — `tmoney transfer add`**
+- [x] **CM-017 — `tmoney transfer add`** (completed 2026-05-07)
   - RED: tests covering `TestRun_Transfer*`.
   - GREEN: create `transfer.go` (parent). `transfer_add.go` with `transferAddOptions{ file, fromAccount, toAccount, amount, date, memo string }`, `newTransferAddCmd()` (`MarkFlagRequired("from")`, `MarkFlagRequired("to")`, `MarkFlagRequired("amount")`). Register on root; add `"transfer"` to `cobraSubcommands`. Add help smoke test.
   - CLEANUP: delete `--transfer`, `--from`, `--to` (transfer-only usage) plumbing.

@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --transfer
-	if opts.transfer {
-		return runTransfer(opts, stdout)
-	}
-
 	// Handle --add-scheduled
 	if opts.addScheduled {
 		return runAddScheduled(opts, stdout)

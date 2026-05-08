@@ -24,8 +24,9 @@ type cliOptions struct {
 	txDate     string // --date <YYYY-MM-DD>
 	txMemo     string // --memo <text>
 
-	// Transfer options
-	transfer    bool   // --transfer flag
+	// Transfer options (residual: fromAccount/toAccount still used by
+	// --transfer-shares; the standalone --transfer flag has been
+	// migrated to `tmoney transfer add`.)
 	fromAccount string // --from <account> for transfers
 	toAccount   string // --to <account> for transfers
 
@@ -191,8 +192,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			i++
 			opts.toDate = args[i]
 			opts.toAccount = args[i] // Also used for transfer destination account
-		case "--transfer":
-			opts.transfer = true
 		case "--scheduled":
 			opts.scheduled = true
 		case "--due":

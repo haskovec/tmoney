@@ -645,61 +645,6 @@ func TestParseArgs_InterestRateFlagMissingValue(t *testing.T) {
 	}
 }
 
-func TestParseArgs_TransferFlag(t *testing.T) {
-	opts, _, err := parseArgs([]string{"--transfer"})
-	if err != nil {
-		t.Errorf("parseArgs returned error: %v", err)
-		return
-	}
-	if !opts.transfer {
-		t.Error("parseArgs did not set transfer flag")
-	}
-}
-
-func TestParseArgs_TransferWithFromTo(t *testing.T) {
-	tests := []struct {
-		name         string
-		args         []string
-		wantFrom     string
-		wantTo       string
-		wantTransfer bool
-	}{
-		{
-			name:         "transfer with from and to",
-			args:         []string{"--transfer", "--from", "Checking", "--to", "Savings"},
-			wantFrom:     "Checking",
-			wantTo:       "Savings",
-			wantTransfer: true,
-		},
-		{
-			name:         "transfer with equals syntax",
-			args:         []string{"--transfer", "--from=Checking", "--to=Savings"},
-			wantFrom:     "Checking",
-			wantTo:       "Savings",
-			wantTransfer: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opts, _, err := parseArgs(tt.args)
-			if err != nil {
-				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
-				return
-			}
-			if opts.transfer != tt.wantTransfer {
-				t.Errorf("transfer = %v, want %v", opts.transfer, tt.wantTransfer)
-			}
-			if opts.fromAccount != tt.wantFrom {
-				t.Errorf("fromAccount = %q, want %q", opts.fromAccount, tt.wantFrom)
-			}
-			if opts.toAccount != tt.wantTo {
-				t.Errorf("toAccount = %q, want %q", opts.toAccount, tt.wantTo)
-			}
-		})
-	}
-}
-
 func TestParseArgs_ScheduledFlags(t *testing.T) {
 	tests := []struct {
 		name              string
