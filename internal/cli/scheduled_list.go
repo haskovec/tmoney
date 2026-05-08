@@ -6,12 +6,47 @@ import (
 
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runScheduled lists scheduled transactions.
-func runScheduled(opts *cliOptions, w io.Writer) error {
+// scheduledListOptions are the inputs to `tmoney scheduled list`.
+type scheduledListOptions struct {
+	file    string
+	account string
+	due     bool
+}
+
+// newScheduledListCmd registers `tmoney scheduled list`. The database
+// file is taken from the persistent `--file` / `-f` flag inherited from
+// the root command. `--due` restricts the listing to scheduled
+// transactions whose next occurrence is on or before today.
+func newScheduledListCmd() *cobra.Command {
+	opts := &scheduledListOptions{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List scheduled transactions",
+		Long: "List scheduled transactions on the database. Pass --due to " +
+			"limit the listing to occurrences that are due today or earlier, " +
+			"or --account to filter by account name.",
+		Example: "  tmoney scheduled list --file personal.tdb\n" +
+			"  tmoney scheduled list --file personal.tdb --due\n" +
+			"  tmoney scheduled list --file personal.tdb --account Checking",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runScheduledList(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.account, "account", "", "Filter by account name")
+	cmd.Flags().BoolVar(&opts.due, "due", false, "Only show scheduled transactions due today or earlier")
+	return cmd
+}
+
+// runScheduledList lists scheduled transactions.
+func runScheduledList(opts *scheduledListOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--scheduled requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -20,9 +55,8 @@ func runScheduled(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// Get scheduled transactions
 	var scheduledTxns []*scheduled.Transaction
-	if opts.scheduledDue {
+	if opts.due {
 		scheduledTxns, err = svc.Scheduled.ListDue()
 	} else {
 		scheduledTxns, err = svc.Scheduled.List()
@@ -31,11 +65,10 @@ func runScheduled(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("failed to list scheduled transactions: %w", err)
 	}
 
-	// Filter by account if specified
-	if opts.accountName != "" {
-		acct, err := svc.Account.GetByName(opts.accountName)
+	if opts.account != "" {
+		acct, err := svc.Account.GetByName(opts.account)
 		if err != nil {
-			return fmt.Errorf("account %q not found", opts.accountName)
+			return fmt.Errorf("account %q not found", opts.account)
 		}
 
 		var filtered []*scheduled.Transaction
@@ -47,7 +80,6 @@ func runScheduled(opts *cliOptions, w io.Writer) error {
 		scheduledTxns = filtered
 	}
 
-	// Build lookup maps
 	payeeNames := make(map[types.ID]string)
 	categoryNames := make(map[types.ID]string)
 	accountNames := make(map[types.ID]string)
@@ -69,8 +101,7 @@ func runScheduled(opts *cliOptions, w io.Writer) error {
 		accountCurrencies[a.ID] = a.Currency
 	}
 
-	// Print scheduled transactions table
-	printScheduledTransactionsTable(w, scheduledTxns, opts.scheduledDue, accountNames, accountCurrencies, payeeNames, categoryNames)
+	printScheduledTransactionsTable(w, scheduledTxns, opts.due, accountNames, accountCurrencies, payeeNames, categoryNames)
 
 	return nil
 }

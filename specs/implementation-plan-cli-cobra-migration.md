@@ -156,7 +156,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--add-scheduled` and `st*` fields from `cliOptions`.
   - DOCS: README "Scheduled Transactions" section.
 
-- [ ] **CM-021 — `tmoney scheduled list`**
+- [x] **CM-021 — `tmoney scheduled list`** (completed 2026-05-07)
   - RED: tests covering `TestRun_Scheduled*` (--due, --account filter).
   - GREEN: `scheduled_list.go` with `scheduledListOptions{ file, account string; due bool }`, `newScheduledListCmd()`.
   - CLEANUP: delete `--scheduled`, `--due` plumbing.

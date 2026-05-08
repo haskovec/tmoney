@@ -645,35 +645,6 @@ func TestParseArgs_InterestRateFlagMissingValue(t *testing.T) {
 	}
 }
 
-func TestParseArgs_ScheduledFlags(t *testing.T) {
-	tests := []struct {
-		name              string
-		args              []string
-		expectedScheduled bool
-		expectedDue       bool
-	}{
-		{"scheduled flag", []string{"--scheduled"}, true, false},
-		{"scheduled with due", []string{"--scheduled", "--due"}, true, true},
-		{"due without scheduled", []string{"--due"}, false, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opts, _, err := parseArgs(tt.args)
-			if err != nil {
-				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
-				return
-			}
-			if opts.scheduled != tt.expectedScheduled {
-				t.Errorf("parseArgs(%v) scheduled = %v, want %v", tt.args, opts.scheduled, tt.expectedScheduled)
-			}
-			if opts.scheduledDue != tt.expectedDue {
-				t.Errorf("parseArgs(%v) scheduledDue = %v, want %v", tt.args, opts.scheduledDue, tt.expectedDue)
-			}
-		})
-	}
-}
-
 func TestParseArgs_PostScheduledFlag(t *testing.T) {
 	tests := []struct {
 		name     string

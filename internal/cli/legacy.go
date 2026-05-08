@@ -37,11 +37,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runSkipScheduled(opts, stdout)
 	}
 
-	// Handle --scheduled
-	if opts.scheduled {
-		return runScheduled(opts, stdout)
-	}
-
 	// Handle --start-reconcile
 	if opts.startReconcile {
 		return runStartReconcile(opts, stdout)

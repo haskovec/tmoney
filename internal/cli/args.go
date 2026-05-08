@@ -31,8 +31,6 @@ type cliOptions struct {
 	toAccount   string // --to <account> for transfers
 
 	// Scheduled transaction options
-	scheduled     bool   // --scheduled flag
-	scheduledDue  bool   // --due flag (with --scheduled)
 	postScheduled string // --post-scheduled <id>
 	skipScheduled string // --skip-scheduled <id>
 
@@ -179,10 +177,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			i++
 			opts.toDate = args[i]
 			opts.toAccount = args[i] // Also used for transfer destination account
-		case "--scheduled":
-			opts.scheduled = true
-		case "--due":
-			opts.scheduledDue = true
 		case "--post-scheduled":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--post-scheduled requires a scheduled transaction ID argument")
