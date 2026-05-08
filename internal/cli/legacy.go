@@ -47,11 +47,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runDeleteSecurity(opts, stdout)
 	}
 
-	// Handle --security (show detail) — after add/edit/hide/unhide/delete
-	if opts.securityTicker != "" {
-		return runSecurityDetail(opts, stdout)
-	}
-
 	// Handle --prices (list prices for a ticker)
 	if opts.listPrices {
 		return runListPrices(opts, stdout)

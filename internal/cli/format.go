@@ -611,8 +611,6 @@ Backup/Restore Commands:
   --restore <file>       Restore database from a backup file
 
 Security Commands:
-  --security <ticker>    Show details for a specific security
-
   --edit-security <tkr>  Edit a security by ticker
     --ticker <ticker>    New ticker symbol
     --name <name>        New security name

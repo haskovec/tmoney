@@ -1422,75 +1422,6 @@ func createTestDBWithSecurity(t *testing.T) (string, *security.Security) {
 	return dbPath, sec
 }
 
-// SM-098: --security (show detail)
-
-func TestRun_SecurityDetailMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--security", "AAPL"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--security) without --file should return error")
-	}
-	if !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("error should mention --file requirement, got: %v", err)
-	}
-}
-
-func TestRun_SecurityDetailNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{"--security", "FAKE", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--security FAKE) should return error for non-existent security")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error should mention not found, got: %v", err)
-	}
-}
-
-func TestRun_SecurityDetailShowsFull(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--security", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--security AAPL) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "SECURITY: AAPL") {
-		t.Error("output should contain security header")
-	}
-	if !strings.Contains(output, "Apple Inc.") {
-		t.Error("output should contain name")
-	}
-	if !strings.Contains(output, "Stock") {
-		t.Error("output should contain type")
-	}
-	if !strings.Contains(output, "Large Cap Stock") {
-		t.Error("output should contain asset class")
-	}
-	if !strings.Contains(output, "USD") {
-		t.Error("output should contain currency")
-	}
-	if !strings.Contains(output, "NASDAQ") {
-		t.Error("output should contain exchange")
-	}
-	if !strings.Contains(output, "Active") {
-		t.Error("output should show active status")
-	}
-}
-
 // SM-100: --edit-security
 
 func TestRun_EditSecurityMissingFile(t *testing.T) {
@@ -1547,9 +1478,9 @@ func TestRun_EditSecurityChangeName(t *testing.T) {
 
 	// Verify the change was persisted
 	stdout.Reset()
-	err = run([]string{"--security", "AAPL", "--file", dbPath}, stdout, stderr)
+	err = executeWith([]string{"security", "show", "AAPL", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Errorf("run(--security) returned error: %v", err)
+		t.Errorf("executeWith(security show) returned error: %v", err)
 		return
 	}
 	if !strings.Contains(stdout.String(), "Apple Corporation") {
@@ -1579,14 +1510,14 @@ func TestRun_EditSecurityChangeTicker(t *testing.T) {
 
 	// Old ticker should not be found
 	stdout.Reset()
-	err = run([]string{"--security", "AAPL", "--file", dbPath}, stdout, stderr)
+	err = executeWith([]string{"security", "show", "AAPL", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Error("old ticker should not be found after rename")
 	}
 
 	// New ticker should be found
 	stdout.Reset()
-	err = run([]string{"--security", "AAPL2", "--file", dbPath}, stdout, stderr)
+	err = executeWith([]string{"security", "show", "AAPL2", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Errorf("new ticker should be found, got error: %v", err)
 	}
@@ -1815,7 +1746,7 @@ func TestRun_DeleteSecuritySuccess(t *testing.T) {
 
 	// Security should no longer exist
 	stdout.Reset()
-	err = run([]string{"--security", "AAPL", "--file", dbPath}, stdout, stderr)
+	err = executeWith([]string{"security", "show", "AAPL", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Error("deleted security should not be found")
 	}
@@ -1865,24 +1796,6 @@ func TestParseArgs_SecurityFlags(t *testing.T) {
 		args  []string
 		check func(t *testing.T, opts *cliOptions)
 	}{
-		{
-			"security detail flag",
-			[]string{"--security", "AAPL"},
-			func(t *testing.T, opts *cliOptions) {
-				if opts.securityTicker != "AAPL" {
-					t.Errorf("securityTicker = %q, want AAPL", opts.securityTicker)
-				}
-			},
-		},
-		{
-			"security detail equals format",
-			[]string{"--security=GOOG"},
-			func(t *testing.T, opts *cliOptions) {
-				if opts.securityTicker != "GOOG" {
-					t.Errorf("securityTicker = %q, want GOOG", opts.securityTicker)
-				}
-			},
-		},
 		{
 			"edit-security flag",
 			[]string{"--edit-security", "AAPL"},
@@ -1989,7 +1902,6 @@ func TestParseArgs_SecurityFlagsMissingArgs(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"security missing ticker", []string{"--security"}},
 		{"edit-security missing ticker", []string{"--edit-security"}},
 		{"hide-security missing ticker", []string{"--hide-security"}},
 		{"unhide-security missing ticker", []string{"--unhide-security"}},

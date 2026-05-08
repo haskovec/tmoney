@@ -220,7 +220,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--list-securities`, `--include-hidden`, and `listSecurities`/`includeHidden` fields from `cliOptions`.
   - DOCS: README "Securities" CLI subsection extended with `security list` examples.
 
-- [ ] **CM-032 — `tmoney security show <ticker>`**
+- [x] **CM-032 — `tmoney security show <ticker>`** (completed 2026-05-08)
   - RED: tests covering `TestRun_SecurityDetail*`.
   - GREEN: `security_show.go` with `securityShowOptions{ file, ticker string }`, `newSecurityShowCmd()` (`Args: cobra.ExactArgs(1)`).
   - CLEANUP: delete `--security` (detail-show) plumbing.
