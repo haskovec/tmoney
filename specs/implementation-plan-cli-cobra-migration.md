@@ -252,7 +252,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 
 ## Phase 8: price
 
-- [ ] **CM-037 — Phase prep: split `price` handlers**
+- [x] **CM-037 — Phase prep: split `price` handlers** (completed 2026-05-08)
   - GREEN: create `price_add.go`, `price_list.go`, `price_current.go`, `price_import.go`, `price_update.go` containing `runAddPrice`, `runListPrices`, `runCurrentPrice`, `runImportPrices`, `runUpdatePrices` cut verbatim. (`update_prices.go` already exists with helper code; keep that file as-is and add `price_update.go` for the new Cobra wiring; consolidate during the migration step CM-042.)
 
 - [ ] **CM-038 — `tmoney price add`**
