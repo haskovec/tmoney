@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --update-prices
-	if opts.updatePrices {
-		return runUpdatePrices(opts, stdout)
-	}
-
 	// Handle --buy
 	if opts.buy {
 		return runBuy(opts, stdout)

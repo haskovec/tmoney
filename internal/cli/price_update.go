@@ -8,6 +8,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/price"
+	"github.com/spf13/cobra"
 )
 
 // registerPriceProviders registers the network-backed price providers on
@@ -17,12 +18,48 @@ var registerPriceProviders = func(svc *app.Services) {
 	svc.Price.ProviderRegistry().Register(price.NewYahooProvider())
 }
 
-// runUpdatePrices fetches the latest closed-session price from a provider
+// priceUpdateOptions are the inputs to `tmoney price update`.
+type priceUpdateOptions struct {
+	file     string
+	provider string
+	tickers  []string
+}
+
+// newPriceUpdateCmd registers `tmoney price update [tickers...]`. The
+// database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command. Positional arguments restrict the
+// refresh to specific tickers; with none, every visible security with a
+// ticker is refreshed.
+func newPriceUpdateCmd() *cobra.Command {
+	opts := &priceUpdateOptions{}
+	cmd := &cobra.Command{
+		Use:   "update [tickers...]",
+		Short: "Refresh prices for securities from a provider",
+		Long: "Fetch the latest closed-session price from a provider for " +
+			"each visible security with a ticker, or only the supplied " +
+			"tickers. Prices are upserted with source = api. Re-running " +
+			"the same day is a no-op.",
+		Example: "  tmoney price update\n" +
+			"  tmoney price update AAPL MSFT\n" +
+			"  tmoney price update --provider yahoo",
+		Args:         cobra.ArbitraryArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			opts.tickers = args
+			return runPriceUpdate(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.provider, "provider", "", "Price provider name (default: yahoo)")
+	return cmd
+}
+
+// runPriceUpdate fetches the latest closed-session price from a provider
 // for each visible security with a ticker (or the explicit ticker filter),
 // printing per-ticker outcomes and a summary.
-func runUpdatePrices(opts *cliOptions, w io.Writer) error {
+func runPriceUpdate(opts *priceUpdateOptions, w io.Writer) error {
 	if opts.file == "" {
-		return errors.New("--update-prices requires --file to specify a database")
+		return errors.New("--file is required to specify a database")
 	}
 
 	providerName := opts.provider
@@ -38,7 +75,7 @@ func runUpdatePrices(opts *cliOptions, w io.Writer) error {
 
 	registerPriceProviders(svc)
 
-	result, err := svc.Price.RefreshPrices(providerName, opts.updateTickers)
+	result, err := svc.Price.RefreshPrices(providerName, opts.tickers)
 	if err != nil {
 		return err
 	}

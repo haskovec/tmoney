@@ -69,10 +69,7 @@ type cliOptions struct {
 	secExchange   string // --exchange <exchange>
 
 	// Price management options
-	priceValue    string   // --price <value>
-	updatePrices  bool     // --update-prices flag
-	updateTickers []string // optional positional tickers after --update-prices
-	provider      string   // --provider <name> for --update-prices
+	priceValue string // --price <value>
 
 	// Investment transaction options
 	buy            bool   // --buy flag
@@ -329,19 +326,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.priceValue = args[i]
-		case "--update-prices":
-			opts.updatePrices = true
-			// Collect any following non-flag arguments as ticker filters.
-			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				i++
-				opts.updateTickers = append(opts.updateTickers, args[i])
-			}
-		case "--provider":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--provider requires a name argument")
-			}
-			i++
-			opts.provider = args[i]
 		case "--buy":
 			opts.buy = true
 		case "--sell":
@@ -528,8 +512,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.secExchange = after
 			} else if after, ok := strings.CutPrefix(arg, "--price="); ok {
 				opts.priceValue = after
-			} else if after, ok := strings.CutPrefix(arg, "--provider="); ok {
-				opts.provider = after
 			} else if after, ok := strings.CutPrefix(arg, "--shares="); ok {
 				opts.shares = after
 			} else if after, ok := strings.CutPrefix(arg, "--commission="); ok {

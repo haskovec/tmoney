@@ -279,7 +279,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--import-prices` plumbing; also delete the `--overwrite` plumbing and `importPrices`/`overwrite` fields from `cliOptions` (only used by this verb).
   - DOCS: README.
 
-- [ ] **CM-042 — `tmoney price update`**
+- [x] **CM-042 — `tmoney price update`** (completed 2026-05-08)
   - RED: tests covering `TestUpdatePrices*` from `update_prices_test.go` adapted to Cobra invocation. Variadic positional for ticker filtering.
   - GREEN: `price_update.go` with `priceUpdateOptions{ file, provider string; tickers []string }`, `newPriceUpdateCmd()` (`Args: cobra.ArbitraryArgs`). Move runtime helper logic from existing `update_prices.go` into `price_update.go`; delete `update_prices.go` once consolidated.
   - CLEANUP: delete `--update-prices` plumbing.

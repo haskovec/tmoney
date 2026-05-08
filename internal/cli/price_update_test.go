@@ -18,11 +18,11 @@ import (
 )
 
 // =============================================================================
-// runUpdatePrices CLI tests
+// `tmoney price update` CLI tests
 // =============================================================================
 
 // withYahooAt overrides the price-provider registration hook so that
-// runUpdatePrices points the Yahoo provider at the given httptest server
+// `price update` points the Yahoo provider at the given httptest server
 // and uses a fixed clock. Returns a cleanup func.
 func withYahooAt(t *testing.T, baseURL string, now time.Time) func() {
 	t.Helper()
@@ -69,19 +69,19 @@ func yahooFixture(t *testing.T, ticker string, date string, price float64) strin
 		ticker, end, price, bar, end, bar, price)
 }
 
-func TestRunUpdatePrices_MissingFile(t *testing.T) {
+func TestPriceUpdate_MissingFile(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := run([]string{"--update-prices"}, stdout, stderr)
+	err := executeWith([]string{"price", "update"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("expected error for missing --file")
 	}
-	if !strings.Contains(err.Error(), "--file") {
-		t.Errorf("error %q, expected mention of --file", err)
+	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
+		t.Errorf("error %q, expected mention of --file/file", err)
 	}
 }
 
-func TestRunUpdatePrices_HappyPath(t *testing.T) {
+func TestPriceUpdate_HappyPath(t *testing.T) {
 	dbPath := setupUpdatePricesDB(t, "AAPL")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -97,9 +97,9 @@ func TestRunUpdatePrices_HappyPath(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := run([]string{"--update-prices", "--file", dbPath}, stdout, stderr)
+	err := executeWith([]string{"price", "update", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("run error = %v\nstdout: %s", err, stdout.String())
+		t.Fatalf("executeWith error = %v\nstdout: %s", err, stdout.String())
 	}
 
 	out := stdout.String()
@@ -139,7 +139,7 @@ func TestRunUpdatePrices_HappyPath(t *testing.T) {
 	}
 }
 
-func TestRunUpdatePrices_FilterByPositionalTickers(t *testing.T) {
+func TestPriceUpdate_FilterByPositionalTickers(t *testing.T) {
 	dbPath := setupUpdatePricesDB(t, "AAPL", "MSFT", "GOOG")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -165,9 +165,9 @@ func TestRunUpdatePrices_FilterByPositionalTickers(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := run([]string{"--update-prices", "AAPL", "MSFT", "--file", dbPath}, stdout, stderr)
+	err := executeWith([]string{"price", "update", "AAPL", "MSFT", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("run error = %v", err)
+		t.Fatalf("executeWith error = %v", err)
 	}
 
 	out := stdout.String()
@@ -185,7 +185,7 @@ func TestRunUpdatePrices_FilterByPositionalTickers(t *testing.T) {
 	}
 }
 
-func TestRunUpdatePrices_NonZeroExitOnFailure(t *testing.T) {
+func TestPriceUpdate_NonZeroExitOnFailure(t *testing.T) {
 	dbPath := setupUpdatePricesDB(t, "AAPL", "BADTICK")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -207,7 +207,7 @@ func TestRunUpdatePrices_NonZeroExitOnFailure(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := run([]string{"--update-prices", "--file", dbPath}, stdout, stderr)
+	err := executeWith([]string{"price", "update", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("expected non-nil error when a ticker fails")
 	}
@@ -222,7 +222,7 @@ func TestRunUpdatePrices_NonZeroExitOnFailure(t *testing.T) {
 	}
 }
 
-func TestRunUpdatePrices_UnknownProvider(t *testing.T) {
+func TestPriceUpdate_UnknownProvider(t *testing.T) {
 	dbPath := setupUpdatePricesDB(t, "AAPL")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -235,7 +235,7 @@ func TestRunUpdatePrices_UnknownProvider(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := run([]string{"--update-prices", "--provider", "doesnotexist", "--file", dbPath}, stdout, stderr)
+	err := executeWith([]string{"price", "update", "--provider", "doesnotexist", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("expected error for unknown provider")
 	}
@@ -244,7 +244,7 @@ func TestRunUpdatePrices_UnknownProvider(t *testing.T) {
 	}
 }
 
-func TestRunUpdatePrices_UpToDateSecondRun(t *testing.T) {
+func TestPriceUpdate_UpToDateSecondRun(t *testing.T) {
 	dbPath := setupUpdatePricesDB(t, "AAPL")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -259,17 +259,43 @@ func TestRunUpdatePrices_UpToDateSecondRun(t *testing.T) {
 	defer cleanup()
 
 	// First run: updates.
-	if err := run([]string{"--update-prices", "--file", dbPath}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+	if err := executeWith([]string{"price", "update", "--file", dbPath}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 
 	// Second run: should report up-to-date.
 	stdout := &bytes.Buffer{}
-	if err := run([]string{"--update-prices", "--file", dbPath}, stdout, &bytes.Buffer{}); err != nil {
+	if err := executeWith([]string{"price", "update", "--file", dbPath}, stdout, &bytes.Buffer{}); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "up-to-date") {
 		t.Errorf("second-run output should report 'up-to-date': %s", out)
+	}
+}
+
+func TestPriceUpdate_Help(t *testing.T) {
+	_, _, restore := stubLaunchers(t)
+	defer restore()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := executeWith([]string{"price", "update", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("executeWith(price update --help): %v", err)
+	}
+	if !strings.Contains(stdout.String(), "update") {
+		t.Errorf("expected `price update --help` to describe the command; got:\n%s", stdout.String())
+	}
+}
+
+func TestPriceCmd_HelpListsUpdate(t *testing.T) {
+	_, _, restore := stubLaunchers(t)
+	defer restore()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := executeWith([]string{"price", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("executeWith(price --help): %v", err)
+	}
+	if !strings.Contains(stdout.String(), "update") {
+		t.Errorf("expected `price --help` to list `update`; got:\n%s", stdout.String())
 	}
 }
