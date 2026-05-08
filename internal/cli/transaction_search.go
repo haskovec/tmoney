@@ -6,12 +6,52 @@ import (
 
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runSearch searches for transactions matching the search term and filters.
-func runSearch(opts *cliOptions, w io.Writer) error {
+// transactionSearchOptions are the inputs to `tmoney transaction search <term>`.
+type transactionSearchOptions struct {
+	file      string
+	term      string
+	account   string
+	category  string
+	fromDate  string
+	toDate    string
+	minAmount string
+	maxAmount string
+}
+
+// newTransactionSearchCmd registers `tmoney transaction search <term>`.
+// The database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command.
+func newTransactionSearchCmd() *cobra.Command {
+	opts := &transactionSearchOptions{}
+	cmd := &cobra.Command{
+		Use:          "search <term>",
+		Short:        "Search transactions by payee or memo",
+		Long:         "Search transactions whose payee name or memo contains the term, optionally filtered by account, category, date range, or amount range.",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			opts.term = args[0]
+			return runTransactionSearch(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.account, "account", "", "Limit to transactions on this account")
+	cmd.Flags().StringVar(&opts.category, "category", "", "Limit to transactions in this category")
+	cmd.Flags().StringVar(&opts.fromDate, "from", "", "Earliest date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&opts.toDate, "to", "", "Latest date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&opts.minAmount, "min", "", "Minimum amount (most negative for expenses)")
+	cmd.Flags().StringVar(&opts.maxAmount, "max", "", "Maximum amount")
+	return cmd
+}
+
+// runTransactionSearch searches for transactions matching the search
+// term and filters.
+func runTransactionSearch(opts *transactionSearchOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--search requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -20,13 +60,11 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// Build search criteria
 	criteria := transaction.SearchCriteria{
-		PayeeName: opts.searchTerm,
-		Memo:      opts.searchTerm,
+		PayeeName: opts.term,
+		Memo:      opts.term,
 	}
 
-	// Parse date filters if provided
 	if opts.fromDate != "" {
 		startDate, err := types.ParseDate(opts.fromDate)
 		if err != nil {
@@ -43,21 +81,18 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 		criteria.EndDate = &endDate
 	}
 
-	// Parse account filter if provided
-	if opts.accountName != "" {
-		acct, err := svc.Account.GetByName(opts.accountName)
+	if opts.account != "" {
+		acct, err := svc.Account.GetByName(opts.account)
 		if err != nil {
-			return fmt.Errorf("account %q not found", opts.accountName)
+			return fmt.Errorf("account %q not found", opts.account)
 		}
 		criteria.AccountID = &acct.ID
 	}
 
-	// Parse category filter if provided
-	if opts.txCategory != "" {
-		criteria.CategoryName = opts.txCategory
+	if opts.category != "" {
+		criteria.CategoryName = opts.category
 	}
 
-	// Parse min/max amount filters if provided
 	if opts.minAmount != "" {
 		minAmt, err := types.NewMoney(opts.minAmount)
 		if err != nil {
@@ -74,11 +109,11 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 		criteria.MaxAmount = &maxAmt
 	}
 
-	// Search for transactions - we need to search by payee OR memo
-	// Since the Search method uses AND logic, we'll do two searches and merge
+	// The repository's Search uses AND logic across PayeeName and Memo,
+	// but we want OR semantics: match if either field contains the term.
+	// Run two queries and merge the results.
 	var transactions []*transaction.Transaction
 
-	// Search by payee name
 	payeeCriteria := criteria
 	payeeCriteria.Memo = ""
 	payeeResults, err := svc.TransactionRepo.Search(payeeCriteria)
@@ -86,7 +121,6 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("failed to search transactions: %w", err)
 	}
 
-	// Search by memo
 	memoCriteria := criteria
 	memoCriteria.PayeeName = ""
 	memoResults, err := svc.TransactionRepo.Search(memoCriteria)
@@ -94,7 +128,6 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("failed to search transactions: %w", err)
 	}
 
-	// Merge results, avoiding duplicates
 	seen := make(map[string]bool)
 	for _, txn := range payeeResults {
 		if !seen[txn.ID.String()] {
@@ -109,7 +142,6 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 		}
 	}
 
-	// Build lookup maps for display
 	payeeNames := make(map[types.ID]string)
 	categoryNames := make(map[types.ID]string)
 	accountNames := make(map[types.ID]string)
@@ -131,8 +163,7 @@ func runSearch(opts *cliOptions, w io.Writer) error {
 		accountCurrencies[a.ID] = a.Currency
 	}
 
-	// Print search results
-	printSearchResults(w, opts.searchTerm, transactions, accountNames, accountCurrencies, payeeNames, categoryNames)
+	printSearchResults(w, opts.term, transactions, accountNames, accountCurrencies, payeeNames, categoryNames)
 
 	return nil
 }

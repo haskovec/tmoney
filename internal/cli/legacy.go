@@ -212,11 +212,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return runReport(opts, stdout)
 	}
 
-	// Handle --search
-	if opts.searchTerm != "" {
-		return runSearch(opts, stdout)
-	}
-
 	// If remaining args include a file path, use it as the file
 	if len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
 		if opts.file == "" {

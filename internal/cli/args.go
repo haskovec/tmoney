@@ -29,11 +29,6 @@ type cliOptions struct {
 	fromAccount string // --from <account> for transfers
 	toAccount   string // --to <account> for transfers
 
-	// Search options
-	searchTerm string // --search <term>
-	minAmount  string // --min <amount>
-	maxAmount  string // --max <amount>
-
 	// Scheduled transaction options
 	scheduled     bool   // --scheduled flag
 	scheduledDue  bool   // --due flag (with --scheduled)
@@ -198,24 +193,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.toAccount = args[i] // Also used for transfer destination account
 		case "--transfer":
 			opts.transfer = true
-		case "--search":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--search requires a search term argument")
-			}
-			i++
-			opts.searchTerm = args[i]
-		case "--min":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--min requires an amount argument")
-			}
-			i++
-			opts.minAmount = args[i]
-		case "--max":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--max requires an amount argument")
-			}
-			i++
-			opts.maxAmount = args[i]
 		case "--scheduled":
 			opts.scheduled = true
 		case "--due":
@@ -706,12 +683,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.acctInterestRate = after
 			} else if after, ok := strings.CutPrefix(arg, "--status="); ok {
 				opts.txStatus = after
-			} else if after, ok := strings.CutPrefix(arg, "--search="); ok {
-				opts.searchTerm = after
-			} else if after, ok := strings.CutPrefix(arg, "--min="); ok {
-				opts.minAmount = after
-			} else if after, ok := strings.CutPrefix(arg, "--max="); ok {
-				opts.maxAmount = after
 			} else if after, ok := strings.CutPrefix(arg, "--post-scheduled="); ok {
 				opts.postScheduled = after
 			} else if after, ok := strings.CutPrefix(arg, "--skip-scheduled="); ok {

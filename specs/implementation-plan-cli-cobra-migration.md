@@ -122,7 +122,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--void` plumbing.
   - DOCS: README.
 
-- [ ] **CM-015 — `tmoney transaction search <term>`**
+- [x] **CM-015 — `tmoney transaction search <term>`** (completed 2026-05-07)
   - RED: tests covering `TestRun_Search*` (account filter, category filter, min/max amount, date range).
   - GREEN: `transaction_search.go` with `transactionSearchOptions{ file, term, account, category, fromDate, toDate, minAmount, maxAmount string }`, `newTransactionSearchCmd()` (`Args: cobra.ExactArgs(1)`).
   - CLEANUP: delete `--search`, `--min`, `--max` plumbing; reduce `--from`/`--to`/`--category`/`--account` parsing branches.
