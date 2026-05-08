@@ -130,7 +130,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 
 ## Phase 4: transfer
 
-- [ ] **CM-016 — Phase prep: split `transfer` handlers**
+- [x] **CM-016 — Phase prep: split `transfer` handlers** (completed 2026-05-07)
   - GREEN: create `transfer_add.go`, `transfer_link.go` containing `runTransfer`, `runLinkTransfers` cut verbatim.
 
 - [ ] **CM-017 — `tmoney transfer add`**
