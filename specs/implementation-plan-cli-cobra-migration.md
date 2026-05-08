@@ -176,7 +176,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 
 ## Phase 6: reconcile
 
-- [ ] **CM-024 — Phase prep: split `reconcile` handlers**
+- [x] **CM-024 — Phase prep: split `reconcile` handlers** (completed 2026-05-08)
   - GREEN: create `reconcile_start.go`, `reconcile_mark.go`, `reconcile_finish.go`, `reconcile_status.go` containing `runStartReconcile`, `runMarkReconciled`, `runFinishReconcile`, `runReconcileStatus` cut verbatim.
 
 - [ ] **CM-025 — `tmoney reconcile start`**
