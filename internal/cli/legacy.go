@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --prices (list prices for a ticker)
-	if opts.listPrices {
-		return runListPrices(opts, stdout)
-	}
-
 	// Handle --current-price
 	if opts.currentPrice {
 		return runCurrentPrice(opts, stdout)

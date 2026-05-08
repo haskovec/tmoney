@@ -5,15 +5,45 @@ import (
 	"io"
 
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runListPrices lists prices for a security ticker.
-func runListPrices(opts *cliOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--prices requires --file to specify a database")
+// priceListOptions are the inputs to `tmoney price list`.
+type priceListOptions struct {
+	file     string
+	ticker   string
+	fromDate string
+	toDate   string
+}
+
+// newPriceListCmd registers `tmoney price list <ticker>`. The database
+// file is taken from the persistent `--file` / `-f` flag inherited
+// from the root command. Optional `--from` and `--to` filters limit
+// the date range of returned prices.
+func newPriceListCmd() *cobra.Command {
+	opts := &priceListOptions{}
+	cmd := &cobra.Command{
+		Use:          "list <ticker>",
+		Short:        "List recorded prices for a security",
+		Long:         "List the price history for a security identified by ticker, optionally filtered by date.",
+		Example:      "  tmoney price list AAPL\n  tmoney price list AAPL --from 2024-01-01 --to 2024-06-30",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			opts.ticker = args[0]
+			return runPriceList(opts, cmd.OutOrStdout())
+		},
 	}
-	if opts.secTicker == "" {
-		return fmt.Errorf("--prices requires --ticker to specify a security")
+	cmd.Flags().StringVar(&opts.fromDate, "from", "", "Earliest date YYYY-MM-DD (inclusive)")
+	cmd.Flags().StringVar(&opts.toDate, "to", "", "Latest date YYYY-MM-DD (inclusive)")
+	return cmd
+}
+
+// runPriceList lists prices for a security ticker.
+func runPriceList(opts *priceListOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -22,9 +52,9 @@ func runListPrices(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	sec, err := svc.Security.GetByTicker(opts.ticker, "")
 	if err != nil {
-		return fmt.Errorf("security %q not found", opts.secTicker)
+		return fmt.Errorf("security %q not found", opts.ticker)
 	}
 
 	var from, to *types.Date

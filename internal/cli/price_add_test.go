@@ -92,13 +92,13 @@ func TestPriceAdd_Success(t *testing.T) {
 		}
 	}
 
-	// Verify the price is persisted by listing prices via the legacy verb.
+	// Verify the price is persisted by listing prices.
 	stdout.Reset()
-	if err := run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("run(--prices): %v", err)
+	if err := executeWith([]string{"price", "list", "AAPL", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("executeWith(price list AAPL): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "150.00") {
-		t.Error("price should be visible in --prices listing")
+		t.Error("price should be visible in `price list` listing")
 	}
 }
 

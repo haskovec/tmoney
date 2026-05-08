@@ -261,9 +261,9 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
   - CLEANUP: delete `--add-price` plumbing.
   - DOCS: README "Update Prices" section grows into a "Prices" CLI subsection.
 
-- [ ] **CM-039 — `tmoney price list <ticker>`**
+- [x] **CM-039 — `tmoney price list <ticker>`** (completed 2026-05-08)
   - RED: tests covering `TestRun_ListPrices*`.
-  - GREEN: `price_list.go` with `priceListOptions{ file, ticker string; limit int }`, `newPriceListCmd()` (`Args: cobra.ExactArgs(1)`).
+  - GREEN: `price_list.go` with `priceListOptions{ file, ticker, fromDate, toDate string }` and `--from`/`--to` flags (preserving the existing `runListPrices` semantics — the plan's `limit int` predated the actual handler shape), `newPriceListCmd()` (`Args: cobra.ExactArgs(1)`).
   - CLEANUP: delete `--prices` plumbing.
   - DOCS: README.
 

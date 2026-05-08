@@ -1551,160 +1551,6 @@ func createTestDBWithSecurityAndPrices(t *testing.T) (string, *security.Security
 	return dbPath, sec
 }
 
-func TestRun_ListPricesMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--prices", "--ticker", "AAPL"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--prices) without --file should return error")
-	}
-	if !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("error should mention --file requirement, got: %v", err)
-	}
-}
-
-func TestRun_ListPricesMissingTicker(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--prices", "--file", "/fake.tdb"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--prices) without --ticker should return error")
-	}
-	if !strings.Contains(err.Error(), "--ticker") {
-		t.Errorf("error should mention --ticker, got: %v", err)
-	}
-}
-
-func TestRun_ListPricesSecurityNotFound(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--prices", "--ticker", "ZZZZ", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--prices) with unknown ticker should return error")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error should mention not found, got: %v", err)
-	}
-}
-
-func TestRun_ListPricesShowsAll(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurityAndPrices(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--prices) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "PRICES: AAPL") {
-		t.Error("output should contain prices header")
-	}
-	if !strings.Contains(output, "2024-01-15") {
-		t.Error("output should contain first price date")
-	}
-	if !strings.Contains(output, "2024-02-15") {
-		t.Error("output should contain second price date")
-	}
-	if !strings.Contains(output, "2024-03-15") {
-		t.Error("output should contain third price date")
-	}
-	if !strings.Contains(output, "150.00") {
-		t.Error("output should contain first price value")
-	}
-	if !strings.Contains(output, "160.50") {
-		t.Error("output should contain second price value")
-	}
-	if !strings.Contains(output, "170.25") {
-		t.Error("output should contain third price value")
-	}
-	if !strings.Contains(output, "Manual") {
-		t.Error("output should contain manual source")
-	}
-	if !strings.Contains(output, "Transaction") {
-		t.Error("output should contain transaction source")
-	}
-	if !strings.Contains(output, "Import") {
-		t.Error("output should contain import source")
-	}
-	if !strings.Contains(output, "Total: 3 price(s)") {
-		t.Error("output should contain total count")
-	}
-}
-
-func TestRun_ListPricesWithFromFilter(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurityAndPrices(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath, "--from", "2024-02-01"}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--prices --from) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if strings.Contains(output, "2024-01-15") {
-		t.Error("output should not contain price before --from date")
-	}
-	if !strings.Contains(output, "2024-02-15") {
-		t.Error("output should contain price on/after --from date")
-	}
-	if !strings.Contains(output, "2024-03-15") {
-		t.Error("output should contain price on/after --from date")
-	}
-	if !strings.Contains(output, "Total: 2 price(s)") {
-		t.Error("output should contain total count of 2")
-	}
-}
-
-func TestRun_ListPricesWithToFilter(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurityAndPrices(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath, "--to", "2024-02-28"}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--prices --to) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "2024-01-15") {
-		t.Error("output should contain price before --to date")
-	}
-	if !strings.Contains(output, "2024-02-15") {
-		t.Error("output should contain price on/before --to date")
-	}
-	if strings.Contains(output, "2024-03-15") {
-		t.Error("output should not contain price after --to date")
-	}
-	if !strings.Contains(output, "Total: 2 price(s)") {
-		t.Error("output should contain total count of 2")
-	}
-}
-
-func TestRun_ListPricesNoPrices(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--prices) with no prices returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "No prices found") {
-		t.Error("output should indicate no prices found")
-	}
-}
-
 // =============================================================================
 // SM-105: --current-price
 // =============================================================================
@@ -1799,15 +1645,6 @@ func TestParseArgs_PriceFlags(t *testing.T) {
 		args  []string
 		check func(t *testing.T, opts *cliOptions)
 	}{
-		{
-			"prices flag",
-			[]string{"--prices"},
-			func(t *testing.T, opts *cliOptions) {
-				if !opts.listPrices {
-					t.Error("listPrices should be true")
-				}
-			},
-		},
 		{
 			"current-price flag",
 			[]string{"--current-price"},
@@ -3131,9 +2968,9 @@ func TestRun_ImportPricesSuccess(t *testing.T) {
 
 	// Verify prices were actually stored
 	stdout.Reset()
-	err = run([]string{"--prices", "--ticker", "AAPL", "--file", dbPath}, stdout, stderr)
+	err = executeWith([]string{"price", "list", "AAPL", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("run(--prices) returned error: %v", err)
+		t.Fatalf("executeWith(price list AAPL) returned error: %v", err)
 	}
 	priceOutput := stdout.String()
 	if !strings.Contains(priceOutput, "150.00") {

@@ -494,11 +494,19 @@ tmoney --report spending --from 2024-01-01 --to 2024-06-30
 ```bash
 # Manually record a price for a security on a specific date
 tmoney -f personal.tdb price add --ticker AAPL --date 2024-01-15 --price 150.00
+
+# List recorded prices for a security
+tmoney -f personal.tdb price list AAPL
+tmoney -f personal.tdb price list AAPL --from 2024-01-01 --to 2024-06-30
 ```
 
-`--ticker`, `--date`, and `--price` are required. The price is stored
-with `source = manual`. Re-adding a price for a date that already has
-one returns an error.
+`price add` requires `--ticker`, `--date`, and `--price`. The price is
+stored with `source = manual`. Re-adding a price for a date that
+already has one returns an error.
+
+`price list <ticker>` prints the price history for a security.
+Optional `--from` and `--to` flags limit the date range
+(YYYY-MM-DD, both inclusive).
 
 ### Update Prices
 
@@ -655,7 +663,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 
