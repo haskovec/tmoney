@@ -64,7 +64,6 @@ type cliOptions struct {
 	exportFile string // --export <file>
 
 	// Security management options
-	hideSecurity   string // --hide-security <ticker>
 	unhideSecurity string // --unhide-security <ticker>
 	deleteSecurity string // --delete-security <ticker>
 	secTicker      string // --ticker <ticker> (for add/edit)
@@ -313,12 +312,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.sourceAccount = args[i]
-		case "--hide-security":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--hide-security requires a ticker argument")
-			}
-			i++
-			opts.hideSecurity = args[i]
 		case "--unhide-security":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--unhide-security requires a ticker argument")
@@ -560,8 +553,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.exportFile = after
 			} else if after, ok := strings.CutPrefix(arg, "--format="); ok {
 				opts.formatOverride = after
-			} else if after, ok := strings.CutPrefix(arg, "--hide-security="); ok {
-				opts.hideSecurity = after
 			} else if after, ok := strings.CutPrefix(arg, "--unhide-security="); ok {
 				opts.unhideSecurity = after
 			} else if after, ok := strings.CutPrefix(arg, "--delete-security="); ok {

@@ -26,7 +26,7 @@ func runDeleteSecurity(opts *cliOptions, w io.Writer) error {
 
 	if err := svc.Security.Delete(sec.ID); err != nil {
 		if depErr, ok := err.(*security.HasDependentsError); ok {
-			return fmt.Errorf("%s\nUse --hide-security %s instead", depErr.Error(), sec.Ticker)
+			return fmt.Errorf("%s\nUse tmoney security hide %s instead", depErr.Error(), sec.Ticker)
 		}
 		return fmt.Errorf("failed to delete security: %w", err)
 	}

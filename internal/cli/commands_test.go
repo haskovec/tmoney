@@ -1422,87 +1422,7 @@ func createTestDBWithSecurity(t *testing.T) (string, *security.Security) {
 	return dbPath, sec
 }
 
-// SM-101: --hide-security / --unhide-security
-
-func TestRun_HideSecurityMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--hide-security", "AAPL"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--hide-security) without --file should return error")
-	}
-}
-
-func TestRun_HideSecurityNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{"--hide-security", "FAKE", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("hiding non-existent security should return error")
-	}
-}
-
-func TestRun_HideSecuritySuccess(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--hide-security", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--hide-security) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "hidden successfully") {
-		t.Error("output should confirm hiding")
-	}
-	if !strings.Contains(output, "AAPL") {
-		t.Error("output should contain ticker")
-	}
-
-	// Security should no longer appear in default list
-	stdout.Reset()
-	if err := executeWith([]string{"security", "list", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Errorf("executeWith(security list) returned error: %v", err)
-		return
-	}
-	if strings.Contains(stdout.String(), "AAPL") {
-		t.Error("hidden security should not appear in default listing")
-	}
-}
-
-func TestRun_HideSecurityAlreadyHidden(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-
-	repo := security.NewRepository(database)
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	sec.Hide()
-	if err := repo.Create(sec); err != nil {
-		t.Fatalf("failed to create security: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{"--hide-security", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("hiding already hidden security should return error")
-	}
-}
+// SM-101: --unhide-security
 
 func TestRun_UnhideSecurityMissingFile(t *testing.T) {
 	stdout := &bytes.Buffer{}
@@ -1647,8 +1567,8 @@ func TestRun_DeleteSecurityWithPricesSuggestsHide(t *testing.T) {
 	if err == nil {
 		t.Error("deleting security with prices should return error")
 	}
-	if !strings.Contains(err.Error(), "--hide-security") {
-		t.Errorf("error should suggest using --hide-security, got: %v", err)
+	if !strings.Contains(err.Error(), "security hide") {
+		t.Errorf("error should suggest using `security hide`, got: %v", err)
 	}
 }
 
@@ -1660,15 +1580,6 @@ func TestParseArgs_SecurityFlags(t *testing.T) {
 		args  []string
 		check func(t *testing.T, opts *cliOptions)
 	}{
-		{
-			"hide-security flag",
-			[]string{"--hide-security", "AAPL"},
-			func(t *testing.T, opts *cliOptions) {
-				if opts.hideSecurity != "AAPL" {
-					t.Errorf("hideSecurity = %q, want AAPL", opts.hideSecurity)
-				}
-			},
-		},
 		{
 			"unhide-security flag",
 			[]string{"--unhide-security", "AAPL"},
@@ -1716,10 +1627,10 @@ func TestParseArgs_SecurityFlags(t *testing.T) {
 		},
 		{
 			"combined security flags",
-			[]string{"--hide-security", "AAPL", "--ticker", "MSFT", "--name", "Apple", "--type", "stock", "--asset-class", "large_cap_stock", "--exchange", "NASDAQ"},
+			[]string{"--unhide-security", "AAPL", "--ticker", "MSFT", "--name", "Apple", "--type", "stock", "--asset-class", "large_cap_stock", "--exchange", "NASDAQ"},
 			func(t *testing.T, opts *cliOptions) {
-				if opts.hideSecurity != "AAPL" {
-					t.Errorf("hideSecurity = %q, want AAPL", opts.hideSecurity)
+				if opts.unhideSecurity != "AAPL" {
+					t.Errorf("unhideSecurity = %q, want AAPL", opts.unhideSecurity)
 				}
 				if opts.secTicker != "MSFT" {
 					t.Errorf("secTicker = %q, want MSFT", opts.secTicker)
@@ -1757,7 +1668,6 @@ func TestParseArgs_SecurityFlagsMissingArgs(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"hide-security missing ticker", []string{"--hide-security"}},
 		{"unhide-security missing ticker", []string{"--unhide-security"}},
 		{"delete-security missing ticker", []string{"--delete-security"}},
 		{"ticker missing value", []string{"--ticker"}},

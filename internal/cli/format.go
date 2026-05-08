@@ -619,9 +619,9 @@ Security Commands:
     --currency <code>    New currency code
     --exchange <name>    New exchange name
 
-  --hide-security <tkr>  Hide a security (fails if positions exist)
   --unhide-security <tkr> Unhide a hidden security
   --delete-security <tkr> Delete a security (fails if history exists)
+  (Use 'tmoney security hide <tkr>' to hide a security.)
 
 Portfolio Commands:
   --portfolio            Show investment portfolio holdings and summary
