@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --sell
-	if opts.sell {
-		return runSell(opts, stdout)
-	}
-
 	// Handle --dividend
 	if opts.dividend {
 		return runDividend(opts, stdout)

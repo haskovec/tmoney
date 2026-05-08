@@ -1655,154 +1655,6 @@ func ptrMoney(s string) *types.Money {
 	return &m
 }
 
-// --- SM-107: CLI --sell ---
-
-func TestRun_SellMissingFile(t *testing.T) {
-	err := run([]string{"--sell", "--account", "Brokerage", "--ticker", "AAPL", "--shares", "5", "--amount", "800"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("expected --file required error, got: %v", err)
-	}
-}
-
-func TestRun_SellMissingAccount(t *testing.T) {
-	err := run([]string{"--sell", "--file", "test.tdb", "--ticker", "AAPL", "--shares", "5", "--amount", "800"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --account") {
-		t.Errorf("expected --account required error, got: %v", err)
-	}
-}
-
-func TestRun_SellMissingTicker(t *testing.T) {
-	err := run([]string{"--sell", "--file", "test.tdb", "--account", "Brokerage", "--shares", "5", "--amount", "800"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --ticker") {
-		t.Errorf("expected --ticker required error, got: %v", err)
-	}
-}
-
-func TestRun_SellMissingShares(t *testing.T) {
-	err := run([]string{"--sell", "--file", "test.tdb", "--account", "Brokerage", "--ticker", "AAPL", "--amount", "800"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --shares") {
-		t.Errorf("expected --shares required error, got: %v", err)
-	}
-}
-
-func TestRun_SellBasic(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	// First buy some shares
-	if err := executeWith([]string{
-		"investment", "buy", "--file", dbPath,
-		"--account", "Brokerage", "--ticker", "AAPL",
-		"--shares", "10", "--price-per-share", "150",
-	}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
-		t.Fatalf("failed to buy shares: %v", err)
-	}
-
-	// Now sell some
-	stdout := &bytes.Buffer{}
-	err := run([]string{
-		"--sell", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "AAPL",
-		"--shares", "5",
-		"--price-per-share", "160",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--sell) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Sell transaction created successfully") {
-		t.Error("output should confirm sell creation")
-	}
-	if !strings.Contains(output, "AAPL") {
-		t.Error("output should contain ticker")
-	}
-}
-
-func TestRun_SellInsufficientShares(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	// Buy 10 shares
-	if err := executeWith([]string{
-		"investment", "buy", "--file", dbPath,
-		"--account", "Brokerage", "--ticker", "AAPL",
-		"--shares", "10", "--price-per-share", "150",
-	}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
-		t.Fatalf("failed to buy shares: %v", err)
-	}
-
-	// Try to sell 20
-	err := run([]string{
-		"--sell", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "AAPL",
-		"--shares", "20",
-		"--price-per-share", "160",
-	}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil {
-		t.Error("expected insufficient shares error")
-	}
-}
-
-func TestRun_SellWithLotAllocation(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-
-	acctRepo := account.NewRepository(database)
-	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
-	acct.TrackLots = true
-	if err := acctRepo.Create(acct); err != nil {
-		t.Fatalf("failed to create account: %v", err)
-	}
-
-	secRepo := security.NewRepository(database)
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	if err := secRepo.Create(sec); err != nil {
-		t.Fatalf("failed to create security: %v", err)
-	}
-
-	svc := app.NewServices(database)
-	_, err = svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("50000"), "")
-	if err != nil {
-		t.Fatalf("failed to deposit: %v", err)
-	}
-	_, err = svc.Investment.Buy(acct.ID, sec.ID, types.Today(), types.MustNewQuantity("10"), nil, ptrMoney("150"), types.ZeroMoney, "")
-	if err != nil {
-		t.Fatalf("failed to buy: %v", err)
-	}
-
-	// Get the lot ID
-	lots, _ := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
-	if len(lots) == 0 {
-		t.Fatal("no lots found after buy")
-	}
-	lotID := lots[0].ID.String()
-	database.Close()
-
-	// Sell with --lot
-	stdout := &bytes.Buffer{}
-	err = run([]string{
-		"--sell", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "AAPL",
-		"--shares", "5",
-		"--price-per-share", "160",
-		"--lot", lotID,
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--sell with lot) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Sell transaction created successfully") {
-		t.Error("output should confirm sell with lot allocation")
-	}
-}
-
 // --- SM-108: CLI --dividend ---
 
 func TestRun_DividendMissingFile(t *testing.T) {
@@ -2192,8 +2044,9 @@ func TestRun_BuyThenSellUpdatesCash(t *testing.T) {
 
 	// Sell 5 shares at $160 = $800 received
 	stdout := &bytes.Buffer{}
-	err := run([]string{
-		"--sell", "--file", dbPath,
+	err := executeWith([]string{
+		"investment", "sell",
+		"--file", dbPath,
 		"--account", "Brokerage",
 		"--ticker", "AAPL",
 		"--shares", "5",
@@ -2220,7 +2073,6 @@ func TestParseArgs_InvestmentFlags(t *testing.T) {
 		args  []string
 		check func(*cliOptions) bool
 	}{
-		{"--sell flag", []string{"--sell"}, func(o *cliOptions) bool { return o.sell }},
 		{"--dividend flag", []string{"--dividend"}, func(o *cliOptions) bool { return o.dividend }},
 		{"--reinvest flag", []string{"--reinvest"}, func(o *cliOptions) bool { return o.reinvest }},
 		{"--investment-fee flag", []string{"--investment-fee"}, func(o *cliOptions) bool { return o.investmentFee }},

@@ -72,7 +72,6 @@ type cliOptions struct {
 	priceValue string // --price <value>
 
 	// Investment transaction options
-	sell           bool   // --sell flag
 	dividend       bool   // --dividend flag
 	reinvest       bool   // --reinvest flag
 	investmentFee  bool   // --investment-fee flag
@@ -325,8 +324,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.priceValue = args[i]
-		case "--sell":
-			opts.sell = true
 		case "--dividend":
 			opts.dividend = true
 		case "--reinvest":

@@ -6,24 +6,68 @@ import (
 
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runSell executes the --sell command: sell shares of a security in an investment account.
-func runSell(opts *cliOptions, w io.Writer) error {
+// investmentSellOptions are the inputs to `tmoney investment sell`.
+type investmentSellOptions struct {
+	file          string
+	account       string
+	ticker        string
+	shares        string
+	amount        string
+	pricePerShare string
+	commission    string
+	date          string
+	memo          string
+	lot           string
+}
+
+// newInvestmentSellCmd registers `tmoney investment sell`. The database
+// file is taken from the persistent `--file` / `-f` flag inherited from
+// the root command. `--account`, `--ticker`, and `--shares` are required;
+// at least one of `--amount` or `--price-per-share` must be supplied.
+func newInvestmentSellCmd() *cobra.Command {
+	opts := &investmentSellOptions{}
+	cmd := &cobra.Command{
+		Use:   "sell",
+		Short: "Sell shares of a security in an investment account",
+		Long: "Record a sell of shares in an investment account. " +
+			"Supply either --amount (total proceeds) or --price-per-share, " +
+			"or both. Cash is credited to the account; for lot-tracked " +
+			"accounts pass --lot to allocate against a specific open lot.",
+		Example: "  tmoney investment sell --account Brokerage --ticker AAPL --shares 5 --price-per-share 160\n" +
+			"  tmoney investment sell --account Brokerage --ticker AAPL --shares 5 --amount 800 --commission 10",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runInvestmentSell(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.account, "account", "", "Investment account name (required)")
+	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Security ticker (required)")
+	cmd.Flags().StringVar(&opts.shares, "shares", "", "Number of shares (required)")
+	cmd.Flags().StringVar(&opts.amount, "amount", "", "Total proceeds (alternative or in addition to --price-per-share)")
+	cmd.Flags().StringVar(&opts.pricePerShare, "price-per-share", "", "Price per share")
+	cmd.Flags().StringVar(&opts.commission, "commission", "", "Commission amount (default 0)")
+	cmd.Flags().StringVar(&opts.date, "date", "", "Transaction date YYYY-MM-DD (default today)")
+	cmd.Flags().StringVar(&opts.memo, "memo", "", "Free-form memo")
+	cmd.Flags().StringVar(&opts.lot, "lot", "", "Lot ID to allocate the sell against (lot-tracked accounts)")
+	_ = cmd.MarkFlagRequired("account")
+	_ = cmd.MarkFlagRequired("ticker")
+	_ = cmd.MarkFlagRequired("shares")
+	return cmd
+}
+
+// runInvestmentSell executes `tmoney investment sell`: sell shares of a
+// security in an investment account.
+func runInvestmentSell(opts *investmentSellOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--sell requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
 	}
-	if opts.accountName == "" {
-		return fmt.Errorf("--sell requires --account to specify an investment account")
-	}
-	if opts.secTicker == "" {
-		return fmt.Errorf("--sell requires --ticker to specify a security")
-	}
-	if opts.shares == "" {
-		return fmt.Errorf("--sell requires --shares to specify the number of shares")
-	}
-	if opts.txAmount == "" && opts.pricePerShare == "" {
-		return fmt.Errorf("--sell requires --amount (total) and/or --price-per-share")
+	if opts.amount == "" && opts.pricePerShare == "" {
+		return fmt.Errorf("--amount (total) and/or --price-per-share is required")
 	}
 
 	shares, err := types.NewQuantity(opts.shares)
@@ -32,8 +76,8 @@ func runSell(opts *cliOptions, w io.Writer) error {
 	}
 
 	var totalAmount *types.Money
-	if opts.txAmount != "" {
-		a, err := types.NewMoney(opts.txAmount)
+	if opts.amount != "" {
+		a, err := types.NewMoney(opts.amount)
 		if err != nil {
 			return fmt.Errorf("invalid --amount: %w", err)
 		}
@@ -58,8 +102,8 @@ func runSell(opts *cliOptions, w io.Writer) error {
 	}
 
 	var date types.Date
-	if opts.txDate != "" {
-		date, err = types.ParseDate(opts.txDate)
+	if opts.date != "" {
+		date, err = types.ParseDate(opts.date)
 		if err != nil {
 			return fmt.Errorf("invalid --date: %w", err)
 		}
@@ -73,20 +117,19 @@ func runSell(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	acct, err := svc.Account.GetByName(opts.accountName)
+	acct, err := svc.Account.GetByName(opts.account)
 	if err != nil {
-		return fmt.Errorf("account %q not found", opts.accountName)
+		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	sec, err := svc.Security.GetByTicker(opts.ticker, "")
 	if err != nil {
-		return fmt.Errorf("security %q not found", opts.secTicker)
+		return fmt.Errorf("security %q not found", opts.ticker)
 	}
 	if sec.Hidden {
-		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.secTicker)
+		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.ticker)
 	}
 
-	// Parse lot allocations if provided (for lot-tracking accounts)
 	var lotAllocations []investment.SellLotAllocation
 	if opts.lot != "" {
 		lotID, err := types.ParseID(opts.lot)
@@ -98,7 +141,7 @@ func runSell(opts *cliOptions, w io.Writer) error {
 		}
 	}
 
-	txn, err := svc.Investment.Sell(acct.ID, sec.ID, date, shares, totalAmount, pricePerShare, commission, opts.txMemo, lotAllocations)
+	txn, err := svc.Investment.Sell(acct.ID, sec.ID, date, shares, totalAmount, pricePerShare, commission, opts.memo, lotAllocations)
 	if err != nil {
 		return fmt.Errorf("failed to create sell transaction: %w", err)
 	}
