@@ -429,145 +429,6 @@ func TestRun_ReportSpendingInvalidMonthValue(t *testing.T) {
 
 // --- Reconciliation CLI Tests ---
 
-func TestRun_StartReconcileMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--start-reconcile", "--account", "Checking", "--statement-date", "2024-01-31", "--statement-balance", "5000"}, stdout, stderr)
-	if err == nil {
-		t.Error("should fail without --file")
-	}
-	if !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("error should mention --file, got: %v", err)
-	}
-}
-
-func TestRun_StartReconcileMissingAccount(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--start-reconcile", "--file", "test.tdb", "--statement-date", "2024-01-31", "--statement-balance", "5000"}, stdout, stderr)
-	if err == nil {
-		t.Error("should fail without --account")
-	}
-	if !strings.Contains(err.Error(), "requires --account") {
-		t.Errorf("error should mention --account, got: %v", err)
-	}
-}
-
-func TestRun_StartReconcileMissingDate(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--start-reconcile", "--file", "test.tdb", "--account", "Checking", "--statement-balance", "5000"}, stdout, stderr)
-	if err == nil {
-		t.Error("should fail without --statement-date")
-	}
-	if !strings.Contains(err.Error(), "requires --statement-date") {
-		t.Errorf("error should mention --statement-date, got: %v", err)
-	}
-}
-
-func TestRun_StartReconcileMissingBalance(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--start-reconcile", "--file", "test.tdb", "--account", "Checking", "--statement-date", "2024-01-31"}, stdout, stderr)
-	if err == nil {
-		t.Error("should fail without --statement-balance")
-	}
-	if !strings.Contains(err.Error(), "requires --statement-balance") {
-		t.Errorf("error should mention --statement-balance, got: %v", err)
-	}
-}
-
-func TestRun_StartReconcileSuccess(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-
-	// Create a test account
-	acctRepo := account.NewRepository(database)
-	acct := account.NewAccount(
-		"Checking",
-		account.TypeChecking,
-		"USD",
-		types.MustNewMoney("1000.00"),
-		types.MustParseDate("2024-01-01"),
-	)
-	if err := acctRepo.Create(acct); err != nil {
-		t.Fatalf("failed to create test account: %v", err)
-	}
-
-	// Create some transactions
-	txnRepo := transaction.NewRepository(database)
-	txn1 := transaction.NewTransaction(acct.ID, types.MustParseDate("2024-01-05"), types.MustNewMoney("-50.00"))
-	txn2 := transaction.NewTransaction(acct.ID, types.MustParseDate("2024-01-10"), types.MustNewMoney("-100.00"))
-	if err := txnRepo.Create(txn1); err != nil {
-		t.Fatalf("failed to create transaction: %v", err)
-	}
-	if err := txnRepo.Create(txn2); err != nil {
-		t.Fatalf("failed to create transaction: %v", err)
-	}
-
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{
-		"--start-reconcile",
-		"--file", dbPath,
-		"--account", "Checking",
-		"--statement-date", "2024-01-31",
-		"--statement-balance", "850.00",
-	}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--start-reconcile) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Reconciliation started for Checking") {
-		t.Error("output should confirm reconciliation started")
-	}
-	if !strings.Contains(output, "2024-01-31") {
-		t.Error("output should contain statement date")
-	}
-	if !strings.Contains(output, "$850.00") {
-		t.Error("output should contain statement balance")
-	}
-	if !strings.Contains(output, "Unreconciled transactions: 2") {
-		t.Errorf("output should show 2 unreconciled transactions, got:\n%s", output)
-	}
-}
-
-func TestRun_StartReconcileAccountNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{
-		"--start-reconcile",
-		"--file", dbPath,
-		"--account", "NonExistent",
-		"--statement-date", "2024-01-31",
-		"--statement-balance", "5000",
-	}, stdout, stderr)
-	if err == nil {
-		t.Error("should fail with nonexistent account")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error should mention account not found, got: %v", err)
-	}
-}
-
 func TestRun_MarkReconciledMissingFile(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -1004,8 +865,8 @@ func TestRun_FullReconciliationWorkflow(t *testing.T) {
 	// Step 1: Start reconciliation
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err = run([]string{
-		"--start-reconcile",
+	err = executeWith([]string{
+		"reconcile", "start",
 		"--file", dbPath,
 		"--account", "Checking",
 		"--statement-date", "2024-01-31",
@@ -1066,29 +927,8 @@ func TestRun_FullReconciliationWorkflow(t *testing.T) {
 }
 
 func TestParseArgs_ReconciliationFlags(t *testing.T) {
-	// Test --start-reconcile flag parsing
-	opts, _, err := parseArgs([]string{
-		"--start-reconcile",
-		"--file", "test.tdb",
-		"--account", "Checking",
-		"--statement-date", "2024-01-31",
-		"--statement-balance", "5000.00",
-	})
-	if err != nil {
-		t.Fatalf("parseArgs failed: %v", err)
-	}
-	if !opts.startReconcile {
-		t.Error("startReconcile should be true")
-	}
-	if opts.statementDate != "2024-01-31" {
-		t.Errorf("statementDate should be 2024-01-31, got %q", opts.statementDate)
-	}
-	if opts.statementBalance != "5000.00" {
-		t.Errorf("statementBalance should be 5000.00, got %q", opts.statementBalance)
-	}
-
 	// Test --finish-reconcile with --force
-	opts, _, err = parseArgs([]string{
+	opts, _, err := parseArgs([]string{
 		"--finish-reconcile",
 		"--force",
 		"--file", "test.tdb",
@@ -1127,22 +967,6 @@ func TestParseArgs_ReconciliationFlags(t *testing.T) {
 	}
 	if !opts.reconcileStatus {
 		t.Error("reconcileStatus should be true")
-	}
-
-	// Test = form for statement-date and statement-balance
-	opts, _, err = parseArgs([]string{
-		"--start-reconcile",
-		"--statement-date=2024-02-28",
-		"--statement-balance=1234.56",
-	})
-	if err != nil {
-		t.Fatalf("parseArgs failed: %v", err)
-	}
-	if opts.statementDate != "2024-02-28" {
-		t.Errorf("statementDate should be 2024-02-28, got %q", opts.statementDate)
-	}
-	if opts.statementBalance != "1234.56" {
-		t.Errorf("statementBalance should be 1234.56, got %q", opts.statementBalance)
 	}
 }
 

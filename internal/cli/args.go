@@ -53,13 +53,10 @@ type cliOptions struct {
 	reportAsOf  string // --as-of YYYY-MM-DD for net-worth
 
 	// Reconciliation options
-	startReconcile   bool     // --start-reconcile flag
-	markReconciled   []string // --mark-reconciled <txn-id>... (remaining args)
-	finishReconcile  bool     // --finish-reconcile flag
-	reconcileStatus  bool     // --reconcile-status flag
-	reconcileForce   bool     // --force flag (for finish with non-zero diff)
-	statementDate    string   // --statement-date <YYYY-MM-DD>
-	statementBalance string   // --statement-balance <amount>
+	markReconciled  []string // --mark-reconciled <txn-id>... (remaining args)
+	finishReconcile bool     // --finish-reconcile flag
+	reconcileStatus bool     // --reconcile-status flag
+	reconcileForce  bool     // --force flag (for finish with non-zero diff)
 
 	// Import options
 	importFile       string // --import <file>
@@ -297,26 +294,12 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.reportAsOf = args[i]
-		case "--start-reconcile":
-			opts.startReconcile = true
 		case "--finish-reconcile":
 			opts.finishReconcile = true
 		case "--reconcile-status":
 			opts.reconcileStatus = true
 		case "--force":
 			opts.reconcileForce = true
-		case "--statement-date":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--statement-date requires a date argument (YYYY-MM-DD)")
-			}
-			i++
-			opts.statementDate = args[i]
-		case "--statement-balance":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--statement-balance requires an amount argument")
-			}
-			i++
-			opts.statementBalance = args[i]
 		case "--mark-reconciled":
 			// Collect all following non-flag arguments as transaction IDs
 			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
@@ -615,10 +598,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.reportYear = year
 			} else if after, ok := strings.CutPrefix(arg, "--as-of="); ok {
 				opts.reportAsOf = after
-			} else if after, ok := strings.CutPrefix(arg, "--statement-date="); ok {
-				opts.statementDate = after
-			} else if after, ok := strings.CutPrefix(arg, "--statement-balance="); ok {
-				opts.statementBalance = after
 			} else if after, ok := strings.CutPrefix(arg, "--import="); ok {
 				opts.importFile = after
 			} else if after, ok := strings.CutPrefix(arg, "--export="); ok {

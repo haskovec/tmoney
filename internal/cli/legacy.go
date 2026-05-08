@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --start-reconcile
-	if opts.startReconcile {
-		return runStartReconcile(opts, stdout)
-	}
-
 	// Handle --mark-reconciled
 	if len(opts.markReconciled) > 0 {
 		return runMarkReconciled(opts, stdout)

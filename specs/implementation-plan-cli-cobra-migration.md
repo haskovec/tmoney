@@ -179,7 +179,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 - [x] **CM-024 — Phase prep: split `reconcile` handlers** (completed 2026-05-08)
   - GREEN: create `reconcile_start.go`, `reconcile_mark.go`, `reconcile_finish.go`, `reconcile_status.go` containing `runStartReconcile`, `runMarkReconciled`, `runFinishReconcile`, `runReconcileStatus` cut verbatim.
 
-- [ ] **CM-025 — `tmoney reconcile start`**
+- [x] **CM-025 — `tmoney reconcile start`** (completed 2026-05-08)
   - RED: tests covering `TestRun_StartReconcile*` (statement-date, statement-balance).
   - GREEN: create `reconcile.go` (parent). `reconcile_start.go` with `reconcileStartOptions{ file, account, statementDate, statementBalance string }`, `newReconcileStartCmd()` with required flags. Register on root; add `"reconcile"` to `cobraSubcommands`. Add help smoke test.
   - CLEANUP: delete `--start-reconcile`, `--statement-date`, `--statement-balance` plumbing.

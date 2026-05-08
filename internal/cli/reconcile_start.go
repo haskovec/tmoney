@@ -5,30 +5,56 @@ import (
 	"io"
 
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runStartReconcile starts a reconciliation session for an account.
-func runStartReconcile(opts *cliOptions, w io.Writer) error {
+// reconcileStartOptions are the inputs to `tmoney reconcile start`.
+type reconcileStartOptions struct {
+	file             string
+	account          string
+	statementDate    string
+	statementBalance string
+}
+
+// newReconcileStartCmd registers `tmoney reconcile start`. The database
+// file is taken from the persistent `--file` / `-f` flag inherited from
+// the root command.
+func newReconcileStartCmd() *cobra.Command {
+	opts := &reconcileStartOptions{}
+	cmd := &cobra.Command{
+		Use:   "start",
+		Short: "Start a reconciliation session for an account",
+		Long: "Start a reconciliation session against a statement: " +
+			"records the statement date and balance and reports how many " +
+			"unreconciled transactions are eligible to be marked.",
+		Example:      "  tmoney reconcile start --account Checking --statement-date 2024-01-31 --statement-balance 850.00 --file personal.tdb",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runReconcileStart(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.account, "account", "", "Account name to reconcile (required)")
+	cmd.Flags().StringVar(&opts.statementDate, "statement-date", "", "Statement closing date YYYY-MM-DD (required)")
+	cmd.Flags().StringVar(&opts.statementBalance, "statement-balance", "", "Statement closing balance (required)")
+	_ = cmd.MarkFlagRequired("account")
+	_ = cmd.MarkFlagRequired("statement-date")
+	_ = cmd.MarkFlagRequired("statement-balance")
+	return cmd
+}
+
+// runReconcileStart starts a reconciliation session for an account.
+func runReconcileStart(opts *reconcileStartOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--start-reconcile requires --file to specify a database")
-	}
-	if opts.accountName == "" {
-		return fmt.Errorf("--start-reconcile requires --account to specify an account")
-	}
-	if opts.statementDate == "" {
-		return fmt.Errorf("--start-reconcile requires --statement-date")
-	}
-	if opts.statementBalance == "" {
-		return fmt.Errorf("--start-reconcile requires --statement-balance")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
-	// Parse statement date
 	stmtDate, err := types.ParseDate(opts.statementDate)
 	if err != nil {
 		return fmt.Errorf("invalid --statement-date: %w", err)
 	}
 
-	// Parse statement balance
 	stmtBalance, err := types.NewMoney(opts.statementBalance)
 	if err != nil {
 		return fmt.Errorf("invalid --statement-balance: %w", err)
@@ -40,25 +66,22 @@ func runStartReconcile(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// Get account by name
-	account, err := svc.Account.GetByName(opts.accountName)
+	account, err := svc.Account.GetByName(opts.account)
 	if err != nil {
-		return fmt.Errorf("account %q not found", opts.accountName)
+		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	// Start reconciliation
 	session, err := svc.Reconciliation.StartReconciliation(account.ID, stmtDate, stmtBalance)
 	if err != nil {
 		return fmt.Errorf("failed to start reconciliation: %w", err)
 	}
 
-	// Get candidate transaction count
 	candidates, err := svc.Reconciliation.GetCandidateTransactions(account.ID, stmtDate)
 	if err != nil {
 		return fmt.Errorf("failed to get candidate transactions: %w", err)
 	}
 
-	_ = session // session created successfully
+	_ = session
 	fmt.Fprintf(w, "Reconciliation started for %s\n", account.Name)
 	fmt.Fprintf(w, "  Statement date:    %s\n", stmtDate.String())
 	fmt.Fprintf(w, "  Statement balance: %s\n", formatMoney(stmtBalance, account.Currency))
