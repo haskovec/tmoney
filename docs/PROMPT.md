@@ -10,4 +10,3 @@ IMPORTANT:
 - lint the code with golangci-lint
 - when tests pass commit the changes and push
 - update the implementation-plan-cli-cobra-migration.md file marking the task as done
-- at the end of the process display the code coverage metrics for the project
