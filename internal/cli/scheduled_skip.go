@@ -5,12 +5,41 @@ import (
 	"io"
 
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runSkipScheduled skips a scheduled transaction (advances to next date without posting).
-func runSkipScheduled(opts *cliOptions, w io.Writer) error {
+// scheduledSkipOptions are the inputs to `tmoney scheduled skip`.
+type scheduledSkipOptions struct {
+	file string
+	id   string
+}
+
+// newScheduledSkipCmd registers `tmoney scheduled skip <id>`. The
+// database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command.
+func newScheduledSkipCmd() *cobra.Command {
+	opts := &scheduledSkipOptions{}
+	cmd := &cobra.Command{
+		Use:   "skip <id>",
+		Short: "Skip a scheduled transaction's next occurrence",
+		Long: "Advance a scheduled transaction to its next occurrence " +
+			"without creating a real transaction for the current one.",
+		Example:      "  tmoney scheduled skip <id> --file personal.tdb",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			opts.id = args[0]
+			return runScheduledSkip(opts, cmd.OutOrStdout())
+		},
+	}
+	return cmd
+}
+
+// runScheduledSkip skips a scheduled transaction (advances to next date without posting).
+func runScheduledSkip(opts *scheduledSkipOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--skip-scheduled requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	database, svc, err := openServices(opts.file)
@@ -19,38 +48,30 @@ func runSkipScheduled(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// Parse the scheduled transaction ID
-	stID, err := types.ParseID(opts.skipScheduled)
+	stID, err := types.ParseID(opts.id)
 	if err != nil {
 		return fmt.Errorf("invalid scheduled transaction ID: %w", err)
 	}
 
-	// Get the scheduled transaction first to show details
 	st, err := svc.Scheduled.GetByID(stID)
 	if err != nil {
 		return fmt.Errorf("scheduled transaction not found: %w", err)
 	}
 
-	// Remember the old next date
 	oldNextDate := st.NextDate
 
-	// Skip the scheduled transaction
-	err = svc.Scheduled.Skip(stID)
-	if err != nil {
+	if err := svc.Scheduled.Skip(stID); err != nil {
 		return fmt.Errorf("failed to skip scheduled transaction: %w", err)
 	}
 
-	// Get updated scheduled transaction for next date
 	stUpdated, _ := svc.Scheduled.GetByID(stID)
 
-	// Get account info
 	acct, _ := svc.AccountRepo.GetByID(st.AccountID)
 	accountName := "Unknown"
 	if acct != nil {
 		accountName = acct.Name
 	}
 
-	// Get payee name
 	payeeName := "-"
 	if st.HasPayee() {
 		py, err := svc.PayeeRepo.GetByID(st.PayeeID.ID)
@@ -59,7 +80,6 @@ func runSkipScheduled(opts *cliOptions, w io.Writer) error {
 		}
 	}
 
-	// Print confirmation
 	fmt.Fprintln(w, "Scheduled transaction skipped!")
 	fmt.Fprintf(w, "  Account:     %s\n", accountName)
 	if payeeName != "-" {

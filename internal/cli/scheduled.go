@@ -22,5 +22,6 @@ func newScheduledCmd() *cobra.Command {
 	cmd.AddCommand(newScheduledAddCmd())
 	cmd.AddCommand(newScheduledListCmd())
 	cmd.AddCommand(newScheduledPostCmd())
+	cmd.AddCommand(newScheduledSkipCmd())
 	return cmd
 }
