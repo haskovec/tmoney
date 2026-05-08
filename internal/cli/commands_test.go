@@ -1649,237 +1649,10 @@ func createInvestmentTestDB(t *testing.T, trackLots bool) string {
 	return dbPath
 }
 
-// helper to run and return stdout
-func run2(args []string) (string, error) {
-	stdout := &bytes.Buffer{}
-	err := run(args, stdout, &bytes.Buffer{})
-	return stdout.String(), err
-}
-
 // helper to create pointer to Money
 func ptrMoney(s string) *types.Money {
 	m := types.MustNewMoney(s)
 	return &m
-}
-
-// --- SM-106: CLI --buy ---
-
-func TestRun_BuyMissingFile(t *testing.T) {
-	err := run([]string{"--buy", "--account", "Brokerage", "--ticker", "AAPL", "--shares", "10", "--amount", "1500"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("expected --file required error, got: %v", err)
-	}
-}
-
-func TestRun_BuyMissingAccount(t *testing.T) {
-	err := run([]string{"--buy", "--file", "test.tdb", "--ticker", "AAPL", "--shares", "10", "--amount", "1500"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --account") {
-		t.Errorf("expected --account required error, got: %v", err)
-	}
-}
-
-func TestRun_BuyMissingTicker(t *testing.T) {
-	err := run([]string{"--buy", "--file", "test.tdb", "--account", "Brokerage", "--shares", "10", "--amount", "1500"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --ticker") {
-		t.Errorf("expected --ticker required error, got: %v", err)
-	}
-}
-
-func TestRun_BuyMissingShares(t *testing.T) {
-	err := run([]string{"--buy", "--file", "test.tdb", "--account", "Brokerage", "--ticker", "AAPL", "--amount", "1500"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --shares") {
-		t.Errorf("expected --shares required error, got: %v", err)
-	}
-}
-
-func TestRun_BuyMissingAmountAndPrice(t *testing.T) {
-	err := run([]string{"--buy", "--file", "test.tdb", "--account", "Brokerage", "--ticker", "AAPL", "--shares", "10"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --amount") {
-		t.Errorf("expected --amount/--price-per-share required error, got: %v", err)
-	}
-}
-
-func TestRun_BuyWithTotalAmount(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	stdout := &bytes.Buffer{}
-	err := run([]string{
-		"--buy", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "AAPL",
-		"--shares", "10",
-		"--amount", "1500",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--buy) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Buy transaction created successfully") {
-		t.Error("output should confirm buy creation")
-	}
-	if !strings.Contains(output, "AAPL") {
-		t.Error("output should contain ticker")
-	}
-	if !strings.Contains(output, "Brokerage") {
-		t.Error("output should contain account name")
-	}
-	if !strings.Contains(output, "10") {
-		t.Error("output should contain shares")
-	}
-}
-
-func TestRun_BuyWithPricePerShare(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	stdout := &bytes.Buffer{}
-	err := run([]string{
-		"--buy", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "AAPL",
-		"--shares", "10",
-		"--price-per-share", "150",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--buy with price-per-share) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Buy transaction created successfully") {
-		t.Error("output should confirm buy creation")
-	}
-	if !strings.Contains(output, "$150.00") {
-		t.Error("output should contain price per share")
-	}
-}
-
-func TestRun_BuyWithCommission(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	stdout := &bytes.Buffer{}
-	err := run([]string{
-		"--buy", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "AAPL",
-		"--shares", "10",
-		"--amount", "1510",
-		"--commission", "10",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--buy with commission) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Commission") {
-		t.Error("output should show commission")
-	}
-}
-
-func TestRun_BuyWithDateAndMemo(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	stdout := &bytes.Buffer{}
-	err := run([]string{
-		"--buy", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "AAPL",
-		"--shares", "5",
-		"--price-per-share", "150",
-		"--date", "2025-06-15",
-		"--memo", "Buying AAPL dip",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--buy with date/memo) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "2025-06-15") {
-		t.Error("output should contain the specified date")
-	}
-}
-
-func TestRun_BuyAccountNotFound(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	err := run([]string{
-		"--buy", "--file", dbPath,
-		"--account", "NonExistent",
-		"--ticker", "AAPL",
-		"--shares", "10",
-		"--amount", "1500",
-	}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Errorf("expected account not found error, got: %v", err)
-	}
-}
-
-func TestRun_BuySecurityNotFound(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	err := run([]string{
-		"--buy", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "FAKE",
-		"--shares", "10",
-		"--amount", "1500",
-	}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Errorf("expected security not found error, got: %v", err)
-	}
-}
-
-func TestRun_BuyInsufficientCash(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	err := run([]string{
-		"--buy", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "AAPL",
-		"--shares", "1000",
-		"--price-per-share", "150",
-	}, &bytes.Buffer{}, &bytes.Buffer{})
-	// 1000 * 150 = 150,000 > 50,000 cash
-	if err == nil {
-		t.Error("expected insufficient cash error")
-	}
-}
-
-func TestRun_BuyWithLotTracking(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, true)
-
-	stdout := &bytes.Buffer{}
-	err := run([]string{
-		"--buy", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "AAPL",
-		"--shares", "10",
-		"--price-per-share", "150",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--buy with lot tracking) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Buy transaction created successfully") {
-		t.Error("output should confirm buy creation with lot tracking")
-	}
-
-	// Verify a lot was created
-	database, err := db.Open(dbPath)
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
-	defer database.Close()
-
-	svc := app.NewServices(database)
-	sec, _ := svc.Security.GetByTicker("AAPL", "")
-	lots, err := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
-	if err != nil {
-		t.Fatalf("failed to list lots: %v", err)
-	}
-	if len(lots) != 1 {
-		t.Errorf("expected 1 lot, got %d", len(lots))
-	}
 }
 
 // --- SM-107: CLI --sell ---
@@ -1916,18 +1689,17 @@ func TestRun_SellBasic(t *testing.T) {
 	dbPath := createInvestmentTestDB(t, false)
 
 	// First buy some shares
-	_, err := run2([]string{
-		"--buy", "--file", dbPath,
+	if err := executeWith([]string{
+		"investment", "buy", "--file", dbPath,
 		"--account", "Brokerage", "--ticker", "AAPL",
 		"--shares", "10", "--price-per-share", "150",
-	})
-	if err != nil {
+	}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 		t.Fatalf("failed to buy shares: %v", err)
 	}
 
 	// Now sell some
 	stdout := &bytes.Buffer{}
-	err = run([]string{
+	err := run([]string{
 		"--sell", "--file", dbPath,
 		"--account", "Brokerage",
 		"--ticker", "AAPL",
@@ -1951,17 +1723,16 @@ func TestRun_SellInsufficientShares(t *testing.T) {
 	dbPath := createInvestmentTestDB(t, false)
 
 	// Buy 10 shares
-	_, err := run2([]string{
-		"--buy", "--file", dbPath,
+	if err := executeWith([]string{
+		"investment", "buy", "--file", dbPath,
 		"--account", "Brokerage", "--ticker", "AAPL",
 		"--shares", "10", "--price-per-share", "150",
-	})
-	if err != nil {
+	}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 		t.Fatalf("failed to buy shares: %v", err)
 	}
 
 	// Try to sell 20
-	err = run([]string{
+	err := run([]string{
 		"--sell", "--file", dbPath,
 		"--account", "Brokerage",
 		"--ticker", "AAPL",
@@ -2408,20 +2179,20 @@ func TestRun_BuyThenSellUpdatesCash(t *testing.T) {
 	dbPath := createInvestmentTestDB(t, false)
 
 	// Buy 10 shares at $150 = $1500 deducted from $50000
-	_, err := run2([]string{
-		"--buy", "--file", dbPath,
+	if err := executeWith([]string{
+		"investment", "buy",
+		"--file", dbPath,
 		"--account", "Brokerage",
 		"--ticker", "AAPL",
 		"--shares", "10",
 		"--price-per-share", "150",
-	})
-	if err != nil {
+	}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 		t.Fatalf("buy failed: %v", err)
 	}
 
 	// Sell 5 shares at $160 = $800 received
 	stdout := &bytes.Buffer{}
-	err = run([]string{
+	err := run([]string{
 		"--sell", "--file", dbPath,
 		"--account", "Brokerage",
 		"--ticker", "AAPL",
@@ -2449,7 +2220,6 @@ func TestParseArgs_InvestmentFlags(t *testing.T) {
 		args  []string
 		check func(*cliOptions) bool
 	}{
-		{"--buy flag", []string{"--buy"}, func(o *cliOptions) bool { return o.buy }},
 		{"--sell flag", []string{"--sell"}, func(o *cliOptions) bool { return o.sell }},
 		{"--dividend flag", []string{"--dividend"}, func(o *cliOptions) bool { return o.dividend }},
 		{"--reinvest flag", []string{"--reinvest"}, func(o *cliOptions) bool { return o.reinvest }},

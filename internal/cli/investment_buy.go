@@ -5,24 +5,66 @@ import (
 	"io"
 
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runBuy executes the --buy command: buy shares of a security in an investment account.
-func runBuy(opts *cliOptions, w io.Writer) error {
+// investmentBuyOptions are the inputs to `tmoney investment buy`.
+type investmentBuyOptions struct {
+	file          string
+	account       string
+	ticker        string
+	shares        string
+	amount        string
+	pricePerShare string
+	commission    string
+	date          string
+	memo          string
+}
+
+// newInvestmentBuyCmd registers `tmoney investment buy`. The database
+// file is taken from the persistent `--file` / `-f` flag inherited from
+// the root command. `--account`, `--ticker`, and `--shares` are required;
+// at least one of `--amount` or `--price-per-share` must be supplied.
+func newInvestmentBuyCmd() *cobra.Command {
+	opts := &investmentBuyOptions{}
+	cmd := &cobra.Command{
+		Use:   "buy",
+		Short: "Buy shares of a security in an investment account",
+		Long: "Record a buy of shares in an investment account. " +
+			"Supply either --amount (total cost) or --price-per-share, " +
+			"or both. Cash is debited from the account; if lot tracking " +
+			"is enabled on the account a new lot is opened.",
+		Example: "  tmoney investment buy --account Brokerage --ticker AAPL --shares 10 --amount 1500\n" +
+			"  tmoney investment buy --account Brokerage --ticker AAPL --shares 10 --price-per-share 150",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runInvestmentBuy(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.account, "account", "", "Investment account name (required)")
+	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Security ticker (required)")
+	cmd.Flags().StringVar(&opts.shares, "shares", "", "Number of shares (required)")
+	cmd.Flags().StringVar(&opts.amount, "amount", "", "Total amount (alternative or in addition to --price-per-share)")
+	cmd.Flags().StringVar(&opts.pricePerShare, "price-per-share", "", "Price per share")
+	cmd.Flags().StringVar(&opts.commission, "commission", "", "Commission amount (default 0)")
+	cmd.Flags().StringVar(&opts.date, "date", "", "Transaction date YYYY-MM-DD (default today)")
+	cmd.Flags().StringVar(&opts.memo, "memo", "", "Free-form memo")
+	_ = cmd.MarkFlagRequired("account")
+	_ = cmd.MarkFlagRequired("ticker")
+	_ = cmd.MarkFlagRequired("shares")
+	return cmd
+}
+
+// runInvestmentBuy executes `tmoney investment buy`: buy shares of a
+// security in an investment account.
+func runInvestmentBuy(opts *investmentBuyOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--buy requires --file to specify a database")
+		return fmt.Errorf("--file is required to specify a database")
 	}
-	if opts.accountName == "" {
-		return fmt.Errorf("--buy requires --account to specify an investment account")
-	}
-	if opts.secTicker == "" {
-		return fmt.Errorf("--buy requires --ticker to specify a security")
-	}
-	if opts.shares == "" {
-		return fmt.Errorf("--buy requires --shares to specify the number of shares")
-	}
-	if opts.txAmount == "" && opts.pricePerShare == "" {
-		return fmt.Errorf("--buy requires --amount (total) and/or --price-per-share")
+	if opts.amount == "" && opts.pricePerShare == "" {
+		return fmt.Errorf("--amount (total) and/or --price-per-share is required")
 	}
 
 	shares, err := types.NewQuantity(opts.shares)
@@ -31,8 +73,8 @@ func runBuy(opts *cliOptions, w io.Writer) error {
 	}
 
 	var totalAmount *types.Money
-	if opts.txAmount != "" {
-		a, err := types.NewMoney(opts.txAmount)
+	if opts.amount != "" {
+		a, err := types.NewMoney(opts.amount)
 		if err != nil {
 			return fmt.Errorf("invalid --amount: %w", err)
 		}
@@ -57,8 +99,8 @@ func runBuy(opts *cliOptions, w io.Writer) error {
 	}
 
 	var date types.Date
-	if opts.txDate != "" {
-		date, err = types.ParseDate(opts.txDate)
+	if opts.date != "" {
+		date, err = types.ParseDate(opts.date)
 		if err != nil {
 			return fmt.Errorf("invalid --date: %w", err)
 		}
@@ -72,20 +114,20 @@ func runBuy(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	acct, err := svc.Account.GetByName(opts.accountName)
+	acct, err := svc.Account.GetByName(opts.account)
 	if err != nil {
-		return fmt.Errorf("account %q not found", opts.accountName)
+		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	sec, err := svc.Security.GetByTicker(opts.ticker, "")
 	if err != nil {
-		return fmt.Errorf("security %q not found", opts.secTicker)
+		return fmt.Errorf("security %q not found", opts.ticker)
 	}
 	if sec.Hidden {
-		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.secTicker)
+		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.ticker)
 	}
 
-	txn, err := svc.Investment.Buy(acct.ID, sec.ID, date, shares, totalAmount, pricePerShare, commission, opts.txMemo)
+	txn, err := svc.Investment.Buy(acct.ID, sec.ID, date, shares, totalAmount, pricePerShare, commission, opts.memo)
 	if err != nil {
 		return fmt.Errorf("failed to create buy transaction: %w", err)
 	}

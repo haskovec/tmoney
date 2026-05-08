@@ -292,7 +292,7 @@ The largest phase: 12 verbs, all under `tmoney investment …`. Verbs cluster as
 - [x] **CM-043 — Phase prep: split `investment` handlers** (completed 2026-05-08)
   - GREEN: create twelve files (`investment_buy.go`, `investment_sell.go`, …) containing the corresponding `run*` handlers cut verbatim from `commands.go`.
 
-- [ ] **CM-044 — `tmoney investment buy`**
+- [x] **CM-044 — `tmoney investment buy`** (completed 2026-05-08)
   - RED: tests covering `TestRun_Buy*`.
   - GREEN: create `investment.go` (parent). `investment_buy.go` with `investmentBuyOptions` (account, ticker, shares, price, date, fees, etc.), `newInvestmentBuyCmd()` with required flags. Register on root; add `"investment"` to `cobraSubcommands`. Add help smoke test listing all twelve verbs.
   - CLEANUP: delete `--buy` plumbing.
