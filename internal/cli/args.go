@@ -64,10 +64,9 @@ type cliOptions struct {
 	exportFile string // --export <file>
 
 	// Security management options
-	deleteSecurity string // --delete-security <ticker>
-	secTicker      string // --ticker <ticker> (for add/edit)
-	secAssetClass  string // --asset-class <class>
-	secExchange    string // --exchange <exchange>
+	secTicker     string // --ticker <ticker> (for add/edit)
+	secAssetClass string // --asset-class <class>
+	secExchange   string // --exchange <exchange>
 
 	// Price management options
 	listPrices    bool     // --prices flag
@@ -311,12 +310,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.sourceAccount = args[i]
-		case "--delete-security":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--delete-security requires a ticker argument")
-			}
-			i++
-			opts.deleteSecurity = args[i]
 		case "--ticker":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--ticker requires a value argument")
@@ -546,8 +539,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.exportFile = after
 			} else if after, ok := strings.CutPrefix(arg, "--format="); ok {
 				opts.formatOverride = after
-			} else if after, ok := strings.CutPrefix(arg, "--delete-security="); ok {
-				opts.deleteSecurity = after
 			} else if after, ok := strings.CutPrefix(arg, "--ticker="); ok {
 				opts.secTicker = after
 			} else if after, ok := strings.CutPrefix(arg, "--asset-class="); ok {

@@ -1422,94 +1422,6 @@ func createTestDBWithSecurity(t *testing.T) (string, *security.Security) {
 	return dbPath, sec
 }
 
-// SM-102: --delete-security
-
-func TestRun_DeleteSecurityMissingFile(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--delete-security", "AAPL"}, stdout, stderr)
-	if err == nil {
-		t.Error("run(--delete-security) without --file should return error")
-	}
-}
-
-func TestRun_DeleteSecurityNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{"--delete-security", "FAKE", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("deleting non-existent security should return error")
-	}
-}
-
-func TestRun_DeleteSecuritySuccess(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err := run([]string{"--delete-security", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err != nil {
-		t.Errorf("run(--delete-security) returned error: %v", err)
-		return
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "deleted successfully") {
-		t.Error("output should confirm deletion")
-	}
-
-	// Security should no longer exist
-	stdout.Reset()
-	err = executeWith([]string{"security", "show", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("deleted security should not be found")
-	}
-}
-
-func TestRun_DeleteSecurityWithPricesSuggestsHide(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-
-	repo := security.NewRepository(database)
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	if err := repo.Create(sec); err != nil {
-		t.Fatalf("failed to create security: %v", err)
-	}
-
-	// Add a price to create a dependency
-	_, err = database.Conn().Exec(
-		`INSERT INTO security_prices (id, security_id, date, price, source, created_at)
-		 VALUES (?, ?, '2024-01-01', 150.00, 'manual', CURRENT_TIMESTAMP)`,
-		types.NewID().String(), sec.ID.String(),
-	)
-	if err != nil {
-		t.Fatalf("failed to create price: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	err = run([]string{"--delete-security", "AAPL", "--file", dbPath}, stdout, stderr)
-	if err == nil {
-		t.Error("deleting security with prices should return error")
-	}
-	if !strings.Contains(err.Error(), "security hide") {
-		t.Errorf("error should suggest using `security hide`, got: %v", err)
-	}
-}
-
 // Args parsing tests for security flags
 
 func TestParseArgs_SecurityFlags(t *testing.T) {
@@ -1518,15 +1430,6 @@ func TestParseArgs_SecurityFlags(t *testing.T) {
 		args  []string
 		check func(t *testing.T, opts *cliOptions)
 	}{
-		{
-			"delete-security flag",
-			[]string{"--delete-security", "AAPL"},
-			func(t *testing.T, opts *cliOptions) {
-				if opts.deleteSecurity != "AAPL" {
-					t.Errorf("deleteSecurity = %q, want AAPL", opts.deleteSecurity)
-				}
-			},
-		},
 		{
 			"ticker flag",
 			[]string{"--ticker", "MSFT"},
@@ -1556,11 +1459,8 @@ func TestParseArgs_SecurityFlags(t *testing.T) {
 		},
 		{
 			"combined security flags",
-			[]string{"--delete-security", "AAPL", "--ticker", "MSFT", "--name", "Apple", "--type", "stock", "--asset-class", "large_cap_stock", "--exchange", "NASDAQ"},
+			[]string{"--ticker", "MSFT", "--name", "Apple", "--type", "stock", "--asset-class", "large_cap_stock", "--exchange", "NASDAQ"},
 			func(t *testing.T, opts *cliOptions) {
-				if opts.deleteSecurity != "AAPL" {
-					t.Errorf("deleteSecurity = %q, want AAPL", opts.deleteSecurity)
-				}
 				if opts.secTicker != "MSFT" {
 					t.Errorf("secTicker = %q, want MSFT", opts.secTicker)
 				}
@@ -1597,7 +1497,6 @@ func TestParseArgs_SecurityFlagsMissingArgs(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"delete-security missing ticker", []string{"--delete-security"}},
 		{"ticker missing value", []string{"--ticker"}},
 		{"asset-class missing value", []string{"--asset-class"}},
 		{"exchange missing value", []string{"--exchange"}},

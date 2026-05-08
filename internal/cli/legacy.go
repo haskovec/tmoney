@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --delete-security
-	if opts.deleteSecurity != "" {
-		return runDeleteSecurity(opts, stdout)
-	}
-
 	// Handle --prices (list prices for a ticker)
 	if opts.listPrices {
 		return runListPrices(opts, stdout)
