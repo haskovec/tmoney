@@ -289,7 +289,7 @@ The final cleanup phase (Phase 12) deletes whatever residual plumbing is left af
 
 The largest phase: 12 verbs, all under `tmoney investment …`. Verbs cluster as trading (buy/sell/dividend/reinvest), cash flow (fee/deposit/withdraw/transfer), corporate actions (split/merge/spin-off), and reporting (portfolio).
 
-- [ ] **CM-043 — Phase prep: split `investment` handlers**
+- [x] **CM-043 — Phase prep: split `investment` handlers** (completed 2026-05-08)
   - GREEN: create twelve files (`investment_buy.go`, `investment_sell.go`, …) containing the corresponding `run*` handlers cut verbatim from `commands.go`.
 
 - [ ] **CM-044 — `tmoney investment buy`**
