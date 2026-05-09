@@ -211,7 +211,7 @@ Mechanical migration of the remaining 9 dialogs to `AddDateField`. Each item is 
   - CLEANUP: none.
   - DOCS: deferred to Phase 6.
 
-- [ ] **TD-014 — Migrate account opening-date and reconciliation statement-date**
+- [x] **TD-014 — Migrate account opening-date and reconciliation statement-date**
   - RED: existing tests stay green; add at least one assertion that the masked widget is in use (e.g., assert field type).
   - GREEN: swap to `AddDateField`:
     - `internal/tui/account_dialog.go:150` and `:194`

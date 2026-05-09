@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
@@ -146,8 +145,7 @@ func buildNewAccountDialog() *Dialog {
 	f.Required = true
 
 	// Opening date
-	today := time.Now().Format("01/02/2006")
-	f = d.AddTextField("Opening Date", today, "MM/DD/YYYY", 10)
+	f = d.AddDateField("Opening Date", "")
 	f.Required = true
 
 	// Institution (optional)
@@ -191,7 +189,7 @@ func buildEditAccountDialog(acct *account.Account) *Dialog {
 
 	// Opening date
 	dateStr := acct.OpeningDate.Time().Format("01/02/2006")
-	f = d.AddTextField("Opening Date", dateStr, "MM/DD/YYYY", 10)
+	f = d.AddDateField("Opening Date", dateStr)
 	f.Required = true
 
 	// Institution

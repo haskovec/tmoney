@@ -126,7 +126,7 @@ func TestBuildNewAccountDialog_FieldTypes(t *testing.T) {
 		{"Type", FieldSelect},
 		{"Currency", FieldText},
 		{"Opening Balance", FieldText},
-		{"Opening Date", FieldText},
+		{"Opening Date", FieldDate},
 		{"Institution", FieldText},
 		{"Account #", FieldText},
 		{"Notes", FieldText},
@@ -167,6 +167,26 @@ func TestBuildNewAccountDialog_Defaults(t *testing.T) {
 	// Account type should default to Checking (index 0)
 	if fields[acctFieldType].SelectedIndex != 0 {
 		t.Errorf("type selectedIndex = %d, want 0", fields[acctFieldType].SelectedIndex)
+	}
+}
+
+// TestBuildNewAccountDialog_OpeningDateMaskedOverwrite verifies the new
+// account dialog's Opening Date field uses overwrite-style masked input —
+// typing a digit replaces the digit at the cursor and auto-advances over
+// the slash.
+func TestBuildNewAccountDialog_OpeningDateMaskedOverwrite(t *testing.T) {
+	d := buildNewAccountDialog()
+	d.SetFocusIndex(acctFieldOpeningDate)
+
+	// Seed Value to a known date so the overwrite is deterministic.
+	d.Fields()[acctFieldOpeningDate].Value = "03/15/2024"
+
+	// Type "0" then "5" — overwrites "03" with "05", cursor advances skipping the slash.
+	d.HandleKey(tea.KeyPressMsg{Code: '0', Text: "0"})
+	d.HandleKey(tea.KeyPressMsg{Code: '5', Text: "5"})
+
+	if got := d.Fields()[acctFieldOpeningDate].Value; got != "05/15/2024" {
+		t.Errorf("Value = %q, want %q (overwrite + skip slash)", got, "05/15/2024")
 	}
 }
 

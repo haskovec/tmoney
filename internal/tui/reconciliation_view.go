@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -53,8 +52,7 @@ type reconciliationClearedTotalMsg struct {
 func buildStartReconciliationDialog() *Dialog {
 	d := NewDialog("Start Reconciliation")
 
-	today := time.Now().Format("01/02/2006")
-	f := d.AddTextField("Statement Date", today, "MM/DD/YYYY", 10)
+	f := d.AddDateField("Statement Date", "")
 	f.Required = true
 
 	f = d.AddTextField("Statement Balance", "", "0.00", 12)

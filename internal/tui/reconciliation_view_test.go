@@ -26,6 +26,9 @@ func TestBuildStartReconciliationDialog(t *testing.T) {
 	if fields[0].Label != "Statement Date" {
 		t.Errorf("field[0].Label = %q, want %q", fields[0].Label, "Statement Date")
 	}
+	if fields[0].Type != FieldDate {
+		t.Errorf("field[0].Type = %v, want FieldDate", fields[0].Type)
+	}
 	if !fields[0].Required {
 		t.Error("Statement Date field should be required")
 	}
@@ -35,6 +38,26 @@ func TestBuildStartReconciliationDialog(t *testing.T) {
 	}
 	if !fields[1].Required {
 		t.Error("Statement Balance field should be required")
+	}
+}
+
+// TestBuildStartReconciliationDialog_StatementDateMaskedOverwrite verifies
+// the start-reconciliation dialog's Statement Date field uses overwrite-style
+// masked input — typing a digit replaces the digit at the cursor and
+// auto-advances over the slash.
+func TestBuildStartReconciliationDialog_StatementDateMaskedOverwrite(t *testing.T) {
+	d := buildStartReconciliationDialog()
+	d.SetFocusIndex(0)
+
+	// Seed Value to a known date so the overwrite is deterministic.
+	d.Fields()[0].Value = "03/15/2024"
+
+	// Type "0" then "5" — overwrites "03" with "05", cursor advances skipping the slash.
+	d.HandleKey(tea.KeyPressMsg{Code: '0', Text: "0"})
+	d.HandleKey(tea.KeyPressMsg{Code: '5', Text: "5"})
+
+	if got := d.Fields()[0].Value; got != "05/15/2024" {
+		t.Errorf("Value = %q, want %q (overwrite + skip slash)", got, "05/15/2024")
 	}
 }
 
