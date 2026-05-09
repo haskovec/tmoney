@@ -25,5 +25,6 @@ func newInvestmentCmd() *cobra.Command {
 	cmd.AddCommand(newInvestmentReinvestCmd())
 	cmd.AddCommand(newInvestmentFeeCmd())
 	cmd.AddCommand(newInvestmentDepositCmd())
+	cmd.AddCommand(newInvestmentWithdrawCmd())
 	return cmd
 }

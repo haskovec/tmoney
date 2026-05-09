@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --invest-withdraw
-	if opts.investWithdraw {
-		return runInvestWithdraw(opts, stdout)
-	}
-
 	// Handle --transfer-shares
 	if opts.transferShares {
 		return runTransferShares(opts, stdout)

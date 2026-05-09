@@ -1655,50 +1655,6 @@ func ptrMoney(s string) *types.Money {
 	return &m
 }
 
-// --- SM-111: CLI --invest-withdraw ---
-
-func TestRun_InvestWithdrawMissingFile(t *testing.T) {
-	err := run([]string{"--invest-withdraw", "--account", "Brokerage", "--amount", "500"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("expected --file required error, got: %v", err)
-	}
-}
-
-func TestRun_InvestWithdrawBasic(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	stdout := &bytes.Buffer{}
-	err := run([]string{
-		"--invest-withdraw", "--file", dbPath,
-		"--account", "Brokerage",
-		"--amount", "500",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--invest-withdraw) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Investment withdrawal created successfully") {
-		t.Error("output should confirm withdrawal creation")
-	}
-	if !strings.Contains(output, "$500.00") {
-		t.Error("output should contain withdrawal amount")
-	}
-}
-
-func TestRun_InvestWithdrawInsufficientCash(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	err := run([]string{
-		"--invest-withdraw", "--file", dbPath,
-		"--account", "Brokerage",
-		"--amount", "999999",
-	}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil {
-		t.Error("expected insufficient cash error for withdrawal")
-	}
-}
-
 // --- SM-112: CLI --transfer-shares ---
 
 func TestRun_TransferSharesMissingFile(t *testing.T) {
@@ -1846,7 +1802,6 @@ func TestParseArgs_InvestmentFlags(t *testing.T) {
 		args  []string
 		check func(*cliOptions) bool
 	}{
-		{"--invest-withdraw flag", []string{"--invest-withdraw"}, func(o *cliOptions) bool { return o.investWithdraw }},
 		{"--transfer-shares flag", []string{"--transfer-shares"}, func(o *cliOptions) bool { return o.transferShares }},
 		{"--shares value", []string{"--shares", "10"}, func(o *cliOptions) bool { return o.shares == "10" }},
 		{"--shares=value", []string{"--shares=10"}, func(o *cliOptions) bool { return o.shares == "10" }},
