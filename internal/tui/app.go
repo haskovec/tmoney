@@ -2623,11 +2623,20 @@ func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleDialogMouse routes mouse events to the currently visible dialog.
-// For non-Dialog overlays (SplitDialog, help, mergerConfirm, corporateActionHistory),
-// mouse events are blocked (returns no-op).
+// For non-Dialog overlays (SplitDialog, mergerConfirm, corporateActionHistory),
+// mouse events are blocked (returns no-op). The help overlay accepts a
+// click on its [x] close button.
 func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	// Non-Dialog overlays: block mouse events
-	if a.showHelp || a.mergerConfirmData != nil || a.corporateActionHistory != nil {
+	if a.showHelp {
+		if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
+			m := msg.Mouse()
+			if helpOverlayCloseHit(a.styles, a.currentView, a.width, a.height, m.X, m.Y) {
+				a.showHelp = false
+			}
+		}
+		return a, nil
+	}
+	if a.mergerConfirmData != nil || a.corporateActionHistory != nil {
 		return a, nil
 	}
 	if a.splitDialog != nil && a.splitDialog.IsVisible() {

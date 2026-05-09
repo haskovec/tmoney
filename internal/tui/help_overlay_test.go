@@ -6,6 +6,7 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 func TestShortcutSections(t *testing.T) {
@@ -355,6 +356,95 @@ func TestApp_MenuActionKeyboardShortcuts(t *testing.T) {
 	}
 	if app.menubar.IsActive() {
 		t.Error("menu bar should be deactivated after selecting keyboard shortcuts")
+	}
+}
+
+func TestApp_HelpOverlayCloseHit(t *testing.T) {
+	styles := NewStyles()
+	view := ViewDashboard
+	screenW, screenH := 120, 40
+
+	rendered := renderHelpOverlay(styles, view, screenW, screenH)
+	lines := strings.Split(rendered, "\n")
+	overlayH := len(lines)
+	overlayW := 0
+	for _, ln := range lines {
+		if w := lipgloss.Width(ln); w > overlayW {
+			overlayW = w
+		}
+	}
+	startCol := (screenW - overlayW) / 2
+	startRow := (screenH - overlayH) / 2
+	contentWidth := overlayW - dialogHorizontalOverhead
+	xCenter := startCol + 3 + contentWidth - 2 // middle of "[x]"
+	titleY := startRow + 2
+
+	if !helpOverlayCloseHit(styles, view, screenW, screenH, xCenter, titleY) {
+		t.Errorf("click at (%d,%d) should hit [x]", xCenter, titleY)
+	}
+	// One column outside [x] should not hit.
+	if helpOverlayCloseHit(styles, view, screenW, screenH, startCol+3+contentWidth-4, titleY) {
+		t.Error("click just left of [x] should not hit")
+	}
+	// Different row should not hit.
+	if helpOverlayCloseHit(styles, view, screenW, screenH, xCenter, titleY+1) {
+		t.Error("click below the title row should not hit [x]")
+	}
+}
+
+func TestApp_HelpOverlayClickClosesOnX(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		styles:      NewStyles(),
+		width:       120,
+		height:      40,
+		ready:       true,
+	}
+	app.showHelp = true
+
+	// Compute [x] coordinates the same way the handler does.
+	rendered := renderHelpOverlay(app.styles, app.currentView, app.width, app.height)
+	lines := strings.Split(rendered, "\n")
+	overlayW := 0
+	for _, ln := range lines {
+		if w := lipgloss.Width(ln); w > overlayW {
+			overlayW = w
+		}
+	}
+	startCol := (app.width - overlayW) / 2
+	startRow := (app.height - len(lines)) / 2
+	contentWidth := overlayW - dialogHorizontalOverhead
+	x := startCol + 3 + contentWidth - 2
+	y := startRow + 2
+
+	app.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	if app.showHelp {
+		t.Error("help overlay should close after clicking [x]")
+	}
+}
+
+func TestApp_HelpOverlayClickElsewhereDoesNotClose(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		styles:      NewStyles(),
+		width:       120,
+		height:      40,
+		ready:       true,
+	}
+	app.showHelp = true
+
+	// Click near the centre of the overlay (not on [x]).
+	app.Update(tea.MouseClickMsg{X: app.width / 2, Y: app.height / 2, Button: tea.MouseLeft})
+	if !app.showHelp {
+		t.Error("help overlay should remain open when clicking outside [x]")
 	}
 }
 

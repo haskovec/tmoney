@@ -340,6 +340,43 @@ func renderHelpOverlay(styles Styles, view View, screenWidth, screenHeight int) 
 	return strings.Join(renderedLines, "\n")
 }
 
+// helpOverlayCloseHit reports whether a click at the given screen
+// coordinates falls on the help overlay's [x] close button. The overlay
+// uses the same border (1) + padding (2 horizontal, 1 vertical) layout
+// as Dialog and is centered on screen, so we re-render to measure its
+// final dimensions and then test the title row's right-aligned [x].
+func helpOverlayCloseHit(styles Styles, view View, screenWidth, screenHeight, x, y int) bool {
+	rendered := renderHelpOverlay(styles, view, screenWidth, screenHeight)
+	lines := strings.Split(rendered, "\n")
+	overlayHeight := len(lines)
+	overlayWidth := 0
+	for _, ln := range lines {
+		if w := lipgloss.Width(ln); w > overlayWidth {
+			overlayWidth = w
+		}
+	}
+	if overlayHeight == 0 || overlayWidth == 0 {
+		return false
+	}
+
+	startCol := max((screenWidth-overlayWidth)/2, 0)
+	startRow := max((screenHeight-overlayHeight)/2, 0)
+
+	// Title row is the first content row inside border(1)+padding(1).
+	titleRow := startRow + 2
+	if y != titleRow {
+		return false
+	}
+
+	// Content area starts at startCol + border(1) + padding(2) = +3,
+	// content width = overlayWidth - dialogHorizontalOverhead. The [x]
+	// occupies the last 3 columns of the content row.
+	contentWidth := overlayWidth - dialogHorizontalOverhead
+	closeStart := startCol + 3 + contentWidth - 3
+	closeEnd := closeStart + 3
+	return x >= closeStart && x < closeEnd
+}
+
 // undoShortcutLabel returns the platform-appropriate label for the undo shortcut.
 func undoShortcutLabel() string {
 	if runtime.GOOS == "darwin" {
