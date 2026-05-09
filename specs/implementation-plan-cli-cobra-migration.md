@@ -359,10 +359,10 @@ After Phase 11, every legacy verb is migrated and `parseArgs`/`legacy.go` only c
 - [x] **CM-063 — Delete `parseArgs` and `internal/cli/args.go`** (completed 2026-05-09)
   - GREEN: delete `internal/cli/args.go`. Delete `internal/cli/args_test.go` (if it covers only `parseArgs`). Update any remaining references. Tests for individual verbs already cover Cobra-side parsing via `executeWith`; nothing should reference `parseArgs` after Phase 11.
 
-- [ ] **CM-064 — Delete `cliOptions` struct**
-  - GREEN: remove `cliOptions` from wherever it lives now (likely `args.go`, deleted in CM-063, but verify). Each per-verb file already has its own options struct.
+- [x] **CM-064 — Delete `cliOptions` struct** (completed 2026-05-09)
+  - GREEN: remove `cliOptions` from wherever it lives now (likely `args.go`, deleted in CM-063, but verify). Each per-verb file already has its own options struct. Folded into CM-063 since `cliOptions` lived in `args.go` itself; verified no `.go` references remain.
 
-- [ ] **CM-065 — Delete `commands.go` and `commands_test.go` if empty**
+- [x] **CM-065 — Delete `commands.go` and `commands_test.go` if empty** (completed 2026-05-09)
   - GREEN: confirm both files are empty (every handler has been moved into a per-verb file by the prep PRs; every test has been migrated by the verb PRs). Delete them. If any shared helpers remain in `commands.go` (e.g., a `loadDB` helper), move them to a `helpers.go` and delete `commands.go`. Test helpers similarly move to `testutil_test.go` if not already there.
 
 - [ ] **CM-066 — Tidy root.go**
