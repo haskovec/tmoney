@@ -246,6 +246,8 @@ func (a *App) handleTransactionDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cm
 	case DialogActionCancel:
 		a.closeTransactionDialog()
 		return a, nil
+	case DialogActionAddNew:
+		return a.openCreateCategorySubDialog()
 	}
 
 	// Check for payee auto-fill after text input
@@ -254,6 +256,165 @@ func (a *App) handleTransactionDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cm
 	}
 
 	return a, nil
+}
+
+// openCreateCategorySubDialog hides the transaction dialog and opens the
+// inline create-category sub-dialog seeded with the typed query from the
+// Category combo. The transaction dialog's field state is preserved by
+// keeping the dialog instance alive (just hidden) for the duration of the
+// divert; restoration on cancel and post-create wiring happens through the
+// createCatDialog handlers.
+func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
+	if a.txnDialog == nil {
+		return a, nil
+	}
+	fields := a.txnDialog.Fields()
+	if len(fields) < 3 {
+		return a, nil
+	}
+	catField := fields[2]
+	query := catField.Query
+	// Consume the trigger and clear the typed query — the create-category
+	// dialog now owns it. This way, when we restore the txn dialog, its
+	// Category combo doesn't carry stale typed text.
+	catField.AddNewTriggered = false
+	catField.Query = ""
+
+	parents := topLevelParentNames(a.txnDialogData)
+	a.createCatDialog = buildCreateCategoryDialog(query, parents)
+	a.txnDialog.SetVisible(false)
+	return a, nil
+}
+
+// topLevelParentNames returns the names of non-system top-level categories
+// loaded into the transaction dialog data. Used to populate the Parent combo
+// in the create-category sub-dialog. Returns an empty slice when data is nil.
+func topLevelParentNames(data *transactionDialogData) []string {
+	if data == nil {
+		return nil
+	}
+	var names []string
+	for _, c := range data.categories {
+		if c.IsSystem || !c.IsTopLevel() {
+			continue
+		}
+		names = append(names, c.Name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// handleCreateCatDialogKey routes key events to the create-category
+// sub-dialog. Esc closes the sub-dialog and re-shows the transaction dialog
+// with all field state preserved. Submit produces the
+// createCategoryRequestMsg that the App.Update path consumes.
+func (a *App) handleCreateCatDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if a.createCatDialog == nil {
+		return a, nil
+	}
+	action := a.createCatDialog.HandleKey(msg)
+	switch action {
+	case DialogActionSubmit:
+		return a.submitCreateCatDialog()
+	case DialogActionCancel:
+		a.cancelCreateCatDialog()
+		return a, nil
+	}
+	return a, nil
+}
+
+// cancelCreateCatDialog closes the sub-dialog and re-shows the transaction
+// dialog. All txn dialog field state is preserved (the dialog was hidden,
+// not destroyed). Focus is left wherever it was (Category field).
+func (a *App) cancelCreateCatDialog() {
+	a.createCatDialog = nil
+	if a.txnDialog != nil {
+		a.txnDialog.SetVisible(true)
+	}
+}
+
+// submitCreateCatDialog validates the sub-dialog and, on success, returns a
+// command that emits a createCategoryRequestMsg the App.Update path consumes
+// to persist the category and reopen the transaction dialog. Validation
+// failures keep the sub-dialog open with inline errors set.
+func (a *App) submitCreateCatDialog() (tea.Model, tea.Cmd) {
+	if a.createCatDialog == nil {
+		return a, nil
+	}
+	parents := topLevelParentNames(a.txnDialogData)
+	cmd := submitCreateCategoryDialog(a.createCatDialog, parents)
+	if cmd == nil {
+		return a, nil
+	}
+	return a, cmd
+}
+
+// applyCreatedCategory persists the requested category (creating its parent
+// first when the user typed a new top-level name), reloads the txn dialog's
+// category list with the new entry selected, advances focus to Amount, and
+// closes the create-category sub-dialog. Returns the err to bubble up if
+// persistence fails.
+func (a *App) applyCreatedCategory(req createCategoryRequest) error {
+	if a.categorySvc == nil {
+		return fmt.Errorf("category service unavailable")
+	}
+
+	catType := req.Type
+	var parentID types.ID
+	if req.ParentName != "" {
+		if req.NewParent {
+			parent := category.NewCategory(req.ParentName, catType)
+			if err := a.categorySvc.Create(parent); err != nil {
+				return fmt.Errorf("create parent: %w", err)
+			}
+			parentID = parent.ID
+		} else {
+			existing, err := a.categorySvc.GetByName(req.ParentName, nil)
+			if err != nil {
+				return fmt.Errorf("lookup parent: %w", err)
+			}
+			parentID = existing.ID
+			catType = existing.Type
+		}
+	}
+
+	var newCat *category.Category
+	if parentID == types.NilID {
+		newCat = category.NewCategory(req.Name, catType)
+	} else {
+		newCat = category.NewSubcategory(req.Name, parentID, catType)
+	}
+	if err := a.categorySvc.Create(newCat); err != nil {
+		return fmt.Errorf("create category: %w", err)
+	}
+
+	cats, err := a.categorySvc.List()
+	if err != nil {
+		return fmt.Errorf("reload categories: %w", err)
+	}
+	if a.txnDialogData != nil {
+		a.txnDialogData.categories = cats
+	}
+	options, ids := buildCategoryOptions(cats)
+	a.txnDialogCategoryIDs = ids
+
+	if a.txnDialog != nil && len(a.txnDialog.Fields()) >= 3 {
+		catField := a.txnDialog.Fields()[2]
+		catField.Options = options
+		newIdx := 0
+		for i, id := range ids {
+			if id == newCat.ID {
+				newIdx = i
+				break
+			}
+		}
+		catField.SelectedIndex = newIdx
+		// Focus advances to Amount (field index 3).
+		a.txnDialog.SetFocusIndex(3)
+		a.txnDialog.SetVisible(true)
+	}
+	a.createCatDialog = nil
+	return nil
 }
 
 // submitTransactionDialog parses dialog fields, validates, and saves the transaction.

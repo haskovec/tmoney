@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -1100,5 +1102,325 @@ func TestApp_RenderLayout_WithTransactionDialog(t *testing.T) {
 	output := app.renderLayout()
 	if !strings.Contains(output, "New Transaction") {
 		t.Error("renderLayout() should contain 'New Transaction' when dialog is visible")
+	}
+}
+
+// =============================================================================
+// TD-008 — transaction-dialog → create-category sub-dialog → back
+// =============================================================================
+
+// newAppForTxnAddNew builds an *App with a transaction dialog whose Category
+// field is loaded with the provided options, focus on Category, and a typed
+// query. The categorySvc passed in (may be nil for tests that don't submit)
+// is wired so the createCategoryRequestMsg path can persist.
+func newAppForTxnAddNew(t *testing.T, query string, categorySvc *category.Service, cats []*category.Category) *App {
+	t.Helper()
+	options, ids := buildCategoryOptions(cats)
+	app := &App{
+		currentView:          ViewRegister,
+		keys:                 defaultKeyMap(),
+		menubar:              NewMenuBar(),
+		statusbar:            NewStatusBar(),
+		sidebar:              NewSidebar(),
+		categorySvc:          categorySvc,
+		txnDialogData:        &transactionDialogData{categories: cats, payeeMap: make(map[string]*payee.Payee)},
+		txnDialogCategoryIDs: ids,
+	}
+	d := buildTransactionDialog(app.txnDialogData, options, types.ZeroDate)
+	// Capture distinctive state we expect to see preserved across the divert.
+	d.Fields()[0].Value = "03/15/2024"
+	d.Fields()[1].Value = "Coffee Shop"
+	d.Fields()[3].Value = "-9.50"
+	d.Fields()[4].Value = "Latte"
+	d.SetFocusIndex(2) // Category
+	cat := d.Fields()[2]
+	cat.AddNewLabel = "[+ Add new category…]"
+	cat.Query = query
+	// Park the combo highlight on the AddNew action row so Enter triggers
+	// the divert. The row sits at len(filteredIndices) — this is what the
+	// user reaches by pressing Down past the last filtered match.
+	cat.comboHighlight = len(cat.FilteredIndices())
+	app.txnDialog = d
+	return app
+}
+
+func TestApp_TxnDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
+	app := newAppForTxnAddNew(t, "Donations", nil, nil)
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleTransactionDialogKey(enter)
+	updated := model.(*App)
+
+	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+		t.Fatal("createCatDialog should be visible after [+ Add new] is activated")
+	}
+	if updated.txnDialog == nil {
+		t.Fatal("txnDialog should be kept (hidden) so its state survives the divert")
+	}
+	if updated.txnDialog.IsVisible() {
+		t.Error("txnDialog should be hidden while createCatDialog is shown")
+	}
+	// The pre-fill is wired in TD-009; for TD-008 we assert the dialog opened.
+	if updated.createCatDialog.Title() != "New Category" {
+		t.Errorf("createCatDialog title = %q, want %q",
+			updated.createCatDialog.Title(), "New Category")
+	}
+}
+
+func TestApp_TxnDialog_AddNew_CancelRestoresState(t *testing.T) {
+	app := newAppForTxnAddNew(t, "", nil, nil)
+	prevCat := app.txnDialog.Fields()[2].SelectedIndex
+	prevFocus := app.txnDialog.FocusIndex()
+
+	// Open create-category dialog.
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleTransactionDialogKey(enter)
+	app = model.(*App)
+
+	// Cancel via Esc.
+	esc := tea.KeyPressMsg{Code: tea.KeyEsc}
+	model, _ = app.handleCreateCatDialogKey(esc)
+	app = model.(*App)
+
+	if app.createCatDialog != nil {
+		t.Error("createCatDialog should be cleared after cancel")
+	}
+	if app.txnDialog == nil || !app.txnDialog.IsVisible() {
+		t.Fatal("txnDialog should be restored to visible after cancel")
+	}
+
+	// All previous field values preserved.
+	fields := app.txnDialog.Fields()
+	if fields[0].Value != "03/15/2024" {
+		t.Errorf("Date preserved? got %q, want %q", fields[0].Value, "03/15/2024")
+	}
+	if fields[1].Value != "Coffee Shop" {
+		t.Errorf("Payee preserved? got %q, want %q", fields[1].Value, "Coffee Shop")
+	}
+	if fields[3].Value != "-9.50" {
+		t.Errorf("Amount preserved? got %q, want %q", fields[3].Value, "-9.50")
+	}
+	if fields[4].Value != "Latte" {
+		t.Errorf("Memo preserved? got %q, want %q", fields[4].Value, "Latte")
+	}
+	if fields[2].SelectedIndex != prevCat {
+		t.Errorf("Category SelectedIndex changed on cancel: got %d, want %d",
+			fields[2].SelectedIndex, prevCat)
+	}
+	if app.txnDialog.FocusIndex() != prevFocus {
+		t.Errorf("FocusIndex changed on cancel: got %d, want %d (Category)",
+			app.txnDialog.FocusIndex(), prevFocus)
+	}
+}
+
+func TestApp_TxnDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "td008.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	repo := category.NewRepository(database)
+	svc := category.NewService(repo, database)
+	if err := svc.SeedDefaultCategories(); err != nil {
+		t.Fatalf("SeedDefaultCategories: %v", err)
+	}
+	cats, err := svc.List()
+	if err != nil {
+		t.Fatalf("svc.List: %v", err)
+	}
+
+	app := newAppForTxnAddNew(t, "", svc, cats)
+	// Sanity: there should be a "Food" parent already (it's part of the
+	// seeded defaults). The new category we add will land under it.
+	var hasFood bool
+	for _, c := range cats {
+		if c.Name == "Food" && c.IsTopLevel() {
+			hasFood = true
+			break
+		}
+	}
+	if !hasFood {
+		t.Fatal("seeded defaults should include 'Food' parent")
+	}
+
+	// Open create-category sub-dialog.
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleTransactionDialogKey(enter)
+	app = model.(*App)
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+
+	// Fill out: Name=Sushi, Parent=Food (existing), Type=Expense.
+	cFields := app.createCatDialog.Fields()
+	cFields[0].Value = "Sushi"
+	// Parent: locate "Food" in the Options.
+	parentField := cFields[1]
+	foodIdx := -1
+	for i, opt := range parentField.Options {
+		if opt == "Food" {
+			foodIdx = i
+			break
+		}
+	}
+	if foodIdx <= 0 {
+		t.Fatalf("Parent options missing 'Food': %v", parentField.Options)
+	}
+	parentField.SelectedIndex = foodIdx
+	cFields[2].SelectedIndex = 0 // Expense
+
+	// Submit triggers categorySvc.Create + dialog reopen.
+	model, cmd := app.submitCreateCatDialog()
+	app = model.(*App)
+	if cmd == nil {
+		t.Fatal("submit should produce a tea.Cmd that emits createCategoryRequestMsg")
+	}
+	msg := cmd()
+	model, _ = app.Update(msg)
+	app = model.(*App)
+
+	// New category persisted.
+	got, err := svc.List()
+	if err != nil {
+		t.Fatalf("svc.List after submit: %v", err)
+	}
+	var found *category.Category
+	for _, c := range got {
+		if c.Name == "Sushi" {
+			found = c
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("new 'Sushi' category should be persisted after submit")
+	}
+	if !found.ParentID.Valid {
+		t.Error("'Sushi' should be a subcategory under 'Food'")
+	}
+
+	// Sub-dialog closed; transaction dialog visible again.
+	if app.createCatDialog != nil {
+		t.Error("createCatDialog should be cleared after submit")
+	}
+	if app.txnDialog == nil || !app.txnDialog.IsVisible() {
+		t.Fatal("txnDialog should be visible again after submit")
+	}
+
+	// Other fields preserved.
+	fields := app.txnDialog.Fields()
+	if fields[0].Value != "03/15/2024" {
+		t.Errorf("Date preserved? got %q", fields[0].Value)
+	}
+	if fields[1].Value != "Coffee Shop" {
+		t.Errorf("Payee preserved? got %q", fields[1].Value)
+	}
+	if fields[3].Value != "-9.50" {
+		t.Errorf("Amount preserved? got %q", fields[3].Value)
+	}
+	if fields[4].Value != "Latte" {
+		t.Errorf("Memo preserved? got %q", fields[4].Value)
+	}
+
+	// Category field's SelectedIndex points to the new category.
+	catField := fields[2]
+	wantDisplay := "Food > Sushi"
+	if catField.Options[catField.SelectedIndex] != wantDisplay {
+		t.Errorf("Category selected = %q, want %q",
+			catField.Options[catField.SelectedIndex], wantDisplay)
+	}
+	// And the parallel ID slice resolves to the new category's ID.
+	if app.txnDialogCategoryIDs[catField.SelectedIndex] != found.ID {
+		t.Errorf("txnDialogCategoryIDs[%d] = %s, want %s",
+			catField.SelectedIndex,
+			app.txnDialogCategoryIDs[catField.SelectedIndex],
+			found.ID)
+	}
+
+	// Focus advances to Amount (index 3).
+	if app.txnDialog.FocusIndex() != 3 {
+		t.Errorf("FocusIndex after submit = %d, want 3 (Amount)",
+			app.txnDialog.FocusIndex())
+	}
+}
+
+func TestApp_TxnDialog_AddNew_SubmitNewParentCreatesBoth(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "td008_newparent.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	repo := category.NewRepository(database)
+	svc := category.NewService(repo, database)
+	if err := svc.SeedDefaultCategories(); err != nil {
+		t.Fatalf("SeedDefaultCategories: %v", err)
+	}
+	cats, _ := svc.List()
+
+	app := newAppForTxnAddNew(t, "", svc, cats)
+
+	// Divert into create-category.
+	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app = model.(*App)
+
+	cFields := app.createCatDialog.Fields()
+	cFields[0].Value = "Endowment"
+	// Parent typed but not yet committed — Charity does not exist.
+	cFields[1].Query = "Charity"
+	cFields[2].SelectedIndex = 0 // Expense
+
+	model, cmd := app.submitCreateCatDialog()
+	app = model.(*App)
+	if cmd == nil {
+		t.Fatal("submit should produce a cmd")
+	}
+	app.Update(cmd())
+
+	// Both Charity (parent) and Endowment (child) persisted.
+	got, _ := svc.List()
+	var charity, endow *category.Category
+	for _, c := range got {
+		switch c.Name {
+		case "Charity":
+			charity = c
+		case "Endowment":
+			endow = c
+		}
+	}
+	if charity == nil {
+		t.Fatal("new top-level 'Charity' should be persisted")
+	}
+	if charity.ParentID.Valid {
+		t.Error("'Charity' should be top-level (no parent)")
+	}
+	if endow == nil {
+		t.Fatal("new 'Endowment' should be persisted")
+	}
+	if !endow.ParentID.Valid || endow.ParentID.ID != charity.ID {
+		t.Errorf("'Endowment' should be a child of 'Charity'")
+	}
+}
+
+func TestApp_TxnDialog_AddNew_SubmitInvalidLeavesDialogOpen(t *testing.T) {
+	app := newAppForTxnAddNew(t, "", nil, nil)
+	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app = model.(*App)
+
+	// Submit with empty Name — validation should keep the dialog open.
+	model, cmd := app.submitCreateCatDialog()
+	app = model.(*App)
+	if cmd != nil {
+		t.Error("invalid input should not produce a cmd")
+	}
+	if app.createCatDialog == nil || !app.createCatDialog.IsVisible() {
+		t.Fatal("createCatDialog should remain open after validation failure")
+	}
+	if app.createCatDialog.Fields()[0].Error == "" {
+		t.Error("Name field should have an inline error")
 	}
 }

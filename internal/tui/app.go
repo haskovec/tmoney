@@ -137,6 +137,12 @@ type App struct {
 	// Process-lifetime only — not persisted across restarts.
 	txnDialogLastSavedDate types.Date
 
+	// createCatDialog is the inline create-category sub-dialog opened from
+	// the transaction dialog's Category combo via the [+ Add new category…]
+	// action row. While it is non-nil and visible, txnDialog is hidden but
+	// kept alive so its field state survives the divert.
+	createCatDialog *Dialog
+
 	// Split dialog state
 	splitDialog     *SplitDialog
 	pendingSplitTxn *pendingSplitTransaction
@@ -1237,6 +1243,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.loadSidebarData(),
 		)
 
+	case createCategoryRequestMsg:
+		if err := a.applyCreatedCategory(msg.request); err != nil {
+			a.err = err
+		}
+		return a, nil
+
 	case splitDialogSavedMsg:
 		accountID := a.sidebar.SelectedAccountID()
 		return a, tea.Batch(
@@ -1692,6 +1704,13 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// If split dialog is visible, route all keys to it
 	if a.splitDialog != nil && a.splitDialog.IsVisible() {
 		return a.handleSplitDialogKey(msg)
+	}
+
+	// If create-category sub-dialog is visible, route to it. Must come
+	// before the transaction dialog check since the sub-dialog overlays it
+	// while keeping the txnDialog instance alive (just hidden).
+	if a.createCatDialog != nil && a.createCatDialog.IsVisible() {
+		return a.handleCreateCatDialogKey(msg)
 	}
 
 	// If transaction dialog is visible, route all keys to it
@@ -2744,6 +2763,17 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	if a.createCatDialog != nil && a.createCatDialog.IsVisible() {
+		action := a.createCatDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitCreateCatDialog()
+		case DialogActionCancel:
+			a.cancelCreateCatDialog()
+		}
+		return a, nil
+	}
+
 	if a.txnDialog != nil && a.txnDialog.IsVisible() {
 		action := a.txnDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
@@ -2752,6 +2782,8 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		case DialogActionCancel:
 			a.txnDialog.SetVisible(false)
 			a.txnDialog = nil
+		case DialogActionAddNew:
+			return a.openCreateCategorySubDialog()
 		}
 		return a, nil
 	}
@@ -3042,6 +3074,7 @@ func (a *App) isDialogVisible() bool {
 		(a.fileDialog != nil && a.fileDialog.IsVisible()) ||
 		(a.splitDialog != nil && a.splitDialog.IsVisible()) ||
 		(a.txnDialog != nil && a.txnDialog.IsVisible()) ||
+		(a.createCatDialog != nil && a.createCatDialog.IsVisible()) ||
 		(a.transferDialog != nil && a.transferDialog.IsVisible()) ||
 		(a.schedDialog != nil && a.schedDialog.IsVisible()) ||
 		(a.acctDialog != nil && a.acctDialog.IsVisible()) ||
@@ -3378,6 +3411,13 @@ func (a *App) renderLayout() string {
 	// Overlay transaction dialog if visible
 	if a.txnDialog != nil && a.txnDialog.IsVisible() {
 		overlay := a.txnDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay create-category sub-dialog if visible (sits on top of the
+	// hidden transaction dialog).
+	if a.createCatDialog != nil && a.createCatDialog.IsVisible() {
+		overlay := a.createCatDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

@@ -149,7 +149,7 @@ Introduces a small create-category dialog reachable from the category combo's fi
   - CLEANUP: none.
   - DOCS: deferred to Phase 6.
 
-- [ ] **TD-008 — Wire transaction-dialog → create-category sub-dialog → back**
+- [x] **TD-008 — Wire transaction-dialog → create-category sub-dialog → back**
   - RED: tests in `transaction_dialog_test.go`:
     1. Open the transaction dialog; select `[+ Add new category…]` from the category combo. Verify `App.txnDialog` is hidden and `App.createCategoryDialog` is visible (or however the App-level state holders are named — e.g. `App.createCatDialog`).
     2. Submit the create-category dialog with valid fields; verify the new category is persisted (assert via the in-memory test `categorySvc.List()` returning the new entry); the transaction dialog reopens with the date/payee/amount/memo fields preserved exactly as they were before the diversion; the category field's `SelectedIndex` points to the new category; focus advances to Amount (FocusIndex==3).
