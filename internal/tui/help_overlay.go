@@ -327,6 +327,13 @@ func renderHelpOverlay(styles Styles, view View, screenWidth, screenHeight int) 
 
 	content := strings.Join(lines, "\n")
 
+	// Re-emit the dialog bg after inner SGR resets so the styled spans
+	// (Bold section headers, Positive keys, Muted descriptions) don't punch
+	// holes through the panel where the terminal's desktop bg shows through.
+	// Same fix as Dialog.Render — see ae19c72 (fix(tui): repaint dialog bg
+	// through inner SGR resets).
+	content = repaintBg(content, ColorDialogBg)
+
 	// Use dialog style for consistent appearance
 	rendered := styles.Dialog.Width(overlayWidth).Render(content)
 
