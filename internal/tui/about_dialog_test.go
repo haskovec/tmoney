@@ -135,7 +135,7 @@ func TestApp_AboutDialogClosesOnCloseXClick(t *testing.T) {
 	// the first content row inside the dialog padding.
 	startCol, startRow, _, _ := d.DialogBounds(app.width, app.height)
 	contentWidth := d.Width() - dialogHorizontalOverhead
-	titleY := startRow + 2 // top border + top padding
+	titleY := startRow + 2                // top border + top padding
 	xX := startCol + 3 + contentWidth - 2 // somewhere inside "[x]"
 
 	app.Update(tea.MouseClickMsg{X: xX, Y: titleY, Button: tea.MouseLeft})
