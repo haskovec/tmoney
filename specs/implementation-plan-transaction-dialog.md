@@ -138,7 +138,7 @@ Introduces a small create-category dialog reachable from the category combo's fi
   - CLEANUP: none.
   - DOCS: deferred to Phase 6.
 
-- [ ] **TD-007 — Build `createCategoryDialog` (Name + Parent + Income/Expense)**
+- [x] **TD-007 — Build `createCategoryDialog` (Name + Parent + Income/Expense)**
   - RED: tests in a new `internal/tui/create_category_dialog_test.go`:
     1. Construct the dialog with `existingParents = ["Food", "Bills", "Auto"]`. Tab through fields: Name (text), Parent (combo), Income/Expense (radio).
     2. Submit with Name=`Groceries`, Parent=`Food`, Income/Expense=Expense → emits a `createCategoryRequestMsg` (or analogous message) with parent name `"Food"` (existing) and child name `"Groceries"`.
