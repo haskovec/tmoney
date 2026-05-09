@@ -502,12 +502,12 @@ func (s *Styles) applyTheme(t *theme.Theme) {
 	s.initBaseStyles()
 }
 
-// desktopBgSGR returns the "set background" SGR sequence lipgloss emits
-// for c, or "" when c is transparent. We render a marker character with
-// c as the background and split off the prefix; this gives a bit-for-bit
-// match with what lipgloss would emit so re-emitting it in repaintDesktop
+// bgSGR returns the "set background" SGR sequence lipgloss emits for c,
+// or "" when c is transparent. We render a marker character with c as
+// the background and split off the prefix; this gives a bit-for-bit
+// match with what lipgloss would emit so re-emitting it via repaintBg
 // is idempotent.
-func desktopBgSGR(c color.Color) string {
+func bgSGR(c color.Color) string {
 	if _, transparent := c.(lipgloss.NoColor); transparent {
 		return ""
 	}
@@ -519,16 +519,16 @@ func desktopBgSGR(c color.Color) string {
 	return sample[:idx]
 }
 
-// repaintDesktop re-emits the desktop background SGR after every SGR
-// full-reset in s. Without this, inner Bold/Muted/SectionHead renders
-// close with `\x1b[m` which clears the outer Content.Background, and
-// any raw-text gap or following styled chunk shows terminal-default
-// until the next render boundary — visible as black bands inside the
-// Turbo Vision desktop fill.
+// repaintBg re-emits the background SGR for c after every SGR full-reset
+// in s. Without this, inner styled spans (Bold, Muted, Placeholder, etc.)
+// close with `\x1b[m` which clears the outer Background, and any
+// raw-text gap or following styled chunk shows terminal-default until
+// the next render boundary — visible as dark bands inside a colored
+// region (Turbo Vision desktop fill, dialog panel, etc.).
 //
-// No-op when ColorDesktopBg is transparent (default and light themes).
-func repaintDesktop(s string) string {
-	bg := desktopBgSGR(ColorDesktopBg)
+// No-op when c is transparent.
+func repaintBg(s string, c color.Color) string {
+	bg := bgSGR(c)
 	if bg == "" {
 		return s
 	}
@@ -537,6 +537,13 @@ func repaintDesktop(s string) string {
 	s = strings.ReplaceAll(s, "\x1b[0m", "\x1b[0m"+bg)
 	s = strings.ReplaceAll(s, "\x1b[m", "\x1b[m"+bg)
 	return s
+}
+
+// repaintDesktop is repaintBg specialized to the active desktop color.
+// Used by the main content area to keep the Turbo Vision blue fill
+// continuous through inner SGR resets.
+func repaintDesktop(s string) string {
+	return repaintBg(s, ColorDesktopBg)
 }
 
 // RenderViewContent wraps viewContent in the Content style at the given

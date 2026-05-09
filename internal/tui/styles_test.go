@@ -335,16 +335,16 @@ func TestRepaintDesktop_RestoresBgAfterResets(t *testing.T) {
 	s := NewStyles()
 	s.applyTheme(turbo)
 
-	bgSGR := desktopBgSGR(ColorDesktopBg)
-	if bgSGR == "" {
-		t.Fatalf("desktopBgSGR should be non-empty for Turbo Vision; ColorDesktopBg=%v", ColorDesktopBg)
+	bg := bgSGR(ColorDesktopBg)
+	if bg == "" {
+		t.Fatalf("bgSGR should be non-empty for Turbo Vision; ColorDesktopBg=%v", ColorDesktopBg)
 	}
 
 	in := "\x1b[1mDASH\x1b[m  raw  \x1b[38;5;240mMay\x1b[m"
 	got := repaintDesktop(in)
 
 	// Each `\x1b[m` should now be immediately followed by the bg SGR.
-	want := "\x1b[1mDASH\x1b[m" + bgSGR + "  raw  \x1b[38;5;240mMay\x1b[m" + bgSGR
+	want := "\x1b[1mDASH\x1b[m" + bg + "  raw  \x1b[38;5;240mMay\x1b[m" + bg
 	if got != want {
 		t.Errorf("repaintDesktop did not restore bg after resets\n got=%q\nwant=%q", got, want)
 	}

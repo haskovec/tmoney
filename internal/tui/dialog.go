@@ -1085,6 +1085,10 @@ func (d *Dialog) Render(styles Styles) string {
 	lines = append(lines, d.renderButtonRow(styles, contentWidth))
 
 	content := strings.Join(lines, "\n")
+	// Re-emit the dialog bg after inner SGR resets so unstyled gaps
+	// (title row right-pad, between-button gap, placeholder padding,
+	// etc.) don't punch holes through the panel to the desktop bg.
+	content = repaintBg(content, ColorDialogBg)
 	return styles.Dialog.Width(d.width).Render(content)
 }
 
