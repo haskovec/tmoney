@@ -70,12 +70,23 @@ type Field struct {
 	VisibleCount int
 	// Query is the typed-but-not-yet-committed search string (for FieldCombo).
 	Query string
+	// AddNewLabel, when non-empty (FieldCombo only), appends a sentinel
+	// "[+ Add new …]" action row to the bottom of the filtered list. Enter
+	// on the action row sets AddNewTriggered and HandleKey returns
+	// DialogActionAddNew so a parent dialog can divert into a sub-dialog.
+	// The typed Query is preserved on trigger so the parent can read it.
+	AddNewLabel string
+	// AddNewTriggered records that the user activated the AddNew action row.
+	// The parent dialog is expected to consume the trigger and reset the
+	// flag (along with any other state it captures from Query).
+	AddNewTriggered bool
 	// cursorPos is the cursor position within the text value.
 	cursorPos int
 	// comboHighlight is the highlighted row index within the current
 	// filtered list (for FieldCombo). When Query is empty the filtered list
 	// equals the full Options in order, so this also identifies the
-	// absolute option index.
+	// absolute option index. When AddNewLabel is set, the highlight may
+	// also point one past the last filtered match — the action row.
 	comboHighlight int
 }
 
@@ -303,6 +314,10 @@ const (
 	DialogActionSubmit
 	// DialogActionCancel means the user cancelled.
 	DialogActionCancel
+	// DialogActionAddNew means the user activated a FieldCombo's AddNew
+	// action row. The parent dialog is responsible for diverting into a
+	// sub-dialog, then restoring focus and updating SelectedIndex.
+	DialogActionAddNew
 )
 
 // Dialog is a modal dialog component with form fields and buttons.
@@ -586,7 +601,8 @@ func (f *Field) FilteredIndices() []int {
 }
 
 // HighlightedIndex returns the index in Options of the currently-highlighted
-// row in the filtered list, or -1 when no rows match.
+// row in the filtered list, or -1 when no row maps to a real option (no
+// matches, or the AddNew action row is highlighted).
 func (f *Field) HighlightedIndex() int {
 	if f.Type != FieldCombo {
 		return -1
@@ -597,9 +613,20 @@ func (f *Field) HighlightedIndex() int {
 	}
 	hi := max(f.comboHighlight, 0)
 	if hi >= len(indices) {
-		hi = len(indices) - 1
+		// Either out-of-bounds or pointing at the AddNew action row.
+		return -1
 	}
 	return indices[hi]
+}
+
+// IsAddNewHighlighted reports whether the FieldCombo's AddNew action row is
+// the current highlight target. Always false when AddNewLabel is empty.
+func (f *Field) IsAddNewHighlighted() bool {
+	if f.Type != FieldCombo || f.AddNewLabel == "" {
+		return false
+	}
+	indices := rankComboMatches(f.Options, f.Query)
+	return f.comboHighlight == len(indices)
 }
 
 // commitComboHighlight sets SelectedIndex to the highlighted row in the
@@ -652,16 +679,22 @@ func (f *Field) comboQueryBackspace() {
 }
 
 // comboHighlightDown moves the highlight down within the filtered list,
-// stopping at the last row (no wrap).
+// stopping at the last row (no wrap). When AddNewLabel is set, the highlight
+// may step one past the last match onto the action row.
 func (f *Field) comboHighlightDown() {
 	if f.Type != FieldCombo {
 		return
 	}
 	indices := f.FilteredIndices()
-	if len(indices) == 0 {
+	maxIdx := len(indices) - 1
+	if f.AddNewLabel != "" {
+		// Action row sits at len(indices); allow one more step.
+		maxIdx = len(indices)
+	}
+	if maxIdx < 0 {
 		return
 	}
-	if f.comboHighlight < len(indices)-1 {
+	if f.comboHighlight < maxIdx {
 		f.comboHighlight++
 	}
 }
@@ -801,8 +834,10 @@ func (d *Dialog) HandleKey(msg tea.KeyPressMsg) DialogAction {
 	keyStr := msg.String()
 
 	// FieldCombo intercepts navigation keys: Esc clears a non-empty query
-	// in-place; Enter/Tab/Shift+Tab commit the highlighted match before
-	// advancing focus.
+	// in-place; Enter on the AddNew action row triggers DialogActionAddNew
+	// without advancing focus or clearing the query (the parent dialog
+	// reads Query at the moment of trigger); Enter/Tab/Shift+Tab on a
+	// regular match commit the highlighted match before advancing focus.
 	if field := d.FocusedField(); field != nil && field.Type == FieldCombo {
 		switch keyStr {
 		case "esc":
@@ -811,6 +846,10 @@ func (d *Dialog) HandleKey(msg tea.KeyPressMsg) DialogAction {
 				return DialogActionNone
 			}
 		case "enter":
+			if field.IsAddNewHighlighted() {
+				field.AddNewTriggered = true
+				return DialogActionAddNew
+			}
 			field.commitComboHighlight()
 			d.FocusNext()
 			return DialogActionNone
@@ -1337,10 +1376,17 @@ func (d *Dialog) renderComboHeader(field *Field, focused bool, available int) st
 
 // renderComboPanel renders the dropdown filtered-list panel shown below the
 // combo header while the field is focused. Reuses FieldList scroll-window
-// math.
+// math. When AddNewLabel is set, an action row is appended to the bottom of
+// the panel and is rendered with a dimmed style when not highlighted.
 func (d *Dialog) renderComboPanel(field *Field, contentWidth int) string {
 	indices := field.FilteredIndices()
-	if len(indices) == 0 {
+	hasAction := field.AddNewLabel != ""
+
+	totalRows := len(indices)
+	if hasAction {
+		totalRows++
+	}
+	if totalRows == 0 {
 		return "      (no matches)"
 	}
 
@@ -1348,37 +1394,47 @@ func (d *Dialog) renderComboPanel(field *Field, contentWidth int) string {
 	if visible <= 0 {
 		visible = 8
 	}
-	if visible > len(indices) {
-		visible = len(indices)
+	if visible > totalRows {
+		visible = totalRows
 	}
 
 	scrollOffset := 0
 	if field.comboHighlight >= visible {
 		scrollOffset = field.comboHighlight - visible + 1
 	}
-	if scrollOffset+visible > len(indices) {
-		scrollOffset = len(indices) - visible
+	if scrollOffset+visible > totalRows {
+		scrollOffset = totalRows - visible
 	}
 	if scrollOffset < 0 {
 		scrollOffset = 0
 	}
 
-	end := min(scrollOffset+visible, len(indices))
+	end := min(scrollOffset+visible, totalRows)
 	maxItemWidth := max(contentWidth-6, 5)
+	actionStyle := lipgloss.NewStyle().Foreground(ColorMuted)
 
 	var lines []string
 	for i := scrollOffset; i < end; i++ {
-		item := truncateRunes(field.Options[indices[i]], maxItemWidth)
-		if i == field.comboHighlight {
-			lines = append(lines, "    "+lipgloss.NewStyle().Reverse(true).Render("> "+item))
+		isAction := hasAction && i == len(indices)
+		var item string
+		if isAction {
+			item = truncateRunes(field.AddNewLabel, maxItemWidth)
 		} else {
+			item = truncateRunes(field.Options[indices[i]], maxItemWidth)
+		}
+		switch {
+		case i == field.comboHighlight:
+			lines = append(lines, "    "+lipgloss.NewStyle().Reverse(true).Render("> "+item))
+		case isAction:
+			lines = append(lines, "      "+actionStyle.Render(item))
+		default:
 			lines = append(lines, "      "+item)
 		}
 	}
 	if scrollOffset > 0 {
 		lines[0] = "  ↑ " + strings.TrimLeft(lines[0], " ")
 	}
-	if end < len(indices) {
+	if end < totalRows {
 		lines[len(lines)-1] = "  ↓ " + strings.TrimLeft(lines[len(lines)-1], " ")
 	}
 
@@ -1580,6 +1636,9 @@ func (d *Dialog) fieldContentRows(field *Field) int {
 			visible = 8
 		}
 		matches := len(rankComboMatches(field.Options, field.Query))
+		if field.AddNewLabel != "" {
+			matches++ // the action row counts as a row
+		}
 		if matches == 0 {
 			return 2 // header line + "(no matches)" line
 		}

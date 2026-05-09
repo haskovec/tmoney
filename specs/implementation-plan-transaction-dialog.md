@@ -129,7 +129,7 @@ Introduces a new `FieldCombo` field type: an autocompleting select where typing 
 
 Introduces a small create-category dialog reachable from the category combo's filtered list via a sentinel `[+ Add new category…]` row. On confirm, the new category is persisted immediately via `category.Service.Create` (`internal/category/category_service.go:240`), the parent transaction dialog reopens with the new category selected, and focus advances to Amount.
 
-- [ ] **TD-006 — `[+ Add new category…]` action row in `FieldCombo`**
+- [x] **TD-006 — `[+ Add new category…]` action row in `FieldCombo`**
   - RED: tests in `dialog_test.go`:
     1. Combo with `AddNewLabel: "[+ Add new category…]"` set: filtered list always includes the action row at the bottom, regardless of query.
     2. Selecting the action row emits a distinct dialog action (e.g. `DialogActionAddNew` constant) rather than committing a normal selection. The dialog parent (App) intercepts that action.

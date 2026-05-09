@@ -2583,3 +2583,199 @@ func TestFieldCombo_RenderShowsFilteredListWhenFocused(t *testing.T) {
 		t.Errorf("rendered output should list filtered match Food > Restaurants; got:\n%s", out)
 	}
 }
+
+// === FieldCombo: AddNew action row ===
+
+func TestFieldCombo_AddNewLabel_FilteredIndicesUnchanged(t *testing.T) {
+	// FilteredIndices contains only real Options; the action row is separate.
+	d := NewDialog("Test")
+	f := d.AddComboField("Category", []string{"Food", "Auto"}, 0)
+	f.AddNewLabel = "[+ Add new category…]"
+
+	got := f.FilteredIndices()
+	want := []int{0, 1}
+	if !slices.Equal(got, want) {
+		t.Errorf("FilteredIndices = %v, want %v (action row not in Options)", got, want)
+	}
+}
+
+func TestFieldCombo_AddNewLabel_DownNavigatesPastLastMatchToActionRow(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddComboField("Category", []string{"Food", "Auto"}, 0)
+	f.AddNewLabel = "[+ Add new category…]"
+
+	// Empty query, two matches; highlight starts at SelectedIndex (0).
+	if f.IsAddNewHighlighted() {
+		t.Fatalf("setup: IsAddNewHighlighted = true at start, want false")
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // -> idx 1 (Auto)
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // -> action row
+	if !f.IsAddNewHighlighted() {
+		t.Errorf("IsAddNewHighlighted = false after Down past last, want true")
+	}
+	// One more Down stays put (no wrap past action row).
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	if !f.IsAddNewHighlighted() {
+		t.Errorf("IsAddNewHighlighted = false after extra Down, want true (no wrap)")
+	}
+}
+
+func TestFieldCombo_AddNewLabel_UpFromActionRowReturnsToLastMatch(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddComboField("Category", []string{"Food", "Auto"}, 0)
+	f.AddNewLabel = "[+ Add new category…]"
+
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	if !f.IsAddNewHighlighted() {
+		t.Fatalf("setup: action row not highlighted")
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp})
+	if f.IsAddNewHighlighted() {
+		t.Errorf("IsAddNewHighlighted = true after Up, want false")
+	}
+	if got := f.HighlightedIndex(); got != 1 {
+		t.Errorf("HighlightedIndex = %d, want 1 (Auto)", got)
+	}
+}
+
+func TestFieldCombo_AddNewLabel_NoMatchesActionRowHighlightedAtIndexZero(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddComboField("Category", []string{"Food", "Auto"}, 0)
+	f.AddNewLabel = "[+ Add new category…]"
+
+	// Type a non-matching query: no real matches; action row is the only row.
+	d.HandleKey(tea.KeyPressMsg{Code: 'z', Text: "z"})
+	if got := f.FilteredIndices(); len(got) != 0 {
+		t.Fatalf("setup: FilteredIndices = %v, want empty", got)
+	}
+	if !f.IsAddNewHighlighted() {
+		t.Errorf("IsAddNewHighlighted = false with no matches and AddNewLabel set, want true")
+	}
+}
+
+func TestFieldCombo_AddNewLabel_EnterOnActionRowReturnsDialogActionAddNew(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddComboField("Category", []string{"Food", "Auto"}, 0)
+	f.AddNewLabel = "[+ Add new category…]"
+	d.AddTextField("Memo", "", "", 10)
+
+	// Type "Donations" — no matches; action row is the only row.
+	for _, r := range "Donations" {
+		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	if !f.IsAddNewHighlighted() {
+		t.Fatalf("setup: action row should be highlighted (no matches)")
+	}
+
+	action := d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if action != DialogActionAddNew {
+		t.Errorf("action = %v, want DialogActionAddNew", action)
+	}
+	if !f.AddNewTriggered {
+		t.Errorf("AddNewTriggered = false, want true")
+	}
+	if f.Query != "Donations" {
+		t.Errorf("Query = %q, want %q (preserved for parent to read)", f.Query, "Donations")
+	}
+	if f.SelectedIndex != 0 {
+		t.Errorf("SelectedIndex = %d, want 0 (unchanged)", f.SelectedIndex)
+	}
+	if d.FocusIndex() != 0 {
+		t.Errorf("FocusIndex = %d, want 0 (focus must not advance — parent handles diversion)", d.FocusIndex())
+	}
+}
+
+func TestFieldCombo_AddNewLabel_EnterOnRegularMatchCommitsNormally(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddComboField("Category", []string{"Food", "Auto"}, 0)
+	f.AddNewLabel = "[+ Add new category…]"
+	d.AddTextField("Memo", "", "", 10)
+
+	d.HandleKey(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	// Filtered: ["Auto"]; highlight at first match.
+	if f.IsAddNewHighlighted() {
+		t.Fatalf("setup: action row highlighted, want regular match")
+	}
+
+	action := d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if action != DialogActionNone {
+		t.Errorf("action = %v, want DialogActionNone (regular commit)", action)
+	}
+	if f.AddNewTriggered {
+		t.Errorf("AddNewTriggered = true, want false (regular commit)")
+	}
+	if f.SelectedIndex != 1 {
+		t.Errorf("SelectedIndex = %d, want 1 (Auto)", f.SelectedIndex)
+	}
+	if d.FocusIndex() != 1 {
+		t.Errorf("FocusIndex = %d, want 1 (advanced)", d.FocusIndex())
+	}
+}
+
+func TestFieldCombo_AddNewLabel_RenderShowsActionRow(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddComboField("Category", []string{"Food"}, 0)
+	f.AddNewLabel = "[+ Add new category…]"
+
+	styles := NewStyles()
+	out := d.Render(styles)
+	if !strings.Contains(out, "[+ Add new category…]") {
+		t.Errorf("render should include action row label; got:\n%s", out)
+	}
+}
+
+func TestFieldCombo_AddNewLabel_RenderShowsActionRowWhenNoMatches(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddComboField("Category", []string{"Food"}, 0)
+	f.AddNewLabel = "[+ Add new category…]"
+
+	d.HandleKey(tea.KeyPressMsg{Code: 'z', Text: "z"})
+
+	styles := NewStyles()
+	out := d.Render(styles)
+	if !strings.Contains(out, "[+ Add new category…]") {
+		t.Errorf("render should include action row even when no matches; got:\n%s", out)
+	}
+}
+
+func TestFieldCombo_NoAddNewLabel_DownStillStopsAtLastMatch(t *testing.T) {
+	// Without AddNewLabel: behavior unchanged — Down stops at last match,
+	// no action row exists, IsAddNewHighlighted is always false.
+	d := NewDialog("Test")
+	f := d.AddComboField("Category", []string{"Food", "Auto"}, 0)
+
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // tries to go past last
+	if got := f.HighlightedIndex(); got != 1 {
+		t.Errorf("HighlightedIndex = %d, want 1 (no action row, no wrap)", got)
+	}
+	if f.IsAddNewHighlighted() {
+		t.Errorf("IsAddNewHighlighted = true, want false (no action row configured)")
+	}
+}
+
+func TestFieldCombo_AddNewLabel_TabOnActionRowDoesNotTriggerAddNew(t *testing.T) {
+	// Tab on action row leaves the field (advances focus) without triggering
+	// AddNew — only Enter triggers AddNew per spec.
+	d := NewDialog("Test")
+	f := d.AddComboField("Category", []string{"Food"}, 0)
+	f.AddNewLabel = "[+ Add new category…]"
+	d.AddTextField("Memo", "", "", 10)
+
+	d.HandleKey(tea.KeyPressMsg{Code: 'z', Text: "z"})
+	if !f.IsAddNewHighlighted() {
+		t.Fatalf("setup: action row not highlighted")
+	}
+
+	action := d.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if action == DialogActionAddNew {
+		t.Errorf("action = DialogActionAddNew, want != AddNew (Tab does not trigger AddNew)")
+	}
+	if f.AddNewTriggered {
+		t.Errorf("AddNewTriggered = true after Tab, want false")
+	}
+	if d.FocusIndex() != 1 {
+		t.Errorf("FocusIndex = %d, want 1 (Tab advanced focus)", d.FocusIndex())
+	}
+}
