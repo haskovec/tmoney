@@ -238,7 +238,7 @@ func TestBuildTransactionDialog_FieldTypes(t *testing.T) {
 	}{
 		{"Date", FieldDate},
 		{"Payee", FieldText},
-		{"Category", FieldSelect},
+		{"Category", FieldCombo},
 		{"Amount", FieldText},
 		{"Memo", FieldText},
 		{"Status", FieldRadio},
@@ -278,6 +278,47 @@ func TestBuildTransactionDialog_DateFieldOverwriteSemantics(t *testing.T) {
 	}
 	if len(got) != 10 {
 		t.Errorf("Value len = %d, want 10 (canonical MM/DD/YYYY)", len(got))
+	}
+}
+
+// TestBuildTransactionDialog_CategoryFieldFiltersAndCommits asserts that the
+// Category field built by buildTransactionDialog uses the FieldCombo widget:
+// typing narrows the filtered list, Enter commits the highlighted match, and
+// SelectedIndex resolves to that match's index in the full options list.
+func TestBuildTransactionDialog_CategoryFieldFiltersAndCommits(t *testing.T) {
+	data := &transactionDialogData{}
+	options := []string{"(None)", "Auto", "Bills > Electric", "Food > Groceries", "Food > Restaurants"}
+
+	d := buildTransactionDialog(data, options, types.ZeroDate)
+	d.SetFocusIndex(2) // Category field
+
+	// Type "g" — only "Food > Groceries" should remain in the filtered list.
+	d.HandleKey(tea.KeyPressMsg{Code: 'g', Text: "g"})
+
+	cat := d.Fields()[2]
+	if cat.Type != FieldCombo {
+		t.Fatalf("Category field type = %v, want FieldCombo", cat.Type)
+	}
+	if cat.Query != "g" {
+		t.Errorf("Query after typing 'g' = %q, want %q", cat.Query, "g")
+	}
+	indices := cat.FilteredIndices()
+	if len(indices) != 1 {
+		t.Fatalf("filtered indices = %v, want one match", indices)
+	}
+	if options[indices[0]] != "Food > Groceries" {
+		t.Errorf("filtered match = %q, want %q", options[indices[0]], "Food > Groceries")
+	}
+
+	// Enter commits the highlighted row and clears the query.
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cat.Query != "" {
+		t.Errorf("Query after Enter = %q, want empty", cat.Query)
+	}
+	wantIdx := indices[0]
+	if cat.SelectedIndex != wantIdx {
+		t.Errorf("SelectedIndex after commit = %d, want %d (Food > Groceries in full list)",
+			cat.SelectedIndex, wantIdx)
 	}
 }
 
@@ -559,7 +600,7 @@ func TestApp_SubmitTransactionDialog_PassesSavedDateInMessage(t *testing.T) {
 			d := NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Coffee Shop", "", 0)
-			d.AddSelectField("Category", []string{"(None)", "Food"}, 0)
+			d.AddComboField("Category", []string{"(None)", "Food"}, 0)
 			d.AddTextField("Amount", "-5.00", "", 12)
 			d.AddTextField("Memo", "", "", 0)
 			d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
@@ -655,7 +696,7 @@ func TestApp_CheckPayeeAutoFill(t *testing.T) {
 			d := NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "kroger", "Payee name", 0)
-			d.AddSelectField("Category", []string{"(None)", "Groceries"}, 0)
+			d.AddComboField("Category", []string{"(None)", "Groceries"}, 0)
 			d.AddTextField("Amount", "", "-50.00", 12)
 			d.AddTextField("Memo", "", "", 0)
 			d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
@@ -694,7 +735,7 @@ func TestApp_CheckPayeeAutoFill_NoMatch(t *testing.T) {
 			d := NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "unknown", "Payee name", 0)
-			d.AddSelectField("Category", []string{"(None)", "Groceries"}, 0)
+			d.AddComboField("Category", []string{"(None)", "Groceries"}, 0)
 			d.AddTextField("Amount", "", "", 12)
 			d.AddTextField("Memo", "", "", 0)
 			d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
@@ -727,7 +768,7 @@ func TestApp_SubmitTransactionDialog_InvalidDate(t *testing.T) {
 			d := NewDialog("New Transaction")
 			d.AddDateField("Date", "13/45/2024")
 			d.AddTextField("Payee", "Test Payee", "", 0)
-			d.AddSelectField("Category", []string{"(None)"}, 0)
+			d.AddComboField("Category", []string{"(None)"}, 0)
 			d.AddTextField("Amount", "-50.00", "", 12)
 			d.AddTextField("Memo", "", "", 0)
 			d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
@@ -762,7 +803,7 @@ func TestApp_SubmitTransactionDialog_InvalidAmount(t *testing.T) {
 			d := NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Test Payee", "", 0)
-			d.AddSelectField("Category", []string{"(None)"}, 0)
+			d.AddComboField("Category", []string{"(None)"}, 0)
 			d.AddTextField("Amount", "", "", 12)
 			d.AddTextField("Memo", "", "", 0)
 			d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
@@ -797,7 +838,7 @@ func TestApp_SubmitTransactionDialog_MultipleErrors(t *testing.T) {
 			d := NewDialog("New Transaction")
 			d.AddDateField("Date", "13/45/2024")
 			d.AddTextField("Payee", "", "", 0)
-			d.AddSelectField("Category", []string{"(None)"}, 0)
+			d.AddComboField("Category", []string{"(None)"}, 0)
 			d.AddTextField("Amount", "", "", 12)
 			d.AddTextField("Memo", "", "", 0)
 			d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
@@ -838,7 +879,7 @@ func TestApp_SubmitTransactionDialog_ValidNonSplit(t *testing.T) {
 			d := NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Coffee Shop", "", 0)
-			d.AddSelectField("Category", []string{"(None)", "Food"}, 0)
+			d.AddComboField("Category", []string{"(None)", "Food"}, 0)
 			d.AddTextField("Amount", "-5.00", "", 12)
 			d.AddTextField("Memo", "Morning coffee", "", 0)
 			d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
@@ -907,7 +948,7 @@ func TestApp_CheckPayeeAutoFill_EmptyPayee(t *testing.T) {
 			d := NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "", "", 0)
-			d.AddSelectField("Category", []string{"(None)", "Food"}, 0)
+			d.AddComboField("Category", []string{"(None)", "Food"}, 0)
 			d.AddTextField("Amount", "", "", 12)
 			d.AddTextField("Memo", "", "", 0)
 			d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)

@@ -138,7 +138,7 @@ func buildTransactionDialog(data *transactionDialogData, categoryOptions []strin
 	d.AddTextField("Payee", "", "Payee name", 0)
 
 	// Category
-	d.AddSelectField("Category", categoryOptions, 0)
+	d.AddComboField("Category", categoryOptions, 0)
 
 	// Amount
 	f = d.AddTextField("Amount", "", "-50.00", 12)
@@ -224,6 +224,9 @@ func (a *App) checkPayeeAutoFill() {
 			// Category field is at index 2
 			if len(fields) > 2 {
 				fields[2].SelectedIndex = i
+				// Keep the combo's highlight cursor in sync with SelectedIndex
+				// so the dropdown highlights the auto-filled row when opened.
+				fields[2].comboHighlight = i
 			}
 			return
 		}

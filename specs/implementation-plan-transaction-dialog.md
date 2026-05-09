@@ -117,7 +117,7 @@ Introduces a new `FieldCombo` field type: an autocompleting select where typing 
   - CLEANUP: none.
   - DOCS: deferred to Phase 6.
 
-- [ ] **TD-005 — Migrate transaction-dialog Category field to `AddComboField`**
+- [x] **TD-005 — Migrate transaction-dialog Category field to `AddComboField`**
   - RED: update tests in `transaction_dialog_test.go` that construct dialogs with `d.AddSelectField("Category", …)` (lines 416, 455, 488, 523, 558, 599, 668) to `d.AddComboField(…)` and add a typing-to-filter assertion in at least one. Add a test that types into Category, confirms the filtered list narrows, presses Enter, and asserts `SelectedIndex` matches the chosen entry's index in the full options list. The submit-path tests still pass because they set `SelectedIndex` directly without typing.
   - GREEN: change `transaction_dialog.go:130` from `d.AddSelectField("Category", categoryOptions, 0)` to `d.AddComboField("Category", categoryOptions, 0)`. The `submitTransactionDialog` lookup at `transaction_dialog.go:270` (`fields[2].SelectedIndex`) is unchanged.
   - CLEANUP: none.
