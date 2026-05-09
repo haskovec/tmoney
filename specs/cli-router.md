@@ -1,6 +1,6 @@
 # CLI Router Specification
 
-> **Status (2026-05-04):** scaffold implemented. `main.go` lives at the module root; command code is in `internal/cli/`; the Cobra root command dispatches `tmoney version`, `tmoney theme list`, and `tmoney theme generate-from-wal` natively while routing every other invocation to the legacy `--flag` handler unchanged. The remaining ~50 verbs (`--add-account`, `--backup`, `--import`, …) have **not** been migrated yet — see the **Migration Strategy** section below for the planned batch sequencing.
+> **Status (2026-05-09):** migration complete. Every legacy `--flag` verb has been ported to a Cobra noun-verb subcommand; `parseArgs`, `RunLegacy`, and `cliOptions` have all been deleted. The Cobra root in `internal/cli/root.go` is the only entry point. The post-migration CLI reference lives in [`specs/cli.md`](cli.md); this document is preserved for design context. The original phased plan is retained at the bottom under [History](#history).
 
 ## Overview
 
@@ -242,38 +242,6 @@ Cobra auto-generates help from each command's `Use`, `Short`, `Long`, `Example`,
 
 Top-level help lists noun groups grouped logically. Sub-noun help (`tmoney account --help`) lists verbs for that noun.
 
-## Migration Strategy
-
-The full port is split into **batches**, each of which is its own implementation plan and PR set:
-
-1. **Scaffold + theme + version** (covered by this spec and the theming implementation plan): introduce Cobra root, move `main.go`, set up `internal/cli/`, add `theme list`, `theme generate-from-wal`, `version`. **No legacy flag is removed in this batch** — the existing `parseArgs` path remains for unmigrated verbs (this is the only point where two CLI styles temporarily coexist; it's a transitional state not an end state).
-2. **`db` group**: `db create`, `db backup`, `db restore`, `db list-backups`. Remove corresponding legacy flags.
-3. **`account` group**.
-4. **`transaction` group**.
-5. **`scheduled` group**.
-6. **`reconcile` group**.
-7. **`security` group**.
-8. **`price` group**.
-9. **`investment` group** (largest single batch — 12 verbs).
-10. **`import`, `export`, `report`** (residual top-level verbs).
-
-Each batch:
-- Adds the new subcommand(s).
-- Removes the legacy `--flag` and its handler.
-- Updates `specs/cli.md` to match the new shape (or this document supersedes `specs/cli.md` once batch 1 lands; see below).
-- Updates README examples if any reference the migrated verbs.
-
-After batch 10, `parseArgs` and the flag-flat dispatch in `run()` are deleted.
-
-### Disposition of `specs/cli.md`
-
-The existing `specs/cli.md` documents the flag-based interface. As verbs migrate, that document becomes inaccurate. Two options:
-
-- **(a)** Rewrite `specs/cli.md` once the full migration is complete (after batch 10), referencing this document in the meantime.
-- **(b)** Update `specs/cli.md` incrementally per batch.
-
-Recommendation: **(a)**. Edit `specs/cli.md` once at the end to be the canonical, post-migration reference, retiring this design spec to historical record. During the transition, this spec is the source of truth.
-
 ## Test Strategy
 
 ### Unit tests
@@ -297,6 +265,36 @@ Recommendation: **(a)**. Edit `specs/cli.md` once at the end to be the canonical
 - **Cobra option style for complex `add` commands**: `tmoney transaction add` has many fields. Cobra supports both flag-based (`--account`, `--amount`, `--payee`) and positional argument forms. Recommendation: flag-based, mirroring the legacy `--add-transaction` flag style. Decision deferred to per-batch implementation.
 - **Persistent flag inheritance**: `--file` is persistent at root, but some commands genuinely don't need a database (`version`, `theme list`, `completion`). Cobra allows per-command flag exclusion; verify no DB connection is opened unnecessarily.
 - **Test artifact `cmd/tmoney/some-file.tdb`**: visible in git status; needs disposition (gitignore vs delete vs move to `testdata/`). Address in batch 1.
+
+## History
+
+The migration is complete. The following section is preserved for posterity — it describes the phased plan that was executed, not the current state.
+
+### Migration Strategy
+
+The full port was split into **batches**, each of which was its own implementation plan and PR set:
+
+1. **Scaffold + theme + version** (covered by this spec and the theming implementation plan): introduce Cobra root, move `main.go`, set up `internal/cli/`, add `theme list`, `theme generate-from-wal`, `version`. No legacy flag was removed in this batch — the existing `parseArgs` path remained for unmigrated verbs (the only point where two CLI styles temporarily coexisted).
+2. **`db` group**: `db create`, `db backup`, `db restore`, `db list-backups`. Removed corresponding legacy flags.
+3. **`account` group**.
+4. **`transaction` group**.
+5. **`scheduled` group**.
+6. **`reconcile` group**.
+7. **`security` group**.
+8. **`price` group**.
+9. **`investment` group** (largest single batch — 12 verbs).
+10. **`import`, `export`, `report`** (residual top-level verbs).
+
+Each batch:
+- Added the new subcommand(s).
+- Removed the legacy `--flag` and its handler.
+- Updated README examples for the migrated verbs.
+
+After batch 10, `parseArgs` and the flag-flat dispatch in `run()` were deleted. The detailed per-verb plan and ticket numbers (CM-001 through CM-068) are recorded in [`specs/implementation-plan-cli-cobra-migration.md`](implementation-plan-cli-cobra-migration.md).
+
+### Disposition of `specs/cli.md`
+
+`specs/cli.md` was rewritten once at the end of the migration (CM-067) to be the canonical, post-migration reference; this design spec is retained for context only.
 
 ## References
 

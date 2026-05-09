@@ -33,9 +33,9 @@ tmoney db create ~/Documents/TMoney/personal.tdb
 tmoney ~/Documents/TMoney/personal.tdb
 
 # Or use the CLI to add data
-tmoney -f personal.tdb --add-account --name "My Checking" --type checking --opening-balance 1000
+tmoney -f personal.tdb account add --name "My Checking" --type checking --opening-balance 1000
 tmoney -f personal.tdb transaction add --account "My Checking" --amount -45.50 --payee "Grocery Store" --category "Food:Groceries"
-tmoney -f personal.tdb --balance
+tmoney -f personal.tdb account balance
 ```
 
 ## Features
@@ -93,8 +93,8 @@ tmoney -f personal.tdb --balance
   before any changes are written
 - Export to CSV or QIF via `--export` on the CLI
 - **Link Transfers** (Transactions → Link Transfers… or
-  `--link-transfers`): when each side of a transfer is imported as a
-  separate transaction (typical when importing one account at a time
+  `tmoney transfer link`): when each side of a transfer is imported as
+  a separate transaction (typical when importing one account at a time
   from Quicken), this scans for unlinked transactions across accounts
   whose amounts cancel and whose dates are within a few days, and joins
   the matched pairs into proper transfers. Pairs with multiple possible
@@ -887,7 +887,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split`/`merge`/`spin-off`/`portfolio`, and `tmoney import`/`export`, and `tmoney report net-worth`/`spending` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is built on [Cobra](https://github.com/spf13/cobra) and follows a noun-verb structure (`tmoney account add`, `tmoney investment portfolio`, `tmoney report net-worth`). Run `tmoney --help` for the top-level command list, or `tmoney <noun> --help` for the verbs in any group. See [`specs/cli.md`](specs/cli.md) for the full reference.
 
 ## Tech Stack
 

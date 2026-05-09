@@ -373,7 +373,7 @@ After Phase 11, every legacy verb is migrated and `parseArgs`/`legacy.go` only c
 - [x] **CM-067 — Rewrite `specs/cli.md`** (completed 2026-05-09)
   - GREEN: replace `specs/cli.md`'s flag-based documentation with a noun-verb reference. Each noun group becomes a section; each verb a subsection with `Use`, required flags, optional flags, examples, and expected output (carry over the existing examples, just shifted to the new shape). Keep the "Database File Handling", "Date Formats", "Amount Formats", "Exit Codes", and "Configuration" sections. Cross-reference `specs/cli-router.md` once and note that the migration is complete.
 
-- [ ] **CM-068 — Update `README.md` and retire `specs/cli-router.md`'s migration section**
+- [x] **CM-068 — Update `README.md` and retire `specs/cli-router.md`'s migration section** (completed 2026-05-09)
   - GREEN: in `README.md`'s `## CLI` section, remove the "migration is opportunistic" caveat and replace with a one-paragraph statement that all verbs are now Cobra-native, plus a pointer to `specs/cli.md`. Reflow the `## CLI Reference` section so every example uses the noun-verb form (most should already be updated by the per-verb DOCS steps; this is a final pass for consistency). In `specs/cli-router.md`, add a status note at the top stating the migration is complete and move the **Migration Strategy** section to a `## History` heading at the bottom (preserved for posterity, not removed).
 
 ---
