@@ -1655,79 +1655,6 @@ func ptrMoney(s string) *types.Money {
 	return &m
 }
 
-// --- SM-110: CLI --investment-fee ---
-
-func TestRun_InvestmentFeeMissingFile(t *testing.T) {
-	err := run([]string{"--investment-fee", "--account", "Brokerage", "--amount", "25"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("expected --file required error, got: %v", err)
-	}
-}
-
-func TestRun_InvestmentFeeMissingAccount(t *testing.T) {
-	err := run([]string{"--investment-fee", "--file", "test.tdb", "--amount", "25"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --account") {
-		t.Errorf("expected --account required error, got: %v", err)
-	}
-}
-
-func TestRun_InvestmentFeeMissingAmount(t *testing.T) {
-	err := run([]string{"--investment-fee", "--file", "test.tdb", "--account", "Brokerage"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --amount") {
-		t.Errorf("expected --amount required error, got: %v", err)
-	}
-}
-
-func TestRun_InvestmentFeeBasic(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	stdout := &bytes.Buffer{}
-	err := run([]string{
-		"--investment-fee", "--file", dbPath,
-		"--account", "Brokerage",
-		"--amount", "25.00",
-		"--memo", "Annual fee",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--investment-fee) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Investment fee transaction created successfully") {
-		t.Error("output should confirm fee creation")
-	}
-	if !strings.Contains(output, "$25.00") {
-		t.Error("output should contain fee amount")
-	}
-	if !strings.Contains(output, "Annual fee") {
-		t.Error("output should contain memo")
-	}
-}
-
-func TestRun_InvestmentFeeInsufficientCash(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-	acctRepo := account.NewRepository(database)
-	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
-	if err := acctRepo.Create(acct); err != nil {
-		t.Fatalf("failed to create account: %v", err)
-	}
-	database.Close()
-
-	err = run([]string{
-		"--investment-fee", "--file", dbPath,
-		"--account", "Brokerage",
-		"--amount", "100",
-	}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil {
-		t.Error("expected insufficient cash error for fee")
-	}
-}
-
 // --- SM-111: CLI --invest-deposit / --invest-withdraw ---
 
 func TestRun_InvestDepositMissingFile(t *testing.T) {
@@ -1977,7 +1904,6 @@ func TestParseArgs_InvestmentFlags(t *testing.T) {
 		args  []string
 		check func(*cliOptions) bool
 	}{
-		{"--investment-fee flag", []string{"--investment-fee"}, func(o *cliOptions) bool { return o.investmentFee }},
 		{"--invest-deposit flag", []string{"--invest-deposit"}, func(o *cliOptions) bool { return o.investDeposit }},
 		{"--invest-withdraw flag", []string{"--invest-withdraw"}, func(o *cliOptions) bool { return o.investWithdraw }},
 		{"--transfer-shares flag", []string{"--transfer-shares"}, func(o *cliOptions) bool { return o.transferShares }},

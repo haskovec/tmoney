@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --investment-fee
-	if opts.investmentFee {
-		return runInvestmentFee(opts, stdout)
-	}
-
 	// Handle --invest-deposit
 	if opts.investDeposit {
 		return runInvestDeposit(opts, stdout)
