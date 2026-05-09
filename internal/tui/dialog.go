@@ -1082,7 +1082,7 @@ func (d *Dialog) Render(styles Styles) string {
 	lines = append(lines, strings.Repeat("─", contentWidth))
 
 	// Buttons
-	lines = append(lines, d.renderButtonRow(contentWidth))
+	lines = append(lines, d.renderButtonRow(styles, contentWidth))
 
 	content := strings.Join(lines, "\n")
 	return styles.Dialog.Width(d.width).Render(content)
@@ -1480,7 +1480,7 @@ func (d *Dialog) renderCheckboxField(styles Styles, field *Field, focused bool) 
 	return line
 }
 
-func (d *Dialog) renderButtonRow(contentWidth int) string {
+func (d *Dialog) renderButtonRow(styles Styles, contentWidth int) string {
 	if len(d.buttons) == 0 {
 		return ""
 	}
@@ -1491,9 +1491,13 @@ func (d *Dialog) renderButtonRow(contentWidth int) string {
 	for i, btn := range d.buttons {
 		btnIdx := len(d.fields) + i
 		focused := btnIdx == d.focusIndex
-		label := "[ " + btn.Label + " ]"
-		if focused {
-			label = lipgloss.NewStyle().Reverse(true).Bold(true).Render("[ " + btn.Label + " ]")
+		var label string
+		if focused && !isTransparent(ColorDialogButtonShortcutFg) {
+			label = renderFocusedButton(styles, btn.Label)
+		} else if focused {
+			label = styles.DialogButtonFocused.Render("[ " + btn.Label + " ]")
+		} else {
+			label = styles.DialogButton.Render("[ " + btn.Label + " ]")
 		}
 		btnStrs = append(btnStrs, label)
 		totalBtnWidth += lipgloss.Width(label)
@@ -1516,6 +1520,25 @@ func (d *Dialog) renderButtonRow(contentWidth int) string {
 	}
 
 	return result.String()
+}
+
+// renderFocusedButton renders the focused-button label with a Turbo
+// Vision-style shortcut-letter highlight: the first rune of the label
+// is rendered in DialogButtonShortcut, the rest in DialogButtonFocused.
+// When the theme leaves shortcut.fg unset, DialogButtonShortcut equals
+// DialogButtonFocused, so this collapses to a uniform render.
+func renderFocusedButton(styles Styles, label string) string {
+	runes := []rune(label)
+	if len(runes) == 0 {
+		return styles.DialogButtonFocused.Render("[  ]")
+	}
+	first := string(runes[0])
+	rest := string(runes[1:])
+	var b strings.Builder
+	b.WriteString(styles.DialogButtonFocused.Render("[ "))
+	b.WriteString(styles.DialogButtonShortcut.Render(first))
+	b.WriteString(styles.DialogButtonFocused.Render(rest + " ]"))
+	return b.String()
 }
 
 // DialogHitZone represents the type of element hit by a mouse click within a dialog.

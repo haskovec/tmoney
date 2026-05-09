@@ -2,6 +2,13 @@
 
 > **Status (2026-05-04):** v1 implemented. The three built-in themes (`default`, `turbo-vision`, `light`), the TOML parser with per-slot fallback, the user theme directory at `~/.config/tmoney/themes/`, the View → Theme menu with live-swap, config persistence, the status-bar toast + `~/.config/tmoney/log.txt` error surface, and the `tmoney theme list` / `tmoney theme generate-from-wal` subcommands are all shipped. Items in the **Future Work** / **Non-goals** sections (solid `desktop.bg` painting, OSC color queries, per-region border styles, file-watch auto-reload, adaptive light/dark, `tmoney theme show|validate`) remain explicitly deferred. Implementation tracking lives in [`implementation-plan-theming.md`](implementation-plan-theming.md).
 
+> **Addendum (2026-05-09):** Dialog background painting and dialog-button slots. Two narrow extensions to v1, prompted by the Turbo Vision theme needing a gray dialog panel and green action buttons:
+>
+> 1. **`dialog.bg` is now painted.** v1 declared the slot but the renderer ignored it — `Styles.Dialog` only set a border. The slot now feeds `lipgloss.Background()` on the dialog box so themes can specify a panel color (gray for Turbo Vision, off-white for `light`). Empty string still means "transparent — terminal default shows through" and remains the `default` theme's behavior.
+> 2. **New `dialog.button.*` group.** Five optional slots — `dialog.button.fg`, `dialog.button.bg`, `dialog.button.focused.fg`, `dialog.button.focused.bg`, `dialog.button.shortcut.fg` — let themes color action buttons (Cancel, OK, Save, etc.) at the bottom of dialogs. All default to empty: when both unfocused slots are empty the button renders as plain `[ Label ]` text (today's look); when both focused slots are empty the focused button uses `Reverse(true) + Bold(true)` (today's focused look); when `shortcut.fg` is empty no shortcut highlight is applied. Themes opt in by setting explicit colors. The Turbo Vision theme uses these to render the classic Borland buttons (black text on green for unfocused; white text with a yellow first-letter highlight when focused). The shortcut highlight applies only to focused buttons and colors the first rune of the label — matching TV's convention where the active/default button shows a single bright letter.
+>
+> No changes to v1 slot semantics, parser behavior, or fallback rules. Adding optional slots is naturally backward-compatible (per the Schema versioning section): existing theme files keep working unchanged.
+
 ## Overview
 
 TMoney's TUI currently uses a single hard-coded color palette in `internal/tui/styles.go`. This spec defines a skinnable theme system that lets users choose between built-in themes (including a faithful Turbo Vision look) and define their own theme files. A pywal helper subcommand generates a theme from the user's system color scheme for Omarchy/pywal users.
@@ -79,6 +86,15 @@ dialog.bg                = "#aaaaaa"
 dialog.fg                = "#000000"
 dialog.border.fg         = "#000000"
 dialog.title.fg          = "#000000"
+
+# Dialog action buttons (Cancel, OK, Save, etc.). All four optional —
+# leave both unfocused slots empty for plain `[ Label ]` text and both
+# focused slots empty for the default Reverse+Bold focus highlight.
+dialog.button.fg          = "#000000"
+dialog.button.bg          = "#00aa00"   # green button face
+dialog.button.focused.fg  = "#ffffff"
+dialog.button.focused.bg  = "#00aa00"
+dialog.button.shortcut.fg = "#ffff55"   # first letter on focused button
 
 # ---- Tables ----
 table.header.fg          = "#ffff55"

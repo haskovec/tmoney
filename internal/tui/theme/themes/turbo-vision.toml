@@ -33,11 +33,19 @@ window.fg = "#aaaaaa"
 window.border.fg = "#ffffff"
 window.title.fg = "#ffff55"
 
-# Dialogs — black on light gray, dark borders.
+# Dialogs — black on light gray, dark borders. Action buttons render
+# as classic Borland green: black text on green for unfocused buttons,
+# and white text with a yellow first-letter shortcut highlight when
+# the button is focused (e.g. the bright "O" on a default OK button).
 dialog.bg = "#aaaaaa"
 dialog.fg = "#000000"
 dialog.border.fg = "#000000"
 dialog.title.fg = "#000000"
+dialog.button.fg = "#000000"
+dialog.button.bg = "#00aa00"
+dialog.button.focused.fg = "#ffffff"
+dialog.button.focused.bg = "#00aa00"
+dialog.button.shortcut.fg = "#ffff55"
 
 # Tables — yellow headers, black-on-cyan selected row.
 table.header.fg = "#ffff55"

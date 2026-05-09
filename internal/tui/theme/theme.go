@@ -79,10 +79,24 @@ type WindowColors struct {
 
 // DialogColors mirrors WindowColors for modal dialogs.
 type DialogColors struct {
-	Bg     string `toml:"bg"`
-	Fg     string `toml:"fg"`
-	Border FgOnly `toml:"border"`
-	Title  FgOnly `toml:"title"`
+	Bg     string       `toml:"bg"`
+	Fg     string       `toml:"fg"`
+	Border FgOnly       `toml:"border"`
+	Title  FgOnly       `toml:"title"`
+	Button ButtonColors `toml:"button"`
+}
+
+// ButtonColors holds the optional dialog-button slots under
+// `dialog.button.*`. All slots are optional: empty Fg/Bg renders the
+// button as plain `[ Label ]` text, empty Focused.Fg/Focused.Bg
+// renders the focused button with Reverse+Bold, and an empty
+// Shortcut.Fg leaves the shortcut letter the same color as the rest
+// of the label. Themes opt in by setting explicit colors.
+type ButtonColors struct {
+	Fg       string `toml:"fg"`
+	Bg       string `toml:"bg"`
+	Focused  FgBg   `toml:"focused"`
+	Shortcut FgOnly `toml:"shortcut"`
 }
 
 // TableColors holds the TOML group `table.*`.

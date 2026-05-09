@@ -81,7 +81,39 @@ var (
 	// underline. Turbo Vision sets this to red so the shortcut letter
 	// stands out on the gray menu bar without an underline.
 	ColorMenubarShortcutFg color.Color = lipgloss.NoColor{}
+	// ColorDialogBg paints the dialog box background. NoColor{} leaves
+	// the terminal default visible (today's look); themes set it for a
+	// solid panel (Turbo Vision gray, light theme off-white).
+	ColorDialogBg color.Color = lipgloss.NoColor{}
+	// ColorDialogFg / ColorDialogBorder / ColorDialogTitle hold the
+	// theme's dialog foreground/border/title colors. Empty defaults to
+	// the existing ColorTitle / ColorBorder behavior; explicit values
+	// override.
+	ColorDialogFg     color.Color = lipgloss.NoColor{}
+	ColorDialogBorder color.Color = ColorBorder
+	ColorDialogTitle  color.Color = ColorTitle
+	// ColorDialogButtonFg / ColorDialogButtonBg are the unfocused
+	// dialog-button face. NoColor{} on both means "render as plain
+	// `[ Label ]` text" (today's look).
+	ColorDialogButtonFg color.Color = lipgloss.NoColor{}
+	ColorDialogButtonBg color.Color = lipgloss.NoColor{}
+	// ColorDialogButtonFocusedFg / ColorDialogButtonFocusedBg are the
+	// focused dialog-button face. NoColor{} on both means "use Reverse
+	// + Bold" (today's focused look).
+	ColorDialogButtonFocusedFg color.Color = lipgloss.NoColor{}
+	ColorDialogButtonFocusedBg color.Color = lipgloss.NoColor{}
+	// ColorDialogButtonShortcutFg colors the first letter of a focused
+	// button's label (the Turbo Vision yellow-letter highlight). NoColor{}
+	// disables the highlight so the letter takes the focused button's
+	// regular foreground color.
+	ColorDialogButtonShortcutFg color.Color = lipgloss.NoColor{}
 )
+
+// isTransparent reports whether c is the lipgloss.NoColor sentinel.
+func isTransparent(c color.Color) bool {
+	_, ok := c.(lipgloss.NoColor)
+	return ok
+}
 
 // MenubarShortcutUnderline controls whether the menu-bar shortcut
 // letter is underlined. Themes set this via `menubar.shortcut.underline`
@@ -145,9 +177,11 @@ type Styles struct {
 	FieldError lipgloss.Style
 
 	// Dialog / Modal
-	Dialog       lipgloss.Style
-	DialogTitle  lipgloss.Style
-	DialogButton lipgloss.Style
+	Dialog               lipgloss.Style
+	DialogTitle          lipgloss.Style
+	DialogButton         lipgloss.Style
+	DialogButtonFocused  lipgloss.Style
+	DialogButtonShortcut lipgloss.Style
 
 	// Menu bar
 	MenuBarItem           lipgloss.Style
@@ -269,20 +303,76 @@ func (s *Styles) initBaseStyles() {
 	s.FieldError = lipgloss.NewStyle().
 		Foreground(ColorNegative)
 
-	// Dialog
-	s.Dialog = lipgloss.NewStyle().
+	// Dialog. ColorDialogBg paints the panel; transparent leaves the
+	// terminal default (today's look). When a theme sets dialog.bg, we
+	// also extend the border background so the rounded-border edges
+	// blend with the panel rather than punching a transparent hole.
+	dialogStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorBorder).
+		BorderForeground(ColorDialogBorder).
 		Padding(1, 2)
+	if !isTransparent(ColorDialogBg) {
+		dialogStyle = dialogStyle.
+			Background(ColorDialogBg).
+			BorderBackground(ColorDialogBg)
+		if !isTransparent(ColorDialogFg) {
+			dialogStyle = dialogStyle.Foreground(ColorDialogFg)
+		}
+	}
+	s.Dialog = dialogStyle
 
-	s.DialogTitle = lipgloss.NewStyle().
+	dialogTitleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(ColorTitle)
+		Foreground(ColorDialogTitle)
+	if !isTransparent(ColorDialogBg) {
+		dialogTitleStyle = dialogTitleStyle.Background(ColorDialogBg)
+	}
+	s.DialogTitle = dialogTitleStyle
 
-	s.DialogButton = lipgloss.NewStyle().
-		Padding(0, 2).
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(ColorBorder)
+	// Unfocused dialog button. When neither fg nor bg is set we render
+	// plain `[ Label ]` text (today's look). Themes opt in by setting
+	// dialog.button.fg/bg.
+	btnStyle := lipgloss.NewStyle()
+	if !isTransparent(ColorDialogButtonFg) {
+		btnStyle = btnStyle.Foreground(ColorDialogButtonFg)
+	}
+	if !isTransparent(ColorDialogButtonBg) {
+		btnStyle = btnStyle.Background(ColorDialogButtonBg)
+	}
+	s.DialogButton = btnStyle
+
+	// Focused dialog button. When neither fg nor bg is set we fall back
+	// to the original Reverse+Bold treatment so existing themes keep
+	// working unchanged.
+	if isTransparent(ColorDialogButtonFocusedFg) && isTransparent(ColorDialogButtonFocusedBg) {
+		s.DialogButtonFocused = lipgloss.NewStyle().Reverse(true).Bold(true)
+	} else {
+		focusedStyle := lipgloss.NewStyle().Bold(true)
+		if !isTransparent(ColorDialogButtonFocusedFg) {
+			focusedStyle = focusedStyle.Foreground(ColorDialogButtonFocusedFg)
+		}
+		if !isTransparent(ColorDialogButtonFocusedBg) {
+			focusedStyle = focusedStyle.Background(ColorDialogButtonFocusedBg)
+		}
+		s.DialogButtonFocused = focusedStyle
+	}
+
+	// Shortcut letter on the focused button (Turbo Vision's yellow first
+	// letter on the highlighted action). Inherits the focused button's
+	// background so the colored letter sits on the same face. When the
+	// theme leaves shortcut.fg unset, the style is the focused-button
+	// style so renderButtonRow can apply it uniformly without branching.
+	if isTransparent(ColorDialogButtonShortcutFg) {
+		s.DialogButtonShortcut = s.DialogButtonFocused
+	} else {
+		shortcutStyle := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(ColorDialogButtonShortcutFg)
+		if !isTransparent(ColorDialogButtonFocusedBg) {
+			shortcutStyle = shortcutStyle.Background(ColorDialogButtonFocusedBg)
+		}
+		s.DialogButtonShortcut = shortcutStyle
+	}
 
 	// Menu bar
 	s.MenuBarItem = lipgloss.NewStyle().
@@ -392,6 +482,22 @@ func (s *Styles) applyTheme(t *theme.Theme) {
 	ColorMenubarShortcutFg = themeColor(t.Menubar.Shortcut.Fg)
 	MenubarShortcutUnderline = t.Menubar.Shortcut.Underline
 	menubarShortcutInherits = t.Menubar.Shortcut.Fg == "" || t.Menubar.Shortcut.Fg == t.Menubar.Fg
+
+	ColorDialogBg = themeColor(t.Dialog.Bg)
+	ColorDialogFg = themeColor(t.Dialog.Fg)
+	ColorDialogBorder = themeColor(t.Dialog.Border.Fg)
+	ColorDialogTitle = themeColor(t.Dialog.Title.Fg)
+	if isTransparent(ColorDialogBorder) {
+		ColorDialogBorder = ColorBorder
+	}
+	if isTransparent(ColorDialogTitle) {
+		ColorDialogTitle = ColorTitle
+	}
+	ColorDialogButtonFg = themeColor(t.Dialog.Button.Fg)
+	ColorDialogButtonBg = themeColor(t.Dialog.Button.Bg)
+	ColorDialogButtonFocusedFg = themeColor(t.Dialog.Button.Focused.Fg)
+	ColorDialogButtonFocusedBg = themeColor(t.Dialog.Button.Focused.Bg)
+	ColorDialogButtonShortcutFg = themeColor(t.Dialog.Button.Shortcut.Fg)
 
 	s.initBaseStyles()
 }
