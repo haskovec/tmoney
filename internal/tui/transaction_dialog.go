@@ -131,7 +131,7 @@ func buildTransactionDialog(data *transactionDialogData, categoryOptions []strin
 	} else {
 		dateStr = seedDate.Time().Format("01/02/2006")
 	}
-	f := d.AddTextField("Date", dateStr, "MM/DD/YYYY", 10)
+	f := d.AddDateField("Date", dateStr)
 	f.Required = true
 
 	// Payee

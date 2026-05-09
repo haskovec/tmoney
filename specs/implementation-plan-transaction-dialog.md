@@ -85,7 +85,7 @@ Introduces a new `FieldDate` field type. The widget renders a fixed-width 10-cha
   - CLEANUP: none.
   - DOCS: deferred to Phase 6.
 
-- [ ] **TD-003 — Migrate transaction-dialog Date field to `AddDateField`**
+- [x] **TD-003 — Migrate transaction-dialog Date field to `AddDateField`**
   - RED: update tests in `transaction_dialog_test.go` that construct dialogs with `d.AddTextField("Date", …)` (around lines 325, 354, 414, 453, 486, 521, 556, 597) to use `d.AddDateField(…)` instead. Add at least one new test asserting that typing into the focused date field uses overwrite semantics and produces a valid `MM/DD/YYYY` `Value` after a few keypresses. The "invalid date" test at line 486 (`"not-a-date"`) becomes "out-of-range date" using a syntactically valid but semantically invalid string like `"13/45/2024"` — `parseDateInput` already returns an error for that and the test still asserts on the rendered error message.
   - GREEN: change `transaction_dialog.go:123` from `d.AddTextField("Date", today, "MM/DD/YYYY", 10)` to `d.AddDateField("Date", today)`. The `Required = true` on the returned field stays.
   - CLEANUP: none.

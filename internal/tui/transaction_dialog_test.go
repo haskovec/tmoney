@@ -236,7 +236,7 @@ func TestBuildTransactionDialog_FieldTypes(t *testing.T) {
 		label     string
 		fieldType FieldType
 	}{
-		{"Date", FieldText},
+		{"Date", FieldDate},
 		{"Payee", FieldText},
 		{"Category", FieldSelect},
 		{"Amount", FieldText},
@@ -252,6 +252,32 @@ func TestBuildTransactionDialog_FieldTypes(t *testing.T) {
 		if fields[i].Type != exp.fieldType {
 			t.Errorf("field[%d] type = %v, want %v", i, fields[i].Type, exp.fieldType)
 		}
+	}
+}
+
+// TestBuildTransactionDialog_DateFieldOverwriteSemantics asserts that the Date
+// field built by buildTransactionDialog uses the FieldDate widget's overwrite
+// semantics: typing two digits overwrites the month digits in place and the
+// resulting Value is still a canonical 10-char MM/DD/YYYY string.
+func TestBuildTransactionDialog_DateFieldOverwriteSemantics(t *testing.T) {
+	data := &transactionDialogData{}
+	options := []string{"(None)"}
+	seed := types.NewDate(2024, time.January, 15)
+
+	d := buildTransactionDialog(data, options, seed)
+	d.SetFocusIndex(0) // Date field
+
+	// Type "0" then "2" — should rewrite the month from "01" to "02".
+	d.HandleKey(tea.KeyPressMsg{Code: '0', Text: "0"})
+	d.HandleKey(tea.KeyPressMsg{Code: '2', Text: "2"})
+
+	got := d.Fields()[0].Value
+	want := "02/15/2024"
+	if got != want {
+		t.Errorf("after typing 0,2 over month: Value = %q, want %q", got, want)
+	}
+	if len(got) != 10 {
+		t.Errorf("Value len = %d, want 10 (canonical MM/DD/YYYY)", len(got))
 	}
 }
 
@@ -337,7 +363,7 @@ func TestApp_HandleTransactionDialogKey_Cancel(t *testing.T) {
 		sidebar:     NewSidebar(),
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.SetVisible(true)
 			return d
 		}(),
@@ -366,7 +392,7 @@ func TestApp_HandleTransactionDialogKey_TabCycles(t *testing.T) {
 		sidebar:     NewSidebar(),
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "", "Payee name", 0)
 			d.SetVisible(true)
 			return d
@@ -501,7 +527,7 @@ func TestApp_TransactionDialogCancel_DoesNotUpdateStickyDate(t *testing.T) {
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
 			// User typed a different date but cancels
-			d.AddTextField("Date", "02/01/2024", "MM/DD/YYYY", 10)
+			d.AddDateField("Date", "02/01/2024")
 			d.SetVisible(true)
 			return d
 		}(),
@@ -531,7 +557,7 @@ func TestApp_SubmitTransactionDialog_PassesSavedDateInMessage(t *testing.T) {
 		sidebar:     NewSidebar(),
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
-			d.AddTextField("Date", "01/15/2024", "", 10)
+			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Coffee Shop", "", 0)
 			d.AddSelectField("Category", []string{"(None)", "Food"}, 0)
 			d.AddTextField("Amount", "-5.00", "", 12)
@@ -627,7 +653,7 @@ func TestApp_CheckPayeeAutoFill(t *testing.T) {
 		sidebar:     NewSidebar(),
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "kroger", "Payee name", 0)
 			d.AddSelectField("Category", []string{"(None)", "Groceries"}, 0)
 			d.AddTextField("Amount", "", "-50.00", 12)
@@ -666,7 +692,7 @@ func TestApp_CheckPayeeAutoFill_NoMatch(t *testing.T) {
 		sidebar:     NewSidebar(),
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "unknown", "Payee name", 0)
 			d.AddSelectField("Category", []string{"(None)", "Groceries"}, 0)
 			d.AddTextField("Amount", "", "", 12)
@@ -699,7 +725,7 @@ func TestApp_SubmitTransactionDialog_InvalidDate(t *testing.T) {
 		sidebar:     NewSidebar(),
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
-			d.AddTextField("Date", "not-a-date", "", 10)
+			d.AddDateField("Date", "13/45/2024")
 			d.AddTextField("Payee", "Test Payee", "", 0)
 			d.AddSelectField("Category", []string{"(None)"}, 0)
 			d.AddTextField("Amount", "-50.00", "", 12)
@@ -734,7 +760,7 @@ func TestApp_SubmitTransactionDialog_InvalidAmount(t *testing.T) {
 		sidebar:     NewSidebar(),
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
-			d.AddTextField("Date", "01/15/2024", "", 10)
+			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Test Payee", "", 0)
 			d.AddSelectField("Category", []string{"(None)"}, 0)
 			d.AddTextField("Amount", "", "", 12)
@@ -769,7 +795,7 @@ func TestApp_SubmitTransactionDialog_MultipleErrors(t *testing.T) {
 		sidebar:     NewSidebar(),
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
-			d.AddTextField("Date", "bad-date", "", 10)
+			d.AddDateField("Date", "13/45/2024")
 			d.AddTextField("Payee", "", "", 0)
 			d.AddSelectField("Category", []string{"(None)"}, 0)
 			d.AddTextField("Amount", "", "", 12)
@@ -810,7 +836,7 @@ func TestApp_SubmitTransactionDialog_ValidNonSplit(t *testing.T) {
 		sidebar:     NewSidebar(),
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
-			d.AddTextField("Date", "01/15/2024", "", 10)
+			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Coffee Shop", "", 0)
 			d.AddSelectField("Category", []string{"(None)", "Food"}, 0)
 			d.AddTextField("Amount", "-5.00", "", 12)
@@ -879,7 +905,7 @@ func TestApp_CheckPayeeAutoFill_EmptyPayee(t *testing.T) {
 	app := &App{
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "", "", 0)
 			d.AddSelectField("Category", []string{"(None)", "Food"}, 0)
 			d.AddTextField("Amount", "", "", 12)
@@ -1024,7 +1050,7 @@ func TestApp_RenderLayout_WithTransactionDialog(t *testing.T) {
 		},
 		txnDialog: func() *Dialog {
 			d := NewDialog("New Transaction")
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.SetVisible(true)
 			return d
 		}(),
