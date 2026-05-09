@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -28,6 +29,13 @@ const (
 	// typing a digit overwrites in place and auto-advances; Backspace
 	// replaces the digit at the cursor with '0' and steps back.
 	FieldDate
+	// FieldCombo is a typeahead combo box. Typing filters the option list
+	// (prefix-on-leaf-segment first, substring second; alphabetical within
+	// each rank group); Up/Down navigate the filtered subset; Enter/Tab
+	// commit the highlighted match and advance focus; Esc clears a non-empty
+	// query in-place. While the query is empty, the full option list is
+	// shown and the highlight tracks SelectedIndex.
+	FieldCombo
 )
 
 // dateMaskSlashPositions are the byte positions of the literal '/' characters
@@ -60,8 +68,15 @@ type Field struct {
 	Hidden bool
 	// VisibleCount is the number of items to display at once (for FieldList).
 	VisibleCount int
+	// Query is the typed-but-not-yet-committed search string (for FieldCombo).
+	Query string
 	// cursorPos is the cursor position within the text value.
 	cursorPos int
+	// comboHighlight is the highlighted row index within the current
+	// filtered list (for FieldCombo). When Query is empty the filtered list
+	// equals the full Options in order, so this also identifies the
+	// absolute option index.
+	comboHighlight int
 }
 
 // InsertChar inserts a character at the cursor position.
@@ -258,7 +273,10 @@ func (f *Field) Toggle() {
 
 // SelectedOption returns the currently selected option text.
 func (f *Field) SelectedOption() string {
-	if (f.Type != FieldSelect && f.Type != FieldRadio && f.Type != FieldList) || len(f.Options) == 0 {
+	if f.Type != FieldSelect && f.Type != FieldRadio && f.Type != FieldList && f.Type != FieldCombo {
+		return ""
+	}
+	if len(f.Options) == 0 {
 		return ""
 	}
 	if f.SelectedIndex < 0 || f.SelectedIndex >= len(f.Options) {
@@ -484,6 +502,181 @@ func (d *Dialog) AddDateField(label, initialValue string) *Field {
 	return f
 }
 
+// AddComboField adds a typeahead combo box and returns it. Typing filters
+// the option list with leaf-prefix-first ranking; Up/Down navigate the
+// filtered subset; Enter/Tab commit the highlighted match.
+func (d *Dialog) AddComboField(label string, options []string, selected int) *Field {
+	if selected < 0 {
+		selected = 0
+	}
+	if len(options) > 0 && selected >= len(options) {
+		selected = len(options) - 1
+	}
+	f := &Field{
+		Label:          label,
+		Type:           FieldCombo,
+		Options:        options,
+		SelectedIndex:  selected,
+		comboHighlight: selected,
+	}
+	d.fields = append(d.fields, f)
+	return f
+}
+
+// rankComboMatches returns indices into options for entries matching query
+// (case-insensitive substring), ordered by:
+//   - prefix matches on the leaf segment (after the last " > " or ":") first,
+//     then substring matches; lexical (lowercase) order within each group.
+//
+// An empty query returns all indices in their original order.
+func rankComboMatches(options []string, query string) []int {
+	if query == "" {
+		idx := make([]int, len(options))
+		for i := range options {
+			idx[i] = i
+		}
+		return idx
+	}
+	q := strings.ToLower(query)
+
+	type entry struct {
+		idx      int
+		isPrefix bool
+		display  string
+	}
+	var matches []entry
+	for i, opt := range options {
+		lower := strings.ToLower(opt)
+		if !strings.Contains(lower, q) {
+			continue
+		}
+		leaf := lower
+		if j := strings.LastIndex(lower, " > "); j >= 0 {
+			leaf = lower[j+len(" > "):]
+		} else if j := strings.LastIndex(lower, ":"); j >= 0 {
+			leaf = lower[j+1:]
+		}
+		matches = append(matches, entry{
+			idx:      i,
+			isPrefix: strings.HasPrefix(leaf, q),
+			display:  lower,
+		})
+	}
+	sort.SliceStable(matches, func(i, j int) bool {
+		if matches[i].isPrefix != matches[j].isPrefix {
+			return matches[i].isPrefix
+		}
+		return matches[i].display < matches[j].display
+	})
+	result := make([]int, len(matches))
+	for i, m := range matches {
+		result[i] = m.idx
+	}
+	return result
+}
+
+// FilteredIndices returns the indices into Options of options matching the
+// current Query, ordered by leaf-prefix-first ranking. Empty query returns
+// all indices in original order.
+func (f *Field) FilteredIndices() []int {
+	if f.Type != FieldCombo {
+		return nil
+	}
+	return rankComboMatches(f.Options, f.Query)
+}
+
+// HighlightedIndex returns the index in Options of the currently-highlighted
+// row in the filtered list, or -1 when no rows match.
+func (f *Field) HighlightedIndex() int {
+	if f.Type != FieldCombo {
+		return -1
+	}
+	indices := f.FilteredIndices()
+	if len(indices) == 0 {
+		return -1
+	}
+	hi := max(f.comboHighlight, 0)
+	if hi >= len(indices) {
+		hi = len(indices) - 1
+	}
+	return indices[hi]
+}
+
+// commitComboHighlight sets SelectedIndex to the highlighted row in the
+// filtered list (if any) and clears the query. No-op when no rows match
+// (preserves the previous selection).
+func (f *Field) commitComboHighlight() {
+	if f.Type != FieldCombo {
+		return
+	}
+	if idx := f.HighlightedIndex(); idx >= 0 {
+		f.SelectedIndex = idx
+	}
+	f.Query = ""
+	f.comboHighlight = f.SelectedIndex
+}
+
+// clearComboQuery resets Query and snaps the highlight back to SelectedIndex.
+// Used by Esc when the query is non-empty.
+func (f *Field) clearComboQuery() {
+	if f.Type != FieldCombo {
+		return
+	}
+	f.Query = ""
+	f.comboHighlight = f.SelectedIndex
+}
+
+// comboQueryAppend adds a typed character to Query and resets the highlight
+// to the first filtered match.
+func (f *Field) comboQueryAppend(r rune) {
+	if f.Type != FieldCombo {
+		return
+	}
+	f.Query += string(r)
+	f.comboHighlight = 0
+}
+
+// comboQueryBackspace removes the last character of Query (if any) and
+// resets the highlight. No-op when Query is already empty.
+func (f *Field) comboQueryBackspace() {
+	if f.Type != FieldCombo || f.Query == "" {
+		return
+	}
+	runes := []rune(f.Query)
+	f.Query = string(runes[:len(runes)-1])
+	if f.Query == "" {
+		f.comboHighlight = f.SelectedIndex
+	} else {
+		f.comboHighlight = 0
+	}
+}
+
+// comboHighlightDown moves the highlight down within the filtered list,
+// stopping at the last row (no wrap).
+func (f *Field) comboHighlightDown() {
+	if f.Type != FieldCombo {
+		return
+	}
+	indices := f.FilteredIndices()
+	if len(indices) == 0 {
+		return
+	}
+	if f.comboHighlight < len(indices)-1 {
+		f.comboHighlight++
+	}
+}
+
+// comboHighlightUp moves the highlight up within the filtered list, stopping
+// at the first row.
+func (f *Field) comboHighlightUp() {
+	if f.Type != FieldCombo {
+		return
+	}
+	if f.comboHighlight > 0 {
+		f.comboHighlight--
+	}
+}
+
 // AddListField adds a vertical scrollable list field and returns it.
 // visibleCount controls how many items are shown at once.
 func (d *Dialog) AddListField(label string, items []string, selected int, visibleCount int) *Field {
@@ -605,7 +798,34 @@ func (d *Dialog) clampFocusIndex() {
 
 // HandleKey processes a key event and returns the resulting action.
 func (d *Dialog) HandleKey(msg tea.KeyPressMsg) DialogAction {
-	switch msg.String() {
+	keyStr := msg.String()
+
+	// FieldCombo intercepts navigation keys: Esc clears a non-empty query
+	// in-place; Enter/Tab/Shift+Tab commit the highlighted match before
+	// advancing focus.
+	if field := d.FocusedField(); field != nil && field.Type == FieldCombo {
+		switch keyStr {
+		case "esc":
+			if field.Query != "" {
+				field.clearComboQuery()
+				return DialogActionNone
+			}
+		case "enter":
+			field.commitComboHighlight()
+			d.FocusNext()
+			return DialogActionNone
+		case "tab":
+			field.commitComboHighlight()
+			d.FocusNext()
+			return DialogActionNone
+		case "shift+tab":
+			field.commitComboHighlight()
+			d.FocusPrev()
+			return DialogActionNone
+		}
+	}
+
+	switch keyStr {
 	case "esc":
 		return DialogActionCancel
 	case "tab":
@@ -644,6 +864,8 @@ func (d *Dialog) HandleKey(msg tea.KeyPressMsg) DialogAction {
 		d.handleListFieldKey(field, msg)
 	case FieldDate:
 		d.handleDateFieldKey(field, msg)
+	case FieldCombo:
+		d.handleComboFieldKey(field, msg)
 	}
 	return DialogActionNone
 }
@@ -748,6 +970,29 @@ func (d *Dialog) handleListFieldKey(field *Field, msg tea.KeyPressMsg) {
 		field.Error = ""
 	case "down":
 		field.SelectNext()
+		field.Error = ""
+	}
+}
+
+func (d *Dialog) handleComboFieldKey(field *Field, msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "up":
+		field.comboHighlightUp()
+		field.Error = ""
+		return
+	case "down":
+		field.comboHighlightDown()
+		field.Error = ""
+		return
+	case "backspace":
+		field.comboQueryBackspace()
+		field.Error = ""
+		return
+	}
+	if msg.Text != "" {
+		for _, r := range msg.Text {
+			field.comboQueryAppend(r)
+		}
 		field.Error = ""
 	}
 }
@@ -877,6 +1122,19 @@ func (d *Dialog) renderField(styles Styles, field *Field, focused bool, labelWid
 			line += "\n" + errorIndent + styles.FieldError.Render(field.Error)
 		}
 		return line + "\n" + listContent
+	case FieldCombo:
+		header := d.renderComboHeader(field, focused, available)
+		if !focused {
+			fieldContent = header
+			break
+		}
+		panel := d.renderComboPanel(field, available)
+		line := paddedLabel + "  " + header
+		if field.Error != "" {
+			errorIndent := strings.Repeat(" ", labelWidth+1+gap)
+			line += "\n" + errorIndent + styles.FieldError.Render(field.Error)
+		}
+		return line + "\n" + panel
 	case FieldRadio:
 		fieldContent = d.renderRadioFieldContent(styles, field, focused, available)
 	default:
@@ -1045,6 +1303,82 @@ func (d *Dialog) renderListFieldContent(field *Field, focused bool, contentWidth
 		lines[0] = "  ↑ " + strings.TrimLeft(lines[0], " ")
 	}
 	if end < len(field.Options) {
+		lines[len(lines)-1] = "  ↓ " + strings.TrimLeft(lines[len(lines)-1], " ")
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// renderComboHeader renders the single-line combo header: typed query (when
+// focused and non-empty) or current selection text, followed by a chevron.
+func (d *Dialog) renderComboHeader(field *Field, focused bool, available int) string {
+	maxOptWidth := available - 3
+	if focused {
+		maxOptWidth = available - 5
+	}
+	if maxOptWidth < 3 {
+		maxOptWidth = 3
+	}
+	var display string
+	if focused && field.Query != "" {
+		display = field.Query
+	} else {
+		display = field.SelectedOption()
+		if display == "" {
+			display = "(none)"
+		}
+	}
+	display = truncateRunes(display, maxOptWidth)
+	if focused {
+		return lipgloss.NewStyle().Reverse(true).Render(" "+display+" ") + " ▼"
+	}
+	return display + " ▼"
+}
+
+// renderComboPanel renders the dropdown filtered-list panel shown below the
+// combo header while the field is focused. Reuses FieldList scroll-window
+// math.
+func (d *Dialog) renderComboPanel(field *Field, contentWidth int) string {
+	indices := field.FilteredIndices()
+	if len(indices) == 0 {
+		return "      (no matches)"
+	}
+
+	visible := field.VisibleCount
+	if visible <= 0 {
+		visible = 8
+	}
+	if visible > len(indices) {
+		visible = len(indices)
+	}
+
+	scrollOffset := 0
+	if field.comboHighlight >= visible {
+		scrollOffset = field.comboHighlight - visible + 1
+	}
+	if scrollOffset+visible > len(indices) {
+		scrollOffset = len(indices) - visible
+	}
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+
+	end := min(scrollOffset+visible, len(indices))
+	maxItemWidth := max(contentWidth-6, 5)
+
+	var lines []string
+	for i := scrollOffset; i < end; i++ {
+		item := truncateRunes(field.Options[indices[i]], maxItemWidth)
+		if i == field.comboHighlight {
+			lines = append(lines, "    "+lipgloss.NewStyle().Reverse(true).Render("> "+item))
+		} else {
+			lines = append(lines, "      "+item)
+		}
+	}
+	if scrollOffset > 0 {
+		lines[0] = "  ↑ " + strings.TrimLeft(lines[0], " ")
+	}
+	if end < len(indices) {
 		lines[len(lines)-1] = "  ↓ " + strings.TrimLeft(lines[len(lines)-1], " ")
 	}
 
@@ -1240,7 +1574,29 @@ func (d *Dialog) fieldContentRows(field *Field) int {
 		}
 		return 1 + visible // label line + visible item lines
 	}
+	if field.Type == FieldCombo && d.isFieldFocused(field) {
+		visible := field.VisibleCount
+		if visible <= 0 {
+			visible = 8
+		}
+		matches := len(rankComboMatches(field.Options, field.Query))
+		if matches == 0 {
+			return 2 // header line + "(no matches)" line
+		}
+		if visible > matches {
+			visible = matches
+		}
+		return 1 + visible
+	}
 	return 1
+}
+
+// isFieldFocused reports whether the given field has focus.
+func (d *Dialog) isFieldFocused(field *Field) bool {
+	if d.focusIndex < 0 || d.focusIndex >= len(d.fields) {
+		return false
+	}
+	return d.fields[d.focusIndex] == field
 }
 
 // RenderedHeight returns the total rendered height of the dialog including border and padding.

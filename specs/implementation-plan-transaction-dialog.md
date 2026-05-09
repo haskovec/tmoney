@@ -97,7 +97,7 @@ Introduces a new `FieldDate` field type. The widget renders a fixed-width 10-cha
 
 Introduces a new `FieldCombo` field type: an autocompleting select where typing filters the list, the list expands inline below the field while focused, and arrow keys navigate the filtered subset. After this phase, the new-transaction dialog's category dropdown is a typeahead combo box; the `[+ Add new]` row arrives in Phase 4.
 
-- [ ] **TD-004 — Add `FieldCombo` widget primitive (typeahead + filtered list)**
+- [x] **TD-004 — Add `FieldCombo` widget primitive (typeahead + filtered list)**
   - RED: tests in `internal/tui/dialog_test.go`:
     1. Construct `FieldCombo` with options `["(None)", "Auto", "Bills > Electric", "Food > Groceries", "Food > Restaurants"]`. Typing `f` produces a filtered list of `["Food > Groceries", "Food > Restaurants"]`; typing `g` produces `["Food > Groceries"]`; clearing the query returns to the full list.
     2. Ranking: typing `r` matches `["Food > Restaurants"]` (prefix on the visible name segment) ahead of `["Bills > Electric"]` (substring match). With option list `["Restaurant Co", "Auto Repair", "Restaurant Bar"]`, typing `r` returns `["Restaurant Bar", "Restaurant Co", "Auto Repair"]` — prefix matches first (alphabetical within prefix group), then substring matches (alphabetical).
