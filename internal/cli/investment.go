@@ -29,5 +29,6 @@ func newInvestmentCmd() *cobra.Command {
 	cmd.AddCommand(newInvestmentTransferCmd())
 	cmd.AddCommand(newInvestmentSplitCmd())
 	cmd.AddCommand(newInvestmentMergeCmd())
+	cmd.AddCommand(newInvestmentSpinOffCmd())
 	return cmd
 }

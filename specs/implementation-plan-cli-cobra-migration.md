@@ -307,7 +307,7 @@ The largest phase: 12 verbs, all under `tmoney investment …`. Verbs cluster as
 - [x] **CM-051 — `tmoney investment transfer`** (completed 2026-05-08) — covers `TestRun_TransferShares*`. Replaces `--transfer-shares`.
 - [x] **CM-052 — `tmoney investment split`** (completed 2026-05-09) — covers `TestRun_Split*`. Replaces `--split`.
 - [x] **CM-053 — `tmoney investment merge`** (completed 2026-05-09) — covers `TestRun_MergeSecurity*`. Replaces `--merge-security`.
-- [ ] **CM-054 — `tmoney investment spin-off`** — covers `TestRun_SpinOff*`. Replaces `--spin-off`.
+- [x] **CM-054 — `tmoney investment spin-off`** (completed 2026-05-09) — covers `TestRun_SpinOff*`. Replaces `--spin-off`.
 - [ ] **CM-055 — `tmoney investment portfolio`** — covers `TestRun_Portfolio*`. Replaces `--portfolio`. `Args: cobra.NoArgs`.
 
 ## Phase 10: import / export

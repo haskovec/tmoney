@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --spin-off
-	if opts.spinOff {
-		return runSpinOff(opts, stdout)
-	}
-
 	// Handle --portfolio
 	if opts.portfolio {
 		return runPortfolio(opts, stdout)

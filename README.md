@@ -708,6 +708,27 @@ addition to the exchanged shares. All open positions in the source
 security (and, for lot-tracked accounts, the underlying lots) are
 converted to the target. Date defaults to today.
 
+```bash
+# Apply a corporate spin-off (parent distributes a new child security)
+tmoney -f personal.tdb investment spin-off --parent AAPL --spinoff GOOG \
+  --share-ratio 0.5 --parent-allocation 80 --spin-off-price 25
+
+# Effective on a specific date
+tmoney -f personal.tdb investment spin-off --parent AAPL --spinoff GOOG \
+  --share-ratio 0.5 --parent-allocation 80 --spin-off-price 25 \
+  --date 2024-06-15
+```
+
+`investment spin-off` requires `--parent`, `--spinoff`,
+`--share-ratio`, `--parent-allocation`, and `--spin-off-price`. Every
+share of the parent security distributes `--share-ratio` shares of the
+child (spin-off) security; `--parent-allocation` is the percentage
+(0–100) of the parent's cost basis retained by the parent, with the
+remainder shifted to the child. `--spin-off-price` is the per-share
+price of the child used to record the action. All open positions in
+the parent (and, for lot-tracked accounts, the underlying lots) are
+adjusted accordingly. Date defaults to today.
+
 ### Import Transactions
 
 ```bash
@@ -846,7 +867,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split`/`merge` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split`/`merge`/`spin-off` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 
