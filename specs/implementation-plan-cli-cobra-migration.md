@@ -314,7 +314,7 @@ The largest phase: 12 verbs, all under `tmoney investment …`. Verbs cluster as
 
 These are top-level subcommands (no parent noun), since the spec calls for `tmoney import <file>` rather than nesting under a noun.
 
-- [ ] **CM-056 — Phase prep: split `import`/`export` handlers**
+- [x] **CM-056 — Phase prep: split `import`/`export` handlers** (completed 2026-05-09)
   - GREEN: create `import.go`, `export.go` containing `runImport`, `runExport` cut verbatim.
 
 - [ ] **CM-057 — `tmoney import <file>`**
