@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
@@ -58,9 +57,8 @@ func buildTransferDialog(accountOptions []string, defaultFromIndex int) *Dialog 
 	f := d.AddTextField("Amount", "", "100.00", 12)
 	f.Required = true
 
-	// Date field - default to today in MM/DD/YYYY
-	today := time.Now().Format("01/02/2006")
-	f = d.AddTextField("Date", today, "MM/DD/YYYY", 10)
+	// Date field - masked MM/DD/YYYY, defaults to today
+	f = d.AddDateField("Date", "")
 	f.Required = true
 
 	// Memo

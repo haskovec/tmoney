@@ -178,7 +178,7 @@ Introduces a small create-category dialog reachable from the category combo's fi
 
 Mechanical migration of the remaining 9 dialogs to `AddDateField`. Each item is a single-PR swap of `AddTextField("…Date", today, "MM/DD/YYYY", 10)` → `AddDateField("…Date", today)`. Existing dialog tests typically construct fields with `AddTextField("Date", "01/15/2024", "", 10)` — those are updated to `AddDateField("Date", "01/15/2024")` in the same PR.
 
-- [ ] **TD-010 — Migrate transfer dialog**
+- [x] **TD-010 — Migrate transfer dialog**
   - RED: update `transfer_dialog_test.go` AddTextField date constructions (lines 270, 309, 370, 411, 452, 490, 528, 687) to `AddDateField`. Existing assertions on parsed dates remain valid.
   - GREEN: `internal/tui/transfer_dialog.go:63` — swap to `AddDateField`.
   - CLEANUP: none.

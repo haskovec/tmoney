@@ -91,7 +91,7 @@ func TestBuildTransferDialog_FieldTypes(t *testing.T) {
 		{"From", FieldSelect},
 		{"To", FieldSelect},
 		{"Amount", FieldText},
-		{"Date", FieldText},
+		{"Date", FieldDate},
 		{"Memo", FieldText},
 	}
 
@@ -148,6 +148,33 @@ func TestBuildTransferDialog_DateDefault(t *testing.T) {
 	today := time.Now().Format("01/02/2006")
 	if fields[3].Value != today {
 		t.Errorf("date default = %q, want %q", fields[3].Value, today)
+	}
+}
+
+// TestBuildTransferDialog_DateFieldOverwriteSemantics asserts that the Date
+// field built by buildTransferDialog uses the FieldDate widget's overwrite
+// semantics: typing two digits overwrites the month digits in place and the
+// resulting Value is still a canonical 10-char MM/DD/YYYY string.
+func TestBuildTransferDialog_DateFieldOverwriteSemantics(t *testing.T) {
+	options := []string{"Checking", "Savings"}
+
+	d := buildTransferDialog(options, 0)
+	d.SetFocusIndex(3) // Date field
+
+	// Pre-load a known value so the assertion is deterministic.
+	d.Fields()[3].Value = "01/15/2024"
+
+	// Type "0" then "2" — should rewrite the month from "01" to "02".
+	d.HandleKey(tea.KeyPressMsg{Code: '0', Text: "0"})
+	d.HandleKey(tea.KeyPressMsg{Code: '2', Text: "2"})
+
+	got := d.Fields()[3].Value
+	want := "02/15/2024"
+	if got != want {
+		t.Errorf("after typing 0,2 over month: Value = %q, want %q", got, want)
+	}
+	if len(got) != 10 {
+		t.Errorf("Value len = %d, want 10 (canonical MM/DD/YYYY)", len(got))
 	}
 }
 
@@ -267,7 +294,7 @@ func TestApp_HandleTransferDialogKey_Cancel(t *testing.T) {
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "", "100.00", 12)
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
@@ -306,7 +333,7 @@ func TestApp_HandleTransferDialogKey_TabCycles(t *testing.T) {
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "", "100.00", 12)
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
@@ -367,7 +394,7 @@ func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
 			d.AddSelectField("From", []string{"Checking"}, 0)
 			d.AddSelectField("To", []string{"Checking"}, 0) // same account
 			d.AddTextField("Amount", "100.00", "", 12)
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
@@ -408,7 +435,7 @@ func TestApp_SubmitTransferDialog_NegativeAmount(t *testing.T) {
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "-50.00", "", 12)
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
@@ -449,7 +476,7 @@ func TestApp_SubmitTransferDialog_InvalidDate(t *testing.T) {
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "100.00", "", 12)
-			d.AddTextField("Date", "not-a-date", "", 10)
+			d.AddDateField("Date", "13/45/2024")
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
@@ -487,7 +514,7 @@ func TestApp_SubmitTransferDialog_EmptyAmount(t *testing.T) {
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "", "", 12)
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
@@ -525,7 +552,7 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "500.00", "", 12)
-			d.AddTextField("Date", "01/15/2024", "", 10)
+			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Memo", "Monthly savings", "", 0)
 			d.SetVisible(true)
 			return d
@@ -684,7 +711,7 @@ func TestApp_SubmitTransferDialog_ZeroAmount(t *testing.T) {
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "0.00", "", 12)
-			d.AddTextField("Date", "01/01/2024", "", 10)
+			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
