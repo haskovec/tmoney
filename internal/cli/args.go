@@ -82,8 +82,6 @@ type cliOptions struct {
 	showLots  bool // --show-lots flag
 
 	// Corporate action options
-	split            bool   // --split flag
-	splitRatio       string // --ratio <N:D> (for split)
 	mergeSecurity    bool   // --merge-security flag
 	mergeSource      string // --source <ticker>
 	mergeTarget      string // --target <ticker>
@@ -346,14 +344,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.portfolio = true
 		case "--show-lots":
 			opts.showLots = true
-		case "--split":
-			opts.split = true
-		case "--ratio":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--ratio requires a value argument (e.g. 4:1)")
-			}
-			i++
-			opts.splitRatio = args[i]
 		case "--merge-security":
 			opts.mergeSecurity = true
 		case "--source":
@@ -496,8 +486,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.pricePerShare = after
 			} else if after, ok := strings.CutPrefix(arg, "--lot="); ok {
 				opts.lot = after
-			} else if after, ok := strings.CutPrefix(arg, "--ratio="); ok {
-				opts.splitRatio = after
 			} else if after, ok := strings.CutPrefix(arg, "--source="); ok {
 				opts.mergeSource = after
 			} else if after, ok := strings.CutPrefix(arg, "--target="); ok {

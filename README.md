@@ -671,6 +671,21 @@ source account to the destination account. Date defaults to today.
 For lot-tracked source accounts, pass `--lot <id>` to allocate against
 a specific open lot.
 
+```bash
+# Apply a forward stock split (4-for-1)
+tmoney -f personal.tdb investment split --ticker AAPL --ratio 4:1
+
+# Apply a reverse split (1-for-10) on a specific date
+tmoney -f personal.tdb investment split --ticker AAPL --ratio 1:10 \
+  --date 2024-06-15
+```
+
+`investment split` requires `--ticker` and `--ratio`. The ratio is
+written as `N:D` — `4:1` means four new shares for every one held
+(forward split); `1:10` means one new share for every ten held
+(reverse split). All open positions and (for lot-tracked accounts)
+lots are adjusted by the ratio. Date defaults to today.
+
 ### Import Transactions
 
 ```bash
@@ -809,7 +824,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

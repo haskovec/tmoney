@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --split
-	if opts.split {
-		return runSplit(opts, stdout)
-	}
-
 	// Handle --merge-security
 	if opts.mergeSecurity {
 		return runMergeSecurity(opts, stdout)
