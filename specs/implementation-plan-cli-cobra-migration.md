@@ -333,7 +333,7 @@ These are top-level subcommands (no parent noun), since the spec calls for `tmon
 
 `--report --report-type net-worth|spending` is the only 1→2 verb split in the migration.
 
-- [ ] **CM-059 — Phase prep: split `report` handlers**
+- [x] **CM-059 — Phase prep: split `report` handlers** (completed 2026-05-09)
   - GREEN: create `report_net_worth.go`, `report_spending.go` containing `runNetWorthReport`, `runSpendingReport` cut verbatim. The dispatcher `runReport` is left in `commands.go` (it just routes by `--report-type` and gets deleted entirely in cleanup).
 
 - [ ] **CM-060 — `tmoney report net-worth`**
