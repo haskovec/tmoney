@@ -277,6 +277,9 @@ type App struct {
 	confirmDialog *Dialog
 	confirmAction func() tea.Msg
 
+	// About dialog (Help → About)
+	aboutDialog *Dialog
+
 	// Backup dialog state (for restore selection)
 	backupDialog *backupDialogState
 
@@ -1653,6 +1656,11 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.handleConfirmDialogKey(msg)
 	}
 
+	// If About dialog is visible, route all keys to it
+	if a.aboutDialog != nil && a.aboutDialog.IsVisible() {
+		return a.handleAboutDialogKey(msg)
+	}
+
 	// If backup dialog is visible, route all keys to it
 	if a.backupDialog != nil && a.backupDialog.dialog.IsVisible() {
 		return a.handleBackupDialogKey(msg)
@@ -2123,6 +2131,30 @@ func (a *App) handleConfirmDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	return a, nil
+}
+
+// showAboutDialog displays the Help → About dialog.
+func (a *App) showAboutDialog() {
+	d := NewDialog("Terminal Money")
+	d.SetWidth(44)
+	d.SetMessage("Author: Jeffrey Haskovec\nCopyright 2026")
+	d.SetButtons([]DialogButton{
+		{Label: "OK", Primary: true},
+	})
+	d.SetFocusIndex(len(d.Fields())) // focus the OK button
+	d.SetVisible(true)
+	a.aboutDialog = d
+}
+
+// handleAboutDialogKey handles key input for the About dialog.
+func (a *App) handleAboutDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	action := a.aboutDialog.HandleKey(msg)
+	switch action {
+	case DialogActionSubmit, DialogActionCancel:
+		a.aboutDialog.SetVisible(false)
+		a.aboutDialog = nil
+	}
 	return a, nil
 }
 
@@ -2620,6 +2652,16 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	if a.aboutDialog != nil && a.aboutDialog.IsVisible() {
+		action := a.aboutDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case DialogActionSubmit, DialogActionCancel:
+			a.aboutDialog.SetVisible(false)
+			a.aboutDialog = nil
+		}
+		return a, nil
+	}
+
 	if a.backupDialog != nil && a.backupDialog.dialog.IsVisible() {
 		action := a.backupDialog.dialog.HandleMouse(msg, a.width, a.height)
 		switch action {
@@ -2978,6 +3020,7 @@ func (a *App) focusContent() {
 // isDialogVisible returns true if any modal dialog is currently visible.
 func (a *App) isDialogVisible() bool {
 	return (a.confirmDialog != nil && a.confirmDialog.IsVisible()) ||
+		(a.aboutDialog != nil && a.aboutDialog.IsVisible()) ||
 		(a.backupDialog != nil && a.backupDialog.dialog.IsVisible()) ||
 		(a.fileDialog != nil && a.fileDialog.IsVisible()) ||
 		(a.splitDialog != nil && a.splitDialog.IsVisible()) ||
@@ -3163,6 +3206,11 @@ func (a *App) handleMenuAction(action MenuAction, data string) (tea.Model, tea.C
 	case MenuActionKeyboardShortcuts:
 		a.menubar.Deactivate()
 		a.showHelp = true
+		return a, nil
+
+	case MenuActionAbout:
+		a.menubar.Deactivate()
+		a.showAboutDialog()
 		return a, nil
 
 	case MenuActionLoadTheme:
@@ -3451,6 +3499,12 @@ func (a *App) renderLayout() string {
 	// Overlay confirmation dialog if visible
 	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
 		overlay := a.confirmDialog.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
+	// Overlay About dialog if visible
+	if a.aboutDialog != nil && a.aboutDialog.IsVisible() {
+		overlay := a.aboutDialog.Render(a.styles)
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

@@ -209,6 +209,10 @@ type Dialog struct {
 	visible    bool
 	width      int
 	errorMsg   string
+	// message is a neutrally-styled multi-line body block rendered between
+	// the title separator and the fields (or buttons, when there are no
+	// fields). Used by info/about dialogs that have no form to fill in.
+	message string
 }
 
 // dialogHorizontalOverhead is the horizontal space used by dialog border (2) and padding (4).
@@ -274,6 +278,18 @@ func (d *Dialog) ErrorMsg() string {
 // SetErrorMsg sets a dialog-level error message (for cross-field validation).
 func (d *Dialog) SetErrorMsg(msg string) {
 	d.errorMsg = msg
+}
+
+// Message returns the neutral message body, if any.
+func (d *Dialog) Message() string {
+	return d.message
+}
+
+// SetMessage sets a neutrally-styled multi-line body block (newline-
+// separated) rendered between the title and the buttons. Used for
+// informational dialogs that have no fields.
+func (d *Dialog) SetMessage(msg string) {
+	d.message = msg
 }
 
 // ClearErrors clears the dialog-level error and all field-level errors.
@@ -609,6 +625,16 @@ func (d *Dialog) Render(styles Styles) string {
 
 	// Separator
 	lines = append(lines, strings.Repeat("─", contentWidth))
+
+	// Neutral body message (multi-line). Rendered above fields (or above
+	// the button separator when there are no fields), with no special
+	// styling so it doesn't read as an error.
+	if d.message != "" {
+		for ln := range strings.SplitSeq(d.message, "\n") {
+			lines = append(lines, ln)
+		}
+		lines = append(lines, "")
+	}
 
 	// Fields
 	labelWidth := d.maxLabelWidth()
@@ -972,6 +998,11 @@ func (d *Dialog) ContentHeight() int {
 	// Separator after title
 	h++
 
+	// Neutral message body: one row per line + a trailing blank
+	if d.message != "" {
+		h += d.messageLineCount() + 1
+	}
+
 	// Fields
 	for _, field := range d.fields {
 		if field.Hidden {
@@ -1004,6 +1035,15 @@ func (d *Dialog) ContentHeight() int {
 	}
 
 	return h
+}
+
+// messageLineCount returns the number of newline-separated lines in the
+// neutral body message. Returns 0 when the message is empty.
+func (d *Dialog) messageLineCount() int {
+	if d.message == "" {
+		return 0
+	}
+	return strings.Count(d.message, "\n") + 1
 }
 
 // hasVisibleFields returns true if any field is not hidden.
@@ -1099,6 +1139,15 @@ func (d *Dialog) HitTestContent(x, y, contentWidth int) DialogHitResult {
 		return none
 	}
 	row++
+
+	// Neutral message body lines (non-interactive)
+	if d.message != "" {
+		msgRows := d.messageLineCount() + 1 // body lines + trailing blank
+		if y >= row && y < row+msgRows {
+			return none
+		}
+		row += msgRows
+	}
 
 	// Fields
 	for i, field := range d.fields {
