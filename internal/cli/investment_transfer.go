@@ -6,24 +6,62 @@ import (
 
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runTransferShares executes the --transfer-shares command: transfer shares between investment accounts.
-func runTransferShares(opts *cliOptions, w io.Writer) error {
+// investmentTransferOptions are the inputs to `tmoney investment transfer`.
+type investmentTransferOptions struct {
+	file        string
+	fromAccount string
+	toAccount   string
+	ticker      string
+	shares      string
+	date        string
+	memo        string
+	lot         string
+}
+
+// newInvestmentTransferCmd registers `tmoney investment transfer`. The
+// database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command. `--from`, `--to`, `--ticker`, and
+// `--shares` are required.
+func newInvestmentTransferCmd() *cobra.Command {
+	opts := &investmentTransferOptions{}
+	cmd := &cobra.Command{
+		Use:   "transfer",
+		Short: "Transfer shares between investment accounts",
+		Long: "Transfer shares of a security from one investment account " +
+			"to another. No cash changes hands; the share count moves to " +
+			"the destination account. For lot-tracked source accounts, " +
+			"pass --lot to allocate against a specific open lot.",
+		Example: "  tmoney investment transfer --from \"Source IRA\" --to \"Dest 401k\" --ticker AAPL --shares 5\n" +
+			"  tmoney investment transfer --from Brokerage --to RolloverIRA --ticker VTI --shares 100 --date 2025-04-15",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runInvestmentTransfer(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.fromAccount, "from", "", "Source investment account name (required)")
+	cmd.Flags().StringVar(&opts.toAccount, "to", "", "Destination investment account name (required)")
+	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Security ticker (required)")
+	cmd.Flags().StringVar(&opts.shares, "shares", "", "Number of shares to transfer (required)")
+	cmd.Flags().StringVar(&opts.date, "date", "", "Transaction date YYYY-MM-DD (default today)")
+	cmd.Flags().StringVar(&opts.memo, "memo", "", "Free-form memo")
+	cmd.Flags().StringVar(&opts.lot, "lot", "", "Lot ID to allocate against (lot-tracked source accounts)")
+	_ = cmd.MarkFlagRequired("from")
+	_ = cmd.MarkFlagRequired("to")
+	_ = cmd.MarkFlagRequired("ticker")
+	_ = cmd.MarkFlagRequired("shares")
+	return cmd
+}
+
+// runInvestmentTransfer executes `tmoney investment transfer`: move
+// shares of a security from one investment account to another.
+func runInvestmentTransfer(opts *investmentTransferOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--transfer-shares requires --file to specify a database")
-	}
-	if opts.fromAccount == "" {
-		return fmt.Errorf("--transfer-shares requires --from to specify the source account")
-	}
-	if opts.toAccount == "" {
-		return fmt.Errorf("--transfer-shares requires --to to specify the destination account")
-	}
-	if opts.secTicker == "" {
-		return fmt.Errorf("--transfer-shares requires --ticker to specify a security")
-	}
-	if opts.shares == "" {
-		return fmt.Errorf("--transfer-shares requires --shares to specify the number of shares")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	shares, err := types.NewQuantity(opts.shares)
@@ -32,8 +70,8 @@ func runTransferShares(opts *cliOptions, w io.Writer) error {
 	}
 
 	var date types.Date
-	if opts.txDate != "" {
-		date, err = types.ParseDate(opts.txDate)
+	if opts.date != "" {
+		date, err = types.ParseDate(opts.date)
 		if err != nil {
 			return fmt.Errorf("invalid --date: %w", err)
 		}
@@ -57,15 +95,14 @@ func runTransferShares(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("destination account %q not found", opts.toAccount)
 	}
 
-	sec, err := svc.Security.GetByTicker(opts.secTicker, "")
+	sec, err := svc.Security.GetByTicker(opts.ticker, "")
 	if err != nil {
-		return fmt.Errorf("security %q not found", opts.secTicker)
+		return fmt.Errorf("security %q not found", opts.ticker)
 	}
 	if sec.Hidden {
-		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.secTicker)
+		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.ticker)
 	}
 
-	// Parse lot allocations if provided (for lot-tracking source accounts)
 	var lotAllocations []investment.SellLotAllocation
 	if opts.lot != "" {
 		lotID, err := types.ParseID(opts.lot)
@@ -77,12 +114,9 @@ func runTransferShares(opts *cliOptions, w io.Writer) error {
 		}
 	}
 
-	result, err := svc.Investment.TransferShares(fromAcct.ID, toAcct.ID, sec.ID, date, shares, opts.txMemo, lotAllocations)
-	if err != nil {
+	if _, err := svc.Investment.TransferShares(fromAcct.ID, toAcct.ID, sec.ID, date, shares, opts.memo, lotAllocations); err != nil {
 		return fmt.Errorf("failed to transfer shares: %w", err)
 	}
-
-	_ = result // used for linking; confirmation below covers it
 
 	fmt.Fprintln(w, "Share transfer created successfully!")
 	fmt.Fprintf(w, "  From:     %s\n", fromAcct.Name)

@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --transfer-shares
-	if opts.transferShares {
-		return runTransferShares(opts, stdout)
-	}
-
 	// Handle --split
 	if opts.split {
 		return runSplit(opts, stdout)

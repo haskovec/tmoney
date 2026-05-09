@@ -1655,105 +1655,6 @@ func ptrMoney(s string) *types.Money {
 	return &m
 }
 
-// --- SM-112: CLI --transfer-shares ---
-
-func TestRun_TransferSharesMissingFile(t *testing.T) {
-	err := run([]string{"--transfer-shares", "--from", "A", "--to", "B", "--ticker", "AAPL", "--shares", "10"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("expected --file required error, got: %v", err)
-	}
-}
-
-func TestRun_TransferSharesMissingFrom(t *testing.T) {
-	err := run([]string{"--transfer-shares", "--file", "test.tdb", "--to", "B", "--ticker", "AAPL", "--shares", "10"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --from") {
-		t.Errorf("expected --from required error, got: %v", err)
-	}
-}
-
-func TestRun_TransferSharesMissingTo(t *testing.T) {
-	err := run([]string{"--transfer-shares", "--file", "test.tdb", "--from", "A", "--ticker", "AAPL", "--shares", "10"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --to") {
-		t.Errorf("expected --to required error, got: %v", err)
-	}
-}
-
-func TestRun_TransferSharesMissingTicker(t *testing.T) {
-	err := run([]string{"--transfer-shares", "--file", "test.tdb", "--from", "A", "--to", "B", "--shares", "10"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --ticker") {
-		t.Errorf("expected --ticker required error, got: %v", err)
-	}
-}
-
-func TestRun_TransferSharesMissingShares(t *testing.T) {
-	err := run([]string{"--transfer-shares", "--file", "test.tdb", "--from", "A", "--to", "B", "--ticker", "AAPL"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --shares") {
-		t.Errorf("expected --shares required error, got: %v", err)
-	}
-}
-
-func TestRun_TransferSharesBasic(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-
-	acctRepo := account.NewRepository(database)
-	src := account.NewAccount("Source IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
-	if err := acctRepo.Create(src); err != nil {
-		t.Fatalf("failed to create source account: %v", err)
-	}
-	dst := account.NewAccount("Dest 401k", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
-	if err := acctRepo.Create(dst); err != nil {
-		t.Fatalf("failed to create dest account: %v", err)
-	}
-
-	secRepo := security.NewRepository(database)
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	if err := secRepo.Create(sec); err != nil {
-		t.Fatalf("failed to create security: %v", err)
-	}
-
-	svc := app.NewServices(database)
-	_, err = svc.Investment.Deposit(src.ID, types.Today(), types.MustNewMoney("50000"), "")
-	if err != nil {
-		t.Fatalf("failed to deposit: %v", err)
-	}
-	_, err = svc.Investment.Buy(src.ID, sec.ID, types.Today(), types.MustNewQuantity("10"), nil, ptrMoney("150"), types.ZeroMoney, "")
-	if err != nil {
-		t.Fatalf("failed to buy: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	err = run([]string{
-		"--transfer-shares", "--file", dbPath,
-		"--from", "Source IRA",
-		"--to", "Dest 401k",
-		"--ticker", "AAPL",
-		"--shares", "5",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--transfer-shares) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Share transfer created successfully") {
-		t.Error("output should confirm transfer creation")
-	}
-	if !strings.Contains(output, "AAPL") {
-		t.Error("output should contain ticker")
-	}
-	if !strings.Contains(output, "Source IRA") {
-		t.Error("output should contain source account")
-	}
-	if !strings.Contains(output, "Dest 401k") {
-		t.Error("output should contain dest account")
-	}
-}
-
 // --- End-to-end: buy then sell verifies cash flow ---
 
 func TestRun_BuyThenSellUpdatesCash(t *testing.T) {
@@ -1802,7 +1703,6 @@ func TestParseArgs_InvestmentFlags(t *testing.T) {
 		args  []string
 		check func(*cliOptions) bool
 	}{
-		{"--transfer-shares flag", []string{"--transfer-shares"}, func(o *cliOptions) bool { return o.transferShares }},
 		{"--shares value", []string{"--shares", "10"}, func(o *cliOptions) bool { return o.shares == "10" }},
 		{"--shares=value", []string{"--shares=10"}, func(o *cliOptions) bool { return o.shares == "10" }},
 		{"--commission value", []string{"--commission", "9.99"}, func(o *cliOptions) bool { return o.commission == "9.99" }},

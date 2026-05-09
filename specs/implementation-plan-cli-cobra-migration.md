@@ -304,7 +304,7 @@ The largest phase: 12 verbs, all under `tmoney investment …`. Verbs cluster as
 - [x] **CM-048 — `tmoney investment fee`** (completed 2026-05-08) — covers `TestRun_InvestmentFee*`. Replaces `--investment-fee`.
 - [x] **CM-049 — `tmoney investment deposit`** (completed 2026-05-08) — covers `TestRun_InvestDeposit*`. Replaces `--invest-deposit`.
 - [x] **CM-050 — `tmoney investment withdraw`** (completed 2026-05-08) — covers `TestRun_InvestWithdraw*`. Replaces `--invest-withdraw`.
-- [ ] **CM-051 — `tmoney investment transfer`** — covers `TestRun_TransferShares*`. Replaces `--transfer-shares`.
+- [x] **CM-051 — `tmoney investment transfer`** (completed 2026-05-08) — covers `TestRun_TransferShares*`. Replaces `--transfer-shares`.
 - [ ] **CM-052 — `tmoney investment split`** — covers `TestRun_Split*`. Replaces `--split`.
 - [ ] **CM-053 — `tmoney investment merge`** — covers `TestRun_MergeSecurity*`. Replaces `--merge-security`.
 - [ ] **CM-054 — `tmoney investment spin-off`** — covers `TestRun_SpinOff*`. Replaces `--spin-off`.

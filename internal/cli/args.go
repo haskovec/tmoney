@@ -72,11 +72,10 @@ type cliOptions struct {
 	priceValue string // --price <value>
 
 	// Investment transaction options
-	transferShares bool   // --transfer-shares flag
-	shares         string // --shares <quantity>
-	commission     string // --commission <value>
-	pricePerShare  string // --price-per-share <value>
-	lot            string // --lot <lot-id>
+	shares        string // --shares <quantity>
+	commission    string // --commission <value>
+	pricePerShare string // --price-per-share <value>
+	lot           string // --lot <lot-id>
 
 	// Portfolio options
 	portfolio bool // --portfolio flag
@@ -319,8 +318,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.priceValue = args[i]
-		case "--transfer-shares":
-			opts.transferShares = true
 		case "--shares":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--shares requires a value argument")
