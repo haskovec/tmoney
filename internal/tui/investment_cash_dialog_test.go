@@ -27,9 +27,9 @@ func TestBuildCashOperationDialog_Deposit(t *testing.T) {
 		t.Fatalf("expected 3 fields, got %d", len(fields))
 	}
 
-	// Field 0: Date (text, required, default today)
-	if fields[0].Type != FieldText {
-		t.Errorf("field 0 type = %d, want FieldText (%d)", fields[0].Type, FieldText)
+	// Field 0: Date (masked, required, default today)
+	if fields[0].Type != FieldDate {
+		t.Errorf("field 0 type = %d, want FieldDate (%d)", fields[0].Type, FieldDate)
 	}
 	if fields[0].Label != "Date" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Date")

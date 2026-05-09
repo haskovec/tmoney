@@ -190,7 +190,7 @@ Mechanical migration of the remaining 9 dialogs to `AddDateField`. Each item is 
   - CLEANUP: none.
   - DOCS: deferred to Phase 6.
 
-- [ ] **TD-012 — Migrate investment dialogs (buy, sell, dividend × 2, cash, transfer-cash, transfer-shares)**
+- [x] **TD-012 — Migrate investment dialogs (buy, sell, dividend × 2, cash, transfer-cash, transfer-shares)**
   - RED: any existing tests touching these dialogs' date fields stay green; new minimal coverage as needed. (The investment dialogs are not as densely tested as transaction/transfer; do not bulk up tests beyond what's needed to assert masked behavior on at least one of them.)
   - GREEN: swap to `AddDateField`:
     - `internal/tui/investment_buy_dialog.go:87`

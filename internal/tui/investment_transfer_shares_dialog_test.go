@@ -114,9 +114,9 @@ func TestBuildTransferSharesDialog_Basic(t *testing.T) {
 		t.Error("shares field should be required")
 	}
 
-	// Field 3: Date (text, required)
-	if fields[3].Type != FieldText {
-		t.Errorf("field 3 type = %d, want FieldText", fields[3].Type)
+	// Field 3: Date (masked, required)
+	if fields[3].Type != FieldDate {
+		t.Errorf("field 3 type = %d, want FieldDate", fields[3].Type)
 	}
 	if fields[3].Label != "Date" {
 		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Date")

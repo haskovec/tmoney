@@ -108,9 +108,9 @@ func TestBuildTransferCashDialog_Deposit(t *testing.T) {
 		t.Error("amount field should be required")
 	}
 
-	// Field 2: Date (text, required)
-	if fields[2].Type != FieldText {
-		t.Errorf("field 2 type = %d, want FieldText", fields[2].Type)
+	// Field 2: Date (masked, required)
+	if fields[2].Type != FieldDate {
+		t.Errorf("field 2 type = %d, want FieldDate", fields[2].Type)
 	}
 	if fields[2].Label != "Date" {
 		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "Date")

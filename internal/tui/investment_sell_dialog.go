@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
@@ -53,11 +52,11 @@ func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, 
 	d.AddSelectField("Security", securityOptions, selectedIdx)
 
 	// Date
-	dateVal := time.Now().Format("01/02/2006")
+	dateVal := ""
 	if editTxn != nil {
 		dateVal = editTxn.Date.Time().Format("01/02/2006")
 	}
-	f := d.AddTextField("Date", dateVal, "MM/DD/YYYY", 10)
+	f := d.AddDateField("Date", dateVal)
 	f.Required = true
 
 	// Shares

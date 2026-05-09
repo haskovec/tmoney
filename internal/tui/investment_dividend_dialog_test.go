@@ -40,9 +40,9 @@ func TestBuildDividendDialog_NewTransaction(t *testing.T) {
 		t.Errorf("expected 2 security options, got %d", len(fields[0].Options))
 	}
 
-	// Field 1: Date (text, required, default today)
-	if fields[1].Type != FieldText {
-		t.Errorf("field 1 type = %d, want FieldText (%d)", fields[1].Type, FieldText)
+	// Field 1: Date (masked, required, default today)
+	if fields[1].Type != FieldDate {
+		t.Errorf("field 1 type = %d, want FieldDate (%d)", fields[1].Type, FieldDate)
 	}
 	if fields[1].Label != "Date" {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Date")

@@ -123,9 +123,9 @@ func TestBuildBuyDialog_NewTransaction(t *testing.T) {
 		t.Errorf("expected 2 security options, got %d", len(fields[0].Options))
 	}
 
-	// Field 1: Date (text, required, default today)
-	if fields[1].Type != FieldText {
-		t.Errorf("field 1 type = %d, want FieldText (%d)", fields[1].Type, FieldText)
+	// Field 1: Date (masked, required, default today)
+	if fields[1].Type != FieldDate {
+		t.Errorf("field 1 type = %d, want FieldDate (%d)", fields[1].Type, FieldDate)
 	}
 	if fields[1].Label != "Date" {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Date")
@@ -170,6 +170,31 @@ func TestBuildBuyDialog_NewTransaction(t *testing.T) {
 	// Field 6: Memo (text)
 	if fields[6].Label != "Memo" {
 		t.Errorf("field 6 label = %q, want %q", fields[6].Label, "Memo")
+	}
+}
+
+// TestBuildBuyDialog_DateFieldMaskedOverwrite verifies the buy dialog's
+// Date field uses overwrite-style masked input — typing a digit replaces
+// the digit at the cursor and auto-advances over the slash.
+func TestBuildBuyDialog_DateFieldMaskedOverwrite(t *testing.T) {
+	secID := types.NewID()
+	date := types.NewDate(2024, time.March, 15)
+	txn := investment.NewTransactionWithSecurity(
+		types.NewID(), date, investment.TransactionTypeBuy,
+		types.MustNewMoney("-1850.00"), secID, types.MustNewQuantity("10"),
+	)
+	options := []string{"AAPL - Apple Inc."}
+	ids := []types.ID{secID}
+
+	d := buildBuyDialog(options, txn, ids)
+	d.SetFocusIndex(1) // focus the Date field
+
+	// Type "0" then "5" — overwrites "03" with "05", cursor advances skipping the slash.
+	d.HandleKey(tea.KeyPressMsg{Code: '0', Text: "0"})
+	d.HandleKey(tea.KeyPressMsg{Code: '5', Text: "5"})
+
+	if d.Fields()[1].Value != "05/15/2024" {
+		t.Errorf("Value = %q, want %q (overwrite + skip slash)", d.Fields()[1].Value, "05/15/2024")
 	}
 }
 
