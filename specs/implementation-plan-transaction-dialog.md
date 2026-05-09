@@ -66,7 +66,7 @@ The new-transaction dialog currently re-seeds the date to today on every open (`
 
 Introduces a new `FieldDate` field type. The widget renders a fixed-width 10-character `MM/DD/YYYY` string; the cursor only lands on the eight digit positions (skips slashes); typing a digit overwrites in place and auto-advances; Backspace replaces with `0` and steps back; the current digit renders with a block highlight.
 
-- [ ] **TD-002 — Add `FieldDate` widget primitive (`MM/DD/YYYY`)**
+- [x] **TD-002 — Add `FieldDate` widget primitive (`MM/DD/YYYY`)**
   - RED: tests in `internal/tui/dialog_test.go` exercising the new type:
     1. Constructed `Field{Type: FieldDate, Value: "01/15/2024", cursorPos: 0}`: typing `0`, `2` produces `Value == "02/15/2024"`, cursor advances over the `/` to digit position 3 (string index 3, which is the first digit of DD).
     2. Cursor never lands on a slash position: stepping right from string index 1 skips to index 3; stepping right from index 4 skips to index 6.

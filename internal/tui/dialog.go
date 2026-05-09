@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -22,7 +23,16 @@ const (
 	FieldCheckbox
 	// FieldList is a vertical scrollable list showing multiple items at once.
 	FieldList
+	// FieldDate is a fixed-width MM/DD/YYYY masked input. The cursor only
+	// lands on the eight digit positions (string indices 0,1,3,4,6,7,8,9);
+	// typing a digit overwrites in place and auto-advances; Backspace
+	// replaces the digit at the cursor with '0' and steps back.
+	FieldDate
 )
+
+// dateMaskSlashPositions are the byte positions of the literal '/' characters
+// in the canonical MM/DD/YYYY mask. The masked-cursor methods skip these.
+var dateMaskSlashPositions = map[int]bool{2: true, 5: true}
 
 // Field represents a form field in a dialog.
 type Field struct {
@@ -139,6 +149,83 @@ func (f *Field) MoveCursorEnd() {
 // CursorPos returns the current cursor position.
 func (f *Field) CursorPos() int {
 	return f.cursorPos
+}
+
+// dateCursorRight advances the cursor to the next digit position, skipping
+// the literal slashes at indices 2 and 5. Stops at the last digit (index 9).
+func (f *Field) dateCursorRight() {
+	if f.Type != FieldDate {
+		return
+	}
+	for f.cursorPos < 9 {
+		f.cursorPos++
+		if !dateMaskSlashPositions[f.cursorPos] {
+			return
+		}
+	}
+}
+
+// dateCursorLeft moves the cursor to the previous digit position, skipping
+// the literal slashes at indices 2 and 5. Stops at the first digit (index 0).
+func (f *Field) dateCursorLeft() {
+	if f.Type != FieldDate {
+		return
+	}
+	for f.cursorPos > 0 {
+		f.cursorPos--
+		if !dateMaskSlashPositions[f.cursorPos] {
+			return
+		}
+	}
+}
+
+// dateCursorHome jumps the cursor to the first digit (index 0).
+func (f *Field) dateCursorHome() {
+	if f.Type != FieldDate {
+		return
+	}
+	f.cursorPos = 0
+}
+
+// dateCursorEnd jumps the cursor to the last digit (index 9).
+func (f *Field) dateCursorEnd() {
+	if f.Type != FieldDate {
+		return
+	}
+	f.cursorPos = 9
+}
+
+// dateOverwriteDigit replaces the digit at the cursor with r (which must be
+// '0'..'9') and advances the cursor to the next digit position. Non-digit
+// runes are ignored.
+func (f *Field) dateOverwriteDigit(r rune) {
+	if f.Type != FieldDate || r < '0' || r > '9' {
+		return
+	}
+	if dateMaskSlashPositions[f.cursorPos] {
+		return
+	}
+	if len(f.Value) != 10 {
+		return
+	}
+	b := []byte(f.Value)
+	b[f.cursorPos] = byte(r)
+	f.Value = string(b)
+	f.dateCursorRight()
+}
+
+// dateBackspace replaces the digit at the cursor with '0' and steps the
+// cursor back to the previous digit position. No-op at the first digit.
+func (f *Field) dateBackspace() {
+	if f.Type != FieldDate || f.cursorPos <= 0 {
+		return
+	}
+	if len(f.Value) == 10 && !dateMaskSlashPositions[f.cursorPos] {
+		b := []byte(f.Value)
+		b[f.cursorPos] = '0'
+		f.Value = string(b)
+	}
+	f.dateCursorLeft()
 }
 
 // SelectNext moves to the next option (FieldSelect and FieldRadio).
@@ -377,6 +464,26 @@ func (d *Dialog) AddCheckboxField(label string, checked bool) *Field {
 	return f
 }
 
+// AddDateField adds a masked-input MM/DD/YYYY date field and returns it.
+// The cursor lands only on digit positions (slashes at indices 2 and 5 are
+// skipped); typing a digit overwrites in place and auto-advances; Backspace
+// replaces with '0' and steps back. If initialValue is empty, the field is
+// seeded with today's date.
+func (d *Dialog) AddDateField(label, initialValue string) *Field {
+	if initialValue == "" {
+		initialValue = time.Now().Format("01/02/2006")
+	}
+	f := &Field{
+		Label:     label,
+		Type:      FieldDate,
+		Value:     initialValue,
+		Width:     10,
+		cursorPos: 0,
+	}
+	d.fields = append(d.fields, f)
+	return f
+}
+
 // AddListField adds a vertical scrollable list field and returns it.
 // visibleCount controls how many items are shown at once.
 func (d *Dialog) AddListField(label string, items []string, selected int, visibleCount int) *Field {
@@ -535,6 +642,8 @@ func (d *Dialog) HandleKey(msg tea.KeyPressMsg) DialogAction {
 		d.handleCheckboxFieldKey(field, msg)
 	case FieldList:
 		d.handleListFieldKey(field, msg)
+	case FieldDate:
+		d.handleDateFieldKey(field, msg)
 	}
 	return DialogActionNone
 }
@@ -600,6 +709,35 @@ func (d *Dialog) handleCheckboxFieldKey(field *Field, msg tea.KeyPressMsg) {
 	if msg.String() == "space" || msg.Text == " " {
 		field.Toggle()
 		field.Error = ""
+	}
+}
+
+func (d *Dialog) handleDateFieldKey(field *Field, msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "left":
+		field.dateCursorLeft()
+		return
+	case "right":
+		field.dateCursorRight()
+		return
+	case "home", "ctrl+a":
+		field.dateCursorHome()
+		return
+	case "end", "ctrl+e":
+		field.dateCursorEnd()
+		return
+	case "backspace":
+		field.dateBackspace()
+		field.Error = ""
+		return
+	}
+	if msg.Text != "" {
+		for _, r := range msg.Text {
+			if r >= '0' && r <= '9' {
+				field.dateOverwriteDigit(r)
+				field.Error = ""
+			}
+		}
 	}
 }
 
@@ -726,6 +864,8 @@ func (d *Dialog) renderField(styles Styles, field *Field, focused bool, labelWid
 	switch field.Type {
 	case FieldText:
 		fieldContent = d.renderTextFieldContent(styles, field, focused, available)
+	case FieldDate:
+		fieldContent = d.renderDateFieldContent(field, focused)
 	case FieldSelect:
 		fieldContent = d.renderSelectFieldContent(styles, field, focused, available)
 	case FieldList:
@@ -804,6 +944,35 @@ func (d *Dialog) renderTextFieldContent(styles Styles, field *Field, focused boo
 	}
 	pad := max(fw-len(displayRunes), 0)
 	return "[ " + string(displayRunes) + strings.Repeat(" ", pad) + " ]"
+}
+
+func (d *Dialog) renderDateFieldContent(field *Field, focused bool) string {
+	value := field.Value
+	if len(value) != 10 {
+		// Defensive fallback: pad/truncate to canonical shape so render stays
+		// stable even if a caller hands us a malformed value.
+		if len(value) < 10 {
+			value += strings.Repeat(" ", 10-len(value))
+		} else {
+			value = value[:10]
+		}
+	}
+	if !focused {
+		return "[ " + value + " ]"
+	}
+	cursorStyle := lipgloss.NewStyle().Reverse(true)
+	pos := field.cursorPos
+	if pos < 0 || pos > 9 || dateMaskSlashPositions[pos] {
+		// Defensive: snap to first digit if cursor is somewhere unexpected.
+		pos = 0
+	}
+	before := value[:pos]
+	cursorChar := cursorStyle.Render(string(value[pos]))
+	after := ""
+	if pos+1 < 10 {
+		after = value[pos+1:]
+	}
+	return "[ " + before + cursorChar + after + " ]"
 }
 
 func (d *Dialog) renderSelectFieldContent(_ Styles, field *Field, focused bool, available int) string {

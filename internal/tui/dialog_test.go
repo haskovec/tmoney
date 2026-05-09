@@ -2003,3 +2003,226 @@ func TestDialog_HandleMouse_MouseRelease_Ignored(t *testing.T) {
 		t.Errorf("expected DialogActionNone for mouse release, got %d", action)
 	}
 }
+
+// FieldDate (TD-002) tests
+
+func TestDialog_AddDateField(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "01/15/2024")
+
+	if f == nil {
+		t.Fatal("AddDateField returned nil")
+	}
+	if f.Type != FieldDate {
+		t.Errorf("Type = %d, want FieldDate", f.Type)
+	}
+	if f.Value != "01/15/2024" {
+		t.Errorf("Value = %q, want %q", f.Value, "01/15/2024")
+	}
+	if f.Width != 10 {
+		t.Errorf("Width = %d, want 10", f.Width)
+	}
+	if f.CursorPos() != 0 {
+		t.Errorf("initial CursorPos() = %d, want 0 (first digit)", f.CursorPos())
+	}
+}
+
+func TestDialog_AddDateField_EmptyDefaultsToToday(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "")
+
+	if len(f.Value) != 10 {
+		t.Errorf("Value len = %d, want 10 (canonical mask shape)", len(f.Value))
+	}
+	// Slashes always at positions 2 and 5
+	if f.Value[2] != '/' || f.Value[5] != '/' {
+		t.Errorf("Value = %q, slashes not at positions 2 and 5", f.Value)
+	}
+}
+
+func TestFieldDate_TypingOverwritesAndAdvances(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddDateField("Date", "01/15/2024")
+
+	// Type "0" then "2" — overwrites "01" with "02", cursor advances skipping the slash
+	d.HandleKey(tea.KeyPressMsg{Code: '0', Text: "0"})
+	d.HandleKey(tea.KeyPressMsg{Code: '2', Text: "2"})
+
+	if d.Fields()[0].Value != "02/15/2024" {
+		t.Errorf("Value = %q, want %q", d.Fields()[0].Value, "02/15/2024")
+	}
+	// After typing two digits, cursor sits on first digit of DD (string index 3)
+	if d.Fields()[0].CursorPos() != 3 {
+		t.Errorf("CursorPos() = %d, want 3 (first digit of DD)", d.Fields()[0].CursorPos())
+	}
+}
+
+func TestFieldDate_CursorRightSkipsSlashes(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "01/15/2024")
+	// Position cursor at last digit of MM (index 1)
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if f.CursorPos() != 1 {
+		t.Fatalf("setup: CursorPos() = %d, want 1", f.CursorPos())
+	}
+
+	// Right from index 1 should skip slash at index 2 → land on index 3
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if f.CursorPos() != 3 {
+		t.Errorf("CursorPos() = %d, want 3 (skipped slash at index 2)", f.CursorPos())
+	}
+
+	// Move to index 4, then right should skip slash at index 5 → land on index 6
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if f.CursorPos() != 4 {
+		t.Fatalf("CursorPos() = %d, want 4", f.CursorPos())
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if f.CursorPos() != 6 {
+		t.Errorf("CursorPos() = %d, want 6 (skipped slash at index 5)", f.CursorPos())
+	}
+}
+
+func TestFieldDate_CursorLeftSkipsSlashes(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "01/15/2024")
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnd})
+	if f.CursorPos() != 9 {
+		t.Fatalf("End: CursorPos() = %d, want 9", f.CursorPos())
+	}
+
+	// Stepping left across index 6 → 5 should skip slash, landing at 4.
+	for range 3 {
+		d.HandleKey(tea.KeyPressMsg{Code: tea.KeyLeft})
+	}
+	if f.CursorPos() != 6 {
+		t.Fatalf("after 3 lefts: CursorPos() = %d, want 6", f.CursorPos())
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if f.CursorPos() != 4 {
+		t.Errorf("CursorPos() = %d, want 4 (skipped slash at index 5)", f.CursorPos())
+	}
+
+	// And from index 3, left skips slash at index 2 → land at 1
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if f.CursorPos() != 3 {
+		t.Fatalf("CursorPos() = %d, want 3", f.CursorPos())
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if f.CursorPos() != 1 {
+		t.Errorf("CursorPos() = %d, want 1 (skipped slash at index 2)", f.CursorPos())
+	}
+}
+
+func TestFieldDate_BackspaceReplacesWithZeroAndStepsBack(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "01/15/2024")
+	// Move cursor to first digit of DD (string index 3)
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if f.CursorPos() != 3 {
+		t.Fatalf("setup: CursorPos() = %d, want 3", f.CursorPos())
+	}
+
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+
+	if f.Value != "01/05/2024" {
+		t.Errorf("Value = %q, want %q (digit at index 3 replaced with '0')", f.Value, "01/05/2024")
+	}
+	// Cursor moves back, skipping slash at index 2 → land at 1
+	if f.CursorPos() != 1 {
+		t.Errorf("CursorPos() = %d, want 1 (backspaced past slash)", f.CursorPos())
+	}
+}
+
+func TestFieldDate_HomeAndEnd(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "01/15/2024")
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnd})
+	if f.CursorPos() != 9 {
+		t.Errorf("End: CursorPos() = %d, want 9 (last digit)", f.CursorPos())
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyHome})
+	if f.CursorPos() != 0 {
+		t.Errorf("Home: CursorPos() = %d, want 0 (first digit)", f.CursorPos())
+	}
+}
+
+func TestFieldDate_NonDigitInputIgnored(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "01/15/2024")
+
+	d.HandleKey(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	d.HandleKey(tea.KeyPressMsg{Code: '/', Text: "/"})
+	d.HandleKey(tea.KeyPressMsg{Code: '-', Text: "-"})
+
+	if f.Value != "01/15/2024" {
+		t.Errorf("Value = %q, want %q (non-digits ignored)", f.Value, "01/15/2024")
+	}
+	if f.CursorPos() != 0 {
+		t.Errorf("CursorPos() = %d, want 0 (cursor unchanged on ignored input)", f.CursorPos())
+	}
+}
+
+func TestFieldDate_ValueAlwaysTenChars(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "01/15/2024")
+
+	// Type a digit at every position
+	for range 8 {
+		d.HandleKey(tea.KeyPressMsg{Code: '9', Text: "9"})
+	}
+
+	if len(f.Value) != 10 {
+		t.Errorf("Value len = %d, want 10 (canonical mask shape preserved)", len(f.Value))
+	}
+	if f.Value[2] != '/' || f.Value[5] != '/' {
+		t.Errorf("Value = %q, slashes not at positions 2 and 5", f.Value)
+	}
+}
+
+func TestFieldDate_TypingPastEndStops(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "01/15/2024")
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnd})
+	if f.CursorPos() != 9 {
+		t.Fatalf("End: CursorPos() = %d, want 9", f.CursorPos())
+	}
+
+	// Typing at the last digit overwrites it; cursor stays at 9 (no further advance)
+	d.HandleKey(tea.KeyPressMsg{Code: '7', Text: "7"})
+	if f.Value != "01/15/2027" {
+		t.Errorf("Value = %q, want %q", f.Value, "01/15/2027")
+	}
+	if f.CursorPos() != 9 {
+		t.Errorf("CursorPos() = %d, want 9 (stays at last digit)", f.CursorPos())
+	}
+}
+
+func TestFieldDate_BackspaceAtFirstDigitStops(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "01/15/2024")
+	// cursor is at 0 from AddDateField
+
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if f.Value != "01/15/2024" {
+		t.Errorf("Value = %q, want %q (no change at first digit)", f.Value, "01/15/2024")
+	}
+	if f.CursorPos() != 0 {
+		t.Errorf("CursorPos() = %d, want 0", f.CursorPos())
+	}
+}
+
+func TestFieldDate_RenderContainsValue(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddDateField("Date", "01/15/2024")
+	// Move focus off the date field so the cursor highlight doesn't split the
+	// rendered date with ANSI escapes.
+	d.SetFocusIndex(1)
+	styles := NewStyles()
+
+	out := d.Render(styles)
+	if !strings.Contains(out, "01/15/2024") {
+		t.Errorf("rendered output should contain date value; got:\n%s", out)
+	}
+}
