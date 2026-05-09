@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
@@ -47,7 +46,7 @@ func buildSpinOffDialog(securityOptions []string, securityIDs []types.ID, preSel
 	d.AddSelectField("Spin-Off Security", securityOptions, 0)
 
 	// Date
-	f := d.AddTextField("Date", time.Now().Format("01/02/2006"), "MM/DD/YYYY", 10)
+	f := d.AddDateField("Date", "")
 	f.Required = true
 
 	// Share Ratio (e.g., "0.5" means 1 parent share = 0.5 spin-off shares)

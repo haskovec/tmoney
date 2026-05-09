@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
@@ -43,7 +42,7 @@ func buildStockSplitDialog(securityOptions []string, securityIDs []types.ID, pre
 	d.AddSelectField("Security", securityOptions, selectedIdx)
 
 	// Date
-	f := d.AddTextField("Date", time.Now().Format("01/02/2006"), "MM/DD/YYYY", 10)
+	f := d.AddDateField("Date", "")
 	f.Required = true
 
 	// Ratio (e.g., "4:1" for a 4-for-1 split, "1:10" for a reverse split)

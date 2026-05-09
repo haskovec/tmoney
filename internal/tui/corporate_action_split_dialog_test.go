@@ -45,9 +45,9 @@ func TestBuildStockSplitDialog_NewDialog(t *testing.T) {
 		t.Errorf("default selected index = %d, want 0", fields[0].SelectedIndex)
 	}
 
-	// Field 1: Date (text, required, default today)
-	if fields[1].Type != FieldText {
-		t.Errorf("field 1 type = %d, want FieldText (%d)", fields[1].Type, FieldText)
+	// Field 1: Date (masked, required, default today)
+	if fields[1].Type != FieldDate {
+		t.Errorf("field 1 type = %d, want FieldDate (%d)", fields[1].Type, FieldDate)
 	}
 	if fields[1].Label != "Date" {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Date")
@@ -90,6 +90,28 @@ func TestBuildStockSplitDialog_NewDialog(t *testing.T) {
 	}
 	if !buttons[1].Primary {
 		t.Error("Execute button should be primary")
+	}
+}
+
+// TestBuildStockSplitDialog_DateFieldMaskedOverwrite verifies the split
+// dialog's Date field uses overwrite-style masked input — typing a digit
+// replaces the digit at the cursor and auto-advances over the slash.
+func TestBuildStockSplitDialog_DateFieldMaskedOverwrite(t *testing.T) {
+	options := []string{"AAPL - Apple Inc."}
+	ids := []types.ID{types.NewID()}
+
+	d := buildStockSplitDialog(options, ids, nil)
+	d.SetFocusIndex(1) // focus the Date field
+
+	// Seed Value to a known date so the overwrite is deterministic.
+	d.Fields()[1].Value = "03/15/2024"
+
+	// Type "0" then "5" — overwrites "03" with "05", cursor advances skipping the slash.
+	d.HandleKey(tea.KeyPressMsg{Code: '0', Text: "0"})
+	d.HandleKey(tea.KeyPressMsg{Code: '5', Text: "5"})
+
+	if got := d.Fields()[1].Value; got != "05/15/2024" {
+		t.Errorf("Value = %q, want %q (overwrite + skip slash)", got, "05/15/2024")
 	}
 }
 

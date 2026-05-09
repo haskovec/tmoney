@@ -3,7 +3,6 @@ package tui
 import (
 	"strconv"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/security"
@@ -45,7 +44,7 @@ func buildMergerDialog(securityOptions []string, securityIDs []types.ID, preSele
 	d.AddSelectField("Target Security", securityOptions, 0)
 
 	// Date
-	f := d.AddTextField("Date", time.Now().Format("01/02/2006"), "MM/DD/YYYY", 10)
+	f := d.AddDateField("Date", "")
 	f.Required = true
 
 	// Exchange Ratio (e.g., "2.0" means 1 source share = 2.0 target shares)

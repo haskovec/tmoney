@@ -55,9 +55,9 @@ func TestBuildSpinOffDialog_NewDialog(t *testing.T) {
 		t.Errorf("expected 2 spin-off options, got %d", len(fields[1].Options))
 	}
 
-	// Field 2: Date (text, required, default today)
-	if fields[2].Type != FieldText {
-		t.Errorf("field 2 type = %d, want FieldText (%d)", fields[2].Type, FieldText)
+	// Field 2: Date (masked, required, default today)
+	if fields[2].Type != FieldDate {
+		t.Errorf("field 2 type = %d, want FieldDate (%d)", fields[2].Type, FieldDate)
 	}
 	if fields[2].Label != "Date" {
 		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "Date")

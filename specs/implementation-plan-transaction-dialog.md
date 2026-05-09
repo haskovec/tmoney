@@ -202,7 +202,7 @@ Mechanical migration of the remaining 9 dialogs to `AddDateField`. Each item is 
   - CLEANUP: none.
   - DOCS: deferred to Phase 6.
 
-- [ ] **TD-013 — Migrate corporate-action dialogs (split, merger, spin-off)**
+- [x] **TD-013 — Migrate corporate-action dialogs (split, merger, spin-off)**
   - RED: tests in any existing corporate-action dialog tests stay green.
   - GREEN: swap to `AddDateField`:
     - `internal/tui/corporate_action_split_dialog.go:46`
