@@ -370,7 +370,7 @@ After Phase 11, every legacy verb is migrated and `parseArgs`/`legacy.go` only c
 
 ## Phase 13: Documentation
 
-- [ ] **CM-067 — Rewrite `specs/cli.md`**
+- [x] **CM-067 — Rewrite `specs/cli.md`** (completed 2026-05-09)
   - GREEN: replace `specs/cli.md`'s flag-based documentation with a noun-verb reference. Each noun group becomes a section; each verb a subsection with `Use`, required flags, optional flags, examples, and expected output (carry over the existing examples, just shifted to the new shape). Keep the "Database File Handling", "Date Formats", "Amount Formats", "Exit Codes", and "Configuration" sections. Cross-reference `specs/cli-router.md` once and note that the migration is complete.
 
 - [ ] **CM-068 — Update `README.md` and retire `specs/cli-router.md`'s migration section**
