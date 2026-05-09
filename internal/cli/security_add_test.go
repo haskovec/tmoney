@@ -217,7 +217,7 @@ func TestSecurityAdd_Duplicate(t *testing.T) {
 }
 
 func TestSecurityAdd_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -230,7 +230,7 @@ func TestSecurityAdd_Help(t *testing.T) {
 }
 
 func TestSecurityCmd_HelpListsAdd(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

@@ -43,7 +43,7 @@ func TestThemeList_PrintsHeaderAndAllThemes(t *testing.T) {
 	writeUserTheme(t, configRoot, "mine", "My Theme")
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -72,7 +72,7 @@ func TestThemeList_BuiltinAndUserSources(t *testing.T) {
 	writeUserTheme(t, configRoot, "mine", "My Theme")
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -105,7 +105,7 @@ func TestThemeList_UserOverrideOfBuiltinShowsAsUser(t *testing.T) {
 	writeUserTheme(t, configRoot, "default", "User Override")
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -128,7 +128,7 @@ func TestThemeList_ActiveThemeMarkedWithStar(t *testing.T) {
 	writeConfigTheme(t, configRoot, "turbo-vision")
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -152,7 +152,7 @@ func TestThemeList_NoActiveThemeInConfig_NoStarShown(t *testing.T) {
 	configRoot := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -170,7 +170,7 @@ func TestThemeList_RowsSortedByID(t *testing.T) {
 	writeUserTheme(t, configRoot, "aaa-early", "Early")
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -202,7 +202,7 @@ func TestThemeList_RowsSortedByID(t *testing.T) {
 }
 
 func TestThemeList_HelpListsCommand(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

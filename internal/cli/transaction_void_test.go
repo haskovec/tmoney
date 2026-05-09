@@ -157,7 +157,7 @@ func TestTransactionVoid_AlreadyVoid(t *testing.T) {
 }
 
 func TestTransactionVoid_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -170,7 +170,7 @@ func TestTransactionVoid_Help(t *testing.T) {
 }
 
 func TestTransactionCmd_HelpListsVoid(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

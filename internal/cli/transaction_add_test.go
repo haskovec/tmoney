@@ -415,7 +415,7 @@ func TestTransactionAdd_FullExample(t *testing.T) {
 }
 
 func TestTransactionCmd_HelpListsAdd(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -428,7 +428,7 @@ func TestTransactionCmd_HelpListsAdd(t *testing.T) {
 }
 
 func TestTransactionAdd_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

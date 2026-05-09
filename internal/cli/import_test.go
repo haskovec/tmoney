@@ -471,7 +471,7 @@ func TestImport_MultiAccountCSV_UnknownSourceAccount(t *testing.T) {
 }
 
 func TestImport_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

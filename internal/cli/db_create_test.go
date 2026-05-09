@@ -107,7 +107,7 @@ func TestDBCreate_MissingPath(t *testing.T) {
 }
 
 func TestDBCmd_HelpListsCreate(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -120,7 +120,7 @@ func TestDBCmd_HelpListsCreate(t *testing.T) {
 }
 
 func TestDBCreate_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

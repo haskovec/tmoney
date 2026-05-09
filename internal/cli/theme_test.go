@@ -7,7 +7,7 @@ import (
 )
 
 func TestThemeSubcommand_HelpListsChildren(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -23,7 +23,7 @@ func TestThemeSubcommand_HelpListsChildren(t *testing.T) {
 }
 
 func TestThemeSubcommand_NoArgsPrintsHelp(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -38,7 +38,7 @@ func TestThemeSubcommand_NoArgsPrintsHelp(t *testing.T) {
 }
 
 func TestExecute_RootHelpListsThemeSubcommand(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

@@ -37,7 +37,7 @@ func TestThemeGenerateFromWal_DefaultOutputWritesToUserThemesDir(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", cacheRoot)
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -71,7 +71,7 @@ func TestThemeGenerateFromWal_StdoutOutput(t *testing.T) {
 	// default path can never accidentally satisfy this test.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -100,7 +100,7 @@ func TestThemeGenerateFromWal_CustomOutputPath(t *testing.T) {
 
 	target := filepath.Join(t.TempDir(), "nested", "custom-wal.toml")
 
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -120,7 +120,7 @@ func TestThemeGenerateFromWal_MissingPywalCacheReturnsError(t *testing.T) {
 	// XDG_CACHE_HOME points at an empty tempdir → no wal/colors.json.
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -139,7 +139,7 @@ func TestThemeGenerateFromWal_MissingPywalCacheReturnsError(t *testing.T) {
 }
 
 func TestThemeGenerateFromWal_HelpListsOutputFlag(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

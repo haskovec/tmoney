@@ -83,7 +83,7 @@ func TestSecurityShow_RejectsExtraArgs(t *testing.T) {
 }
 
 func TestSecurityShow_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -96,7 +96,7 @@ func TestSecurityShow_Help(t *testing.T) {
 }
 
 func TestSecurityCmd_HelpListsShow(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

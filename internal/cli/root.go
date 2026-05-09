@@ -13,26 +13,17 @@ import (
 // default location"). Overridden in tests.
 var tuiLauncher = defaultTUILauncher
 
-// legacyRunner dispatches a legacy `--flag` style invocation. Overridden
-// in tests so the dispatcher can be exercised without reaching the real
-// command handlers.
-var legacyRunner = RunLegacy
-
 func defaultTUILauncher(file string) error {
-	return runTUI(&cliOptions{file: file})
+	return runTUI(file)
 }
 
-// Execute is the entry point used by main.go. It inspects os.Args to
-// decide whether to dispatch to Cobra (for new subcommands and the
-// no-args TUI launch) or fall through to the legacy `--flag` runner.
+// Execute is the entry point used by main.go. It dispatches to the
+// Cobra root command for all invocations.
 func Execute() error {
 	return executeWith(os.Args[1:], os.Stdout, os.Stderr)
 }
 
 func executeWith(args []string, stdout, stderr io.Writer) error {
-	if isLegacyInvocation(args) {
-		return legacyRunner(args, stdout, stderr)
-	}
 	cmd := newRootCmd()
 	cmd.SetArgs(args)
 	cmd.SetOut(stdout)

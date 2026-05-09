@@ -158,7 +158,7 @@ func TestInvestmentDeposit_InvalidDate(t *testing.T) {
 }
 
 func TestInvestmentDeposit_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -171,7 +171,7 @@ func TestInvestmentDeposit_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsDeposit(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

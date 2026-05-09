@@ -182,7 +182,7 @@ func TestInvestmentDividend_InvalidDate(t *testing.T) {
 }
 
 func TestInvestmentDividend_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -195,7 +195,7 @@ func TestInvestmentDividend_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsDividend(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

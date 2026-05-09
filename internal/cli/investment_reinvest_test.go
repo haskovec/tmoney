@@ -258,7 +258,7 @@ func TestInvestmentReinvest_InvalidDate(t *testing.T) {
 }
 
 func TestInvestmentReinvest_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -271,7 +271,7 @@ func TestInvestmentReinvest_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsReinvest(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

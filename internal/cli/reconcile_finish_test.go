@@ -267,7 +267,7 @@ func TestReconcileFinish_WithForce(t *testing.T) {
 }
 
 func TestReconcileFinish_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -280,7 +280,7 @@ func TestReconcileFinish_Help(t *testing.T) {
 }
 
 func TestReconcileCmd_HelpListsFinish(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

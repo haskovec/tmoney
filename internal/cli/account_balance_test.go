@@ -104,7 +104,7 @@ func TestAccountBalance_RejectsExtraArgs(t *testing.T) {
 }
 
 func TestAccountCmd_HelpListsBalance(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -117,7 +117,7 @@ func TestAccountCmd_HelpListsBalance(t *testing.T) {
 }
 
 func TestAccountBalance_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

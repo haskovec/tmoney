@@ -172,7 +172,7 @@ func TestInvestmentFee_InsufficientCash(t *testing.T) {
 }
 
 func TestInvestmentFee_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -185,7 +185,7 @@ func TestInvestmentFee_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsFee(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

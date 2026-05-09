@@ -123,7 +123,7 @@ func TestDBRestore_RejectsExtraArgs(t *testing.T) {
 }
 
 func TestDBCmd_HelpListsRestore(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -136,7 +136,7 @@ func TestDBCmd_HelpListsRestore(t *testing.T) {
 }
 
 func TestDBRestore_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

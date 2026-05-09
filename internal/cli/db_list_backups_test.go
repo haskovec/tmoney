@@ -107,7 +107,7 @@ func TestDBListBackups_RejectsExtraArgs(t *testing.T) {
 }
 
 func TestDBCmd_HelpListsListBackups(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -120,7 +120,7 @@ func TestDBCmd_HelpListsListBackups(t *testing.T) {
 }
 
 func TestDBListBackups_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

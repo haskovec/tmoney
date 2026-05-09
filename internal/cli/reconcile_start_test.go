@@ -210,7 +210,7 @@ func TestReconcileStart_Success(t *testing.T) {
 }
 
 func TestReconcileStart_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -223,7 +223,7 @@ func TestReconcileStart_Help(t *testing.T) {
 }
 
 func TestReconcileCmd_HelpListsStart(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

@@ -337,7 +337,7 @@ func TestInvestmentSell_WithLotAllocation(t *testing.T) {
 }
 
 func TestInvestmentSell_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -350,7 +350,7 @@ func TestInvestmentSell_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsSell(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

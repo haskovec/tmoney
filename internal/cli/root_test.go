@@ -2,39 +2,29 @@ package cli
 
 import (
 	"bytes"
-	"errors"
-	"io"
 	"strings"
 	"testing"
 )
 
-// stubLaunchers swaps tuiLauncher and legacyRunner with capturing stubs
-// for the duration of a test, returning a restore func.
-func stubLaunchers(t *testing.T) (tuiCalls *[]string, legacyCalls *[][]string, restore func()) {
+// stubLaunchers swaps tuiLauncher with a capturing stub for the
+// duration of a test, returning a restore func.
+func stubLaunchers(t *testing.T) (tuiCalls *[]string, restore func()) {
 	t.Helper()
 	tui := []string{}
-	legacy := [][]string{}
 
 	origTUI := tuiLauncher
-	origLegacy := legacyRunner
 
 	tuiLauncher = func(file string) error {
 		tui = append(tui, file)
 		return nil
 	}
-	legacyRunner = func(args []string, stdout, stderr io.Writer) error {
-		// We can't quite use io.Writer here without imports; just track args.
-		legacy = append(legacy, append([]string(nil), args...))
-		return nil
-	}
-	return &tui, &legacy, func() {
+	return &tui, func() {
 		tuiLauncher = origTUI
-		legacyRunner = origLegacy
 	}
 }
 
 func TestExecute_NoArgs_LaunchesTUI(t *testing.T) {
-	tui, legacy, restore := stubLaunchers(t)
+	tui, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -47,13 +37,10 @@ func TestExecute_NoArgs_LaunchesTUI(t *testing.T) {
 	if (*tui)[0] != "" {
 		t.Errorf("expected empty file, got %q", (*tui)[0])
 	}
-	if len(*legacy) != 0 {
-		t.Errorf("expected 0 legacy calls, got %d", len(*legacy))
-	}
 }
 
 func TestExecute_PositionalFile_LaunchesTUI(t *testing.T) {
-	tui, _, restore := stubLaunchers(t)
+	tui, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -66,7 +53,7 @@ func TestExecute_PositionalFile_LaunchesTUI(t *testing.T) {
 }
 
 func TestExecute_FileFlag_LaunchesTUI(t *testing.T) {
-	tui, _, restore := stubLaunchers(t)
+	tui, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -79,7 +66,7 @@ func TestExecute_FileFlag_LaunchesTUI(t *testing.T) {
 }
 
 func TestExecute_ShortFileFlag_LaunchesTUI(t *testing.T) {
-	tui, _, restore := stubLaunchers(t)
+	tui, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -91,43 +78,8 @@ func TestExecute_ShortFileFlag_LaunchesTUI(t *testing.T) {
 	}
 }
 
-func TestExecute_LegacyFlag_RoutesToLegacy(t *testing.T) {
-	tui, legacy, restore := stubLaunchers(t)
-	defer restore()
-
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	args := []string{"--list-accounts", "-f", "foo.tdb"}
-	if err := executeWith(args, stdout, stderr); err != nil {
-		t.Fatalf("executeWith() unexpected error: %v", err)
-	}
-	if len(*tui) != 0 {
-		t.Errorf("expected 0 TUI launches, got %d", len(*tui))
-	}
-	if len(*legacy) != 1 {
-		t.Fatalf("expected 1 legacy call, got %d", len(*legacy))
-	}
-	if !equal((*legacy)[0], args) {
-		t.Errorf("expected legacy args %v, got %v", args, (*legacy)[0])
-	}
-}
-
-func TestExecute_LegacyError_PropagatesAsError(t *testing.T) {
-	origLegacy := legacyRunner
-	defer func() { legacyRunner = origLegacy }()
-
-	wantErr := errors.New("boom")
-	legacyRunner = func(args []string, stdout, stderr io.Writer) error {
-		return wantErr
-	}
-
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"--list-accounts"}, stdout, stderr); !errors.Is(err, wantErr) {
-		t.Errorf("expected error %v, got %v", wantErr, err)
-	}
-}
-
 func TestExecute_Help_ShowsUsage(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -170,14 +122,3 @@ func TestIsLegacyInvocation(t *testing.T) {
 	}
 }
 
-func equal(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}

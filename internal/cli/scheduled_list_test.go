@@ -398,7 +398,7 @@ func TestScheduledList_AccountNotFound(t *testing.T) {
 }
 
 func TestScheduledCmd_HelpListsList(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -411,7 +411,7 @@ func TestScheduledCmd_HelpListsList(t *testing.T) {
 }
 
 func TestScheduledList_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

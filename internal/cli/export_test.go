@@ -366,7 +366,7 @@ func TestExport_NoTransactions(t *testing.T) {
 }
 
 func TestExport_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

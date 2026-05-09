@@ -269,7 +269,7 @@ func TestTransferLink_InvalidMaxDays(t *testing.T) {
 }
 
 func TestTransferCmd_HelpListsLink(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -282,7 +282,7 @@ func TestTransferCmd_HelpListsLink(t *testing.T) {
 }
 
 func TestTransferLink_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

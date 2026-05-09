@@ -241,7 +241,7 @@ func TestInvestmentMerge_WithLotTracking(t *testing.T) {
 }
 
 func TestInvestmentMerge_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -254,7 +254,7 @@ func TestInvestmentMerge_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsMerge(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

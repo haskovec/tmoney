@@ -183,7 +183,7 @@ func TestPriceImport_DisplaysSummary(t *testing.T) {
 }
 
 func TestPriceImport_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -196,7 +196,7 @@ func TestPriceImport_Help(t *testing.T) {
 }
 
 func TestPriceCmd_HelpListsImport(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

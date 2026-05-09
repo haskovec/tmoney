@@ -275,7 +275,7 @@ func TestPriceUpdate_UpToDateSecondRun(t *testing.T) {
 }
 
 func TestPriceUpdate_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -288,7 +288,7 @@ func TestPriceUpdate_Help(t *testing.T) {
 }
 
 func TestPriceCmd_HelpListsUpdate(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

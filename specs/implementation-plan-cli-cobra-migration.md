@@ -352,7 +352,7 @@ These are top-level subcommands (no parent noun), since the spec calls for `tmon
 
 After Phase 11, every legacy verb is migrated and `parseArgs`/`legacy.go` only carry residual scaffolding. This phase deletes that scaffolding.
 
-- [ ] **CM-062 — Delete `RunLegacy` and the legacy dispatch path**
+- [x] **CM-062 — Delete `RunLegacy` and the legacy dispatch path** (completed 2026-05-09)
   - RED: not applicable (deletion).
   - GREEN: delete `internal/cli/legacy.go` (move `runTUI` into `internal/cli/tui.go` if it doesn't already live there). Delete the `legacyRunner` indirection and the `isLegacyInvocation` branch in `root.go` — the Cobra root command becomes the only entry point. Update `Execute()` accordingly. Confirm full test suite passes.
 

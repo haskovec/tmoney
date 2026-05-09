@@ -328,7 +328,7 @@ func TestScheduledAdd_VariableAmount(t *testing.T) {
 }
 
 func TestScheduledCmd_HelpListsAdd(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -341,7 +341,7 @@ func TestScheduledCmd_HelpListsAdd(t *testing.T) {
 }
 
 func TestScheduledAdd_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

@@ -229,7 +229,7 @@ func TestInvestmentSplit_InvalidDate(t *testing.T) {
 }
 
 func TestInvestmentSplit_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -242,7 +242,7 @@ func TestInvestmentSplit_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsSplit(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

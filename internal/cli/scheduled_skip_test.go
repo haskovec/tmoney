@@ -147,7 +147,7 @@ func TestScheduledSkip_Success(t *testing.T) {
 }
 
 func TestScheduledSkip_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -160,7 +160,7 @@ func TestScheduledSkip_Help(t *testing.T) {
 }
 
 func TestScheduledCmd_HelpListsSkip(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

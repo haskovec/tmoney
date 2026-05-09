@@ -156,7 +156,7 @@ func TestInvestmentWithdraw_InsufficientCash(t *testing.T) {
 }
 
 func TestInvestmentWithdraw_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -169,7 +169,7 @@ func TestInvestmentWithdraw_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsWithdraw(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

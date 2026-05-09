@@ -165,7 +165,7 @@ func TestReconcileStatus_AccountNotFound(t *testing.T) {
 }
 
 func TestReconcileStatus_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -178,7 +178,7 @@ func TestReconcileStatus_Help(t *testing.T) {
 }
 
 func TestReconcileCmd_HelpListsStatus(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

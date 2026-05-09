@@ -299,7 +299,7 @@ func TestScheduledPost_InvalidAmount(t *testing.T) {
 }
 
 func TestScheduledPost_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -312,7 +312,7 @@ func TestScheduledPost_Help(t *testing.T) {
 }
 
 func TestScheduledCmd_HelpListsPost(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

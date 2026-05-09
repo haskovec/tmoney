@@ -292,7 +292,7 @@ func TestInvestmentSpinOff_WithLotTracking(t *testing.T) {
 }
 
 func TestInvestmentSpinOff_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -305,7 +305,7 @@ func TestInvestmentSpinOff_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsSpinOff(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

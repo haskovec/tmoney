@@ -222,7 +222,7 @@ func TestReportSpending_RejectsExtraArgs(t *testing.T) {
 }
 
 func TestReportCmd_HelpListsSpending(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -237,7 +237,7 @@ func TestReportCmd_HelpListsSpending(t *testing.T) {
 }
 
 func TestReportSpending_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}

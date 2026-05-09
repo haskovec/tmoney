@@ -85,7 +85,7 @@ func TestPriceCurrent_RejectsExtraArgs(t *testing.T) {
 }
 
 func TestPriceCurrent_Help(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -98,7 +98,7 @@ func TestPriceCurrent_Help(t *testing.T) {
 }
 
 func TestPriceCmd_HelpListsCurrent(t *testing.T) {
-	_, _, restore := stubLaunchers(t)
+	_, restore := stubLaunchers(t)
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
