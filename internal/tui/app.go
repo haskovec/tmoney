@@ -131,6 +131,11 @@ type App struct {
 	txnDialog            *Dialog
 	txnDialogData        *transactionDialogData
 	txnDialogCategoryIDs []types.ID
+	// txnDialogLastSavedDate is the date of the last successfully-saved
+	// transaction in this process. The new-transaction dialog seeds its
+	// Date field from this on subsequent opens. Cancel does not update it.
+	// Process-lifetime only — not persisted across restarts.
+	txnDialogLastSavedDate types.Date
 
 	// Split dialog state
 	splitDialog     *SplitDialog
@@ -1219,10 +1224,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.txnDialogData = msg.data
 		categoryOptions, categoryIDs := buildCategoryOptions(msg.data.categories)
 		a.txnDialogCategoryIDs = categoryIDs
-		a.txnDialog = buildTransactionDialog(msg.data, categoryOptions)
+		a.txnDialog = buildTransactionDialog(msg.data, categoryOptions, a.txnDialogLastSavedDate)
 		return a, nil
 
 	case transactionDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
 		accountID := a.sidebar.SelectedAccountID()
 		return a, tea.Batch(
 			a.loadRegisterData(accountID),

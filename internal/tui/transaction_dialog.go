@@ -27,7 +27,11 @@ type transactionDialogDataMsg struct {
 }
 
 // transactionDialogSavedMsg is sent when a transaction has been saved.
-type transactionDialogSavedMsg struct{}
+// savedDate carries the date of the saved transaction so the App can use it
+// as the sticky seed for the next dialog open.
+type transactionDialogSavedMsg struct {
+	savedDate types.Date
+}
 
 // parseDateInput parses a date string in MM/DD/YYYY format.
 func parseDateInput(input string) (types.Date, error) {
@@ -115,12 +119,19 @@ func buildCategoryOptions(categories []*category.Category) ([]string, []types.ID
 }
 
 // buildTransactionDialog creates a Dialog for entering a new transaction.
-func buildTransactionDialog(data *transactionDialogData, categoryOptions []string) *Dialog {
+// If seedDate is non-zero it pre-fills the Date field; otherwise the field
+// defaults to today.
+func buildTransactionDialog(data *transactionDialogData, categoryOptions []string, seedDate types.Date) *Dialog {
 	d := NewDialog("New Transaction")
 
-	// Date field - default to today in MM/DD/YYYY
-	today := time.Now().Format("01/02/2006")
-	f := d.AddTextField("Date", today, "MM/DD/YYYY", 10)
+	// Date field - seed from sticky last-used date when set, otherwise today.
+	var dateStr string
+	if seedDate.IsZero() {
+		dateStr = time.Now().Format("01/02/2006")
+	} else {
+		dateStr = seedDate.Time().Format("01/02/2006")
+	}
+	f := d.AddTextField("Date", dateStr, "MM/DD/YYYY", 10)
 	f.Required = true
 
 	// Payee
@@ -348,6 +359,6 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 			}
 		}
 
-		return transactionDialogSavedMsg{}
+		return transactionDialogSavedMsg{savedDate: date}
 	}
 }

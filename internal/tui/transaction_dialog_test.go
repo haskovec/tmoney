@@ -188,7 +188,7 @@ func TestBuildTransactionDialog(t *testing.T) {
 	}
 	options := []string{"(None)"}
 
-	d := buildTransactionDialog(data, options)
+	d := buildTransactionDialog(data, options, types.ZeroDate)
 
 	if d.Title() != "New Transaction" {
 		t.Errorf("title = %q, want %q", d.Title(), "New Transaction")
@@ -210,11 +210,26 @@ func TestBuildTransactionDialog(t *testing.T) {
 	}
 }
 
+func TestBuildTransactionDialog_SeedsFromStickyDate(t *testing.T) {
+	data := &transactionDialogData{
+		categories: []*category.Category{},
+	}
+	options := []string{"(None)"}
+	seed := types.NewDate(2024, time.January, 15)
+
+	d := buildTransactionDialog(data, options, seed)
+
+	fields := d.Fields()
+	if fields[0].Value != "01/15/2024" {
+		t.Errorf("date with seed = %q, want %q", fields[0].Value, "01/15/2024")
+	}
+}
+
 func TestBuildTransactionDialog_FieldTypes(t *testing.T) {
 	data := &transactionDialogData{}
 	options := []string{"(None)", "Groceries"}
 
-	d := buildTransactionDialog(data, options)
+	d := buildTransactionDialog(data, options, types.ZeroDate)
 	fields := d.Fields()
 
 	expected := []struct {
@@ -396,6 +411,207 @@ func TestApp_Update_TransactionDialogSavedMsg(t *testing.T) {
 
 	if cmd == nil {
 		t.Error("transactionDialogSavedMsg should return a reload command")
+	}
+}
+
+func TestApp_Update_TransactionDialogSavedMsg_StoresStickyDate(t *testing.T) {
+	accountID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
+	}, nil)
+
+	saved := types.NewDate(2024, time.January, 15)
+	model, _ := app.Update(transactionDialogSavedMsg{savedDate: saved})
+	updatedApp := model.(*App)
+
+	if !updatedApp.txnDialogLastSavedDate.Equal(saved) {
+		t.Errorf("txnDialogLastSavedDate = %s, want %s", updatedApp.txnDialogLastSavedDate, saved)
+	}
+}
+
+func TestApp_Update_TransactionDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
+	app := &App{
+		currentView:            ViewRegister,
+		keys:                   defaultKeyMap(),
+		menubar:                NewMenuBar(),
+		statusbar:              NewStatusBar(),
+		sidebar:                NewSidebar(),
+		txnDialogLastSavedDate: types.NewDate(2024, time.January, 15),
+	}
+
+	data := &transactionDialogData{
+		payees:     []*payee.Payee{},
+		categories: []*category.Category{},
+		payeeMap:   make(map[string]*payee.Payee),
+	}
+
+	model, _ := app.Update(transactionDialogDataMsg{data: data})
+	updatedApp := model.(*App)
+
+	if updatedApp.txnDialog == nil {
+		t.Fatal("transaction dialog should be created")
+	}
+	dateValue := updatedApp.txnDialog.Fields()[0].Value
+	if dateValue != "01/15/2024" {
+		t.Errorf("date field = %q, want %q (seeded from sticky date)", dateValue, "01/15/2024")
+	}
+}
+
+func TestApp_Update_TransactionDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	data := &transactionDialogData{
+		payees:     []*payee.Payee{},
+		categories: []*category.Category{},
+		payeeMap:   make(map[string]*payee.Payee),
+	}
+
+	model, _ := app.Update(transactionDialogDataMsg{data: data})
+	updatedApp := model.(*App)
+
+	today := time.Now().Format("01/02/2006")
+	dateValue := updatedApp.txnDialog.Fields()[0].Value
+	if dateValue != today {
+		t.Errorf("date field = %q, want %q (today)", dateValue, today)
+	}
+}
+
+func TestApp_TransactionDialogCancel_DoesNotUpdateStickyDate(t *testing.T) {
+	initial := types.NewDate(2024, time.January, 15)
+	app := &App{
+		currentView:            ViewRegister,
+		keys:                   defaultKeyMap(),
+		menubar:                NewMenuBar(),
+		statusbar:              NewStatusBar(),
+		sidebar:                NewSidebar(),
+		txnDialogLastSavedDate: initial,
+		txnDialog: func() *Dialog {
+			d := NewDialog("New Transaction")
+			// User typed a different date but cancels
+			d.AddTextField("Date", "02/01/2024", "MM/DD/YYYY", 10)
+			d.SetVisible(true)
+			return d
+		}(),
+		txnDialogData: &transactionDialogData{
+			payeeMap: make(map[string]*payee.Payee),
+		},
+		txnDialogCategoryIDs: []types.ID{types.NilID},
+	}
+
+	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
+	model, _ := app.Update(escKey)
+	updatedApp := model.(*App)
+
+	if !updatedApp.txnDialogLastSavedDate.Equal(initial) {
+		t.Errorf("sticky date changed on cancel: got %s, want %s",
+			updatedApp.txnDialogLastSavedDate, initial)
+	}
+}
+
+func TestApp_SubmitTransactionDialog_PassesSavedDateInMessage(t *testing.T) {
+	accountID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		txnDialog: func() *Dialog {
+			d := NewDialog("New Transaction")
+			d.AddTextField("Date", "01/15/2024", "", 10)
+			d.AddTextField("Payee", "Coffee Shop", "", 0)
+			d.AddSelectField("Category", []string{"(None)", "Food"}, 0)
+			d.AddTextField("Amount", "-5.00", "", 12)
+			d.AddTextField("Memo", "", "", 0)
+			d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
+			d.AddCheckboxField("Split transaction", false)
+			d.SetVisible(true)
+			return d
+		}(),
+		txnDialogData: &transactionDialogData{
+			payeeMap: make(map[string]*payee.Payee),
+		},
+		txnDialogCategoryIDs: []types.ID{types.NilID, types.NewID()},
+	}
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
+	}, nil)
+
+	_, cmd := app.submitTransactionDialog()
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+
+	msg := cmd()
+	saved, ok := msg.(transactionDialogSavedMsg)
+	if !ok {
+		t.Fatalf("expected transactionDialogSavedMsg, got %T", msg)
+	}
+
+	want := types.NewDate(2024, time.January, 15)
+	if !saved.savedDate.Equal(want) {
+		t.Errorf("savedDate = %s, want %s", saved.savedDate, want)
+	}
+}
+
+func TestApp_SubmitThenSaved_UpdatesStickyDate_AcrossOpens(t *testing.T) {
+	accountID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
+	}, nil)
+
+	// First saved date.
+	first := types.NewDate(2024, time.January, 15)
+	model, _ := app.Update(transactionDialogSavedMsg{savedDate: first})
+	app = model.(*App)
+	if !app.txnDialogLastSavedDate.Equal(first) {
+		t.Fatalf("after first save: got %s, want %s", app.txnDialogLastSavedDate, first)
+	}
+
+	// Reopen the dialog: it should seed from `first`.
+	data := &transactionDialogData{payeeMap: make(map[string]*payee.Payee)}
+	model, _ = app.Update(transactionDialogDataMsg{data: data})
+	app = model.(*App)
+	if app.txnDialog.Fields()[0].Value != "01/15/2024" {
+		t.Errorf("first reopen: date = %q, want %q",
+			app.txnDialog.Fields()[0].Value, "01/15/2024")
+	}
+
+	// A second save updates the sticky date.
+	second := types.NewDate(2024, time.February, 1)
+	model, _ = app.Update(transactionDialogSavedMsg{savedDate: second})
+	app = model.(*App)
+	if !app.txnDialogLastSavedDate.Equal(second) {
+		t.Fatalf("after second save: got %s, want %s", app.txnDialogLastSavedDate, second)
+	}
+
+	// Reopening reflects the second saved date.
+	app.closeTransactionDialog()
+	model, _ = app.Update(transactionDialogDataMsg{data: data})
+	app = model.(*App)
+	if app.txnDialog.Fields()[0].Value != "02/01/2024" {
+		t.Errorf("second reopen: date = %q, want %q",
+			app.txnDialog.Fields()[0].Value, "02/01/2024")
 	}
 }
 

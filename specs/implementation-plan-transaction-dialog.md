@@ -50,7 +50,7 @@ Phase-prep items (no RED) cover non-behavior-changing scaffolding: introducing s
 
 The new-transaction dialog currently re-seeds the date to today on every open (`transaction_dialog.go:122` — `time.Now().Format("01/02/2006")`). After this phase, the dialog seeds with the date of the last successfully-saved transaction in the current process; on the very first open of the session (and on Cancel), it falls back to today.
 
-- [ ] **TD-001 — Last-used date persists across new-transaction dialog opens**
+- [x] **TD-001 — Last-used date persists across new-transaction dialog opens**
   - RED: tests in `internal/tui/transaction_dialog_test.go` covering:
     1. First open: date field shows today.
     2. Submit a transaction with date `01/15/2024`; reopen the dialog; date field shows `01/15/2024`.
