@@ -356,7 +356,7 @@ After Phase 11, every legacy verb is migrated and `parseArgs`/`legacy.go` only c
   - RED: not applicable (deletion).
   - GREEN: delete `internal/cli/legacy.go` (move `runTUI` into `internal/cli/tui.go` if it doesn't already live there). Delete the `legacyRunner` indirection and the `isLegacyInvocation` branch in `root.go` — the Cobra root command becomes the only entry point. Update `Execute()` accordingly. Confirm full test suite passes.
 
-- [ ] **CM-063 — Delete `parseArgs` and `internal/cli/args.go`**
+- [x] **CM-063 — Delete `parseArgs` and `internal/cli/args.go`** (completed 2026-05-09)
   - GREEN: delete `internal/cli/args.go`. Delete `internal/cli/args_test.go` (if it covers only `parseArgs`). Update any remaining references. Tests for individual verbs already cover Cobra-side parsing via `executeWith`; nothing should reference `parseArgs` after Phase 11.
 
 - [ ] **CM-064 — Delete `cliOptions` struct**

@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/haskovec/tmoney/internal/report"
@@ -103,4 +105,28 @@ func runReportSpending(opts *reportSpendingOptions, w io.Writer) error {
 
 	printSpendingReport(w, rpt)
 	return nil
+}
+
+// parseYearMonth parses a YYYY-MM string into year and month integers.
+func parseYearMonth(s string) (int, int, error) {
+	parts := strings.Split(s, "-")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("expected YYYY-MM format, got %q", s)
+	}
+
+	year, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid year: %w", err)
+	}
+
+	month, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid month: %w", err)
+	}
+
+	if month < 1 || month > 12 {
+		return 0, 0, fmt.Errorf("month must be between 1 and 12, got %d", month)
+	}
+
+	return year, month, nil
 }

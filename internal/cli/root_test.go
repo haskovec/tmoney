@@ -121,4 +121,3 @@ func TestIsLegacyInvocation(t *testing.T) {
 		})
 	}
 }
-
