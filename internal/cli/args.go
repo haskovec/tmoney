@@ -52,13 +52,6 @@ type cliOptions struct {
 	reportYear  int    // --year YYYY for spending
 	reportAsOf  string // --as-of YYYY-MM-DD for net-worth
 
-	// Format override (residual: still used by --export; the
-	// import-specific flags have been migrated to `tmoney import`.)
-	formatOverride string // --format <csv|qif>
-
-	// Export options
-	exportFile string // --export <file>
-
 	// Security management options
 	secTicker     string // --ticker <ticker> (for add/edit)
 	secAssetClass string // --asset-class <class>
@@ -241,18 +234,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.reportAsOf = args[i]
-		case "--export":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--export requires a file path argument")
-			}
-			i++
-			opts.exportFile = args[i]
-		case "--format":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--format requires a value argument (csv, qif, or ofx)")
-			}
-			i++
-			opts.formatOverride = args[i]
 		case "--ticker":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--ticker requires a value argument")
@@ -363,10 +344,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.reportYear = year
 			} else if after, ok := strings.CutPrefix(arg, "--as-of="); ok {
 				opts.reportAsOf = after
-			} else if after, ok := strings.CutPrefix(arg, "--export="); ok {
-				opts.exportFile = after
-			} else if after, ok := strings.CutPrefix(arg, "--format="); ok {
-				opts.formatOverride = after
 			} else if after, ok := strings.CutPrefix(arg, "--ticker="); ok {
 				opts.secTicker = after
 			} else if after, ok := strings.CutPrefix(arg, "--asset-class="); ok {

@@ -323,7 +323,7 @@ These are top-level subcommands (no parent noun), since the spec calls for `tmon
   - CLEANUP: delete `--import`, `--source-account`, `--confirm`, `--skip-duplicates`, `--update-duplicates` plumbing. (`--account` and `--format` are still used by `--export` and stay until CM-058.)
   - DOCS: README "Import Transactions" section.
 
-- [ ] **CM-058 — `tmoney export <file>`**
+- [x] **CM-058 — `tmoney export <file>`** (completed 2026-05-09)
   - RED: tests covering `TestRun_Export*`.
   - GREEN: `export.go` with `exportOptions{ file, exportFile, account, fromDate, toDate, formatOverride string }`, `newExportCmd()` (`Args: cobra.ExactArgs(1)`). Register on root; add `"export"` to `cobraSubcommands`. Add help smoke test.
   - CLEANUP: delete `--export` plumbing.

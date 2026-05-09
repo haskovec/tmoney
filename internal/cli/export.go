@@ -9,10 +9,53 @@ import (
 
 	"github.com/haskovec/tmoney/internal/imexport"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
+// exportOptions are the inputs to `tmoney export <file>`.
+type exportOptions struct {
+	file           string
+	exportFile     string
+	account        string
+	fromDate       string
+	toDate         string
+	formatOverride string
+}
+
+// newExportCmd registers `tmoney export <file>`. The database file is
+// taken from the persistent `--file` / `-f` flag inherited from the
+// root command. The output format is auto-detected from the extension
+// unless `--format` is supplied (csv or qif; ofx is not supported).
+func newExportCmd() *cobra.Command {
+	opts := &exportOptions{}
+	cmd := &cobra.Command{
+		Use:   "export <file>",
+		Short: "Export transactions to CSV or QIF",
+		Long: "Export transactions from the database to a CSV or QIF file. " +
+			"Format is auto-detected from the output file extension unless " +
+			"--format is supplied. Optional --account, --from, and --to " +
+			"filters narrow the exported set.",
+		Example: "  tmoney -f personal.tdb export finances.csv\n" +
+			"  tmoney -f personal.tdb export checking_q1.csv --account Checking \\\n" +
+			"    --from 2024-01-01 --to 2024-03-31\n" +
+			"  tmoney -f personal.tdb export out.txt --format qif",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			opts.exportFile = args[0]
+			return runExport(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.account, "account", "", "Limit export to a single account")
+	cmd.Flags().StringVar(&opts.fromDate, "from", "", "Earliest transaction date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&opts.toDate, "to", "", "Latest transaction date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&opts.formatOverride, "format", "", "Override format detection (csv or qif)")
+	return cmd
+}
+
 // runExport exports transactions to a file in CSV or QIF format.
-func runExport(opts *cliOptions, w io.Writer) error {
+func runExport(opts *exportOptions, w io.Writer) error {
 	if opts.file == "" {
 		return fmt.Errorf("--export requires --file to specify a database")
 	}
@@ -52,12 +95,12 @@ func runExport(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Resolve account filter
-	if opts.accountName != "" {
-		account, err := svc.Account.GetByName(opts.accountName)
+	if opts.account != "" {
+		acct, err := svc.Account.GetByName(opts.account)
 		if err != nil {
-			return fmt.Errorf("account %q not found: %w", opts.accountName, err)
+			return fmt.Errorf("account %q not found: %w", opts.account, err)
 		}
-		exportOpts.AccountID = &account.ID
+		exportOpts.AccountID = &acct.ID
 	}
 
 	// Parse date filters
