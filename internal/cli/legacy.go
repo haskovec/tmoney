@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --report
-	if opts.report {
-		return runReport(opts, stdout)
-	}
-
 	// If remaining args include a file path, use it as the file
 	if len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
 		if opts.file == "" {

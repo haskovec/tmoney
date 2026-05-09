@@ -14,8 +14,8 @@ func newReportCmd() *cobra.Command {
 		Long: "Subcommands for generating reports from TMoney data: " +
 			"net worth (assets vs. liabilities) and spending by category.",
 		Example: "  tmoney report net-worth\n" +
-			"  tmoney report net-worth --as-of 2024-06-30\n" +
-			"  tmoney report net-worth --include-closed",
+			"  tmoney report spending --month 2024-03\n" +
+			"  tmoney report spending --year 2024",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
@@ -23,5 +23,6 @@ func newReportCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newReportNetWorthCmd())
+	cmd.AddCommand(newReportSpendingCmd())
 	return cmd
 }

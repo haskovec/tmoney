@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/haskovec/tmoney/internal/app"
@@ -34,25 +33,6 @@ func openServices(file string) (*db.DB, *app.Services, error) {
 	}
 
 	return database, svc, nil
-}
-
-// runReport generates and displays reports.
-func runReport(opts *cliOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--report requires --file to specify a database")
-	}
-
-	// Validate report type
-	if opts.reportType == "" {
-		return fmt.Errorf("--report requires a report type (net-worth or spending)")
-	}
-
-	switch opts.reportType {
-	case "spending":
-		return runSpendingReport(opts, w)
-	default:
-		return fmt.Errorf("unknown report type %q: valid types are net-worth, spending", opts.reportType)
-	}
 }
 
 // autoBackupAfterModification creates an auto-backup after a data-modifying CLI command.

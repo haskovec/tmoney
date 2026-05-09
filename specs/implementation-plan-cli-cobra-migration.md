@@ -342,7 +342,7 @@ These are top-level subcommands (no parent noun), since the spec calls for `tmon
   - CLEANUP: in `parseArgs` and `legacy.go`, delete the `--report` + `--report-type net-worth` branches; delete `reportAsOf` field from `cliOptions`.
   - DOCS: README "Net worth" section under CLI Reference.
 
-- [ ] **CM-061 — `tmoney report spending`**
+- [x] **CM-061 — `tmoney report spending`** (completed 2026-05-09)
   - RED: tests covering `TestRun_Spending*` (`--month`, `--year`, `--from`/`--to`).
   - GREEN: `report_spending.go` with `reportSpendingOptions{ file, month, fromDate, toDate string; year int }`, `newReportSpendingCmd()`.
   - CLEANUP: delete the residual `--report`/`--report-type` branches and `reportType`/`reportMonth`/`reportYear` fields from `cliOptions`. Delete the now-orphan `runReport` dispatcher in `commands.go`.

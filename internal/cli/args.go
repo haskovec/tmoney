@@ -44,12 +44,6 @@ type cliOptions struct {
 	// Status filter
 	txStatus string // --status <uncleared|cleared|reconciled|void>
 
-	// Report options
-	report      bool   // --report flag
-	reportType  string // net-worth or spending
-	reportMonth string // --month YYYY-MM for spending
-	reportYear  int    // --year YYYY for spending
-
 	// Security management options
 	secTicker     string // --ticker <ticker> (for add/edit)
 	secAssetClass string // --asset-class <class>
@@ -202,28 +196,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.acctInterestRate = args[i]
-		case "--report":
-			opts.report = true
-			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				i++
-				opts.reportType = args[i]
-			}
-		case "--month":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--month requires a YYYY-MM argument")
-			}
-			i++
-			opts.reportMonth = args[i]
-		case "--year":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--year requires a YYYY argument")
-			}
-			i++
-			year, err := strconv.Atoi(args[i])
-			if err != nil {
-				return nil, nil, fmt.Errorf("--year requires a valid year: %w", err)
-			}
-			opts.reportYear = year
 		case "--ticker":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--ticker requires a value argument")
@@ -320,18 +292,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.acctInterestRate = after
 			} else if after, ok := strings.CutPrefix(arg, "--status="); ok {
 				opts.txStatus = after
-			} else if strings.HasPrefix(arg, "--report=") {
-				opts.report = true
-				opts.reportType = strings.TrimPrefix(arg, "--report=")
-			} else if after, ok := strings.CutPrefix(arg, "--month="); ok {
-				opts.reportMonth = after
-			} else if after, ok := strings.CutPrefix(arg, "--year="); ok {
-				yearStr := after
-				year, err := strconv.Atoi(yearStr)
-				if err != nil {
-					return nil, nil, fmt.Errorf("--year requires a valid year: %w", err)
-				}
-				opts.reportYear = year
 			} else if after, ok := strings.CutPrefix(arg, "--ticker="); ok {
 				opts.secTicker = after
 			} else if after, ok := strings.CutPrefix(arg, "--asset-class="); ok {

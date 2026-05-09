@@ -480,13 +480,13 @@ tmoney report net-worth --as-of 2024-06-30
 tmoney report net-worth --include-closed
 
 # Spending by category - monthly
-tmoney --report spending --month 2024-03
+tmoney report spending --month 2024-03
 
 # Spending by category - yearly
-tmoney --report spending --year 2024
+tmoney report spending --year 2024
 
 # Spending by category - custom date range
-tmoney --report spending --from 2024-01-01 --to 2024-06-30
+tmoney report spending --from 2024-01-01 --to 2024-06-30
 ```
 
 ### Prices
@@ -887,7 +887,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split`/`merge`/`spin-off`/`portfolio`, and `tmoney import`/`export`, and `tmoney report net-worth` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split`/`merge`/`spin-off`/`portfolio`, and `tmoney import`/`export`, and `tmoney report net-worth`/`spending` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 
