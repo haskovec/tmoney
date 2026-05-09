@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --merge-security
-	if opts.mergeSecurity {
-		return runMergeSecurity(opts, stdout)
-	}
-
 	// Handle --spin-off
 	if opts.spinOff {
 		return runSpinOff(opts, stdout)

@@ -686,6 +686,28 @@ written as `N:D` — `4:1` means four new shares for every one held
 (reverse split). All open positions and (for lot-tracked accounts)
 lots are adjusted by the ratio. Date defaults to today.
 
+```bash
+# Apply a merger/acquisition: source becomes target at the given ratio
+tmoney -f personal.tdb investment merge --source AAPL --target GOOG \
+  --exchange-ratio 0.5
+
+# Merger with cash consideration per source share
+tmoney -f personal.tdb investment merge --source AAPL --target GOOG \
+  --exchange-ratio 0.5 --cash-per-share 10.50
+
+# Effective on a specific date
+tmoney -f personal.tdb investment merge --source AAPL --target GOOG \
+  --exchange-ratio 0.5 --date 2024-06-15
+```
+
+`investment merge` requires `--source`, `--target`, and
+`--exchange-ratio`. Every share of the source security is exchanged
+for `--exchange-ratio` shares of the target security. Optional
+`--cash-per-share` records cash consideration paid per source share in
+addition to the exchanged shares. All open positions in the source
+security (and, for lot-tracked accounts, the underlying lots) are
+converted to the target. Date defaults to today.
+
 ### Import Transactions
 
 ```bash
@@ -824,7 +846,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split`/`merge` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 

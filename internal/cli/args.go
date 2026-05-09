@@ -82,11 +82,6 @@ type cliOptions struct {
 	showLots  bool // --show-lots flag
 
 	// Corporate action options
-	mergeSecurity    bool   // --merge-security flag
-	mergeSource      string // --source <ticker>
-	mergeTarget      string // --target <ticker>
-	exchangeRatio    string // --exchange-ratio <ratio>
-	cashPerShare     string // --cash-per-share <amount>
 	spinOff          bool   // --spin-off flag
 	spinOffParent    string // --parent <ticker>
 	spinOffChild     string // --spinoff <ticker>
@@ -344,32 +339,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			opts.portfolio = true
 		case "--show-lots":
 			opts.showLots = true
-		case "--merge-security":
-			opts.mergeSecurity = true
-		case "--source":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--source requires a ticker argument")
-			}
-			i++
-			opts.mergeSource = args[i]
-		case "--target":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--target requires a ticker argument")
-			}
-			i++
-			opts.mergeTarget = args[i]
-		case "--exchange-ratio":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--exchange-ratio requires a value argument")
-			}
-			i++
-			opts.exchangeRatio = args[i]
-		case "--cash-per-share":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--cash-per-share requires a value argument")
-			}
-			i++
-			opts.cashPerShare = args[i]
 		case "--spin-off":
 			opts.spinOff = true
 		case "--parent":
@@ -486,14 +455,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.pricePerShare = after
 			} else if after, ok := strings.CutPrefix(arg, "--lot="); ok {
 				opts.lot = after
-			} else if after, ok := strings.CutPrefix(arg, "--source="); ok {
-				opts.mergeSource = after
-			} else if after, ok := strings.CutPrefix(arg, "--target="); ok {
-				opts.mergeTarget = after
-			} else if after, ok := strings.CutPrefix(arg, "--exchange-ratio="); ok {
-				opts.exchangeRatio = after
-			} else if after, ok := strings.CutPrefix(arg, "--cash-per-share="); ok {
-				opts.cashPerShare = after
 			} else if after, ok := strings.CutPrefix(arg, "--parent="); ok {
 				opts.spinOffParent = after
 			} else if after, ok := strings.CutPrefix(arg, "--spinoff="); ok {

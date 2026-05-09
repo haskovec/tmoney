@@ -7,21 +7,57 @@ import (
 
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runMergeSecurity executes the --merge-security command: apply a merger/acquisition.
-func runMergeSecurity(opts *cliOptions, w io.Writer) error {
+// investmentMergeOptions are the inputs to `tmoney investment merge`.
+type investmentMergeOptions struct {
+	file          string
+	source        string
+	target        string
+	exchangeRatio string
+	cashPerShare  string
+	date          string
+}
+
+// newInvestmentMergeCmd registers `tmoney investment merge`. The
+// database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command. `--source`, `--target`, and
+// `--exchange-ratio` are required.
+func newInvestmentMergeCmd() *cobra.Command {
+	opts := &investmentMergeOptions{}
+	cmd := &cobra.Command{
+		Use:   "merge",
+		Short: "Apply a merger or acquisition between two securities",
+		Long: "Apply a merger/acquisition: every share of the source " +
+			"security is exchanged for `--exchange-ratio` shares of the " +
+			"target security, optionally with cash consideration via " +
+			"`--cash-per-share`.",
+		Example: "  tmoney investment merge --source AAPL --target GOOG --exchange-ratio 0.5\n" +
+			"  tmoney investment merge --source AAPL --target GOOG --exchange-ratio 0.5 --cash-per-share 10.50",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runInvestmentMerge(opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.source, "source", "", "Source security ticker (required)")
+	cmd.Flags().StringVar(&opts.target, "target", "", "Target security ticker (required)")
+	cmd.Flags().StringVar(&opts.exchangeRatio, "exchange-ratio", "", "Shares of target received per source share (required)")
+	cmd.Flags().StringVar(&opts.cashPerShare, "cash-per-share", "", "Optional cash consideration per source share")
+	cmd.Flags().StringVar(&opts.date, "date", "", "Effective date YYYY-MM-DD (default today)")
+	_ = cmd.MarkFlagRequired("source")
+	_ = cmd.MarkFlagRequired("target")
+	_ = cmd.MarkFlagRequired("exchange-ratio")
+	return cmd
+}
+
+// runInvestmentMerge executes `tmoney investment merge`: apply a merger or
+// acquisition between two securities.
+func runInvestmentMerge(opts *investmentMergeOptions, w io.Writer) error {
 	if opts.file == "" {
-		return fmt.Errorf("--merge-security requires --file to specify a database")
-	}
-	if opts.mergeSource == "" {
-		return fmt.Errorf("--merge-security requires --source to specify the source security ticker")
-	}
-	if opts.mergeTarget == "" {
-		return fmt.Errorf("--merge-security requires --target to specify the target security ticker")
-	}
-	if opts.exchangeRatio == "" {
-		return fmt.Errorf("--merge-security requires --exchange-ratio to specify the exchange ratio")
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
 	ratio, err := strconv.ParseFloat(opts.exchangeRatio, 64)
@@ -38,8 +74,8 @@ func runMergeSecurity(opts *cliOptions, w io.Writer) error {
 	}
 
 	var date types.Date
-	if opts.txDate != "" {
-		date, err = types.ParseDate(opts.txDate)
+	if opts.date != "" {
+		date, err = types.ParseDate(opts.date)
 		if err != nil {
 			return fmt.Errorf("invalid --date: %w", err)
 		}
@@ -58,20 +94,20 @@ func runMergeSecurity(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	sourceSec, err := svc.Security.GetByTicker(opts.mergeSource, "")
+	sourceSec, err := svc.Security.GetByTicker(opts.source, "")
 	if err != nil {
-		return fmt.Errorf("source security %q not found", opts.mergeSource)
+		return fmt.Errorf("source security %q not found", opts.source)
 	}
 	if sourceSec.Hidden {
-		return fmt.Errorf("source security %q is hidden; unhide it first to apply corporate actions", opts.mergeSource)
+		return fmt.Errorf("source security %q is hidden; unhide it first to apply corporate actions", opts.source)
 	}
 
-	targetSec, err := svc.Security.GetByTicker(opts.mergeTarget, "")
+	targetSec, err := svc.Security.GetByTicker(opts.target, "")
 	if err != nil {
-		return fmt.Errorf("target security %q not found", opts.mergeTarget)
+		return fmt.Errorf("target security %q not found", opts.target)
 	}
 	if targetSec.Hidden {
-		return fmt.Errorf("target security %q is hidden; unhide it first to apply corporate actions", opts.mergeTarget)
+		return fmt.Errorf("target security %q is hidden; unhide it first to apply corporate actions", opts.target)
 	}
 
 	action, err := svc.CorporateAction.Merger(sourceSec.ID, targetSec.ID, date, params)
