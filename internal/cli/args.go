@@ -9,11 +9,10 @@ import (
 
 // CLI option flags
 type cliOptions struct {
-	file          string
-	includeClosed bool
-	accountName   string // --account <name> to show details
-	fromDate      string // --from <YYYY-MM-DD> start date filter
-	toDate        string // --to <YYYY-MM-DD> end date filter
+	file        string
+	accountName string // --account <name> to show details
+	fromDate    string // --from <YYYY-MM-DD> start date filter
+	toDate      string // --to <YYYY-MM-DD> end date filter
 
 	// Transaction options shared by legacy verbs (--transfer, --void,
 	// --add-scheduled, --post-scheduled, --search, etc.). Retired as
@@ -50,7 +49,6 @@ type cliOptions struct {
 	reportType  string // net-worth or spending
 	reportMonth string // --month YYYY-MM for spending
 	reportYear  int    // --year YYYY for spending
-	reportAsOf  string // --as-of YYYY-MM-DD for net-worth
 
 	// Security management options
 	secTicker     string // --ticker <ticker> (for add/edit)
@@ -88,8 +86,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.file = args[i]
-		case "--include-closed":
-			opts.includeClosed = true
 		case "--account":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--account requires an account name argument")
@@ -228,12 +224,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				return nil, nil, fmt.Errorf("--year requires a valid year: %w", err)
 			}
 			opts.reportYear = year
-		case "--as-of":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--as-of requires a YYYY-MM-DD argument")
-			}
-			i++
-			opts.reportAsOf = args[i]
 		case "--ticker":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--ticker requires a value argument")
@@ -342,8 +332,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 					return nil, nil, fmt.Errorf("--year requires a valid year: %w", err)
 				}
 				opts.reportYear = year
-			} else if after, ok := strings.CutPrefix(arg, "--as-of="); ok {
-				opts.reportAsOf = after
 			} else if after, ok := strings.CutPrefix(arg, "--ticker="); ok {
 				opts.secTicker = after
 			} else if after, ok := strings.CutPrefix(arg, "--asset-class="); ok {

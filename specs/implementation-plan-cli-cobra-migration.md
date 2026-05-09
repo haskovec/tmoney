@@ -336,7 +336,7 @@ These are top-level subcommands (no parent noun), since the spec calls for `tmon
 - [x] **CM-059 — Phase prep: split `report` handlers** (completed 2026-05-09)
   - GREEN: create `report_net_worth.go`, `report_spending.go` containing `runNetWorthReport`, `runSpendingReport` cut verbatim. The dispatcher `runReport` is left in `commands.go` (it just routes by `--report-type` and gets deleted entirely in cleanup).
 
-- [ ] **CM-060 — `tmoney report net-worth`**
+- [x] **CM-060 — `tmoney report net-worth`** (completed 2026-05-09)
   - RED: tests covering `TestRun_NetWorth*` (with `--as-of`, `--include-closed`).
   - GREEN: create `report.go` (parent). `report_net_worth.go` with `reportNetWorthOptions{ file, asOf string; includeClosed bool }`, `newReportNetWorthCmd()`. Register on root; add `"report"` to `cobraSubcommands`. Add help smoke test.
   - CLEANUP: in `parseArgs` and `legacy.go`, delete the `--report` + `--report-type net-worth` branches; delete `reportAsOf` field from `cliOptions`.

@@ -50,34 +50,6 @@ func TestParseArgs_FileFlagMissingPath(t *testing.T) {
 	}
 }
 
-func TestParseArgs_IncludeClosedFlag(t *testing.T) {
-	opts, _, err := parseArgs([]string{"--include-closed"})
-	if err != nil {
-		t.Errorf("parseArgs returned error: %v", err)
-		return
-	}
-	if !opts.includeClosed {
-		t.Error("parseArgs did not set includeClosed flag")
-	}
-}
-
-func TestParseArgs_CombinedFlags(t *testing.T) {
-	opts, remaining, err := parseArgs([]string{"--file", "test.tdb", "--include-closed"})
-	if err != nil {
-		t.Errorf("parseArgs returned error: %v", err)
-		return
-	}
-	if opts.file != "test.tdb" {
-		t.Errorf("file = %q, want %q", opts.file, "test.tdb")
-	}
-	if !opts.includeClosed {
-		t.Error("includeClosed flag not set")
-	}
-	if len(remaining) != 0 {
-		t.Errorf("remaining = %v, want empty", remaining)
-	}
-}
-
 func TestParseArgs_RemainingArgs(t *testing.T) {
 	opts, remaining, err := parseArgs([]string{"some-file.tdb", "extra-arg"})
 	if err != nil {
@@ -722,30 +694,6 @@ func TestParseArgs_ReportYearFlag(t *testing.T) {
 	}
 }
 
-func TestParseArgs_ReportAsOfFlag(t *testing.T) {
-	tests := []struct {
-		name    string
-		args    []string
-		wantVal string
-	}{
-		{"as-of with space", []string{"--as-of", "2024-01-15"}, "2024-01-15"},
-		{"as-of with equals", []string{"--as-of=2023-12-31"}, "2023-12-31"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opts, _, err := parseArgs(tt.args)
-			if err != nil {
-				t.Errorf("parseArgs(%v) returned error: %v", tt.args, err)
-				return
-			}
-			if opts.reportAsOf != tt.wantVal {
-				t.Errorf("reportAsOf = %q, want %q", opts.reportAsOf, tt.wantVal)
-			}
-		})
-	}
-}
-
 func TestParseArgs_ReportMonthMissingValue(t *testing.T) {
 	_, _, err := parseArgs([]string{"--month"})
 	if err == nil {
@@ -764,13 +712,6 @@ func TestParseArgs_ReportYearInvalidValue(t *testing.T) {
 	_, _, err := parseArgs([]string{"--year", "abc"})
 	if err == nil {
 		t.Error("--year with non-numeric value should return error")
-	}
-}
-
-func TestParseArgs_ReportAsOfMissingValue(t *testing.T) {
-	_, _, err := parseArgs([]string{"--as-of"})
-	if err == nil {
-		t.Error("--as-of without value should return error")
 	}
 }
 

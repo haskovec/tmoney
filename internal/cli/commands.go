@@ -48,8 +48,6 @@ func runReport(opts *cliOptions, w io.Writer) error {
 	}
 
 	switch opts.reportType {
-	case "net-worth":
-		return runNetWorthReport(opts, w)
 	case "spending":
 		return runSpendingReport(opts, w)
 	default:
