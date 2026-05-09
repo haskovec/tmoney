@@ -1655,65 +1655,7 @@ func ptrMoney(s string) *types.Money {
 	return &m
 }
 
-// --- SM-111: CLI --invest-deposit / --invest-withdraw ---
-
-func TestRun_InvestDepositMissingFile(t *testing.T) {
-	err := run([]string{"--invest-deposit", "--account", "Brokerage", "--amount", "1000"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("expected --file required error, got: %v", err)
-	}
-}
-
-func TestRun_InvestDepositMissingAccount(t *testing.T) {
-	err := run([]string{"--invest-deposit", "--file", "test.tdb", "--amount", "1000"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --account") {
-		t.Errorf("expected --account required error, got: %v", err)
-	}
-}
-
-func TestRun_InvestDepositMissingAmount(t *testing.T) {
-	err := run([]string{"--invest-deposit", "--file", "test.tdb", "--account", "Brokerage"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --amount") {
-		t.Errorf("expected --amount required error, got: %v", err)
-	}
-}
-
-func TestRun_InvestDepositBasic(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
-	acctRepo := account.NewRepository(database)
-	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
-	if err := acctRepo.Create(acct); err != nil {
-		t.Fatalf("failed to create account: %v", err)
-	}
-	database.Close()
-
-	stdout := &bytes.Buffer{}
-	err = run([]string{
-		"--invest-deposit", "--file", dbPath,
-		"--account", "Brokerage",
-		"--amount", "5000",
-		"--memo", "Initial funding",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--invest-deposit) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Investment deposit created successfully") {
-		t.Error("output should confirm deposit creation")
-	}
-	if !strings.Contains(output, "$5000.00") {
-		t.Error("output should contain deposit amount")
-	}
-	if !strings.Contains(output, "Initial funding") {
-		t.Error("output should contain memo")
-	}
-}
+// --- SM-111: CLI --invest-withdraw ---
 
 func TestRun_InvestWithdrawMissingFile(t *testing.T) {
 	err := run([]string{"--invest-withdraw", "--account", "Brokerage", "--amount", "500"}, &bytes.Buffer{}, &bytes.Buffer{})
@@ -1904,7 +1846,6 @@ func TestParseArgs_InvestmentFlags(t *testing.T) {
 		args  []string
 		check func(*cliOptions) bool
 	}{
-		{"--invest-deposit flag", []string{"--invest-deposit"}, func(o *cliOptions) bool { return o.investDeposit }},
 		{"--invest-withdraw flag", []string{"--invest-withdraw"}, func(o *cliOptions) bool { return o.investWithdraw }},
 		{"--transfer-shares flag", []string{"--transfer-shares"}, func(o *cliOptions) bool { return o.transferShares }},
 		{"--shares value", []string{"--shares", "10"}, func(o *cliOptions) bool { return o.shares == "10" }},
