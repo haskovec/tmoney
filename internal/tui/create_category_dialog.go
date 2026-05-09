@@ -29,28 +29,51 @@ type createCategoryRequestMsg struct {
 // reachable from the category combo's [+ Add new category…] action row.
 //
 // Fields: Name (text, required), Parent (combo over "(top-level)" plus any
-// existingParents), Type (radio: Expense, Income). The query argument seeds
-// the Name field — typical use is to pass through the typed-but-uncommitted
-// query from the parent transaction dialog so the user doesn't retype it.
+// existingParents), Type (radio: Expense, Income). The name and parent
+// arguments seed the corresponding fields; pass the parts of the typed-but-
+// uncommitted query from the parent transaction dialog so the user doesn't
+// retype them.
 //
-// When Name is pre-filled, focus starts on Parent so the user can pick or
-// type a parent without re-confirming the name. When Name is empty, focus
-// starts on Name.
-func buildCreateCategoryDialog(query string, existingParents []string) *Dialog {
+// When parent matches an existingParents entry case-insensitively, the
+// Parent combo's SelectedIndex resolves to it. When parent is non-empty but
+// not in existingParents, it is seeded as the combo's Query (the new-parent
+// path) so submission flags NewParent=true.
+//
+// Focus starts on Name when name is empty; on Parent when name is filled
+// but parent is empty; on Type when both are filled.
+func buildCreateCategoryDialog(name, parent string, existingParents []string) *Dialog {
 	d := NewDialog("New Category")
 
-	nameField := d.AddTextField("Name", query, "Category name", 0)
+	nameField := d.AddTextField("Name", name, "Category name", 0)
 	nameField.Required = true
 
 	parentOptions := append([]string{"(top-level)"}, existingParents...)
-	d.AddComboField("Parent", parentOptions, 0)
+	parentField := d.AddComboField("Parent", parentOptions, 0)
+
+	if parent != "" {
+		matchedIdx := -1
+		for i, p := range existingParents {
+			if strings.EqualFold(p, parent) {
+				matchedIdx = i + 1 // +1 for the "(top-level)" sentinel
+				break
+			}
+		}
+		if matchedIdx > 0 {
+			parentField.SelectedIndex = matchedIdx
+		} else {
+			parentField.Query = parent
+		}
+	}
 
 	d.AddRadioField("Type", []string{"Expense", "Income"}, 0)
 
-	if query == "" {
+	switch {
+	case name == "":
 		d.SetFocusIndex(0)
-	} else {
+	case parent == "":
 		d.SetFocusIndex(1)
+	default:
+		d.SetFocusIndex(2)
 	}
 
 	d.SetVisible(true)

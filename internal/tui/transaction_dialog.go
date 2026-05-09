@@ -68,6 +68,22 @@ func parseAmountInput(input string) (types.Money, error) {
 	return types.NewMoney(s)
 }
 
+// splitCategoryQuery splits a typed category query on the first ':' into a
+// (parent, name) pair, trimming whitespace on each side. A query without a
+// ':' is treated as a plain child name with no parent. A leading ':' is
+// treated as malformed and reduces to (parent="", name=<rest>) so the user
+// gets the same UX as having typed only the child name.
+func splitCategoryQuery(q string) (parent, name string) {
+	q = strings.TrimSpace(q)
+	before, after, ok := strings.Cut(q, ":")
+	if !ok {
+		return "", q
+	}
+	parent = strings.TrimSpace(before)
+	name = strings.TrimSpace(after)
+	return parent, name
+}
+
 // buildCategoryOptions builds parallel display name and ID slices for the category selector.
 // First entry is "(None)" with a nil ID. Subcategories are formatted as "Parent > Child".
 // System categories are excluded. Results are sorted alphabetically.
@@ -281,7 +297,8 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 	catField.Query = ""
 
 	parents := topLevelParentNames(a.txnDialogData)
-	a.createCatDialog = buildCreateCategoryDialog(query, parents)
+	parent, name := splitCategoryQuery(query)
+	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents)
 	a.txnDialog.SetVisible(false)
 	return a, nil
 }

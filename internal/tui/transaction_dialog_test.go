@@ -1424,3 +1424,172 @@ func TestApp_TxnDialog_AddNew_SubmitInvalidLeavesDialogOpen(t *testing.T) {
 		t.Error("Name field should have an inline error")
 	}
 }
+
+// =============================================================================
+// TD-009 — Pre-fill new-category Name from category-field query
+// =============================================================================
+
+func TestSplitCategoryQuery(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantParent string
+		wantChild  string
+	}{
+		{"empty", "", "", ""},
+		{"plain name", "Donations", "", "Donations"},
+		{"parent and child", "Food:Sushi", "Food", "Sushi"},
+		{"leading colon", ":Groceries", "", "Groceries"},
+		{"trailing colon", "Food:", "Food", ""},
+		{"whitespace trimmed", "  Food : Sushi  ", "Food", "Sushi"},
+		{"only colon", ":", "", ""},
+		{"first colon splits", "Food:Sushi:Spicy", "Food", "Sushi:Spicy"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotParent, gotChild := splitCategoryQuery(tt.input)
+			if gotParent != tt.wantParent {
+				t.Errorf("parent = %q, want %q", gotParent, tt.wantParent)
+			}
+			if gotChild != tt.wantChild {
+				t.Errorf("child = %q, want %q", gotChild, tt.wantChild)
+			}
+		})
+	}
+}
+
+func TestApp_TxnDialog_AddNew_PrefillsNameFromQuery(t *testing.T) {
+	// Combo query "Donations" → create-category dialog opens with
+	// Name=Donations, Parent empty, focus on Parent.
+	app := newAppForTxnAddNew(t, "Donations", nil, nil)
+
+	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app = model.(*App)
+
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	fields := app.createCatDialog.Fields()
+	if fields[0].Value != "Donations" {
+		t.Errorf("Name = %q, want %q", fields[0].Value, "Donations")
+	}
+	// Parent: no query, no selection beyond top-level sentinel.
+	if fields[1].Query != "" {
+		t.Errorf("Parent.Query = %q, want empty", fields[1].Query)
+	}
+	if fields[1].SelectedIndex != 0 {
+		t.Errorf("Parent.SelectedIndex = %d, want 0 (top-level)", fields[1].SelectedIndex)
+	}
+	if app.createCatDialog.FocusIndex() != 1 {
+		t.Errorf("FocusIndex = %d, want 1 (Parent)", app.createCatDialog.FocusIndex())
+	}
+}
+
+func TestApp_TxnDialog_AddNew_PrefillsParentChildFromColonExisting(t *testing.T) {
+	// Combo query "Food:Sushi" with "Food" as an existing parent →
+	// Name=Sushi, Parent SelectedIndex resolves to Food (no new-parent flag).
+	cats := []*category.Category{
+		category.NewCategory("Food", category.TypeExpense),
+		category.NewCategory("Bills", category.TypeExpense),
+	}
+	app := newAppForTxnAddNew(t, "Food:Sushi", nil, cats)
+
+	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app = model.(*App)
+
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	fields := app.createCatDialog.Fields()
+	if fields[0].Value != "Sushi" {
+		t.Errorf("Name = %q, want %q", fields[0].Value, "Sushi")
+	}
+	// Parent should resolve to "Food" via SelectedIndex, not Query.
+	if fields[1].Query != "" {
+		t.Errorf("Parent.Query = %q, want empty (existing parent resolves to SelectedIndex)", fields[1].Query)
+	}
+	wantIdx := -1
+	for i, opt := range fields[1].Options {
+		if opt == "Food" {
+			wantIdx = i
+			break
+		}
+	}
+	if wantIdx <= 0 {
+		t.Fatalf("Parent options should include 'Food': %v", fields[1].Options)
+	}
+	if fields[1].SelectedIndex != wantIdx {
+		t.Errorf("Parent.SelectedIndex = %d, want %d (Food)", fields[1].SelectedIndex, wantIdx)
+	}
+}
+
+func TestApp_TxnDialog_AddNew_PrefillsParentChildFromColonNew(t *testing.T) {
+	// Combo query "Charity:Endowment" where "Charity" is NOT an existing
+	// parent → Name=Endowment, Parent.Query="Charity" (new-parent path).
+	cats := []*category.Category{
+		category.NewCategory("Food", category.TypeExpense),
+	}
+	app := newAppForTxnAddNew(t, "Charity:Endowment", nil, cats)
+
+	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app = model.(*App)
+
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	fields := app.createCatDialog.Fields()
+	if fields[0].Value != "Endowment" {
+		t.Errorf("Name = %q, want %q", fields[0].Value, "Endowment")
+	}
+	if fields[1].Query != "Charity" {
+		t.Errorf("Parent.Query = %q, want %q (new-parent path)", fields[1].Query, "Charity")
+	}
+}
+
+func TestApp_TxnDialog_AddNew_PrefillsEmptyQuery(t *testing.T) {
+	// Combo query empty → all fields empty, focus on Name.
+	app := newAppForTxnAddNew(t, "", nil, nil)
+
+	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app = model.(*App)
+
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	fields := app.createCatDialog.Fields()
+	if fields[0].Value != "" {
+		t.Errorf("Name = %q, want empty", fields[0].Value)
+	}
+	if fields[1].Query != "" {
+		t.Errorf("Parent.Query = %q, want empty", fields[1].Query)
+	}
+	if fields[1].SelectedIndex != 0 {
+		t.Errorf("Parent.SelectedIndex = %d, want 0", fields[1].SelectedIndex)
+	}
+	if app.createCatDialog.FocusIndex() != 0 {
+		t.Errorf("FocusIndex = %d, want 0 (Name)", app.createCatDialog.FocusIndex())
+	}
+}
+
+func TestApp_TxnDialog_AddNew_PrefillsLeadingColon(t *testing.T) {
+	// Combo query ":Groceries" → Name=Groceries, Parent empty (treat as
+	// malformed, same as empty parent).
+	app := newAppForTxnAddNew(t, ":Groceries", nil, nil)
+
+	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app = model.(*App)
+
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	fields := app.createCatDialog.Fields()
+	if fields[0].Value != "Groceries" {
+		t.Errorf("Name = %q, want %q", fields[0].Value, "Groceries")
+	}
+	if fields[1].Query != "" {
+		t.Errorf("Parent.Query = %q, want empty", fields[1].Query)
+	}
+	if fields[1].SelectedIndex != 0 {
+		t.Errorf("Parent.SelectedIndex = %d, want 0 (top-level)", fields[1].SelectedIndex)
+	}
+}

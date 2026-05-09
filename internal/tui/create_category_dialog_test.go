@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuildCreateCategoryDialog_FieldShape(t *testing.T) {
-	d := buildCreateCategoryDialog("", []string{"Food", "Bills", "Auto"})
+	d := buildCreateCategoryDialog("", "", []string{"Food", "Bills", "Auto"})
 
 	fields := d.Fields()
 	if len(fields) != 3 {
@@ -58,7 +58,7 @@ func TestBuildCreateCategoryDialog_FieldShape(t *testing.T) {
 }
 
 func TestBuildCreateCategoryDialog_TabCyclesAcrossFields(t *testing.T) {
-	d := buildCreateCategoryDialog("", []string{"Food"})
+	d := buildCreateCategoryDialog("", "", []string{"Food"})
 
 	// Initial focus on Name.
 	if got := d.FocusIndex(); got != 0 {
@@ -77,7 +77,7 @@ func TestBuildCreateCategoryDialog_TabCyclesAcrossFields(t *testing.T) {
 
 func TestSubmitCreateCategoryDialog_ExistingParent(t *testing.T) {
 	parents := []string{"Food", "Bills", "Auto"}
-	d := buildCreateCategoryDialog("", parents)
+	d := buildCreateCategoryDialog("", "", parents)
 	fields := d.Fields()
 
 	fields[0].Value = "Groceries"
@@ -109,7 +109,7 @@ func TestSubmitCreateCategoryDialog_ExistingParent(t *testing.T) {
 
 func TestSubmitCreateCategoryDialog_NewTopLevelParent(t *testing.T) {
 	parents := []string{"Food", "Bills", "Auto"}
-	d := buildCreateCategoryDialog("", parents)
+	d := buildCreateCategoryDialog("", "", parents)
 	fields := d.Fields()
 
 	fields[0].Value = "Donations"
@@ -138,7 +138,7 @@ func TestSubmitCreateCategoryDialog_NewTopLevelParent(t *testing.T) {
 
 func TestSubmitCreateCategoryDialog_TopLevelCategory(t *testing.T) {
 	parents := []string{"Food"}
-	d := buildCreateCategoryDialog("", parents)
+	d := buildCreateCategoryDialog("", "", parents)
 	fields := d.Fields()
 
 	fields[0].Value = "Misc"
@@ -165,7 +165,7 @@ func TestSubmitCreateCategoryDialog_QueryMatchingExistingParentResolvesToExistin
 	// If the user types a parent name (case-insensitive) that already exists,
 	// it must be flagged as existing — no duplicate top-level created.
 	parents := []string{"Food", "Bills"}
-	d := buildCreateCategoryDialog("", parents)
+	d := buildCreateCategoryDialog("", "", parents)
 	fields := d.Fields()
 
 	fields[0].Value = "Sushi"
@@ -187,7 +187,7 @@ func TestSubmitCreateCategoryDialog_QueryMatchingExistingParentResolvesToExistin
 
 func TestSubmitCreateCategoryDialog_EmptyNameSetsInlineError(t *testing.T) {
 	parents := []string{"Food"}
-	d := buildCreateCategoryDialog("", parents)
+	d := buildCreateCategoryDialog("", "", parents)
 	fields := d.Fields()
 
 	fields[0].Value = "   " // whitespace only
@@ -203,7 +203,7 @@ func TestSubmitCreateCategoryDialog_EmptyNameSetsInlineError(t *testing.T) {
 }
 
 func TestCreateCategoryDialog_EscEmitsCancel(t *testing.T) {
-	d := buildCreateCategoryDialog("", []string{"Food"})
+	d := buildCreateCategoryDialog("", "", []string{"Food"})
 
 	action := d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if action != DialogActionCancel {
@@ -212,7 +212,7 @@ func TestCreateCategoryDialog_EscEmitsCancel(t *testing.T) {
 }
 
 func TestBuildCreateCategoryDialog_SeedsNameFromQuery(t *testing.T) {
-	d := buildCreateCategoryDialog("Donations", []string{"Food"})
+	d := buildCreateCategoryDialog("Donations", "", []string{"Food"})
 	fields := d.Fields()
 
 	if fields[0].Value != "Donations" {
@@ -222,5 +222,75 @@ func TestBuildCreateCategoryDialog_SeedsNameFromQuery(t *testing.T) {
 	// user can immediately pick or type a parent.
 	if d.FocusIndex() != 1 {
 		t.Errorf("FocusIndex = %d, want 1 (Parent) when Name is seeded", d.FocusIndex())
+	}
+}
+
+func TestBuildCreateCategoryDialog_SeedsExistingParent(t *testing.T) {
+	// When parent matches an existing entry (case-insensitive), the Parent
+	// combo's SelectedIndex resolves to it and Query is left empty.
+	d := buildCreateCategoryDialog("Sushi", "Food", []string{"Auto", "Food", "Bills"})
+	fields := d.Fields()
+
+	if fields[0].Value != "Sushi" {
+		t.Errorf("Name pre-fill = %q, want %q", fields[0].Value, "Sushi")
+	}
+	if fields[1].Query != "" {
+		t.Errorf("Parent.Query = %q, want empty (existing parent resolves to SelectedIndex)", fields[1].Query)
+	}
+	wantIdx := -1
+	for i, opt := range fields[1].Options {
+		if opt == "Food" {
+			wantIdx = i
+			break
+		}
+	}
+	if wantIdx <= 0 {
+		t.Fatalf("Parent options should include 'Food': %v", fields[1].Options)
+	}
+	if fields[1].SelectedIndex != wantIdx {
+		t.Errorf("Parent.SelectedIndex = %d, want %d (Food)", fields[1].SelectedIndex, wantIdx)
+	}
+	// With both Name and Parent filled, focus advances to Type.
+	if d.FocusIndex() != 2 {
+		t.Errorf("FocusIndex = %d, want 2 (Type) when Name and Parent are seeded", d.FocusIndex())
+	}
+}
+
+func TestBuildCreateCategoryDialog_SeedsExistingParentCaseInsensitive(t *testing.T) {
+	// Parent match is case-insensitive — typing "food" still resolves to "Food".
+	d := buildCreateCategoryDialog("Sushi", "food", []string{"Food", "Bills"})
+	fields := d.Fields()
+
+	if fields[1].Query != "" {
+		t.Errorf("Parent.Query = %q, want empty (case-insensitive existing match)", fields[1].Query)
+	}
+	wantIdx := -1
+	for i, opt := range fields[1].Options {
+		if opt == "Food" {
+			wantIdx = i
+			break
+		}
+	}
+	if fields[1].SelectedIndex != wantIdx {
+		t.Errorf("Parent.SelectedIndex = %d, want %d", fields[1].SelectedIndex, wantIdx)
+	}
+}
+
+func TestBuildCreateCategoryDialog_SeedsNewParentAsQuery(t *testing.T) {
+	// When parent is a non-empty name not in existingParents, it's seeded
+	// as Query (the new-parent path) so submission flags NewParent=true.
+	d := buildCreateCategoryDialog("Endowment", "Charity", []string{"Food", "Bills"})
+	fields := d.Fields()
+
+	if fields[0].Value != "Endowment" {
+		t.Errorf("Name pre-fill = %q, want %q", fields[0].Value, "Endowment")
+	}
+	if fields[1].Query != "Charity" {
+		t.Errorf("Parent.Query = %q, want %q (new-parent path)", fields[1].Query, "Charity")
+	}
+	// SelectedIndex stays at 0 (the "(top-level)" sentinel) because the
+	// typed name doesn't match any existing parent.
+	if fields[1].SelectedIndex != 0 {
+		t.Errorf("Parent.SelectedIndex = %d, want 0 when parent is typed-but-unknown", fields[1].SelectedIndex)
 	}
 }

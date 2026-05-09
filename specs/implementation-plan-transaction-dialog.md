@@ -162,7 +162,7 @@ Introduces a small create-category dialog reachable from the category combo's fi
   - CLEANUP: none.
   - DOCS: deferred to Phase 6.
 
-- [ ] **TD-009 — Pre-fill new-category Name from category-field query (with `Parent:Child` split)**
+- [x] **TD-009 — Pre-fill new-category Name from category-field query (with `Parent:Child` split)**
   - RED: tests in `create_category_dialog_test.go` and `transaction_dialog_test.go`:
     1. Combo query `Donations` → `[+ Add new]` → create-category dialog opens with Name=`Donations`, Parent empty, focus on Parent.
     2. Combo query `Food:Sushi` (contains `:`) → create-category dialog opens with Parent=`Food`, Name=`Sushi`. If `Food` is an existing parent, the Parent combo's `SelectedIndex` resolves to it (no new-parent flag); if not, it's typed-but-not-matched (the new-parent path).
