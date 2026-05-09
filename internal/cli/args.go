@@ -52,13 +52,9 @@ type cliOptions struct {
 	reportYear  int    // --year YYYY for spending
 	reportAsOf  string // --as-of YYYY-MM-DD for net-worth
 
-	// Import options
-	importFile       string // --import <file>
-	confirm          bool   // --confirm flag (execute import instead of dry-run)
-	skipDuplicates   bool   // --skip-duplicates flag
-	updateDuplicates bool   // --update-duplicates flag
-	formatOverride   string // --format <csv|qif|ofx>
-	sourceAccount    string // --source-account <name> picks one account out of a multi-account CSV
+	// Format override (residual: still used by --export; the
+	// import-specific flags have been migrated to `tmoney import`.)
+	formatOverride string // --format <csv|qif>
 
 	// Export options
 	exportFile string // --export <file>
@@ -245,36 +241,18 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.reportAsOf = args[i]
-		case "--import":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--import requires a file path argument")
-			}
-			i++
-			opts.importFile = args[i]
 		case "--export":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--export requires a file path argument")
 			}
 			i++
 			opts.exportFile = args[i]
-		case "--confirm":
-			opts.confirm = true
-		case "--skip-duplicates":
-			opts.skipDuplicates = true
-		case "--update-duplicates":
-			opts.updateDuplicates = true
 		case "--format":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--format requires a value argument (csv, qif, or ofx)")
 			}
 			i++
 			opts.formatOverride = args[i]
-		case "--source-account":
-			if i+1 >= len(args) {
-				return nil, nil, fmt.Errorf("--source-account requires a name argument")
-			}
-			i++
-			opts.sourceAccount = args[i]
 		case "--ticker":
 			if i+1 >= len(args) {
 				return nil, nil, fmt.Errorf("--ticker requires a value argument")
@@ -385,8 +363,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 				opts.reportYear = year
 			} else if after, ok := strings.CutPrefix(arg, "--as-of="); ok {
 				opts.reportAsOf = after
-			} else if after, ok := strings.CutPrefix(arg, "--import="); ok {
-				opts.importFile = after
 			} else if after, ok := strings.CutPrefix(arg, "--export="); ok {
 				opts.exportFile = after
 			} else if after, ok := strings.CutPrefix(arg, "--format="); ok {

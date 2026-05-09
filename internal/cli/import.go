@@ -9,15 +9,60 @@ import (
 	"strings"
 
 	"github.com/haskovec/tmoney/internal/imexport"
+	"github.com/spf13/cobra"
 )
 
-// runImport handles the --import command.
-func runImport(opts *cliOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--import requires --file to specify a database")
+// importOptions are the inputs to `tmoney import <file>`.
+type importOptions struct {
+	file             string
+	importFile       string
+	account          string
+	sourceAccount    string
+	formatOverride   string
+	confirm          bool
+	skipDuplicates   bool
+	updateDuplicates bool
+}
+
+// newImportCmd registers `tmoney import <file>`. The database file is
+// taken from the persistent `--file` / `-f` flag inherited from the
+// root command. `--account` is required; the format is auto-detected
+// from the extension unless `--format` is supplied.
+func newImportCmd() *cobra.Command {
+	opts := &importOptions{}
+	cmd := &cobra.Command{
+		Use:   "import <file>",
+		Short: "Import transactions from CSV, QIF, or OFX/QFX",
+		Long: "Import transactions from a CSV, QIF, or OFX/QFX file into a target account. " +
+			"By default the command runs as a dry-run preview; pass --confirm to write changes. " +
+			"For multi-account CSVs (e.g. Quicken Mac's Register Transactions export), " +
+			"pass --source-account to choose which source account to import this pass.",
+		Example: "  tmoney -f personal.tdb import statements.qif --account Checking\n" +
+			"  tmoney -f personal.tdb import bank.csv --account Checking --confirm\n" +
+			"  tmoney -f personal.tdb import register.csv --account \"BoA Checking\" \\\n" +
+			"    --source-account \"Checking\" --confirm",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			opts.importFile = args[0]
+			return runImport(opts, cmd.OutOrStdout())
+		},
 	}
-	if opts.accountName == "" {
-		return fmt.Errorf("--import requires --account to specify the target account")
+	cmd.Flags().StringVar(&opts.account, "account", "", "Target account to import into (required)")
+	cmd.Flags().StringVar(&opts.sourceAccount, "source-account", "", "Source account name when the file covers multiple accounts")
+	cmd.Flags().StringVar(&opts.formatOverride, "format", "", "Override format detection (csv, qif, or ofx)")
+	cmd.Flags().BoolVar(&opts.confirm, "confirm", false, "Execute the import (default is dry-run preview)")
+	cmd.Flags().BoolVar(&opts.skipDuplicates, "skip-duplicates", false, "Skip rows that match existing transactions")
+	cmd.Flags().BoolVar(&opts.updateDuplicates, "update-duplicates", false, "Update existing transactions when matched")
+	_ = cmd.MarkFlagRequired("account")
+	return cmd
+}
+
+// runImport handles `tmoney import <file>`.
+func runImport(opts *importOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--file is required to specify a database")
 	}
 	if opts.skipDuplicates && opts.updateDuplicates {
 		return fmt.Errorf("--skip-duplicates and --update-duplicates are mutually exclusive")
@@ -59,12 +104,12 @@ func runImport(opts *cliOptions, w io.Writer) error {
 	defer database.Close()
 
 	// Resolve the target account
-	account, err := svc.Account.GetByName(opts.accountName)
+	account, err := svc.Account.GetByName(opts.account)
 	if err != nil {
-		return fmt.Errorf("account %q not found: %w", opts.accountName, err)
+		return fmt.Errorf("account %q not found: %w", opts.account, err)
 	}
 	if !account.Active {
-		return fmt.Errorf("account %q is closed; cannot import into a closed account", opts.accountName)
+		return fmt.Errorf("account %q is closed; cannot import into a closed account", opts.account)
 	}
 
 	// Determine duplicate handling
@@ -117,7 +162,7 @@ func runImport(opts *cliOptions, w io.Writer) error {
 
 	// If not confirming, show dry-run summary
 	if !opts.confirm {
-		printImportPreview(w, opts.importFile, opts.accountName, result)
+		printImportPreview(w, opts.importFile, opts.account, result)
 		return nil
 	}
 
@@ -127,7 +172,7 @@ func runImport(opts *cliOptions, w io.Writer) error {
 	}
 
 	// Print execution summary
-	printImportResult(w, opts.importFile, opts.accountName, result)
+	printImportResult(w, opts.importFile, opts.account, result)
 
 	autoBackupAfterModification(opts.file)
 	return nil

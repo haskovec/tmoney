@@ -317,10 +317,10 @@ These are top-level subcommands (no parent noun), since the spec calls for `tmon
 - [x] **CM-056 — Phase prep: split `import`/`export` handlers** (completed 2026-05-09)
   - GREEN: create `import.go`, `export.go` containing `runImport`, `runExport` cut verbatim.
 
-- [ ] **CM-057 — `tmoney import <file>`**
+- [x] **CM-057 — `tmoney import <file>`** (completed 2026-05-09)
   - RED: tests covering `TestRun_Import*` (CSV/QIF/OFX detection, `--account`, `--source-account`, `--confirm`, `--skip-duplicates`, `--update-duplicates`, `--format`).
   - GREEN: `import.go` with `importOptions{ file, importFile, account, sourceAccount, formatOverride string; confirm, skipDuplicates, updateDuplicates bool }`, `newImportCmd()` (`Args: cobra.ExactArgs(1)`, `MarkFlagRequired("account")`). Register on root; add `"import"` to `cobraSubcommands`. Add help smoke test.
-  - CLEANUP: delete `--import`, `--account` (import-only usage), `--source-account`, `--format`, `--confirm`, `--skip-duplicates`, `--update-duplicates` plumbing.
+  - CLEANUP: delete `--import`, `--source-account`, `--confirm`, `--skip-duplicates`, `--update-duplicates` plumbing. (`--account` and `--format` are still used by `--export` and stay until CM-058.)
   - DOCS: README "Import Transactions" section.
 
 - [ ] **CM-058 — `tmoney export <file>`**

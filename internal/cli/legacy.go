@@ -27,11 +27,6 @@ func RunLegacy(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	// Handle --import
-	if opts.importFile != "" {
-		return runImport(opts, stdout)
-	}
-
 	// Handle --export
 	if opts.exportFile != "" {
 		return runExport(opts, stdout)

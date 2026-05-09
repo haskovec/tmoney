@@ -82,7 +82,7 @@ tmoney -f personal.tdb --balance
 ### Import / Export
 - Import transactions from CSV, QIF, or OFX/QFX files (Quicken / bank
   downloads). Available from File → Import Transactions… in the TUI or
-  via `--import` on the CLI. Quicken Mac users export via File →
+  via `tmoney import` on the CLI. Quicken Mac users export via File →
   Export → Register Transactions to CSV File…
 - Multi-account CSVs (one file containing every account, as Quicken Mac
   emits) are detected automatically: the importer asks you to pick
@@ -750,24 +750,24 @@ and is silently ignored on accounts without lot tracking enabled.
 
 ```bash
 # Dry-run preview (default — shows what would happen without changing anything)
-tmoney -f personal.tdb --import statements.qif --account "Checking"
+tmoney -f personal.tdb import statements.qif --account "Checking"
 
 # Execute the import
-tmoney -f personal.tdb --import statements.qif --account "Checking" --confirm
+tmoney -f personal.tdb import statements.qif --account "Checking" --confirm
 
 # Force a format if auto-detection from the extension fails
-tmoney -f personal.tdb --import data.txt --account "Checking" --format qif
+tmoney -f personal.tdb import data.txt --account "Checking" --format qif
 
 # Skip duplicates (matched rows are not imported)
-tmoney -f personal.tdb --import file.qif --account "Checking" --confirm --skip-duplicates
+tmoney -f personal.tdb import file.qif --account "Checking" --confirm --skip-duplicates
 
 # Update duplicates (matched rows update existing transactions: cleared status, FITID, etc.)
-tmoney -f personal.tdb --import file.ofx --account "Checking" --confirm --update-duplicates
+tmoney -f personal.tdb import file.ofx --account "Checking" --confirm --update-duplicates
 
 # Multi-account CSV (e.g. Quicken Mac's "Register Transactions to CSV"):
 # the import refuses to run without --source-account when the file
 # contains rows for more than one account.
-tmoney -f personal.tdb --import register.csv --account "BoA Checking" \
+tmoney -f personal.tdb import register.csv --account "BoA Checking" \
   --source-account "Checking" --confirm
 ```
 
@@ -884,7 +884,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split`/`merge`/`spin-off`/`portfolio` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split`/`merge`/`spin-off`/`portfolio`, and `tmoney import` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 
