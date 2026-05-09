@@ -131,9 +131,9 @@ func TestBuildNewScheduledDialog_FieldTypes(t *testing.T) {
 		{"Memo", FieldText},
 		{"Frequency", FieldSelect},
 		{"Interval", FieldText},
-		{"Start Date", FieldText},
+		{"Start Date", FieldDate},
 		{"Duration", FieldRadio},
-		{"End Date", FieldText},
+		{"End Date", FieldDate},
 		{"Occurrences", FieldText},
 		{"Auto-post", FieldCheckbox},
 		{"Lead time", FieldRadio},
@@ -190,6 +190,55 @@ func TestBuildNewScheduledDialog_Defaults(t *testing.T) {
 	// Lead time defaults to "On the day" (index 0)
 	if fields[schedFieldLeadDays].SelectedIndex != 0 {
 		t.Errorf("lead days selectedIndex = %d, want 0", fields[schedFieldLeadDays].SelectedIndex)
+	}
+}
+
+func TestBuildNewScheduledDialog_EndDateIsOptionalBlank(t *testing.T) {
+	accountOptions := []string{"Checking"}
+	categoryOptions := []string{"(None)"}
+
+	d := buildNewScheduledDialog(accountOptions, categoryOptions)
+	fields := d.Fields()
+
+	endField := fields[schedFieldEndDate]
+	if endField.Type != FieldDate {
+		t.Errorf("End Date Type = %d, want FieldDate", endField.Type)
+	}
+	if !endField.OptionalBlank {
+		t.Error("End Date should be OptionalBlank for the new-scheduled dialog")
+	}
+	if endField.Value != "  /  /    " {
+		t.Errorf("End Date Value = %q, want canonical blank %q", endField.Value, "  /  /    ")
+	}
+
+	startField := fields[schedFieldStartDate]
+	if startField.Type != FieldDate {
+		t.Errorf("Start Date Type = %d, want FieldDate", startField.Type)
+	}
+	if startField.OptionalBlank {
+		t.Error("Start Date must not be OptionalBlank — it is required")
+	}
+}
+
+func TestBuildEditScheduledDialog_EndDateOptionalBlank_NoEndDate(t *testing.T) {
+	accountID := types.NewID()
+	st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.NewDate(2024, time.January, 1))
+	// No end date or occurrences set → Indefinite duration.
+
+	accountOptions := []string{"Checking"}
+	accountIDs := []types.ID{accountID}
+	categoryOptions := []string{"(None)"}
+	categoryIDs := []types.ID{types.NilID}
+
+	d := buildEditScheduledDialog(st, accountOptions, accountIDs, categoryOptions, categoryIDs, map[types.ID]string{})
+	fields := d.Fields()
+
+	endField := fields[schedFieldEndDate]
+	if !endField.OptionalBlank {
+		t.Error("End Date should be OptionalBlank")
+	}
+	if endField.Value != "  /  /    " {
+		t.Errorf("End Date Value = %q, want canonical blank when scheduled has no end date", endField.Value)
 	}
 }
 
@@ -573,7 +622,11 @@ func TestApp_SubmitScheduledDialog_InvalidStartDate(t *testing.T) {
 		sidebar:     NewSidebar(),
 		schedDialog: func() *Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
-			d.Fields()[schedFieldStartDate].Value = "not-a-date"
+			// Syntactically valid 10-char mask shape, but semantically
+			// invalid — the masked widget no longer accepts free-text
+			// like "not-a-date", so use month=13 / day=45 to force a
+			// time.Parse error in submit-path validation.
+			d.Fields()[schedFieldStartDate].Value = "13/45/2024"
 			return d
 		}(),
 		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
@@ -711,8 +764,9 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_MissingEndDate(t *testing.T
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			// Set duration to "Until Date" (index 1)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationUntilDate
-			// Leave end date empty
-			d.Fields()[schedFieldEndDate].Value = ""
+			// End date stays at the default canonical-blank state from
+			// AddOptionalDateField — submit must surface a required-field
+			// error when Duration = Until Date and the field is unfilled.
 			return d
 		}(),
 		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
@@ -747,7 +801,10 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_InvalidEndDate(t *testing.T
 		schedDialog: func() *Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationUntilDate
-			d.Fields()[schedFieldEndDate].Value = "invalid"
+			// 10-char mask shape but month=13/day=45 — masked widget refuses
+			// free-text, so use a syntactically valid but semantically
+			// invalid date to force the parser error.
+			d.Fields()[schedFieldEndDate].Value = "13/45/2024"
 			return d
 		}(),
 		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
@@ -903,6 +960,42 @@ func TestApp_SubmitScheduledDialog_ValidNew_VariableAmount(t *testing.T) {
 
 	if cmd == nil {
 		t.Error("valid new scheduled (variable amount) should return a non-nil cmd")
+	}
+	if updatedApp.err != nil {
+		t.Errorf("unexpected error: %v", updatedApp.err)
+	}
+}
+
+func TestApp_SubmitScheduledDialog_DurationIndefinite_BlankEndDateAccepted(t *testing.T) {
+	// Regression guard: with Duration = Indefinite, the End Date stays at the
+	// canonical-blank ("  /  /    ") default; submit must treat that as "no
+	// value" rather than triggering a parse error.
+	accountID := types.NewID()
+	accountOptions := []string{"Checking"}
+	categoryOptions := []string{"(None)"}
+
+	app := &App{
+		currentView: ViewScheduled,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		schedDialog: func() *Dialog {
+			d := buildNewScheduledDialog(accountOptions, categoryOptions)
+			d.Fields()[schedFieldAmount].Value = "50.00"
+			// Leave duration at Indefinite, end date at canonical blank.
+			return d
+		}(),
+		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID},
+	}
+
+	model, cmd := app.submitScheduledDialog()
+	updatedApp := model.(*App)
+
+	if cmd == nil {
+		t.Error("blank end date with Duration=Indefinite should still return a non-nil cmd")
 	}
 	if updatedApp.err != nil {
 		t.Errorf("unexpected error: %v", updatedApp.err)

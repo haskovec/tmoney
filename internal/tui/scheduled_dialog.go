@@ -153,14 +153,14 @@ func buildNewScheduledDialog(accountOptions, categoryOptions []string) *Dialog {
 
 	// Start date
 	today := time.Now().Format("01/02/2006")
-	f = d.AddTextField("Start Date", today, "MM/DD/YYYY", 10)
+	f = d.AddDateField("Start Date", today)
 	f.Required = true
 
 	// Duration
 	d.AddRadioField("Duration", []string{"Indefinite", "Until Date", "Occurrences"}, 0)
 
-	// End date (used when Duration = Until Date)
-	d.AddTextField("End Date", "", "MM/DD/YYYY", 10)
+	// End date (used when Duration = Until Date) — optional, may be blank.
+	d.AddOptionalDateField("End Date", "")
 
 	// Occurrences (used when Duration = Occurrences)
 	d.AddTextField("Occurrences", "", "Number of times", 5)
@@ -233,7 +233,7 @@ func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string
 	f.Required = true
 
 	// Start date
-	f = d.AddTextField("Start Date", st.StartDate.Time().Format("01/02/2006"), "MM/DD/YYYY", 10)
+	f = d.AddDateField("Start Date", st.StartDate.Time().Format("01/02/2006"))
 	f.Required = true
 
 	// Duration
@@ -249,8 +249,8 @@ func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string
 	}
 	d.AddRadioField("Duration", []string{"Indefinite", "Until Date", "Occurrences"}, durationIdx)
 
-	// End date
-	d.AddTextField("End Date", endDateStr, "MM/DD/YYYY", 10)
+	// End date — optional, may be blank.
+	d.AddOptionalDateField("End Date", endDateStr)
 
 	// Occurrences
 	d.AddTextField("Occurrences", occurrencesStr, "Number of times", 5)
@@ -446,12 +446,12 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 
 	switch durationChoice {
 	case durationUntilDate:
-		endDateStr := strings.TrimSpace(fields[schedFieldEndDate].Value)
-		if endDateStr == "" {
+		endDateRaw := fields[schedFieldEndDate].Value
+		if isBlankDateInput(endDateRaw) {
 			fields[schedFieldEndDate].Error = "End date is required"
 			hasErrors = true
 		} else {
-			ed, err := parseDateInput(endDateStr)
+			ed, err := parseDateInput(endDateRaw)
 			if err != nil {
 				fields[schedFieldEndDate].Error = "Invalid date (MM/DD/YYYY)"
 				hasErrors = true

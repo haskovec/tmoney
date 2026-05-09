@@ -2228,6 +2228,169 @@ func TestFieldDate_RenderContainsValue(t *testing.T) {
 	}
 }
 
+// FieldDate optional-blank (TD-011) tests
+
+func TestDialog_AddOptionalDateField_EmptyDefaultsToCanonicalBlank(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddOptionalDateField("End Date", "")
+
+	if f == nil {
+		t.Fatal("AddOptionalDateField returned nil")
+	}
+	if f.Type != FieldDate {
+		t.Errorf("Type = %d, want FieldDate", f.Type)
+	}
+	if !f.OptionalBlank {
+		t.Error("OptionalBlank should be true on a field built by AddOptionalDateField")
+	}
+	if f.Value != "  /  /    " {
+		t.Errorf("Value = %q, want canonical blank %q", f.Value, "  /  /    ")
+	}
+	if f.Width != 10 {
+		t.Errorf("Width = %d, want 10", f.Width)
+	}
+	if f.CursorPos() != 0 {
+		t.Errorf("initial CursorPos() = %d, want 0", f.CursorPos())
+	}
+}
+
+func TestDialog_AddOptionalDateField_PreservesNonEmptyInitialValue(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddOptionalDateField("End Date", "12/31/2024")
+
+	if !f.OptionalBlank {
+		t.Error("OptionalBlank should be true even when seeded with a value")
+	}
+	if f.Value != "12/31/2024" {
+		t.Errorf("Value = %q, want %q", f.Value, "12/31/2024")
+	}
+}
+
+func TestDialog_AddDateField_NotOptionalBlank(t *testing.T) {
+	// Regression guard: strict AddDateField fields default to OptionalBlank=false.
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "01/15/2024")
+	if f.OptionalBlank {
+		t.Error("strict AddDateField must not set OptionalBlank")
+	}
+}
+
+func TestFieldDate_OptionalBlank_BackspaceClearsTypedDigit(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddOptionalDateField("End Date", "")
+	if f.Value != "  /  /    " {
+		t.Fatalf("setup: Value = %q, want canonical blank", f.Value)
+	}
+
+	d.HandleKey(tea.KeyPressMsg{Code: '1', Text: "1"})
+	if f.Value != "1 /  /    " {
+		t.Fatalf("after type '1': Value = %q, want %q", f.Value, "1 /  /    ")
+	}
+	if f.CursorPos() != 1 {
+		t.Fatalf("after type '1': CursorPos = %d, want 1", f.CursorPos())
+	}
+
+	// Conventional editor backspace: deletes the digit before the cursor and
+	// steps the cursor back, returning the field to canonical blank.
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if f.Value != "  /  /    " {
+		t.Errorf("after backspace: Value = %q, want canonical blank", f.Value)
+	}
+	if f.CursorPos() != 0 {
+		t.Errorf("after backspace: CursorPos = %d, want 0", f.CursorPos())
+	}
+}
+
+func TestFieldDate_OptionalBlank_BackspaceSkipsSlash(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddOptionalDateField("End Date", "12/31/2024")
+	// Move cursor to first digit of DD (string index 3) — two right-presses
+	// from the initial cursor at 0 (skipping the slash at index 2).
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if f.CursorPos() != 3 {
+		t.Fatalf("setup: CursorPos = %d, want 3", f.CursorPos())
+	}
+
+	// Backspace at cursor 3: skip slash at 2, delete digit at index 1 with ' '.
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if f.Value != "1 /31/2024" {
+		t.Errorf("Value = %q, want %q", f.Value, "1 /31/2024")
+	}
+	if f.CursorPos() != 1 {
+		t.Errorf("CursorPos = %d, want 1", f.CursorPos())
+	}
+}
+
+func TestFieldDate_OptionalBlank_BackspaceAtFirstDigitNoOps(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddOptionalDateField("End Date", "")
+	// Cursor starts at 0.
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if f.Value != "  /  /    " {
+		t.Errorf("Value changed by backspace at cursor 0: %q", f.Value)
+	}
+	if f.CursorPos() != 0 {
+		t.Errorf("CursorPos = %d, want 0", f.CursorPos())
+	}
+}
+
+func TestFieldDate_NonOptional_BackspaceStillUsesZero(t *testing.T) {
+	// Regression guard: TD-002 backspace semantic for strict AddDateField is
+	// "overwrite digit at cursor with '0', step back". TD-011 must not change
+	// this for non-optional fields.
+	d := NewDialog("Test")
+	f := d.AddDateField("Date", "01/15/2024")
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if f.CursorPos() != 3 {
+		t.Fatalf("setup: CursorPos = %d, want 3", f.CursorPos())
+	}
+
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if f.Value != "01/05/2024" {
+		t.Errorf("Value = %q, want %q (digit at cursor replaced with '0')", f.Value, "01/05/2024")
+	}
+	if f.CursorPos() != 1 {
+		t.Errorf("CursorPos = %d, want 1", f.CursorPos())
+	}
+}
+
+func TestIsBlankDateInput(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"empty string", "", true},
+		{"canonical blank", "  /  /    ", true},
+		{"valid date", "12/31/2024", false},
+		{"partial state", "1 /  /    ", false},
+		{"wrong length", "  /  /   ", false},
+		{"missing slash at 2", "    /     ", false},
+		{"non-space digit position", "00/00/0000", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isBlankDateInput(tc.in); got != tc.want {
+				t.Errorf("isBlankDateInput(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFieldDate_OptionalBlank_TypingFillsCanonicalBlank(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddOptionalDateField("End Date", "")
+	// Type "12312024".
+	for _, r := range "12312024" {
+		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	if f.Value != "12/31/2024" {
+		t.Errorf("Value = %q, want %q", f.Value, "12/31/2024")
+	}
+}
+
 // === FieldCombo (typeahead + filtered list) ===
 
 func TestRankComboMatches_EmptyQueryReturnsAllInOrder(t *testing.T) {

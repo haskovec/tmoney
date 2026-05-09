@@ -42,6 +42,35 @@ const (
 // in the canonical MM/DD/YYYY mask. The masked-cursor methods skip these.
 var dateMaskSlashPositions = map[int]bool{2: true, 5: true}
 
+// canonicalBlankDate is the all-blank canonical mask for an optional date
+// field — slashes at positions 2 and 5, spaces at every digit position.
+const canonicalBlankDate = "  /  /    "
+
+// isBlankDateInput reports whether s represents an unfilled date — either an
+// empty string or the 10-char canonical mask with every digit position still
+// a space. Used by submit handlers to treat optional date fields as "no
+// value" rather than "invalid date".
+func isBlankDateInput(s string) bool {
+	if s == "" {
+		return true
+	}
+	if len(s) != 10 {
+		return false
+	}
+	for i := range len(s) {
+		if dateMaskSlashPositions[i] {
+			if s[i] != '/' {
+				return false
+			}
+			continue
+		}
+		if s[i] != ' ' {
+			return false
+		}
+	}
+	return true
+}
+
 // Field represents a form field in a dialog.
 type Field struct {
 	// Label is the display name shown next to the field.
@@ -80,6 +109,13 @@ type Field struct {
 	// The parent dialog is expected to consume the trigger and reset the
 	// flag (along with any other state it captures from Query).
 	AddNewTriggered bool
+	// OptionalBlank, when true on a FieldDate, allows the canonical 10-char
+	// all-blank mask ("  /  /    ") as a meaningful "no value" state.
+	// Backspace clears digits with ' ' (instead of '0') and steps back so
+	// the user can return to the canonical blank. Submit handlers should
+	// use isBlankDateInput to detect the unfilled state and treat it as
+	// missing rather than invalid.
+	OptionalBlank bool
 	// cursorPos is the cursor position within the text value.
 	cursorPos int
 	// comboHighlight is the highlighted row index within the current
@@ -240,10 +276,30 @@ func (f *Field) dateOverwriteDigit(r rune) {
 	f.dateCursorRight()
 }
 
-// dateBackspace replaces the digit at the cursor with '0' and steps the
-// cursor back to the previous digit position. No-op at the first digit.
+// dateBackspace handles the Backspace key on a FieldDate.
+//
+// For a strict (non-optional) field, it overwrites the digit at the cursor
+// with '0' and steps the cursor back — preserving the canonical
+// always-valid-shape MM/DD/YYYY semantics.
+//
+// For an OptionalBlank field, it instead deletes the digit *before* the
+// cursor (writing ' ') and moves the cursor back to that position — the
+// conventional editor "backspace deletes the character to the left" — so
+// the user can clear typed digits all the way back to the canonical blank
+// "  /  /    ".
+//
+// No-op at the first digit (cursorPos == 0).
 func (f *Field) dateBackspace() {
 	if f.Type != FieldDate || f.cursorPos <= 0 {
+		return
+	}
+	if f.OptionalBlank {
+		f.dateCursorLeft()
+		if len(f.Value) == 10 && !dateMaskSlashPositions[f.cursorPos] {
+			b := []byte(f.Value)
+			b[f.cursorPos] = ' '
+			f.Value = string(b)
+		}
 		return
 	}
 	if len(f.Value) == 10 && !dateMaskSlashPositions[f.cursorPos] {
@@ -512,6 +568,32 @@ func (d *Dialog) AddDateField(label, initialValue string) *Field {
 		Value:     initialValue,
 		Width:     10,
 		cursorPos: 0,
+	}
+	d.fields = append(d.fields, f)
+	return f
+}
+
+// AddOptionalDateField adds a masked-input MM/DD/YYYY date field that
+// permits the canonical 10-char all-blank value "  /  /    " as a
+// meaningful "no value" state. An empty initialValue seeds the field with
+// the canonical blank; a non-empty initialValue is taken verbatim (callers
+// should pass a fully-formed date string).
+//
+// Backspace on an optional field clears the digit before the cursor with
+// ' ' (and steps back) — the conventional editor semantic — so the user
+// can return to the canonical blank. Submit handlers should call
+// isBlankDateInput on the field's Value to detect the unfilled state.
+func (d *Dialog) AddOptionalDateField(label, initialValue string) *Field {
+	if initialValue == "" {
+		initialValue = canonicalBlankDate
+	}
+	f := &Field{
+		Label:         label,
+		Type:          FieldDate,
+		Value:         initialValue,
+		Width:         10,
+		OptionalBlank: true,
+		cursorPos:     0,
 	}
 	d.fields = append(d.fields, f)
 	return f

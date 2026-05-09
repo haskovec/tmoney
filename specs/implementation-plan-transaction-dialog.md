@@ -184,7 +184,7 @@ Mechanical migration of the remaining 9 dialogs to `AddDateField`. Each item is 
   - CLEANUP: none.
   - DOCS: deferred to Phase 6.
 
-- [ ] **TD-011 — Migrate scheduled dialog (Start Date + optional End Date)**
+- [x] **TD-011 — Migrate scheduled dialog (Start Date + optional End Date)**
   - RED: tests in `scheduled_dialog_test.go` (and any End Date round-trip cases) covering: Start Date filled by default; End Date empty by default and accepted as empty on submit; End Date typed value parses correctly. The optional-blank case requires a small extension: `AddOptionalDateField(label, initialValue)` that allows an all-blank value (`"  /  /    "`) and only validates when at least one digit has been typed.
   - GREEN: `internal/tui/dialog.go` — add `AddOptionalDateField` that returns a `FieldDate` field with `OptionalBlank: true`; teach `handleDateKey` and `Render` about the all-blank state. `internal/tui/scheduled_dialog.go:156` and `:236` use `AddDateField`; `:163` and `:253` use `AddOptionalDateField`. `submitScheduledDialog` already tolerates an empty End Date; tighten its parser to accept the all-blank canonical form.
   - CLEANUP: none.
