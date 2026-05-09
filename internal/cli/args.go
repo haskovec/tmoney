@@ -76,11 +76,6 @@ type cliOptions struct {
 	commission    string // --commission <value>
 	pricePerShare string // --price-per-share <value>
 	lot           string // --lot <lot-id>
-
-	// Portfolio options
-	portfolio bool // --portfolio flag
-	showLots  bool // --show-lots flag
-
 }
 
 // parseArgs parses command-line arguments and returns options and remaining args.
@@ -328,10 +323,6 @@ func parseArgs(args []string) (*cliOptions, []string, error) {
 			}
 			i++
 			opts.lot = args[i]
-		case "--portfolio":
-			opts.portfolio = true
-		case "--show-lots":
-			opts.showLots = true
 		default:
 			// Check for --flag=value formats
 			if after, ok := strings.CutPrefix(arg, "--file="); ok {

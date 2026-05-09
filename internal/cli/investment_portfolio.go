@@ -6,22 +6,57 @@ import (
 
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
 
-// runPortfolio executes the --portfolio command: show investment portfolio for an account.
-func runPortfolio(opts *cliOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--portfolio requires --file to specify a database")
+// investmentPortfolioOptions are the inputs to `tmoney investment portfolio`.
+type investmentPortfolioOptions struct {
+	file     string
+	account  string
+	asOf     string
+	showLots bool
+}
+
+// newInvestmentPortfolioCmd registers `tmoney investment portfolio`. The
+// database file is taken from the persistent `--file` / `-f` flag
+// inherited from the root command. `--account` is required.
+func newInvestmentPortfolioCmd() *cobra.Command {
+	opts := &investmentPortfolioOptions{}
+	cmd := &cobra.Command{
+		Use:   "portfolio",
+		Short: "Show investment portfolio holdings and summary for an account",
+		Long: "Show holdings, market value, cost basis, and gain/loss for " +
+			"an investment account. Pass --as-of to value the portfolio at " +
+			"a specific date, or --show-lots to drill into per-lot detail " +
+			"on lot-tracking accounts.",
+		Example: "  tmoney investment portfolio --account Brokerage\n" +
+			"  tmoney investment portfolio --account Brokerage --as-of 2024-12-31\n" +
+			"  tmoney investment portfolio --account Brokerage --show-lots",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.file, _ = cmd.Flags().GetString("file")
+			return runInvestmentPortfolio(opts, cmd.OutOrStdout())
+		},
 	}
-	if opts.accountName == "" {
-		return fmt.Errorf("--portfolio requires --account to specify an investment account")
+	cmd.Flags().StringVar(&opts.account, "account", "", "Investment account name (required)")
+	cmd.Flags().StringVar(&opts.asOf, "as-of", "", "Valuation date YYYY-MM-DD (default today)")
+	cmd.Flags().BoolVar(&opts.showLots, "show-lots", false, "Show per-lot detail (lot-tracking accounts only)")
+	_ = cmd.MarkFlagRequired("account")
+	return cmd
+}
+
+// runInvestmentPortfolio executes `tmoney investment portfolio`: show the
+// investment portfolio for an account.
+func runInvestmentPortfolio(opts *investmentPortfolioOptions, w io.Writer) error {
+	if opts.file == "" {
+		return fmt.Errorf("--file is required to specify a database")
 	}
 
-	// Parse optional as-of date (defaults to today)
 	var asOf types.Date
-	if opts.reportAsOf != "" {
+	if opts.asOf != "" {
 		var err error
-		asOf, err = types.ParseDate(opts.reportAsOf)
+		asOf, err = types.ParseDate(opts.asOf)
 		if err != nil {
 			return fmt.Errorf("invalid --as-of date: %w", err)
 		}
@@ -35,9 +70,9 @@ func runPortfolio(opts *cliOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	acct, err := svc.Account.GetByName(opts.accountName)
+	acct, err := svc.Account.GetByName(opts.account)
 	if err != nil {
-		return fmt.Errorf("account %q not found", opts.accountName)
+		return fmt.Errorf("account %q not found", opts.account)
 	}
 
 	valuation, err := svc.Investment.GetAccountValuation(acct.ID, asOf)
@@ -45,7 +80,6 @@ func runPortfolio(opts *cliOptions, w io.Writer) error {
 		return fmt.Errorf("failed to get portfolio valuation: %w", err)
 	}
 
-	// Build security lookup for display
 	securityMap := make(map[types.ID]*security.Security)
 	for _, h := range valuation.Holdings {
 		sec, secErr := svc.Security.GetByID(h.SecurityID)

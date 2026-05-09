@@ -622,12 +622,6 @@ Security Commands:
   --delete-security <tkr> Delete a security (fails if history exists)
   (Use 'tmoney security hide <tkr>' or 'tmoney security unhide <tkr>'.)
 
-Portfolio Commands:
-  --portfolio            Show investment portfolio holdings and summary
-    --account <name>     Investment account name
-    --as-of <date>       Valuation date (YYYY-MM-DD, default: today)
-    --show-lots          Show lot detail for each holding (lot-tracking accounts)
-
 For more information, visit: https://github.com/haskovec/tmoney`)
 }
 

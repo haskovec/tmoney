@@ -729,6 +729,23 @@ price of the child used to record the action. All open positions in
 the parent (and, for lot-tracked accounts, the underlying lots) are
 adjusted accordingly. Date defaults to today.
 
+```bash
+# Show the portfolio for an investment account (today's valuation)
+tmoney -f personal.tdb investment portfolio --account Brokerage
+
+# Value the portfolio as of a specific date
+tmoney -f personal.tdb investment portfolio --account Brokerage --as-of 2024-12-31
+
+# Drill into per-lot detail for a lot-tracking account
+tmoney -f personal.tdb investment portfolio --account Brokerage --show-lots
+```
+
+`investment portfolio` requires `--account`. The default valuation
+date is today; pass `--as-of YYYY-MM-DD` to value holdings at a
+different point in time. `--show-lots` expands each holding into its
+underlying lots (purchase date, cost/share, cost basis, current value)
+and is silently ignored on accounts without lot tracking enabled.
+
 ### Import Transactions
 
 ```bash
@@ -867,7 +884,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split`/`merge`/`spin-off` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest`/`fee`/`deposit`/`withdraw`/`transfer`/`split`/`merge`/`spin-off`/`portfolio` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 
