@@ -3,7 +3,6 @@ package cli
 import (
 	"io"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -29,56 +28,6 @@ func executeWith(args []string, stdout, stderr io.Writer) error {
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 	return cmd.Execute()
-}
-
-// cobraKnownFlags are the long-form flags the Cobra root accepts. Any
-// `--flag` outside this set indicates a legacy invocation.
-var cobraKnownFlags = map[string]bool{
-	"--file": true,
-	"--help": true,
-}
-
-// cobraSubcommands lists names of subcommands registered on the Cobra
-// root. Used by isLegacyInvocation so a legacy-flag-looking arg later
-// in the command line cannot misroute a real subcommand call.
-var cobraSubcommands = map[string]bool{
-	"version":     true,
-	"theme":       true,
-	"db":          true,
-	"account":     true,
-	"transaction": true,
-	"transfer":    true,
-	"scheduled":   true,
-	"reconcile":   true,
-	"security":    true,
-	"price":       true,
-	"investment":  true,
-	"import":      true,
-	"export":      true,
-	"report":      true,
-}
-
-// isLegacyInvocation reports whether args contains any `--flag` that
-// only the legacy dispatcher knows about. A leading subcommand name
-// short-circuits to false so `tmoney version --whatever` always goes
-// to Cobra.
-func isLegacyInvocation(args []string) bool {
-	for _, a := range args {
-		if cobraSubcommands[a] {
-			return false
-		}
-		flag := a
-		if before, _, ok := strings.Cut(a, "="); ok {
-			flag = before
-		}
-		if cobraKnownFlags[flag] {
-			continue
-		}
-		if strings.HasPrefix(flag, "--") {
-			return true
-		}
-	}
-	return false
 }
 
 func newRootCmd() *cobra.Command {

@@ -93,31 +93,3 @@ func TestExecute_Help_ShowsUsage(t *testing.T) {
 		}
 	}
 }
-
-func TestIsLegacyInvocation(t *testing.T) {
-	cases := []struct {
-		name string
-		args []string
-		want bool
-	}{
-		{"empty", []string{}, false},
-		{"positional file only", []string{"foo.tdb"}, false},
-		{"long file flag with =", []string{"--file=foo.tdb"}, false},
-		{"long file flag separate", []string{"--file", "foo.tdb"}, false},
-		{"short file flag", []string{"-f", "foo.tdb"}, false},
-		{"help long", []string{"--help"}, false},
-		{"version subcommand", []string{"version"}, false},
-		{"version subcommand with extra arg", []string{"version", "--whatever"}, false},
-		{"single legacy flag", []string{"--list-accounts"}, true},
-		{"legacy flag mixed with file", []string{"--add-account", "--name", "foo"}, true},
-		{"legacy flag after positional", []string{"foo.tdb", "--add-account"}, true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := isLegacyInvocation(tc.args)
-			if got != tc.want {
-				t.Errorf("isLegacyInvocation(%v) = %v, want %v", tc.args, got, tc.want)
-			}
-		})
-	}
-}

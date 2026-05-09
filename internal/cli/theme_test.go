@@ -49,22 +49,3 @@ func TestExecute_RootHelpListsThemeSubcommand(t *testing.T) {
 		t.Errorf("expected root --help to mention `theme` subcommand, got:\n%s", stdout.String())
 	}
 }
-
-func TestIsLegacyInvocation_ThemeSubcommand(t *testing.T) {
-	cases := []struct {
-		name string
-		args []string
-		want bool
-	}{
-		{"theme alone", []string{"theme"}, false},
-		{"theme list", []string{"theme", "list"}, false},
-		{"theme generate-from-wal with output flag", []string{"theme", "generate-from-wal", "--output", "-"}, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := isLegacyInvocation(tc.args); got != tc.want {
-				t.Errorf("isLegacyInvocation(%v) = %v, want %v", tc.args, got, tc.want)
-			}
-		})
-	}
-}

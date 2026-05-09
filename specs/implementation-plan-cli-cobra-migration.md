@@ -365,7 +365,7 @@ After Phase 11, every legacy verb is migrated and `parseArgs`/`legacy.go` only c
 - [x] **CM-065 — Delete `commands.go` and `commands_test.go` if empty** (completed 2026-05-09)
   - GREEN: confirm both files are empty (every handler has been moved into a per-verb file by the prep PRs; every test has been migrated by the verb PRs). Delete them. If any shared helpers remain in `commands.go` (e.g., a `loadDB` helper), move them to a `helpers.go` and delete `commands.go`. Test helpers similarly move to `testutil_test.go` if not already there.
 
-- [ ] **CM-066 — Tidy root.go**
+- [x] **CM-066 — Tidy root.go** (completed 2026-05-09)
   - GREEN: with no legacy path remaining, delete `cobraKnownFlags`, `cobraSubcommands`, `isLegacyInvocation`, and `legacyRunner` from `root.go`. The root command's `RunE` keeps the no-args TUI launch path; everything else is just regular Cobra subcommand dispatch. Update tests in `root_test.go` to drop legacy-routing scenarios.
 
 ## Phase 13: Documentation
