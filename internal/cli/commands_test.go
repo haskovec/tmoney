@@ -1655,46 +1655,6 @@ func ptrMoney(s string) *types.Money {
 	return &m
 }
 
-// --- SM-109: CLI --reinvest ---
-
-func TestRun_ReinvestMissingFile(t *testing.T) {
-	err := run([]string{"--reinvest", "--account", "Brokerage", "--ticker", "AAPL", "--shares", "2", "--amount", "300"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --file") {
-		t.Errorf("expected --file required error, got: %v", err)
-	}
-}
-
-func TestRun_ReinvestMissingShares(t *testing.T) {
-	err := run([]string{"--reinvest", "--file", "test.tdb", "--account", "Brokerage", "--ticker", "AAPL", "--amount", "300"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "requires --shares") {
-		t.Errorf("expected --shares required error, got: %v", err)
-	}
-}
-
-func TestRun_ReinvestBasic(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
-
-	stdout := &bytes.Buffer{}
-	err := run([]string{
-		"--reinvest", "--file", dbPath,
-		"--account", "Brokerage",
-		"--ticker", "AAPL",
-		"--shares", "2",
-		"--price-per-share", "150",
-	}, stdout, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("run(--reinvest) returned error: %v", err)
-	}
-
-	output := stdout.String()
-	if !strings.Contains(output, "Reinvest dividend transaction created successfully") {
-		t.Error("output should confirm reinvest creation")
-	}
-	if !strings.Contains(output, "AAPL") {
-		t.Error("output should contain ticker")
-	}
-}
-
 // --- SM-110: CLI --investment-fee ---
 
 func TestRun_InvestmentFeeMissingFile(t *testing.T) {
@@ -2017,7 +1977,6 @@ func TestParseArgs_InvestmentFlags(t *testing.T) {
 		args  []string
 		check func(*cliOptions) bool
 	}{
-		{"--reinvest flag", []string{"--reinvest"}, func(o *cliOptions) bool { return o.reinvest }},
 		{"--investment-fee flag", []string{"--investment-fee"}, func(o *cliOptions) bool { return o.investmentFee }},
 		{"--invest-deposit flag", []string{"--invest-deposit"}, func(o *cliOptions) bool { return o.investDeposit }},
 		{"--invest-withdraw flag", []string{"--invest-withdraw"}, func(o *cliOptions) bool { return o.investWithdraw }},

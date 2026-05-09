@@ -595,6 +595,25 @@ tmoney -f personal.tdb investment dividend --account Brokerage --ticker AAPL \
 share count is unchanged; cash is credited to the account. Date defaults
 to today.
 
+```bash
+# Reinvest a dividend into additional shares (no cash leaves the account)
+tmoney -f personal.tdb investment reinvest --account Brokerage --ticker AAPL \
+  --shares 2 --price-per-share 150
+
+# Reinvest specifying the total dividend amount
+tmoney -f personal.tdb investment reinvest --account Brokerage --ticker AAPL \
+  --shares 2 --amount 300
+
+# Optional date and memo
+tmoney -f personal.tdb investment reinvest --account Brokerage --ticker AAPL \
+  --shares 2 --price-per-share 150 --date 2024-04-15 --memo "DRIP Q1"
+```
+
+`investment reinvest` requires `--account`, `--ticker`, and `--shares`.
+Supply either `--amount` (total dividend), `--price-per-share`, or both.
+Shares are added to the position and no cash leaves the account. Date
+defaults to today.
+
 ### Import Transactions
 
 ```bash
@@ -733,7 +752,7 @@ If a theme file has malformed values (e.g., `text.negative = "not-a-color"`), th
 
 ## CLI
 
-The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
+The CLI is being migrated from flat `--flag` verbs to a Cobra-based noun-verb structure (`tmoney theme list`). The migration is opportunistic — `tmoney version`, `tmoney theme list`, `tmoney theme generate-from-wal`, the entire `tmoney db` subtree (`create`, `backup`, `restore`, `list-backups`), `tmoney account add`/`list`/`show`/`balance`, `tmoney transaction add`/`list`/`void`/`search`, and `tmoney transfer add`/`link`, `tmoney scheduled add`/`list`/`post`/`skip`, `tmoney reconcile start`/`mark`/`finish`/`status`, and `tmoney security add`/`list`/`show`/`edit`/`hide`/`unhide`/`delete`, and `tmoney price add`/`list`/`current`/`import`/`update`, and `tmoney investment buy`/`sell`/`dividend`/`reinvest` are Cobra-native today; the legacy `--flag` forms documented under [CLI Reference](#cli-reference) continue to work for everything else.
 
 ## Tech Stack
 
