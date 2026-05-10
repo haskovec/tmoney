@@ -405,9 +405,6 @@ func (a *App) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-
-
-
 // handleKeyPress handles keyboard input.
 func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// If an error is displayed, any key press dismisses it
@@ -638,7 +635,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, a.keys.Dashboard):
 		a.switchView(ViewDashboard)
-		return a, nil
+		return a, a.loadDashboardData()
 
 	case key.Matches(msg, a.keys.Scheduled):
 		a.switchView(ViewScheduled)
@@ -698,7 +695,6 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-
 // errMsg is a message type for errors.
 type errMsg struct {
 	err error
@@ -709,7 +705,6 @@ type errMsg struct {
 type mouseOpenAccountMsg struct {
 	accountID types.ID
 }
-
 
 // Run starts the TUI application.
 func Run(database *db.DB, cfg *config.Config) error {

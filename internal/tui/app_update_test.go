@@ -80,6 +80,34 @@ func TestApp_Update_ViewSwitchKeys(t *testing.T) {
 	}
 }
 
+func TestApp_Update_DashboardKey_ReloadsData(t *testing.T) {
+	// Pressing "1" to enter the Dashboard view must reload dashboard data so
+	// account balances reflect transactions added since the dashboard was
+	// last viewed (e.g., after entering a transaction in the register).
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	msg := tea.KeyPressMsg{Code: '1', Text: "1"}
+	model, cmd := app.Update(msg)
+
+	updatedApp := model.(*App)
+	if updatedApp.currentView != ViewDashboard {
+		t.Fatalf("currentView = %v, want ViewDashboard", updatedApp.currentView)
+	}
+	if cmd == nil {
+		t.Fatal("Dashboard key should return a command to reload dashboard data")
+	}
+	out := cmd()
+	if _, ok := out.(dashboardLoadedMsg); !ok {
+		t.Errorf("Dashboard key cmd produced %T, want dashboardLoadedMsg", out)
+	}
+}
+
 func TestApp_Update_EscapeKey(t *testing.T) {
 	app := &App{
 		currentView:  ViewRegister,
@@ -276,4 +304,3 @@ func TestApp_Update_ToastClearMsg(t *testing.T) {
 		t.Errorf("Toast() = %+v after ToastClearMsg, want nil", got.statusbar.Toast())
 	}
 }
-
