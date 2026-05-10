@@ -283,6 +283,17 @@ func (s *Sidebar) Render(styles Styles, width, height int) string {
 
 	s.clampScroll(height)
 
+	// styles.Sidebar adds a 1-column right border via BorderRight(true).
+	// lipgloss treats Width() as the full block width including the border,
+	// so the actual inner content area is width-1. Building content lines
+	// at the full width pushes the rightmost cell past the inner area —
+	// for most rows lipgloss trims the trailing space and the line still
+	// fits, but a row whose trailing visual cell is non-blank (e.g. an
+	// account selected with the "◀" indicator at the right edge) wraps to
+	// two visual rows. That extra row pushes the layout's status bar off
+	// the bottom of the alt-screen. Pad to the inner width instead.
+	innerWidth := max(width-1, 1)
+
 	var lines []string
 
 	if len(s.items) == 0 {
@@ -294,13 +305,13 @@ func (s *Sidebar) Render(styles Styles, width, height int) string {
 	// Render only the visible window of items
 	end := min(s.scrollOffset+height, len(s.items))
 	for i := s.scrollOffset; i < end; i++ {
-		line := s.renderItem(styles, s.items[i], i, width)
+		line := s.renderItem(styles, s.items[i], i, innerWidth)
 		lines = append(lines, line)
 	}
 
 	// Pad with empty lines if needed
 	for len(lines) < height {
-		lines = append(lines, strings.Repeat(" ", width))
+		lines = append(lines, strings.Repeat(" ", innerWidth))
 	}
 
 	// Truncate if too many lines

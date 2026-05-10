@@ -358,6 +358,48 @@ func TestSidebar_Render_WithAccounts(t *testing.T) {
 	}
 }
 
+// Regression: with BorderRight on the Sidebar style, building content at
+// the full width caused the rightmost-cell-non-blank rows (e.g. an
+// account selected with the "◀" indicator at the very right edge) to
+// wrap to a second visual row in lipgloss, inflating the rendered row
+// count by 1. That extra row pushed the layout's status bar off the
+// alt-screen. The fix in Render is to build content at the inner width
+// (width - 1) so the rightmost cell stays inside the inner area.
+func TestSidebar_Render_RowCountStableWhenAccountSelected(t *testing.T) {
+	s := NewSidebar()
+	accounts := []*account.Account{
+		testAccount("Discover Checking", account.TypeChecking),
+		testAccount("Discover Savings", account.TypeSavings),
+		// Long enough to exactly fill the sidebar width when the
+		// selection indicator is present.
+		testAccount("Wealthfront Joint Checking", account.TypeChecking),
+		testAccount("Wealthfront IRA", account.TypeInvestment),
+	}
+	s.SetAccounts(accounts, nil)
+
+	styles := NewStyles()
+	styles.Resize(184, 64)
+
+	const sidebarWidth = 32
+	const height = 62
+
+	// No selection — baseline row count.
+	baseline := strings.Count(s.Render(styles, sidebarWidth, height), "\n") + 1
+
+	// Select the long-named account so its row carries a "◀" at the
+	// right edge.
+	s.SetCursor(3) // Bank Accounts header (0), Discover Checking (1), Savings (2), Joint (3)
+	s.Select()
+
+	got := strings.Count(s.Render(styles, sidebarWidth, height), "\n") + 1
+	if got != baseline {
+		t.Errorf("row count changed when account selected: got %d, baseline %d", got, baseline)
+	}
+	if got != height {
+		t.Errorf("row count = %d, want %d", got, height)
+	}
+}
+
 func TestSidebar_SetCursor(t *testing.T) {
 	s := NewSidebar()
 	accounts := []*account.Account{
