@@ -737,3 +737,210 @@ func TestApp_SubmitTransferDialog_ZeroAmount(t *testing.T) {
 		t.Errorf("error = %q, should mention amount must be positive", app.transferDialog.Fields()[2].Error)
 	}
 }
+
+// =============================================================================
+// Edit-mode tests (Phase 2: transfer edit)
+// =============================================================================
+
+// TestBuildEditTransferDialog_Prefill asserts that the edit-mode transfer
+// dialog is titled "Edit Transfer", carries a read-only "From → To" body
+// message, and pre-fills Amount (positive), Date, Memo, and Status from the
+// existing pair. From and To are NOT among the editable fields.
+func TestBuildEditTransferDialog_Prefill(t *testing.T) {
+	fromAcctID := types.NewID()
+	toAcctID := types.NewID()
+	transferID := types.NewID()
+
+	pair := &transaction.TransferPair{
+		FromTransaction: &transaction.Transaction{
+			BaseModel:         types.BaseModel{ID: types.NewID()},
+			AccountID:         fromAcctID,
+			Date:              types.NewDate(2024, 3, 15),
+			Amount:            types.MustNewMoney("-250.00"),
+			Status:            transaction.StatusCleared,
+			Memo:              types.NullableString{String: "rent split", Valid: true},
+			TransferID:        types.NullableID{ID: transferID, Valid: true},
+			TransferAccountID: types.NullableID{ID: toAcctID, Valid: true},
+		},
+		ToTransaction: &transaction.Transaction{
+			BaseModel:         types.BaseModel{ID: types.NewID()},
+			AccountID:         toAcctID,
+			Date:              types.NewDate(2024, 3, 15),
+			Amount:            types.MustNewMoney("250.00"),
+			Status:            transaction.StatusCleared,
+			Memo:              types.NullableString{String: "rent split", Valid: true},
+			TransferID:        types.NullableID{ID: transferID, Valid: true},
+			TransferAccountID: types.NullableID{ID: fromAcctID, Valid: true},
+		},
+	}
+
+	d := buildEditTransferDialog("Checking", "Savings", pair)
+
+	if d.Title() != "Edit Transfer" {
+		t.Errorf("title = %q, want %q", d.Title(), "Edit Transfer")
+	}
+	if !strings.Contains(d.Message(), "Checking") || !strings.Contains(d.Message(), "Savings") {
+		t.Errorf("message = %q, want to contain From and To names", d.Message())
+	}
+
+	fields := d.Fields()
+	if len(fields) != 4 {
+		t.Fatalf("expected 4 editable fields (Amount, Date, Memo, Status), got %d", len(fields))
+	}
+
+	expected := []struct {
+		label     string
+		fieldType FieldType
+	}{
+		{"Amount", FieldText},
+		{"Date", FieldDate},
+		{"Memo", FieldText},
+		{"Status", FieldRadio},
+	}
+	for i, exp := range expected {
+		if fields[i].Label != exp.label {
+			t.Errorf("field[%d] label = %q, want %q", i, fields[i].Label, exp.label)
+		}
+		if fields[i].Type != exp.fieldType {
+			t.Errorf("field[%d] type = %v, want %v", i, fields[i].Type, exp.fieldType)
+		}
+	}
+
+	if fields[0].Value != "250" {
+		t.Errorf("Amount = %q, want %q (positive side)", fields[0].Value, "250")
+	}
+	if fields[1].Value != "03/15/2024" {
+		t.Errorf("Date = %q, want %q", fields[1].Value, "03/15/2024")
+	}
+	if fields[2].Value != "rent split" {
+		t.Errorf("Memo = %q, want %q", fields[2].Value, "rent split")
+	}
+	if fields[3].SelectedIndex != 1 {
+		t.Errorf("Status SelectedIndex = %d, want 1 (Cleared)", fields[3].SelectedIndex)
+	}
+}
+
+// TestApp_HandleRegisterKeys_EnterOnTransfer_OpensTransferEdit asserts Enter
+// on a transfer row in the register returns a non-nil cmd — the loader for
+// the edit-transfer flow.
+func TestApp_HandleRegisterKeys_EnterOnTransfer_OpensTransferEdit(t *testing.T) {
+	accountID := types.NewID()
+	otherID := types.NewID()
+	transferID := types.NewID()
+
+	app := &App{
+		currentView: ViewRegister,
+		width:       120,
+		height:      30,
+		styles:      NewStyles(),
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		register: &registerData{
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			transactions: []*transaction.Transaction{
+				{
+					BaseModel:         types.BaseModel{ID: types.NewID()},
+					AccountID:         accountID,
+					Date:              types.Today(),
+					Amount:            types.MustNewMoney("-200"),
+					Status:            transaction.StatusUncleared,
+					TransferID:        types.NullableID{ID: transferID, Valid: true},
+					TransferAccountID: types.NullableID{ID: otherID, Valid: true},
+				},
+			},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+	app.buildRegisterTable()
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	_, cmd := app.handleRegisterKeys(enter)
+
+	if cmd == nil {
+		t.Error("Enter on a transfer row should return a non-nil load cmd")
+	}
+}
+
+// TestApp_Update_TransferDialogDataMsg_EditMode asserts that feeding a
+// transferDialogDataMsg whose data is in edit mode results in the transfer
+// dialog being constructed in edit mode (title "Edit Transfer", body shows
+// account names, fields pre-filled).
+func TestApp_Update_TransferDialogDataMsg_EditMode(t *testing.T) {
+	checkingID := types.NewID()
+	savingsID := types.NewID()
+	transferID := types.NewID()
+
+	pair := &transaction.TransferPair{
+		FromTransaction: &transaction.Transaction{
+			BaseModel:         types.BaseModel{ID: types.NewID()},
+			AccountID:         checkingID,
+			Date:              types.NewDate(2024, 4, 1),
+			Amount:            types.MustNewMoney("-300"),
+			Status:            transaction.StatusUncleared,
+			TransferID:        types.NullableID{ID: transferID, Valid: true},
+			TransferAccountID: types.NullableID{ID: savingsID, Valid: true},
+		},
+		ToTransaction: &transaction.Transaction{
+			BaseModel:         types.BaseModel{ID: types.NewID()},
+			AccountID:         savingsID,
+			Date:              types.NewDate(2024, 4, 1),
+			Amount:            types.MustNewMoney("300"),
+			Status:            transaction.StatusUncleared,
+			TransferID:        types.NullableID{ID: transferID, Valid: true},
+			TransferAccountID: types.NullableID{ID: checkingID, Valid: true},
+		},
+	}
+
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	data := &transferDialogData{
+		accounts: []*account.Account{
+			{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking"},
+			{BaseModel: types.BaseModel{ID: savingsID}, Name: "Savings"},
+		},
+		accountIDs: []types.ID{checkingID, savingsID},
+		mode:       transferDialogModeEdit,
+		existing:   pair,
+	}
+
+	model, _ := app.Update(transferDialogDataMsg{data: data})
+	updatedApp := model.(*App)
+
+	if updatedApp.transferDialog == nil {
+		t.Fatal("transferDialog should be set after edit-mode data msg")
+	}
+	if updatedApp.transferDialog.Title() != "Edit Transfer" {
+		t.Errorf("title = %q, want %q", updatedApp.transferDialog.Title(), "Edit Transfer")
+	}
+	body := updatedApp.transferDialog.Message()
+	if !strings.Contains(body, "Checking") || !strings.Contains(body, "Savings") {
+		t.Errorf("message = %q, want to contain Checking and Savings", body)
+	}
+
+	fields := updatedApp.transferDialog.Fields()
+	if len(fields) != 4 {
+		t.Fatalf("expected 4 fields, got %d", len(fields))
+	}
+	if fields[0].Value != "300" {
+		t.Errorf("Amount = %q, want %q", fields[0].Value, "300")
+	}
+	if fields[1].Value != "04/01/2024" {
+		t.Errorf("Date = %q, want %q", fields[1].Value, "04/01/2024")
+	}
+}

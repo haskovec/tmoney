@@ -378,3 +378,68 @@ func (c *VoidTransferCommand) Undo() error {
 func (c *VoidTransferCommand) Description() string {
 	return "Void transfer"
 }
+
+// =============================================================================
+// EditTransferCommand
+// =============================================================================
+
+// EditTransferCommand edits both sides of a transfer (amount, date, memo,
+// status) and can undo by restoring the prior pair state captured at
+// Execute time. Account changes are not supported — the transfer pair's
+// from/to are immutable; only the editable common fields move.
+type EditTransferCommand struct {
+	svc        *transaction.Service
+	transferID types.ID
+	date       types.Date
+	amount     types.Money
+	memo       string
+	status     transaction.Status
+
+	beforeDate   types.Date
+	beforeAmount types.Money
+	beforeMemo   string
+	beforeStatus transaction.Status
+	captured     bool
+}
+
+// NewEditTransferCommand creates a command that updates the editable common
+// fields of both sides of a transfer. amount must be positive; the from-side
+// gets the negated value, the to-side gets the positive value.
+func NewEditTransferCommand(svc *transaction.Service, transferID types.ID, date types.Date, amount types.Money, memo string, status transaction.Status) *EditTransferCommand {
+	return &EditTransferCommand{
+		svc:        svc,
+		transferID: transferID,
+		date:       date,
+		amount:     amount,
+		memo:       memo,
+		status:     status,
+	}
+}
+
+func (c *EditTransferCommand) Execute() error {
+	pair, err := c.svc.GetTransferPair(c.transferID)
+	if err != nil {
+		return err
+	}
+	c.beforeDate = pair.FromTransaction.Date
+	c.beforeAmount = pair.ToTransaction.Amount // positive side
+	c.beforeMemo = ""
+	if pair.FromTransaction.Memo.Valid {
+		c.beforeMemo = pair.FromTransaction.Memo.String
+	}
+	c.beforeStatus = pair.FromTransaction.Status
+	c.captured = true
+
+	return c.svc.UpdateTransfer(c.transferID, c.date, c.amount, c.memo, c.status)
+}
+
+func (c *EditTransferCommand) Undo() error {
+	if !c.captured {
+		return fmt.Errorf("EditTransferCommand: cannot undo before Execute")
+	}
+	return c.svc.UpdateTransfer(c.transferID, c.beforeDate, c.beforeAmount, c.beforeMemo, c.beforeStatus)
+}
+
+func (c *EditTransferCommand) Description() string {
+	return "Edit transfer"
+}

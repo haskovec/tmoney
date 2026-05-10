@@ -11,10 +11,23 @@ import (
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
+// transferDialogMode distinguishes a New-Transfer dialog from an
+// Edit-Transfer dialog.
+type transferDialogMode int
+
+const (
+	transferDialogModeNew transferDialogMode = iota
+	transferDialogModeEdit
+)
+
 // transferDialogData holds the loaded data needed for the transfer dialog.
 type transferDialogData struct {
 	accounts   []*account.Account
 	accountIDs []types.ID // parallel to account dropdown options
+
+	// Edit-mode-only fields. Both are zero in new mode.
+	mode     transferDialogMode
+	existing *transaction.TransferPair
 }
 
 // transferDialogDataMsg is sent when transfer dialog data has been loaded.
@@ -68,6 +81,50 @@ func buildTransferDialog(accountOptions []string, defaultFromIndex int) *Dialog 
 	return d
 }
 
+// buildEditTransferDialog builds the edit-mode transfer dialog. Title is
+// "Edit Transfer"; the From/To accounts are rendered as a read-only body
+// message ("Checking → Savings") since UpdateTransfer cannot move a
+// transfer between accounts. Editable fields are Amount (positive),
+// Date, Memo, and Status — all pre-filled from the existing pair.
+func buildEditTransferDialog(fromName, toName string, pair *transaction.TransferPair) *Dialog {
+	d := NewDialog("Edit Transfer")
+	d.SetMessage(fromName + " → " + toName)
+
+	// Amount — use the positive (to) side so the field is always positive,
+	// matching the New-Transfer semantics.
+	amountValue := ""
+	if pair != nil && pair.ToTransaction != nil {
+		amountValue = pair.ToTransaction.Amount.String()
+	}
+	f := d.AddTextField("Amount", amountValue, "100.00", 12)
+	f.Required = true
+
+	// Date
+	dateStr := ""
+	if pair != nil && pair.FromTransaction != nil {
+		dateStr = pair.FromTransaction.Date.Time().Format("01/02/2006")
+	}
+	f = d.AddDateField("Date", dateStr)
+	f.Required = true
+
+	// Memo
+	memo := ""
+	if pair != nil && pair.FromTransaction != nil && pair.FromTransaction.Memo.Valid {
+		memo = pair.FromTransaction.Memo.String
+	}
+	d.AddTextField("Memo", memo, "Optional memo", 0)
+
+	// Status — radio: 0 = Uncleared, 1 = Cleared.
+	statusIdx := 0
+	if pair != nil && pair.FromTransaction != nil && pair.FromTransaction.Status == transaction.StatusCleared {
+		statusIdx = 1
+	}
+	d.AddRadioField("Status", []string{"Uncleared", "Cleared"}, statusIdx)
+
+	d.SetVisible(true)
+	return d
+}
+
 // loadTransferDialogData returns a command that loads accounts for the transfer dialog.
 func (a *App) loadTransferDialogData() tea.Cmd {
 	return func() tea.Msg {
@@ -86,6 +143,65 @@ func (a *App) loadTransferDialogData() tea.Cmd {
 
 		return transferDialogDataMsg{data: data}
 	}
+}
+
+// loadEditTransferDialogData returns a command that loads accounts and the
+// existing transfer pair (resolved from any one transaction ID belonging to
+// the pair), then emits a transferDialogDataMsg in edit mode so the
+// transfer dialog opens pre-filled for editing.
+func (a *App) loadEditTransferDialogData(transactionID types.ID) tea.Cmd {
+	return func() tea.Msg {
+		data := &transferDialogData{
+			mode: transferDialogModeEdit,
+		}
+
+		if a.accountSvc != nil {
+			accounts, err := a.accountSvc.List(true)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.accounts = accounts
+		}
+		_, ids := buildAccountOptions(data.accounts)
+		data.accountIDs = ids
+
+		if a.transactionSvc != nil {
+			txn, err := a.transactionSvc.GetByID(transactionID)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			if !txn.IsTransfer() {
+				return errMsg{err: fmt.Errorf("transaction %s is not a transfer", transactionID.String())}
+			}
+			pair, err := a.transactionSvc.GetTransferPair(txn.TransferID.ID)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.existing = pair
+		}
+
+		return transferDialogDataMsg{data: data}
+	}
+}
+
+// transferAccountNames resolves the From/To account display names for the
+// pair carried by a transferDialogData in edit mode. Falls back to "(unknown)"
+// when an account isn't present in data.accounts.
+func transferAccountNames(data *transferDialogData) (fromName, toName string) {
+	fromName = "(unknown)"
+	toName = "(unknown)"
+	if data == nil || data.existing == nil {
+		return
+	}
+	for _, acct := range data.accounts {
+		if data.existing.FromTransaction != nil && acct.ID == data.existing.FromTransaction.AccountID {
+			fromName = acct.Name
+		}
+		if data.existing.ToTransaction != nil && acct.ID == data.existing.ToTransaction.AccountID {
+			toName = acct.Name
+		}
+	}
+	return
 }
 
 // closeTransferDialog clears the transfer dialog state.
@@ -117,6 +233,10 @@ func (a *App) handleTransferDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	if a.transferDialog == nil || a.transferDialogData == nil {
 		return a, nil
+	}
+
+	if a.transferDialogData.mode == transferDialogModeEdit {
+		return a.submitEditTransferDialog()
 	}
 
 	fields := a.transferDialog.Fields()
@@ -203,6 +323,65 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			}
 		}
 
+		return transferDialogSavedMsg{}
+	}
+}
+
+// submitEditTransferDialog validates the edit-mode transfer dialog and
+// dispatches an EditTransferCommand. Edit-mode field layout is Amount(0),
+// Date(1), Memo(2), Status(3).
+func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
+	pair := a.transferDialogData.existing
+	if pair == nil || pair.FromTransaction == nil {
+		return a, nil
+	}
+
+	fields := a.transferDialog.Fields()
+	if len(fields) < 4 {
+		return a, nil
+	}
+
+	a.transferDialog.ClearErrors()
+	hasErrors := false
+
+	amount, err := parseAmountInput(fields[0].Value)
+	if err != nil {
+		fields[0].Error = "Invalid amount"
+		hasErrors = true
+	} else if !amount.IsPositive() {
+		fields[0].Error = "Amount must be positive"
+		hasErrors = true
+	}
+
+	date, err := parseDateInput(fields[1].Value)
+	if err != nil {
+		fields[1].Error = "Invalid date (MM/DD/YYYY)"
+		hasErrors = true
+	}
+
+	if hasErrors {
+		return a, nil
+	}
+
+	memo := strings.TrimSpace(fields[2].Value)
+
+	status := transaction.StatusUncleared
+	if fields[3].SelectedIndex == 1 {
+		status = transaction.StatusCleared
+	}
+
+	transferID := pair.FromTransaction.TransferID.ID
+
+	a.closeTransferDialog()
+
+	return a, func() tea.Msg {
+		if a.transactionSvc == nil || a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("transaction service not available")}
+		}
+		cmd := undo.NewEditTransferCommand(a.transactionSvc, transferID, date, amount, memo, status)
+		if err := a.undoManager.Execute(cmd); err != nil {
+			return errMsg{err: fmt.Errorf("failed to update transfer: %w", err)}
+		}
 		return transferDialogSavedMsg{}
 	}
 }

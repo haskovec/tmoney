@@ -1260,6 +1260,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.transferDialogData = msg.data
 		accountOptions, accountIDs := buildAccountOptions(msg.data.accounts)
 		a.transferDialogAccountIDs = accountIDs
+
+		if msg.data.mode == transferDialogModeEdit && msg.data.existing != nil {
+			fromName, toName := transferAccountNames(msg.data)
+			a.transferDialog = buildEditTransferDialog(fromName, toName, msg.data.existing)
+			return a, nil
+		}
+
 		// Pre-select the currently selected sidebar account as "From"
 		defaultFromIndex := 0
 		selectedID := a.sidebar.SelectedAccountID()
@@ -2037,9 +2044,7 @@ func (a *App) openEditTransactionFlow() (tea.Model, tea.Cmd) {
 	}
 
 	if txn.IsTransfer() {
-		// Phase 2 will replace this with a real transfer-edit flow.
-		a.statusbar.AddNotification("Editing transfers not yet supported", NotificationAlert)
-		return a, nil
+		return a, a.loadEditTransferDialogData(txn.ID)
 	}
 
 	return a, a.loadEditTransactionDialogData(txn.ID)

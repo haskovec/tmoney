@@ -822,3 +822,93 @@ func TestCompoundCommand_VoidTransferWithManager(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// EditTransferCommand Tests
+// =============================================================================
+
+func TestEditTransferCommand_ExecuteAndUndo(t *testing.T) {
+	t.Run("edits both sides and restores them on undo", func(t *testing.T) {
+		env := createTestEnv(t)
+		from := createTestAccount(t, env.accountRepo, "Checking")
+		to := createTestAccount(t, env.accountRepo, "Savings")
+
+		origAmount := types.MustNewMoney("100.00")
+		origDate := types.NewDate(2024, 1, 15)
+		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, origDate, origAmount)
+		if err != nil {
+			t.Fatalf("CreateTransfer() error = %v", err)
+		}
+		transferID := pair.FromTransaction.TransferID.ID
+
+		newAmount := types.MustNewMoney("250.00")
+		newDate := types.NewDate(2024, 2, 20)
+		newMemo := "rent split"
+		newStatus := transaction.StatusCleared
+
+		cmd := undo.NewEditTransferCommand(env.txnSvc, transferID, newDate, newAmount, newMemo, newStatus)
+
+		// Execute: both sides updated
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+
+		updated, err := env.txnSvc.GetTransferPair(transferID)
+		if err != nil {
+			t.Fatalf("GetTransferPair() error = %v", err)
+		}
+		if !updated.FromTransaction.Amount.Equal(newAmount.Neg()) {
+			t.Errorf("from amount after edit = %s, want %s",
+				updated.FromTransaction.Amount.String(), newAmount.Neg().String())
+		}
+		if !updated.ToTransaction.Amount.Equal(newAmount) {
+			t.Errorf("to amount after edit = %s, want %s",
+				updated.ToTransaction.Amount.String(), newAmount.String())
+		}
+		if !updated.FromTransaction.Date.Equal(newDate) {
+			t.Errorf("from date after edit = %s, want %s",
+				updated.FromTransaction.Date, newDate)
+		}
+		if updated.FromTransaction.Memo.String != newMemo {
+			t.Errorf("from memo after edit = %q, want %q",
+				updated.FromTransaction.Memo.String, newMemo)
+		}
+		if updated.FromTransaction.Status != newStatus {
+			t.Errorf("from status after edit = %v, want %v",
+				updated.FromTransaction.Status, newStatus)
+		}
+
+		// Undo: both sides restored to original
+		if err := cmd.Undo(); err != nil {
+			t.Fatalf("Undo() error = %v", err)
+		}
+
+		restored, err := env.txnSvc.GetTransferPair(transferID)
+		if err != nil {
+			t.Fatalf("GetTransferPair() after undo error = %v", err)
+		}
+		if !restored.FromTransaction.Amount.Equal(origAmount.Neg()) {
+			t.Errorf("from amount after undo = %s, want %s",
+				restored.FromTransaction.Amount.String(), origAmount.Neg().String())
+		}
+		if !restored.FromTransaction.Date.Equal(origDate) {
+			t.Errorf("from date after undo = %s, want %s",
+				restored.FromTransaction.Date, origDate)
+		}
+		if restored.FromTransaction.Memo.Valid {
+			t.Errorf("from memo after undo should be empty, got %q",
+				restored.FromTransaction.Memo.String)
+		}
+		if restored.FromTransaction.Status != transaction.StatusUncleared {
+			t.Errorf("from status after undo = %v, want Uncleared",
+				restored.FromTransaction.Status)
+		}
+	})
+}
+
+func TestEditTransferCommand_Description(t *testing.T) {
+	cmd := undo.NewEditTransferCommand(nil, types.NewID(), types.Today(), types.ZeroMoney, "", transaction.StatusUncleared)
+	if cmd.Description() != "Edit transfer" {
+		t.Errorf("Description() = %q, want %q", cmd.Description(), "Edit transfer")
+	}
+}
