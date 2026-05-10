@@ -266,6 +266,45 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 	}
 }
 
+func TestApp_HandleRegisterKeys_RKeyOpensReconciliation(t *testing.T) {
+	// In the register view, "r" should open the start-reconciliation dialog
+	// for the currently selected account — the same flow as
+	// Accounts → Reconcile Account, but reachable without opening the menu.
+	accountID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		width:       120,
+		height:      30,
+		styles:      NewStyles(),
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		register: &registerData{
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+	app.buildRegisterTable()
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+
+	model, _ := app.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	updatedApp := model.(*App)
+
+	if updatedApp.reconDialog == nil {
+		t.Fatal("pressing r in the register should open the reconciliation start dialog")
+	}
+	if !updatedApp.reconDialog.IsVisible() {
+		t.Error("reconciliation dialog should be visible after r")
+	}
+}
+
 func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
 	accountID := types.NewID()
 	app := &App{
@@ -1018,4 +1057,3 @@ func TestApp_ShowVoidConfirmation_NilGuards(t *testing.T) {
 		t.Error("showVoidConfirmation() should return nil when register is nil")
 	}
 }
-

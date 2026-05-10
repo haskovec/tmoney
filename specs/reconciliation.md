@@ -8,7 +8,9 @@ Reconciliation allows users to match their account register against a bank state
 
 ### Starting Reconciliation
 
-1. User selects an account to reconcile
+1. User selects an account to reconcile. From the register view, press
+   `r` to open the start-reconciliation dialog; equivalently, use
+   **Accounts → Reconcile Account** from the menu.
 2. User enters:
    - **Statement date**: the ending date on the bank statement
    - **Statement ending balance**: the final balance shown on the statement

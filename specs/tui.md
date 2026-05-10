@@ -304,6 +304,7 @@ Each menu label has its shortcut letter underlined to indicate the `Alt+key` sho
 | `d` | Delete transaction |
 | `c` | Toggle cleared status |
 | `t` | New transfer |
+| `r` | Reconcile account |
 | `/` | Search transactions |
 
 ### Scheduled Transaction Keys

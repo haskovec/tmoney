@@ -186,6 +186,7 @@ Press `?` at any time to show the help overlay.
 | `d` | Delete transaction |
 | `c` | Toggle cleared status |
 | `t` | New transfer |
+| `r` | Reconcile account (start a new session) |
 | `Tab` | Switch between sidebar and table |
 
 #### Scheduled Transactions

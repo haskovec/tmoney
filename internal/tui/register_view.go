@@ -141,6 +141,9 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.toggleTransactionStatus()
 	case msg.String() == "v":
 		return a.showVoidConfirmation()
+	case msg.String() == "r":
+		a.showStartReconciliationDialog()
+		return a, nil
 	case key.Matches(msg, a.keys.New):
 		return a, a.loadTransactionDialogData()
 	case msg.String() == "t":

@@ -101,6 +101,7 @@ func registerShortcuts() shortcutSection {
 			{"c", "Toggle cleared/uncleared"},
 			{"v", "Void transaction"},
 			{"t", "New transfer"},
+			{"r", "Reconcile account"},
 			{"Tab", "Switch sidebar/table focus"},
 		},
 	}
