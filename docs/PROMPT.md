@@ -3,7 +3,8 @@ study specs/implementation-plan-transaction-dialog.md and pick the most importan
 
 IMPORTANT:
 - author property based tests or unit tests (whichever is best)
-- use go doc and gopls when you need documentation or to find functions
+- use go doc when you need documentation for imports
+- use gopls when you are exploring the codebase and want to understand how a function works or what parameters it takes
 - after making changes to the files run go fix ./... then compile the code and run the tests
 - when the data model changes make sure to include migration scripts
 - always run go fmt before committing files
