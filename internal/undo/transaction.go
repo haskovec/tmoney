@@ -443,3 +443,77 @@ func (c *EditTransferCommand) Undo() error {
 func (c *EditTransferCommand) Description() string {
 	return "Edit transfer"
 }
+
+// =============================================================================
+// EditTransactionWithSplitsCommand
+// =============================================================================
+
+// EditTransactionWithSplitsCommand edits a transaction's parent fields and
+// replaces its splits in one undo unit. It handles all four cases:
+// plain→plain (no splits change), plain→split, split→plain, split→split.
+// On Undo it restores both the parent and the prior split set.
+type EditTransactionWithSplitsCommand struct {
+	svc          *transaction.Service
+	after        *transaction.Transaction
+	afterSplits  []*transaction.Split
+	before       *transaction.Transaction
+	beforeSplits []*transaction.Split
+}
+
+// NewEditTransactionWithSplitsCommand creates a command that updates the
+// transaction and replaces its splits with afterSplits. afterSplits may be
+// empty to convert a split transaction back to a plain one.
+func NewEditTransactionWithSplitsCommand(svc *transaction.Service, after *transaction.Transaction, afterSplits []*transaction.Split) *EditTransactionWithSplitsCommand {
+	return &EditTransactionWithSplitsCommand{
+		svc:         svc,
+		after:       after,
+		afterSplits: afterSplits,
+	}
+}
+
+func (c *EditTransactionWithSplitsCommand) Execute() error {
+	before, err := c.svc.GetByID(c.after.ID)
+	if err != nil {
+		return err
+	}
+	c.before = before
+
+	beforeSplits, err := c.svc.GetSplits(c.after.ID)
+	if err != nil {
+		return err
+	}
+	c.beforeSplits = beforeSplits
+
+	// DuckDB refuses to UPDATE a parent row that still has FK children, so
+	// clear any existing splits before updating the parent transaction.
+	if len(beforeSplits) > 0 {
+		if err := c.svc.ReplaceSplits(c.after.ID, nil); err != nil {
+			return err
+		}
+	}
+	if err := c.svc.Update(c.after); err != nil {
+		return err
+	}
+	return c.svc.ReplaceSplits(c.after.ID, c.afterSplits)
+}
+
+func (c *EditTransactionWithSplitsCommand) Undo() error {
+	if c.before == nil {
+		return fmt.Errorf("EditTransactionWithSplitsCommand: cannot undo before Execute")
+	}
+	// Mirror the Execute ordering: clear current splits, then restore the
+	// parent, then restore the original splits.
+	if len(c.afterSplits) > 0 {
+		if err := c.svc.ReplaceSplits(c.before.ID, nil); err != nil {
+			return err
+		}
+	}
+	if err := c.svc.Update(c.before); err != nil {
+		return err
+	}
+	return c.svc.ReplaceSplits(c.before.ID, c.beforeSplits)
+}
+
+func (c *EditTransactionWithSplitsCommand) Description() string {
+	return "Edit transaction"
+}

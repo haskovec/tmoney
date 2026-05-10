@@ -912,3 +912,173 @@ func TestEditTransferCommand_Description(t *testing.T) {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Edit transfer")
 	}
 }
+
+// =============================================================================
+// EditTransactionWithSplitsCommand Tests
+// =============================================================================
+
+func TestEditTransactionWithSplitsCommand_ExecuteAndUndo_SplitToSplit(t *testing.T) {
+	t.Run("replaces splits and parent fields, restores both on undo", func(t *testing.T) {
+		env := createTestEnv(t)
+		acct := createTestAccount(t, env.accountRepo, "Checking")
+		cat1 := createTestCategory(t, env.categoryRepo, "Food")
+		cat2 := createTestCategory(t, env.categoryRepo, "Drink")
+		cat3 := createTestCategory(t, env.categoryRepo, "Snack")
+
+		origAmount := types.MustNewMoney("-100.00")
+		origMemo := "lunch"
+		txn := transaction.NewTransaction(acct.ID, types.Today(), origAmount)
+		txn.SetMemo(origMemo)
+		origSplits := []*transaction.Split{
+			transaction.NewSplit(txn.ID, cat1.ID, types.MustNewMoney("-60.00")),
+			transaction.NewSplit(txn.ID, cat2.ID, types.MustNewMoney("-40.00")),
+		}
+		if err := env.txnSvc.CreateWithSplits(txn, origSplits); err != nil {
+			t.Fatalf("CreateWithSplits() error = %v", err)
+		}
+
+		newAmount := types.MustNewMoney("-150.00")
+		updated, err := env.txnSvc.GetByID(txn.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		updated.Amount = newAmount
+		updated.SetMemo("dinner")
+		updated.ClearCategory()
+
+		newSplits := []*transaction.Split{
+			transaction.NewSplit(txn.ID, cat1.ID, types.MustNewMoney("-90.00")),
+			transaction.NewSplit(txn.ID, cat3.ID, types.MustNewMoney("-60.00")),
+		}
+
+		cmd := undo.NewEditTransactionWithSplitsCommand(env.txnSvc, updated, newSplits)
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+
+		got, err := env.txnSvc.GetByID(txn.ID)
+		if err != nil {
+			t.Fatalf("GetByID() after Execute error = %v", err)
+		}
+		if !got.Amount.Equal(newAmount) {
+			t.Errorf("amount after edit = %s, want %s", got.Amount.String(), newAmount.String())
+		}
+		if got.Memo.String != "dinner" {
+			t.Errorf("memo after edit = %q, want %q", got.Memo.String, "dinner")
+		}
+
+		gotSplits, err := env.txnSvc.GetSplits(txn.ID)
+		if err != nil {
+			t.Fatalf("GetSplits() after Execute error = %v", err)
+		}
+		if len(gotSplits) != 2 {
+			t.Fatalf("expected 2 splits after edit, got %d", len(gotSplits))
+		}
+		// Splits are unordered by default; sum check the new amounts.
+		var sum types.Money
+		for _, s := range gotSplits {
+			sum = sum.Add(s.Amount)
+		}
+		if !sum.Equal(newAmount) {
+			t.Errorf("split sum after edit = %s, want %s", sum.String(), newAmount.String())
+		}
+
+		if err := cmd.Undo(); err != nil {
+			t.Fatalf("Undo() error = %v", err)
+		}
+
+		restored, err := env.txnSvc.GetByID(txn.ID)
+		if err != nil {
+			t.Fatalf("GetByID() after Undo error = %v", err)
+		}
+		if !restored.Amount.Equal(origAmount) {
+			t.Errorf("amount after undo = %s, want %s", restored.Amount.String(), origAmount.String())
+		}
+		if restored.Memo.String != origMemo {
+			t.Errorf("memo after undo = %q, want %q", restored.Memo.String, origMemo)
+		}
+
+		restoredSplits, err := env.txnSvc.GetSplits(txn.ID)
+		if err != nil {
+			t.Fatalf("GetSplits() after Undo error = %v", err)
+		}
+		if len(restoredSplits) != 2 {
+			t.Fatalf("expected 2 splits after undo, got %d", len(restoredSplits))
+		}
+		var origSum types.Money
+		for _, s := range restoredSplits {
+			origSum = origSum.Add(s.Amount)
+		}
+		if !origSum.Equal(origAmount) {
+			t.Errorf("restored split sum = %s, want %s", origSum.String(), origAmount.String())
+		}
+	})
+}
+
+func TestEditTransactionWithSplitsCommand_SplitToPlain(t *testing.T) {
+	t.Run("removing all splits converts back to plain transaction", func(t *testing.T) {
+		env := createTestEnv(t)
+		acct := createTestAccount(t, env.accountRepo, "Checking")
+		cat1 := createTestCategory(t, env.categoryRepo, "Food")
+		cat2 := createTestCategory(t, env.categoryRepo, "Drink")
+		newCat := createTestCategory(t, env.categoryRepo, "Misc")
+
+		amount := types.MustNewMoney("-50.00")
+		txn := transaction.NewTransaction(acct.ID, types.Today(), amount)
+		origSplits := []*transaction.Split{
+			transaction.NewSplit(txn.ID, cat1.ID, types.MustNewMoney("-30.00")),
+			transaction.NewSplit(txn.ID, cat2.ID, types.MustNewMoney("-20.00")),
+		}
+		if err := env.txnSvc.CreateWithSplits(txn, origSplits); err != nil {
+			t.Fatalf("CreateWithSplits() error = %v", err)
+		}
+
+		updated, err := env.txnSvc.GetByID(txn.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		updated.SetCategory(newCat.ID)
+
+		cmd := undo.NewEditTransactionWithSplitsCommand(env.txnSvc, updated, nil)
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+
+		gotSplits, err := env.txnSvc.GetSplits(txn.ID)
+		if err != nil {
+			t.Fatalf("GetSplits() after Execute error = %v", err)
+		}
+		if len(gotSplits) != 0 {
+			t.Errorf("expected 0 splits after split->plain, got %d", len(gotSplits))
+		}
+
+		got, err := env.txnSvc.GetByID(txn.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if !got.CategoryID.Valid || got.CategoryID.ID != newCat.ID {
+			t.Errorf("category after split->plain = %v, want %v", got.CategoryID, newCat.ID)
+		}
+
+		// Undo restores splits.
+		if err := cmd.Undo(); err != nil {
+			t.Fatalf("Undo() error = %v", err)
+		}
+		restoredSplits, err := env.txnSvc.GetSplits(txn.ID)
+		if err != nil {
+			t.Fatalf("GetSplits() after Undo error = %v", err)
+		}
+		if len(restoredSplits) != 2 {
+			t.Errorf("expected 2 splits after undo, got %d", len(restoredSplits))
+		}
+	})
+}
+
+func TestEditTransactionWithSplitsCommand_Description(t *testing.T) {
+	cmd := undo.NewEditTransactionWithSplitsCommand(nil, nil, nil)
+	if cmd.Description() != "Edit transaction" {
+		t.Errorf("Description() = %q, want %q", cmd.Description(), "Edit transaction")
+	}
+}

@@ -45,6 +45,12 @@ type pendingSplitTransaction struct {
 	amount    types.Money
 	memo      string
 	status    transaction.Status
+
+	// existing is non-nil when the user is editing a transaction (vs.
+	// creating a new one). The split dialog's submit dispatches
+	// EditTransactionWithSplitsCommand instead of CreateTransactionWithSplits
+	// when this is set.
+	existing *transaction.Transaction
 }
 
 // splitDialogSavedMsg is sent when a split transaction has been saved.
@@ -77,6 +83,55 @@ func NewSplitDialog(amount types.Money, categoryOptions []string, categoryIDs []
 		categoryIDs:     categoryIDs,
 	}
 	sd.addRow()
+	return sd
+}
+
+// NewSplitDialogFromExisting creates a SplitDialog seeded with one row per
+// existing split. Each row's category is resolved against the parallel
+// categoryIDs slice (rows whose category is unknown to the dialog land at
+// index 0, "(None)"); amount and memo are pre-filled from the split.
+func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, categoryIDs []types.ID, existing []*transaction.Split) *SplitDialog {
+	sd := &SplitDialog{
+		visible:         true,
+		width:           64,
+		totalAmount:     amount,
+		focus:           splitFocusRows,
+		rowIndex:        0,
+		fieldFocus:      splitFieldCategory,
+		categoryOptions: categoryOptions,
+		categoryIDs:     categoryIDs,
+	}
+	if len(existing) == 0 {
+		sd.addRow()
+		return sd
+	}
+	for _, s := range existing {
+		catIdx := 0
+		for i, id := range categoryIDs {
+			if id == s.CategoryID {
+				catIdx = i
+				break
+			}
+		}
+		memo := ""
+		if s.Memo.Valid {
+			memo = s.Memo.String
+		}
+		sd.rows = append(sd.rows, splitRow{
+			categoryIndex: catIdx,
+			amountField: Field{
+				Type:        FieldText,
+				Value:       s.Amount.String(),
+				Placeholder: "0.00",
+				Width:       12,
+			},
+			memoField: Field{
+				Type:        FieldText,
+				Value:       memo,
+				Placeholder: "Memo",
+			},
+		})
+	}
 	return sd
 }
 
@@ -547,6 +602,9 @@ func (a *App) handleSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // submitSplitDialog validates splits, builds the transaction, and saves it.
+// When the pending state carries an existing transaction (edit mode) the
+// flow dispatches EditTransactionWithSplitsCommand against that ID; otherwise
+// it dispatches CreateTransactionWithSplitsCommand for a new transaction.
 func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 	if a.splitDialog == nil || a.pendingSplitTxn == nil {
 		return a, nil
@@ -570,6 +628,34 @@ func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
 			payeeID = payee.ID
+		}
+
+		if pending.existing != nil {
+			// Edit mode — update parent and replace splits in one undo unit.
+			updated := *pending.existing
+			updated.Date = pending.date
+			updated.Amount = pending.amount
+			updated.Status = pending.status
+			updated.SetMemo(pending.memo)
+			if !payeeID.IsNil() {
+				updated.PayeeID = types.NullableID{ID: payeeID, Valid: true}
+			} else {
+				updated.PayeeID = types.NullableID{Valid: false}
+			}
+			// A split transaction has no parent-level category.
+			updated.CategoryID = types.NullableID{Valid: false}
+			// Re-stamp split transaction_id to the parent.
+			for _, s := range splits {
+				s.TransactionID = updated.ID
+			}
+
+			if a.transactionSvc != nil && a.undoManager != nil {
+				cmd := undo.NewEditTransactionWithSplitsCommand(a.transactionSvc, &updated, splits)
+				if err := a.undoManager.Execute(cmd); err != nil {
+					return errMsg{err: fmt.Errorf("failed to save split transaction: %w", err)}
+				}
+			}
+			return splitDialogSavedMsg{}
 		}
 
 		// Build transaction (no category when using splits)

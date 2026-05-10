@@ -30,9 +30,10 @@ type transactionDialogData struct {
 	categories []*category.Category
 	payeeMap   map[string]*payee.Payee // lowercase name -> payee
 
-	// Edit-mode-only fields. Both are zero in new mode.
-	mode     transactionDialogMode
-	existing *transaction.Transaction
+	// Edit-mode-only fields. All zero in new mode.
+	mode           transactionDialogMode
+	existing       *transaction.Transaction
+	existingSplits []*transaction.Split
 }
 
 // transactionDialogDataMsg is sent when transaction dialog data has been loaded.
@@ -229,9 +230,10 @@ func buildTransactionDialog(data *transactionDialogData, categoryOptions []strin
 	}
 	d.AddRadioField("Status", []string{"Uncleared", "Cleared"}, statusIdx)
 
-	// Split transaction checkbox. In Phase 1 of edit support this stays
-	// unchecked even when editing; split editing is layered on later.
-	d.AddCheckboxField("Split transaction", false)
+	// Split transaction checkbox — pre-checked when editing a transaction
+	// that already carries splits.
+	splitChecked := editing && len(data.existingSplits) > 0
+	d.AddCheckboxField("Split transaction", splitChecked)
 
 	d.SetVisible(true)
 	return d
@@ -303,6 +305,12 @@ func (a *App) loadEditTransactionDialogData(txnID types.ID) tea.Cmd {
 				return errMsg{err: err}
 			}
 			data.existing = txn
+
+			splits, err := a.transactionSvc.GetSplits(txnID)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.existingSplits = splits
 		}
 
 		return transactionDialogDataMsg{data: data}
@@ -597,9 +605,17 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 	// Get account ID from sidebar
 	accountID := a.sidebar.SelectedAccountID()
 
+	editing := a.txnDialogData.mode == transactionDialogModeEdit && a.txnDialogData.existing != nil
+	var existing *transaction.Transaction
+	hadSplits := false
+	if editing {
+		existing = a.txnDialogData.existing
+		hadSplits = len(a.txnDialogData.existingSplits) > 0
+	}
+
 	if isSplit {
 		// Save pending split transaction data and open split editor
-		a.pendingSplitTxn = &pendingSplitTransaction{
+		pending := &pendingSplitTransaction{
 			accountID: accountID,
 			date:      date,
 			payeeName: payeeName,
@@ -607,26 +623,27 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 			memo:      memo,
 			status:    status,
 		}
+		if editing {
+			pending.existing = existing
+		}
+		a.pendingSplitTxn = pending
 
 		// Build category options for the split dialog (reuse loaded data)
 		categoryOptions, categoryIDs := buildCategoryOptions(a.txnDialogData.categories)
+		seedSplits := a.txnDialogData.existingSplits
 
 		// Close the transaction dialog
 		a.closeTransactionDialog()
 
-		// Open split dialog
-		a.splitDialog = NewSplitDialog(amount, categoryOptions, categoryIDs)
+		// Open split dialog — seeded with existing splits when editing a
+		// transaction that already had splits.
+		if editing && hadSplits {
+			a.splitDialog = NewSplitDialogFromExisting(amount, categoryOptions, categoryIDs, seedSplits)
+		} else {
+			a.splitDialog = NewSplitDialog(amount, categoryOptions, categoryIDs)
+		}
 
 		return a, nil
-	}
-
-	// Edit-mode submit dispatches to EditTransactionCommand on the existing
-	// transaction. Capture the existing entity before closing the dialog
-	// (the close clears txnDialogData).
-	editing := a.txnDialogData.mode == transactionDialogModeEdit && a.txnDialogData.existing != nil
-	var existing *transaction.Transaction
-	if editing {
-		existing = a.txnDialogData.existing
 	}
 
 	// Close dialog before async save for responsive UI
@@ -661,7 +678,16 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 			}
 
 			if a.transactionSvc != nil && a.undoManager != nil {
-				cmd := undo.NewEditTransactionCommand(a.transactionSvc, &updated)
+				// Use the splits-aware edit command when the prior state had
+				// splits — this clears them as part of the same undo unit
+				// (split→plain conversion). Otherwise the plain edit command
+				// is sufficient.
+				var cmd undo.Command
+				if hadSplits {
+					cmd = undo.NewEditTransactionWithSplitsCommand(a.transactionSvc, &updated, nil)
+				} else {
+					cmd = undo.NewEditTransactionCommand(a.transactionSvc, &updated)
+				}
 				if err := a.undoManager.Execute(cmd); err != nil {
 					return errMsg{err: fmt.Errorf("failed to save transaction: %w", err)}
 				}

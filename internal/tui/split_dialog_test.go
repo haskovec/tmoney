@@ -678,3 +678,144 @@ func TestApp_SplitDialogKeyRouting(t *testing.T) {
 		t.Errorf("split dialog field focus should advance on Tab, got %d", app.splitDialog.fieldFocus)
 	}
 }
+
+// =============================================================================
+// Edit-mode tests (Phase 3: split transaction edit)
+// =============================================================================
+
+// TestNewSplitDialogFromExisting asserts that constructing a split dialog
+// from an existing slice of splits seeds one row per split, with the
+// matching category index pre-selected and the amount and memo
+// pre-populated.
+func TestNewSplitDialogFromExisting(t *testing.T) {
+	amount := types.MustNewMoney("-100.00")
+	cat1 := types.NewID()
+	cat2 := types.NewID()
+	cat3 := types.NewID()
+	options := []string{"(None)", "Food", "Drink", "Snack"}
+	ids := []types.ID{types.NilID, cat1, cat2, cat3}
+
+	existing := []*transaction.Split{
+		{
+			BaseModel:  types.BaseModel{ID: types.NewID()},
+			CategoryID: cat1,
+			Amount:     types.MustNewMoney("-60.00"),
+			Memo:       types.NullableString{String: "lunch", Valid: true},
+		},
+		{
+			BaseModel:  types.BaseModel{ID: types.NewID()},
+			CategoryID: cat3,
+			Amount:     types.MustNewMoney("-40.00"),
+			Memo:       types.NullableString{String: "tip", Valid: true},
+		},
+	}
+
+	sd := NewSplitDialogFromExisting(amount, options, ids, existing)
+
+	if !sd.IsVisible() {
+		t.Error("dialog should be visible after creation")
+	}
+	rows := sd.Rows()
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	if rows[0].categoryIndex != 1 { // Food at idx 1
+		t.Errorf("row[0] categoryIndex = %d, want 1 (Food)", rows[0].categoryIndex)
+	}
+	if rows[0].amountField.Value != "-60" {
+		t.Errorf("row[0] amount = %q, want %q", rows[0].amountField.Value, "-60")
+	}
+	if rows[0].memoField.Value != "lunch" {
+		t.Errorf("row[0] memo = %q, want %q", rows[0].memoField.Value, "lunch")
+	}
+	if rows[1].categoryIndex != 3 { // Snack at idx 3
+		t.Errorf("row[1] categoryIndex = %d, want 3 (Snack)", rows[1].categoryIndex)
+	}
+	if rows[1].amountField.Value != "-40" {
+		t.Errorf("row[1] amount = %q, want %q", rows[1].amountField.Value, "-40")
+	}
+	// remaining() should be zero since the two splits sum to amount.
+	if !sd.remaining().IsZero() {
+		t.Errorf("remaining = %s, want 0 for fully allocated splits", sd.remaining().String())
+	}
+}
+
+// TestApp_HandleRegisterKeys_EnterOnSplitTransaction_OpensEditFlow asserts
+// Enter on a split (non-transfer) row in the register returns a non-nil
+// load cmd. The transaction-load path inspects splits as part of the data
+// fetch.
+func TestApp_HandleRegisterKeys_EnterOnSplitTransaction_OpensEditFlow(t *testing.T) {
+	accountID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		width:       120,
+		height:      30,
+		styles:      NewStyles(),
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		register: &registerData{
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			transactions: []*transaction.Transaction{
+				{
+					BaseModel: types.BaseModel{ID: types.NewID()},
+					AccountID: accountID,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-100"),
+					Status:    transaction.StatusUncleared,
+				},
+			},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+	app.buildRegisterTable()
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	_, cmd := app.handleRegisterKeys(enter)
+	if cmd == nil {
+		t.Error("Enter on a (potentially split) plain row should return a load cmd")
+	}
+}
+
+// TestApp_BuildTransactionDialog_EditMode_ChecksSplitBoxIfSplitsExist
+// asserts that in edit mode, when the existing transaction has at least
+// one split, the Split-transaction checkbox is pre-checked.
+func TestApp_BuildTransactionDialog_EditMode_ChecksSplitBoxIfSplitsExist(t *testing.T) {
+	cats := []*category.Category{
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Auto", Type: category.TypeExpense},
+	}
+	options, ids := buildCategoryOptions(cats)
+
+	existing := transaction.NewTransaction(
+		types.NewID(),
+		types.NewDate(2024, 3, 15),
+		types.MustNewMoney("-100.00"),
+	)
+	splits := []*transaction.Split{
+		{BaseModel: types.BaseModel{ID: types.NewID()}, CategoryID: cats[0].ID, Amount: types.MustNewMoney("-100.00")},
+	}
+
+	data := &transactionDialogData{
+		categories:     cats,
+		mode:           transactionDialogModeEdit,
+		existing:       existing,
+		existingSplits: splits,
+	}
+
+	d := buildTransactionDialog(data, options, ids, types.ZeroDate)
+
+	fields := d.Fields()
+	if !fields[6].Checked {
+		t.Error("split checkbox should be checked when editing a transaction with splits")
+	}
+}
+
