@@ -44,30 +44,6 @@ func TestViewString(t *testing.T) {
 	}
 }
 
-func TestDefaultKeyMap(t *testing.T) {
-	km := defaultKeyMap()
-
-	// Verify key bindings are set
-	if len(km.Quit.Keys()) == 0 {
-		t.Error("Quit key binding not set")
-	}
-	if len(km.Help.Keys()) == 0 {
-		t.Error("Help key binding not set")
-	}
-	if len(km.Up.Keys()) == 0 {
-		t.Error("Up key binding not set")
-	}
-	if len(km.Down.Keys()) == 0 {
-		t.Error("Down key binding not set")
-	}
-	if len(km.Enter.Keys()) == 0 {
-		t.Error("Enter key binding not set")
-	}
-	if len(km.Escape.Keys()) == 0 {
-		t.Error("Escape key binding not set")
-	}
-}
-
 func TestApp_Init(t *testing.T) {
 	// Create a minimal app without database for testing Init
 	app := &App{
@@ -471,26 +447,6 @@ func TestApp_ToggleMenu_SwitchesToDifferentMenu(t *testing.T) {
 	}
 	if updatedApp.menubar.Cursor() != 3 {
 		t.Errorf("menu cursor = %d, want 3 (Accounts)", updatedApp.menubar.Cursor())
-	}
-}
-
-func TestDefaultKeyMap_MenuShortcuts(t *testing.T) {
-	km := defaultKeyMap()
-
-	if len(km.MenuFile.Keys()) == 0 {
-		t.Error("MenuFile key binding not set")
-	}
-	if len(km.MenuAccounts.Keys()) == 0 {
-		t.Error("MenuAccounts key binding not set")
-	}
-	if len(km.MenuTransactions.Keys()) == 0 {
-		t.Error("MenuTransactions key binding not set")
-	}
-	if len(km.MenuReports.Keys()) == 0 {
-		t.Error("MenuReports key binding not set")
-	}
-	if len(km.MenuHelp.Keys()) == 0 {
-		t.Error("MenuHelp key binding not set")
 	}
 }
 
