@@ -123,6 +123,16 @@ Modal dialog for entering or editing transactions.
 └──────────────────────────────────────────────────────────┘
 ```
 
+The Date field is sticky within a session: the first open of the
+dialog seeds today's date; each subsequent open seeds the date of the
+last *saved* transaction (Cancel does not update the seed). The seed
+resets to today on app restart — there is no cross-launch persistence.
+
+The Category field is a typeahead combo box (see [Category Combo
+Box](#category-combo-box) below): typing filters the list, and the
+last row `[+ Add new category…]` opens a small sub-dialog that
+creates the category, auto-selects it, and advances focus to Amount.
+
 ### Split Transaction Dialog
 
 When "Split transaction" is checked:
@@ -328,15 +338,69 @@ All dialogs are modal and keyboard-navigable.
 - Cross-field errors (e.g., transfer from/to same account) appear as a dialog-level message above the buttons
 - Async/service errors after dialog close still use the full-screen error display
 
-### Dropdown/Autocomplete
+### Date Fields
+
+Date fields use a fixed-width masked-input widget rather than free
+text. Two formats ship: `MM/DD/YYYY` (most dialogs — Date, Start Date,
+End Date, etc.) and `YYYY-MM-DD` (the Prices add/edit dialog).
 
 | Key | Action |
 |-----|--------|
-| `↓` | Open dropdown / Next suggestion |
-| `↑` | Previous suggestion |
-| `Enter` | Select suggestion |
-| `Esc` | Close dropdown |
-| Typing | Filter suggestions |
+| `0`–`9` | Overwrite the digit at the cursor and advance |
+| `←` / `→` | Move cursor between digit positions (separators are skipped) |
+| `Home` / `End` | Jump to first / last digit |
+| `Backspace` | Replace the digit at the cursor with `0` and step back |
+
+The cursor only ever lands on digit positions; the slashes (or
+dashes) render as static literals. Typing is overwrite-style — there
+is no insertion or shifting of digits — so the value is always a
+canonical 10-character mask shape. Non-digit input is ignored. Per-
+keystroke validation is intentionally minimal: the field rejects
+non-digits but does not reject impossible combinations like month
+`13` mid-edit; the existing on-Tab/Enter validation flow runs the
+strict parse.
+
+Optional date fields (e.g., the Scheduled Transaction End Date)
+permit the all-blank canonical mask (`  /  /    `) as a meaningful
+"no value." On those fields, Backspace clears the digit *before* the
+cursor with a space instead of overwriting with `0`, so the user can
+return to the canonical blank.
+
+### Category Combo Box
+
+The Category field on the New Transaction dialog is a typeahead combo
+box: typing filters the option list inline; arrow keys navigate the
+filtered subset; Enter or Tab commits the highlighted match.
+
+| Key | Action |
+|-----|--------|
+| Letter / digit | Append to filter query |
+| `Backspace` | Remove last character of filter query |
+| `↑` / `↓` | Move highlight within the filtered list |
+| `Enter` / `Tab` | Commit the highlighted match and advance focus |
+| `Esc` | Clear a non-empty filter query in place (does not close the dialog) |
+
+Filter ranking: case-insensitive substring match. Prefix matches on
+the leaf segment (the part after the last ` > ` or `:`) rank ahead of
+plain-substring matches; alphabetical within each rank group.
+
+The last row of the filtered list is always
+`[+ Add new category…]`. Activating it opens a small create-category
+sub-dialog with three fields:
+
+- **Name** — pre-filled from the typed query (or, if the query
+  contains a `:`, split into `Parent:Child` with Parent pre-filled
+  from the left side).
+- **Parent** — itself a combo box that accepts an existing parent
+  category or a typed-but-unmatched name (the latter creates a new
+  top-level parent on save).
+- **Income/Expense** — radio.
+
+On confirm the new category (and parent, if needed) is persisted
+immediately; the transaction dialog reopens with all other field
+values preserved, the new category auto-selected, and focus advanced
+to Amount. Cancel returns to the transaction dialog with the previous
+selection intact.
 
 ## Status Bar
 

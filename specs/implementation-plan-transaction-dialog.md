@@ -229,7 +229,7 @@ Mechanical migration of the remaining 9 dialogs to `AddDateField`. Each item is 
 
 ## Phase 6: Documentation
 
-- [ ] **TD-016 — Update `specs/tui.md` and `README.md`**
+- [x] **TD-016 — Update `specs/tui.md` and `README.md`**
   - GREEN:
     - `specs/tui.md` — under "Transaction Entry/Edit Dialog", note the sticky-date behavior (within a session, seeds from last saved transaction; reset on app restart). Under "Dialogs" or a new "Date Fields" subsection, document the masked-input widget: cursor only on digits, slashes/dashes are skipped, typing overwrites, Backspace replaces with `0`. Under "Dialogs" or "Field Validation", document the category combo: type to filter, expanded list, prefix-then-substring ranking, `[+ Add new category…]` row that opens a sub-dialog (Name + Parent + Income/Expense, immediate save, auto-select on return).
     - `README.md` — under the "Transactions" feature bullet list, mention sticky-date and inline category creation as part of the new-transaction flow. No changes needed to the keyboard reference table — no new top-level shortcuts are added.
