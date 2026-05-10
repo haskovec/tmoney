@@ -175,25 +175,42 @@ func (sb *StatusBar) Toast() *Toast {
 }
 
 // Render renders the status bar at the given width using the provided styles.
+//
+// Each inner segment (context, key hints, notifications, separators, and
+// the trailing width-fill spaces) is rendered with the StatusBar's
+// background already established. This is required because lipgloss
+// emits a reset (`\e[m`) at the end of every Render; without inheriting
+// the bg on the inner segments, the first reset would clobber the
+// outer StatusBar background and everything to the right of it would
+// fall back to the terminal default — which on the Turbo Vision theme
+// shows the blue desktop bleeding through the gray bar.
 func (sb *StatusBar) Render(styles Styles, width int) string {
 	if width <= 0 {
 		return ""
 	}
 
-	left := sb.renderContext(styles)
-	right := sb.renderNotifications(styles)
+	// barBase is the StatusBar style stripped of padding and width —
+	// the outer Render below applies the (0, 1) padding and the
+	// terminal width fill once, so inner segments must not duplicate
+	// either (an inherited Width would pad each segment to the full
+	// bar and force newlines when joined).
+	barBase := styles.StatusBar.Padding(0).UnsetWidth()
+
+	left := sb.renderContext(styles, barBase)
+	right := sb.renderNotifications(styles, barBase)
 	center := sb.keyHints
 
 	// Calculate available space for key hints
 	leftWidth := lipgloss.Width(left)
 	rightWidth := lipgloss.Width(right)
+	centerWidth := lipgloss.Width(center)
 
 	// Add separators if sections are non-empty
 	separatorWidth := 0
-	if leftWidth > 0 && len(center) > 0 {
+	if leftWidth > 0 && centerWidth > 0 {
 		separatorWidth += 3 // " │ "
 	}
-	if rightWidth > 0 && (len(center) > 0 || leftWidth > 0) {
+	if rightWidth > 0 && (centerWidth > 0 || leftWidth > 0) {
 		separatorWidth += 3 // " │ "
 	}
 
@@ -203,56 +220,72 @@ func (sb *StatusBar) Render(styles Styles, width int) string {
 
 	// Truncate center hints if they don't fit
 	availableCenter := max(width-usedWidth, 0)
-	if len(center) > availableCenter {
+	if centerWidth > availableCenter {
 		if availableCenter > 3 {
 			center = center[:availableCenter-3] + "..."
 		} else {
 			center = ""
 		}
+		centerWidth = lipgloss.Width(center)
 	}
 
-	// Build the bar content
+	// Render the center key hints with the StatusBar bg inherited.
+	var renderedCenter string
+	if centerWidth > 0 {
+		renderedCenter = barBase.Render(center)
+	}
+
+	separator := barBase.Render(" │ ")
+
+	// Build the bar content from segments that all carry the StatusBar
+	// background, joined with separators that do too.
 	var parts []string
 	if leftWidth > 0 {
 		parts = append(parts, left)
 	}
-	if len(center) > 0 {
-		parts = append(parts, center)
+	if centerWidth > 0 {
+		parts = append(parts, renderedCenter)
 	}
 	if rightWidth > 0 {
 		parts = append(parts, right)
 	}
 
-	content := strings.Join(parts, " │ ")
+	content := strings.Join(parts, separator)
 
-	// Pad to fill width (accounting for style padding)
+	// Pad to fill width with bg-painted spaces (accounting for the outer
+	// style's horizontal padding). Rendering the fill through barBase
+	// keeps the gray bg continuous to the right edge.
 	contentWidth := lipgloss.Width(content)
 	innerWidth := width - padding
 	if contentWidth < innerWidth {
-		content = content + strings.Repeat(" ", innerWidth-contentWidth)
+		content += barBase.Render(strings.Repeat(" ", innerWidth-contentWidth))
 	}
 
 	return styles.StatusBar.Width(width).Render(content)
 }
 
-// renderContext renders the context section (left side).
-func (sb *StatusBar) renderContext(styles Styles) string {
+// renderContext renders the context section (left side) with the
+// StatusBar background inherited so the segment's trailing reset
+// doesn't strip the bar's bg from everything that follows.
+func (sb *StatusBar) renderContext(_ Styles, barBase lipgloss.Style) string {
 	if sb.context == "" {
 		return ""
 	}
-	return styles.Bold.Render(sb.context)
+	return barBase.Bold(true).Render(sb.context)
 }
 
 // renderNotifications renders the notification section (right side).
 // An active toast takes precedence over the queued notifications: while
-// the toast is set, only the toast text appears in this slot.
-func (sb *StatusBar) renderNotifications(styles Styles) string {
+// the toast is set, only the toast text appears in this slot. Each
+// segment is rendered with the StatusBar bg inherited (see Render).
+func (sb *StatusBar) renderNotifications(_ Styles, barBase lipgloss.Style) string {
+	alertStyle := barBase.Foreground(ColorAlert).Bold(true)
+
 	if sb.toast != nil {
-		text := sb.toast.Text
 		if sb.toast.Level == NotificationAlert {
-			text = styles.Alert.Render(text)
+			return alertStyle.Render(sb.toast.Text)
 		}
-		return text
+		return barBase.Render(sb.toast.Text)
 	}
 
 	if len(sb.notifications) == 0 {
@@ -261,15 +294,13 @@ func (sb *StatusBar) renderNotifications(styles Styles) string {
 
 	var parts []string
 	for _, n := range sb.notifications {
-		text := n.Text
 		switch n.Level {
 		case NotificationAlert:
-			text = styles.Alert.Render(text)
+			parts = append(parts, alertStyle.Render(n.Text))
 		default:
-			// Info level: no special styling
+			parts = append(parts, barBase.Render(n.Text))
 		}
-		parts = append(parts, text)
 	}
 
-	return strings.Join(parts, "  ")
+	return strings.Join(parts, barBase.Render("  "))
 }
