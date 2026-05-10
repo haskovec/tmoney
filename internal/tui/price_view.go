@@ -791,7 +791,7 @@ func buildAddPriceDialog(sec *security.Security) *Dialog {
 	d := NewDialog(fmt.Sprintf("Add Price — %s", sec.Ticker))
 
 	today := time.Now().Format("2006-01-02")
-	f := d.AddTextField("Date", today, "YYYY-MM-DD", 12)
+	f := d.AddDateFieldISO("Date", today)
 	f.Required = true
 
 	f = d.AddTextField("Price", "", "e.g. 185.50", 15)
@@ -810,7 +810,7 @@ func buildEditPriceDialog(sec *security.Security, p *price.Price) *Dialog {
 	d := NewDialog(fmt.Sprintf("Edit Price — %s", sec.Ticker))
 
 	dateStr := p.Date.Time().Format("2006-01-02")
-	f := d.AddTextField("Date", dateStr, "YYYY-MM-DD", 12)
+	f := d.AddDateFieldISO("Date", dateStr)
 	f.Required = true
 
 	priceStr := fmt.Sprintf("%.2f", p.Price.Float64())

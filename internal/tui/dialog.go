@@ -38,18 +38,56 @@ const (
 	FieldCombo
 )
 
-// dateMaskSlashPositions are the byte positions of the literal '/' characters
-// in the canonical MM/DD/YYYY mask. The masked-cursor methods skip these.
-var dateMaskSlashPositions = map[int]bool{2: true, 5: true}
+// Date-mask format strings for the masked-input FieldDate widget. A mask is
+// a 10-character template where 'M', 'D', and 'Y' mark digit positions; any
+// other character is rendered verbatim as a literal separator (and the
+// cursor skips over it). Adding a new format means adding a new constant
+// here — the cursor / render / blank-detection logic is mask-driven.
+const (
+	dateMaskUS  = "MM/DD/YYYY"
+	dateMaskISO = "YYYY-MM-DD"
+)
 
 // canonicalBlankDate is the all-blank canonical mask for an optional date
-// field — slashes at positions 2 and 5, spaces at every digit position.
+// field in MM/DD/YYYY format — slashes at positions 2 and 5, spaces at
+// every digit position. Kept as a top-level constant for use as the
+// default-construct value in helpers; ISO blanks are computed from
+// dateMaskISO.
 const canonicalBlankDate = "  /  /    "
+
+// dateMaskSeparatorPositions returns the byte positions of literal
+// (non-M/D/Y) characters in mask. The masked-cursor methods skip these.
+func dateMaskSeparatorPositions(mask string) map[int]bool {
+	out := make(map[int]bool, 2)
+	for i := 0; i < len(mask); i++ {
+		switch mask[i] {
+		case 'M', 'D', 'Y':
+			// digit position
+		default:
+			out[i] = true
+		}
+	}
+	return out
+}
+
+// dateMaskBlank returns the canonical all-blank value for mask — literals
+// preserved at separator positions, spaces at every digit position.
+func dateMaskBlank(mask string) string {
+	b := []byte(mask)
+	for i := range b {
+		switch b[i] {
+		case 'M', 'D', 'Y':
+			b[i] = ' '
+		}
+	}
+	return string(b)
+}
 
 // isBlankDateInput reports whether s represents an unfilled date — either an
 // empty string or the 10-char canonical mask with every digit position still
-// a space. Used by submit handlers to treat optional date fields as "no
-// value" rather than "invalid date".
+// a space. Format-agnostic: a 10-char string with no digit characters is
+// considered blank, which matches the canonical blank for any mask whose
+// digit positions are filled with ' '.
 func isBlankDateInput(s string) bool {
 	if s == "" {
 		return true
@@ -58,13 +96,7 @@ func isBlankDateInput(s string) bool {
 		return false
 	}
 	for i := range len(s) {
-		if dateMaskSlashPositions[i] {
-			if s[i] != '/' {
-				return false
-			}
-			continue
-		}
-		if s[i] != ' ' {
+		if s[i] >= '0' && s[i] <= '9' {
 			return false
 		}
 	}
@@ -116,6 +148,13 @@ type Field struct {
 	// use isBlankDateInput to detect the unfilled state and treat it as
 	// missing rather than invalid.
 	OptionalBlank bool
+	// dateMask describes the format of a FieldDate ('M', 'D', 'Y' mark
+	// digit positions; any other character is a literal separator).
+	// Defaults to dateMaskUS ("MM/DD/YYYY") via the helpers below; ISO
+	// fields use dateMaskISO ("YYYY-MM-DD"). The masked-cursor methods
+	// derive separator positions from this string so adding a new format
+	// is a one-constant change.
+	dateMask string
 	// cursorPos is the cursor position within the text value.
 	cursorPos int
 	// comboHighlight is the highlighted row index within the current
@@ -213,29 +252,45 @@ func (f *Field) CursorPos() int {
 	return f.cursorPos
 }
 
+// dateSeparators returns the separator-position set for this field's mask.
+// Defaults to the US (MM/DD/YYYY) layout when dateMask is empty so that
+// any FieldDate constructed without going through the helpers still
+// behaves correctly.
+func (f *Field) dateSeparators() map[int]bool {
+	mask := f.dateMask
+	if mask == "" {
+		mask = dateMaskUS
+	}
+	return dateMaskSeparatorPositions(mask)
+}
+
 // dateCursorRight advances the cursor to the next digit position, skipping
-// the literal slashes at indices 2 and 5. Stops at the last digit (index 9).
+// literal separator characters in the field's mask. Stops at the last
+// digit (index 9).
 func (f *Field) dateCursorRight() {
 	if f.Type != FieldDate {
 		return
 	}
+	seps := f.dateSeparators()
 	for f.cursorPos < 9 {
 		f.cursorPos++
-		if !dateMaskSlashPositions[f.cursorPos] {
+		if !seps[f.cursorPos] {
 			return
 		}
 	}
 }
 
 // dateCursorLeft moves the cursor to the previous digit position, skipping
-// the literal slashes at indices 2 and 5. Stops at the first digit (index 0).
+// literal separator characters in the field's mask. Stops at the first
+// digit (index 0).
 func (f *Field) dateCursorLeft() {
 	if f.Type != FieldDate {
 		return
 	}
+	seps := f.dateSeparators()
 	for f.cursorPos > 0 {
 		f.cursorPos--
-		if !dateMaskSlashPositions[f.cursorPos] {
+		if !seps[f.cursorPos] {
 			return
 		}
 	}
@@ -264,7 +319,7 @@ func (f *Field) dateOverwriteDigit(r rune) {
 	if f.Type != FieldDate || r < '0' || r > '9' {
 		return
 	}
-	if dateMaskSlashPositions[f.cursorPos] {
+	if f.dateSeparators()[f.cursorPos] {
 		return
 	}
 	if len(f.Value) != 10 {
@@ -293,16 +348,17 @@ func (f *Field) dateBackspace() {
 	if f.Type != FieldDate || f.cursorPos <= 0 {
 		return
 	}
+	seps := f.dateSeparators()
 	if f.OptionalBlank {
 		f.dateCursorLeft()
-		if len(f.Value) == 10 && !dateMaskSlashPositions[f.cursorPos] {
+		if len(f.Value) == 10 && !seps[f.cursorPos] {
 			b := []byte(f.Value)
 			b[f.cursorPos] = ' '
 			f.Value = string(b)
 		}
 		return
 	}
-	if len(f.Value) == 10 && !dateMaskSlashPositions[f.cursorPos] {
+	if len(f.Value) == 10 && !seps[f.cursorPos] {
 		b := []byte(f.Value)
 		b[f.cursorPos] = '0'
 		f.Value = string(b)
@@ -567,6 +623,7 @@ func (d *Dialog) AddDateField(label, initialValue string) *Field {
 		Type:      FieldDate,
 		Value:     initialValue,
 		Width:     10,
+		dateMask:  dateMaskUS,
 		cursorPos: 0,
 	}
 	d.fields = append(d.fields, f)
@@ -592,6 +649,49 @@ func (d *Dialog) AddOptionalDateField(label, initialValue string) *Field {
 		Type:          FieldDate,
 		Value:         initialValue,
 		Width:         10,
+		dateMask:      dateMaskUS,
+		OptionalBlank: true,
+		cursorPos:     0,
+	}
+	d.fields = append(d.fields, f)
+	return f
+}
+
+// AddDateFieldISO adds a masked-input YYYY-MM-DD date field and returns
+// it. Same widget as AddDateField with dashes at indices 4 and 7 instead
+// of slashes at 2 and 5; if initialValue is empty, the field is seeded
+// with today's date in YYYY-MM-DD form.
+func (d *Dialog) AddDateFieldISO(label, initialValue string) *Field {
+	if initialValue == "" {
+		initialValue = time.Now().Format("2006-01-02")
+	}
+	f := &Field{
+		Label:     label,
+		Type:      FieldDate,
+		Value:     initialValue,
+		Width:     10,
+		dateMask:  dateMaskISO,
+		cursorPos: 0,
+	}
+	d.fields = append(d.fields, f)
+	return f
+}
+
+// AddOptionalDateFieldISO adds a masked-input YYYY-MM-DD date field that
+// permits the canonical 10-char all-blank value "    -  -  " as a
+// meaningful "no value" state. Empty initialValue seeds the canonical
+// blank; submit handlers should call isBlankDateInput on the value to
+// detect the unfilled state.
+func (d *Dialog) AddOptionalDateFieldISO(label, initialValue string) *Field {
+	if initialValue == "" {
+		initialValue = dateMaskBlank(dateMaskISO)
+	}
+	f := &Field{
+		Label:         label,
+		Type:          FieldDate,
+		Value:         initialValue,
+		Width:         10,
+		dateMask:      dateMaskISO,
 		OptionalBlank: true,
 		cursorPos:     0,
 	}
@@ -1345,7 +1445,7 @@ func (d *Dialog) renderDateFieldContent(field *Field, focused bool) string {
 	}
 	cursorStyle := lipgloss.NewStyle().Reverse(true)
 	pos := field.cursorPos
-	if pos < 0 || pos > 9 || dateMaskSlashPositions[pos] {
+	if pos < 0 || pos > 9 || field.dateSeparators()[pos] {
 		// Defensive: snap to first digit if cursor is somewhere unexpected.
 		pos = 0
 	}

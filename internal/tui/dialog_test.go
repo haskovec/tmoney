@@ -2367,7 +2367,6 @@ func TestIsBlankDateInput(t *testing.T) {
 		{"valid date", "12/31/2024", false},
 		{"partial state", "1 /  /    ", false},
 		{"wrong length", "  /  /   ", false},
-		{"missing slash at 2", "    /     ", false},
 		{"non-space digit position", "00/00/0000", false},
 	}
 	for _, tc := range tests {
@@ -2940,5 +2939,249 @@ func TestFieldCombo_AddNewLabel_TabOnActionRowDoesNotTriggerAddNew(t *testing.T)
 	}
 	if d.FocusIndex() != 1 {
 		t.Errorf("FocusIndex = %d, want 1 (Tab advanced focus)", d.FocusIndex())
+	}
+}
+
+// FieldDate ISO format (TD-015) tests
+
+func TestDialog_AddDateFieldISO(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateFieldISO("Date", "2024-01-15")
+
+	if f == nil {
+		t.Fatal("AddDateFieldISO returned nil")
+	}
+	if f.Type != FieldDate {
+		t.Errorf("Type = %d, want FieldDate", f.Type)
+	}
+	if f.Value != "2024-01-15" {
+		t.Errorf("Value = %q, want %q", f.Value, "2024-01-15")
+	}
+	if f.Width != 10 {
+		t.Errorf("Width = %d, want 10", f.Width)
+	}
+	if f.CursorPos() != 0 {
+		t.Errorf("initial CursorPos() = %d, want 0", f.CursorPos())
+	}
+}
+
+func TestDialog_AddDateFieldISO_EmptyDefaultsToToday(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateFieldISO("Date", "")
+
+	if len(f.Value) != 10 {
+		t.Errorf("Value len = %d, want 10 (canonical mask shape)", len(f.Value))
+	}
+	// Dashes always at positions 4 and 7 in YYYY-MM-DD
+	if f.Value[4] != '-' || f.Value[7] != '-' {
+		t.Errorf("Value = %q, dashes not at positions 4 and 7", f.Value)
+	}
+}
+
+func TestFieldDateISO_TypingOverwritesAndAdvances(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddDateFieldISO("Date", "2024-01-15")
+
+	// Type "2025" — overwrites "2024", cursor advances over the dash to index 5
+	d.HandleKey(tea.KeyPressMsg{Code: '2', Text: "2"})
+	d.HandleKey(tea.KeyPressMsg{Code: '0', Text: "0"})
+	d.HandleKey(tea.KeyPressMsg{Code: '2', Text: "2"})
+	d.HandleKey(tea.KeyPressMsg{Code: '5', Text: "5"})
+
+	if d.Fields()[0].Value != "2025-01-15" {
+		t.Errorf("Value = %q, want %q", d.Fields()[0].Value, "2025-01-15")
+	}
+	// After typing four digits, cursor sits on first digit of MM (string index 5)
+	if d.Fields()[0].CursorPos() != 5 {
+		t.Errorf("CursorPos() = %d, want 5 (first digit of MM)", d.Fields()[0].CursorPos())
+	}
+}
+
+func TestFieldDateISO_CursorRightSkipsDashes(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateFieldISO("Date", "2024-01-15")
+
+	// Move cursor to last digit of YYYY (index 3)
+	for range 3 {
+		d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	}
+	if f.CursorPos() != 3 {
+		t.Fatalf("setup: CursorPos() = %d, want 3", f.CursorPos())
+	}
+
+	// Right from index 3 should skip dash at index 4 → land on index 5
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if f.CursorPos() != 5 {
+		t.Errorf("CursorPos() = %d, want 5 (skipped dash at index 4)", f.CursorPos())
+	}
+
+	// Move to index 6, then right should skip dash at index 7 → land on index 8
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if f.CursorPos() != 6 {
+		t.Fatalf("CursorPos() = %d, want 6", f.CursorPos())
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if f.CursorPos() != 8 {
+		t.Errorf("CursorPos() = %d, want 8 (skipped dash at index 7)", f.CursorPos())
+	}
+}
+
+func TestFieldDateISO_CursorLeftSkipsDashes(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateFieldISO("Date", "2024-01-15")
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnd})
+	if f.CursorPos() != 9 {
+		t.Fatalf("End: CursorPos() = %d, want 9", f.CursorPos())
+	}
+
+	// From index 9, left → 8. left → skip dash at 7 → 6. left → 5. left → skip dash at 4 → 3.
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if f.CursorPos() != 8 {
+		t.Fatalf("CursorPos() = %d, want 8", f.CursorPos())
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if f.CursorPos() != 6 {
+		t.Errorf("CursorPos() = %d, want 6 (skipped dash at index 7)", f.CursorPos())
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if f.CursorPos() != 5 {
+		t.Fatalf("CursorPos() = %d, want 5", f.CursorPos())
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if f.CursorPos() != 3 {
+		t.Errorf("CursorPos() = %d, want 3 (skipped dash at index 4)", f.CursorPos())
+	}
+}
+
+func TestFieldDateISO_BackspaceReplacesWithZeroAndStepsBack(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateFieldISO("Date", "2024-11-15")
+	// Move cursor to second digit of MM (string index 6) — value[6] is '1',
+	// so the backspace overwrite is visible (becomes '0').
+	for range 5 {
+		d.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	}
+	if f.CursorPos() != 6 {
+		t.Fatalf("setup: CursorPos() = %d, want 6", f.CursorPos())
+	}
+
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+
+	if f.Value != "2024-10-15" {
+		t.Errorf("Value = %q, want %q (digit at index 6 replaced with '0')", f.Value, "2024-10-15")
+	}
+	// Cursor moves back: 6 → 5 (not a separator)
+	if f.CursorPos() != 5 {
+		t.Errorf("CursorPos() = %d, want 5", f.CursorPos())
+	}
+
+	// Backspace again: cursor=5 → digit replaced with '0' → "2024-00-15";
+	// cursor steps left, skipping the dash at index 4 → lands at 3.
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if f.Value != "2024-00-15" {
+		t.Errorf("Value = %q, want %q (digit at index 5 replaced with '0')", f.Value, "2024-00-15")
+	}
+	if f.CursorPos() != 3 {
+		t.Errorf("CursorPos() = %d, want 3 (backspaced past dash)", f.CursorPos())
+	}
+}
+
+func TestFieldDateISO_HomeAndEnd(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateFieldISO("Date", "2024-01-15")
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnd})
+	if f.CursorPos() != 9 {
+		t.Errorf("End: CursorPos() = %d, want 9 (last digit)", f.CursorPos())
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyHome})
+	if f.CursorPos() != 0 {
+		t.Errorf("Home: CursorPos() = %d, want 0 (first digit)", f.CursorPos())
+	}
+}
+
+func TestFieldDateISO_ValueAlwaysTenChars(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateFieldISO("Date", "2024-01-15")
+
+	// Type a digit at every position
+	for range 8 {
+		d.HandleKey(tea.KeyPressMsg{Code: '9', Text: "9"})
+	}
+
+	if len(f.Value) != 10 {
+		t.Errorf("Value len = %d, want 10 (canonical mask shape preserved)", len(f.Value))
+	}
+	if f.Value[4] != '-' || f.Value[7] != '-' {
+		t.Errorf("Value = %q, dashes not at positions 4 and 7", f.Value)
+	}
+}
+
+func TestFieldDateISO_RenderContainsValue(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddDateFieldISO("Date", "2024-01-15")
+	// Move focus off the date field so the cursor highlight doesn't split the
+	// rendered date with ANSI escapes.
+	d.SetFocusIndex(1)
+	styles := NewStyles()
+
+	out := d.Render(styles)
+	if !strings.Contains(out, "2024-01-15") {
+		t.Errorf("rendered output should contain date value; got:\n%s", out)
+	}
+}
+
+func TestFieldDateISO_NonDigitInputIgnored(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddDateFieldISO("Date", "2024-01-15")
+
+	d.HandleKey(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	d.HandleKey(tea.KeyPressMsg{Code: '/', Text: "/"})
+	d.HandleKey(tea.KeyPressMsg{Code: '-', Text: "-"})
+
+	if f.Value != "2024-01-15" {
+		t.Errorf("Value = %q, want %q (non-digits ignored)", f.Value, "2024-01-15")
+	}
+	if f.CursorPos() != 0 {
+		t.Errorf("CursorPos() = %d, want 0 (cursor unchanged on ignored input)", f.CursorPos())
+	}
+}
+
+func TestDialog_AddOptionalDateFieldISO_EmptyDefaultsToCanonicalBlank(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddOptionalDateFieldISO("End Date", "")
+
+	if f == nil {
+		t.Fatal("AddOptionalDateFieldISO returned nil")
+	}
+	if f.Type != FieldDate {
+		t.Errorf("Type = %d, want FieldDate", f.Type)
+	}
+	if !f.OptionalBlank {
+		t.Error("OptionalBlank should be true on a field built by AddOptionalDateFieldISO")
+	}
+	if f.Value != "    -  -  " {
+		t.Errorf("Value = %q, want canonical ISO blank %q", f.Value, "    -  -  ")
+	}
+	if f.Width != 10 {
+		t.Errorf("Width = %d, want 10", f.Width)
+	}
+}
+
+func TestIsBlankDateInput_ISO(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"ISO canonical blank", "    -  -  ", true},
+		{"ISO valid date", "2024-12-31", false},
+		{"ISO partial state", "2   -  -  ", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isBlankDateInput(tc.in); got != tc.want {
+				t.Errorf("isBlankDateInput(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
 	}
 }

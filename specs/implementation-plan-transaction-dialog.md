@@ -219,7 +219,7 @@ Mechanical migration of the remaining 9 dialogs to `AddDateField`. Each item is 
   - CLEANUP: none.
   - DOCS: deferred to Phase 6.
 
-- [ ] **TD-015 — Extend `AddDateField` for `YYYY-MM-DD` and migrate price-view date fields**
+- [x] **TD-015 — Extend `AddDateField` for `YYYY-MM-DD` and migrate price-view date fields**
   - RED: tests in `dialog_test.go` for the new format variant: `AddDateField(label, initialValue, …)` accepts a format option (e.g. `WithFormat("YYYY-MM-DD")`); cursor skips dashes at string indices 4 and 7; total mask width is 10. Existing tests on the default `MM/DD/YYYY` format stay green.
   - GREEN: extend `AddDateField` with a format-string option (or split into `AddDateFieldUS` / `AddDateFieldISO`). Update `handleDateKey` and `Render` to read the field's separator positions from a format descriptor rather than hard-coded `2` and `5`. Migrate `internal/tui/price_view.go:794` and `:813` from `AddTextField("Date", today, "YYYY-MM-DD", 12)` to the ISO form of `AddDateField`.
   - CLEANUP: none.

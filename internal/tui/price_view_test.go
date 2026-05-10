@@ -418,6 +418,10 @@ func TestBuildAddPriceDialog(t *testing.T) {
 	if fields[0].Value != today {
 		t.Errorf("date default = %q, want %q", fields[0].Value, today)
 	}
+	// Date field uses the masked-input widget (TD-015).
+	if fields[0].Type != FieldDate {
+		t.Errorf("Date field type = %d, want FieldDate", fields[0].Type)
+	}
 }
 
 func TestBuildEditPriceDialog(t *testing.T) {
@@ -444,6 +448,10 @@ func TestBuildEditPriceDialog(t *testing.T) {
 	}
 	if fields[1].Value != "185.50" {
 		t.Errorf("price value = %q, want %q", fields[1].Value, "185.50")
+	}
+	// Date field uses the masked-input widget (TD-015).
+	if fields[0].Type != FieldDate {
+		t.Errorf("Date field type = %d, want FieldDate", fields[0].Type)
 	}
 }
 
