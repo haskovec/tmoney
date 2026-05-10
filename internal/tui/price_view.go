@@ -630,7 +630,7 @@ func (a *App) handlePriceListKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, a.keys.Enter):
 		return a, a.drillIntoSelectedListRow()
 	case msg.String() == "u":
-		return a, a.refreshPricesCmd()
+		return a, a.startPriceRefresh()
 	}
 	if cursorMoved {
 		return a, a.schedulePriceChartFetch(a.listCursorSecurityID())
@@ -715,7 +715,7 @@ func (a *App) handlePriceDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.priceImportDialog.SetVisible(true)
 		return a, nil
 	case msg.String() == "u":
-		return a, a.refreshPricesCmd()
+		return a, a.startPriceRefresh()
 	}
 	return a, nil
 }

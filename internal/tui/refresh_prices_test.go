@@ -352,3 +352,115 @@ func TestRefreshCompleteMsg_AddsStatusBarNotification(t *testing.T) {
 		t.Errorf("notification = %q, want to contain '1 updated'", notifs[0].Text)
 	}
 }
+
+// TestStartPriceRefresh_SetsInProgressNotification asserts startPriceRefresh
+// parks an "Updating prices…" notification in the status bar before
+// dispatching the refresh, so a long-running run gives the user immediate
+// feedback that the keystroke was received.
+func TestStartPriceRefresh_SetsInProgressNotification(t *testing.T) {
+	a, _, _ := setupRefreshTUITest(t, "AAPL")
+
+	cmd := a.startPriceRefresh()
+	if cmd == nil {
+		t.Fatal("startPriceRefresh returned nil cmd on first call")
+	}
+
+	if !a.refreshingPrices {
+		t.Error("refreshingPrices flag not set after startPriceRefresh")
+	}
+	if a.refreshNotifID == 0 {
+		t.Error("refreshNotifID not stored after startPriceRefresh")
+	}
+
+	notifs := a.statusbar.Notifications()
+	found := false
+	for _, n := range notifs {
+		if n.Text == "Updating prices…" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("status bar missing 'Updating prices…' notification; got %+v", notifs)
+	}
+}
+
+// TestStartPriceRefresh_SecondCallNoOp asserts a re-press of `u` while
+// a refresh is in flight returns nil and doesn't stack notifications or
+// dispatch a parallel refresh.
+func TestStartPriceRefresh_SecondCallNoOp(t *testing.T) {
+	a, _, _ := setupRefreshTUITest(t, "AAPL")
+
+	if cmd := a.startPriceRefresh(); cmd == nil {
+		t.Fatal("first startPriceRefresh returned nil")
+	}
+	notifsBefore := len(a.statusbar.Notifications())
+
+	if cmd := a.startPriceRefresh(); cmd != nil {
+		t.Errorf("second startPriceRefresh while in flight returned non-nil cmd %v", cmd)
+	}
+	if got := len(a.statusbar.Notifications()); got != notifsBefore {
+		t.Errorf("second startPriceRefresh changed notification count from %d to %d, want no-op",
+			notifsBefore, got)
+	}
+}
+
+// TestRefreshCompleteMsg_RemovesInProgressNotification asserts the
+// completion handler retires the "Updating prices…" entry, replaces it
+// with the summary, and resets refreshingPrices so a subsequent `u`
+// works.
+func TestRefreshCompleteMsg_RemovesInProgressNotification(t *testing.T) {
+	a, _, _ := setupRefreshTUITest(t)
+	a.currentView = ViewSecurities
+
+	a.startPriceRefresh()
+
+	result := &price.RefreshResult{Entries: []price.RefreshEntry{
+		{Ticker: "AAPL", Outcome: price.OutcomeUpdated},
+	}}
+	a.Update(priceRefreshCompleteMsg{result: result})
+
+	for _, n := range a.statusbar.Notifications() {
+		if n.Text == "Updating prices…" {
+			t.Errorf("'Updating prices…' notification not removed after completion")
+		}
+	}
+	if a.refreshingPrices {
+		t.Error("refreshingPrices still true after completion")
+	}
+	if a.refreshNotifID != 0 {
+		t.Errorf("refreshNotifID = %d after completion, want 0", a.refreshNotifID)
+	}
+
+	if cmd := a.startPriceRefresh(); cmd == nil {
+		t.Error("startPriceRefresh after completion returned nil; guard should be cleared")
+	}
+}
+
+// TestRefreshCompleteMsg_OnError_RemovesNotificationAndSetsErr asserts
+// the in-progress notification is removed and the flag cleared even on
+// the error branch (so the user can retry after dismissing the error
+// dialog), and that no summary is added.
+func TestRefreshCompleteMsg_OnError_RemovesNotificationAndSetsErr(t *testing.T) {
+	a, _, _ := setupRefreshTUITest(t)
+	a.currentView = ViewSecurities
+
+	a.startPriceRefresh()
+
+	a.Update(priceRefreshCompleteMsg{err: errors.New("provider blew up")})
+
+	for _, n := range a.statusbar.Notifications() {
+		if n.Text == "Updating prices…" {
+			t.Errorf("'Updating prices…' notification not removed on error path")
+		}
+		if strings.Contains(n.Text, "updated") {
+			t.Errorf("error path should not add the summary notification, got %q", n.Text)
+		}
+	}
+	if a.refreshingPrices {
+		t.Error("refreshingPrices still true on error path")
+	}
+	if a.err == nil {
+		t.Error("a.err not set on error path")
+	}
+}

@@ -184,6 +184,14 @@ type App struct {
 	priceImportDialog *Dialog
 	priceSvc          *price.Service
 
+	// Bulk price refresh state. While refreshingPrices is true, the `u`
+	// shortcut on the Securities and Prices views is a no-op so the user
+	// can't fire a second concurrent refresh. refreshNotifID is the
+	// status-bar notification ID for the "Updating prices…" entry,
+	// removed when priceRefreshCompleteMsg arrives.
+	refreshingPrices bool
+	refreshNotifID   int
+
 	// Investment register state
 	investmentRegister     *investmentRegisterData
 	investmentTable        *Table

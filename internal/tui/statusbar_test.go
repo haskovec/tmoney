@@ -407,6 +407,86 @@ func TestStatusBar_Render_ToastOverridesNotifications(t *testing.T) {
 	}
 }
 
+// TestStatusBar_AddNotificationWithID_UniqueIDs ensures each call returns
+// a distinct, non-zero ID.
+func TestStatusBar_AddNotificationWithID_UniqueIDs(t *testing.T) {
+	sb := NewStatusBar()
+
+	id1 := sb.AddNotificationWithID("Updating prices…", NotificationInfo)
+	id2 := sb.AddNotificationWithID("Importing…", NotificationInfo)
+
+	if id1 == 0 {
+		t.Errorf("first ID = 0, want non-zero")
+	}
+	if id1 == id2 {
+		t.Errorf("IDs not unique: id1 = %d, id2 = %d", id1, id2)
+	}
+}
+
+// TestStatusBar_RemoveNotification_RemovesMatchingID asserts that
+// RemoveNotification removes only the entry with the given ID.
+func TestStatusBar_RemoveNotification_RemovesMatchingID(t *testing.T) {
+	sb := NewStatusBar()
+
+	id1 := sb.AddNotificationWithID("Updating prices…", NotificationInfo)
+	sb.AddNotification("Other", NotificationInfo)
+
+	sb.RemoveNotification(id1)
+
+	notes := sb.Notifications()
+	if len(notes) != 1 {
+		t.Fatalf("Notifications() length = %d, want 1", len(notes))
+	}
+	if notes[0].Text != "Other" {
+		t.Errorf("remaining notification text = %q, want %q", notes[0].Text, "Other")
+	}
+}
+
+// TestStatusBar_RemoveNotification_UnknownIDIsNoOp asserts that calling
+// RemoveNotification with an ID that has already been removed (or was
+// never added) leaves the queue unchanged.
+func TestStatusBar_RemoveNotification_UnknownIDIsNoOp(t *testing.T) {
+	sb := NewStatusBar()
+
+	id := sb.AddNotificationWithID("Updating prices…", NotificationInfo)
+	sb.RemoveNotification(id)
+	// Removing the same ID again should be a no-op.
+	sb.RemoveNotification(id)
+	// As should removing a never-issued ID.
+	sb.RemoveNotification(99999)
+
+	if got := len(sb.Notifications()); got != 0 {
+		t.Errorf("Notifications() length = %d, want 0", got)
+	}
+}
+
+// TestStatusBar_RemoveNotification_SurvivesEviction asserts that an ID
+// remains usable for RemoveNotification after that entry has been
+// evicted by maxNotifications: it simply becomes a no-op rather than
+// removing some unrelated entry.
+func TestStatusBar_RemoveNotification_SurvivesEviction(t *testing.T) {
+	sb := NewStatusBar()
+
+	evictedID := sb.AddNotificationWithID("first (will be evicted)", NotificationInfo)
+	for i := range maxNotifications {
+		sb.AddNotification("filler", NotificationInfo)
+		_ = i
+	}
+
+	// The first notification should now be gone (evicted).
+	for _, n := range sb.Notifications() {
+		if n.Text == "first (will be evicted)" {
+			t.Fatalf("expected first notification to be evicted, but it is still present")
+		}
+	}
+
+	before := len(sb.Notifications())
+	sb.RemoveNotification(evictedID)
+	if got := len(sb.Notifications()); got != before {
+		t.Errorf("RemoveNotification(evictedID) changed length from %d to %d, want no-op", before, got)
+	}
+}
+
 // TestClearToastCmd_FiresClearMsg drives the tea.Cmd produced by
 // ClearToastCmd with a tiny ToastDuration so the test doesn't wait the
 // real ~5s; the resulting message must be a ToastClearMsg.

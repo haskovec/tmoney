@@ -20,6 +20,22 @@ type priceRefreshCompleteMsg struct {
 	err    error
 }
 
+// startPriceRefresh kicks off a bulk price refresh from a user
+// keystroke. It guards against re-entry (a second `u` press while a
+// refresh is in flight is a no-op so the user can't fire two concurrent
+// Yahoo refreshes), parks an "Updating prices…" notification in the
+// status bar so the user has feedback during a long run, and returns
+// the underlying refreshPricesCmd. priceRefreshCompleteMsg's handler
+// removes the notification, clears the flag, and adds the summary.
+func (a *App) startPriceRefresh() tea.Cmd {
+	if a.refreshingPrices {
+		return nil
+	}
+	a.refreshingPrices = true
+	a.refreshNotifID = a.statusbar.AddNotificationWithID("Updating prices…", NotificationInfo)
+	return a.refreshPricesCmd()
+}
+
 // refreshPricesCmd returns a tea.Cmd that calls
 // priceSvc.RefreshPrices for all visible securities using the default
 // provider. The result is delivered as a priceRefreshCompleteMsg.

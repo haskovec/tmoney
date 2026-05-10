@@ -722,6 +722,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(cmds...)
 
 	case priceRefreshCompleteMsg:
+		// Always retire the in-progress notification and clear the
+		// guard, regardless of success/failure, so the `u` shortcut
+		// becomes responsive again.
+		a.statusbar.RemoveNotification(a.refreshNotifID)
+		a.refreshNotifID = 0
+		a.refreshingPrices = false
 		if msg.err != nil {
 			a.err = msg.err
 			return a, nil

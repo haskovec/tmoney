@@ -331,7 +331,7 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case msg.String() == "u":
 		// Refresh prices for all visible securities from the default provider.
-		return a, a.refreshPricesCmd()
+		return a, a.startPriceRefresh()
 	case msg.String() == "a":
 		// Open corporate action history for selected security
 		sec := a.selectedSecurity()

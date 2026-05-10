@@ -20,6 +20,10 @@ var ToastDuration = 5 * time.Second
 type Notification struct {
 	Text  string
 	Level NotificationLevel
+	// id is an opaque handle returned by AddNotificationWithID and
+	// consumed by RemoveNotification. Zero means "no ID assigned"
+	// (notifications added via AddNotification leave it zero).
+	id int
 }
 
 // NotificationLevel indicates the severity of a notification.
@@ -68,6 +72,9 @@ type StatusBar struct {
 	// notifications slot until cleared. Notifications underneath
 	// remain queued and reappear once the toast is cleared.
 	toast *Toast
+
+	// nextID is a monotonic counter for AddNotificationWithID handles.
+	nextID int
 }
 
 // NewStatusBar creates a new StatusBar with default state.
@@ -104,6 +111,39 @@ func (sb *StatusBar) AddNotification(text string, level NotificationLevel) {
 	})
 	if len(sb.notifications) > maxNotifications {
 		sb.notifications = sb.notifications[len(sb.notifications)-maxNotifications:]
+	}
+}
+
+// AddNotificationWithID adds a notification and returns an opaque ID
+// that can later be passed to RemoveNotification. Behaves like
+// AddNotification with respect to maxNotifications: an evicted entry's
+// ID becomes inert (RemoveNotification on it is a no-op).
+func (sb *StatusBar) AddNotificationWithID(text string, level NotificationLevel) int {
+	sb.nextID++
+	id := sb.nextID
+	sb.notifications = append(sb.notifications, Notification{
+		Text:  text,
+		Level: level,
+		id:    id,
+	})
+	if len(sb.notifications) > maxNotifications {
+		sb.notifications = sb.notifications[len(sb.notifications)-maxNotifications:]
+	}
+	return id
+}
+
+// RemoveNotification removes the notification with the given ID. If no
+// notification with that ID is currently in the queue (e.g., it was
+// evicted, never existed, or was already removed) the call is a no-op.
+func (sb *StatusBar) RemoveNotification(id int) {
+	if id == 0 {
+		return
+	}
+	for i, n := range sb.notifications {
+		if n.id == id {
+			sb.notifications = append(sb.notifications[:i], sb.notifications[i+1:]...)
+			return
+		}
 	}
 }
 
