@@ -190,7 +190,7 @@ func TestBuildTransactionDialog(t *testing.T) {
 	}
 	options := []string{"(None)"}
 
-	d := buildTransactionDialog(data, options, types.ZeroDate)
+	d := buildTransactionDialog(data, options, []types.ID{types.NilID}, types.ZeroDate)
 
 	if d.Title() != "New Transaction" {
 		t.Errorf("title = %q, want %q", d.Title(), "New Transaction")
@@ -219,7 +219,7 @@ func TestBuildTransactionDialog_SeedsFromStickyDate(t *testing.T) {
 	options := []string{"(None)"}
 	seed := types.NewDate(2024, time.January, 15)
 
-	d := buildTransactionDialog(data, options, seed)
+	d := buildTransactionDialog(data, options, []types.ID{types.NilID}, seed)
 
 	fields := d.Fields()
 	if fields[0].Value != "01/15/2024" {
@@ -231,7 +231,7 @@ func TestBuildTransactionDialog_FieldTypes(t *testing.T) {
 	data := &transactionDialogData{}
 	options := []string{"(None)", "Groceries"}
 
-	d := buildTransactionDialog(data, options, types.ZeroDate)
+	d := buildTransactionDialog(data, options, []types.ID{types.NilID, types.NewID()}, types.ZeroDate)
 	fields := d.Fields()
 
 	expected := []struct {
@@ -266,7 +266,7 @@ func TestBuildTransactionDialog_DateFieldOverwriteSemantics(t *testing.T) {
 	options := []string{"(None)"}
 	seed := types.NewDate(2024, time.January, 15)
 
-	d := buildTransactionDialog(data, options, seed)
+	d := buildTransactionDialog(data, options, []types.ID{types.NilID}, seed)
 	d.SetFocusIndex(0) // Date field
 
 	// Type "0" then "2" — should rewrite the month from "01" to "02".
@@ -290,8 +290,9 @@ func TestBuildTransactionDialog_DateFieldOverwriteSemantics(t *testing.T) {
 func TestBuildTransactionDialog_CategoryFieldFiltersAndCommits(t *testing.T) {
 	data := &transactionDialogData{}
 	options := []string{"(None)", "Auto", "Bills > Electric", "Food > Groceries", "Food > Restaurants"}
+	ids := []types.ID{types.NilID, types.NewID(), types.NewID(), types.NewID(), types.NewID()}
 
-	d := buildTransactionDialog(data, options, types.ZeroDate)
+	d := buildTransactionDialog(data, options, ids, types.ZeroDate)
 	d.SetFocusIndex(2) // Category field
 
 	// Type "g" — only "Food > Groceries" should remain in the filtered list.
@@ -1126,7 +1127,7 @@ func newAppForTxnAddNew(t *testing.T, query string, categorySvc *category.Servic
 		txnDialogData:        &transactionDialogData{categories: cats, payeeMap: make(map[string]*payee.Payee)},
 		txnDialogCategoryIDs: ids,
 	}
-	d := buildTransactionDialog(app.txnDialogData, options, types.ZeroDate)
+	d := buildTransactionDialog(app.txnDialogData, options, ids, types.ZeroDate)
 	// Capture distinctive state we expect to see preserved across the divert.
 	d.Fields()[0].Value = "03/15/2024"
 	d.Fields()[1].Value = "Coffee Shop"
@@ -1591,5 +1592,354 @@ func TestApp_TxnDialog_AddNew_PrefillsLeadingColon(t *testing.T) {
 	}
 	if fields[1].SelectedIndex != 0 {
 		t.Errorf("Parent.SelectedIndex = %d, want 0 (top-level)", fields[1].SelectedIndex)
+	}
+}
+
+// =============================================================================
+// Edit-mode tests (Phase 1: plain transaction edit)
+// =============================================================================
+
+// TestBuildTransactionDialog_EditMode_PrefillsFromExisting asserts that when
+// transactionDialogData has mode=edit and an existing transaction, the dialog
+// is built titled "Edit Transaction" and every field is pre-filled from the
+// existing transaction's values: Date, Payee (resolved from data.payees),
+// Category (resolved index in categoryIDs), Amount, Memo, Status.
+func TestBuildTransactionDialog_EditMode_PrefillsFromExisting(t *testing.T) {
+	parentID := types.NewID()
+	groceriesID := types.NewID()
+	otherID := types.NewID()
+	payeeID := types.NewID()
+	otherPayeeID := types.NewID()
+
+	cats := []*category.Category{
+		{BaseModel: types.BaseModel{ID: parentID}, Name: "Food", Type: category.TypeExpense},
+		{BaseModel: types.BaseModel{ID: groceriesID}, Name: "Groceries",
+			ParentID: types.NullableID{ID: parentID, Valid: true}, Type: category.TypeExpense},
+		{BaseModel: types.BaseModel{ID: otherID}, Name: "Auto", Type: category.TypeExpense},
+	}
+	options, ids := buildCategoryOptions(cats)
+
+	pys := []*payee.Payee{
+		{BaseModel: types.BaseModel{ID: otherPayeeID}, Name: "Shell"},
+		{BaseModel: types.BaseModel{ID: payeeID}, Name: "Kroger"},
+	}
+
+	existing := transaction.NewTransactionFull(
+		types.NewID(),
+		types.NewDate(2024, time.March, 15),
+		types.MustNewMoney("-125.43"),
+		payeeID, groceriesID, "Weekly groceries",
+	)
+	existing.Status = transaction.StatusCleared
+
+	data := &transactionDialogData{
+		payees:     pys,
+		categories: cats,
+		mode:       transactionDialogModeEdit,
+		existing:   existing,
+	}
+
+	d := buildTransactionDialog(data, options, ids, types.ZeroDate)
+
+	if d.Title() != "Edit Transaction" {
+		t.Errorf("title = %q, want %q", d.Title(), "Edit Transaction")
+	}
+
+	fields := d.Fields()
+	if len(fields) < 7 {
+		t.Fatalf("expected 7 fields, got %d", len(fields))
+	}
+
+	// Date pre-filled from existing.Date
+	if fields[0].Value != "03/15/2024" {
+		t.Errorf("date = %q, want %q", fields[0].Value, "03/15/2024")
+	}
+
+	// Payee pre-filled from data.payees[payeeID].Name
+	if fields[1].Value != "Kroger" {
+		t.Errorf("payee = %q, want %q", fields[1].Value, "Kroger")
+	}
+
+	// Category combo SelectedIndex matches "Food > Groceries"
+	wantIdx := -1
+	for i, id := range ids {
+		if id == groceriesID {
+			wantIdx = i
+			break
+		}
+	}
+	if wantIdx < 0 {
+		t.Fatal("groceries category not in ids slice")
+	}
+	if fields[2].SelectedIndex != wantIdx {
+		t.Errorf("category SelectedIndex = %d, want %d (Food > Groceries)",
+			fields[2].SelectedIndex, wantIdx)
+	}
+
+	// Amount pre-filled
+	if fields[3].Value != "-125.43" {
+		t.Errorf("amount = %q, want %q", fields[3].Value, "-125.43")
+	}
+
+	// Memo pre-filled
+	if fields[4].Value != "Weekly groceries" {
+		t.Errorf("memo = %q, want %q", fields[4].Value, "Weekly groceries")
+	}
+
+	// Status: Cleared = index 1
+	if fields[5].SelectedIndex != 1 {
+		t.Errorf("status SelectedIndex = %d, want 1 (Cleared)", fields[5].SelectedIndex)
+	}
+
+	// Split checkbox: unchecked (Phase 1 — splits handled separately later)
+	if fields[6].Checked {
+		t.Error("split checkbox should be unchecked in edit mode for plain transactions")
+	}
+}
+
+// TestBuildTransactionDialog_EditMode_NoPayeeOrCategory asserts edit-mode
+// pre-fill leaves payee blank and category at "(None)" when the existing
+// transaction has neither set.
+func TestBuildTransactionDialog_EditMode_NoPayeeOrCategory(t *testing.T) {
+	cats := []*category.Category{
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Auto", Type: category.TypeExpense},
+	}
+	options, ids := buildCategoryOptions(cats)
+
+	existing := transaction.NewTransaction(
+		types.NewID(),
+		types.NewDate(2024, time.March, 15),
+		types.MustNewMoney("-10.00"),
+	)
+
+	data := &transactionDialogData{
+		categories: cats,
+		mode:       transactionDialogModeEdit,
+		existing:   existing,
+	}
+
+	d := buildTransactionDialog(data, options, ids, types.ZeroDate)
+	fields := d.Fields()
+
+	if fields[1].Value != "" {
+		t.Errorf("payee = %q, want empty", fields[1].Value)
+	}
+	if fields[2].SelectedIndex != 0 {
+		t.Errorf("category SelectedIndex = %d, want 0 (None)", fields[2].SelectedIndex)
+	}
+	if fields[4].Value != "" {
+		t.Errorf("memo = %q, want empty", fields[4].Value)
+	}
+}
+
+// TestApp_HandleRegisterKeys_EnterOpensEditFlow_ForPlainTransaction asserts
+// that pressing Enter on a plain (non-transfer, non-void, non-reconciled)
+// transaction in the register returns a non-nil cmd — the loader cmd that
+// will fetch payees+categories+the transaction and emit a
+// transactionDialogDataMsg in edit mode.
+func TestApp_HandleRegisterKeys_EnterOpensEditFlow_ForPlainTransaction(t *testing.T) {
+	accountID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		width:       120,
+		height:      30,
+		styles:      NewStyles(),
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		register: &registerData{
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			transactions: []*transaction.Transaction{
+				{
+					BaseModel: types.BaseModel{ID: types.NewID()},
+					AccountID: accountID,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-25"),
+					Status:    transaction.StatusUncleared,
+				},
+			},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+	app.buildRegisterTable()
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	_, cmd := app.handleRegisterKeys(enter)
+
+	if cmd == nil {
+		t.Error("Enter on a plain transaction should return a non-nil load cmd")
+	}
+}
+
+// TestApp_HandleRegisterKeys_EnterOnVoidTransaction_NoOp asserts Enter on a
+// void transaction does not open the edit flow (no cmd) and surfaces a
+// notification on the status bar.
+func TestApp_HandleRegisterKeys_EnterOnVoidTransaction_NoOp(t *testing.T) {
+	accountID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		width:       120,
+		height:      30,
+		styles:      NewStyles(),
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		register: &registerData{
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			transactions: []*transaction.Transaction{
+				{
+					BaseModel: types.BaseModel{ID: types.NewID()},
+					AccountID: accountID,
+					Date:      types.Today(),
+					Amount:    types.ZeroMoney,
+					Status:    transaction.StatusVoid,
+				},
+			},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+	app.buildRegisterTable()
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	_, cmd := app.handleRegisterKeys(enter)
+
+	if cmd != nil {
+		t.Error("Enter on a void transaction should not return a cmd")
+	}
+	if app.txnDialog != nil {
+		t.Error("Enter on a void transaction should not open the txn dialog")
+	}
+}
+
+// TestApp_HandleRegisterKeys_EnterOnReconciledTransaction_NoOp asserts Enter
+// on a reconciled transaction does not open the edit flow.
+func TestApp_HandleRegisterKeys_EnterOnReconciledTransaction_NoOp(t *testing.T) {
+	accountID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		width:       120,
+		height:      30,
+		styles:      NewStyles(),
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		register: &registerData{
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: accountID},
+				Name:      "Checking",
+			},
+			transactions: []*transaction.Transaction{
+				{
+					BaseModel: types.BaseModel{ID: types.NewID()},
+					AccountID: accountID,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-25"),
+					Status:    transaction.StatusReconciled,
+				},
+			},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+	app.buildRegisterTable()
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	_, cmd := app.handleRegisterKeys(enter)
+
+	if cmd != nil {
+		t.Error("Enter on a reconciled transaction should not return a cmd")
+	}
+	if app.txnDialog != nil {
+		t.Error("Enter on a reconciled transaction should not open the txn dialog")
+	}
+}
+
+// TestApp_Update_TransactionDialogDataMsg_EditMode asserts feeding a
+// transactionDialogDataMsg whose data is in edit mode results in the txn
+// dialog being constructed in edit mode (title "Edit Transaction") and with
+// fields pre-filled from the existing transaction.
+func TestApp_Update_TransactionDialogDataMsg_EditMode(t *testing.T) {
+	groceriesID := types.NewID()
+	parentID := types.NewID()
+	payeeID := types.NewID()
+
+	cats := []*category.Category{
+		{BaseModel: types.BaseModel{ID: parentID}, Name: "Food", Type: category.TypeExpense},
+		{BaseModel: types.BaseModel{ID: groceriesID}, Name: "Groceries",
+			ParentID: types.NullableID{ID: parentID, Valid: true}, Type: category.TypeExpense},
+	}
+
+	existing := transaction.NewTransactionFull(
+		types.NewID(),
+		types.NewDate(2024, time.March, 15),
+		types.MustNewMoney("-50.00"),
+		payeeID, groceriesID, "memo",
+	)
+	existing.Status = transaction.StatusCleared
+
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	data := &transactionDialogData{
+		payees:     []*payee.Payee{{BaseModel: types.BaseModel{ID: payeeID}, Name: "Kroger"}},
+		categories: cats,
+		payeeMap:   map[string]*payee.Payee{"kroger": {BaseModel: types.BaseModel{ID: payeeID}, Name: "Kroger"}},
+		mode:       transactionDialogModeEdit,
+		existing:   existing,
+	}
+
+	model, _ := app.Update(transactionDialogDataMsg{data: data})
+	updatedApp := model.(*App)
+
+	if updatedApp.txnDialog == nil {
+		t.Fatal("txnDialog should be set after edit-mode data msg")
+	}
+	if updatedApp.txnDialog.Title() != "Edit Transaction" {
+		t.Errorf("title = %q, want %q", updatedApp.txnDialog.Title(), "Edit Transaction")
+	}
+
+	fields := updatedApp.txnDialog.Fields()
+	if fields[0].Value != "03/15/2024" {
+		t.Errorf("date = %q, want %q", fields[0].Value, "03/15/2024")
+	}
+	if fields[1].Value != "Kroger" {
+		t.Errorf("payee = %q, want %q", fields[1].Value, "Kroger")
+	}
+	if fields[3].Value != "-50" {
+		t.Errorf("amount = %q, want %q", fields[3].Value, "-50")
+	}
+	if fields[4].Value != "memo" {
+		t.Errorf("memo = %q, want %q", fields[4].Value, "memo")
+	}
+	if fields[5].SelectedIndex != 1 {
+		t.Errorf("status = %d, want 1 (Cleared)", fields[5].SelectedIndex)
 	}
 }

@@ -1230,7 +1230,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.txnDialogData = msg.data
 		categoryOptions, categoryIDs := buildCategoryOptions(msg.data.categories)
 		a.txnDialogCategoryIDs = categoryIDs
-		a.txnDialog = buildTransactionDialog(msg.data, categoryOptions, a.txnDialogLastSavedDate)
+		a.txnDialog = buildTransactionDialog(msg.data, categoryOptions, categoryIDs, a.txnDialogLastSavedDate)
 		return a, nil
 
 	case transactionDialogSavedMsg:
@@ -2001,9 +2001,48 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, a.loadTransactionDialogData()
 	case msg.String() == "t":
 		return a, a.loadTransferDialogData()
+	case key.Matches(msg, a.keys.Enter):
+		return a.openEditTransactionFlow()
 	}
 
 	return a, nil
+}
+
+// openEditTransactionFlow dispatches Enter on a register row to the
+// appropriate edit flow based on the selected transaction's kind. Void and
+// reconciled rows are surfaced as a status-bar notification rather than
+// opened — un-void/un-reconcile first if you actually want to edit. Plain
+// rows kick off loadEditTransactionDialogData. Transfer rows route to the
+// transfer-edit flow (Phase 2). Split rows route to the split-edit flow
+// (Phase 3).
+func (a *App) openEditTransactionFlow() (tea.Model, tea.Cmd) {
+	if a.table == nil || a.register == nil {
+		return a, nil
+	}
+
+	cursor := a.table.Cursor()
+	if cursor < 0 || cursor >= len(a.register.transactions) {
+		return a, nil
+	}
+
+	txn := a.register.transactions[cursor]
+
+	if txn.IsVoid() {
+		a.statusbar.AddNotification("Cannot edit void transaction", NotificationAlert)
+		return a, nil
+	}
+	if txn.IsReconciled() {
+		a.statusbar.AddNotification("Cannot edit reconciled transaction (un-reconcile first)", NotificationAlert)
+		return a, nil
+	}
+
+	if txn.IsTransfer() {
+		// Phase 2 will replace this with a real transfer-edit flow.
+		a.statusbar.AddNotification("Editing transfers not yet supported", NotificationAlert)
+		return a, nil
+	}
+
+	return a, a.loadEditTransactionDialogData(txn.ID)
 }
 
 // toggleTransactionStatus toggles the cleared/uncleared status of the selected transaction.

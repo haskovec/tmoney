@@ -14,11 +14,25 @@ import (
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
+// transactionDialogMode distinguishes a New-Transaction dialog from an
+// Edit-Transaction dialog. The two share field layout and key handling but
+// differ in title, pre-fill, and the submit command they dispatch.
+type transactionDialogMode int
+
+const (
+	transactionDialogModeNew transactionDialogMode = iota
+	transactionDialogModeEdit
+)
+
 // transactionDialogData holds the loaded data needed for the transaction dialog.
 type transactionDialogData struct {
 	payees     []*payee.Payee
 	categories []*category.Category
 	payeeMap   map[string]*payee.Payee // lowercase name -> payee
+
+	// Edit-mode-only fields. Both are zero in new mode.
+	mode     transactionDialogMode
+	existing *transaction.Transaction
 }
 
 // transactionDialogDataMsg is sent when transaction dialog data has been loaded.
@@ -134,39 +148,89 @@ func buildCategoryOptions(categories []*category.Category) ([]string, []types.ID
 	return options, ids
 }
 
-// buildTransactionDialog creates a Dialog for entering a new transaction.
-// If seedDate is non-zero it pre-fills the Date field; otherwise the field
-// defaults to today.
-func buildTransactionDialog(data *transactionDialogData, categoryOptions []string, seedDate types.Date) *Dialog {
-	d := NewDialog("New Transaction")
+// buildTransactionDialog creates a Dialog for entering or editing a transaction.
+//
+// In new mode (data.mode == transactionDialogModeNew, the zero value), the
+// dialog is titled "New Transaction" and the Date field is seeded from
+// seedDate (or today when seedDate is zero); other fields start empty.
+//
+// In edit mode (data.mode == transactionDialogModeEdit, data.existing
+// non-nil), the dialog is titled "Edit Transaction" and every field is
+// pre-filled from data.existing — Date, Payee (resolved via data.payees),
+// Category (resolved via the parallel categoryIDs slice), Amount, Memo, and
+// Status. seedDate is ignored in edit mode.
+func buildTransactionDialog(data *transactionDialogData, categoryOptions []string, categoryIDs []types.ID, seedDate types.Date) *Dialog {
+	editing := data != nil && data.mode == transactionDialogModeEdit && data.existing != nil
 
-	// Date field - seed from sticky last-used date when set, otherwise today.
+	title := "New Transaction"
+	if editing {
+		title = "Edit Transaction"
+	}
+	d := NewDialog(title)
+
+	// Date — pre-filled from existing in edit mode, otherwise from sticky
+	// seed or today.
 	var dateStr string
-	if seedDate.IsZero() {
+	switch {
+	case editing:
+		dateStr = data.existing.Date.Time().Format("01/02/2006")
+	case seedDate.IsZero():
 		dateStr = time.Now().Format("01/02/2006")
-	} else {
+	default:
 		dateStr = seedDate.Time().Format("01/02/2006")
 	}
 	f := d.AddDateField("Date", dateStr)
 	f.Required = true
 
-	// Payee
-	d.AddTextField("Payee", "", "Payee name", 0)
+	// Payee — pre-filled by looking up existing.PayeeID in data.payees.
+	payeeValue := ""
+	if editing && data.existing.PayeeID.Valid {
+		for _, p := range data.payees {
+			if p.ID == data.existing.PayeeID.ID {
+				payeeValue = p.Name
+				break
+			}
+		}
+	}
+	d.AddTextField("Payee", payeeValue, "Payee name", 0)
 
-	// Category
-	d.AddComboField("Category", categoryOptions, 0)
+	// Category — resolve SelectedIndex from existing.CategoryID against
+	// the parallel categoryIDs slice.
+	catIdx := 0
+	if editing && data.existing.CategoryID.Valid {
+		for i, id := range categoryIDs {
+			if id == data.existing.CategoryID.ID {
+				catIdx = i
+				break
+			}
+		}
+	}
+	d.AddComboField("Category", categoryOptions, catIdx)
 
 	// Amount
-	f = d.AddTextField("Amount", "", "-50.00", 12)
+	amountValue := ""
+	if editing {
+		amountValue = data.existing.Amount.String()
+	}
+	f = d.AddTextField("Amount", amountValue, "-50.00", 12)
 	f.Required = true
 
 	// Memo
-	d.AddTextField("Memo", "", "Optional memo", 0)
+	memoValue := ""
+	if editing && data.existing.Memo.Valid {
+		memoValue = data.existing.Memo.String
+	}
+	d.AddTextField("Memo", memoValue, "Optional memo", 0)
 
-	// Status
-	d.AddRadioField("Status", []string{"Uncleared", "Cleared"}, 0)
+	// Status — radio: 0 = Uncleared, 1 = Cleared.
+	statusIdx := 0
+	if editing && data.existing.Status == transaction.StatusCleared {
+		statusIdx = 1
+	}
+	d.AddRadioField("Status", []string{"Uncleared", "Cleared"}, statusIdx)
 
-	// Split transaction checkbox
+	// Split transaction checkbox. In Phase 1 of edit support this stays
+	// unchecked even when editing; split editing is layered on later.
 	d.AddCheckboxField("Split transaction", false)
 
 	d.SetVisible(true)
@@ -197,6 +261,48 @@ func (a *App) loadTransactionDialogData() tea.Cmd {
 				return errMsg{err: err}
 			}
 			data.categories = categories
+		}
+
+		return transactionDialogDataMsg{data: data}
+	}
+}
+
+// loadEditTransactionDialogData returns a command that loads payees,
+// categories, and the existing transaction identified by txnID, then emits a
+// transactionDialogDataMsg with mode = transactionDialogModeEdit so the
+// transaction dialog opens pre-filled for editing.
+func (a *App) loadEditTransactionDialogData(txnID types.ID) tea.Cmd {
+	return func() tea.Msg {
+		data := &transactionDialogData{
+			payeeMap: make(map[string]*payee.Payee),
+			mode:     transactionDialogModeEdit,
+		}
+
+		if a.payeeSvc != nil {
+			payees, err := a.payeeSvc.List()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.payees = payees
+			for _, p := range payees {
+				data.payeeMap[strings.ToLower(p.Name)] = p
+			}
+		}
+
+		if a.categorySvc != nil {
+			categories, err := a.categorySvc.List()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.categories = categories
+		}
+
+		if a.transactionSvc != nil {
+			txn, err := a.transactionSvc.GetByID(txnID)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.existing = txn
 		}
 
 		return transactionDialogDataMsg{data: data}
@@ -514,6 +620,15 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	// Edit-mode submit dispatches to EditTransactionCommand on the existing
+	// transaction. Capture the existing entity before closing the dialog
+	// (the close clears txnDialogData).
+	editing := a.txnDialogData.mode == transactionDialogModeEdit && a.txnDialogData.existing != nil
+	var existing *transaction.Transaction
+	if editing {
+		existing = a.txnDialogData.existing
+	}
+
 	// Close dialog before async save for responsive UI
 	a.closeTransactionDialog()
 
@@ -526,6 +641,32 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
 			payeeID = py.ID
+		}
+
+		if editing {
+			updated := *existing
+			updated.Date = date
+			updated.Amount = amount
+			updated.Status = status
+			updated.SetMemo(memo)
+			if !payeeID.IsNil() {
+				updated.PayeeID = types.NullableID{ID: payeeID, Valid: true}
+			} else {
+				updated.PayeeID = types.NullableID{Valid: false}
+			}
+			if !categoryID.IsNil() {
+				updated.CategoryID = types.NullableID{ID: categoryID, Valid: true}
+			} else {
+				updated.CategoryID = types.NullableID{Valid: false}
+			}
+
+			if a.transactionSvc != nil && a.undoManager != nil {
+				cmd := undo.NewEditTransactionCommand(a.transactionSvc, &updated)
+				if err := a.undoManager.Execute(cmd); err != nil {
+					return errMsg{err: fmt.Errorf("failed to save transaction: %w", err)}
+				}
+			}
+			return transactionDialogSavedMsg{savedDate: date}
 		}
 
 		// Build transaction
