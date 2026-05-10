@@ -21,6 +21,8 @@ func (a *App) activeTable() *Table {
 	switch a.currentView {
 	case ViewRegister:
 		return a.table
+	case ViewReconciliation:
+		return a.reconciliationTable
 	case ViewScheduled:
 		return a.scheduledTable
 	case ViewInvestmentRegister:

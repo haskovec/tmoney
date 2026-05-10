@@ -124,6 +124,12 @@ func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd
 	}
 	tbl.SetCursor(rowIdx)
 
+	// Reconciliation: clicking a row toggles its cleared checkbox — the
+	// primary action on this view (Space does the same on the keyboard).
+	if a.currentView == ViewReconciliation {
+		return a.toggleReconciliationCheck()
+	}
+
 	// Prices landing list: double-click drills into a ticker's history.
 	if a.currentView == ViewPrices && a.priceView != nil && a.priceView.mode == pricesViewList {
 		if a.priceListClicks == nil {

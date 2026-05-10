@@ -329,6 +329,66 @@ func TestToggleReconciliationCheck(t *testing.T) {
 	}
 }
 
+func TestApp_MouseClick_ReconciliationView_TogglesCheck(t *testing.T) {
+	// On the reconciliation view, clicking a row should mark/unmark it as
+	// cleared — the user's expected primary interaction. Without this, only
+	// keyboard (Space) can toggle, leaving mouse users stuck.
+	txn1 := &transaction.Transaction{Status: transaction.StatusUncleared}
+	txn1.ID = types.NewID()
+	txn1.Amount = types.ZeroMoney
+	txn1.Date = types.Today()
+
+	txn2 := &transaction.Transaction{Status: transaction.StatusUncleared}
+	txn2.ID = types.NewID()
+	txn2.Amount = types.ZeroMoney
+	txn2.Date = types.Today()
+
+	app := &App{
+		currentView: ViewReconciliation,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   NewStatusBar(),
+		width:       100,
+		height:      24,
+		reconciliation: &reconciliationViewData{
+			session: &reconciliation.Session{
+				AccountID:        types.NewID(),
+				StatementDate:    types.Today(),
+				StatementBalance: types.ZeroMoney,
+			},
+			account:       &account.Account{Name: "Checking"},
+			candidates:    []*transaction.Transaction{txn1, txn2},
+			checkedIDs:    make(map[types.ID]bool),
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+	app.styles.Resize(100, 24)
+	app.buildReconciliationTable()
+
+	// m.Y = 5 → contentY = 4 → tableY = 1 → data row 0 (first transaction).
+	msg := tea.MouseClickMsg{X: 10, Y: 5, Button: tea.MouseLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if !updatedApp.reconciliation.checkedIDs[txn1.ID] {
+		t.Errorf("clicking row 0 should toggle txn1 checked; got checkedIDs=%v", updatedApp.reconciliation.checkedIDs)
+	}
+	if updatedApp.reconciliation.checkedIDs[txn2.ID] {
+		t.Error("clicking row 0 should not affect txn2")
+	}
+
+	// Clicking the same row again should untoggle.
+	model, _ = updatedApp.Update(msg)
+	updatedApp = model.(*App)
+
+	if updatedApp.reconciliation.checkedIDs[txn1.ID] {
+		t.Errorf("clicking row 0 a second time should uncheck txn1; got checkedIDs=%v", updatedApp.reconciliation.checkedIDs)
+	}
+}
+
 func TestCheckAllReconciliation(t *testing.T) {
 	txn1 := &transaction.Transaction{Status: transaction.StatusUncleared}
 	txn1.ID = types.NewID()
