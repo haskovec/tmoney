@@ -450,14 +450,16 @@ type Dialog struct {
 // dialogHorizontalOverhead is the horizontal space used by dialog border (2) and padding (4).
 const dialogHorizontalOverhead = 6
 
-// NewDialog creates a new Dialog with the given title and default Cancel/Save buttons.
+// NewDialog creates a new Dialog with the given title and default Save/Cancel
+// buttons. The primary action sits on the left so a keyboard user tabbing
+// through the form lands on it first; Esc still cancels.
 func NewDialog(title string) *Dialog {
 	return &Dialog{
 		title: title,
 		width: 56,
 		buttons: []DialogButton{
-			{Label: "Cancel"},
 			{Label: "Save", Primary: true},
+			{Label: "Cancel"},
 		},
 	}
 }

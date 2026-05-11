@@ -165,6 +165,12 @@ type App struct {
 	reconciliation      *reconciliationViewData
 	reconciliationTable *Table
 	reconDialog         *Dialog
+	// reconDialogLastStatementDate is the statement date used by the most
+	// recent Start Reconciliation in this process. The Start Reconciliation
+	// dialog seeds its Statement Date field from this on subsequent opens so
+	// reconciling consecutive monthly statements is one Enter per month.
+	// Cancel does not update it. Process-lifetime only — not persisted.
+	reconDialogLastStatementDate types.Date
 
 	// Security view state
 	securityView         *securityViewData

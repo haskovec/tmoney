@@ -62,8 +62,8 @@ func buildSpinOffDialog(securityOptions []string, securityIDs []types.ID, preSel
 	f.Required = true
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Execute", Primary: true},
+		{Label: "Cancel"},
 	})
 
 	d.SetVisible(true)

@@ -80,10 +80,10 @@ func buildLinkTransfersDialog(r *transferlink.Result) *Dialog {
 		primary = "Close"
 	}
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: primary, Primary: true},
+		{Label: "Cancel"},
 	})
-	d.SetFocusIndex(len(d.Fields()) + 1)
+	d.SetFocusIndex(len(d.Fields()))
 	d.SetVisible(true)
 	return d
 }

@@ -50,8 +50,8 @@ func buildStockSplitDialog(securityOptions []string, securityIDs []types.ID, pre
 	f.Required = true
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Execute", Primary: true},
+		{Label: "Cancel"},
 	})
 
 	d.SetVisible(true)

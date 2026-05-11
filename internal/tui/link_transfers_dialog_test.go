@@ -59,7 +59,7 @@ func TestBuildLinkTransfersDialog(t *testing.T) {
 	t.Run("focus defaults to primary button", func(t *testing.T) {
 		r := &transferlink.Result{Scanned: 0}
 		d := buildLinkTransfersDialog(r)
-		want := len(d.Fields()) + 1
+		want := len(d.Fields())
 		if d.FocusIndex() != want {
 			t.Errorf("focusIndex = %d, want %d", d.FocusIndex(), want)
 		}

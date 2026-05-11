@@ -40,8 +40,8 @@ func buildNewFileDialog() *Dialog {
 	f.Required = true
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Create", Primary: true},
+		{Label: "Cancel"},
 	})
 	d.SetVisible(true)
 	return d
@@ -56,8 +56,8 @@ func buildOpenFileDialog() *Dialog {
 	f.Required = true
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Open", Primary: true},
+		{Label: "Cancel"},
 	})
 	d.SetVisible(true)
 	return d
@@ -76,8 +76,8 @@ func buildOpenRecentDialog(recentFiles []string) *Dialog {
 	}
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Open", Primary: true},
+		{Label: "Cancel"},
 	})
 	d.SetVisible(true)
 	return d
@@ -327,8 +327,8 @@ func buildBrowseDialog(dir string, entries []string) *Dialog {
 	d.SetWidth(60)
 	d.AddListField("File", entries, 0, 12)
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Open", Primary: true},
+		{Label: "Cancel"},
 	})
 	d.SetVisible(true)
 	return d

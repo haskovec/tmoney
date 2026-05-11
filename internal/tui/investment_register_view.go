@@ -422,8 +422,8 @@ func (a *App) openInvestmentTypeSelector(editing bool) {
 	d.SetWidth(40)
 	d.AddSelectField("Type", options, selectedIdx)
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "OK", Primary: true},
+		{Label: "Cancel"},
 	})
 	d.SetVisible(true)
 	a.investmentTypeSelector = d

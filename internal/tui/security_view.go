@@ -424,8 +424,8 @@ func buildAddSecurityDialog() *Dialog {
 	d.AddTextField("Exchange", "", "e.g. NASDAQ", 20)
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Save", Primary: true},
+		{Label: "Cancel"},
 	})
 
 	return d
@@ -484,8 +484,8 @@ func buildEditSecurityDialog(sec *security.Security) *Dialog {
 	d.AddTextField("Exchange", exchange, "e.g. NASDAQ", 20)
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Save", Primary: true},
+		{Label: "Cancel"},
 	})
 
 	return d

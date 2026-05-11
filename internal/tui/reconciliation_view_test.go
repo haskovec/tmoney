@@ -12,7 +12,7 @@ import (
 )
 
 func TestBuildStartReconciliationDialog(t *testing.T) {
-	d := buildStartReconciliationDialog()
+	d := buildStartReconciliationDialog(types.ZeroDate)
 
 	if d == nil {
 		t.Fatal("buildStartReconciliationDialog() returned nil")
@@ -41,12 +41,25 @@ func TestBuildStartReconciliationDialog(t *testing.T) {
 	}
 }
 
+// TestBuildStartReconciliationDialog_SeedsStatementDate verifies that a
+// non-zero seed date pre-fills the Statement Date field in MM/DD/YYYY form
+// — so reconciling consecutive monthly statements doesn't re-enter the date
+// each time.
+func TestBuildStartReconciliationDialog_SeedsStatementDate(t *testing.T) {
+	seed := types.NewDate(2024, 3, 15)
+	d := buildStartReconciliationDialog(seed)
+
+	if got, want := d.Fields()[0].Value, "03/15/2024"; got != want {
+		t.Errorf("Statement Date = %q, want %q", got, want)
+	}
+}
+
 // TestBuildStartReconciliationDialog_StatementDateMaskedOverwrite verifies
 // the start-reconciliation dialog's Statement Date field uses overwrite-style
 // masked input — typing a digit replaces the digit at the cursor and
 // auto-advances over the slash.
 func TestBuildStartReconciliationDialog_StatementDateMaskedOverwrite(t *testing.T) {
-	d := buildStartReconciliationDialog()
+	d := buildStartReconciliationDialog(types.ZeroDate)
 	d.SetFocusIndex(0)
 
 	// Seed Value to a known date so the overwrite is deterministic.
@@ -58,6 +71,24 @@ func TestBuildStartReconciliationDialog_StatementDateMaskedOverwrite(t *testing.
 
 	if got := d.Fields()[0].Value; got != "05/15/2024" {
 		t.Errorf("Value = %q, want %q (overwrite + skip slash)", got, "05/15/2024")
+	}
+}
+
+// TestApp_ShowStartReconciliationDialog_UsesStickyStatementDate verifies the
+// App seeds the Statement Date field from reconDialogLastStatementDate on
+// subsequent opens — so reconciling consecutive monthly statements doesn't
+// re-enter the date each time.
+func TestApp_ShowStartReconciliationDialog_UsesStickyStatementDate(t *testing.T) {
+	app := &App{
+		reconDialogLastStatementDate: types.NewDate(2024, 3, 15),
+	}
+	app.showStartReconciliationDialog()
+
+	if app.reconDialog == nil {
+		t.Fatal("reconDialog should be created")
+	}
+	if got, want := app.reconDialog.Fields()[0].Value, "03/15/2024"; got != want {
+		t.Errorf("Statement Date = %q, want %q", got, want)
 	}
 }
 

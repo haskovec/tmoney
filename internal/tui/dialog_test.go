@@ -28,11 +28,11 @@ func TestNewDialog(t *testing.T) {
 	if len(d.Buttons()) != 2 {
 		t.Errorf("Buttons() should have 2 defaults, got %d", len(d.Buttons()))
 	}
-	if d.Buttons()[0].Label != "Cancel" {
-		t.Errorf("first button = %q, want %q", d.Buttons()[0].Label, "Cancel")
+	if d.Buttons()[0].Label != "Save" || !d.Buttons()[0].Primary {
+		t.Error("first button should be primary Save")
 	}
-	if d.Buttons()[1].Label != "Save" || !d.Buttons()[1].Primary {
-		t.Error("second button should be primary Save")
+	if d.Buttons()[1].Label != "Cancel" {
+		t.Errorf("second button = %q, want %q", d.Buttons()[1].Label, "Cancel")
 	}
 }
 
@@ -189,8 +189,8 @@ func TestDialog_FocusNext_WrapsAround(t *testing.T) {
 		t.Errorf("FocusIndex() = %d, want 1", d.FocusIndex())
 	}
 
-	d.FocusNext() // -> 2 (Cancel button)
-	d.FocusNext() // -> 3 (Save button)
+	d.FocusNext() // -> 2 (Save button)
+	d.FocusNext() // -> 3 (Cancel button)
 	d.FocusNext() // -> 0 (wrap)
 	if d.FocusIndex() != 0 {
 		t.Errorf("FocusIndex() after wrap = %d, want 0", d.FocusIndex())
@@ -247,7 +247,7 @@ func TestDialog_FocusedField(t *testing.T) {
 		t.Error("FocusedField() should return the first field")
 	}
 
-	d.SetFocusIndex(1) // Cancel button
+	d.SetFocusIndex(1) // Save button
 	if d.FocusedField() != nil {
 		t.Error("FocusedField() should be nil when focus is on button")
 	}
@@ -261,7 +261,7 @@ func TestDialog_IsFocusOnButton(t *testing.T) {
 		t.Error("should not be on button initially")
 	}
 
-	d.SetFocusIndex(1) // Cancel button
+	d.SetFocusIndex(1) // Save button
 	if !d.IsFocusOnButton() {
 		t.Error("should be on button at index 1")
 	}
@@ -270,7 +270,7 @@ func TestDialog_IsFocusOnButton(t *testing.T) {
 func TestDialog_FocusedButtonIndex(t *testing.T) {
 	d := NewDialog("Test")
 	d.AddTextField("A", "", "", 0)
-	// index 0 = field, 1 = Cancel, 2 = Save
+	// index 0 = field, 1 = Save (primary), 2 = Cancel
 
 	if d.FocusedButtonIndex() != -1 {
 		t.Errorf("FocusedButtonIndex() = %d, want -1 (on field)", d.FocusedButtonIndex())
@@ -586,8 +586,8 @@ func TestDialog_HandleKey_ShiftTab(t *testing.T) {
 func TestDialog_HandleKey_EnterOnPrimaryButton(t *testing.T) {
 	d := NewDialog("Test")
 	d.AddTextField("A", "", "", 0)
-	// buttons: Cancel (idx 1), Save/Primary (idx 2)
-	d.SetFocusIndex(2) // Save button
+	// buttons: Save/Primary (idx 1), Cancel (idx 2)
+	d.SetFocusIndex(1) // Save button
 
 	action := d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if action != DialogActionSubmit {
@@ -598,7 +598,7 @@ func TestDialog_HandleKey_EnterOnPrimaryButton(t *testing.T) {
 func TestDialog_HandleKey_EnterOnCancelButton(t *testing.T) {
 	d := NewDialog("Test")
 	d.AddTextField("A", "", "", 0)
-	d.SetFocusIndex(1) // Cancel button
+	d.SetFocusIndex(2) // Cancel button
 
 	action := d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if action != DialogActionCancel {
@@ -1698,16 +1698,15 @@ func TestDialog_HitTestContent_ListField_DifferentItems(t *testing.T) {
 
 func TestDialog_HitTestContent_Button_Primary(t *testing.T) {
 	d := NewDialog("Test")
-	// Default buttons: Cancel (idx 0), Save (idx 1, primary)
+	// Default buttons: Save (idx 0, primary), Cancel (idx 1)
 	contentWidth := d.Width() - dialogHorizontalOverhead
 	buttonRow := d.ContentHeight() - 1
 
-	// Save button is the second button, positioned after Cancel with gaps
-	// We need to find x positions. Use brute force: try x values until we hit Save
+	// Save is the primary button at index 0. Brute-force x positions until we hit it.
 	found := false
 	for x := range contentWidth {
 		hit := d.HitTestContent(x, buttonRow, contentWidth)
-		if hit.Zone == DialogHitButton && hit.ButtonIndex == 1 {
+		if hit.Zone == DialogHitButton && hit.ButtonIndex == 0 {
 			found = true
 			break
 		}
@@ -1725,7 +1724,7 @@ func TestDialog_HitTestContent_Button_Cancel(t *testing.T) {
 	found := false
 	for x := range contentWidth {
 		hit := d.HitTestContent(x, buttonRow, contentWidth)
-		if hit.Zone == DialogHitButton && hit.ButtonIndex == 0 {
+		if hit.Zone == DialogHitButton && hit.ButtonIndex == 1 {
 			found = true
 			break
 		}
@@ -1891,7 +1890,7 @@ func TestDialog_HandleMouse_ClickButton_Submit(t *testing.T) {
 	var saveX int
 	for x := range contentWidth {
 		hit := d.HitTestContent(x, buttonRow, contentWidth)
-		if hit.Zone == DialogHitButton && hit.ButtonIndex == 1 {
+		if hit.Zone == DialogHitButton && hit.ButtonIndex == 0 {
 			saveX = x
 			break
 		}
@@ -1921,7 +1920,7 @@ func TestDialog_HandleMouse_ClickButton_Cancel(t *testing.T) {
 	var cancelX int
 	for x := range contentWidth {
 		hit := d.HitTestContent(x, buttonRow, contentWidth)
-		if hit.Zone == DialogHitButton && hit.ButtonIndex == 0 {
+		if hit.Zone == DialogHitButton && hit.ButtonIndex == 1 {
 			cancelX = x
 			break
 		}

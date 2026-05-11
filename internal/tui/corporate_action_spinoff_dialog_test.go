@@ -126,14 +126,14 @@ func TestBuildSpinOffDialog_NewDialog(t *testing.T) {
 	if len(buttons) != 2 {
 		t.Fatalf("expected 2 buttons, got %d", len(buttons))
 	}
-	if buttons[0].Label != "Cancel" {
-		t.Errorf("button 0 = %q, want Cancel", buttons[0].Label)
+	if buttons[0].Label != "Execute" {
+		t.Errorf("button 0 = %q, want Execute", buttons[0].Label)
 	}
-	if buttons[1].Label != "Execute" {
-		t.Errorf("button 1 = %q, want Execute", buttons[1].Label)
-	}
-	if !buttons[1].Primary {
+	if !buttons[0].Primary {
 		t.Error("Execute button should be primary")
+	}
+	if buttons[1].Label != "Cancel" {
+		t.Errorf("button 1 = %q, want Cancel", buttons[1].Label)
 	}
 }
 

@@ -798,8 +798,8 @@ func buildAddPriceDialog(sec *security.Security) *Dialog {
 	f.Required = true
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Save", Primary: true},
+		{Label: "Cancel"},
 	})
 
 	return d
@@ -818,8 +818,8 @@ func buildEditPriceDialog(sec *security.Security, p *price.Price) *Dialog {
 	f.Required = true
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Save", Primary: true},
+		{Label: "Cancel"},
 	})
 
 	return d
@@ -928,8 +928,8 @@ func buildImportPriceDialog() *Dialog {
 	d.AddCheckboxField("Overwrite existing", false)
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Import", Primary: true},
+		{Label: "Cancel"},
 	})
 
 	return d

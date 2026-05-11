@@ -55,8 +55,8 @@ func buildMergerDialog(securityOptions []string, securityIDs []types.ID, preSele
 	d.AddTextField("Cash Per Share", "", "0.00", 10)
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Execute", Primary: true},
+		{Label: "Cancel"},
 	})
 
 	d.SetVisible(true)

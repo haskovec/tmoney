@@ -531,8 +531,8 @@ func TestBuildNewFileDialog_ButtonLabel(t *testing.T) {
 	if len(buttons) < 2 {
 		t.Fatalf("expected at least 2 buttons, got %d", len(buttons))
 	}
-	if buttons[1].Label != "Create" {
-		t.Errorf("primary button label = %q, want 'Create'", buttons[1].Label)
+	if buttons[0].Label != "Create" {
+		t.Errorf("primary button label = %q, want 'Create'", buttons[0].Label)
 	}
 }
 
@@ -542,8 +542,8 @@ func TestBuildOpenFileDialog_ButtonLabel(t *testing.T) {
 	if len(buttons) < 2 {
 		t.Fatalf("expected at least 2 buttons, got %d", len(buttons))
 	}
-	if buttons[1].Label != "Open" {
-		t.Errorf("primary button label = %q, want 'Open'", buttons[1].Label)
+	if buttons[0].Label != "Open" {
+		t.Errorf("primary button label = %q, want 'Open'", buttons[0].Label)
 	}
 }
 
@@ -553,8 +553,8 @@ func TestBuildOpenRecentDialog_ButtonLabel(t *testing.T) {
 	if len(buttons) < 2 {
 		t.Fatalf("expected at least 2 buttons, got %d", len(buttons))
 	}
-	if buttons[1].Label != "Open" {
-		t.Errorf("primary button label = %q, want 'Open'", buttons[1].Label)
+	if buttons[0].Label != "Open" {
+		t.Errorf("primary button label = %q, want 'Open'", buttons[0].Label)
 	}
 }
 
@@ -659,8 +659,8 @@ func TestBuildBrowseDialog(t *testing.T) {
 	}
 
 	buttons := d.Buttons()
-	if buttons[1].Label != "Open" {
-		t.Errorf("primary button = %q, want 'Open'", buttons[1].Label)
+	if buttons[0].Label != "Open" {
+		t.Errorf("primary button = %q, want 'Open'", buttons[0].Label)
 	}
 }
 

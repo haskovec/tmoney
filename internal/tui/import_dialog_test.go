@@ -140,9 +140,9 @@ func TestBuildImportConfirmDialog(t *testing.T) {
 
 	t.Run("focus defaults to primary button", func(t *testing.T) {
 		d := buildImportConfirmDialog(state)
-		// Primary button is the second button, so focus index should be
-		// fields_count + 1 (skipping fields and the Cancel button).
-		want := len(d.Fields()) + 1
+		// Primary button is the first button, so focus index should be
+		// fields_count (the first focusable past the fields is the primary).
+		want := len(d.Fields())
 		if d.FocusIndex() != want {
 			t.Errorf("focusIndex = %d, want %d", d.FocusIndex(), want)
 		}

@@ -106,8 +106,8 @@ func buildImportOptionsDialog(accounts []*account.Account, defaultAccountID type
 	d.AddSelectField("Duplicates", importDuplicateOptions, 0)
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Preview", Primary: true},
+		{Label: "Cancel"},
 	})
 	d.SetVisible(true)
 	return d, ids
@@ -125,8 +125,8 @@ func buildImportSourcePickerDialog(sources []string, target string) *Dialog {
 	d.AddSelectField("Source account", sources, 0)
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Continue", Primary: true},
+		{Label: "Cancel"},
 	})
 	d.SetVisible(true)
 	return d
@@ -181,11 +181,11 @@ func buildImportConfirmDialog(state *importDialogState) *Dialog {
 		primary = "Close"
 	}
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: primary, Primary: true},
+		{Label: "Cancel"},
 	})
 	// Focus the primary button so Enter immediately confirms.
-	d.SetFocusIndex(len(d.Fields()) + 1)
+	d.SetFocusIndex(len(d.Fields()))
 	d.SetVisible(true)
 	return d
 }

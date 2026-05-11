@@ -48,27 +48,34 @@ type reconciliationClearedTotalMsg struct {
 	clearedTotal types.Money
 }
 
-// buildStartReconciliationDialog builds the dialog for starting a reconciliation session.
-func buildStartReconciliationDialog() *Dialog {
+// buildStartReconciliationDialog builds the dialog for starting a
+// reconciliation session. seedDate seeds the Statement Date field; pass the
+// zero value to leave the field blank (first open in a session).
+func buildStartReconciliationDialog(seedDate types.Date) *Dialog {
 	d := NewDialog("Start Reconciliation")
 
-	f := d.AddDateField("Statement Date", "")
+	dateStr := ""
+	if !seedDate.IsZero() {
+		dateStr = seedDate.Time().Format("01/02/2006")
+	}
+	f := d.AddDateField("Statement Date", dateStr)
 	f.Required = true
 
 	f = d.AddTextField("Statement Balance", "", "0.00", 12)
 	f.Required = true
 
 	d.SetButtons([]DialogButton{
-		{Label: "Cancel"},
 		{Label: "Start", Primary: true},
+		{Label: "Cancel"},
 	})
 
 	return d
 }
 
-// showStartReconciliationDialog shows the start reconciliation dialog.
+// showStartReconciliationDialog shows the start reconciliation dialog, seeded
+// with the statement date from the last successful Start in this session.
 func (a *App) showStartReconciliationDialog() {
-	a.reconDialog = buildStartReconciliationDialog()
+	a.reconDialog = buildStartReconciliationDialog(a.reconDialogLastStatementDate)
 	a.reconDialog.SetVisible(true)
 }
 
@@ -113,6 +120,7 @@ func (a *App) submitStartReconciliation() (tea.Model, tea.Cmd) {
 
 	a.reconDialog.SetVisible(false)
 	a.reconDialog = nil
+	a.reconDialogLastStatementDate = statementDate
 
 	return a, a.startReconciliation(accountID, statementDate, balance)
 }
