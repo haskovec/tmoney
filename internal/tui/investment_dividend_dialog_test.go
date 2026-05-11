@@ -177,14 +177,14 @@ func TestBuildReinvestDividendDialog_NewTransaction(t *testing.T) {
 		t.Error("shares field should be required")
 	}
 
-	// Field 3: Price/Share (text)
-	if fields[3].Label != "Price/Share" {
-		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Price/Share")
+	// Field 3: Total (text)
+	if fields[3].Label != "Total" {
+		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Total")
 	}
 
-	// Field 4: Total (text)
-	if fields[4].Label != "Total" {
-		t.Errorf("field 4 label = %q, want %q", fields[4].Label, "Total")
+	// Field 4: Price/Share (text)
+	if fields[4].Label != "Price/Share" {
+		t.Errorf("field 4 label = %q, want %q", fields[4].Label, "Price/Share")
 	}
 
 	// Field 5: Memo (text)
@@ -220,11 +220,11 @@ func TestBuildReinvestDividendDialog_EditTransaction(t *testing.T) {
 	if fields[2].Value != "10" {
 		t.Errorf("shares = %q, want %q", fields[2].Value, "10")
 	}
-	if fields[3].Value != "185.00" {
-		t.Errorf("price = %q, want %q", fields[3].Value, "185.00")
+	if fields[3].Value != "1850.00" {
+		t.Errorf("total = %q, want %q", fields[3].Value, "1850.00")
 	}
-	if fields[4].Value != "1850.00" {
-		t.Errorf("total = %q, want %q", fields[4].Value, "1850.00")
+	if fields[4].Value != "185.00" {
+		t.Errorf("price = %q, want %q", fields[4].Value, "185.00")
 	}
 	if fields[5].Value != "DRIP" {
 		t.Errorf("memo = %q, want %q", fields[5].Value, "DRIP")
@@ -426,8 +426,8 @@ func TestSubmitReinvestDividendDialog_ValidationErrors(t *testing.T) {
 	fields := app.dividendDialog.Fields()
 	fields[0].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty shares
-	fields[3].Value = ""           // no price
-	fields[4].Value = ""           // no total
+	fields[3].Value = ""           // no total
+	fields[4].Value = ""           // no price
 
 	model, cmd := app.submitReinvestDividendDialog()
 	updatedApp := model.(*App)
@@ -447,10 +447,10 @@ func TestSubmitReinvestDividendDialog_ValidationErrors(t *testing.T) {
 		t.Error("shares field should have error")
 	}
 	if fields[3].Error == "" {
-		t.Error("price field should have error when both price and total empty")
+		t.Error("total field should have error when both price and total empty")
 	}
 	if fields[4].Error == "" {
-		t.Error("total field should have error when both price and total empty")
+		t.Error("price field should have error when both price and total empty")
 	}
 }
 
@@ -480,7 +480,7 @@ func TestSubmitReinvestDividendDialog_ValidWithPrice(t *testing.T) {
 	fields := app.dividendDialog.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "10"         // shares
-	fields[3].Value = "185.00"     // price per share
+	fields[4].Value = "185.00"     // price per share
 
 	model, cmd := app.submitReinvestDividendDialog()
 	updatedApp := model.(*App)
@@ -519,7 +519,7 @@ func TestSubmitReinvestDividendDialog_ValidWithTotal(t *testing.T) {
 	fields := app.dividendDialog.Fields()
 	fields[0].Value = "06/01/2024" // date
 	fields[2].Value = "5"          // shares
-	fields[4].Value = "925.00"     // total amount
+	fields[3].Value = "925.00"     // total amount
 
 	model, cmd := app.submitReinvestDividendDialog()
 	updatedApp := model.(*App)
@@ -545,7 +545,7 @@ func TestSubmitReinvestDividendDialog_NoSecurities(t *testing.T) {
 	fields := app.dividendDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "185.00"
+	fields[4].Value = "185.00"
 
 	model, _ := app.submitReinvestDividendDialog()
 	updatedApp := model.(*App)
@@ -582,8 +582,8 @@ func TestSubmitReinvestDividendDialog_InvalidPrice(t *testing.T) {
 	fields := app.dividendDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "not-valid" // invalid price
-	fields[4].Value = ""
+	fields[3].Value = ""
+	fields[4].Value = "not-valid" // invalid price
 
 	model, _ := app.submitReinvestDividendDialog()
 	updatedApp := model.(*App)
@@ -592,7 +592,7 @@ func TestSubmitReinvestDividendDialog_InvalidPrice(t *testing.T) {
 		t.Error("dialog should remain open on price error")
 	}
 	fields = updatedApp.dividendDialog.Fields()
-	if fields[3].Error == "" {
+	if fields[4].Error == "" {
 		t.Error("price field should have error")
 	}
 }

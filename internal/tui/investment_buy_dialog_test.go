@@ -152,14 +152,14 @@ func TestBuildBuyDialog_NewTransaction(t *testing.T) {
 		t.Errorf("shares default = %q, want empty for new", fields[2].Value)
 	}
 
-	// Field 3: Price/Share (text)
-	if fields[3].Label != "Price/Share" {
-		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Price/Share")
+	// Field 3: Total (text)
+	if fields[3].Label != "Total" {
+		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Total")
 	}
 
-	// Field 4: Total (text)
-	if fields[4].Label != "Total" {
-		t.Errorf("field 4 label = %q, want %q", fields[4].Label, "Total")
+	// Field 4: Price/Share (text)
+	if fields[4].Label != "Price/Share" {
+		t.Errorf("field 4 label = %q, want %q", fields[4].Label, "Price/Share")
 	}
 
 	// Field 5: Commission (text)
@@ -272,14 +272,14 @@ func TestBuildBuyDialog_EditTransaction(t *testing.T) {
 		t.Errorf("shares = %q, want %q", fields[2].Value, "10")
 	}
 
-	// Price/Share
-	if fields[3].Value != "185.00" {
-		t.Errorf("price = %q, want %q", fields[3].Value, "185.00")
+	// Total (negative stored, displayed as positive)
+	if fields[3].Value != "1850.00" {
+		t.Errorf("total = %q, want %q", fields[3].Value, "1850.00")
 	}
 
-	// Total (negative stored, displayed as positive)
-	if fields[4].Value != "1850.00" {
-		t.Errorf("total = %q, want %q", fields[4].Value, "1850.00")
+	// Price/Share
+	if fields[4].Value != "185.00" {
+		t.Errorf("price = %q, want %q", fields[4].Value, "185.00")
 	}
 
 	// Commission
@@ -417,8 +417,8 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 	fields := app.buyDialog.Fields()
 	fields[0].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty shares
-	fields[3].Value = ""           // no price
-	fields[4].Value = ""           // no total
+	fields[3].Value = ""           // no total
+	fields[4].Value = ""           // no price
 
 	model, cmd := app.submitBuyDialog()
 	updatedApp := model.(*App)
@@ -440,10 +440,10 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 		t.Error("shares field should have error")
 	}
 	if fields[3].Error == "" {
-		t.Error("price field should have error when both price and total are empty")
+		t.Error("total field should have error when both price and total are empty")
 	}
 	if fields[4].Error == "" {
-		t.Error("total field should have error when both price and total are empty")
+		t.Error("price field should have error when both price and total are empty")
 	}
 }
 
@@ -473,7 +473,7 @@ func TestSubmitBuyDialog_ValidWithPricePerShare(t *testing.T) {
 	fields := app.buyDialog.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "10"         // shares
-	fields[3].Value = "185.00"     // price per share
+	fields[4].Value = "185.00"     // price per share
 
 	model, cmd := app.submitBuyDialog()
 	updatedApp := model.(*App)
@@ -513,7 +513,7 @@ func TestSubmitBuyDialog_ValidWithTotal(t *testing.T) {
 	fields := app.buyDialog.Fields()
 	fields[0].Value = "06/01/2024" // date
 	fields[2].Value = "5"          // shares
-	fields[4].Value = "925.00"     // total amount
+	fields[3].Value = "925.00"     // total amount
 
 	model, cmd := app.submitBuyDialog()
 	updatedApp := model.(*App)
@@ -538,7 +538,7 @@ func TestSubmitBuyDialog_NoSecurities(t *testing.T) {
 	fields := app.buyDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "185.00"
+	fields[4].Value = "185.00"
 
 	model, _ := app.submitBuyDialog()
 	updatedApp := model.(*App)
@@ -575,7 +575,7 @@ func TestSubmitBuyDialog_InvalidCommission(t *testing.T) {
 	fields := app.buyDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "185.00"
+	fields[4].Value = "185.00"
 	fields[5].Value = "not-a-number" // invalid commission
 
 	model, _ := app.submitBuyDialog()
@@ -713,8 +713,8 @@ func TestSubmitBuyDialog_InvalidPrice(t *testing.T) {
 	fields := app.buyDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "not-valid" // invalid price
-	fields[4].Value = ""
+	fields[3].Value = ""
+	fields[4].Value = "not-valid" // invalid price
 
 	model, _ := app.submitBuyDialog()
 	updatedApp := model.(*App)
@@ -723,7 +723,7 @@ func TestSubmitBuyDialog_InvalidPrice(t *testing.T) {
 		t.Error("dialog should remain open on price error")
 	}
 	fields = updatedApp.buyDialog.Fields()
-	if fields[3].Error == "" {
+	if fields[4].Error == "" {
 		t.Error("price field should have error")
 	}
 }
@@ -750,8 +750,8 @@ func TestSubmitBuyDialog_InvalidTotal(t *testing.T) {
 	fields := app.buyDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = ""
-	fields[4].Value = "not-valid" // invalid total
+	fields[3].Value = "not-valid" // invalid total
+	fields[4].Value = ""
 
 	model, _ := app.submitBuyDialog()
 	updatedApp := model.(*App)
@@ -760,7 +760,7 @@ func TestSubmitBuyDialog_InvalidTotal(t *testing.T) {
 		t.Error("dialog should remain open on total error")
 	}
 	fields = updatedApp.buyDialog.Fields()
-	if fields[4].Error == "" {
+	if fields[3].Error == "" {
 		t.Error("total field should have error")
 	}
 }
@@ -789,7 +789,7 @@ func TestSubmitBuyDialog_WithCommissionAndMemo(t *testing.T) {
 	fields := app.buyDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "185.00"
+	fields[4].Value = "185.00"
 	fields[5].Value = "4.95"      // commission
 	fields[6].Value = "Buy Apple" // memo
 
@@ -827,7 +827,7 @@ func TestSubmitBuyDialog_DollarSignInCommission(t *testing.T) {
 	fields := app.buyDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "$185.00" // dollar sign in price
+	fields[4].Value = "$185.00" // dollar sign in price
 	fields[5].Value = "$4.95"   // dollar sign in commission
 
 	model, cmd := app.submitBuyDialog()

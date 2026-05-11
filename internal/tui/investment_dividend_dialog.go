@@ -77,7 +77,9 @@ func buildDividendDialog(securityOptions []string, editTxn *investment.Transacti
 }
 
 // buildReinvestDividendDialog creates a Dialog for entering a reinvested dividend transaction.
-// Field order: Date(0), Security(1), Shares(2), Price/Share(3), Total(4), Memo(5).
+// Field order: Date(0), Security(1), Shares(2), Total(3), Price/Share(4), Memo(5).
+// Total leads Price/Share because the common workflow is to type the total
+// (from a brokerage statement) and let Price/Share auto-compute.
 func buildReinvestDividendDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *Dialog {
 	d := NewDialog("Reinvest Dividend")
 	d.SetWidth(70)
@@ -110,13 +112,6 @@ func buildReinvestDividendDialog(securityOptions []string, editTxn *investment.T
 	f = d.AddTextField("Shares", sharesVal, "10", 12)
 	f.Required = true
 
-	// Price Per Share
-	priceVal := ""
-	if editTxn != nil && editTxn.PricePerShare.Valid {
-		priceVal = fmt.Sprintf("%.2f", editTxn.PricePerShare.Money.Float64())
-	}
-	d.AddTextField("Price/Share", priceVal, "185.00", 12)
-
 	// Total Amount
 	totalVal := ""
 	if editTxn != nil && !editTxn.TotalAmount.IsZero() {
@@ -127,6 +122,13 @@ func buildReinvestDividendDialog(securityOptions []string, editTxn *investment.T
 		totalVal = fmt.Sprintf("%.2f", amt.Float64())
 	}
 	d.AddTextField("Total", totalVal, "1850.00", 12)
+
+	// Price Per Share
+	priceVal := ""
+	if editTxn != nil && editTxn.PricePerShare.Valid {
+		priceVal = fmt.Sprintf("%.2f", editTxn.PricePerShare.Money.Float64())
+	}
+	d.AddTextField("Price/Share", priceVal, "185.00", 12)
 
 	// Memo
 	memoVal := ""
@@ -311,17 +313,17 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 		hasErrors = true
 	}
 
-	// Price/Share (index 3)
-	pricePerShare, err := parseOptionalMoneyInput(fields[3].Value)
+	// Total (index 3)
+	totalAmount, err := parseOptionalMoneyInput(fields[3].Value)
 	if err != nil {
-		fields[3].Error = "Invalid price"
+		fields[3].Error = "Invalid amount"
 		hasErrors = true
 	}
 
-	// Total (index 4)
-	totalAmount, err := parseOptionalMoneyInput(fields[4].Value)
+	// Price/Share (index 4)
+	pricePerShare, err := parseOptionalMoneyInput(fields[4].Value)
 	if err != nil {
-		fields[4].Error = "Invalid amount"
+		fields[4].Error = "Invalid price"
 		hasErrors = true
 	}
 

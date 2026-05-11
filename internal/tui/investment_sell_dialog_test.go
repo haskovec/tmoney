@@ -25,7 +25,7 @@ func TestBuildSellDialog_NewTransaction_NonLotTracking(t *testing.T) {
 	}
 
 	fields := d.Fields()
-	// Non-lot-tracking: Date, Security, Shares, Price/Share, Total, Commission, Memo = 7 fields
+	// Non-lot-tracking: Date, Security, Shares, Total, Price/Share, Commission, Memo = 7 fields
 	if len(fields) != 7 {
 		t.Fatalf("expected 7 fields for non-lot-tracking, got %d", len(fields))
 	}
@@ -64,14 +64,14 @@ func TestBuildSellDialog_NewTransaction_NonLotTracking(t *testing.T) {
 		t.Error("shares field should be required")
 	}
 
-	// Field 3: Price/Share
-	if fields[3].Label != "Price/Share" {
-		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Price/Share")
+	// Field 3: Total
+	if fields[3].Label != "Total" {
+		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Total")
 	}
 
-	// Field 4: Total
-	if fields[4].Label != "Total" {
-		t.Errorf("field 4 label = %q, want %q", fields[4].Label, "Total")
+	// Field 4: Price/Share
+	if fields[4].Label != "Price/Share" {
+		t.Errorf("field 4 label = %q, want %q", fields[4].Label, "Price/Share")
 	}
 
 	// Field 5: Commission
@@ -111,7 +111,7 @@ func TestBuildSellDialog_WithLots(t *testing.T) {
 	d := buildSellDialog(options, nil, ids, []*investment.Lot{lot1, lot2})
 
 	fields := d.Fields()
-	// With lots: Security, Date, Shares, Price/Share, Total, Commission, Memo + 2 lot fields = 9 fields
+	// With lots: Security, Date, Shares, Total, Price/Share, Commission, Memo + 2 lot fields = 9 fields
 	if len(fields) != 9 {
 		t.Fatalf("expected 9 fields with 2 lots, got %d", len(fields))
 	}
@@ -178,14 +178,14 @@ func TestBuildSellDialog_EditTransaction(t *testing.T) {
 		t.Errorf("shares = %q, want %q", fields[2].Value, "10")
 	}
 
-	// Price/Share
-	if fields[3].Value != "185.00" {
-		t.Errorf("price = %q, want %q", fields[3].Value, "185.00")
+	// Total (sell total is positive, display as positive)
+	if fields[3].Value != "1850.00" {
+		t.Errorf("total = %q, want %q", fields[3].Value, "1850.00")
 	}
 
-	// Total (sell total is positive, display as positive)
-	if fields[4].Value != "1850.00" {
-		t.Errorf("total = %q, want %q", fields[4].Value, "1850.00")
+	// Price/Share
+	if fields[4].Value != "185.00" {
+		t.Errorf("price = %q, want %q", fields[4].Value, "185.00")
 	}
 
 	// Commission
@@ -285,8 +285,8 @@ func TestSubmitSellDialog_ValidationErrors(t *testing.T) {
 	fields := app.sellDialog.Fields()
 	fields[0].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty shares
-	fields[3].Value = ""           // no price
-	fields[4].Value = ""           // no total
+	fields[3].Value = ""           // no total
+	fields[4].Value = ""           // no price
 
 	model, cmd := app.submitSellDialog()
 	updatedApp := model.(*App)
@@ -306,10 +306,10 @@ func TestSubmitSellDialog_ValidationErrors(t *testing.T) {
 		t.Error("shares field should have error")
 	}
 	if fields[3].Error == "" {
-		t.Error("price field should have error when both price and total are empty")
+		t.Error("total field should have error when both price and total are empty")
 	}
 	if fields[4].Error == "" {
-		t.Error("total field should have error when both price and total are empty")
+		t.Error("price field should have error when both price and total are empty")
 	}
 }
 
@@ -325,7 +325,7 @@ func TestSubmitSellDialog_NoSecurities(t *testing.T) {
 	fields := app.sellDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "185.00"
+	fields[4].Value = "185.00"
 
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
@@ -366,7 +366,7 @@ func TestSubmitSellDialog_ValidWithPricePerShare(t *testing.T) {
 	fields := app.sellDialog.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "10"         // shares
-	fields[3].Value = "185.00"     // price per share
+	fields[4].Value = "185.00"     // price per share
 
 	model, cmd := app.submitSellDialog()
 	updatedApp := model.(*App)
@@ -406,7 +406,7 @@ func TestSubmitSellDialog_ValidWithTotal(t *testing.T) {
 	fields := app.sellDialog.Fields()
 	fields[0].Value = "06/01/2024"
 	fields[2].Value = "5"
-	fields[4].Value = "925.00"
+	fields[3].Value = "925.00"
 
 	model, cmd := app.submitSellDialog()
 	updatedApp := model.(*App)
@@ -442,7 +442,7 @@ func TestSubmitSellDialog_InvalidCommission(t *testing.T) {
 	fields := app.sellDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "185.00"
+	fields[4].Value = "185.00"
 	fields[5].Value = "not-a-number"
 
 	model, _ := app.submitSellDialog()
@@ -480,8 +480,8 @@ func TestSubmitSellDialog_InvalidPrice(t *testing.T) {
 	fields := app.sellDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "not-valid"
-	fields[4].Value = ""
+	fields[3].Value = ""
+	fields[4].Value = "not-valid"
 
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
@@ -490,7 +490,7 @@ func TestSubmitSellDialog_InvalidPrice(t *testing.T) {
 		t.Error("dialog should remain open on price error")
 	}
 	fields = updatedApp.sellDialog.Fields()
-	if fields[3].Error == "" {
+	if fields[4].Error == "" {
 		t.Error("price field should have error")
 	}
 }
@@ -518,8 +518,8 @@ func TestSubmitSellDialog_InvalidTotal(t *testing.T) {
 	fields := app.sellDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = ""
-	fields[4].Value = "not-valid"
+	fields[3].Value = "not-valid"
+	fields[4].Value = ""
 
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
@@ -528,7 +528,7 @@ func TestSubmitSellDialog_InvalidTotal(t *testing.T) {
 		t.Error("dialog should remain open on total error")
 	}
 	fields = updatedApp.sellDialog.Fields()
-	if fields[4].Error == "" {
+	if fields[3].Error == "" {
 		t.Error("total field should have error")
 	}
 }
@@ -558,7 +558,7 @@ func TestSubmitSellDialog_WithCommissionAndMemo(t *testing.T) {
 	fields := app.sellDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "185.00"
+	fields[4].Value = "185.00"
 	fields[5].Value = "4.95"
 	fields[6].Value = "Sell Apple"
 
@@ -597,7 +597,7 @@ func TestSubmitSellDialog_DollarSignInCommission(t *testing.T) {
 	fields := app.sellDialog.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
-	fields[3].Value = "$185.00"
+	fields[4].Value = "$185.00"
 	fields[5].Value = "$4.95"
 
 	model, cmd := app.submitSellDialog()
@@ -662,8 +662,8 @@ func TestSubmitSellDialog_WithLotAllocations(t *testing.T) {
 	fields[2].Value = "30"         // total shares to sell
 	fields[3].Value = "20"         // lot 1: sell 20 shares
 	fields[4].Value = "10"         // lot 2: sell 10 shares
-	fields[5].Value = "200.00"     // price per share
-	// fields[6] = Total, fields[7] = Commission, fields[8] = Memo
+	fields[6].Value = "200.00"     // price per share
+	// fields[5] = Total, fields[7] = Commission, fields[8] = Memo
 
 	model, cmd := app.submitSellDialog()
 	updatedApp := model.(*App)
@@ -718,8 +718,8 @@ func TestSubmitSellDialog_LotAllocationMismatch(t *testing.T) {
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "30"     // selling 30 shares
 	fields[3].Value = "20"     // lot 1 only 20 (mismatch: 20 != 30)
-	fields[4].Value = "185.00" // price per share
-	// fields[5] = Total, fields[6] = Commission, fields[7] = Memo
+	fields[5].Value = "185.00" // price per share
+	// fields[4] = Total, fields[6] = Commission, fields[7] = Memo
 
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
@@ -771,8 +771,8 @@ func TestSubmitSellDialog_LotAllocationExceedsAvailable(t *testing.T) {
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "20"     // selling 20 shares
 	fields[3].Value = "20"     // lot 1 only has 10 available
-	fields[4].Value = "185.00" // price per share
-	// fields[5] = Total, fields[6] = Commission, fields[7] = Memo
+	fields[5].Value = "185.00" // price per share
+	// fields[4] = Total, fields[6] = Commission, fields[7] = Memo
 
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
@@ -824,7 +824,7 @@ func TestSubmitSellDialog_InvalidLotAllocation(t *testing.T) {
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "abc"    // invalid lot allocation
-	fields[4].Value = "185.00" // price per share
+	fields[5].Value = "185.00" // price per share
 
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)

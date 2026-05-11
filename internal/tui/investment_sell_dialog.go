@@ -39,8 +39,10 @@ func buildLotLabel(lot *investment.Lot) string {
 
 // buildSellDialog creates a Dialog for entering a new sell transaction.
 // If lots is non-nil, lot allocation fields are added after the Shares field.
-// Field order: Date(0), Security(1), Shares(2), [lots...], Price/Share,
-// Total, Commission, Memo.
+// Field order: Date(0), Security(1), Shares(2), [lots...], Total,
+// Price/Share, Commission, Memo. Total leads Price/Share because the
+// common workflow is to type the total (from a brokerage statement) and
+// let Price/Share auto-compute.
 func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID, lots []*investment.Lot) *Dialog {
 	d := NewDialog("Sell Securities")
 	d.SetWidth(70)
@@ -78,13 +80,6 @@ func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, 
 		d.AddTextField(buildLotLabel(lot), "", "0", 12)
 	}
 
-	// Price Per Share
-	priceVal := ""
-	if editTxn != nil && editTxn.PricePerShare.Valid {
-		priceVal = fmt.Sprintf("%.2f", editTxn.PricePerShare.Money.Float64())
-	}
-	d.AddTextField("Price/Share", priceVal, "185.00", 12)
-
 	// Total Amount
 	totalVal := ""
 	if editTxn != nil && !editTxn.TotalAmount.IsZero() {
@@ -95,6 +90,13 @@ func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, 
 		totalVal = fmt.Sprintf("%.2f", amt.Float64())
 	}
 	d.AddTextField("Total", totalVal, "1850.00", 12)
+
+	// Price Per Share
+	priceVal := ""
+	if editTxn != nil && editTxn.PricePerShare.Valid {
+		priceVal = fmt.Sprintf("%.2f", editTxn.PricePerShare.Money.Float64())
+	}
+	d.AddTextField("Price/Share", priceVal, "185.00", 12)
 
 	// Commission
 	commVal := ""
@@ -186,7 +188,7 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 
 	fields := a.sellDialog.Fields()
 	numLots := len(a.sellDialogLots)
-	// Expected fields: Date(0), Security(1), Shares(2), [lots...], Price/Share, Total, Commission, Memo
+	// Expected fields: Date(0), Security(1), Shares(2), [lots...], Total, Price/Share, Commission, Memo
 	expectedFields := 7 + numLots
 	if len(fields) < expectedFields {
 		return a, nil
@@ -273,19 +275,19 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Price/Share (index 3+numLots)
-	priceIdx := 3 + numLots
-	pricePerShare, err := parseOptionalMoneyInput(fields[priceIdx].Value)
-	if err != nil {
-		fields[priceIdx].Error = "Invalid price"
-		hasErrors = true
-	}
-
-	// Total (index 4+numLots)
-	totalIdx := 4 + numLots
+	// Total (index 3+numLots)
+	totalIdx := 3 + numLots
 	totalAmount, err := parseOptionalMoneyInput(fields[totalIdx].Value)
 	if err != nil {
 		fields[totalIdx].Error = "Invalid amount"
+		hasErrors = true
+	}
+
+	// Price/Share (index 4+numLots)
+	priceIdx := 4 + numLots
+	pricePerShare, err := parseOptionalMoneyInput(fields[priceIdx].Value)
+	if err != nil {
+		fields[priceIdx].Error = "Invalid price"
 		hasErrors = true
 	}
 
