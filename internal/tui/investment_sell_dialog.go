@@ -41,7 +41,7 @@ func buildLotLabel(lot *investment.Lot) string {
 // If lots is non-nil, lot allocation fields are added after the Shares field.
 func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID, lots []*investment.Lot) *Dialog {
 	d := NewDialog("Sell Securities")
-	d.SetWidth(50)
+	d.SetWidth(70)
 
 	// Security selector
 	selectedIdx := 0

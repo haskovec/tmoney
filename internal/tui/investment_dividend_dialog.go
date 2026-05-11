@@ -30,7 +30,7 @@ type dividendDialogSavedMsg struct {
 // buildDividendDialog creates a Dialog for entering a cash dividend transaction.
 func buildDividendDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *Dialog {
 	d := NewDialog("Cash Dividend")
-	d.SetWidth(50)
+	d.SetWidth(70)
 
 	// Security selector
 	selectedIdx := 0
@@ -78,7 +78,7 @@ func buildDividendDialog(securityOptions []string, editTxn *investment.Transacti
 // buildReinvestDividendDialog creates a Dialog for entering a reinvested dividend transaction.
 func buildReinvestDividendDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *Dialog {
 	d := NewDialog("Reinvest Dividend")
-	d.SetWidth(50)
+	d.SetWidth(70)
 
 	// Security selector
 	selectedIdx := 0

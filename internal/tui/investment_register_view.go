@@ -105,8 +105,9 @@ func (a *App) buildInvestmentRegisterTable() {
 
 // formatInvestmentRegisterRow formats an investment transaction into table row strings.
 func (a *App) formatInvestmentRegisterRow(txn *investment.Transaction) []string {
-	// Date
-	dateStr := txn.Date.Time().Format("01/02/06")
+	// Date — 4-digit year so impossibly-old typos like 0018 vs 2018 are
+	// visually distinguishable rather than both rendering as "18".
+	dateStr := txn.Date.Time().Format("01/02/2006")
 
 	// Status indicator
 	status := " "

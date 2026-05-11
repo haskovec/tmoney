@@ -20,7 +20,7 @@ type cashOperationDialogSavedMsg struct {
 // (Deposit, Withdrawal, Fee, Interest). These share the same fields: Date, Amount, Memo.
 func buildCashOperationDialog(title string, editTxn *investment.Transaction) *Dialog {
 	d := NewDialog(title)
-	d.SetWidth(50)
+	d.SetWidth(70)
 
 	// Date
 	dateVal := ""

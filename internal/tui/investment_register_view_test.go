@@ -86,8 +86,8 @@ func TestFormatInvestmentRegisterRow(t *testing.T) {
 	}
 
 	// Date
-	if row[0] != "03/15/24" {
-		t.Errorf("date = %q, want %q", row[0], "03/15/24")
+	if row[0] != "03/15/2024" {
+		t.Errorf("date = %q, want %q", row[0], "03/15/2024")
 	}
 	// Status
 	if row[1] != "✓" {

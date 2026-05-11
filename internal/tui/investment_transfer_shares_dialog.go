@@ -61,7 +61,7 @@ func buildTransferSharesDialog(
 	lots []*investment.Lot,
 ) *Dialog {
 	d := NewDialog("Transfer Shares")
-	d.SetWidth(50)
+	d.SetWidth(70)
 
 	// Destination account selector
 	selectedAcctIdx := 0

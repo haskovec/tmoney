@@ -68,7 +68,7 @@ func buildSecurityOptions(securities []*security.Security) ([]string, []types.ID
 // buildBuyDialog creates a Dialog for entering a new buy transaction.
 func buildBuyDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *Dialog {
 	d := NewDialog("Buy Securities")
-	d.SetWidth(50)
+	d.SetWidth(70)
 
 	// Security selector
 	selectedIdx := 0

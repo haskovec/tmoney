@@ -55,7 +55,7 @@ func buildTransferCashDialog(direction string, accountOptions []string, editTxn 
 	}
 
 	d := NewDialog(title)
-	d.SetWidth(50)
+	d.SetWidth(70)
 
 	// Linked account selector
 	selectedIdx := 0
