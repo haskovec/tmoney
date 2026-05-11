@@ -231,7 +231,7 @@ func TestInvestmentBuy_SecurityNotFound(t *testing.T) {
 	}
 }
 
-func TestInvestmentBuy_InsufficientCash(t *testing.T) {
+func TestInvestmentBuy_AllowsNegativeCash(t *testing.T) {
 	dbPath := createInvestmentTestDB(t, false)
 
 	err := executeWith([]string{
@@ -242,9 +242,10 @@ func TestInvestmentBuy_InsufficientCash(t *testing.T) {
 		"--shares", "1000",
 		"--price-per-share", "150",
 	}, &bytes.Buffer{}, &bytes.Buffer{})
-	// 1000 * 150 = 150,000 > 50,000 cash
-	if err == nil {
-		t.Error("expected insufficient cash error")
+	// 1000 * 150 = 150,000 > 50,000 cash — but buys never block on the
+	// running cash balance, so this should succeed and leave cash negative.
+	if err != nil {
+		t.Errorf("expected buy to succeed even with insufficient cash, got: %v", err)
 	}
 }
 

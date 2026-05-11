@@ -255,23 +255,14 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var err error
 		if editTxnID != types.NilID {
-			if a.investmentRepo != nil {
-				if err := a.investmentRepo.Delete(editTxnID); err != nil {
-					return errMsg{err: fmt.Errorf("failed to delete old transaction: %w", err)}
-				}
-			}
+			_, err = a.investmentSvc.UpdateDividend(editTxnID, accountID, securityID, date, *amount, memo)
+		} else {
+			_, err = a.investmentSvc.Dividend(accountID, securityID, date, *amount, memo)
 		}
-
-		_, err := a.investmentSvc.Dividend(
-			accountID,
-			securityID,
-			date,
-			*amount,
-			memo,
-		)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to create dividend transaction: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to save dividend transaction: %w", err)}
 		}
 
 		return dividendDialogSavedMsg{savedDate: date}
@@ -364,25 +355,31 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var err error
 		if editTxnID != types.NilID {
-			if a.investmentRepo != nil {
-				if err := a.investmentRepo.Delete(editTxnID); err != nil {
-					return errMsg{err: fmt.Errorf("failed to delete old transaction: %w", err)}
-				}
-			}
+			_, err = a.investmentSvc.UpdateReinvestDividend(
+				editTxnID,
+				accountID,
+				securityID,
+				date,
+				shares,
+				totalAmount,
+				pricePerShare,
+				memo,
+			)
+		} else {
+			_, err = a.investmentSvc.ReinvestDividend(
+				accountID,
+				securityID,
+				date,
+				shares,
+				totalAmount,
+				pricePerShare,
+				memo,
+			)
 		}
-
-		_, err := a.investmentSvc.ReinvestDividend(
-			accountID,
-			securityID,
-			date,
-			shares,
-			totalAmount,
-			pricePerShare,
-			memo,
-		)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to create reinvest dividend transaction: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to save reinvest dividend transaction: %w", err)}
 		}
 
 		return dividendDialogSavedMsg{savedDate: date}

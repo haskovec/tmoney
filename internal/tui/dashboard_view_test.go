@@ -675,4 +675,3 @@ func TestApp_DashboardNonInvestmentAccountOpensRegisterView(t *testing.T) {
 		t.Error("expected a command to load register data")
 	}
 }
-

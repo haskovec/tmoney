@@ -818,4 +818,3 @@ func TestApp_BuildTransactionDialog_EditMode_ChecksSplitBoxIfSplitsExist(t *test
 		t.Error("split checkbox should be checked when editing a transaction with splits")
 	}
 }
-

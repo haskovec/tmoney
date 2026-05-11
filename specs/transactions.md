@@ -161,6 +161,35 @@ For investment accounts, additional transaction types:
 | `price` | decimal | Price per share |
 | `commission` | decimal | Trading commission |
 
+### Investment Cash and Edit Semantics
+
+Investment-account cash balances are computed from the transaction
+ledger and are allowed to go negative. `buy`, `sell`, `withdrawal`,
+`fee`, and cash-transfer operations never reject an entry on the basis
+of the running balance — brokerage statements commonly emit the day's
+sales after the day's buys, and a naive ordering check would force the
+user to reorder same-date entries.
+
+Editing an investment transaction goes through dedicated
+`Update*` service methods (`UpdateBuy`, `UpdateSell`,
+`UpdateReinvestDividend`, `UpdateDividend`, `UpdateFee`,
+`UpdateDeposit`, `UpdateWithdrawal`, `UpdateInterest`,
+`UpdateTransferCash`, `UpdateTransferShares`). Each Update reverses
+the original transaction's effect on positions and lots **before**
+applying the new transaction. The naive "delete then create" pattern
+is incorrect for share-bearing types (Buy, Sell, ReinvestDividend,
+FeeLiquidation, TransferShares) because the original transaction's
+position/lot side-effects survive the deletion, producing
+false-positive `InsufficientSharesError` on the re-create and leaving
+the database in a desynced state.
+
+If the database is already in a desynced state — typically from an
+older binary or an aborted edit — run
+`tmoney -f <file> investment rebuild-positions` to recompute the
+positions and lot share counts from the transaction ledger plus
+junction records. The command refuses to run on databases that
+contain corporate-action records.
+
 ## v1.5 Features (Not in v1)
 
 - Reconciliation status and workflow

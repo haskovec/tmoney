@@ -72,6 +72,17 @@ func (r *CorporateActionRepository) GetByID(id types.ID) (*CorporateAction, erro
 	return ca, nil
 }
 
+// CountAll returns the total number of corporate-action records in the database.
+// Used by callers (e.g. rebuild-positions) that need to know whether corporate
+// actions are present and may interfere with naive position reconstruction.
+func (r *CorporateActionRepository) CountAll() (int, error) {
+	var n int
+	if err := r.db.Conn().QueryRow(`SELECT COUNT(*) FROM corporate_actions`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("failed to count corporate actions: %w", err)
+	}
+	return n, nil
+}
+
 // ListBySecurity retrieves all corporate actions for a security, including actions
 // where the security is the source or the target. Results are ordered by action_date ASC.
 func (r *CorporateActionRepository) ListBySecurity(securityID types.ID) ([]*CorporateAction, error) {

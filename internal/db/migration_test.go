@@ -1968,7 +1968,11 @@ func TestMigration008InvestmentTables(t *testing.T) {
 		}
 	})
 
-	t.Run("investment_transaction_lots enforces transaction foreign key", func(t *testing.T) {
+	t.Run("investment_transaction_lots accepts orphan transaction_id post-013", func(t *testing.T) {
+		// Migration 013 dropped the FKs on investment_transaction_lots so
+		// that lot updates aren't blocked by referenced junctions. The DB
+		// no longer rejects orphan rows; integrity is enforced by the
+		// service layer.
 		tmpDir := t.TempDir()
 		dbPath := filepath.Join(tmpDir, "test.tdb")
 
@@ -1982,8 +1986,8 @@ func TestMigration008InvestmentTables(t *testing.T) {
 			INSERT INTO investment_transaction_lots (transaction_id, lot_id, shares)
 			VALUES ('99999999-9999-9999-9999-999999999999', '88888888-8888-8888-8888-888888888888', 5.0)
 		`)
-		if err == nil {
-			t.Error("Expected foreign key error for non-existent transaction")
+		if err != nil {
+			t.Errorf("Expected orphan insert to succeed post-013, got: %v", err)
 		}
 	})
 }

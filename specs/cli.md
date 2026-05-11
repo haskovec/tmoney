@@ -357,6 +357,22 @@ tmoney investment portfolio --account Brokerage --as-of 2024-12-31
 tmoney investment portfolio --account Brokerage --show-lots
 ```
 
+### `investment rebuild-positions`
+
+`Use: investment rebuild-positions` · `Args: NoArgs`
+
+Recompute the stored `investment_positions` rows (and, for lot-tracking accounts, each lot's `shares` / `closed` fields) from the transaction ledger and lot junction records. Use this to recover from a desynced state after an aborted edit. The command refuses to run on databases that contain corporate-action records (splits, mergers, spin-offs), since those mutate positions/lots outside the ledger.
+
+**Required flags:** none
+
+**Optional flags:**
+- `--account string` — Limit rebuild to a single investment account (default: all)
+
+```bash
+tmoney -f personal.tdb investment rebuild-positions
+tmoney -f personal.tdb investment rebuild-positions --account Brokerage
+```
+
 ### `investment reinvest`
 
 `Use: investment reinvest` · `Args: NoArgs`

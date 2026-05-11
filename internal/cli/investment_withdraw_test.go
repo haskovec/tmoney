@@ -141,7 +141,7 @@ func TestInvestmentWithdraw_InvalidDate(t *testing.T) {
 	}
 }
 
-func TestInvestmentWithdraw_InsufficientCash(t *testing.T) {
+func TestInvestmentWithdraw_AllowsNegativeCash(t *testing.T) {
 	dbPath := createInvestmentTestDB(t, false)
 
 	err := executeWith([]string{
@@ -150,8 +150,9 @@ func TestInvestmentWithdraw_InsufficientCash(t *testing.T) {
 		"--account", "Brokerage",
 		"--amount", "999999",
 	}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil {
-		t.Error("expected insufficient cash error for withdrawal")
+	// Withdrawals never block on the running cash balance — succeeds, balance goes negative.
+	if err != nil {
+		t.Errorf("expected withdrawal to succeed even with insufficient cash, got: %v", err)
 	}
 }
 

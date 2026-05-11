@@ -333,27 +333,35 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var err error
 		if editTxnID != types.NilID {
-			if a.investmentRepo != nil {
-				if err := a.investmentRepo.Delete(editTxnID); err != nil {
-					return errMsg{err: fmt.Errorf("failed to delete old transaction: %w", err)}
-				}
-			}
+			_, err = a.investmentSvc.UpdateSell(
+				editTxnID,
+				accountID,
+				securityID,
+				date,
+				shares,
+				totalAmount,
+				pricePerShare,
+				commission,
+				memo,
+				lotAllocations,
+			)
+		} else {
+			_, err = a.investmentSvc.Sell(
+				accountID,
+				securityID,
+				date,
+				shares,
+				totalAmount,
+				pricePerShare,
+				commission,
+				memo,
+				lotAllocations,
+			)
 		}
-
-		_, err := a.investmentSvc.Sell(
-			accountID,
-			securityID,
-			date,
-			shares,
-			totalAmount,
-			pricePerShare,
-			commission,
-			memo,
-			lotAllocations,
-		)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to create sell transaction: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to save sell transaction: %w", err)}
 		}
 
 		return sellDialogSavedMsg{savedDate: date}

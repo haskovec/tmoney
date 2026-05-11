@@ -146,7 +146,7 @@ func TestInvestmentFee_InvalidDate(t *testing.T) {
 	}
 }
 
-func TestInvestmentFee_InsufficientCash(t *testing.T) {
+func TestInvestmentFee_AllowsNegativeCash(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.tdb")
 	database, err := db.Create(dbPath)
@@ -166,8 +166,9 @@ func TestInvestmentFee_InsufficientCash(t *testing.T) {
 		"--account", "Brokerage",
 		"--amount", "100",
 	}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil {
-		t.Error("expected insufficient cash error for fee")
+	// Fees never block on the running cash balance — succeeds, balance goes negative.
+	if err != nil {
+		t.Errorf("expected fee to succeed even with insufficient cash, got: %v", err)
 	}
 }
 

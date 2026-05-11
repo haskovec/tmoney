@@ -190,6 +190,21 @@ func (r *Repository) ListByDateRange(startDate, endDate types.Date) ([]*Transact
 	return r.queryTransactionsWithArgs(query, startDate.Time(), endDate.Time())
 }
 
+// ListByTransferID retrieves all transactions sharing a transfer_id.
+// Used to find both sides of a transfer pair.
+func (r *Repository) ListByTransferID(transferID types.ID) ([]*Transaction, error) {
+	query := `
+		SELECT id, account_id, date, amount, payee_id, category_id,
+			memo, check_number, status, transfer_id, transfer_account_id,
+			bank_reference_id, created_at, updated_at
+		FROM transactions
+		WHERE CAST(transfer_id AS VARCHAR) = ?
+		ORDER BY created_at ASC
+	`
+
+	return r.queryTransactionsWithArgs(query, transferID.String())
+}
+
 // ListByAccountAndDateRange retrieves transactions for an account within a date range.
 func (r *Repository) ListByAccountAndDateRange(accountID types.ID, startDate, endDate types.Date) ([]*Transaction, error) {
 	query := `

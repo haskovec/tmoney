@@ -570,6 +570,14 @@ either `--amount` (total cost), `--price-per-share`, or both. Commission
 defaults to `0`; date defaults to today. If lot tracking is enabled on
 the account, a new lot is opened.
 
+> **Cash balances may go negative.** Buys, fees, withdrawals, and cash
+> transfers never block on the running cash balance. This is by design:
+> historical data entry from a brokerage statement frequently lists the
+> day's sales after the day's buys, so requiring a positive running
+> balance would force the user to reorder same-date transactions. The
+> register simply shows a negative cash figure until the offsetting
+> deposit/sell is entered.
+
 ```bash
 # Sell shares at a price per share (cash credited to the account)
 tmoney -f personal.tdb investment sell --account Brokerage --ticker AAPL \
@@ -737,6 +745,21 @@ remainder shifted to the child. `--spin-off-price` is the per-share
 price of the child used to record the action. All open positions in
 the parent (and, for lot-tracked accounts, the underlying lots) are
 adjusted accordingly. Date defaults to today.
+
+```bash
+# Recompute positions / lot shares for one or all investment accounts
+tmoney -f personal.tdb investment rebuild-positions
+tmoney -f personal.tdb investment rebuild-positions --account Brokerage
+```
+
+`investment rebuild-positions` recomputes the stored
+`investment_positions` rows (and, for lot-tracking accounts, each lot's
+`shares` / `closed` fields) from the transaction ledger and lot
+junction records. Use this if a register shows a corrupted state — for
+example, a position stuck at zero shares after an aborted edit. The
+command refuses to run on databases that contain corporate-action
+records (splits, mergers, spin-offs), since those mutate positions and
+lots outside the ledger and a naive replay would corrupt cost basis.
 
 ```bash
 # Show the portfolio for an investment account (today's valuation)

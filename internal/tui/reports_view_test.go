@@ -711,4 +711,3 @@ func TestApp_RenderSpendingReport_ImprovedNoData(t *testing.T) {
 		t.Error("renderSpendingReport() should show helpful message when nil")
 	}
 }
-

@@ -134,30 +134,37 @@ func (a *App) submitCashOperationDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var txnErr error
 		if editTxnID != types.NilID {
-			if a.investmentRepo != nil {
-				if err := a.investmentRepo.Delete(editTxnID); err != nil {
-					return errMsg{err: fmt.Errorf("failed to delete old transaction: %w", err)}
-				}
+			switch txnType {
+			case investment.TransactionTypeDeposit:
+				_, txnErr = a.investmentSvc.UpdateDeposit(editTxnID, accountID, date, amountVal, memo)
+			case investment.TransactionTypeWithdrawal:
+				_, txnErr = a.investmentSvc.UpdateWithdrawal(editTxnID, accountID, date, amountVal, memo)
+			case investment.TransactionTypeFee:
+				_, txnErr = a.investmentSvc.UpdateFee(editTxnID, accountID, date, amountVal, memo)
+			case investment.TransactionTypeInterest:
+				_, txnErr = a.investmentSvc.UpdateInterest(editTxnID, accountID, date, amountVal, memo)
+			default:
+				return errMsg{err: fmt.Errorf("unsupported cash operation type: %s", txnType)}
+			}
+		} else {
+			switch txnType {
+			case investment.TransactionTypeDeposit:
+				_, txnErr = a.investmentSvc.Deposit(accountID, date, amountVal, memo)
+			case investment.TransactionTypeWithdrawal:
+				_, txnErr = a.investmentSvc.Withdrawal(accountID, date, amountVal, memo)
+			case investment.TransactionTypeFee:
+				_, txnErr = a.investmentSvc.Fee(accountID, date, amountVal, memo)
+			case investment.TransactionTypeInterest:
+				_, txnErr = a.investmentSvc.Interest(accountID, date, amountVal, memo)
+			default:
+				return errMsg{err: fmt.Errorf("unsupported cash operation type: %s", txnType)}
 			}
 		}
 
-		var txnErr error
-		switch txnType {
-		case investment.TransactionTypeDeposit:
-			_, txnErr = a.investmentSvc.Deposit(accountID, date, amountVal, memo)
-		case investment.TransactionTypeWithdrawal:
-			_, txnErr = a.investmentSvc.Withdrawal(accountID, date, amountVal, memo)
-		case investment.TransactionTypeFee:
-			_, txnErr = a.investmentSvc.Fee(accountID, date, amountVal, memo)
-		case investment.TransactionTypeInterest:
-			_, txnErr = a.investmentSvc.Interest(accountID, date, amountVal, memo)
-		default:
-			return errMsg{err: fmt.Errorf("unsupported cash operation type: %s", txnType)}
-		}
-
 		if txnErr != nil {
-			return errMsg{err: fmt.Errorf("failed to create %s transaction: %w", txnType.DisplayName(), txnErr)}
+			return errMsg{err: fmt.Errorf("failed to save %s transaction: %w", txnType.DisplayName(), txnErr)}
 		}
 
 		return cashOperationDialogSavedMsg{savedDate: date}

@@ -265,7 +265,7 @@ func TestService_Withdrawal(t *testing.T) {
 		}
 	})
 
-	t.Run("withdrawal rejects insufficient cash", func(t *testing.T) {
+	t.Run("withdrawal allows insufficient cash (negative balance)", func(t *testing.T) {
 		svc, accountRepo := createTestService(t)
 		acct := createInvAccount(t, accountRepo, "Brokerage")
 		date := types.NewDate(2024, time.March, 15)
@@ -273,27 +273,37 @@ func TestService_Withdrawal(t *testing.T) {
 		// Deposit only 100
 		_, _ = svc.Deposit(acct.ID, date, types.MustNewMoney("100.00"), "")
 
-		// Try to withdraw 200
+		// Withdraw 200 — cash goes negative; no error
 		_, err := svc.Withdrawal(acct.ID, date, types.MustNewMoney("200.00"), "")
-		if err == nil {
-			t.Fatal("Withdrawal() expected error for insufficient cash")
+		if err != nil {
+			t.Fatalf("Withdrawal() unexpected error: %v", err)
 		}
-		if _, ok := err.(*InsufficientCashError); !ok {
-			t.Errorf("Expected InsufficientCashError, got %T: %v", err, err)
+
+		balance, err := svc.GetCashBalance(acct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balance.String() != "-100" {
+			t.Errorf("Expected cash balance '-100', got %q", balance.String())
 		}
 	})
 
-	t.Run("withdrawal rejects zero cash balance", func(t *testing.T) {
+	t.Run("withdrawal allows zero cash balance (negative balance)", func(t *testing.T) {
 		svc, accountRepo := createTestService(t)
 		acct := createInvAccount(t, accountRepo, "Brokerage")
 		date := types.NewDate(2024, time.March, 15)
 
 		_, err := svc.Withdrawal(acct.ID, date, types.MustNewMoney("1.00"), "")
-		if err == nil {
-			t.Fatal("Withdrawal() expected error for zero balance")
+		if err != nil {
+			t.Fatalf("Withdrawal() unexpected error: %v", err)
 		}
-		if _, ok := err.(*InsufficientCashError); !ok {
-			t.Errorf("Expected InsufficientCashError, got %T: %v", err, err)
+
+		balance, err := svc.GetCashBalance(acct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balance.String() != "-1" {
+			t.Errorf("Expected cash balance '-1', got %q", balance.String())
 		}
 	})
 
@@ -486,7 +496,7 @@ func TestService_Fee(t *testing.T) {
 		}
 	})
 
-	t.Run("fee rejects insufficient cash", func(t *testing.T) {
+	t.Run("fee allows insufficient cash (negative balance)", func(t *testing.T) {
 		svc, accountRepo := createTestService(t)
 		acct := createInvAccount(t, accountRepo, "Brokerage")
 		date := types.NewDate(2024, time.March, 15)
@@ -494,27 +504,37 @@ func TestService_Fee(t *testing.T) {
 		// Deposit only 10
 		_, _ = svc.Deposit(acct.ID, date, types.MustNewMoney("10.00"), "")
 
-		// Try fee of 50
+		// Fee of 50 — cash goes negative; no error
 		_, err := svc.Fee(acct.ID, date, types.MustNewMoney("50.00"), "")
-		if err == nil {
-			t.Fatal("Fee() expected error for insufficient cash")
+		if err != nil {
+			t.Fatalf("Fee() unexpected error: %v", err)
 		}
-		if _, ok := err.(*InsufficientCashError); !ok {
-			t.Errorf("Expected InsufficientCashError, got %T: %v", err, err)
+
+		balance, err := svc.GetCashBalance(acct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balance.String() != "-40" {
+			t.Errorf("Expected cash balance '-40', got %q", balance.String())
 		}
 	})
 
-	t.Run("fee rejects zero cash balance", func(t *testing.T) {
+	t.Run("fee allows zero cash balance (negative balance)", func(t *testing.T) {
 		svc, accountRepo := createTestService(t)
 		acct := createInvAccount(t, accountRepo, "Brokerage")
 		date := types.NewDate(2024, time.March, 15)
 
 		_, err := svc.Fee(acct.ID, date, types.MustNewMoney("1.00"), "")
-		if err == nil {
-			t.Fatal("Fee() expected error for zero balance")
+		if err != nil {
+			t.Fatalf("Fee() unexpected error: %v", err)
 		}
-		if _, ok := err.(*InsufficientCashError); !ok {
-			t.Errorf("Expected InsufficientCashError, got %T: %v", err, err)
+
+		balance, err := svc.GetCashBalance(acct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balance.String() != "-1" {
+			t.Errorf("Expected cash balance '-1', got %q", balance.String())
 		}
 	})
 
@@ -744,7 +764,7 @@ func TestService_Buy_NonLotTracking(t *testing.T) {
 		}
 	})
 
-	t.Run("buy requires sufficient cash", func(t *testing.T) {
+	t.Run("buy allows insufficient cash (negative balance)", func(t *testing.T) {
 		env := createFullTestService(t)
 		acct := createInvAccount(t, env.accountRepo, "Brokerage")
 		sec := createSec(t, env.secRepo, "AAPL")
@@ -753,14 +773,20 @@ func TestService_Buy_NonLotTracking(t *testing.T) {
 		// Only deposit 100
 		_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("100.00"), "")
 
+		// Buy 1850 — cash goes negative; no error (same-day data-entry use case)
 		total := types.MustNewMoney("1850.00")
 		shares := types.MustNewQuantity("10")
 		_, err := env.svc.Buy(acct.ID, sec.ID, date, shares, &total, nil, types.ZeroMoney, "")
-		if err == nil {
-			t.Fatal("Buy() expected error for insufficient cash")
+		if err != nil {
+			t.Fatalf("Buy() unexpected error: %v", err)
 		}
-		if _, ok := err.(*InsufficientCashError); !ok {
-			t.Errorf("Expected InsufficientCashError, got %T: %v", err, err)
+
+		balance, err := env.svc.GetCashBalance(acct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balance.String() != "-1750" {
+			t.Errorf("Expected cash balance '-1750', got %q", balance.String())
 		}
 	})
 
@@ -980,7 +1006,7 @@ func TestService_Buy_LotTracking(t *testing.T) {
 		}
 	})
 
-	t.Run("buy requires sufficient cash for lot-tracking", func(t *testing.T) {
+	t.Run("buy allows insufficient cash for lot-tracking (negative balance)", func(t *testing.T) {
 		env := createFullTestService(t)
 		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
 		sec := createSec(t, env.secRepo, "AAPL")
@@ -991,11 +1017,16 @@ func TestService_Buy_LotTracking(t *testing.T) {
 		total := types.MustNewMoney("1850.00")
 		shares := types.MustNewQuantity("10")
 		_, err := env.svc.Buy(acct.ID, sec.ID, date, shares, &total, nil, types.ZeroMoney, "")
-		if err == nil {
-			t.Fatal("Buy() expected error for insufficient cash")
+		if err != nil {
+			t.Fatalf("Buy() unexpected error: %v", err)
 		}
-		if _, ok := err.(*InsufficientCashError); !ok {
-			t.Errorf("Expected InsufficientCashError, got %T: %v", err, err)
+
+		balance, err := env.svc.GetCashBalance(acct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balance.String() != "-1750" {
+			t.Errorf("Expected cash balance '-1750', got %q", balance.String())
 		}
 	})
 
@@ -2935,7 +2966,7 @@ func TestService_TransferCash(t *testing.T) {
 		}
 	})
 
-	t.Run("withdrawal rejects insufficient cash", func(t *testing.T) {
+	t.Run("withdrawal allows insufficient cash (negative balance)", func(t *testing.T) {
 		svc, accountRepo := createTestService(t)
 		invAcct := createInvAccount(t, accountRepo, "Brokerage")
 		checkAcct := createCheckAccount(t, accountRepo, "Checking")
@@ -2944,13 +2975,18 @@ func TestService_TransferCash(t *testing.T) {
 		// Deposit only 500
 		_, _ = svc.Deposit(invAcct.ID, date, types.MustNewMoney("500.00"), "")
 
-		// Try to transfer 1000
+		// Transfer 1000 — cash goes negative; no error
 		_, err := svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1000.00"), "")
-		if err == nil {
-			t.Fatal("Expected error for insufficient cash")
+		if err != nil {
+			t.Fatalf("TransferCash() unexpected error: %v", err)
 		}
-		if _, ok := err.(*InsufficientCashError); !ok {
-			t.Errorf("Expected InsufficientCashError, got %T: %v", err, err)
+
+		balance, err := svc.GetCashBalance(invAcct.ID)
+		if err != nil {
+			t.Fatalf("GetCashBalance() error = %v", err)
+		}
+		if balance.String() != "-500" {
+			t.Errorf("Expected cash balance '-500', got %q", balance.String())
 		}
 	})
 

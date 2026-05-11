@@ -310,27 +310,33 @@ func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var err error
 		if editTxnID != types.NilID {
-			// Delete the old transaction before creating a new one
-			if a.investmentRepo != nil {
-				if err := a.investmentRepo.Delete(editTxnID); err != nil {
-					return errMsg{err: fmt.Errorf("failed to delete old transaction: %w", err)}
-				}
-			}
+			_, err = a.investmentSvc.UpdateBuy(
+				editTxnID,
+				accountID,
+				securityID,
+				date,
+				shares,
+				totalAmount,
+				pricePerShare,
+				commission,
+				memo,
+			)
+		} else {
+			_, err = a.investmentSvc.Buy(
+				accountID,
+				securityID,
+				date,
+				shares,
+				totalAmount,
+				pricePerShare,
+				commission,
+				memo,
+			)
 		}
-
-		_, err := a.investmentSvc.Buy(
-			accountID,
-			securityID,
-			date,
-			shares,
-			totalAmount,
-			pricePerShare,
-			commission,
-			memo,
-		)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to create buy transaction: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to save buy transaction: %w", err)}
 		}
 
 		return buyDialogSavedMsg{savedDate: date}

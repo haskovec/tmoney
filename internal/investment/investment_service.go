@@ -85,19 +85,8 @@ func (s *Service) Withdrawal(accountID types.ID, date types.Date, amount types.M
 		return nil, &InvalidTransferAmountError{Amount: amount}
 	}
 
-	// Check cash balance
-	cashBalance, err := s.GetCashBalance(accountID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get cash balance: %w", err)
-	}
-
-	if cashBalance.Cmp(amount) < 0 {
-		return nil, &InsufficientCashError{
-			AccountID: accountID.String(),
-			Available: cashBalance,
-			Requested: amount,
-		}
-	}
+	// Cash balance is allowed to go negative — withdrawals never block on
+	// the running balance so historical data entry isn't ordering-sensitive.
 
 	// Store as negative amount for withdrawal
 	negAmount := amount.Neg()
@@ -154,19 +143,7 @@ func (s *Service) Fee(accountID types.ID, date types.Date, amount types.Money, m
 		return nil, &InvalidTransferAmountError{Amount: amount}
 	}
 
-	// Check cash balance
-	cashBalance, err := s.GetCashBalance(accountID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get cash balance: %w", err)
-	}
-
-	if cashBalance.Cmp(amount) < 0 {
-		return nil, &InsufficientCashError{
-			AccountID: accountID.String(),
-			Available: cashBalance,
-			Requested: amount,
-		}
-	}
+	// Cash balance is allowed to go negative — see Withdrawal for rationale.
 
 	// Store as negative amount for fee
 	negAmount := amount.Neg()
@@ -212,19 +189,9 @@ func (s *Service) Buy(
 		return nil, fmt.Errorf("failed to compute buy fields: %w", err)
 	}
 
-	// Check cash balance
-	cashBalance, err := s.GetCashBalance(accountID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get cash balance: %w", err)
-	}
-
-	if cashBalance.Cmp(computed.TotalAmount) < 0 {
-		return nil, &InsufficientCashError{
-			AccountID: accountID.String(),
-			Available: cashBalance,
-			Requested: computed.TotalAmount,
-		}
-	}
+	// Cash balance is allowed to go negative — bank statements often list
+	// the day's sales after the day's buys, and we shouldn't require the
+	// user to reorder same-date entries to get past a transient shortfall.
 
 	// Create transaction with negative total (buy deducts cash)
 	negTotal := computed.TotalAmount.Neg()
@@ -814,19 +781,7 @@ func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, d
 		return nil, fmt.Errorf("cannot transfer between the same account")
 	}
 
-	// Check cash balance for withdrawals from investment account
-	cashBalance, err := s.GetCashBalance(investmentAccountID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get cash balance: %w", err)
-	}
-
-	if cashBalance.Cmp(amount) < 0 {
-		return nil, &InsufficientCashError{
-			AccountID: investmentAccountID.String(),
-			Available: cashBalance,
-			Requested: amount,
-		}
-	}
+	// Cash balance is allowed to go negative — see Withdrawal for rationale.
 
 	transferID := types.NewID()
 

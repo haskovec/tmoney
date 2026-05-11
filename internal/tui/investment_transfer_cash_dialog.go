@@ -217,16 +217,22 @@ func (a *App) submitTransferCashDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
-		if editTxnID != types.NilID {
-			if a.investmentRepo != nil {
-				if err := a.investmentRepo.Delete(editTxnID); err != nil {
-					return errMsg{err: fmt.Errorf("failed to delete old transaction: %w", err)}
-				}
-			}
-		}
-
 		var txnErr error
-		if direction == "deposit" {
+		if editTxnID != types.NilID {
+			directionToken := "out"
+			if direction == "deposit" {
+				directionToken = "in"
+			}
+			_, txnErr = a.investmentSvc.UpdateTransferCash(
+				editTxnID,
+				investmentAccountID,
+				regularAccountID,
+				date,
+				amountVal,
+				memo,
+				directionToken,
+			)
+		} else if direction == "deposit" {
 			_, txnErr = a.investmentSvc.DepositFromAccount(investmentAccountID, regularAccountID, date, amountVal, memo)
 		} else {
 			_, txnErr = a.investmentSvc.TransferCash(investmentAccountID, regularAccountID, date, amountVal, memo)

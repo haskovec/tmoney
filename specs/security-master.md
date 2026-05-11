@@ -918,8 +918,8 @@ Junction table linking sell/exchange transactions to specific lots:
 ```sql
 CREATE TABLE investment_transaction_lots (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transaction_id UUID NOT NULL REFERENCES investment_transactions(id) ON DELETE CASCADE,
-    lot_id UUID NOT NULL REFERENCES investment_lots(id),
+    transaction_id UUID NOT NULL,
+    lot_id UUID NOT NULL,
     shares DECIMAL(19, 8) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -927,6 +927,16 @@ CREATE TABLE investment_transaction_lots (
 CREATE INDEX idx_tx_lots_transaction ON investment_transaction_lots(transaction_id);
 CREATE INDEX idx_tx_lots_lot ON investment_transaction_lots(lot_id);
 ```
+
+> **Note:** Migration `013_drop_lot_fk.sql` removes the foreign-key
+> constraints on `transaction_id` and `lot_id`. DuckDB enforces FKs on
+> UPDATE of the parent row even when the referenced primary-key column
+> is not modified, which blocks legitimate "reduce a lot's remaining
+> shares" updates (and reversals thereof during Edit flows). Referential
+> integrity is enforced by the service layer:
+> `investment.Repository.Delete` deletes junctions before the parent
+> transaction, and edits go through `Service.Update*` methods that
+> reverse the existing transaction's effect before applying the new one.
 
 ### corporate_actions
 

@@ -330,23 +330,29 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var txnErr error
 		if editTxnID != types.NilID {
-			if a.investmentRepo != nil {
-				if err := a.investmentRepo.Delete(editTxnID); err != nil {
-					return errMsg{err: fmt.Errorf("failed to delete old transaction: %w", err)}
-				}
-			}
+			_, txnErr = a.investmentSvc.UpdateTransferShares(
+				editTxnID,
+				sourceAccountID,
+				destAccountID,
+				date,
+				securityID,
+				shares,
+				memo,
+				lotAllocations,
+			)
+		} else {
+			_, txnErr = a.investmentSvc.TransferShares(
+				sourceAccountID,
+				destAccountID,
+				securityID,
+				date,
+				shares,
+				memo,
+				lotAllocations,
+			)
 		}
-
-		_, txnErr := a.investmentSvc.TransferShares(
-			sourceAccountID,
-			destAccountID,
-			securityID,
-			date,
-			shares,
-			memo,
-			lotAllocations,
-		)
 		if txnErr != nil {
 			return errMsg{err: fmt.Errorf("failed to transfer shares: %w", txnErr)}
 		}

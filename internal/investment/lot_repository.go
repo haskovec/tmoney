@@ -138,6 +138,85 @@ func (r *LotRepository) Update(lot *Lot) error {
 	return nil
 }
 
+// UpdateSharesAndClosed updates only the shares and closed fields of an
+// existing lot using a real SQL UPDATE. This avoids the DELETE+INSERT
+// pattern of Update, which is blocked by foreign-key references from
+// investment_transaction_lots.
+func (r *LotRepository) UpdateSharesAndClosed(id types.ID, shares types.Quantity, closed bool) error {
+	res, err := r.db.Conn().Exec(
+		`UPDATE investment_lots SET shares = ?, closed = ?, updated_at = ? WHERE CAST(id AS VARCHAR) = ?`,
+		shares.String(), closed, types.Now().Time(), id.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update lot shares/closed: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if n == 0 {
+		return &dberrors.NotFoundError{Entity: "lot", ID: id.String()}
+	}
+	return nil
+}
+
+// GetBySourceTransaction retrieves the lot (if any) created by the given source transaction.
+// Returns NotFoundError when no lot references the transaction.
+func (r *LotRepository) GetBySourceTransaction(txnID types.ID) (*Lot, error) {
+	query := `SELECT ` + lotColumns + ` FROM investment_lots WHERE CAST(source_transaction_id AS VARCHAR) = ?`
+	l, err := scanLot(r.db.Conn().QueryRow(query, txnID.String()))
+	if err == sql.ErrNoRows {
+		return nil, &dberrors.NotFoundError{Entity: "lot", ID: txnID.String()}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get lot by source transaction: %w", err)
+	}
+	return l, nil
+}
+
+// Delete removes a lot from the database. The lot's junction rows are NOT
+// touched — callers must ensure no junctions reference the lot before deleting
+// (otherwise foreign-key style consistency is violated).
+func (r *LotRepository) Delete(id types.ID) error {
+	res, err := r.db.Conn().Exec(`DELETE FROM investment_lots WHERE CAST(id AS VARCHAR) = ?`, id.String())
+	if err != nil {
+		return fmt.Errorf("failed to delete lot: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if n == 0 {
+		return &dberrors.NotFoundError{Entity: "lot", ID: id.String()}
+	}
+	return nil
+}
+
+// ListAllByAccount retrieves every lot for an account (open and closed) for
+// every security. Used by the rebuild-positions tool to recompute lot
+// shares/closed from junction records.
+func (r *LotRepository) ListAllByAccount(accountID types.ID) ([]*Lot, error) {
+	query := `SELECT ` + lotColumns + ` FROM investment_lots WHERE CAST(account_id AS VARCHAR) = ? ORDER BY purchase_date ASC, created_at ASC`
+	rows, err := r.db.Conn().Query(query, accountID.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list lots: %w", err)
+	}
+	defer rows.Close()
+
+	lots := make([]*Lot, 0)
+	for rows.Next() {
+		l, err := scanLot(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan lot: %w", err)
+		}
+		lots = append(lots, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating lots: %w", err)
+	}
+	return lots, nil
+}
+
 // HasOpenLots returns true if any account holds open lots for the given security.
 func (r *LotRepository) HasOpenLots(securityID types.ID) (bool, error) {
 	var count int

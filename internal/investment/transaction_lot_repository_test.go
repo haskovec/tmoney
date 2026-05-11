@@ -72,7 +72,12 @@ func TestTransactionLotRepository_Create(t *testing.T) {
 		}
 	})
 
-	t.Run("verifies transaction_id foreign key", func(t *testing.T) {
+	t.Run("accepts orphan transaction_id (FK was dropped in migration 013)", func(t *testing.T) {
+		// Migration 013 dropped the transaction_id / lot_id foreign keys on
+		// investment_transaction_lots so that lot rows can be updated even
+		// while junctions reference them. Referential integrity is now
+		// enforced by the service layer (Repository.Delete cascades
+		// junctions). The DB itself accepts orphan rows.
 		database := createTestDB(t)
 		accountRepo := account.NewRepository(database)
 		secRepo := security.NewRepository(database)
@@ -85,13 +90,12 @@ func TestTransactionLotRepository_Create(t *testing.T) {
 		fakeTxnID := types.NewID()
 		tl := NewTransactionLot(fakeTxnID, lot.ID, types.MustNewQuantity("5"))
 
-		err := tlRepo.Create(&tl)
-		if err == nil {
-			t.Fatal("Expected error for invalid transaction_id foreign key, got nil")
+		if err := tlRepo.Create(&tl); err != nil {
+			t.Fatalf("Expected Create with orphan transaction_id to succeed, got: %v", err)
 		}
 	})
 
-	t.Run("verifies lot_id foreign key", func(t *testing.T) {
+	t.Run("accepts orphan lot_id (FK was dropped in migration 013)", func(t *testing.T) {
 		database := createTestDB(t)
 		accountRepo := account.NewRepository(database)
 		secRepo := security.NewRepository(database)
@@ -116,9 +120,8 @@ func TestTransactionLotRepository_Create(t *testing.T) {
 		fakeLotID := types.NewID()
 		tl := NewTransactionLot(sellTxn.ID, fakeLotID, types.MustNewQuantity("5"))
 
-		err := tlRepo.Create(&tl)
-		if err == nil {
-			t.Fatal("Expected error for invalid lot_id foreign key, got nil")
+		if err := tlRepo.Create(&tl); err != nil {
+			t.Fatalf("Expected Create with orphan lot_id to succeed, got: %v", err)
 		}
 	})
 

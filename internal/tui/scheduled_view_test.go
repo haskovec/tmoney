@@ -526,4 +526,3 @@ func TestApp_FormatScheduledRow_AllFrequencies(t *testing.T) {
 		})
 	}
 }
-
