@@ -52,6 +52,7 @@ func buildInvestmentAccountOptions(accounts []*account.Account, excludeID types.
 }
 
 // buildTransferSharesDialog creates a Dialog for transferring shares between investment accounts.
+// Field order: Date(0), Security(1), To Account(2), Shares(3), [lots...], Memo.
 func buildTransferSharesDialog(
 	accountOptions []string,
 	securityOptions []string,
@@ -63,19 +64,15 @@ func buildTransferSharesDialog(
 	d := NewDialog("Transfer Shares")
 	d.SetWidth(70)
 
-	// Destination account selector
-	selectedAcctIdx := 0
-	if editTxn != nil && editTxn.TransferAccountID.Valid {
-		for i, id := range accountIDs {
-			if id == editTxn.TransferAccountID.ID {
-				selectedAcctIdx = i
-				break
-			}
-		}
+	// Date (index 0)
+	dateVal := ""
+	if editTxn != nil {
+		dateVal = editTxn.Date.Time().Format("01/02/2006")
 	}
-	d.AddSelectField("To Account", accountOptions, selectedAcctIdx)
+	f := d.AddDateField("Date", dateVal)
+	f.Required = true
 
-	// Security selector
+	// Security selector (index 1)
 	selectedSecIdx := 0
 	if editTxn != nil && editTxn.SecurityID.Valid {
 		for i, id := range securityIDs {
@@ -87,26 +84,30 @@ func buildTransferSharesDialog(
 	}
 	d.AddComboField("Security", securityOptions, selectedSecIdx)
 
-	// Shares
+	// Destination account selector (index 2)
+	selectedAcctIdx := 0
+	if editTxn != nil && editTxn.TransferAccountID.Valid {
+		for i, id := range accountIDs {
+			if id == editTxn.TransferAccountID.ID {
+				selectedAcctIdx = i
+				break
+			}
+		}
+	}
+	d.AddSelectField("To Account", accountOptions, selectedAcctIdx)
+
+	// Shares (index 3)
 	sharesVal := ""
 	if editTxn != nil && editTxn.Shares.Valid && !editTxn.Shares.Quantity.IsZero() {
 		sharesVal = editTxn.Shares.Quantity.String()
 	}
-	f := d.AddTextField("Shares", sharesVal, "10", 12)
+	f = d.AddTextField("Shares", sharesVal, "10", 12)
 	f.Required = true
 
 	// Lot allocation fields (only for lot-tracking source accounts)
 	for _, lot := range lots {
 		d.AddTextField(buildLotLabel(lot), "", "0", 12)
 	}
-
-	// Date
-	dateVal := ""
-	if editTxn != nil {
-		dateVal = editTxn.Date.Time().Format("01/02/2006")
-	}
-	f = d.AddDateField("Date", dateVal)
-	f.Required = true
 
 	// Memo
 	memoVal := ""
@@ -206,7 +207,7 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 
 	fields := a.transferSharesDialog.Fields()
 	numLots := len(a.transferSharesDialogLots)
-	// Expected: Account(0), Security(1), Shares(2), [lots...], Date, Memo
+	// Expected: Date(0), Security(1), To Account(2), Shares(3), [lots...], Memo
 	expectedFields := 5 + numLots
 	if len(fields) < expectedFields {
 		return a, nil
@@ -215,17 +216,10 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 	a.transferSharesDialog.ClearErrors()
 	hasErrors := false
 
-	// Destination account (index 0)
-	if len(a.transferSharesDialogAccountIDs) == 0 {
-		fields[0].Error = "No investment accounts available"
-		hasErrors = true
-	}
-	destIdx := fields[0].SelectedIndex
-	var destAccountID types.ID
-	if destIdx >= 0 && destIdx < len(a.transferSharesDialogAccountIDs) {
-		destAccountID = a.transferSharesDialogAccountIDs[destIdx]
-	} else {
-		fields[0].Error = "Select a destination account"
+	// Date (index 0)
+	date, err := parseDateInput(fields[0].Value)
+	if err != nil {
+		fields[0].Error = "Invalid date (MM/DD/YYYY)"
 		hasErrors = true
 	}
 
@@ -243,19 +237,33 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 		hasErrors = true
 	}
 
-	// Shares (index 2)
-	shares, err := parseSharesInput(fields[2].Value)
-	if err != nil {
-		fields[2].Error = "Shares must be positive"
+	// Destination account (index 2)
+	if len(a.transferSharesDialogAccountIDs) == 0 {
+		fields[2].Error = "No investment accounts available"
+		hasErrors = true
+	}
+	destIdx := fields[2].SelectedIndex
+	var destAccountID types.ID
+	if destIdx >= 0 && destIdx < len(a.transferSharesDialogAccountIDs) {
+		destAccountID = a.transferSharesDialogAccountIDs[destIdx]
+	} else {
+		fields[2].Error = "Select a destination account"
 		hasErrors = true
 	}
 
-	// Lot allocations (indices 3 through 3+numLots-1)
+	// Shares (index 3)
+	shares, err := parseSharesInput(fields[3].Value)
+	if err != nil {
+		fields[3].Error = "Shares must be positive"
+		hasErrors = true
+	}
+
+	// Lot allocations (indices 4 through 4+numLots-1)
 	var lotAllocations []investment.SellLotAllocation
 	if numLots > 0 {
 		totalAllocated := types.ZeroQuantity
 		for i := range numLots {
-			fieldIdx := 3 + i
+			fieldIdx := 4 + i
 			lotField := fields[fieldIdx]
 			lotVal := strings.TrimSpace(lotField.Value)
 
@@ -293,17 +301,9 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 		}
 
 		if !hasErrors && !shares.IsZero() && totalAllocated.Cmp(shares) != 0 {
-			fields[2].Error = fmt.Sprintf("Lot allocations total %s, need %s", totalAllocated.String(), shares.String())
+			fields[3].Error = fmt.Sprintf("Lot allocations total %s, need %s", totalAllocated.String(), shares.String())
 			hasErrors = true
 		}
-	}
-
-	// Date (index 3+numLots)
-	dateIdx := 3 + numLots
-	date, err := parseDateInput(fields[dateIdx].Value)
-	if err != nil {
-		fields[dateIdx].Error = "Invalid date (MM/DD/YYYY)"
-		hasErrors = true
 	}
 
 	if hasErrors {

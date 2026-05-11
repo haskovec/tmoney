@@ -25,35 +25,35 @@ func TestBuildSellDialog_NewTransaction_NonLotTracking(t *testing.T) {
 	}
 
 	fields := d.Fields()
-	// Non-lot-tracking: Security, Date, Shares, Price/Share, Total, Commission, Memo = 7 fields
+	// Non-lot-tracking: Date, Security, Shares, Price/Share, Total, Commission, Memo = 7 fields
 	if len(fields) != 7 {
 		t.Fatalf("expected 7 fields for non-lot-tracking, got %d", len(fields))
 	}
 
-	// Field 0: Security (typeahead combo)
-	if fields[0].Type != FieldCombo {
-		t.Errorf("field 0 type = %d, want FieldCombo (%d)", fields[0].Type, FieldCombo)
+	// Field 0: Date (masked, required, default today)
+	if fields[0].Type != FieldDate {
+		t.Errorf("field 0 type = %d, want FieldDate (%d)", fields[0].Type, FieldDate)
 	}
-	if fields[0].Label != "Security" {
-		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Security")
+	if fields[0].Label != "Date" {
+		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Date")
 	}
-	if len(fields[0].Options) != 2 {
-		t.Errorf("expected 2 security options, got %d", len(fields[0].Options))
-	}
-
-	// Field 1: Date (masked, required, default today)
-	if fields[1].Type != FieldDate {
-		t.Errorf("field 1 type = %d, want FieldDate (%d)", fields[1].Type, FieldDate)
-	}
-	if fields[1].Label != "Date" {
-		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Date")
-	}
-	if !fields[1].Required {
+	if !fields[0].Required {
 		t.Error("date field should be required")
 	}
 	today := time.Now().Format("01/02/2006")
-	if fields[1].Value != today {
-		t.Errorf("date default = %q, want %q", fields[1].Value, today)
+	if fields[0].Value != today {
+		t.Errorf("date default = %q, want %q", fields[0].Value, today)
+	}
+
+	// Field 1: Security (typeahead combo)
+	if fields[1].Type != FieldCombo {
+		t.Errorf("field 1 type = %d, want FieldCombo (%d)", fields[1].Type, FieldCombo)
+	}
+	if fields[1].Label != "Security" {
+		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Security")
+	}
+	if len(fields[1].Options) != 2 {
+		t.Errorf("expected 2 security options, got %d", len(fields[1].Options))
 	}
 
 	// Field 2: Shares (text, required)
@@ -163,14 +163,14 @@ func TestBuildSellDialog_EditTransaction(t *testing.T) {
 	d := buildSellDialog(options, txn, ids, nil)
 	fields := d.Fields()
 
-	// Security should be pre-selected
-	if fields[0].SelectedIndex != 0 {
-		t.Errorf("security selected index = %d, want 0", fields[0].SelectedIndex)
+	// Date
+	if fields[0].Value != "03/15/2024" {
+		t.Errorf("date = %q, want %q", fields[0].Value, "03/15/2024")
 	}
 
-	// Date
-	if fields[1].Value != "03/15/2024" {
-		t.Errorf("date = %q, want %q", fields[1].Value, "03/15/2024")
+	// Security should be pre-selected
+	if fields[1].SelectedIndex != 0 {
+		t.Errorf("security selected index = %d, want 0", fields[1].SelectedIndex)
 	}
 
 	// Shares
@@ -216,8 +216,8 @@ func TestBuildSellDialog_EditPreSelectsCorrectSecurity(t *testing.T) {
 	d := buildSellDialog(options, txn, ids, nil)
 	fields := d.Fields()
 
-	if fields[0].SelectedIndex != 1 {
-		t.Errorf("security selected index = %d, want 1 (MSFT)", fields[0].SelectedIndex)
+	if fields[1].SelectedIndex != 1 {
+		t.Errorf("security selected index = %d, want 1 (MSFT)", fields[1].SelectedIndex)
 	}
 }
 
@@ -283,7 +283,7 @@ func TestSubmitSellDialog_ValidationErrors(t *testing.T) {
 
 	// Set invalid values
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "not-a-date" // invalid date
+	fields[0].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty shares
 	fields[3].Value = ""           // no price
 	fields[4].Value = ""           // no total
@@ -299,7 +299,7 @@ func TestSubmitSellDialog_ValidationErrors(t *testing.T) {
 	}
 
 	fields = updatedApp.sellDialog.Fields()
-	if fields[1].Error == "" {
+	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
 	if fields[2].Error == "" {
@@ -323,7 +323,7 @@ func TestSubmitSellDialog_NoSecurities(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "185.00"
 
@@ -334,7 +334,7 @@ func TestSubmitSellDialog_NoSecurities(t *testing.T) {
 		t.Error("dialog should remain open when no securities available")
 	}
 	fields = updatedApp.sellDialog.Fields()
-	if fields[0].Error == "" {
+	if fields[1].Error == "" {
 		t.Error("security field should have error when no securities available")
 	}
 }
@@ -364,7 +364,7 @@ func TestSubmitSellDialog_ValidWithPricePerShare(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "03/15/2024" // date
+	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "10"         // shares
 	fields[3].Value = "185.00"     // price per share
 
@@ -404,7 +404,7 @@ func TestSubmitSellDialog_ValidWithTotal(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "06/01/2024"
+	fields[0].Value = "06/01/2024"
 	fields[2].Value = "5"
 	fields[4].Value = "925.00"
 
@@ -440,7 +440,7 @@ func TestSubmitSellDialog_InvalidCommission(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "185.00"
 	fields[5].Value = "not-a-number"
@@ -478,7 +478,7 @@ func TestSubmitSellDialog_InvalidPrice(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "not-valid"
 	fields[4].Value = ""
@@ -516,7 +516,7 @@ func TestSubmitSellDialog_InvalidTotal(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = ""
 	fields[4].Value = "not-valid"
@@ -556,7 +556,7 @@ func TestSubmitSellDialog_WithCommissionAndMemo(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "185.00"
 	fields[5].Value = "4.95"
@@ -595,7 +595,7 @@ func TestSubmitSellDialog_DollarSignInCommission(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "$185.00"
 	fields[5].Value = "$4.95"
@@ -658,7 +658,7 @@ func TestSubmitSellDialog_WithLotAllocations(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "03/15/2024" // date
+	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "30"         // total shares to sell
 	fields[3].Value = "20"         // lot 1: sell 20 shares
 	fields[4].Value = "10"         // lot 2: sell 10 shares
@@ -715,7 +715,7 @@ func TestSubmitSellDialog_LotAllocationMismatch(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "30"     // selling 30 shares
 	fields[3].Value = "20"     // lot 1 only 20 (mismatch: 20 != 30)
 	fields[4].Value = "185.00" // price per share
@@ -768,7 +768,7 @@ func TestSubmitSellDialog_LotAllocationExceedsAvailable(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "20"     // selling 20 shares
 	fields[3].Value = "20"     // lot 1 only has 10 available
 	fields[4].Value = "185.00" // price per share
@@ -821,7 +821,7 @@ func TestSubmitSellDialog_InvalidLotAllocation(t *testing.T) {
 	}
 
 	fields := app.sellDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "abc"    // invalid lot allocation
 	fields[4].Value = "185.00" // price per share

@@ -8,7 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -128,9 +127,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.buyDialogData = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
 		a.buyDialogSecurityIDs = secIDs
-		var editTxn *investment.Transaction
-		if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
-			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+		editTxn, ok := a.loadInvestmentEditTxn()
+		if !ok {
+			return a, nil
 		}
 		a.buyDialog = buildBuyDialog(secOptions, editTxn, secIDs)
 		if editTxn == nil {
@@ -142,6 +141,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.savedDate.IsZero() {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
+		a.investmentEditTxnID = types.NilID
 		a.invalidatePriceHistoryCache()
 		a.statusbar.AddNotification("Buy transaction saved", NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
@@ -154,9 +154,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
 		a.sellDialogSecurityIDs = secIDs
 		a.sellDialogLots = msg.data.lots
-		var editTxn *investment.Transaction
-		if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
-			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+		editTxn, ok := a.loadInvestmentEditTxn()
+		if !ok {
+			return a, nil
 		}
 		a.sellDialog = buildSellDialog(secOptions, editTxn, secIDs, msg.data.lots)
 		if editTxn == nil {
@@ -168,6 +168,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.savedDate.IsZero() {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
+		a.investmentEditTxnID = types.NilID
 		a.invalidatePriceHistoryCache()
 		a.statusbar.AddNotification("Sell transaction saved", NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
@@ -179,9 +180,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.dividendDialogData = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
 		a.dividendDialogSecurityIDs = secIDs
-		var editTxn *investment.Transaction
-		if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
-			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+		editTxn, ok := a.loadInvestmentEditTxn()
+		if !ok {
+			return a, nil
 		}
 		if a.dividendDialogReinvest {
 			a.dividendDialog = buildReinvestDividendDialog(secOptions, editTxn, secIDs)
@@ -197,6 +198,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.savedDate.IsZero() {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
+		a.investmentEditTxnID = types.NilID
 		// Reinvest dividends auto-create a price row; cash dividends do
 		// not. The chart history cache is cheap to rebuild, so clear
 		// unconditionally rather than branching on dividendDialogReinvest.
@@ -215,6 +217,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.savedDate.IsZero() {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
+		a.investmentEditTxnID = types.NilID
 		label := string(a.cashOperationType)
 		if label == "" {
 			label = "Cash operation"
@@ -231,9 +234,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.transferCashDialogData = msg.data
 		acctOptions, acctIDs := buildNonInvestmentAccountOptions(msg.data.accounts)
 		a.transferCashDialogAccountIDs = acctIDs
-		var editTxn *investment.Transaction
-		if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
-			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+		editTxn, ok := a.loadInvestmentEditTxn()
+		if !ok {
+			return a, nil
 		}
 		a.transferCashDialog = buildTransferCashDialog(a.transferCashDirection, acctOptions, editTxn, acctIDs)
 		if editTxn == nil {
@@ -245,6 +248,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.savedDate.IsZero() {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
+		a.investmentEditTxnID = types.NilID
 		a.statusbar.AddNotification("Cash transfer saved", NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
@@ -262,9 +266,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		acctOptions, acctIDs := buildInvestmentAccountOptions(msg.data.investmentAccounts, excludeID)
 		a.transferSharesDialogAccountIDs = acctIDs
 		a.transferSharesDialogLots = msg.data.lots
-		var editTxn *investment.Transaction
-		if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
-			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+		editTxn, ok := a.loadInvestmentEditTxn()
+		if !ok {
+			return a, nil
 		}
 		a.transferSharesDialog = buildTransferSharesDialog(acctOptions, secOptions, editTxn, acctIDs, secIDs, msg.data.lots)
 		if editTxn == nil {
@@ -276,6 +280,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.savedDate.IsZero() {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
+		a.investmentEditTxnID = types.NilID
 		a.statusbar.AddNotification("Share transfer saved", NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)

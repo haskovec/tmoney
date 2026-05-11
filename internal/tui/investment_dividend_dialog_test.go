@@ -29,30 +29,30 @@ func TestBuildDividendDialog_NewTransaction(t *testing.T) {
 		t.Fatalf("expected 4 fields, got %d", len(fields))
 	}
 
-	// Field 0: Security (typeahead combo)
-	if fields[0].Type != FieldCombo {
-		t.Errorf("field 0 type = %d, want FieldCombo (%d)", fields[0].Type, FieldCombo)
+	// Field 0: Date (masked, required, default today)
+	if fields[0].Type != FieldDate {
+		t.Errorf("field 0 type = %d, want FieldDate (%d)", fields[0].Type, FieldDate)
 	}
-	if fields[0].Label != "Security" {
-		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Security")
+	if fields[0].Label != "Date" {
+		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Date")
 	}
-	if len(fields[0].Options) != 2 {
-		t.Errorf("expected 2 security options, got %d", len(fields[0].Options))
-	}
-
-	// Field 1: Date (masked, required, default today)
-	if fields[1].Type != FieldDate {
-		t.Errorf("field 1 type = %d, want FieldDate (%d)", fields[1].Type, FieldDate)
-	}
-	if fields[1].Label != "Date" {
-		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Date")
-	}
-	if !fields[1].Required {
+	if !fields[0].Required {
 		t.Error("date field should be required")
 	}
 	today := time.Now().Format("01/02/2006")
-	if fields[1].Value != today {
-		t.Errorf("date default = %q, want %q", fields[1].Value, today)
+	if fields[0].Value != today {
+		t.Errorf("date default = %q, want %q", fields[0].Value, today)
+	}
+
+	// Field 1: Security (typeahead combo)
+	if fields[1].Type != FieldCombo {
+		t.Errorf("field 1 type = %d, want FieldCombo (%d)", fields[1].Type, FieldCombo)
+	}
+	if fields[1].Label != "Security" {
+		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Security")
+	}
+	if len(fields[1].Options) != 2 {
+		t.Errorf("expected 2 security options, got %d", len(fields[1].Options))
 	}
 
 	// Field 2: Amount (text, required)
@@ -92,14 +92,14 @@ func TestBuildDividendDialog_EditTransaction(t *testing.T) {
 	d := buildDividendDialog(options, txn, ids)
 	fields := d.Fields()
 
-	// Security should be pre-selected
-	if fields[0].SelectedIndex != 0 {
-		t.Errorf("security selected index = %d, want 0", fields[0].SelectedIndex)
+	// Date should match
+	if fields[0].Value != "03/15/2024" {
+		t.Errorf("date = %q, want %q", fields[0].Value, "03/15/2024")
 	}
 
-	// Date should match
-	if fields[1].Value != "03/15/2024" {
-		t.Errorf("date = %q, want %q", fields[1].Value, "03/15/2024")
+	// Security should be pre-selected
+	if fields[1].SelectedIndex != 0 {
+		t.Errorf("security selected index = %d, want 0", fields[1].SelectedIndex)
 	}
 
 	// Amount
@@ -130,8 +130,8 @@ func TestBuildDividendDialog_EditPreSelectsCorrectSecurity(t *testing.T) {
 	d := buildDividendDialog(options, txn, ids)
 	fields := d.Fields()
 
-	if fields[0].SelectedIndex != 1 {
-		t.Errorf("security selected index = %d, want 1 (MSFT)", fields[0].SelectedIndex)
+	if fields[1].SelectedIndex != 1 {
+		t.Errorf("security selected index = %d, want 1 (MSFT)", fields[1].SelectedIndex)
 	}
 }
 
@@ -153,20 +153,20 @@ func TestBuildReinvestDividendDialog_NewTransaction(t *testing.T) {
 		t.Fatalf("expected 6 fields, got %d", len(fields))
 	}
 
-	// Field 0: Security (typeahead combo)
-	if fields[0].Type != FieldCombo {
-		t.Errorf("field 0 type = %d, want FieldCombo", fields[0].Type)
+	// Field 0: Date (text, required)
+	if fields[0].Label != "Date" {
+		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Date")
 	}
-	if fields[0].Label != "Security" {
-		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Security")
+	if !fields[0].Required {
+		t.Error("date field should be required")
 	}
 
-	// Field 1: Date (text, required)
-	if fields[1].Label != "Date" {
-		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Date")
+	// Field 1: Security (typeahead combo)
+	if fields[1].Type != FieldCombo {
+		t.Errorf("field 1 type = %d, want FieldCombo", fields[1].Type)
 	}
-	if !fields[1].Required {
-		t.Error("date field should be required")
+	if fields[1].Label != "Security" {
+		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Security")
 	}
 
 	// Field 2: Shares (text, required)
@@ -211,11 +211,11 @@ func TestBuildReinvestDividendDialog_EditTransaction(t *testing.T) {
 	d := buildReinvestDividendDialog(options, txn, ids)
 	fields := d.Fields()
 
-	if fields[0].SelectedIndex != 0 {
-		t.Errorf("security selected = %d, want 0", fields[0].SelectedIndex)
+	if fields[0].Value != "03/15/2024" {
+		t.Errorf("date = %q, want %q", fields[0].Value, "03/15/2024")
 	}
-	if fields[1].Value != "03/15/2024" {
-		t.Errorf("date = %q, want %q", fields[1].Value, "03/15/2024")
+	if fields[1].SelectedIndex != 0 {
+		t.Errorf("security selected = %d, want 0", fields[1].SelectedIndex)
 	}
 	if fields[2].Value != "10" {
 		t.Errorf("shares = %q, want %q", fields[2].Value, "10")
@@ -251,7 +251,7 @@ func TestSubmitDividendDialog_ValidationErrors(t *testing.T) {
 
 	// Set invalid values
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "not-a-date" // invalid date
+	fields[0].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty amount
 
 	model, cmd := app.submitDividendDialog()
@@ -265,7 +265,7 @@ func TestSubmitDividendDialog_ValidationErrors(t *testing.T) {
 	}
 
 	fields = updatedApp.dividendDialog.Fields()
-	if fields[1].Error == "" {
+	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
 	if fields[2].Error == "" {
@@ -291,7 +291,7 @@ func TestSubmitDividendDialog_InvalidAmount(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "not-valid" // invalid amount
 
 	model, _ := app.submitDividendDialog()
@@ -330,7 +330,7 @@ func TestSubmitDividendDialog_Valid(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "03/15/2024" // date
+	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "50.00"      // amount
 
 	model, cmd := app.submitDividendDialog()
@@ -365,7 +365,7 @@ func TestSubmitDividendDialog_ValidWithMemo(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "50.00"
 	fields[3].Value = "Q1 dividend" // memo
 
@@ -390,7 +390,7 @@ func TestSubmitDividendDialog_NoSecurities(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "50.00"
 
 	model, _ := app.submitDividendDialog()
@@ -400,7 +400,7 @@ func TestSubmitDividendDialog_NoSecurities(t *testing.T) {
 		t.Error("dialog should remain open when no securities available")
 	}
 	fields = updatedApp.dividendDialog.Fields()
-	if fields[0].Error == "" {
+	if fields[1].Error == "" {
 		t.Error("security field should have error when no securities available")
 	}
 }
@@ -424,7 +424,7 @@ func TestSubmitReinvestDividendDialog_ValidationErrors(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "not-a-date" // invalid date
+	fields[0].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty shares
 	fields[3].Value = ""           // no price
 	fields[4].Value = ""           // no total
@@ -440,7 +440,7 @@ func TestSubmitReinvestDividendDialog_ValidationErrors(t *testing.T) {
 	}
 
 	fields = updatedApp.dividendDialog.Fields()
-	if fields[1].Error == "" {
+	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
 	if fields[2].Error == "" {
@@ -478,7 +478,7 @@ func TestSubmitReinvestDividendDialog_ValidWithPrice(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "03/15/2024" // date
+	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "10"         // shares
 	fields[3].Value = "185.00"     // price per share
 
@@ -517,7 +517,7 @@ func TestSubmitReinvestDividendDialog_ValidWithTotal(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "06/01/2024" // date
+	fields[0].Value = "06/01/2024" // date
 	fields[2].Value = "5"          // shares
 	fields[4].Value = "925.00"     // total amount
 
@@ -543,7 +543,7 @@ func TestSubmitReinvestDividendDialog_NoSecurities(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "185.00"
 
@@ -554,7 +554,7 @@ func TestSubmitReinvestDividendDialog_NoSecurities(t *testing.T) {
 		t.Error("dialog should remain open when no securities available")
 	}
 	fields = updatedApp.dividendDialog.Fields()
-	if fields[0].Error == "" {
+	if fields[1].Error == "" {
 		t.Error("security field should have error")
 	}
 }
@@ -580,7 +580,7 @@ func TestSubmitReinvestDividendDialog_InvalidPrice(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "not-valid" // invalid price
 	fields[4].Value = ""
@@ -739,7 +739,7 @@ func TestHandleDividendDialogKey_RoutesToDividendSubmit(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "50.00"
 
 	model, cmd := app.submitDividendDialog()
@@ -776,7 +776,7 @@ func TestHandleDividendDialogKey_RoutesToReinvestSubmit(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "185.00"
 
@@ -812,7 +812,7 @@ func TestSubmitDividendDialog_DollarSignInAmount(t *testing.T) {
 	}
 
 	fields := app.dividendDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "$50.00" // dollar sign in amount
 
 	model, cmd := app.submitDividendDialog()

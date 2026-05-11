@@ -458,9 +458,9 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyPressMsg) (tea.Model, t
 			investment.TransactionTypeFee,
 			investment.TransactionTypeInterest:
 			a.cashOperationType = selectedType
-			var editTxn *investment.Transaction
-			if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
-				editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
+			editTxn, ok := a.loadInvestmentEditTxn()
+			if !ok {
+				return a, nil
 			}
 			a.cashOperationDialog = buildCashOperationDialog(selectedType.DisplayName(), editTxn)
 			if editTxn == nil {

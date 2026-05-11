@@ -112,30 +112,30 @@ func TestBuildBuyDialog_NewTransaction(t *testing.T) {
 		t.Fatalf("expected 7 fields, got %d", len(fields))
 	}
 
-	// Field 0: Security (typeahead combo)
-	if fields[0].Type != FieldCombo {
-		t.Errorf("field 0 type = %d, want FieldCombo (%d)", fields[0].Type, FieldCombo)
+	// Field 0: Date (masked, required, default today)
+	if fields[0].Type != FieldDate {
+		t.Errorf("field 0 type = %d, want FieldDate (%d)", fields[0].Type, FieldDate)
 	}
-	if fields[0].Label != "Security" {
-		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Security")
+	if fields[0].Label != "Date" {
+		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Date")
 	}
-	if len(fields[0].Options) != 2 {
-		t.Errorf("expected 2 security options, got %d", len(fields[0].Options))
-	}
-
-	// Field 1: Date (masked, required, default today)
-	if fields[1].Type != FieldDate {
-		t.Errorf("field 1 type = %d, want FieldDate (%d)", fields[1].Type, FieldDate)
-	}
-	if fields[1].Label != "Date" {
-		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Date")
-	}
-	if !fields[1].Required {
+	if !fields[0].Required {
 		t.Error("date field should be required")
 	}
 	today := time.Now().Format("01/02/2006")
-	if fields[1].Value != today {
-		t.Errorf("date default = %q, want %q", fields[1].Value, today)
+	if fields[0].Value != today {
+		t.Errorf("date default = %q, want %q", fields[0].Value, today)
+	}
+
+	// Field 1: Security (typeahead combo)
+	if fields[1].Type != FieldCombo {
+		t.Errorf("field 1 type = %d, want FieldCombo (%d)", fields[1].Type, FieldCombo)
+	}
+	if fields[1].Label != "Security" {
+		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Security")
+	}
+	if len(fields[1].Options) != 2 {
+		t.Errorf("expected 2 security options, got %d", len(fields[1].Options))
 	}
 
 	// Field 2: Shares (text, required)
@@ -187,14 +187,14 @@ func TestBuildBuyDialog_DateFieldMaskedOverwrite(t *testing.T) {
 	ids := []types.ID{secID}
 
 	d := buildBuyDialog(options, txn, ids)
-	d.SetFocusIndex(1) // focus the Date field
+	d.SetFocusIndex(0) // focus the Date field
 
 	// Type "0" then "5" — overwrites "03" with "05", cursor advances skipping the slash.
 	d.HandleKey(tea.KeyPressMsg{Code: '0', Text: "0"})
 	d.HandleKey(tea.KeyPressMsg{Code: '5', Text: "5"})
 
-	if d.Fields()[1].Value != "05/15/2024" {
-		t.Errorf("Value = %q, want %q (overwrite + skip slash)", d.Fields()[1].Value, "05/15/2024")
+	if d.Fields()[0].Value != "05/15/2024" {
+		t.Errorf("Value = %q, want %q (overwrite + skip slash)", d.Fields()[0].Value, "05/15/2024")
 	}
 }
 
@@ -212,14 +212,14 @@ func TestBuildBuyDialog_SecurityTypeaheadCaseInsensitive(t *testing.T) {
 	wantID := ids[2] // MSFT
 
 	d := buildBuyDialog(options, nil, ids)
-	d.SetFocusIndex(0) // focus the Security combo
+	d.SetFocusIndex(1) // focus the Security combo (Date is now field 0)
 
 	// Type "msft" (all lowercase) — should case-insensitively filter to MSFT.
 	for _, r := range "msft" {
 		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
 
-	filtered := d.Fields()[0].FilteredIndices()
+	filtered := d.Fields()[1].FilteredIndices()
 	if len(filtered) != 1 {
 		t.Fatalf("expected 1 filtered match for %q, got %d (%v)", "msft", len(filtered), filtered)
 	}
@@ -230,10 +230,10 @@ func TestBuildBuyDialog_SecurityTypeaheadCaseInsensitive(t *testing.T) {
 	// Press Enter — commit the highlighted MSFT row into SelectedIndex.
 	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter, Text: ""})
 
-	if got := d.Fields()[0].SelectedIndex; got != 2 {
+	if got := d.Fields()[1].SelectedIndex; got != 2 {
 		t.Errorf("SelectedIndex = %d, want 2 (MSFT)", got)
 	}
-	if ids[d.Fields()[0].SelectedIndex] != wantID {
+	if ids[d.Fields()[1].SelectedIndex] != wantID {
 		t.Errorf("resolved security ID does not match MSFT")
 	}
 }
@@ -257,14 +257,14 @@ func TestBuildBuyDialog_EditTransaction(t *testing.T) {
 	d := buildBuyDialog(options, txn, ids)
 	fields := d.Fields()
 
-	// Security should be pre-selected to the matching security
-	if fields[0].SelectedIndex != 0 {
-		t.Errorf("security selected index = %d, want 0", fields[0].SelectedIndex)
+	// Date should match the transaction date
+	if fields[0].Value != "03/15/2024" {
+		t.Errorf("date = %q, want %q", fields[0].Value, "03/15/2024")
 	}
 
-	// Date should match the transaction date
-	if fields[1].Value != "03/15/2024" {
-		t.Errorf("date = %q, want %q", fields[1].Value, "03/15/2024")
+	// Security should be pre-selected to the matching security
+	if fields[1].SelectedIndex != 0 {
+		t.Errorf("security selected index = %d, want 0", fields[1].SelectedIndex)
 	}
 
 	// Shares
@@ -311,8 +311,8 @@ func TestBuildBuyDialog_EditPreSelectsCorrectSecurity(t *testing.T) {
 	d := buildBuyDialog(options, txn, ids)
 	fields := d.Fields()
 
-	if fields[0].SelectedIndex != 1 {
-		t.Errorf("security selected index = %d, want 1 (MSFT)", fields[0].SelectedIndex)
+	if fields[1].SelectedIndex != 1 {
+		t.Errorf("security selected index = %d, want 1 (MSFT)", fields[1].SelectedIndex)
 	}
 }
 
@@ -415,7 +415,7 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 
 	// Set invalid values
 	fields := app.buyDialog.Fields()
-	fields[1].Value = "not-a-date" // invalid date
+	fields[0].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty shares
 	fields[3].Value = ""           // no price
 	fields[4].Value = ""           // no total
@@ -433,7 +433,7 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 
 	// Check field errors
 	fields = updatedApp.buyDialog.Fields()
-	if fields[1].Error == "" {
+	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
 	if fields[2].Error == "" {
@@ -471,7 +471,7 @@ func TestSubmitBuyDialog_ValidWithPricePerShare(t *testing.T) {
 	}
 
 	fields := app.buyDialog.Fields()
-	fields[1].Value = "03/15/2024" // date
+	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "10"         // shares
 	fields[3].Value = "185.00"     // price per share
 
@@ -511,7 +511,7 @@ func TestSubmitBuyDialog_ValidWithTotal(t *testing.T) {
 	}
 
 	fields := app.buyDialog.Fields()
-	fields[1].Value = "06/01/2024" // date
+	fields[0].Value = "06/01/2024" // date
 	fields[2].Value = "5"          // shares
 	fields[4].Value = "925.00"     // total amount
 
@@ -536,7 +536,7 @@ func TestSubmitBuyDialog_NoSecurities(t *testing.T) {
 	}
 
 	fields := app.buyDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "185.00"
 
@@ -548,7 +548,7 @@ func TestSubmitBuyDialog_NoSecurities(t *testing.T) {
 		t.Error("dialog should remain open when no securities available")
 	}
 	fields = updatedApp.buyDialog.Fields()
-	if fields[0].Error == "" {
+	if fields[1].Error == "" {
 		t.Error("security field should have error when no securities available")
 	}
 }
@@ -573,7 +573,7 @@ func TestSubmitBuyDialog_InvalidCommission(t *testing.T) {
 	}
 
 	fields := app.buyDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "185.00"
 	fields[5].Value = "not-a-number" // invalid commission
@@ -711,7 +711,7 @@ func TestSubmitBuyDialog_InvalidPrice(t *testing.T) {
 	}
 
 	fields := app.buyDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "not-valid" // invalid price
 	fields[4].Value = ""
@@ -748,7 +748,7 @@ func TestSubmitBuyDialog_InvalidTotal(t *testing.T) {
 	}
 
 	fields := app.buyDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = ""
 	fields[4].Value = "not-valid" // invalid total
@@ -787,7 +787,7 @@ func TestSubmitBuyDialog_WithCommissionAndMemo(t *testing.T) {
 	}
 
 	fields := app.buyDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "185.00"
 	fields[5].Value = "4.95"      // commission
@@ -825,7 +825,7 @@ func TestSubmitBuyDialog_DollarSignInCommission(t *testing.T) {
 	}
 
 	fields := app.buyDialog.Fields()
-	fields[1].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "$185.00" // dollar sign in price
 	fields[5].Value = "$4.95"   // dollar sign in commission
@@ -857,7 +857,7 @@ func TestApp_Update_BuyDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 	if updatedApp.buyDialog == nil {
 		t.Fatal("buy dialog should be created")
 	}
-	if got := updatedApp.buyDialog.Fields()[1].Value; got != "01/15/2024" {
+	if got := updatedApp.buyDialog.Fields()[0].Value; got != "01/15/2024" {
 		t.Errorf("date field = %q, want %q (seeded from sticky date)", got, "01/15/2024")
 	}
 }
@@ -875,7 +875,7 @@ func TestApp_Update_BuyDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *testing.
 	updatedApp := model.(*App)
 
 	today := time.Now().Format("01/02/2006")
-	if got := updatedApp.buyDialog.Fields()[1].Value; got != today {
+	if got := updatedApp.buyDialog.Fields()[0].Value; got != today {
 		t.Errorf("date field = %q, want %q (today)", got, today)
 	}
 }

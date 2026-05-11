@@ -39,11 +39,21 @@ func buildLotLabel(lot *investment.Lot) string {
 
 // buildSellDialog creates a Dialog for entering a new sell transaction.
 // If lots is non-nil, lot allocation fields are added after the Shares field.
+// Field order: Date(0), Security(1), Shares(2), [lots...], Price/Share,
+// Total, Commission, Memo.
 func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID, lots []*investment.Lot) *Dialog {
 	d := NewDialog("Sell Securities")
 	d.SetWidth(70)
 
-	// Security selector
+	// Date (index 0)
+	dateVal := ""
+	if editTxn != nil {
+		dateVal = editTxn.Date.Time().Format("01/02/2006")
+	}
+	f := d.AddDateField("Date", dateVal)
+	f.Required = true
+
+	// Security selector (index 1)
 	selectedIdx := 0
 	if editTxn != nil && editTxn.SecurityID.Valid {
 		for i, id := range securityIDs {
@@ -54,14 +64,6 @@ func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, 
 		}
 	}
 	d.AddComboField("Security", securityOptions, selectedIdx)
-
-	// Date
-	dateVal := ""
-	if editTxn != nil {
-		dateVal = editTxn.Date.Time().Format("01/02/2006")
-	}
-	f := d.AddDateField("Date", dateVal)
-	f.Required = true
 
 	// Shares
 	sharesVal := ""
@@ -184,7 +186,7 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 
 	fields := a.sellDialog.Fields()
 	numLots := len(a.sellDialogLots)
-	// Expected fields: Security(0), Date(1), Shares(2), [lots...], Price/Share, Total, Commission, Memo
+	// Expected fields: Date(0), Security(1), Shares(2), [lots...], Price/Share, Total, Commission, Memo
 	expectedFields := 7 + numLots
 	if len(fields) < expectedFields {
 		return a, nil
@@ -193,24 +195,24 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 	a.sellDialog.ClearErrors()
 	hasErrors := false
 
-	// Security (index 0)
-	if len(a.sellDialogSecurityIDs) == 0 {
-		fields[0].Error = "No securities available"
+	// Date (index 0)
+	date, err := parseDateInput(fields[0].Value)
+	if err != nil {
+		fields[0].Error = "Invalid date (MM/DD/YYYY)"
 		hasErrors = true
 	}
-	secIdx := fields[0].SelectedIndex
+
+	// Security (index 1)
+	if len(a.sellDialogSecurityIDs) == 0 {
+		fields[1].Error = "No securities available"
+		hasErrors = true
+	}
+	secIdx := fields[1].SelectedIndex
 	var securityID types.ID
 	if secIdx >= 0 && secIdx < len(a.sellDialogSecurityIDs) {
 		securityID = a.sellDialogSecurityIDs[secIdx]
 	} else {
-		fields[0].Error = "Select a security"
-		hasErrors = true
-	}
-
-	// Date (index 1)
-	date, err := parseDateInput(fields[1].Value)
-	if err != nil {
-		fields[1].Error = "Invalid date (MM/DD/YYYY)"
+		fields[1].Error = "Select a security"
 		hasErrors = true
 	}
 

@@ -82,17 +82,24 @@ func TestBuildTransferSharesDialog_Basic(t *testing.T) {
 	}
 
 	fields := d.Fields()
-	// Without lots: Account(0), Security(1), Shares(2), Date(3), Memo(4) = 5 fields
+	// Without lots: Date(0), Security(1), To Account(2), Shares(3), Memo(4) = 5 fields
 	if len(fields) != 5 {
 		t.Fatalf("expected 5 fields (no lots), got %d", len(fields))
 	}
 
-	// Field 0: To Account (select)
-	if fields[0].Type != FieldSelect {
-		t.Errorf("field 0 type = %d, want FieldSelect (%d)", fields[0].Type, FieldSelect)
+	// Field 0: Date (masked, required)
+	if fields[0].Type != FieldDate {
+		t.Errorf("field 0 type = %d, want FieldDate", fields[0].Type)
 	}
-	if fields[0].Label != "To Account" {
-		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "To Account")
+	if fields[0].Label != "Date" {
+		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Date")
+	}
+	if !fields[0].Required {
+		t.Error("date field should be required")
+	}
+	today := time.Now().Format("01/02/2006")
+	if fields[0].Value != today {
+		t.Errorf("date default = %q, want %q", fields[0].Value, today)
 	}
 
 	// Field 1: Security (typeahead combo)
@@ -103,30 +110,23 @@ func TestBuildTransferSharesDialog_Basic(t *testing.T) {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Security")
 	}
 
-	// Field 2: Shares (text, required)
-	if fields[2].Type != FieldText {
-		t.Errorf("field 2 type = %d, want FieldText", fields[2].Type)
+	// Field 2: To Account (select)
+	if fields[2].Type != FieldSelect {
+		t.Errorf("field 2 type = %d, want FieldSelect (%d)", fields[2].Type, FieldSelect)
 	}
-	if fields[2].Label != "Shares" {
-		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "Shares")
-	}
-	if !fields[2].Required {
-		t.Error("shares field should be required")
+	if fields[2].Label != "To Account" {
+		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "To Account")
 	}
 
-	// Field 3: Date (masked, required)
-	if fields[3].Type != FieldDate {
-		t.Errorf("field 3 type = %d, want FieldDate", fields[3].Type)
+	// Field 3: Shares (text, required)
+	if fields[3].Type != FieldText {
+		t.Errorf("field 3 type = %d, want FieldText", fields[3].Type)
 	}
-	if fields[3].Label != "Date" {
-		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Date")
+	if fields[3].Label != "Shares" {
+		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Shares")
 	}
 	if !fields[3].Required {
-		t.Error("date field should be required")
-	}
-	today := time.Now().Format("01/02/2006")
-	if fields[3].Value != today {
-		t.Errorf("date default = %q, want %q", fields[3].Value, today)
+		t.Error("shares field should be required")
 	}
 
 	// Field 4: Memo (text)
@@ -158,22 +158,17 @@ func TestBuildTransferSharesDialog_WithLots(t *testing.T) {
 	d := buildTransferSharesDialog(acctOptions, secOptions, nil, acctIDs, secIDs, lots)
 
 	fields := d.Fields()
-	// With 2 lots: Account(0), Security(1), Shares(2), Lot1(3), Lot2(4), Date(5), Memo(6) = 7 fields
+	// With 2 lots: Date(0), Security(1), To Account(2), Shares(3), Lot1(4), Lot2(5), Memo(6) = 7 fields
 	if len(fields) != 7 {
 		t.Fatalf("expected 7 fields (2 lots), got %d", len(fields))
 	}
 
-	// Lot fields at indices 3 and 4
-	if fields[3].Type != FieldText {
-		t.Errorf("lot field 0 type = %d, want FieldText", fields[3].Type)
-	}
+	// Lot fields at indices 4 and 5
 	if fields[4].Type != FieldText {
-		t.Errorf("lot field 1 type = %d, want FieldText", fields[4].Type)
+		t.Errorf("lot field 0 type = %d, want FieldText", fields[4].Type)
 	}
-
-	// Date moved to index 5
-	if fields[5].Label != "Date" {
-		t.Errorf("field 5 label = %q, want %q", fields[5].Label, "Date")
+	if fields[5].Type != FieldText {
+		t.Errorf("lot field 1 type = %d, want FieldText", fields[5].Type)
 	}
 
 	// Memo at index 6
@@ -205,9 +200,9 @@ func TestBuildTransferSharesDialog_EditTransaction(t *testing.T) {
 	d := buildTransferSharesDialog(acctOptions, secOptions, txn, acctIDs, secIDs, nil)
 	fields := d.Fields()
 
-	// Account should match destAcctID (index 1)
-	if fields[0].SelectedIndex != 1 {
-		t.Errorf("account selected = %d, want 1", fields[0].SelectedIndex)
+	// Date (index 0)
+	if fields[0].Value != "03/15/2024" {
+		t.Errorf("date = %q, want %q", fields[0].Value, "03/15/2024")
 	}
 
 	// Security should match secID (index 1)
@@ -215,14 +210,14 @@ func TestBuildTransferSharesDialog_EditTransaction(t *testing.T) {
 		t.Errorf("security selected = %d, want 1", fields[1].SelectedIndex)
 	}
 
-	// Shares
-	if fields[2].Value != "10" {
-		t.Errorf("shares = %q, want %q", fields[2].Value, "10")
+	// Account should match destAcctID (index 1)
+	if fields[2].SelectedIndex != 1 {
+		t.Errorf("account selected = %d, want 1", fields[2].SelectedIndex)
 	}
 
-	// Date
-	if fields[3].Value != "03/15/2024" {
-		t.Errorf("date = %q, want %q", fields[3].Value, "03/15/2024")
+	// Shares
+	if fields[3].Value != "10" {
+		t.Errorf("shares = %q, want %q", fields[3].Value, "10")
 	}
 
 	// Memo
@@ -257,8 +252,8 @@ func TestSubmitTransferSharesDialog_ValidationErrors(t *testing.T) {
 
 	// Set invalid values
 	fields := app.transferSharesDialog.Fields()
-	fields[2].Value = ""           // empty shares
-	fields[3].Value = "not-a-date" // invalid date
+	fields[0].Value = "not-a-date" // invalid date
+	fields[3].Value = ""           // empty shares
 
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
@@ -271,10 +266,10 @@ func TestSubmitTransferSharesDialog_ValidationErrors(t *testing.T) {
 	}
 
 	fields = updatedApp.transferSharesDialog.Fields()
-	if fields[2].Error == "" {
+	if fields[3].Error == "" {
 		t.Error("shares field should have error")
 	}
-	if fields[3].Error == "" {
+	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
 }
@@ -299,8 +294,8 @@ func TestSubmitTransferSharesDialog_NoAccounts(t *testing.T) {
 	}
 
 	fields := app.transferSharesDialog.Fields()
-	fields[2].Value = "10"
-	fields[3].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
+	fields[3].Value = "10"
 
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
@@ -335,8 +330,8 @@ func TestSubmitTransferSharesDialog_NoSecurities(t *testing.T) {
 	}
 
 	fields := app.transferSharesDialog.Fields()
-	fields[2].Value = "10"
-	fields[3].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
+	fields[3].Value = "10"
 
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
@@ -372,8 +367,8 @@ func TestSubmitTransferSharesDialog_ValidTransfer(t *testing.T) {
 	}
 
 	fields := app.transferSharesDialog.Fields()
-	fields[2].Value = "10"
-	fields[3].Value = "03/15/2024"
+	fields[0].Value = "03/15/2024"
+	fields[3].Value = "10"
 
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
@@ -409,8 +404,8 @@ func TestSubmitTransferSharesDialog_ValidWithMemo(t *testing.T) {
 	}
 
 	fields := app.transferSharesDialog.Fields()
-	fields[2].Value = "25"
-	fields[3].Value = "06/01/2024"
+	fields[0].Value = "06/01/2024"
+	fields[3].Value = "25"
 	fields[4].Value = "Move shares to IRA"
 
 	model, cmd := app.submitTransferSharesDialog()
@@ -464,10 +459,10 @@ func TestSubmitTransferSharesDialog_WithLotAllocations(t *testing.T) {
 	}
 
 	fields := app.transferSharesDialog.Fields()
-	fields[2].Value = "30"         // total shares
-	fields[3].Value = "20"         // 20 from lot 1
-	fields[4].Value = "10"         // 10 from lot 2
-	fields[5].Value = "03/15/2024" // date
+	fields[0].Value = "03/15/2024" // date
+	fields[3].Value = "30"         // total shares
+	fields[4].Value = "20"         // 20 from lot 1
+	fields[5].Value = "10"         // 10 from lot 2
 	fields[6].Value = "Lot transfer"
 
 	model, cmd := app.submitTransferSharesDialog()
@@ -515,9 +510,9 @@ func TestSubmitTransferSharesDialog_LotAllocationMismatch(t *testing.T) {
 	}
 
 	fields := app.transferSharesDialog.Fields()
-	fields[2].Value = "30"         // total shares = 30
-	fields[3].Value = "20"         // only 20 allocated from lot (mismatch!)
-	fields[4].Value = "03/15/2024" // date
+	fields[0].Value = "03/15/2024" // date
+	fields[3].Value = "30"         // total shares = 30
+	fields[4].Value = "20"         // only 20 allocated from lot (mismatch!)
 
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
@@ -530,7 +525,7 @@ func TestSubmitTransferSharesDialog_LotAllocationMismatch(t *testing.T) {
 	}
 
 	fields = updatedApp.transferSharesDialog.Fields()
-	if fields[2].Error == "" {
+	if fields[3].Error == "" {
 		t.Error("shares field should have allocation mismatch error")
 	}
 }
@@ -569,9 +564,9 @@ func TestSubmitTransferSharesDialog_LotExceedsAvailable(t *testing.T) {
 	}
 
 	fields := app.transferSharesDialog.Fields()
-	fields[2].Value = "20"         // want 20 shares
-	fields[3].Value = "20"         // try 20 from lot that only has 10
-	fields[4].Value = "03/15/2024" // date
+	fields[0].Value = "03/15/2024" // date
+	fields[3].Value = "20"         // want 20 shares
+	fields[4].Value = "20"         // try 20 from lot that only has 10
 
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
@@ -584,7 +579,7 @@ func TestSubmitTransferSharesDialog_LotExceedsAvailable(t *testing.T) {
 	}
 
 	fields = updatedApp.transferSharesDialog.Fields()
-	if fields[3].Error == "" {
+	if fields[4].Error == "" {
 		t.Error("lot field should have error about insufficient shares")
 	}
 }

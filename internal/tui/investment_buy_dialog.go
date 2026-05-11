@@ -66,11 +66,23 @@ func buildSecurityOptions(securities []*security.Security) ([]string, []types.ID
 }
 
 // buildBuyDialog creates a Dialog for entering a new buy transaction.
+// Field order: Date(0), Security(1), Shares(2), Price/Share(3), Total(4),
+// Commission(5), Memo(6) — Date leads for consistency with the regular
+// transaction dialog and so batch-entry on the sticky date can tab
+// straight through to the next field.
 func buildBuyDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *Dialog {
 	d := NewDialog("Buy Securities")
 	d.SetWidth(70)
 
-	// Security selector
+	// Date (index 0)
+	dateVal := ""
+	if editTxn != nil {
+		dateVal = editTxn.Date.Time().Format("01/02/2006")
+	}
+	f := d.AddDateField("Date", dateVal)
+	f.Required = true
+
+	// Security selector (index 1)
 	selectedIdx := 0
 	if editTxn != nil && editTxn.SecurityID.Valid {
 		for i, id := range securityIDs {
@@ -81,14 +93,6 @@ func buildBuyDialog(securityOptions []string, editTxn *investment.Transaction, s
 		}
 	}
 	d.AddComboField("Security", securityOptions, selectedIdx)
-
-	// Date
-	dateVal := ""
-	if editTxn != nil {
-		dateVal = editTxn.Date.Time().Format("01/02/2006")
-	}
-	f := d.AddDateField("Date", dateVal)
-	f.Required = true
 
 	// Shares
 	sharesVal := ""
@@ -222,24 +226,24 @@ func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
 	a.buyDialog.ClearErrors()
 	hasErrors := false
 
-	// Security (index 0)
-	if len(a.buyDialogSecurityIDs) == 0 {
-		fields[0].Error = "No securities available"
+	// Date (index 0)
+	date, err := parseDateInput(fields[0].Value)
+	if err != nil {
+		fields[0].Error = "Invalid date (MM/DD/YYYY)"
 		hasErrors = true
 	}
-	secIdx := fields[0].SelectedIndex
+
+	// Security (index 1)
+	if len(a.buyDialogSecurityIDs) == 0 {
+		fields[1].Error = "No securities available"
+		hasErrors = true
+	}
+	secIdx := fields[1].SelectedIndex
 	var securityID types.ID
 	if secIdx >= 0 && secIdx < len(a.buyDialogSecurityIDs) {
 		securityID = a.buyDialogSecurityIDs[secIdx]
 	} else {
-		fields[0].Error = "Select a security"
-		hasErrors = true
-	}
-
-	// Date (index 1)
-	date, err := parseDateInput(fields[1].Value)
-	if err != nil {
-		fields[1].Error = "Invalid date (MM/DD/YYYY)"
+		fields[1].Error = "Select a security"
 		hasErrors = true
 	}
 

@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"fmt"
 	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // updateStatusBar updates the status bar context and key hints for the current view.
@@ -87,6 +90,26 @@ func (a *App) isDialogVisible() bool {
 		a.mergerConfirmData != nil ||
 		a.corporateActionHistory != nil ||
 		a.showHelp
+}
+
+// loadInvestmentEditTxn fetches the transaction currently being edited
+// (a.investmentEditTxnID), returning nil when no edit is in progress. On a
+// real lookup error (e.g. not-found, scan failure) it surfaces the error
+// to the user via a.err AND resets investmentEditTxnID to NilID so the
+// subsequent submit treats the dialog as new-mode rather than attempting
+// to Delete a phantom row. The caller checks the returned (txn, ok); when
+// ok is false the caller should abort dialog construction.
+func (a *App) loadInvestmentEditTxn() (*investment.Transaction, bool) {
+	if a.investmentEditTxnID == types.NilID || a.investmentRepo == nil {
+		return nil, true
+	}
+	txn, err := a.investmentRepo.GetByID(a.investmentEditTxnID)
+	if err != nil {
+		a.err = fmt.Errorf("failed to load transaction for editing: %w", err)
+		a.investmentEditTxnID = types.NilID
+		return nil, false
+	}
+	return txn, true
 }
 
 // invalidatePriceHistoryCache drops every cached chart-history slice so the
