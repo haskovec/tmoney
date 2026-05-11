@@ -29,9 +29,9 @@ func TestBuildDividendDialog_NewTransaction(t *testing.T) {
 		t.Fatalf("expected 4 fields, got %d", len(fields))
 	}
 
-	// Field 0: Security (select)
-	if fields[0].Type != FieldSelect {
-		t.Errorf("field 0 type = %d, want FieldSelect (%d)", fields[0].Type, FieldSelect)
+	// Field 0: Security (typeahead combo)
+	if fields[0].Type != FieldCombo {
+		t.Errorf("field 0 type = %d, want FieldCombo (%d)", fields[0].Type, FieldCombo)
 	}
 	if fields[0].Label != "Security" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Security")
@@ -153,9 +153,9 @@ func TestBuildReinvestDividendDialog_NewTransaction(t *testing.T) {
 		t.Fatalf("expected 6 fields, got %d", len(fields))
 	}
 
-	// Field 0: Security (select)
-	if fields[0].Type != FieldSelect {
-		t.Errorf("field 0 type = %d, want FieldSelect", fields[0].Type)
+	// Field 0: Security (typeahead combo)
+	if fields[0].Type != FieldCombo {
+		t.Errorf("field 0 type = %d, want FieldCombo", fields[0].Type)
 	}
 	if fields[0].Label != "Security" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Security")

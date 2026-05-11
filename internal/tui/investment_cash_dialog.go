@@ -10,7 +10,11 @@ import (
 )
 
 // cashOperationDialogSavedMsg is sent when a cash operation transaction has been saved.
-type cashOperationDialogSavedMsg struct{}
+// savedDate carries the transaction date so the App can use it as the
+// session's sticky-date seed for subsequent dialog opens.
+type cashOperationDialogSavedMsg struct {
+	savedDate types.Date
+}
 
 // buildCashOperationDialog creates a Dialog for cash-only investment operations
 // (Deposit, Withdrawal, Fee, Interest). These share the same fields: Date, Amount, Memo.
@@ -156,6 +160,6 @@ func (a *App) submitCashOperationDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to create %s transaction: %w", txnType.DisplayName(), txnErr)}
 		}
 
-		return cashOperationDialogSavedMsg{}
+		return cashOperationDialogSavedMsg{savedDate: date}
 	}
 }

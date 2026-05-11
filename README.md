@@ -54,8 +54,10 @@ tmoney -f personal.tdb account balance
 - Linked transfers between accounts
 - Cleared/pending status tracking
 - Full-text search with date, amount, and category filters
-- Sticky last-used date in the New Transaction dialog (within a
-  session) — batch entry seeds each open with the date of the last
+- Sticky last-used date across every new-transaction dialog (within a
+  session) — batch entry in the regular register and any investment
+  register (Buy, Sell, Dividend, Reinvest Dividend, cash ops, transfer
+  cash, transfer shares) seeds each open with the date of the last
   saved transaction
 - Inline category creation from the Category field — pick
   `[+ Add new category…]` to create a new category (with optional

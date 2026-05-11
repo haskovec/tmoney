@@ -112,9 +112,9 @@ func TestBuildBuyDialog_NewTransaction(t *testing.T) {
 		t.Fatalf("expected 7 fields, got %d", len(fields))
 	}
 
-	// Field 0: Security (select)
-	if fields[0].Type != FieldSelect {
-		t.Errorf("field 0 type = %d, want FieldSelect (%d)", fields[0].Type, FieldSelect)
+	// Field 0: Security (typeahead combo)
+	if fields[0].Type != FieldCombo {
+		t.Errorf("field 0 type = %d, want FieldCombo (%d)", fields[0].Type, FieldCombo)
 	}
 	if fields[0].Label != "Security" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Security")
@@ -195,6 +195,46 @@ func TestBuildBuyDialog_DateFieldMaskedOverwrite(t *testing.T) {
 
 	if d.Fields()[1].Value != "05/15/2024" {
 		t.Errorf("Value = %q, want %q (overwrite + skip slash)", d.Fields()[1].Value, "05/15/2024")
+	}
+}
+
+// TestBuildBuyDialog_SecurityTypeaheadCaseInsensitive verifies that typing
+// into the Security combo case-insensitively filters the options to those
+// matching the query, and that Enter commits the highlighted match into
+// SelectedIndex so submission picks the right security.
+func TestBuildBuyDialog_SecurityTypeaheadCaseInsensitive(t *testing.T) {
+	options := []string{
+		"AAPL - Apple Inc.",
+		"GOOG - Alphabet Inc.",
+		"MSFT - Microsoft Corp.",
+	}
+	ids := []types.ID{types.NewID(), types.NewID(), types.NewID()}
+	wantID := ids[2] // MSFT
+
+	d := buildBuyDialog(options, nil, ids)
+	d.SetFocusIndex(0) // focus the Security combo
+
+	// Type "msft" (all lowercase) — should case-insensitively filter to MSFT.
+	for _, r := range "msft" {
+		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+
+	filtered := d.Fields()[0].FilteredIndices()
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 filtered match for %q, got %d (%v)", "msft", len(filtered), filtered)
+	}
+	if filtered[0] != 2 {
+		t.Errorf("filtered[0] = %d, want 2 (MSFT)", filtered[0])
+	}
+
+	// Press Enter — commit the highlighted MSFT row into SelectedIndex.
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter, Text: ""})
+
+	if got := d.Fields()[0].SelectedIndex; got != 2 {
+		t.Errorf("SelectedIndex = %d, want 2 (MSFT)", got)
+	}
+	if ids[d.Fields()[0].SelectedIndex] != wantID {
+		t.Errorf("resolved security ID does not match MSFT")
 	}
 }
 
@@ -798,5 +838,62 @@ func TestSubmitBuyDialog_DollarSignInCommission(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Error("should return command")
+	}
+}
+
+func TestApp_Update_BuyDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
+	app := &App{
+		currentView:            ViewInvestmentRegister,
+		keys:                   defaultKeyMap(),
+		menubar:                NewMenuBar(),
+		statusbar:              NewStatusBar(),
+		sidebar:                NewSidebar(),
+		txnDialogLastSavedDate: types.NewDate(2024, time.January, 15),
+	}
+
+	model, _ := app.Update(buyDialogDataMsg{data: &buyDialogData{}})
+	updatedApp := model.(*App)
+
+	if updatedApp.buyDialog == nil {
+		t.Fatal("buy dialog should be created")
+	}
+	if got := updatedApp.buyDialog.Fields()[1].Value; got != "01/15/2024" {
+		t.Errorf("date field = %q, want %q (seeded from sticky date)", got, "01/15/2024")
+	}
+}
+
+func TestApp_Update_BuyDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *testing.T) {
+	app := &App{
+		currentView: ViewInvestmentRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	model, _ := app.Update(buyDialogDataMsg{data: &buyDialogData{}})
+	updatedApp := model.(*App)
+
+	today := time.Now().Format("01/02/2006")
+	if got := updatedApp.buyDialog.Fields()[1].Value; got != today {
+		t.Errorf("date field = %q, want %q (today)", got, today)
+	}
+}
+
+func TestApp_Update_BuyDialogSavedMsg_StoresStickyDate(t *testing.T) {
+	app := &App{
+		currentView: ViewInvestmentRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	saved := types.NewDate(2024, time.March, 20)
+	model, _ := app.Update(buyDialogSavedMsg{savedDate: saved})
+	updatedApp := model.(*App)
+
+	if !updatedApp.txnDialogLastSavedDate.Equal(saved) {
+		t.Errorf("txnDialogLastSavedDate = %s, want %s", updatedApp.txnDialogLastSavedDate, saved)
 	}
 }

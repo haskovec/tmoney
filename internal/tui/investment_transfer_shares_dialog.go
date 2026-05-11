@@ -25,7 +25,11 @@ type transferSharesDialogDataMsg struct {
 }
 
 // transferSharesDialogSavedMsg is sent when a share transfer has been saved.
-type transferSharesDialogSavedMsg struct{}
+// savedDate carries the transaction date so the App can use it as the
+// session's sticky-date seed for subsequent dialog opens.
+type transferSharesDialogSavedMsg struct {
+	savedDate types.Date
+}
 
 // buildInvestmentAccountOptions builds parallel display name and ID slices
 // for investment accounts only (excluding the current account).
@@ -81,7 +85,7 @@ func buildTransferSharesDialog(
 			}
 		}
 	}
-	d.AddSelectField("Security", securityOptions, selectedSecIdx)
+	d.AddComboField("Security", securityOptions, selectedSecIdx)
 
 	// Shares
 	sharesVal := ""
@@ -347,6 +351,6 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to transfer shares: %w", txnErr)}
 		}
 
-		return transferSharesDialogSavedMsg{}
+		return transferSharesDialogSavedMsg{savedDate: date}
 	}
 }

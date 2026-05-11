@@ -133,9 +133,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
 		}
 		a.buyDialog = buildBuyDialog(secOptions, editTxn, secIDs)
+		if editTxn == nil {
+			a.buyDialog.SeedDateField(a.txnDialogLastSavedDate)
+		}
 		return a, nil
 
 	case buyDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
 		a.statusbar.AddNotification("Buy transaction saved", NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
@@ -152,9 +158,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
 		}
 		a.sellDialog = buildSellDialog(secOptions, editTxn, secIDs, msg.data.lots)
+		if editTxn == nil {
+			a.sellDialog.SeedDateField(a.txnDialogLastSavedDate)
+		}
 		return a, nil
 
 	case sellDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
 		a.statusbar.AddNotification("Sell transaction saved", NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
@@ -174,9 +186,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			a.dividendDialog = buildDividendDialog(secOptions, editTxn, secIDs)
 		}
+		if editTxn == nil {
+			a.dividendDialog.SeedDateField(a.txnDialogLastSavedDate)
+		}
 		return a, nil
 
 	case dividendDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
 		label := "Dividend"
 		if a.dividendDialogReinvest {
 			label = "Reinvest dividend"
@@ -188,6 +206,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case cashOperationDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
 		label := string(a.cashOperationType)
 		if label == "" {
 			label = "Cash operation"
@@ -209,9 +230,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
 		}
 		a.transferCashDialog = buildTransferCashDialog(a.transferCashDirection, acctOptions, editTxn, acctIDs)
+		if editTxn == nil {
+			a.transferCashDialog.SeedDateField(a.txnDialogLastSavedDate)
+		}
 		return a, nil
 
 	case transferCashDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
 		a.statusbar.AddNotification("Cash transfer saved", NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
@@ -234,9 +261,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
 		}
 		a.transferSharesDialog = buildTransferSharesDialog(acctOptions, secOptions, editTxn, acctIDs, secIDs, msg.data.lots)
+		if editTxn == nil {
+			a.transferSharesDialog.SeedDateField(a.txnDialogLastSavedDate)
+		}
 		return a, nil
 
 	case transferSharesDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
 		a.statusbar.AddNotification("Share transfer saved", NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)

@@ -95,9 +95,9 @@ func TestBuildTransferSharesDialog_Basic(t *testing.T) {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "To Account")
 	}
 
-	// Field 1: Security (select)
-	if fields[1].Type != FieldSelect {
-		t.Errorf("field 1 type = %d, want FieldSelect (%d)", fields[1].Type, FieldSelect)
+	// Field 1: Security (typeahead combo)
+	if fields[1].Type != FieldCombo {
+		t.Errorf("field 1 type = %d, want FieldCombo (%d)", fields[1].Type, FieldCombo)
 	}
 	if fields[1].Label != "Security" {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Security")

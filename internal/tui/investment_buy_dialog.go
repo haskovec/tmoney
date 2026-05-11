@@ -21,7 +21,11 @@ type buyDialogDataMsg struct {
 }
 
 // buyDialogSavedMsg is sent when a buy transaction has been saved.
-type buyDialogSavedMsg struct{}
+// savedDate carries the transaction date so the App can use it as the
+// session's sticky-date seed for subsequent dialog opens.
+type buyDialogSavedMsg struct {
+	savedDate types.Date
+}
 
 // buildSecurityOptions builds parallel display name and ID slices for the security selector.
 // Non-hidden securities are listed as "TICKER - Name", sorted by ticker.
@@ -76,7 +80,7 @@ func buildBuyDialog(securityOptions []string, editTxn *investment.Transaction, s
 			}
 		}
 	}
-	d.AddSelectField("Security", securityOptions, selectedIdx)
+	d.AddComboField("Security", securityOptions, selectedIdx)
 
 	// Date
 	dateVal := ""
@@ -325,6 +329,6 @@ func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to create buy transaction: %w", err)}
 		}
 
-		return buyDialogSavedMsg{}
+		return buyDialogSavedMsg{savedDate: date}
 	}
 }

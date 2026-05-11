@@ -462,6 +462,9 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyPressMsg) (tea.Model, t
 				editTxn, _ = a.investmentRepo.GetByID(a.investmentEditTxnID)
 			}
 			a.cashOperationDialog = buildCashOperationDialog(selectedType.DisplayName(), editTxn)
+			if editTxn == nil {
+				a.cashOperationDialog.SeedDateField(a.txnDialogLastSavedDate)
+			}
 			return a, nil
 		case investment.TransactionTypeTransferCash:
 			a.transferCashDirection = "deposit"

@@ -22,7 +22,11 @@ type transferCashDialogDataMsg struct {
 }
 
 // transferCashDialogSavedMsg is sent when a cash transfer has been saved.
-type transferCashDialogSavedMsg struct{}
+// savedDate carries the transaction date so the App can use it as the
+// session's sticky-date seed for subsequent dialog opens.
+type transferCashDialogSavedMsg struct {
+	savedDate types.Date
+}
 
 // buildNonInvestmentAccountOptions builds parallel display name and ID slices
 // for non-investment accounts (used as the linked account in cash transfers).
@@ -232,6 +236,6 @@ func (a *App) submitTransferCashDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to transfer cash: %w", txnErr)}
 		}
 
-		return transferCashDialogSavedMsg{}
+		return transferCashDialogSavedMsg{savedDate: date}
 	}
 }

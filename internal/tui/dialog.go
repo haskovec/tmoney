@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // FieldType represents the type of a form field in a dialog.
@@ -677,6 +678,27 @@ func (d *Dialog) AddDateFieldISO(label, initialValue string) *Field {
 	}
 	d.fields = append(d.fields, f)
 	return f
+}
+
+// SeedDateField overwrites the first FieldDate's Value with seedDate in
+// MM/DD/YYYY form. No-op when seedDate is zero, the dialog has no date
+// field, or the date field uses the ISO mask. Used by the New-Transaction
+// flows to apply the session's sticky last-saved date after the dialog has
+// already been built with today as its default.
+func (d *Dialog) SeedDateField(seedDate types.Date) {
+	if seedDate.IsZero() {
+		return
+	}
+	for _, f := range d.fields {
+		if f.Type != FieldDate {
+			continue
+		}
+		if f.dateMask != dateMaskUS {
+			return
+		}
+		f.Value = seedDate.Time().Format("01/02/2006")
+		return
+	}
 }
 
 // AddOptionalDateFieldISO adds a masked-input YYYY-MM-DD date field that

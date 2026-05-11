@@ -21,7 +21,11 @@ type dividendDialogDataMsg struct {
 }
 
 // dividendDialogSavedMsg is sent when a dividend transaction has been saved.
-type dividendDialogSavedMsg struct{}
+// savedDate carries the transaction date so the App can use it as the
+// session's sticky-date seed for subsequent dialog opens.
+type dividendDialogSavedMsg struct {
+	savedDate types.Date
+}
 
 // buildDividendDialog creates a Dialog for entering a cash dividend transaction.
 func buildDividendDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *Dialog {
@@ -38,7 +42,7 @@ func buildDividendDialog(securityOptions []string, editTxn *investment.Transacti
 			}
 		}
 	}
-	d.AddSelectField("Security", securityOptions, selectedIdx)
+	d.AddComboField("Security", securityOptions, selectedIdx)
 
 	// Date
 	dateVal := ""
@@ -86,7 +90,7 @@ func buildReinvestDividendDialog(securityOptions []string, editTxn *investment.T
 			}
 		}
 	}
-	d.AddSelectField("Security", securityOptions, selectedIdx)
+	d.AddComboField("Security", securityOptions, selectedIdx)
 
 	// Date
 	dateVal := ""
@@ -268,7 +272,7 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to create dividend transaction: %w", err)}
 		}
 
-		return dividendDialogSavedMsg{}
+		return dividendDialogSavedMsg{savedDate: date}
 	}
 }
 
@@ -379,6 +383,6 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to create reinvest dividend transaction: %w", err)}
 		}
 
-		return dividendDialogSavedMsg{}
+		return dividendDialogSavedMsg{savedDate: date}
 	}
 }

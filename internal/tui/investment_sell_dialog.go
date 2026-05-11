@@ -22,7 +22,11 @@ type sellDialogDataMsg struct {
 }
 
 // sellDialogSavedMsg is sent when a sell transaction has been saved.
-type sellDialogSavedMsg struct{}
+// savedDate carries the transaction date so the App can use it as the
+// session's sticky-date seed for subsequent dialog opens.
+type sellDialogSavedMsg struct {
+	savedDate types.Date
+}
 
 // buildLotLabel creates a display label for a lot allocation field.
 func buildLotLabel(lot *investment.Lot) string {
@@ -49,7 +53,7 @@ func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, 
 			}
 		}
 	}
-	d.AddSelectField("Security", securityOptions, selectedIdx)
+	d.AddComboField("Security", securityOptions, selectedIdx)
 
 	// Date
 	dateVal := ""
@@ -350,6 +354,6 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to create sell transaction: %w", err)}
 		}
 
-		return sellDialogSavedMsg{}
+		return sellDialogSavedMsg{savedDate: date}
 	}
 }
