@@ -142,6 +142,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.savedDate.IsZero() {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
+		a.invalidatePriceHistoryCache()
 		a.statusbar.AddNotification("Buy transaction saved", NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
@@ -167,6 +168,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.savedDate.IsZero() {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
+		a.invalidatePriceHistoryCache()
 		a.statusbar.AddNotification("Sell transaction saved", NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
@@ -195,6 +197,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.savedDate.IsZero() {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
+		// Reinvest dividends auto-create a price row; cash dividends do
+		// not. The chart history cache is cheap to rebuild, so clear
+		// unconditionally rather than branching on dividendDialogReinvest.
+		a.invalidatePriceHistoryCache()
 		label := "Dividend"
 		if a.dividendDialogReinvest {
 			label = "Reinvest dividend"

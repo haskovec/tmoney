@@ -89,6 +89,17 @@ func (a *App) isDialogVisible() bool {
 		a.showHelp
 }
 
+// invalidatePriceHistoryCache drops every cached chart-history slice so the
+// next chart render re-fetches from the price service. Called after any
+// investment transaction that may have inserted a new price row
+// (Buy/Sell/Reinvest Dividend all auto-create a price record), so a user
+// who edits a chart and then returns sees the fresh data point.
+func (a *App) invalidatePriceHistoryCache() {
+	if a.priceView != nil && a.priceView.historyCache != nil {
+		a.priceView.historyCache.Clear()
+	}
+}
+
 // reloadCurrentView returns a tea.Cmd that reloads data for the active view
 // and the sidebar. Used after undo/redo, and on Esc-back navigation so the
 // destination view shows fresh state (e.g. a position created in the

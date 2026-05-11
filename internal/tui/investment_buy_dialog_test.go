@@ -897,3 +897,34 @@ func TestApp_Update_BuyDialogSavedMsg_StoresStickyDate(t *testing.T) {
 		t.Errorf("txnDialogLastSavedDate = %s, want %s", updatedApp.txnDialogLastSavedDate, saved)
 	}
 }
+
+// TestApp_Update_BuyDialogSavedMsg_InvalidatesChartCache verifies that
+// saving a buy transaction drops every cached price-history slice. Buy
+// auto-creates a price row via the investment service, so a chart shown
+// before the buy could otherwise display stale data when the user
+// returned to the Prices view.
+func TestApp_Update_BuyDialogSavedMsg_InvalidatesChartCache(t *testing.T) {
+	cache := newHistoryCache()
+	cache.Put(types.NewID(), nil) // pre-populate so we can observe eviction
+
+	app := &App{
+		currentView: ViewInvestmentRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		priceView:   &priceViewData{historyCache: cache},
+	}
+
+	app.Update(buyDialogSavedMsg{savedDate: types.NewDate(2024, time.March, 20)})
+
+	if _, ok := cache.Lookup(types.NewID()); ok {
+		t.Error("any chart cache entry should be evicted (precondition for next render to fetch fresh data)")
+	}
+	// Stronger: cache should be empty.
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if len(cache.entries) != 0 {
+		t.Errorf("cache entries = %d, want 0 after Buy save", len(cache.entries))
+	}
+}
