@@ -1663,9 +1663,9 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 	app.priceListClicks.SetNowFn(func() time.Time { return now })
 	app.buildPriceListTable()
 
-	// Click coordinates: content offset 3 (padding+title+separator) + table header 1 = row 0 of data at y=4 (contentY).
-	// Convert to msg.Y = contentY + 1 (header row).
-	click := tea.MouseClickMsg{X: 5, Y: 5, Button: tea.MouseLeft}
+	// Y layout: 0 menu bar, 1 top padding, 2 title, 3 title separator,
+	// 4 table header, 5 header border, 6 data row 0.
+	click := tea.MouseClickMsg{X: 5, Y: 6, Button: tea.MouseLeft}
 
 	_, cmd := app.Update(click)
 	if cmd != nil {

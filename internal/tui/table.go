@@ -123,13 +123,16 @@ func (t *Table) SelectedRow() []string {
 }
 
 // HitTest determines which data row was clicked at row y within the rendered table.
-// y is relative to the top of the table output (0-based), where row 0 is the header.
-// Returns the data row index, or -1 if the click is on the header or out of range.
+// y is relative to the top of the table output (0-based). The header occupies
+// y=0 and its BorderBottom occupies y=1, so the first data row is at y=2.
+// Returns the data row index, or -1 if the click is on the header / border /
+// out of range.
 func (t *Table) HitTest(y int) int {
-	if y <= 0 || len(t.rows) == 0 {
+	const dataRowOffset = 2 // header (y=0) + header bottom border (y=1)
+	if y < dataRowOffset || len(t.rows) == 0 {
 		return -1
 	}
-	dataRow := t.scrollOffset + (y - 1)
+	dataRow := t.scrollOffset + (y - dataRowOffset)
 	if dataRow >= 0 && dataRow < len(t.rows) {
 		return dataRow
 	}

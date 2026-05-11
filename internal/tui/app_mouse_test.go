@@ -162,15 +162,12 @@ func TestApp_MouseClick_Table_SelectsRow(t *testing.T) {
 
 	sidebarWidth := app.styles.SidebarWidth()
 
-	// Click on the second data row in the table
-	// Table starts at content-relative row 3 (1 padding + 1 title + 1 separator)
-	// So screen row = 1 (header) + 3 (offset) + 1 (header row of table) + 1 (second data row) = row 5+1=6
-	// Actually: screen Y = 1 (menu bar) + 3 (content offset) + 0 (table header) + 2 (second data row)
-	// contentY = Y - 1 = 4, tableY = contentY - 3 = 1, which is the header. For data row 1, we need tableY=2
-	// So Y = 1 + 3 + 2 = 6
+	// Click on the second data row in the table.
+	// Y layout: 0 menu bar, 1 top padding, 2 title, 3 title separator,
+	// 4 table header, 5 header border, 6 data row 0, 7 data row 1.
 	msg := tea.MouseClickMsg{
 		X:      sidebarWidth + 5,
-		Y:      6,
+		Y:      7,
 		Button: tea.MouseLeft,
 	}
 	model, _ := app.Update(msg)

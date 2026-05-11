@@ -368,8 +368,9 @@ func TestApp_MouseClick_ReconciliationView_TogglesCheck(t *testing.T) {
 	app.styles.Resize(100, 24)
 	app.buildReconciliationTable()
 
-	// m.Y = 5 → contentY = 4 → tableY = 1 → data row 0 (first transaction).
-	msg := tea.MouseClickMsg{X: 10, Y: 5, Button: tea.MouseLeft}
+	// Layout: row 0 menu bar, row 1 top padding, row 2 title, row 3 title
+	// separator, row 4 table header, row 5 header border, row 6 first data row.
+	msg := tea.MouseClickMsg{X: 10, Y: 6, Button: tea.MouseLeft}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
