@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/alpacahq/alpacadecimal"
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -125,6 +126,117 @@ func (s *Service) RebuildPositions(accountID types.ID) (*RebuildResult, error) {
 		result.LotsRecomputed++
 	}
 	return result, nil
+}
+
+// HealAllAccounts runs RebuildPositions for every investment account in the
+// database. It is intended to be invoked once when the app opens a database
+// so that desynced positions/lots — caused by older binaries or aborted
+// edits — are silently corrected before the user sees them. The function
+// is a no-op on databases that contain corporate-action records.
+//
+// Errors from individual accounts are not fatal: HealAllAccounts logs nothing
+// and continues so a single bad account can't keep the app from launching.
+// The total count of accounts healed is returned for telemetry/testing.
+func (s *Service) HealAllAccounts() (int, error) {
+	accounts, err := s.accountRepo.List(false)
+	if err != nil {
+		return 0, fmt.Errorf("HealAllAccounts: %w", err)
+	}
+	healed := 0
+	for _, acct := range accounts {
+		if acct.Type != account.TypeInvestment {
+			continue
+		}
+		res, err := s.RebuildPositions(acct.ID)
+		if err != nil {
+			// Skip the account; don't break startup.
+			continue
+		}
+		if res.HasCorporateActions {
+			continue
+		}
+		healed++
+	}
+	return healed, nil
+}
+
+// syncPositionAndLots recomputes the position for (accountID, securityID)
+// and any lots in the account whose shares disagree with their junction
+// totals. The function is a silent no-op when the database contains any
+// corporate-action records (splits/mergers/spin-offs mutate positions and
+// lots outside the ledger, so a naive replay would corrupt cost basis).
+//
+// Called at the top of share-bearing service operations so that desynced
+// state (e.g. from an older binary or an aborted edit) auto-heals on the
+// next user action.
+func (s *Service) syncPositionAndLots(accountID, securityID types.ID) error {
+	caRepo := NewCorporateActionRepository(s.db)
+	caCount, err := caRepo.CountAll()
+	if err != nil {
+		return fmt.Errorf("syncPositionAndLots: %w", err)
+	}
+	if caCount > 0 {
+		return nil
+	}
+
+	// Recompute the aggregate position for this (account, security).
+	secFilter := securityID
+	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{SecurityID: &secFilter})
+	if err != nil {
+		return fmt.Errorf("syncPositionAndLots: %w", err)
+	}
+	sort.SliceStable(txns, func(i, j int) bool {
+		if txns[i].Date.Time().Equal(txns[j].Date.Time()) {
+			return txns[i].CreatedAt.Time().Before(txns[j].CreatedAt.Time())
+		}
+		return txns[i].Date.Time().Before(txns[j].Date.Time())
+	})
+	pos, err := s.replayPosition(accountID, securityID, txns)
+	if err != nil {
+		return fmt.Errorf("syncPositionAndLots: %w", err)
+	}
+	if err := s.persistRebuiltPosition(accountID, securityID, pos); err != nil {
+		return fmt.Errorf("syncPositionAndLots: %w", err)
+	}
+
+	// For lot-tracking accounts, also bring this security's lots in line
+	// with the junction records.
+	acct, err := s.getInvestmentAccount(accountID)
+	if err != nil {
+		return fmt.Errorf("syncPositionAndLots: %w", err)
+	}
+	if !acct.TrackLots {
+		return nil
+	}
+	lots, err := s.lotRepo.ListByAccountAndSecurity(accountID, securityID, true)
+	if err != nil {
+		return fmt.Errorf("syncPositionAndLots: %w", err)
+	}
+	if len(lots) == 0 {
+		return nil
+	}
+	lotIDs := make([]types.ID, 0, len(lots))
+	for _, l := range lots {
+		lotIDs = append(lotIDs, l.ID)
+	}
+	consumed, err := s.transactionLotRepo.SumSharesByLot(lotIDs)
+	if err != nil {
+		return fmt.Errorf("syncPositionAndLots: %w", err)
+	}
+	for _, lot := range lots {
+		newShares := lot.OriginalShares.Sub(consumed[lot.ID])
+		if newShares.IsNegative() {
+			return fmt.Errorf("syncPositionAndLots: lot %s has more consumed shares than original", lot.ID)
+		}
+		closed := newShares.IsZero()
+		if lot.Shares.Cmp(newShares) == 0 && lot.Closed == closed {
+			continue
+		}
+		if err := s.lotRepo.UpdateSharesAndClosed(lot.ID, newShares, closed); err != nil {
+			return fmt.Errorf("syncPositionAndLots: %w", err)
+		}
+	}
+	return nil
 }
 
 // replayPosition reconstructs an aggregate (account, security) position from

@@ -755,11 +755,14 @@ tmoney -f personal.tdb investment rebuild-positions --account Brokerage
 `investment rebuild-positions` recomputes the stored
 `investment_positions` rows (and, for lot-tracking accounts, each lot's
 `shares` / `closed` fields) from the transaction ledger and lot
-junction records. Use this if a register shows a corrupted state — for
-example, a position stuck at zero shares after an aborted edit. The
-command refuses to run on databases that contain corporate-action
-records (splits, mergers, spin-offs), since those mutate positions and
-lots outside the ledger and a naive replay would corrupt cost basis.
+junction records. **You normally don't need to run this** — the app
+automatically heals desynced positions when it opens a database and
+again whenever you save a buy, sell, reinvest, fee-liquidation, or
+share transfer. The command is provided as an explicit
+recovery/diagnostic tool. It refuses to run on databases that contain
+corporate-action records (splits, mergers, spin-offs), since those
+mutate positions and lots outside the ledger and a naive replay would
+corrupt cost basis.
 
 ```bash
 # Show the portfolio for an investment account (today's valuation)

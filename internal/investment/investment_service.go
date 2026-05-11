@@ -183,6 +183,12 @@ func (s *Service) Buy(
 		return nil, err
 	}
 
+	// Heal any stale stored position/lot state for this (account, security)
+	// before we read it (no-op when corporate actions are present).
+	if err := s.syncPositionAndLots(accountID, securityID); err != nil {
+		return nil, err
+	}
+
 	// Smart compute missing fields
 	computed, err := SmartCompute(shares, totalAmount, pricePerShare, commission)
 	if err != nil {
@@ -260,6 +266,11 @@ func (s *Service) Sell(
 ) (*Transaction, error) {
 	acct, err := s.getInvestmentAccount(accountID)
 	if err != nil {
+		return nil, err
+	}
+
+	// Heal any stale stored position/lot state before validating.
+	if err := s.syncPositionAndLots(accountID, securityID); err != nil {
 		return nil, err
 	}
 
@@ -528,6 +539,10 @@ func (s *Service) ReinvestDividend(
 		return nil, err
 	}
 
+	if err := s.syncPositionAndLots(accountID, securityID); err != nil {
+		return nil, err
+	}
+
 	// Smart compute missing fields (no commission for reinvest)
 	computed, err := SmartCompute(shares, totalAmount, pricePerShare, types.ZeroMoney)
 	if err != nil {
@@ -592,6 +607,10 @@ func (s *Service) FeeLiquidation(
 ) (*Transaction, error) {
 	acct, err := s.getInvestmentAccount(accountID)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := s.syncPositionAndLots(accountID, securityID); err != nil {
 		return nil, err
 	}
 
@@ -915,6 +934,13 @@ func (s *Service) TransferShares(
 ) (*ShareTransferResult, error) {
 	if !shares.IsPositive() {
 		return nil, fmt.Errorf("shares must be positive, got %s", shares)
+	}
+
+	if err := s.syncPositionAndLots(sourceAccountID, securityID); err != nil {
+		return nil, err
+	}
+	if err := s.syncPositionAndLots(destAccountID, securityID); err != nil {
+		return nil, err
 	}
 
 	// Validate both accounts are investment accounts

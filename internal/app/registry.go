@@ -87,6 +87,10 @@ func NewServices(database *db.DB) *Services {
 	reconciliationSvc := reconciliation.NewService(reconciliationRepo, txnRepo, accountRepo, database)
 	priceSvc := price.NewService(priceRepo, securityRepo, database)
 	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, database)
+	// Silently heal any desynced positions/lots so the user doesn't have to
+	// run rebuild-positions manually after upgrading. This is a no-op on
+	// databases that contain corporate-action records.
+	_, _ = investmentSvc.HealAllAccounts()
 	reportSvc := report.NewService(accountRepo, database, report.WithInvestmentValuer(&investmentValuerAdapter{svc: investmentSvc}))
 	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, investmentRepo, securityRepo, database)
 	transferLinkSvc := transferlink.NewService(txnRepo, transferRepo, splitRepo, accountRepo)

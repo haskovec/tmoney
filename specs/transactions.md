@@ -183,12 +183,15 @@ position/lot side-effects survive the deletion, producing
 false-positive `InsufficientSharesError` on the re-create and leaving
 the database in a desynced state.
 
-If the database is already in a desynced state — typically from an
-older binary or an aborted edit — run
-`tmoney -f <file> investment rebuild-positions` to recompute the
-positions and lot share counts from the transaction ledger plus
-junction records. The command refuses to run on databases that
-contain corporate-action records.
+Positions and lot shares auto-heal: every share-bearing service
+operation (Buy, Sell, ReinvestDividend, FeeLiquidation,
+TransferShares) calls `syncPositionAndLots` for the affected
+(account, security) before reading the stored row, and
+`Service.HealAllAccounts` runs once whenever `app.NewServices` builds
+a registry (i.e. on every CLI command and TUI launch). Both paths are
+silent no-ops on databases that contain corporate-action records.
+The `tmoney investment rebuild-positions` command remains available
+as an explicit recovery/diagnostic tool.
 
 ## v1.5 Features (Not in v1)
 

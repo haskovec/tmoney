@@ -75,6 +75,41 @@ func TestRebuildPositions_NonLotTracking(t *testing.T) {
 	})
 }
 
+func TestSell_AutoHealsDesyncedPosition(t *testing.T) {
+	t.Run("Sell succeeds against stale zero-share position when ledger has shares", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "IEMG")
+
+		// Build the user's actual ledger shape: 3 buys, 1 sell.
+		_, _ = env.svc.Deposit(acct.ID, types.NewDate(2018, time.May, 1), types.MustNewMoney("1000.00"), "")
+		buy1Price := types.MustNewMoney("55.81")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, types.NewDate(2018, time.May, 3), types.MustNewQuantity("2"), nil, &buy1Price, types.ZeroMoney, "")
+		buy2Price := types.MustNewMoney("56.07")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, types.NewDate(2018, time.May, 7), types.MustNewQuantity("1"), nil, &buy2Price, types.ZeroMoney, "")
+		sellPrice := types.MustNewMoney("54.61")
+		_, _ = env.svc.Sell(acct.ID, sec.ID, types.NewDate(2018, time.June, 15), types.MustNewQuantity("1"), nil, &sellPrice, types.ZeroMoney, "", nil)
+
+		// Simulate the user's corrupted state: stored position says 0 shares,
+		// but the ledger still shows a net 2 shares.
+		corrupt := NewPositionWithShares(acct.ID, sec.ID, types.ZeroQuantity, types.ZeroMoney)
+		if err := env.positionRepo.CreateOrUpdate(&corrupt); err != nil {
+			t.Fatalf("CreateOrUpdate() error = %v", err)
+		}
+
+		// The next Sell should auto-heal and succeed.
+		_, err := env.svc.Sell(acct.ID, sec.ID, types.NewDate(2018, time.June, 15), types.MustNewQuantity("2"), nil, &sellPrice, types.ZeroMoney, "", nil)
+		if err != nil {
+			t.Fatalf("Sell() unexpected error after auto-heal: %v", err)
+		}
+
+		pos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+		if !pos.Shares.IsZero() {
+			t.Errorf("Expected position 0 after final sell, got %s", pos.Shares.String())
+		}
+	})
+}
+
 func TestRebuildPositions_LotTracking(t *testing.T) {
 	t.Run("rebuilds lot shares/closed from junctions", func(t *testing.T) {
 		env := createFullTestService(t)
