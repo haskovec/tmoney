@@ -671,9 +671,12 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if a.currentView == ViewPrices && a.priceView != nil && a.priceView.mode == pricesViewDetail {
 			return a.handlePriceViewKeys(msg)
 		}
-		// Go back to previous view or dashboard
+		// Go back to previous view or dashboard, and refresh that view's
+		// data so changes made in the view we're leaving (e.g. a new
+		// investment transaction) are reflected on arrival.
 		if a.currentView != ViewDashboard {
 			a.switchView(a.previousView)
+			return a, a.reloadCurrentView()
 		}
 		return a, nil
 	}

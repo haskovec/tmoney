@@ -126,6 +126,29 @@ func TestApp_Update_EscapeKey(t *testing.T) {
 	}
 }
 
+// TestApp_Update_EscapeKey_RefreshesDestinationView verifies that pressing
+// Esc to navigate back to a previously-visited view also fires a refresh
+// command for that view, so changes made in the view we're leaving (a new
+// investment transaction, etc.) appear on arrival rather than being hidden
+// behind stale cached data.
+func TestApp_Update_EscapeKey_RefreshesDestinationView(t *testing.T) {
+	app := &App{
+		currentView:  ViewInvestmentRegister,
+		previousView: ViewPortfolio,
+		keys:         defaultKeyMap(),
+		menubar:      NewMenuBar(),
+		statusbar:    NewStatusBar(),
+		sidebar:      NewSidebar(),
+	}
+
+	msg := tea.KeyPressMsg{Code: tea.KeyEsc}
+	_, cmd := app.Update(msg)
+
+	if cmd == nil {
+		t.Fatal("Esc → previous view should return a refresh command")
+	}
+}
+
 func TestApp_Update_ErrorDismissedByKeyPress(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,

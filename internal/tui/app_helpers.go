@@ -90,7 +90,9 @@ func (a *App) isDialogVisible() bool {
 }
 
 // reloadCurrentView returns a tea.Cmd that reloads data for the active view
-// and the sidebar. Used after undo/redo to reflect changes.
+// and the sidebar. Used after undo/redo, and on Esc-back navigation so the
+// destination view shows fresh state (e.g. a position created in the
+// investment register shows up on Esc → portfolio).
 func (a *App) reloadCurrentView() tea.Cmd {
 	cmds := []tea.Cmd{a.loadSidebarData()}
 	switch a.currentView {
@@ -99,6 +101,14 @@ func (a *App) reloadCurrentView() tea.Cmd {
 	case ViewRegister:
 		accountID := a.sidebar.SelectedAccountID()
 		cmds = append(cmds, a.loadRegisterData(accountID))
+	case ViewInvestmentRegister:
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			cmds = append(cmds, a.loadInvestmentRegisterData(a.investmentRegister.account.ID))
+		}
+	case ViewPortfolio:
+		if a.portfolioData != nil && a.portfolioData.account != nil {
+			cmds = append(cmds, a.loadPortfolioData(a.portfolioData.account.ID))
+		}
 	case ViewScheduled:
 		cmds = append(cmds, a.loadScheduledViewData(), a.loadScheduledDueCount())
 	case ViewReports:
@@ -109,6 +119,8 @@ func (a *App) reloadCurrentView() tea.Cmd {
 		}
 	case ViewSecurities:
 		cmds = append(cmds, a.loadSecurityViewData())
+	case ViewPrices:
+		cmds = append(cmds, a.loadPriceViewData())
 	}
 	return tea.Batch(cmds...)
 }
