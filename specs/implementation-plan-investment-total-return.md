@@ -71,7 +71,7 @@ working. No behavior change yet.
 
 Pure ledger sums. No dependency on positions or lots.
 
-- [ ] **TR-002 — `sumDividendsForSecurity(accountID, secID) Money`**
+- [x] **TR-002 — `sumDividendsForSecurity(accountID, secID) Money`**
   - RED: test `TestSumDividendsForSecurity_HappyPath` — fixture with two
     `dividend` transactions on AAPL totalling $175 returns $175. Returns
     zero when no dividends exist.

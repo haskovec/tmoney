@@ -128,3 +128,91 @@ func TestValuation_NewFieldsZeroValue_BackCompat(t *testing.T) {
 		}
 	})
 }
+
+// TR-002: sumDividendsForSecurity sums `dividend` transactions for a single
+// (account, security) pair. Reinvested dividends and other securities must
+// not contribute.
+
+func TestSumDividendsForSecurity_HappyPath(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Dividend(acct.ID, sec.ID, date, types.MustNewMoney("100"), ""); err != nil {
+		t.Fatalf("Dividend() error = %v", err)
+	}
+	if _, err := env.svc.Dividend(acct.ID, sec.ID, date, types.MustNewMoney("75"), ""); err != nil {
+		t.Fatalf("Dividend() error = %v", err)
+	}
+
+	got, err := env.svc.sumDividendsForSecurity(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("sumDividendsForSecurity() error = %v", err)
+	}
+	if got.String() != "175" {
+		t.Errorf("Expected total dividends '175', got %q", got.String())
+	}
+
+	other := createSec(t, env.secRepo, "MSFT")
+	got, err = env.svc.sumDividendsForSecurity(acct.ID, other.ID)
+	if err != nil {
+		t.Fatalf("sumDividendsForSecurity() error = %v", err)
+	}
+	if !got.IsZero() {
+		t.Errorf("Expected zero for security with no dividends, got %q", got.String())
+	}
+}
+
+func TestSumDividendsForSecurity_IgnoresReinvest(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("5000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buyTotal := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"), &buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+	if _, err := env.svc.Dividend(acct.ID, sec.ID, date, types.MustNewMoney("50"), ""); err != nil {
+		t.Fatalf("Dividend() error = %v", err)
+	}
+	reinvestTotal := types.MustNewMoney("110")
+	if _, err := env.svc.ReinvestDividend(acct.ID, sec.ID, date, types.MustNewQuantity("1"), &reinvestTotal, nil, ""); err != nil {
+		t.Fatalf("ReinvestDividend() error = %v", err)
+	}
+
+	got, err := env.svc.sumDividendsForSecurity(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("sumDividendsForSecurity() error = %v", err)
+	}
+	if got.String() != "50" {
+		t.Errorf("Expected only cash dividend '50' (reinvest excluded), got %q", got.String())
+	}
+}
+
+func TestSumDividendsForSecurity_IgnoresOtherSecurities(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	aapl := createSec(t, env.secRepo, "AAPL")
+	msft := createSec(t, env.secRepo, "MSFT")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Dividend(acct.ID, aapl.ID, date, types.MustNewMoney("80"), ""); err != nil {
+		t.Fatalf("Dividend() error = %v", err)
+	}
+	if _, err := env.svc.Dividend(acct.ID, msft.ID, date, types.MustNewMoney("40"), ""); err != nil {
+		t.Fatalf("Dividend() error = %v", err)
+	}
+
+	got, err := env.svc.sumDividendsForSecurity(acct.ID, aapl.ID)
+	if err != nil {
+		t.Fatalf("sumDividendsForSecurity() error = %v", err)
+	}
+	if got.String() != "80" {
+		t.Errorf("Expected AAPL-only dividends '80', got %q", got.String())
+	}
+}
