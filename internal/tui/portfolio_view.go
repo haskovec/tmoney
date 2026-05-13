@@ -60,7 +60,7 @@ func (a *App) loadPortfolioData(accountID types.ID) tea.Cmd {
 		// Load account valuation
 		if a.investmentSvc != nil {
 			asOf := types.Today()
-			val, err := a.investmentSvc.GetAccountValuation(accountID, asOf)
+			val, err := a.investmentSvc.GetAccountValuation(accountID, asOf, investment.ValuationOptions{})
 			if err != nil {
 				return errMsg{err: err}
 			}

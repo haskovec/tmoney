@@ -133,7 +133,7 @@ type investmentValuerAdapter struct {
 }
 
 func (a *investmentValuerAdapter) GetAccountValuation(accountID types.ID, asOf types.Date) (*report.ValuationResult, error) {
-	val, err := a.svc.GetAccountValuation(accountID, asOf)
+	val, err := a.svc.GetAccountValuation(accountID, asOf, investment.ValuationOptions{})
 	if err != nil {
 		return nil, err
 	}

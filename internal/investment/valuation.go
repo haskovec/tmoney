@@ -4,6 +4,15 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+// ValuationOptions controls optional behavior of valuation entry points.
+type ValuationOptions struct {
+	// IncludeClosed, when true, causes Holdings to include rows for
+	// securities the account no longer holds (Shares == 0) with
+	// total-return components populated. Open-position behavior is
+	// unchanged.
+	IncludeClosed bool
+}
+
 // AccountValuation represents the total valuation of an investment account.
 type AccountValuation struct {
 	AccountID      types.ID    `json:"account_id"`
@@ -14,6 +23,17 @@ type AccountValuation struct {
 	TotalGainLoss  types.Money `json:"total_gain_loss"`
 	TotalGainPct   float64     `json:"total_gain_pct"`
 	Holdings       []Holding   `json:"holdings"`
+
+	// Total-return breakdown (see specs/investment-total-return.md).
+	// TotalGainLoss / TotalGainPct retain their unrealized-only meaning.
+	RealizedGain       types.Money `json:"realized_gain"`
+	DividendsReceived  types.Money `json:"dividends_received"`
+	InterestReceived   types.Money `json:"interest_received"`
+	FeesPaid           types.Money `json:"fees_paid"`
+	TotalCostDeployed  types.Money `json:"total_cost_deployed"`
+	TotalReturn        types.Money `json:"total_return"`
+	TotalReturnPct     *float64    `json:"total_return_pct,omitempty"`
+	HasClosedPositions bool        `json:"has_closed_positions"`
 }
 
 // Holding represents a rolled-up holding of a single security in an account.
@@ -28,6 +48,17 @@ type Holding struct {
 	GainLoss     types.Money    `json:"gain_loss"`
 	GainPct      float64        `json:"gain_pct"`
 	HasPricing   bool           `json:"has_pricing"`
+
+	// Total-return breakdown for this (account, security). GainLoss /
+	// GainPct above retain their unrealized-only meaning.
+	RealizedGain            types.Money `json:"realized_gain"`
+	DividendsReceived       types.Money `json:"dividends_received"`
+	FeesPaid                types.Money `json:"fees_paid"`
+	TotalCostDeployed       types.Money `json:"total_cost_deployed"`
+	TotalReturn             types.Money `json:"total_return"`
+	TotalReturnPct          *float64    `json:"total_return_pct,omitempty"`
+	IsClosed                bool        `json:"is_closed"`
+	RealizedGainUnavailable bool        `json:"realized_gain_unavailable"`
 }
 
 // LotDetail represents a single lot's valuation detail for lot-tracking accounts.

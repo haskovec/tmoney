@@ -52,7 +52,7 @@ of the happy-path replay.
 Add the new fields with zero-valued defaults so existing call sites keep
 working. No behavior change yet.
 
-- [ ] **TR-001 — Add `ValuationOptions` and extend `Holding` / `AccountValuation`**
+- [x] **TR-001 — Add `ValuationOptions` and extend `Holding` / `AccountValuation`**
   - RED: test `TestValuation_NewFieldsZeroValue_BackCompat` constructs a
     `Holding` and an `AccountValuation` via the existing service paths
     with `ValuationOptions{}` and asserts every new field is the zero

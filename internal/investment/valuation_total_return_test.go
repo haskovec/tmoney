@@ -1,0 +1,130 @@
+package investment
+
+import (
+	"testing"
+	"time"
+
+	"github.com/haskovec/tmoney/internal/price"
+	"github.com/haskovec/tmoney/internal/types"
+)
+
+// TR-001: New total-return fields default to zero values when callers pass
+// ValuationOptions{}. Existing valuation semantics (CashBalance, MarketValue,
+// TotalValue, TotalCostBasis, TotalGainLoss, TotalGainPct, per-holding values)
+// remain unchanged.
+func TestValuation_NewFieldsZeroValue_BackCompat(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("5000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	total := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+	p := price.NewPrice(sec.ID, types.NewDate(2024, time.March, 20), types.MustNewMoney("120"), price.SourceManual)
+	if err := env.priceRepo.Create(p); err != nil {
+		t.Fatalf("Create price error = %v", err)
+	}
+
+	asOf := types.NewDate(2024, time.March, 20)
+
+	t.Run("GetAccountValuation new fields zero", func(t *testing.T) {
+		val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		if err != nil {
+			t.Fatalf("GetAccountValuation() error = %v", err)
+		}
+
+		if !val.RealizedGain.IsZero() {
+			t.Errorf("Expected RealizedGain to be zero, got %s", val.RealizedGain.String())
+		}
+		if !val.DividendsReceived.IsZero() {
+			t.Errorf("Expected DividendsReceived to be zero, got %s", val.DividendsReceived.String())
+		}
+		if !val.InterestReceived.IsZero() {
+			t.Errorf("Expected InterestReceived to be zero, got %s", val.InterestReceived.String())
+		}
+		if !val.FeesPaid.IsZero() {
+			t.Errorf("Expected FeesPaid to be zero, got %s", val.FeesPaid.String())
+		}
+		if !val.TotalCostDeployed.IsZero() {
+			t.Errorf("Expected TotalCostDeployed to be zero, got %s", val.TotalCostDeployed.String())
+		}
+		if !val.TotalReturn.IsZero() {
+			t.Errorf("Expected TotalReturn to be zero, got %s", val.TotalReturn.String())
+		}
+		if val.TotalReturnPct != nil {
+			t.Errorf("Expected TotalReturnPct to be nil, got %v", *val.TotalReturnPct)
+		}
+		if val.HasClosedPositions {
+			t.Errorf("Expected HasClosedPositions to be false, got true")
+		}
+
+		// Existing behavior must be unchanged.
+		if val.CashBalance.String() != "4000" {
+			t.Errorf("Expected CashBalance '4000', got %q", val.CashBalance.String())
+		}
+		if val.MarketValue.String() != "1200" {
+			t.Errorf("Expected MarketValue '1200', got %q", val.MarketValue.String())
+		}
+		if val.TotalCostBasis.String() != "1000" {
+			t.Errorf("Expected TotalCostBasis '1000', got %q", val.TotalCostBasis.String())
+		}
+		if val.TotalGainLoss.String() != "200" {
+			t.Errorf("Expected TotalGainLoss '200', got %q", val.TotalGainLoss.String())
+		}
+	})
+
+	t.Run("GetHoldings new fields zero", func(t *testing.T) {
+		holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		if err != nil {
+			t.Fatalf("GetHoldings() error = %v", err)
+		}
+		if len(holdings) != 1 {
+			t.Fatalf("Expected 1 holding, got %d", len(holdings))
+		}
+		h := holdings[0]
+
+		if !h.RealizedGain.IsZero() {
+			t.Errorf("Expected RealizedGain to be zero, got %s", h.RealizedGain.String())
+		}
+		if !h.DividendsReceived.IsZero() {
+			t.Errorf("Expected DividendsReceived to be zero, got %s", h.DividendsReceived.String())
+		}
+		if !h.FeesPaid.IsZero() {
+			t.Errorf("Expected FeesPaid to be zero, got %s", h.FeesPaid.String())
+		}
+		if !h.TotalCostDeployed.IsZero() {
+			t.Errorf("Expected TotalCostDeployed to be zero, got %s", h.TotalCostDeployed.String())
+		}
+		if !h.TotalReturn.IsZero() {
+			t.Errorf("Expected TotalReturn to be zero, got %s", h.TotalReturn.String())
+		}
+		if h.TotalReturnPct != nil {
+			t.Errorf("Expected TotalReturnPct to be nil, got %v", *h.TotalReturnPct)
+		}
+		if h.IsClosed {
+			t.Errorf("Expected IsClosed to be false, got true")
+		}
+		if h.RealizedGainUnavailable {
+			t.Errorf("Expected RealizedGainUnavailable to be false, got true")
+		}
+
+		// Existing per-holding values unchanged.
+		if h.Shares.String() != "10" {
+			t.Errorf("Expected Shares '10', got %q", h.Shares.String())
+		}
+		if h.CostBasis.String() != "1000" {
+			t.Errorf("Expected CostBasis '1000', got %q", h.CostBasis.String())
+		}
+		if h.MarketValue.String() != "1200" {
+			t.Errorf("Expected MarketValue '1200', got %q", h.MarketValue.String())
+		}
+		if h.GainLoss.String() != "200" {
+			t.Errorf("Expected GainLoss '200', got %q", h.GainLoss.String())
+		}
+	})
+}

@@ -12,7 +12,10 @@ import (
 // GetAccountValuation returns the total valuation of an investment account.
 // It computes cash balance + market value of all holdings.
 // Securities with no price as of the given date use cost basis as the estimated value.
-func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date) (*AccountValuation, error) {
+//
+// The opts parameter is reserved for total-return features (e.g.,
+// IncludeClosed); pass ValuationOptions{} for the legacy behavior.
+func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, _ ValuationOptions) (*AccountValuation, error) {
 	acct, err := s.getInvestmentAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -53,7 +56,10 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date) (*Acc
 
 // GetHoldings returns a list of holdings for an investment account, rolled up by security.
 // For lot-tracking accounts, lots are aggregated into a single holding per security.
-func (s *Service) GetHoldings(accountID types.ID, asOf types.Date) ([]Holding, error) {
+//
+// The opts parameter is reserved for total-return features (e.g.,
+// IncludeClosed); pass ValuationOptions{} for the legacy behavior.
+func (s *Service) GetHoldings(accountID types.ID, asOf types.Date, _ ValuationOptions) ([]Holding, error) {
 	acct, err := s.getInvestmentAccount(accountID)
 	if err != nil {
 		return nil, err
