@@ -1,5 +1,5 @@
 study README.md
-study specs/implementation-plan-transaction-dialog.md and pick the most important thing to do
+study specs/implementation-plan-investment-total-return.md and pick the most important thing to do
 
 IMPORTANT:
 - author property based tests or unit tests (whichever is best)
@@ -10,4 +10,4 @@ IMPORTANT:
 - always run go fmt before committing files
 - lint the code with golangci-lint
 - when tests pass commit the changes and push
-- update the implementation-plan-transaction-dialog.md file marking the task as done
+- update the implementation-plan-investment-total-return.md file marking the task as done
