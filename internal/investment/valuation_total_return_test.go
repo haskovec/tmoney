@@ -216,3 +216,62 @@ func TestSumDividendsForSecurity_IgnoresOtherSecurities(t *testing.T) {
 		t.Errorf("Expected AAPL-only dividends '80', got %q", got.String())
 	}
 }
+
+// TR-003: sumInterestForAccount sums `interest` transactions for an investment
+// account. No security filter — interest is paid on the cash sweep, not a
+// holding. Interest in sibling accounts must not leak in.
+
+func TestSumInterestForAccount_HappyPath(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Interest(acct.ID, date, types.MustNewMoney("12.50"), ""); err != nil {
+		t.Fatalf("Interest() error = %v", err)
+	}
+	if _, err := env.svc.Interest(acct.ID, date, types.MustNewMoney("7.25"), ""); err != nil {
+		t.Fatalf("Interest() error = %v", err)
+	}
+	if _, err := env.svc.Interest(acct.ID, date, types.MustNewMoney("30.25"), ""); err != nil {
+		t.Fatalf("Interest() error = %v", err)
+	}
+
+	got, err := env.svc.sumInterestForAccount(acct.ID)
+	if err != nil {
+		t.Fatalf("sumInterestForAccount() error = %v", err)
+	}
+	if got.String() != "50" {
+		t.Errorf("Expected total interest '50', got %q", got.String())
+	}
+
+	empty := createInvAccount(t, env.accountRepo, "Empty")
+	got, err = env.svc.sumInterestForAccount(empty.ID)
+	if err != nil {
+		t.Fatalf("sumInterestForAccount() error = %v", err)
+	}
+	if !got.IsZero() {
+		t.Errorf("Expected zero for account with no interest, got %q", got.String())
+	}
+}
+
+func TestSumInterestForAccount_OtherAccountIgnored(t *testing.T) {
+	env := createFullTestService(t)
+	a := createInvAccount(t, env.accountRepo, "Brokerage A")
+	b := createInvAccount(t, env.accountRepo, "Brokerage B")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Interest(a.ID, date, types.MustNewMoney("20"), ""); err != nil {
+		t.Fatalf("Interest() error = %v", err)
+	}
+	if _, err := env.svc.Interest(b.ID, date, types.MustNewMoney("99"), ""); err != nil {
+		t.Fatalf("Interest() error = %v", err)
+	}
+
+	got, err := env.svc.sumInterestForAccount(a.ID)
+	if err != nil {
+		t.Fatalf("sumInterestForAccount() error = %v", err)
+	}
+	if got.String() != "20" {
+		t.Errorf("Expected account A interest '20', got %q", got.String())
+	}
+}

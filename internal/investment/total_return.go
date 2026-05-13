@@ -28,3 +28,24 @@ func (s *Service) sumDividendsForSecurity(accountID, securityID types.ID) (types
 	}
 	return total, nil
 }
+
+// sumInterestForAccount returns the total interest received on the cash
+// sweep of an investment account. Interest is not tied to a specific
+// security, so there is no security filter.
+func (s *Service) sumInterestForAccount(accountID types.ID) (types.Money, error) {
+	intType := TransactionTypeInterest
+	filter := TransactionFilter{
+		Type: &intType,
+	}
+
+	txns, err := s.repo.ListByAccount(accountID, filter)
+	if err != nil {
+		return types.ZeroMoney, fmt.Errorf("failed to list interest transactions: %w", err)
+	}
+
+	total := types.ZeroMoney
+	for _, txn := range txns {
+		total = total.Add(txn.TotalAmount)
+	}
+	return total, nil
+}

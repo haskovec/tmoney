@@ -83,7 +83,7 @@ Pure ledger sums. No dependency on positions or lots.
     `internal/investment/total_return.go`. Reads via the existing
     transaction repo with a filter on type and security.
 
-- [ ] **TR-003 — `sumInterestForAccount(accountID) Money`**
+- [x] **TR-003 — `sumInterestForAccount(accountID) Money`**
   - RED: test `TestSumInterestForAccount_HappyPath` — fixture with three
     `interest` transactions on the cash sweep returns the total.
   - Test `TestSumInterestForAccount_OtherAccountIgnored` — interest on a
