@@ -1,12 +1,38 @@
 package investment
 
 import (
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/types"
 )
+
+// sortTxnsForReplay sorts transactions by date ascending, then created_at
+// ascending — the same canonical chronological order used by replayPosition
+// and the TR-008 service wrapper.
+func sortTxnsForReplay(txns []*Transaction) {
+	sort.SliceStable(txns, func(i, j int) bool {
+		if txns[i].Date.Time().Equal(txns[j].Date.Time()) {
+			return txns[i].CreatedAt.Time().Before(txns[j].CreatedAt.Time())
+		}
+		return txns[i].Date.Time().Before(txns[j].Date.Time())
+	})
+}
+
+// loadAndSortTxnsForSecurity returns this (account, security)'s investment
+// transactions in canonical chronological order for replayRealizedGain.
+func loadAndSortTxnsForSecurity(t *testing.T, env *testServiceEnv, accountID, securityID types.ID) []*Transaction {
+	t.Helper()
+	secFilter := securityID
+	txns, err := env.invRepo.ListByAccount(accountID, TransactionFilter{SecurityID: &secFilter})
+	if err != nil {
+		t.Fatalf("ListByAccount(secFilter) error = %v", err)
+	}
+	sortTxnsForReplay(txns)
+	return txns
+}
 
 // TR-001: New total-return fields default to zero values when callers pass
 // ValuationOptions{}. Existing valuation semantics (CashBalance, MarketValue,
@@ -679,5 +705,205 @@ func TestRealizedGainLotTracked_NoSells_ReturnsZero(t *testing.T) {
 	}
 	if !got.IsZero() {
 		t.Errorf("Expected zero (no sells), got %q", got.String())
+	}
+}
+
+// TR-007: replayRealizedGain walks a non-lot (account, security) ledger in
+// chronological order, accumulating
+// (sell.price_per_share − running_avg_cost_per_share) × sell.shares on each
+// sell. Buys and reinvest_dividend transactions update the running average
+// cost via the same weighted-average that Position.AddShares uses, so the
+// avg cost moves with new acquisitions.
+
+func TestReplayRealizedGain_HappyPath(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date1 := types.NewDate(2024, time.March, 1)
+	date2 := types.NewDate(2024, time.March, 15)
+	date3 := types.NewDate(2024, time.April, 1)
+	date4 := types.NewDate(2024, time.April, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date1, types.MustNewMoney("50000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// Buy 10 @ $100 → avg cost $100
+	buy1 := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date1, types.MustNewQuantity("10"),
+		&buy1, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(1) error = %v", err)
+	}
+	// Buy 10 @ $120 → avg cost (1000+1200)/20 = $110
+	buy2 := types.MustNewMoney("1200")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date2, types.MustNewQuantity("10"),
+		&buy2, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(2) error = %v", err)
+	}
+	// Sell 5 @ $150 → realized = (150−110)×5 = 200
+	sell1 := types.MustNewMoney("750")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date3, types.MustNewQuantity("5"),
+		&sell1, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(1) error = %v", err)
+	}
+	// Sell 5 @ $130 → realized = (130−110)×5 = 100 (RemoveShares leaves avg unchanged)
+	sell2 := types.MustNewMoney("650")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date4, types.MustNewQuantity("5"),
+		&sell2, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(2) error = %v", err)
+	}
+
+	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
+	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns)
+	if err != nil {
+		t.Fatalf("replayRealizedGain() error = %v", err)
+	}
+	if got.String() != "300" {
+		t.Errorf("Expected realized gain '300' (200 + 100), got %q", got.String())
+	}
+}
+
+func TestReplayRealizedGain_LossThenGain(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date1 := types.NewDate(2024, time.January, 1)
+	date2 := types.NewDate(2024, time.February, 1)
+	date3 := types.NewDate(2024, time.March, 1)
+	date4 := types.NewDate(2024, time.April, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, date1, types.MustNewMoney("50000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// Buy 10 @ $100 → avg cost $100
+	buy1 := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date1, types.MustNewQuantity("10"),
+		&buy1, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(1) error = %v", err)
+	}
+	// Sell 5 @ $80 (loss) → realized = (80−100)×5 = −100. 5 shares remain @ $100.
+	sell1 := types.MustNewMoney("400")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date2, types.MustNewQuantity("5"),
+		&sell1, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(1) error = %v", err)
+	}
+	// Buy 5 @ $200 → avg cost = (5×100 + 5×200)/10 = $150. Confirms a subsequent
+	// buy does not "reset" the running avg cost — it accumulates through the
+	// existing Position.AddShares weighted average.
+	buy2 := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date3, types.MustNewQuantity("5"),
+		&buy2, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(2) error = %v", err)
+	}
+	// Sell 10 @ $200 → realized = (200−150)×10 = +500.
+	sell2 := types.MustNewMoney("2000")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date4, types.MustNewQuantity("10"),
+		&sell2, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(2) error = %v", err)
+	}
+
+	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
+	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns)
+	if err != nil {
+		t.Fatalf("replayRealizedGain() error = %v", err)
+	}
+	// −100 + 500 = 400
+	if got.String() != "400" {
+		t.Errorf("Expected realized gain '400' (−100 + 500), got %q", got.String())
+	}
+}
+
+func TestReplayRealizedGain_SameDateOrdering(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	earlier := types.NewDate(2024, time.March, 1)
+	same := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, earlier, types.MustNewMoney("50000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// All four share the SAME date, but distinct CreatedAt timestamps from
+	// monotonic insertion order. Sorting by (Date asc, CreatedAt asc) must
+	// preserve insertion order so the realized gain is deterministic.
+	buy1 := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, same, types.MustNewQuantity("10"),
+		&buy1, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(1) error = %v", err)
+	}
+	sell1 := types.MustNewMoney("750")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, same, types.MustNewQuantity("5"),
+		&sell1, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(1) error = %v", err)
+	}
+	buy2 := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, same, types.MustNewQuantity("5"),
+		&buy2, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(2) error = %v", err)
+	}
+	sell2 := types.MustNewMoney("1000")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, same, types.MustNewQuantity("5"),
+		&sell2, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(2) error = %v", err)
+	}
+
+	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
+	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns)
+	if err != nil {
+		t.Fatalf("replayRealizedGain() error = %v", err)
+	}
+	// Buy 10 @ 100 → avg 100, 10 sh.
+	// Sell 5 @ 150 → realized (150−100)×5 = 250; 5 sh @ 100.
+	// Buy 5 @ 200 → avg (5×100 + 5×200)/10 = 150; 10 sh.
+	// Sell 5 @ 200 → realized (200−150)×5 = 250.
+	// Total = 500.
+	//
+	// Reordered (e.g. both buys before both sells) the result is 250 + 166.67
+	// = 416.67 — a different number. Asserting 500 confirms CreatedAt-order
+	// determinism.
+	if got.String() != "500" {
+		t.Errorf("Expected realized gain '500' (same-date insertion order), got %q", got.String())
+	}
+}
+
+func TestReplayRealizedGain_ReinvestRaisesAvgCost(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date1 := types.NewDate(2024, time.March, 1)
+	date2 := types.NewDate(2024, time.March, 15)
+	date3 := types.NewDate(2024, time.April, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, date1, types.MustNewMoney("50000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// Buy 10 @ $100 → avg cost $100.
+	buy1 := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date1, types.MustNewQuantity("10"),
+		&buy1, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+	// Reinvest 10 @ $200 (total $2000) → avg cost (1000 + 2000)/20 = $150.
+	reinvest := types.MustNewMoney("2000")
+	if _, err := env.svc.ReinvestDividend(acct.ID, sec.ID, date2,
+		types.MustNewQuantity("10"), &reinvest, nil, ""); err != nil {
+		t.Fatalf("ReinvestDividend() error = %v", err)
+	}
+	// Sell 5 @ $200 → realized (200−150)×5 = 250.
+	// Without the reinvest the avg cost would still be $100 and realized
+	// would be (200−100)×5 = 500. Asserting 250 confirms the reinvest
+	// raised the avg cost.
+	sell := types.MustNewMoney("1000")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date3, types.MustNewQuantity("5"),
+		&sell, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+
+	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
+	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns)
+	if err != nil {
+		t.Fatalf("replayRealizedGain() error = %v", err)
+	}
+	if got.String() != "250" {
+		t.Errorf("Expected realized gain '250' (reinvest raised avg cost to $150), got %q", got.String())
 	}
 }

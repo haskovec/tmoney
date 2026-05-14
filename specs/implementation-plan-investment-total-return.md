@@ -135,7 +135,7 @@ Pure ledger sums. No dependency on positions or lots.
 
 ## Phase 5: Realized Gain — Non-Lot
 
-- [ ] **TR-007 — `replayRealizedGain(accountID, secID, txns) Money`**
+- [x] **TR-007 — `replayRealizedGain(accountID, secID, txns) Money`**
   - RED: test `TestReplayRealizedGain_HappyPath` — buy 10 @ $100, buy
     10 @ $120 → avg cost $110. Sell 5 @ $150 → realized gain = (150 −
     110) × 5 = $200. Then sell 5 @ $130 → realized gain += (130 − 110)

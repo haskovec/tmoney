@@ -3,6 +3,7 @@ package investment
 import (
 	"fmt"
 
+	"github.com/alpacahq/alpacadecimal"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -115,6 +116,84 @@ func (s *Service) realizedGainLotTracked(accountID, securityID types.ID) (types.
 			}
 			perShareGain := txn.PricePerShare.Money.Sub(lot.CostPerShare)
 			total = total.Add(perShareGain.Mul(j.Shares.Decimal()))
+		}
+	}
+	return total, nil
+}
+
+// replayRealizedGain reconstructs the realized gain for a non-lot-tracking
+// (account, security) pair by replaying its transaction ledger. It mirrors
+// replayPosition's chronological walk, capturing the running average cost
+// per share immediately before each sell and accumulating
+// (sell.price_per_share − avg_cost_at_sell) × sell.shares.
+//
+// Per the spec, fee_liquidation is not treated as a realized event (the
+// whole transaction is a fee paid in shares); transfer_shares carries cost
+// basis with the shares and is likewise not realized. Both still adjust
+// the running share count so subsequent sells observe the correct basis.
+//
+// txns must be sorted by date ascending, then created_at ascending — the
+// same canonical order replayPosition expects. The TR-008 service wrapper
+// loads and sorts the slice before delegating here.
+func (s *Service) replayRealizedGain(accountID, securityID types.ID, txns []*Transaction) (types.Money, error) {
+	pos := NewPosition(accountID, securityID)
+	total := types.ZeroMoney
+	for _, t := range txns {
+		if !t.Shares.Valid || t.Shares.Quantity.IsZero() {
+			continue
+		}
+		switch t.Type {
+		case TransactionTypeBuy, TransactionTypeReinvestDividend:
+			price := types.ZeroMoney
+			if t.PricePerShare.Valid {
+				price = t.PricePerShare.Money
+			}
+			if err := pos.AddShares(t.Shares.Quantity, price); err != nil {
+				return types.ZeroMoney, fmt.Errorf("replayRealizedGain Buy/Reinvest %s: %w", t.ID, err)
+			}
+		case TransactionTypeSell:
+			avgCost := pos.AverageCostPerShare
+			price := types.ZeroMoney
+			if t.PricePerShare.Valid {
+				price = t.PricePerShare.Money
+			}
+			perShareGain := price.Sub(avgCost)
+			total = total.Add(perShareGain.Mul(t.Shares.Quantity.Decimal()))
+			if pos.Shares.Cmp(t.Shares.Quantity) < 0 {
+				return types.ZeroMoney, fmt.Errorf("replayRealizedGain Sell %s: have %s shares, sold %s",
+					t.ID, pos.Shares.String(), t.Shares.Quantity.String())
+			}
+			if err := pos.RemoveShares(t.Shares.Quantity); err != nil {
+				return types.ZeroMoney, fmt.Errorf("replayRealizedGain Sell %s: %w", t.ID, err)
+			}
+		case TransactionTypeFeeLiquidation:
+			if pos.Shares.Cmp(t.Shares.Quantity) < 0 {
+				return types.ZeroMoney, fmt.Errorf("replayRealizedGain FeeLiquidation %s: have %s shares, fee %s",
+					t.ID, pos.Shares.String(), t.Shares.Quantity.String())
+			}
+			if err := pos.RemoveShares(t.Shares.Quantity); err != nil {
+				return types.ZeroMoney, fmt.Errorf("replayRealizedGain FeeLiquidation %s: %w", t.ID, err)
+			}
+		case TransactionTypeTransferShares:
+			if t.TotalAmount.IsNegative() {
+				if pos.Shares.Cmp(t.Shares.Quantity) < 0 {
+					return types.ZeroMoney, fmt.Errorf("replayRealizedGain TransferShares %s: have %s shares, sent %s",
+						t.ID, pos.Shares.String(), t.Shares.Quantity.String())
+				}
+				if err := pos.RemoveShares(t.Shares.Quantity); err != nil {
+					return types.ZeroMoney, fmt.Errorf("replayRealizedGain TransferShares %s: %w", t.ID, err)
+				}
+			} else {
+				price := types.ZeroMoney
+				if t.PricePerShare.Valid {
+					price = t.PricePerShare.Money
+				} else if !t.Shares.Quantity.IsZero() {
+					price = t.TotalAmount.Mul(alpacadecimal.NewFromInt(1).Div(t.Shares.Quantity.Decimal()))
+				}
+				if err := pos.AddShares(t.Shares.Quantity, price); err != nil {
+					return types.ZeroMoney, fmt.Errorf("replayRealizedGain TransferShares-in %s: %w", t.ID, err)
+				}
+			}
 		}
 	}
 	return total, nil
