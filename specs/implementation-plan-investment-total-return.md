@@ -245,7 +245,7 @@ Pure ledger sums. No dependency on positions or lots.
     (`buy`, `sell`, `reinvest_dividend`, `fee_liquidation`,
     `transfer_shares`).
 
-- [ ] **TR-015 — Synthesize closed-position holdings when `IncludeClosed = true`**
+- [x] **TR-015 — Synthesize closed-position holdings when `IncludeClosed = true`**
   - RED: test `TestGetHoldings_IncludeClosed_AddsClosedRows` — fixture
     with one open and one closed position returns one holding by default;
     returns two holdings with `IncludeClosed = true`. The closed row

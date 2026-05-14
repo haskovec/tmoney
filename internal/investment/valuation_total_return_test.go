@@ -1815,3 +1815,247 @@ func TestListEverHeldSecurities(t *testing.T) {
 		}
 	})
 }
+
+// TR-015: When opts.IncludeClosed is true, GetHoldings synthesizes a Holding
+// row for every security the account has ever held but no longer does. The
+// closed row has zero shares / cost basis / market value, IsClosed = true,
+// and total-return components (RealizedGain, DividendsReceived, FeesPaid,
+// TotalCostDeployed) populated from the ledger. The default
+// ValuationOptions{} keeps the legacy behavior of skipping zero-share rows.
+//
+// Fixture: non-lot Brokerage with two securities.
+//   - AAPL: buy 10 @ $100 ($1000), still held — open holding.
+//   - MSFT: buy 5 @ $100 ($500 with no commission), one $20 cash dividend,
+//     then sell 5 @ $130 ($650 with no commission) — closes the position.
+//     Expected closed-row components:
+//     RealizedGain      = (130 − 100) × 5 = 150
+//     DividendsReceived = 20
+//     FeesPaid          = 0
+//     TotalCostDeployed = 500
+func TestGetHoldings_IncludeClosed_AddsClosedRows(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	aapl := createSec(t, env.secRepo, "AAPL")
+	msft := createSec(t, env.secRepo, "MSFT")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+	d3 := types.NewDate(2024, time.May, 1)
+	asOf := types.NewDate(2024, time.June, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	// AAPL: open position.
+	buyAAPL := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"),
+		&buyAAPL, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(AAPL) error = %v", err)
+	}
+	priceAAPL := price.NewPrice(aapl.ID, asOf, types.MustNewMoney("120"), price.SourceManual)
+	if err := env.priceRepo.Create(priceAAPL); err != nil {
+		t.Fatalf("Create price AAPL error = %v", err)
+	}
+
+	// MSFT: buy, dividend, then fully sell — closed position.
+	buyMSFT := types.MustNewMoney("500")
+	if _, err := env.svc.Buy(acct.ID, msft.ID, d1, types.MustNewQuantity("5"),
+		&buyMSFT, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(MSFT) error = %v", err)
+	}
+	if _, err := env.svc.Dividend(acct.ID, msft.ID, d2, types.MustNewMoney("20"), ""); err != nil {
+		t.Fatalf("Dividend(MSFT) error = %v", err)
+	}
+	sellMSFT := types.MustNewMoney("650")
+	if _, err := env.svc.Sell(acct.ID, msft.ID, d3, types.MustNewQuantity("5"),
+		&sellMSFT, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(MSFT) error = %v", err)
+	}
+
+	t.Run("default ValuationOptions only returns open holdings", func(t *testing.T) {
+		holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		if err != nil {
+			t.Fatalf("GetHoldings(default) error = %v", err)
+		}
+		if len(holdings) != 1 {
+			t.Fatalf("Expected 1 open holding, got %d: %+v", len(holdings), holdings)
+		}
+		if holdings[0].SecurityID != aapl.ID {
+			t.Errorf("Expected open holding for AAPL, got %s", holdings[0].SecurityID)
+		}
+		if holdings[0].IsClosed {
+			t.Errorf("Open holding must have IsClosed=false, got true")
+		}
+	})
+
+	t.Run("IncludeClosed=true appends a synthesized closed row", func(t *testing.T) {
+		holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{IncludeClosed: true})
+		if err != nil {
+			t.Fatalf("GetHoldings(IncludeClosed) error = %v", err)
+		}
+		if len(holdings) != 2 {
+			t.Fatalf("Expected 2 holdings (1 open + 1 closed), got %d", len(holdings))
+		}
+
+		var openH, closedH *Holding
+		for i := range holdings {
+			h := &holdings[i]
+			if h.IsClosed {
+				closedH = h
+			} else {
+				openH = h
+			}
+		}
+		if openH == nil {
+			t.Fatalf("Expected one open holding, got none")
+		}
+		if closedH == nil {
+			t.Fatalf("Expected one closed holding, got none")
+		}
+
+		if openH.SecurityID != aapl.ID {
+			t.Errorf("Expected open holding to be AAPL, got %s", openH.SecurityID)
+		}
+		if closedH.SecurityID != msft.ID {
+			t.Errorf("Expected closed holding to be MSFT, got %s", closedH.SecurityID)
+		}
+
+		// Closed row is "empty" on open-position numbers.
+		if !closedH.Shares.IsZero() {
+			t.Errorf("Closed Shares must be zero, got %q", closedH.Shares.String())
+		}
+		if !closedH.MarketValue.IsZero() {
+			t.Errorf("Closed MarketValue must be zero, got %q", closedH.MarketValue.String())
+		}
+		if !closedH.CostBasis.IsZero() {
+			t.Errorf("Closed CostBasis must be zero, got %q", closedH.CostBasis.String())
+		}
+		if !closedH.GainLoss.IsZero() {
+			t.Errorf("Closed GainLoss must be zero, got %q", closedH.GainLoss.String())
+		}
+
+		// Total-return components must be populated from the ledger.
+		if closedH.RealizedGain.String() != "150" {
+			t.Errorf("Closed RealizedGain expected '150' ((130−100)×5), got %q",
+				closedH.RealizedGain.String())
+		}
+		if closedH.DividendsReceived.String() != "20" {
+			t.Errorf("Closed DividendsReceived expected '20', got %q",
+				closedH.DividendsReceived.String())
+		}
+		if !closedH.FeesPaid.IsZero() {
+			t.Errorf("Closed FeesPaid expected zero (no commissions), got %q",
+				closedH.FeesPaid.String())
+		}
+		if closedH.TotalCostDeployed.String() != "500" {
+			t.Errorf("Closed TotalCostDeployed expected '500', got %q",
+				closedH.TotalCostDeployed.String())
+		}
+		// TotalReturn = 0 (unrealized) + 150 (realized) + 20 (div) − 0 (fees) = 170.
+		if closedH.TotalReturn.String() != "170" {
+			t.Errorf("Closed TotalReturn expected '170' (0+150+20−0), got %q",
+				closedH.TotalReturn.String())
+		}
+		if closedH.TotalReturnPct == nil {
+			t.Fatalf("Closed TotalReturnPct must be non-nil when TotalCostDeployed > 0")
+		}
+		expectedPct := 170.0 / 500.0 * 100.0
+		if math.Abs(*closedH.TotalReturnPct-expectedPct) > 0.001 {
+			t.Errorf("Closed TotalReturnPct expected ≈ %f, got %f",
+				expectedPct, *closedH.TotalReturnPct)
+		}
+	})
+}
+
+// TR-015: When IncludeClosed is true, securities still held must not be
+// duplicated — each open security appears exactly once. The synthesized
+// closed-position rows include only securities the account no longer holds.
+func TestGetHoldings_IncludeClosed_NotDoubleCountingOpen(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	aapl := createSec(t, env.secRepo, "AAPL")
+	msft := createSec(t, env.secRepo, "MSFT")
+	goog := createSec(t, env.secRepo, "GOOG")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+	asOf := types.NewDate(2024, time.June, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	// Two open positions.
+	buyAAPL := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"),
+		&buyAAPL, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(AAPL) error = %v", err)
+	}
+	buyMSFT := types.MustNewMoney("500")
+	if _, err := env.svc.Buy(acct.ID, msft.ID, d1, types.MustNewQuantity("5"),
+		&buyMSFT, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(MSFT) error = %v", err)
+	}
+
+	// One fully-sold (closed) position.
+	buyGOOG := types.MustNewMoney("400")
+	if _, err := env.svc.Buy(acct.ID, goog.ID, d1, types.MustNewQuantity("4"),
+		&buyGOOG, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(GOOG) error = %v", err)
+	}
+	sellGOOG := types.MustNewMoney("440")
+	if _, err := env.svc.Sell(acct.ID, goog.ID, d2, types.MustNewQuantity("4"),
+		&sellGOOG, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(GOOG) error = %v", err)
+	}
+
+	pAAPL := price.NewPrice(aapl.ID, asOf, types.MustNewMoney("120"), price.SourceManual)
+	if err := env.priceRepo.Create(pAAPL); err != nil {
+		t.Fatalf("Create price AAPL error = %v", err)
+	}
+	pMSFT := price.NewPrice(msft.ID, asOf, types.MustNewMoney("110"), price.SourceManual)
+	if err := env.priceRepo.Create(pMSFT); err != nil {
+		t.Fatalf("Create price MSFT error = %v", err)
+	}
+
+	holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{IncludeClosed: true})
+	if err != nil {
+		t.Fatalf("GetHoldings(IncludeClosed) error = %v", err)
+	}
+	if len(holdings) != 3 {
+		t.Fatalf("Expected 3 holdings (2 open + 1 closed), got %d", len(holdings))
+	}
+
+	// Each security must appear exactly once.
+	counts := make(map[types.ID]int, 3)
+	for _, h := range holdings {
+		counts[h.SecurityID]++
+	}
+	for id, n := range counts {
+		if n != 1 {
+			t.Errorf("Security %s appears %d times; expected exactly 1", id, n)
+		}
+	}
+
+	// And the closed flag must match the share state.
+	for _, h := range holdings {
+		switch h.SecurityID {
+		case aapl.ID, msft.ID:
+			if h.IsClosed {
+				t.Errorf("Open security %s must have IsClosed=false", h.SecurityID)
+			}
+			if h.Shares.IsZero() {
+				t.Errorf("Open security %s must have non-zero shares", h.SecurityID)
+			}
+		case goog.ID:
+			if !h.IsClosed {
+				t.Errorf("Closed security %s must have IsClosed=true", h.SecurityID)
+			}
+			if !h.Shares.IsZero() {
+				t.Errorf("Closed security %s must have zero shares, got %q",
+					h.SecurityID, h.Shares.String())
+			}
+		default:
+			t.Errorf("Unexpected security %s in holdings", h.SecurityID)
+		}
+	}
+}

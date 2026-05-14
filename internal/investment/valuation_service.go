@@ -24,9 +24,15 @@ import (
 // legacy TotalGainLoss / TotalGainPct fields retain their unrealized-only
 // meaning.
 //
-// The opts parameter is reserved for total-return features (e.g.,
-// IncludeClosed); pass ValuationOptions{} for the legacy behavior.
-func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, _ ValuationOptions) (*AccountValuation, error) {
+// When opts.IncludeClosed is true, Holdings additionally contains
+// synthesized rows for securities the account has ever held but no longer
+// holds (Shares == 0, MarketValue / CostBasis zero, IsClosed = true) with
+// total-return components populated from the ledger. Closed-row totals are
+// already reflected in the account-level RealizedGain / DividendsReceived
+// because those account-level numbers come from authoritative ledger
+// helpers (not from summing per-holding values), so adding closed rows to
+// the Holdings slice does not change the account-level totals.
+func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts ValuationOptions) (*AccountValuation, error) {
 	acct, err := s.getInvestmentAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -37,7 +43,7 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, _ Val
 		return nil, fmt.Errorf("failed to get cash balance: %w", err)
 	}
 
-	holdings, err := s.getHoldings(acct, asOf)
+	holdings, err := s.getHoldings(acct, asOf, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get holdings: %w", err)
 	}
@@ -103,15 +109,17 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, _ Val
 // GetHoldings returns a list of holdings for an investment account, rolled up by security.
 // For lot-tracking accounts, lots are aggregated into a single holding per security.
 //
-// The opts parameter is reserved for total-return features (e.g.,
-// IncludeClosed); pass ValuationOptions{} for the legacy behavior.
-func (s *Service) GetHoldings(accountID types.ID, asOf types.Date, _ ValuationOptions) ([]Holding, error) {
+// When opts.IncludeClosed is true, the returned slice also contains
+// synthesized rows (Shares == 0, IsClosed = true) for securities the
+// account has ever held but no longer holds, with total-return components
+// populated from the ledger. Otherwise only open positions are returned.
+func (s *Service) GetHoldings(accountID types.ID, asOf types.Date, opts ValuationOptions) ([]Holding, error) {
 	acct, err := s.getInvestmentAccount(accountID)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.getHoldings(acct, asOf)
+	return s.getHoldings(acct, asOf, opts)
 }
 
 // GetLotDetail returns lot-level detail for a specific security in a lot-tracking account.
@@ -163,14 +171,67 @@ func (s *Service) GetLotDetail(accountID types.ID, securityID types.ID, asOf typ
 // getHoldings builds holdings for an account based on its tracking mode.
 // When the holdings repository is available, it uses the portfolio_holdings
 // database view for better performance. Otherwise falls back to manual computation.
-func (s *Service) getHoldings(acct *account.Account, asOf types.Date) ([]Holding, error) {
-	if s.holdingsRepo != nil {
-		return s.getHoldingsFromView(acct, asOf)
+//
+// When opts.IncludeClosed is true, after the open-position list is built
+// the function appends one synthesized Holding per ever-held security that
+// is no longer held (Shares == 0, IsClosed = true, total-return components
+// enriched from the ledger).
+func (s *Service) getHoldings(acct *account.Account, asOf types.Date, opts ValuationOptions) ([]Holding, error) {
+	var (
+		holdings []Holding
+		err      error
+	)
+	switch {
+	case s.holdingsRepo != nil:
+		holdings, err = s.getHoldingsFromView(acct, asOf)
+	case acct.TrackLots:
+		holdings, err = s.getHoldingsFromLots(acct, asOf)
+	default:
+		holdings, err = s.getHoldingsFromPositions(acct, asOf)
 	}
-	if acct.TrackLots {
-		return s.getHoldingsFromLots(acct, asOf)
+	if err != nil {
+		return nil, err
 	}
-	return s.getHoldingsFromPositions(acct, asOf)
+	if !opts.IncludeClosed {
+		return holdings, nil
+	}
+	return s.appendClosedHoldings(acct, holdings)
+}
+
+// appendClosedHoldings synthesizes a Holding row for every security the
+// account has ever held but no longer holds, and appends those rows to the
+// supplied open-position slice. The closed rows have zero shares / cost
+// basis / market value but their total-return components are populated by
+// the same enrichment helper used for open positions, so they show
+// realized gain, dividends received, fees paid, and total cost deployed.
+func (s *Service) appendClosedHoldings(acct *account.Account, open []Holding) ([]Holding, error) {
+	everHeld, err := s.listEverHeldSecurities(acct.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ever-held securities: %w", err)
+	}
+	if len(everHeld) == 0 {
+		return open, nil
+	}
+	openSet := make(map[types.ID]struct{}, len(open))
+	for _, h := range open {
+		openSet[h.SecurityID] = struct{}{}
+	}
+	out := open
+	for _, secID := range everHeld {
+		if _, ok := openSet[secID]; ok {
+			continue
+		}
+		h := Holding{
+			SecurityID: secID,
+			Shares:     types.ZeroQuantity,
+			IsClosed:   true,
+		}
+		if err := s.enrichHoldingTotalReturn(&h, acct); err != nil {
+			return nil, fmt.Errorf("enrich closed holding %s: %w", secID, err)
+		}
+		out = append(out, h)
+	}
+	return out, nil
 }
 
 // getHoldingsFromView builds holdings using the portfolio_holdings database view.
