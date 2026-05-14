@@ -220,7 +220,7 @@ Pure ledger sums. No dependency on positions or lots.
     realized-gain entry point dispatches lot vs. non-lot based on
     `acct.TrackLots`.
 
-- [ ] **TR-013 — Populate account-level totals in `AccountValuation`**
+- [x] **TR-013 — Populate account-level totals in `AccountValuation`**
   - RED: test `TestGetAccountValuation_PopulatesAccountTotals` — fixture
     with two holdings produces an `AccountValuation` whose `RealizedGain`,
     `DividendsReceived`, `InterestReceived`, `FeesPaid`,

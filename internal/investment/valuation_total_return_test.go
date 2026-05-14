@@ -35,10 +35,16 @@ func loadAndSortTxnsForSecurity(t *testing.T, env *testServiceEnv, accountID, se
 	return txns
 }
 
-// TR-001: New total-return fields default to zero values when callers pass
-// ValuationOptions{}. Existing valuation semantics (CashBalance, MarketValue,
-// TotalValue, TotalCostBasis, TotalGainLoss, TotalGainPct, per-holding values)
-// remain unchanged.
+// TR-001 (originally): New total-return fields default to zero values when
+// callers pass ValuationOptions{}. After TR-012 wired
+// enrichHoldingTotalReturn into the per-holding paths and TR-013 wired
+// account-level totals into GetAccountValuation, fields whose components
+// have *some* contributing transaction (buys → TotalCostDeployed,
+// unrealized → TotalReturn) are now populated. Components with no
+// contributing transaction (no sells/dividends/interest/fees) still report
+// zero. The legacy unrealized-only TotalGainLoss / TotalGainPct must stay
+// unchanged. This is the existing back-compat contract for callers that
+// haven't opted into total-return numbers.
 func TestValuation_NewFieldsZeroValue_BackCompat(t *testing.T) {
 	env := createFullTestService(t)
 	acct := createInvAccount(t, env.accountRepo, "Brokerage")
@@ -59,38 +65,47 @@ func TestValuation_NewFieldsZeroValue_BackCompat(t *testing.T) {
 
 	asOf := types.NewDate(2024, time.March, 20)
 
-	t.Run("GetAccountValuation new fields zero", func(t *testing.T) {
+	t.Run("GetAccountValuation new fields populated from buy-only fixture", func(t *testing.T) {
+		// TR-013 wired account-level totals into GetAccountValuation, so a
+		// fixture with a single buy now carries non-zero TotalCostDeployed
+		// / TotalReturn / TotalReturnPct at the account level. Components
+		// without a contributing transaction (no sells, no dividends, no
+		// interest, no commissions/fees) stay zero. The legacy
+		// TotalGainLoss / TotalGainPct still mean unrealized only.
 		val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetAccountValuation() error = %v", err)
 		}
 
 		if !val.RealizedGain.IsZero() {
-			t.Errorf("Expected RealizedGain to be zero, got %s", val.RealizedGain.String())
+			t.Errorf("Expected RealizedGain to be zero (no sells), got %s", val.RealizedGain.String())
 		}
 		if !val.DividendsReceived.IsZero() {
-			t.Errorf("Expected DividendsReceived to be zero, got %s", val.DividendsReceived.String())
+			t.Errorf("Expected DividendsReceived to be zero (no dividends), got %s", val.DividendsReceived.String())
 		}
 		if !val.InterestReceived.IsZero() {
-			t.Errorf("Expected InterestReceived to be zero, got %s", val.InterestReceived.String())
+			t.Errorf("Expected InterestReceived to be zero (no interest), got %s", val.InterestReceived.String())
 		}
 		if !val.FeesPaid.IsZero() {
-			t.Errorf("Expected FeesPaid to be zero, got %s", val.FeesPaid.String())
+			t.Errorf("Expected FeesPaid to be zero (no commissions/fees), got %s", val.FeesPaid.String())
 		}
-		if !val.TotalCostDeployed.IsZero() {
-			t.Errorf("Expected TotalCostDeployed to be zero, got %s", val.TotalCostDeployed.String())
+		if val.TotalCostDeployed.String() != "1000" {
+			t.Errorf("Expected TotalCostDeployed '1000' (one buy), got %s", val.TotalCostDeployed.String())
 		}
-		if !val.TotalReturn.IsZero() {
-			t.Errorf("Expected TotalReturn to be zero, got %s", val.TotalReturn.String())
+		if val.TotalReturn.String() != "200" {
+			t.Errorf("Expected TotalReturn '200' (unrealized only), got %s", val.TotalReturn.String())
 		}
-		if val.TotalReturnPct != nil {
-			t.Errorf("Expected TotalReturnPct to be nil, got %v", *val.TotalReturnPct)
+		if val.TotalReturnPct == nil {
+			t.Fatalf("Expected TotalReturnPct non-nil when capital has been deployed")
+		}
+		if *val.TotalReturnPct < 19.99 || *val.TotalReturnPct > 20.01 {
+			t.Errorf("Expected TotalReturnPct ~20.0 (200/1000×100), got %f", *val.TotalReturnPct)
 		}
 		if val.HasClosedPositions {
 			t.Errorf("Expected HasClosedPositions to be false, got true")
 		}
 
-		// Existing behavior must be unchanged.
+		// Legacy unrealized-only fields must be unchanged.
 		if val.CashBalance.String() != "4000" {
 			t.Errorf("Expected CashBalance '4000', got %q", val.CashBalance.String())
 		}
@@ -101,7 +116,7 @@ func TestValuation_NewFieldsZeroValue_BackCompat(t *testing.T) {
 			t.Errorf("Expected TotalCostBasis '1000', got %q", val.TotalCostBasis.String())
 		}
 		if val.TotalGainLoss.String() != "200" {
-			t.Errorf("Expected TotalGainLoss '200', got %q", val.TotalGainLoss.String())
+			t.Errorf("Expected TotalGainLoss '200' (unrealized only), got %q", val.TotalGainLoss.String())
 		}
 	})
 
@@ -1405,5 +1420,240 @@ func TestGetHoldings_TotalReturnPctNilWhenNoBuys(t *testing.T) {
 	// transferred in)) + zero realized + zero dividends − zero fees.
 	if h.GainLoss.IsZero() && !h.TotalReturn.IsZero() {
 		t.Errorf("Expected TotalReturn zero when only unrealized component (and that is zero), got %q", h.TotalReturn.String())
+	}
+}
+
+// TR-013: GetAccountValuation populates account-level total-return totals.
+// The fixture below covers every component (unrealized, realized, dividends,
+// interest, per-security commission, account-level fee, total cost deployed)
+// so the assertions exercise the full aggregation path.
+//
+// Fixture: non-lot Brokerage account with two securities.
+//
+//	AAPL
+//	  Buy 10 @ price 100, $5 commission → total_amount 1005, avg cost 100.
+//	  Buy 10 @ price 120, no commission → total_amount 1200, avg cost 110.
+//	  Sell 5 @ price 150 → realized (150 − 110) × 5 = 200. Leaves 15 @ 110.
+//	  Dividend $50.
+//	  Price @ asOf $130 → unrealized 15 × (130 − 110) = 300.
+//	    RealizedGain=200, DividendsReceived=50, FeesPaid=5,
+//	    TotalCostDeployed=2205, GainLoss=300, TotalReturn=545.
+//
+//	MSFT
+//	  Buy 10 @ price 50, $10 commission → total_amount 510, avg cost 50.
+//	  Price @ asOf $60 → unrealized 10 × (60 − 50) = 100.
+//	    RealizedGain=0, DividendsReceived=0, FeesPaid=10,
+//	    TotalCostDeployed=510, GainLoss=100, TotalReturn=90.
+//
+//	Account-level
+//	  Interest $25 (TransactionTypeInterest).
+//	  Fee $30 (account-level TransactionTypeFee, no security_id).
+//
+// Expected aggregates at the account level:
+//
+//	TotalGainLoss      = 400        (unrealized only, legacy field)
+//	RealizedGain       = 200        (sum of per-holding)
+//	DividendsReceived  = 50         (sum of per-holding)
+//	InterestReceived   = 25         (account-level helper)
+//	FeesPaid           = 45         (5 + 10 + 30, account-level helper)
+//	TotalCostDeployed  = 2715       (2205 + 510, account-level helper)
+//	TotalReturn        = 630        (400 + 200 + 50 + 25 − 45)
+//	TotalReturnPct     ≈ 23.2044    (630 / 2715 × 100)
+func TestGetAccountValuation_PopulatesAccountTotals(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	aapl := createSec(t, env.secRepo, "AAPL")
+	msft := createSec(t, env.secRepo, "MSFT")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+	d3 := types.NewDate(2024, time.May, 1)
+	asOf := types.NewDate(2024, time.June, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("20000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	aaplBuy1 := types.MustNewMoney("1005")
+	if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"),
+		&aaplBuy1, nil, types.MustNewMoney("5"), ""); err != nil {
+		t.Fatalf("Buy(AAPL 1) error = %v", err)
+	}
+	aaplBuy2 := types.MustNewMoney("1200")
+	if _, err := env.svc.Buy(acct.ID, aapl.ID, d2, types.MustNewQuantity("10"),
+		&aaplBuy2, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(AAPL 2) error = %v", err)
+	}
+	aaplSell := types.MustNewMoney("750")
+	if _, err := env.svc.Sell(acct.ID, aapl.ID, d3, types.MustNewQuantity("5"),
+		&aaplSell, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(AAPL) error = %v", err)
+	}
+	if _, err := env.svc.Dividend(acct.ID, aapl.ID, d3, types.MustNewMoney("50"), ""); err != nil {
+		t.Fatalf("Dividend(AAPL) error = %v", err)
+	}
+
+	msftBuy := types.MustNewMoney("510")
+	if _, err := env.svc.Buy(acct.ID, msft.ID, d1, types.MustNewQuantity("10"),
+		&msftBuy, nil, types.MustNewMoney("10"), ""); err != nil {
+		t.Fatalf("Buy(MSFT) error = %v", err)
+	}
+
+	if _, err := env.svc.Interest(acct.ID, d2, types.MustNewMoney("25"), ""); err != nil {
+		t.Fatalf("Interest() error = %v", err)
+	}
+	if _, err := env.svc.Fee(acct.ID, d2, types.MustNewMoney("30"), ""); err != nil {
+		t.Fatalf("Fee() error = %v", err)
+	}
+
+	if err := env.priceRepo.Create(price.NewPrice(aapl.ID, asOf, types.MustNewMoney("130"), price.SourceManual)); err != nil {
+		t.Fatalf("Create AAPL price error = %v", err)
+	}
+	if err := env.priceRepo.Create(price.NewPrice(msft.ID, asOf, types.MustNewMoney("60"), price.SourceManual)); err != nil {
+		t.Fatalf("Create MSFT price error = %v", err)
+	}
+
+	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetAccountValuation() error = %v", err)
+	}
+
+	if val.RealizedGain.String() != "200" {
+		t.Errorf("Expected RealizedGain '200', got %q", val.RealizedGain.String())
+	}
+	if val.DividendsReceived.String() != "50" {
+		t.Errorf("Expected DividendsReceived '50', got %q", val.DividendsReceived.String())
+	}
+	if val.InterestReceived.String() != "25" {
+		t.Errorf("Expected InterestReceived '25', got %q", val.InterestReceived.String())
+	}
+	if val.FeesPaid.String() != "45" {
+		t.Errorf("Expected FeesPaid '45' (5 + 10 + 30 account-level), got %q", val.FeesPaid.String())
+	}
+	if val.TotalCostDeployed.String() != "2715" {
+		t.Errorf("Expected TotalCostDeployed '2715' (2205 + 510), got %q", val.TotalCostDeployed.String())
+	}
+	if val.TotalReturn.String() != "630" {
+		t.Errorf("Expected TotalReturn '630' (400 + 200 + 50 + 25 − 45), got %q", val.TotalReturn.String())
+	}
+	if val.TotalReturnPct == nil {
+		t.Fatalf("Expected TotalReturnPct non-nil")
+	}
+	expectedPct := 630.0 / 2715.0 * 100.0
+	if math.Abs(*val.TotalReturnPct-expectedPct) > 0.001 {
+		t.Errorf("Expected TotalReturnPct ≈ %f, got %f", expectedPct, *val.TotalReturnPct)
+	}
+
+	// Per-holding values must match the components that aggregated into the
+	// account totals. Order is not guaranteed across holdings paths so look
+	// each up by security id.
+	if len(val.Holdings) != 2 {
+		t.Fatalf("Expected 2 holdings, got %d", len(val.Holdings))
+	}
+	holdingsBySec := make(map[types.ID]Holding, len(val.Holdings))
+	for _, h := range val.Holdings {
+		holdingsBySec[h.SecurityID] = h
+	}
+	hAAPL, ok := holdingsBySec[aapl.ID]
+	if !ok {
+		t.Fatalf("Expected AAPL holding present")
+	}
+	hMSFT, ok := holdingsBySec[msft.ID]
+	if !ok {
+		t.Fatalf("Expected MSFT holding present")
+	}
+	if hAAPL.RealizedGain.Add(hMSFT.RealizedGain).String() != val.RealizedGain.String() {
+		t.Errorf("Account RealizedGain must equal Σ per-holding RealizedGain (AAPL %s + MSFT %s vs account %s)",
+			hAAPL.RealizedGain.String(), hMSFT.RealizedGain.String(), val.RealizedGain.String())
+	}
+	if hAAPL.DividendsReceived.Add(hMSFT.DividendsReceived).String() != val.DividendsReceived.String() {
+		t.Errorf("Account DividendsReceived must equal Σ per-holding DividendsReceived")
+	}
+}
+
+// TR-013: After the total-return aggregation lands, the legacy
+// TotalGainLoss / TotalGainPct fields still mean unrealized only and match
+// what they did before this feature. They are NOT replaced by TotalReturn.
+//
+// Uses the same fixture as TestGetAccountValuation_PopulatesAccountTotals.
+// Expected legacy values:
+//
+//	TotalCostBasis = 2150   (AAPL 15 × 110) + (MSFT 10 × 50)
+//	MarketValue    = 2550   (AAPL 15 × 130) + (MSFT 10 × 60)
+//	TotalGainLoss  = 400    (unrealized only — does NOT include realized 200,
+//	                         dividends 50, interest 25, fees 45)
+//	TotalGainPct   ≈ 18.605 (400 / 2150 × 100)
+func TestGetAccountValuation_LegacyFieldsUnchanged(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	aapl := createSec(t, env.secRepo, "AAPL")
+	msft := createSec(t, env.secRepo, "MSFT")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+	d3 := types.NewDate(2024, time.May, 1)
+	asOf := types.NewDate(2024, time.June, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("20000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	aaplBuy1 := types.MustNewMoney("1005")
+	if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"),
+		&aaplBuy1, nil, types.MustNewMoney("5"), ""); err != nil {
+		t.Fatalf("Buy(AAPL 1) error = %v", err)
+	}
+	aaplBuy2 := types.MustNewMoney("1200")
+	if _, err := env.svc.Buy(acct.ID, aapl.ID, d2, types.MustNewQuantity("10"),
+		&aaplBuy2, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(AAPL 2) error = %v", err)
+	}
+	aaplSell := types.MustNewMoney("750")
+	if _, err := env.svc.Sell(acct.ID, aapl.ID, d3, types.MustNewQuantity("5"),
+		&aaplSell, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(AAPL) error = %v", err)
+	}
+	if _, err := env.svc.Dividend(acct.ID, aapl.ID, d3, types.MustNewMoney("50"), ""); err != nil {
+		t.Fatalf("Dividend(AAPL) error = %v", err)
+	}
+	msftBuy := types.MustNewMoney("510")
+	if _, err := env.svc.Buy(acct.ID, msft.ID, d1, types.MustNewQuantity("10"),
+		&msftBuy, nil, types.MustNewMoney("10"), ""); err != nil {
+		t.Fatalf("Buy(MSFT) error = %v", err)
+	}
+	if _, err := env.svc.Interest(acct.ID, d2, types.MustNewMoney("25"), ""); err != nil {
+		t.Fatalf("Interest() error = %v", err)
+	}
+	if _, err := env.svc.Fee(acct.ID, d2, types.MustNewMoney("30"), ""); err != nil {
+		t.Fatalf("Fee() error = %v", err)
+	}
+	if err := env.priceRepo.Create(price.NewPrice(aapl.ID, asOf, types.MustNewMoney("130"), price.SourceManual)); err != nil {
+		t.Fatalf("Create AAPL price error = %v", err)
+	}
+	if err := env.priceRepo.Create(price.NewPrice(msft.ID, asOf, types.MustNewMoney("60"), price.SourceManual)); err != nil {
+		t.Fatalf("Create MSFT price error = %v", err)
+	}
+
+	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetAccountValuation() error = %v", err)
+	}
+
+	if val.TotalCostBasis.String() != "2150" {
+		t.Errorf("Expected TotalCostBasis '2150' (open cost basis), got %q", val.TotalCostBasis.String())
+	}
+	if val.MarketValue.String() != "2550" {
+		t.Errorf("Expected MarketValue '2550', got %q", val.MarketValue.String())
+	}
+	if val.TotalGainLoss.String() != "400" {
+		t.Errorf("Expected TotalGainLoss '400' (unrealized only, no realized/divs/interest/fees), got %q", val.TotalGainLoss.String())
+	}
+	expectedPct := 400.0 / 2150.0 * 100.0
+	if math.Abs(val.TotalGainPct-expectedPct) > 0.001 {
+		t.Errorf("Expected TotalGainPct ≈ %f (unrealized only), got %f", expectedPct, val.TotalGainPct)
+	}
+
+	// The new TotalReturn covers everything; assert it is distinct from
+	// TotalGainLoss so a future change that conflates the two regresses.
+	if val.TotalReturn.String() == val.TotalGainLoss.String() {
+		t.Errorf("TotalReturn (%s) must differ from TotalGainLoss (%s) under this fixture",
+			val.TotalReturn.String(), val.TotalGainLoss.String())
 	}
 }

@@ -10,8 +10,19 @@ import (
 )
 
 // GetAccountValuation returns the total valuation of an investment account.
-// It computes cash balance + market value of all holdings.
-// Securities with no price as of the given date use cost basis as the estimated value.
+// It computes cash balance + market value of all holdings. Securities with
+// no price as of the given date use cost basis as the estimated value.
+//
+// The returned struct also carries the total-return breakdown
+// (RealizedGain, DividendsReceived, InterestReceived, FeesPaid,
+// TotalCostDeployed, TotalReturn, TotalReturnPct). RealizedGain and
+// DividendsReceived are summed across the per-holding values produced by
+// enrichHoldingTotalReturn; InterestReceived, FeesPaid (per-security
+// commissions + account-level fee transactions), and TotalCostDeployed are
+// pulled from authoritative account-level helpers so closed positions
+// contribute even before TR-015 wires them into the holdings list. The
+// legacy TotalGainLoss / TotalGainPct fields retain their unrealized-only
+// meaning.
 //
 // The opts parameter is reserved for total-return features (e.g.,
 // IncludeClosed); pass ValuationOptions{} for the legacy behavior.
@@ -33,24 +44,59 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, _ Val
 
 	marketValue := types.ZeroMoney
 	totalCostBasis := types.ZeroMoney
+	realizedGain := types.ZeroMoney
+	dividendsReceived := types.ZeroMoney
 	for _, h := range holdings {
 		marketValue = marketValue.Add(h.MarketValue)
 		totalCostBasis = totalCostBasis.Add(h.CostBasis)
+		realizedGain = realizedGain.Add(h.RealizedGain)
+		dividendsReceived = dividendsReceived.Add(h.DividendsReceived)
 	}
 
 	totalValue := cashBalance.Add(marketValue)
 	totalGainLoss := marketValue.Sub(totalCostBasis)
 	totalGainPct := computeGainPct(marketValue, totalCostBasis)
 
+	interestReceived, err := s.sumInterestForAccount(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sum interest for account: %w", err)
+	}
+	feesPaid, err := s.sumFeesForAccount(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sum fees for account: %w", err)
+	}
+	totalCostDeployed, err := s.totalCostDeployedForAccount(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sum total cost deployed for account: %w", err)
+	}
+
+	totalReturn := totalGainLoss.
+		Add(realizedGain).
+		Add(dividendsReceived).
+		Add(interestReceived).
+		Sub(feesPaid)
+	var totalReturnPct *float64
+	if !totalCostDeployed.IsZero() {
+		pct := (totalReturn.Float64() / totalCostDeployed.Float64()) * 100
+		totalReturnPct = &pct
+	}
+
 	return &AccountValuation{
-		AccountID:      accountID,
-		CashBalance:    cashBalance,
-		MarketValue:    marketValue,
-		TotalValue:     totalValue,
-		TotalCostBasis: totalCostBasis,
-		TotalGainLoss:  totalGainLoss,
-		TotalGainPct:   totalGainPct,
-		Holdings:       holdings,
+		AccountID:         accountID,
+		CashBalance:       cashBalance,
+		MarketValue:       marketValue,
+		TotalValue:        totalValue,
+		TotalCostBasis:    totalCostBasis,
+		TotalGainLoss:     totalGainLoss,
+		TotalGainPct:      totalGainPct,
+		Holdings:          holdings,
+		RealizedGain:      realizedGain,
+		DividendsReceived: dividendsReceived,
+		InterestReceived:  interestReceived,
+		FeesPaid:          feesPaid,
+		TotalCostDeployed: totalCostDeployed,
+		TotalReturn:       totalReturn,
+		TotalReturnPct:    totalReturnPct,
 	}, nil
 }
 
