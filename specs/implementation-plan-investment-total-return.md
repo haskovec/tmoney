@@ -195,7 +195,7 @@ Pure ledger sums. No dependency on positions or lots.
     `buy` and `reinvest_dividend` transactions with the given
     `security_id`.
 
-- [ ] **TR-011 — `totalCostDeployedForAccount(accountID) Money`**
+- [x] **TR-011 — `totalCostDeployedForAccount(accountID) Money`**
   - RED: test `TestTotalCostDeployedForAccount_SumsAcrossSecurities` —
     account with two securities, each with buys totalling different
     amounts, returns the grand total.

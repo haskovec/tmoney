@@ -1184,3 +1184,54 @@ func TestTotalCostDeployed_TransferOnly_Zero(t *testing.T) {
 		t.Errorf("Expected zero for security received only via transfer_shares, got %q", got.String())
 	}
 }
+
+// TR-011: totalCostDeployedForAccount sums totalCostDeployedForSecurity
+// across every security held in the account. Only `buy` and
+// `reinvest_dividend` transactions contribute; transfers in carry cost
+// basis with them and are excluded.
+
+func TestTotalCostDeployedForAccount_SumsAcrossSecurities(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	aapl := createSec(t, env.secRepo, "AAPL")
+	msft := createSec(t, env.secRepo, "MSFT")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+	d3 := types.NewDate(2024, time.May, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("20000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	// AAPL: 500 + 1000 buys, plus a 50 reinvest = 1550
+	buyA1 := types.MustNewMoney("500")
+	if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("5"),
+		&buyA1, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(AAPL 1) error = %v", err)
+	}
+	buyA2 := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, aapl.ID, d2, types.MustNewQuantity("10"),
+		&buyA2, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(AAPL 2) error = %v", err)
+	}
+	reinvest := types.MustNewMoney("50")
+	if _, err := env.svc.ReinvestDividend(acct.ID, aapl.ID, d3,
+		types.MustNewQuantity("0.5"), &reinvest, nil, ""); err != nil {
+		t.Fatalf("ReinvestDividend() error = %v", err)
+	}
+
+	// MSFT: single 2000 buy = 2000
+	buyM := types.MustNewMoney("2000")
+	if _, err := env.svc.Buy(acct.ID, msft.ID, d1, types.MustNewQuantity("8"),
+		&buyM, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(MSFT) error = %v", err)
+	}
+
+	got, err := env.svc.totalCostDeployedForAccount(acct.ID)
+	if err != nil {
+		t.Fatalf("totalCostDeployedForAccount() error = %v", err)
+	}
+	if got.String() != "3550" {
+		t.Errorf("Expected total cost deployed '3550' (1500 AAPL buys + 50 reinvest + 2000 MSFT), got %q", got.String())
+	}
+}

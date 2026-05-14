@@ -273,6 +273,27 @@ func (s *Service) totalCostDeployedForSecurity(accountID, securityID types.ID) (
 	return total, nil
 }
 
+// totalCostDeployedForAccount returns the total cash basis put into the
+// account across every security — the account-level denominator for
+// total-return percent. Only `buy` and `reinvest_dividend` transactions
+// contribute; shares received via `transfer_shares` carry their basis
+// with them and are excluded. The result is a positive magnitude.
+func (s *Service) totalCostDeployedForAccount(accountID types.ID) (types.Money, error) {
+	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{})
+	if err != nil {
+		return types.ZeroMoney, fmt.Errorf("failed to list transactions for account total cost deployed: %w", err)
+	}
+
+	total := types.ZeroMoney
+	for _, txn := range txns {
+		switch txn.Type {
+		case TransactionTypeBuy, TransactionTypeReinvestDividend:
+			total = total.Add(txn.TotalAmount.Abs())
+		}
+	}
+	return total, nil
+}
+
 // sumFeesForAccount returns the total fees paid across every security in
 // the account plus any account-level `fee` transactions (which carry no
 // security_id). The result is a positive magnitude — the spec's
