@@ -32,6 +32,10 @@ import (
 // because those account-level numbers come from authoritative ledger
 // helpers (not from summing per-holding values), so adding closed rows to
 // the Holdings slice does not change the account-level totals.
+//
+// HasClosedPositions is set whenever the account has at least one
+// fully-sold security, regardless of opts.IncludeClosed — it advises the
+// caller that there are closed positions to display.
 func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts ValuationOptions) (*AccountValuation, error) {
 	acct, err := s.getInvestmentAccount(accountID)
 	if err != nil {
@@ -76,6 +80,24 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts 
 		return nil, fmt.Errorf("failed to sum total cost deployed for account: %w", err)
 	}
 
+	// HasClosedPositions advises callers (CLI footer, TUI affordance) that
+	// the account has at least one fully-sold security. It is set
+	// independently of opts.IncludeClosed: it describes the account's
+	// history, not the shape of the returned holdings slice. We count the
+	// distinct securities ever held in the ledger and compare against the
+	// number of open positions in `holdings` (those without IsClosed).
+	openCount := 0
+	for _, h := range holdings {
+		if !h.IsClosed {
+			openCount++
+		}
+	}
+	everHeld, err := s.listEverHeldSecurities(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ever-held securities: %w", err)
+	}
+	hasClosedPositions := len(everHeld) > openCount
+
 	totalReturn := totalGainLoss.
 		Add(realizedGain).
 		Add(dividendsReceived).
@@ -88,21 +110,22 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts 
 	}
 
 	return &AccountValuation{
-		AccountID:         accountID,
-		CashBalance:       cashBalance,
-		MarketValue:       marketValue,
-		TotalValue:        totalValue,
-		TotalCostBasis:    totalCostBasis,
-		TotalGainLoss:     totalGainLoss,
-		TotalGainPct:      totalGainPct,
-		Holdings:          holdings,
-		RealizedGain:      realizedGain,
-		DividendsReceived: dividendsReceived,
-		InterestReceived:  interestReceived,
-		FeesPaid:          feesPaid,
-		TotalCostDeployed: totalCostDeployed,
-		TotalReturn:       totalReturn,
-		TotalReturnPct:    totalReturnPct,
+		AccountID:          accountID,
+		CashBalance:        cashBalance,
+		MarketValue:        marketValue,
+		TotalValue:         totalValue,
+		TotalCostBasis:     totalCostBasis,
+		TotalGainLoss:      totalGainLoss,
+		TotalGainPct:       totalGainPct,
+		Holdings:           holdings,
+		RealizedGain:       realizedGain,
+		DividendsReceived:  dividendsReceived,
+		InterestReceived:   interestReceived,
+		FeesPaid:           feesPaid,
+		TotalCostDeployed:  totalCostDeployed,
+		TotalReturn:        totalReturn,
+		TotalReturnPct:     totalReturnPct,
+		HasClosedPositions: hasClosedPositions,
 	}, nil
 }
 

@@ -2059,3 +2059,85 @@ func TestGetHoldings_IncludeClosed_NotDoubleCountingOpen(t *testing.T) {
 		}
 	}
 }
+
+// TR-016: AccountValuation.HasClosedPositions advises callers that the
+// account has at least one fully-sold security, so the UI can offer the
+// "include closed positions" affordance. The flag must be set regardless
+// of opts.IncludeClosed — it describes the account's history, not the
+// shape of the returned holdings list.
+func TestAccountValuation_HasClosedPositionsFlag(t *testing.T) {
+	t.Run("flag is true when account has a fully-sold security", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		aapl := createSec(t, env.secRepo, "AAPL")
+		msft := createSec(t, env.secRepo, "MSFT")
+		d1 := types.NewDate(2024, time.March, 1)
+		d2 := types.NewDate(2024, time.April, 1)
+		asOf := types.NewDate(2024, time.June, 1)
+
+		if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+
+		buyAAPL := types.MustNewMoney("1000")
+		if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"),
+			&buyAAPL, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy(AAPL) error = %v", err)
+		}
+		buyMSFT := types.MustNewMoney("500")
+		if _, err := env.svc.Buy(acct.ID, msft.ID, d1, types.MustNewQuantity("5"),
+			&buyMSFT, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy(MSFT) error = %v", err)
+		}
+		sellMSFT := types.MustNewMoney("550")
+		if _, err := env.svc.Sell(acct.ID, msft.ID, d2, types.MustNewQuantity("5"),
+			&sellMSFT, nil, types.ZeroMoney, "", nil); err != nil {
+			t.Fatalf("Sell(MSFT) error = %v", err)
+		}
+
+		t.Run("IncludeClosed=false", func(t *testing.T) {
+			val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+			if err != nil {
+				t.Fatalf("GetAccountValuation() error = %v", err)
+			}
+			if !val.HasClosedPositions {
+				t.Errorf("Expected HasClosedPositions=true with a closed position even when IncludeClosed=false, got false")
+			}
+		})
+
+		t.Run("IncludeClosed=true", func(t *testing.T) {
+			val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{IncludeClosed: true})
+			if err != nil {
+				t.Fatalf("GetAccountValuation() error = %v", err)
+			}
+			if !val.HasClosedPositions {
+				t.Errorf("Expected HasClosedPositions=true with a closed position when IncludeClosed=true, got false")
+			}
+		})
+	})
+
+	t.Run("flag is false when no security has been fully sold", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		aapl := createSec(t, env.secRepo, "AAPL")
+		d1 := types.NewDate(2024, time.March, 1)
+		asOf := types.NewDate(2024, time.June, 1)
+
+		if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+		buyAAPL := types.MustNewMoney("1000")
+		if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"),
+			&buyAAPL, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy(AAPL) error = %v", err)
+		}
+
+		val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		if err != nil {
+			t.Fatalf("GetAccountValuation() error = %v", err)
+		}
+		if val.HasClosedPositions {
+			t.Errorf("Expected HasClosedPositions=false with no closed position, got true")
+		}
+	})
+}

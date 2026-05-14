@@ -261,7 +261,7 @@ Pure ledger sums. No dependency on positions or lots.
     but their total-return components are filled by the same enrichment
     helper from TR-012.
 
-- [ ] **TR-016 — Set `HasClosedPositions` advisory flag**
+- [x] **TR-016 — Set `HasClosedPositions` advisory flag**
   - RED: test `TestAccountValuation_HasClosedPositionsFlag` — fixture
     with at least one closed position sets the flag to `true` on the
     returned valuation regardless of `IncludeClosed`. Fixture with no
