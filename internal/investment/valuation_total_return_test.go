@@ -1,6 +1,7 @@
 package investment
 
 import (
+	"math"
 	"sort"
 	"testing"
 	"time"
@@ -104,7 +105,11 @@ func TestValuation_NewFieldsZeroValue_BackCompat(t *testing.T) {
 		}
 	})
 
-	t.Run("GetHoldings new fields zero", func(t *testing.T) {
+	t.Run("GetHoldings new fields populated from buy-only fixture", func(t *testing.T) {
+		// TR-012 wired enrichHoldingTotalReturn into the holding paths, so
+		// holdings that have a buy now carry non-zero TotalCostDeployed /
+		// TotalReturn / TotalReturnPct. Components without a contributing
+		// transaction (no sells, no dividends, no commissions) stay zero.
 		holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() error = %v", err)
@@ -115,22 +120,25 @@ func TestValuation_NewFieldsZeroValue_BackCompat(t *testing.T) {
 		h := holdings[0]
 
 		if !h.RealizedGain.IsZero() {
-			t.Errorf("Expected RealizedGain to be zero, got %s", h.RealizedGain.String())
+			t.Errorf("Expected RealizedGain to be zero (no sells), got %s", h.RealizedGain.String())
 		}
 		if !h.DividendsReceived.IsZero() {
-			t.Errorf("Expected DividendsReceived to be zero, got %s", h.DividendsReceived.String())
+			t.Errorf("Expected DividendsReceived to be zero (no dividends), got %s", h.DividendsReceived.String())
 		}
 		if !h.FeesPaid.IsZero() {
-			t.Errorf("Expected FeesPaid to be zero, got %s", h.FeesPaid.String())
+			t.Errorf("Expected FeesPaid to be zero (no commission), got %s", h.FeesPaid.String())
 		}
-		if !h.TotalCostDeployed.IsZero() {
-			t.Errorf("Expected TotalCostDeployed to be zero, got %s", h.TotalCostDeployed.String())
+		if h.TotalCostDeployed.String() != "1000" {
+			t.Errorf("Expected TotalCostDeployed '1000' (one buy), got %s", h.TotalCostDeployed.String())
 		}
-		if !h.TotalReturn.IsZero() {
-			t.Errorf("Expected TotalReturn to be zero, got %s", h.TotalReturn.String())
+		if h.TotalReturn.String() != "200" {
+			t.Errorf("Expected TotalReturn '200' (unrealized only), got %s", h.TotalReturn.String())
 		}
-		if h.TotalReturnPct != nil {
-			t.Errorf("Expected TotalReturnPct to be nil, got %v", *h.TotalReturnPct)
+		if h.TotalReturnPct == nil {
+			t.Fatalf("Expected TotalReturnPct non-nil for holding with a buy")
+		}
+		if *h.TotalReturnPct < 19.99 || *h.TotalReturnPct > 20.01 {
+			t.Errorf("Expected TotalReturnPct ~20.0 (200/1000×100), got %f", *h.TotalReturnPct)
 		}
 		if h.IsClosed {
 			t.Errorf("Expected IsClosed to be false, got true")
@@ -1233,5 +1241,169 @@ func TestTotalCostDeployedForAccount_SumsAcrossSecurities(t *testing.T) {
 	}
 	if got.String() != "3550" {
 		t.Errorf("Expected total cost deployed '3550' (1500 AAPL buys + 50 reinvest + 2000 MSFT), got %q", got.String())
+	}
+}
+
+// TR-012: GetHoldings enriches each open holding with the total-return
+// breakdown — RealizedGain, DividendsReceived, FeesPaid, TotalCostDeployed,
+// TotalReturn, and TotalReturnPct — computed against the (account, security)
+// ledger. The existing unrealized-only GainLoss / GainPct fields are
+// unchanged.
+//
+// Fixture: non-lot Brokerage / AAPL.
+//   - Buy 10 @ price 100 with $10 commission → total_amount $1010, position
+//     avg cost $100 (commission excluded per ComputePricePerShare).
+//   - Buy 10 @ price 120, no commission → total_amount $1200, avg cost now
+//     (10·100 + 10·120) / 20 = $110.
+//   - Sell 5 @ price 150, no commission. replayRealizedGain captures avg
+//     cost $110 immediately before the sell → realized gain
+//     (150 − 110) × 5 = $200. Position drops to 15 shares @ avg $110.
+//   - Cash dividend $50.
+//   - Price @ asOf is $130 → unrealized = 15 × (130 − 110) = $300.
+//
+// Expected total-return components for the open AAPL holding:
+//
+//	RealizedGain      = 200
+//	DividendsReceived = 50
+//	FeesPaid          = 10        (one buy commission; positive magnitude)
+//	TotalCostDeployed = 2210      (Σ buy.total_amount magnitudes)
+//	TotalReturn       = 540       (GainLoss 300 + 200 + 50 − 10)
+//	TotalReturnPct    ≈ 24.4344   (540 / 2210 × 100)
+func TestGetHoldings_PopulatesTotalReturn(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+	d3 := types.NewDate(2024, time.May, 1)
+	asOf := types.NewDate(2024, time.June, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	buy1 := types.MustNewMoney("1010")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, d1, types.MustNewQuantity("10"),
+		&buy1, nil, types.MustNewMoney("10"), ""); err != nil {
+		t.Fatalf("Buy(1) error = %v", err)
+	}
+	buy2 := types.MustNewMoney("1200")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, d2, types.MustNewQuantity("10"),
+		&buy2, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(2) error = %v", err)
+	}
+	sell := types.MustNewMoney("750")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, d3, types.MustNewQuantity("5"),
+		&sell, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+	if _, err := env.svc.Dividend(acct.ID, sec.ID, d3, types.MustNewMoney("50"), ""); err != nil {
+		t.Fatalf("Dividend() error = %v", err)
+	}
+	p := price.NewPrice(sec.ID, asOf, types.MustNewMoney("130"), price.SourceManual)
+	if err := env.priceRepo.Create(p); err != nil {
+		t.Fatalf("Create price error = %v", err)
+	}
+
+	holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetHoldings() error = %v", err)
+	}
+	if len(holdings) != 1 {
+		t.Fatalf("Expected 1 holding, got %d", len(holdings))
+	}
+	h := holdings[0]
+
+	// Existing unrealized-only fields are unchanged.
+	if h.Shares.String() != "15" {
+		t.Errorf("Expected Shares '15', got %q", h.Shares.String())
+	}
+	if h.CostBasis.String() != "1650" {
+		t.Errorf("Expected CostBasis '1650' (15 × avg 110), got %q", h.CostBasis.String())
+	}
+	if h.MarketValue.String() != "1950" {
+		t.Errorf("Expected MarketValue '1950' (15 × 130), got %q", h.MarketValue.String())
+	}
+	if h.GainLoss.String() != "300" {
+		t.Errorf("Expected GainLoss '300' (unrealized), got %q", h.GainLoss.String())
+	}
+
+	// New total-return fields.
+	if h.RealizedGain.String() != "200" {
+		t.Errorf("Expected RealizedGain '200' ((150−110)×5), got %q", h.RealizedGain.String())
+	}
+	if h.RealizedGainUnavailable {
+		t.Errorf("Expected RealizedGainUnavailable=false, got true")
+	}
+	if h.DividendsReceived.String() != "50" {
+		t.Errorf("Expected DividendsReceived '50', got %q", h.DividendsReceived.String())
+	}
+	if h.FeesPaid.String() != "10" {
+		t.Errorf("Expected FeesPaid '10' (buy commission), got %q", h.FeesPaid.String())
+	}
+	if h.TotalCostDeployed.String() != "2210" {
+		t.Errorf("Expected TotalCostDeployed '2210' (1010 + 1200), got %q", h.TotalCostDeployed.String())
+	}
+	if h.TotalReturn.String() != "540" {
+		t.Errorf("Expected TotalReturn '540' (300 + 200 + 50 − 10), got %q", h.TotalReturn.String())
+	}
+	if h.TotalReturnPct == nil {
+		t.Fatalf("Expected TotalReturnPct non-nil")
+	}
+	expectedPct := 540.0 / 2210.0 * 100.0
+	if math.Abs(*h.TotalReturnPct-expectedPct) > 0.001 {
+		t.Errorf("Expected TotalReturnPct ≈ %f, got %f", expectedPct, *h.TotalReturnPct)
+	}
+}
+
+// TR-012: A holding received only via transfer_shares has zero total cost
+// deployed (transfers carry basis with the shares but don't represent new
+// capital deployed in this account). TotalReturnPct must be nil so the UI
+// can render `—` instead of a misleading percent.
+func TestGetHoldings_TotalReturnPctNilWhenNoBuys(t *testing.T) {
+	env := createFullTestService(t)
+	src := createInvAccount(t, env.accountRepo, "Source")
+	dst := createInvAccount(t, env.accountRepo, "Dest")
+	sec := createSec(t, env.secRepo, "AAPL")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+	asOf := types.NewDate(2024, time.May, 1)
+
+	if _, err := env.svc.Deposit(src.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buy := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(src.ID, sec.ID, d1, types.MustNewQuantity("10"),
+		&buy, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+	if _, err := env.svc.TransferShares(src.ID, dst.ID, sec.ID, d2,
+		types.MustNewQuantity("10"), "", nil); err != nil {
+		t.Fatalf("TransferShares() error = %v", err)
+	}
+	p := price.NewPrice(sec.ID, asOf, types.MustNewMoney("110"), price.SourceManual)
+	if err := env.priceRepo.Create(p); err != nil {
+		t.Fatalf("Create price error = %v", err)
+	}
+
+	holdings, err := env.svc.GetHoldings(dst.ID, asOf, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetHoldings() error = %v", err)
+	}
+	if len(holdings) != 1 {
+		t.Fatalf("Expected 1 holding in dest, got %d", len(holdings))
+	}
+	h := holdings[0]
+
+	if !h.TotalCostDeployed.IsZero() {
+		t.Errorf("Expected TotalCostDeployed zero (transfer-only), got %q", h.TotalCostDeployed.String())
+	}
+	if h.TotalReturnPct != nil {
+		t.Errorf("Expected TotalReturnPct nil when TotalCostDeployed is zero, got %v", *h.TotalReturnPct)
+	}
+	// TotalReturn is still summable: unrealized (shares × (price − avg cost
+	// transferred in)) + zero realized + zero dividends − zero fees.
+	if h.GainLoss.IsZero() && !h.TotalReturn.IsZero() {
+		t.Errorf("Expected TotalReturn zero when only unrealized component (and that is zero), got %q", h.TotalReturn.String())
 	}
 }

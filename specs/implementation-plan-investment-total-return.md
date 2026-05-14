@@ -203,7 +203,7 @@ Pure ledger sums. No dependency on positions or lots.
 
 ## Phase 8: Wire Components Into the Valuation Service
 
-- [ ] **TR-012 — Enrich `Holding` with total-return components**
+- [x] **TR-012 — Enrich `Holding` with total-return components**
   - RED: test `TestGetHoldings_PopulatesTotalReturn` — fixture with one
     holding that has buys, a partial sell, dividends, and commissions.
     After `GetHoldings(accountID, asOf, ValuationOptions{})` the

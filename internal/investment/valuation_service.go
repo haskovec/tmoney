@@ -119,19 +119,19 @@ func (s *Service) GetLotDetail(accountID types.ID, securityID types.ID, asOf typ
 // database view for better performance. Otherwise falls back to manual computation.
 func (s *Service) getHoldings(acct *account.Account, asOf types.Date) ([]Holding, error) {
 	if s.holdingsRepo != nil {
-		return s.getHoldingsFromView(acct.ID, asOf)
+		return s.getHoldingsFromView(acct, asOf)
 	}
 	if acct.TrackLots {
-		return s.getHoldingsFromLots(acct.ID, asOf)
+		return s.getHoldingsFromLots(acct, asOf)
 	}
-	return s.getHoldingsFromPositions(acct.ID, asOf)
+	return s.getHoldingsFromPositions(acct, asOf)
 }
 
 // getHoldingsFromView builds holdings using the portfolio_holdings database view.
 // The view handles both lot-tracking and non-lot-tracking accounts, returning
 // pre-aggregated shares and cost basis. Pricing is enriched on top.
-func (s *Service) getHoldingsFromView(accountID types.ID, asOf types.Date) ([]Holding, error) {
-	viewHoldings, err := s.holdingsRepo.ListByAccount(accountID)
+func (s *Service) getHoldingsFromView(acct *account.Account, asOf types.Date) ([]Holding, error) {
+	viewHoldings, err := s.holdingsRepo.ListByAccount(acct.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query holdings view: %w", err)
 	}
@@ -156,7 +156,7 @@ func (s *Service) getHoldingsFromView(accountID types.ID, asOf types.Date) ([]Ho
 
 		gainLoss := marketValue.Sub(costBasis)
 
-		holdings = append(holdings, Holding{
+		h := Holding{
 			SecurityID:   vh.SecurityID,
 			Shares:       vh.TotalShares,
 			AvgCost:      avgCost,
@@ -167,15 +167,19 @@ func (s *Service) getHoldingsFromView(accountID types.ID, asOf types.Date) ([]Ho
 			GainLoss:     gainLoss,
 			GainPct:      computeGainPct(marketValue, costBasis),
 			HasPricing:   hasPricing,
-		})
+		}
+		if err := s.enrichHoldingTotalReturn(&h, acct); err != nil {
+			return nil, err
+		}
+		holdings = append(holdings, h)
 	}
 
 	return holdings, nil
 }
 
 // getHoldingsFromPositions builds holdings from positions (non-lot-tracking).
-func (s *Service) getHoldingsFromPositions(accountID types.ID, asOf types.Date) ([]Holding, error) {
-	positions, err := s.positionRepo.ListByAccount(accountID, true)
+func (s *Service) getHoldingsFromPositions(acct *account.Account, asOf types.Date) ([]Holding, error) {
+	positions, err := s.positionRepo.ListByAccount(acct.ID, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list positions: %w", err)
 	}
@@ -196,7 +200,7 @@ func (s *Service) getHoldingsFromPositions(accountID types.ID, asOf types.Date) 
 
 		gainLoss := marketValue.Sub(costBasis)
 
-		holdings = append(holdings, Holding{
+		h := Holding{
 			SecurityID:   pos.SecurityID,
 			Shares:       pos.Shares,
 			AvgCost:      pos.AverageCostPerShare,
@@ -207,20 +211,24 @@ func (s *Service) getHoldingsFromPositions(accountID types.ID, asOf types.Date) 
 			GainLoss:     gainLoss,
 			GainPct:      computeGainPct(marketValue, costBasis),
 			HasPricing:   hasPricing,
-		})
+		}
+		if err := s.enrichHoldingTotalReturn(&h, acct); err != nil {
+			return nil, err
+		}
+		holdings = append(holdings, h)
 	}
 
 	return holdings, nil
 }
 
 // getHoldingsFromLots builds holdings aggregated from lots (lot-tracking).
-func (s *Service) getHoldingsFromLots(accountID types.ID, asOf types.Date) ([]Holding, error) {
+func (s *Service) getHoldingsFromLots(acct *account.Account, asOf types.Date) ([]Holding, error) {
 	// Get all open lots for this account, grouped by security
 	// We need to find which securities have lots, then aggregate
 	// Use the position repo isn't available for lot-tracking, so we query lots directly
 
 	// Get all investment transactions to find which securities are held
-	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{})
+	txns, err := s.repo.ListByAccount(acct.ID, TransactionFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list transactions: %w", err)
 	}
@@ -235,7 +243,7 @@ func (s *Service) getHoldingsFromLots(accountID types.ID, asOf types.Date) ([]Ho
 
 	holdings := make([]Holding, 0)
 	for secID := range securityIDs {
-		lots, err := s.lotRepo.ListByAccountAndSecurity(accountID, secID, false)
+		lots, err := s.lotRepo.ListByAccountAndSecurity(acct.ID, secID, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list lots for security %s: %w", secID, err)
 		}
@@ -273,7 +281,7 @@ func (s *Service) getHoldingsFromLots(accountID types.ID, asOf types.Date) ([]Ho
 
 		gainLoss := marketValue.Sub(totalCostBasis)
 
-		holdings = append(holdings, Holding{
+		h := Holding{
 			SecurityID:   secID,
 			Shares:       totalShares,
 			AvgCost:      avgCost,
@@ -284,7 +292,11 @@ func (s *Service) getHoldingsFromLots(accountID types.ID, asOf types.Date) ([]Ho
 			GainLoss:     gainLoss,
 			GainPct:      computeGainPct(marketValue, totalCostBasis),
 			HasPricing:   hasPricing,
-		})
+		}
+		if err := s.enrichHoldingTotalReturn(&h, acct); err != nil {
+			return nil, err
+		}
+		holdings = append(holdings, h)
 	}
 
 	return holdings, nil
@@ -320,4 +332,49 @@ func (s *Service) getPriceDate(securityID types.ID, asOf types.Date) types.Date 
 	}
 
 	return p.Date
+}
+
+// enrichHoldingTotalReturn populates the total-return breakdown on a holding:
+// RealizedGain, DividendsReceived, FeesPaid, TotalCostDeployed, TotalReturn,
+// TotalReturnPct, and RealizedGainUnavailable. Per-security interest is not
+// modeled — interest is account-level only and applied in GetAccountValuation.
+//
+// TotalReturn = GainLoss (unrealized) + RealizedGain + DividendsReceived − FeesPaid.
+// TotalReturnPct = TotalReturn / TotalCostDeployed × 100, or nil when no
+// capital has been deployed (e.g., shares received only via transfer_shares).
+//
+// Realized gain is dispatched between the lot-tracked and non-lot paths via
+// acct.TrackLots. When the non-lot path is gated by corporate actions, the
+// dispatcher returns (zero, unavailable=true) and the flag is forwarded onto
+// the holding so the UI can render `(unavailable)`.
+func (s *Service) enrichHoldingTotalReturn(h *Holding, acct *account.Account) error {
+	realized, unavailable, err := s.realizedGain(acct.ID, h.SecurityID, acct.TrackLots)
+	if err != nil {
+		return fmt.Errorf("realized gain for %s: %w", h.SecurityID, err)
+	}
+	dividends, err := s.sumDividendsForSecurity(acct.ID, h.SecurityID)
+	if err != nil {
+		return fmt.Errorf("dividends for %s: %w", h.SecurityID, err)
+	}
+	fees, err := s.sumFeesForSecurity(acct.ID, h.SecurityID)
+	if err != nil {
+		return fmt.Errorf("fees for %s: %w", h.SecurityID, err)
+	}
+	deployed, err := s.totalCostDeployedForSecurity(acct.ID, h.SecurityID)
+	if err != nil {
+		return fmt.Errorf("total cost deployed for %s: %w", h.SecurityID, err)
+	}
+
+	h.RealizedGain = realized
+	h.RealizedGainUnavailable = unavailable
+	h.DividendsReceived = dividends
+	h.FeesPaid = fees
+	h.TotalCostDeployed = deployed
+	h.TotalReturn = h.GainLoss.Add(realized).Add(dividends).Sub(fees)
+
+	if !deployed.IsZero() {
+		pct := (h.TotalReturn.Float64() / deployed.Float64()) * 100
+		h.TotalReturnPct = &pct
+	}
+	return nil
 }
