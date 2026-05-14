@@ -2,6 +2,7 @@ package investment
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/alpacahq/alpacadecimal"
 	"github.com/haskovec/tmoney/internal/types"
@@ -197,6 +198,25 @@ func (s *Service) replayRealizedGain(accountID, securityID types.ID, txns []*Tra
 		}
 	}
 	return total, nil
+}
+
+// realizedGainNonLot is the service entry point for realized gain on a
+// non-lot-tracking (account, security) pair. It loads every transaction
+// for the pair, sorts them by (date asc, created_at asc) — the canonical
+// order replayPosition expects — and delegates to replayRealizedGain.
+func (s *Service) realizedGainNonLot(accountID, securityID types.ID) (types.Money, error) {
+	secFilter := securityID
+	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{SecurityID: &secFilter})
+	if err != nil {
+		return types.ZeroMoney, fmt.Errorf("failed to list transactions for realized gain: %w", err)
+	}
+	sort.SliceStable(txns, func(i, j int) bool {
+		if txns[i].Date.Time().Equal(txns[j].Date.Time()) {
+			return txns[i].CreatedAt.Time().Before(txns[j].CreatedAt.Time())
+		}
+		return txns[i].Date.Time().Before(txns[j].Date.Time())
+	})
+	return s.replayRealizedGain(accountID, securityID, txns)
 }
 
 // sumFeesForAccount returns the total fees paid across every security in

@@ -907,3 +907,53 @@ func TestReplayRealizedGain_ReinvestRaisesAvgCost(t *testing.T) {
 		t.Errorf("Expected realized gain '250' (reinvest raised avg cost to $150), got %q", got.String())
 	}
 }
+
+// TR-008: realizedGainNonLot is the service wrapper that loads transactions
+// for the (account, security) pair, sorts them in canonical order, and
+// delegates to replayRealizedGain. The fixture mirrors TR-007's happy path
+// and must produce the same $300.
+func TestRealizedGainNonLot_DelegatesToReplay(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date1 := types.NewDate(2024, time.March, 1)
+	date2 := types.NewDate(2024, time.March, 15)
+	date3 := types.NewDate(2024, time.April, 1)
+	date4 := types.NewDate(2024, time.April, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date1, types.MustNewMoney("50000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// Buy 10 @ $100 → avg cost $100
+	buy1 := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date1, types.MustNewQuantity("10"),
+		&buy1, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(1) error = %v", err)
+	}
+	// Buy 10 @ $120 → avg cost (1000+1200)/20 = $110
+	buy2 := types.MustNewMoney("1200")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date2, types.MustNewQuantity("10"),
+		&buy2, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(2) error = %v", err)
+	}
+	// Sell 5 @ $150 → realized = (150−110)×5 = 200
+	sell1 := types.MustNewMoney("750")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date3, types.MustNewQuantity("5"),
+		&sell1, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(1) error = %v", err)
+	}
+	// Sell 5 @ $130 → realized = (130−110)×5 = 100
+	sell2 := types.MustNewMoney("650")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date4, types.MustNewQuantity("5"),
+		&sell2, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(2) error = %v", err)
+	}
+
+	got, err := env.svc.realizedGainNonLot(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("realizedGainNonLot() error = %v", err)
+	}
+	if got.String() != "300" {
+		t.Errorf("Expected realized gain '300' (200 + 100), got %q", got.String())
+	}
+}

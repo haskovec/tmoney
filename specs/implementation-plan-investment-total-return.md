@@ -156,7 +156,7 @@ Pure ledger sums. No dependency on positions or lots.
     buy/reinvest, capture `position.AverageCostPerShare` before each
     sell.
 
-- [ ] **TR-008 — Service entry point `realizedGainNonLot(accountID, secID)`**
+- [x] **TR-008 — Service entry point `realizedGainNonLot(accountID, secID)`**
   - RED: test `TestRealizedGainNonLot_DelegatesToReplay` — fixture
     matching TR-007's happy path called via the service wrapper returns
     the same $300.
