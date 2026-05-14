@@ -236,7 +236,7 @@ Pure ledger sums. No dependency on positions or lots.
 
 ## Phase 9: Closed Positions
 
-- [ ] **TR-014 — `listEverHeldSecurities(accountID) []ID`**
+- [x] **TR-014 — `listEverHeldSecurities(accountID) []ID`**
   - RED: test `TestListEverHeldSecurities` — fixture with one currently-
     held security and one fully-sold security returns both IDs. Account
     with no transactions returns empty.

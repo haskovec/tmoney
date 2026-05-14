@@ -1657,3 +1657,161 @@ func TestGetAccountValuation_LegacyFieldsUnchanged(t *testing.T) {
 			val.TotalReturn.String(), val.TotalGainLoss.String())
 	}
 }
+
+// TR-014: listEverHeldSecurities returns the set of distinct security IDs
+// that the account has ever held shares of (open or closed). It draws from
+// share-bearing transaction types — buy, sell, reinvest_dividend,
+// fee_liquidation, and transfer_shares — so a security that was fully sold
+// is still present and an open position is not double-counted. Non-share-
+// bearing types (dividend, interest, fee at account level, deposit,
+// withdrawal, transfer_cash) do not contribute.
+
+func TestListEverHeldSecurities(t *testing.T) {
+	t.Run("open + closed positions both returned", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		aapl := createSec(t, env.secRepo, "AAPL") // still open
+		msft := createSec(t, env.secRepo, "MSFT") // fully sold (closed)
+		d1 := types.NewDate(2024, time.March, 1)
+		d2 := types.NewDate(2024, time.April, 1)
+
+		if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+
+		// AAPL: buy and hold.
+		buyAAPL := types.MustNewMoney("1000")
+		if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"),
+			&buyAAPL, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy(AAPL) error = %v", err)
+		}
+
+		// MSFT: buy and fully sell — position should be closed.
+		buyMSFT := types.MustNewMoney("500")
+		if _, err := env.svc.Buy(acct.ID, msft.ID, d1, types.MustNewQuantity("5"),
+			&buyMSFT, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy(MSFT) error = %v", err)
+		}
+		sellMSFT := types.MustNewMoney("600")
+		if _, err := env.svc.Sell(acct.ID, msft.ID, d2, types.MustNewQuantity("5"),
+			&sellMSFT, nil, types.ZeroMoney, "", nil); err != nil {
+			t.Fatalf("Sell(MSFT) error = %v", err)
+		}
+
+		got, err := env.svc.listEverHeldSecurities(acct.ID)
+		if err != nil {
+			t.Fatalf("listEverHeldSecurities() error = %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("Expected 2 ever-held securities, got %d: %v", len(got), got)
+		}
+		seen := make(map[types.ID]bool, len(got))
+		for _, id := range got {
+			seen[id] = true
+		}
+		if !seen[aapl.ID] {
+			t.Errorf("Expected AAPL (open) to be in ever-held set, got %v", got)
+		}
+		if !seen[msft.ID] {
+			t.Errorf("Expected MSFT (fully sold) to be in ever-held set, got %v", got)
+		}
+	})
+
+	t.Run("account with no transactions returns empty", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Empty")
+
+		got, err := env.svc.listEverHeldSecurities(acct.ID)
+		if err != nil {
+			t.Fatalf("listEverHeldSecurities() error = %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("Expected empty slice for account with no transactions, got %v", got)
+		}
+	})
+
+	t.Run("non-share-bearing transactions do not contribute", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		aapl := createSec(t, env.secRepo, "AAPL")
+		d1 := types.NewDate(2024, time.March, 1)
+
+		if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+		// A dividend references a security but adds no shares — must NOT
+		// place AAPL in the ever-held set on its own.
+		if _, err := env.svc.Dividend(acct.ID, aapl.ID, d1, types.MustNewMoney("25"), ""); err != nil {
+			t.Fatalf("Dividend() error = %v", err)
+		}
+		if _, err := env.svc.Interest(acct.ID, d1, types.MustNewMoney("5"), ""); err != nil {
+			t.Fatalf("Interest() error = %v", err)
+		}
+		if _, err := env.svc.Fee(acct.ID, d1, types.MustNewMoney("3"), ""); err != nil {
+			t.Fatalf("Fee() error = %v", err)
+		}
+
+		got, err := env.svc.listEverHeldSecurities(acct.ID)
+		if err != nil {
+			t.Fatalf("listEverHeldSecurities() error = %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("Expected empty (no share-bearing txns), got %v", got)
+		}
+	})
+
+	t.Run("transfer-in destination is included", func(t *testing.T) {
+		env := createFullTestService(t)
+		src := createInvAccount(t, env.accountRepo, "Source")
+		dst := createInvAccount(t, env.accountRepo, "Dest")
+		sec := createSec(t, env.secRepo, "AAPL")
+		d1 := types.NewDate(2024, time.March, 1)
+		d2 := types.NewDate(2024, time.April, 1)
+
+		if _, err := env.svc.Deposit(src.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+		buy := types.MustNewMoney("1000")
+		if _, err := env.svc.Buy(src.ID, sec.ID, d1, types.MustNewQuantity("10"),
+			&buy, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+		if _, err := env.svc.TransferShares(src.ID, dst.ID, sec.ID, d2,
+			types.MustNewQuantity("10"), "", nil); err != nil {
+			t.Fatalf("TransferShares() error = %v", err)
+		}
+
+		got, err := env.svc.listEverHeldSecurities(dst.ID)
+		if err != nil {
+			t.Fatalf("listEverHeldSecurities() error = %v", err)
+		}
+		if len(got) != 1 || got[0] != sec.ID {
+			t.Errorf("Expected dst's ever-held set to contain only %s, got %v", sec.ID, got)
+		}
+	})
+
+	t.Run("sibling account ignored", func(t *testing.T) {
+		env := createFullTestService(t)
+		a := createInvAccount(t, env.accountRepo, "A")
+		b := createInvAccount(t, env.accountRepo, "B")
+		sec := createSec(t, env.secRepo, "AAPL")
+		d1 := types.NewDate(2024, time.March, 1)
+
+		if _, err := env.svc.Deposit(b.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+		buy := types.MustNewMoney("1000")
+		if _, err := env.svc.Buy(b.ID, sec.ID, d1, types.MustNewQuantity("10"),
+			&buy, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+
+		got, err := env.svc.listEverHeldSecurities(a.ID)
+		if err != nil {
+			t.Fatalf("listEverHeldSecurities() error = %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("Expected account A (no txns) to have empty set, got %v", got)
+		}
+	})
+}

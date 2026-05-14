@@ -294,6 +294,48 @@ func (s *Service) totalCostDeployedForAccount(accountID types.ID) (types.Money, 
 	return total, nil
 }
 
+// listEverHeldSecurities returns the distinct security IDs that the account
+// has ever held shares of — both currently-open positions and fully-sold
+// (closed) positions. It scans the share-bearing transaction types — `buy`,
+// `sell`, `reinvest_dividend`, `fee_liquidation`, and `transfer_shares` —
+// so a security received only via a transfer-in is included and a security
+// that has been fully sold is still surfaced. Non-share-bearing types
+// (`dividend`, `interest`, `fee` at account level, `deposit`, `withdrawal`,
+// `transfer_cash`) do not contribute, which prevents a stray dividend on a
+// never-held ticker from leaking into the closed-position list.
+//
+// The returned slice is in stable order (security ID ascending as a string)
+// so callers can iterate it deterministically.
+func (s *Service) listEverHeldSecurities(accountID types.ID) ([]types.ID, error) {
+	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list transactions for ever-held securities: %w", err)
+	}
+
+	seen := make(map[types.ID]struct{})
+	for _, t := range txns {
+		switch t.Type {
+		case TransactionTypeBuy, TransactionTypeSell,
+			TransactionTypeReinvestDividend,
+			TransactionTypeFeeLiquidation,
+			TransactionTypeTransferShares:
+		default:
+			continue
+		}
+		if !t.SecurityID.Valid {
+			continue
+		}
+		seen[t.SecurityID.ID] = struct{}{}
+	}
+
+	ids := make([]types.ID, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i].String() < ids[j].String() })
+	return ids, nil
+}
+
 // sumFeesForAccount returns the total fees paid across every security in
 // the account plus any account-level `fee` transactions (which carry no
 // security_id). The result is a positive magnitude — the spec's
