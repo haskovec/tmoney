@@ -1084,3 +1084,103 @@ func TestRealizedGain_LotTracked_WithCorporateActions_StillComputed(t *testing.T
 		t.Errorf("Expected realized gain '25', got %q", got.String())
 	}
 }
+
+// TR-010: totalCostDeployedForSecurity sums total_amount for `buy` and
+// `reinvest_dividend` transactions on a (account, security) pair. Shares
+// received via `transfer_shares` carry cost basis with them but are not new
+// capital deployed in this account, so they are excluded from the
+// denominator. Buy transactions store total_amount as a negative cash debit;
+// the helper returns a positive magnitude.
+
+func TestTotalCostDeployed_BuyOnly(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buy1 := types.MustNewMoney("500")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, d1, types.MustNewQuantity("5"),
+		&buy1, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(1) error = %v", err)
+	}
+	buy2 := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, d2, types.MustNewQuantity("10"),
+		&buy2, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(2) error = %v", err)
+	}
+
+	got, err := env.svc.totalCostDeployedForSecurity(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("totalCostDeployedForSecurity() error = %v", err)
+	}
+	if got.String() != "1500" {
+		t.Errorf("Expected total cost deployed '1500', got %q", got.String())
+	}
+}
+
+func TestTotalCostDeployed_BuyPlusReinvest(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buy := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, d1, types.MustNewQuantity("10"),
+		&buy, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+	reinvest := types.MustNewMoney("50")
+	if _, err := env.svc.ReinvestDividend(acct.ID, sec.ID, d2,
+		types.MustNewQuantity("0.5"), &reinvest, nil, ""); err != nil {
+		t.Fatalf("ReinvestDividend() error = %v", err)
+	}
+
+	got, err := env.svc.totalCostDeployedForSecurity(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("totalCostDeployedForSecurity() error = %v", err)
+	}
+	if got.String() != "1050" {
+		t.Errorf("Expected total cost deployed '1050' (1000 buy + 50 reinvest), got %q", got.String())
+	}
+}
+
+func TestTotalCostDeployed_TransferOnly_Zero(t *testing.T) {
+	env := createFullTestService(t)
+	src := createInvAccount(t, env.accountRepo, "Source")
+	dst := createInvAccount(t, env.accountRepo, "Dest")
+	sec := createSec(t, env.secRepo, "AAPL")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+
+	// Seed source with shares so they can be transferred out.
+	if _, err := env.svc.Deposit(src.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buy := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(src.ID, sec.ID, d1, types.MustNewQuantity("10"),
+		&buy, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	// Destination receives the shares via transfer only — no buys, no reinvests.
+	if _, err := env.svc.TransferShares(src.ID, dst.ID, sec.ID, d2,
+		types.MustNewQuantity("10"), "", nil); err != nil {
+		t.Fatalf("TransferShares() error = %v", err)
+	}
+
+	got, err := env.svc.totalCostDeployedForSecurity(dst.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("totalCostDeployedForSecurity() error = %v", err)
+	}
+	if !got.IsZero() {
+		t.Errorf("Expected zero for security received only via transfer_shares, got %q", got.String())
+	}
+}

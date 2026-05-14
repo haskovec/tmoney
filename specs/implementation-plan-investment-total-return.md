@@ -183,7 +183,7 @@ Pure ledger sums. No dependency on positions or lots.
 
 ## Phase 7: Total Cost Deployed
 
-- [ ] **TR-010 — `totalCostDeployedForSecurity(accountID, secID) Money`**
+- [x] **TR-010 — `totalCostDeployedForSecurity(accountID, secID) Money`**
   - RED: test `TestTotalCostDeployed_BuyOnly` — two buys totalling
     $1,500 return $1,500.
   - Test `TestTotalCostDeployed_BuyPlusReinvest` — buy $1,000 plus
