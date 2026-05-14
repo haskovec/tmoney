@@ -49,3 +49,34 @@ func (s *Service) sumInterestForAccount(accountID types.ID) (types.Money, error)
 	}
 	return total, nil
 }
+
+// sumFeesForSecurity returns the total fees paid for the given
+// (account, security) pair, as a positive magnitude. Fees include
+// commissions on buy, sell, and reinvest_dividend transactions, plus
+// the full total_amount of any fee_liquidation transactions (the
+// whole transaction is the fee paid in shares). Account-level `fee`
+// transactions (no security_id) are summed separately by
+// sumFeesForAccount.
+func (s *Service) sumFeesForSecurity(accountID, securityID types.ID) (types.Money, error) {
+	filter := TransactionFilter{
+		SecurityID: &securityID,
+	}
+
+	txns, err := s.repo.ListByAccount(accountID, filter)
+	if err != nil {
+		return types.ZeroMoney, fmt.Errorf("failed to list transactions for fees: %w", err)
+	}
+
+	total := types.ZeroMoney
+	for _, txn := range txns {
+		switch txn.Type {
+		case TransactionTypeBuy, TransactionTypeSell, TransactionTypeReinvestDividend:
+			if txn.Commission.Valid {
+				total = total.Add(txn.Commission.Money)
+			}
+		case TransactionTypeFeeLiquidation:
+			total = total.Add(txn.TotalAmount)
+		}
+	}
+	return total, nil
+}

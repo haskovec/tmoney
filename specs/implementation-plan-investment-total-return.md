@@ -93,7 +93,7 @@ Pure ledger sums. No dependency on positions or lots.
 
 ## Phase 3: Fee Aggregation
 
-- [ ] **TR-004 — `sumFeesForSecurity(accountID, secID) Money`**
+- [x] **TR-004 — `sumFeesForSecurity(accountID, secID) Money`**
   - RED: test `TestSumFeesForSecurity_HappyPath` — fixture with one buy
     ($5 commission), one sell ($10 commission), one reinvest ($1
     commission), and one `fee_liquidation` ($25 `total_amount`) on the

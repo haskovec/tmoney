@@ -275,3 +275,117 @@ func TestSumInterestForAccount_OtherAccountIgnored(t *testing.T) {
 		t.Errorf("Expected account A interest '20', got %q", got.String())
 	}
 }
+
+// TR-004: sumFeesForSecurity sums commissions on buy/sell/reinvest_dividend
+// transactions plus the full total_amount of any fee_liquidation transactions
+// for a single (account, security) pair. Account-level `fee` transactions
+// (no security_id) are deliberately excluded — they are summed separately at
+// the account level. The result is a positive magnitude.
+
+func TestSumFeesForSecurity_HappyPath(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	buyTotal := types.MustNewMoney("1005")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"),
+		&buyTotal, nil, types.MustNewMoney("5"), ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	sellTotal := types.MustNewMoney("800")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date, types.MustNewQuantity("5"),
+		&sellTotal, nil, types.MustNewMoney("10"), "", nil); err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+
+	// Service-level ReinvestDividend hardcodes zero commission; persist a $1
+	// commission on the resulting row so the helper exercises the
+	// reinvest_dividend.commission branch per the spec.
+	reinvestTotal := types.MustNewMoney("100")
+	rtxn, err := env.svc.ReinvestDividend(acct.ID, sec.ID, date,
+		types.MustNewQuantity("1"), &reinvestTotal, nil, "")
+	if err != nil {
+		t.Fatalf("ReinvestDividend() error = %v", err)
+	}
+	rtxn.SetCommission(types.MustNewMoney("1"))
+	if err := env.invRepo.Update(rtxn); err != nil {
+		t.Fatalf("Update(reinvest commission) error = %v", err)
+	}
+
+	feeTotal := types.MustNewMoney("25")
+	if _, err := env.svc.FeeLiquidation(acct.ID, sec.ID, date,
+		types.MustNewQuantity("0.1"), &feeTotal, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("FeeLiquidation() error = %v", err)
+	}
+
+	got, err := env.svc.sumFeesForSecurity(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("sumFeesForSecurity() error = %v", err)
+	}
+	if got.String() != "41" {
+		t.Errorf("Expected total fees '41' (5 + 10 + 1 + 25), got %q", got.String())
+	}
+}
+
+func TestSumFeesForSecurity_NoCommissionField(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("5000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	buyTotal := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"),
+		&buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+	sellTotal := types.MustNewMoney("600")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date, types.MustNewQuantity("5"),
+		&sellTotal, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+
+	got, err := env.svc.sumFeesForSecurity(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("sumFeesForSecurity() error = %v", err)
+	}
+	if !got.IsZero() {
+		t.Errorf("Expected zero (no commissions set), got %q", got.String())
+	}
+}
+
+func TestSumFeesForSecurity_AccountLevelFeeIgnored(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("5000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	if _, err := env.svc.Fee(acct.ID, date, types.MustNewMoney("50"), ""); err != nil {
+		t.Fatalf("Fee() error = %v", err)
+	}
+	buyTotal := types.MustNewMoney("105")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("1"),
+		&buyTotal, nil, types.MustNewMoney("5"), ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	got, err := env.svc.sumFeesForSecurity(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("sumFeesForSecurity() error = %v", err)
+	}
+	if got.String() != "5" {
+		t.Errorf("Expected only the per-security commission '5' (account fee excluded), got %q", got.String())
+	}
+}
