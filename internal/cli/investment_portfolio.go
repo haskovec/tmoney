@@ -12,10 +12,11 @@ import (
 
 // investmentPortfolioOptions are the inputs to `tmoney investment portfolio`.
 type investmentPortfolioOptions struct {
-	file     string
-	account  string
-	asOf     string
-	showLots bool
+	file          string
+	account       string
+	asOf          string
+	showLots      bool
+	includeClosed bool
 }
 
 // newInvestmentPortfolioCmd registers `tmoney investment portfolio`. The
@@ -28,11 +29,13 @@ func newInvestmentPortfolioCmd() *cobra.Command {
 		Short: "Show investment portfolio holdings and summary for an account",
 		Long: "Show holdings, market value, cost basis, and gain/loss for " +
 			"an investment account. Pass --as-of to value the portfolio at " +
-			"a specific date, or --show-lots to drill into per-lot detail " +
-			"on lot-tracking accounts.",
+			"a specific date, --show-lots to drill into per-lot detail on " +
+			"lot-tracking accounts, or --include-closed to surface fully-" +
+			"sold positions in a separate Closed positions section.",
 		Example: "  tmoney investment portfolio --account Brokerage\n" +
 			"  tmoney investment portfolio --account Brokerage --as-of 2024-12-31\n" +
-			"  tmoney investment portfolio --account Brokerage --show-lots",
+			"  tmoney investment portfolio --account Brokerage --show-lots\n" +
+			"  tmoney investment portfolio --account Brokerage --include-closed",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -43,6 +46,7 @@ func newInvestmentPortfolioCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.account, "account", "", "Investment account name (required)")
 	cmd.Flags().StringVar(&opts.asOf, "as-of", "", "Valuation date YYYY-MM-DD (default today)")
 	cmd.Flags().BoolVar(&opts.showLots, "show-lots", false, "Show per-lot detail (lot-tracking accounts only)")
+	cmd.Flags().BoolVar(&opts.includeClosed, "include-closed", false, "Include fully-sold positions in a separate Closed positions section")
 	_ = cmd.MarkFlagRequired("account")
 	return cmd
 }
@@ -76,7 +80,7 @@ func runInvestmentPortfolio(opts *investmentPortfolioOptions, w io.Writer) error
 		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	valuation, err := svc.Investment.GetAccountValuation(acct.ID, asOf, investment.ValuationOptions{})
+	valuation, err := svc.Investment.GetAccountValuation(acct.ID, asOf, investment.ValuationOptions{IncludeClosed: opts.includeClosed})
 	if err != nil {
 		return fmt.Errorf("failed to get portfolio valuation: %w", err)
 	}

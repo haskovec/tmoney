@@ -244,6 +244,76 @@ func TestInvestmentPortfolio_ShowLotsNonLotTracking(t *testing.T) {
 	}
 }
 
+func TestInvestmentPortfolio_OmitsClosedByDefault(t *testing.T) {
+	dbPath := createPortfolioCmdTestDBWithClosed(t)
+
+	stdout := &bytes.Buffer{}
+	err := executeWith([]string{
+		"investment", "portfolio",
+		"--file", dbPath,
+		"--account", "Brokerage",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if strings.Contains(output, "Closed positions") {
+		t.Errorf("default output should not contain 'Closed positions' heading; got:\n%s", output)
+	}
+	if strings.Contains(output, "MSFT") {
+		t.Errorf("default output should not list fully-sold MSFT; got:\n%s", output)
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Errorf("default output should still list open AAPL; got:\n%s", output)
+	}
+}
+
+func TestInvestmentPortfolio_IncludeClosed_PrintsHeading(t *testing.T) {
+	dbPath := createPortfolioCmdTestDBWithClosed(t)
+
+	stdout := &bytes.Buffer{}
+	err := executeWith([]string{
+		"investment", "portfolio",
+		"--file", dbPath,
+		"--account", "Brokerage",
+		"--include-closed",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("executeWith(investment portfolio --include-closed) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Closed positions") {
+		t.Errorf("--include-closed output should contain 'Closed positions' heading; got:\n%s", output)
+	}
+	if !strings.Contains(output, "MSFT") {
+		t.Errorf("--include-closed output should list fully-sold MSFT; got:\n%s", output)
+	}
+	if !strings.Contains(output, "AAPL") {
+		t.Errorf("--include-closed output should still list open AAPL; got:\n%s", output)
+	}
+}
+
+func TestInvestmentPortfolio_IncludeClosed_NoClosedPositions_NoHeading(t *testing.T) {
+	dbPath := createPortfolioCmdTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := executeWith([]string{
+		"investment", "portfolio",
+		"--file", dbPath,
+		"--account", "Brokerage",
+		"--include-closed",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("executeWith(investment portfolio --include-closed) returned error: %v", err)
+	}
+
+	if strings.Contains(stdout.String(), "Closed positions") {
+		t.Errorf("--include-closed on account without closed positions should not print 'Closed positions' heading; got:\n%s", stdout.String())
+	}
+}
+
 func TestInvestmentPortfolio_Help(t *testing.T) {
 	_, restore := stubLaunchers(t)
 	defer restore()
@@ -319,6 +389,63 @@ func createPortfolioCmdTestDB(t *testing.T, trackLots bool) string {
 	}
 	if _, err := svc.Investment.Buy(acct.ID, msft.ID, types.Today(), types.MustNewQuantity("5"), nil, ptrMoney("400"), types.ZeroMoney, ""); err != nil {
 		t.Fatalf("failed to buy MSFT: %v", err)
+	}
+
+	database.Close()
+	return dbPath
+}
+
+// createPortfolioCmdTestDBWithClosed creates a DB with one open position
+// (AAPL) and one fully-sold (closed) position (MSFT) so that
+// `investment portfolio --include-closed` has something to surface.
+func createPortfolioCmdTestDBWithClosed(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "portfolio_closed.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create investment account: %v", err)
+	}
+
+	secRepo := security.NewRepository(database)
+	aapl := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	if err := secRepo.Create(aapl); err != nil {
+		t.Fatalf("failed to create AAPL: %v", err)
+	}
+	msft := security.NewSecurity("MSFT", "Microsoft Corp.", security.TypeStock)
+	if err := secRepo.Create(msft); err != nil {
+		t.Fatalf("failed to create MSFT: %v", err)
+	}
+
+	priceRepo := price.NewRepository(database)
+	if err := priceRepo.Create(price.NewPrice(aapl.ID, types.Today(), types.MustNewMoney("175.00"), price.SourceManual)); err != nil {
+		t.Fatalf("failed to create AAPL price: %v", err)
+	}
+	if err := priceRepo.Create(price.NewPrice(msft.ID, types.Today(), types.MustNewMoney("420.00"), price.SourceManual)); err != nil {
+		t.Fatalf("failed to create MSFT price: %v", err)
+	}
+
+	svc := app.NewServices(database)
+	if _, err := svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("100000"), "initial deposit"); err != nil {
+		t.Fatalf("failed to deposit cash: %v", err)
+	}
+
+	if _, err := svc.Investment.Buy(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("10"), nil, ptrMoney("150"), types.ZeroMoney, ""); err != nil {
+		t.Fatalf("failed to buy AAPL: %v", err)
+	}
+
+	if _, err := svc.Investment.Buy(acct.ID, msft.ID, types.Today(), types.MustNewQuantity("5"), nil, ptrMoney("400"), types.ZeroMoney, ""); err != nil {
+		t.Fatalf("failed to buy MSFT: %v", err)
+	}
+	if _, err := svc.Investment.Sell(acct.ID, msft.ID, types.Today(), types.MustNewQuantity("5"), nil, ptrMoney("450"), types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("failed to sell MSFT: %v", err)
 	}
 
 	database.Close()

@@ -724,18 +724,20 @@ func printPortfolioSummary(w io.Writer, acct *account.Account, valuation *invest
 	fmt.Fprintln(w, strings.Repeat("=", len("PORTFOLIO: ")+len(acct.Name)))
 	fmt.Fprintln(w)
 
+	open, closed := partitionHoldings(valuation.Holdings)
+
 	// Holdings table
 	fmt.Fprintln(w, "HOLDINGS")
 	fmt.Fprintln(w, "--------")
 
-	if len(valuation.Holdings) == 0 {
+	if len(open) == 0 {
 		fmt.Fprintln(w, "(No holdings)")
 	} else {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(tw, "Ticker\tName\tShares\tAvg Cost\tPrice\tCost Basis\tMarket Value\tGain/Loss")
 		fmt.Fprintln(tw, "------\t----\t------\t--------\t-----\t----------\t------------\t---------")
 
-		for _, h := range valuation.Holdings {
+		for _, h := range open {
 			ticker := h.SecurityID.String()[:8]
 			name := ""
 			if sec, ok := securityMap[h.SecurityID]; ok {
@@ -762,6 +764,8 @@ func printPortfolioSummary(w io.Writer, acct *account.Account, valuation *invest
 		tw.Flush()
 	}
 
+	printClosedPositions(w, closed, securityMap)
+
 	// Summary
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "SUMMARY")
@@ -779,10 +783,12 @@ func printPortfolioWithLots(w io.Writer, acct *account.Account, valuation *inves
 	fmt.Fprintln(w, strings.Repeat("=", len("PORTFOLIO: ")+len(acct.Name)+len(" (with lots)")))
 	fmt.Fprintln(w)
 
-	if len(valuation.Holdings) == 0 {
+	open, closed := partitionHoldings(valuation.Holdings)
+
+	if len(open) == 0 {
 		fmt.Fprintln(w, "(No holdings)")
 	} else {
-		for _, h := range valuation.Holdings {
+		for _, h := range open {
 			ticker := h.SecurityID.String()[:8]
 			name := ""
 			if sec, ok := securityMap[h.SecurityID]; ok {
@@ -831,6 +837,8 @@ func printPortfolioWithLots(w io.Writer, acct *account.Account, valuation *inves
 		}
 	}
 
+	printClosedPositions(w, closed, securityMap)
+
 	// Summary
 	fmt.Fprintln(w, "SUMMARY")
 	fmt.Fprintln(w, "-------")
@@ -839,4 +847,44 @@ func printPortfolioWithLots(w io.Writer, acct *account.Account, valuation *inves
 	fmt.Fprintf(w, "Total Value:      %s\n", formatMoney(valuation.TotalValue, acct.Currency))
 	fmt.Fprintf(w, "Total Cost Basis: %s\n", formatMoney(valuation.TotalCostBasis, acct.Currency))
 	fmt.Fprintf(w, "Total Gain/Loss:  %s\n", formatGainLoss(valuation.TotalGainLoss, valuation.TotalGainPct, acct.Currency))
+}
+
+// partitionHoldings splits holdings into open (still held) and closed
+// (synthesized when ValuationOptions.IncludeClosed is true).
+func partitionHoldings(holdings []investment.Holding) (open, closed []investment.Holding) {
+	for _, h := range holdings {
+		if h.IsClosed {
+			closed = append(closed, h)
+		} else {
+			open = append(open, h)
+		}
+	}
+	return open, closed
+}
+
+// printClosedPositions emits the Closed positions section. Subsequent
+// total-return tasks (TR-020) flesh this into a full table; for now it
+// prints the heading and one row per closed ticker.
+func printClosedPositions(w io.Writer, closed []investment.Holding, securityMap map[types.ID]*security.Security) {
+	if len(closed) == 0 {
+		return
+	}
+
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Closed positions")
+	fmt.Fprintln(w, "----------------")
+	for _, h := range closed {
+		ticker := h.SecurityID.String()[:8]
+		name := ""
+		if sec, ok := securityMap[h.SecurityID]; ok {
+			ticker = sec.Ticker
+			name = sec.Name
+		}
+		if name != "" {
+			fmt.Fprintf(w, "%s - %s\n", ticker, name)
+		} else {
+			fmt.Fprintln(w, ticker)
+		}
+	}
+	fmt.Fprintln(w)
 }

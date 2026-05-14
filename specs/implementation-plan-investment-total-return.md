@@ -271,7 +271,7 @@ Pure ledger sums. No dependency on positions or lots.
 
 ## Phase 10: CLI
 
-- [ ] **TR-017 — Add `--include-closed` flag to `investment portfolio`**
+- [x] **TR-017 — Add `--include-closed` flag to `investment portfolio`**
   - RED: test in `internal/cli/investment_portfolio_test.go` (or wherever
     the portfolio command lives) — invoking the command without the flag
     omits closed positions, invoking with the flag prints the "Closed
