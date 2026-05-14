@@ -81,6 +81,45 @@ func (s *Service) sumFeesForSecurity(accountID, securityID types.ID) (types.Mone
 	return total, nil
 }
 
+// realizedGainLotTracked returns the realized gain for a (account, security)
+// pair in a lot-tracking account. It walks the `transaction_lots` junction
+// table for every `sell` and `fee_liquidation` transaction on the security
+// and sums (txn.price_per_share − lot.cost_per_share) × junction.shares.
+// `txn.price_per_share` is already net of commission per ComputePricePerShare;
+// commission is counted separately as a fee, not subtracted twice here.
+func (s *Service) realizedGainLotTracked(accountID, securityID types.ID) (types.Money, error) {
+	filter := TransactionFilter{
+		SecurityID: &securityID,
+	}
+	txns, err := s.repo.ListByAccount(accountID, filter)
+	if err != nil {
+		return types.ZeroMoney, fmt.Errorf("failed to list transactions for realized gain: %w", err)
+	}
+
+	total := types.ZeroMoney
+	for _, txn := range txns {
+		if txn.Type != TransactionTypeSell && txn.Type != TransactionTypeFeeLiquidation {
+			continue
+		}
+		if !txn.PricePerShare.Valid {
+			continue
+		}
+		junctions, err := s.transactionLotRepo.GetByTransaction(txn.ID)
+		if err != nil {
+			return types.ZeroMoney, fmt.Errorf("failed to get transaction lot junctions: %w", err)
+		}
+		for _, j := range junctions {
+			lot, err := s.lotRepo.GetByID(j.LotID)
+			if err != nil {
+				return types.ZeroMoney, fmt.Errorf("failed to get lot %s: %w", j.LotID, err)
+			}
+			perShareGain := txn.PricePerShare.Money.Sub(lot.CostPerShare)
+			total = total.Add(perShareGain.Mul(j.Shares.Decimal()))
+		}
+	}
+	return total, nil
+}
+
 // sumFeesForAccount returns the total fees paid across every security in
 // the account plus any account-level `fee` transactions (which carry no
 // security_id). The result is a positive magnitude — the spec's

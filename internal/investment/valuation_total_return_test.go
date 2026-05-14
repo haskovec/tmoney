@@ -484,3 +484,200 @@ func TestSumFeesForAccount_OnlyAccountLevelFees(t *testing.T) {
 		t.Errorf("Expected zero for account with no fees, got %q", got.String())
 	}
 }
+
+// TR-006: realizedGainLotTracked walks the transaction_lots junction for sell
+// and fee_liquidation transactions and sums
+// (txn.price_per_share − lot.cost_per_share) × junction.shares. Commission is
+// already netted into txn.price_per_share by ComputePricePerShare; it is
+// counted separately as a fee, not subtracted twice.
+
+func TestRealizedGainLotTracked_SingleSell_AtGain(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buyTotal := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"),
+		&buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	lots, err := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+	if err != nil {
+		t.Fatalf("ListByAccountAndSecurity() error = %v", err)
+	}
+	if len(lots) != 1 {
+		t.Fatalf("Expected 1 lot, got %d", len(lots))
+	}
+
+	sellTotal := types.MustNewMoney("750")
+	allocs := []SellLotAllocation{{LotID: lots[0].ID, Shares: types.MustNewQuantity("5")}}
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date, types.MustNewQuantity("5"),
+		&sellTotal, nil, types.ZeroMoney, "", allocs); err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+
+	got, err := env.svc.realizedGainLotTracked(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("realizedGainLotTracked() error = %v", err)
+	}
+	// (150 − 100) × 5 = 250
+	if got.String() != "250" {
+		t.Errorf("Expected realized gain '250', got %q", got.String())
+	}
+}
+
+func TestRealizedGainLotTracked_SingleSell_AtLoss(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buyTotal := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"),
+		&buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	lots, err := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+	if err != nil {
+		t.Fatalf("ListByAccountAndSecurity() error = %v", err)
+	}
+
+	sellTotal := types.MustNewMoney("400")
+	allocs := []SellLotAllocation{{LotID: lots[0].ID, Shares: types.MustNewQuantity("5")}}
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date, types.MustNewQuantity("5"),
+		&sellTotal, nil, types.ZeroMoney, "", allocs); err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+
+	got, err := env.svc.realizedGainLotTracked(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("realizedGainLotTracked() error = %v", err)
+	}
+	// (80 − 100) × 5 = −100
+	if got.String() != "-100" {
+		t.Errorf("Expected realized gain '-100', got %q", got.String())
+	}
+}
+
+func TestRealizedGainLotTracked_MultipleSells_AcrossLots(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date1 := types.NewDate(2024, time.March, 1)
+	date2 := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date1, types.MustNewMoney("20000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// Lot 1: 10 @ $100
+	buy1 := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date1, types.MustNewQuantity("10"),
+		&buy1, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(lot1) error = %v", err)
+	}
+	// Lot 2: 5 @ $200
+	buy2 := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date2, types.MustNewQuantity("5"),
+		&buy2, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(lot2) error = %v", err)
+	}
+
+	lots, err := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+	if err != nil {
+		t.Fatalf("ListByAccountAndSecurity() error = %v", err)
+	}
+	if len(lots) != 2 {
+		t.Fatalf("Expected 2 lots, got %d", len(lots))
+	}
+
+	// Sell 8 @ $250 — 5 from lot 1, 3 from lot 2.
+	sellTotal := types.MustNewMoney("2000")
+	allocs := []SellLotAllocation{
+		{LotID: lots[0].ID, Shares: types.MustNewQuantity("5")},
+		{LotID: lots[1].ID, Shares: types.MustNewQuantity("3")},
+	}
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date2, types.MustNewQuantity("8"),
+		&sellTotal, nil, types.ZeroMoney, "", allocs); err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+
+	got, err := env.svc.realizedGainLotTracked(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("realizedGainLotTracked() error = %v", err)
+	}
+	// (250 − 100) × 5 + (250 − 200) × 3 = 750 + 150 = 900
+	if got.String() != "900" {
+		t.Errorf("Expected realized gain '900', got %q", got.String())
+	}
+}
+
+func TestRealizedGainLotTracked_FeeLiquidation(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buyTotal := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"),
+		&buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	lots, err := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+	if err != nil {
+		t.Fatalf("ListByAccountAndSecurity() error = %v", err)
+	}
+
+	// fee_liquidation: 0.1 shares at $200 from a lot bought at $100.
+	feeTotal := types.MustNewMoney("20")
+	allocs := []SellLotAllocation{{LotID: lots[0].ID, Shares: types.MustNewQuantity("0.1")}}
+	if _, err := env.svc.FeeLiquidation(acct.ID, sec.ID, date, types.MustNewQuantity("0.1"),
+		&feeTotal, nil, types.ZeroMoney, "", allocs); err != nil {
+		t.Fatalf("FeeLiquidation() error = %v", err)
+	}
+
+	got, err := env.svc.realizedGainLotTracked(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("realizedGainLotTracked() error = %v", err)
+	}
+	// (200 − 100) × 0.1 = 10
+	if got.String() != "10" {
+		t.Errorf("Expected realized gain '10', got %q", got.String())
+	}
+}
+
+func TestRealizedGainLotTracked_NoSells_ReturnsZero(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buyTotal := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"),
+		&buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	got, err := env.svc.realizedGainLotTracked(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("realizedGainLotTracked() error = %v", err)
+	}
+	if !got.IsZero() {
+		t.Errorf("Expected zero (no sells), got %q", got.String())
+	}
+}

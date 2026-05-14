@@ -116,7 +116,7 @@ Pure ledger sums. No dependency on positions or lots.
 
 ## Phase 4: Realized Gain — Lot-Tracked
 
-- [ ] **TR-006 — `realizedGainLotTracked(accountID, secID) Money`**
+- [x] **TR-006 — `realizedGainLotTracked(accountID, secID) Money`**
   - RED: test `TestRealizedGainLotTracked_SingleSell_AtGain` — buy 10
     @ $100, sell 5 @ $150 → realized gain = $250.
   - Test `TestRealizedGainLotTracked_SingleSell_AtLoss` — buy 10 @ $100,
