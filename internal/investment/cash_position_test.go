@@ -24,7 +24,8 @@ func createTestServiceWithSecurity(t *testing.T) (*Service, *account.Repository,
 	transactionLotRepo := NewTransactionLotRepository(database)
 	priceRepo := price.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
-	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, database)
+	caRepo := NewCorporateActionRepository(database)
+	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, caRepo, database)
 	return svc, accountRepo, secRepo
 }
 

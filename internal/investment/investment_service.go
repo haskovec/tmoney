@@ -14,15 +14,16 @@ import (
 
 // Service provides business logic for investment transaction operations.
 type Service struct {
-	repo               *Repository
-	accountRepo        *account.Repository
-	positionRepo       *PositionRepository
-	lotRepo            *LotRepository
-	transactionLotRepo *TransactionLotRepository
-	priceRepo          *price.Repository
-	txnRepo            *transaction.Repository
-	holdingsRepo       *HoldingsRepository
-	db                 *db.DB
+	repo                *Repository
+	accountRepo         *account.Repository
+	positionRepo        *PositionRepository
+	lotRepo             *LotRepository
+	transactionLotRepo  *TransactionLotRepository
+	priceRepo           *price.Repository
+	txnRepo             *transaction.Repository
+	corporateActionRepo *CorporateActionRepository
+	holdingsRepo        *HoldingsRepository
+	db                  *db.DB
 }
 
 // NewService creates a new Service.
@@ -34,18 +35,20 @@ func NewService(
 	transactionLotRepo *TransactionLotRepository,
 	priceRepo *price.Repository,
 	txnRepo *transaction.Repository,
+	corporateActionRepo *CorporateActionRepository,
 	database *db.DB,
 ) *Service {
 	return &Service{
-		repo:               repo,
-		accountRepo:        accountRepo,
-		positionRepo:       positionRepo,
-		lotRepo:            lotRepo,
-		transactionLotRepo: transactionLotRepo,
-		priceRepo:          priceRepo,
-		txnRepo:            txnRepo,
-		holdingsRepo:       NewHoldingsRepository(database),
-		db:                 database,
+		repo:                repo,
+		accountRepo:         accountRepo,
+		positionRepo:        positionRepo,
+		lotRepo:             lotRepo,
+		transactionLotRepo:  transactionLotRepo,
+		priceRepo:           priceRepo,
+		txnRepo:             txnRepo,
+		corporateActionRepo: corporateActionRepo,
+		holdingsRepo:        NewHoldingsRepository(database),
+		db:                  database,
 	}
 }
 

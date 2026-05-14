@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -25,7 +26,8 @@ func createTestService(t *testing.T) (*Service, *account.Repository) {
 	transactionLotRepo := NewTransactionLotRepository(database)
 	priceRepo := price.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
-	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, database)
+	caRepo := NewCorporateActionRepository(database)
+	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, caRepo, database)
 	return svc, accountRepo
 }
 
@@ -57,6 +59,8 @@ type testServiceEnv struct {
 	positionRepo       *PositionRepository
 	lotRepo            *LotRepository
 	transactionLotRepo *TransactionLotRepository
+	caRepo             *CorporateActionRepository
+	db                 *db.DB
 }
 
 func createFullTestService(t *testing.T) *testServiceEnv {
@@ -70,7 +74,8 @@ func createFullTestService(t *testing.T) *testServiceEnv {
 	lotRepo := NewLotRepository(database)
 	transactionLotRepo := NewTransactionLotRepository(database)
 	txnRepo := transaction.NewRepository(database)
-	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, database)
+	caRepo := NewCorporateActionRepository(database)
+	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, caRepo, database)
 	return &testServiceEnv{
 		svc:                svc,
 		invRepo:            invRepo,
@@ -80,6 +85,8 @@ func createFullTestService(t *testing.T) *testServiceEnv {
 		positionRepo:       positionRepo,
 		lotRepo:            lotRepo,
 		transactionLotRepo: transactionLotRepo,
+		caRepo:             caRepo,
+		db:                 database,
 	}
 }
 

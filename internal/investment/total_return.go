@@ -200,6 +200,34 @@ func (s *Service) replayRealizedGain(accountID, securityID types.ID, txns []*Tra
 	return total, nil
 }
 
+// realizedGain is the dispatcher entry point that valuation code calls
+// to obtain realized gain for an (account, security) pair. The bool
+// return ("unavailable") is true when a real number cannot be produced
+// — currently only the non-lot path in the presence of any corporate
+// action, since the ledger reflects post-action share counts that the
+// chronological replay is unaware of. Callers surface this as
+// Holding.RealizedGainUnavailable.
+//
+// The lot-tracked path is robust to corporate actions because the
+// corporate-action service mutates lots in place and transaction_lots
+// junction rows reference post-action lots, so junction-based math
+// remains correct.
+func (s *Service) realizedGain(accountID, securityID types.ID, trackLots bool) (types.Money, bool, error) {
+	if trackLots {
+		gain, err := s.realizedGainLotTracked(accountID, securityID)
+		return gain, false, err
+	}
+	n, err := s.corporateActionRepo.CountAll()
+	if err != nil {
+		return types.ZeroMoney, false, fmt.Errorf("failed to count corporate actions: %w", err)
+	}
+	if n > 0 {
+		return types.ZeroMoney, true, nil
+	}
+	gain, err := s.realizedGainNonLot(accountID, securityID)
+	return gain, false, err
+}
+
 // realizedGainNonLot is the service entry point for realized gain on a
 // non-lot-tracking (account, security) pair. It loads every transaction
 // for the pair, sorts them by (date asc, created_at asc) — the canonical

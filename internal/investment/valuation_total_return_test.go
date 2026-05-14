@@ -957,3 +957,130 @@ func TestRealizedGainNonLot_DelegatesToReplay(t *testing.T) {
 		t.Errorf("Expected realized gain '300' (200 + 100), got %q", got.String())
 	}
 }
+
+// TR-009: When the database contains any corporate-action record, the
+// non-lot realized-gain replay cannot produce a correct number (the
+// ledger reflects post-action share counts but `replayPosition`'s walk
+// is unaware of the split/merger). The realized-gain entry point detects
+// this case and returns (ZeroMoney, unavailable=true) instead. Dividends
+// and fees are unaffected.
+func TestRealizedGain_NonLot_WithCorporateActions_Unavailable(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	d1 := types.NewDate(2024, time.March, 1)
+	dSplit := types.NewDate(2024, time.June, 1)
+	d2 := types.NewDate(2024, time.July, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// Buy 10 @ $100 (pre-split).
+	buyTotal := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, d1, types.MustNewQuantity("10"),
+		&buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+	// Record a dividend that should still be visible after the gate trips.
+	if _, err := env.svc.Dividend(acct.ID, sec.ID, d1, types.MustNewMoney("50"), ""); err != nil {
+		t.Fatalf("Dividend() error = %v", err)
+	}
+
+	// Apply a 4:1 split — position is mutated outside the ledger.
+	caSvc := NewCorporateActionService(env.caRepo, env.lotRepo, env.positionRepo, env.priceRepo, env.invRepo, env.secRepo, env.db)
+	if _, err := caSvc.Split(sec.ID, dSplit, SplitParams{Numerator: 4, Denominator: 1}); err != nil {
+		t.Fatalf("Split() error = %v", err)
+	}
+
+	// Sell 5 (post-split) shares @ $30. The ledger has post-split share counts;
+	// replayRealizedGain would produce a wrong number.
+	sellTotal := types.MustNewMoney("150")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, d2, types.MustNewQuantity("5"),
+		&sellTotal, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+
+	got, unavailable, err := env.svc.realizedGain(acct.ID, sec.ID, false)
+	if err != nil {
+		t.Fatalf("realizedGain() error = %v", err)
+	}
+	if !unavailable {
+		t.Errorf("Expected unavailable=true for non-lot account with corporate actions")
+	}
+	if !got.IsZero() {
+		t.Errorf("Expected realized gain to be zero when unavailable, got %q", got.String())
+	}
+
+	// Dividends and fees must still be computable.
+	div, err := env.svc.sumDividendsForSecurity(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("sumDividendsForSecurity() error = %v", err)
+	}
+	if div.String() != "50" {
+		t.Errorf("Expected dividends '50', got %q", div.String())
+	}
+	fees, err := env.svc.sumFeesForSecurity(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("sumFeesForSecurity() error = %v", err)
+	}
+	if !fees.IsZero() {
+		t.Errorf("Expected fees zero, got %q", fees.String())
+	}
+}
+
+// TR-009: A lot-tracked account is robust to corporate actions because
+// the corporate-action service mutates lots in place and transaction_lots
+// rows reference post-action lots. The realized-gain entry point produces
+// a real number for the lot-tracked path even when corporate actions
+// exist in the database. No unavailable flag.
+func TestRealizedGain_LotTracked_WithCorporateActions_StillComputed(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	d1 := types.NewDate(2024, time.March, 1)
+	dSplit := types.NewDate(2024, time.June, 1)
+	d2 := types.NewDate(2024, time.July, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// Buy 10 @ $100 pre-split → cost_per_share $100.
+	buyTotal := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, d1, types.MustNewQuantity("10"),
+		&buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	// Apply 4:1 split — the lone lot becomes 40 shares @ $25 cost_per_share.
+	caSvc := NewCorporateActionService(env.caRepo, env.lotRepo, env.positionRepo, env.priceRepo, env.invRepo, env.secRepo, env.db)
+	if _, err := caSvc.Split(sec.ID, dSplit, SplitParams{Numerator: 4, Denominator: 1}); err != nil {
+		t.Fatalf("Split() error = %v", err)
+	}
+
+	lots, err := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+	if err != nil {
+		t.Fatalf("ListByAccountAndSecurity() error = %v", err)
+	}
+	if len(lots) != 1 {
+		t.Fatalf("Expected 1 lot, got %d", len(lots))
+	}
+
+	// Sell 5 post-split shares @ $30 → realized (30−25)×5 = 25.
+	sellTotal := types.MustNewMoney("150")
+	allocs := []SellLotAllocation{{LotID: lots[0].ID, Shares: types.MustNewQuantity("5")}}
+	if _, err := env.svc.Sell(acct.ID, sec.ID, d2, types.MustNewQuantity("5"),
+		&sellTotal, nil, types.ZeroMoney, "", allocs); err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+
+	got, unavailable, err := env.svc.realizedGain(acct.ID, sec.ID, true)
+	if err != nil {
+		t.Fatalf("realizedGain() error = %v", err)
+	}
+	if unavailable {
+		t.Errorf("Expected unavailable=false for lot-tracked account, got true")
+	}
+	if got.String() != "25" {
+		t.Errorf("Expected realized gain '25', got %q", got.String())
+	}
+}

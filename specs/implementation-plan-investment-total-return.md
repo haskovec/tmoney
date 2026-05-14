@@ -166,7 +166,7 @@ Pure ledger sums. No dependency on positions or lots.
 
 ## Phase 6: Corporate-Action Gate
 
-- [ ] **TR-009 — Detect corporate actions and mark realized gain unavailable**
+- [x] **TR-009 — Detect corporate actions and mark realized gain unavailable**
   - RED: test `TestRealizedGain_NonLot_WithCorporateActions_Unavailable`
     — fixture with a split on AAPL plus a sell after the split. The
     holding's `RealizedGainUnavailable == true`,
