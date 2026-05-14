@@ -105,7 +105,7 @@ Pure ledger sums. No dependency on positions or lots.
     sum.
   - GREEN: implement in `total_return.go`. Returns positive magnitude.
 
-- [ ] **TR-005 — `sumFeesForAccount(accountID) Money`**
+- [x] **TR-005 — `sumFeesForAccount(accountID) Money`**
   - RED: test `TestSumFeesForAccount_AccumulatesPerSecurityAndAccount`
     — fixture with two securities, each with commissions, plus two
     account-level `fee` transactions returns the grand total.

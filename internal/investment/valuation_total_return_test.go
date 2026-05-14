@@ -389,3 +389,98 @@ func TestSumFeesForSecurity_AccountLevelFeeIgnored(t *testing.T) {
 		t.Errorf("Expected only the per-security commission '5' (account fee excluded), got %q", got.String())
 	}
 }
+
+// TR-005: sumFeesForAccount aggregates fees across every security in the
+// account plus any account-level `fee` transactions (which have no
+// security_id). The result is a positive magnitude.
+
+func TestSumFeesForAccount_AccumulatesPerSecurityAndAccount(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	aapl := createSec(t, env.secRepo, "AAPL")
+	msft := createSec(t, env.secRepo, "MSFT")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("20000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	// AAPL: buy commission $5, sell commission $10, fee_liquidation $25 = $40.
+	buyA := types.MustNewMoney("1005")
+	if _, err := env.svc.Buy(acct.ID, aapl.ID, date, types.MustNewQuantity("10"),
+		&buyA, nil, types.MustNewMoney("5"), ""); err != nil {
+		t.Fatalf("Buy(AAPL) error = %v", err)
+	}
+	sellA := types.MustNewMoney("800")
+	if _, err := env.svc.Sell(acct.ID, aapl.ID, date, types.MustNewQuantity("5"),
+		&sellA, nil, types.MustNewMoney("10"), "", nil); err != nil {
+		t.Fatalf("Sell(AAPL) error = %v", err)
+	}
+	feeA := types.MustNewMoney("25")
+	if _, err := env.svc.FeeLiquidation(acct.ID, aapl.ID, date,
+		types.MustNewQuantity("0.1"), &feeA, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("FeeLiquidation(AAPL) error = %v", err)
+	}
+
+	// MSFT: buy commission $7, sell commission $3 = $10.
+	buyM := types.MustNewMoney("507")
+	if _, err := env.svc.Buy(acct.ID, msft.ID, date, types.MustNewQuantity("5"),
+		&buyM, nil, types.MustNewMoney("7"), ""); err != nil {
+		t.Fatalf("Buy(MSFT) error = %v", err)
+	}
+	sellM := types.MustNewMoney("300")
+	if _, err := env.svc.Sell(acct.ID, msft.ID, date, types.MustNewQuantity("2"),
+		&sellM, nil, types.MustNewMoney("3"), "", nil); err != nil {
+		t.Fatalf("Sell(MSFT) error = %v", err)
+	}
+
+	// Account-level fees (no security_id): $15 + $20 = $35.
+	if _, err := env.svc.Fee(acct.ID, date, types.MustNewMoney("15"), ""); err != nil {
+		t.Fatalf("Fee() error = %v", err)
+	}
+	if _, err := env.svc.Fee(acct.ID, date, types.MustNewMoney("20"), ""); err != nil {
+		t.Fatalf("Fee() error = %v", err)
+	}
+
+	got, err := env.svc.sumFeesForAccount(acct.ID)
+	if err != nil {
+		t.Fatalf("sumFeesForAccount() error = %v", err)
+	}
+	// AAPL $40 + MSFT $10 + account-level $35 = $85.
+	if got.String() != "85" {
+		t.Errorf("Expected total fees '85' (AAPL 40 + MSFT 10 + acct 35), got %q", got.String())
+	}
+}
+
+func TestSumFeesForAccount_OnlyAccountLevelFees(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("5000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	if _, err := env.svc.Fee(acct.ID, date, types.MustNewMoney("12"), ""); err != nil {
+		t.Fatalf("Fee() error = %v", err)
+	}
+	if _, err := env.svc.Fee(acct.ID, date, types.MustNewMoney("8"), ""); err != nil {
+		t.Fatalf("Fee() error = %v", err)
+	}
+
+	got, err := env.svc.sumFeesForAccount(acct.ID)
+	if err != nil {
+		t.Fatalf("sumFeesForAccount() error = %v", err)
+	}
+	if got.String() != "20" {
+		t.Errorf("Expected total fees '20' (account-level only), got %q", got.String())
+	}
+
+	empty := createInvAccount(t, env.accountRepo, "Empty")
+	got, err = env.svc.sumFeesForAccount(empty.ID)
+	if err != nil {
+		t.Fatalf("sumFeesForAccount(empty) error = %v", err)
+	}
+	if !got.IsZero() {
+		t.Errorf("Expected zero for account with no fees, got %q", got.String())
+	}
+}

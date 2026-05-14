@@ -80,3 +80,31 @@ func (s *Service) sumFeesForSecurity(accountID, securityID types.ID) (types.Mone
 	}
 	return total, nil
 }
+
+// sumFeesForAccount returns the total fees paid across every security in
+// the account plus any account-level `fee` transactions (which carry no
+// security_id). The result is a positive magnitude — the spec's
+// fees_paid[account] from the total-return formula.
+func (s *Service) sumFeesForAccount(accountID types.ID) (types.Money, error) {
+	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{})
+	if err != nil {
+		return types.ZeroMoney, fmt.Errorf("failed to list transactions for account fees: %w", err)
+	}
+
+	total := types.ZeroMoney
+	for _, txn := range txns {
+		switch txn.Type {
+		case TransactionTypeBuy, TransactionTypeSell, TransactionTypeReinvestDividend:
+			if txn.Commission.Valid {
+				total = total.Add(txn.Commission.Money)
+			}
+		case TransactionTypeFeeLiquidation:
+			total = total.Add(txn.TotalAmount)
+		case TransactionTypeFee:
+			// `Fee` transactions store `total_amount` as a negative cash
+			// debit; take the magnitude so it adds to the fee total.
+			total = total.Add(txn.TotalAmount.Abs())
+		}
+	}
+	return total, nil
+}
