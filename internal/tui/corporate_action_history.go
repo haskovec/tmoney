@@ -1,42 +1,47 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// corporateActionHistoryData holds the loaded data for the corporate action history overlay.
-type corporateActionHistoryData struct {
-	security *security.Security
-	actions  []*investment.CorporateAction
-	secMap   map[types.ID]*security.Security // for resolving target security tickers
+// corporateActionViewData holds the loaded data for the global
+// corporate-action register.
+type corporateActionViewData struct {
+	actions []*investment.CorporateAction
+	secMap  map[types.ID]*security.Security // resolves source + target tickers
 }
 
-// corporateActionHistoryDataLoadedMsg is sent when corporate action history has been loaded.
-type corporateActionHistoryDataLoadedMsg struct {
-	data *corporateActionHistoryData
+// corporateActionViewLoadedMsg is sent when the register's data has loaded.
+type corporateActionViewLoadedMsg struct {
+	data *corporateActionViewData
 }
 
-// loadCorporateActionHistory returns a command that loads corporate action history for a security.
-func (a *App) loadCorporateActionHistory(sec *security.Security) tea.Cmd {
-	secID := sec.ID
+// corporateActionDeletedMsg is sent after a successful reversal+delete.
+type corporateActionDeletedMsg struct{}
+
+// loadCorporateActionViewData fetches every corporate action and the
+// security map used to resolve tickers. The view's filter query is left
+// untouched so callers may pre-populate it before dispatching the load.
+func (a *App) loadCorporateActionViewData() tea.Cmd {
 	return func() tea.Msg {
 		if a.corporateActionSvc == nil || a.securitySvc == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
-		actions, err := a.corporateActionSvc.ListBySecurity(secID)
+		actions, err := a.corporateActionSvc.ListAll()
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load corporate actions: %w", err)}
 		}
 
-		// Build security map for resolving target tickers
 		allSecurities, err := a.securitySvc.List(security.Filter{})
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
@@ -46,52 +51,93 @@ func (a *App) loadCorporateActionHistory(sec *security.Security) tea.Cmd {
 			secMap[s.ID] = s
 		}
 
-		return corporateActionHistoryDataLoadedMsg{
-			data: &corporateActionHistoryData{
-				security: sec,
-				actions:  actions,
-				secMap:   secMap,
-			},
+		return corporateActionViewLoadedMsg{
+			data: &corporateActionViewData{actions: actions, secMap: secMap},
 		}
 	}
 }
 
-// closeCorporateActionHistory clears the corporate action history state.
-func (a *App) closeCorporateActionHistory() {
-	a.corporateActionHistory = nil
-	a.corporateActionHistoryTable = nil
+// closeCorporateActionView clears the register's state.
+func (a *App) closeCorporateActionView() {
+	a.corporateActionView = nil
+	a.corporateActionViewTable = nil
+	a.corporateActionViewFilter = ""
+	a.corporateActionDetail = nil
 }
 
-// buildCorporateActionHistoryTable creates and populates the table for the history overlay.
-func (a *App) buildCorporateActionHistoryTable() {
-	if a.corporateActionHistory == nil {
+// filteredCorporateActions returns the subset of loaded actions whose
+// ticker, type, or details match the current filter query
+// (case-insensitive substring).
+func (a *App) filteredCorporateActions() []*investment.CorporateAction {
+	if a.corporateActionView == nil {
+		return nil
+	}
+	q := strings.ToLower(strings.TrimSpace(a.corporateActionViewFilter))
+	if q == "" {
+		return a.corporateActionView.actions
+	}
+	filtered := make([]*investment.CorporateAction, 0, len(a.corporateActionView.actions))
+	for _, ca := range a.corporateActionView.actions {
+		ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActionView.secMap)
+		targetTicker := resolveSecurityTicker(ca.TargetSecurityID, a.corporateActionView.secMap)
+		details := formatCorporateActionDetails(ca, a.corporateActionView.secMap)
+		hay := strings.ToLower(strings.Join([]string{ticker, targetTicker, string(ca.ActionType), details}, " "))
+		if strings.Contains(hay, q) {
+			filtered = append(filtered, ca)
+		}
+	}
+	return filtered
+}
+
+// buildCorporateActionViewTable creates and populates the table.
+func (a *App) buildCorporateActionViewTable() {
+	if a.corporateActionView == nil {
 		return
 	}
 
 	columns := []Column{
 		{Header: "Date", Width: 12, Align: AlignLeft},
+		{Header: "Ticker", Width: 10, Align: AlignLeft},
 		{Header: "Type", Width: 14, Align: AlignLeft},
-		{Header: "Details", MinWidth: 20, Align: AlignLeft},
+		{Header: "Details", MinWidth: 24, Align: AlignLeft},
 	}
 
-	if a.corporateActionHistoryTable == nil {
-		a.corporateActionHistoryTable = NewTable(columns)
+	if a.corporateActionViewTable == nil {
+		a.corporateActionViewTable = NewTable(columns)
 	} else {
-		a.corporateActionHistoryTable.SetColumns(columns)
+		a.corporateActionViewTable.SetColumns(columns)
 	}
 
-	rows := make([][]string, len(a.corporateActionHistory.actions))
-	for i, ca := range a.corporateActionHistory.actions {
-		rows[i] = formatCorporateActionRow(ca, a.corporateActionHistory.secMap)
+	visible := a.filteredCorporateActions()
+	rows := make([][]string, len(visible))
+	for i, ca := range visible {
+		rows[i] = formatGlobalCorporateActionRow(ca, a.corporateActionView.secMap)
 	}
-	a.corporateActionHistoryTable.SetRows(rows)
-	a.corporateActionHistoryTable.SetFocused(true)
+	a.corporateActionViewTable.SetRows(rows)
+	a.corporateActionViewTable.SetFocused(true)
 }
 
-// formatCorporateActionRow formats a corporate action into a table row.
-func formatCorporateActionRow(ca *investment.CorporateAction, secMap map[types.ID]*security.Security) []string {
+// selectedCorporateAction returns the action under the table cursor, or
+// nil if the table is empty or out of range.
+func (a *App) selectedCorporateAction() *investment.CorporateAction {
+	if a.corporateActionViewTable == nil {
+		return nil
+	}
+	visible := a.filteredCorporateActions()
+	cursor := a.corporateActionViewTable.Cursor()
+	if cursor < 0 || cursor >= len(visible) {
+		return nil
+	}
+	return visible[cursor]
+}
+
+// formatGlobalCorporateActionRow formats a row for the global register
+// (includes the source ticker column).
+func formatGlobalCorporateActionRow(ca *investment.CorporateAction, secMap map[types.ID]*security.Security) []string {
+	ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, secMap)
 	return []string{
 		ca.ActionDate.Time().Format("2006-01-02"),
+		ticker,
 		ca.ActionType.DisplayName(),
 		formatCorporateActionDetails(ca, secMap),
 	}
@@ -143,80 +189,178 @@ func resolveSecurityTicker(id types.NullableID, secMap map[types.ID]*security.Se
 	return "???"
 }
 
-// renderCorporateActionHistory renders the corporate action history overlay.
-func (a *App) renderCorporateActionHistory() string {
-	if a.corporateActionHistory == nil {
-		return ""
+// renderCorporateActionView renders the full view (used as content body).
+func (a *App) renderCorporateActionView() string {
+	if a.corporateActionView == nil {
+		return lipgloss.NewStyle().Padding(1, 2).Render("Loading corporate actions...")
 	}
 
+	contentWidth := a.styles.ContentWidth()
+	var sections []string
+
+	titleRow := a.styles.Title.Render("CORPORATE ACTIONS")
+	sections = append(sections, titleRow)
+
+	filterLine := ""
+	if a.corporateActionViewFilter != "" {
+		filterLine = a.styles.Muted.Render(fmt.Sprintf("Filter: %s", a.corporateActionViewFilter))
+	} else {
+		filterLine = a.styles.Muted.Render("Press / to filter by ticker or type")
+	}
+	sections = append(sections, filterLine)
+
+	sepWidth := max(contentWidth-4, 1)
+	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
+
+	tableHeight := max(a.height-8, 2)
+
+	visible := a.filteredCorporateActions()
+	if a.corporateActionViewTable != nil && len(visible) > 0 {
+		tableWidth := max(contentWidth-4, 1)
+		sections = append(sections, a.corporateActionViewTable.Render(a.styles, tableWidth, tableHeight))
+		if info := a.corporateActionViewTable.ScrollInfo(tableHeight - 2); info != "" {
+			sections = append(sections, a.styles.Muted.Render("  "+info))
+		}
+	} else {
+		sections = append(sections, "", a.styles.Muted.Render("  No corporate actions"))
+	}
+
+	body := lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n"))
+
+	// Overlay the details modal when set
+	if a.corporateActionDetail != nil {
+		overlay := a.renderCorporateActionDetails()
+		body = OverlayCenter(body, overlay, a.width, a.height)
+	}
+
+	return body
+}
+
+// renderCorporateActionDetails renders the read-only details overlay.
+func (a *App) renderCorporateActionDetails() string {
+	ca := a.corporateActionDetail
 	overlayWidth := max(min(a.width-8, 70), 30)
 	innerWidth := overlayWidth - 4
 
-	var sections []string
+	var lines []string
+	lines = append(lines, a.styles.Title.Render("Action Details"))
+	lines = append(lines, a.styles.Muted.Render(strings.Repeat("─", innerWidth)))
 
-	// Title
-	titleText := fmt.Sprintf("Corporate Actions — %s", a.corporateActionHistory.security.Ticker)
-	sections = append(sections, a.styles.Title.Render(titleText))
-
-	// Separator
-	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", innerWidth)))
-
-	// Table or empty message
-	if a.corporateActionHistoryTable != nil && len(a.corporateActionHistory.actions) > 0 {
-		tableHeight := max(min(len(a.corporateActionHistory.actions)+1, a.height-10), 2) // +1 for header row
-		sections = append(sections, a.corporateActionHistoryTable.Render(a.styles, innerWidth, tableHeight))
-		if info := a.corporateActionHistoryTable.ScrollInfo(tableHeight - 2); info != "" {
-			sections = append(sections, a.styles.Muted.Render(info))
-		}
-	} else {
-		sections = append(sections, "")
-		sections = append(sections, a.styles.Muted.Render("No corporate actions found"))
+	ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActionView.secMap)
+	lines = append(lines, fmt.Sprintf("Type:    %s", ca.ActionType.DisplayName()))
+	lines = append(lines, fmt.Sprintf("Date:    %s", ca.ActionDate.Time().Format("2006-01-02")))
+	lines = append(lines, fmt.Sprintf("Ticker:  %s", ticker))
+	if ca.TargetSecurityID.Valid {
+		targetTicker := resolveSecurityTicker(ca.TargetSecurityID, a.corporateActionView.secMap)
+		lines = append(lines, fmt.Sprintf("Target:  %s", targetTicker))
 	}
+	lines = append(lines, fmt.Sprintf("Details: %s", formatCorporateActionDetails(ca, a.corporateActionView.secMap)))
+	lines = append(lines, "", a.styles.Muted.Render("esc close"))
 
-	// Hint
-	sections = append(sections, "")
-	sections = append(sections, a.styles.Muted.Render("↑↓ navigate  esc close"))
-
-	content := strings.Join(sections, "\n")
-
-	return a.styles.OverlayBox.Width(overlayWidth).Render(content)
+	return a.styles.OverlayBox.Width(overlayWidth).Render(strings.Join(lines, "\n"))
 }
 
-// handleCorporateActionHistoryKeys handles key presses in the corporate action history overlay.
-func (a *App) handleCorporateActionHistoryKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.corporateActionHistory == nil {
+// handleCorporateActionViewKeys handles key presses in the global register.
+func (a *App) handleCorporateActionViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Details modal handling takes precedence
+	if a.corporateActionDetail != nil {
+		if key.Matches(msg, a.keys.Escape) {
+			a.corporateActionDetail = nil
+		}
+		return a, nil
+	}
+
+	// Filter-entry mode (when filter is being typed)
+	if a.corporateActionViewFilterEditing {
+		switch {
+		case key.Matches(msg, a.keys.Escape):
+			a.corporateActionViewFilterEditing = false
+		case key.Matches(msg, a.keys.Enter):
+			a.corporateActionViewFilterEditing = false
+		default:
+			if msg.String() == "backspace" {
+				if len(a.corporateActionViewFilter) > 0 {
+					a.corporateActionViewFilter = a.corporateActionViewFilter[:len(a.corporateActionViewFilter)-1]
+					a.buildCorporateActionViewTable()
+				}
+			} else if msg.Text != "" {
+				a.corporateActionViewFilter += msg.Text
+				a.buildCorporateActionViewTable()
+			}
+		}
 		return a, nil
 	}
 
 	switch {
 	case key.Matches(msg, a.keys.Escape):
-		a.closeCorporateActionHistory()
+		a.closeCorporateActionView()
+		a.switchView(a.previousView)
 		return a, nil
 	case key.Matches(msg, a.keys.Up):
-		if a.corporateActionHistoryTable != nil {
-			a.corporateActionHistoryTable.MoveUp()
+		if a.corporateActionViewTable != nil {
+			a.corporateActionViewTable.MoveUp()
 		}
 	case key.Matches(msg, a.keys.Down):
-		if a.corporateActionHistoryTable != nil {
-			a.corporateActionHistoryTable.MoveDown()
+		if a.corporateActionViewTable != nil {
+			a.corporateActionViewTable.MoveDown()
 		}
 	case msg.String() == "home" || msg.String() == "g":
-		if a.corporateActionHistoryTable != nil {
-			a.corporateActionHistoryTable.MoveToTop()
+		if a.corporateActionViewTable != nil {
+			a.corporateActionViewTable.MoveToTop()
 		}
 	case msg.String() == "end" || msg.String() == "G":
-		if a.corporateActionHistoryTable != nil {
-			a.corporateActionHistoryTable.MoveToBottom()
+		if a.corporateActionViewTable != nil {
+			a.corporateActionViewTable.MoveToBottom()
 		}
 	case msg.String() == "pgup":
-		if a.corporateActionHistoryTable != nil {
-			a.corporateActionHistoryTable.PageUp(a.height - 10)
+		if a.corporateActionViewTable != nil {
+			a.corporateActionViewTable.PageUp(a.height - 10)
 		}
 	case msg.String() == "pgdown":
-		if a.corporateActionHistoryTable != nil {
-			a.corporateActionHistoryTable.PageDown(a.height - 10)
+		if a.corporateActionViewTable != nil {
+			a.corporateActionViewTable.PageDown(a.height - 10)
+		}
+	case msg.String() == "/":
+		a.corporateActionViewFilterEditing = true
+	case key.Matches(msg, a.keys.Enter):
+		if ca := a.selectedCorporateAction(); ca != nil {
+			a.corporateActionDetail = ca
+		}
+	case msg.String() == "d":
+		if ca := a.selectedCorporateAction(); ca != nil {
+			a.confirmDeleteCorporateAction(ca)
 		}
 	}
-
 	return a, nil
+}
+
+// confirmDeleteCorporateAction shows a confirmation dialog that names
+// the action being reversed. On confirm, dispatches the reversal cmd.
+func (a *App) confirmDeleteCorporateAction(ca *investment.CorporateAction) {
+	ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActionView.secMap)
+	msg := fmt.Sprintf(
+		"Reverse this %s on %s (%s) and delete the audit row? Lots, positions, and prices will be restored to their pre-action state.",
+		ca.ActionType.DisplayName(), ticker, ca.ActionDate.Time().Format("2006-01-02"),
+	)
+	actionID := ca.ID
+	a.showConfirmDialog(
+		"Reverse Corporate Action",
+		msg,
+		func() tea.Msg {
+			if a.corporateActionSvc == nil {
+				return errMsg{err: fmt.Errorf("corporate action service not available")}
+			}
+			if err := a.corporateActionSvc.DeleteAction(actionID); err != nil {
+				var dse *investment.DownstreamEventsError
+				var ure *investment.UnsupportedReversalError
+				switch {
+				case errors.As(err, &dse), errors.As(err, &ure):
+					return errMsg{err: err}
+				default:
+					return errMsg{err: fmt.Errorf("failed to reverse corporate action: %w", err)}
+				}
+			}
+			return corporateActionDeletedMsg{}
+		},
+	)
 }

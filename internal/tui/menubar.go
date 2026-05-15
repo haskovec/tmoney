@@ -57,6 +57,7 @@ const (
 	MenuActionStockSplit
 	MenuActionMerger
 	MenuActionSpinOff
+	MenuActionCorporateActions
 
 	// View menu actions
 	MenuActionThemeSubmenu
@@ -176,6 +177,7 @@ func defaultMenus() []menu {
 				{label: "Stock Split...", action: MenuActionStockSplit},
 				{label: "Merger...", action: MenuActionMerger},
 				{label: "Spin-Off...", action: MenuActionSpinOff},
+				{label: "Corporate Action History...", action: MenuActionCorporateActions},
 			},
 		},
 		{

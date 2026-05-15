@@ -83,6 +83,52 @@ func (r *CorporateActionRepository) CountAll() (int, error) {
 	return n, nil
 }
 
+// ListAll retrieves every corporate action in the database, ordered by
+// action_date DESC (most recent first). Used by the global Corporate
+// Action register.
+func (r *CorporateActionRepository) ListAll() ([]*CorporateAction, error) {
+	query := `
+		SELECT ` + corporateActionColumns + `
+		FROM corporate_actions
+		ORDER BY action_date DESC, created_at DESC
+	`
+	rows, err := r.db.Conn().Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all corporate actions: %w", err)
+	}
+	defer rows.Close()
+
+	actions := make([]*CorporateAction, 0)
+	for rows.Next() {
+		ca, err := scanCorporateAction(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan corporate action: %w", err)
+		}
+		actions = append(actions, ca)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating corporate actions: %w", err)
+	}
+	return actions, nil
+}
+
+// Delete removes a corporate action by its ID. The caller is responsible
+// for first reversing the action's effects on lots/positions/prices.
+func (r *CorporateActionRepository) Delete(id types.ID) error {
+	res, err := r.db.Conn().Exec(`DELETE FROM corporate_actions WHERE CAST(id AS VARCHAR) = ?`, id.String())
+	if err != nil {
+		return fmt.Errorf("failed to delete corporate action: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read rows affected: %w", err)
+	}
+	if n == 0 {
+		return &dberrors.NotFoundError{Entity: "corporate_action", ID: id.String()}
+	}
+	return nil
+}
+
 // ListBySecurity retrieves all corporate actions for a security, including actions
 // where the security is the source or the target. Results are ordered by action_date ASC.
 func (r *CorporateActionRepository) ListBySecurity(securityID types.ID) ([]*CorporateAction, error) {

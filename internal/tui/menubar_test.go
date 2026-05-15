@@ -509,8 +509,8 @@ func TestMenuBar_SecuritiesMenuItems(t *testing.T) {
 		t.Fatalf("expected Securities menu at index 5, got %q", securitiesMenu.label)
 	}
 
-	if len(securitiesMenu.items) != 5 {
-		t.Fatalf("Securities menu: expected 5 items, got %d", len(securitiesMenu.items))
+	if len(securitiesMenu.items) != 6 {
+		t.Fatalf("Securities menu: expected 6 items, got %d", len(securitiesMenu.items))
 	}
 
 	if securitiesMenu.items[0].action != MenuActionSecurities {
@@ -527,6 +527,9 @@ func TestMenuBar_SecuritiesMenuItems(t *testing.T) {
 	}
 	if securitiesMenu.items[4].action != MenuActionSpinOff {
 		t.Error("fifth Securities item should be Spin-Off")
+	}
+	if securitiesMenu.items[5].action != MenuActionCorporateActions {
+		t.Error("sixth Securities item should be Corporate Action History")
 	}
 }
 

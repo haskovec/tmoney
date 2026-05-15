@@ -327,10 +327,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.statusbar.AddNotification("Spin-off executed", NotificationInfo)
 		return a, a.loadSecurityViewData()
 
-	case corporateActionHistoryDataLoadedMsg:
-		a.corporateActionHistory = msg.data
-		a.buildCorporateActionHistoryTable()
+	case corporateActionViewLoadedMsg:
+		a.corporateActionView = msg.data
+		a.buildCorporateActionViewTable()
 		return a, nil
+
+	case corporateActionDeletedMsg:
+		a.statusbar.AddNotification("Corporate action reversed", NotificationInfo)
+		return a, a.loadCorporateActionViewData()
 
 	case scheduledViewDataLoadedMsg:
 		a.scheduled = msg.data

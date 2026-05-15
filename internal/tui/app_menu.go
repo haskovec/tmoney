@@ -130,6 +130,11 @@ func (a *App) handleMenuAction(action MenuAction, data string) (tea.Model, tea.C
 		a.spinOffDialogPreSelectedID = nil
 		return a, a.loadSpinOffDialogData()
 
+	case MenuActionCorporateActions:
+		a.corporateActionViewFilter = ""
+		a.switchView(ViewCorporateActions)
+		return a, a.loadCorporateActionViewData()
+
 	case MenuActionNewAccount:
 		return a, a.loadNewAccountDialogData()
 

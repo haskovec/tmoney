@@ -88,7 +88,7 @@ func (a *App) isDialogVisible() bool {
 		(a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible()) ||
 		(a.investmentTypeSelector != nil && a.investmentTypeSelector.IsVisible()) ||
 		a.mergerConfirmData != nil ||
-		a.corporateActionHistory != nil ||
+		a.corporateActionDetail != nil ||
 		a.showHelp
 }
 

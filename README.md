@@ -154,7 +154,7 @@ Press `?` at any time to show the help overlay.
 | `Alt+V` | View menu (Theme switcher) |
 | `Alt+A` | Accounts menu |
 | `Alt+T` | Transactions menu (also has Link Transfers…) |
-| `Alt+S` | Securities menu (also has Stock Split…, Merger…, Spin-Off…) |
+| `Alt+S` | Securities menu (also has Stock Split…, Merger…, Spin-Off…, Corporate Action History…) |
 | `Alt+R` | Reports menu |
 | `Alt+H` | Help menu |
 
@@ -226,7 +226,7 @@ Press `?` at any time to show the help overlay.
 | `s` | Stock split on selected security |
 | `m` | Merger with selected security as source |
 | `o` | Spin-off from selected security |
-| `a` | Corporate action history for selected security |
+| `a` | Open Corporate Actions view, pre-filtered to the selected security |
 
 #### Prices
 

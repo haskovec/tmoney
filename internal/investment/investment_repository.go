@@ -162,6 +162,30 @@ func (r *Repository) ListByAccount(accountID types.ID, filter TransactionFilter)
 	return transactions, nil
 }
 
+// EarliestSinceDate returns the earliest investment transaction (by
+// date, then by created_at) on or after a given date for a security,
+// across all accounts. Returns sql.ErrNoRows wrapped as a NotFound when
+// nothing matches. Used to enforce the "no downstream events" guard
+// before reversing a corporate action.
+func (r *Repository) EarliestSinceDate(securityID types.ID, since types.Date) (*Transaction, error) {
+	query := `
+		SELECT ` + investmentTransactionColumns + `
+		FROM investment_transactions
+		WHERE CAST(security_id AS VARCHAR) = ? AND date >= ?
+		ORDER BY date ASC, created_at ASC
+		LIMIT 1
+	`
+	row := r.db.Conn().QueryRow(query, securityID.String(), since.Time())
+	t, err := scanTransaction(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find earliest transaction since date: %w", err)
+	}
+	return t, nil
+}
+
 // Update updates an existing investment transaction in the database.
 // Uses DELETE + INSERT pattern due to DuckDB limitations with UPDATE on indexed tables.
 func (r *Repository) Update(txn *Transaction) error {

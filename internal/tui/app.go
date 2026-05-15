@@ -47,6 +47,8 @@ const (
 	ViewInvestmentRegister
 	// ViewPortfolio shows the investment account portfolio (holdings) view.
 	ViewPortfolio
+	// ViewCorporateActions shows the global corporate-action register.
+	ViewCorporateActions
 )
 
 // String returns the display name of the view.
@@ -70,6 +72,8 @@ func (v View) String() string {
 		return "Investment Register"
 	case ViewPortfolio:
 		return "Portfolio"
+	case ViewCorporateActions:
+		return "Corporate Actions"
 	default:
 		return "Unknown"
 	}
@@ -271,9 +275,12 @@ type App struct {
 	spinOffDialogSecurityIDs   []types.ID
 	spinOffDialogPreSelectedID *types.ID
 
-	// Corporate action history overlay state
-	corporateActionHistory      *corporateActionHistoryData
-	corporateActionHistoryTable *Table
+	// Corporate-action register state
+	corporateActionView              *corporateActionViewData
+	corporateActionViewTable         *Table
+	corporateActionViewFilter        string
+	corporateActionViewFilterEditing bool
+	corporateActionDetail            *investment.CorporateAction
 
 	// Repositories for investment dialogs
 	lotRepo      *investment.LotRepository
@@ -556,11 +563,6 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.handleSpinOffDialogKey(msg)
 	}
 
-	// If corporate action history overlay is visible, route all keys to it
-	if a.corporateActionHistory != nil {
-		return a.handleCorporateActionHistoryKeys(msg)
-	}
-
 	// If cash operation dialog is visible, route all keys to it
 	if a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible() {
 		return a.handleCashOperationDialogKey(msg)
@@ -701,6 +703,8 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.handleInvestmentRegisterKeys(msg)
 	case ViewPortfolio:
 		return a.handlePortfolioKeys(msg)
+	case ViewCorporateActions:
+		return a.handleCorporateActionViewKeys(msg)
 	}
 
 	return a, nil

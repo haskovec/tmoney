@@ -185,7 +185,7 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	}
-	if a.mergerConfirmData != nil || a.corporateActionHistory != nil {
+	if a.mergerConfirmData != nil || a.corporateActionDetail != nil {
 		return a, nil
 	}
 	if a.splitDialog != nil && a.splitDialog.IsVisible() {

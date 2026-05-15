@@ -201,12 +201,6 @@ func (a *App) renderLayout() string {
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
-	// Overlay corporate action history if visible
-	if a.corporateActionHistory != nil {
-		overlay := a.renderCorporateActionHistory()
-		layout = OverlayCenter(layout, overlay, a.width, a.height)
-	}
-
 	// Overlay confirmation dialog if visible
 	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
 		overlay := a.confirmDialog.Render(a.styles)
@@ -255,12 +249,14 @@ func (a *App) renderContent(height int) string {
 		viewContent = a.renderInvestmentRegister()
 	case ViewPortfolio:
 		viewContent = a.renderPortfolioView()
+	case ViewCorporateActions:
+		viewContent = a.renderCorporateActionView()
 	default:
 		viewContent = "Unknown view"
 	}
 
 	// Reconciliation, Securities, and Prices views are full-screen (no sidebar)
-	if a.currentView == ViewReconciliation || a.currentView == ViewSecurities || a.currentView == ViewPrices {
+	if a.currentView == ViewReconciliation || a.currentView == ViewSecurities || a.currentView == ViewPrices || a.currentView == ViewCorporateActions {
 		return a.styles.RenderViewContent(viewContent, a.width, height)
 	}
 
@@ -308,6 +304,8 @@ func (a *App) getKeyHints() string {
 		return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + common
 	case ViewPortfolio:
 		return "↑↓ navigate  enter lot detail  r register  esc back  " + common
+	case ViewCorporateActions:
+		return "↑↓ navigate  / filter  enter details  d delete  esc back  " + common
 	default:
 		return common
 	}

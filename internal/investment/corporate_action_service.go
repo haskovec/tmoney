@@ -491,6 +491,136 @@ func (s *CorporateActionService) ListBySecurity(securityID types.ID) ([]*Corpora
 	return s.caRepo.ListBySecurity(securityID)
 }
 
+// ListAll retrieves every corporate action in the database.
+func (s *CorporateActionService) ListAll() ([]*CorporateAction, error) {
+	return s.caRepo.ListAll()
+}
+
+// DeleteAction reverses a corporate action's effects (on lots, positions,
+// and prices) and removes its audit row. Refuses to run if any investment
+// transaction on the affected security(ies) has a date on or after the
+// action date; the returned *DownstreamEventsError names the earliest
+// blocking transaction so the caller can show a precise message.
+//
+// In v1, only stock-split and reverse-split actions are reversible.
+// Merger and spin-off reversals create new transactions, lots, and
+// (for mergers) hide the source security; safely undoing all of that
+// requires careful per-account choreography and is deferred — those
+// types return an *UnsupportedReversalError.
+func (s *CorporateActionService) DeleteAction(actionID types.ID) error {
+	ca, err := s.caRepo.GetByID(actionID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.checkNoDownstreamEvents(ca); err != nil {
+		return err
+	}
+
+	switch ca.ActionType {
+	case ActionTypeSplit, ActionTypeReverseSplit:
+		return s.reverseSplit(ca)
+	case ActionTypeMerger, ActionTypeSpinOff:
+		return &UnsupportedReversalError{ActionType: ca.ActionType}
+	}
+	return fmt.Errorf("unknown corporate action type: %s", ca.ActionType)
+}
+
+// checkNoDownstreamEvents returns a *DownstreamEventsError naming the
+// earliest blocking transaction if any investment transaction on or
+// after the action date exists for the action's security (or, for
+// two-security actions like mergers and spin-offs, either security).
+// Returns nil otherwise.
+func (s *CorporateActionService) checkNoDownstreamEvents(ca *CorporateAction) error {
+	secIDs := []types.ID{ca.SecurityID}
+	if ca.TargetSecurityID.Valid {
+		secIDs = append(secIDs, ca.TargetSecurityID.ID)
+	}
+	for _, secID := range secIDs {
+		earliest, err := s.invRepo.EarliestSinceDate(secID, ca.ActionDate)
+		if err != nil {
+			return fmt.Errorf("failed to check downstream events: %w", err)
+		}
+		if earliest == nil {
+			continue
+		}
+		ticker := ""
+		if sec, err := s.secRepo.GetByID(secID); err == nil && sec != nil {
+			ticker = sec.Ticker
+		}
+		return &DownstreamEventsError{
+			ActionDate:     ca.ActionDate,
+			BlockerTicker:  ticker,
+			BlockerDate:    earliest.Date,
+			BlockerTxnType: string(earliest.Type),
+		}
+	}
+	return nil
+}
+
+// reverseSplit undoes a Split or ReverseSplit by inverting the share
+// and cost-basis multipliers applied at create time, then deleting the
+// audit row.
+func (s *CorporateActionService) reverseSplit(ca *CorporateAction) error {
+	params, err := ParseSplitParams(ca.Parameters)
+	if err != nil {
+		return fmt.Errorf("failed to parse split params: %w", err)
+	}
+
+	// Original Split called adjust* with (ratio, inverseRatio). To undo,
+	// swap them: shares *= inverseRatio, cost *= ratio, prices *= ratio.
+	origRatio := alpacadecimal.NewFromFloat(params.Ratio())
+	origInverse := alpacadecimal.NewFromFloat(1.0 / params.Ratio())
+
+	if err := s.adjustLots(ca.SecurityID, origInverse, origRatio); err != nil {
+		return fmt.Errorf("failed to reverse lots: %w", err)
+	}
+	if err := s.adjustPositions(ca.SecurityID, origInverse, origRatio); err != nil {
+		return fmt.Errorf("failed to reverse positions: %w", err)
+	}
+	if err := s.adjustPrices(ca.SecurityID, ca.ActionDate, origRatio); err != nil {
+		return fmt.Errorf("failed to reverse prices: %w", err)
+	}
+
+	if err := s.caRepo.Delete(ca.ID); err != nil {
+		return fmt.Errorf("failed to delete corporate action: %w", err)
+	}
+	return nil
+}
+
+// DownstreamEventsError is returned when a reversal is blocked by a
+// later investment transaction on the affected security.
+type DownstreamEventsError struct {
+	ActionDate     types.Date
+	BlockerTicker  string
+	BlockerDate    types.Date
+	BlockerTxnType string
+}
+
+func (e *DownstreamEventsError) Error() string {
+	ticker := e.BlockerTicker
+	if ticker == "" {
+		ticker = "the affected security"
+	}
+	return fmt.Sprintf(
+		"cannot reverse: %s has a %s transaction on %s (action dated %s). Remove or re-date later transactions first.",
+		ticker, e.BlockerTxnType, e.BlockerDate.String(), e.ActionDate.String(),
+	)
+}
+
+// UnsupportedReversalError is returned when the user tries to reverse
+// a corporate-action type for which reversal is not yet implemented.
+type UnsupportedReversalError struct {
+	ActionType ActionType
+}
+
+func (e *UnsupportedReversalError) Error() string {
+	return fmt.Sprintf(
+		"reversing %s corporate actions is not yet supported — only splits and reverse splits can be undone in this version",
+		e.ActionType.DisplayName(),
+	)
+}
+
 // mergerHideSource marks the source security as hidden after all positions are exchanged.
 func (s *CorporateActionService) mergerHideSource(securityID types.ID) error {
 	sec, err := s.secRepo.GetByID(securityID)

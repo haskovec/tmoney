@@ -333,11 +333,15 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Refresh prices for all visible securities from the default provider.
 		return a, a.startPriceRefresh()
 	case msg.String() == "a":
-		// Open corporate action history for selected security
-		sec := a.selectedSecurity()
-		if sec != nil {
-			return a, a.loadCorporateActionHistory(sec)
+		// Open the global corporate-action register, pre-filtered to the
+		// highlighted ticker (so it acts as a per-security drill-in).
+		if sec := a.selectedSecurity(); sec != nil {
+			a.corporateActionViewFilter = sec.Ticker
+		} else {
+			a.corporateActionViewFilter = ""
 		}
+		a.switchView(ViewCorporateActions)
+		return a, a.loadCorporateActionViewData()
 	}
 
 	return a, nil

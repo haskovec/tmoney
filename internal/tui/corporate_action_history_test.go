@@ -1,404 +1,114 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-func TestFormatCorporateActionDetails_Split(t *testing.T) {
-	params := investment.SplitParams{Numerator: 4, Denominator: 1}
-	jsonStr, err := params.ToJSON()
-	if err != nil {
-		t.Fatal(err)
+func newTestCorporateActionViewData(t *testing.T) (*App, *investment.CorporateAction, *investment.CorporateAction) {
+	t.Helper()
+
+	aaplID := types.NewID()
+	msftID := types.NewID()
+	googID := types.NewID()
+	secMap := map[types.ID]*security.Security{
+		aaplID: {Ticker: "AAPL", Name: "Apple Inc."},
+		msftID: {Ticker: "MSFT", Name: "Microsoft Corp."},
+		googID: {Ticker: "GOOG", Name: "Alphabet Inc."},
 	}
 
-	ca := &investment.CorporateAction{
-		ActionType: investment.ActionTypeSplit,
-		Parameters: jsonStr,
-	}
-
-	details := formatCorporateActionDetails(ca, nil)
-	if details != "Ratio 4:1" {
-		t.Errorf("split details = %q, want %q", details, "Ratio 4:1")
-	}
-}
-
-func TestFormatCorporateActionDetails_ReverseSplit(t *testing.T) {
-	params := investment.SplitParams{Numerator: 1, Denominator: 10}
-	jsonStr, err := params.ToJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ca := &investment.CorporateAction{
-		ActionType: investment.ActionTypeReverseSplit,
-		Parameters: jsonStr,
-	}
-
-	details := formatCorporateActionDetails(ca, nil)
-	if details != "Ratio 1:10" {
-		t.Errorf("reverse split details = %q, want %q", details, "Ratio 1:10")
-	}
-}
-
-func TestFormatCorporateActionDetails_Merger(t *testing.T) {
-	params := investment.MergerParams{ExchangeRatio: 0.5, CashPerShare: 10.00}
-	jsonStr, err := params.ToJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	targetID := types.NewID()
-	targetSec := security.NewSecurity("NEWCO", "New Company", security.TypeStock)
-	targetSec.ID = targetID
-	secMap := map[types.ID]*security.Security{targetID: targetSec}
-
-	ca := &investment.CorporateAction{
-		ActionType:       investment.ActionTypeMerger,
-		Parameters:       jsonStr,
-		TargetSecurityID: types.NullableID{ID: targetID, Valid: true},
-	}
-
-	details := formatCorporateActionDetails(ca, secMap)
-	expected := "→ NEWCO, ratio 0.50, cash $10.00/sh"
-	if details != expected {
-		t.Errorf("merger details = %q, want %q", details, expected)
-	}
-}
-
-func TestFormatCorporateActionDetails_MergerNoCash(t *testing.T) {
-	params := investment.MergerParams{ExchangeRatio: 1.5}
-	jsonStr, err := params.ToJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	targetID := types.NewID()
-	targetSec := security.NewSecurity("BIGCO", "Big Company", security.TypeStock)
-	targetSec.ID = targetID
-	secMap := map[types.ID]*security.Security{targetID: targetSec}
-
-	ca := &investment.CorporateAction{
-		ActionType:       investment.ActionTypeMerger,
-		Parameters:       jsonStr,
-		TargetSecurityID: types.NullableID{ID: targetID, Valid: true},
-	}
-
-	details := formatCorporateActionDetails(ca, secMap)
-	expected := "→ BIGCO, ratio 1.50"
-	if details != expected {
-		t.Errorf("merger no cash details = %q, want %q", details, expected)
-	}
-}
-
-func TestFormatCorporateActionDetails_SpinOff(t *testing.T) {
-	params := investment.SpinOffParams{ShareRatio: 0.25, ParentAllocationPct: 80}
-	jsonStr, err := params.ToJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	targetID := types.NewID()
-	targetSec := security.NewSecurity("SPUN", "Spun Off Inc.", security.TypeStock)
-	targetSec.ID = targetID
-	secMap := map[types.ID]*security.Security{targetID: targetSec}
-
-	ca := &investment.CorporateAction{
-		ActionType:       investment.ActionTypeSpinOff,
-		Parameters:       jsonStr,
-		TargetSecurityID: types.NullableID{ID: targetID, Valid: true},
-	}
-
-	details := formatCorporateActionDetails(ca, secMap)
-	expected := "→ SPUN, ratio 0.25, parent 80.0%"
-	if details != expected {
-		t.Errorf("spin-off details = %q, want %q", details, expected)
-	}
-}
-
-func TestFormatCorporateActionDetails_UnknownTarget(t *testing.T) {
-	params := investment.MergerParams{ExchangeRatio: 1.0}
-	jsonStr, err := params.ToJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	unknownID := types.NewID()
-	ca := &investment.CorporateAction{
-		ActionType:       investment.ActionTypeMerger,
-		Parameters:       jsonStr,
-		TargetSecurityID: types.NullableID{ID: unknownID, Valid: true},
-	}
-
-	details := formatCorporateActionDetails(ca, nil)
-	expected := "→ ???, ratio 1.00"
-	if details != expected {
-		t.Errorf("unknown target details = %q, want %q", details, expected)
-	}
-}
-
-func TestFormatCorporateActionDetails_InvalidJSON(t *testing.T) {
-	ca := &investment.CorporateAction{
-		ActionType: investment.ActionTypeSplit,
-		Parameters: "not json",
-	}
-
-	details := formatCorporateActionDetails(ca, nil)
-	if details != "not json" {
-		t.Errorf("invalid json details = %q, want raw parameters", details)
-	}
-}
-
-func TestBuildCorporateActionHistoryTable(t *testing.T) {
-	secID := types.NewID()
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	sec.ID = secID
-
-	splitParams := investment.SplitParams{Numerator: 4, Denominator: 1}
+	splitParams := investment.SplitParams{Numerator: 2, Denominator: 1}
 	splitJSON, _ := splitParams.ToJSON()
+	splitAction := investment.NewCorporateAction(
+		investment.ActionTypeSplit,
+		aaplID,
+		types.NewDate(2024, time.June, 1),
+		splitJSON,
+	)
 
-	date := types.NewDate(2024, 6, 10)
-	ca := &investment.CorporateAction{
-		ID:         types.NewID(),
-		ActionType: investment.ActionTypeSplit,
-		SecurityID: secID,
-		ActionDate: date,
-		Parameters: splitJSON,
-	}
+	mergerParams := investment.MergerParams{ExchangeRatio: 0.5}
+	mergerJSON, _ := mergerParams.ToJSON()
+	mergerAction := investment.NewCorporateAction(
+		investment.ActionTypeMerger,
+		msftID,
+		types.NewDate(2024, time.April, 15),
+		mergerJSON,
+	)
+	mergerAction.SetTargetSecurity(googID)
 
-	app := &App{}
-	app.corporateActionHistory = &corporateActionHistoryData{
-		security: sec,
-		actions:  []*investment.CorporateAction{ca},
-		secMap:   map[types.ID]*security.Security{secID: sec},
-	}
-	app.buildCorporateActionHistoryTable()
-
-	if app.corporateActionHistoryTable == nil {
-		t.Fatal("table should not be nil")
-	}
-}
-
-func TestBuildCorporateActionHistoryTable_Empty(t *testing.T) {
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-
-	app := &App{}
-	app.corporateActionHistory = &corporateActionHistoryData{
-		security: sec,
-		actions:  []*investment.CorporateAction{},
-		secMap:   map[types.ID]*security.Security{},
-	}
-	app.buildCorporateActionHistoryTable()
-
-	if app.corporateActionHistoryTable == nil {
-		t.Fatal("table should not be nil even with no actions")
-	}
-}
-
-func TestBuildCorporateActionHistoryTable_NilData(t *testing.T) {
-	app := &App{}
-	app.buildCorporateActionHistoryTable()
-	// Should not panic
-}
-
-func TestHandleCorporateActionHistoryKeys_Escape(t *testing.T) {
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
 	app := &App{
-		keys: defaultKeyMap(),
-		corporateActionHistory: &corporateActionHistoryData{
-			security: sec,
-			actions:  []*investment.CorporateAction{},
-			secMap:   map[types.ID]*security.Security{},
+		corporateActionView: &corporateActionViewData{
+			actions: []*investment.CorporateAction{splitAction, mergerAction},
+			secMap:  secMap,
 		},
-		corporateActionHistoryTable: NewTable([]Column{{Header: "Test"}}),
 	}
+	return app, splitAction, mergerAction
+}
 
-	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
-	model, _ := app.handleCorporateActionHistoryKeys(escKey)
-	updatedApp := model.(*App)
-
-	if updatedApp.corporateActionHistory != nil {
-		t.Error("history data should be cleared after Escape")
-	}
-	if updatedApp.corporateActionHistoryTable != nil {
-		t.Error("history table should be cleared after Escape")
+func TestFilteredCorporateActions_NoFilterReturnsAll(t *testing.T) {
+	app, _, _ := newTestCorporateActionViewData(t)
+	got := app.filteredCorporateActions()
+	if len(got) != 2 {
+		t.Errorf("filtered count = %d, want 2", len(got))
 	}
 }
 
-func TestHandleCorporateActionHistoryKeys_NilData(t *testing.T) {
-	app := &App{}
-
-	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
-	model, cmd := app.handleCorporateActionHistoryKeys(escKey)
-
-	if model.(*App) != app {
-		t.Error("should return same app when data is nil")
+func TestFilteredCorporateActions_TickerMatch(t *testing.T) {
+	app, split, _ := newTestCorporateActionViewData(t)
+	app.corporateActionViewFilter = "aapl"
+	got := app.filteredCorporateActions()
+	if len(got) != 1 {
+		t.Fatalf("filtered count = %d, want 1", len(got))
 	}
-	if cmd != nil {
-		t.Error("should return nil cmd when data is nil")
+	if got[0].ID != split.ID {
+		t.Errorf("filtered[0] = %s, want split action", got[0].ID.String())
 	}
 }
 
-func TestCorporateActionHistoryDataLoadedMsg(t *testing.T) {
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	data := &corporateActionHistoryData{
-		security: sec,
-		actions:  []*investment.CorporateAction{},
-		secMap:   map[types.ID]*security.Security{},
+func TestFilteredCorporateActions_TargetTickerMatch(t *testing.T) {
+	// "GOOG" only appears as the merger's target — confirming we search
+	// against the resolved target ticker too.
+	app, _, merger := newTestCorporateActionViewData(t)
+	app.corporateActionViewFilter = "GOOG"
+	got := app.filteredCorporateActions()
+	if len(got) != 1 {
+		t.Fatalf("filtered count = %d, want 1", len(got))
 	}
-
-	msg := corporateActionHistoryDataLoadedMsg{data: data}
-	if msg.data.security.Ticker != "AAPL" {
-		t.Errorf("expected AAPL, got %s", msg.data.security.Ticker)
-	}
-}
-
-func TestCloseCorporateActionHistory(t *testing.T) {
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	app := &App{
-		corporateActionHistory: &corporateActionHistoryData{
-			security: sec,
-			actions:  []*investment.CorporateAction{},
-			secMap:   map[types.ID]*security.Security{},
-		},
-		corporateActionHistoryTable: NewTable([]Column{{Header: "Test"}}),
-	}
-
-	app.closeCorporateActionHistory()
-
-	if app.corporateActionHistory != nil {
-		t.Error("corporateActionHistory should be nil after close")
-	}
-	if app.corporateActionHistoryTable != nil {
-		t.Error("corporateActionHistoryTable should be nil after close")
+	if got[0].ID != merger.ID {
+		t.Errorf("filtered[0] = %s, want merger action", got[0].ID.String())
 	}
 }
 
-func TestRenderCorporateActionHistory_NilData(t *testing.T) {
-	app := &App{
-		styles: NewStyles(),
-		width:  80,
-		height: 24,
-	}
-
-	// Should not panic with nil data
-	result := app.renderCorporateActionHistory()
-	if result != "" {
-		t.Error("should return empty string when data is nil")
+func TestFilteredCorporateActions_TypeMatch(t *testing.T) {
+	app, _, merger := newTestCorporateActionViewData(t)
+	app.corporateActionViewFilter = "merger"
+	got := app.filteredCorporateActions()
+	if len(got) != 1 || got[0].ID != merger.ID {
+		t.Errorf("expected merger action only, got %v", got)
 	}
 }
 
-func TestRenderCorporateActionHistory_WithData(t *testing.T) {
-	secID := types.NewID()
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	sec.ID = secID
-
-	splitParams := investment.SplitParams{Numerator: 4, Denominator: 1}
-	splitJSON, _ := splitParams.ToJSON()
-
-	ca := &investment.CorporateAction{
-		ID:         types.NewID(),
-		ActionType: investment.ActionTypeSplit,
-		SecurityID: secID,
-		ActionDate: types.NewDate(2024, 6, 10),
-		Parameters: splitJSON,
+func TestFormatGlobalCorporateActionRow_IncludesTicker(t *testing.T) {
+	app, split, _ := newTestCorporateActionViewData(t)
+	row := formatGlobalCorporateActionRow(split, app.corporateActionView.secMap)
+	if len(row) != 4 {
+		t.Fatalf("row length = %d, want 4", len(row))
 	}
-
-	app := &App{
-		styles: NewStyles(),
-		width:  80,
-		height: 24,
+	if row[0] != "2024-06-01" {
+		t.Errorf("date = %q, want 2024-06-01", row[0])
 	}
-	app.corporateActionHistory = &corporateActionHistoryData{
-		security: sec,
-		actions:  []*investment.CorporateAction{ca},
-		secMap:   map[types.ID]*security.Security{secID: sec},
+	if row[1] != "AAPL" {
+		t.Errorf("ticker = %q, want AAPL", row[1])
 	}
-	app.buildCorporateActionHistoryTable()
-
-	result := app.renderCorporateActionHistory()
-	if result == "" {
-		t.Error("should return non-empty string with data")
+	if !strings.Contains(row[2], "Stock Split") {
+		t.Errorf("type = %q, want it to contain 'Stock Split'", row[2])
 	}
-}
-
-func TestRenderCorporateActionHistory_EmptyActions(t *testing.T) {
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-
-	app := &App{
-		styles: NewStyles(),
-		width:  80,
-		height: 24,
-	}
-	app.corporateActionHistory = &corporateActionHistoryData{
-		security: sec,
-		actions:  []*investment.CorporateAction{},
-		secMap:   map[types.ID]*security.Security{},
-	}
-	app.buildCorporateActionHistoryTable()
-
-	result := app.renderCorporateActionHistory()
-	if result == "" {
-		t.Error("should return non-empty string even with no actions")
-	}
-}
-
-func TestFormatCorporateActionRow(t *testing.T) {
-	secID := types.NewID()
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	sec.ID = secID
-
-	params := investment.SplitParams{Numerator: 4, Denominator: 1}
-	jsonStr, _ := params.ToJSON()
-
-	ca := &investment.CorporateAction{
-		ActionType: investment.ActionTypeSplit,
-		SecurityID: secID,
-		ActionDate: types.NewDate(2024, 6, 10),
-		Parameters: jsonStr,
-	}
-
-	secMap := map[types.ID]*security.Security{secID: sec}
-	row := formatCorporateActionRow(ca, secMap)
-
-	if len(row) != 3 {
-		t.Fatalf("expected 3 columns, got %d", len(row))
-	}
-	if row[0] != "2024-06-10" {
-		t.Errorf("date = %q, want %q", row[0], "2024-06-10")
-	}
-	if row[1] != "Stock Split" {
-		t.Errorf("type = %q, want %q", row[1], "Stock Split")
-	}
-	if row[2] != "Ratio 4:1" {
-		t.Errorf("details = %q, want %q", row[2], "Ratio 4:1")
-	}
-}
-
-func TestApp_Update_CorporateActionHistoryDataLoadedMsg(t *testing.T) {
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
-	data := &corporateActionHistoryData{
-		security: sec,
-		actions:  []*investment.CorporateAction{},
-		secMap:   map[types.ID]*security.Security{},
-	}
-
-	app := &App{
-		statusbar: NewStatusBar(),
-	}
-
-	msg := corporateActionHistoryDataLoadedMsg{data: data}
-	model, _ := app.Update(msg)
-	updatedApp := model.(*App)
-
-	if updatedApp.corporateActionHistory == nil {
-		t.Error("corporateActionHistory should be set after data loaded")
-	}
-	if updatedApp.corporateActionHistoryTable == nil {
-		t.Error("corporateActionHistoryTable should be built after data loaded")
+	if !strings.Contains(row[3], "Ratio 2:1") {
+		t.Errorf("details = %q, want 'Ratio 2:1'", row[3])
 	}
 }

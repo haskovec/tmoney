@@ -1923,3 +1923,135 @@ func TestCorporateActionService_SpinOff_Validation(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// DeleteAction (reverse a corporate action)
+// =============================================================================
+
+func TestCorporateActionService_DeleteAction_ReverseSplit(t *testing.T) {
+	t.Run("undoes a 2:1 split: lots and prices restored", func(t *testing.T) {
+		env := createCATestEnv(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		buyDate := types.NewDate(2024, time.January, 15)
+		splitDate := types.NewDate(2024, time.June, 1)
+
+		_, _ = env.invSvc.Deposit(acct.ID, buyDate, types.MustNewMoney("10000.00"), "")
+		total := types.MustNewMoney("500.00")
+		if _, err := env.invSvc.Buy(acct.ID, sec.ID, buyDate, types.MustNewQuantity("5"), &total, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+
+		ca, err := env.caSvc.Split(sec.ID, splitDate, SplitParams{Numerator: 2, Denominator: 1})
+		if err != nil {
+			t.Fatalf("Split() error = %v", err)
+		}
+		// Sanity: post-split lot shows 10 shares @ $50.
+		lots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		if len(lots) != 1 || lots[0].Shares.String() != "10" {
+			t.Fatalf("post-split lot shares = %v, want 10", lots)
+		}
+
+		if err := env.caSvc.DeleteAction(ca.ID); err != nil {
+			t.Fatalf("DeleteAction() error = %v", err)
+		}
+
+		lots, _ = env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		if len(lots) != 1 {
+			t.Fatalf("expected 1 lot after reversal, got %d", len(lots))
+		}
+		if lots[0].Shares.String() != "5" {
+			t.Errorf("post-reverse shares = %q, want 5", lots[0].Shares.String())
+		}
+		if lots[0].CostPerShare.String() != "100" {
+			t.Errorf("post-reverse cost = %q, want 100", lots[0].CostPerShare.String())
+		}
+
+		// Audit row gone
+		if _, err := env.caRepo.GetByID(ca.ID); err == nil {
+			t.Error("expected GetByID to return NotFound after deletion")
+		}
+	})
+
+	t.Run("refuses when a later transaction exists on the security", func(t *testing.T) {
+		env := createCATestEnv(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		buyDate := types.NewDate(2024, time.January, 15)
+		splitDate := types.NewDate(2024, time.June, 1)
+		postSplitBuy := types.NewDate(2024, time.July, 10)
+
+		_, _ = env.invSvc.Deposit(acct.ID, buyDate, types.MustNewMoney("20000.00"), "")
+		total := types.MustNewMoney("500.00")
+		_, _ = env.invSvc.Buy(acct.ID, sec.ID, buyDate, types.MustNewQuantity("5"), &total, nil, types.ZeroMoney, "")
+
+		ca, err := env.caSvc.Split(sec.ID, splitDate, SplitParams{Numerator: 2, Denominator: 1})
+		if err != nil {
+			t.Fatalf("Split() error = %v", err)
+		}
+
+		// A post-split buy adds 3 more shares at the new price.
+		postTotal := types.MustNewMoney("150.00")
+		if _, err := env.invSvc.Buy(acct.ID, sec.ID, postSplitBuy, types.MustNewQuantity("3"), &postTotal, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("post-split Buy() error = %v", err)
+		}
+
+		err = env.caSvc.DeleteAction(ca.ID)
+		if err == nil {
+			t.Fatal("expected DeleteAction to refuse with downstream events")
+		}
+		var dse *DownstreamEventsError
+		if !errorsAs(err, &dse) {
+			t.Fatalf("expected *DownstreamEventsError, got %T: %v", err, err)
+		}
+		if dse.BlockerTicker != "AAPL" {
+			t.Errorf("BlockerTicker = %q, want AAPL", dse.BlockerTicker)
+		}
+	})
+
+	t.Run("merger and spin-off are not yet reversible", func(t *testing.T) {
+		env := createCATestEnv(t)
+		sec := createSec(t, env.secRepo, "OLD")
+		target := createSec(t, env.secRepo, "NEW")
+		date := types.NewDate(2024, time.June, 1)
+
+		ca, err := env.caSvc.Merger(sec.ID, target.ID, date, MergerParams{ExchangeRatio: 1.0})
+		if err != nil {
+			t.Fatalf("Merger() error = %v", err)
+		}
+		err = env.caSvc.DeleteAction(ca.ID)
+		if err == nil {
+			t.Fatal("expected UnsupportedReversalError for merger")
+		}
+		var ure *UnsupportedReversalError
+		if !errorsAs(err, &ure) {
+			t.Fatalf("expected *UnsupportedReversalError, got %T: %v", err, err)
+		}
+	})
+}
+
+// errorsAs is a tiny shim so the test file does not need to import "errors"
+// solely for one call.
+func errorsAs(err error, target any) bool {
+	for err != nil {
+		switch tgt := target.(type) {
+		case **DownstreamEventsError:
+			if dse, ok := err.(*DownstreamEventsError); ok {
+				*tgt = dse
+				return true
+			}
+		case **UnsupportedReversalError:
+			if ure, ok := err.(*UnsupportedReversalError); ok {
+				*tgt = ure
+				return true
+			}
+		}
+		type unwrapper interface{ Unwrap() error }
+		if u, ok := err.(unwrapper); ok {
+			err = u.Unwrap()
+		} else {
+			return false
+		}
+	}
+	return false
+}
