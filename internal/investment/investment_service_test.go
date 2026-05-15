@@ -4220,3 +4220,65 @@ func TestService_TransferShares_LotToNonLot(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// SharesBySecurity (used by split-dialog preview)
+// =============================================================================
+
+func TestService_SharesBySecurity(t *testing.T) {
+	t.Run("aggregates lot-tracking and non-lot-tracking accounts", func(t *testing.T) {
+		env := createFullTestService(t)
+		nonLot := createInvAccount(t, env.accountRepo, "Brokerage Avg")
+		lotAcct := createLotTrackingAccount(t, env.accountRepo, "IRA Lots")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(nonLot.ID, date, types.MustNewMoney("10000.00"), "")
+		_, _ = env.svc.Deposit(lotAcct.ID, date, types.MustNewMoney("10000.00"), "")
+
+		nonLotBuy := types.MustNewMoney("750.00")
+		if _, err := env.svc.Buy(nonLot.ID, sec.ID, date, types.MustNewQuantity("5"), &nonLotBuy, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy(nonLot) error = %v", err)
+		}
+
+		lotBuy := types.MustNewMoney("1500.00")
+		if _, err := env.svc.Buy(lotAcct.ID, sec.ID, date, types.MustNewQuantity("10"), &lotBuy, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy(lotAcct) error = %v", err)
+		}
+
+		results, err := env.svc.SharesBySecurity(sec.ID)
+		if err != nil {
+			t.Fatalf("SharesBySecurity() error = %v", err)
+		}
+		if len(results) != 2 {
+			t.Fatalf("expected 2 accounts, got %d", len(results))
+		}
+
+		// Sorted alphabetically: "Brokerage Avg" before "IRA Lots".
+		if results[0].AccountName != "Brokerage Avg" {
+			t.Errorf("results[0].AccountName = %q, want %q", results[0].AccountName, "Brokerage Avg")
+		}
+		if results[0].Shares.String() != "5" {
+			t.Errorf("results[0].Shares = %q, want %q", results[0].Shares.String(), "5")
+		}
+		if results[1].AccountName != "IRA Lots" {
+			t.Errorf("results[1].AccountName = %q, want %q", results[1].AccountName, "IRA Lots")
+		}
+		if results[1].Shares.String() != "10" {
+			t.Errorf("results[1].Shares = %q, want %q", results[1].Shares.String(), "10")
+		}
+	})
+
+	t.Run("returns empty slice when no accounts hold the security", func(t *testing.T) {
+		env := createFullTestService(t)
+		sec := createSec(t, env.secRepo, "NONE")
+
+		results, err := env.svc.SharesBySecurity(sec.ID)
+		if err != nil {
+			t.Fatalf("SharesBySecurity() error = %v", err)
+		}
+		if len(results) != 0 {
+			t.Errorf("expected empty slice, got %d entries", len(results))
+		}
+	})
+}

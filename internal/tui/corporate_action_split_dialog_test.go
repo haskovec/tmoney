@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ func TestBuildStockSplitDialog_NewDialog(t *testing.T) {
 	options := []string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."}
 	ids := []types.ID{types.NewID(), types.NewID()}
 
-	d := buildStockSplitDialog(options, ids, nil)
+	d := buildStockSplitDialog(options, ids, nil, nil)
 
 	if d == nil {
 		t.Fatal("dialog should not be nil")
@@ -100,7 +101,7 @@ func TestBuildStockSplitDialog_DateFieldMaskedOverwrite(t *testing.T) {
 	options := []string{"AAPL - Apple Inc."}
 	ids := []types.ID{types.NewID()}
 
-	d := buildStockSplitDialog(options, ids, nil)
+	d := buildStockSplitDialog(options, ids, nil, nil)
 	d.SetFocusIndex(1) // focus the Date field
 
 	// Seed Value to a known date so the overwrite is deterministic.
@@ -121,7 +122,7 @@ func TestBuildStockSplitDialog_PreSelectedSecurity(t *testing.T) {
 	options := []string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."}
 	ids := []types.ID{id1, id2}
 
-	d := buildStockSplitDialog(options, ids, &id2)
+	d := buildStockSplitDialog(options, ids, nil, &id2)
 
 	fields := d.Fields()
 	if fields[0].SelectedIndex != 1 {
@@ -135,7 +136,7 @@ func TestBuildStockSplitDialog_PreSelectedNotFound(t *testing.T) {
 	options := []string{"AAPL - Apple Inc."}
 	ids := []types.ID{id1}
 
-	d := buildStockSplitDialog(options, ids, &unknownID)
+	d := buildStockSplitDialog(options, ids, nil, &unknownID)
 
 	fields := d.Fields()
 	if fields[0].SelectedIndex != 0 {
@@ -144,7 +145,7 @@ func TestBuildStockSplitDialog_PreSelectedNotFound(t *testing.T) {
 }
 
 func TestBuildStockSplitDialog_EmptySecurities(t *testing.T) {
-	d := buildStockSplitDialog([]string{}, []types.ID{}, nil)
+	d := buildStockSplitDialog([]string{}, []types.ID{}, nil, nil)
 
 	if d == nil {
 		t.Fatal("dialog should not be nil even with no securities")
@@ -159,7 +160,7 @@ func TestSubmitStockSplitDialog_ValidationErrors_AllEmpty(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil),
+		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil),
 		stockSplitDialogData: &stockSplitDialogData{
 			securities: []*security.Security{},
 		},
@@ -196,7 +197,7 @@ func TestSubmitStockSplitDialog_InvalidRatio(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil),
+		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil),
 		stockSplitDialogData: &stockSplitDialogData{
 			securities: []*security.Security{},
 		},
@@ -227,7 +228,7 @@ func TestSubmitStockSplitDialog_InvalidRatio_ZeroDenominator(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil),
+		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil),
 		stockSplitDialogData: &stockSplitDialogData{
 			securities: []*security.Security{},
 		},
@@ -256,7 +257,7 @@ func TestSubmitStockSplitDialog_InvalidRatio_ZeroDenominator(t *testing.T) {
 
 func TestSubmitStockSplitDialog_NoSecurities(t *testing.T) {
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{}, []types.ID{}, nil),
+		stockSplitDialog: buildStockSplitDialog([]string{}, []types.ID{}, nil, nil),
 		stockSplitDialogData: &stockSplitDialogData{
 			securities: []*security.Security{},
 		},
@@ -286,6 +287,7 @@ func TestSubmitStockSplitDialog_ValidForwardSplit(t *testing.T) {
 		stockSplitDialog: buildStockSplitDialog(
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
+			nil,
 			nil,
 		),
 		stockSplitDialogData: &stockSplitDialogData{
@@ -318,6 +320,7 @@ func TestSubmitStockSplitDialog_ValidReverseSplit(t *testing.T) {
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
 			nil,
+			nil,
 		),
 		stockSplitDialogData: &stockSplitDialogData{
 			securities: []*security.Security{},
@@ -347,6 +350,7 @@ func TestHandleStockSplitDialogKey_Cancel(t *testing.T) {
 		stockSplitDialog: buildStockSplitDialog(
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
+			nil,
 			nil,
 		),
 		stockSplitDialogData: &stockSplitDialogData{
@@ -405,6 +409,7 @@ func TestCloseStockSplitDialog(t *testing.T) {
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
 			nil,
+			nil,
 		),
 		stockSplitDialogData:        &stockSplitDialogData{},
 		stockSplitDialogSecurityIDs: []types.ID{secID},
@@ -446,7 +451,7 @@ func TestSubmitStockSplitDialog_InvalidDate(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil),
+		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil),
 		stockSplitDialogData: &stockSplitDialogData{
 			securities: []*security.Security{},
 		},
@@ -481,6 +486,7 @@ func TestSubmitStockSplitDialog_RatioWithSpaces(t *testing.T) {
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
 			nil,
+			nil,
 		),
 		stockSplitDialogData: &stockSplitDialogData{
 			securities: []*security.Security{},
@@ -511,6 +517,7 @@ func TestHandleStockSplitDialogKey_TabNavigates(t *testing.T) {
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
 			nil,
+			nil,
 		),
 		stockSplitDialogData: &stockSplitDialogData{
 			securities: []*security.Security{},
@@ -536,7 +543,7 @@ func TestSubmitStockSplitDialog_ClearsErrorsBeforeValidation(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil),
+		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil),
 		stockSplitDialogData: &stockSplitDialogData{
 			securities: []*security.Security{},
 		},
@@ -601,4 +608,63 @@ func TestApp_Update_StockSplitDialogSavedMsg(t *testing.T) {
 	if cmd == nil {
 		t.Error("stockSplitDialogSavedMsg should return a reload command")
 	}
+}
+
+func TestRenderSplitDialogMessage(t *testing.T) {
+	secID := types.NewID()
+	secIDs := []types.ID{secID}
+	shares := []investment.AccountShares{
+		{AccountName: "Brokerage", Shares: types.MustNewQuantity("5")},
+		{AccountName: "IRA", Shares: types.MustNewQuantity("10")},
+	}
+	sharesMap := map[types.ID][]investment.AccountShares{secID: shares}
+
+	t.Run("explainer always present", func(t *testing.T) {
+		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "")
+		if !strings.Contains(got, "N:M") {
+			t.Errorf("missing convention explainer: %q", got)
+		}
+	})
+
+	t.Run("invalid ratio shows current positions only", func(t *testing.T) {
+		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "")
+		if !strings.Contains(got, "Current positions:") {
+			t.Errorf("expected 'Current positions:' header, got: %q", got)
+		}
+		if strings.Contains(got, "→") {
+			t.Errorf("should not show projection arrow with empty ratio: %q", got)
+		}
+		if !strings.Contains(got, "Brokerage: 5 shares") {
+			t.Errorf("missing Brokerage current shares: %q", got)
+		}
+	})
+
+	t.Run("valid ratio projects shares per account", func(t *testing.T) {
+		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "2:1")
+		if !strings.Contains(got, "After split:") {
+			t.Errorf("expected 'After split:' header, got: %q", got)
+		}
+		if !strings.Contains(got, "Brokerage: 5 → 10 shares") {
+			t.Errorf("missing forward projection for Brokerage: %q", got)
+		}
+		if !strings.Contains(got, "IRA: 10 → 20 shares") {
+			t.Errorf("missing forward projection for IRA: %q", got)
+		}
+	})
+
+	t.Run("reverse-split projection catches a backwards ratio", func(t *testing.T) {
+		// The original user error: typing 1:2 instead of 2:1 for a doubling split.
+		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "1:2")
+		if !strings.Contains(got, "Brokerage: 5 → 2.5 shares") {
+			t.Errorf("expected 5 → 2.5 to surface the reversed ratio: %q", got)
+		}
+	})
+
+	t.Run("no positions yields explanatory note", func(t *testing.T) {
+		emptyMap := map[types.ID][]investment.AccountShares{}
+		got := renderSplitDialogMessage(secIDs, emptyMap, 0, "2:1")
+		if !strings.Contains(got, "No current positions") {
+			t.Errorf("expected no-positions note, got: %q", got)
+		}
+	})
 }

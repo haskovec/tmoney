@@ -291,7 +291,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.stockSplitDialogData = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
 		a.stockSplitDialogSecurityIDs = secIDs
-		a.stockSplitDialog = buildStockSplitDialog(secOptions, secIDs, a.stockSplitDialogPreSelectedID)
+		a.stockSplitDialog = buildStockSplitDialog(secOptions, secIDs, msg.data.sharesMap, a.stockSplitDialogPreSelectedID)
 		a.stockSplitDialogPreSelectedID = nil
 		return a, nil
 

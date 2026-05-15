@@ -2,6 +2,7 @@ package investment
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/alpacahq/alpacadecimal"
 	"github.com/haskovec/tmoney/internal/account"
@@ -1145,6 +1146,61 @@ func (s *Service) TransferShares(
 		DestinationTransaction: dstTxn,
 		TransferID:             transferID,
 	}, nil
+}
+
+// AccountShares is a per-account share total for a security, used by
+// preview surfaces (e.g. the stock-split dialog) to show what a holding
+// would look like before and after an action is applied.
+type AccountShares struct {
+	AccountID   types.ID
+	AccountName string
+	Shares      types.Quantity
+}
+
+// SharesBySecurity returns the share total each account currently holds
+// for the given security. Lot-tracking accounts contribute the sum of
+// their open lot shares; non-lot-tracking accounts contribute their
+// stored position shares. Accounts with zero shares are omitted. Results
+// are sorted by account name.
+func (s *Service) SharesBySecurity(securityID types.ID) ([]AccountShares, error) {
+	totals := make(map[types.ID]types.Quantity)
+
+	lots, err := s.lotRepo.GetOpenLotsBySecurity(securityID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load lots: %w", err)
+	}
+	for _, lot := range lots {
+		totals[lot.AccountID] = totals[lot.AccountID].Add(lot.Shares)
+	}
+
+	positions, err := s.positionRepo.GetPositionsBySecurity(securityID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load positions: %w", err)
+	}
+	for _, pos := range positions {
+		totals[pos.AccountID] = totals[pos.AccountID].Add(pos.Shares)
+	}
+
+	results := make([]AccountShares, 0, len(totals))
+	for acctID, shares := range totals {
+		if shares.IsZero() {
+			continue
+		}
+		acct, err := s.accountRepo.GetByID(acctID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load account %s: %w", acctID.String(), err)
+		}
+		results = append(results, AccountShares{
+			AccountID:   acctID,
+			AccountName: acct.Name,
+			Shares:      shares,
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].AccountName < results[j].AccountName
+	})
+	return results, nil
 }
 
 // InvalidTransferAmountError is returned when a transfer amount is invalid (not positive).

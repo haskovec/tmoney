@@ -4,15 +4,21 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/alpacahq/alpacadecimal"
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+const splitConventionExplainer = "Ratio is N:M — N new shares for every M held. e.g. 2:1 = forward 2-for-1, 1:2 = halves shares."
+
 // stockSplitDialogData holds the loaded data for the stock split dialog.
 type stockSplitDialogData struct {
 	securities []*security.Security
+	// sharesMap is keyed by security ID; the value is the per-account
+	// share total used to drive the dialog's live preview.
+	sharesMap map[types.ID][]investment.AccountShares
 }
 
 // stockSplitDialogDataMsg is sent when stock split dialog data has been loaded.
@@ -25,9 +31,9 @@ type stockSplitDialogSavedMsg struct{}
 
 // buildStockSplitDialog creates a Dialog for executing a stock split.
 // If preSelectedSecurityID is non-nil, the security selector is pre-selected.
-func buildStockSplitDialog(securityOptions []string, securityIDs []types.ID, preSelectedSecurityID *types.ID) *Dialog {
+func buildStockSplitDialog(securityOptions []string, securityIDs []types.ID, sharesMap map[types.ID][]investment.AccountShares, preSelectedSecurityID *types.ID) *Dialog {
 	d := NewDialog("Stock Split")
-	d.SetWidth(50)
+	d.SetWidth(60)
 
 	// Security selector
 	selectedIdx := 0
@@ -54,14 +60,75 @@ func buildStockSplitDialog(securityOptions []string, securityIDs []types.ID, pre
 		{Label: "Cancel"},
 	})
 
+	d.SetMessage(renderSplitDialogMessage(securityIDs, sharesMap, selectedIdx, ""))
+
 	d.SetVisible(true)
 	return d
 }
 
-// loadStockSplitDialogData returns a command that loads securities for the stock split dialog.
+// renderSplitDialogMessage produces the dialog body message: a convention
+// explainer plus a per-account "before → after" preview when the
+// currently-entered ratio parses successfully.
+func renderSplitDialogMessage(secIDs []types.ID, sharesMap map[types.ID][]investment.AccountShares, secIdx int, ratioStr string) string {
+	lines := []string{splitConventionExplainer}
+
+	if secIdx < 0 || secIdx >= len(secIDs) {
+		return strings.Join(lines, "\n")
+	}
+	shares := sharesMap[secIDs[secIdx]]
+	if len(shares) == 0 {
+		lines = append(lines, "", "No current positions in this security.")
+		return strings.Join(lines, "\n")
+	}
+
+	params, perr := investment.ParseSplitRatio(strings.TrimSpace(ratioStr))
+	validRatio := perr == nil && params != nil && !params.Validate().HasErrors()
+
+	if !validRatio {
+		lines = append(lines, "", "Current positions:")
+		for _, as := range shares {
+			lines = append(lines, fmt.Sprintf("  %s: %s shares", as.AccountName, as.Shares.String()))
+		}
+		return strings.Join(lines, "\n")
+	}
+
+	ratio := alpacadecimal.NewFromInt(int64(params.Numerator)).
+		Div(alpacadecimal.NewFromInt(int64(params.Denominator)))
+	lines = append(lines, "", "After split:")
+	for _, as := range shares {
+		projected := as.Shares.Mul(ratio)
+		lines = append(lines, fmt.Sprintf("  %s: %s → %s shares", as.AccountName, as.Shares.String(), projected.String()))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// refreshStockSplitDialogMessage updates the dialog's message body to
+// reflect the currently-selected security and typed ratio.
+func (a *App) refreshStockSplitDialogMessage() {
+	if a.stockSplitDialog == nil || a.stockSplitDialogData == nil {
+		return
+	}
+	fields := a.stockSplitDialog.Fields()
+	if len(fields) < 3 {
+		return
+	}
+	secIdx := fields[0].SelectedIndex
+	ratioStr := fields[2].Value
+	a.stockSplitDialog.SetMessage(renderSplitDialogMessage(
+		a.stockSplitDialogSecurityIDs,
+		a.stockSplitDialogData.sharesMap,
+		secIdx,
+		ratioStr,
+	))
+}
+
+// loadStockSplitDialogData returns a command that loads securities and
+// per-account share totals for the stock split dialog.
 func (a *App) loadStockSplitDialogData() tea.Cmd {
 	return func() tea.Msg {
-		data := &stockSplitDialogData{}
+		data := &stockSplitDialogData{
+			sharesMap: make(map[types.ID][]investment.AccountShares),
+		}
 
 		if a.securitySvc != nil {
 			excludeHidden := true
@@ -70,6 +137,18 @@ func (a *App) loadStockSplitDialogData() tea.Cmd {
 				return errMsg{err: err}
 			}
 			data.securities = securities
+		}
+
+		if a.investmentSvc != nil {
+			for _, sec := range data.securities {
+				shares, err := a.investmentSvc.SharesBySecurity(sec.ID)
+				if err != nil {
+					return errMsg{err: err}
+				}
+				if len(shares) > 0 {
+					data.sharesMap[sec.ID] = shares
+				}
+			}
 		}
 
 		return stockSplitDialogDataMsg{data: data}
@@ -98,6 +177,7 @@ func (a *App) handleStockSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		return a, nil
 	}
 
+	a.refreshStockSplitDialogMessage()
 	return a, nil
 }
 
