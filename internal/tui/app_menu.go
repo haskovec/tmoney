@@ -118,6 +118,18 @@ func (a *App) handleMenuAction(action MenuAction, data string) (tea.Model, tea.C
 		a.switchView(ViewPrices)
 		return a, a.loadPriceViewData()
 
+	case MenuActionStockSplit:
+		a.stockSplitDialogPreSelectedID = nil
+		return a, a.loadStockSplitDialogData()
+
+	case MenuActionMerger:
+		a.mergerDialogPreSelectedID = nil
+		return a, a.loadMergerDialogData()
+
+	case MenuActionSpinOff:
+		a.spinOffDialogPreSelectedID = nil
+		return a, a.loadSpinOffDialogData()
+
 	case MenuActionNewAccount:
 		return a, a.loadNewAccountDialogData()
 

@@ -38,10 +38,10 @@ func buildMergerDialog(securityOptions []string, securityIDs []types.ID, preSele
 			}
 		}
 	}
-	d.AddSelectField("Source Security", securityOptions, sourceIdx)
+	d.AddComboField("Source Security", securityOptions, sourceIdx)
 
 	// Target Security selector
-	d.AddSelectField("Target Security", securityOptions, 0)
+	d.AddComboField("Target Security", securityOptions, 0)
 
 	// Date
 	f := d.AddDateField("Date", "")

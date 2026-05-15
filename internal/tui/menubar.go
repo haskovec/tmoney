@@ -54,6 +54,9 @@ const (
 	// Securities menu actions
 	MenuActionSecurities
 	MenuActionPrices
+	MenuActionStockSplit
+	MenuActionMerger
+	MenuActionSpinOff
 
 	// View menu actions
 	MenuActionThemeSubmenu
@@ -170,6 +173,9 @@ func defaultMenus() []menu {
 			items: []menuItem{
 				{label: "Security Master", action: MenuActionSecurities},
 				{label: "Prices", action: MenuActionPrices},
+				{label: "Stock Split...", action: MenuActionStockSplit},
+				{label: "Merger...", action: MenuActionMerger},
+				{label: "Spin-Off...", action: MenuActionSpinOff},
 			},
 		},
 		{

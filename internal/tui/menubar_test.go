@@ -509,8 +509,8 @@ func TestMenuBar_SecuritiesMenuItems(t *testing.T) {
 		t.Fatalf("expected Securities menu at index 5, got %q", securitiesMenu.label)
 	}
 
-	if len(securitiesMenu.items) != 2 {
-		t.Fatalf("Securities menu: expected 2 items, got %d", len(securitiesMenu.items))
+	if len(securitiesMenu.items) != 5 {
+		t.Fatalf("Securities menu: expected 5 items, got %d", len(securitiesMenu.items))
 	}
 
 	if securitiesMenu.items[0].action != MenuActionSecurities {
@@ -518,6 +518,15 @@ func TestMenuBar_SecuritiesMenuItems(t *testing.T) {
 	}
 	if securitiesMenu.items[1].action != MenuActionPrices {
 		t.Error("second Securities item should be Prices")
+	}
+	if securitiesMenu.items[2].action != MenuActionStockSplit {
+		t.Error("third Securities item should be Stock Split")
+	}
+	if securitiesMenu.items[3].action != MenuActionMerger {
+		t.Error("fourth Securities item should be Merger")
+	}
+	if securitiesMenu.items[4].action != MenuActionSpinOff {
+		t.Error("fifth Securities item should be Spin-Off")
 	}
 }
 

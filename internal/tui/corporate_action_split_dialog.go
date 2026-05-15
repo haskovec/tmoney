@@ -39,7 +39,7 @@ func buildStockSplitDialog(securityOptions []string, securityIDs []types.ID, pre
 			}
 		}
 	}
-	d.AddSelectField("Security", securityOptions, selectedIdx)
+	d.AddComboField("Security", securityOptions, selectedIdx)
 
 	// Date
 	f := d.AddDateField("Date", "")

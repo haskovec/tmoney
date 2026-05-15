@@ -420,6 +420,15 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Switch to register view
 		a.switchView(ViewInvestmentRegister)
 		return a, a.loadInvestmentRegisterData(a.portfolioData.account.ID)
+	case msg.String() == "s":
+		// Open stock split dialog pre-selected to the highlighted holding's security
+		if a.portfolioMode == portfolioViewHoldings {
+			if h := a.selectedHolding(); h != nil {
+				secID := h.SecurityID
+				a.stockSplitDialogPreSelectedID = &secID
+				return a, a.loadStockSplitDialogData()
+			}
+		}
 	}
 
 	return a, nil
@@ -456,6 +465,7 @@ func portfolioShortcuts() shortcutSection {
 		Title: "Portfolio",
 		Entries: []shortcutEntry{
 			{Key: "Enter", Description: "Lot detail (lot-tracking)"},
+			{Key: "s", Description: "Stock split for selected position"},
 			{Key: "r", Description: "Switch to register"},
 			{Key: "Tab", Description: "Switch sidebar/table"},
 			{Key: "Esc", Description: "Go back"},

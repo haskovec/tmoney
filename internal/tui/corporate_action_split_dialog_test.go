@@ -31,9 +31,9 @@ func TestBuildStockSplitDialog_NewDialog(t *testing.T) {
 		t.Fatalf("expected 3 fields, got %d", len(fields))
 	}
 
-	// Field 0: Security (select)
-	if fields[0].Type != FieldSelect {
-		t.Errorf("field 0 type = %d, want FieldSelect (%d)", fields[0].Type, FieldSelect)
+	// Field 0: Security (typeahead combo)
+	if fields[0].Type != FieldCombo {
+		t.Errorf("field 0 type = %d, want FieldCombo (%d)", fields[0].Type, FieldCombo)
 	}
 	if fields[0].Label != "Security" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Security")

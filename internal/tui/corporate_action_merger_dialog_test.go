@@ -30,9 +30,9 @@ func TestBuildMergerDialog_NewDialog(t *testing.T) {
 		t.Fatalf("expected 5 fields, got %d", len(fields))
 	}
 
-	// Field 0: Source Security (select)
-	if fields[0].Type != FieldSelect {
-		t.Errorf("field 0 type = %d, want FieldSelect (%d)", fields[0].Type, FieldSelect)
+	// Field 0: Source Security (typeahead combo)
+	if fields[0].Type != FieldCombo {
+		t.Errorf("field 0 type = %d, want FieldCombo (%d)", fields[0].Type, FieldCombo)
 	}
 	if fields[0].Label != "Source Security" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Source Security")
@@ -44,9 +44,9 @@ func TestBuildMergerDialog_NewDialog(t *testing.T) {
 		t.Errorf("default source index = %d, want 0", fields[0].SelectedIndex)
 	}
 
-	// Field 1: Target Security (select)
-	if fields[1].Type != FieldSelect {
-		t.Errorf("field 1 type = %d, want FieldSelect (%d)", fields[1].Type, FieldSelect)
+	// Field 1: Target Security (typeahead combo)
+	if fields[1].Type != FieldCombo {
+		t.Errorf("field 1 type = %d, want FieldCombo (%d)", fields[1].Type, FieldCombo)
 	}
 	if fields[1].Label != "Target Security" {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Target Security")

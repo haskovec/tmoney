@@ -40,10 +40,10 @@ func buildSpinOffDialog(securityOptions []string, securityIDs []types.ID, preSel
 			}
 		}
 	}
-	d.AddSelectField("Parent Security", securityOptions, parentIdx)
+	d.AddComboField("Parent Security", securityOptions, parentIdx)
 
 	// Spin-Off Security selector
-	d.AddSelectField("Spin-Off Security", securityOptions, 0)
+	d.AddComboField("Spin-Off Security", securityOptions, 0)
 
 	// Date
 	f := d.AddDateField("Date", "")
