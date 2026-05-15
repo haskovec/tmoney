@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/alpacahq/alpacadecimal"
 	tea "charm.land/bubbletea/v2"
+	"github.com/alpacahq/alpacadecimal"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
