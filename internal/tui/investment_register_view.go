@@ -194,9 +194,10 @@ func (a *App) renderInvestmentRegister() string {
 	// Table
 	headerHeight := 1
 	statusBarHeight := 1
-	titleHeight := 2   // title + separator
-	paddingHeight := 2 // top/bottom padding
-	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight, 1)
+	titleHeight := 2     // title + separator
+	paddingHeight := 2   // top/bottom padding
+	scrollInfoHeight := 1 // reserve a row for the scroll info line so a long list doesn't overflow the status bar
+	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight-scrollInfoHeight, 1)
 
 	if a.investmentTable != nil && len(a.investmentRegister.transactions) > 0 {
 		tableWidth := max(contentWidth-4, 1)
