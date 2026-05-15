@@ -316,7 +316,7 @@ Pure ledger sums. No dependency on positions or lots.
 
 ## Phase 11: TUI
 
-- [ ] **TR-022 — Investment register header gains a total-return summary line**
+- [x] **TR-022 — Investment register header gains a total-return summary line**
   - RED: test in `internal/tui/investment_register_test.go` (or the
     equivalent) asserts the rendered header for an investment account
     includes a second line with `Unrealized`, `Realized`, `Div`, `Int`,

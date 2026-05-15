@@ -1004,6 +1004,125 @@ func TestInvestmentRegisterView_SwitchView(t *testing.T) {
 	}
 }
 
+func TestRenderInvestmentRegister_TotalReturnHeader(t *testing.T) {
+	pct := 22.51
+	val := &investment.AccountValuation{
+		CashBalance:       types.MustNewMoney("1200.00"),
+		MarketValue:       types.MustNewMoney("27000.00"),
+		TotalValue:        types.MustNewMoney("28200.00"),
+		TotalCostBasis:    types.MustNewMoney("22500.00"),
+		TotalGainLoss:     types.MustNewMoney("4500.00"),
+		RealizedGain:      types.MustNewMoney("200.00"),
+		DividendsReceived: types.MustNewMoney("570.00"),
+		InterestReceived:  types.MustNewMoney("13.00"),
+		FeesPaid:          types.MustNewMoney("15.00"),
+		TotalReturn:       types.MustNewMoney("5267.50"),
+		TotalReturnPct:    &pct,
+	}
+
+	app := &App{
+		width:  120,
+		height: 30,
+		styles: NewStyles(),
+		investmentRegister: &investmentRegisterData{
+			account: &account.Account{
+				BaseModel: types.NewBaseModel(),
+				Name:      "Brokerage",
+				Type:      account.TypeInvestment,
+			},
+			transactions:  []*investment.Transaction{},
+			securityNames: map[types.ID]string{},
+			cashBalance:   types.MustNewMoney("1200.00"),
+			valuation:     val,
+		},
+	}
+	app.styles.Resize(120, 30)
+	app.buildInvestmentRegisterTable()
+
+	output := stripAnsi(app.renderInvestmentRegister())
+
+	wants := []string{
+		"Unrealized", "$4500.00",
+		"Realized", "$200.00",
+		"Div", "$570.00",
+		"Int", "$13.00",
+		"Fees", "-$15.00",
+		"Total return", "$5267.50",
+		"22.51%",
+	}
+	for _, want := range wants {
+		if !strings.Contains(output, want) {
+			t.Errorf("output should contain %q\nfull output:\n%s", want, output)
+		}
+	}
+}
+
+func TestRenderInvestmentRegister_TotalReturnPctNilRendersDash(t *testing.T) {
+	val := &investment.AccountValuation{
+		CashBalance:       types.MustNewMoney("100.00"),
+		TotalGainLoss:     types.ZeroMoney,
+		RealizedGain:      types.ZeroMoney,
+		DividendsReceived: types.ZeroMoney,
+		InterestReceived:  types.ZeroMoney,
+		FeesPaid:          types.ZeroMoney,
+		TotalReturn:       types.ZeroMoney,
+		TotalReturnPct:    nil,
+	}
+
+	app := &App{
+		width:  120,
+		height: 30,
+		styles: NewStyles(),
+		investmentRegister: &investmentRegisterData{
+			account: &account.Account{
+				BaseModel: types.NewBaseModel(),
+				Name:      "Brokerage",
+				Type:      account.TypeInvestment,
+			},
+			transactions:  []*investment.Transaction{},
+			securityNames: map[types.ID]string{},
+			cashBalance:   types.MustNewMoney("100.00"),
+			valuation:     val,
+		},
+	}
+	app.styles.Resize(120, 30)
+	app.buildInvestmentRegisterTable()
+
+	output := stripAnsi(app.renderInvestmentRegister())
+	if !strings.Contains(output, "Total return") {
+		t.Fatalf("output should contain 'Total return' line; got:\n%s", output)
+	}
+	if !strings.Contains(output, "—") {
+		t.Errorf("output should contain '—' placeholder when TotalReturnPct is nil; got:\n%s", output)
+	}
+}
+
+func TestRenderInvestmentRegister_NilValuationOmitsTotalReturn(t *testing.T) {
+	app := &App{
+		width:  120,
+		height: 30,
+		styles: NewStyles(),
+		investmentRegister: &investmentRegisterData{
+			account: &account.Account{
+				BaseModel: types.NewBaseModel(),
+				Name:      "Brokerage",
+				Type:      account.TypeInvestment,
+			},
+			transactions:  []*investment.Transaction{},
+			securityNames: map[types.ID]string{},
+			cashBalance:   types.MustNewMoney("100.00"),
+			valuation:     nil,
+		},
+	}
+	app.styles.Resize(120, 30)
+	app.buildInvestmentRegisterTable()
+
+	output := stripAnsi(app.renderInvestmentRegister())
+	if strings.Contains(output, "Total return") {
+		t.Errorf("output should NOT contain 'Total return' when valuation is nil; got:\n%s", output)
+	}
+}
+
 func TestInvestmentRegister_SecurityNameLookup(t *testing.T) {
 	secID1 := types.NewID()
 	secID2 := types.NewID()

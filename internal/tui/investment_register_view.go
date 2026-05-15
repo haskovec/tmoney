@@ -19,6 +19,7 @@ type investmentRegisterData struct {
 	transactions  []*investment.Transaction
 	securityNames map[types.ID]string // SecurityID -> Ticker
 	cashBalance   types.Money
+	valuation     *investment.AccountValuation
 }
 
 // investmentRegisterLoadedMsg is sent when investment register data has been loaded.
@@ -58,6 +59,12 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 				return errMsg{err: err}
 			}
 			data.cashBalance = cash
+
+			val, err := a.investmentSvc.GetAccountValuation(accountID, types.Today(), investment.ValuationOptions{})
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.valuation = val
 		}
 
 		// Load security names for display
@@ -187,6 +194,12 @@ func (a *App) renderInvestmentRegister() string {
 	titleRow := a.styles.Title.Render(acctName) + strings.Repeat(" ", padding) + cashStyle.Render(cashStr)
 	sections = append(sections, titleRow)
 
+	// Total-return breakdown (one line of components + one line for total).
+	if breakdown, total := a.renderInvestmentTotalReturnLines(); breakdown != "" {
+		sections = append(sections, breakdown)
+		sections = append(sections, total)
+	}
+
 	// Separator
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
@@ -215,6 +228,64 @@ func (a *App) renderInvestmentRegister() string {
 	return lipgloss.NewStyle().
 		Padding(1, 2).
 		Render(strings.Join(sections, "\n"))
+}
+
+// renderInvestmentTotalReturnLines builds the two header lines that show the
+// total-return breakdown for the investment account: a components line
+// (Unrealized · Realized · Div · Int · Fees) and a summary line
+// (Total return $amount (pct%)). Returns ("", "") when no valuation is
+// loaded so the register still renders during the initial load.
+//
+// FeesPaid is stored as a positive magnitude on the valuation per the
+// total-return spec; the line negates it before formatting so the leading
+// minus sign visually reflects the subtraction in the total-return formula.
+// A nil TotalReturnPct (no buys ever — denominator is zero) renders as the
+// "—" placeholder so the line shape stays stable.
+func (a *App) renderInvestmentTotalReturnLines() (string, string) {
+	if a.investmentRegister == nil || a.investmentRegister.valuation == nil {
+		return "", ""
+	}
+	v := a.investmentRegister.valuation
+
+	money := func(m types.Money) string {
+		s := formatDashboardMoney(m)
+		switch {
+		case m.IsNegative():
+			return a.styles.Negative.Render(s)
+		case m.IsZero():
+			return a.styles.Bold.Render(s)
+		default:
+			return a.styles.Positive.Render(s)
+		}
+	}
+
+	// Fees are displayed as a negative magnitude so the subtraction in the
+	// total-return formula is visually obvious. Zero stays zero.
+	feeStr := formatDashboardMoney(v.FeesPaid)
+	if !v.FeesPaid.IsZero() {
+		feeStr = formatDashboardMoney(v.FeesPaid.Neg())
+	}
+	feeRendered := a.styles.Bold.Render(feeStr)
+	if !v.FeesPaid.IsZero() {
+		feeRendered = a.styles.Negative.Render(feeStr)
+	}
+
+	parts := []string{
+		a.styles.Muted.Render("Unrealized") + " " + money(v.TotalGainLoss),
+		a.styles.Muted.Render("Realized") + " " + money(v.RealizedGain),
+		a.styles.Muted.Render("Div") + " " + money(v.DividendsReceived),
+		a.styles.Muted.Render("Int") + " " + money(v.InterestReceived),
+		a.styles.Muted.Render("Fees") + " " + feeRendered,
+	}
+	breakdown := strings.Join(parts, " · ")
+
+	pctStr := "—"
+	if v.TotalReturnPct != nil {
+		pctStr = fmt.Sprintf("%.2f%%", *v.TotalReturnPct)
+	}
+	total := a.styles.Muted.Render("Total return") + " " + money(v.TotalReturn) + " (" + pctStr + ")"
+
+	return breakdown, total
 }
 
 // handleInvestmentRegisterKeys handles key presses in the investment register view.
