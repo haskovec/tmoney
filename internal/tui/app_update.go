@@ -297,7 +297,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case stockSplitDialogSavedMsg:
 		a.statusbar.AddNotification("Stock split executed", NotificationInfo)
-		return a, a.loadSecurityViewData()
+		return a, a.refreshAfterCorporateAction()
 
 	case mergerDialogDataMsg:
 		a.mergerDialogData = msg.data
@@ -313,7 +313,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case mergerDialogSavedMsg:
 		a.statusbar.AddNotification("Merger executed", NotificationInfo)
-		return a, a.loadSecurityViewData()
+		return a, a.refreshAfterCorporateAction()
 
 	case spinOffDialogDataMsg:
 		a.spinOffDialogData = msg.data
@@ -325,7 +325,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case spinOffDialogSavedMsg:
 		a.statusbar.AddNotification("Spin-off executed", NotificationInfo)
-		return a, a.loadSecurityViewData()
+		return a, a.refreshAfterCorporateAction()
 
 	case corporateActionViewLoadedMsg:
 		a.corporateActionView = msg.data
@@ -334,6 +334,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case corporateActionDeletedMsg:
 		a.statusbar.AddNotification("Corporate action reversed", NotificationInfo)
+		// Invalidate downstream view caches so re-entering them refetches.
+		a.portfolioData = nil
 		return a, a.loadCorporateActionViewData()
 
 	case scheduledViewDataLoadedMsg:

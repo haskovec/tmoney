@@ -158,3 +158,26 @@ func (a *App) reloadCurrentView() tea.Cmd {
 	}
 	return tea.Batch(cmds...)
 }
+
+// refreshAfterCorporateAction returns the right reload command for the
+// currently-active view after a corporate-action create or delete. The
+// action mutates lots/positions/prices, so whichever view the user is on
+// needs its data re-fetched; using a static "always reload Securities"
+// reload leaves the Portfolio (or Investment Register) stale.
+func (a *App) refreshAfterCorporateAction() tea.Cmd {
+	switch a.currentView {
+	case ViewPortfolio:
+		if a.portfolioData != nil && a.portfolioData.account != nil {
+			return a.loadPortfolioData(a.portfolioData.account.ID)
+		}
+	case ViewInvestmentRegister:
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		}
+	case ViewCorporateActions:
+		return a.loadCorporateActionViewData()
+	case ViewSecurities:
+		return a.loadSecurityViewData()
+	}
+	return a.loadSecurityViewData()
+}
