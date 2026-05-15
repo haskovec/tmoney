@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -199,10 +200,56 @@ func (a *App) handleMenuAction(action MenuAction, data string) (tea.Model, tea.C
 		}
 		return a, a.reloadTheme(data)
 
+	case MenuActionToggleClosedPositions:
+		return a.toggleClosedPositions()
+
 	case MenuActionNone:
 		// No action
 	}
 
+	return a, nil
+}
+
+// valuationOptions returns the ValuationOptions struct that callers
+// should pass when requesting an investment account valuation. The
+// IncludeClosed flag is sourced from cfg.ShowClosedPositions so the
+// View → Show closed positions toggle plumbs through to every
+// valuation-bearing view (dashboard cards, register header, portfolio
+// holdings list). A nil cfg falls back to IncludeClosed=false so the
+// helper is safe to call from tests that don't construct a config.
+func (a *App) valuationOptions() investment.ValuationOptions {
+	if a.cfg == nil {
+		return investment.ValuationOptions{}
+	}
+	return investment.ValuationOptions{IncludeClosed: a.cfg.ShowClosedPositions}
+}
+
+// toggleClosedPositions flips cfg.ShowClosedPositions, persists the
+// change (best-effort — Save() is a no-op under `go test`), and
+// reloads whichever view is currently displaying a valuation so the
+// new IncludeClosed setting takes effect immediately. Views that
+// don't read the flag are left untouched.
+func (a *App) toggleClosedPositions() (tea.Model, tea.Cmd) {
+	a.menubar.Deactivate()
+	if a.cfg == nil {
+		return a, nil
+	}
+	a.cfg.ShowClosedPositions = !a.cfg.ShowClosedPositions
+	_ = a.cfg.Save()
+
+	// Reload the active view so its valuation reflects the new toggle.
+	switch a.currentView {
+	case ViewDashboard:
+		return a, a.loadDashboardData()
+	case ViewInvestmentRegister:
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		}
+	case ViewPortfolio:
+		if a.portfolioData != nil && a.portfolioData.account != nil {
+			return a, a.loadPortfolioData(a.portfolioData.account.ID)
+		}
+	}
 	return a, nil
 }
 

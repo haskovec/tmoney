@@ -332,7 +332,7 @@ Pure ledger sums. No dependency on positions or lots.
   - GREEN: extend the dashboard card rendering. Non-investment accounts
     are unaffected.
 
-- [ ] **TR-024 — `View → Show closed positions` toggle**
+- [x] **TR-024 — `View → Show closed positions` toggle**
   - RED: test in `internal/tui/menubar_test.go` (or equivalent) that the
     `View` menu gains a "Show closed positions" item with a `✓` prefix
     when the toggle is on. Selecting the item flips the toggle and

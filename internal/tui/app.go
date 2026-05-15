@@ -371,10 +371,12 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 
 	a.menubar.SetMenuItemsBuilder(viewMenuIndex, func() []menuItem {
 		var active string
+		var showClosed bool
 		if a.cfg != nil {
 			active = a.cfg.Theme
+			showClosed = a.cfg.ShowClosedPositions
 		}
-		return buildThemeMenuItems(active)
+		return buildViewMenuItems(active, showClosed)
 	})
 
 	// Apply the persisted theme (TH-029). On a clean load the styles

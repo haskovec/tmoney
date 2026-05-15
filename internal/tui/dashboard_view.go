@@ -103,7 +103,7 @@ func (a *App) loadDashboardData() tea.Cmd {
 				if acct.Type != string(account.TypeInvestment) {
 					continue
 				}
-				val, err := a.investmentSvc.GetAccountValuation(acct.AccountID, types.Today(), investment.ValuationOptions{})
+				val, err := a.investmentSvc.GetAccountValuation(acct.AccountID, types.Today(), a.valuationOptions())
 				if err == nil {
 					data.investmentHoldings[acct.AccountID] = val
 				}

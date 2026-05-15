@@ -28,6 +28,14 @@ type Config struct {
 	// this key keep working unchanged.
 	Theme string `json:"theme,omitempty"`
 
+	// ShowClosedPositions persists the "View → Show closed positions"
+	// toggle. When true, investment views (dashboard cards, register
+	// header, portfolio holdings list) include fully-sold securities
+	// alongside currently-held ones so total-return numbers reflect the
+	// account's full history. Old config files without this key keep the
+	// default of false (closed positions hidden).
+	ShowClosedPositions bool `json:"show_closed_positions,omitempty"`
+
 	// path is the file path where this config is stored (not serialized).
 	path string `json:"-"`
 }
