@@ -342,7 +342,7 @@ Pure ledger sums. No dependency on positions or lots.
     Plumb the bool through to `ValuationOptions.IncludeClosed` when the
     investment register / dashboard requests its valuation.
 
-- [ ] **TR-025 — Visual smoke check**
+- [x] **TR-025 — Visual smoke check**
   - Manual: launch `tmoney`, open an investment account register,
     confirm the new header line appears. Toggle View → Show closed
     positions; confirm the holdings list grows to include fully-sold
