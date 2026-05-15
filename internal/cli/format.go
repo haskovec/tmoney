@@ -799,15 +799,7 @@ func printPortfolioSummary(w io.Writer, acct *account.Account, valuation *invest
 
 	printClosedPositions(w, closed, securityMap)
 
-	// Summary
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "SUMMARY")
-	fmt.Fprintln(w, "-------")
-	fmt.Fprintf(w, "Cash Balance:     %s\n", formatMoney(valuation.CashBalance, acct.Currency))
-	fmt.Fprintf(w, "Market Value:     %s\n", formatMoney(valuation.MarketValue, acct.Currency))
-	fmt.Fprintf(w, "Total Value:      %s\n", formatMoney(valuation.TotalValue, acct.Currency))
-	fmt.Fprintf(w, "Total Cost Basis: %s\n", formatMoney(valuation.TotalCostBasis, acct.Currency))
-	fmt.Fprintf(w, "Total Gain/Loss:  %s\n", formatGainLoss(valuation.TotalGainLoss, valuation.TotalGainPct, acct.Currency))
+	printAccountTotals(w, acct, valuation)
 }
 
 // printPortfolioWithLots prints the portfolio with lot detail for each holding.
@@ -872,14 +864,34 @@ func printPortfolioWithLots(w io.Writer, acct *account.Account, valuation *inves
 
 	printClosedPositions(w, closed, securityMap)
 
-	// Summary
-	fmt.Fprintln(w, "SUMMARY")
-	fmt.Fprintln(w, "-------")
-	fmt.Fprintf(w, "Cash Balance:     %s\n", formatMoney(valuation.CashBalance, acct.Currency))
-	fmt.Fprintf(w, "Market Value:     %s\n", formatMoney(valuation.MarketValue, acct.Currency))
-	fmt.Fprintf(w, "Total Value:      %s\n", formatMoney(valuation.TotalValue, acct.Currency))
-	fmt.Fprintf(w, "Total Cost Basis: %s\n", formatMoney(valuation.TotalCostBasis, acct.Currency))
-	fmt.Fprintf(w, "Total Gain/Loss:  %s\n", formatGainLoss(valuation.TotalGainLoss, valuation.TotalGainPct, acct.Currency))
+	printAccountTotals(w, acct, valuation)
+}
+
+// printAccountTotals renders the account totals block beneath the holdings
+// table, one row per total-return component in the order defined by the
+// total-return spec. Total return % renders the "—" placeholder when
+// TotalReturnPct is nil (no buys ever — denominator is zero).
+func printAccountTotals(w io.Writer, acct *account.Account, valuation *investment.AccountValuation) {
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Account totals")
+	fmt.Fprintln(w, "--------------")
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	row := func(label, value string) {
+		fmt.Fprintf(tw, "  %s\t%s\n", label, value)
+	}
+	row("Market value", formatMoney(valuation.MarketValue, acct.Currency))
+	row("Cash", formatMoney(valuation.CashBalance, acct.Currency))
+	row("Total value", formatMoney(valuation.TotalValue, acct.Currency))
+	row("Cost basis (open)", formatMoney(valuation.TotalCostBasis, acct.Currency))
+	row("Unrealized gain", formatMoney(valuation.TotalGainLoss, acct.Currency))
+	row("Realized gain", formatMoney(valuation.RealizedGain, acct.Currency))
+	row("Dividends received", formatMoney(valuation.DividendsReceived, acct.Currency))
+	row("Interest received", formatMoney(valuation.InterestReceived, acct.Currency))
+	row("Fees paid", formatFeesPaid(valuation.FeesPaid, acct.Currency))
+	row("Total return", formatMoney(valuation.TotalReturn, acct.Currency))
+	row("Total return %", formatReturnPct(valuation.TotalReturnPct))
+	tw.Flush()
 }
 
 // partitionHoldings splits holdings into open (still held) and closed

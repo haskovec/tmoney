@@ -289,7 +289,7 @@ Pure ledger sums. No dependency on positions or lots.
     use the existing `formatMoney` / `formatPercent` helpers; add an
     `unavailable` placeholder string for `RealizedGainUnavailable` rows.
 
-- [ ] **TR-019 — Add account totals block with total-return rows**
+- [x] **TR-019 — Add account totals block with total-return rows**
   - RED: test asserts the totals block printed below the holdings table
     contains the rows: `Cost basis (open)`, `Unrealized gain`,
     `Realized gain`, `Dividends received`, `Interest received`,

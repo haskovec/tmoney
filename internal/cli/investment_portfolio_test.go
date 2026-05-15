@@ -76,11 +76,11 @@ func TestInvestmentPortfolio_EmptyAccount(t *testing.T) {
 	if !strings.Contains(output, "(No holdings)") {
 		t.Error("output should indicate no holdings")
 	}
-	if !strings.Contains(output, "SUMMARY") {
-		t.Error("output should contain summary section")
+	if !strings.Contains(output, "Account totals") {
+		t.Error("output should contain account totals section")
 	}
-	if !strings.Contains(output, "Cash Balance:") {
-		t.Error("output should show cash balance")
+	if !strings.Contains(output, "Cash") {
+		t.Error("output should show cash row")
 	}
 }
 
@@ -111,8 +111,8 @@ func TestInvestmentPortfolio_WithHoldings(t *testing.T) {
 	if !strings.Contains(output, "Market Value") {
 		t.Error("output should contain Market Value column header")
 	}
-	if !strings.Contains(output, "Gain/Loss") {
-		t.Error("output should contain Gain/Loss column header")
+	if !strings.Contains(output, "UNREAL") {
+		t.Error("output should contain UNREAL column header")
 	}
 	if !strings.Contains(output, "AAPL") {
 		t.Error("output should contain AAPL ticker")
@@ -126,23 +126,23 @@ func TestInvestmentPortfolio_WithHoldings(t *testing.T) {
 	if !strings.Contains(output, "Microsoft Corp.") {
 		t.Error("output should contain Microsoft Corp. name")
 	}
-	if !strings.Contains(output, "SUMMARY") {
-		t.Error("output should contain SUMMARY section")
+	if !strings.Contains(output, "Account totals") {
+		t.Error("output should contain Account totals section")
 	}
-	if !strings.Contains(output, "Cash Balance:") {
-		t.Error("output should show cash balance")
+	if !strings.Contains(output, "Cash") {
+		t.Error("output should show cash row")
 	}
-	if !strings.Contains(output, "Market Value:") {
-		t.Error("output should show market value")
+	if !strings.Contains(output, "Market value") {
+		t.Error("output should show market value row")
 	}
-	if !strings.Contains(output, "Total Value:") {
-		t.Error("output should show total value")
+	if !strings.Contains(output, "Total value") {
+		t.Error("output should show total value row")
 	}
-	if !strings.Contains(output, "Total Cost Basis:") {
-		t.Error("output should show total cost basis")
+	if !strings.Contains(output, "Cost basis (open)") {
+		t.Error("output should show cost basis (open) row")
 	}
-	if !strings.Contains(output, "Total Gain/Loss:") {
-		t.Error("output should show total gain/loss")
+	if !strings.Contains(output, "Unrealized gain") {
+		t.Error("output should show unrealized gain row")
 	}
 }
 
@@ -218,8 +218,8 @@ func TestInvestmentPortfolio_ShowLotsWithLotTracking(t *testing.T) {
 	if !strings.Contains(output, "MSFT") {
 		t.Error("output should contain MSFT ticker")
 	}
-	if !strings.Contains(output, "SUMMARY") {
-		t.Error("output should contain SUMMARY section")
+	if !strings.Contains(output, "Account totals") {
+		t.Error("output should contain Account totals section")
 	}
 }
 
@@ -382,6 +382,82 @@ func TestInvestmentPortfolio_RealizedGainUnavailable(t *testing.T) {
 	// unavailable — the gate only suppresses the realized-gain column.
 	if !strings.Contains(output, "50.00") {
 		t.Errorf("expected the $50 dividend to render even with corporate-action gate; got:\n%s", output)
+	}
+}
+
+// TR-019: the portfolio command prints an Account totals block below the
+// holdings table with one row per total-return component, in the order
+// specified by the spec.
+func TestInvestmentPortfolio_AccountTotalsBlock(t *testing.T) {
+	dbPath := createPortfolioCmdTestDBWithTotalReturn(t)
+
+	stdout := &bytes.Buffer{}
+	err := executeWith([]string{
+		"investment", "portfolio",
+		"--file", dbPath,
+		"--account", "Brokerage",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+	}
+
+	output := stdout.String()
+
+	wantInOrder := []string{
+		"Cost basis (open)",
+		"Unrealized gain",
+		"Realized gain",
+		"Dividends received",
+		"Interest received",
+		"Fees paid",
+		"Total return",
+		"Total return %",
+	}
+	lastIdx := -1
+	var lastLabel string
+	for _, want := range wantInOrder {
+		idx := strings.Index(output, want)
+		if idx < 0 {
+			t.Errorf("expected output to contain totals row %q; got:\n%s", want, output)
+			continue
+		}
+		if idx < lastIdx {
+			t.Errorf("totals row %q (idx=%d) appeared before previous row %q (idx=%d); got:\n%s",
+				want, idx, lastLabel, lastIdx, output)
+		}
+		lastIdx = idx
+		lastLabel = want
+	}
+}
+
+// TR-019: when TotalReturnPct is nil (no buys ever, denominator is zero),
+// the "Total return %" row renders the "—" placeholder rather than 0%.
+func TestInvestmentPortfolio_TotalReturnPctNilRendersDash(t *testing.T) {
+	dbPath := createInvestmentTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := executeWith([]string{
+		"investment", "portfolio",
+		"--file", dbPath,
+		"--account", "Brokerage",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	var pctLine string
+	for line := range strings.SplitSeq(output, "\n") {
+		if strings.Contains(line, "Total return %") {
+			pctLine = line
+			break
+		}
+	}
+	if pctLine == "" {
+		t.Fatalf("expected output to contain 'Total return %%' line; got:\n%s", output)
+	}
+	if !strings.Contains(pctLine, "—") {
+		t.Errorf("expected 'Total return %%' line to contain '—' when TotalReturnPct is nil; got line: %q", pctLine)
 	}
 }
 
