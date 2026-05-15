@@ -604,6 +604,191 @@ func TestApp_RenderDashboard_InvestmentHoldingsNilMap(t *testing.T) {
 	}
 }
 
+func TestApp_RenderDashboard_InvestmentAccountTRRow(t *testing.T) {
+	// TR-023: an investment account card on the dashboard renders a `TR`
+	// line below the account balance row with formatted total return $
+	// and %.
+	styles := NewStyles()
+	styles.Resize(120, 40)
+
+	investAccountID := types.NewID()
+	pct := 22.51
+
+	app := &App{
+		currentView:               ViewDashboard,
+		width:                     120,
+		height:                    40,
+		styles:                    styles,
+		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+				},
+				TotalAssets:      types.MustNewMoney("25000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("25000.00"),
+			},
+			investmentHoldings: map[types.ID]*investment.AccountValuation{
+				investAccountID: {
+					AccountID:      investAccountID,
+					TotalValue:     types.MustNewMoney("25000.00"),
+					TotalReturn:    types.MustNewMoney("5267.50"),
+					TotalReturnPct: &pct,
+				},
+			},
+			securityTickers: map[types.ID]string{},
+			payeeNames:      make(map[types.ID]string),
+			accountNames:    make(map[types.ID]string),
+		},
+	}
+
+	view := stripAnsi(app.renderDashboard())
+
+	if !contains(view, "TR") {
+		t.Error("dashboard should show 'TR' label for investment accounts")
+	}
+	if !contains(view, "$5267.50") {
+		t.Errorf("dashboard should show TotalReturn value, got:\n%s", view)
+	}
+	if !contains(view, "22.51%") {
+		t.Errorf("dashboard should show TotalReturnPct value, got:\n%s", view)
+	}
+}
+
+func TestApp_RenderDashboard_InvestmentAccountTRRowNegative(t *testing.T) {
+	// TR-023: a negative total return renders with the negative-money
+	// format (leading minus sign).
+	styles := NewStyles()
+	styles.Resize(120, 40)
+
+	investAccountID := types.NewID()
+	pct := -8.25
+
+	app := &App{
+		currentView: ViewDashboard,
+		width:       120,
+		height:      40,
+		styles:      styles,
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("9000.00")},
+				},
+				TotalAssets:      types.MustNewMoney("9000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("9000.00"),
+			},
+			investmentHoldings: map[types.ID]*investment.AccountValuation{
+				investAccountID: {
+					AccountID:      investAccountID,
+					TotalValue:     types.MustNewMoney("9000.00"),
+					TotalReturn:    types.MustNewMoney("-825.00"),
+					TotalReturnPct: &pct,
+				},
+			},
+			securityTickers: map[types.ID]string{},
+			payeeNames:      make(map[types.ID]string),
+			accountNames:    make(map[types.ID]string),
+		},
+	}
+
+	view := stripAnsi(app.renderDashboard())
+
+	if !contains(view, "-$825.00") {
+		t.Errorf("dashboard should show negative TotalReturn '-$825.00', got:\n%s", view)
+	}
+	if !contains(view, "-8.25%") {
+		t.Errorf("dashboard should show negative TotalReturnPct '-8.25%%', got:\n%s", view)
+	}
+}
+
+func TestApp_RenderDashboard_InvestmentAccountTRPctNilRendersDash(t *testing.T) {
+	// TR-023: a nil TotalReturnPct (no buys ever — denominator is zero)
+	// renders the "—" placeholder so the line shape stays stable.
+	styles := NewStyles()
+	styles.Resize(120, 40)
+
+	investAccountID := types.NewID()
+
+	app := &App{
+		currentView: ViewDashboard,
+		width:       120,
+		height:      40,
+		styles:      styles,
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: investAccountID, Name: "Rollover IRA", Type: "investment", Balance: types.MustNewMoney("10000.00")},
+				},
+				TotalAssets:      types.MustNewMoney("10000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("10000.00"),
+			},
+			investmentHoldings: map[types.ID]*investment.AccountValuation{
+				investAccountID: {
+					AccountID:      investAccountID,
+					TotalValue:     types.MustNewMoney("10000.00"),
+					TotalReturn:    types.ZeroMoney,
+					TotalReturnPct: nil,
+				},
+			},
+			securityTickers: map[types.ID]string{},
+			payeeNames:      make(map[types.ID]string),
+			accountNames:    make(map[types.ID]string),
+		},
+	}
+
+	view := stripAnsi(app.renderDashboard())
+
+	if !contains(view, "TR") {
+		t.Errorf("dashboard should still show TR row when TotalReturnPct is nil, got:\n%s", view)
+	}
+	if !contains(view, "—") {
+		t.Errorf("dashboard should show '—' placeholder when TotalReturnPct is nil, got:\n%s", view)
+	}
+}
+
+func TestApp_RenderDashboard_NonInvestmentAccountNoTRRow(t *testing.T) {
+	// TR-023: non-investment accounts (checking, savings, etc.) should
+	// NOT get a TR row.
+	styles := NewStyles()
+	styles.Resize(120, 40)
+
+	checkingID := types.NewID()
+
+	app := &App{
+		currentView: ViewDashboard,
+		width:       120,
+		height:      40,
+		styles:      styles,
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: checkingID, Name: "Checking", Type: "checking", Balance: types.MustNewMoney("5000.00")},
+				},
+				TotalAssets:      types.MustNewMoney("5000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("5000.00"),
+			},
+			investmentHoldings: map[types.ID]*investment.AccountValuation{},
+			securityTickers:    map[types.ID]string{},
+			payeeNames:         make(map[types.ID]string),
+			accountNames:       make(map[types.ID]string),
+		},
+	}
+
+	view := stripAnsi(app.renderDashboard())
+
+	// The view does have a column-bottom "Total" row, so we can't search
+	// for "TR" alone (it could collide with substrings). Use the
+	// account-line indent + "TR" to look for the per-account row that
+	// should NOT exist for non-investment accounts.
+	if contains(view, "    TR ") {
+		t.Errorf("dashboard should NOT show TR row for non-investment accounts, got:\n%s", view)
+	}
+}
+
 func TestApp_DashboardInvestmentAccountOpensPortfolioView(t *testing.T) {
 	// SM-176: Selecting an investment account on the dashboard should open the
 	// portfolio view (ViewPortfolio), not the regular register or investment register.

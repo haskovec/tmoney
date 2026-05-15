@@ -221,6 +221,15 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 			line := fmt.Sprintf("%s%-*s %s", prefix, colWidth-len(amount)-lipgloss.Width(prefix)-2, name, a.styles.Positive.Render(amount))
 			assetsLines = append(assetsLines, line)
 
+			// TR (total return) row for investment accounts — always shown
+			// regardless of expand state so the headline figure stays
+			// visible.
+			if acct.Type == string(account.TypeInvestment) {
+				if tr := a.renderDashboardTRLine(acct.AccountID, colWidth); tr != "" {
+					assetsLines = append(assetsLines, tr)
+				}
+			}
+
 			// Show top holdings if investment account is expanded
 			if acct.Type == string(account.TypeInvestment) && a.dashboardExpandedAccounts[acct.AccountID] {
 				assetsLines = append(assetsLines, a.renderDashboardHoldings(acct.AccountID, colWidth)...)
@@ -268,6 +277,44 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	}
 
 	return strings.Join(rows, "\n")
+}
+
+// renderDashboardTRLine renders the total-return row for an investment
+// account on the dashboard. It sits directly under the account balance
+// line and shows the account's TotalReturn value and TotalReturnPct.
+// Returns "" when no valuation is available so callers can skip the row
+// entirely (e.g., during the initial dashboard load before valuations
+// have arrived).
+//
+// A nil TotalReturnPct (denominator zero — no buys ever) renders as the
+// "—" placeholder so the row shape stays stable across accounts.
+func (a *App) renderDashboardTRLine(accountID types.ID, colWidth int) string {
+	if a.dashboard == nil || a.dashboard.investmentHoldings == nil {
+		return ""
+	}
+	val, ok := a.dashboard.investmentHoldings[accountID]
+	if !ok || val == nil {
+		return ""
+	}
+
+	pctStr := "—"
+	if val.TotalReturnPct != nil {
+		pctStr = fmt.Sprintf("%.2f%%", *val.TotalReturnPct)
+	}
+
+	amount := formatDashboardMoney(val.TotalReturn)
+	right := amount + " " + pctStr
+
+	style := a.styles.Muted
+	switch {
+	case val.TotalReturn.IsNegative():
+		style = a.styles.Negative
+	case !val.TotalReturn.IsZero():
+		style = a.styles.Positive
+	}
+
+	pad := max(colWidth-lipgloss.Width(right)-6, 1)
+	return fmt.Sprintf("    %-*s %s", pad, "TR", style.Render(right))
 }
 
 // renderDashboardHoldings renders the top holdings for an investment account on the dashboard.

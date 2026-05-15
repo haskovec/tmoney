@@ -325,7 +325,7 @@ Pure ledger sums. No dependency on positions or lots.
     `GetAccountValuation` and format the new fields. Re-use the
     existing money formatter.
 
-- [ ] **TR-023 — Dashboard per-account card gains a `TR` row**
+- [x] **TR-023 — Dashboard per-account card gains a `TR` row**
   - RED: test that the dashboard valuation card for an investment
     account renders an extra `TR` line below the existing `Total` row
     with formatted `TotalReturn` and `TotalReturnPct`.
