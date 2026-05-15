@@ -99,5 +99,9 @@ func runInvestmentPortfolio(opts *investmentPortfolioOptions, w io.Writer) error
 		printPortfolioSummary(w, acct, valuation, securityMap)
 	}
 
+	if !opts.includeClosed && valuation.HasClosedPositions {
+		fmt.Fprintf(w, "Hint: --include-closed adds %d closed-position rows.\n", valuation.ClosedPositionCount)
+	}
+
 	return nil
 }

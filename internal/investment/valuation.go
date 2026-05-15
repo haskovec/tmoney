@@ -26,14 +26,15 @@ type AccountValuation struct {
 
 	// Total-return breakdown (see specs/investment-total-return.md).
 	// TotalGainLoss / TotalGainPct retain their unrealized-only meaning.
-	RealizedGain       types.Money `json:"realized_gain"`
-	DividendsReceived  types.Money `json:"dividends_received"`
-	InterestReceived   types.Money `json:"interest_received"`
-	FeesPaid           types.Money `json:"fees_paid"`
-	TotalCostDeployed  types.Money `json:"total_cost_deployed"`
-	TotalReturn        types.Money `json:"total_return"`
-	TotalReturnPct     *float64    `json:"total_return_pct,omitempty"`
-	HasClosedPositions bool        `json:"has_closed_positions"`
+	RealizedGain        types.Money `json:"realized_gain"`
+	DividendsReceived   types.Money `json:"dividends_received"`
+	InterestReceived    types.Money `json:"interest_received"`
+	FeesPaid            types.Money `json:"fees_paid"`
+	TotalCostDeployed   types.Money `json:"total_cost_deployed"`
+	TotalReturn         types.Money `json:"total_return"`
+	TotalReturnPct      *float64    `json:"total_return_pct,omitempty"`
+	HasClosedPositions  bool        `json:"has_closed_positions"`
+	ClosedPositionCount int         `json:"closed_position_count"`
 }
 
 // Holding represents a rolled-up holding of a single security in an account.

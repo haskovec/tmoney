@@ -96,7 +96,8 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts 
 	if err != nil {
 		return nil, fmt.Errorf("failed to list ever-held securities: %w", err)
 	}
-	hasClosedPositions := len(everHeld) > openCount
+	closedPositionCount := max(len(everHeld)-openCount, 0)
+	hasClosedPositions := closedPositionCount > 0
 
 	totalReturn := totalGainLoss.
 		Add(realizedGain).
@@ -110,22 +111,23 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts 
 	}
 
 	return &AccountValuation{
-		AccountID:          accountID,
-		CashBalance:        cashBalance,
-		MarketValue:        marketValue,
-		TotalValue:         totalValue,
-		TotalCostBasis:     totalCostBasis,
-		TotalGainLoss:      totalGainLoss,
-		TotalGainPct:       totalGainPct,
-		Holdings:           holdings,
-		RealizedGain:       realizedGain,
-		DividendsReceived:  dividendsReceived,
-		InterestReceived:   interestReceived,
-		FeesPaid:           feesPaid,
-		TotalCostDeployed:  totalCostDeployed,
-		TotalReturn:        totalReturn,
-		TotalReturnPct:     totalReturnPct,
-		HasClosedPositions: hasClosedPositions,
+		AccountID:           accountID,
+		CashBalance:         cashBalance,
+		MarketValue:         marketValue,
+		TotalValue:          totalValue,
+		TotalCostBasis:      totalCostBasis,
+		TotalGainLoss:       totalGainLoss,
+		TotalGainPct:        totalGainPct,
+		Holdings:            holdings,
+		RealizedGain:        realizedGain,
+		DividendsReceived:   dividendsReceived,
+		InterestReceived:    interestReceived,
+		FeesPaid:            feesPaid,
+		TotalCostDeployed:   totalCostDeployed,
+		TotalReturn:         totalReturn,
+		TotalReturnPct:      totalReturnPct,
+		HasClosedPositions:  hasClosedPositions,
+		ClosedPositionCount: closedPositionCount,
 	}, nil
 }
 

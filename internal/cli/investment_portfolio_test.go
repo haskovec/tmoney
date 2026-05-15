@@ -358,6 +358,80 @@ func TestInvestmentPortfolio_IncludeClosed_RendersClosedPositionsTable(t *testin
 	}
 }
 
+// TR-021: when the account has closed positions and --include-closed is
+// NOT passed, the portfolio output ends with a single-line hint advising
+// the user that --include-closed would surface N closed-position rows.
+func TestInvestmentPortfolio_HintFooter_WhenClosedExistsAndFlagOff(t *testing.T) {
+	dbPath := createPortfolioCmdTestDBWithClosed(t)
+
+	stdout := &bytes.Buffer{}
+	err := executeWith([]string{
+		"investment", "portfolio",
+		"--file", dbPath,
+		"--account", "Brokerage",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	const wantHint = "Hint: --include-closed adds 1 closed-position rows."
+	if !strings.Contains(output, wantHint) {
+		t.Errorf("expected output to contain hint %q; got:\n%s", wantHint, output)
+	}
+
+	// Hint must appear AFTER the Account totals block.
+	totalsIdx := strings.Index(output, "Account totals")
+	hintIdx := strings.Index(output, "Hint:")
+	if totalsIdx < 0 || hintIdx < 0 {
+		t.Fatalf("missing expected sections; got:\n%s", output)
+	}
+	if hintIdx < totalsIdx {
+		t.Errorf("expected hint footer to appear after Account totals; got totalsIdx=%d, hintIdx=%d", totalsIdx, hintIdx)
+	}
+}
+
+// TR-021: when --include-closed IS passed, the hint footer is suppressed
+// (the closed-position rows are already in the output).
+func TestInvestmentPortfolio_HintFooter_SuppressedWithFlag(t *testing.T) {
+	dbPath := createPortfolioCmdTestDBWithClosed(t)
+
+	stdout := &bytes.Buffer{}
+	err := executeWith([]string{
+		"investment", "portfolio",
+		"--file", dbPath,
+		"--account", "Brokerage",
+		"--include-closed",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("executeWith(investment portfolio --include-closed) returned error: %v", err)
+	}
+
+	if strings.Contains(stdout.String(), "Hint:") {
+		t.Errorf("--include-closed should suppress the hint footer; got:\n%s", stdout.String())
+	}
+}
+
+// TR-021: when there are no closed positions, no hint is printed even
+// without --include-closed.
+func TestInvestmentPortfolio_HintFooter_AbsentWhenNoClosed(t *testing.T) {
+	dbPath := createPortfolioCmdTestDB(t, false)
+
+	stdout := &bytes.Buffer{}
+	err := executeWith([]string{
+		"investment", "portfolio",
+		"--file", dbPath,
+		"--account", "Brokerage",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+	}
+
+	if strings.Contains(stdout.String(), "Hint:") {
+		t.Errorf("account with no closed positions should not print a hint footer; got:\n%s", stdout.String())
+	}
+}
+
 func TestInvestmentPortfolio_IncludeClosed_NoClosedPositions_NoHeading(t *testing.T) {
 	dbPath := createPortfolioCmdTestDB(t, false)
 

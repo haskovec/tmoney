@@ -307,7 +307,7 @@ Pure ledger sums. No dependency on positions or lots.
   - GREEN: after the open holdings table, iterate holdings where
     `IsClosed == true` and render the closed table.
 
-- [ ] **TR-021 — Footer hint when closed positions exist but flag is off**
+- [x] **TR-021 — Footer hint when closed positions exist but flag is off**
   - RED: test asserts that a portfolio invocation without the flag, on
     an account with `HasClosedPositions == true`, prints a single-line
     footer: `Hint: --include-closed adds N closed-position rows.`
