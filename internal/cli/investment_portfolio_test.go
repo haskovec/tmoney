@@ -5,10 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -314,6 +316,75 @@ func TestInvestmentPortfolio_IncludeClosed_NoClosedPositions_NoHeading(t *testin
 	}
 }
 
+// TR-018: the per-holding table gains total-return columns. Header must
+// include the new column labels and rows must render the populated
+// values for an account with dividends, a realized gain, and fees.
+func TestInvestmentPortfolio_TotalReturnColumns(t *testing.T) {
+	dbPath := createPortfolioCmdTestDBWithTotalReturn(t)
+
+	stdout := &bytes.Buffer{}
+	err := executeWith([]string{
+		"investment", "portfolio",
+		"--file", dbPath,
+		"--account", "Brokerage",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+	}
+
+	output := stdout.String()
+
+	for _, want := range []string{"UNREAL", "DIV", "REAL", "FEES", "TOTAL RETURN", "RET %"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("expected output to contain column header %q; got:\n%s", want, output)
+		}
+	}
+
+	// Legacy "Gain/Loss" header on the holdings table is gone (renamed to
+	// UNREAL). The summary block still says "Total Gain/Loss:" so the bare
+	// substring still appears overall, but the holdings table header line
+	// itself must not contain it.
+	lines := strings.SplitSeq(output, "\n")
+	for line := range lines {
+		if strings.Contains(line, "Ticker") && strings.Contains(line, "Gain/Loss") {
+			t.Errorf("holdings table header should not contain legacy 'Gain/Loss' column; got line:\n%s", line)
+		}
+	}
+
+	// Dividends ($50) and a per-share realized gain should appear on the
+	// AAPL row.
+	if !strings.Contains(output, "50.00") {
+		t.Errorf("expected output to contain the $50 dividend; got:\n%s", output)
+	}
+}
+
+// TR-018: when a holding's realized gain is unavailable (non-lot account
+// with corporate actions), the REAL column renders the "unavailable"
+// placeholder.
+func TestInvestmentPortfolio_RealizedGainUnavailable(t *testing.T) {
+	dbPath := createPortfolioCmdTestDBWithCorporateAction(t)
+
+	stdout := &bytes.Buffer{}
+	err := executeWith([]string{
+		"investment", "portfolio",
+		"--file", dbPath,
+		"--account", "Brokerage",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "unavailable") {
+		t.Errorf("expected output to render 'unavailable' for realized gain on the AAPL row; got:\n%s", output)
+	}
+	// Dividends should still render normally even when realized gain is
+	// unavailable — the gate only suppresses the realized-gain column.
+	if !strings.Contains(output, "50.00") {
+		t.Errorf("expected the $50 dividend to render even with corporate-action gate; got:\n%s", output)
+	}
+}
+
 func TestInvestmentPortfolio_Help(t *testing.T) {
 	_, restore := stubLaunchers(t)
 	defer restore()
@@ -446,6 +517,111 @@ func createPortfolioCmdTestDBWithClosed(t *testing.T) string {
 	}
 	if _, err := svc.Investment.Sell(acct.ID, msft.ID, types.Today(), types.MustNewQuantity("5"), nil, ptrMoney("450"), types.ZeroMoney, "", nil); err != nil {
 		t.Fatalf("failed to sell MSFT: %v", err)
+	}
+
+	database.Close()
+	return dbPath
+}
+
+// createPortfolioCmdTestDBWithTotalReturn builds a DB with one open
+// position (AAPL) that exercises every total-return component: buy with
+// commission, partial sell with commission (-> realized gain + fees),
+// and a cash dividend.
+func createPortfolioCmdTestDBWithTotalReturn(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "portfolio_tr.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create investment account: %v", err)
+	}
+
+	secRepo := security.NewRepository(database)
+	aapl := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	if err := secRepo.Create(aapl); err != nil {
+		t.Fatalf("failed to create AAPL: %v", err)
+	}
+
+	priceRepo := price.NewRepository(database)
+	if err := priceRepo.Create(price.NewPrice(aapl.ID, types.Today(), types.MustNewMoney("175.00"), price.SourceManual)); err != nil {
+		t.Fatalf("failed to create AAPL price: %v", err)
+	}
+
+	svc := app.NewServices(database)
+	if _, err := svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("100000"), "initial deposit"); err != nil {
+		t.Fatalf("failed to deposit cash: %v", err)
+	}
+	if _, err := svc.Investment.Buy(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("10"), nil, ptrMoney("150"), types.MustNewMoney("5"), ""); err != nil {
+		t.Fatalf("failed to buy AAPL: %v", err)
+	}
+	if _, err := svc.Investment.Sell(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("3"), nil, ptrMoney("160"), types.MustNewMoney("2"), "", nil); err != nil {
+		t.Fatalf("failed to sell AAPL: %v", err)
+	}
+	if _, err := svc.Investment.Dividend(acct.ID, aapl.ID, types.Today(), types.MustNewMoney("50"), ""); err != nil {
+		t.Fatalf("failed to record AAPL dividend: %v", err)
+	}
+
+	database.Close()
+	return dbPath
+}
+
+// createPortfolioCmdTestDBWithCorporateAction builds a DB whose non-lot
+// account has a corporate action (4:1 split) on a held security, so the
+// valuation service flags realized gain as unavailable.
+func createPortfolioCmdTestDBWithCorporateAction(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "portfolio_ca.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create investment account: %v", err)
+	}
+
+	secRepo := security.NewRepository(database)
+	aapl := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	if err := secRepo.Create(aapl); err != nil {
+		t.Fatalf("failed to create AAPL: %v", err)
+	}
+
+	priceRepo := price.NewRepository(database)
+	if err := priceRepo.Create(price.NewPrice(aapl.ID, types.Today(), types.MustNewMoney("30.00"), price.SourceManual)); err != nil {
+		t.Fatalf("failed to create AAPL price: %v", err)
+	}
+
+	svc := app.NewServices(database)
+
+	d1 := types.NewDate(2024, time.March, 1)
+	dSplit := types.NewDate(2024, time.June, 1)
+	d2 := types.NewDate(2024, time.July, 1)
+
+	if _, err := svc.Investment.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("failed to deposit cash: %v", err)
+	}
+	if _, err := svc.Investment.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"), nil, ptrMoney("100"), types.ZeroMoney, ""); err != nil {
+		t.Fatalf("failed to buy AAPL: %v", err)
+	}
+	if _, err := svc.Investment.Dividend(acct.ID, aapl.ID, d1, types.MustNewMoney("50"), ""); err != nil {
+		t.Fatalf("failed to record AAPL dividend: %v", err)
+	}
+	if _, err := svc.CorporateAction.Split(aapl.ID, dSplit, investment.SplitParams{Numerator: 4, Denominator: 1}); err != nil {
+		t.Fatalf("failed to split AAPL: %v", err)
+	}
+	if _, err := svc.Investment.Sell(acct.ID, aapl.ID, d2, types.MustNewQuantity("5"), nil, ptrMoney("30"), types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("failed to sell AAPL: %v", err)
 	}
 
 	database.Close()

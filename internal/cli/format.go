@@ -718,6 +718,29 @@ func formatGainLoss(gl types.Money, pct float64, currency string) string {
 	return fmt.Sprintf("%s (+%.1f%%)", s, pct)
 }
 
+// formatReturnPct renders a total-return percent. Nil means the holding
+// has no deployed cost (e.g., shares received only via transfer) — render
+// the placeholder rather than 0%.
+func formatReturnPct(pct *float64) string {
+	if pct == nil {
+		return "—"
+	}
+	if *pct < 0 {
+		return fmt.Sprintf("%.2f%%", *pct)
+	}
+	return fmt.Sprintf("+%.2f%%", *pct)
+}
+
+// formatFeesPaid renders a fees-paid amount stored as a positive magnitude.
+// Fees are subtracted from total return, so display the value with a
+// leading minus sign so the subtraction is visually obvious on the row.
+func formatFeesPaid(fees types.Money, currency string) string {
+	if fees.IsZero() {
+		return formatMoney(fees, currency)
+	}
+	return formatMoney(fees.Neg(), currency)
+}
+
 // printPortfolioSummary prints the investment portfolio summary with holdings.
 func printPortfolioSummary(w io.Writer, acct *account.Account, valuation *investment.AccountValuation, securityMap map[types.ID]*security.Security) {
 	fmt.Fprintf(w, "PORTFOLIO: %s\n", acct.Name)
@@ -734,8 +757,8 @@ func printPortfolioSummary(w io.Writer, acct *account.Account, valuation *invest
 		fmt.Fprintln(w, "(No holdings)")
 	} else {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "Ticker\tName\tShares\tAvg Cost\tPrice\tCost Basis\tMarket Value\tGain/Loss")
-		fmt.Fprintln(tw, "------\t----\t------\t--------\t-----\t----------\t------------\t---------")
+		fmt.Fprintln(tw, "Ticker\tName\tShares\tAvg Cost\tPrice\tCost Basis\tMarket Value\tUNREAL\tDIV\tREAL\tFEES\tTOTAL RETURN\tRET %")
+		fmt.Fprintln(tw, "------\t----\t------\t--------\t-----\t----------\t------------\t------\t---\t----\t----\t------------\t-----")
 
 		for _, h := range open {
 			ticker := h.SecurityID.String()[:8]
@@ -750,7 +773,12 @@ func printPortfolioSummary(w io.Writer, acct *account.Account, valuation *invest
 				priceStr = formatMoney(h.CurrentPrice, acct.Currency)
 			}
 
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			realStr := formatMoney(h.RealizedGain, acct.Currency)
+			if h.RealizedGainUnavailable {
+				realStr = "unavailable"
+			}
+
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				ticker,
 				name,
 				h.Shares.String(),
@@ -758,7 +786,12 @@ func printPortfolioSummary(w io.Writer, acct *account.Account, valuation *invest
 				priceStr,
 				formatMoney(h.CostBasis, acct.Currency),
 				formatMoney(h.MarketValue, acct.Currency),
-				formatGainLoss(h.GainLoss, h.GainPct, acct.Currency),
+				formatMoney(h.GainLoss, acct.Currency),
+				formatMoney(h.DividendsReceived, acct.Currency),
+				realStr,
+				formatFeesPaid(h.FeesPaid, acct.Currency),
+				formatMoney(h.TotalReturn, acct.Currency),
+				formatReturnPct(h.TotalReturnPct),
 			)
 		}
 		tw.Flush()

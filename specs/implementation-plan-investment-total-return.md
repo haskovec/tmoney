@@ -279,7 +279,7 @@ Pure ledger sums. No dependency on positions or lots.
   - GREEN: add the bool flag to the portfolio subcommand; pass
     `ValuationOptions{IncludeClosed: flag}` through.
 
-- [ ] **TR-018 — Extend the per-holding table with total-return columns**
+- [x] **TR-018 — Extend the per-holding table with total-return columns**
   - RED: test asserts the table header contains `UNREAL`, `DIV`, `REAL`,
     `FEES`, `TOTAL RETURN`, `RET %`. A holding with all components
     populated renders the expected numeric strings (use the existing
