@@ -298,7 +298,7 @@ Pure ledger sums. No dependency on positions or lots.
   - GREEN: extend the totals printer in the portfolio command. Skip
     `Total return %` (render `—`) when `TotalReturnPct == nil`.
 
-- [ ] **TR-020 — Render "Closed positions" section when `--include-closed`**
+- [x] **TR-020 — Render "Closed positions" section when `--include-closed`**
   - RED: test invocation with the flag prints a `Closed positions
     (fully sold, total-return only)` heading followed by a table with
     columns `TICKER`, `REALIZED`, `DIV`, `FEES`, `TOTAL RETURN`,

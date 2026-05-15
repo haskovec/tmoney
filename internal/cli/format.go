@@ -797,7 +797,7 @@ func printPortfolioSummary(w io.Writer, acct *account.Account, valuation *invest
 		tw.Flush()
 	}
 
-	printClosedPositions(w, closed, securityMap)
+	printClosedPositions(w, acct, closed, securityMap)
 
 	printAccountTotals(w, acct, valuation)
 }
@@ -862,7 +862,7 @@ func printPortfolioWithLots(w io.Writer, acct *account.Account, valuation *inves
 		}
 	}
 
-	printClosedPositions(w, closed, securityMap)
+	printClosedPositions(w, acct, closed, securityMap)
 
 	printAccountTotals(w, acct, valuation)
 }
@@ -907,29 +907,42 @@ func partitionHoldings(holdings []investment.Holding) (open, closed []investment
 	return open, closed
 }
 
-// printClosedPositions emits the Closed positions section. Subsequent
-// total-return tasks (TR-020) flesh this into a full table; for now it
-// prints the heading and one row per closed ticker.
-func printClosedPositions(w io.Writer, closed []investment.Holding, securityMap map[types.ID]*security.Security) {
+// printClosedPositions renders the Closed positions section: a tabwriter
+// table with one row per fully-sold security showing the total-return
+// components. Each closed holding has zero shares/market value but
+// populated realized gain, dividends, fees, and total-return numbers.
+func printClosedPositions(w io.Writer, acct *account.Account, closed []investment.Holding, securityMap map[types.ID]*security.Security) {
 	if len(closed) == 0 {
 		return
 	}
 
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Closed positions")
-	fmt.Fprintln(w, "----------------")
+	fmt.Fprintln(w, "Closed positions (fully sold, total-return only)")
+	fmt.Fprintln(w, "------------------------------------------------")
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "TICKER\tREALIZED\tDIV\tFEES\tTOTAL RETURN\tRET %")
+	fmt.Fprintln(tw, "------\t--------\t---\t----\t------------\t-----")
+
 	for _, h := range closed {
 		ticker := h.SecurityID.String()[:8]
-		name := ""
 		if sec, ok := securityMap[h.SecurityID]; ok {
 			ticker = sec.Ticker
-			name = sec.Name
 		}
-		if name != "" {
-			fmt.Fprintf(w, "%s - %s\n", ticker, name)
-		} else {
-			fmt.Fprintln(w, ticker)
+
+		realStr := formatMoney(h.RealizedGain, acct.Currency)
+		if h.RealizedGainUnavailable {
+			realStr = "unavailable"
 		}
+
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			ticker,
+			realStr,
+			formatMoney(h.DividendsReceived, acct.Currency),
+			formatFeesPaid(h.FeesPaid, acct.Currency),
+			formatMoney(h.TotalReturn, acct.Currency),
+			formatReturnPct(h.TotalReturnPct),
+		)
 	}
-	fmt.Fprintln(w)
+	tw.Flush()
 }

@@ -297,6 +297,67 @@ func TestInvestmentPortfolio_IncludeClosed_PrintsHeading(t *testing.T) {
 	}
 }
 
+// TR-020: --include-closed renders a full Closed positions table with
+// the expected column headers and the per-ticker total-return values.
+func TestInvestmentPortfolio_IncludeClosed_RendersClosedPositionsTable(t *testing.T) {
+	dbPath := createPortfolioCmdTestDBWithClosed(t)
+
+	stdout := &bytes.Buffer{}
+	err := executeWith([]string{
+		"investment", "portfolio",
+		"--file", dbPath,
+		"--account", "Brokerage",
+		"--include-closed",
+	}, stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("executeWith(investment portfolio --include-closed) returned error: %v", err)
+	}
+
+	output := stdout.String()
+
+	if !strings.Contains(output, "Closed positions (fully sold, total-return only)") {
+		t.Errorf("expected closed-positions heading with explanatory suffix; got:\n%s", output)
+	}
+
+	for _, want := range []string{"TICKER", "REALIZED", "DIV", "FEES", "TOTAL RETURN", "RET %"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("expected closed-positions table to contain column header %q; got:\n%s", want, output)
+		}
+	}
+
+	// Closed-positions table should appear AFTER the open holdings table
+	// (Account totals come last in the output).
+	closedIdx := strings.Index(output, "Closed positions")
+	totalsIdx := strings.Index(output, "Account totals")
+	if closedIdx < 0 || totalsIdx < 0 {
+		t.Fatalf("missing expected sections; got:\n%s", output)
+	}
+	if closedIdx > totalsIdx {
+		t.Errorf("expected Closed positions section before Account totals; got closedIdx=%d, totalsIdx=%d", closedIdx, totalsIdx)
+	}
+
+	// Locate the MSFT row within the closed section and verify the
+	// realized gain ($250 = 5 * (450 - 400)) and total-return percent
+	// (+12.50%) render on that row.
+	closedSection := output[closedIdx:totalsIdx]
+	var msftRow string
+	for line := range strings.SplitSeq(closedSection, "\n") {
+		if strings.Contains(line, "MSFT") {
+			msftRow = line
+			break
+		}
+	}
+	if msftRow == "" {
+		t.Fatalf("expected MSFT row in closed-positions section; got:\n%s", closedSection)
+	}
+	if !strings.Contains(msftRow, "$250.00") {
+		t.Errorf("expected MSFT row to show $250.00 realized gain; got row:\n%s", msftRow)
+	}
+	if !strings.Contains(msftRow, "+12.50%") {
+		t.Errorf("expected MSFT row to show +12.50%% total-return percent; got row:\n%s", msftRow)
+	}
+}
+
 func TestInvestmentPortfolio_IncludeClosed_NoClosedPositions_NoHeading(t *testing.T) {
 	dbPath := createPortfolioCmdTestDB(t, false)
 
