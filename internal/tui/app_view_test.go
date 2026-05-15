@@ -189,16 +189,27 @@ func TestApp_View_ComponentWidths(t *testing.T) {
 			view := app.View()
 			viewLines := strings.Split(view.Content, "\n")
 			maxLineWidth := 0
+			minLineWidth := termWidth + 1
 			for _, line := range viewLines {
 				w := lipgloss.Width(line)
 				if w > maxLineWidth {
 					maxLineWidth = w
 				}
+				if w < minLineWidth {
+					minLineWidth = w
+				}
 			}
-			t.Logf("View: %d lines, max line width: %d", len(viewLines), maxLineWidth)
+			t.Logf("View: %d lines, line width range: [%d, %d]", len(viewLines), minLineWidth, maxLineWidth)
 
 			if maxLineWidth > termWidth {
 				t.Errorf("View lines (%d cols) wider than terminal (%d cols)", maxLineWidth, termWidth)
+			}
+			// Every line must fill the terminal width; a shorter line leaves a
+			// stripe of bare terminal background on the right (regression
+			// guard for the ContentWidth off-by-one).
+			if minLineWidth != termWidth {
+				t.Errorf("Shortest view line is %d cols, want %d (gap of %d on the right)",
+					minLineWidth, termWidth, termWidth-minLineWidth)
 			}
 			if len(viewLines) != 24 {
 				t.Errorf("View has %d lines, want 24", len(viewLines))

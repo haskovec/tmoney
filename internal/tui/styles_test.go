@@ -81,7 +81,7 @@ func TestStyles_Resize_Medium(t *testing.T) {
 	if s.SidebarWidth() != SidebarWidthMedium {
 		t.Errorf("SidebarWidth() = %d, want %d for medium layout", s.SidebarWidth(), SidebarWidthMedium)
 	}
-	expectedContent := 100 - SidebarWidthMedium - 1
+	expectedContent := 100 - SidebarWidthMedium
 	if s.ContentWidth() != expectedContent {
 		t.Errorf("ContentWidth() = %d, want %d for medium layout", s.ContentWidth(), expectedContent)
 	}
@@ -95,7 +95,7 @@ func TestStyles_Resize_Large(t *testing.T) {
 	if s.SidebarWidth() != SidebarWidthLarge {
 		t.Errorf("SidebarWidth() = %d, want %d at the large breakpoint", s.SidebarWidth(), SidebarWidthLarge)
 	}
-	expectedContent := 120 - SidebarWidthLarge - 1
+	expectedContent := 120 - SidebarWidthLarge
 	if s.ContentWidth() != expectedContent {
 		t.Errorf("ContentWidth() = %d, want %d for large layout", s.ContentWidth(), expectedContent)
 	}
@@ -110,10 +110,10 @@ func TestStyles_Resize_LargeScales(t *testing.T) {
 		wantSidebar int
 		wantContent int
 	}{
-		{120, SidebarWidthLarge, 120 - SidebarWidthLarge - 1},                   // breakpoint: floor
-		{150, SidebarWidthLarge + (150-120)/sidebarGrowthDivisor, 150 - 27 - 1}, // 27
-		{200, SidebarWidthLarge + (200-120)/sidebarGrowthDivisor, 200 - 34 - 1}, // 34
-		{400, SidebarWidthMax, 400 - SidebarWidthMax - 1},                       // capped
+		{120, SidebarWidthLarge, 120 - SidebarWidthLarge},                   // breakpoint: floor
+		{150, SidebarWidthLarge + (150-120)/sidebarGrowthDivisor, 150 - 27}, // 27
+		{200, SidebarWidthLarge + (200-120)/sidebarGrowthDivisor, 200 - 34}, // 34
+		{400, SidebarWidthMax, 400 - SidebarWidthMax},                       // capped
 	}
 
 	for _, tt := range tests {

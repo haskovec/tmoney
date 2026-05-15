@@ -577,8 +577,12 @@ func (s *Styles) ContentWidth() int {
 	if sw == 0 {
 		return s.width
 	}
-	// Sidebar width + 1 for the border column.
-	return s.width - sw - 1
+	// The sidebar's BorderRight is already counted inside its Width
+	// budget — lipgloss includes borders in Width() — so the content area
+	// fills the rest of the terminal exactly. Subtracting an extra column
+	// here used to leave a 1-char gap of bare terminal background on the
+	// far right of every two-pane view.
+	return s.width - sw
 }
 
 // SidebarWidth returns the sidebar width for the current layout mode.
