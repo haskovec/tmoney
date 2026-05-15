@@ -151,7 +151,7 @@ Press `?` at any time to show the help overlay.
 | `F10` | Activate menu bar |
 | `Alt+F` | File menu (also has Import Transactions…) |
 | `Alt+E` | Edit menu |
-| `Alt+V` | View menu (Theme switcher) |
+| `Alt+V` | View menu (Theme switcher, Show closed positions toggle) |
 | `Alt+A` | Accounts menu |
 | `Alt+T` | Transactions menu (also has Link Transfers…) |
 | `Alt+S` | Securities menu (also has Stock Split…, Merger…, Spin-Off…, Corporate Action History…) |
@@ -777,6 +777,9 @@ tmoney -f personal.tdb investment portfolio --account Brokerage --as-of 2024-12-
 
 # Drill into per-lot detail for a lot-tracking account
 tmoney -f personal.tdb investment portfolio --account Brokerage --show-lots
+
+# Include fully-sold ("closed") positions in a separate section
+tmoney -f personal.tdb investment portfolio --account Brokerage --include-closed
 ```
 
 `investment portfolio` requires `--account`. The default valuation
@@ -784,6 +787,58 @@ date is today; pass `--as-of YYYY-MM-DD` to value holdings at a
 different point in time. `--show-lots` expands each holding into its
 underlying lots (purchase date, cost/share, cost basis, current value)
 and is silently ignored on accounts without lot tracking enabled.
+
+#### Total return
+
+Each per-holding row and the account totals block report **total
+return** alongside the legacy unrealized gain. Total return sums four
+cash-flow components on top of unrealized gain:
+
+```
+total_return = unrealized_gain
+             + realized_gain          (from sells and fee_liquidation)
+             + dividends_received     (cash dividends; reinvested DRIPs excluded)
+             + interest_received      (account-level cash sweep)
+             − fees_paid              (commissions + fee transactions)
+```
+
+`total_return_pct` divides total return by **total cost deployed**
+(`Σ buy.total_amount + Σ reinvest_dividend.total_amount`) so a
+fully-closed position still has a meaningful denominator. Positions
+that were received only via `transfer_shares` have no deployed cost and
+render `—` for the percent.
+
+The per-holding table gains `UNREAL`, `DIV`, `REAL`, `FEES`, `TOTAL
+RETURN`, and `RET %` columns. The account totals block prints
+`Cost basis (open)`, `Unrealized gain`, `Realized gain`, `Dividends
+received`, `Interest received`, `Fees paid`, `Total return`, and
+`Total return %`.
+
+Realized gain in non-lot accounts cannot be replayed reliably when the
+ledger contains corporate actions (splits, mergers, spin-offs). For
+those accounts the realized column renders `unavailable`; the other
+components are still computed. Enable lot tracking on the account
+before the corporate action to get exact realized numbers.
+
+#### Closed positions
+
+`--include-closed` adds a `Closed positions (fully sold, total-return
+only)` block after the open holdings table. Each row shows `TICKER`,
+`REALIZED`, `DIV`, `FEES`, `TOTAL RETURN`, and `RET %` — no
+shares/price/market value, since the position is gone. Without the
+flag, the portfolio command prints a one-line footer hint when closed
+positions exist:
+
+```
+Hint: --include-closed adds 3 closed-position rows.
+```
+
+In the TUI, **View → Show closed positions** (`Alt+V`) toggles the
+equivalent state. When on, the investment register and dashboard card
+include fully-sold securities. The toggle persists across restarts via
+`~/.config/tmoney/config.json`. The investment register header
+displays a `TR` row with total return $ and %, and the dashboard
+per-account card adds a `TR` line below `Total`.
 
 ### Import Transactions
 

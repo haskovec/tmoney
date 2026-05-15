@@ -351,7 +351,7 @@ Pure ledger sums. No dependency on positions or lots.
 
 ## Phase 12: Documentation
 
-- [ ] **TR-026 — README updates**
+- [x] **TR-026 — README updates**
   - GREEN: extend the **Investment** section in `README.md` with:
     - A short paragraph on total return composition (unrealized,
       realized, dividends, interest, fees).
@@ -362,7 +362,7 @@ Pure ledger sums. No dependency on positions or lots.
   - No new top-level section; this slots into the existing **Investment**
     block.
 
-- [ ] **TR-027 — Mark spec as implemented**
+- [x] **TR-027 — Mark spec as implemented**
   - GREEN: add a status note at the top of
     `specs/investment-total-return.md` indicating the v1 feature is
     implemented, pointing to the XIRR/TWR follow-up as the next batch.

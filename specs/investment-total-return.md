@@ -1,5 +1,14 @@
 # Investment Total Return Specification
 
+> **Status: v1 implemented.** The total-return model defined here is live in
+> the valuation service, the `investment portfolio` CLI, and the TUI
+> (investment register header, dashboard card, `View → Show closed
+> positions` toggle). See
+> [`implementation-plan-investment-total-return.md`](implementation-plan-investment-total-return.md)
+> for the per-task history. The next batch — money-weighted return (XIRR),
+> time-weighted return (TWR), and realized gain in non-lot accounts with
+> corporate actions — remains in **Follow-up (not in this spec)** below.
+
 ## Overview
 
 The current `investment portfolio` view reports only **unrealized gain on
