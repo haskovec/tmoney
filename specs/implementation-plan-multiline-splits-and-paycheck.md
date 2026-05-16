@@ -31,10 +31,11 @@ Inside each phase, the data-model and repository items come before service items
 
 Add schema and repository support with no behavior change yet.
 
-- [ ] **MS-001 — Add `transfer_account_id` and `transfer_id` columns to `split_items`**
+- [x] **MS-001 — Add `transfer_account_id` and `transfer_id` columns to `split_items`**
   - RED: test asserts the new migration (next number, e.g. `014_split_items_transfer.sql`) adds both columns nullable, with check constraints: `(category_id IS NULL) <> (transfer_account_id IS NULL)` AND `(transfer_account_id IS NULL) = (transfer_id IS NULL)`. Existing rows continue to satisfy.
   - GREEN: add the migration in `internal/db/migrations/`. Update `internal/transaction/split_item.go` (or equivalent) so the struct exposes the two new fields.
   - Confirm: `go build ./... && go test ./internal/db/... ./internal/transaction/...` green.
+  - Done: migration `014_split_items_transfer.sql` recreates `transaction_splits` with nullable `category_id`, new `transfer_account_id` / `transfer_id`, both CHECK constraints, and an `idx_splits_transfer` index. `Split` struct exposes `TransferAccountID` and `TransferID` as `NullableID`. Existing categorized rows preserved.
 
 - [ ] **MS-002 — Add `scheduled_split_items` table**
   - RED: test asserts the new migration creates the table with columns per the spec (`id`, `scheduled_transaction_id`, `category_id NULL`, `transfer_account_id NULL`, `amount`, `memo NULL`) and the `(category_id IS NULL) <> (transfer_account_id IS NULL)` check constraint.

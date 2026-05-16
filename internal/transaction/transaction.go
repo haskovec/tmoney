@@ -348,14 +348,25 @@ func (t *Transaction) IsValid() bool {
 	return !t.Validate().HasErrors()
 }
 
-// Split represents a portion of a split transaction assigned to a category.
+// Split represents one line of a split transaction.
+//
+// A line is either categorized (CategoryID set, transfer fields zero) or a
+// transfer-line that moves cash to another account (TransferAccountID +
+// TransferID set, CategoryID = NilID). The two shapes are mutually
+// exclusive and enforced at the database via CHECK constraints (see
+// migration 014). Service-layer validation of the new shape lives in later
+// tasks; this struct just exposes the fields.
 type Split struct {
 	types.BaseModel
 
-	// Core properties (required)
+	// Core properties
 	TransactionID types.ID    `json:"transaction_id"`
 	CategoryID    types.ID    `json:"category_id"`
 	Amount        types.Money `json:"amount"`
+
+	// Transfer-line properties (set together iff the line is a transfer)
+	TransferAccountID types.NullableID `json:"transfer_account_id"`
+	TransferID        types.NullableID `json:"transfer_id"`
 
 	// Optional properties
 	Memo types.NullableString `json:"memo"`

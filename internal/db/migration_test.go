@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -2573,6 +2574,366 @@ func TestMigration011PortfolioHoldingsView(t *testing.T) {
 		// Should have 3 rows (1 account x 3 securities)
 		if count != 3 {
 			t.Errorf("expected 3 rows (cross join), got %d", count)
+		}
+	})
+}
+
+func TestMigration014SplitItemsTransfer(t *testing.T) {
+	t.Run("transaction_splits has transfer_account_id and transfer_id columns", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		for _, col := range []string{"transfer_account_id", "transfer_id"} {
+			var isNullable string
+			err = db.Conn().QueryRow(`
+				SELECT is_nullable FROM information_schema.columns
+				WHERE table_name = 'transaction_splits' AND column_name = ?
+			`, col).Scan(&isNullable)
+			if err != nil {
+				t.Fatalf("column %s missing on transaction_splits: %v", col, err)
+			}
+			if isNullable != "YES" {
+				t.Errorf("expected %s to be nullable, got is_nullable=%q", col, isNullable)
+			}
+		}
+
+		var catNullable string
+		err = db.Conn().QueryRow(`
+			SELECT is_nullable FROM information_schema.columns
+			WHERE table_name = 'transaction_splits' AND column_name = 'category_id'
+		`).Scan(&catNullable)
+		if err != nil {
+			t.Fatalf("column category_id missing on transaction_splits: %v", err)
+		}
+		if catNullable != "YES" {
+			t.Errorf("expected category_id to be nullable post-014, got is_nullable=%q", catNullable)
+		}
+	})
+
+	t.Run("categorized split (no transfer) is accepted", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert account: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO categories (id, name, type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'Groceries', 'expense')
+		`)
+		if err != nil {
+			t.Fatalf("insert category: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (id, account_id, date, amount, status)
+			VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'2024-01-15', -100.00, 'uncleared'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert transaction: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO transaction_splits (id, transaction_id, category_id, amount)
+			VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				'22222222-2222-2222-2222-222222222222',
+				-100.00
+			)
+		`)
+		if err != nil {
+			t.Errorf("categorized split insert should succeed post-014: %v", err)
+		}
+	})
+
+	t.Run("transfer split (no category) is accepted", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES
+				('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01'),
+				('22222222-2222-2222-2222-222222222222', 'Savings',  'savings',  '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert accounts: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (id, account_id, date, amount, status)
+			VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'2024-01-15', -50.00, 'uncleared'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert transaction: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO transaction_splits (
+				id, transaction_id, category_id, transfer_account_id, transfer_id, amount
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				NULL,
+				'22222222-2222-2222-2222-222222222222',
+				'55555555-5555-5555-5555-555555555555',
+				-50.00
+			)
+		`)
+		if err != nil {
+			t.Errorf("transfer split insert should succeed post-014: %v", err)
+		}
+	})
+
+	t.Run("split with both category and transfer is rejected", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES
+				('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01'),
+				('22222222-2222-2222-2222-222222222222', 'Savings',  'savings',  '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert accounts: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO categories (id, name, type)
+			VALUES ('66666666-6666-6666-6666-666666666666', 'Groceries', 'expense')
+		`)
+		if err != nil {
+			t.Fatalf("insert category: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (id, account_id, date, amount, status)
+			VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'2024-01-15', -50.00, 'uncleared'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert transaction: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO transaction_splits (
+				id, transaction_id, category_id, transfer_account_id, transfer_id, amount
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				'66666666-6666-6666-6666-666666666666',
+				'22222222-2222-2222-2222-222222222222',
+				'55555555-5555-5555-5555-555555555555',
+				-50.00
+			)
+		`)
+		if err == nil {
+			t.Error("expected check constraint to reject row with both category_id and transfer_account_id")
+		}
+	})
+
+	t.Run("split with neither category nor transfer is rejected", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert account: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (id, account_id, date, amount, status)
+			VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'2024-01-15', -50.00, 'uncleared'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert transaction: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO transaction_splits (
+				id, transaction_id, category_id, transfer_account_id, transfer_id, amount
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				NULL, NULL, NULL,
+				-50.00
+			)
+		`)
+		if err == nil {
+			t.Error("expected check constraint to reject row with neither category_id nor transfer_account_id")
+		}
+	})
+
+	t.Run("transfer_account_id without transfer_id is rejected", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES
+				('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01'),
+				('22222222-2222-2222-2222-222222222222', 'Savings',  'savings',  '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert accounts: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (id, account_id, date, amount, status)
+			VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'2024-01-15', -50.00, 'uncleared'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert transaction: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO transaction_splits (
+				id, transaction_id, category_id, transfer_account_id, transfer_id, amount
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				NULL,
+				'22222222-2222-2222-2222-222222222222',
+				NULL,
+				-50.00
+			)
+		`)
+		if err == nil {
+			t.Error("expected check constraint to reject transfer-line missing transfer_id")
+		}
+	})
+
+	t.Run("existing categorized rows survive the migration", func(t *testing.T) {
+		// New databases also exercise the post-migration path. Insert a row,
+		// reopen, and verify it reads back with NULL transfer columns.
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert account: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO categories (id, name, type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'Groceries', 'expense')
+		`)
+		if err != nil {
+			t.Fatalf("insert category: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (id, account_id, date, amount, status)
+			VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'2024-01-15', -100.00, 'uncleared'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert transaction: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO transaction_splits (id, transaction_id, category_id, amount)
+			VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				'22222222-2222-2222-2222-222222222222',
+				-100.00
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert split: %v", err)
+		}
+
+		db.Close()
+
+		db, err = Open(dbPath)
+		if err != nil {
+			t.Fatalf("Open() error = %v", err)
+		}
+		defer db.Close()
+
+		var transferAcct, transferID sql.NullString
+		err = db.Conn().QueryRow(`
+			SELECT
+				CAST(transfer_account_id AS VARCHAR),
+				CAST(transfer_id AS VARCHAR)
+			FROM transaction_splits
+			WHERE id = '44444444-4444-4444-4444-444444444444'
+		`).Scan(&transferAcct, &transferID)
+		if err != nil {
+			t.Fatalf("read split back: %v", err)
+		}
+		if transferAcct.Valid {
+			t.Errorf("expected NULL transfer_account_id on legacy row, got %q", transferAcct.String)
+		}
+		if transferID.Valid {
+			t.Errorf("expected NULL transfer_id on legacy row, got %q", transferID.String)
 		}
 	})
 }
