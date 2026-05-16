@@ -2937,3 +2937,242 @@ func TestMigration014SplitItemsTransfer(t *testing.T) {
 		}
 	})
 }
+
+func TestMigration015ScheduledSplitItems(t *testing.T) {
+	t.Run("scheduled_split_items table exists with expected columns", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		expected := map[string]string{
+			"id":                       "NO",
+			"scheduled_transaction_id": "NO",
+			"category_id":              "YES",
+			"transfer_account_id":      "YES",
+			"amount":                   "NO",
+			"memo":                     "YES",
+		}
+		for col, wantNullable := range expected {
+			var isNullable string
+			err = db.Conn().QueryRow(`
+				SELECT is_nullable FROM information_schema.columns
+				WHERE table_name = 'scheduled_split_items' AND column_name = ?
+			`, col).Scan(&isNullable)
+			if err != nil {
+				t.Fatalf("column %s missing on scheduled_split_items: %v", col, err)
+			}
+			if isNullable != wantNullable {
+				t.Errorf("column %s: expected is_nullable=%q, got %q", col, wantNullable, isNullable)
+			}
+		}
+	})
+
+	t.Run("categorized scheduled split is accepted", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert account: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO categories (id, name, type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'Salary', 'income')
+		`)
+		if err != nil {
+			t.Fatalf("insert category: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_transactions (
+				id, account_id, frequency, interval,
+				start_date, next_date
+			) VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'monthly', 1, '2024-01-01', '2024-01-15'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert scheduled_transaction: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_split_items (
+				id, scheduled_transaction_id, category_id, amount
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				'22222222-2222-2222-2222-222222222222',
+				5000.00
+			)
+		`)
+		if err != nil {
+			t.Errorf("categorized scheduled split insert should succeed: %v", err)
+		}
+	})
+
+	t.Run("transfer scheduled split is accepted", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES
+				('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01'),
+				('22222222-2222-2222-2222-222222222222', 'Savings',  'savings',  '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert accounts: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_transactions (
+				id, account_id, frequency, interval,
+				start_date, next_date
+			) VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'monthly', 1, '2024-01-01', '2024-01-15'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert scheduled_transaction: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_split_items (
+				id, scheduled_transaction_id, category_id, transfer_account_id, amount
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				NULL,
+				'22222222-2222-2222-2222-222222222222',
+				-500.00
+			)
+		`)
+		if err != nil {
+			t.Errorf("transfer scheduled split insert should succeed: %v", err)
+		}
+	})
+
+	t.Run("scheduled split with both category and transfer is rejected", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES
+				('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01'),
+				('22222222-2222-2222-2222-222222222222', 'Savings',  'savings',  '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert accounts: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO categories (id, name, type)
+			VALUES ('66666666-6666-6666-6666-666666666666', 'Salary', 'income')
+		`)
+		if err != nil {
+			t.Fatalf("insert category: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_transactions (
+				id, account_id, frequency, interval,
+				start_date, next_date
+			) VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'monthly', 1, '2024-01-01', '2024-01-15'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert scheduled_transaction: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_split_items (
+				id, scheduled_transaction_id, category_id, transfer_account_id, amount
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				'66666666-6666-6666-6666-666666666666',
+				'22222222-2222-2222-2222-222222222222',
+				-500.00
+			)
+		`)
+		if err == nil {
+			t.Error("expected check constraint to reject row with both category_id and transfer_account_id")
+		}
+	})
+
+	t.Run("scheduled split with neither category nor transfer is rejected", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert account: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_transactions (
+				id, account_id, frequency, interval,
+				start_date, next_date
+			) VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'monthly', 1, '2024-01-01', '2024-01-15'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert scheduled_transaction: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_split_items (
+				id, scheduled_transaction_id, category_id, transfer_account_id, amount
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				NULL, NULL,
+				-500.00
+			)
+		`)
+		if err == nil {
+			t.Error("expected check constraint to reject row with neither category_id nor transfer_account_id")
+		}
+	})
+}

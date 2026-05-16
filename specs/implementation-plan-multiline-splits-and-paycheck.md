@@ -37,10 +37,11 @@ Add schema and repository support with no behavior change yet.
   - Confirm: `go build ./... && go test ./internal/db/... ./internal/transaction/...` green.
   - Done: migration `014_split_items_transfer.sql` recreates `transaction_splits` with nullable `category_id`, new `transfer_account_id` / `transfer_id`, both CHECK constraints, and an `idx_splits_transfer` index. `Split` struct exposes `TransferAccountID` and `TransferID` as `NullableID`. Existing categorized rows preserved.
 
-- [ ] **MS-002 — Add `scheduled_split_items` table**
+- [x] **MS-002 — Add `scheduled_split_items` table**
   - RED: test asserts the new migration creates the table with columns per the spec (`id`, `scheduled_transaction_id`, `category_id NULL`, `transfer_account_id NULL`, `amount`, `memo NULL`) and the `(category_id IS NULL) <> (transfer_account_id IS NULL)` check constraint.
   - GREEN: add the migration. Create `internal/scheduled/split_item.go` with the struct, basic constructors, and `Validate()`.
   - Confirm: tests green.
+  - Done: migration `015_scheduled_split_items.sql` creates the table with the CHECK constraint and `idx_scheduled_split_items_parent` index; `scheduled.Split` struct (in `internal/scheduled/split_item.go`) exposes `CategoryID`/`TransferAccountID` as `NullableID`, with `NewCategorizedSplit` / `NewTransferSplit` constructors and `Validate()` enforcing the same exclusive-shape rule. `CurrentSchemaVersion` bumped to 15.
 
 - [ ] **MS-003 — Split-item repository reads/writes the new columns**
   - RED: test `TestSplitItemRepo_TransferLine_RoundTrip` — create a transaction with one categorized split-item and one transfer-typed split-item (with `transfer_account_id` and `transfer_id` set); reload via the repo; both rows come back with all fields intact.
