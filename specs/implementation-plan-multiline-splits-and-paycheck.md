@@ -43,10 +43,11 @@ Add schema and repository support with no behavior change yet.
   - Confirm: tests green.
   - Done: migration `015_scheduled_split_items.sql` creates the table with the CHECK constraint and `idx_scheduled_split_items_parent` index; `scheduled.Split` struct (in `internal/scheduled/split_item.go`) exposes `CategoryID`/`TransferAccountID` as `NullableID`, with `NewCategorizedSplit` / `NewTransferSplit` constructors and `Validate()` enforcing the same exclusive-shape rule. `CurrentSchemaVersion` bumped to 15.
 
-- [ ] **MS-003 — Split-item repository reads/writes the new columns**
+- [x] **MS-003 — Split-item repository reads/writes the new columns**
   - RED: test `TestSplitItemRepo_TransferLine_RoundTrip` — create a transaction with one categorized split-item and one transfer-typed split-item (with `transfer_account_id` and `transfer_id` set); reload via the repo; both rows come back with all fields intact.
   - GREEN: extend the split-item read/write paths to include the new columns. Existing category-only splits unaffected.
   - Confirm: tests green.
+  - Done: `SplitRepository.Create`/`Update` now write the new columns (with NULL `category_id` for transfer-lines) and validate the appropriate FK target (account for transfer-lines, category otherwise); `GetByID`/`ListByTransaction`/`scanSplits` read them. Tests `TestSplitItemRepo_TransferLine_RoundTrip` and `TestSplitItemRepo_TransferLine_Update` cover both create and update flows; full suite (5169 tests) and lint stay green.
 
 - [ ] **MS-004 — Scheduled-split-item repository CRUD**
   - RED: test `TestScheduledSplitItemRepo_RoundTrip` — create, read, update, delete rows including both category-typed and transfer-typed. Test `TestScheduledRepo_LoadsChildren` — loading a scheduled transaction also loads its `scheduled_split_items`.

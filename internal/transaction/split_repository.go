@@ -20,6 +20,52 @@ func NewSplitRepository(database *db.DB) *SplitRepository {
 	return &SplitRepository{db: database}
 }
 
+// splitColumns lists every column the repository reads/writes, in scan order.
+const splitColumns = `id, transaction_id, category_id, transfer_account_id,
+	transfer_id, amount, memo, created_at`
+
+// categoryArg returns the value to write for category_id: NULL for transfer-
+// lines (CategoryID.IsNil()), otherwise the UUID string.
+func categoryArg(split *Split) any {
+	if split.CategoryID.IsNil() {
+		return nil
+	}
+	return split.CategoryID
+}
+
+// verifyReferences confirms that the FK targets named on the split exist.
+// Transfer-lines must point at an existing account; categorized lines must
+// point at an existing category.
+func (r *SplitRepository) verifyReferences(split *Split) error {
+	if split.TransferAccountID.Valid {
+		var exists bool
+		err := r.db.Conn().QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM accounts WHERE CAST(id AS VARCHAR) = ?)`,
+			split.TransferAccountID.ID.String(),
+		).Scan(&exists)
+		if err != nil {
+			return fmt.Errorf("failed to check transfer account exists: %w", err)
+		}
+		if !exists {
+			return &dberrors.NotFoundError{Entity: "account", ID: split.TransferAccountID.ID.String()}
+		}
+		return nil
+	}
+
+	var exists bool
+	err := r.db.Conn().QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM categories WHERE CAST(id AS VARCHAR) = ?)`,
+		split.CategoryID.String(),
+	).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("failed to check category exists: %w", err)
+	}
+	if !exists {
+		return &dberrors.NotFoundError{Entity: "category", ID: split.CategoryID.String()}
+	}
+	return nil
+}
+
 // Create inserts a new split into the database.
 func (r *SplitRepository) Create(split *Split) error {
 	// Verify transaction exists
@@ -35,29 +81,23 @@ func (r *SplitRepository) Create(split *Split) error {
 		return &dberrors.NotFoundError{Entity: "transaction", ID: split.TransactionID.String()}
 	}
 
-	// Verify category exists
-	var categoryExists bool
-	err = r.db.Conn().QueryRow(
-		`SELECT EXISTS(SELECT 1 FROM categories WHERE CAST(id AS VARCHAR) = ?)`,
-		split.CategoryID.String(),
-	).Scan(&categoryExists)
-	if err != nil {
-		return fmt.Errorf("failed to check category exists: %w", err)
-	}
-	if !categoryExists {
-		return &dberrors.NotFoundError{Entity: "category", ID: split.CategoryID.String()}
+	if err := r.verifyReferences(split); err != nil {
+		return err
 	}
 
 	query := `
 		INSERT INTO transaction_splits (
-			id, transaction_id, category_id, amount, memo, created_at
-		) VALUES (?, ?, ?, ?, ?, ?)
+			id, transaction_id, category_id, transfer_account_id, transfer_id,
+			amount, memo, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = r.db.Conn().Exec(query,
 		split.ID,
 		split.TransactionID,
-		split.CategoryID,
+		categoryArg(split),
+		dbutil.NullID(split.TransferAccountID),
+		dbutil.NullID(split.TransferID),
 		split.Amount,
 		dbutil.NullString(split.Memo),
 		split.CreatedAt,
@@ -72,37 +112,32 @@ func (r *SplitRepository) Create(split *Split) error {
 // GetByID retrieves a split by its ID.
 func (r *SplitRepository) GetByID(id types.ID) (*Split, error) {
 	query := `
-		SELECT id, transaction_id, category_id, amount, memo, created_at
+		SELECT ` + splitColumns + `
 		FROM transaction_splits
 		WHERE CAST(id AS VARCHAR) = ?
 	`
 
-	split := &Split{}
-	err := r.db.Conn().QueryRow(query, id.String()).Scan(
-		&split.ID,
-		&split.TransactionID,
-		&split.CategoryID,
-		&split.Amount,
-		&split.Memo,
-		&split.CreatedAt,
-	)
-	if err == sql.ErrNoRows {
-		return nil, &dberrors.NotFoundError{Entity: "split", ID: id.String()}
-	}
+	rows, err := r.db.Conn().Query(query, id.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get split: %w", err)
 	}
+	defer rows.Close()
 
-	// Set UpdatedAt to CreatedAt since splits don't have updated_at in the schema
-	split.UpdatedAt = split.CreatedAt
+	splits, err := r.scanSplits(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(splits) == 0 {
+		return nil, &dberrors.NotFoundError{Entity: "split", ID: id.String()}
+	}
 
-	return split, nil
+	return splits[0], nil
 }
 
 // ListByTransaction retrieves all splits for a transaction.
 func (r *SplitRepository) ListByTransaction(transactionID types.ID) ([]*Split, error) {
 	query := `
-		SELECT id, transaction_id, category_id, amount, memo, created_at
+		SELECT ` + splitColumns + `
 		FROM transaction_splits
 		WHERE CAST(transaction_id AS VARCHAR) = ?
 		ORDER BY created_at
@@ -140,17 +175,8 @@ func (r *SplitRepository) Update(split *Split) error {
 		return &dberrors.NotFoundError{Entity: "transaction", ID: split.TransactionID.String()}
 	}
 
-	// Verify category exists
-	var categoryExists bool
-	err = r.db.Conn().QueryRow(
-		`SELECT EXISTS(SELECT 1 FROM categories WHERE CAST(id AS VARCHAR) = ?)`,
-		split.CategoryID.String(),
-	).Scan(&categoryExists)
-	if err != nil {
-		return fmt.Errorf("failed to check category exists: %w", err)
-	}
-	if !categoryExists {
-		return &dberrors.NotFoundError{Entity: "category", ID: split.CategoryID.String()}
+	if err := r.verifyReferences(split); err != nil {
+		return err
 	}
 
 	// Delete the existing record
@@ -162,16 +188,29 @@ func (r *SplitRepository) Update(split *Split) error {
 		return fmt.Errorf("failed to delete for update: %w", err)
 	}
 
-	// Insert the updated record
-	insertQuery := `
+	// Insert the updated record. category_id, transfer_account_id, and
+	// transfer_id are written as either CAST(? AS UUID) or plain NULL so
+	// DuckDB accepts NULLs without a type assertion on the bind value.
+	catCast := "CAST(? AS UUID)"
+	if split.CategoryID.IsNil() {
+		catCast = "?"
+	}
+	xferAcctCast := dbutil.NullUUIDCast(split.TransferAccountID)
+	xferIDCast := dbutil.NullUUIDCast(split.TransferID)
+
+	insertQuery := fmt.Sprintf(`
 		INSERT INTO transaction_splits (
-			id, transaction_id, category_id, amount, memo, created_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?)
-	`
+			id, transaction_id, category_id, transfer_account_id, transfer_id,
+			amount, memo, created_at
+		) VALUES (CAST(? AS UUID), CAST(? AS UUID), %s, %s, %s, ?, ?, ?)
+	`, catCast, xferAcctCast, xferIDCast)
+
 	_, err = r.db.Conn().Exec(insertQuery,
 		split.ID.String(),
 		split.TransactionID.String(),
-		split.CategoryID.String(),
+		categoryStringArg(split),
+		dbutil.NullID(split.TransferAccountID),
+		dbutil.NullID(split.TransferID),
 		split.Amount.String(),
 		dbutil.NullString(split.Memo),
 		split.CreatedAt.Time(),
@@ -181,6 +220,15 @@ func (r *SplitRepository) Update(split *Split) error {
 	}
 
 	return nil
+}
+
+// categoryStringArg mirrors categoryArg but emits the UUID as a string,
+// matching the CAST(? AS UUID) bind shape used by Update.
+func categoryStringArg(split *Split) any {
+	if split.CategoryID.IsNil() {
+		return nil
+	}
+	return split.CategoryID.String()
 }
 
 // Delete removes a split from the database.
@@ -318,6 +366,8 @@ func (r *SplitRepository) scanSplits(rows *sql.Rows) ([]*Split, error) {
 			&split.ID,
 			&split.TransactionID,
 			&split.CategoryID,
+			&split.TransferAccountID,
+			&split.TransferID,
 			&split.Amount,
 			&split.Memo,
 			&split.CreatedAt,

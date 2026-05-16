@@ -929,6 +929,198 @@ func TestSplitRepository_ValidateSplitsAgainstTransaction(t *testing.T) {
 }
 
 // =============================================================================
+// Transfer-Line Round-Trip (MS-003)
+// =============================================================================
+
+func TestSplitItemRepo_TransferLine_RoundTrip(t *testing.T) {
+	database := createTestDB(t)
+	splitRepo := NewSplitRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+
+	now := time.Now()
+	today := types.NewDate(now.Year(), now.Month(), now.Day())
+
+	sourceAcct := account.NewAccount("Source", account.TypeChecking, "USD",
+		types.ZeroMoney, today)
+	if err := accountRepo.Create(sourceAcct); err != nil {
+		t.Fatalf("Create source account: %v", err)
+	}
+	destAcct := account.NewAccount("Dest", account.TypeSavings, "USD",
+		types.ZeroMoney, today)
+	if err := accountRepo.Create(destAcct); err != nil {
+		t.Fatalf("Create dest account: %v", err)
+	}
+
+	cat := category.NewCategory("Income", category.TypeIncome)
+	if err := categoryRepo.Create(cat); err != nil {
+		t.Fatalf("Create category: %v", err)
+	}
+
+	// Parent net amount is 700 = 1000 (income) + -300 (transfer-line).
+	parent := NewTransaction(sourceAcct.ID, today, types.MustNewMoney("700.00"))
+	if err := txnRepo.Create(parent); err != nil {
+		t.Fatalf("Create parent transaction: %v", err)
+	}
+
+	categorized := NewSplit(parent.ID, cat.ID, types.MustNewMoney("1000.00"))
+	if err := splitRepo.Create(categorized); err != nil {
+		t.Fatalf("Create categorized split: %v", err)
+	}
+
+	transferID := types.NewID()
+	transferLine := &Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-300.00"),
+		TransferAccountID: types.NullableID{ID: destAcct.ID, Valid: true},
+		TransferID:        types.NullableID{ID: transferID, Valid: true},
+	}
+	if err := splitRepo.Create(transferLine); err != nil {
+		t.Fatalf("Create transfer-line split: %v", err)
+	}
+
+	gotCat, err := splitRepo.GetByID(categorized.ID)
+	if err != nil {
+		t.Fatalf("GetByID categorized: %v", err)
+	}
+	if gotCat.CategoryID != cat.ID {
+		t.Errorf("categorized.CategoryID = %v, want %v", gotCat.CategoryID, cat.ID)
+	}
+	if gotCat.TransferAccountID.Valid {
+		t.Errorf("categorized.TransferAccountID should be NULL, got %v", gotCat.TransferAccountID.ID)
+	}
+	if gotCat.TransferID.Valid {
+		t.Errorf("categorized.TransferID should be NULL, got %v", gotCat.TransferID.ID)
+	}
+
+	gotXfer, err := splitRepo.GetByID(transferLine.ID)
+	if err != nil {
+		t.Fatalf("GetByID transfer-line: %v", err)
+	}
+	if !gotXfer.CategoryID.IsNil() {
+		t.Errorf("transfer.CategoryID = %v, want NilID", gotXfer.CategoryID)
+	}
+	if !gotXfer.TransferAccountID.Valid || gotXfer.TransferAccountID.ID != destAcct.ID {
+		t.Errorf("transfer.TransferAccountID = %v, want {%v,true}",
+			gotXfer.TransferAccountID, destAcct.ID)
+	}
+	if !gotXfer.TransferID.Valid || gotXfer.TransferID.ID != transferID {
+		t.Errorf("transfer.TransferID = %v, want {%v,true}", gotXfer.TransferID, transferID)
+	}
+	if !gotXfer.Amount.Equal(types.MustNewMoney("-300.00")) {
+		t.Errorf("transfer.Amount = %s, want -300.00", gotXfer.Amount.String())
+	}
+
+	list, err := splitRepo.ListByTransaction(parent.ID)
+	if err != nil {
+		t.Fatalf("ListByTransaction: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("ListByTransaction returned %d rows, want 2", len(list))
+	}
+	var foundCat, foundXfer bool
+	for _, s := range list {
+		switch s.ID {
+		case categorized.ID:
+			foundCat = true
+			if s.CategoryID != cat.ID {
+				t.Errorf("list categorized.CategoryID mismatch")
+			}
+			if s.TransferAccountID.Valid || s.TransferID.Valid {
+				t.Errorf("list categorized transfer fields should be NULL")
+			}
+		case transferLine.ID:
+			foundXfer = true
+			if !s.CategoryID.IsNil() {
+				t.Errorf("list transfer.CategoryID should be NilID, got %v", s.CategoryID)
+			}
+			if !s.TransferAccountID.Valid || s.TransferAccountID.ID != destAcct.ID {
+				t.Errorf("list transfer.TransferAccountID mismatch")
+			}
+			if !s.TransferID.Valid || s.TransferID.ID != transferID {
+				t.Errorf("list transfer.TransferID mismatch")
+			}
+		}
+	}
+	if !foundCat || !foundXfer {
+		t.Errorf("missing rows in list: foundCategorized=%v foundTransfer=%v",
+			foundCat, foundXfer)
+	}
+}
+
+func TestSplitItemRepo_TransferLine_Update(t *testing.T) {
+	database := createTestDB(t)
+	splitRepo := NewSplitRepository(database)
+	accountRepo := account.NewRepository(database)
+	txnRepo := NewRepository(database)
+
+	now := time.Now()
+	today := types.NewDate(now.Year(), now.Month(), now.Day())
+
+	sourceAcct := account.NewAccount("Source", account.TypeChecking, "USD",
+		types.ZeroMoney, today)
+	if err := accountRepo.Create(sourceAcct); err != nil {
+		t.Fatalf("Create source account: %v", err)
+	}
+	destAcct := account.NewAccount("Dest", account.TypeSavings, "USD",
+		types.ZeroMoney, today)
+	if err := accountRepo.Create(destAcct); err != nil {
+		t.Fatalf("Create dest account: %v", err)
+	}
+	dest2Acct := account.NewAccount("Dest2", account.TypeSavings, "USD",
+		types.ZeroMoney, today)
+	if err := accountRepo.Create(dest2Acct); err != nil {
+		t.Fatalf("Create dest2 account: %v", err)
+	}
+
+	parent := NewTransaction(sourceAcct.ID, today, types.MustNewMoney("-500.00"))
+	if err := txnRepo.Create(parent); err != nil {
+		t.Fatalf("Create parent: %v", err)
+	}
+
+	transferID := types.NewID()
+	split := &Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-500.00"),
+		TransferAccountID: types.NullableID{ID: destAcct.ID, Valid: true},
+		TransferID:        types.NullableID{ID: transferID, Valid: true},
+	}
+	if err := splitRepo.Create(split); err != nil {
+		t.Fatalf("Create transfer-line: %v", err)
+	}
+
+	// Update: change target account and amount.
+	split.TransferAccountID = types.NullableID{ID: dest2Acct.ID, Valid: true}
+	split.Amount = types.MustNewMoney("-250.00")
+	if err := splitRepo.Update(split); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got, err := splitRepo.GetByID(split.ID)
+	if err != nil {
+		t.Fatalf("GetByID after update: %v", err)
+	}
+	if got.TransferAccountID.ID != dest2Acct.ID {
+		t.Errorf("TransferAccountID = %v, want %v",
+			got.TransferAccountID.ID, dest2Acct.ID)
+	}
+	if got.TransferID.ID != transferID {
+		t.Errorf("TransferID = %v, want %v", got.TransferID.ID, transferID)
+	}
+	if !got.Amount.Equal(types.MustNewMoney("-250.00")) {
+		t.Errorf("Amount = %s, want -250.00", got.Amount.String())
+	}
+	if !got.CategoryID.IsNil() {
+		t.Errorf("CategoryID should be NilID, got %v", got.CategoryID)
+	}
+}
+
+// =============================================================================
 // Integration Tests
 // =============================================================================
 
