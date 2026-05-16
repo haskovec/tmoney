@@ -12,12 +12,21 @@ import (
 
 // Repository provides database operations for scheduled transactions.
 type Repository struct {
-	db *db.DB
+	db        *db.DB
+	splitRepo *SplitRepository
 }
 
 // NewRepository creates a new Repository.
 func NewRepository(database *db.DB) *Repository {
-	return &Repository{db: database}
+	return &Repository{
+		db:        database,
+		splitRepo: NewSplitRepository(database),
+	}
+}
+
+// SplitRepo returns the underlying SplitRepository for multi-line template CRUD.
+func (r *Repository) SplitRepo() *SplitRepository {
+	return r.splitRepo
 }
 
 // Create inserts a new scheduled transaction into the database.
@@ -146,7 +155,21 @@ func (r *Repository) GetByID(id types.ID) (*Transaction, error) {
 		return nil, fmt.Errorf("failed to get scheduled transaction: %w", err)
 	}
 
+	if err := r.loadSplits(st); err != nil {
+		return nil, err
+	}
+
 	return st, nil
+}
+
+// loadSplits populates st.Splits from scheduled_split_items.
+func (r *Repository) loadSplits(st *Transaction) error {
+	splits, err := r.splitRepo.ListByScheduledTransaction(st.ID)
+	if err != nil {
+		return fmt.Errorf("failed to load scheduled splits: %w", err)
+	}
+	st.Splits = SplitCollection(splits)
+	return nil
 }
 
 // List retrieves all scheduled transactions ordered by next_date ascending.
@@ -344,8 +367,13 @@ func (r *Repository) Update(st *Transaction) error {
 	return nil
 }
 
-// Delete removes a scheduled transaction from the database.
+// Delete removes a scheduled transaction from the database. Child
+// scheduled_split_items rows are removed first to satisfy the FK constraint.
 func (r *Repository) Delete(id types.ID) error {
+	if _, err := r.splitRepo.DeleteByScheduledTransaction(id); err != nil {
+		return fmt.Errorf("failed to delete scheduled splits: %w", err)
+	}
+
 	result, err := r.db.Conn().Exec(
 		`DELETE FROM scheduled_transactions WHERE CAST(id AS VARCHAR) = ?`,
 		id.String(),
@@ -458,6 +486,12 @@ func (r *Repository) scanTransactions(rows *sql.Rows) ([]*Transaction, error) {
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating scheduled transactions: %w", err)
+	}
+
+	for _, st := range transactions {
+		if err := r.loadSplits(st); err != nil {
+			return nil, err
+		}
 	}
 
 	return transactions, nil

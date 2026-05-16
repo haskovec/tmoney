@@ -130,6 +130,10 @@ type Transaction struct {
 	// Auto-post properties
 	AutoPost     bool `json:"auto_post"`      // Whether to automatically post when due
 	PostLeadDays int  `json:"post_lead_days"` // Days before due date to post (0, 3, or 7)
+
+	// Multi-line template children. Empty for legacy single-line schedules.
+	// Populated by the repository when loading; persisted via SplitRepository.
+	Splits SplitCollection `json:"splits,omitempty"`
 }
 
 // NewTransaction creates a new Transaction with required properties.

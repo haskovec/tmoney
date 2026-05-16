@@ -49,10 +49,11 @@ Add schema and repository support with no behavior change yet.
   - Confirm: tests green.
   - Done: `SplitRepository.Create`/`Update` now write the new columns (with NULL `category_id` for transfer-lines) and validate the appropriate FK target (account for transfer-lines, category otherwise); `GetByID`/`ListByTransaction`/`scanSplits` read them. Tests `TestSplitItemRepo_TransferLine_RoundTrip` and `TestSplitItemRepo_TransferLine_Update` cover both create and update flows; full suite (5169 tests) and lint stay green.
 
-- [ ] **MS-004 — Scheduled-split-item repository CRUD**
+- [x] **MS-004 — Scheduled-split-item repository CRUD**
   - RED: test `TestScheduledSplitItemRepo_RoundTrip` — create, read, update, delete rows including both category-typed and transfer-typed. Test `TestScheduledRepo_LoadsChildren` — loading a scheduled transaction also loads its `scheduled_split_items`.
   - GREEN: extend `internal/scheduled/scheduled_repository.go` (or add a new file) with the CRUD and the join load.
   - Confirm: tests green.
+  - Done: new `internal/scheduled/split_repository.go` provides `SplitRepository` with `Create` / `GetByID` / `ListByScheduledTransaction` / `Update` (DELETE+INSERT) / `Delete` / `DeleteByScheduledTransaction` / `CountByScheduledTransaction`, verifying scheduled-transaction, category, and transfer-account FKs (the CHECK constraint enforces the exclusive shape). `scheduled.Transaction` gains a `Splits SplitCollection` field auto-populated by `Repository.GetByID` and `scanTransactions` (List family), and `Repository.Delete` cascades to child splits before removing the parent. `TestScheduledSplitItemRepo_RoundTrip` (11 sub-tests) and `TestScheduledRepo_LoadsChildren` (4 sub-tests) green; full suite (5187 tests) and lint stay green.
 
 ## Phase 2: Primitive — Service Layer
 
