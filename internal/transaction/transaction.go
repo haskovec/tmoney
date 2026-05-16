@@ -445,7 +445,10 @@ func (sc SplitCollection) Total() types.Money {
 	return total
 }
 
-// ValidateAgainstTransaction validates that the splits total matches the transaction amount.
+// ValidateAgainstTransaction validates that the splits' signed sum equals the
+// transaction amount. Line signs are independent of the parent's sign: a
+// paycheck transaction with parent +100 and lines +200 (gross) / -100 (tax) is
+// valid, as is a legacy same-sign split with parent -100 and lines -70 / -30.
 func (sc SplitCollection) ValidateAgainstTransaction(transactionAmount types.Money) types.ValidationErrors {
 	var errors types.ValidationErrors
 

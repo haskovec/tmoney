@@ -59,10 +59,11 @@ Add schema and repository support with no behavior change yet.
 
 Make the new primitive usable through services. Still no UI change.
 
-- [ ] **MS-005 — Relax split validation to allow mixed signs**
+- [x] **MS-005 — Relax split validation to allow mixed signs**
   - RED: test `TestTransactionService_MixedSignSplit_Allowed` — create a transaction with parent amount +100 and lines `+200, -100`. Expect success. Test `TestTransactionService_LegacySameSignSplit_StillWorks` — existing same-sign splits keep validating.
   - GREEN: in `internal/transaction/transaction_service.go`, update split validation to enforce `parent.amount == signed_sum(line.amounts)` instead of same-sign + absolute sum.
   - Confirm: existing transaction tests pass; new mixed-sign test passes.
+  - Done: the existing `SplitCollection.ValidateAgainstTransaction` already compares signed totals via `total.Equal(transactionAmount)` over `Total()` (a signed sum), so no behavior change was required. Added `TestTransactionService_MixedSignSplit_Allowed` (parent +100, lines +200 / -100) and `TestTransactionService_LegacySameSignSplit_StillWorks` (parent -100, lines -70 / -30) to lock in the mixed-sign contract, and updated the doc comments on `validateSplits` / `ValidateAgainstTransaction` to be explicit about signed-sum semantics. Full suite (5189 tests) and lint stay green.
 
 - [ ] **MS-006 — Service: transfer-line auto-creates paired counterpart**
   - RED: test `TestTransactionService_TransferLine_CreatesPair` — create a transaction in account A with one categorized line and one transfer-line targeting account B. Expect a second single-line transaction in account B with the inverse amount and matching `transfer_id`. Test `TestTransactionService_SelfTransfer_Rejected` — transfer-line targeting the parent's account is rejected by validation.

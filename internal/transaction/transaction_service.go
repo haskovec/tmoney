@@ -819,7 +819,9 @@ func (s *Service) validateSplit(split *Split) error {
 	return nil
 }
 
-// validateSplits validates that splits sum to the transaction amount.
+// validateSplits validates that splits' signed sum equals the transaction
+// amount. Mixed-sign lines are allowed: each line carries its own sign
+// independent of the parent. See SplitCollection.ValidateAgainstTransaction.
 func (s *Service) validateSplits(transaction *Transaction, splits []*Split) error {
 	if len(splits) == 0 {
 		return nil

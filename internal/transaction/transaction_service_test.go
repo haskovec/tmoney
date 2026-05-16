@@ -415,6 +415,108 @@ func TestTransactionService_CreateWithSplits(t *testing.T) {
 	})
 }
 
+// TestTransactionService_MixedSignSplit_Allowed covers MS-005: split lines may
+// have signs independent of the parent amount as long as their signed sum
+// equals the parent. Paycheck-shaped transactions need this: gross income is
+// positive, withholdings are negative, and the parent's net is the deposit.
+func TestTransactionService_MixedSignSplit_Allowed(t *testing.T) {
+	database := createTestDB(t)
+	txnRepo := NewRepository(database)
+	splitRepo := NewSplitRepository(database)
+	transferRepo := NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+
+	acct := createTestAccount(t, accountRepo, "Checking")
+
+	income := category.NewCategory("Salary", category.TypeIncome)
+	tax := category.NewCategory("Tax", category.TypeExpense)
+	if err := categoryRepo.Create(income); err != nil {
+		t.Fatalf("Failed to create income category: %v", err)
+	}
+	if err := categoryRepo.Create(tax); err != nil {
+		t.Fatalf("Failed to create tax category: %v", err)
+	}
+
+	// Parent net: +100. Lines: +200 (gross) and -100 (tax). Signed sum = +100.
+	parentAmount, _ := types.NewMoney("100.00")
+	txn := NewTransaction(acct.ID, types.Today(), parentAmount)
+
+	grossAmount, _ := types.NewMoney("200.00")
+	taxAmount, _ := types.NewMoney("-100.00")
+	splits := []*Split{
+		NewSplit(txn.ID, income.ID, grossAmount),
+		NewSplit(txn.ID, tax.ID, taxAmount),
+	}
+
+	if err := svc.CreateWithSplits(txn, splits); err != nil {
+		t.Fatalf("CreateWithSplits() with mixed signs error = %v", err)
+	}
+
+	retrieved, err := svc.GetSplits(txn.ID)
+	if err != nil {
+		t.Fatalf("GetSplits() error = %v", err)
+	}
+	if len(retrieved) != 2 {
+		t.Fatalf("Expected 2 splits, got %d", len(retrieved))
+	}
+
+	total := SplitCollection(retrieved).Total()
+	if !total.Equal(parentAmount) {
+		t.Errorf("Expected split total %s, got %s", parentAmount.String(), total.String())
+	}
+}
+
+// TestTransactionService_LegacySameSignSplit_StillWorks covers MS-005: the
+// relaxed signed-sum check must keep legacy same-sign splits valid.
+func TestTransactionService_LegacySameSignSplit_StillWorks(t *testing.T) {
+	database := createTestDB(t)
+	txnRepo := NewRepository(database)
+	splitRepo := NewSplitRepository(database)
+	transferRepo := NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+
+	acct := createTestAccount(t, accountRepo, "Checking")
+
+	food := category.NewCategory("Food", category.TypeExpense)
+	household := category.NewCategory("Household", category.TypeExpense)
+	if err := categoryRepo.Create(food); err != nil {
+		t.Fatalf("Failed to create food category: %v", err)
+	}
+	if err := categoryRepo.Create(household); err != nil {
+		t.Fatalf("Failed to create household category: %v", err)
+	}
+
+	parentAmount, _ := types.NewMoney("-100.00")
+	txn := NewTransaction(acct.ID, types.Today(), parentAmount)
+
+	foodAmount, _ := types.NewMoney("-70.00")
+	householdAmount, _ := types.NewMoney("-30.00")
+	splits := []*Split{
+		NewSplit(txn.ID, food.ID, foodAmount),
+		NewSplit(txn.ID, household.ID, householdAmount),
+	}
+
+	if err := svc.CreateWithSplits(txn, splits); err != nil {
+		t.Fatalf("CreateWithSplits() with same-sign splits error = %v", err)
+	}
+
+	retrieved, err := svc.GetSplits(txn.ID)
+	if err != nil {
+		t.Fatalf("GetSplits() error = %v", err)
+	}
+	if len(retrieved) != 2 {
+		t.Fatalf("Expected 2 splits, got %d", len(retrieved))
+	}
+}
+
 func TestTransactionService_ValidateSplitTotals(t *testing.T) {
 	t.Run("returns true when splits match", func(t *testing.T) {
 		database := createTestDB(t)
