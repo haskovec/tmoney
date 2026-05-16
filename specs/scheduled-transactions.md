@@ -4,6 +4,8 @@
 
 Scheduled transactions represent recurring or future transactions that repeat on a defined schedule. They generate reminders for the user to enter the actual transaction.
 
+A scheduled transaction may be **single-line** (one account, one payee, one category or transfer, one amount — described throughout this spec) or **multi-line** (a template with multiple categorized and/or transfer lines, used for paychecks and other compound events). The multi-line model, post-time preview dialog, and paycheck wizard are specified in [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md); the relevant cross-references are summarized in the **Multi-Line Schedules** and **Post-Time Preview Dialog** sections below.
+
 ## Scheduled Transaction Properties
 
 ### Core Properties
@@ -71,7 +73,7 @@ A scheduled transaction ends when:
 
 ## Variable Amounts
 
-For transactions with variable amounts (utility bills, etc.):
+For **single-line** transactions with variable amounts (utility bills, etc.):
 
 1. `amount` is set to null or stores an estimate
 2. `amount_estimate_count` (optional): Use average of last N transactions
@@ -84,6 +86,8 @@ If `amount_estimate_count` is set (e.g., 3):
 2. Calculate average
 3. Pre-fill amount field with estimate
 4. User can accept or modify
+
+Multi-line schedules do **not** support per-line variable estimation. Each line on a multi-line template stores a fixed expected amount; real-world variation (FICA penny shifts, payday holiday shifts) is handled at the post-time preview where the user edits the one occurrence. See **Post-Time Preview Dialog** below.
 
 ## Transaction Mode
 
@@ -100,20 +104,40 @@ When `next_date` is reached (or passed):
 
 1. Show in "Scheduled Transactions Due" list
 2. User can:
-   - Post: Creates actual transaction, advances schedule
+   - Enter / Post: Opens the **post-time preview dialog** (see below), pre-filled with template values, where the user can adjust this one occurrence before saving
    - Skip: Advances schedule without creating transaction
-   - Edit & Post: Modify amount/date/category then post
-   - Postpone: Move next_date forward
+   - Edit Series (`e`): Modify the template itself, affecting all future occurrences
 
 ### Posting a Scheduled Transaction
 
-1. Create new transaction with:
-   - Date: next_date (or user-specified)
-   - Amount: scheduled amount or user-entered
-   - Other fields from scheduled transaction
-2. Advance next_date based on frequency
-3. Decrement occurrences_remaining (if applicable)
-4. If occurrences_remaining = 0, mark schedule as completed
+1. Open the preview dialog pre-filled with template values
+2. User edits this one occurrence as needed (date, amounts, lines)
+3. On Save: create transaction(s) per the template structure (single-line or multi-line; transfer-lines auto-create paired counterparts)
+4. Advance `next_date` based on the template's original `next_date` and frequency — **not** based on the user's edited posting date
+5. Decrement `occurrences_remaining` (if applicable); mark schedule completed when it hits 0
+
+### Auto-Post Interaction
+
+Auto-post bypasses the preview entirely and creates the transaction(s) using template values exactly. Users who want preview-before-post on a given schedule leave auto-post off. For paychecks, most users leave auto-post off precisely because of FICA-penny fluctuations.
+
+## Multi-Line Schedules
+
+A scheduled transaction may store a multi-line template — multiple categorized and/or transfer lines that together represent a single compound event (e.g., a paycheck). Posting a multi-line schedule creates a real transaction whose split items mirror the template structure; any transfer-line in the template creates a paired single-line counterpart in the target account.
+
+The data model adds a `scheduled_split_items` table (one row per line, with mutually exclusive `category_id` / `transfer_account_id`); the parent `scheduled_transactions` row keeps its scalar `amount` (representing the net effect on the parent account) and has `category_id` NULL when multi-line. A scheduled transaction is either single-line or multi-line — both shapes cannot coexist on one record.
+
+See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md) for the full data model, cascade rules, and validation. A guided **paycheck wizard** sits on top of this primitive as UI sugar — see the same spec.
+
+## Post-Time Preview Dialog
+
+Pressing Enter on a due scheduled transaction (in the Scheduled view or from the dashboard's "Due" panel) opens a preview dialog rather than immediately posting. The dialog is pre-filled with the schedule's template values and lets the user adjust **this one occurrence** before saving.
+
+Key semantics (full detail in [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md)):
+
+- **Date edits are one-off.** Editing the date only changes the posted transaction's date; the schedule's `next_date` advances per the template, not the edit.
+- **Amount and line edits are one-off.** Edits do not modify the template. Next occurrence reverts to template values. To permanently change the template, use **Edit Series** (`e`).
+- **Hard validation applies to multi-line.** A multi-line preview with an imbalanced split disables Save until balanced.
+- **Auto-post bypasses the preview** entirely and posts using template values.
 
 ## Validation Rules
 
@@ -239,7 +263,8 @@ tmoney --skip-scheduled <id>
 
 ## v1.5 Features (Not in v1)
 
-- Auto-post mode
 - Email/notification reminders
 - Linked to actual posted transactions
 - Bulk operations (post all due)
+- Per-line variable amount estimation on multi-line schedules
+- CLI surface for creating multi-line schedules and paychecks

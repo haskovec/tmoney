@@ -138,22 +138,108 @@ creates the category, auto-selects it, and advances focus to Amount.
 When "Split transaction" is checked:
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│  SPLIT TRANSACTION                                  [×]  │
-├──────────────────────────────────────────────────────────┤
-│  Total: $150.00                     Remaining: $0.00     │
-├──────────────────────────────────────────────────────────┤
-│                                                          │
-│  Category              Amount        Memo                │
-│  ─────────────────────────────────────────────────────   │
-│  Food > Groceries      $120.00       Food items          │
-│  Household > Cleaning   $30.00       Cleaning supplies   │
-│  [+ Add split]                                           │
-│                                                          │
-├──────────────────────────────────────────────────────────┤
-│           [Cancel]                    [Save]             │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  SPLIT TRANSACTION                                      [×]  │
+├──────────────────────────────────────────────────────────────┤
+│  Parent: +3,067.50              Imbalance: $0.00             │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Category / Target          Amount      Memo                 │
+│  ───────────────────────────────────────────────────────     │
+│  Income > Salary           +5,000.00                         │
+│  Tax > Federal               -800.00                         │
+│  Tax > Social Security       -310.00                         │
+│  Tax > Medicare               -72.50                         │
+│  Transfer → 401k             -500.00                         │
+│  Insurance > Health          -150.00                         │
+│  Transfer → HSA              -100.00                         │
+│  [+ Add line]                                                │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│           [Cancel]                    [Save]                 │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+Lines may be **categorized** (pick a category from the combo box) or **transfers** (pick the `Transfer →` sentinel option in the combo, then pick a target account). Line amounts may be mixed-sign — the parent amount is the signed sum of all lines. The "Imbalance" indicator updates live as the user types; **Save is disabled until imbalance is zero** (no auto-balancing plug). See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md) for the full primitive.
+
+### Scheduled Transaction Preview Dialog
+
+Pressing Enter on a due scheduled transaction (Scheduled view or Dashboard's Due panel) opens this preview dialog rather than posting immediately. The dialog is pre-filled with the schedule's template values and lets the user adjust **this one occurrence** before saving. For a multi-line scheduled transaction (e.g., a paycheck):
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  POST SCHEDULED TRANSACTION                             [×]  │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Date:      [01/23/2026]                                     │
+│  Payee:     [Employer________________]  ▼                    │
+│  Account:   [Checking ▼]                                     │
+│  Memo:      [_______________________________________]        │
+│                                                              │
+│  Parent: +3,067.50              Imbalance: $0.00             │
+│  ───────────────────────────────────────────────────         │
+│  Category / Target          Amount      Memo                 │
+│  Income > Salary           +5,000.00                         │
+│  Tax > Federal               -800.00                         │
+│  Tax > Social Security       -310.01    ← edited             │
+│  Tax > Medicare               -72.50                         │
+│  Transfer → 401k             -500.00                         │
+│  Insurance > Health          -149.99    ← edited             │
+│  Transfer → HSA              -100.00                         │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│           [Cancel]                    [Save]                 │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Semantics (full detail in [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md)):
+
+- Date edits are **one-off**: the schedule's `next_date` advances per the template, not the edit.
+- Amount and line edits are **one-off**: edits do not modify the template.
+- Save is disabled while a multi-line preview is imbalanced.
+- To modify the template for all future occurrences, press `e` (Edit Series) on the scheduled item in the list instead of `Enter`.
+
+For a single-line scheduled transaction, the preview renders the regular Transaction Entry/Edit Dialog shape pre-filled with template values.
+
+### Paycheck Schedule Wizard
+
+A guided form (TUI-only) creates a multi-line scheduled paycheck. Opened from **Transactions → New Paycheck Schedule…**. The wizard is pure UI sugar — the saved record is a standard multi-line scheduled transaction.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  PAYCHECK SCHEDULE                                      [×]  │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Employer (payee):  [_______________________]                │
+│  Pay frequency:     [Biweekly ▼]    Next payday: [MM/DD/YYYY]│
+│                                                              │
+│  Gross pay:         $[__________]   → [Income:Salary ▼]      │
+│                                                              │
+│  PRE-TAX DEDUCTIONS                                          │
+│    Federal income tax     $[____]   [Tax:Federal ▼]          │
+│    State income tax       $[____]   [Tax:State ▼]            │
+│    Social Security        $[____]   [Tax:Social Security ▼]  │
+│    Medicare               $[____]   [Tax:Medicare ▼]         │
+│    401(k) contribution    $[____]   Transfer → [401k ▼]      │
+│    [+ Add pre-tax line]                                      │
+│                                                              │
+│  POST-TAX DEDUCTIONS                                         │
+│    Health insurance       $[____]   [Insurance:Health ▼]     │
+│    HSA contribution       $[____]   Transfer → [HSA ▼]       │
+│    [+ Add post-tax line]                                     │
+│                                                              │
+│  NET PAY DESTINATIONS                                        │
+│    Primary deposit:       [Checking ▼]   ($X,XXX.XX — remainder) │
+│    Additional transfers:                                     │
+│      Savings              $[____]   Transfer → [Savings ▼]   │
+│    [+ Add transfer]                                          │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│           [Cancel]                    [Save]                 │
+└──────────────────────────────────────────────────────────────┘
+```
+
+The "Primary deposit" line is computed at save time as `gross − sum(deductions) − sum(additional transfers)` and stored as a fixed line on the resulting schedule. Pre-tax / post-tax groupings are visual organization only — they are not stored on the saved lines. Saved record is a standard multi-line scheduled transaction; editing it later via `e` opens the generic multi-line scheduled-transaction dialog. A paycheck-shaped schedule offers an **Edit as paycheck →** affordance that relaunches this wizard with current values pre-filled. See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md).
 
 ### Scheduled Transactions View
 
@@ -311,9 +397,9 @@ Each menu label has its shortcut letter underlined to indicate the `Alt+key` sho
 
 | Key | Action |
 |-----|--------|
-| `Enter` | Post scheduled transaction |
+| `Enter` | Open the post-time preview dialog (edit this one occurrence, then save) |
 | `s` | Skip occurrence |
-| `e` | Edit scheduled transaction |
+| `e` | Edit series — modify the template (affects all future occurrences) |
 | `n` | New scheduled transaction |
 | `d` | Delete scheduled transaction |
 
@@ -385,8 +471,12 @@ Filter ranking: case-insensitive substring match. Prefix matches on
 the leaf segment (the part after the last ` > ` or `:`) rank ahead of
 plain-substring matches; alphabetical within each rank group.
 
-The last row of the filtered list is always
-`[+ Add new category…]`. Activating it opens a small create-category
+The last rows of the filtered list are always:
+
+- `Transfer →` — present only when the combo box is used on a **split line** (not on the top-level Category field of a single-line transaction). Activating it swaps the field for an account picker (excluding the parent's account); the resulting line is stored as a transfer-line with `transfer_account_id` set and `category_id` NULL. See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md).
+- `[+ Add new category…]`
+
+Activating `[+ Add new category…]` opens a small create-category
 sub-dialog with three fields:
 
 - **Name** — pre-filled from the typed query (or, if the query

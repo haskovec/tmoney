@@ -49,11 +49,12 @@ For credit cards and loans (liability accounts), the signs are inverted for disp
 
 ## Split Transactions
 
-A transaction can be split across multiple categories. When split:
+A transaction can be split across multiple lines. When split:
 
 - The parent transaction has the total amount
-- Split items define how the amount is categorized
-- Sum of split amounts must equal parent amount
+- Split items define how the amount is allocated
+- Each line is either **categorized** or a **transfer** to another account
+- Signed sum of split amounts equals the parent amount (mixed signs allowed)
 
 ### Split Item Properties
 
@@ -61,16 +62,39 @@ A transaction can be split across multiple categories. When split:
 |----------|------|----------|-------------|
 | `id` | UUID | Yes | Unique identifier |
 | `transaction_id` | UUID | Yes | Parent transaction |
-| `category_id` | UUID | Yes | Category for this portion |
-| `amount` | decimal | Yes | Amount for this split |
-| `memo` | string | No | Note for this split item |
+| `category_id` | UUID | No | Category for this line — set when the line is categorized |
+| `transfer_account_id` | UUID | No | Target account — set when the line is a transfer |
+| `transfer_id` | UUID | No | Shared identifier linking the line to its paired single-line counter-transaction in the target account |
+| `amount` | decimal | Yes | Signed amount for this line |
+| `memo` | string | No | Note for this line |
 
-### Split Transaction Example
+Validation: exactly one of `category_id` or `transfer_account_id` is set per row; `transfer_id` is set iff `transfer_account_id` is set.
+
+### Split Transaction Example (same-sign, categorized)
 
 Grocery store purchase of $150:
 - Total: -$150.00 (Payee: Kroger)
   - Split 1: -$120.00 (Category: Food → Groceries)
   - Split 2: -$30.00 (Category: Household → Cleaning)
+
+### Mixed-Sign Split with Transfer Lines
+
+Split lines may carry mixed signs and may be transfer lines (a line that moves cash to another account, auto-creating a paired single-line transaction in the target). This is the primitive used to model paychecks and similar compound events. See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md) for the full spec.
+
+Example — paycheck deposited to checking:
+
+- Total: +$3,067.50 (Payee: Employer)
+  - +$5,000.00 (Category: Income → Salary)
+  - -$800.00 (Category: Tax → Federal)
+  - -$310.00 (Category: Tax → Social Security)
+  - -$72.50 (Category: Tax → Medicare)
+  - -$500.00 (Transfer → 401k account)
+  - -$150.00 (Category: Insurance → Health)
+  - -$100.00 (Transfer → HSA account)
+
+The parent amount (+$3,067.50) is the signed sum of all lines, which is what the bank actually deposits to checking. Each transfer-line creates its own paired single-line transaction in the target account, linked by `transfer_id` (the same mechanism as today's whole-transaction transfers).
+
+Legacy whole-transaction transfers (one pair of single-line transactions linked by `transfer_id` at the transactions level, with no split children) remain valid alongside new transfer-lines.
 
 ## Transfers
 
@@ -103,8 +127,9 @@ Transfers are represented as two linked transactions:
 1. `date` is required
 2. `amount` cannot be zero
 3. `account_id` must reference an active account
-4. For splits: sum of split amounts must equal transaction amount
-5. For transfers: both sides must exist and balance
+4. For splits: signed sum of split line amounts must equal parent transaction amount
+5. For transfers (whole-transaction or transfer-line): both sides must exist and balance
+6. A transfer-line's `transfer_account_id` must not equal the parent's `account_id` (no self-transfers)
 
 ## Operations
 
@@ -124,7 +149,10 @@ For transfers, editing amount updates both sides.
 ### Delete Transaction
 
 - Regular transaction: delete immediately
-- Transfer: prompt to delete both sides
+- Whole-transaction transfer: prompt to delete both sides
+- Multi-line transaction with transfer-lines: cascade delete every paired counter-transaction in target accounts
+- Single transfer-line removed from a parent split: cascade delete its paired counter-transaction; parent retains other lines (may be imbalanced — hard validation blocks the next Save until rebalanced)
+- Paired side deleted from its own (target) register: reverse cascade — remove the corresponding line from the parent split
 - Reconciled transaction: warn user (v1.5)
 
 ### Duplicate Transaction
