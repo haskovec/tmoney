@@ -407,20 +407,34 @@ func (s *Split) ClearMemo() {
 	s.Touch()
 }
 
-// Validate validates the split and returns any validation errors.
+// Validate validates the split and returns any validation errors. A split is
+// either categorized (CategoryID set, transfer fields zero) or a transfer-
+// line (TransferAccountID set, CategoryID zero). The two shapes are mutually
+// exclusive; a transfer-line's TransferID may be zero at construction time —
+// the service mints it when the parent transaction is created.
 func (s *Split) Validate() types.ValidationErrors {
 	v := types.NewValidator()
 
-	// Required fields
 	v.RequiredID("transaction_id", s.TransactionID)
-	v.RequiredID("category_id", s.CategoryID)
 
-	// Amount cannot be zero
+	hasCategory := !s.CategoryID.IsNil()
+	hasTransfer := s.TransferAccountID.Valid
+	switch {
+	case hasCategory && hasTransfer:
+		v.AddError("split", "cannot have both category_id and transfer_account_id")
+	case !hasCategory && !hasTransfer:
+		v.AddError("split", "must have either category_id or transfer_account_id")
+	}
+
+	// If transfer_id is set, transfer_account_id must also be set.
+	if s.TransferID.Valid && !s.TransferAccountID.Valid {
+		v.AddError("transfer_id", "set without transfer_account_id")
+	}
+
 	if s.Amount.IsZero() {
 		v.AddError("amount", "cannot be zero")
 	}
 
-	// Optional field length limits
 	if s.Memo.Valid {
 		v.MaxLength("memo", s.Memo.String, 500)
 	}

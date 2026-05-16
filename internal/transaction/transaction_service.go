@@ -181,39 +181,73 @@ func (s *Service) SearchByCategory(categoryName string) ([]*Transaction, error) 
 // Split Transaction Operations
 // =============================================================================
 
-// CreateWithSplits creates a transaction along with its splits.
-// The splits must sum to the transaction amount.
+// CreateWithSplits creates a transaction along with its splits. The signed
+// sum of split amounts must equal the transaction amount. For each
+// transfer-typed split-line (TransferAccountID set), the service mints a
+// fresh TransferID, stores it on the split-item, and creates a paired
+// single-line transaction in the target account with the inverted amount
+// and matching transfer_id.
 func (s *Service) CreateWithSplits(transaction *Transaction, splits []*Split) error {
 	if err := s.validateTransaction(transaction); err != nil {
 		return err
 	}
 
-	// Validate splits sum to transaction amount
 	if err := s.validateSplits(transaction, splits); err != nil {
 		return err
 	}
 
-	// When a transaction has splits, it should not have a category set
 	if transaction.HasCategory() && len(splits) > 0 {
 		return &HasSplitsError{ID: transaction.ID.String()}
 	}
 
-	// Create the transaction
+	// Mint transfer_ids for transfer-lines so the split row and its paired
+	// counter-transaction share the link from the first write.
+	for _, split := range splits {
+		if split.TransferAccountID.Valid && !split.TransferID.Valid {
+			split.TransferID = types.NullableID{ID: types.NewID(), Valid: true}
+		}
+	}
+
 	if err := s.txnRepo.Create(transaction); err != nil {
 		return fmt.Errorf("failed to create transaction: %w", err)
 	}
 
-	// Create all splits
+	// Track paired-counter-transactions so we can roll them back on a later
+	// failure.
+	createdPairs := make([]types.ID, 0, len(splits))
+
 	for _, split := range splits {
 		split.TransactionID = transaction.ID
 		if err := s.splitRepo.Create(split); err != nil {
-			// Best effort cleanup - delete the transaction
-			_ = s.txnRepo.Delete(transaction.ID)
+			s.rollbackCreateWithSplits(transaction.ID, createdPairs)
 			return fmt.Errorf("failed to create split: %w", err)
 		}
+
+		if !split.TransferAccountID.Valid {
+			continue
+		}
+
+		paired := NewTransaction(split.TransferAccountID.ID, transaction.Date, split.Amount.Neg())
+		paired.SetTransfer(split.TransferID.ID, transaction.AccountID)
+		if err := s.txnRepo.Create(paired); err != nil {
+			s.rollbackCreateWithSplits(transaction.ID, createdPairs)
+			return fmt.Errorf("failed to create paired transfer transaction: %w", err)
+		}
+		createdPairs = append(createdPairs, paired.ID)
 	}
 
 	return nil
+}
+
+// rollbackCreateWithSplits best-effort removes paired counter-transactions
+// and the parent transaction (which cascades its splits) after a partial
+// CreateWithSplits failure.
+func (s *Service) rollbackCreateWithSplits(parentID types.ID, pairedIDs []types.ID) {
+	for _, id := range pairedIDs {
+		_ = s.txnRepo.Delete(id)
+	}
+	_, _ = s.splitRepo.DeleteByTransaction(parentID)
+	_ = s.txnRepo.Delete(parentID)
 }
 
 // GetSplits returns all splits for a transaction.
@@ -821,20 +855,26 @@ func (s *Service) validateSplit(split *Split) error {
 
 // validateSplits validates that splits' signed sum equals the transaction
 // amount. Mixed-sign lines are allowed: each line carries its own sign
-// independent of the parent. See SplitCollection.ValidateAgainstTransaction.
+// independent of the parent. Transfer-typed lines additionally must not
+// target the parent's own account.
+// See SplitCollection.ValidateAgainstTransaction.
 func (s *Service) validateSplits(transaction *Transaction, splits []*Split) error {
 	if len(splits) == 0 {
 		return nil
 	}
 
-	// Validate each split
 	for _, split := range splits {
 		if err := s.validateSplit(split); err != nil {
 			return err
 		}
+		if split.TransferAccountID.Valid && split.TransferAccountID.ID == transaction.AccountID {
+			errors := types.ValidationErrors{}
+			errors.Add("transfer_account_id",
+				(&SelfTransferError{AccountID: transaction.AccountID.String()}).Error())
+			return &types.ServiceValidationError{Errors: errors}
+		}
 	}
 
-	// Validate sum
 	collection := SplitCollection(splits)
 	errors := collection.ValidateAgainstTransaction(transaction.Amount)
 	if errors.HasErrors() {

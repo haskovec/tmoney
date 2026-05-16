@@ -517,6 +517,142 @@ func TestTransactionService_LegacySameSignSplit_StillWorks(t *testing.T) {
 	}
 }
 
+// TestTransactionService_TransferLine_CreatesPair covers MS-006: when a
+// transaction is created with a transfer-typed split-line, the service mints
+// a fresh transfer_id, stores it on the split-item, and creates a paired
+// single-line transaction in the target account whose transfer_id matches
+// and whose amount inverts the line's signed amount.
+func TestTransactionService_TransferLine_CreatesPair(t *testing.T) {
+	database := createTestDB(t)
+	txnRepo := NewRepository(database)
+	splitRepo := NewSplitRepository(database)
+	transferRepo := NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+
+	checking := createTestAccount(t, accountRepo, "Checking")
+	savings := createTestAccount(t, accountRepo, "Savings")
+
+	salary := category.NewCategory("Salary", category.TypeIncome)
+	if err := categoryRepo.Create(salary); err != nil {
+		t.Fatalf("Create salary category: %v", err)
+	}
+
+	// Parent net +700: salary +1000, transfer -300 to Savings.
+	parent := NewTransaction(checking.ID, types.Today(), types.MustNewMoney("700.00"))
+
+	salaryLine := NewSplit(parent.ID, salary.ID, types.MustNewMoney("1000.00"))
+	transferLine := &Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-300.00"),
+		TransferAccountID: types.NullableID{ID: savings.ID, Valid: true},
+	}
+
+	if err := svc.CreateWithSplits(parent, []*Split{salaryLine, transferLine}); err != nil {
+		t.Fatalf("CreateWithSplits() error = %v", err)
+	}
+
+	reloaded, err := svc.GetSplits(parent.ID)
+	if err != nil {
+		t.Fatalf("GetSplits() error = %v", err)
+	}
+	if len(reloaded) != 2 {
+		t.Fatalf("Expected 2 splits, got %d", len(reloaded))
+	}
+
+	var xfer *Split
+	for _, s := range reloaded {
+		if s.TransferAccountID.Valid {
+			xfer = s
+		}
+	}
+	if xfer == nil {
+		t.Fatalf("transfer-line not found in reloaded splits")
+	}
+	if !xfer.TransferID.Valid || xfer.TransferID.ID.IsNil() {
+		t.Errorf("transfer-line should have a transfer_id minted, got %v", xfer.TransferID)
+	}
+	if xfer.TransferAccountID.ID != savings.ID {
+		t.Errorf("transfer-line.TransferAccountID = %v, want %v",
+			xfer.TransferAccountID.ID, savings.ID)
+	}
+
+	pairedList, err := svc.ListByAccount(savings.ID)
+	if err != nil {
+		t.Fatalf("ListByAccount(savings) error = %v", err)
+	}
+	if len(pairedList) != 1 {
+		t.Fatalf("expected 1 paired transaction in Savings, got %d", len(pairedList))
+	}
+	paired := pairedList[0]
+	if !paired.Amount.Equal(types.MustNewMoney("300.00")) {
+		t.Errorf("paired.Amount = %s, want 300.00", paired.Amount.String())
+	}
+	if !paired.TransferID.Valid || paired.TransferID.ID != xfer.TransferID.ID {
+		t.Errorf("paired.TransferID = %v, want %v", paired.TransferID, xfer.TransferID)
+	}
+	if !paired.TransferAccountID.Valid || paired.TransferAccountID.ID != checking.ID {
+		t.Errorf("paired.TransferAccountID = %v, want %v (parent's account)",
+			paired.TransferAccountID, checking.ID)
+	}
+	if paired.AccountID != savings.ID {
+		t.Errorf("paired.AccountID = %v, want %v (savings)",
+			paired.AccountID, savings.ID)
+	}
+	if !paired.Date.Equal(parent.Date) {
+		t.Errorf("paired.Date = %v, want parent date %v", paired.Date, parent.Date)
+	}
+	// The parent itself must not be marked as a transfer; only the split-item
+	// carries the transfer linkage on the parent's side.
+	parentReload, err := svc.GetByID(parent.ID)
+	if err != nil {
+		t.Fatalf("GetByID(parent) error = %v", err)
+	}
+	if parentReload.IsTransfer() {
+		t.Errorf("parent transaction should not be a transfer; transfer_id should be NULL on parent row")
+	}
+}
+
+// TestTransactionService_SelfTransfer_Rejected covers MS-006: a transfer-line
+// whose target account equals the parent transaction's account must be
+// rejected by validation.
+func TestTransactionService_SelfTransfer_Rejected(t *testing.T) {
+	svc, accountRepo := createTestTransactionService(t)
+	checking := createTestAccount(t, accountRepo, "Checking")
+
+	parent := NewTransaction(checking.ID, types.Today(), types.MustNewMoney("-100.00"))
+	transferLine := &Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-100.00"),
+		TransferAccountID: types.NullableID{ID: checking.ID, Valid: true},
+	}
+
+	err := svc.CreateWithSplits(parent, []*Split{transferLine})
+	if err == nil {
+		t.Fatal("CreateWithSplits() expected error for self-transfer, got nil")
+	}
+	if _, ok := err.(*types.ServiceValidationError); !ok {
+		t.Errorf("Expected ServiceValidationError, got %T: %v", err, err)
+	}
+
+	// The parent must not have been persisted; the listing for the account is
+	// empty.
+	list, err := svc.ListByAccount(checking.ID)
+	if err != nil {
+		t.Fatalf("ListByAccount() error = %v", err)
+	}
+	if len(list) != 0 {
+		t.Errorf("Expected no transactions after rejected self-transfer, got %d", len(list))
+	}
+}
+
 func TestTransactionService_ValidateSplitTotals(t *testing.T) {
 	t.Run("returns true when splits match", func(t *testing.T) {
 		database := createTestDB(t)

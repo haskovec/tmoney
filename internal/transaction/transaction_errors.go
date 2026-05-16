@@ -98,3 +98,13 @@ type IsNotTransferError struct {
 func (e *IsNotTransferError) Error() string {
 	return fmt.Sprintf("transaction %s is not a transfer", e.ID)
 }
+
+// SelfTransferError is returned when a transfer-line's target account equals
+// the parent transaction's account.
+type SelfTransferError struct {
+	AccountID string
+}
+
+func (e *SelfTransferError) Error() string {
+	return fmt.Sprintf("transfer-line target account %s equals parent account; self-transfer is not allowed", e.AccountID)
+}
