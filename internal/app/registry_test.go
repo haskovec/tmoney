@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 )
 
@@ -116,5 +117,64 @@ func TestNewServices(t *testing.T) {
 		if err != nil {
 			t.Errorf("PayeeRepo.List() error = %v", err)
 		}
+	})
+}
+
+// TestFileInit_PaycheckCategoriesExist asserts that opening or creating
+// a database via NewServices ensures the paycheck-wizard categories
+// (Income:Salary, Tax:Federal, Tax:State, Tax:Social Security,
+// Tax:Medicare, Insurance:Health) exist — both for fresh files and for
+// existing files that previously had them removed.
+func TestFileInit_PaycheckCategoriesExist(t *testing.T) {
+	required := []struct{ parent, child string }{
+		{"Income", "Salary"},
+		{"Tax", "Federal"},
+		{"Tax", "State"},
+		{"Tax", "Social Security"},
+		{"Tax", "Medicare"},
+		{"Insurance", "Health"},
+	}
+
+	assertPresent := func(t *testing.T, svc *category.Service) {
+		t.Helper()
+		for _, r := range required {
+			parent, err := svc.GetByName(r.parent, nil)
+			if err != nil {
+				t.Fatalf("parent %q missing: %v", r.parent, err)
+			}
+			if _, err := svc.GetByName(r.child, &parent.ID); err != nil {
+				t.Fatalf("child %q under parent %q missing: %v", r.child, r.parent, err)
+			}
+		}
+	}
+
+	t.Run("fresh file gets paycheck categories", func(t *testing.T) {
+		database := createTestDB(t)
+		svc := NewServices(database)
+		assertPresent(t, svc.Category)
+	})
+
+	t.Run("existing file gains missing paycheck categories on reopen", func(t *testing.T) {
+		database := createTestDB(t)
+		svc := NewServices(database)
+
+		// Simulate an existing database that pre-dates the paycheck-
+		// category seed: delete one of the children and its (also
+		// previously-unseeded) parent.
+		taxParent, err := svc.Category.GetByName("Tax", nil)
+		if err != nil {
+			t.Fatalf("initial Tax parent lookup: %v", err)
+		}
+		fedChild, err := svc.Category.GetByName("Federal", &taxParent.ID)
+		if err != nil {
+			t.Fatalf("initial Federal child lookup: %v", err)
+		}
+		if err := svc.CategoryRepo.Delete(fedChild.ID); err != nil {
+			t.Fatalf("delete Federal child: %v", err)
+		}
+
+		// Re-run service construction; this should re-create the child.
+		svc2 := NewServices(database)
+		assertPresent(t, svc2.Category)
 	})
 }

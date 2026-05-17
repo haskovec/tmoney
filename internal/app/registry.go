@@ -76,6 +76,10 @@ func NewServices(database *db.DB) *Services {
 	// Create services (inject cross-slice repo dependencies)
 	accountSvc := account.NewService(accountRepo, database)
 	categorySvc := category.NewService(categoryRepo, database)
+	// Seed paycheck-wizard categories on every open so existing
+	// databases gain them automatically; best-effort, matches the
+	// HealAllAccounts precedent below.
+	_ = categorySvc.EnsurePaycheckCategories()
 	payeeSvc := payee.NewService(payeeRepo, database)
 	securitySvc := security.NewService(securityRepo, database,
 		security.WithLotChecker(lotRepo),

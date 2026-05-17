@@ -145,6 +145,27 @@ var DefaultCategories = []DefaultCategory{
 	},
 }
 
+// PaycheckCategory is a (parent → child) category pair the paycheck
+// wizard expects to find in its dropdowns.
+type PaycheckCategory struct {
+	Parent string
+	Child  string
+	Type   Type
+}
+
+// PaycheckCategories lists the categories the paycheck wizard
+// pre-populates. EnsurePaycheckCategories seeds any missing pairs on
+// file initialization and on every database open, so existing
+// databases gain them without a migration.
+var PaycheckCategories = []PaycheckCategory{
+	{Parent: "Income", Child: "Salary", Type: TypeIncome},
+	{Parent: "Tax", Child: "Federal", Type: TypeExpense},
+	{Parent: "Tax", Child: "State", Type: TypeExpense},
+	{Parent: "Tax", Child: "Social Security", Type: TypeExpense},
+	{Parent: "Tax", Child: "Medicare", Type: TypeExpense},
+	{Parent: "Insurance", Child: "Health", Type: TypeExpense},
+}
+
 // Service provides business logic for category operations.
 type Service struct {
 	repo *Repository
@@ -224,6 +245,35 @@ func (s *Service) GetTransferCategory() (*Category, error) {
 	}
 
 	return nil, &dberrors.NotFoundError{Entity: "category", ID: "Transfer"}
+}
+
+// EnsurePaycheckCategories creates any missing (parent, child) pairs
+// from PaycheckCategories. Idempotent: existing parents and children
+// are left untouched. Safe to call on every database open so existing
+// files gain the paycheck-wizard categories without a migration.
+func (s *Service) EnsurePaycheckCategories() error {
+	for _, pc := range PaycheckCategories {
+		parent, err := s.repo.GetByName(pc.Parent, nil)
+		if err != nil {
+			if _, ok := err.(*dberrors.NotFoundError); !ok {
+				return fmt.Errorf("lookup parent %q: %w", pc.Parent, err)
+			}
+			parent = NewCategory(pc.Parent, pc.Type)
+			if err := s.repo.Create(parent); err != nil {
+				return fmt.Errorf("create parent %q: %w", pc.Parent, err)
+			}
+		}
+		if _, err := s.repo.GetByName(pc.Child, &parent.ID); err == nil {
+			continue
+		} else if _, ok := err.(*dberrors.NotFoundError); !ok {
+			return fmt.Errorf("lookup child %q under %q: %w", pc.Child, pc.Parent, err)
+		}
+		child := NewSubcategory(pc.Child, parent.ID, pc.Type)
+		if err := s.repo.Create(child); err != nil {
+			return fmt.Errorf("create child %q under %q: %w", pc.Child, pc.Parent, err)
+		}
+	}
+	return nil
 }
 
 // HasDefaultCategories checks if default categories have been seeded.
