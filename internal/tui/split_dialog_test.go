@@ -689,6 +689,112 @@ func TestSplitDialog_HandleKey_CtrlD_NoRemoveLastRow(t *testing.T) {
 	}
 }
 
+// TestSplitDialog_ImbalanceIndicator_VisibleAndLive asserts the MS-013
+// contract: the rendered dialog exposes a labeled "Imbalance: $X.XX"
+// indicator that recomputes per keystroke as line amounts change. The
+// indicator sits between the line list and the action buttons so the
+// imbalance is visible right where the user's eyes land before
+// committing.
+func TestSplitDialog_ImbalanceIndicator_VisibleAndLive(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+
+	catIDs := []types.ID{types.NilID, types.NewID()}
+	sd := NewSplitDialog(types.MustNewMoney("100.00"),
+		[]string{"(None)", "Salary"}, catIDs)
+	sd.rows[0].categoryIndex = 1
+
+	// Empty amount: imbalance equals the parent amount.
+	out := sd.Render(styles)
+	if !strings.Contains(out, "Imbalance:") {
+		t.Fatalf("render should display Imbalance indicator; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Imbalance: $100.00") {
+		t.Errorf("render should display Imbalance: $100.00 when nothing has been entered; got:\n%s", out)
+	}
+
+	// Position the indicator between the rows area and the buttons.
+	idxImb := strings.Index(out, "Imbalance:")
+	idxAdd := strings.Index(out, "Add split")
+	idxCancel := strings.Index(out, "Cancel")
+	if idxImb < idxAdd {
+		t.Errorf("Imbalance indicator should render below the line list (Add split row); got Imbalance at %d, Add split at %d", idxImb, idxAdd)
+	}
+	if idxImb > idxCancel {
+		t.Errorf("Imbalance indicator should render above the Cancel/Save action buttons; got Imbalance at %d, Cancel at %d", idxImb, idxCancel)
+	}
+
+	// Type a partial amount one keystroke at a time and assert the
+	// indicator recomputes after each keystroke. The dialog parses on
+	// every render via remaining(), so each keystroke must produce a
+	// re-rendered indicator with the new value.
+	sd.fieldFocus = splitFieldAmount
+	sd.HandleKey(tea.KeyPressMsg{Code: '6', Text: "6"})
+	out = sd.Render(styles)
+	if !strings.Contains(out, "Imbalance: $94.00") {
+		t.Errorf("after typing '6', imbalance should be $94.00; got:\n%s", out)
+	}
+
+	sd.HandleKey(tea.KeyPressMsg{Code: '0', Text: "0"})
+	out = sd.Render(styles)
+	if !strings.Contains(out, "Imbalance: $40.00") {
+		t.Errorf("after typing '60', imbalance should be $40.00; got:\n%s", out)
+	}
+
+	// Drive the amount to exactly the parent total: indicator zeroes out.
+	sd.rows[0].amountField.Value = "100.00"
+	out = sd.Render(styles)
+	if !strings.Contains(out, "Imbalance: $0.00") {
+		t.Errorf("with line summing to parent, imbalance should be $0.00; got:\n%s", out)
+	}
+}
+
+// TestSplitDialog_SaveDisabledOnImbalance asserts the MS-013 contract:
+// the Save button is disabled when the signed sum of line amounts does
+// not match the parent transaction's amount, and pressing Enter on the
+// disabled Save button does not submit the dialog (it surfaces an
+// error message instead).
+func TestSplitDialog_SaveDisabledOnImbalance(t *testing.T) {
+	catIDs := []types.ID{types.NilID, types.NewID()}
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"),
+		[]string{"(None)", "Food"}, catIDs)
+	sd.rows[0].categoryIndex = 1
+
+	// No amount entered: imbalance = -$100.00 → Save disabled.
+	if sd.IsSaveEnabled() {
+		t.Error("Save should be disabled when imbalance ≠ 0 (empty amount)")
+	}
+
+	// Partial amount: imbalance still ≠ 0 → Save still disabled.
+	sd.rows[0].amountField.Value = "-50.00"
+	if sd.IsSaveEnabled() {
+		t.Error("Save should be disabled when imbalance ≠ 0 (-50 vs parent -100)")
+	}
+
+	// Pressing Enter on the disabled Save button does not submit.
+	sd.focus = splitFocusSaveBtn
+	action := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if action == DialogActionSubmit {
+		t.Errorf("Enter on disabled Save must not submit; got action %d", action)
+	}
+	if sd.errorMsg == "" {
+		t.Error("expected an error message after Enter on disabled Save")
+	}
+
+	// Balance the split: Save becomes enabled.
+	sd.rows[0].amountField.Value = "-100.00"
+	if !sd.IsSaveEnabled() {
+		t.Error("Save should be enabled when imbalance = 0")
+	}
+
+	// And Enter on enabled Save submits.
+	sd.focus = splitFocusSaveBtn
+	action = sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if action != DialogActionSubmit {
+		t.Errorf("Enter on enabled Save should submit; got action %d", action)
+	}
+}
+
 // =============================================================================
 // Render Tests
 // =============================================================================

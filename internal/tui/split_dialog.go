@@ -246,6 +246,15 @@ func (sd *SplitDialog) ErrorMsg() string {
 	return sd.errorMsg
 }
 
+// IsSaveEnabled reports whether the Save button is in an actionable
+// state. Per MS-013, Save is disabled whenever the signed sum of line
+// amounts does not equal the parent transaction's amount; users must
+// manually adjust a line to absorb the difference rather than relying
+// on an auto-balancing plug.
+func (sd *SplitDialog) IsSaveEnabled() bool {
+	return sd.remaining().IsZero()
+}
+
 // remaining calculates totalAmount minus the sum of entered split amounts.
 func (sd *SplitDialog) remaining() types.Money {
 	sum := types.ZeroMoney
@@ -651,6 +660,21 @@ func (sd *SplitDialog) Render(styles Styles) string {
 	lines = append(lines, addLabel)
 	lines = append(lines, "")
 
+	// Live imbalance indicator (MS-013). Renders the signed delta
+	// between the parent amount and the sum of line amounts; turns red
+	// while non-zero and dims when balanced. The label sits below the
+	// row list so the user's eyes catch it on the way to the Save
+	// button — which stays disabled while this is non-zero.
+	imb := sd.remaining()
+	imbalText := "Imbalance: " + formatDashboardMoney(imb)
+	if imb.IsZero() {
+		imbalText = styles.Muted.Render(imbalText)
+	} else {
+		imbalText = styles.Alert.Render(imbalText)
+	}
+	lines = append(lines, imbalText)
+	lines = append(lines, "")
+
 	// Error message
 	if sd.errorMsg != "" {
 		lines = append(lines, styles.Error.Render(sd.errorMsg))
@@ -660,14 +684,24 @@ func (sd *SplitDialog) Render(styles Styles) string {
 	// Separator
 	lines = append(lines, strings.Repeat("─", contentWidth))
 
-	// Buttons
+	// Buttons. Save is rendered in a muted style while the dialog is
+	// imbalanced (MS-013); pressing Enter on it in that state surfaces
+	// the validation error rather than submitting.
 	cancelLabel := "[ Cancel ]"
 	saveLabel := "[ Save ]"
+	saveEnabled := sd.IsSaveEnabled()
 	if sd.focus == splitFocusCancelBtn {
 		cancelLabel = lipgloss.NewStyle().Reverse(true).Bold(true).Render("[ Cancel ]")
 	}
-	if sd.focus == splitFocusSaveBtn {
+	switch {
+	case sd.focus == splitFocusSaveBtn && saveEnabled:
 		saveLabel = lipgloss.NewStyle().Reverse(true).Bold(true).Render("[ Save ]")
+	case sd.focus == splitFocusSaveBtn && !saveEnabled:
+		// Focused-but-disabled: keep it visible/focusable but dim, so
+		// keyboard users see why the action isn't firing.
+		saveLabel = styles.Muted.Render("[ Save ]")
+	case !saveEnabled:
+		saveLabel = styles.Muted.Render("[ Save ]")
 	}
 
 	btnGap := max(contentWidth-lipgloss.Width(cancelLabel)-lipgloss.Width(saveLabel), 4)
