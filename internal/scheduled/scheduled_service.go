@@ -12,18 +12,25 @@ import (
 type Service struct {
 	repo    *Repository
 	txnRepo *transaction.Repository
+	txnSvc  *transaction.Service
 	db      *db.DB
 }
 
 // NewService creates a new Service.
+//
+// txnSvc may be nil for legacy single-line use; posting a multi-line
+// scheduled transaction requires a non-nil txnSvc so the multi-line create
+// path (including paired transfer counterparts) can be delegated.
 func NewService(
 	repo *Repository,
 	txnRepo *transaction.Repository,
+	txnSvc *transaction.Service,
 	database *db.DB,
 ) *Service {
 	return &Service{
 		repo:    repo,
 		txnRepo: txnRepo,
+		txnSvc:  txnSvc,
 		db:      database,
 	}
 }
@@ -164,38 +171,54 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 
 		// Post all overdue occurrences for this scheduled transaction
 		for !st.IsCompleted() && s.isAutoPostDue(st, today) {
-			// Determine the amount to use
-			var txnAmount types.Money
-			if st.HasAmount() {
-				txnAmount = st.Amount.Money
-			} else {
-				// Variable amount - try to estimate
-				estimated, estErr := s.estimateAmountForSchedule(st)
-				if estErr != nil || estimated == nil {
-					result.Skipped = true
-					result.SkipReason = "variable amount with no estimate available"
-					break
+			var txn *transaction.Transaction
+			if len(st.Splits) > 0 {
+				// Multi-line schedule: delegate to the multi-line create path
+				// so transfer-line counterparts are minted and persisted.
+				if s.txnSvc == nil {
+					return nil, fmt.Errorf("multi-line auto-post requires a transaction service; scheduled.NewService was called with txnSvc=nil")
 				}
-				txnAmount = *estimated
-			}
+				built, err := s.buildMultiLineTransaction(st, st.NextDate)
+				if err != nil {
+					return nil, fmt.Errorf("failed to build multi-line auto-post transaction: %w", err)
+				}
+				if err := s.txnSvc.CreateWithSplits(built.parent, built.splits); err != nil {
+					return nil, fmt.Errorf("failed to create multi-line auto-post transaction: %w", err)
+				}
+				txn = built.parent
+			} else {
+				// Determine the amount to use
+				var txnAmount types.Money
+				if st.HasAmount() {
+					txnAmount = st.Amount.Money
+				} else {
+					// Variable amount - try to estimate
+					estimated, estErr := s.estimateAmountForSchedule(st)
+					if estErr != nil || estimated == nil {
+						result.Skipped = true
+						result.SkipReason = "variable amount with no estimate available"
+						break
+					}
+					txnAmount = *estimated
+				}
 
-			// Create the transaction with the scheduled date (not today)
-			txn := transaction.NewTransaction(st.AccountID, st.NextDate, txnAmount)
+				// Create the transaction with the scheduled date (not today)
+				txn = transaction.NewTransaction(st.AccountID, st.NextDate, txnAmount)
 
-			// Copy optional fields
-			if st.HasPayee() {
-				txn.SetPayee(st.PayeeID.ID)
-			}
-			if st.HasCategory() {
-				txn.SetCategory(st.CategoryID.ID)
-			}
-			if st.Memo.Valid && st.Memo.String != "" {
-				txn.SetMemo(st.Memo.String)
-			}
+				// Copy optional fields
+				if st.HasPayee() {
+					txn.SetPayee(st.PayeeID.ID)
+				}
+				if st.HasCategory() {
+					txn.SetCategory(st.CategoryID.ID)
+				}
+				if st.Memo.Valid && st.Memo.String != "" {
+					txn.SetMemo(st.Memo.String)
+				}
 
-			// Create the transaction
-			if err := s.txnRepo.Create(txn); err != nil {
-				return nil, fmt.Errorf("failed to create auto-post transaction: %w", err)
+				if err := s.txnRepo.Create(txn); err != nil {
+					return nil, fmt.Errorf("failed to create auto-post transaction: %w", err)
+				}
 			}
 
 			result.Transactions = append(result.Transactions, txn)
@@ -273,6 +296,8 @@ func (s *Service) estimateAmountForSchedule(st *Transaction) (*types.Money, erro
 // Post creates a real transaction from a scheduled transaction and advances the schedule.
 // If the scheduled transaction has no fixed amount, the provided amount is used.
 // If the scheduled transaction has a fixed amount and an amount is provided, it uses the provided amount.
+// For multi-line scheduled transactions (with child Splits), the amount override is
+// not supported — per-instance amount edits go through the post-time preview dialog.
 // Returns the created transaction.
 func (s *Service) Post(id types.ID, amount *types.Money) (*transaction.Transaction, error) {
 	st, err := s.repo.GetByID(id)
@@ -285,57 +310,14 @@ func (s *Service) Post(id types.ID, amount *types.Money) (*transaction.Transacti
 		return nil, &CompletedError{ID: id.String()}
 	}
 
-	// Determine the amount to use
-	var txnAmount types.Money
-	if amount != nil {
-		// Use provided amount
-		txnAmount = *amount
-	} else if st.HasAmount() {
-		// Use scheduled amount
-		txnAmount = st.Amount.Money
-	} else {
-		// Variable amount with no amount provided - try to estimate
-		estimated, err := s.EstimateAmount(id)
-		if err != nil {
-			return nil, &AmountRequiredError{ID: id.String()}
+	if len(st.Splits) > 0 {
+		if amount != nil {
+			return nil, fmt.Errorf("amount override is not supported on multi-line scheduled transactions; use the preview dialog to edit per-instance amounts")
 		}
-		if estimated == nil {
-			return nil, &AmountRequiredError{ID: id.String()}
-		}
-		txnAmount = *estimated
+		return s.postMultiLine(st, st.NextDate)
 	}
 
-	// Create the transaction
-	txn := transaction.NewTransaction(st.AccountID, st.NextDate, txnAmount)
-
-	// Copy optional fields
-	if st.HasPayee() {
-		txn.SetPayee(st.PayeeID.ID)
-	}
-	if st.HasCategory() {
-		txn.SetCategory(st.CategoryID.ID)
-	}
-	if st.Memo.Valid && st.Memo.String != "" {
-		txn.SetMemo(st.Memo.String)
-	}
-
-	// Create the transaction
-	if err := s.txnRepo.Create(txn); err != nil {
-		return nil, fmt.Errorf("failed to create transaction: %w", err)
-	}
-
-	// Advance the schedule. If AdvanceSchedule returns false the series is
-	// complete; either way we persist the updated state below.
-	st.AdvanceSchedule()
-
-	// Update the scheduled transaction
-	if err := s.repo.Update(st); err != nil {
-		// Transaction was created but schedule update failed
-		// This is a partial success - log the error but return the transaction
-		return txn, fmt.Errorf("transaction created but failed to update schedule: %w", err)
-	}
-
-	return txn, nil
+	return s.postSingleLine(st, st.NextDate, amount)
 }
 
 // PostWithDate creates a transaction from a scheduled transaction with a specific date.
@@ -351,19 +333,35 @@ func (s *Service) PostWithDate(id types.ID, date types.Date, amount *types.Money
 		return nil, &CompletedError{ID: id.String()}
 	}
 
+	if len(st.Splits) > 0 {
+		if amount != nil {
+			return nil, fmt.Errorf("amount override is not supported on multi-line scheduled transactions; use the preview dialog to edit per-instance amounts")
+		}
+		return s.postMultiLine(st, date)
+	}
+
+	return s.postSingleLine(st, date, amount)
+}
+
+// postSingleLine creates a single-line transaction from a legacy scheduled
+// template and advances the schedule. The returned transaction is the
+// newly-created real transaction.
+func (s *Service) postSingleLine(st *Transaction, date types.Date, amount *types.Money) (*transaction.Transaction, error) {
 	// Determine the amount to use
 	var txnAmount types.Money
-	if amount != nil {
+	switch {
+	case amount != nil:
 		txnAmount = *amount
-	} else if st.HasAmount() {
+	case st.HasAmount():
 		txnAmount = st.Amount.Money
-	} else {
-		estimated, err := s.EstimateAmount(id)
+	default:
+		// Variable amount with no amount provided - try to estimate
+		estimated, err := s.EstimateAmount(st.ID)
 		if err != nil {
-			return nil, &AmountRequiredError{ID: id.String()}
+			return nil, &AmountRequiredError{ID: st.ID.String()}
 		}
 		if estimated == nil {
-			return nil, &AmountRequiredError{ID: id.String()}
+			return nil, &AmountRequiredError{ID: st.ID.String()}
 		}
 		txnAmount = *estimated
 	}
@@ -382,20 +380,92 @@ func (s *Service) PostWithDate(id types.ID, date types.Date, amount *types.Money
 		txn.SetMemo(st.Memo.String)
 	}
 
-	// Create the transaction
 	if err := s.txnRepo.Create(txn); err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %w", err)
 	}
 
-	// Advance the schedule
+	// Advance the schedule. If AdvanceSchedule returns false the series is
+	// complete; either way we persist the updated state below.
 	st.AdvanceSchedule()
 
-	// Update the scheduled transaction
 	if err := s.repo.Update(st); err != nil {
+		// Transaction was created but schedule update failed
+		// This is a partial success - log the error but return the transaction
 		return txn, fmt.Errorf("transaction created but failed to update schedule: %w", err)
 	}
 
 	return txn, nil
+}
+
+// postMultiLine creates a multi-line real transaction from a multi-line
+// scheduled template by delegating to transaction.Service.CreateWithSplits
+// (which mints fresh TransferIDs and creates paired counterparts for any
+// transfer-line splits). The template's children are left in place and the
+// schedule advances by one cadence.
+func (s *Service) postMultiLine(st *Transaction, date types.Date) (*transaction.Transaction, error) {
+	if s.txnSvc == nil {
+		return nil, fmt.Errorf("multi-line scheduled posting requires a transaction service; scheduled.NewService was called with txnSvc=nil")
+	}
+
+	built, err := s.buildMultiLineTransaction(st, date)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.txnSvc.CreateWithSplits(built.parent, built.splits); err != nil {
+		return nil, fmt.Errorf("failed to create multi-line transaction: %w", err)
+	}
+
+	st.AdvanceSchedule()
+	if err := s.repo.Update(st); err != nil {
+		return built.parent, fmt.Errorf("transaction created but failed to update schedule: %w", err)
+	}
+	return built.parent, nil
+}
+
+// builtMultiLineTransaction holds the parent transaction and child splits
+// assembled from a multi-line template, ready for CreateWithSplits.
+type builtMultiLineTransaction struct {
+	parent *transaction.Transaction
+	splits []*transaction.Split
+}
+
+// buildMultiLineTransaction translates a multi-line scheduled template into a
+// transaction + splits payload suitable for transaction.Service.CreateWithSplits.
+// The parent transaction inherits the template's account, payee, and memo
+// (but never a scalar category — multi-line parents must have no category).
+// Transfer-line template entries become transfer-line splits with no
+// TransferID; the transaction service mints one per call when persisting.
+func (s *Service) buildMultiLineTransaction(st *Transaction, date types.Date) (*builtMultiLineTransaction, error) {
+	parent := transaction.NewTransaction(st.AccountID, date, st.Amount.Money)
+	if st.HasPayee() {
+		parent.SetPayee(st.PayeeID.ID)
+	}
+	if st.Memo.Valid && st.Memo.String != "" {
+		parent.SetMemo(st.Memo.String)
+	}
+
+	splits := make([]*transaction.Split, 0, len(st.Splits))
+	for _, tmpl := range st.Splits {
+		var ts *transaction.Split
+		if tmpl.TransferAccountID.Valid {
+			// Transfer-line: leave CategoryID zero; service mints TransferID.
+			ts = &transaction.Split{
+				BaseModel:         types.NewBaseModel(),
+				TransactionID:     parent.ID,
+				Amount:            tmpl.Amount,
+				TransferAccountID: types.NullableID{ID: tmpl.TransferAccountID.ID, Valid: true},
+			}
+		} else {
+			ts = transaction.NewSplit(parent.ID, tmpl.CategoryID.ID, tmpl.Amount)
+		}
+		if tmpl.Memo.Valid && tmpl.Memo.String != "" {
+			ts.SetMemo(tmpl.Memo.String)
+		}
+		splits = append(splits, ts)
+	}
+
+	return &builtMultiLineTransaction{parent: parent, splits: splits}, nil
 }
 
 // Skip advances the schedule without creating a transaction.

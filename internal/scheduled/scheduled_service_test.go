@@ -15,11 +15,14 @@ func createTestScheduledTransactionService(t *testing.T) (*Service, *account.Rep
 	database := createTestDB(t)
 	stRepo := NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
+	splitRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	accountRepo := account.NewRepository(database)
 	payeeRepo := payee.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
 
-	svc := NewService(stRepo, txnRepo, database)
+	svc := NewService(stRepo, txnRepo, txnSvc, database)
 	return svc, accountRepo, payeeRepo, categoryRepo
 }
 
@@ -473,10 +476,13 @@ func TestService_EstimateAmount(t *testing.T) {
 		database := createTestDB(t)
 		stRepo := NewRepository(database)
 		txnRepo := transaction.NewRepository(database)
+		splitRepo := transaction.NewSplitRepository(database)
+		transferRepo := transaction.NewTransferRepository(database, txnRepo)
 		accountRepo := account.NewRepository(database)
 		payeeRepo := payee.NewRepository(database)
+		txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
 
-		svc := NewService(stRepo, txnRepo, database)
+		svc := NewService(stRepo, txnRepo, txnSvc, database)
 
 		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
 		py := payee.NewPayee("Electric Company")
@@ -639,6 +645,83 @@ func TestService_AutoPost(t *testing.T) {
 		}
 		if len(summary.Results) != 0 {
 			t.Errorf("Expected 0 results, got %d", len(summary.Results))
+		}
+	})
+
+	t.Run("auto-posts multi-line schedule with transfer-line counterpart", func(t *testing.T) {
+		svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+		retirement := createTestAccountForScheduled(t, accountRepo, "401k")
+
+		incCat := category.NewCategory("Salary", category.TypeIncome)
+		if err := categoryRepo.Create(incCat); err != nil {
+			t.Fatalf("Create category: %v", err)
+		}
+
+		net, _ := types.NewMoney("800.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.Today(), net)
+		gross, _ := types.NewMoney("1000.00")
+		retire, _ := types.NewMoney("-200.00")
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, incCat.ID, gross),
+			NewTransferSplit(st.ID, retirement.ID, retire),
+		}
+		st.SetAutoPost(true)
+		st.SetPostLeadDays(0)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create multi-line: %v", err)
+		}
+
+		summary, err := svc.AutoPost()
+		if err != nil {
+			t.Fatalf("AutoPost: %v", err)
+		}
+		if summary.PostedCount != 1 {
+			t.Fatalf("PostedCount = %d, want 1", summary.PostedCount)
+		}
+		if len(summary.Results) != 1 || len(summary.Results[0].Transactions) != 1 {
+			t.Fatalf("expected one auto-post result with one transaction")
+		}
+		txn := summary.Results[0].Transactions[0]
+		if !txn.Amount.Equal(net) {
+			t.Errorf("parent amount = %s, want %s", txn.Amount.String(), net.String())
+		}
+
+		splitRepo := transaction.NewSplitRepository(svc.db)
+		gotSplits, err := splitRepo.ListByTransaction(txn.ID)
+		if err != nil {
+			t.Fatalf("ListByTransaction: %v", err)
+		}
+		if len(gotSplits) != 2 {
+			t.Fatalf("split count = %d, want 2", len(gotSplits))
+		}
+
+		// Paired transfer counterpart must exist in the retirement account.
+		var transferID types.NullableID
+		for _, sp := range gotSplits {
+			if sp.TransferAccountID.Valid {
+				transferID = sp.TransferID
+			}
+		}
+		if !transferID.Valid {
+			t.Fatal("transfer-line split has no TransferID")
+		}
+		txnRepo := transaction.NewRepository(svc.db)
+		paired, err := txnRepo.ListByTransferID(transferID.ID)
+		if err != nil {
+			t.Fatalf("ListByTransferID: %v", err)
+		}
+		if len(paired) != 1 || paired[0].AccountID != retirement.ID {
+			t.Errorf("expected one paired counterpart in retirement account, got %+v", paired)
+		}
+
+		// Schedule next_date must have advanced.
+		updated, err := svc.GetByID(st.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if updated.NextDate == st.NextDate {
+			t.Error("schedule did not advance after multi-line auto-post")
 		}
 	})
 }
@@ -824,6 +907,260 @@ func TestScheduledService_CreateMultiLine_RoundTrip(t *testing.T) {
 		}
 		if _, ok := err.(*types.ServiceValidationError); !ok {
 			t.Errorf("expected ServiceValidationError, got %T: %v", err, err)
+		}
+	})
+}
+
+func TestScheduledService_PostMultiLine_CreatesTransactionWithSplits(t *testing.T) {
+	t.Run("posts multi-line schedule with paired transfer counterpart", func(t *testing.T) {
+		svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+		retirement := createTestAccountForScheduled(t, accountRepo, "401k")
+
+		salaryCat := category.NewCategory("Salary", category.TypeIncome)
+		if err := categoryRepo.Create(salaryCat); err != nil {
+			t.Fatalf("Create salary category: %v", err)
+		}
+		federalCat := category.NewCategory("Federal Tax", category.TypeExpense)
+		if err := categoryRepo.Create(federalCat); err != nil {
+			t.Fatalf("Create federal category: %v", err)
+		}
+
+		// Paycheck-shape template: gross +5000, federal -800, transfer -200 to 401k,
+		// net deposit +4000 lands in Checking.
+		net, _ := types.NewMoney("4000.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.Today(), net)
+		gross, _ := types.NewMoney("5000.00")
+		federal, _ := types.NewMoney("-800.00")
+		retire, _ := types.NewMoney("-200.00")
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, salaryCat.ID, gross),
+			NewCategorizedSplit(st.ID, federalCat.ID, federal),
+			NewTransferSplit(st.ID, retirement.ID, retire),
+		}
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create multi-line schedule: %v", err)
+		}
+
+		txn, err := svc.Post(st.ID, nil)
+		if err != nil {
+			t.Fatalf("Post multi-line: %v", err)
+		}
+		if txn == nil {
+			t.Fatal("Post returned nil transaction")
+		}
+		if txn.AccountID != acct.ID {
+			t.Errorf("parent account = %v, want %v", txn.AccountID, acct.ID)
+		}
+		if !txn.Amount.Equal(net) {
+			t.Errorf("parent amount = %s, want %s", txn.Amount.String(), net.String())
+		}
+		if txn.HasCategory() {
+			t.Error("multi-line parent transaction should have no scalar category")
+		}
+
+		// Reload splits from the repository to mirror what the UI sees.
+		splitRepo := transaction.NewSplitRepository(svc.db)
+		gotSplits, err := splitRepo.ListByTransaction(txn.ID)
+		if err != nil {
+			t.Fatalf("ListByTransaction: %v", err)
+		}
+		if len(gotSplits) != 3 {
+			t.Fatalf("split count = %d, want 3", len(gotSplits))
+		}
+
+		var sawSalary, sawFederal, transferSplit *transaction.Split
+		for _, sp := range gotSplits {
+			switch {
+			case !sp.CategoryID.IsNil() && sp.CategoryID == salaryCat.ID:
+				sp := sp
+				sawSalary = sp
+			case !sp.CategoryID.IsNil() && sp.CategoryID == federalCat.ID:
+				sp := sp
+				sawFederal = sp
+			case sp.TransferAccountID.Valid && sp.TransferAccountID.ID == retirement.ID:
+				sp := sp
+				transferSplit = sp
+			}
+		}
+		if sawSalary == nil || !sawSalary.Amount.Equal(gross) {
+			t.Errorf("salary split missing or wrong amount: %+v", sawSalary)
+		}
+		if sawFederal == nil || !sawFederal.Amount.Equal(federal) {
+			t.Errorf("federal split missing or wrong amount: %+v", sawFederal)
+		}
+		if transferSplit == nil {
+			t.Fatal("transfer-line split not found on posted transaction")
+		}
+		if !transferSplit.Amount.Equal(retire) {
+			t.Errorf("transfer split amount = %s, want %s",
+				transferSplit.Amount.String(), retire.String())
+		}
+		if !transferSplit.TransferID.Valid {
+			t.Fatal("transfer-line split has no TransferID set")
+		}
+
+		// Paired counter-transaction should exist in the retirement account.
+		txnRepo := transaction.NewRepository(svc.db)
+		paired, err := txnRepo.ListByTransferID(transferSplit.TransferID.ID)
+		if err != nil {
+			t.Fatalf("ListByTransferID: %v", err)
+		}
+		if len(paired) != 1 {
+			t.Fatalf("paired transactions = %d, want 1", len(paired))
+		}
+		pair := paired[0]
+		if pair.AccountID != retirement.ID {
+			t.Errorf("paired account = %v, want %v", pair.AccountID, retirement.ID)
+		}
+		want := retire.Neg()
+		if !pair.Amount.Equal(want) {
+			t.Errorf("paired amount = %s, want %s", pair.Amount.String(), want.String())
+		}
+		if pair.TransferAccountID.ID != acct.ID {
+			t.Errorf("paired transfer_account_id = %v, want %v", pair.TransferAccountID.ID, acct.ID)
+		}
+	})
+
+	t.Run("Post on multi-line schedule rejects amount override", func(t *testing.T) {
+		svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		incCat := category.NewCategory("Salary", category.TypeIncome)
+		if err := categoryRepo.Create(incCat); err != nil {
+			t.Fatalf("Create category: %v", err)
+		}
+		expCat := category.NewCategory("Tax", category.TypeExpense)
+		if err := categoryRepo.Create(expCat); err != nil {
+			t.Fatalf("Create category: %v", err)
+		}
+
+		net, _ := types.NewMoney("900.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.Today(), net)
+		gross, _ := types.NewMoney("1000.00")
+		tax, _ := types.NewMoney("-100.00")
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, incCat.ID, gross),
+			NewCategorizedSplit(st.ID, expCat.ID, tax),
+		}
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		override, _ := types.NewMoney("999.00")
+		if _, err := svc.Post(st.ID, &override); err == nil {
+			t.Fatal("expected amount-override on multi-line Post to be rejected, got nil")
+		}
+	})
+}
+
+func TestScheduledService_PostMultiLine_AdvancesSchedule(t *testing.T) {
+	t.Run("next_date advances per cadence after multi-line Post", func(t *testing.T) {
+		svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		incCat := category.NewCategory("Salary", category.TypeIncome)
+		if err := categoryRepo.Create(incCat); err != nil {
+			t.Fatalf("Create category: %v", err)
+		}
+		expCat := category.NewCategory("Tax", category.TypeExpense)
+		if err := categoryRepo.Create(expCat); err != nil {
+			t.Fatalf("Create category: %v", err)
+		}
+
+		net, _ := types.NewMoney("900.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.Today(), net)
+		gross, _ := types.NewMoney("1000.00")
+		tax, _ := types.NewMoney("-100.00")
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, incCat.ID, gross),
+			NewCategorizedSplit(st.ID, expCat.ID, tax),
+		}
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		original := st.NextDate
+		expectedNext := st.CalculateNextDate()
+
+		if _, err := svc.Post(st.ID, nil); err != nil {
+			t.Fatalf("Post: %v", err)
+		}
+
+		updated, err := svc.GetByID(st.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if updated.NextDate == original {
+			t.Error("schedule next_date did not advance after multi-line Post")
+		}
+		if updated.NextDate != expectedNext {
+			t.Errorf("next_date = %s, want %s",
+				updated.NextDate.String(), expectedNext.String())
+		}
+		// Children should still be present on the template (the post creates a
+		// real transaction; it does not consume the template's splits).
+		if len(updated.Splits) != 2 {
+			t.Errorf("template splits after post = %d, want 2", len(updated.Splits))
+		}
+	})
+
+	t.Run("PostWithDate posts multi-line at custom date", func(t *testing.T) {
+		svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+		retirement := createTestAccountForScheduled(t, accountRepo, "401k")
+
+		incCat := category.NewCategory("Salary", category.TypeIncome)
+		if err := categoryRepo.Create(incCat); err != nil {
+			t.Fatalf("Create category: %v", err)
+		}
+
+		net, _ := types.NewMoney("800.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.Today(), net)
+		gross, _ := types.NewMoney("1000.00")
+		retire, _ := types.NewMoney("-200.00")
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, incCat.ID, gross),
+			NewTransferSplit(st.ID, retirement.ID, retire),
+		}
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		customDate := types.Today().AddDays(-5)
+		txn, err := svc.PostWithDate(st.ID, customDate, nil)
+		if err != nil {
+			t.Fatalf("PostWithDate: %v", err)
+		}
+		if txn.Date != customDate {
+			t.Errorf("parent date = %s, want %s", txn.Date.String(), customDate.String())
+		}
+
+		// Paired counterpart inherits the parent's date.
+		splitRepo := transaction.NewSplitRepository(svc.db)
+		gotSplits, err := splitRepo.ListByTransaction(txn.ID)
+		if err != nil {
+			t.Fatalf("ListByTransaction: %v", err)
+		}
+		var transferID types.NullableID
+		for _, sp := range gotSplits {
+			if sp.TransferAccountID.Valid {
+				transferID = sp.TransferID
+			}
+		}
+		if !transferID.Valid {
+			t.Fatal("transfer-line split has no transfer_id")
+		}
+		txnRepo := transaction.NewRepository(svc.db)
+		paired, err := txnRepo.ListByTransferID(transferID.ID)
+		if err != nil {
+			t.Fatalf("ListByTransferID: %v", err)
+		}
+		if len(paired) != 1 {
+			t.Fatalf("paired count = %d, want 1", len(paired))
+		}
+		if paired[0].Date != customDate {
+			t.Errorf("paired date = %s, want %s",
+				paired[0].Date.String(), customDate.String())
 		}
 	})
 }
