@@ -726,6 +726,222 @@ func TestService_AutoPost(t *testing.T) {
 	})
 }
 
+// TestAutoPost_MultiLineSchedule_BypassesPreview (MS-022) locks in the
+// invariant that a multi-line schedule with auto-post enabled fires
+// automatically on the scheduled date and posts the template's values
+// line-for-line, with no UI / preview-dialog involvement. AutoPost lives
+// in the service layer and has no dependency on the TUI's
+// SchedulePreviewDialog, so "bypasses preview" is enforced by
+// construction. The test asserts:
+//
+//  1. PostedCount == 1 and a single posted transaction is returned.
+//  2. The posted parent's amount and date equal the template's original
+//     amount and next_date — no per-instance edits.
+//  3. Each persisted split on the posted transaction matches a template
+//     split line-for-line (same amount, same category or transfer
+//     target). No line was rewritten by a preview-style edit.
+//  4. The paired transfer counter-transaction lands in the target
+//     account with the negated amount.
+//  5. The schedule advanced exactly one cadence from the template's
+//     original next_date.
+//  6. The schedule's stored Splits children are untouched.
+func TestAutoPost_MultiLineSchedule_BypassesPreview(t *testing.T) {
+	svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+	checking := createTestAccountForScheduled(t, accountRepo, "Checking")
+	retirement := createTestAccountForScheduled(t, accountRepo, "401k")
+
+	salaryCat := category.NewCategory("Salary", category.TypeIncome)
+	if err := categoryRepo.Create(salaryCat); err != nil {
+		t.Fatalf("Create salary category: %v", err)
+	}
+	federalCat := category.NewCategory("Federal Tax", category.TypeExpense)
+	if err := categoryRepo.Create(federalCat); err != nil {
+		t.Fatalf("Create federal category: %v", err)
+	}
+	ficaCat := category.NewCategory("FICA", category.TypeExpense)
+	if err := categoryRepo.Create(ficaCat); err != nil {
+		t.Fatalf("Create FICA category: %v", err)
+	}
+
+	// Paycheck shape: gross 5000 - federal 800 - FICA 300 - 401k 500 = net 3400.
+	net, _ := types.NewMoney("3400.00")
+	gross, _ := types.NewMoney("5000.00")
+	federal, _ := types.NewMoney("-800.00")
+	fica, _ := types.NewMoney("-300.00")
+	retire, _ := types.NewMoney("-500.00")
+
+	startDate := types.Today()
+	st := NewTransactionWithAmount(checking.ID, FrequencyMonthly, startDate, net)
+	st.Splits = SplitCollection{
+		NewCategorizedSplit(st.ID, salaryCat.ID, gross),
+		NewCategorizedSplit(st.ID, federalCat.ID, federal),
+		NewCategorizedSplit(st.ID, ficaCat.ID, fica),
+		NewTransferSplit(st.ID, retirement.ID, retire),
+	}
+	st.SetAutoPost(true)
+	st.SetPostLeadDays(0)
+	if err := svc.Create(st); err != nil {
+		t.Fatalf("Create multi-line schedule: %v", err)
+	}
+
+	expectedNextDate := st.CalculateNextDate()
+	originalNextDate := st.NextDate
+	originalSplitCount := len(st.Splits)
+	templateByCategory := map[types.ID]types.Money{
+		salaryCat.ID:  gross,
+		federalCat.ID: federal,
+		ficaCat.ID:    fica,
+	}
+	templateByTransferAccount := map[types.ID]types.Money{
+		retirement.ID: retire,
+	}
+
+	summary, err := svc.AutoPost()
+	if err != nil {
+		t.Fatalf("AutoPost: %v", err)
+	}
+
+	if summary.PostedCount != 1 {
+		t.Fatalf("PostedCount = %d, want 1", summary.PostedCount)
+	}
+	if summary.SkippedCount != 0 {
+		t.Errorf("SkippedCount = %d, want 0", summary.SkippedCount)
+	}
+	if len(summary.Results) != 1 {
+		t.Fatalf("len(Results) = %d, want 1", len(summary.Results))
+	}
+	result := summary.Results[0]
+	if len(result.Transactions) != 1 {
+		t.Fatalf("len(result.Transactions) = %d, want 1", len(result.Transactions))
+	}
+
+	posted := result.Transactions[0]
+	if !posted.Amount.Equal(net) {
+		t.Errorf("parent amount = %s, want %s (template value, no edit)", posted.Amount.String(), net.String())
+	}
+	if posted.Date != originalNextDate {
+		t.Errorf("parent date = %s, want %s (template's original next_date)", posted.Date, originalNextDate)
+	}
+	if posted.AccountID != checking.ID {
+		t.Errorf("parent account = %s, want %s", posted.AccountID, checking.ID)
+	}
+
+	splitRepo := transaction.NewSplitRepository(svc.db)
+	gotSplits, err := splitRepo.ListByTransaction(posted.ID)
+	if err != nil {
+		t.Fatalf("ListByTransaction: %v", err)
+	}
+	if len(gotSplits) != originalSplitCount {
+		t.Fatalf("posted split count = %d, want %d (one row per template line)", len(gotSplits), originalSplitCount)
+	}
+
+	// Each persisted split must match a template line exactly.
+	// transaction.Split.CategoryID is types.ID (NilID when this is a
+	// transfer-line); TransferAccountID / TransferID are NullableID.
+	matchedCategories := map[types.ID]bool{}
+	matchedTransfers := map[types.ID]bool{}
+	var transferID types.NullableID
+	for _, sp := range gotSplits {
+		switch {
+		case sp.CategoryID != types.NilID:
+			want, ok := templateByCategory[sp.CategoryID]
+			if !ok {
+				t.Errorf("posted split has unexpected category %s", sp.CategoryID)
+				continue
+			}
+			if !sp.Amount.Equal(want) {
+				t.Errorf("split (category %s) amount = %s, want %s (template value)", sp.CategoryID, sp.Amount.String(), want.String())
+			}
+			matchedCategories[sp.CategoryID] = true
+		case sp.TransferAccountID.Valid:
+			want, ok := templateByTransferAccount[sp.TransferAccountID.ID]
+			if !ok {
+				t.Errorf("posted split has unexpected transfer target %s", sp.TransferAccountID.ID)
+				continue
+			}
+			if !sp.Amount.Equal(want) {
+				t.Errorf("split (transfer %s) amount = %s, want %s (template value)", sp.TransferAccountID.ID, sp.Amount.String(), want.String())
+			}
+			if !sp.TransferID.Valid {
+				t.Errorf("transfer-line split is missing TransferID after auto-post")
+			}
+			transferID = sp.TransferID
+			matchedTransfers[sp.TransferAccountID.ID] = true
+		default:
+			t.Errorf("split has neither category nor transfer target: %+v", sp)
+		}
+	}
+	for catID := range templateByCategory {
+		if !matchedCategories[catID] {
+			t.Errorf("template category %s not present on posted transaction", catID)
+		}
+	}
+	for acctID := range templateByTransferAccount {
+		if !matchedTransfers[acctID] {
+			t.Errorf("template transfer target %s not present on posted transaction", acctID)
+		}
+	}
+
+	// The paired counterpart must exist in the 401k account with the
+	// negated transfer-line amount, using the freshly-minted transfer_id.
+	if !transferID.Valid {
+		t.Fatal("no transfer-line TransferID captured")
+	}
+	txnRepo := transaction.NewRepository(svc.db)
+	paired, err := txnRepo.ListByTransferID(transferID.ID)
+	if err != nil {
+		t.Fatalf("ListByTransferID: %v", err)
+	}
+	if len(paired) != 1 {
+		t.Fatalf("paired counter-transaction count = %d, want 1", len(paired))
+	}
+	if paired[0].AccountID != retirement.ID {
+		t.Errorf("paired account = %s, want %s", paired[0].AccountID, retirement.ID)
+	}
+	wantPaired := retire.Neg()
+	if !paired[0].Amount.Equal(wantPaired) {
+		t.Errorf("paired amount = %s, want %s", paired[0].Amount.String(), wantPaired.String())
+	}
+
+	// Schedule must have advanced exactly one cadence from the template's
+	// original next_date — auto-post never uses an edited posting date,
+	// since it never goes through preview.
+	updated, err := svc.GetByID(st.ID)
+	if err != nil {
+		t.Fatalf("GetByID after auto-post: %v", err)
+	}
+	if updated.NextDate != expectedNextDate {
+		t.Errorf("schedule next_date = %s, want %s (one cadence past original)", updated.NextDate, expectedNextDate)
+	}
+
+	// Template's stored Splits must be untouched.
+	if len(updated.Splits) != originalSplitCount {
+		t.Fatalf("template split count after auto-post = %d, want %d", len(updated.Splits), originalSplitCount)
+	}
+	for _, sp := range updated.Splits {
+		switch {
+		case sp.CategoryID.Valid:
+			want, ok := templateByCategory[sp.CategoryID.ID]
+			if !ok {
+				t.Errorf("template gained unexpected category %s after auto-post", sp.CategoryID.ID)
+				continue
+			}
+			if !sp.Amount.Equal(want) {
+				t.Errorf("template split (category %s) mutated: amount = %s, want %s", sp.CategoryID.ID, sp.Amount.String(), want.String())
+			}
+		case sp.TransferAccountID.Valid:
+			want, ok := templateByTransferAccount[sp.TransferAccountID.ID]
+			if !ok {
+				t.Errorf("template gained unexpected transfer target %s after auto-post", sp.TransferAccountID.ID)
+				continue
+			}
+			if !sp.Amount.Equal(want) {
+				t.Errorf("template split (transfer %s) mutated: amount = %s, want %s", sp.TransferAccountID.ID, sp.Amount.String(), want.String())
+			}
+		}
+	}
+}
+
 // =============================================================================
 // Multi-line scheduled-template tests (MS-015)
 // =============================================================================
