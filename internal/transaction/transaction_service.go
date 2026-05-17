@@ -309,12 +309,24 @@ func (s *Service) AddSplit(split *Split) error {
 
 // UpdateSplit updates an existing split.
 // Splits on void or reconciled transactions cannot be updated.
+//
+// For transfer-line splits, the paired single-line counter-transaction in
+// the target account is kept in sync:
+//   - An amount edit mirrors the new (negated) amount onto the paired side.
+//   - A target-account edit deletes the old paired side and creates a new
+//     one in the new target with a fresh transfer_id.
+//
+// Self-transfers (transfer_account_id == parent.account_id) are rejected.
 func (s *Service) UpdateSplit(split *Split) error {
 	if err := s.validateSplit(split); err != nil {
 		return err
 	}
 
-	// Check the parent transaction status
+	existing, err := s.splitRepo.GetByID(split.ID)
+	if err != nil {
+		return err
+	}
+
 	txn, err := s.txnRepo.GetByID(split.TransactionID)
 	if err != nil {
 		return err
@@ -328,7 +340,99 @@ func (s *Service) UpdateSplit(split *Split) error {
 		return &IsReconciledError{ID: txn.ID.String()}
 	}
 
+	if split.TransferAccountID.Valid && split.TransferAccountID.ID == txn.AccountID {
+		errors := types.ValidationErrors{}
+		errors.Add("transfer_account_id",
+			(&SelfTransferError{AccountID: txn.AccountID.String()}).Error())
+		return &types.ServiceValidationError{Errors: errors}
+	}
+
+	wasTransfer := existing.TransferAccountID.Valid
+	isTransfer := split.TransferAccountID.Valid
+
+	if wasTransfer && isTransfer {
+		targetMoved := existing.TransferAccountID.ID != split.TransferAccountID.ID
+		if targetMoved {
+			return s.moveTransferLine(txn, existing, split)
+		}
+		// Preserve the linkage so callers may omit transfer_id on edits.
+		if !split.TransferID.Valid && existing.TransferID.Valid {
+			split.TransferID = existing.TransferID
+		}
+		if err := s.splitRepo.Update(split); err != nil {
+			return err
+		}
+		if existing.TransferID.Valid && !existing.Amount.Equal(split.Amount) {
+			return s.updatePairedAmount(existing.TransferID.ID, split.Amount.Neg())
+		}
+		return nil
+	}
+
 	return s.splitRepo.Update(split)
+}
+
+// moveTransferLine handles the target-account-change cascade: delete the old
+// paired counter-transaction, mint a fresh transfer_id on the split-line,
+// persist the split, and create a new paired counterpart in the new target.
+func (s *Service) moveTransferLine(parent *Transaction, existing, split *Split) error {
+	if existing.TransferID.Valid {
+		oldPaired, err := s.findPairedByTransferID(existing.TransferID.ID)
+		if err != nil {
+			return err
+		}
+		if oldPaired != nil {
+			if oldPaired.IsReconciled() {
+				return &IsReconciledError{ID: oldPaired.ID.String()}
+			}
+			if err := s.txnRepo.Delete(oldPaired.ID); err != nil {
+				return fmt.Errorf("failed to delete old paired transaction: %w", err)
+			}
+		}
+	}
+
+	split.TransferID = types.NullableID{ID: types.NewID(), Valid: true}
+	if err := s.splitRepo.Update(split); err != nil {
+		return err
+	}
+
+	paired := NewTransaction(split.TransferAccountID.ID, parent.Date, split.Amount.Neg())
+	paired.SetTransfer(split.TransferID.ID, parent.AccountID)
+	if err := s.txnRepo.Create(paired); err != nil {
+		return fmt.Errorf("failed to create new paired transaction: %w", err)
+	}
+	return nil
+}
+
+// findPairedByTransferID returns the paired single-line counter-transaction
+// for a transfer-line's transfer_id, or nil if none exists. The parent
+// (multi-line) transaction is not marked as a transfer, so only the paired
+// counterpart lives on the transactions table with that transfer_id.
+func (s *Service) findPairedByTransferID(transferID types.ID) (*Transaction, error) {
+	matches, err := s.txnRepo.ListByTransferID(transferID)
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	return matches[0], nil
+}
+
+// updatePairedAmount sets the paired counter-transaction's amount to mirror a
+// transfer-line amount edit. A reconciled paired side blocks the cascade.
+func (s *Service) updatePairedAmount(transferID types.ID, newAmount types.Money) error {
+	paired, err := s.findPairedByTransferID(transferID)
+	if err != nil {
+		return err
+	}
+	if paired == nil {
+		return nil
+	}
+	if paired.IsReconciled() {
+		return &IsReconciledError{ID: paired.ID.String()}
+	}
+	paired.Amount = newAmount
+	return s.txnRepo.Update(paired)
 }
 
 // DeleteSplit removes a split from a transaction.
