@@ -568,6 +568,83 @@ func TestSplitDialog_SelectTransfer_OpensAccountPicker(t *testing.T) {
 	}
 }
 
+// TestSplitDialog_MixedSignAmounts_Accepted asserts the MS-012
+// contract: the split dialog accepts split lines whose signs differ
+// from the parent transaction's sign (and from each other), and
+// persists them as entered. Validation only requires the signed sum
+// of the lines to equal the parent amount — there is no
+// same-sign-as-parent enforcement.
+func TestSplitDialog_MixedSignAmounts_Accepted(t *testing.T) {
+	salaryID := types.NewID()
+	taxID := types.NewID()
+	options := []string{"(None)", "Income:Salary", "Tax:Federal"}
+	ids := []types.ID{types.NilID, salaryID, taxID}
+
+	// Paycheck-shaped parent: +100 net deposit, with a +200 gross
+	// line and a -100 tax line. Signed sum = +100, matching parent.
+	sd := NewSplitDialog(types.MustNewMoney("100.00"), options, ids)
+	sd.addRow()
+
+	sd.rows[0].categoryIndex = 1 // Income:Salary
+	sd.rows[0].amountField.Value = "200.00"
+	sd.rows[1].categoryIndex = 2 // Tax:Federal
+	sd.rows[1].amountField.Value = "-100.00"
+
+	if err := sd.validate(); err != nil {
+		t.Fatalf("mixed-sign split should validate, got: %v", err)
+	}
+
+	splits, err := sd.buildSplits()
+	if err != nil {
+		t.Fatalf("buildSplits: %v", err)
+	}
+	if len(splits) != 2 {
+		t.Fatalf("expected 2 splits, got %d", len(splits))
+	}
+	if !splits[0].Amount.Equal(types.MustNewMoney("200.00")) {
+		t.Errorf("split[0] amount = %s, want +200.00", splits[0].Amount.String())
+	}
+	if !splits[1].Amount.Equal(types.MustNewMoney("-100.00")) {
+		t.Errorf("split[1] amount = %s, want -100.00", splits[1].Amount.String())
+	}
+
+	// Three-line mixed-sign with a negative parent and lines whose
+	// signs are independent: parent -50 = -200 (rent) + +150 (refund)
+	// + 0 isn't allowed (amount required), so pick -200 / +200 / -50.
+	sd2 := NewSplitDialog(types.MustNewMoney("-50.00"), options, ids)
+	sd2.addRow()
+	sd2.addRow()
+
+	sd2.rows[0].categoryIndex = 2
+	sd2.rows[0].amountField.Value = "-200.00"
+	sd2.rows[1].categoryIndex = 1
+	sd2.rows[1].amountField.Value = "200.00"
+	sd2.rows[2].categoryIndex = 2
+	sd2.rows[2].amountField.Value = "-50.00"
+
+	if err := sd2.validate(); err != nil {
+		t.Fatalf("three-line mixed-sign split should validate, got: %v", err)
+	}
+	splits2, err := sd2.buildSplits()
+	if err != nil {
+		t.Fatalf("buildSplits: %v", err)
+	}
+	if len(splits2) != 3 {
+		t.Fatalf("expected 3 splits, got %d", len(splits2))
+	}
+
+	// And: typing a leading '-' into the amount field is preserved.
+	// (No filtering of the minus character.)
+	sd3 := NewSplitDialog(types.MustNewMoney("0.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
+	sd3.fieldFocus = splitFieldAmount
+	for _, r := range "-25.00" {
+		sd3.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	if sd3.rows[0].amountField.Value != "-25.00" {
+		t.Errorf("amount input after typing '-25.00' = %q, want %q", sd3.rows[0].amountField.Value, "-25.00")
+	}
+}
+
 func TestSplitDialog_HandleKey_TextEditing(t *testing.T) {
 	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
 
