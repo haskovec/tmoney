@@ -1,15 +1,20 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // =============================================================================
@@ -104,8 +109,8 @@ func TestBuildNewScheduledDialog(t *testing.T) {
 	}
 
 	fields := d.Fields()
-	if len(fields) != 13 {
-		t.Fatalf("expected 13 fields, got %d", len(fields))
+	if len(fields) != 14 {
+		t.Fatalf("expected 14 fields, got %d", len(fields))
 	}
 
 	if d.Width() != 62 {
@@ -137,6 +142,7 @@ func TestBuildNewScheduledDialog_FieldTypes(t *testing.T) {
 		{"Occurrences", FieldText},
 		{"Auto-post", FieldCheckbox},
 		{"Lead time", FieldRadio},
+		{"Split transaction", FieldCheckbox},
 	}
 
 	for i, exp := range expected {
@@ -1516,5 +1522,247 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithAutoPost(t *testing.T) {
 	}
 	if updatedApp.schedDialog != nil {
 		t.Error("dialog should be closed after submit")
+	}
+}
+
+// =============================================================================
+// MS-017 — Split toggle on the scheduled dialog
+// =============================================================================
+
+// buildSchedDialogWithSplitToggle assembles a scheduled-dialog widget with
+// the field shape submitScheduledDialog expects. The returned dialog has the
+// Split-transaction checkbox at schedFieldSplit set to splitChecked, so a
+// test can stage a Save with or without Split toggled on.
+func buildSchedDialogWithSplitToggle(t *testing.T, amountStr, startDate string, splitChecked bool, accountName string, categoryOptions []string) *Dialog {
+	t.Helper()
+	d := NewDialog("New Scheduled Transaction")
+	d.AddSelectField("Account", []string{accountName}, 0)
+	d.AddTextField("Payee", "Employer", "", 0)
+	d.AddSelectField("Category", categoryOptions, 0)
+	d.AddTextField("Amount", amountStr, "Empty = variable", 12)
+	d.AddTextField("Memo", "", "", 0)
+	d.AddSelectField("Frequency", buildFrequencyOptions(), 3)
+	f := d.AddTextField("Interval", "1", "", 5)
+	f.Required = true
+	f = d.AddDateField("Start Date", startDate)
+	f.Required = true
+	d.AddRadioField("Duration", []string{"Indefinite", "Until Date", "Occurrences"}, 0)
+	d.AddOptionalDateField("End Date", "")
+	d.AddTextField("Occurrences", "", "", 5)
+	d.AddCheckboxField("Auto-post", false)
+	d.AddRadioField("Lead time", []string{"On the day", "3 days early", "1 week early"}, 0)
+	d.AddCheckboxField("Split transaction", splitChecked)
+	d.SetVisible(true)
+	return d
+}
+
+func TestScheduledDialog_SplitToggle_OpensMultiLineEditor(t *testing.T) {
+	accountID := types.NewID()
+	categoryID := types.NewID()
+
+	app := &App{
+		currentView: ViewScheduled,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		schedDialog: buildSchedDialogWithSplitToggle(t,
+			"4000.00", "01/15/2024", true, "Checking",
+			[]string{"(None)", "Salary"}),
+		schedDialogData: &scheduledDialogData{
+			mode: scheduledDialogModeNew,
+			accounts: []*account.Account{
+				{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
+			},
+			payeeMap: make(map[string]*payee.Payee),
+		},
+		schedDialogAccountIDs:  []types.ID{accountID},
+		schedDialogCategoryIDs: []types.ID{types.NilID, categoryID},
+	}
+
+	model, cmd := app.submitScheduledDialog()
+	updatedApp := model.(*App)
+
+	if cmd != nil {
+		t.Errorf("expected no async cmd when toggling into split editor, got non-nil")
+	}
+	if updatedApp.schedDialog != nil {
+		t.Error("scheduled dialog should be closed once split editor opens")
+	}
+	if updatedApp.splitDialog == nil {
+		t.Fatal("split dialog should be opened by the Split toggle")
+	}
+	if updatedApp.pendingSplitScheduled == nil {
+		t.Fatal("pendingSplitScheduled should be set so the split-save handler can finalize")
+	}
+
+	wantAmount, _ := types.NewMoney("4000.00")
+	if !updatedApp.splitDialog.totalAmount.Equal(wantAmount) {
+		t.Errorf("split dialog totalAmount = %s, want %s",
+			updatedApp.splitDialog.totalAmount.String(), wantAmount.String())
+	}
+	if updatedApp.pendingSplitScheduled.frequency != scheduled.FrequencyMonthly {
+		t.Errorf("pendingSplitScheduled.frequency = %s, want monthly",
+			updatedApp.pendingSplitScheduled.frequency)
+	}
+}
+
+// createMultiLineScheduledTestApp wires a real DB + the services the
+// scheduled-split submit path touches so the persistence test can drive
+// an end-to-end Save.
+func createMultiLineScheduledTestApp(t *testing.T) (*App, *scheduled.Service, *account.Account, *category.Category, *category.Category) {
+	t.Helper()
+	tempDir := t.TempDir()
+	database, err := db.Create(filepath.Join(tempDir, "test.tdb"))
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	accountRepo := account.NewRepository(database)
+	payeeRepo := payee.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+	schedRepo := scheduled.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	splitTxnRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, database)
+	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database)
+	accountSvc := account.NewService(accountRepo, database)
+	payeeSvc := payee.NewService(payeeRepo, database)
+	categorySvc := category.NewService(categoryRepo, database)
+
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
+		t.Fatalf("Create account: %v", err)
+	}
+
+	incomeCat := category.NewCategory("Salary", category.TypeIncome)
+	if err := categoryRepo.Create(incomeCat); err != nil {
+		t.Fatalf("Create income category: %v", err)
+	}
+	taxCat := category.NewCategory("Federal Tax", category.TypeExpense)
+	if err := categoryRepo.Create(taxCat); err != nil {
+		t.Fatalf("Create tax category: %v", err)
+	}
+
+	app := &App{
+		currentView:     ViewScheduled,
+		keys:            defaultKeyMap(),
+		menubar:         NewMenuBar(),
+		statusbar:       NewStatusBar(),
+		sidebar:         NewSidebar(),
+		accountSvc:      accountSvc,
+		payeeSvc:        payeeSvc,
+		categorySvc:     categorySvc,
+		scheduledTxnSvc: schedSvc,
+		undoManager:     undo.NewManager(),
+	}
+	return app, schedSvc, acct, incomeCat, taxCat
+}
+
+func TestScheduledDialog_MultiLineSave_PersistsChildren(t *testing.T) {
+	app, schedSvc, acct, incomeCat, taxCat := createMultiLineScheduledTestApp(t)
+
+	categoryOptions, categoryIDs := buildCategoryOptions([]*category.Category{incomeCat, taxCat})
+	app.schedDialogData = &scheduledDialogData{
+		mode:     scheduledDialogModeNew,
+		accounts: []*account.Account{acct},
+		payeeMap: make(map[string]*payee.Payee),
+	}
+	app.schedDialogAccountIDs = []types.ID{acct.ID}
+	app.schedDialogCategoryIDs = categoryIDs
+	today := types.Today().Time().Format("01/02/2006")
+	app.schedDialog = buildSchedDialogWithSplitToggle(t,
+		"900.00", today, true, acct.Name, categoryOptions)
+
+	model, cmd := app.submitScheduledDialog()
+	app2 := model.(*App)
+	if cmd != nil {
+		t.Errorf("expected nil cmd when opening split editor, got non-nil")
+	}
+	if app2.splitDialog == nil {
+		t.Fatal("split dialog should be open after Split toggle")
+	}
+
+	// Resolve the option indices for the two seeded categories.
+	var incomeIdx, taxIdx int
+	for i, id := range categoryIDs {
+		switch id {
+		case incomeCat.ID:
+			incomeIdx = i
+		case taxCat.ID:
+			taxIdx = i
+		}
+	}
+	if incomeIdx == 0 || taxIdx == 0 {
+		t.Fatalf("category indices unresolved: income=%d tax=%d", incomeIdx, taxIdx)
+	}
+
+	sd := app2.splitDialog
+	sd.rows[0].categoryIndex = incomeIdx
+	sd.rows[0].amountField.Value = "1000.00"
+	sd.addRow()
+	sd.rows[1].categoryIndex = taxIdx
+	sd.rows[1].amountField.Value = "-100.00"
+
+	model, saveCmd := app2.submitScheduledSplitDialog()
+	app3 := model.(*App)
+	if app3.splitDialog != nil {
+		t.Error("split dialog should be cleared after a successful save")
+	}
+	if app3.pendingSplitScheduled != nil {
+		t.Error("pendingSplitScheduled should be cleared after a successful save")
+	}
+	if saveCmd == nil {
+		t.Fatal("submitScheduledSplitDialog should return a non-nil save command")
+	}
+	if msg := saveCmd(); msg != nil {
+		if e, ok := msg.(errMsg); ok {
+			t.Fatalf("unexpected error from save command: %v", e.err)
+		}
+		if _, ok := msg.(scheduledDialogSavedMsg); !ok {
+			t.Fatalf("unexpected message type from save command: %T", msg)
+		}
+	}
+
+	schedules, err := schedSvc.List()
+	if err != nil {
+		t.Fatalf("List schedules: %v", err)
+	}
+	if len(schedules) != 1 {
+		t.Fatalf("got %d schedules, want 1", len(schedules))
+	}
+	sched := schedules[0]
+	if len(sched.Splits) != 2 {
+		t.Fatalf("got %d child splits, want 2", len(sched.Splits))
+	}
+	wantNet, _ := types.NewMoney("900.00")
+	if !sched.Splits.Total().Equal(wantNet) {
+		t.Errorf("signed sum of children = %s, want %s",
+			sched.Splits.Total().String(), wantNet.String())
+	}
+	if sched.HasCategory() {
+		t.Error("multi-line schedule should clear the scalar category")
+	}
+	if !sched.HasAmount() {
+		t.Error("multi-line schedule should preserve the parent amount")
+	}
+
+	var sawIncome, sawTax bool
+	for _, sp := range sched.Splits {
+		if !sp.CategoryID.Valid {
+			continue
+		}
+		switch sp.CategoryID.ID {
+		case incomeCat.ID:
+			sawIncome = true
+		case taxCat.ID:
+			sawTax = true
+		}
+	}
+	if !sawIncome || !sawTax {
+		t.Errorf("missing child categories: income=%v tax=%v", sawIncome, sawTax)
 	}
 }

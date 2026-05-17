@@ -10,9 +10,59 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
+
+// pendingSplitScheduled carries scalar field values from the scheduled
+// dialog into the multi-line split editor. The SplitDialog produces
+// transaction.Split rows; submitScheduledSplitDialog translates them
+// into scheduled.Split children at save time.
+type pendingSplitScheduled struct {
+	mode        scheduledDialogMode
+	existing    *scheduled.Transaction
+	accountID   types.ID
+	payeeName   string
+	amount      types.Money
+	memo        string
+	frequency   scheduled.Frequency
+	interval    int
+	startDate   types.Date
+	endDate     types.NullableDate
+	occurrences types.NullableInt
+	autoPost    bool
+	leadDays    int
+}
+
+// transactionSplitsFromScheduled converts the children of an existing
+// scheduled.Transaction into transaction.Split rows so the SplitDialog
+// can seed itself from a previously-saved multi-line template. The
+// returned rows carry only the fields the split editor uses
+// (category/transfer target, amount, memo).
+func transactionSplitsFromScheduled(st *scheduled.Transaction) []*transaction.Split {
+	if st == nil || len(st.Splits) == 0 {
+		return nil
+	}
+	rows := make([]*transaction.Split, 0, len(st.Splits))
+	for _, sp := range st.Splits {
+		t := &transaction.Split{
+			BaseModel: types.NewBaseModel(),
+			Amount:    sp.Amount,
+		}
+		if sp.CategoryID.Valid {
+			t.CategoryID = sp.CategoryID.ID
+		}
+		if sp.TransferAccountID.Valid {
+			t.TransferAccountID = sp.TransferAccountID
+		}
+		if sp.Memo.Valid {
+			t.SetMemo(sp.Memo.String)
+		}
+		rows = append(rows, t)
+	}
+	return rows
+}
 
 // scheduledDialogMode indicates whether the dialog is creating or editing.
 type scheduledDialogMode int
@@ -54,6 +104,7 @@ const (
 	schedFieldOccurrence = 10
 	schedFieldAutoPost   = 11
 	schedFieldLeadDays   = 12
+	schedFieldSplit      = 13
 )
 
 // buildFrequencyOptions returns display names for all frequencies.
@@ -171,6 +222,9 @@ func buildNewScheduledDialog(accountOptions, categoryOptions []string) *Dialog {
 	// Lead days radio (only meaningful when auto-post is checked)
 	d.AddRadioField("Lead time", []string{"On the day", "3 days early", "1 week early"}, 0)
 
+	// Split transaction — toggles the multi-line split editor on Save.
+	d.AddCheckboxField("Split transaction", false)
+
 	d.SetVisible(true)
 	return d
 }
@@ -260,6 +314,10 @@ func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string
 
 	// Lead days radio
 	d.AddRadioField("Lead time", []string{"On the day", "3 days early", "1 week early"}, leadDaysToIndex(st.PostLeadDays))
+
+	// Split transaction — pre-checked when the schedule already carries
+	// child split lines (multi-line template).
+	d.AddCheckboxField("Split transaction", len(st.Splits) > 0)
 
 	d.SetVisible(true)
 	return d
@@ -371,7 +429,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	}
 
 	fields := a.schedDialog.Fields()
-	if len(fields) < 13 {
+	if len(fields) < 14 {
 		return a, nil
 	}
 
@@ -480,12 +538,56 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	autoPost := fields[schedFieldAutoPost].Checked
 	leadDays := leadDaysFromIndex(fields[schedFieldLeadDays].SelectedIndex)
 
+	// Split transaction — when checked, the scalar amount becomes the parent
+	// net amount and the user finishes the schedule in the split editor. A
+	// multi-line schedule requires a fixed parent amount.
+	isSplit := fields[schedFieldSplit].Checked
+	if isSplit && !amount.Valid {
+		fields[schedFieldAmount].Error = "Amount is required for split schedules"
+		hasErrors = true
+	}
+
 	if hasErrors {
 		return a, nil
 	}
 
 	mode := a.schedDialogData.mode
 	existingSched := a.schedDialogData.scheduled
+
+	if isSplit {
+		pending := &pendingSplitScheduled{
+			mode:        mode,
+			existing:    existingSched,
+			accountID:   accountID,
+			payeeName:   payeeName,
+			amount:      amount.Money,
+			memo:        memo,
+			frequency:   frequency,
+			interval:    interval,
+			startDate:   startDate,
+			endDate:     endDate,
+			occurrences: occurrences,
+			autoPost:    autoPost,
+			leadDays:    leadDays,
+		}
+
+		categoryOptions := fields[schedFieldCategory].Options
+		categoryIDs := a.schedDialogCategoryIDs
+		accountOptions, accountIDs := buildSplitTransferAccountOptions(a.schedDialogData.accounts)
+
+		// Seed the split dialog from existing children when editing a
+		// schedule that already carries a multi-line template.
+		seedSplits := transactionSplitsFromScheduled(existingSched)
+		a.closeScheduledDialog()
+		a.pendingSplitScheduled = pending
+		if mode == scheduledDialogModeEdit && len(seedSplits) > 0 {
+			a.splitDialog = NewSplitDialogFromExisting(amount.Money, categoryOptions, categoryIDs, seedSplits)
+		} else {
+			a.splitDialog = NewSplitDialog(amount.Money, categoryOptions, categoryIDs)
+		}
+		a.splitDialog.SetTransferTargets(accountOptions, accountIDs, accountID)
+		return a, nil
+	}
 
 	// Close dialog before async save for responsive UI
 	a.closeScheduledDialog()
@@ -508,6 +610,9 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 		if mode == scheduledDialogModeEdit && existingSched != nil {
 			// Update existing scheduled transaction
 			st := existingSched
+			// Clear any prior multi-line children so an un-toggled Split
+			// reverts the schedule to a legacy single-line template.
+			st.Splits = nil
 			st.AccountID = accountID
 			st.Frequency = frequency
 			st.Interval = interval
@@ -588,6 +693,103 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 			st.SetAutoPost(autoPost)
 			st.SetPostLeadDays(leadDays)
 
+			cmd := undo.NewCreateScheduledTransactionCommand(a.scheduledTxnSvc, st)
+			if err := a.undoManager.Execute(cmd); err != nil {
+				return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}
+			}
+		}
+
+		return scheduledDialogSavedMsg{}
+	}
+}
+
+// submitScheduledSplitDialog finalizes a multi-line scheduled transaction
+// after the user has filled out the SplitDialog opened from the scheduled
+// dialog's Split toggle. The split editor produces transaction.Split rows;
+// this handler translates them to scheduled.Split children and dispatches
+// the appropriate undo command.
+func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
+	if a.splitDialog == nil || a.pendingSplitScheduled == nil {
+		return a, nil
+	}
+
+	splits, err := a.splitDialog.buildSplits()
+	if err != nil {
+		a.splitDialog.errorMsg = err.Error()
+		return a, nil
+	}
+
+	pending := a.pendingSplitScheduled
+	a.closeSplitDialog()
+
+	return a, func() tea.Msg {
+		var payeeID types.ID
+		if pending.payeeName != "" && a.payeeSvc != nil {
+			py, _, err := a.payeeSvc.GetOrCreate(pending.payeeName)
+			if err != nil {
+				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
+			}
+			payeeID = py.ID
+		}
+
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
+		}
+
+		children := scheduled.SplitCollection{}
+		for _, ts := range splits {
+			child := &scheduled.Split{
+				BaseModel: types.NewBaseModel(),
+				Amount:    ts.Amount,
+			}
+			switch {
+			case ts.TransferAccountID.Valid:
+				child.TransferAccountID = ts.TransferAccountID
+			default:
+				child.CategoryID = types.NullableID{ID: ts.CategoryID, Valid: true}
+			}
+			if ts.Memo.Valid {
+				child.SetMemo(ts.Memo.String)
+			}
+			children = append(children, child)
+		}
+
+		applyScalars := func(st *scheduled.Transaction) {
+			st.AccountID = pending.accountID
+			st.Frequency = pending.frequency
+			st.Interval = pending.interval
+			st.StartDate = pending.startDate
+			if !payeeID.IsNil() {
+				st.SetPayee(payeeID)
+			} else {
+				st.ClearPayee()
+			}
+			// Multi-line schedules have no scalar category.
+			st.ClearCategory()
+			st.SetAmount(pending.amount)
+			st.SetMemo(pending.memo)
+			st.ClearEndDate()
+			st.ClearOccurrences()
+			if pending.endDate.Valid {
+				st.SetEndDate(pending.endDate.Date)
+			} else if pending.occurrences.Valid {
+				st.SetOccurrences(pending.occurrences.Int64)
+			}
+			st.SetAutoPost(pending.autoPost)
+			st.SetPostLeadDays(pending.leadDays)
+			st.Splits = children
+		}
+
+		if pending.mode == scheduledDialogModeEdit && pending.existing != nil {
+			st := pending.existing
+			applyScalars(st)
+			cmd := undo.NewEditScheduledTransactionCommand(a.scheduledTxnSvc, st)
+			if err := a.undoManager.Execute(cmd); err != nil {
+				return errMsg{err: fmt.Errorf("failed to update scheduled transaction: %w", err)}
+			}
+		} else {
+			st := scheduled.NewTransaction(pending.accountID, pending.frequency, pending.startDate)
+			applyScalars(st)
 			cmd := undo.NewCreateScheduledTransactionCommand(a.scheduledTxnSvc, st)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}

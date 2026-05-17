@@ -774,6 +774,9 @@ func (a *App) handleSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.splitDialog.HandleKey(msg)
 	switch action {
 	case DialogActionSubmit:
+		if a.pendingSplitScheduled != nil {
+			return a.submitScheduledSplitDialog()
+		}
 		return a.submitSplitDialog()
 	case DialogActionCancel:
 		a.closeSplitDialog()
@@ -860,4 +863,5 @@ func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 func (a *App) closeSplitDialog() {
 	a.splitDialog = nil
 	a.pendingSplitTxn = nil
+	a.pendingSplitScheduled = nil
 }

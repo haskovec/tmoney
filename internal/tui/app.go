@@ -142,8 +142,9 @@ type App struct {
 	createCatDialog *Dialog
 
 	// Split dialog state
-	splitDialog     *SplitDialog
-	pendingSplitTxn *pendingSplitTransaction
+	splitDialog           *SplitDialog
+	pendingSplitTxn       *pendingSplitTransaction
+	pendingSplitScheduled *pendingSplitScheduled
 
 	// Transfer dialog state
 	transferDialog           *Dialog
