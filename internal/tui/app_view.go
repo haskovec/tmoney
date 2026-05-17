@@ -93,12 +93,17 @@ func (a *App) renderLayout() string {
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
-	// Overlay scheduled-preview dialog if visible (MS-019 scaffolding;
-	// MS-020 will land the save handler). For multi-line previews the
-	// header is the primary surface — the embedded split editor's
-	// rendering is wired in subsequent slices.
+	// Overlay scheduled-preview dialog if visible. For multi-line
+	// previews the header dialog and the embedded split editor stack
+	// vertically; Tab transitions focus between the two surfaces
+	// (header → split editor, Shift+Tab from split editor → header).
 	if a.schedPreviewDialog != nil && a.schedPreviewDialog.IsVisible() {
 		overlay := a.schedPreviewDialog.HeaderDialog().Render(a.styles)
+		if a.schedPreviewDialog.IsMultiLine() {
+			if sd := a.schedPreviewDialog.SplitDialog(); sd != nil {
+				overlay = lipgloss.JoinVertical(lipgloss.Left, overlay, sd.Render(a.styles))
+			}
+		}
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

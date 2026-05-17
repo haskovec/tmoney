@@ -82,6 +82,14 @@ type SchedulePreviewDialog struct {
 	// submit handler looks up the existing payee by name (case-
 	// insensitive); a new name is created via the payee service.
 	payees []*payee.Payee
+
+	// splitFocus tracks which surface receives key events on multi-line
+	// previews — false means the header dialog, true means the embedded
+	// split editor. Tab past the header's last focusable position
+	// transitions focus into the split editor; Shift+Tab from the split
+	// editor's first focus transitions back to the header. Always false
+	// on single-line previews.
+	splitFocus bool
 }
 
 // NewSchedulePreviewDialog builds the preview dialog for one due
@@ -238,6 +246,13 @@ func (p *SchedulePreviewDialog) IsVisible() bool {
 	return p.headerDialog != nil && p.headerDialog.IsVisible()
 }
 
+// FocusOnSplits reports whether key events are currently routed to the
+// embedded split editor (multi-line previews only). Always false on
+// single-line previews.
+func (p *SchedulePreviewDialog) FocusOnSplits() bool {
+	return p.splitFocus
+}
+
 // schedulePreviewDataMsg carries the dependencies needed to construct a
 // SchedulePreviewDialog (template + lookups for payees/accounts/categories).
 // It is dispatched asynchronously by loadSchedulePreviewData so the data
@@ -320,12 +335,83 @@ func (a *App) closeSchedulePreviewDialog() {
 // the Save button submits — the real transaction is created with any
 // user edits, and the schedule advances by one cadence using the
 // template's original next_date.
+//
+// For multi-line previews, keys route to either the header dialog or
+// the embedded split editor based on the preview's splitFocus toggle.
+// Tab past the header's last focusable element transitions focus into
+// the split editor; Shift+Tab from the split editor's first focus
+// transitions back to the header. The split editor's MS-013 imbalance
+// indicator and disabled-Save behavior apply: a Save attempt with
+// imbalanced lines is rejected with the validation error on the
+// header.
 func (a *App) handleSchedulePreviewDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.schedPreviewDialog == nil {
 		return a, nil
 	}
 
+	if a.schedPreviewDialog.IsMultiLine() {
+		return a.handleSchedulePreviewMultiLineKey(msg)
+	}
+
 	action := a.schedPreviewDialog.HeaderDialog().HandleKey(msg)
+	switch action {
+	case DialogActionCancel:
+		a.closeSchedulePreviewDialog()
+		return a, nil
+	case DialogActionSubmit:
+		return a.submitSchedulePreviewDialog()
+	}
+	return a, nil
+}
+
+// handleSchedulePreviewMultiLineKey routes keys for a multi-line
+// preview to either the header dialog or the embedded split editor.
+// The two surfaces have independent focus models — the preview's
+// splitFocus toggles between them on Tab from the header's last
+// focusable element and Shift+Tab from the split editor's first focus.
+func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	p := a.schedPreviewDialog
+	header := p.HeaderDialog()
+	splits := p.SplitDialog()
+
+	keyStr := msg.String()
+
+	// Esc always cancels regardless of which surface has focus.
+	if keyStr == "esc" {
+		a.closeSchedulePreviewDialog()
+		return a, nil
+	}
+
+	if !p.splitFocus {
+		// Tab past the header's last focusable element transitions
+		// into the split editor instead of wrapping back to field 0.
+		if keyStr == "tab" && header.FocusIndex() == header.focusableCount()-1 {
+			p.splitFocus = true
+			splits.focus = splitFocusRows
+			splits.rowIndex = 0
+			splits.fieldFocus = splitFieldCategory
+			return a, nil
+		}
+		action := header.HandleKey(msg)
+		switch action {
+		case DialogActionCancel:
+			a.closeSchedulePreviewDialog()
+			return a, nil
+		case DialogActionSubmit:
+			return a.submitSchedulePreviewDialog()
+		}
+		return a, nil
+	}
+
+	// Shift+Tab from the split editor's first focus transitions back
+	// to the header at field 0.
+	if keyStr == "shift+tab" && splits.focus == splitFocusRows && splits.rowIndex == 0 && splits.fieldFocus == splitFieldCategory {
+		p.splitFocus = false
+		header.SetFocusIndex(0)
+		return a, nil
+	}
+
+	action := splits.HandleKey(msg)
 	switch action {
 	case DialogActionCancel:
 		a.closeSchedulePreviewDialog()

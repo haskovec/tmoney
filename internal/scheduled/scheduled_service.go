@@ -505,6 +505,16 @@ func (s *Service) PostWithEdits(id types.ID, txn *transaction.Transaction, split
 	}
 
 	if len(splits) > 0 {
+		// Stamp the parent transaction's ID onto every split. Callers
+		// (e.g. the TUI preview dialog) typically build splits via
+		// SplitDialog.buildSplits, which leaves TransactionID zero
+		// because the parent isn't constructed at that point; the
+		// transaction service's validation requires it.
+		for _, sp := range splits {
+			if sp != nil {
+				sp.TransactionID = txn.ID
+			}
+		}
 		if err := s.txnSvc.CreateWithSplits(txn, splits); err != nil {
 			return nil, fmt.Errorf("failed to create transaction: %w", err)
 		}
