@@ -37,8 +37,18 @@ const (
 )
 
 // splitRow holds the data for one split entry row.
+//
+// A row is in one of two modes:
+//   - Category mode (transferMode = false): categoryIndex picks an entry
+//     from SplitDialog.categoryOptions. Landing on the trailing Transfer
+//     sentinel (with the picker configured) auto-swaps to transfer mode.
+//   - Transfer mode (transferMode = true): accountIndex picks an entry
+//     from the dialog's transfer-account options (parent account already
+//     filtered out). Up from accountIndex 0 reverts to category mode.
 type splitRow struct {
 	categoryIndex int
+	transferMode  bool
+	accountIndex  int
 	amountField   Field
 	memoField     Field
 }
@@ -73,7 +83,14 @@ type SplitDialog struct {
 	fieldFocus      splitFieldFocus
 	categoryOptions []string
 	categoryIDs     []types.ID
-	errorMsg        string
+
+	// Transfer-line picker (configured via SetTransferTargets). When
+	// transferAccountIDs is empty, the Transfer sentinel is non-functional
+	// and validate() rejects rows that land on it.
+	transferAccountOptions []string
+	transferAccountIDs     []types.ID
+
+	errorMsg string
 }
 
 // NewSplitDialog creates a new SplitDialog for the given total amount.
@@ -187,6 +204,43 @@ func (sd *SplitDialog) categoryOptionLabel(idx int) string {
 	return sd.categoryOptions[idx]
 }
 
+// SetTransferTargets configures the account picker used when a split
+// row enters transfer mode. Any account whose ID equals
+// excludeAccountID is filtered out so users cannot self-transfer (the
+// usual exclusion is the parent transaction's account). Until this is
+// called with at least one remaining account, the Transfer sentinel
+// stays inert and validate() rejects rows that land on it.
+func (sd *SplitDialog) SetTransferTargets(options []string, ids []types.ID, excludeAccountID types.ID) {
+	if len(options) != len(ids) {
+		return
+	}
+	sd.transferAccountOptions = sd.transferAccountOptions[:0]
+	sd.transferAccountIDs = sd.transferAccountIDs[:0]
+	for i, id := range ids {
+		if id == excludeAccountID {
+			continue
+		}
+		sd.transferAccountOptions = append(sd.transferAccountOptions, options[i])
+		sd.transferAccountIDs = append(sd.transferAccountIDs, id)
+	}
+}
+
+// transferAccountLabel returns the display label for the account at the
+// given index in the transfer-target list, or "" if the index is out of
+// range.
+func (sd *SplitDialog) transferAccountLabel(idx int) string {
+	if idx < 0 || idx >= len(sd.transferAccountOptions) {
+		return ""
+	}
+	return sd.transferAccountOptions[idx]
+}
+
+// hasTransferTargets reports whether the dialog has at least one
+// account configured to use as a transfer target.
+func (sd *SplitDialog) hasTransferTargets() bool {
+	return len(sd.transferAccountIDs) > 0
+}
+
 // ErrorMsg returns the current error message.
 func (sd *SplitDialog) ErrorMsg() string {
 	return sd.errorMsg
@@ -244,15 +298,22 @@ func (sd *SplitDialog) validate() error {
 	}
 
 	for i, row := range sd.rows {
-		// Category must be selected (index > 0 means not "(None)")
-		if row.categoryIndex <= 0 {
-			return fmt.Errorf("split %d: category is required", i+1)
-		}
-		// The trailing Transfer sentinel is not a savable selection on
-		// its own — MS-011 will swap the row to an account picker. For
-		// now, treat it like an unselected category.
-		if sd.isTransferSentinel(row.categoryIndex) {
-			return fmt.Errorf("split %d: pick a destination account for the transfer", i+1)
+		if row.transferMode {
+			if row.accountIndex < 0 || row.accountIndex >= len(sd.transferAccountIDs) {
+				return fmt.Errorf("split %d: pick a destination account for the transfer", i+1)
+			}
+		} else {
+			// Category must be selected (index > 0 means not "(None)")
+			if row.categoryIndex <= 0 {
+				return fmt.Errorf("split %d: category is required", i+1)
+			}
+			// The Transfer sentinel without a configured picker is not a
+			// savable selection on its own. Once SetTransferTargets has
+			// been called, hitting the sentinel transitions the row into
+			// transfer mode (handled above).
+			if sd.isTransferSentinel(row.categoryIndex) {
+				return fmt.Errorf("split %d: pick a destination account for the transfer", i+1)
+			}
 		}
 
 		// Amount must be present and valid
@@ -276,6 +337,11 @@ func (sd *SplitDialog) validate() error {
 }
 
 // buildSplits produces Split structs from the current rows.
+//
+// Transfer-line rows produce a Split with CategoryID=NilID and
+// TransferAccountID set to the picked account; TransferID is left
+// empty because the service layer mints it when the parent transaction
+// is created (see MS-006).
 func (sd *SplitDialog) buildSplits() ([]*transaction.Split, error) {
 	if err := sd.validate(); err != nil {
 		return nil, err
@@ -284,14 +350,30 @@ func (sd *SplitDialog) buildSplits() ([]*transaction.Split, error) {
 	var splits []*transaction.Split
 	for _, row := range sd.rows {
 		amount, _ := parseAmountInput(row.amountField.Value)
-		categoryID := sd.categoryIDs[row.categoryIndex]
 		memo := strings.TrimSpace(row.memoField.Value)
 
 		var split *transaction.Split
-		if memo != "" {
-			split = transaction.NewSplitWithMemo(types.NilID, categoryID, amount, memo)
+		if row.transferMode {
+			split = &transaction.Split{
+				BaseModel:     types.NewBaseModel(),
+				TransactionID: types.NilID,
+				CategoryID:    types.NilID,
+				Amount:        amount,
+				TransferAccountID: types.NullableID{
+					ID:    sd.transferAccountIDs[row.accountIndex],
+					Valid: true,
+				},
+			}
+			if memo != "" {
+				split.SetMemo(memo)
+			}
 		} else {
-			split = transaction.NewSplit(types.NilID, categoryID, amount)
+			categoryID := sd.categoryIDs[row.categoryIndex]
+			if memo != "" {
+				split = transaction.NewSplitWithMemo(types.NilID, categoryID, amount, memo)
+			} else {
+				split = transaction.NewSplit(types.NilID, categoryID, amount)
+			}
 		}
 		splits = append(splits, split)
 	}
@@ -361,14 +443,41 @@ func (sd *SplitDialog) handleRowFieldKey(msg tea.KeyPressMsg) {
 
 	switch sd.fieldFocus {
 	case splitFieldCategory:
-		switch msg.String() {
-		case "up":
-			if row.categoryIndex > 0 {
-				row.categoryIndex--
+		switch {
+		case row.transferMode:
+			switch msg.String() {
+			case "up":
+				if row.accountIndex > 0 {
+					row.accountIndex--
+				} else {
+					// Step out of transfer mode back to the last real
+					// category. categoryIndex was on the sentinel; drop
+					// to the previous selectable category.
+					row.transferMode = false
+					if len(sd.categoryOptions) > 0 {
+						row.categoryIndex = len(sd.categoryOptions) - 1
+					}
+					row.accountIndex = 0
+				}
+			case "down":
+				if row.accountIndex < len(sd.transferAccountIDs)-1 {
+					row.accountIndex++
+				}
 			}
-		case "down":
-			if row.categoryIndex < sd.categoryOptionCount()-1 {
-				row.categoryIndex++
+		default:
+			switch msg.String() {
+			case "up":
+				if row.categoryIndex > 0 {
+					row.categoryIndex--
+				}
+			case "down":
+				if row.categoryIndex < sd.categoryOptionCount()-1 {
+					row.categoryIndex++
+					if sd.isTransferSentinel(row.categoryIndex) && sd.hasTransferTargets() {
+						row.transferMode = true
+						row.accountIndex = 0
+					}
+				}
 			}
 		}
 	case splitFieldAmount:
@@ -508,8 +617,14 @@ func (sd *SplitDialog) Render(styles Styles) string {
 	for i, row := range sd.rows {
 		rowFocused := sd.focus == splitFocusRows && sd.rowIndex == i
 
-		// Category
-		catText := sd.categoryOptionLabel(row.categoryIndex)
+		// Category — or, in transfer mode, the account picker.
+		var catText string
+		switch {
+		case row.transferMode && row.accountIndex < len(sd.transferAccountOptions):
+			catText = transferSentinelLabel + " " + sd.transferAccountOptions[row.accountIndex]
+		default:
+			catText = sd.categoryOptionLabel(row.categoryIndex)
+		}
 		if rowFocused && sd.fieldFocus == splitFieldCategory {
 			catText = lipgloss.NewStyle().Reverse(true).Render(" "+catText+" ") + " ▼"
 		} else {

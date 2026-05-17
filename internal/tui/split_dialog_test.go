@@ -449,6 +449,125 @@ func TestSplitDialog_TransferSentinel_PresentInCategoryCombo(t *testing.T) {
 	}
 }
 
+// TestSplitDialog_SelectTransfer_OpensAccountPicker asserts the MS-011
+// contract: when transfer targets are configured and the user lands on
+// the Transfer sentinel, the row swaps into transfer mode — Up/Down now
+// navigates the account picker (which excludes the parent transaction's
+// account), the row renders with the picked account's name, and
+// buildSplits emits a transfer-line split with category_id=NilID and
+// transfer_account_id set to the picked account.
+func TestSplitDialog_SelectTransfer_OpensAccountPicker(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+
+	parentAcctID := types.NewID()
+	savingsID := types.NewID()
+	k401ID := types.NewID()
+
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"),
+		[]string{"(None)", "Food"},
+		[]types.ID{types.NilID, types.NewID()})
+
+	// Configure transfer targets: dialog must filter out the parent
+	// account so users cannot self-transfer.
+	sd.SetTransferTargets(
+		[]string{"Checking", "Savings", "401k"},
+		[]types.ID{parentAcctID, savingsID, k401ID},
+		parentAcctID,
+	)
+
+	// Without picker configured the sentinel would just be a static
+	// option. With a picker, landing on it should swap the row into
+	// transfer mode.
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // -> Food
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // -> Transfer sentinel + auto-swap
+
+	row := sd.rows[0]
+	if !row.transferMode {
+		t.Fatalf("landing on Transfer sentinel with picker configured should put the row in transfer mode")
+	}
+	if row.accountIndex != 0 {
+		t.Errorf("first transfer pick = %d, want 0", row.accountIndex)
+	}
+
+	// The picker must exclude the parent account ("Checking"). With
+	// Checking filtered out, the remaining picker is [Savings, 401k];
+	// accountIndex 0 should resolve to Savings.
+	if got := sd.transferAccountLabel(row.accountIndex); got != "Savings" {
+		t.Errorf("first pick label = %q, want %q", got, "Savings")
+	}
+
+	// Further Down keys cycle the account picker without leaving the
+	// sentinel column.
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // -> 401k
+	if sd.rows[0].accountIndex != 1 {
+		t.Errorf("after second Down, accountIndex = %d, want 1 (401k)", sd.rows[0].accountIndex)
+	}
+	// Saturate at the last account.
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	if sd.rows[0].accountIndex != 1 {
+		t.Errorf("Down at last account should saturate, got %d", sd.rows[0].accountIndex)
+	}
+
+	// Up cycles back, then reverts to category mode when stepping past
+	// the first account.
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp})
+	if sd.rows[0].accountIndex != 0 {
+		t.Errorf("Up from second account → accountIndex = %d, want 0", sd.rows[0].accountIndex)
+	}
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp})
+	if sd.rows[0].transferMode {
+		t.Errorf("Up from first account should leave transfer mode")
+	}
+	if sd.rows[0].categoryIndex != 1 {
+		t.Errorf("after reverting to category mode, categoryIndex = %d, want 1 (last real category)", sd.rows[0].categoryIndex)
+	}
+
+	// Re-enter transfer mode, fill in an amount, and assert buildSplits
+	// produces a transfer-line split with the picked account and no
+	// category.
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // -> sentinel again, auto-swap
+	sd.rows[0].amountField.Value = "-100.00"
+	sd.rows[0].memoField.Value = "401(k) contribution"
+	sd.rows[0].accountIndex = 1 // pick 401k explicitly
+
+	splits, err := sd.buildSplits()
+	if err != nil {
+		t.Fatalf("buildSplits: %v", err)
+	}
+	if len(splits) != 1 {
+		t.Fatalf("expected 1 split, got %d", len(splits))
+	}
+	got := splits[0]
+	if !got.CategoryID.IsNil() {
+		t.Errorf("transfer-line split should leave CategoryID NilID, got %s", got.CategoryID.String())
+	}
+	if !got.TransferAccountID.Valid {
+		t.Fatalf("transfer-line split should set TransferAccountID")
+	}
+	if got.TransferAccountID.ID != k401ID {
+		t.Errorf("TransferAccountID = %s, want %s (401k)", got.TransferAccountID.ID.String(), k401ID.String())
+	}
+	if got.TransferID.Valid {
+		t.Errorf("buildSplits should leave TransferID empty; service mints it (MS-006). got %s", got.TransferID.ID.String())
+	}
+	if !got.Amount.Equal(types.MustNewMoney("-100.00")) {
+		t.Errorf("amount = %s, want -100.00", got.Amount.String())
+	}
+	if !got.Memo.Valid || got.Memo.String != "401(k) contribution" {
+		t.Errorf("memo = %v, want \"401(k) contribution\"", got.Memo)
+	}
+
+	// Render check: the picker label must surface as "Transfer → 401k".
+	out := sd.Render(styles)
+	if !strings.Contains(out, "Transfer →") || !strings.Contains(out, "401k") {
+		t.Errorf("render should show Transfer → 401k, got:\n%s", out)
+	}
+	if strings.Contains(out, "Transfer → Checking") {
+		t.Errorf("parent account 'Checking' must be excluded from the picker; got:\n%s", out)
+	}
+}
+
 func TestSplitDialog_HandleKey_TextEditing(t *testing.T) {
 	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
 

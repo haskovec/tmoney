@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -28,6 +29,7 @@ const (
 type transactionDialogData struct {
 	payees     []*payee.Payee
 	categories []*category.Category
+	accounts   []*account.Account
 	payeeMap   map[string]*payee.Payee // lowercase name -> payee
 
 	// Edit-mode-only fields. All zero in new mode.
@@ -97,6 +99,24 @@ func splitCategoryQuery(q string) (parent, name string) {
 	parent = strings.TrimSpace(before)
 	name = strings.TrimSpace(after)
 	return parent, name
+}
+
+// buildSplitTransferAccountOptions builds parallel display name and ID
+// slices for the split-row transfer-target picker. Closed accounts are
+// skipped; the caller is expected to pass the parent transaction's
+// account ID to SplitDialog.SetTransferTargets so self-transfers are
+// filtered out at that stage.
+func buildSplitTransferAccountOptions(accounts []*account.Account) ([]string, []types.ID) {
+	options := make([]string, 0, len(accounts))
+	ids := make([]types.ID, 0, len(accounts))
+	for _, a := range accounts {
+		if a == nil || !a.Active {
+			continue
+		}
+		options = append(options, a.Name)
+		ids = append(ids, a.ID)
+	}
+	return options, ids
 }
 
 // buildCategoryOptions builds parallel display name and ID slices for the category selector.
@@ -265,6 +285,14 @@ func (a *App) loadTransactionDialogData() tea.Cmd {
 			data.categories = categories
 		}
 
+		if a.accountSvc != nil {
+			accounts, err := a.accountSvc.List(true)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.accounts = accounts
+		}
+
 		return transactionDialogDataMsg{data: data}
 	}
 }
@@ -297,6 +325,14 @@ func (a *App) loadEditTransactionDialogData(txnID types.ID) tea.Cmd {
 				return errMsg{err: err}
 			}
 			data.categories = categories
+		}
+
+		if a.accountSvc != nil {
+			accounts, err := a.accountSvc.List(true)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.accounts = accounts
 		}
 
 		if a.transactionSvc != nil {
@@ -631,6 +667,7 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		// Build category options for the split dialog (reuse loaded data)
 		categoryOptions, categoryIDs := buildCategoryOptions(a.txnDialogData.categories)
 		seedSplits := a.txnDialogData.existingSplits
+		accountOptions, accountIDs := buildSplitTransferAccountOptions(a.txnDialogData.accounts)
 
 		// Close the transaction dialog
 		a.closeTransactionDialog()
@@ -642,6 +679,7 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		} else {
 			a.splitDialog = NewSplitDialog(amount, categoryOptions, categoryIDs)
 		}
+		a.splitDialog.SetTransferTargets(accountOptions, accountIDs, accountID)
 
 		return a, nil
 	}
