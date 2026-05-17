@@ -126,10 +126,11 @@ Make the new primitive reachable from the TUI on regular (non-scheduled) transac
 
 After Phase 3, users can manually create paycheck-shaped real transactions. Phase 4 makes them recurring.
 
-- [ ] **MS-015 — Scheduled service supports multi-line templates**
+- [x] **MS-015 — Scheduled service supports multi-line templates**
   - RED: test `TestScheduledService_CreateMultiLine_RoundTrip` — create a scheduled transaction with multi-line split children; reload and verify both parent and children persist. Test `TestScheduledService_ValidateMultiLine_RejectsBothShapes` — a record with both a scalar `category_id` AND `scheduled_split_items` children is rejected.
   - GREEN: extend the scheduled service create/update paths to accept and persist `scheduled_split_items` rows. A scheduled transaction is multi-line when children are present; legacy single-line continues to work.
   - Confirm: tests pass.
+  - Done: `Service.Create` and `Service.Update` (in `internal/scheduled/scheduled_service.go`) now route through a new `validateScheduledSplits` helper and persist child rows via `SplitRepo()`. Validation enforces the mutually-exclusive shape (parent `category_id` and child splits cannot coexist), requires a fixed parent `amount` for multi-line schedules, runs `Split.Validate()` on each child, rejects transfer-lines targeting the parent's own account, and confirms the signed sum of lines equals the parent's amount. On `Create`, a partial-write failure rolls back the parent (cascading any inserted children). `Update` clears existing children before the parent's DELETE+INSERT so the FK from `scheduled_split_items` doesn't trip, then re-inserts the new children. New tests `TestScheduledService_CreateMultiLine_RoundTrip` (paycheck-shaped round-trip, update replacing children, imbalanced reject, self-transfer reject) and `TestScheduledService_ValidateMultiLine_RejectsBothShapes` (create + update paths) cover the contract; full suite (5210 tests) and lint stay green.
 
 - [ ] **MS-016 — Posting a multi-line scheduled transaction**
   - RED: test `TestScheduledService_PostMultiLine_CreatesTransactionWithSplits` — posting a multi-line schedule creates a real transaction whose `split_items` mirror the template; transfer-line templates create paired counterparts. Test `TestScheduledService_PostMultiLine_AdvancesSchedule` — `next_date` advances per the template's cadence.

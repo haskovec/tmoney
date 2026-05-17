@@ -32,12 +32,33 @@ func NewService(
 // CRUD Operations
 // =============================================================================
 
-// Create validates and creates a new scheduled transaction.
+// Create validates and creates a new scheduled transaction. If st carries
+// child Splits, the schedule is multi-line: child rows are persisted and
+// validation enforces the signed-sum / mutually-exclusive-shape rules.
 func (s *Service) Create(st *Transaction) error {
 	if err := s.validateScheduledTransaction(st); err != nil {
 		return err
 	}
-	return s.repo.Create(st)
+	if err := s.validateScheduledSplits(st); err != nil {
+		return err
+	}
+	if err := s.repo.Create(st); err != nil {
+		return err
+	}
+	if len(st.Splits) == 0 {
+		return nil
+	}
+	for _, split := range st.Splits {
+		split.ScheduledTransactionID = st.ID
+		if err := s.repo.SplitRepo().Create(split); err != nil {
+			// Best-effort rollback: remove the parent (cascades any
+			// already-inserted children) so a failed multi-line create
+			// leaves no partial state behind.
+			_ = s.repo.Delete(st.ID)
+			return fmt.Errorf("failed to create scheduled split: %w", err)
+		}
+	}
+	return nil
 }
 
 // GetByID retrieves a scheduled transaction by its ID.
@@ -45,12 +66,32 @@ func (s *Service) GetByID(id types.ID) (*Transaction, error) {
 	return s.repo.GetByID(id)
 }
 
-// Update validates and updates an existing scheduled transaction.
+// Update validates and updates an existing scheduled transaction. If st
+// carries Splits, the existing child rows are replaced (DELETE + INSERT) so
+// the persisted template matches st.Splits exactly.
 func (s *Service) Update(st *Transaction) error {
 	if err := s.validateScheduledTransaction(st); err != nil {
 		return err
 	}
-	return s.repo.Update(st)
+	if err := s.validateScheduledSplits(st); err != nil {
+		return err
+	}
+	// Clear existing children first: the parent's DELETE+INSERT (under the
+	// hood of repo.Update) would otherwise trip the FK from
+	// scheduled_split_items.
+	if _, err := s.repo.SplitRepo().DeleteByScheduledTransaction(st.ID); err != nil {
+		return fmt.Errorf("failed to clear existing scheduled splits: %w", err)
+	}
+	if err := s.repo.Update(st); err != nil {
+		return err
+	}
+	for _, split := range st.Splits {
+		split.ScheduledTransactionID = st.ID
+		if err := s.repo.SplitRepo().Create(split); err != nil {
+			return fmt.Errorf("failed to insert updated scheduled split: %w", err)
+		}
+	}
+	return nil
 }
 
 // Delete removes a scheduled transaction.
@@ -521,5 +562,60 @@ func (s *Service) validateScheduledTransaction(st *Transaction) error {
 	if errors.HasErrors() {
 		return &types.ServiceValidationError{Errors: errors}
 	}
+	return nil
+}
+
+// validateScheduledSplits validates a scheduled transaction's child splits
+// when present. Enforces:
+//   - mutually exclusive shape: scalar category_id on the parent and child
+//     splits cannot coexist (a multi-line schedule has no parent category);
+//   - the multi-line parent must carry a fixed amount (variable amounts are
+//     legacy single-line only — see specs/multiline-splits-and-paycheck.md);
+//   - each split passes Split.Validate() (one of category_id /
+//     transfer_account_id, non-zero amount, etc.);
+//   - transfer-lines cannot target the parent's own account (self-transfer);
+//   - the signed sum of split amounts equals the parent's amount.
+//
+// Returns nil for legacy single-line schedules (no child splits).
+func (s *Service) validateScheduledSplits(st *Transaction) error {
+	if len(st.Splits) == 0 {
+		return nil
+	}
+
+	if st.HasCategory() {
+		verrs := types.ValidationErrors{}
+		verrs.Add("splits",
+			"scheduled transaction cannot set both a scalar category_id and child splits")
+		return &types.ServiceValidationError{Errors: verrs}
+	}
+
+	if !st.HasAmount() {
+		verrs := types.ValidationErrors{}
+		verrs.Add("amount",
+			"multi-line scheduled transaction requires a fixed amount equal to the signed sum of its lines")
+		return &types.ServiceValidationError{Errors: verrs}
+	}
+
+	for _, split := range st.Splits {
+		// Ensure the parent linkage is set so split-level validation
+		// doesn't trip on the required scheduled_transaction_id field.
+		if split.ScheduledTransactionID.IsNil() {
+			split.ScheduledTransactionID = st.ID
+		}
+		if errs := split.Validate(); errs.HasErrors() {
+			return &types.ServiceValidationError{Errors: errs}
+		}
+		if split.TransferAccountID.Valid && split.TransferAccountID.ID == st.AccountID {
+			verrs := types.ValidationErrors{}
+			verrs.Add("transfer_account_id",
+				"transfer-line cannot target the scheduled transaction's own account (self-transfer)")
+			return &types.ServiceValidationError{Errors: verrs}
+		}
+	}
+
+	if errs := st.Splits.ValidateAgainstTemplate(st.Amount.Money); errs.HasErrors() {
+		return &types.ServiceValidationError{Errors: errs}
+	}
+
 	return nil
 }

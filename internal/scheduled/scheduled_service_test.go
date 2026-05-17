@@ -642,3 +642,259 @@ func TestService_AutoPost(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// Multi-line scheduled-template tests (MS-015)
+// =============================================================================
+
+func TestScheduledService_CreateMultiLine_RoundTrip(t *testing.T) {
+	t.Run("paycheck-shaped multi-line template persists and reloads", func(t *testing.T) {
+		svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+		retirement := createTestAccountForScheduled(t, accountRepo, "401k")
+
+		salaryCat := category.NewCategory("Salary", category.TypeIncome)
+		if err := categoryRepo.Create(salaryCat); err != nil {
+			t.Fatalf("Create salary category: %v", err)
+		}
+		federalCat := category.NewCategory("Federal Tax", category.TypeExpense)
+		if err := categoryRepo.Create(federalCat); err != nil {
+			t.Fatalf("Create federal category: %v", err)
+		}
+
+		// Parent represents the net deposit: 5000 - 800 - 200 = 4000.
+		net, _ := types.NewMoney("4000.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.Today(), net)
+
+		gross, _ := types.NewMoney("5000.00")
+		federal, _ := types.NewMoney("-800.00")
+		retire, _ := types.NewMoney("-200.00")
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, salaryCat.ID, gross),
+			NewCategorizedSplit(st.ID, federalCat.ID, federal),
+			NewTransferSplit(st.ID, retirement.ID, retire),
+		}
+
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create multi-line: %v", err)
+		}
+
+		got, err := svc.GetByID(st.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if len(got.Splits) != 3 {
+			t.Fatalf("Splits length = %d, want 3", len(got.Splits))
+		}
+		if !got.Splits.Total().Equal(net) {
+			t.Errorf("signed sum = %s, want %s", got.Splits.Total().String(), net.String())
+		}
+
+		var sawSalary, sawFederal, sawTransfer bool
+		for _, sp := range got.Splits {
+			switch {
+			case sp.CategoryID.Valid && sp.CategoryID.ID == salaryCat.ID:
+				sawSalary = true
+				if !sp.Amount.Equal(gross) {
+					t.Errorf("salary amount = %s, want %s", sp.Amount.String(), gross.String())
+				}
+			case sp.CategoryID.Valid && sp.CategoryID.ID == federalCat.ID:
+				sawFederal = true
+				if !sp.Amount.Equal(federal) {
+					t.Errorf("federal amount = %s, want %s", sp.Amount.String(), federal.String())
+				}
+			case sp.TransferAccountID.Valid && sp.TransferAccountID.ID == retirement.ID:
+				sawTransfer = true
+				if !sp.Amount.Equal(retire) {
+					t.Errorf("retirement amount = %s, want %s", sp.Amount.String(), retire.String())
+				}
+			}
+		}
+		if !sawSalary || !sawFederal || !sawTransfer {
+			t.Errorf("missing reloaded splits: salary=%v federal=%v transfer=%v",
+				sawSalary, sawFederal, sawTransfer)
+		}
+	})
+
+	t.Run("update replaces child splits", func(t *testing.T) {
+		svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		incCat := category.NewCategory("Salary", category.TypeIncome)
+		if err := categoryRepo.Create(incCat); err != nil {
+			t.Fatalf("Create income category: %v", err)
+		}
+		expCat := category.NewCategory("Federal Tax", category.TypeExpense)
+		if err := categoryRepo.Create(expCat); err != nil {
+			t.Fatalf("Create expense category: %v", err)
+		}
+
+		net, _ := types.NewMoney("900.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.Today(), net)
+		gross, _ := types.NewMoney("1000.00")
+		tax, _ := types.NewMoney("-100.00")
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, incCat.ID, gross),
+			NewCategorizedSplit(st.ID, expCat.ID, tax),
+		}
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		// Replace splits with a different shape (still balanced).
+		newNet, _ := types.NewMoney("750.00")
+		st.SetAmount(newNet)
+		newGross, _ := types.NewMoney("1000.00")
+		newTax, _ := types.NewMoney("-250.00")
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, incCat.ID, newGross),
+			NewCategorizedSplit(st.ID, expCat.ID, newTax),
+		}
+		if err := svc.Update(st); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+
+		got, err := svc.GetByID(st.ID)
+		if err != nil {
+			t.Fatalf("GetByID after update: %v", err)
+		}
+		if len(got.Splits) != 2 {
+			t.Fatalf("Splits length after update = %d, want 2", len(got.Splits))
+		}
+		if !got.Splits.Total().Equal(newNet) {
+			t.Errorf("signed sum after update = %s, want %s",
+				got.Splits.Total().String(), newNet.String())
+		}
+	})
+
+	t.Run("imbalanced split rejected", func(t *testing.T) {
+		svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		cat := category.NewCategory("Salary", category.TypeIncome)
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Create category: %v", err)
+		}
+
+		net, _ := types.NewMoney("100.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.Today(), net)
+		// Single line of 200 does not net to parent 100.
+		off, _ := types.NewMoney("200.00")
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, cat.ID, off),
+		}
+
+		err := svc.Create(st)
+		if err == nil {
+			t.Fatal("expected validation error for imbalanced split, got nil")
+		}
+		if _, ok := err.(*types.ServiceValidationError); !ok {
+			t.Errorf("expected ServiceValidationError, got %T: %v", err, err)
+		}
+
+		// Parent should not have been persisted on validation failure.
+		_, getErr := svc.GetByID(st.ID)
+		if getErr == nil {
+			t.Error("imbalanced create should not persist the parent")
+		}
+	})
+
+	t.Run("self-transfer line rejected", func(t *testing.T) {
+		svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		cat := category.NewCategory("Salary", category.TypeIncome)
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Create category: %v", err)
+		}
+
+		net, _ := types.NewMoney("500.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.Today(), net)
+		gross, _ := types.NewMoney("1000.00")
+		// Transfer-line targeting the parent's own account: self-transfer.
+		selfXfer, _ := types.NewMoney("-500.00")
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, cat.ID, gross),
+			NewTransferSplit(st.ID, acct.ID, selfXfer),
+		}
+
+		err := svc.Create(st)
+		if err == nil {
+			t.Fatal("expected error for self-transfer line, got nil")
+		}
+		if _, ok := err.(*types.ServiceValidationError); !ok {
+			t.Errorf("expected ServiceValidationError, got %T: %v", err, err)
+		}
+	})
+}
+
+func TestScheduledService_ValidateMultiLine_RejectsBothShapes(t *testing.T) {
+	t.Run("scalar category plus child splits rejected", func(t *testing.T) {
+		svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		parentCat := category.NewCategory("Salary", category.TypeIncome)
+		if err := categoryRepo.Create(parentCat); err != nil {
+			t.Fatalf("Create parent category: %v", err)
+		}
+		lineCat := category.NewCategory("Bonus", category.TypeIncome)
+		if err := categoryRepo.Create(lineCat); err != nil {
+			t.Fatalf("Create line category: %v", err)
+		}
+
+		amount, _ := types.NewMoney("100.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.Today(), amount)
+		// Set scalar category AND child splits — the forbidden mixed shape.
+		st.SetCategory(parentCat.ID)
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, lineCat.ID, amount),
+		}
+
+		err := svc.Create(st)
+		if err == nil {
+			t.Fatal("expected mixed-shape validation error, got nil")
+		}
+		if _, ok := err.(*types.ServiceValidationError); !ok {
+			t.Errorf("expected ServiceValidationError, got %T: %v", err, err)
+		}
+
+		// Parent must not have been persisted.
+		_, getErr := svc.GetByID(st.ID)
+		if getErr == nil {
+			t.Error("mixed-shape create should not persist the parent")
+		}
+	})
+
+	t.Run("update from single-line to mixed shape rejected", func(t *testing.T) {
+		svc, accountRepo, _, categoryRepo := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		parentCat := category.NewCategory("Salary", category.TypeIncome)
+		if err := categoryRepo.Create(parentCat); err != nil {
+			t.Fatalf("Create parent category: %v", err)
+		}
+		lineCat := category.NewCategory("Bonus", category.TypeIncome)
+		if err := categoryRepo.Create(lineCat); err != nil {
+			t.Fatalf("Create line category: %v", err)
+		}
+
+		amount, _ := types.NewMoney("100.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.Today(), amount)
+		st.SetCategory(parentCat.ID)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create single-line: %v", err)
+		}
+
+		// Now try to update by attaching splits while leaving category set.
+		st.Splits = SplitCollection{
+			NewCategorizedSplit(st.ID, lineCat.ID, amount),
+		}
+		err := svc.Update(st)
+		if err == nil {
+			t.Fatal("expected mixed-shape validation error on update, got nil")
+		}
+		if _, ok := err.(*types.ServiceValidationError); !ok {
+			t.Errorf("expected ServiceValidationError, got %T: %v", err, err)
+		}
+	})
+}
