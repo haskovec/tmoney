@@ -95,10 +95,11 @@ Make the new primitive usable through services. Still no UI change.
 
 Make the new primitive reachable from the TUI on regular (non-scheduled) transactions. After Phase 3, users can model a paycheck-shaped real transaction in the register without any scheduling involved.
 
-- [ ] **MS-010 — Split dialog adds `Transfer →` category sentinel**
+- [x] **MS-010 — Split dialog adds `Transfer →` category sentinel**
   - RED: test `TestSplitDialog_TransferSentinel_PresentInCategoryCombo` — the category combo box for a split line includes a `Transfer →` row alongside `[+ Add new category…]`.
   - GREEN: extend the category combo widget to render the sentinel option when used in a split-line context (not on the top-level transaction category field on single-line dialogs).
   - Confirm: tests pass.
+  - Done: split-dialog's category combo (in `internal/tui/split_dialog.go`) now exposes a trailing `Transfer →` row past the real categories. New helpers `categoryOptionCount` / `isTransferSentinel` / `categoryOptionLabel` keep the input `categoryOptions` / `categoryIDs` slices unmodified; rendering and Up/Down navigation route through them so the sentinel is reachable from the keyboard and shows up in the rendered field. Until MS-011 wires up the account-picker swap, `validate()` rejects a row whose category is the sentinel with `pick a destination account for the transfer`. New test `TestSplitDialog_TransferSentinel_PresentInCategoryCombo` covers both navigation and rendering; the existing `TestSplitDialog_HandleKey_CategoryUpDown` was updated so the new max matches the sentinel position. Full suite (5198 tests) and lint stay green.
 
 - [ ] **MS-011 — Selecting `Transfer →` swaps to account picker**
   - RED: test `TestSplitDialog_SelectTransfer_OpensAccountPicker` — choosing `Transfer →` replaces the category field with an account-select widget that excludes the parent transaction's account.

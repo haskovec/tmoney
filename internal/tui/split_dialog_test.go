@@ -389,28 +389,63 @@ func TestSplitDialog_HandleKey_CategoryUpDown(t *testing.T) {
 		t.Fatal("expected initial categoryIndex 0")
 	}
 
-	// Down
+	// Down -> Food
 	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	if sd.rows[0].categoryIndex != 1 {
 		t.Errorf("categoryIndex after down = %d, want 1", sd.rows[0].categoryIndex)
 	}
 
-	// Down again
+	// Down -> Household
 	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	if sd.rows[0].categoryIndex != 2 {
 		t.Errorf("categoryIndex after down = %d, want 2", sd.rows[0].categoryIndex)
 	}
 
-	// Down at max (should stay)
+	// Down -> Transfer → sentinel (appended after real categories)
 	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
-	if sd.rows[0].categoryIndex != 2 {
-		t.Errorf("categoryIndex should stay at 2, got %d", sd.rows[0].categoryIndex)
+	if sd.rows[0].categoryIndex != 3 {
+		t.Errorf("categoryIndex after down = %d, want 3 (Transfer sentinel)", sd.rows[0].categoryIndex)
 	}
 
-	// Up
+	// Down at max (should stay at sentinel)
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	if sd.rows[0].categoryIndex != 3 {
+		t.Errorf("categoryIndex should stay at 3, got %d", sd.rows[0].categoryIndex)
+	}
+
+	// Up -> Household
 	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp})
-	if sd.rows[0].categoryIndex != 1 {
-		t.Errorf("categoryIndex after up = %d, want 1", sd.rows[0].categoryIndex)
+	if sd.rows[0].categoryIndex != 2 {
+		t.Errorf("categoryIndex after up = %d, want 2", sd.rows[0].categoryIndex)
+	}
+}
+
+// TestSplitDialog_TransferSentinel_PresentInCategoryCombo asserts that
+// the category combo for a split row exposes a `Transfer →` option as
+// the trailing entry, reachable via Down navigation and rendered when
+// selected. (MS-011 wires up the account-picker swap.)
+func TestSplitDialog_TransferSentinel_PresentInCategoryCombo(t *testing.T) {
+	styles := NewStyles()
+	styles.Resize(100, 30)
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"),
+		[]string{"(None)", "Food"},
+		[]types.ID{types.NilID, types.NewID()})
+
+	// Navigate Down past every real category — should land on the
+	// Transfer sentinel at index len(categoryOptions).
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // -> Food
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // -> Transfer →
+
+	if sd.rows[0].categoryIndex != 2 {
+		t.Fatalf("after two Down presses, categoryIndex = %d, want 2 (Transfer sentinel)", sd.rows[0].categoryIndex)
+	}
+	if !sd.isTransferSentinel(sd.rows[0].categoryIndex) {
+		t.Errorf("expected categoryIndex %d to be the Transfer sentinel", sd.rows[0].categoryIndex)
+	}
+
+	out := sd.Render(styles)
+	if !strings.Contains(out, "Transfer →") {
+		t.Errorf("rendered dialog should display 'Transfer →' when the sentinel is selected; got:\n%s", out)
 	}
 }
 

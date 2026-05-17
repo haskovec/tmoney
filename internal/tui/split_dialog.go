@@ -11,6 +11,12 @@ import (
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
+// transferSentinelLabel is the trailing option in a split row's
+// category combo that swaps the row from a categorized line into a
+// transfer-line targeting another account. See
+// specs/multiline-splits-and-paycheck.md ("Display").
+const transferSentinelLabel = "Transfer →"
+
 // splitDialogFocus indicates which top-level area of the split dialog has focus.
 type splitDialogFocus int
 
@@ -160,6 +166,27 @@ func (sd *SplitDialog) FieldFocus() splitFieldFocus {
 	return sd.fieldFocus
 }
 
+// categoryOptionCount returns the total number of selectable items
+// in a row's category combo, including the trailing Transfer sentinel.
+func (sd *SplitDialog) categoryOptionCount() int {
+	return len(sd.categoryOptions) + 1
+}
+
+// isTransferSentinel reports whether the given option index points
+// at the trailing Transfer → row appended past the real categories.
+func (sd *SplitDialog) isTransferSentinel(idx int) bool {
+	return idx == len(sd.categoryOptions)
+}
+
+// categoryOptionLabel returns the display label for the given option
+// index, mapping the trailing sentinel index to transferSentinelLabel.
+func (sd *SplitDialog) categoryOptionLabel(idx int) string {
+	if sd.isTransferSentinel(idx) {
+		return transferSentinelLabel
+	}
+	return sd.categoryOptions[idx]
+}
+
 // ErrorMsg returns the current error message.
 func (sd *SplitDialog) ErrorMsg() string {
 	return sd.errorMsg
@@ -220,6 +247,12 @@ func (sd *SplitDialog) validate() error {
 		// Category must be selected (index > 0 means not "(None)")
 		if row.categoryIndex <= 0 {
 			return fmt.Errorf("split %d: category is required", i+1)
+		}
+		// The trailing Transfer sentinel is not a savable selection on
+		// its own — MS-011 will swap the row to an account picker. For
+		// now, treat it like an unselected category.
+		if sd.isTransferSentinel(row.categoryIndex) {
+			return fmt.Errorf("split %d: pick a destination account for the transfer", i+1)
 		}
 
 		// Amount must be present and valid
@@ -334,7 +367,7 @@ func (sd *SplitDialog) handleRowFieldKey(msg tea.KeyPressMsg) {
 				row.categoryIndex--
 			}
 		case "down":
-			if row.categoryIndex < len(sd.categoryOptions)-1 {
+			if row.categoryIndex < sd.categoryOptionCount()-1 {
 				row.categoryIndex++
 			}
 		}
@@ -476,7 +509,7 @@ func (sd *SplitDialog) Render(styles Styles) string {
 		rowFocused := sd.focus == splitFocusRows && sd.rowIndex == i
 
 		// Category
-		catText := sd.categoryOptions[row.categoryIndex]
+		catText := sd.categoryOptionLabel(row.categoryIndex)
 		if rowFocused && sd.fieldFocus == splitFieldCategory {
 			catText = lipgloss.NewStyle().Reverse(true).Render(" "+catText+" ") + " ▼"
 		} else {
