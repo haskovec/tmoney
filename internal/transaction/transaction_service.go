@@ -128,12 +128,60 @@ func (s *Service) Delete(id types.ID) error {
 		return s.transferRepo.Delete(txn.TransferID.ID)
 	}
 
+	// Cascade to paired counter-transactions of any transfer-typed split-
+	// lines before removing the parent. The parent itself is not marked as a
+	// transfer (only the split-item carries the linkage), so the legacy
+	// transfer branch above does not run.
+	if err := s.deleteTransferLinePairs(id); err != nil {
+		return err
+	}
+
 	// Delete any splits first
 	if _, err := s.splitRepo.DeleteByTransaction(id); err != nil {
 		return fmt.Errorf("failed to delete splits: %w", err)
 	}
 
 	return s.txnRepo.Delete(id)
+}
+
+// deleteTransferLinePairs deletes the paired counter-transaction of every
+// transfer-typed split-line attached to the given parent transaction. A
+// reconciled paired side blocks the cascade with IsReconciledError so the
+// parent and its other splits remain intact.
+func (s *Service) deleteTransferLinePairs(parentID types.ID) error {
+	splits, err := s.splitRepo.ListByTransaction(parentID)
+	if err != nil {
+		return fmt.Errorf("failed to list splits for delete cascade: %w", err)
+	}
+	for _, split := range splits {
+		if !split.TransferAccountID.Valid || !split.TransferID.Valid {
+			continue
+		}
+		if err := s.deletePairedCounterTransaction(split.TransferID.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// deletePairedCounterTransaction removes the single-line counter-transaction
+// linked to a transfer-line's transfer_id. Returns nil if no paired side
+// exists; returns IsReconciledError if the paired side is reconciled.
+func (s *Service) deletePairedCounterTransaction(transferID types.ID) error {
+	paired, err := s.findPairedByTransferID(transferID)
+	if err != nil {
+		return err
+	}
+	if paired == nil {
+		return nil
+	}
+	if paired.IsReconciled() {
+		return &IsReconciledError{ID: paired.ID.String()}
+	}
+	if err := s.txnRepo.Delete(paired.ID); err != nil {
+		return fmt.Errorf("failed to delete paired transfer transaction: %w", err)
+	}
+	return nil
 }
 
 // List returns all transactions ordered by date descending.
@@ -437,6 +485,12 @@ func (s *Service) updatePairedAmount(transferID types.ID, newAmount types.Money)
 
 // DeleteSplit removes a split from a transaction.
 // Splits on void or reconciled transactions cannot be deleted.
+//
+// For transfer-line splits, the paired single-line counter-transaction in
+// the target account is also deleted. A reconciled paired side blocks the
+// cascade with IsReconciledError. The parent transaction is left intact —
+// its remaining splits may now leave the totals out of balance, which is
+// the caller's responsibility to resolve on a subsequent save.
 func (s *Service) DeleteSplit(splitID types.ID) error {
 	// Get the split to find its parent transaction
 	split, err := s.splitRepo.GetByID(splitID)
@@ -456,6 +510,12 @@ func (s *Service) DeleteSplit(splitID types.ID) error {
 
 	if txn.IsReconciled() {
 		return &IsReconciledError{ID: txn.ID.String()}
+	}
+
+	if split.TransferAccountID.Valid && split.TransferID.Valid {
+		if err := s.deletePairedCounterTransaction(split.TransferID.ID); err != nil {
+			return err
+		}
 	}
 
 	return s.splitRepo.Delete(splitID)

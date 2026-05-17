@@ -881,6 +881,181 @@ func TestTransactionService_EditTransferLineTarget_MovesPair(t *testing.T) {
 	}
 }
 
+// TestTransactionService_DeleteTransferLine_DeletesPair covers MS-008:
+// deleting a single transfer-line split cascades to the paired
+// counter-transaction in the target account. The parent transaction
+// retains its remaining split-items even though the totals may now be
+// out of balance (validation is the caller's responsibility on a later
+// save).
+func TestTransactionService_DeleteTransferLine_DeletesPair(t *testing.T) {
+	database := createTestDB(t)
+	txnRepo := NewRepository(database)
+	splitRepo := NewSplitRepository(database)
+	transferRepo := NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+
+	checking := createTestAccount(t, accountRepo, "Checking")
+	savings := createTestAccount(t, accountRepo, "Savings")
+
+	salary := category.NewCategory("Salary", category.TypeIncome)
+	if err := categoryRepo.Create(salary); err != nil {
+		t.Fatalf("Create salary category: %v", err)
+	}
+
+	parent := NewTransaction(checking.ID, types.Today(), types.MustNewMoney("700.00"))
+	salaryLine := NewSplit(parent.ID, salary.ID, types.MustNewMoney("1000.00"))
+	transferLine := &Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-300.00"),
+		TransferAccountID: types.NullableID{ID: savings.ID, Valid: true},
+	}
+	if err := svc.CreateWithSplits(parent, []*Split{salaryLine, transferLine}); err != nil {
+		t.Fatalf("CreateWithSplits() error = %v", err)
+	}
+
+	reloaded, err := svc.GetSplits(parent.ID)
+	if err != nil {
+		t.Fatalf("GetSplits() error = %v", err)
+	}
+	var xfer, salaryReloaded *Split
+	for _, s := range reloaded {
+		if s.TransferAccountID.Valid {
+			xfer = s
+		} else {
+			salaryReloaded = s
+		}
+	}
+	if xfer == nil || salaryReloaded == nil {
+		t.Fatalf("expected one transfer-line and one salary line, got %d splits", len(reloaded))
+	}
+
+	// Sanity: the paired transaction exists in the savings register before
+	// the delete.
+	pairedBefore, err := svc.ListByAccount(savings.ID)
+	if err != nil {
+		t.Fatalf("ListByAccount(savings) error = %v", err)
+	}
+	if len(pairedBefore) != 1 {
+		t.Fatalf("expected 1 paired transaction in Savings before delete, got %d", len(pairedBefore))
+	}
+
+	// Delete the transfer-line. The paired counter-transaction in Savings
+	// must vanish; the salary line on the parent must remain.
+	if err := svc.DeleteSplit(xfer.ID); err != nil {
+		t.Fatalf("DeleteSplit() error = %v", err)
+	}
+
+	savingsAfter, err := svc.ListByAccount(savings.ID)
+	if err != nil {
+		t.Fatalf("ListByAccount(savings) after delete: %v", err)
+	}
+	if len(savingsAfter) != 0 {
+		t.Errorf("expected 0 paired transactions in Savings after delete, got %d", len(savingsAfter))
+	}
+
+	remaining, err := svc.GetSplits(parent.ID)
+	if err != nil {
+		t.Fatalf("GetSplits() after delete: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("expected 1 remaining split on parent, got %d", len(remaining))
+	}
+	if remaining[0].ID != salaryReloaded.ID {
+		t.Errorf("remaining split id = %v, want salary line %v",
+			remaining[0].ID, salaryReloaded.ID)
+	}
+}
+
+// TestTransactionService_DeleteParent_DeletesAllPairs covers MS-008:
+// deleting the parent transaction of a multi-line split with transfer-
+// typed lines also deletes every paired counter-transaction in the
+// target accounts.
+func TestTransactionService_DeleteParent_DeletesAllPairs(t *testing.T) {
+	database := createTestDB(t)
+	txnRepo := NewRepository(database)
+	splitRepo := NewSplitRepository(database)
+	transferRepo := NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+
+	checking := createTestAccount(t, accountRepo, "Checking")
+	savings := createTestAccount(t, accountRepo, "Savings")
+	hsa := createTestAccount(t, accountRepo, "HSA")
+
+	salary := category.NewCategory("Salary", category.TypeIncome)
+	if err := categoryRepo.Create(salary); err != nil {
+		t.Fatalf("Create salary category: %v", err)
+	}
+
+	// Parent net +500: salary +1000, transfer -300 to Savings, transfer -200 to HSA.
+	parent := NewTransaction(checking.ID, types.Today(), types.MustNewMoney("500.00"))
+	salaryLine := NewSplit(parent.ID, salary.ID, types.MustNewMoney("1000.00"))
+	toSavings := &Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-300.00"),
+		TransferAccountID: types.NullableID{ID: savings.ID, Valid: true},
+	}
+	toHSA := &Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-200.00"),
+		TransferAccountID: types.NullableID{ID: hsa.ID, Valid: true},
+	}
+	if err := svc.CreateWithSplits(parent, []*Split{salaryLine, toSavings, toHSA}); err != nil {
+		t.Fatalf("CreateWithSplits() error = %v", err)
+	}
+
+	// Sanity: both paired counter-transactions exist before delete.
+	if list, err := svc.ListByAccount(savings.ID); err != nil {
+		t.Fatalf("ListByAccount(savings): %v", err)
+	} else if len(list) != 1 {
+		t.Fatalf("expected 1 paired txn in Savings before parent delete, got %d", len(list))
+	}
+	if list, err := svc.ListByAccount(hsa.ID); err != nil {
+		t.Fatalf("ListByAccount(hsa): %v", err)
+	} else if len(list) != 1 {
+		t.Fatalf("expected 1 paired txn in HSA before parent delete, got %d", len(list))
+	}
+
+	if err := svc.Delete(parent.ID); err != nil {
+		t.Fatalf("Delete(parent) error = %v", err)
+	}
+
+	// All paired counter-transactions in target accounts are gone.
+	if list, err := svc.ListByAccount(savings.ID); err != nil {
+		t.Fatalf("ListByAccount(savings) after parent delete: %v", err)
+	} else if len(list) != 0 {
+		t.Errorf("expected 0 paired txns in Savings after parent delete, got %d", len(list))
+	}
+	if list, err := svc.ListByAccount(hsa.ID); err != nil {
+		t.Fatalf("ListByAccount(hsa) after parent delete: %v", err)
+	} else if len(list) != 0 {
+		t.Errorf("expected 0 paired txns in HSA after parent delete, got %d", len(list))
+	}
+
+	// The parent itself, and its splits, are gone.
+	if _, err := svc.GetByID(parent.ID); err == nil {
+		t.Errorf("expected parent transaction to be deleted, but GetByID returned nil error")
+	}
+	if remaining, err := svc.GetSplits(parent.ID); err != nil {
+		t.Fatalf("GetSplits() after parent delete: %v", err)
+	} else if len(remaining) != 0 {
+		t.Errorf("expected 0 splits on deleted parent, got %d", len(remaining))
+	}
+}
+
 func TestTransactionService_ValidateSplitTotals(t *testing.T) {
 	t.Run("returns true when splits match", func(t *testing.T) {
 		database := createTestDB(t)
