@@ -194,7 +194,11 @@ func (a *App) handleScheduledKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		tableHeight := max(a.height-6, 1)
 		a.scheduledTable.PageDown(tableHeight)
 	case key.Matches(msg, a.keys.Enter):
-		return a.postSelectedScheduled()
+		// MS-019: Enter opens the preview dialog instead of posting
+		// directly. The save handler (which creates the real
+		// transaction and advances the schedule) lands in MS-020 via
+		// the preview dialog's Submit action.
+		return a, a.loadSchedulePreviewData()
 	case msg.String() == "s":
 		return a.skipSelectedScheduled()
 	case key.Matches(msg, a.keys.Delete):
@@ -206,30 +210,6 @@ func (a *App) handleScheduledKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return a, nil
-}
-
-// postSelectedScheduled posts the currently selected scheduled transaction.
-func (a *App) postSelectedScheduled() (tea.Model, tea.Cmd) {
-	if a.scheduled == nil || a.scheduledTable == nil || a.scheduledTxnSvc == nil {
-		return a, nil
-	}
-
-	cursor := a.scheduledTable.Cursor()
-	if cursor < 0 || cursor >= len(a.scheduled.allTxns) {
-		return a, nil
-	}
-
-	st := a.scheduled.allTxns[cursor]
-	return a, func() tea.Msg {
-		if a.undoManager == nil {
-			return errMsg{err: fmt.Errorf("undo manager not available")}
-		}
-		cmd := undo.NewPostScheduledTransactionCommand(a.scheduledTxnSvc, a.transactionSvc, st.ID, nil)
-		if err := a.undoManager.Execute(cmd); err != nil {
-			return errMsg{err: err}
-		}
-		return scheduledPostedMsg{}
-	}
 }
 
 // skipSelectedScheduled skips the currently selected scheduled transaction.

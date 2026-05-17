@@ -1,11 +1,18 @@
 package tui
 
 import (
+	"path/filepath"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 func TestApp_Update_ScheduledDueCount(t *testing.T) {
@@ -524,5 +531,150 @@ func TestApp_FormatScheduledRow_AllFrequencies(t *testing.T) {
 				t.Errorf("frequency = %q, want %q", row[4], tt.expected)
 			}
 		})
+	}
+}
+
+// TestScheduledView_EnterOnDueItem_OpensPreview covers MS-019: pressing
+// Enter on a due scheduled item must open the preview dialog (replacing
+// the legacy immediate-post path) so users can edit per-instance values
+// before posting. The wiring is:
+//
+//  1. handleScheduledKeys' Enter branch returns the loadSchedulePreviewData
+//     command instead of the old postSelectedScheduled command.
+//  2. The command produces a schedulePreviewDataMsg.
+//  3. Update's handler for that message constructs the
+//     SchedulePreviewDialog and sets it on the App. No transaction is
+//     posted and the schedule is not advanced — those happen at preview
+//     Save time (MS-020).
+func TestScheduledView_EnterOnDueItem_OpensPreview(t *testing.T) {
+	tempDir := t.TempDir()
+	database, err := db.Create(filepath.Join(tempDir, "test.tdb"))
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	accountRepo := account.NewRepository(database)
+	payeeRepo := payee.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+	schedRepo := scheduled.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	splitTxnRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, database)
+	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database)
+	accountSvc := account.NewService(accountRepo, database)
+	payeeSvc := payee.NewService(payeeRepo, database)
+	categorySvc := category.NewService(categoryRepo, database)
+
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
+		t.Fatalf("Create account: %v", err)
+	}
+
+	payeeID := types.NewID()
+	rentCat := category.NewCategory("Rent", category.TypeExpense)
+	if err := categoryRepo.Create(rentCat); err != nil {
+		t.Fatalf("Create category: %v", err)
+	}
+
+	// Build a due single-line scheduled transaction (next_date = today).
+	dueTxn := &scheduled.Transaction{
+		BaseModel:  types.BaseModel{ID: types.NewID()},
+		AccountID:  acct.ID,
+		Frequency:  scheduled.FrequencyMonthly,
+		NextDate:   types.Today(),
+		PayeeID:    types.NullableID{ID: payeeID, Valid: true},
+		CategoryID: types.NullableID{ID: rentCat.ID, Valid: true},
+		Amount:     types.NullableMoney{Money: types.MustNewMoney("-1500.00"), Valid: true},
+	}
+	dueTxn.SetMemo("Monthly rent")
+
+	app := &App{
+		currentView:     ViewScheduled,
+		width:           120,
+		height:          30,
+		keys:            defaultKeyMap(),
+		menubar:         NewMenuBar(),
+		statusbar:       NewStatusBar(),
+		sidebar:         NewSidebar(),
+		styles:          NewStyles(),
+		accountSvc:      accountSvc,
+		payeeSvc:        payeeSvc,
+		categorySvc:     categorySvc,
+		scheduledTxnSvc: schedSvc,
+		transactionSvc:  txnSvc,
+		undoManager:     undo.NewManager(),
+		scheduled: &scheduledViewData{
+			allTxns:       []*scheduled.Transaction{dueTxn},
+			dueTxns:       []*scheduled.Transaction{dueTxn},
+			dueCount:      1,
+			payeeNames:    map[types.ID]string{payeeID: "Landlord"},
+			accountNames:  map[types.ID]string{acct.ID: acct.Name},
+			categoryNames: map[types.ID]string{rentCat.ID: "Rent"},
+		},
+	}
+	app.buildScheduledTable()
+	app.sidebar.SetFocused(false)
+	app.scheduledTable.SetFocused(true)
+
+	// Press Enter on the due item.
+	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, cmd := app.Update(enterKey)
+	updated := model.(*App)
+
+	if updated.schedPreviewDialog != nil {
+		t.Fatal("preview dialog should not be set synchronously — the loader runs as a tea.Cmd")
+	}
+	if cmd == nil {
+		t.Fatal("Enter on a due item must return a tea.Cmd to load preview data")
+	}
+
+	// Invoke the command. It must produce a schedulePreviewDataMsg, NOT
+	// trigger a post (which would produce a scheduledPostedMsg).
+	msg := cmd()
+	if msg == nil {
+		t.Fatal("loadSchedulePreviewData command should produce a message")
+	}
+	if _, ok := msg.(scheduledPostedMsg); ok {
+		t.Fatal("Enter should not produce scheduledPostedMsg — preview replaces immediate post")
+	}
+	previewMsg, ok := msg.(schedulePreviewDataMsg)
+	if !ok {
+		t.Fatalf("expected schedulePreviewDataMsg, got %T", msg)
+	}
+	if previewMsg.template != dueTxn {
+		t.Error("preview msg template should reference the selected due transaction")
+	}
+
+	// Dispatch the preview message to Update so it constructs the dialog.
+	model, _ = updated.Update(previewMsg)
+	final := model.(*App)
+
+	if final.schedPreviewDialog == nil {
+		t.Fatal("schedPreviewDialog should be set after schedulePreviewDataMsg")
+	}
+	if !final.schedPreviewDialog.IsVisible() {
+		t.Error("preview dialog should be visible after construction")
+	}
+	if final.schedPreviewDialog.Template() != dueTxn {
+		t.Error("preview dialog should reference the template that was clicked")
+	}
+
+	// Verify that no real transaction was posted and the schedule was
+	// not advanced — both should wait until MS-020's save handler.
+	posted, err := txnRepo.ListByAccount(acct.ID)
+	if err != nil {
+		t.Fatalf("ListByAccount: %v", err)
+	}
+	if len(posted) != 0 {
+		t.Errorf("no transaction should have been posted when opening the preview; got %d", len(posted))
+	}
+	reloaded, err := schedRepo.GetByID(dueTxn.ID)
+	if err == nil && reloaded != nil && !reloaded.NextDate.Equal(types.Today()) {
+		t.Errorf("schedule next_date should be unchanged; got %s, want %s",
+			reloaded.NextDate.Time().Format("2006-01-02"),
+			types.Today().Time().Format("2006-01-02"))
 	}
 }

@@ -161,6 +161,12 @@ type App struct {
 	schedDialogAccountIDs  []types.ID
 	schedDialogCategoryIDs []types.ID
 
+	// Scheduled preview dialog state. Opens when the user presses Enter
+	// on a due scheduled item (replaces the legacy immediate-post path
+	// per MS-019). MS-020 will land the save handler; for now the
+	// dialog is open-and-cancel only.
+	schedPreviewDialog *SchedulePreviewDialog
+
 	// Scheduled view state
 	scheduled      *scheduledViewData
 	scheduledTable *Table
@@ -494,6 +500,11 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// If scheduled dialog is visible, route all keys to it
 	if a.schedDialog != nil && a.schedDialog.IsVisible() {
 		return a.handleScheduledDialogKey(msg)
+	}
+
+	// If schedule preview dialog is visible, route all keys to it
+	if a.schedPreviewDialog != nil && a.schedPreviewDialog.IsVisible() {
+		return a.handleSchedulePreviewDialogKey(msg)
 	}
 
 	// If account dialog is visible, route all keys to it

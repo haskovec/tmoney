@@ -1,7 +1,9 @@
 package tui
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/types"
@@ -214,4 +216,102 @@ func (p *SchedulePreviewDialog) IsMultiLine() bool {
 // IsVisible reports whether the preview dialog should currently render.
 func (p *SchedulePreviewDialog) IsVisible() bool {
 	return p.headerDialog != nil && p.headerDialog.IsVisible()
+}
+
+// schedulePreviewDataMsg carries the dependencies needed to construct a
+// SchedulePreviewDialog (template + lookups for payees/accounts/categories).
+// It is dispatched asynchronously by loadSchedulePreviewData so the data
+// load doesn't block the key handler.
+type schedulePreviewDataMsg struct {
+	template        *scheduled.Transaction
+	accounts        []*account.Account
+	payees          []*payee.Payee
+	categoryOptions []string
+	categoryIDs     []types.ID
+}
+
+// loadSchedulePreviewData loads accounts/payees/categories for the
+// currently selected scheduled transaction and emits a
+// schedulePreviewDataMsg. Per MS-019 this replaces the legacy
+// immediate-post path on Enter — the message handler then constructs
+// the preview dialog from the template values.
+//
+// If the cursor is out of range or the required state is missing the
+// returned command is nil and Enter is a no-op.
+func (a *App) loadSchedulePreviewData() tea.Cmd {
+	if a.scheduled == nil || a.scheduledTable == nil {
+		return nil
+	}
+	cursor := a.scheduledTable.Cursor()
+	if cursor < 0 || cursor >= len(a.scheduled.allTxns) {
+		return nil
+	}
+	template := a.scheduled.allTxns[cursor]
+	if template == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		var accounts []*account.Account
+		if a.accountSvc != nil {
+			acs, err := a.accountSvc.List(true)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			accounts = acs
+		}
+
+		var payees []*payee.Payee
+		if a.payeeSvc != nil {
+			ps, err := a.payeeSvc.List()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			payees = ps
+		}
+
+		var categories []*category.Category
+		if a.categorySvc != nil {
+			cs, err := a.categorySvc.List()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			categories = cs
+		}
+
+		categoryOptions, categoryIDs := buildCategoryOptions(categories)
+		return schedulePreviewDataMsg{
+			template:        template,
+			accounts:        accounts,
+			payees:          payees,
+			categoryOptions: categoryOptions,
+			categoryIDs:     categoryIDs,
+		}
+	}
+}
+
+// closeSchedulePreviewDialog clears preview dialog state.
+func (a *App) closeSchedulePreviewDialog() {
+	a.schedPreviewDialog = nil
+}
+
+// handleSchedulePreviewDialogKey routes keys to the preview dialog. MS-019
+// wires the scaffolding (open + Esc-to-cancel); MS-020 will land the save
+// handler that creates the real transaction and advances the schedule. A
+// Submit action is ignored for now so the dialog stays open until the
+// save path is implemented.
+func (a *App) handleSchedulePreviewDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if a.schedPreviewDialog == nil {
+		return a, nil
+	}
+
+	action := a.schedPreviewDialog.HeaderDialog().HandleKey(msg)
+	switch action {
+	case DialogActionCancel:
+		a.closeSchedulePreviewDialog()
+	case DialogActionSubmit:
+		// MS-020 lands the save path; for MS-019 a Submit is a no-op so
+		// the dialog stays open.
+	}
+	return a, nil
 }
