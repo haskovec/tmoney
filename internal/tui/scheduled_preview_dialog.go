@@ -1,12 +1,17 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // Field indices for the SchedulePreviewDialog's header dialog.
@@ -66,6 +71,17 @@ type SchedulePreviewDialog struct {
 	// splitDialog is non-nil for multi-line schedules and edits the
 	// line items.
 	splitDialog *SplitDialog
+
+	// categoryIDs parallels the headerDialog's category combo options,
+	// so the submit handler can map the selected index back to a
+	// category ID. Nil for multi-line previews (the header has no
+	// scalar category field).
+	categoryIDs []types.ID
+
+	// payees is the snapshot of payees passed to the constructor. The
+	// submit handler looks up the existing payee by name (case-
+	// insensitive); a new name is created via the payee service.
+	payees []*payee.Payee
 }
 
 // NewSchedulePreviewDialog builds the preview dialog for one due
@@ -94,7 +110,10 @@ func NewSchedulePreviewDialog(
 		return nil
 	}
 
-	p := &SchedulePreviewDialog{template: template}
+	p := &SchedulePreviewDialog{
+		template: template,
+		payees:   payees,
+	}
 
 	payeeName := ""
 	if template.HasPayee() {
@@ -143,6 +162,7 @@ func NewSchedulePreviewDialog(
 		amountStr = template.Amount.Money.String()
 	}
 
+	p.categoryIDs = categoryIDs
 	p.headerDialog = buildPreviewHeaderSingle(dateStr, payeeName, memo, amountStr, categoryOptions, catIdx)
 	return p
 }
@@ -295,11 +315,11 @@ func (a *App) closeSchedulePreviewDialog() {
 	a.schedPreviewDialog = nil
 }
 
-// handleSchedulePreviewDialogKey routes keys to the preview dialog. MS-019
-// wires the scaffolding (open + Esc-to-cancel); MS-020 will land the save
-// handler that creates the real transaction and advances the schedule. A
-// Submit action is ignored for now so the dialog stays open until the
-// save path is implemented.
+// handleSchedulePreviewDialogKey routes keys to the preview dialog. Esc
+// cancels (the dialog closes and no transaction is created); Enter on
+// the Save button submits — the real transaction is created with any
+// user edits, and the schedule advances by one cadence using the
+// template's original next_date.
 func (a *App) handleSchedulePreviewDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.schedPreviewDialog == nil {
 		return a, nil
@@ -309,9 +329,152 @@ func (a *App) handleSchedulePreviewDialogKey(msg tea.KeyPressMsg) (tea.Model, te
 	switch action {
 	case DialogActionCancel:
 		a.closeSchedulePreviewDialog()
+		return a, nil
 	case DialogActionSubmit:
-		// MS-020 lands the save path; for MS-019 a Submit is a no-op so
-		// the dialog stays open.
+		return a.submitSchedulePreviewDialog()
 	}
 	return a, nil
+}
+
+// submitSchedulePreviewDialog parses the preview dialog fields, builds
+// the parent transaction (and, for multi-line previews, the split rows
+// frozen at template values until MS-021 lands per-instance line edits)
+// with any user edits applied, and dispatches a
+// PostScheduledTransactionWithEditsCommand through the undo manager.
+// The schedule advances by one cadence using the template's original
+// next_date as the basis, so a date edit in the preview never shifts
+// the schedule.
+//
+// Validation errors keep the dialog open and surface a per-field
+// error. On success the dialog closes synchronously and a
+// scheduledPostedMsg fires after the async save completes.
+func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
+	if a.schedPreviewDialog == nil {
+		return a, nil
+	}
+	template := a.schedPreviewDialog.Template()
+	header := a.schedPreviewDialog.HeaderDialog()
+	if header == nil || template == nil {
+		return a, nil
+	}
+
+	header.ClearErrors()
+	hasErrors := false
+	fields := header.Fields()
+
+	date, err := parseDateInput(fields[previewFieldDate].Value)
+	if err != nil {
+		fields[previewFieldDate].Error = "Invalid date (MM/DD/YYYY)"
+		hasErrors = true
+	}
+
+	payeeName := strings.TrimSpace(fields[previewFieldPayee].Value)
+
+	var (
+		amount      types.Money
+		categoryID  types.ID
+		memo        string
+		statusIdx   int
+		multiSplits []*transaction.Split
+	)
+
+	if a.schedPreviewDialog.IsMultiLine() {
+		memo = strings.TrimSpace(fields[previewMultiFieldMemo].Value)
+		statusIdx = fields[previewMultiFieldStatus].SelectedIndex
+
+		// MS-020: the embedded split editor is read-only at this stage —
+		// its rows were seeded from the template and the keystroke
+		// routing into it lands in MS-021. Build splits from the seeded
+		// rows so the parent transaction carries the template's lines.
+		sd := a.schedPreviewDialog.SplitDialog()
+		if sd != nil {
+			built, err := sd.buildSplits()
+			if err != nil {
+				header.SetErrorMsg(err.Error())
+				return a, nil
+			}
+			multiSplits = built
+		}
+		amount = template.Amount.Money
+	} else {
+		catIdx := fields[previewSingleFieldCat].SelectedIndex
+		ids := a.schedPreviewDialog.categoryIDs
+		if catIdx > 0 && catIdx < len(ids) {
+			categoryID = ids[catIdx]
+		}
+
+		amountStr := strings.TrimSpace(fields[previewSingleFieldAmount].Value)
+		m, err := parseAmountInput(amountStr)
+		if err != nil {
+			fields[previewSingleFieldAmount].Error = "Invalid amount"
+			hasErrors = true
+		} else {
+			amount = m
+		}
+		memo = strings.TrimSpace(fields[previewSingleFieldMemo].Value)
+		statusIdx = fields[previewSingleFieldStatus].SelectedIndex
+	}
+
+	if hasErrors {
+		return a, nil
+	}
+
+	// Build the parent transaction the user's edits applied. The
+	// account always tracks the template — the preview does not allow
+	// changing the destination account.
+	parent := transaction.NewTransaction(template.AccountID, date, amount)
+	if !categoryID.IsNil() {
+		parent.SetCategory(categoryID)
+	}
+	if memo != "" {
+		parent.SetMemo(memo)
+	}
+	if statusIdx == 1 {
+		parent.Clear()
+	}
+
+	// Resolve payee ID once we're inside the async command so a new
+	// name can be created via the payee service. Capture the snapshot
+	// of payees by-name so we can short-circuit the common case where
+	// the user didn't edit the name.
+	payeeLookup := make(map[string]types.ID, len(a.schedPreviewDialog.payees))
+	for _, p := range a.schedPreviewDialog.payees {
+		if p == nil {
+			continue
+		}
+		payeeLookup[strings.ToLower(p.Name)] = p.ID
+	}
+
+	templateID := template.ID
+	a.closeSchedulePreviewDialog()
+
+	return a, func() tea.Msg {
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
+		}
+
+		if payeeName != "" {
+			if id, ok := payeeLookup[strings.ToLower(payeeName)]; ok {
+				parent.SetPayee(id)
+			} else if a.payeeSvc != nil {
+				py, _, err := a.payeeSvc.GetOrCreate(payeeName)
+				if err != nil {
+					return errMsg{err: fmt.Errorf("failed to resolve payee: %w", err)}
+				}
+				parent.SetPayee(py.ID)
+			}
+		}
+
+		cmd := undo.NewPostScheduledTransactionWithEditsCommand(
+			a.scheduledTxnSvc,
+			a.transactionSvc,
+			templateID,
+			parent,
+			multiSplits,
+		)
+		if err := a.undoManager.Execute(cmd); err != nil {
+			return errMsg{err: fmt.Errorf("failed to post scheduled transaction: %w", err)}
+		}
+		return scheduledPostedMsg{}
+	}
 }

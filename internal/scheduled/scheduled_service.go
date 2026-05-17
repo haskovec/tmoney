@@ -468,6 +468,59 @@ func (s *Service) buildMultiLineTransaction(st *Transaction, date types.Date) (*
 	return &builtMultiLineTransaction{parent: parent, splits: splits}, nil
 }
 
+// PostWithEdits creates a real transaction using a caller-supplied
+// parent (and, for multi-line schedules, splits) and advances the
+// schedule by one cadence. Unlike Post, this entry point lets the
+// caller carry per-instance edits — e.g. a date or memo change made
+// in the post-time preview dialog — without those edits leaking into
+// the stored template.
+//
+// The parent transaction and splits must already reflect the user's
+// edits (date / payee / category / amount / memo / status for single-
+// line; header + line edits for multi-line). For multi-line callers,
+// transfer-line splits carry only TransferAccountID; the underlying
+// transaction service mints fresh TransferIDs and creates paired
+// counterparts in the target accounts.
+//
+// Schedule advancement uses the *template's* original next_date as
+// the basis (st.AdvanceSchedule calls st.CalculateNextDate over
+// st.NextDate before the user's edits are applied), so a one-off
+// date edit in the preview never shifts the schedule's cadence.
+//
+// Returns the persisted parent transaction.
+func (s *Service) PostWithEdits(id types.ID, txn *transaction.Transaction, splits []*transaction.Split) (*transaction.Transaction, error) {
+	if s.txnSvc == nil {
+		return nil, fmt.Errorf("PostWithEdits requires a transaction service; scheduled.NewService was called with txnSvc=nil")
+	}
+	if txn == nil {
+		return nil, fmt.Errorf("PostWithEdits requires a non-nil parent transaction")
+	}
+
+	st, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if st.IsCompleted() {
+		return nil, &CompletedError{ID: id.String()}
+	}
+
+	if len(splits) > 0 {
+		if err := s.txnSvc.CreateWithSplits(txn, splits); err != nil {
+			return nil, fmt.Errorf("failed to create transaction: %w", err)
+		}
+	} else {
+		if err := s.txnSvc.Create(txn); err != nil {
+			return nil, fmt.Errorf("failed to create transaction: %w", err)
+		}
+	}
+
+	st.AdvanceSchedule()
+	if err := s.repo.Update(st); err != nil {
+		return txn, fmt.Errorf("transaction created but failed to update schedule: %w", err)
+	}
+	return txn, nil
+}
+
 // Skip advances the schedule without creating a transaction.
 // Useful when a scheduled payment is not made (e.g., skipping a bill payment).
 func (s *Service) Skip(id types.ID) error {

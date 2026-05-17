@@ -191,6 +191,86 @@ func (c *PostScheduledTransactionCommand) CreatedTransaction() *transaction.Tran
 }
 
 // =============================================================================
+// PostScheduledTransactionWithEditsCommand
+// =============================================================================
+
+// PostScheduledTransactionWithEditsCommand posts a scheduled transaction
+// with per-instance overrides from the post-time preview dialog (creates a
+// real transaction carrying the user's edits and advances the schedule).
+// Undo deletes the created transaction (plus any paired counterparts for
+// multi-line transfer-line splits) and restores the schedule to its
+// previous state.
+//
+// The caller is responsible for assembling txn (and splits, for multi-
+// line) with the desired edits already applied — see
+// scheduled.Service.PostWithEdits.
+type PostScheduledTransactionWithEditsCommand struct {
+	svc        *scheduled.Service
+	txnSvc     *transaction.Service
+	id         types.ID
+	txn        *transaction.Transaction // parent to create (with user edits)
+	splits     []*transaction.Split     // nil for single-line; non-nil for multi-line
+	beforeST   *scheduled.Transaction   // schedule state before posting
+	createdTxn *transaction.Transaction // transaction created on Execute
+}
+
+// NewPostScheduledTransactionWithEditsCommand creates a command that posts
+// a scheduled transaction with per-instance overrides. txn and splits must
+// already carry any edits the user made in the preview dialog.
+func NewPostScheduledTransactionWithEditsCommand(
+	svc *scheduled.Service,
+	txnSvc *transaction.Service,
+	id types.ID,
+	txn *transaction.Transaction,
+	splits []*transaction.Split,
+) *PostScheduledTransactionWithEditsCommand {
+	return &PostScheduledTransactionWithEditsCommand{
+		svc:    svc,
+		txnSvc: txnSvc,
+		id:     id,
+		txn:    txn,
+		splits: splits,
+	}
+}
+
+func (c *PostScheduledTransactionWithEditsCommand) Execute() error {
+	before, err := c.svc.GetByID(c.id)
+	if err != nil {
+		return err
+	}
+	c.beforeST = before
+
+	txn, err := c.svc.PostWithEdits(c.id, c.txn, c.splits)
+	if err != nil {
+		return err
+	}
+	c.createdTxn = txn
+	return nil
+}
+
+func (c *PostScheduledTransactionWithEditsCommand) Undo() error {
+	// Delete the parent transaction. For multi-line transactions the
+	// transaction service's Delete cascades to paired counter-transactions
+	// (split-item transfer-lines).
+	if c.createdTxn != nil {
+		if err := c.txnSvc.Delete(c.createdTxn.ID); err != nil {
+			return err
+		}
+	}
+	return c.svc.Update(c.beforeST)
+}
+
+func (c *PostScheduledTransactionWithEditsCommand) Description() string {
+	return "Post scheduled transaction"
+}
+
+// CreatedTransaction returns the transaction created by Execute. Returns
+// nil if Execute has not been called or failed.
+func (c *PostScheduledTransactionWithEditsCommand) CreatedTransaction() *transaction.Transaction {
+	return c.createdTxn
+}
+
+// =============================================================================
 // SkipScheduledTransactionCommand
 // =============================================================================
 

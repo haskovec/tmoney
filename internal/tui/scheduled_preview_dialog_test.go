@@ -1,12 +1,18 @@
 package tui
 
 import (
+	"path/filepath"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // TestSchedulePreviewDialog_OpensWithTemplateValues covers MS-018: the
@@ -229,4 +235,282 @@ func TestSchedulePreviewDialog_OpensWithTemplateValues(t *testing.T) {
 			t.Errorf("NewSchedulePreviewDialog(nil, …) = %v, want nil", got)
 		}
 	})
+}
+
+// schedulePreviewTestEnv bundles the DB-backed services and a due
+// single-line scheduled transaction used by MS-020's save/cancel tests.
+type schedulePreviewTestEnv struct {
+	app          *App
+	database     *db.DB
+	txnRepo      *transaction.Repository
+	schedRepo    *scheduled.Repository
+	schedSvc     *scheduled.Service
+	acct         *account.Account
+	dueTxn       *scheduled.Transaction
+	rentCat      *category.Category
+	landlord     *payee.Payee
+	originalNext types.Date
+}
+
+// newSchedulePreviewTestEnv builds a real DB + services + App with one
+// due monthly single-line scheduled transaction, ready for the preview
+// dialog to be opened against it.
+func newSchedulePreviewTestEnv(t *testing.T) *schedulePreviewTestEnv {
+	t.Helper()
+
+	tempDir := t.TempDir()
+	database, err := db.Create(filepath.Join(tempDir, "test.tdb"))
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	accountRepo := account.NewRepository(database)
+	payeeRepo := payee.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+	schedRepo := scheduled.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	splitTxnRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, database)
+	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database)
+	accountSvc := account.NewService(accountRepo, database)
+	payeeSvc := payee.NewService(payeeRepo, database)
+	categorySvc := category.NewService(categoryRepo, database)
+
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
+		t.Fatalf("Create account: %v", err)
+	}
+
+	landlord := payee.NewPayee("Landlord")
+	if err := payeeRepo.Create(landlord); err != nil {
+		t.Fatalf("Create payee: %v", err)
+	}
+
+	rentCat := category.NewCategory("Rent", category.TypeExpense)
+	if err := categoryRepo.Create(rentCat); err != nil {
+		t.Fatalf("Create category: %v", err)
+	}
+
+	nextDate := types.Today()
+	dueTxn := &scheduled.Transaction{
+		BaseModel:  types.BaseModel{ID: types.NewID()},
+		AccountID:  acct.ID,
+		Frequency:  scheduled.FrequencyMonthly,
+		Interval:   1,
+		StartDate:  nextDate,
+		NextDate:   nextDate,
+		PayeeID:    types.NullableID{ID: landlord.ID, Valid: true},
+		CategoryID: types.NullableID{ID: rentCat.ID, Valid: true},
+		Amount:     types.NullableMoney{Money: types.MustNewMoney("-1500.00"), Valid: true},
+	}
+	dueTxn.SetMemo("Monthly rent")
+	if err := schedSvc.Create(dueTxn); err != nil {
+		t.Fatalf("Create scheduled txn: %v", err)
+	}
+
+	app := &App{
+		currentView:     ViewScheduled,
+		width:           120,
+		height:          30,
+		keys:            defaultKeyMap(),
+		menubar:         NewMenuBar(),
+		statusbar:       NewStatusBar(),
+		sidebar:         NewSidebar(),
+		styles:          NewStyles(),
+		accountSvc:      accountSvc,
+		payeeSvc:        payeeSvc,
+		categorySvc:     categorySvc,
+		scheduledTxnSvc: schedSvc,
+		transactionSvc:  txnSvc,
+		undoManager:     undo.NewManager(),
+		scheduled: &scheduledViewData{
+			allTxns:       []*scheduled.Transaction{dueTxn},
+			dueTxns:       []*scheduled.Transaction{dueTxn},
+			dueCount:      1,
+			payeeNames:    map[types.ID]string{landlord.ID: landlord.Name},
+			accountNames:  map[types.ID]string{acct.ID: acct.Name},
+			categoryNames: map[types.ID]string{rentCat.ID: rentCat.Name},
+		},
+	}
+	app.buildScheduledTable()
+	app.sidebar.SetFocused(false)
+	app.scheduledTable.SetFocused(true)
+
+	// Open the preview dialog directly so tests can manipulate field
+	// values without going through the async data load.
+	categoryOptions, categoryIDs := buildCategoryOptions([]*category.Category{rentCat})
+	app.schedPreviewDialog = NewSchedulePreviewDialog(
+		dueTxn,
+		[]*account.Account{acct},
+		[]*payee.Payee{landlord},
+		categoryOptions,
+		categoryIDs,
+	)
+	if app.schedPreviewDialog == nil {
+		t.Fatal("NewSchedulePreviewDialog returned nil")
+	}
+
+	return &schedulePreviewTestEnv{
+		app:          app,
+		database:     database,
+		txnRepo:      txnRepo,
+		schedRepo:    schedRepo,
+		schedSvc:     schedSvc,
+		acct:         acct,
+		dueTxn:       dueTxn,
+		rentCat:      rentCat,
+		landlord:     landlord,
+		originalNext: nextDate,
+	}
+}
+
+// TestSchedulePreview_SaveCreatesTransactionAndAdvances covers MS-020:
+// pressing Save on the preview dialog must (1) create a real transaction
+// carrying any edits the user made to the header fields, (2) advance the
+// schedule's next_date by one cadence using the *template's* original
+// next_date (not the edited posting date), and (3) close the dialog.
+//
+// The user's per-instance edits flow into the real transaction but never
+// flow back to the template — re-opening the preview later would show
+// the original template values.
+func TestSchedulePreview_SaveCreatesTransactionAndAdvances(t *testing.T) {
+	env := newSchedulePreviewTestEnv(t)
+
+	// User edits the memo so we can assert per-instance overrides reach
+	// the persisted transaction. Date and amount stay at template values
+	// so the schedule advancement basis is unambiguous.
+	headerFields := env.app.schedPreviewDialog.HeaderDialog().Fields()
+	headerFields[previewSingleFieldMemo].Value = "May rent (edited)"
+
+	// Track what the schedule's next_date *should* become after a single
+	// advance from the original next_date. Computed from the template's
+	// cadence, not from any edited date.
+	expectedNext := env.dueTxn.CalculateNextDate()
+
+	model, cmd := env.app.submitSchedulePreviewDialog()
+	updated, ok := model.(*App)
+	if !ok {
+		t.Fatalf("submitSchedulePreviewDialog returned %T, want *App", model)
+	}
+
+	// Dialog must close synchronously so the UI returns to the
+	// scheduled view immediately; the actual save happens in the tea.Cmd.
+	if updated.schedPreviewDialog != nil {
+		t.Error("preview dialog should be cleared on Save")
+	}
+	if cmd == nil {
+		t.Fatal("Save must return a tea.Cmd that performs the create+advance")
+	}
+
+	msg := cmd()
+	if errM, ok := msg.(errMsg); ok {
+		t.Fatalf("Save command produced an error: %v", errM.err)
+	}
+	if _, ok := msg.(scheduledPostedMsg); !ok {
+		t.Fatalf("Save should produce scheduledPostedMsg, got %T", msg)
+	}
+
+	// Verify the real transaction was created with the edited memo, in
+	// the schedule's account, on the template's next_date, and with the
+	// template's payee/category/amount.
+	posted, err := env.txnRepo.ListByAccount(env.acct.ID)
+	if err != nil {
+		t.Fatalf("ListByAccount: %v", err)
+	}
+	if len(posted) != 1 {
+		t.Fatalf("expected 1 posted transaction, got %d", len(posted))
+	}
+	txn := posted[0]
+	if !txn.Date.Equal(env.originalNext) {
+		t.Errorf("posted transaction date = %s, want %s",
+			txn.Date.Time().Format("2006-01-02"),
+			env.originalNext.Time().Format("2006-01-02"))
+	}
+	if !txn.Amount.Equal(env.dueTxn.Amount.Money) {
+		t.Errorf("posted transaction amount = %s, want %s",
+			txn.Amount.String(), env.dueTxn.Amount.Money.String())
+	}
+	if !txn.HasPayee() || txn.PayeeID.ID != env.landlord.ID {
+		t.Errorf("posted transaction payee = %v, want %s", txn.PayeeID, env.landlord.ID)
+	}
+	if !txn.HasCategory() || txn.CategoryID.ID != env.rentCat.ID {
+		t.Errorf("posted transaction category = %v, want %s", txn.CategoryID, env.rentCat.ID)
+	}
+	if !txn.Memo.Valid || txn.Memo.String != "May rent (edited)" {
+		t.Errorf("posted transaction memo = %q, want %q", txn.Memo.String, "May rent (edited)")
+	}
+
+	// Verify the schedule advanced to the template's *next* occurrence.
+	// The advancement is based on the template's original next_date so
+	// any one-off date edit in the preview never shifts the cadence.
+	reloaded, err := env.schedRepo.GetByID(env.dueTxn.ID)
+	if err != nil {
+		t.Fatalf("reload schedule: %v", err)
+	}
+	if !reloaded.NextDate.Equal(expectedNext) {
+		t.Errorf("schedule next_date = %s, want %s (advanced from original %s)",
+			reloaded.NextDate.Time().Format("2006-01-02"),
+			expectedNext.Time().Format("2006-01-02"),
+			env.originalNext.Time().Format("2006-01-02"))
+	}
+
+	// Template's other fields (payee/category/amount/memo) must be
+	// unchanged so the next occurrence opens with the original values.
+	if !reloaded.HasCategory() || reloaded.CategoryID.ID != env.rentCat.ID {
+		t.Errorf("template category should be unchanged after save")
+	}
+	if !reloaded.Memo.Valid || reloaded.Memo.String != "Monthly rent" {
+		t.Errorf("template memo = %q, want %q (per-instance memo edit leaked into template)",
+			reloaded.Memo.String, "Monthly rent")
+	}
+}
+
+// TestSchedulePreview_Cancel_NoChanges covers MS-020: pressing Esc on
+// the preview dialog must leave both the transaction store and the
+// schedule entirely untouched. The dialog itself closes.
+func TestSchedulePreview_Cancel_NoChanges(t *testing.T) {
+	env := newSchedulePreviewTestEnv(t)
+
+	// Edit a field to make the test stronger: the dirty state should
+	// be discarded, not silently saved.
+	headerFields := env.app.schedPreviewDialog.HeaderDialog().Fields()
+	headerFields[previewSingleFieldMemo].Value = "dirty edit that must NOT persist"
+
+	// Cancel via the keypress handler so we cover the user-facing path.
+	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
+	model, _ := env.app.handleSchedulePreviewDialogKey(escKey)
+	updated, ok := model.(*App)
+	if !ok {
+		t.Fatalf("handleSchedulePreviewDialogKey returned %T, want *App", model)
+	}
+
+	if updated.schedPreviewDialog != nil {
+		t.Error("preview dialog should be cleared on Cancel")
+	}
+
+	// No transactions in any account.
+	posted, err := env.txnRepo.ListByAccount(env.acct.ID)
+	if err != nil {
+		t.Fatalf("ListByAccount: %v", err)
+	}
+	if len(posted) != 0 {
+		t.Errorf("Cancel must not create any transaction; got %d", len(posted))
+	}
+
+	// Schedule's next_date and other fields unchanged.
+	reloaded, err := env.schedRepo.GetByID(env.dueTxn.ID)
+	if err != nil {
+		t.Fatalf("reload schedule: %v", err)
+	}
+	if !reloaded.NextDate.Equal(env.originalNext) {
+		t.Errorf("schedule next_date = %s, want unchanged %s",
+			reloaded.NextDate.Time().Format("2006-01-02"),
+			env.originalNext.Time().Format("2006-01-02"))
+	}
+	if !reloaded.Memo.Valid || reloaded.Memo.String != "Monthly rent" {
+		t.Errorf("template memo = %q, want unchanged %q", reloaded.Memo.String, "Monthly rent")
+	}
 }
