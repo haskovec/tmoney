@@ -134,6 +134,33 @@ func (r *SplitRepository) GetByID(id types.ID) (*Split, error) {
 	return splits[0], nil
 }
 
+// GetByTransferID retrieves the split-item linked to a paired counter-
+// transaction's transfer_id, or nil if none exists. Multi-line transfer-
+// lines mint a fresh transfer_id per line, so at most one split has any
+// given transfer_id.
+func (r *SplitRepository) GetByTransferID(transferID types.ID) (*Split, error) {
+	query := `
+		SELECT ` + splitColumns + `
+		FROM transaction_splits
+		WHERE CAST(transfer_id AS VARCHAR) = ?
+	`
+
+	rows, err := r.db.Conn().Query(query, transferID.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to query split by transfer_id: %w", err)
+	}
+	defer rows.Close()
+
+	splits, err := r.scanSplits(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(splits) == 0 {
+		return nil, nil
+	}
+	return splits[0], nil
+}
+
 // ListByTransaction retrieves all splits for a transaction.
 func (r *SplitRepository) ListByTransaction(transactionID types.ID) ([]*Split, error) {
 	query := `

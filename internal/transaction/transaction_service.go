@@ -65,6 +65,12 @@ func (s *Service) GetByID(id types.ID) (*Transaction, error) {
 // Update validates and updates an existing transaction.
 // For transfers, use UpdateTransfer to update both sides.
 // Void and reconciled transactions cannot be edited.
+//
+// If the transaction is the paired single-line counter-transaction of a
+// multi-line split (i.e. its transfer_id matches a split-item's transfer_id),
+// an amount change mirrors the new (negated) amount onto the parent's
+// transfer-line split-item. A reconciled parent transaction blocks the
+// reverse cascade with IsReconciledError.
 func (s *Service) Update(transaction *Transaction) error {
 	if err := s.validateTransaction(transaction); err != nil {
 		return err
@@ -91,7 +97,40 @@ func (s *Service) Update(transaction *Transaction) error {
 		return &IsTransferError{ID: transaction.ID.String()}
 	}
 
+	// Reverse cascade: if this transaction is the paired side of a multi-
+	// line split, mirror an amount change back onto the parent's split-item.
+	if existing.IsTransfer() && existing.TransferID.Valid {
+		parentSplit, err := s.splitRepo.GetByTransferID(existing.TransferID.ID)
+		if err != nil {
+			return err
+		}
+		if parentSplit != nil && !existing.Amount.Equal(transaction.Amount) {
+			if err := s.cascadeAmountToParentSplit(parentSplit, transaction.Amount.Neg()); err != nil {
+				return err
+			}
+		}
+	}
+
 	return s.txnRepo.Update(transaction)
+}
+
+// cascadeAmountToParentSplit mirrors an amount edit on the paired single-
+// line counter-transaction back onto the parent multi-line split-item. The
+// parent's split row is rewritten with the negated paired amount. A
+// reconciled parent transaction blocks the cascade with IsReconciledError.
+func (s *Service) cascadeAmountToParentSplit(parentSplit *Split, newSplitAmount types.Money) error {
+	parent, err := s.txnRepo.GetByID(parentSplit.TransactionID)
+	if err != nil {
+		return err
+	}
+	if parent.IsReconciled() {
+		return &IsReconciledError{ID: parent.ID.String()}
+	}
+	parentSplit.Amount = newSplitAmount
+	if err := s.splitRepo.Update(parentSplit); err != nil {
+		return fmt.Errorf("failed to mirror amount to parent split-item: %w", err)
+	}
+	return nil
 }
 
 // Delete removes a transaction.
@@ -115,6 +154,20 @@ func (s *Service) Delete(id types.ID) error {
 
 	// If this is a transfer, check both sides and delete
 	if txn.IsTransfer() {
+		// Reverse cascade: if this transaction is the paired side of a
+		// multi-line split (its transfer_id matches a split-item's
+		// transfer_id), remove the parent's transfer-line split-item and
+		// then delete the paired transaction. Skip the legacy two-side
+		// transfer path, which assumes both legs live on the transactions
+		// table.
+		parentSplit, err := s.splitRepo.GetByTransferID(txn.TransferID.ID)
+		if err != nil {
+			return err
+		}
+		if parentSplit != nil {
+			return s.deletePairedSideOfMultiLine(txn, parentSplit)
+		}
+
 		pair, err := s.transferRepo.GetByTransferID(txn.TransferID.ID)
 		if err != nil {
 			return err
@@ -142,6 +195,29 @@ func (s *Service) Delete(id types.ID) error {
 	}
 
 	return s.txnRepo.Delete(id)
+}
+
+// deletePairedSideOfMultiLine reverse-cascades a paired-side delete back to
+// the parent multi-line transaction: the parent's transfer-line split-item
+// is removed first, then the paired single-line counter-transaction itself.
+// A reconciled parent blocks the cascade with IsReconciledError. The
+// parent's other split-items are left intact even if the totals are now
+// out of balance — the caller will reconcile on a later save.
+func (s *Service) deletePairedSideOfMultiLine(paired *Transaction, parentSplit *Split) error {
+	parent, err := s.txnRepo.GetByID(parentSplit.TransactionID)
+	if err != nil {
+		return err
+	}
+	if parent.IsReconciled() {
+		return &IsReconciledError{ID: parent.ID.String()}
+	}
+	if err := s.splitRepo.Delete(parentSplit.ID); err != nil {
+		return fmt.Errorf("failed to delete parent split-item: %w", err)
+	}
+	if err := s.txnRepo.Delete(paired.ID); err != nil {
+		return fmt.Errorf("failed to delete paired transaction: %w", err)
+	}
+	return nil
 }
 
 // deleteTransferLinePairs deletes the paired counter-transaction of every

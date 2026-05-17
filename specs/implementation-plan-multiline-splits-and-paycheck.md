@@ -84,11 +84,12 @@ Make the new primitive usable through services. Still no UI change.
   - Confirm: tests pass.
   - Done: `Service.DeleteSplit` now cascades transfer-line deletes to the paired single-line counter-transaction via a new `deletePairedCounterTransaction` helper (lookup via `findPairedByTransferID` from MS-007). The split itself is then removed; the parent's remaining splits are left untouched even if the totals become imbalanced. `Service.Delete` gains a `deleteTransferLinePairs` step that walks the parent's splits before the split/parent rows are removed and deletes every paired counterpart in the target accounts. Reconciled paired sides block both cascades with `IsReconciledError`. New tests `TestTransactionService_DeleteTransferLine_DeletesPair` and `TestTransactionService_DeleteParent_DeletesAllPairs` cover both paths; full suite (5195 tests) and lint stay green.
 
-- [ ] **MS-009 — Service: reverse cascade from paired side**
+- [x] **MS-009 — Service: reverse cascade from paired side**
   - RED: test `TestTransactionService_DeletePairedSide_RemovesParentLine` — delete the paired side from the target account's register; the corresponding split-item on the parent is removed.
   - Test `TestTransactionService_EditPairedSideAmount_UpdatesParentLine` — edit the paired side's amount; the parent's transfer-line amount updates in lock-step.
   - GREEN: extend the transaction-update/delete paths to detect when the affected transaction is a paired side of a multi-line split (lookup via its `transfer_id` against `split_items.transfer_id`) and propagate back to the parent.
   - Confirm: tests pass.
+  - Done: new `SplitRepository.GetByTransferID(transferID)` returns the parent split-line linked to a paired counter-transaction's `transfer_id` (or `nil` if none). `Service.Update` now consults that lookup when the existing transaction is a transfer; if a parent split is found and the paired amount changed, `cascadeAmountToParentSplit` rewrites the parent split-item with the negated paired amount. `Service.Delete` checks the same lookup before the legacy two-side transfer path; when a parent split is found, `deletePairedSideOfMultiLine` removes the parent's transfer-line split-item and then deletes the paired transaction (the parent's other splits are left intact even if the totals are now imbalanced). A reconciled parent transaction blocks both cascades with `IsReconciledError`. New tests `TestTransactionService_DeletePairedSide_RemovesParentLine` and `TestTransactionService_EditPairedSideAmount_UpdatesParentLine` cover both paths; full suite (5197 tests) and lint stay green.
 
 ## Phase 3: Primitive — TUI for Real Transactions
 
