@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -303,6 +305,167 @@ func (w *PaycheckWizard) PrimaryAccount() *Field {
 // lands.
 func (w *PaycheckWizard) AdditionalTransfers() []*PaycheckLine {
 	return w.additionalTransfers
+}
+
+// AddAdditionalTransfer appends a transfer-line to the "Additional
+// transfers" section under Net Pay Destinations. label is rendered to
+// the left of the amount field (e.g. "Savings"); accountIndex selects
+// the destination account in the wizard's account picker (parallel to
+// PrimaryAccount().Options). Returns the new line so callers (tests
+// and, eventually, the [+ Add transfer] key handler) can configure it.
+func (w *PaycheckWizard) AddAdditionalTransfer(label string, accountIndex int) *PaycheckLine {
+	line := &PaycheckLine{
+		Label: label,
+		amountField: Field{
+			Type:        FieldText,
+			Placeholder: "0.00",
+			Width:       10,
+		},
+		isTransfer:   true,
+		accountIndex: accountIndex,
+	}
+	w.additionalTransfers = append(w.additionalTransfers, line)
+	return line
+}
+
+// BuildSplits assembles the wizard's form state into a list of
+// scheduled-split rows and computes the parent's net amount — the
+// "primary deposit account" remainder per the spec:
+//
+//	remainder = gross − sum(pre-tax + post-tax deductions) − sum(additional transfers)
+//
+// The remainder is derived from the signed sum of the assembled splits,
+// so the resulting schedule satisfies the data-model invariant
+// parent.amount == signed_sum(line.amounts) (see
+// specs/multiline-splits-and-paycheck.md). The gross row is stored as a
+// positive signed amount; every deduction and additional-transfer line is
+// stored as a negative signed amount (the user types positive magnitudes;
+// the wizard flips the sign). Empty amount fields are skipped — they
+// don't produce zero-amount split rows.
+//
+// The returned splits carry no ScheduledTransactionID; the caller (MS-028)
+// will stamp it on after the parent schedule is created.
+func (w *PaycheckWizard) BuildSplits() (types.Money, []*scheduled.Split, error) {
+	if w == nil {
+		return types.ZeroMoney, nil, fmt.Errorf("nil wizard")
+	}
+
+	splits := make([]*scheduled.Split, 0)
+
+	// Gross row — positive signed amount, categorized.
+	grossStr := strings.TrimSpace(w.grossAmount.Value)
+	if grossStr == "" {
+		return types.ZeroMoney, nil, fmt.Errorf("gross pay is required")
+	}
+	gross, err := parseAmountInput(grossStr)
+	if err != nil {
+		return types.ZeroMoney, nil, fmt.Errorf("gross pay: %w", err)
+	}
+	if !gross.IsPositive() {
+		return types.ZeroMoney, nil, fmt.Errorf("gross pay must be positive")
+	}
+	grossCatID := w.lookupCategoryID(w.grossCategory.SelectedIndex)
+	if grossCatID.IsNil() {
+		return types.ZeroMoney, nil, fmt.Errorf("gross pay needs a category")
+	}
+	splits = append(splits, &scheduled.Split{
+		BaseModel:  types.NewBaseModel(),
+		Amount:     gross,
+		CategoryID: types.NullableID{ID: grossCatID, Valid: true},
+	})
+
+	// Deduction lines (pre-tax then post-tax). Each entered amount is
+	// stored as a negative signed split.
+	deductionSections := [][]*PaycheckLine{w.preTax, w.postTax}
+	for _, section := range deductionSections {
+		for _, line := range section {
+			sp, err := w.buildDeductionSplit(line)
+			if err != nil {
+				return types.ZeroMoney, nil, err
+			}
+			if sp != nil {
+				splits = append(splits, sp)
+			}
+		}
+	}
+
+	// Additional transfers (Net Pay Destinations → Additional transfers).
+	// Always transfer-lines; same negative-signed convention.
+	for _, line := range w.additionalTransfers {
+		sp, err := w.buildDeductionSplit(line)
+		if err != nil {
+			return types.ZeroMoney, nil, err
+		}
+		if sp != nil {
+			splits = append(splits, sp)
+		}
+	}
+
+	parent := types.ZeroMoney
+	for _, s := range splits {
+		parent = parent.Add(s.Amount)
+	}
+	return parent, splits, nil
+}
+
+// buildDeductionSplit produces one signed-negative split row from a
+// deduction/transfer line, or returns (nil, nil) when the line's amount
+// field is empty or parses to zero. The line is rendered as a
+// transfer-line when line.isTransfer is set (uses accountIndex) and as
+// a categorized line otherwise (uses categoryIndex). The user's typed
+// magnitude is always stored as a negative signed amount — matching the
+// spec example where every deduction/transfer reduces the net deposit.
+func (w *PaycheckWizard) buildDeductionSplit(line *PaycheckLine) (*scheduled.Split, error) {
+	amtStr := strings.TrimSpace(line.amountField.Value)
+	if amtStr == "" {
+		return nil, nil
+	}
+	amt, err := parseAmountInput(amtStr)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", line.Label, err)
+	}
+	if amt.IsZero() {
+		return nil, nil
+	}
+	amt = amt.Abs().Neg()
+
+	sp := &scheduled.Split{
+		BaseModel: types.NewBaseModel(),
+		Amount:    amt,
+	}
+	if line.isTransfer {
+		accountID := w.lookupAccountID(line.accountIndex)
+		if accountID.IsNil() {
+			return nil, fmt.Errorf("%s: pick a target account", line.Label)
+		}
+		sp.TransferAccountID = types.NullableID{ID: accountID, Valid: true}
+		return sp, nil
+	}
+	catID := w.lookupCategoryID(line.categoryIndex)
+	if catID.IsNil() {
+		return nil, fmt.Errorf("%s: pick a category", line.Label)
+	}
+	sp.CategoryID = types.NullableID{ID: catID, Valid: true}
+	return sp, nil
+}
+
+// lookupCategoryID maps a select index to the corresponding category ID,
+// returning NilID when the index is out of range or refers to the
+// leading "(None)" placeholder.
+func (w *PaycheckWizard) lookupCategoryID(idx int) types.ID {
+	if idx < 0 || idx >= len(w.categoryIDs) {
+		return types.NilID
+	}
+	return w.categoryIDs[idx]
+}
+
+// lookupAccountID maps a select index to the corresponding account ID,
+// returning NilID when the index is out of range.
+func (w *PaycheckWizard) lookupAccountID(idx int) types.ID {
+	if idx < 0 || idx >= len(w.accountIDs) {
+		return types.NilID
+	}
+	return w.accountIDs[idx]
 }
 
 // paycheckWizardDataMsg carries the dependencies needed to construct a
