@@ -1,5 +1,26 @@
 # Multi-Line Splits and Paycheck Wizard Specification
 
+> **Status: v1 implemented** (May 2026). The mixed-sign + transfer-
+> line primitive, scheduled multi-line templates, post-time preview
+> dialog, paycheck wizard, and the `Edit as paycheck →` round-trip
+> affordance are all shipped. See
+> [`specs/implementation-plan-multiline-splits-and-paycheck.md`](implementation-plan-multiline-splits-and-paycheck.md)
+> for the per-slice landing notes (MS-001 through MS-029 are complete;
+> MS-014 / MS-023 / MS-030 are manual visual smoke checks that remain
+> open until exercised in a real terminal).
+>
+> Deferred out of scope for v1 (carried forward as separate work):
+> CLI surface for multi-line scheduled creation and the paycheck
+> wizard (TUI-only in v1); tax-aware reports that distinguish
+> pre-tax vs. post-tax categories (requires a `tax_treatment` field
+> on the category master); migration tool to convert legacy paired-
+> single-line transfers into transfer-lines (legacy data remains
+> valid as-is); per-line variable amount estimation on multi-line
+> schedules; bulk operations on scheduled transactions; year-end tax
+> summary report; wizard for non-paycheck complex schedules (e.g.
+> mortgage principal/interest/escrow). See `Out of Scope` at the
+> bottom of this spec for the canonical list.
+
 ## Overview
 
 This feature extends the transaction model to support **multi-line splits with mixed signs and transfer lines**, enabling complex events like paychecks to be modeled as a single transaction with multiple categorized and/or transferred components. It also introduces a **post-time preview/edit dialog** for scheduled transactions (Quicken-style "edit this one occurrence") and a **paycheck wizard** as a UI convenience over the new primitive.
