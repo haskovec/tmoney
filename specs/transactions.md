@@ -96,31 +96,75 @@ The parent amount (+$3,067.50) is the signed sum of all lines, which is what the
 
 Legacy whole-transaction transfers (one pair of single-line transactions linked by `transfer_id` at the transactions level, with no split children) remain valid alongside new transfer-lines.
 
+The split dialog renders a live `Imbalance: $X.XX` indicator below the line list that recomputes the signed-sum delta on every keystroke; Save is disabled until the delta is zero. The dialog also accepts the `Transfer →` sentinel in the category combo of any line, which swaps that line's category cell for an account picker (the parent's own account is excluded from the picker to prevent self-transfers).
+
 ## Transfers
 
-Transfers are represented as two linked transactions:
+There are two shapes of transfer in TMoney, and they coexist:
 
-### Transfer Example: $500 from Checking to Savings
+1. **Whole-transaction transfers** — two single-line transactions, one
+   per account, linked by a shared `transfer_id`. This is the legacy
+   shape that `tmoney transfer add` and the TUI's `t` (new transfer)
+   action emit, and the only shape produced by `transfer link` import
+   matching.
+2. **Transfer-lines** — one line of a multi-line split on a parent
+   transaction whose `transfer_account_id` is set; the service mints a
+   single-line *paired counter-transaction* in the target account
+   carrying the matching `transfer_id`. The parent itself is not a
+   transfer (its scalar `transfer_account_id` and `transfer_id` stay
+   null); only the split-line carries the linkage on the parent's
+   side.
+
+Both shapes use the same `transfer_id` field to link the two sides, so
+balance calculations and the existing transfer detection logic treat
+them uniformly. Neither shape sets a `category_id` on the involved
+transactions — transfer status is encoded by the `transfer_id` /
+`transfer_account_id` pair, not by a "Transfer" category — and the
+register renders the other account's name from `transfer_account_id`.
+
+### Whole-Transaction Transfer Example: $500 from Checking to Savings
 
 **Transaction 1 (in Checking account):**
 - amount: -500.00
-- category: Transfer → Savings Account
+- category_id: NULL
 - transfer_id: <shared-uuid>
 - transfer_account_id: <savings-account-id>
 
 **Transaction 2 (in Savings account):**
 - amount: +500.00
-- category: Transfer → Checking Account
+- category_id: NULL
 - transfer_id: <shared-uuid>
 - transfer_account_id: <checking-account-id>
 
-### Transfer Rules
+### Whole-Transaction Transfer Rules
 
 1. Both transactions share the same `transfer_id`
 2. Amounts are equal but opposite signs
 3. Deleting one side prompts to delete the other
 4. Editing amount on one side updates the other
-5. Category is always "Transfer" with subcategory being the other account name
+
+### Transfer-Line Rules
+
+1. The split-line and its paired counter-transaction share the same
+   `transfer_id`; the parent transaction's own scalar fields are
+   *not* a transfer.
+2. The paired counter-transaction's amount is the negation of the
+   split-line's amount.
+3. Editing the split-line's amount cascades to the paired side; the
+   parent's other lines are unchanged.
+4. Editing the split-line's target account deletes the old paired
+   side and creates a new one in the new target account (a fresh
+   `transfer_id` is minted).
+5. Deleting the split-line deletes the paired side; the parent
+   retains its other lines and may be left imbalanced (the next Save
+   on the parent is blocked until rebalanced).
+6. Deleting the paired side from its own register reverse-cascades:
+   the parent's transfer-line is removed (same imbalance-blocking
+   rule applies).
+7. A transfer-line's `transfer_account_id` must not equal the
+   parent's `account_id` (no self-transfers).
+8. If either side is reconciled, the cascade is refused — the user
+   must unreconcile first.
 
 ## Validation Rules
 
