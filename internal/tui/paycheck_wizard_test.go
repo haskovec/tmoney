@@ -1,11 +1,17 @@
 package tui
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // paycheckWizardFixture returns a representative category list (matching
@@ -394,5 +400,259 @@ func TestPaycheckWizard_Save_ComputesRemainder(t *testing.T) {
 		for catID := range wantDeductionByCategory {
 			t.Errorf("missing categorized split for CategoryID=%v", catID)
 		}
+	}
+}
+
+// TestPaycheckWizard_Save_CreatesMultiLineSchedule covers MS-028: pressing
+// Save on the paycheck wizard creates a standard multi-line scheduled
+// transaction whose scalar fields and child split-items mirror the
+// wizard's form state. The schedule is indistinguishable from one created
+// via the generic multi-line scheduled dialog — the wizard is pure UI
+// sugar on top of the underlying primitive.
+func TestPaycheckWizard_Save_CreatesMultiLineSchedule(t *testing.T) {
+	tempDir := t.TempDir()
+	database, err := db.Create(filepath.Join(tempDir, "test.tdb"))
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+	payeeRepo := payee.NewRepository(database)
+	schedRepo := scheduled.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	splitTxnRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, database)
+	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database)
+	accountSvc := account.NewService(accountRepo, database)
+	payeeSvc := payee.NewService(payeeRepo, database)
+	categorySvc := category.NewService(categoryRepo, database)
+
+	// Seed accounts: a primary deposit (Checking) plus two transfer
+	// targets (Savings, 401k) so the wizard's account picker can hold
+	// real IDs.
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(checking); err != nil {
+		t.Fatalf("create checking: %v", err)
+	}
+	savings := account.NewAccount("Savings", account.TypeSavings, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(savings); err != nil {
+		t.Fatalf("create savings: %v", err)
+	}
+	retire := account.NewAccount("401k", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(retire); err != nil {
+		t.Fatalf("create 401k: %v", err)
+	}
+
+	// Seed the paycheck categories the wizard expects so the option
+	// list resolves to real IDs.
+	if err := categorySvc.EnsurePaycheckCategories(); err != nil {
+		t.Fatalf("EnsurePaycheckCategories: %v", err)
+	}
+
+	// Build the wizard inputs the same way the loader does.
+	accounts, err := accountSvc.List(true)
+	if err != nil {
+		t.Fatalf("List accounts: %v", err)
+	}
+	cats, err := categorySvc.List()
+	if err != nil {
+		t.Fatalf("List categories: %v", err)
+	}
+	categoryOptions, categoryIDs := buildCategoryOptions(cats)
+
+	app := &App{
+		currentView:     ViewDashboard,
+		keys:            defaultKeyMap(),
+		menubar:         NewMenuBar(),
+		statusbar:       NewStatusBar(),
+		sidebar:         NewSidebar(),
+		accountSvc:      accountSvc,
+		payeeSvc:        payeeSvc,
+		categorySvc:     categorySvc,
+		scheduledTxnSvc: schedSvc,
+		transactionSvc:  txnSvc,
+		undoManager:     undo.NewManager(),
+	}
+	app.paycheckWizard = NewPaycheckWizard(categoryOptions, categoryIDs, accounts)
+
+	w := app.paycheckWizard
+
+	// Locate primary-account index for Checking and the additional-
+	// transfer index for Savings in the wizard's account picker.
+	checkingIdx := indexOf(w.PrimaryAccount().Options, "Checking")
+	savingsIdx := indexOf(w.PrimaryAccount().Options, "Savings")
+	retireIdx := indexOf(w.PrimaryAccount().Options, "401k")
+	if checkingIdx < 0 || savingsIdx < 0 || retireIdx < 0 {
+		t.Fatalf("account picker missing accounts: checking=%d savings=%d 401k=%d",
+			checkingIdx, savingsIdx, retireIdx)
+	}
+	w.PrimaryAccount().SelectedIndex = checkingIdx
+
+	// Populate the form: employer Acme, biweekly (default), today (default),
+	// gross 5000 (default categorized as Income > Salary), 4 categorized
+	// taxes totaling 1282.50, 401(k) transfer 500, health insurance 150,
+	// HSA transfer 100, and one additional transfer to Savings 250.
+	w.Employer().Value = "Acme Corp"
+	w.GrossAmount().Value = "5000"
+
+	preTax := w.PreTaxLines()
+	preTax[0].AmountField().Value = "800"   // Federal
+	preTax[1].AmountField().Value = "100"   // State
+	preTax[2].AmountField().Value = "310"   // Social Security
+	preTax[3].AmountField().Value = "72.50" // Medicare
+	preTax[4].AmountField().Value = "500"   // 401(k) transfer
+	preTax[4].accountIndex = retireIdx
+
+	postTax := w.PostTaxLines()
+	postTax[0].AmountField().Value = "150" // Health insurance
+	postTax[1].AmountField().Value = "100" // HSA transfer
+	postTax[1].accountIndex = retireIdx    // HSA uses 401k as transfer target for test simplicity
+
+	addl := w.AddAdditionalTransfer("Savings", savingsIdx)
+	addl.AmountField().Value = "250"
+
+	// Save.
+	model, cmd := app.submitPaycheckWizard()
+	app2 := model.(*App)
+	if app2.paycheckWizard != nil {
+		t.Error("paycheck wizard should be cleared after a successful save")
+	}
+	if cmd == nil {
+		t.Fatal("submitPaycheckWizard should return a non-nil save command")
+	}
+	msg := cmd()
+	if e, ok := msg.(errMsg); ok {
+		t.Fatalf("unexpected error from save command: %v", e.err)
+	}
+	if _, ok := msg.(scheduledDialogSavedMsg); !ok {
+		t.Fatalf("unexpected message type from save command: %T", msg)
+	}
+
+	// Verify the persisted schedule.
+	schedules, err := schedSvc.List()
+	if err != nil {
+		t.Fatalf("List schedules: %v", err)
+	}
+	if len(schedules) != 1 {
+		t.Fatalf("got %d schedules, want 1", len(schedules))
+	}
+	sched := schedules[0]
+
+	if sched.AccountID != checking.ID {
+		t.Errorf("schedule.AccountID = %v, want Checking %v", sched.AccountID, checking.ID)
+	}
+	if sched.Frequency != scheduled.FrequencyBiweekly {
+		t.Errorf("schedule.Frequency = %s, want biweekly", sched.Frequency)
+	}
+	if sched.HasCategory() {
+		t.Error("multi-line schedule should clear the scalar category")
+	}
+	if !sched.HasAmount() {
+		t.Fatal("multi-line schedule should preserve the parent amount")
+	}
+	// Net = 5000 - 800 - 100 - 310 - 72.50 - 500 - 150 - 100 - 250 = 2717.50.
+	wantNet := types.MustNewMoney("2717.50")
+	if !sched.Amount.Money.Equal(wantNet) {
+		t.Errorf("schedule.Amount = %s, want %s",
+			sched.Amount.Money.String(), wantNet.String())
+	}
+
+	// Payee is resolved/created from the employer field.
+	if !sched.HasPayee() {
+		t.Fatal("schedule should have a payee from the employer field")
+	}
+	py, err := payeeRepo.GetByID(sched.PayeeID.ID)
+	if err != nil {
+		t.Fatalf("look up payee: %v", err)
+	}
+	if py.Name != "Acme Corp" {
+		t.Errorf("payee name = %q, want %q", py.Name, "Acme Corp")
+	}
+
+	// 9 child splits: gross + 4 pre-tax categorized + 401(k) transfer +
+	// health + HSA transfer + Savings transfer.
+	if got := len(sched.Splits); got != 9 {
+		t.Fatalf("got %d child splits, want 9", got)
+	}
+	if !sched.Splits.Total().Equal(wantNet) {
+		t.Errorf("signed sum of children = %s, want %s",
+			sched.Splits.Total().String(), wantNet.String())
+	}
+
+	// Verify each child has the right shape (categorized vs transfer)
+	// and the right signed amount.
+	categoryByName := make(map[string]types.ID)
+	for _, c := range cats {
+		var key string
+		if c.IsSubcategory() {
+			parent, err := categoryRepo.GetByID(c.ParentID.ID)
+			if err != nil {
+				continue
+			}
+			key = parent.Name + " > " + c.Name
+		} else {
+			key = c.Name
+		}
+		categoryByName[key] = c.ID
+	}
+
+	wantCategorized := map[types.ID]types.Money{
+		categoryByName["Income > Salary"]:       types.MustNewMoney("5000"),
+		categoryByName["Tax > Federal"]:         types.MustNewMoney("-800"),
+		categoryByName["Tax > State"]:           types.MustNewMoney("-100"),
+		categoryByName["Tax > Social Security"]: types.MustNewMoney("-310"),
+		categoryByName["Tax > Medicare"]:        types.MustNewMoney("-72.50"),
+		categoryByName["Insurance > Health"]:    types.MustNewMoney("-150"),
+	}
+
+	sawTransfers := map[types.ID]types.Money{}
+	for _, sp := range sched.Splits {
+		switch {
+		case sp.CategoryID.Valid:
+			want, ok := wantCategorized[sp.CategoryID.ID]
+			if !ok {
+				t.Errorf("unexpected categorized split CategoryID=%v amount=%s",
+					sp.CategoryID.ID, sp.Amount.String())
+				continue
+			}
+			if !sp.Amount.Equal(want) {
+				t.Errorf("categorized split CategoryID=%v amount=%s, want %s",
+					sp.CategoryID.ID, sp.Amount.String(), want.String())
+			}
+			delete(wantCategorized, sp.CategoryID.ID)
+		case sp.TransferAccountID.Valid:
+			sawTransfers[sp.TransferAccountID.ID] = sp.Amount
+		default:
+			t.Errorf("split with neither category nor transfer target: %+v", sp)
+		}
+	}
+	if len(wantCategorized) != 0 {
+		for catID := range wantCategorized {
+			t.Errorf("missing categorized split for CategoryID=%v", catID)
+		}
+	}
+
+	// Two transfer-lines to 401k (-500 401k + -100 HSA = -600 combined),
+	// one to Savings (-250). HSA used 401k as target above so the test
+	// has two transfers to the same account; that's allowed (mirrors
+	// the underlying primitive).
+	wantRetireSum := types.MustNewMoney("-600")
+	var retireSum types.Money
+	for _, sp := range sched.Splits {
+		if sp.TransferAccountID.Valid && sp.TransferAccountID.ID == retire.ID {
+			retireSum = retireSum.Add(sp.Amount)
+		}
+	}
+	if !retireSum.Equal(wantRetireSum) {
+		t.Errorf("401k transfer sum = %s, want %s",
+			retireSum.String(), wantRetireSum.String())
+	}
+	if got, want := sawTransfers[savings.ID], types.MustNewMoney("-250"); !got.Equal(want) {
+		t.Errorf("Savings transfer amount = %s, want %s",
+			got.String(), want.String())
 	}
 }

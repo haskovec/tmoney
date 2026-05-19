@@ -10,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // PaycheckWizard is the guided form for creating a multi-line
@@ -509,5 +510,87 @@ func (a *App) loadPaycheckWizardData() tea.Cmd {
 			categoryOptions: categoryOptions,
 			categoryIDs:     categoryIDs,
 		}
+	}
+}
+
+// closePaycheckWizard clears the wizard state.
+func (a *App) closePaycheckWizard() {
+	a.paycheckWizard = nil
+}
+
+// submitPaycheckWizard validates the wizard's form, assembles a multi-line
+// scheduled.Transaction from it, and dispatches the create command through
+// the scheduled service. The wizard is pure UI sugar — the saved record is
+// a standard multi-line scheduled transaction with no paycheck-specific
+// fields, indistinguishable from one created via the generic scheduled
+// dialog with the Split toggle.
+//
+// On success the wizard is cleared and a scheduledDialogSavedMsg is emitted
+// so the scheduled view reloads. Validation errors leave the wizard open
+// with the error rendered on the offending field.
+func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
+	w := a.paycheckWizard
+	if w == nil {
+		return a, nil
+	}
+
+	// Account is required.
+	accountID := w.lookupAccountID(w.primaryAccount.SelectedIndex)
+	if accountID.IsNil() {
+		w.primaryAccount.Error = "Please select a deposit account"
+		return a, nil
+	}
+
+	// Parse start date (next payday).
+	startDate, err := parseDateInput(w.nextPayday.Value)
+	if err != nil {
+		w.nextPayday.Error = "Invalid date (MM/DD/YYYY)"
+		return a, nil
+	}
+
+	frequency := frequencyFromIndex(w.frequency.SelectedIndex)
+
+	// Build splits + parent net from the form. BuildSplits handles
+	// gross / deduction / transfer line validation and the
+	// remainder-equals-signed-sum invariant.
+	parentAmount, splits, err := w.BuildSplits()
+	if err != nil {
+		w.grossAmount.Error = err.Error()
+		return a, nil
+	}
+
+	employer := strings.TrimSpace(w.employer.Value)
+
+	// Close the wizard before the async save for responsive UI.
+	a.closePaycheckWizard()
+
+	return a, func() tea.Msg {
+		var payeeID types.ID
+		if employer != "" && a.payeeSvc != nil {
+			py, _, err := a.payeeSvc.GetOrCreate(employer)
+			if err != nil {
+				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
+			}
+			payeeID = py.ID
+		}
+
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
+		}
+
+		st := scheduled.NewTransaction(accountID, frequency, startDate)
+		st.SetAmount(parentAmount)
+		if !payeeID.IsNil() {
+			st.SetPayee(payeeID)
+		}
+		// Multi-line schedules have no scalar category.
+		st.ClearCategory()
+		st.Splits = scheduled.SplitCollection(splits)
+
+		cmd := undo.NewCreateScheduledTransactionCommand(a.scheduledTxnSvc, st)
+		if err := a.undoManager.Execute(cmd); err != nil {
+			return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}
+		}
+		return scheduledDialogSavedMsg{}
 	}
 }
