@@ -470,6 +470,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 		return a, nil
 
+	case paycheckWizardDataMsg:
+		a.paycheckWizard = NewPaycheckWizard(
+			msg.categoryOptions,
+			msg.categoryIDs,
+			msg.accounts,
+		)
+		return a, nil
+
 	case autoPostCompletedMsg:
 		if msg.summary != nil && msg.summary.PostedCount > 0 {
 			text := fmt.Sprintf("Auto-posted %d scheduled transaction(s)", msg.summary.PostedCount)

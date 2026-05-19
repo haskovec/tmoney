@@ -41,6 +41,7 @@ const (
 	MenuActionDeleteTransaction
 	MenuActionSearch
 	MenuActionLinkTransfers
+	MenuActionNewPaycheckSchedule
 
 	// Reports menu actions
 	MenuActionDashboard
@@ -167,6 +168,7 @@ func defaultMenus() []menu {
 				{label: "Delete Transaction", action: MenuActionDeleteTransaction},
 				{label: "Search...", action: MenuActionSearch},
 				{label: "Link Transfers...", action: MenuActionLinkTransfers},
+				{label: "New Paycheck Schedule...", action: MenuActionNewPaycheckSchedule},
 			},
 		},
 		{

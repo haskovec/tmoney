@@ -1,9 +1,17 @@
 package tui
 
 import (
+	"path/filepath"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestApp_SwitchView(t *testing.T) {
@@ -264,5 +272,136 @@ func TestApp_SwitchView_Reports_SetsFocus(t *testing.T) {
 	}
 	if app.table.IsFocused() {
 		t.Error("table should not be focused in reports view")
+	}
+}
+
+// TestTransactionsMenu_NewPaycheckSchedule_Item covers MS-026: the
+// Transactions menu must include a `New Paycheck Schedule…` item that,
+// when activated, opens the paycheck wizard.
+//
+// The test has two parts:
+//
+//  1. Structural: defaultMenus() returns a Transactions menu (index 4)
+//     whose items include the wizard entry alongside the existing
+//     New Transaction / New Transfer / etc rows.
+//
+//  2. Behavioral: dispatching MenuActionNewPaycheckSchedule from the
+//     menu action handler returns a tea.Cmd that fetches accounts +
+//     categories and emits a paycheckWizardDataMsg. Dispatching that
+//     message through Update constructs the wizard on the App.
+//
+// Save logic and the computed-remainder line land in MS-027 / MS-028.
+// MS-026 only needs the menu entry to open the wizard.
+func TestTransactionsMenu_NewPaycheckSchedule_Item(t *testing.T) {
+	// (1) Structural — the menu item is present.
+	menus := defaultMenus()
+	txnMenu := menus[4]
+	if txnMenu.label != "Transactions" {
+		t.Fatalf("expected Transactions menu at index 4, got %q", txnMenu.label)
+	}
+	foundLabel := false
+	foundAction := false
+	for _, item := range txnMenu.items {
+		if item.label == "New Paycheck Schedule..." {
+			foundLabel = true
+		}
+		if item.action == MenuActionNewPaycheckSchedule {
+			foundAction = true
+		}
+	}
+	if !foundLabel {
+		t.Errorf("Transactions menu should include `New Paycheck Schedule...` item; got %+v", txnMenu.items)
+	}
+	if !foundAction {
+		t.Errorf("Transactions menu should include MenuActionNewPaycheckSchedule action")
+	}
+
+	// (2) Behavioral — activating the action opens the wizard.
+	tempDir := t.TempDir()
+	database, err := db.Create(filepath.Join(tempDir, "test.tdb"))
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+	payeeRepo := payee.NewRepository(database)
+	schedRepo := scheduled.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	splitTxnRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, database)
+	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database)
+	accountSvc := account.NewService(accountRepo, database)
+	categorySvc := category.NewService(categoryRepo, database)
+
+	// Seed an active account so the wizard's primary-deposit picker has
+	// at least one option to land on.
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(acct); err != nil {
+		t.Fatalf("Create account: %v", err)
+	}
+
+	// Seed the paycheck categories the wizard expects (the file-init
+	// path normally does this; for an isolated TUI test we call the
+	// service directly).
+	if err := categorySvc.EnsurePaycheckCategories(); err != nil {
+		t.Fatalf("EnsurePaycheckCategories: %v", err)
+	}
+
+	app := &App{
+		currentView:     ViewDashboard,
+		width:           120,
+		height:          30,
+		keys:            defaultKeyMap(),
+		menubar:         NewMenuBar(),
+		statusbar:       NewStatusBar(),
+		sidebar:         NewSidebar(),
+		styles:          NewStyles(),
+		accountSvc:      accountSvc,
+		categorySvc:     categorySvc,
+		scheduledTxnSvc: schedSvc,
+		transactionSvc:  txnSvc,
+	}
+
+	// Dispatch the menu action directly (avoids depending on dropdown
+	// navigation details — the action enum is the contract).
+	_, cmd := app.handleMenuAction(MenuActionNewPaycheckSchedule, "")
+	if cmd == nil {
+		t.Fatal("MenuActionNewPaycheckSchedule should return a tea.Cmd to load wizard data")
+	}
+
+	// Synchronous side-effect: nothing yet. The wizard is constructed
+	// when the data message is dispatched through Update.
+	if app.paycheckWizard != nil {
+		t.Error("paycheck wizard should not be set synchronously — the loader runs as a tea.Cmd")
+	}
+
+	msg := cmd()
+	if msg == nil {
+		t.Fatal("paycheck-wizard loader command should produce a message")
+	}
+	dataMsg, ok := msg.(paycheckWizardDataMsg)
+	if !ok {
+		t.Fatalf("expected paycheckWizardDataMsg, got %T", msg)
+	}
+	if len(dataMsg.accounts) == 0 {
+		t.Error("wizard data should include the seeded Checking account")
+	}
+	if len(dataMsg.categoryOptions) == 0 {
+		t.Error("wizard data should include category options seeded by EnsurePaycheckCategories")
+	}
+
+	// Dispatch the message — Update constructs the wizard.
+	model, _ := app.Update(dataMsg)
+	final := model.(*App)
+
+	if final.paycheckWizard == nil {
+		t.Fatal("paycheckWizard should be set after paycheckWizardDataMsg")
+	}
+	if !final.paycheckWizard.IsVisible() {
+		t.Error("paycheck wizard should be visible after construction")
 	}
 }

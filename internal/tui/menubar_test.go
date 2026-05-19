@@ -485,6 +485,7 @@ func TestMenuBar_TransactionsMenuItems(t *testing.T) {
 		{"Delete Transaction", MenuActionDeleteTransaction},
 		{"Search...", MenuActionSearch},
 		{"Link Transfers...", MenuActionLinkTransfers},
+		{"New Paycheck Schedule...", MenuActionNewPaycheckSchedule},
 	}
 
 	if len(txnMenu.items) != len(expectedItems) {

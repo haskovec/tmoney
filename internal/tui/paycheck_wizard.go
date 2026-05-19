@@ -3,7 +3,9 @@ package tui
 import (
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -301,4 +303,48 @@ func (w *PaycheckWizard) PrimaryAccount() *Field {
 // lands.
 func (w *PaycheckWizard) AdditionalTransfers() []*PaycheckLine {
 	return w.additionalTransfers
+}
+
+// paycheckWizardDataMsg carries the dependencies needed to construct a
+// PaycheckWizard (active accounts + category options). Dispatched
+// asynchronously by loadPaycheckWizardData so the lookup doesn't block
+// the menu-handler return path.
+type paycheckWizardDataMsg struct {
+	accounts        []*account.Account
+	categoryOptions []string
+	categoryIDs     []types.ID
+}
+
+// loadPaycheckWizardData fetches the active accounts and category list
+// the wizard needs and emits a paycheckWizardDataMsg. The message
+// handler (in app_update.go) constructs the wizard from the loaded
+// data. Per MS-026 this is the open-only path — save logic lands in
+// MS-027/MS-028.
+func (a *App) loadPaycheckWizardData() tea.Cmd {
+	return func() tea.Msg {
+		var accounts []*account.Account
+		if a.accountSvc != nil {
+			acs, err := a.accountSvc.List(true)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			accounts = acs
+		}
+
+		var categories []*category.Category
+		if a.categorySvc != nil {
+			cs, err := a.categorySvc.List()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			categories = cs
+		}
+
+		categoryOptions, categoryIDs := buildCategoryOptions(categories)
+		return paycheckWizardDataMsg{
+			accounts:        accounts,
+			categoryOptions: categoryOptions,
+			categoryIDs:     categoryIDs,
+		}
+	}
 }

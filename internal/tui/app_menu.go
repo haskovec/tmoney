@@ -175,6 +175,10 @@ func (a *App) handleMenuAction(action MenuAction, data string) (tea.Model, tea.C
 		a.menubar.Deactivate()
 		return a, a.startLinkTransfers()
 
+	case MenuActionNewPaycheckSchedule:
+		a.menubar.Deactivate()
+		return a, a.loadPaycheckWizardData()
+
 	case MenuActionUndo:
 		a.menubar.Deactivate()
 		return a, a.performUndo()
