@@ -73,10 +73,10 @@ A scheduled transaction ends when:
 
 ## Variable Amounts
 
-For **single-line** transactions with variable amounts (utility bills, etc.):
+For **single-line** scheduled transactions with variable amounts (utility bills, etc.):
 
 1. `amount` is set to null or stores an estimate
-2. `amount_estimate_count` (optional): Use average of last N transactions
+2. `amount_estimate_count` (optional, single-line only): Use average of last N posted transactions
 3. When posting, user enters actual amount
 
 ### Estimate Calculation
@@ -87,16 +87,16 @@ If `amount_estimate_count` is set (e.g., 3):
 3. Pre-fill amount field with estimate
 4. User can accept or modify
 
-Multi-line schedules do **not** support per-line variable estimation. Each line on a multi-line template stores a fixed expected amount; real-world variation (FICA penny shifts, payday holiday shifts) is handled at the post-time preview where the user edits the one occurrence. See **Post-Time Preview Dialog** below.
+Multi-line schedules do **not** support per-line variable estimation, and the parent `amount_estimate_count` field is not consulted on multi-line schedules either — it is exclusively a single-line affordance. Each line on a multi-line template stores a fixed expected amount; real-world variation (FICA penny shifts, payday holiday shifts) is handled at the post-time preview where the user edits the one occurrence. See **Post-Time Preview Dialog** below.
 
-## Transaction Mode
+## Posting Mode
 
-| Mode | Description | v1 Support |
-|------|-------------|------------|
-| `remind` | Show reminder, user manually posts | Yes |
-| `auto_post` | Automatically create transaction | v1.5 |
+| Mode | Description |
+|------|-------------|
+| `remind` | Show reminder, user manually posts via the preview dialog |
+| `auto_post` | Service-layer auto-poster fires on file open and posts due occurrences using template values exactly (no preview) |
 
-For v1, all scheduled transactions use `remind` mode.
+Auto-post is configured per-schedule via the `auto_post` flag and the `post_lead_days` field (accepted values: `0`, `3`, `7` — days before the due date to fire). When `auto_post` is off, the schedule uses `remind` mode and Enter on a due item opens the preview dialog. Both modes coexist in the same database; the user picks per-schedule.
 
 ## Reminder Behavior
 
@@ -106,7 +106,7 @@ When `next_date` is reached (or passed):
 2. User can:
    - Enter / Post: Opens the **post-time preview dialog** (see below), pre-filled with template values, where the user can adjust this one occurrence before saving
    - Skip: Advances schedule without creating transaction
-   - Edit Series (`e`): Modify the template itself, affecting all future occurrences
+   - Edit Series (`e`): Modify the template itself, affecting all future occurrences. On a paycheck-shaped multi-line template (a positive categorized income line plus at least one negative `Tax > ...` line), the edit dialog exposes an extra **Edit as paycheck →** button that closes the generic dialog and reopens the schedule in the paycheck wizard with values pre-filled — a convenience for round-tripping schedules originally created via the wizard. See `specs/multiline-splits-and-paycheck.md` for the heuristic.
 
 ### Posting a Scheduled Transaction
 
@@ -247,18 +247,28 @@ category: "Income:Salary"
 
 ## CLI Commands
 
+The CLI uses Cobra noun-verb subcommands. Multi-line schedule creation
+and the paycheck wizard are TUI-only in v1 (see `specs/multiline-
+splits-and-paycheck.md`); single-line schedule creation, listing,
+posting, and skipping are supported on the CLI.
+
 ```bash
-# List scheduled transactions
-tmoney --scheduled
+# Add a scheduled transaction (fixed or variable amount; see README for flags)
+tmoney scheduled add --account Checking --frequency monthly \
+    --amount -1500 --payee Landlord --day 1
 
-# List due scheduled transactions
-tmoney --scheduled --due
+# List scheduled transactions (--due for only those past next_date)
+tmoney scheduled list
+tmoney scheduled list --due
+tmoney scheduled list --account Checking
 
-# Post a scheduled transaction
-tmoney --post-scheduled <id> [--amount <amount>] [--date <date>]
+# Post a due occurrence (works on multi-line schedules too: lines are
+# posted verbatim from the template — no per-line overrides via the
+# CLI; use the TUI preview for per-instance edits)
+tmoney scheduled post <id> [--amount <n>] [--date YYYY-MM-DD]
 
-# Skip a scheduled transaction
-tmoney --skip-scheduled <id>
+# Skip an occurrence (advance next_date without creating a transaction)
+tmoney scheduled skip <id>
 ```
 
 ## v1.5 Features (Not in v1)
