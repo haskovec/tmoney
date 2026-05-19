@@ -141,7 +141,7 @@ When "Split transaction" is checked:
 ┌──────────────────────────────────────────────────────────────┐
 │  SPLIT TRANSACTION                                      [×]  │
 ├──────────────────────────────────────────────────────────────┤
-│  Parent: +3,067.50              Imbalance: $0.00             │
+│  Parent: +3,067.50                                           │
 ├──────────────────────────────────────────────────────────────┤
 │                                                              │
 │  Category / Target          Amount      Memo                 │
@@ -153,7 +153,9 @@ When "Split transaction" is checked:
 │  Transfer → 401k             -500.00                         │
 │  Insurance > Health          -150.00                         │
 │  Transfer → HSA              -100.00                         │
-│  [+ Add line]                                                │
+│  [+ Add split]                                               │
+│                                                              │
+│  Imbalance: $0.00                                            │
 │                                                              │
 ├──────────────────────────────────────────────────────────────┤
 │           [Cancel]                    [Save]                 │
@@ -176,7 +178,7 @@ Pressing Enter on a due scheduled transaction (Scheduled view or Dashboard's Due
 │  Account:   [Checking ▼]                                     │
 │  Memo:      [_______________________________________]        │
 │                                                              │
-│  Parent: +3,067.50              Imbalance: $0.00             │
+│  Parent: +3,067.50                                           │
 │  ───────────────────────────────────────────────────         │
 │  Category / Target          Amount      Memo                 │
 │  Income > Salary           +5,000.00                         │
@@ -186,6 +188,9 @@ Pressing Enter on a due scheduled transaction (Scheduled view or Dashboard's Due
 │  Transfer → 401k             -500.00                         │
 │  Insurance > Health          -149.99    ← edited             │
 │  Transfer → HSA              -100.00                         │
+│  [+ Add split]                                               │
+│                                                              │
+│  Imbalance: $0.00                                            │
 │                                                              │
 ├──────────────────────────────────────────────────────────────┤
 │           [Cancel]                    [Save]                 │
