@@ -440,6 +440,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		categoryOptions, categoryIDs := buildCategoryOptions(categories)
 		a.schedDialogCategoryIDs = categoryIDs
+		a.schedDialogCategoryOptions = categoryOptions
 
 		if msg.data.mode == scheduledDialogModeEdit && msg.data.scheduled != nil {
 			// Build payee name map for edit dialog

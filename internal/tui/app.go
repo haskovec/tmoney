@@ -156,10 +156,11 @@ type App struct {
 	acctDialogData *accountDialogData
 
 	// Scheduled dialog state
-	schedDialog            *Dialog
-	schedDialogData        *scheduledDialogData
-	schedDialogAccountIDs  []types.ID
-	schedDialogCategoryIDs []types.ID
+	schedDialog                *Dialog
+	schedDialogData            *scheduledDialogData
+	schedDialogAccountIDs      []types.ID
+	schedDialogCategoryIDs     []types.ID
+	schedDialogCategoryOptions []string
 
 	// Scheduled preview dialog state. Opens when the user presses Enter
 	// on a due scheduled item (replaces the legacy immediate-post path

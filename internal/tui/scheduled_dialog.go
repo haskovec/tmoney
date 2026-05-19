@@ -319,6 +319,18 @@ func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string
 	// child split lines (multi-line template).
 	d.AddCheckboxField("Split transaction", len(st.Splits) > 0)
 
+	// "Edit as paycheck →" affordance per MS-029: an alternative entry
+	// point that closes this dialog and reopens the schedule in the
+	// paycheck wizard with values pre-filled. Visible only when the
+	// schedule matches the paycheck heuristic.
+	if looksLikePaycheck(st, categoryOptions, categoryIDs) {
+		d.SetButtons([]DialogButton{
+			{Label: "Save", Primary: true},
+			{Label: "Cancel"},
+			{Label: "Edit as paycheck →", Action: DialogActionAlternate},
+		})
+	}
+
 	d.SetVisible(true)
 	return d
 }
@@ -402,6 +414,7 @@ func (a *App) closeScheduledDialog() {
 	a.schedDialogData = nil
 	a.schedDialogAccountIDs = nil
 	a.schedDialogCategoryIDs = nil
+	a.schedDialogCategoryOptions = nil
 }
 
 // handleScheduledDialogKey routes key events to the scheduled dialog.
@@ -417,6 +430,8 @@ func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	case DialogActionCancel:
 		a.closeScheduledDialog()
 		return a, nil
+	case DialogActionAlternate:
+		return a.relaunchAsPaycheckWizard()
 	}
 
 	return a, nil

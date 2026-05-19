@@ -1766,3 +1766,251 @@ func TestScheduledDialog_MultiLineSave_PersistsChildren(t *testing.T) {
 		t.Errorf("missing child categories: income=%v tax=%v", sawIncome, sawTax)
 	}
 }
+
+// hasEditAsPaycheckButton reports whether the dialog's button row
+// includes the "Edit as paycheck →" affordance. Used by the MS-029
+// tests to assert visibility based on the looksLikePaycheck heuristic.
+func hasEditAsPaycheckButton(d *Dialog) bool {
+	for _, b := range d.Buttons() {
+		if strings.Contains(b.Label, "Edit as paycheck") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestScheduledDialog_EditAsPaycheck_RelaunchesWizard covers MS-029:
+// a scheduled transaction that matches the paycheck heuristic (multi-
+// line schedule with a positive categorized income line plus at least
+// one negative tax-categorized deduction line) shows an
+// "Edit as paycheck →" affordance on the edit dialog, and activating
+// it closes the regular dialog and opens the paycheck wizard pre-
+// filled with the schedule's current values.
+func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
+	// Build accounts, categories, payees in memory — buildEditScheduled
+	// Dialog and the relaunch helper consume them by display name and
+	// ID without needing the DB layer.
+	checkingID := types.NewID()
+	retire401kID := types.NewID()
+	accounts := []*account.Account{
+		{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking", Active: true, Type: account.TypeChecking},
+		{BaseModel: types.BaseModel{ID: retire401kID}, Name: "401k", Active: true, Type: account.TypeInvestment},
+	}
+	accountOptions, accountIDs := buildAccountOptions(accounts)
+
+	salaryID := types.NewID()
+	federalID := types.NewID()
+	ssID := types.NewID()
+	medicareID := types.NewID()
+	healthID := types.NewID()
+	categoryOptions := []string{
+		"(None)",
+		"Income > Salary",
+		"Insurance > Health",
+		"Tax > Federal",
+		"Tax > Medicare",
+		"Tax > Social Security",
+	}
+	categoryIDs := []types.ID{
+		types.NilID,
+		salaryID,
+		healthID,
+		federalID,
+		medicareID,
+		ssID,
+	}
+
+	employerPayeeID := types.NewID()
+	employerPayee := &payee.Payee{
+		BaseModel: types.BaseModel{ID: employerPayeeID},
+		Name:      "Acme Corp",
+	}
+	payees := []*payee.Payee{employerPayee}
+	payeeNames := map[types.ID]string{employerPayeeID: "Acme Corp"}
+
+	// Paycheck-shaped schedule: gross +5000 Salary, -800 Federal, -310
+	// Social Security, -150 Health, -500 401(k) transfer. Net 3240.
+	st := scheduled.NewTransaction(checkingID, scheduled.FrequencyBiweekly, types.MustParseDate("2024-03-15"))
+	st.SetAmount(types.MustNewMoney("3240.00"))
+	st.SetPayee(employerPayeeID)
+	st.ClearCategory()
+	st.Splits = scheduled.SplitCollection{
+		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("5000"), CategoryID: types.NullableID{ID: salaryID, Valid: true}},
+		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-800"), CategoryID: types.NullableID{ID: federalID, Valid: true}},
+		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-310"), CategoryID: types.NullableID{ID: ssID, Valid: true}},
+		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-150"), CategoryID: types.NullableID{ID: healthID, Valid: true}},
+		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-500"), TransferAccountID: types.NullableID{ID: retire401kID, Valid: true}},
+	}
+
+	// Build the edit dialog and assert the affordance is present.
+	dlg := buildEditScheduledDialog(st, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
+	if !hasEditAsPaycheckButton(dlg) {
+		t.Fatal("paycheck-shaped edit dialog should expose Edit-as-paycheck button")
+	}
+
+	// Wire the App with the dialog and trigger the relaunch.
+	app := &App{
+		currentView: ViewScheduled,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		schedDialog: dlg,
+		schedDialogData: &scheduledDialogData{
+			mode:      scheduledDialogModeEdit,
+			scheduled: st,
+			accounts:  accounts,
+			payees:    payees,
+		},
+		schedDialogAccountIDs:  accountIDs,
+		schedDialogCategoryIDs: categoryIDs,
+	}
+	app.schedDialogCategoryOptions = categoryOptions
+
+	model, _ := app.relaunchAsPaycheckWizard()
+	app2 := model.(*App)
+
+	if app2.schedDialog != nil {
+		t.Error("scheduled dialog should close after Edit-as-paycheck relaunch")
+	}
+	if app2.paycheckWizard == nil {
+		t.Fatal("paycheck wizard should open after Edit-as-paycheck relaunch")
+	}
+	w := app2.paycheckWizard
+
+	if got, want := w.Employer().Value, "Acme Corp"; got != want {
+		t.Errorf("employer pre-fill = %q, want %q", got, want)
+	}
+	if got, want := w.Frequency().SelectedIndex, frequencyToIndex(scheduled.FrequencyBiweekly); got != want {
+		t.Errorf("frequency pre-fill = %d, want %d (biweekly)", got, want)
+	}
+	if got := w.NextPayday().Value; !strings.Contains(got, "2024") {
+		t.Errorf("next payday pre-fill = %q, want a 2024 date", got)
+	}
+	grossMoney, err := parseAmountInput(w.GrossAmount().Value)
+	if err != nil {
+		t.Fatalf("gross amount %q failed to parse: %v", w.GrossAmount().Value, err)
+	}
+	if !grossMoney.Equal(types.MustNewMoney("5000")) {
+		t.Errorf("gross amount pre-fill = %s, want 5000", grossMoney.String())
+	}
+	if got, want := w.GrossCategory().SelectedIndex, indexOf(categoryOptions, "Income > Salary"); got != want {
+		t.Errorf("gross category pre-fill = %d, want %d (Income > Salary)", got, want)
+	}
+	if got, want := w.PrimaryAccount().Options[w.PrimaryAccount().SelectedIndex], "Checking"; got != want {
+		t.Errorf("primary account pre-fill = %q, want %q", got, want)
+	}
+
+	// Federal pre-fill: user typed positive magnitudes, so 800 (not -800).
+	preTax := w.PreTaxLines()
+	federalMoney, err := parseAmountInput(preTax[0].AmountField().Value)
+	if err != nil {
+		t.Fatalf("federal amount %q failed to parse: %v", preTax[0].AmountField().Value, err)
+	}
+	if !federalMoney.Equal(types.MustNewMoney("800")) {
+		t.Errorf("federal pre-fill = %s, want 800", federalMoney.String())
+	}
+	// Social Security pre-fill at preTax[2].
+	ssMoney, err := parseAmountInput(preTax[2].AmountField().Value)
+	if err != nil {
+		t.Fatalf("social security amount %q failed to parse: %v", preTax[2].AmountField().Value, err)
+	}
+	if !ssMoney.Equal(types.MustNewMoney("310")) {
+		t.Errorf("social security pre-fill = %s, want 310", ssMoney.String())
+	}
+
+	// Health insurance pre-fill at postTax[0].
+	postTax := w.PostTaxLines()
+	healthMoney, err := parseAmountInput(postTax[0].AmountField().Value)
+	if err != nil {
+		t.Fatalf("health amount %q failed to parse: %v", postTax[0].AmountField().Value, err)
+	}
+	if !healthMoney.Equal(types.MustNewMoney("150")) {
+		t.Errorf("health pre-fill = %s, want 150", healthMoney.String())
+	}
+
+	// Transfer line should round-trip as an additional transfer of -500
+	// to the 401k destination. The wizard preserves user inputs as
+	// positive magnitudes.
+	addls := w.AdditionalTransfers()
+	if len(addls) != 1 {
+		t.Fatalf("got %d additional transfers, want 1", len(addls))
+	}
+	retire401kMoney, err := parseAmountInput(addls[0].AmountField().Value)
+	if err != nil {
+		t.Fatalf("401k amount %q failed to parse: %v", addls[0].AmountField().Value, err)
+	}
+	if !retire401kMoney.Equal(types.MustNewMoney("500")) {
+		t.Errorf("401k transfer pre-fill = %s, want 500", retire401kMoney.String())
+	}
+	if got := w.PrimaryAccount().Options[addls[0].AccountIndex()]; got != "401k" {
+		t.Errorf("additional transfer destination = %q, want 401k", got)
+	}
+}
+
+// TestScheduledDialog_NonPaycheckShape_HidesEditAsPaycheck covers the
+// negative side of MS-029: a generic multi-line schedule that doesn't
+// match the paycheck heuristic — and a single-line schedule — must not
+// surface the Edit-as-paycheck affordance.
+func TestScheduledDialog_NonPaycheckShape_HidesEditAsPaycheck(t *testing.T) {
+	salaryID := types.NewID()
+	rentID := types.NewID()
+	foodID := types.NewID()
+	categoryOptions := []string{"(None)", "Bills > Rent", "Food > Groceries", "Income > Salary"}
+	categoryIDs := []types.ID{types.NilID, rentID, foodID, salaryID}
+
+	accountID := types.NewID()
+	accountOptions := []string{"Checking"}
+	accountIDs := []types.ID{accountID}
+	payeeNames := map[types.ID]string{}
+
+	tests := []struct {
+		name string
+		st   *scheduled.Transaction
+	}{
+		{
+			name: "single-line schedule",
+			st: func() *scheduled.Transaction {
+				st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.Today())
+				st.SetAmount(types.MustNewMoney("-1500"))
+				st.SetCategory(rentID)
+				return st
+			}(),
+		},
+		{
+			name: "multi-line schedule without tax categories",
+			st: func() *scheduled.Transaction {
+				st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.Today())
+				st.SetAmount(types.MustNewMoney("-200"))
+				st.ClearCategory()
+				st.Splits = scheduled.SplitCollection{
+					{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-50"), CategoryID: types.NullableID{ID: rentID, Valid: true}},
+					{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-150"), CategoryID: types.NullableID{ID: foodID, Valid: true}},
+				}
+				return st
+			}(),
+		},
+		{
+			name: "multi-line schedule without income positive line",
+			st: func() *scheduled.Transaction {
+				// All-negative split set with tax lines but no positive
+				// income line: the heuristic should still reject because
+				// there's no gross income.
+				st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.Today())
+				st.SetAmount(types.MustNewMoney("-200"))
+				st.ClearCategory()
+				// Repurpose categoryOptions: add a "Tax > Federal" option
+				// to avoid expanding fixtures.
+				return st
+			}(),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dlg := buildEditScheduledDialog(tc.st, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
+			if hasEditAsPaycheckButton(dlg) {
+				t.Errorf("Edit-as-paycheck button should be hidden for %s", tc.name)
+			}
+		})
+	}
+}

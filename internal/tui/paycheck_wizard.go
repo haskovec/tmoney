@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -593,4 +594,204 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 		}
 		return scheduledDialogSavedMsg{}
 	}
+}
+
+// looksLikePaycheck reports whether a scheduled transaction matches
+// the paycheck heuristic: it is multi-line, has at least one
+// categorized positive-amount split (the gross income line), and has
+// at least one categorized negative-amount split whose category's
+// display name starts with "Tax > " — the prefix
+// buildCategoryOptions emits for any subcategory under a top-level
+// "Tax" parent (see specs/multiline-splits-and-paycheck.md, "Round-
+// trip edits"). categoryOptions / categoryIDs are the parallel slices
+// produced by buildCategoryOptions; a nil/empty pair causes the
+// heuristic to return false (no way to inspect category names).
+func looksLikePaycheck(st *scheduled.Transaction, categoryOptions []string, categoryIDs []types.ID) bool {
+	if st == nil || len(st.Splits) == 0 {
+		return false
+	}
+	nameByID := make(map[types.ID]string, len(categoryIDs))
+	for i, id := range categoryIDs {
+		if i < len(categoryOptions) {
+			nameByID[id] = categoryOptions[i]
+		}
+	}
+
+	var hasIncomeLine, hasTaxLine bool
+	for _, sp := range st.Splits {
+		if !sp.CategoryID.Valid {
+			continue
+		}
+		name := nameByID[sp.CategoryID.ID]
+		switch {
+		case sp.Amount.IsPositive():
+			hasIncomeLine = true
+		case sp.Amount.IsNegative() && strings.HasPrefix(name, "Tax > "):
+			hasTaxLine = true
+		}
+	}
+	return hasIncomeLine && hasTaxLine
+}
+
+// NewPaycheckWizardFromSchedule builds a paycheck wizard pre-filled
+// from an existing multi-line scheduled transaction. The wizard is
+// constructed via NewPaycheckWizard so the static layout (and its
+// default category seeds) is identical, then each scalar field and
+// matching deduction/transfer row is populated from the schedule's
+// state. This is the round-trip path described in
+// specs/multiline-splits-and-paycheck.md ("Round-trip edits"):
+//
+//   - Employer is resolved against st.PayeeID using the payees slice.
+//   - Frequency / next payday come from the template's Frequency and
+//     NextDate.
+//   - PrimaryAccount points at st.AccountID (the schedule's main
+//     account); falls back to index 0 when the account isn't in the
+//     active list.
+//   - The first positive-amount categorized split is treated as the
+//     gross row; its amount and category select are populated.
+//   - Remaining negative-amount categorized splits are matched to the
+//     wizard's pre-tax / post-tax slots by category display name (the
+//     same defaults each row was seeded with). Unmatched categorized
+//     lines are dropped per the spec's best-effort note.
+//   - Every transfer-line split is appended to AdditionalTransfers
+//     with the destination account's name as the label. No attempt is
+//     made to slot a 401(k)/HSA transfer into the static pre-tax /
+//     post-tax row — the user can rearrange after relaunch.
+//
+// Magnitudes are stored as positive strings (the user's typed shape);
+// the wizard re-applies the negative sign at save time.
+func NewPaycheckWizardFromSchedule(
+	st *scheduled.Transaction,
+	accounts []*account.Account,
+	payees []*payee.Payee,
+	categoryOptions []string,
+	categoryIDs []types.ID,
+) *PaycheckWizard {
+	w := NewPaycheckWizard(categoryOptions, categoryIDs, accounts)
+	if st == nil {
+		return w
+	}
+
+	if st.HasPayee() {
+		for _, p := range payees {
+			if p == nil {
+				continue
+			}
+			if p.ID == st.PayeeID.ID {
+				w.employer.Value = p.Name
+				break
+			}
+		}
+	}
+
+	w.frequency.SelectedIndex = frequencyToIndex(st.Frequency)
+	w.nextPayday.Value = st.NextDate.Time().Format("01/02/2006")
+
+	for i, opt := range w.primaryAccount.Options {
+		if i >= len(w.accountIDs) {
+			break
+		}
+		if w.accountIDs[i] == st.AccountID {
+			w.primaryAccount.SelectedIndex = i
+			break
+		}
+		_ = opt
+	}
+
+	categoryNameByID := make(map[types.ID]string, len(categoryIDs))
+	for i, id := range categoryIDs {
+		if i < len(categoryOptions) {
+			categoryNameByID[id] = categoryOptions[i]
+		}
+	}
+
+	preTaxByCategory := make(map[string]*PaycheckLine, len(w.preTax))
+	for i, spec := range preTaxLineSpecs {
+		if spec.defaultCategory != "" {
+			preTaxByCategory[spec.defaultCategory] = w.preTax[i]
+		}
+	}
+	postTaxByCategory := make(map[string]*PaycheckLine, len(w.postTax))
+	for i, spec := range postTaxLineSpecs {
+		if spec.defaultCategory != "" {
+			postTaxByCategory[spec.defaultCategory] = w.postTax[i]
+		}
+	}
+
+	grossAssigned := false
+	for _, sp := range st.Splits {
+		if sp == nil {
+			continue
+		}
+
+		if sp.TransferAccountID.Valid {
+			label := "Transfer"
+			acctIdx := 0
+			for i, id := range w.accountIDs {
+				if id == sp.TransferAccountID.ID {
+					acctIdx = i
+					if i < len(w.primaryAccount.Options) {
+						label = w.primaryAccount.Options[i]
+					}
+					break
+				}
+			}
+			line := w.AddAdditionalTransfer(label, acctIdx)
+			line.amountField.Value = sp.Amount.Abs().String()
+			continue
+		}
+
+		if !sp.CategoryID.Valid {
+			continue
+		}
+		name := categoryNameByID[sp.CategoryID.ID]
+		if !grossAssigned && sp.Amount.IsPositive() {
+			w.grossAmount.Value = sp.Amount.String()
+			if idx := findCategoryOptionIndex(categoryOptions, name); idx > 0 {
+				w.grossCategory.SelectedIndex = idx
+			}
+			grossAssigned = true
+			continue
+		}
+
+		magnitude := sp.Amount.Abs().String()
+		if line, ok := preTaxByCategory[name]; ok {
+			line.amountField.Value = magnitude
+			continue
+		}
+		if line, ok := postTaxByCategory[name]; ok {
+			line.amountField.Value = magnitude
+			continue
+		}
+		// Unmatched categorized line: best-effort drops it (the spec
+		// notes the affordance is hidden when the wizard cannot
+		// represent the schedule; here we've already shown the button
+		// based on the looser heuristic, so silently skip).
+	}
+
+	return w
+}
+
+// relaunchAsPaycheckWizard closes the scheduled-edit dialog and opens
+// the paycheck wizard pre-filled from the schedule currently being
+// edited. Called when the user activates the "Edit as paycheck →"
+// affordance on a paycheck-shaped scheduled-transaction edit dialog
+// (see MS-029 / looksLikePaycheck).
+func (a *App) relaunchAsPaycheckWizard() (tea.Model, tea.Cmd) {
+	if a.schedDialog == nil || a.schedDialogData == nil {
+		return a, nil
+	}
+	if a.schedDialogData.mode != scheduledDialogModeEdit || a.schedDialogData.scheduled == nil {
+		return a, nil
+	}
+
+	st := a.schedDialogData.scheduled
+	accounts := a.schedDialogData.accounts
+	payees := a.schedDialogData.payees
+	categoryOptions := a.schedDialogCategoryOptions
+	categoryIDs := a.schedDialogCategoryIDs
+
+	a.closeScheduledDialog()
+	a.paycheckWizard = NewPaycheckWizardFromSchedule(st, accounts, payees, categoryOptions, categoryIDs)
+	return a, nil
 }

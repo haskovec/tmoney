@@ -415,6 +415,12 @@ type DialogButton struct {
 	Label string
 	// Primary indicates this is the primary/default action button.
 	Primary bool
+	// Action is the DialogAction returned by HandleKey when this
+	// button is activated and is non-primary. Defaults to
+	// DialogActionNone, which preserves the legacy "non-primary →
+	// Cancel" mapping. Use this for a third "alternate" button (e.g.
+	// MS-029's "Edit as paycheck →").
+	Action DialogAction
 }
 
 // DialogAction represents the result of a dialog interaction.
@@ -431,6 +437,11 @@ const (
 	// action row. The parent dialog is responsible for diverting into a
 	// sub-dialog, then restoring focus and updating SelectedIndex.
 	DialogActionAddNew
+	// DialogActionAlternate means the user activated a non-primary
+	// button whose Action field was set to this value. Used by the
+	// scheduled-edit dialog to offer an "Edit as paycheck →" relaunch
+	// path alongside Save / Cancel (MS-029).
+	DialogActionAlternate
 )
 
 // Dialog is a modal dialog component with form fields and buttons.
@@ -1082,8 +1093,14 @@ func (d *Dialog) HandleKey(msg tea.KeyPressMsg) DialogAction {
 	case "enter":
 		if d.IsFocusOnButton() {
 			btnIdx := d.FocusedButtonIndex()
-			if btnIdx >= 0 && btnIdx < len(d.buttons) && d.buttons[btnIdx].Primary {
-				return DialogActionSubmit
+			if btnIdx >= 0 && btnIdx < len(d.buttons) {
+				btn := d.buttons[btnIdx]
+				if btn.Primary {
+					return DialogActionSubmit
+				}
+				if btn.Action != DialogActionNone {
+					return btn.Action
+				}
 			}
 			return DialogActionCancel
 		}
