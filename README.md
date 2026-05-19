@@ -76,8 +76,26 @@ tmoney -f personal.tdb account balance
 ### Scheduled Transactions
 - Multiple frequencies: daily, weekly, biweekly, monthly, quarterly, yearly
 - Fixed or indefinite duration
-- Variable amount estimation
+- Variable amount estimation (single-line schedules only)
 - Post or skip workflow
+- **Multi-line templates** for compound events (paychecks, etc.):
+  a single scheduled transaction can carry multiple categorized and/or
+  transfer lines whose signed amounts sum to the schedule's parent
+  amount. Pressing Enter on a due multi-line schedule opens a
+  **post-time preview dialog** pre-filled with the template values so
+  you can adjust a single occurrence (FICA-penny shifts, holiday
+  payday shifts) without changing the underlying template. Date and
+  line edits are one-off — the schedule's next occurrence reopens with
+  the original template.
+- **Paycheck wizard** (Transactions → New Paycheck Schedule…): a
+  guided form that creates a multi-line scheduled paycheck from
+  gross / tax / retirement / health-insurance / net-deposit inputs.
+  The wizard is pure UI sugar — the saved record is a standard
+  multi-line scheduled transaction. A paycheck-shaped schedule can be
+  reopened in the wizard via the **Edit as paycheck →** affordance in
+  the Edit Series dialog. See
+  [`specs/multiline-splits-and-paycheck.md`](specs/multiline-splits-and-paycheck.md)
+  for the full feature spec.
 
 ### Reports
 - Net worth calculation (assets vs liabilities)
@@ -153,7 +171,7 @@ Press `?` at any time to show the help overlay.
 | `Alt+E` | Edit menu |
 | `Alt+V` | View menu (Theme switcher, Show closed positions toggle) |
 | `Alt+A` | Accounts menu |
-| `Alt+T` | Transactions menu (also has Link Transfers…) |
+| `Alt+T` | Transactions menu (also has Link Transfers… and New Paycheck Schedule…) |
 | `Alt+S` | Securities menu (also has Stock Split…, Merger…, Spin-Off…, Corporate Action History…) |
 | `Alt+R` | Reports menu |
 | `Alt+H` | Help menu |
@@ -195,9 +213,9 @@ Press `?` at any time to show the help overlay.
 
 | Key | Action |
 |-----|--------|
-| `Enter` | Post scheduled transaction |
+| `Enter` | Open the post-time preview dialog (edit one occurrence, then save) |
 | `s` | Skip occurrence |
-| `e` | Edit scheduled transaction |
+| `e` | Edit series — modify the template (affects all future occurrences) |
 | `n` | New scheduled transaction |
 | `d` | Delete scheduled transaction |
 
