@@ -78,10 +78,10 @@ func (r *Repository) Create(st *Transaction) error {
 		INSERT INTO scheduled_transactions (
 			id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
-			day_of_month, day_of_week, next_date, occurrences_remaining,
+			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = r.db.Conn().Exec(query,
@@ -97,6 +97,7 @@ func (r *Repository) Create(st *Transaction) error {
 		dbutil.NullDate(st.EndDate),
 		dbutil.NullInt(st.Occurrences),
 		dbutil.NullInt(st.DayOfMonth),
+		dbutil.NullInt(st.SecondaryDayOfMonth),
 		dbutil.NullInt(st.DayOfWeek),
 		st.NextDate,
 		dbutil.NullInt(st.OccurrencesRemaining),
@@ -118,7 +119,7 @@ func (r *Repository) GetByID(id types.ID) (*Transaction, error) {
 	query := `
 		SELECT id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
-			day_of_month, day_of_week, next_date, occurrences_remaining,
+			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
 			created_at, updated_at
 		FROM scheduled_transactions
@@ -139,6 +140,7 @@ func (r *Repository) GetByID(id types.ID) (*Transaction, error) {
 		&st.EndDate,
 		&st.Occurrences,
 		&st.DayOfMonth,
+		&st.SecondaryDayOfMonth,
 		&st.DayOfWeek,
 		&st.NextDate,
 		&st.OccurrencesRemaining,
@@ -177,7 +179,7 @@ func (r *Repository) List() ([]*Transaction, error) {
 	query := `
 		SELECT id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
-			day_of_month, day_of_week, next_date, occurrences_remaining,
+			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
 			created_at, updated_at
 		FROM scheduled_transactions
@@ -192,7 +194,7 @@ func (r *Repository) ListByAccount(accountID types.ID) ([]*Transaction, error) {
 	query := `
 		SELECT id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
-			day_of_month, day_of_week, next_date, occurrences_remaining,
+			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
 			created_at, updated_at
 		FROM scheduled_transactions
@@ -208,7 +210,7 @@ func (r *Repository) ListDue() ([]*Transaction, error) {
 	query := `
 		SELECT id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
-			day_of_month, day_of_week, next_date, occurrences_remaining,
+			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
 			created_at, updated_at
 		FROM scheduled_transactions
@@ -227,7 +229,7 @@ func (r *Repository) ListUpcoming(days int) ([]*Transaction, error) {
 	query := `
 		SELECT id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
-			day_of_month, day_of_week, next_date, occurrences_remaining,
+			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
 			created_at, updated_at
 		FROM scheduled_transactions
@@ -246,7 +248,7 @@ func (r *Repository) ListAutoPostDue() ([]*Transaction, error) {
 	query := `
 		SELECT id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
-			day_of_month, day_of_week, next_date, occurrences_remaining,
+			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
 			created_at, updated_at
 		FROM scheduled_transactions
@@ -333,10 +335,10 @@ func (r *Repository) Update(st *Transaction) error {
 		INSERT INTO scheduled_transactions (
 			id, account_id, payee_id, category_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
-			day_of_month, day_of_week, next_date, occurrences_remaining,
+			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
 			created_at, updated_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Conn().Exec(insertQuery,
 		st.ID.String(),
@@ -351,6 +353,7 @@ func (r *Repository) Update(st *Transaction) error {
 		dbutil.NullDate(st.EndDate),
 		dbutil.NullInt(st.Occurrences),
 		dbutil.NullInt(st.DayOfMonth),
+		dbutil.NullInt(st.SecondaryDayOfMonth),
 		dbutil.NullInt(st.DayOfWeek),
 		st.NextDate.Time(),
 		dbutil.NullInt(st.OccurrencesRemaining),
@@ -469,6 +472,7 @@ func (r *Repository) scanTransactions(rows *sql.Rows) ([]*Transaction, error) {
 			&st.EndDate,
 			&st.Occurrences,
 			&st.DayOfMonth,
+			&st.SecondaryDayOfMonth,
 			&st.DayOfWeek,
 			&st.NextDate,
 			&st.OccurrencesRemaining,

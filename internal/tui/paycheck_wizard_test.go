@@ -122,11 +122,16 @@ func TestPaycheckWizard_OpensWithEmptyForm(t *testing.T) {
 		t.Errorf("employer field type = %v, want %v", w.Employer().Type, want)
 	}
 
-	// Pay frequency — select field, default Biweekly per the spec mock.
-	freqIdx := w.Frequency().SelectedIndex
-	freqs := scheduled.AllFrequencies()
-	if freqIdx < 0 || freqIdx >= len(freqs) || freqs[freqIdx] != scheduled.FrequencyBiweekly {
-		t.Errorf("frequency default = %v, want Biweekly", freqs[freqIdx])
+	// Pay frequency — select field. The wizard's picker exposes a
+	// subset of paycheck-realistic cadences (Weekly, Fortnightly, two
+	// Semi-Monthly variants, Monthly); the default is Fortnightly
+	// which sits at defaultPaycheckFrequencyIndex.
+	if got, want := w.Frequency().SelectedIndex, defaultPaycheckFrequencyIndex; got != want {
+		t.Errorf("frequency default = %d, want %d (Fortnightly)", got, want)
+	}
+	opt := paycheckFrequencyForIndex(w.Frequency().SelectedIndex)
+	if opt.frequency != scheduled.FrequencyBiweekly {
+		t.Errorf("frequency default option = %v, want biweekly (fortnightly)", opt.frequency)
 	}
 
 	// Next payday — date field, present and editable. The wizard

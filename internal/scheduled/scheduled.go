@@ -13,12 +13,13 @@ import (
 type Frequency string
 
 const (
-	FrequencyDaily     Frequency = "daily"
-	FrequencyWeekly    Frequency = "weekly"
-	FrequencyBiweekly  Frequency = "biweekly"
-	FrequencyMonthly   Frequency = "monthly"
-	FrequencyQuarterly Frequency = "quarterly"
-	FrequencyYearly    Frequency = "yearly"
+	FrequencyDaily       Frequency = "daily"
+	FrequencyWeekly      Frequency = "weekly"
+	FrequencyBiweekly    Frequency = "biweekly" // stored as "biweekly" for back-compat; display label is "Fortnightly"
+	FrequencySemiMonthly Frequency = "semimonthly"
+	FrequencyMonthly     Frequency = "monthly"
+	FrequencyQuarterly   Frequency = "quarterly"
+	FrequencyYearly      Frequency = "yearly"
 )
 
 // AllFrequencies returns all valid frequencies.
@@ -27,6 +28,7 @@ func AllFrequencies() []Frequency {
 		FrequencyDaily,
 		FrequencyWeekly,
 		FrequencyBiweekly,
+		FrequencySemiMonthly,
 		FrequencyMonthly,
 		FrequencyQuarterly,
 		FrequencyYearly,
@@ -41,7 +43,7 @@ func (f Frequency) String() string {
 // IsValid returns true if the Frequency is a valid frequency.
 func (f Frequency) IsValid() bool {
 	switch f {
-	case FrequencyDaily, FrequencyWeekly, FrequencyBiweekly,
+	case FrequencyDaily, FrequencyWeekly, FrequencyBiweekly, FrequencySemiMonthly,
 		FrequencyMonthly, FrequencyQuarterly, FrequencyYearly:
 		return true
 	}
@@ -49,6 +51,9 @@ func (f Frequency) IsValid() bool {
 }
 
 // DisplayName returns a human-readable name for the frequency.
+// "Biweekly" is rendered as "Fortnightly" because biweekly is
+// commonly misread as "twice per week"; the storage value is
+// unchanged for back-compat with existing databases.
 func (f Frequency) DisplayName() string {
 	switch f {
 	case FrequencyDaily:
@@ -56,7 +61,9 @@ func (f Frequency) DisplayName() string {
 	case FrequencyWeekly:
 		return "Weekly"
 	case FrequencyBiweekly:
-		return "Biweekly"
+		return "Fortnightly"
+	case FrequencySemiMonthly:
+		return "Semi-Monthly"
 	case FrequencyMonthly:
 		return "Monthly"
 	case FrequencyQuarterly:
@@ -111,12 +118,13 @@ type Transaction struct {
 	NextDate  types.Date `json:"next_date"`
 
 	// Schedule properties
-	Interval             int                `json:"interval"`              // Every N periods (default: 1)
-	EndDate              types.NullableDate `json:"end_date"`              // When schedule ends (null = indefinite)
-	Occurrences          types.NullableInt  `json:"occurrences"`           // Total number of times to repeat
-	OccurrencesRemaining types.NullableInt  `json:"occurrences_remaining"` // Countdown for fixed occurrences
-	DayOfMonth           types.NullableInt  `json:"day_of_month"`          // Specific day (1-31, or -1 for last day)
-	DayOfWeek            types.NullableInt  `json:"day_of_week"`           // Day of week (0=Sunday, 6=Saturday)
+	Interval             int                `json:"interval"`               // Every N periods (default: 1)
+	EndDate              types.NullableDate `json:"end_date"`               // When schedule ends (null = indefinite)
+	Occurrences          types.NullableInt  `json:"occurrences"`            // Total number of times to repeat
+	OccurrencesRemaining types.NullableInt  `json:"occurrences_remaining"`  // Countdown for fixed occurrences
+	DayOfMonth           types.NullableInt  `json:"day_of_month"`           // Specific day (1-31, or -1 for last day)
+	SecondaryDayOfMonth  types.NullableInt  `json:"secondary_day_of_month"` // Second day for semi-monthly cadence (1-31, or -1 for last day)
+	DayOfWeek            types.NullableInt  `json:"day_of_week"`            // Day of week (0=Sunday, 6=Saturday)
 
 	// Transaction template properties
 	PayeeID    types.NullableID     `json:"payee_id"`
@@ -369,7 +377,7 @@ func (st *Transaction) IsCompleted() bool {
 
 // CalculateNextDate calculates the next occurrence date after the current next_date.
 func (st *Transaction) CalculateNextDate() types.Date {
-	return calculateNextDate(st.NextDate, st.Frequency, st.Interval, st.DayOfMonth, st.DayOfWeek)
+	return calculateNextDate(st.NextDate, st.Frequency, st.Interval, st.DayOfMonth, st.SecondaryDayOfMonth, st.DayOfWeek)
 }
 
 // AdvanceSchedule advances the schedule to the next occurrence.
@@ -399,7 +407,7 @@ func (st *Transaction) AdvanceSchedule() bool {
 }
 
 // calculateNextDate calculates the next occurrence date based on frequency and settings.
-func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMonth, dayOfWeek types.NullableInt) types.Date {
+func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMonth, secondaryDayOfMonth, dayOfWeek types.NullableInt) types.Date {
 	if interval < 1 {
 		interval = 1
 	}
@@ -416,6 +424,9 @@ func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMo
 	case FrequencyBiweekly:
 		return types.Date(currentTime.AddDate(0, 0, 14))
 
+	case FrequencySemiMonthly:
+		return addSemiMonthly(currentTime, dayOfMonth, secondaryDayOfMonth)
+
 	case FrequencyMonthly:
 		return addMonthsWithDayHandling(currentTime, interval, dayOfMonth)
 
@@ -429,6 +440,100 @@ func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMo
 		// Fallback: add interval days
 		return types.Date(currentTime.AddDate(0, 0, interval))
 	}
+}
+
+// addSemiMonthly advances a semi-monthly cadence to the next pay date.
+// dayOfMonth and secondaryDayOfMonth are the two pay days (1-31, or -1
+// for "last day of month"). If only one is set, falls back to monthly.
+//
+// Algorithm: of the two pay days, find the next chronological one after
+// the current date. If the current date is on or after both this month's
+// pay days, roll to the earlier day of next month.
+func addSemiMonthly(current time.Time, dayOfMonth, secondaryDayOfMonth types.NullableInt) types.Date {
+	if !dayOfMonth.Valid {
+		// Defensive: schedule was marked semi-monthly but no day stored.
+		// Advance by half a month as a sane fallback.
+		return types.Date(current.AddDate(0, 0, 15))
+	}
+	d1 := int(dayOfMonth.Int64)
+	if !secondaryDayOfMonth.Valid {
+		// Treat as monthly.
+		return addMonthsWithDayHandling(current, 1, dayOfMonth)
+	}
+	d2 := int(secondaryDayOfMonth.Int64)
+
+	// Resolve each pay day to an actual day-of-month for `current`'s month
+	// and next month. -1 means "last day of month".
+	year := current.Year()
+	month := current.Month()
+	lastDayThis := lastDayOf(year, month)
+	nextMonth := month + 1
+	nextYear := year
+	if nextMonth > 12 {
+		nextMonth -= 12
+		nextYear++
+	}
+	lastDayNext := lastDayOf(nextYear, nextMonth)
+
+	resolveDay := func(d int, lastDay int) int {
+		if d == -1 || d > lastDay {
+			return lastDay
+		}
+		if d < 1 {
+			return 1
+		}
+		return d
+	}
+
+	thisD1 := resolveDay(d1, lastDayThis)
+	thisD2 := resolveDay(d2, lastDayThis)
+	nextD1 := resolveDay(d1, lastDayNext)
+	nextD2 := resolveDay(d2, lastDayNext)
+
+	// Build candidate dates in this month and next month, then pick the
+	// soonest candidate strictly after `current`.
+	type candidate struct {
+		y int
+		m time.Month
+		d int
+	}
+	cands := []candidate{
+		{year, month, thisD1},
+		{year, month, thisD2},
+		{nextYear, nextMonth, nextD1},
+		{nextYear, nextMonth, nextD2},
+	}
+	currentY, currentM, currentD := current.Date()
+	var best *candidate
+	for i := range cands {
+		c := cands[i]
+		if c.y < currentY {
+			continue
+		}
+		if c.y == currentY && c.m < currentM {
+			continue
+		}
+		if c.y == currentY && c.m == currentM && c.d <= currentD {
+			continue
+		}
+		if best == nil || c.y < best.y ||
+			(c.y == best.y && c.m < best.m) ||
+			(c.y == best.y && c.m == best.m && c.d < best.d) {
+			best = &c
+		}
+	}
+	if best == nil {
+		// Defensive: shouldn't happen, but advance by 15 days.
+		return types.Date(current.AddDate(0, 0, 15))
+	}
+	return types.NewDate(best.y, best.m, best.d)
+}
+
+// lastDayOf returns the last day number of the given month/year.
+func lastDayOf(year int, month time.Month) int {
+	// Day 0 of next month = last day of this month.
+	t := time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC)
+	return t.Day()
 }
 
 // addMonthsWithDayHandling adds months while handling day-of-month edge cases.

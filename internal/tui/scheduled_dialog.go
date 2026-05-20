@@ -127,6 +127,8 @@ func frequencyFromIndex(index int) scheduled.Frequency {
 }
 
 // frequencyToIndex returns the select index for a given Frequency.
+// Unknown frequencies fall back to the index of FrequencyMonthly in
+// AllFrequencies so the dialog opens on a sensible default.
 func frequencyToIndex(f scheduled.Frequency) int {
 	freqs := scheduled.AllFrequencies()
 	for i, freq := range freqs {
@@ -134,7 +136,12 @@ func frequencyToIndex(f scheduled.Frequency) int {
 			return i
 		}
 	}
-	return 3 // monthly default
+	for i, freq := range freqs {
+		if freq == scheduled.FrequencyMonthly {
+			return i
+		}
+	}
+	return 0
 }
 
 // durationIndex constants for the radio field.
@@ -196,7 +203,7 @@ func buildNewScheduledDialog(accountOptions, categoryOptions []string) *Dialog {
 	d.AddTextField("Memo", "", "Optional memo", 0)
 
 	// Frequency
-	d.AddSelectField("Frequency", buildFrequencyOptions(), 3) // Monthly default
+	d.AddSelectField("Frequency", buildFrequencyOptions(), frequencyToIndex(scheduled.FrequencyMonthly))
 
 	// Interval
 	f := d.AddTextField("Interval", "1", "Every N periods", 5)

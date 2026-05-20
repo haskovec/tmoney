@@ -44,9 +44,10 @@ func TestFrequencyFromIndex(t *testing.T) {
 		{0, scheduled.FrequencyDaily},
 		{1, scheduled.FrequencyWeekly},
 		{2, scheduled.FrequencyBiweekly},
-		{3, scheduled.FrequencyMonthly},
-		{4, scheduled.FrequencyQuarterly},
-		{5, scheduled.FrequencyYearly},
+		{3, scheduled.FrequencySemiMonthly},
+		{4, scheduled.FrequencyMonthly},
+		{5, scheduled.FrequencyQuarterly},
+		{6, scheduled.FrequencyYearly},
 		{-1, scheduled.FrequencyMonthly},  // out of range defaults to monthly
 		{100, scheduled.FrequencyMonthly}, // out of range defaults to monthly
 	}
@@ -67,10 +68,11 @@ func TestFrequencyToIndex(t *testing.T) {
 		{scheduled.FrequencyDaily, 0},
 		{scheduled.FrequencyWeekly, 1},
 		{scheduled.FrequencyBiweekly, 2},
-		{scheduled.FrequencyMonthly, 3},
-		{scheduled.FrequencyQuarterly, 4},
-		{scheduled.FrequencyYearly, 5},
-		{scheduled.Frequency("unknown"), 3}, // unknown defaults to monthly index
+		{scheduled.FrequencySemiMonthly, 3},
+		{scheduled.FrequencyMonthly, 4},
+		{scheduled.FrequencyQuarterly, 5},
+		{scheduled.FrequencyYearly, 6},
+		{scheduled.Frequency("unknown"), 4}, // unknown defaults to monthly index
 	}
 
 	for _, tc := range tests {
@@ -167,9 +169,10 @@ func TestBuildNewScheduledDialog_Defaults(t *testing.T) {
 		t.Errorf("account selectedIndex = %d, want 0", fields[schedFieldAccount].SelectedIndex)
 	}
 
-	// Frequency defaults to Monthly (index 3)
-	if fields[schedFieldFrequency].SelectedIndex != 3 {
-		t.Errorf("frequency selectedIndex = %d, want 3", fields[schedFieldFrequency].SelectedIndex)
+	// Frequency defaults to Monthly (index resolved from AllFrequencies)
+	wantFreqIdx := frequencyToIndex(scheduled.FrequencyMonthly)
+	if fields[schedFieldFrequency].SelectedIndex != wantFreqIdx {
+		t.Errorf("frequency selectedIndex = %d, want %d", fields[schedFieldFrequency].SelectedIndex, wantFreqIdx)
 	}
 
 	// Interval defaults to "1"
@@ -1541,7 +1544,7 @@ func buildSchedDialogWithSplitToggle(t *testing.T, amountStr, startDate string, 
 	d.AddSelectField("Category", categoryOptions, 0)
 	d.AddTextField("Amount", amountStr, "Empty = variable", 12)
 	d.AddTextField("Memo", "", "", 0)
-	d.AddSelectField("Frequency", buildFrequencyOptions(), 3)
+	d.AddSelectField("Frequency", buildFrequencyOptions(), frequencyToIndex(scheduled.FrequencyMonthly))
 	f := d.AddTextField("Interval", "1", "", 5)
 	f.Required = true
 	f = d.AddDateField("Start Date", startDate)
@@ -1881,8 +1884,11 @@ func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 	if got, want := w.Employer().Value, "Acme Corp"; got != want {
 		t.Errorf("employer pre-fill = %q, want %q", got, want)
 	}
-	if got, want := w.Frequency().SelectedIndex, frequencyToIndex(scheduled.FrequencyBiweekly); got != want {
-		t.Errorf("frequency pre-fill = %d, want %d (biweekly)", got, want)
+	if got, want := w.Frequency().SelectedIndex, defaultPaycheckFrequencyIndex; got != want {
+		t.Errorf("frequency pre-fill = %d, want %d (fortnightly)", got, want)
+	}
+	if opt := paycheckFrequencyForIndex(w.Frequency().SelectedIndex); opt.frequency != scheduled.FrequencyBiweekly {
+		t.Errorf("frequency pre-fill option = %v, want biweekly (fortnightly)", opt.frequency)
 	}
 	if got := w.NextPayday().Value; !strings.Contains(got, "2024") {
 		t.Errorf("next payday pre-fill = %q, want a 2024 date", got)

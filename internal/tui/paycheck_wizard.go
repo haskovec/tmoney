@@ -179,6 +179,86 @@ var postTaxLineSpecs = []paycheckLineSpec{
 	{label: "HSA contribution", transfer: true},
 }
 
+// paycheckFrequencyOption is one entry in the wizard's frequency
+// picker. Unlike the generic frequency picker (which exposes a bare
+// "Semi-Monthly" option), the paycheck picker offers the two common
+// preset day-pairs explicitly: 1st & 15th and 15th & last day. Each
+// entry maps directly to a scheduled.Frequency plus the two day-of-
+// month values to stamp onto the schedule at save time.
+type paycheckFrequencyOption struct {
+	label               string
+	frequency           scheduled.Frequency
+	dayOfMonth          int // 0 = don't set; 1-31 = specific day; -1 = last day of month
+	secondaryDayOfMonth int // 0 = don't set; 1-31 = specific day; -1 = last day of month
+}
+
+// paycheckFrequencyOptions is the wizard's frequency picker. Only
+// paycheck-realistic cadences appear (no Daily / Quarterly / Yearly
+// — those don't describe real paychecks). Semi-monthly fans out into
+// the two common day-pair variants so the user can pick their actual
+// schedule without a follow-up day picker.
+var paycheckFrequencyOptions = []paycheckFrequencyOption{
+	{label: "Weekly", frequency: scheduled.FrequencyWeekly},
+	{label: "Fortnightly (every 2 weeks)", frequency: scheduled.FrequencyBiweekly},
+	{label: "Semi-Monthly (1st & 15th)", frequency: scheduled.FrequencySemiMonthly, dayOfMonth: 1, secondaryDayOfMonth: 15},
+	{label: "Semi-Monthly (15th & last day)", frequency: scheduled.FrequencySemiMonthly, dayOfMonth: 15, secondaryDayOfMonth: -1},
+	{label: "Monthly", frequency: scheduled.FrequencyMonthly},
+}
+
+// defaultPaycheckFrequencyIndex returns the wizard's default
+// frequency selection — Fortnightly. The list above has this at
+// index 1.
+const defaultPaycheckFrequencyIndex = 1
+
+// buildPaycheckFrequencyLabels returns the labels for the wizard's
+// frequency picker.
+func buildPaycheckFrequencyLabels() []string {
+	labels := make([]string, len(paycheckFrequencyOptions))
+	for i, opt := range paycheckFrequencyOptions {
+		labels[i] = opt.label
+	}
+	return labels
+}
+
+// paycheckFrequencyForIndex returns the option for a select index,
+// falling back to Fortnightly when out of range.
+func paycheckFrequencyForIndex(idx int) paycheckFrequencyOption {
+	if idx < 0 || idx >= len(paycheckFrequencyOptions) {
+		return paycheckFrequencyOptions[defaultPaycheckFrequencyIndex]
+	}
+	return paycheckFrequencyOptions[idx]
+}
+
+// paycheckFrequencyIndexFor returns the picker index that best
+// matches the schedule's stored frequency + day fields. For semi-
+// monthly we match on the day-pair; for everything else we match on
+// frequency alone. Unknown shapes fall back to the default index.
+func paycheckFrequencyIndexFor(st *scheduled.Transaction) int {
+	if st == nil {
+		return defaultPaycheckFrequencyIndex
+	}
+	primary, secondary := 0, 0
+	if st.DayOfMonth.Valid {
+		primary = int(st.DayOfMonth.Int64)
+	}
+	if st.SecondaryDayOfMonth.Valid {
+		secondary = int(st.SecondaryDayOfMonth.Int64)
+	}
+	for i, opt := range paycheckFrequencyOptions {
+		if opt.frequency != st.Frequency {
+			continue
+		}
+		if opt.frequency == scheduled.FrequencySemiMonthly {
+			if opt.dayOfMonth == primary && opt.secondaryDayOfMonth == secondary {
+				return i
+			}
+			continue
+		}
+		return i
+	}
+	return defaultPaycheckFrequencyIndex
+}
+
 // NewPaycheckWizard builds the wizard with the static layout from
 // the spec, seeded with sensible defaults: frequency = biweekly,
 // next payday = today, gross category = Income > Salary, each
@@ -209,7 +289,7 @@ func NewPaycheckWizard(categoryOptions []string, categoryIDs []types.ID, account
 	d.SetWidth(72)
 
 	w.employerField = d.AddTextField("Employer (payee)", "", "Payee name", 0)
-	w.frequencyField = d.AddSelectField("Pay frequency", buildFrequencyOptions(), frequencyToIndex(scheduled.FrequencyBiweekly))
+	w.frequencyField = d.AddSelectField("Pay frequency", buildPaycheckFrequencyLabels(), defaultPaycheckFrequencyIndex)
 	w.nextPaydayField = d.AddDateField("Next payday", time.Now().Format("01/02/2006"))
 	w.grossAmountField = d.AddTextField("Gross pay", "", "0.00", 12)
 	w.grossCategoryField = d.AddSelectField("Gross pay category", categoryOptions, findCategoryOptionIndex(categoryOptions, "Income > Salary"))
@@ -601,7 +681,7 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	frequency := frequencyFromIndex(w.frequencyField.SelectedIndex)
+	freqOpt := paycheckFrequencyForIndex(w.frequencyField.SelectedIndex)
 
 	// Build splits + parent net from the form. BuildSplits handles
 	// gross / deduction / transfer line validation and the
@@ -631,7 +711,13 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 
-		st := scheduled.NewTransaction(accountID, frequency, startDate)
+		st := scheduled.NewTransaction(accountID, freqOpt.frequency, startDate)
+		if freqOpt.dayOfMonth != 0 {
+			st.DayOfMonth = types.NullableInt{Int64: int64(freqOpt.dayOfMonth), Valid: true}
+		}
+		if freqOpt.secondaryDayOfMonth != 0 {
+			st.SecondaryDayOfMonth = types.NullableInt{Int64: int64(freqOpt.secondaryDayOfMonth), Valid: true}
+		}
 		st.SetAmount(parentAmount)
 		if !payeeID.IsNil() {
 			st.SetPayee(payeeID)
@@ -736,7 +822,7 @@ func NewPaycheckWizardFromSchedule(
 		}
 	}
 
-	w.frequencyField.SelectedIndex = frequencyToIndex(st.Frequency)
+	w.frequencyField.SelectedIndex = paycheckFrequencyIndexFor(st)
 	w.nextPaydayField.Value = st.NextDate.Time().Format("01/02/2006")
 
 	for i, opt := range w.primaryAccountField.Options {

@@ -10,7 +10,7 @@ import (
 func TestFrequency(t *testing.T) {
 	t.Run("AllFrequencies returns all frequencies", func(t *testing.T) {
 		frequencies := AllFrequencies()
-		expected := 6
+		expected := 7
 		if len(frequencies) != expected {
 			t.Errorf("Expected %d frequencies, got %d", expected, len(frequencies))
 		}
@@ -24,6 +24,7 @@ func TestFrequency(t *testing.T) {
 			{FrequencyDaily, "daily"},
 			{FrequencyWeekly, "weekly"},
 			{FrequencyBiweekly, "biweekly"},
+			{FrequencySemiMonthly, "semimonthly"},
 			{FrequencyMonthly, "monthly"},
 			{FrequencyQuarterly, "quarterly"},
 			{FrequencyYearly, "yearly"},
@@ -57,7 +58,8 @@ func TestFrequency(t *testing.T) {
 		}{
 			{FrequencyDaily, "Daily"},
 			{FrequencyWeekly, "Weekly"},
-			{FrequencyBiweekly, "Biweekly"},
+			{FrequencyBiweekly, "Fortnightly"},
+			{FrequencySemiMonthly, "Semi-Monthly"},
 			{FrequencyMonthly, "Monthly"},
 			{FrequencyQuarterly, "Quarterly"},
 			{FrequencyYearly, "Yearly"},
@@ -87,6 +89,7 @@ func TestParseFrequency(t *testing.T) {
 			{"daily", FrequencyDaily},
 			{"weekly", FrequencyWeekly},
 			{"biweekly", FrequencyBiweekly},
+			{"semimonthly", FrequencySemiMonthly},
 			{"monthly", FrequencyMonthly},
 			{"quarterly", FrequencyQuarterly},
 			{"yearly", FrequencyYearly},
@@ -921,6 +924,50 @@ func TestCalculateNextDate(t *testing.T) {
 		expected := types.NewDate(2025, time.March, 1)
 		if !next.Equal(expected) {
 			t.Errorf("Expected %s, got %s", expected.String(), next.String())
+		}
+	})
+
+	t.Run("Semi-monthly: 15th and last day", func(t *testing.T) {
+		// From the 15th, next pay date should be the last day of the
+		// same month.
+		st := NewTransaction(types.NewID(), FrequencySemiMonthly, types.NewDate(2026, time.March, 15))
+		st.DayOfMonth = types.NullableInt{Int64: 15, Valid: true}
+		st.SecondaryDayOfMonth = types.NullableInt{Int64: -1, Valid: true}
+
+		next := st.CalculateNextDate()
+		if expected := types.NewDate(2026, time.March, 31); !next.Equal(expected) {
+			t.Errorf("from 15th: got %s, want %s", next.String(), expected.String())
+		}
+
+		// From the last day, next should roll to the 15th of next month.
+		st.NextDate = types.NewDate(2026, time.March, 31)
+		next = st.CalculateNextDate()
+		if expected := types.NewDate(2026, time.April, 15); !next.Equal(expected) {
+			t.Errorf("from last day: got %s, want %s", next.String(), expected.String())
+		}
+
+		// February (28-day) — from 15th, advances to Feb 28.
+		st.NextDate = types.NewDate(2026, time.February, 15)
+		next = st.CalculateNextDate()
+		if expected := types.NewDate(2026, time.February, 28); !next.Equal(expected) {
+			t.Errorf("Feb from 15th: got %s, want %s", next.String(), expected.String())
+		}
+	})
+
+	t.Run("Semi-monthly: 1st and 15th", func(t *testing.T) {
+		st := NewTransaction(types.NewID(), FrequencySemiMonthly, types.NewDate(2026, time.January, 1))
+		st.DayOfMonth = types.NullableInt{Int64: 1, Valid: true}
+		st.SecondaryDayOfMonth = types.NullableInt{Int64: 15, Valid: true}
+
+		next := st.CalculateNextDate()
+		if expected := types.NewDate(2026, time.January, 15); !next.Equal(expected) {
+			t.Errorf("from 1st: got %s, want %s", next.String(), expected.String())
+		}
+
+		st.NextDate = types.NewDate(2026, time.January, 15)
+		next = st.CalculateNextDate()
+		if expected := types.NewDate(2026, time.February, 1); !next.Equal(expected) {
+			t.Errorf("from 15th: got %s, want %s", next.String(), expected.String())
 		}
 	})
 }
