@@ -1893,64 +1893,43 @@ func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 	if got := w.NextPayday().Value; !strings.Contains(got, "2024") {
 		t.Errorf("next payday pre-fill = %q, want a 2024 date", got)
 	}
-	grossMoney, err := parseAmountInput(w.GrossAmount().Value)
-	if err != nil {
-		t.Fatalf("gross amount %q failed to parse: %v", w.GrossAmount().Value, err)
-	}
-	if !grossMoney.Equal(types.MustNewMoney("5000")) {
-		t.Errorf("gross amount pre-fill = %s, want 5000", grossMoney.String())
-	}
-	if got, want := w.GrossCategory().SelectedIndex, indexOf(categoryOptions, "Income > Salary"); got != want {
-		t.Errorf("gross category pre-fill = %d, want %d (Income > Salary)", got, want)
-	}
-	if got, want := w.PrimaryAccount().Options[w.PrimaryAccount().SelectedIndex], "Checking"; got != want {
-		t.Errorf("primary account pre-fill = %q, want %q", got, want)
+	if got, want := w.DepositAccount().Options[w.DepositAccount().SelectedIndex], "Checking"; got != want {
+		t.Errorf("deposit account pre-fill = %q, want %q", got, want)
 	}
 
-	// Federal pre-fill: user typed positive magnitudes, so 800 (not -800).
-	preTax := w.PreTaxLines()
-	federalMoney, err := parseAmountInput(preTax[0].AmountField().Value)
-	if err != nil {
-		t.Fatalf("federal amount %q failed to parse: %v", preTax[0].AmountField().Value, err)
+	// Pre-fill walks the schedule's splits and routes each row into
+	// the appropriate section by heuristic: positive categorized →
+	// PreTax (gross income), negative with "Tax > " → Tax, transfer
+	// or other negative → PostTax.
+	pre := w.PreTaxLines()
+	if len(pre) != 1 {
+		t.Fatalf("got %d pre-tax rows, want 1 (Salary)", len(pre))
 	}
-	if !federalMoney.Equal(types.MustNewMoney("800")) {
-		t.Errorf("federal pre-fill = %s, want 800", federalMoney.String())
-	}
-	// Social Security pre-fill at preTax[2].
-	ssMoney, err := parseAmountInput(preTax[2].AmountField().Value)
-	if err != nil {
-		t.Fatalf("social security amount %q failed to parse: %v", preTax[2].AmountField().Value, err)
-	}
-	if !ssMoney.Equal(types.MustNewMoney("310")) {
-		t.Errorf("social security pre-fill = %s, want 310", ssMoney.String())
+	if got := pre[0].AmountField().Value; got != "5000" {
+		t.Errorf("pre-tax salary amount = %q, want 5000", got)
 	}
 
-	// Health insurance pre-fill at postTax[0].
-	postTax := w.PostTaxLines()
-	healthMoney, err := parseAmountInput(postTax[0].AmountField().Value)
-	if err != nil {
-		t.Fatalf("health amount %q failed to parse: %v", postTax[0].AmountField().Value, err)
-	}
-	if !healthMoney.Equal(types.MustNewMoney("150")) {
-		t.Errorf("health pre-fill = %s, want 150", healthMoney.String())
+	tax := w.TaxLines()
+	if len(tax) != 2 {
+		t.Fatalf("got %d tax rows, want 2", len(tax))
 	}
 
-	// Transfer line should round-trip as an additional transfer of -500
-	// to the 401k destination. The wizard preserves user inputs as
-	// positive magnitudes.
-	addls := w.AdditionalTransfers()
-	if len(addls) != 1 {
-		t.Fatalf("got %d additional transfers, want 1", len(addls))
+	post := w.PostTaxLines()
+	if len(post) != 2 {
+		t.Fatalf("got %d post-tax rows, want 2 (Health + 401k transfer)", len(post))
 	}
-	retire401kMoney, err := parseAmountInput(addls[0].AmountField().Value)
-	if err != nil {
-		t.Fatalf("401k amount %q failed to parse: %v", addls[0].AmountField().Value, err)
+
+	// Confirm the transfer-line row points at 401k.
+	sawTransfer := false
+	for _, row := range post {
+		if row.IsTransfer() {
+			if got := w.DepositAccount().Options[row.AccountIndex()]; got == "401k" {
+				sawTransfer = true
+			}
+		}
 	}
-	if !retire401kMoney.Equal(types.MustNewMoney("500")) {
-		t.Errorf("401k transfer pre-fill = %s, want 500", retire401kMoney.String())
-	}
-	if got := w.PrimaryAccount().Options[addls[0].AccountIndex()]; got != "401k" {
-		t.Errorf("additional transfer destination = %q, want 401k", got)
+	if !sawTransfer {
+		t.Error("expected a post-tax transfer row pointing at 401k")
 	}
 }
 
