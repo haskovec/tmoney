@@ -330,6 +330,19 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		case DialogActionCancel:
 			a.schedDialog.SetVisible(false)
 			a.schedDialog = nil
+		case DialogActionAlternate:
+			return a.relaunchAsPaycheckWizard()
+		}
+		return a, nil
+	}
+
+	if a.paycheckWizard != nil && a.paycheckWizard.IsVisible() {
+		action := a.paycheckWizard.HandleMouse(msg, a.styles, a.width, a.height)
+		switch action {
+		case DialogActionSubmit:
+			return a.submitPaycheckWizard()
+		case DialogActionCancel:
+			a.closePaycheckWizard()
 		}
 		return a, nil
 	}

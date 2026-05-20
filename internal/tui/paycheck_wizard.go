@@ -71,6 +71,21 @@ type PaycheckWizard struct {
 
 	// errorMsg surfaces validation failures inline.
 	errorMsg string
+
+	// hitZones records click targets in content-local coordinates,
+	// rebuilt on each Render so HandleMouse can dispatch clicks to
+	// the matching focusable.
+	hitZones []wizardHitZone
+}
+
+// wizardHitZone is one clickable region recorded during Render.
+// Coordinates are content-local (relative to the inside of the
+// dialog box, after border + padding).
+type wizardHitZone struct {
+	row    int
+	colMin int
+	colMax int
+	target wizardFocusTarget
 }
 
 // PaycheckSection identifies which of the wizard's three visual
@@ -525,56 +540,74 @@ func (w *PaycheckWizard) focusedTarget() wizardFocusTarget {
 // Render
 // ===========================================================================
 
-// Render returns the wizard's overlay-ready string.
+// Render returns the wizard's overlay-ready string. As a side-effect
+// it rebuilds w.hitZones so HandleMouse can dispatch clicks.
 func (w *PaycheckWizard) Render(styles Styles) string {
 	if w == nil || !w.visible {
 		return ""
 	}
 	w.clampFocus()
-	focusables := w.collectFocusables()
 	focused := w.focusedTarget()
 
-	contentWidth := w.width - dialogHorizontalOverhead
-	if contentWidth < 40 {
-		contentWidth = 40
+	contentWidth := max(w.width-dialogHorizontalOverhead, 40)
+	w.hitZones = w.hitZones[:0]
+
+	var lines []string
+	addLine := func(s string) {
+		lines = append(lines, s)
 	}
 
-	var b strings.Builder
+	// Title row with [×] close button on the right.
+	closeBtn := styles.Muted.Render("[x]")
+	titleText := styles.DialogTitle.Render("PAYCHECK SCHEDULE")
+	titleGap := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(closeBtn), 1)
+	addLine(titleText + strings.Repeat(" ", titleGap) + closeBtn)
+	// Hit zone for [x]: same row as title, right edge.
+	w.hitZones = append(w.hitZones, wizardHitZone{
+		row:    len(lines) - 1,
+		colMin: contentWidth - lipgloss.Width(closeBtn),
+		colMax: contentWidth,
+		target: wizardFocusTarget{kind: wizardFocusCancel},
+	})
 
-	// Title.
-	title := lipgloss.NewStyle().Bold(true).Render("Paycheck Schedule")
-	b.WriteString(title)
-	b.WriteString("\n")
-	b.WriteString(strings.Repeat("─", contentWidth))
-	b.WriteString("\n\n")
+	addLine(strings.Repeat("─", contentWidth))
+	addLine("")
 
 	// Header rows.
 	headerFields := []*Field{w.employerField, w.frequencyField, w.nextPaydayField, w.accountField, w.memoField}
 	for _, f := range headerFields {
-		b.WriteString(w.renderFieldRow(styles, f, focused.field == f, contentWidth))
-		b.WriteString("\n")
+		row, zones := w.renderFieldRow(styles, f, focused.field == f, contentWidth, len(lines))
+		addLine(row)
+		w.hitZones = append(w.hitZones, zones...)
 	}
-	b.WriteString("\n")
+	addLine("")
 
 	// Sections.
 	for s := PaycheckPreTax; s <= PaycheckPostTax; s++ {
-		b.WriteString(lipgloss.NewStyle().Bold(true).Render(s.Title()))
-		b.WriteString("\n")
-		b.WriteString(strings.Repeat("─", contentWidth))
-		b.WriteString("\n")
+		addLine(styles.Bold.Render(s.Title()))
+		addLine(strings.Repeat("─", contentWidth))
 
 		for _, line := range w.sections[s] {
-			b.WriteString(w.renderLine(styles, line, focused, contentWidth))
-			b.WriteString("\n")
+			row, zones := w.renderLine(styles, line, focused, contentWidth, len(lines))
+			addLine(row)
+			w.hitZones = append(w.hitZones, zones...)
 		}
 
 		addLabel := fmt.Sprintf("[+ Add %s row]", strings.ToLower(s.Title()))
+		var addRow string
 		if focused.kind == wizardFocusAddRow && focused.section == s {
-			addLabel = lipgloss.NewStyle().Reverse(true).Bold(true).Render(addLabel)
+			addRow = "  " + styles.DialogButtonFocused.Render(addLabel)
+		} else {
+			addRow = "  " + styles.DialogButton.Render(addLabel)
 		}
-		b.WriteString("  ")
-		b.WriteString(addLabel)
-		b.WriteString("\n\n")
+		w.hitZones = append(w.hitZones, wizardHitZone{
+			row:    len(lines),
+			colMin: 2,
+			colMax: 2 + lipgloss.Width(addLabel),
+			target: wizardFocusTarget{kind: wizardFocusAddRow, section: s},
+		})
+		addLine(addRow)
+		addLine("")
 	}
 
 	// Net total.
@@ -583,70 +616,86 @@ func (w *PaycheckWizard) Render(styles Styles) string {
 	if w.accountField != nil && w.accountField.SelectedIndex >= 0 && w.accountField.SelectedIndex < len(w.accountField.Options) {
 		depositName = w.accountField.Options[w.accountField.SelectedIndex]
 	}
-	b.WriteString(strings.Repeat("─", contentWidth))
-	b.WriteString("\n")
+	addLine(strings.Repeat("─", contentWidth))
 	totalLabel := "Net to deposit account"
 	if depositName != "" {
 		totalLabel = "Net to " + depositName
 	}
-	fmt.Fprintf(&b, "%s: %s\n\n", totalLabel, formatDashboardMoney(total))
+	addLine(fmt.Sprintf("%s: %s", totalLabel, formatDashboardMoney(total)))
+	addLine("")
 
 	// Error.
 	if w.errorMsg != "" {
-		b.WriteString(styles.Error.Render(w.errorMsg))
-		b.WriteString("\n\n")
+		addLine(styles.Error.Render(w.errorMsg))
+		addLine("")
 	}
 
-	// Buttons.
-	b.WriteString(strings.Repeat("─", contentWidth))
-	b.WriteString("\n")
-	saveLabel := "[ Save ]"
-	cancelLabel := "[ Cancel ]"
+	// Buttons. Save sits on the left (Primary, default) so a keyboard
+	// user tabbing through the form lands on it first; matches the
+	// project convention from NewDialog.
+	addLine(strings.Repeat("─", contentWidth))
+	saveText := "[ Save ]"
+	cancelText := "[ Cancel ]"
+	var saveLabel, cancelLabel string
 	if focused.kind == wizardFocusSave {
-		saveLabel = lipgloss.NewStyle().Reverse(true).Bold(true).Render(saveLabel)
+		saveLabel = styles.DialogButtonFocused.Render(saveText)
+	} else {
+		saveLabel = styles.DialogButton.Render(saveText)
 	}
 	if focused.kind == wizardFocusCancel {
-		cancelLabel = lipgloss.NewStyle().Reverse(true).Bold(true).Render(cancelLabel)
+		cancelLabel = styles.DialogButtonFocused.Render(cancelText)
+	} else {
+		cancelLabel = styles.DialogButton.Render(cancelText)
 	}
-	btnGap := contentWidth - lipgloss.Width(saveLabel) - lipgloss.Width(cancelLabel)
-	if btnGap < 4 {
-		btnGap = 4
-	}
-	b.WriteString(cancelLabel + strings.Repeat(" ", btnGap) + saveLabel)
+	btnGap := max(contentWidth-lipgloss.Width(saveLabel)-lipgloss.Width(cancelLabel), 4)
+	buttonsRow := saveLabel + strings.Repeat(" ", btnGap) + cancelLabel
+	w.hitZones = append(w.hitZones,
+		wizardHitZone{
+			row:    len(lines),
+			colMin: 0,
+			colMax: lipgloss.Width(saveText),
+			target: wizardFocusTarget{kind: wizardFocusSave},
+		},
+		wizardHitZone{
+			row:    len(lines),
+			colMin: lipgloss.Width(saveLabel) + btnGap,
+			colMax: lipgloss.Width(saveLabel) + btnGap + lipgloss.Width(cancelText),
+			target: wizardFocusTarget{kind: wizardFocusCancel},
+		},
+	)
+	addLine(buttonsRow)
 
-	_ = focusables // referenced for clarity but content is via focused
-
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(1, 2).
-		Width(w.width).
-		Render(b.String())
-	return box
+	content := strings.Join(lines, "\n")
+	return styles.Dialog.Width(w.width).Render(content)
 }
 
-// renderFieldRow renders a single labeled scalar field.
-func (w *PaycheckWizard) renderFieldRow(styles Styles, f *Field, focused bool, contentWidth int) string {
+// renderFieldRow renders a single labeled scalar field and returns
+// the rendered string plus any hit zones for the value cell.
+func (w *PaycheckWizard) renderFieldRow(styles Styles, f *Field, focused bool, contentWidth, row int) (string, []wizardHitZone) {
 	if f == nil {
-		return ""
+		return "", nil
 	}
-	label := f.Label
-	if label == "" {
-		label = " "
-	}
-	label = label + ":"
+	label := f.Label + ":"
 	labelW := 18
 	label = padRight(label, labelW)
 
-	value := w.renderFieldValue(styles, f, focused, contentWidth-labelW-2)
-	return label + " " + value
+	valueWidth := contentWidth - labelW - 1
+	value := w.renderFieldValue(styles, f, focused, valueWidth)
+	out := label + " " + value
+	zones := []wizardHitZone{{
+		row:    row,
+		colMin: labelW + 1,
+		colMax: labelW + 1 + valueWidth,
+		target: wizardFocusTarget{kind: wizardFocusField, field: f},
+	}}
+	return out, zones
 }
 
 // renderLine renders one section row: select + amount + [−] remove.
-func (w *PaycheckWizard) renderLine(styles Styles, line *PaycheckLine, focused wizardFocusTarget, contentWidth int) string {
-	selW := contentWidth/2 - 8
-	if selW < 20 {
-		selW = 20
-	}
+// Returns the rendered string plus hit zones for the select, amount,
+// and remove cells.
+func (w *PaycheckWizard) renderLine(styles Styles, line *PaycheckLine, focused wizardFocusTarget, contentWidth, row int) (string, []wizardHitZone) {
+	selW := max(contentWidth/2-8, 20)
 	amtW := 14
 
 	selFocused := focused.field == line.selectField
@@ -655,15 +704,42 @@ func (w *PaycheckWizard) renderLine(styles Styles, line *PaycheckLine, focused w
 	selStr := w.renderFieldValue(styles, line.selectField, selFocused, selW)
 	amtStr := w.renderFieldValue(styles, line.amountField, amtFocused, amtW)
 
-	removeLabel := "[−]"
+	removeText := "[−]"
+	var removeLabel string
 	if focused.kind == wizardFocusRemove && focused.line == line {
-		removeLabel = lipgloss.NewStyle().Reverse(true).Bold(true).Render("[−]")
+		removeLabel = styles.DialogButtonFocused.Render(removeText)
+	} else {
+		removeLabel = styles.DialogButton.Render(removeText)
 	}
 
-	return "  " + padRight(selStr, selW) + " " + padRight(amtStr, amtW) + " " + removeLabel
+	prefix := "  "
+	pre := len(prefix)
+	out := prefix + padRight(selStr, selW) + " " + padRight(amtStr, amtW) + " " + removeLabel
+
+	zones := []wizardHitZone{
+		{
+			row:    row,
+			colMin: pre,
+			colMax: pre + selW,
+			target: wizardFocusTarget{kind: wizardFocusField, field: line.selectField},
+		},
+		{
+			row:    row,
+			colMin: pre + selW + 1,
+			colMax: pre + selW + 1 + amtW,
+			target: wizardFocusTarget{kind: wizardFocusField, field: line.amountField},
+		},
+		{
+			row:    row,
+			colMin: pre + selW + 1 + amtW + 1,
+			colMax: pre + selW + 1 + amtW + 1 + lipgloss.Width(removeText),
+			target: wizardFocusTarget{kind: wizardFocusRemove, line: line},
+		},
+	}
+	return out, zones
 }
 
-// renderFieldValue draws a field's value with cursor/highlight as
+// renderFieldValue draws a field's value with focus highlight as
 // appropriate for its type.
 func (w *PaycheckWizard) renderFieldValue(styles Styles, f *Field, focused bool, width int) string {
 	if f == nil {
@@ -674,7 +750,7 @@ func (w *PaycheckWizard) renderFieldValue(styles Styles, f *Field, focused bool,
 	case FieldText:
 		val := f.Value
 		if val == "" && !focused {
-			val = lipgloss.NewStyle().Faint(true).Render(f.Placeholder)
+			val = styles.Placeholder.Render(f.Placeholder)
 		}
 		out = "[" + padRight(val, width-2) + "]"
 	case FieldSelect:
@@ -687,9 +763,8 @@ func (w *PaycheckWizard) renderFieldValue(styles Styles, f *Field, focused bool,
 		out = "[" + padRight(f.Value, width-2) + "]"
 	}
 	if focused {
-		out = lipgloss.NewStyle().Reverse(true).Render(out)
+		out = styles.SelectedRow.Render(out)
 	}
-	_ = styles
 	return out
 }
 
@@ -753,32 +828,13 @@ func (w *PaycheckWizard) HandleKey(msg tea.KeyPressMsg) DialogAction {
 
 func (w *PaycheckWizard) handleEnter() DialogAction {
 	target := w.focusedTarget()
-	switch target.kind {
-	case wizardFocusSave:
-		return DialogActionSubmit
-	case wizardFocusCancel:
-		return DialogActionCancel
-	case wizardFocusAddRow:
-		line := w.AddRow(target.section)
-		// Focus the new row's select field.
-		focusables := w.collectFocusables()
-		for i, f := range focusables {
-			if f.kind == wizardFocusField && f.field == line.selectField {
-				w.focusIndex = i
-				break
-			}
-		}
-		return DialogActionNone
-	case wizardFocusRemove:
-		w.RemoveRow(target.line)
-		w.clampFocus()
-		return DialogActionNone
-	default:
-		// On a field: advance focus.
+	if target.kind == wizardFocusField {
+		// On a field: advance focus (don't activate).
 		w.focusIndex++
 		w.clampFocus()
 		return DialogActionNone
 	}
+	return w.activate(target)
 }
 
 func (w *PaycheckWizard) dispatchFieldKey(f *Field, msg tea.KeyPressMsg) {
@@ -824,6 +880,124 @@ func (w *PaycheckWizard) dispatchSelectFieldKey(f *Field, msg tea.KeyPressMsg) {
 		f.SelectPrev()
 	case "down":
 		f.SelectNext()
+	}
+}
+
+// ===========================================================================
+// Mouse handling
+// ===========================================================================
+
+// RenderedHeight returns the wizard's rendered height including
+// border + padding. Computed by counting newlines in a fresh render
+// (the wizard caches no layout state, so this is the simplest
+// reliable approach).
+func (w *PaycheckWizard) renderedHeightFor(styles Styles) int {
+	rendered := w.Render(styles)
+	if rendered == "" {
+		return 0
+	}
+	return strings.Count(rendered, "\n") + 1
+}
+
+// dialogBounds returns the screen-space bounding box of the wizard
+// when centered on a screenWidth × screenHeight terminal.
+func (w *PaycheckWizard) dialogBounds(styles Styles, screenWidth, screenHeight int) (startCol, startRow, endCol, endRow int) {
+	overlayHeight := w.renderedHeightFor(styles)
+	overlayWidth := w.width
+	startCol = max((screenWidth-overlayWidth)/2, 0)
+	startRow = max((screenHeight-overlayHeight)/2, 0)
+	endCol = startCol + overlayWidth
+	endRow = startRow + overlayHeight
+	return
+}
+
+// HandleMouse processes a mouse event and returns the resulting
+// action. The wizard records hit zones during Render; this routine
+// translates a click to a focus target and acts on it.
+func (w *PaycheckWizard) HandleMouse(msg tea.MouseMsg, styles Styles, screenWidth, screenHeight int) DialogAction {
+	if w == nil {
+		return DialogActionNone
+	}
+	click, ok := msg.(tea.MouseClickMsg)
+	if !ok || click.Button != tea.MouseLeft {
+		return DialogActionNone
+	}
+
+	startCol, startRow, endCol, endRow := w.dialogBounds(styles, screenWidth, screenHeight)
+	m := msg.Mouse()
+	if m.X < startCol || m.X >= endCol || m.Y < startRow || m.Y >= endRow {
+		return DialogActionNone
+	}
+
+	// Convert screen coords to content-local (inside border + padding).
+	// styles.Dialog has Border(1) + Padding(1,2) by convention; match
+	// the same offsets used by the standard Dialog.HandleMouse path.
+	localX := m.X - startCol - 3
+	localY := m.Y - startRow - 2
+
+	for _, zone := range w.hitZones {
+		if zone.row != localY {
+			continue
+		}
+		if localX < zone.colMin || localX >= zone.colMax {
+			continue
+		}
+		return w.activate(zone.target)
+	}
+	return DialogActionNone
+}
+
+// activate executes the action associated with a focus target. Used
+// by both Enter on a focused element and HandleMouse on a clicked
+// element.
+func (w *PaycheckWizard) activate(target wizardFocusTarget) DialogAction {
+	switch target.kind {
+	case wizardFocusSave:
+		w.focusToTarget(target)
+		return DialogActionSubmit
+	case wizardFocusCancel:
+		return DialogActionCancel
+	case wizardFocusAddRow:
+		line := w.AddRow(target.section)
+		// Move focus onto the new row's select field for convenience.
+		focusables := w.collectFocusables()
+		for i, f := range focusables {
+			if f.kind == wizardFocusField && f.field == line.selectField {
+				w.focusIndex = i
+				break
+			}
+		}
+		return DialogActionNone
+	case wizardFocusRemove:
+		w.RemoveRow(target.line)
+		w.clampFocus()
+		return DialogActionNone
+	case wizardFocusField:
+		w.focusToTarget(target)
+		return DialogActionNone
+	}
+	return DialogActionNone
+}
+
+// focusToTarget walks the current focusables and moves focusIndex
+// onto the matching target. No-op when not found.
+func (w *PaycheckWizard) focusToTarget(target wizardFocusTarget) {
+	focusables := w.collectFocusables()
+	for i, f := range focusables {
+		if f.kind != target.kind {
+			continue
+		}
+		if target.kind == wizardFocusField && f.field != target.field {
+			continue
+		}
+		if target.kind == wizardFocusRemove && f.line != target.line {
+			continue
+		}
+		if (target.kind == wizardFocusAddRow) && f.section != target.section {
+			continue
+		}
+		w.focusIndex = i
+		return
 	}
 }
 
