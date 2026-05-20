@@ -23,7 +23,7 @@ func TestFrequency(t *testing.T) {
 		}{
 			{FrequencyDaily, "daily"},
 			{FrequencyWeekly, "weekly"},
-			{FrequencyBiweekly, "biweekly"},
+			{FrequencyFortnightly, "fortnightly"},
 			{FrequencySemiMonthly, "semimonthly"},
 			{FrequencyMonthly, "monthly"},
 			{FrequencyQuarterly, "quarterly"},
@@ -58,7 +58,7 @@ func TestFrequency(t *testing.T) {
 		}{
 			{FrequencyDaily, "Daily"},
 			{FrequencyWeekly, "Weekly"},
-			{FrequencyBiweekly, "Fortnightly"},
+			{FrequencyFortnightly, "Fortnightly"},
 			{FrequencySemiMonthly, "Semi-Monthly"},
 			{FrequencyMonthly, "Monthly"},
 			{FrequencyQuarterly, "Quarterly"},
@@ -88,7 +88,7 @@ func TestParseFrequency(t *testing.T) {
 		}{
 			{"daily", FrequencyDaily},
 			{"weekly", FrequencyWeekly},
-			{"biweekly", FrequencyBiweekly},
+			{"fortnightly", FrequencyFortnightly},
 			{"semimonthly", FrequencySemiMonthly},
 			{"monthly", FrequencyMonthly},
 			{"quarterly", FrequencyQuarterly},
@@ -819,8 +819,8 @@ func TestCalculateNextDate(t *testing.T) {
 		}
 	})
 
-	t.Run("Biweekly adds 14 days", func(t *testing.T) {
-		st := NewTransaction(types.NewID(), FrequencyBiweekly, types.NewDate(2024, time.January, 5))
+	t.Run("Fortnightly adds 14 days", func(t *testing.T) {
+		st := NewTransaction(types.NewID(), FrequencyFortnightly, types.NewDate(2024, time.January, 5))
 
 		next := st.CalculateNextDate()
 

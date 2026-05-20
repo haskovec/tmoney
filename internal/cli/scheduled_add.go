@@ -48,7 +48,7 @@ func newScheduledAddCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&opts.account, "account", "", "Account name (required)")
 	cmd.Flags().StringVar(&opts.frequency, "frequency", "",
-		"Frequency: daily, weekly, biweekly, monthly, quarterly, yearly (required)")
+		"Frequency: daily, weekly, fortnightly, semimonthly, monthly, quarterly, yearly (required)")
 	cmd.Flags().StringVar(&opts.amount, "amount", "",
 		"Scheduled amount; omit for a variable-amount schedule")
 	cmd.Flags().StringVar(&opts.payee, "payee", "", "Payee name (auto-created if it doesn't exist)")

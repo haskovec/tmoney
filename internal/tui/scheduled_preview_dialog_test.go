@@ -112,7 +112,7 @@ func TestSchedulePreviewDialog_OpensWithTemplateValues(t *testing.T) {
 		taxAmount, _ := types.NewMoney("-410.00")
 		retireAmount, _ := types.NewMoney("-500.00")
 
-		template := scheduled.NewTransaction(accountID, scheduled.FrequencyBiweekly, nextDate)
+		template := scheduled.NewTransaction(accountID, scheduled.FrequencyFortnightly, nextDate)
 		template.NextDate = nextDate
 		template.Amount = types.NullableMoney{Money: netAmount, Valid: true}
 		template.SetPayee(payeeID)
@@ -654,7 +654,7 @@ func newSchedulePreviewMultiLineEnv(t *testing.T) *schedulePreviewMultiLineEnv {
 	taxAmount, _ := types.NewMoney("-100.00")
 
 	nextDate := types.Today()
-	dueTxn := scheduled.NewTransaction(acct.ID, scheduled.FrequencyBiweekly, nextDate)
+	dueTxn := scheduled.NewTransaction(acct.ID, scheduled.FrequencyFortnightly, nextDate)
 	dueTxn.NextDate = nextDate
 	dueTxn.Amount = types.NullableMoney{Money: netAmount, Valid: true}
 	dueTxn.SetPayee(employer.ID)

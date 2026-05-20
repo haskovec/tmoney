@@ -102,8 +102,8 @@ func TestPaycheckWizard_OpensWithEmptyForm(t *testing.T) {
 	if got, want := w.Frequency().SelectedIndex, defaultPaycheckFrequencyIndex; got != want {
 		t.Errorf("frequency default = %d, want %d (Fortnightly)", got, want)
 	}
-	if opt := paycheckFrequencyForIndex(w.Frequency().SelectedIndex); opt.frequency != scheduled.FrequencyBiweekly {
-		t.Errorf("default frequency option = %v, want biweekly", opt.frequency)
+	if opt := paycheckFrequencyForIndex(w.Frequency().SelectedIndex); opt.frequency != scheduled.FrequencyFortnightly {
+		t.Errorf("default frequency option = %v, want fortnightly", opt.frequency)
 	}
 
 	// Next payday is a text field for now (parsed on submit).

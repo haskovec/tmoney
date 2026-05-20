@@ -15,7 +15,7 @@ type Frequency string
 const (
 	FrequencyDaily       Frequency = "daily"
 	FrequencyWeekly      Frequency = "weekly"
-	FrequencyBiweekly    Frequency = "biweekly" // stored as "biweekly" for back-compat; display label is "Fortnightly"
+	FrequencyFortnightly Frequency = "fortnightly"
 	FrequencySemiMonthly Frequency = "semimonthly"
 	FrequencyMonthly     Frequency = "monthly"
 	FrequencyQuarterly   Frequency = "quarterly"
@@ -27,7 +27,7 @@ func AllFrequencies() []Frequency {
 	return []Frequency{
 		FrequencyDaily,
 		FrequencyWeekly,
-		FrequencyBiweekly,
+		FrequencyFortnightly,
 		FrequencySemiMonthly,
 		FrequencyMonthly,
 		FrequencyQuarterly,
@@ -43,7 +43,7 @@ func (f Frequency) String() string {
 // IsValid returns true if the Frequency is a valid frequency.
 func (f Frequency) IsValid() bool {
 	switch f {
-	case FrequencyDaily, FrequencyWeekly, FrequencyBiweekly, FrequencySemiMonthly,
+	case FrequencyDaily, FrequencyWeekly, FrequencyFortnightly, FrequencySemiMonthly,
 		FrequencyMonthly, FrequencyQuarterly, FrequencyYearly:
 		return true
 	}
@@ -51,16 +51,13 @@ func (f Frequency) IsValid() bool {
 }
 
 // DisplayName returns a human-readable name for the frequency.
-// "Biweekly" is rendered as "Fortnightly" because biweekly is
-// commonly misread as "twice per week"; the storage value is
-// unchanged for back-compat with existing databases.
 func (f Frequency) DisplayName() string {
 	switch f {
 	case FrequencyDaily:
 		return "Daily"
 	case FrequencyWeekly:
 		return "Weekly"
-	case FrequencyBiweekly:
+	case FrequencyFortnightly:
 		return "Fortnightly"
 	case FrequencySemiMonthly:
 		return "Semi-Monthly"
@@ -421,7 +418,7 @@ func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMo
 	case FrequencyWeekly:
 		return types.Date(currentTime.AddDate(0, 0, interval*7))
 
-	case FrequencyBiweekly:
+	case FrequencyFortnightly:
 		return types.Date(currentTime.AddDate(0, 0, 14))
 
 	case FrequencySemiMonthly:
@@ -600,7 +597,7 @@ func (st *Transaction) Validate() types.ValidationErrors {
 
 	// Frequency validation
 	if !st.Frequency.IsValid() {
-		v.AddError("frequency", "must be a valid frequency (daily, weekly, biweekly, monthly, quarterly, or yearly)")
+		v.AddError("frequency", "must be a valid frequency (daily, weekly, fortnightly, semimonthly, monthly, quarterly, or yearly)")
 	}
 
 	// Interval must be positive

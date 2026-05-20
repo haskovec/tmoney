@@ -598,7 +598,7 @@ func TestScheduledTransactionNextDateCalculation(t *testing.T) {
 	t.Run("biweekly next date", func(t *testing.T) {
 		st := scheduled.NewTransactionWithAmount(
 			account.ID,
-			scheduled.FrequencyBiweekly,
+			scheduled.FrequencyFortnightly,
 			types.NewDate(2024, 1, 5),
 			types.MustNewMoney("-50.00"),
 		)

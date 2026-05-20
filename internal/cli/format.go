@@ -546,7 +546,7 @@ Scheduled Transaction Commands:
 
   --add-scheduled      Create a new scheduled transaction
     --account <name>         Account for the scheduled transaction
-    --frequency <freq>       Frequency (daily, weekly, biweekly, monthly, quarterly, yearly)
+    --frequency <freq>       Frequency (daily, weekly, fortnightly, semimonthly, monthly, quarterly, yearly)
     --amount <value>         Transaction amount (omit for variable amount)
     --payee <name>           Payee name
     --category <name>        Category name

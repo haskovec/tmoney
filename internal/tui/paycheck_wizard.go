@@ -202,7 +202,7 @@ type paycheckFrequencyOption struct {
 // Semi-monthly fans out into the two common day-pair variants.
 var paycheckFrequencyOptions = []paycheckFrequencyOption{
 	{label: "Weekly", frequency: scheduled.FrequencyWeekly},
-	{label: "Fortnightly (every 2 weeks)", frequency: scheduled.FrequencyBiweekly},
+	{label: "Fortnightly (every 2 weeks)", frequency: scheduled.FrequencyFortnightly},
 	{label: "Semi-Monthly (1st & 15th)", frequency: scheduled.FrequencySemiMonthly, dayOfMonth: 1, secondaryDayOfMonth: 15},
 	{label: "Semi-Monthly (15th & last day)", frequency: scheduled.FrequencySemiMonthly, dayOfMonth: 15, secondaryDayOfMonth: -1},
 	{label: "Monthly", frequency: scheduled.FrequencyMonthly},

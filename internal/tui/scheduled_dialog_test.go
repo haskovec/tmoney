@@ -43,7 +43,7 @@ func TestFrequencyFromIndex(t *testing.T) {
 	}{
 		{0, scheduled.FrequencyDaily},
 		{1, scheduled.FrequencyWeekly},
-		{2, scheduled.FrequencyBiweekly},
+		{2, scheduled.FrequencyFortnightly},
 		{3, scheduled.FrequencySemiMonthly},
 		{4, scheduled.FrequencyMonthly},
 		{5, scheduled.FrequencyQuarterly},
@@ -67,7 +67,7 @@ func TestFrequencyToIndex(t *testing.T) {
 	}{
 		{scheduled.FrequencyDaily, 0},
 		{scheduled.FrequencyWeekly, 1},
-		{scheduled.FrequencyBiweekly, 2},
+		{scheduled.FrequencyFortnightly, 2},
 		{scheduled.FrequencySemiMonthly, 3},
 		{scheduled.FrequencyMonthly, 4},
 		{scheduled.FrequencyQuarterly, 5},
@@ -1833,7 +1833,7 @@ func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 
 	// Paycheck-shaped schedule: gross +5000 Salary, -800 Federal, -310
 	// Social Security, -150 Health, -500 401(k) transfer. Net 3240.
-	st := scheduled.NewTransaction(checkingID, scheduled.FrequencyBiweekly, types.MustParseDate("2024-03-15"))
+	st := scheduled.NewTransaction(checkingID, scheduled.FrequencyFortnightly, types.MustParseDate("2024-03-15"))
 	st.SetAmount(types.MustNewMoney("3240.00"))
 	st.SetPayee(employerPayeeID)
 	st.ClearCategory()
@@ -1887,8 +1887,8 @@ func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 	if got, want := w.Frequency().SelectedIndex, defaultPaycheckFrequencyIndex; got != want {
 		t.Errorf("frequency pre-fill = %d, want %d (fortnightly)", got, want)
 	}
-	if opt := paycheckFrequencyForIndex(w.Frequency().SelectedIndex); opt.frequency != scheduled.FrequencyBiweekly {
-		t.Errorf("frequency pre-fill option = %v, want biweekly (fortnightly)", opt.frequency)
+	if opt := paycheckFrequencyForIndex(w.Frequency().SelectedIndex); opt.frequency != scheduled.FrequencyFortnightly {
+		t.Errorf("frequency pre-fill option = %v, want fortnightly", opt.frequency)
 	}
 	if got := w.NextPayday().Value; !strings.Contains(got, "2024") {
 		t.Errorf("next payday pre-fill = %q, want a 2024 date", got)

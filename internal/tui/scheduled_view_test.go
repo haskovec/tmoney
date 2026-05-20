@@ -501,7 +501,7 @@ func TestApp_FormatScheduledRow_AllFrequencies(t *testing.T) {
 	}{
 		{scheduled.FrequencyDaily, "Daily"},
 		{scheduled.FrequencyWeekly, "Weekly"},
-		{scheduled.FrequencyBiweekly, "Fortnightly"},
+		{scheduled.FrequencyFortnightly, "Fortnightly"},
 		{scheduled.FrequencySemiMonthly, "Semi-Monthly"},
 		{scheduled.FrequencyMonthly, "Monthly"},
 		{scheduled.FrequencyQuarterly, "Quarterly"},
