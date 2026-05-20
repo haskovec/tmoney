@@ -505,12 +505,12 @@ func TestPaycheckWizard_Save_CreatesMultiLineSchedule(t *testing.T) {
 	preTax[2].AmountField().Value = "310"   // Social Security
 	preTax[3].AmountField().Value = "72.50" // Medicare
 	preTax[4].AmountField().Value = "500"   // 401(k) transfer
-	preTax[4].accountIndex = retireIdx
+	preTax[4].SetAccountIndex(retireIdx)
 
 	postTax := w.PostTaxLines()
 	postTax[0].AmountField().Value = "150" // Health insurance
 	postTax[1].AmountField().Value = "100" // HSA transfer
-	postTax[1].accountIndex = retireIdx    // HSA uses 401k as transfer target for test simplicity
+	postTax[1].SetAccountIndex(retireIdx)  // HSA uses 401k as transfer target for test simplicity
 
 	addl := w.AddAdditionalTransfer("Savings", savingsIdx)
 	addl.AmountField().Value = "250"

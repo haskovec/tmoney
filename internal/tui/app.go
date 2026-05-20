@@ -514,6 +514,11 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.handleSchedulePreviewDialogKey(msg)
 	}
 
+	// If paycheck wizard is visible, route all keys to it
+	if a.paycheckWizard != nil && a.paycheckWizard.IsVisible() {
+		return a.handlePaycheckWizardKey(msg)
+	}
+
 	// If account dialog is visible, route all keys to it
 	if a.acctDialog != nil && a.acctDialog.IsVisible() {
 		return a.handleAccountDialogKey(msg)

@@ -72,6 +72,8 @@ func (a *App) isDialogVisible() bool {
 		(a.createCatDialog != nil && a.createCatDialog.IsVisible()) ||
 		(a.transferDialog != nil && a.transferDialog.IsVisible()) ||
 		(a.schedDialog != nil && a.schedDialog.IsVisible()) ||
+		(a.schedPreviewDialog != nil && a.schedPreviewDialog.IsVisible()) ||
+		(a.paycheckWizard != nil && a.paycheckWizard.IsVisible()) ||
 		(a.acctDialog != nil && a.acctDialog.IsVisible()) ||
 		(a.reconDialog != nil && a.reconDialog.IsVisible()) ||
 		(a.securityDialog != nil && a.securityDialog.IsVisible()) ||

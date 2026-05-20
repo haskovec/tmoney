@@ -32,30 +32,35 @@ import (
 //     choices.
 //
 // Save logic and the computed-remainder line land in MS-027/MS-028;
-// the dynamic "[+ Add line]" affordances are deferred too.
+// the dynamic "[+ Add line]" affordances are deferred too. The wizard
+// is rendered as a single tall *Dialog with all fields stacked
+// vertically; the spec mockup's side-by-side row layout is
+// aspirational and will follow in a polish pass.
 type PaycheckWizard struct {
-	visible bool
-	width   int
+	// form is the underlying Dialog that owns every input field. It
+	// also drives focus / Tab / Enter / Esc routing via Dialog.HandleKey.
+	form *Dialog
 
-	// Header fields.
-	employer   Field // text — employer payee name
-	frequency  Field // select — Frequency choices via scheduled.AllFrequencies
-	nextPayday Field // date — schedule start date (today by default)
-
-	// Gross pay row.
-	grossAmount   Field // text — gross pay amount
-	grossCategory Field // select — category for gross (default Income > Salary)
+	// Pointers into form.fields for the structural accessors. These
+	// stay valid for the lifetime of the wizard because the Dialog
+	// never re-slices its fields once built.
+	employerField       *Field
+	frequencyField      *Field
+	nextPaydayField     *Field
+	grossAmountField    *Field
+	grossCategoryField  *Field
+	primaryAccountField *Field
 
 	// Deduction rows.
 	preTax  []*PaycheckLine
 	postTax []*PaycheckLine
 
 	// Net pay destinations.
-	primaryAccount      Field // select — first active account by default
 	additionalTransfers []*PaycheckLine
 
 	// Lookups used to map selected indices to IDs at save time
-	// (MS-027/MS-028).
+	// (MS-027/MS-028) and to populate dynamically-added transfer-line
+	// pickers.
 	categoryOptions []string
 	categoryIDs     []types.ID
 	accountOptions  []string
@@ -65,36 +70,39 @@ type PaycheckWizard struct {
 // PaycheckLine is one row in the deductions or additional-transfers
 // section of the wizard. A line is either categorized (a regular
 // expense/income split) or a transfer to another account, mirroring
-// the two split-item shapes in the underlying data model.
+// the two split-item shapes in the underlying data model. Both the
+// amount and the category-or-account selector are real Field pointers
+// into the parent wizard's *Dialog, so the Dialog's standard focus
+// model edits them.
 type PaycheckLine struct {
 	// Label is the fixed label rendered to the left of the line's
 	// fields (e.g. "Federal income tax", "401(k) contribution").
 	Label string
 
 	// amountField holds the entered amount for this line.
-	amountField Field
+	amountField *Field
+
+	// selectField is the line's category select (categorized lines)
+	// or destination-account select (transfer lines). Which list it
+	// holds is fixed at line construction time by isTransfer.
+	selectField *Field
 
 	// isTransfer indicates the line targets a destination account
 	// (transfer-line) instead of a category.
 	isTransfer bool
-
-	// categoryIndex is the selected index into the wizard's
-	// categoryOptions slice when the line is categorized. The
-	// wizard's constructor seeds this to the line's default
-	// category when one is configured.
-	categoryIndex int
-
-	// accountIndex is the selected index into the wizard's
-	// accountOptions slice when the line is a transfer-line. Zero
-	// by default — the user picks the destination account
-	// explicitly.
-	accountIndex int
 }
 
 // AmountField returns a pointer to the line's amount input so the
-// wizard's key handler (added in a later slice) can mutate it.
+// wizard's key handler can mutate it.
 func (l *PaycheckLine) AmountField() *Field {
-	return &l.amountField
+	return l.amountField
+}
+
+// SelectField returns the line's category-or-account select field.
+// Callers should consult IsTransfer() to know which interpretation
+// applies to SelectedIndex.
+func (l *PaycheckLine) SelectField() *Field {
+	return l.selectField
 }
 
 // IsTransfer reports whether this line targets a destination
@@ -106,13 +114,37 @@ func (l *PaycheckLine) IsTransfer() bool {
 // CategoryIndex returns the selected option index for a categorized
 // line. Meaningless for transfer-lines (always 0).
 func (l *PaycheckLine) CategoryIndex() int {
-	return l.categoryIndex
+	if l.isTransfer || l.selectField == nil {
+		return 0
+	}
+	return l.selectField.SelectedIndex
 }
 
 // AccountIndex returns the selected option index for a transfer-line.
 // Meaningless for categorized lines (always 0).
 func (l *PaycheckLine) AccountIndex() int {
-	return l.accountIndex
+	if !l.isTransfer || l.selectField == nil {
+		return 0
+	}
+	return l.selectField.SelectedIndex
+}
+
+// SetCategoryIndex updates the selected option index on a categorized
+// line. No-op on transfer-lines.
+func (l *PaycheckLine) SetCategoryIndex(idx int) {
+	if l.isTransfer || l.selectField == nil {
+		return
+	}
+	l.selectField.SelectedIndex = idx
+}
+
+// SetAccountIndex updates the selected option index on a transfer-
+// line. No-op on categorized lines.
+func (l *PaycheckLine) SetAccountIndex(idx int) {
+	if !l.isTransfer || l.selectField == nil {
+		return
+	}
+	l.selectField.SelectedIndex = idx
 }
 
 // paycheckLineSpec configures one of the wizard's hardcoded
@@ -158,85 +190,68 @@ var postTaxLineSpecs = []paycheckLineSpec{
 // is expected at index 0). accounts is filtered to active accounts
 // for the picker; an empty accounts slice still produces a wizard,
 // just with no selectable accounts.
+//
+// Internally the wizard owns a single *Dialog that holds every input
+// field in display order. Tab / Shift+Tab / Enter / Esc routing comes
+// for free from Dialog.HandleKey, and the wizard's Render method is a
+// thin wrapper around Dialog.Render.
 func NewPaycheckWizard(categoryOptions []string, categoryIDs []types.ID, accounts []*account.Account) *PaycheckWizard {
 	accountOptions, accountIDs := buildSplitTransferAccountOptions(accounts)
 
 	w := &PaycheckWizard{
-		visible:         true,
-		width:           72,
 		categoryOptions: categoryOptions,
 		categoryIDs:     categoryIDs,
 		accountOptions:  accountOptions,
 		accountIDs:      accountIDs,
 	}
 
-	w.employer = Field{
-		Label:       "Employer",
-		Type:        FieldText,
-		Placeholder: "Payee name",
-	}
+	d := NewDialog("Paycheck Schedule")
+	d.SetWidth(72)
 
-	w.frequency = Field{
-		Label:         "Pay frequency",
-		Type:          FieldSelect,
-		Options:       buildFrequencyOptions(),
-		SelectedIndex: frequencyToIndex(scheduled.FrequencyBiweekly),
-	}
+	w.employerField = d.AddTextField("Employer (payee)", "", "Payee name", 0)
+	w.frequencyField = d.AddSelectField("Pay frequency", buildFrequencyOptions(), frequencyToIndex(scheduled.FrequencyBiweekly))
+	w.nextPaydayField = d.AddDateField("Next payday", time.Now().Format("01/02/2006"))
+	w.grossAmountField = d.AddTextField("Gross pay", "", "0.00", 12)
+	w.grossCategoryField = d.AddSelectField("Gross pay category", categoryOptions, findCategoryOptionIndex(categoryOptions, "Income > Salary"))
 
-	w.nextPayday = Field{
-		Label:    "Next payday",
-		Type:     FieldDate,
-		Value:    time.Now().Format("01/02/2006"),
-		Width:    10,
-		dateMask: dateMaskUS,
-	}
+	w.preTax = appendPaycheckLines(d, preTaxLineSpecs, "Pre-tax", categoryOptions, accountOptions)
+	w.postTax = appendPaycheckLines(d, postTaxLineSpecs, "Post-tax", categoryOptions, accountOptions)
 
-	w.grossAmount = Field{
-		Label:       "Gross pay",
-		Type:        FieldText,
-		Placeholder: "0.00",
-		Width:       12,
-	}
-	w.grossCategory = Field{
-		Label:         "Gross pay category",
-		Type:          FieldSelect,
-		Options:       categoryOptions,
-		SelectedIndex: findCategoryOptionIndex(categoryOptions, "Income > Salary"),
-	}
+	w.primaryAccountField = d.AddSelectField("Primary deposit account", accountOptions, 0)
 
-	w.preTax = buildPaycheckLines(preTaxLineSpecs, categoryOptions)
-	w.postTax = buildPaycheckLines(postTaxLineSpecs, categoryOptions)
-
-	w.primaryAccount = Field{
-		Label:         "Primary deposit account",
-		Type:          FieldSelect,
-		Options:       accountOptions,
-		SelectedIndex: 0,
-	}
-
+	d.SetVisible(true)
+	w.form = d
 	return w
 }
 
-// buildPaycheckLines materializes the deduction rows for a section
-// (pre-tax or post-tax). Categorized lines resolve their default
+// appendPaycheckLines materializes the deduction rows for a section
+// (pre-tax or post-tax) directly onto the wizard's *Dialog. Each
+// line contributes two consecutive fields: amount (text) and the
+// category-or-account select. Categorized lines resolve their default
 // category by display name against categoryOptions; transfer lines
 // start at account index 0 (the user picks the destination).
-func buildPaycheckLines(specs []paycheckLineSpec, categoryOptions []string) []*PaycheckLine {
+func appendPaycheckLines(d *Dialog, specs []paycheckLineSpec, sectionLabel string, categoryOptions, accountOptions []string) []*PaycheckLine {
 	lines := make([]*PaycheckLine, 0, len(specs))
 	for _, spec := range specs {
-		line := &PaycheckLine{
-			Label: spec.label,
-			amountField: Field{
-				Type:        FieldText,
-				Placeholder: "0.00",
-				Width:       10,
-			},
-			isTransfer: spec.transfer,
+		amount := d.AddTextField(sectionLabel+": "+spec.label, "", "0.00", 10)
+
+		var sel *Field
+		if spec.transfer {
+			sel = d.AddSelectField(sectionLabel+": "+spec.label+" → account", accountOptions, 0)
+		} else {
+			defaultIdx := 0
+			if spec.defaultCategory != "" {
+				defaultIdx = findCategoryOptionIndex(categoryOptions, spec.defaultCategory)
+			}
+			sel = d.AddSelectField(sectionLabel+": "+spec.label+" category", categoryOptions, defaultIdx)
 		}
-		if !spec.transfer && spec.defaultCategory != "" {
-			line.categoryIndex = findCategoryOptionIndex(categoryOptions, spec.defaultCategory)
-		}
-		lines = append(lines, line)
+
+		lines = append(lines, &PaycheckLine{
+			Label:       spec.label,
+			amountField: amount,
+			selectField: sel,
+			isTransfer:  spec.transfer,
+		})
 	}
 	return lines
 }
@@ -256,33 +271,49 @@ func findCategoryOptionIndex(options []string, displayName string) int {
 
 // IsVisible reports whether the wizard should currently render.
 func (w *PaycheckWizard) IsVisible() bool {
-	return w.visible
+	return w != nil && w.form != nil && w.form.IsVisible()
 }
 
-// Employer returns the employer (payee) text field for read or
-// mutation by the wizard's key handler (added in a later slice).
+// Dialog exposes the underlying form Dialog so callers (e.g. mouse
+// handlers, the render path) can reach it directly. Most consumers
+// should use the structural accessors below instead.
+func (w *PaycheckWizard) Dialog() *Dialog {
+	return w.form
+}
+
+// Render renders the wizard as an overlay-ready string. Thin wrapper
+// around the underlying Dialog.Render so app_view.go can stack it
+// like every other modal.
+func (w *PaycheckWizard) Render(styles Styles) string {
+	if w == nil || w.form == nil {
+		return ""
+	}
+	return w.form.Render(styles)
+}
+
+// Employer returns the employer (payee) text field.
 func (w *PaycheckWizard) Employer() *Field {
-	return &w.employer
+	return w.employerField
 }
 
 // Frequency returns the pay-frequency select field.
 func (w *PaycheckWizard) Frequency() *Field {
-	return &w.frequency
+	return w.frequencyField
 }
 
 // NextPayday returns the next-payday date field.
 func (w *PaycheckWizard) NextPayday() *Field {
-	return &w.nextPayday
+	return w.nextPaydayField
 }
 
 // GrossAmount returns the gross-pay amount field.
 func (w *PaycheckWizard) GrossAmount() *Field {
-	return &w.grossAmount
+	return w.grossAmountField
 }
 
 // GrossCategory returns the gross-pay category select.
 func (w *PaycheckWizard) GrossCategory() *Field {
-	return &w.grossCategory
+	return w.grossCategoryField
 }
 
 // PreTaxLines returns the wizard's pre-tax deduction rows in spec
@@ -299,7 +330,7 @@ func (w *PaycheckWizard) PostTaxLines() []*PaycheckLine {
 
 // PrimaryAccount returns the primary-deposit-account select field.
 func (w *PaycheckWizard) PrimaryAccount() *Field {
-	return &w.primaryAccount
+	return w.primaryAccountField
 }
 
 // AdditionalTransfers returns the additional-transfer rows added by
@@ -315,16 +346,18 @@ func (w *PaycheckWizard) AdditionalTransfers() []*PaycheckLine {
 // the destination account in the wizard's account picker (parallel to
 // PrimaryAccount().Options). Returns the new line so callers (tests
 // and, eventually, the [+ Add transfer] key handler) can configure it.
+//
+// The new line's amount and account selector are appended onto the
+// underlying form Dialog, so they participate in Tab/Shift+Tab focus
+// cycling just like every other field.
 func (w *PaycheckWizard) AddAdditionalTransfer(label string, accountIndex int) *PaycheckLine {
+	amount := w.form.AddTextField("Additional transfer: "+label, "", "0.00", 10)
+	sel := w.form.AddSelectField("Additional transfer: "+label+" → account", w.accountOptions, accountIndex)
 	line := &PaycheckLine{
-		Label: label,
-		amountField: Field{
-			Type:        FieldText,
-			Placeholder: "0.00",
-			Width:       10,
-		},
-		isTransfer:   true,
-		accountIndex: accountIndex,
+		Label:       label,
+		amountField: amount,
+		selectField: sel,
+		isTransfer:  true,
 	}
 	w.additionalTransfers = append(w.additionalTransfers, line)
 	return line
@@ -355,7 +388,7 @@ func (w *PaycheckWizard) BuildSplits() (types.Money, []*scheduled.Split, error) 
 	splits := make([]*scheduled.Split, 0)
 
 	// Gross row — positive signed amount, categorized.
-	grossStr := strings.TrimSpace(w.grossAmount.Value)
+	grossStr := strings.TrimSpace(w.grossAmountField.Value)
 	if grossStr == "" {
 		return types.ZeroMoney, nil, fmt.Errorf("gross pay is required")
 	}
@@ -366,7 +399,7 @@ func (w *PaycheckWizard) BuildSplits() (types.Money, []*scheduled.Split, error) 
 	if !gross.IsPositive() {
 		return types.ZeroMoney, nil, fmt.Errorf("gross pay must be positive")
 	}
-	grossCatID := w.lookupCategoryID(w.grossCategory.SelectedIndex)
+	grossCatID := w.lookupCategoryID(w.grossCategoryField.SelectedIndex)
 	if grossCatID.IsNil() {
 		return types.ZeroMoney, nil, fmt.Errorf("gross pay needs a category")
 	}
@@ -436,14 +469,14 @@ func (w *PaycheckWizard) buildDeductionSplit(line *PaycheckLine) (*scheduled.Spl
 		Amount:    amt,
 	}
 	if line.isTransfer {
-		accountID := w.lookupAccountID(line.accountIndex)
+		accountID := w.lookupAccountID(line.AccountIndex())
 		if accountID.IsNil() {
 			return nil, fmt.Errorf("%s: pick a target account", line.Label)
 		}
 		sp.TransferAccountID = types.NullableID{ID: accountID, Valid: true}
 		return sp, nil
 	}
-	catID := w.lookupCategoryID(line.categoryIndex)
+	catID := w.lookupCategoryID(line.CategoryIndex())
 	if catID.IsNil() {
 		return nil, fmt.Errorf("%s: pick a category", line.Label)
 	}
@@ -519,6 +552,25 @@ func (a *App) closePaycheckWizard() {
 	a.paycheckWizard = nil
 }
 
+// handlePaycheckWizardKey routes a key event into the wizard's
+// underlying *Dialog and translates the result. Submit (Enter on the
+// Save button) dispatches into submitPaycheckWizard; Cancel (Esc or
+// Enter on a non-primary button) closes the wizard without saving.
+func (a *App) handlePaycheckWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if a.paycheckWizard == nil || a.paycheckWizard.form == nil {
+		return a, nil
+	}
+	action := a.paycheckWizard.form.HandleKey(msg)
+	switch action {
+	case DialogActionSubmit:
+		return a.submitPaycheckWizard()
+	case DialogActionCancel:
+		a.closePaycheckWizard()
+		return a, nil
+	}
+	return a, nil
+}
+
 // submitPaycheckWizard validates the wizard's form, assembles a multi-line
 // scheduled.Transaction from it, and dispatches the create command through
 // the scheduled service. The wizard is pure UI sugar — the saved record is
@@ -536,31 +588,31 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 	}
 
 	// Account is required.
-	accountID := w.lookupAccountID(w.primaryAccount.SelectedIndex)
+	accountID := w.lookupAccountID(w.primaryAccountField.SelectedIndex)
 	if accountID.IsNil() {
-		w.primaryAccount.Error = "Please select a deposit account"
+		w.primaryAccountField.Error = "Please select a deposit account"
 		return a, nil
 	}
 
 	// Parse start date (next payday).
-	startDate, err := parseDateInput(w.nextPayday.Value)
+	startDate, err := parseDateInput(w.nextPaydayField.Value)
 	if err != nil {
-		w.nextPayday.Error = "Invalid date (MM/DD/YYYY)"
+		w.nextPaydayField.Error = "Invalid date (MM/DD/YYYY)"
 		return a, nil
 	}
 
-	frequency := frequencyFromIndex(w.frequency.SelectedIndex)
+	frequency := frequencyFromIndex(w.frequencyField.SelectedIndex)
 
 	// Build splits + parent net from the form. BuildSplits handles
 	// gross / deduction / transfer line validation and the
 	// remainder-equals-signed-sum invariant.
 	parentAmount, splits, err := w.BuildSplits()
 	if err != nil {
-		w.grossAmount.Error = err.Error()
+		w.grossAmountField.Error = err.Error()
 		return a, nil
 	}
 
-	employer := strings.TrimSpace(w.employer.Value)
+	employer := strings.TrimSpace(w.employerField.Value)
 
 	// Close the wizard before the async save for responsive UI.
 	a.closePaycheckWizard()
@@ -678,21 +730,21 @@ func NewPaycheckWizardFromSchedule(
 				continue
 			}
 			if p.ID == st.PayeeID.ID {
-				w.employer.Value = p.Name
+				w.employerField.Value = p.Name
 				break
 			}
 		}
 	}
 
-	w.frequency.SelectedIndex = frequencyToIndex(st.Frequency)
-	w.nextPayday.Value = st.NextDate.Time().Format("01/02/2006")
+	w.frequencyField.SelectedIndex = frequencyToIndex(st.Frequency)
+	w.nextPaydayField.Value = st.NextDate.Time().Format("01/02/2006")
 
-	for i, opt := range w.primaryAccount.Options {
+	for i, opt := range w.primaryAccountField.Options {
 		if i >= len(w.accountIDs) {
 			break
 		}
 		if w.accountIDs[i] == st.AccountID {
-			w.primaryAccount.SelectedIndex = i
+			w.primaryAccountField.SelectedIndex = i
 			break
 		}
 		_ = opt
@@ -730,8 +782,8 @@ func NewPaycheckWizardFromSchedule(
 			for i, id := range w.accountIDs {
 				if id == sp.TransferAccountID.ID {
 					acctIdx = i
-					if i < len(w.primaryAccount.Options) {
-						label = w.primaryAccount.Options[i]
+					if i < len(w.primaryAccountField.Options) {
+						label = w.primaryAccountField.Options[i]
 					}
 					break
 				}
@@ -746,9 +798,9 @@ func NewPaycheckWizardFromSchedule(
 		}
 		name := categoryNameByID[sp.CategoryID.ID]
 		if !grossAssigned && sp.Amount.IsPositive() {
-			w.grossAmount.Value = sp.Amount.String()
+			w.grossAmountField.Value = sp.Amount.String()
 			if idx := findCategoryOptionIndex(categoryOptions, name); idx > 0 {
-				w.grossCategory.SelectedIndex = idx
+				w.grossCategoryField.SelectedIndex = idx
 			}
 			grossAssigned = true
 			continue

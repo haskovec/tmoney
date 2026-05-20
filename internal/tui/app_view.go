@@ -107,6 +107,12 @@ func (a *App) renderLayout() string {
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
+	// Overlay paycheck wizard if visible.
+	if a.paycheckWizard != nil && a.paycheckWizard.IsVisible() {
+		overlay := a.paycheckWizard.Render(a.styles)
+		layout = OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
 	// Overlay account dialog if visible
 	if a.acctDialog != nil && a.acctDialog.IsVisible() {
 		overlay := a.acctDialog.Render(a.styles)
