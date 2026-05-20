@@ -580,9 +580,9 @@ func (w *PaycheckWizard) Render(styles Styles) string {
 		lines = append(lines, padToWidth(s))
 	}
 
-	// Title row with [×] close button on the right.
+	// Title row with [x] close button on the right.
 	closeBtn := styles.Muted.Render("[x]")
-	titleText := styles.DialogTitle.Render("PAYCHECK SCHEDULE")
+	titleText := styles.DialogTitle.Render("Paycheck Schedule")
 	titleGap := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(closeBtn), 1)
 	addLine(titleText + gap(titleGap) + closeBtn)
 	// Hit zone for [x]: same row as title, right edge.
@@ -670,19 +670,25 @@ func (w *PaycheckWizard) Render(styles Styles) string {
 	} else {
 		cancelLabel = styles.DialogButton.Render(cancelText)
 	}
-	btnGap := max(contentWidth-lipgloss.Width(saveLabel)-lipgloss.Width(cancelLabel), 4)
-	buttonsRow := saveLabel + gap(btnGap) + cancelLabel
+	// Center the Save / Cancel pair together. Save sits on the left
+	// of the pair (Primary, default focus); a short gap separates it
+	// from Cancel.
+	innerGap := 4
+	pairWidth := lipgloss.Width(saveLabel) + innerGap + lipgloss.Width(cancelLabel)
+	leftPad := max((contentWidth-pairWidth)/2, 0)
+	rightPad := max(contentWidth-leftPad-pairWidth, 0)
+	buttonsRow := gap(leftPad) + saveLabel + gap(innerGap) + cancelLabel + gap(rightPad)
 	w.hitZones = append(w.hitZones,
 		wizardHitZone{
 			row:    len(lines),
-			colMin: 0,
-			colMax: lipgloss.Width(saveText),
+			colMin: leftPad,
+			colMax: leftPad + lipgloss.Width(saveText),
 			target: wizardFocusTarget{kind: wizardFocusSave},
 		},
 		wizardHitZone{
 			row:    len(lines),
-			colMin: lipgloss.Width(saveLabel) + btnGap,
-			colMax: lipgloss.Width(saveLabel) + btnGap + lipgloss.Width(cancelText),
+			colMin: leftPad + lipgloss.Width(saveLabel) + innerGap,
+			colMax: leftPad + lipgloss.Width(saveLabel) + innerGap + lipgloss.Width(cancelText),
 			target: wizardFocusTarget{kind: wizardFocusCancel},
 		},
 	)
@@ -702,24 +708,49 @@ func padFill(s string, n int, fill lipgloss.Style) string {
 }
 
 // renderFieldRow renders a single labeled scalar field and returns
-// the rendered string plus any hit zones for the value cell.
+// the rendered string plus any hit zones for the value cell. Labels
+// are right-aligned to labelW so the colons line up vertically (the
+// same convention the generic *Dialog uses for its form fields).
 func (w *PaycheckWizard) renderFieldRow(styles Styles, fill lipgloss.Style, f *Field, focused bool, contentWidth, row int) (string, []wizardHitZone) {
 	if f == nil {
 		return "", nil
 	}
-	labelW := 18
-	label := padFill(fill.Render(f.Label+":"), labelW, fill)
+	labelW := w.headerLabelWidth()
+	gapStr := "  "
+	rawLabel := f.Label + ":"
+	labelRuneLen := lipgloss.Width(rawLabel)
+	padLeft := max(labelW-labelRuneLen, 0)
+	label := fill.Render(strings.Repeat(" ", padLeft) + rawLabel)
 
-	valueWidth := contentWidth - labelW - 1
+	valueWidth := contentWidth - labelW - len(gapStr)
 	value := w.renderFieldValue(styles, fill, f, focused, valueWidth)
-	out := label + fill.Render(" ") + value
+	out := label + fill.Render(gapStr) + value
 	zones := []wizardHitZone{{
 		row:    row,
-		colMin: labelW + 1,
-		colMax: labelW + 1 + valueWidth,
+		colMin: labelW + len(gapStr),
+		colMax: labelW + len(gapStr) + valueWidth,
 		target: wizardFocusTarget{kind: wizardFocusField, field: f},
 	}}
 	return out, zones
+}
+
+// headerLabelWidth returns the column width to use when right-aligning
+// header field labels. Computed once from the longest label.
+func (w *PaycheckWizard) headerLabelWidth() int {
+	labels := []string{
+		w.employerField.Label,
+		w.frequencyField.Label,
+		w.nextPaydayField.Label,
+		w.accountField.Label,
+		w.memoField.Label,
+	}
+	maxLen := 0
+	for _, l := range labels {
+		if n := lipgloss.Width(l + ":"); n > maxLen {
+			maxLen = n
+		}
+	}
+	return maxLen
 }
 
 // renderLine renders one section row: select + amount + [−] remove.
@@ -770,39 +801,81 @@ func (w *PaycheckWizard) renderLine(styles Styles, fill lipgloss.Style, line *Pa
 	return out, zones
 }
 
-// renderFieldValue draws a field's value with focus highlight as
-// appropriate for its type. fill is the dialog-bg style used for
-// padding inside the value cell so the brackets fill uniformly.
+// renderFieldValue draws a field's value matching the generic
+// *Dialog field rendering conventions:
+//   - FieldText: `[ value ]` (bracketed with spaces inside).
+//   - FieldSelect: `value ▼` (no brackets; focused value gets a
+//     reverse-highlight inside the surrounding fill).
+// fill is the dialog-bg style used for padding so the cell fills
+// uniformly with the dialog's background.
 func (w *PaycheckWizard) renderFieldValue(styles Styles, fill lipgloss.Style, f *Field, focused bool, width int) string {
 	if f == nil {
 		return fill.Render(strings.Repeat(" ", width))
 	}
-	openBracket := fill.Render("[")
-	closeBracket := fill.Render("]")
-	innerWidth := width - 2
-	var inner string
 	switch f.Type {
 	case FieldText:
+		// `[ value ]` — Dialog convention. Inner pad fills with bg.
+		bracketOverhead := 4 // "[ " + " ]"
+		inner := max(width-bracketOverhead, 1)
 		val := f.Value
-		if val == "" && !focused {
-			val = styles.Placeholder.Render(f.Placeholder)
+		runes := []rune(val)
+		if len(runes) == 0 && !focused && f.Placeholder != "" {
+			ph := f.Placeholder
+			phRunes := []rune(ph)
+			if len(phRunes) > inner {
+				ph = string(phRunes[:inner])
+				phRunes = phRunes[:inner]
+			}
+			padN := max(inner-len(phRunes), 0)
+			return fill.Render("[ ") + styles.Placeholder.Render(ph) + fill.Render(strings.Repeat(" ", padN)) + fill.Render(" ]")
 		}
-		inner = padFill(val, innerWidth, fill)
+		if focused {
+			cursorStyle := lipgloss.NewStyle().Reverse(true)
+			var before, cursorChar, after string
+			if f.cursorPos < len(runes) {
+				before = string(runes[:f.cursorPos])
+				cursorChar = cursorStyle.Render(string(runes[f.cursorPos]))
+				if f.cursorPos+1 < len(runes) {
+					after = string(runes[f.cursorPos+1:])
+				}
+			} else {
+				before = string(runes)
+				cursorChar = cursorStyle.Render(" ")
+			}
+			displayLen := len(runes)
+			if f.cursorPos >= len(runes) {
+				displayLen++
+			}
+			padN := max(inner-displayLen, 0)
+			return fill.Render("[ ") + fill.Render(before) + cursorChar + fill.Render(after+strings.Repeat(" ", padN)) + fill.Render(" ]")
+		}
+		// Unfocused with a value.
+		if len(runes) > inner {
+			runes = runes[:inner]
+		}
+		padN := max(inner-len(runes), 0)
+		return fill.Render("[ " + string(runes) + strings.Repeat(" ", padN) + " ]")
 	case FieldSelect:
-		val := ""
+		// `value ▼` — no brackets; focused option gets a reverse
+		// highlight just over the value cell.
+		opt := ""
 		if f.SelectedIndex >= 0 && f.SelectedIndex < len(f.Options) {
-			val = f.Options[f.SelectedIndex]
+			opt = f.Options[f.SelectedIndex]
 		}
-		// Reserve trailing " ▼" inside the brackets.
-		inner = padFill(val, innerWidth-2, fill) + fill.Render(" ▼")
+		// Reserve " ▼" suffix (always 2 cells: space + arrow).
+		suffix := " ▼"
+		maxOpt := max(width-lipgloss.Width(suffix), 3)
+		optRunes := []rune(opt)
+		if len(optRunes) > maxOpt {
+			opt = string(optRunes[:maxOpt])
+		}
+		if focused {
+			return lipgloss.NewStyle().Reverse(true).Render(" "+opt+" ") + fill.Render(suffix)
+		}
+		return fill.Render(opt + suffix)
 	default:
-		inner = padFill(f.Value, innerWidth, fill)
+		return fill.Render(padRight(f.Value, width))
 	}
-	out := openBracket + inner + closeBracket
-	if focused {
-		out = styles.SelectedRow.Render(out)
-	}
-	return out
 }
 
 // computeTotal returns the signed sum of every populated row.
