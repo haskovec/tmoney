@@ -36,7 +36,11 @@ type transferDialogDataMsg struct {
 }
 
 // transferDialogSavedMsg is sent when a transfer has been saved.
-type transferDialogSavedMsg struct{}
+// savedDate carries the transaction date so the App can use it as the
+// session's sticky-date seed for subsequent dialog opens.
+type transferDialogSavedMsg struct {
+	savedDate types.Date
+}
 
 // buildAccountOptions builds parallel display name and ID slices for account selectors.
 func buildAccountOptions(accounts []*account.Account) ([]string, []types.ID) {
@@ -323,7 +327,7 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			}
 		}
 
-		return transferDialogSavedMsg{}
+		return transferDialogSavedMsg{savedDate: date}
 	}
 }
 

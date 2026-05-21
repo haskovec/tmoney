@@ -417,9 +417,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		a.transferDialog = buildTransferDialog(accountOptions, defaultFromIndex)
+		a.transferDialog.SeedDateField(a.txnDialogLastSavedDate)
 		return a, nil
 
 	case transferDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
 		accountID := a.sidebar.SelectedAccountID()
 		return a, tea.Batch(
 			a.loadRegisterData(accountID),

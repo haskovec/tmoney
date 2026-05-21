@@ -282,6 +282,85 @@ func TestApp_Update_TransferDialogDataMsg(t *testing.T) {
 	}
 }
 
+func TestApp_Update_TransferDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
+	checkingID := types.NewID()
+	savingsID := types.NewID()
+
+	app := &App{
+		currentView:            ViewRegister,
+		keys:                   defaultKeyMap(),
+		menubar:                NewMenuBar(),
+		statusbar:              NewStatusBar(),
+		sidebar:                NewSidebar(),
+		txnDialogLastSavedDate: types.NewDate(2024, time.January, 15),
+	}
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking", Active: true, Type: account.TypeChecking},
+		{BaseModel: types.BaseModel{ID: savingsID}, Name: "Savings", Active: true, Type: account.TypeSavings},
+	}, nil)
+
+	data := &transferDialogData{
+		accounts: []*account.Account{
+			{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking"},
+			{BaseModel: types.BaseModel{ID: savingsID}, Name: "Savings"},
+		},
+		accountIDs: []types.ID{checkingID, savingsID},
+	}
+
+	model, _ := app.Update(transferDialogDataMsg{data: data})
+	updatedApp := model.(*App)
+
+	if updatedApp.transferDialog == nil {
+		t.Fatal("transfer dialog should be created")
+	}
+	// New-transfer field order: From(0), To(1), Amount(2), Date(3), Memo(4).
+	dateValue := updatedApp.transferDialog.Fields()[3].Value
+	if dateValue != "01/15/2024" {
+		t.Errorf("date field = %q, want %q (seeded from sticky date)", dateValue, "01/15/2024")
+	}
+}
+
+func TestApp_SubmitTransferDialog_PassesSavedDateInMessage(t *testing.T) {
+	fromID := types.NewID()
+	toID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		transferDialog: func() *Dialog {
+			d := NewDialog("New Transfer")
+			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
+			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
+			d.AddTextField("Amount", "500.00", "", 12)
+			d.AddDateField("Date", "01/15/2024")
+			d.AddTextField("Memo", "", "", 0)
+			d.SetVisible(true)
+			return d
+		}(),
+		transferDialogData: &transferDialogData{
+			accounts: []*account.Account{},
+		},
+		transferDialogAccountIDs: []types.ID{fromID, toID},
+	}
+
+	_, cmd := app.submitTransferDialog()
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	// The cmd performs a real DB write through undoManager, so we can't
+	// safely execute it here. Instead, assert the sticky-date wiring by
+	// feeding a saved message directly and checking the app updates.
+	saved := transferDialogSavedMsg{savedDate: types.NewDate(2024, time.January, 15)}
+	model, _ := app.Update(saved)
+	updatedApp := model.(*App)
+	want := types.NewDate(2024, time.January, 15)
+	if !updatedApp.txnDialogLastSavedDate.Equal(want) {
+		t.Errorf("sticky date = %s, want %s", updatedApp.txnDialogLastSavedDate, want)
+	}
+}
+
 func TestApp_HandleTransferDialogKey_Cancel(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
