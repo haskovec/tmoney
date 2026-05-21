@@ -100,7 +100,7 @@ func (a *App) loadDashboardData() tea.Cmd {
 			data.securityTickers = make(map[types.ID]string)
 
 			for _, acct := range data.netWorth.Assets {
-				if acct.Type != string(account.TypeInvestment) {
+				if !account.Type(acct.Type).IsInvestmentType() {
 					continue
 				}
 				val, err := a.investmentSvc.GetAccountValuation(acct.AccountID, types.Today(), a.valuationOptions())
@@ -208,7 +208,7 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 
 			// Investment accounts get an expand/collapse indicator
 			prefix := "  "
-			if acct.Type == string(account.TypeInvestment) && a.dashboard != nil && a.dashboard.investmentHoldings != nil {
+			if account.Type(acct.Type).IsInvestmentType() && a.dashboard != nil && a.dashboard.investmentHoldings != nil {
 				if _, hasHoldings := a.dashboard.investmentHoldings[acct.AccountID]; hasHoldings {
 					if a.dashboardExpandedAccounts[acct.AccountID] {
 						prefix = "▾ "
@@ -224,14 +224,14 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 			// TR (total return) row for investment accounts — always shown
 			// regardless of expand state so the headline figure stays
 			// visible.
-			if acct.Type == string(account.TypeInvestment) {
+			if account.Type(acct.Type).IsInvestmentType() {
 				if tr := a.renderDashboardTRLine(acct.AccountID, colWidth); tr != "" {
 					assetsLines = append(assetsLines, tr)
 				}
 			}
 
 			// Show top holdings if investment account is expanded
-			if acct.Type == string(account.TypeInvestment) && a.dashboardExpandedAccounts[acct.AccountID] {
+			if account.Type(acct.Type).IsInvestmentType() && a.dashboardExpandedAccounts[acct.AccountID] {
 				assetsLines = append(assetsLines, a.renderDashboardHoldings(acct.AccountID, colWidth)...)
 			}
 		}

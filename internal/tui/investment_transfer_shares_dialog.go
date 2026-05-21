@@ -38,7 +38,7 @@ func buildInvestmentAccountOptions(accounts []*account.Account, excludeID types.
 	ids := make([]types.ID, 0, len(accounts))
 
 	for _, acct := range accounts {
-		if acct.Type != account.TypeInvestment {
+		if !acct.Type.IsInvestmentType() {
 			continue
 		}
 		if acct.ID == excludeID {

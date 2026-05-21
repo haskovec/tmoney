@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -30,7 +29,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case mouseOpenAccountMsg:
 		acct := a.sidebar.SelectedAccount()
-		if acct != nil && acct.Type == account.TypeInvestment {
+		if acct != nil && acct.Type.IsInvestmentType() {
 			a.portfolioData = nil
 			a.switchView(ViewPortfolio)
 			return a, a.loadPortfolioData(msg.accountID)

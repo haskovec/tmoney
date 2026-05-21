@@ -91,7 +91,7 @@ func accountTypeShowsCreditLimit(at account.Type) bool {
 func accountTypeShowsInterestRate(at account.Type) bool {
 	switch at {
 	case account.TypeChecking, account.TypeSavings, account.TypeCreditCard,
-		account.TypeInvestment, account.TypeLoan:
+		account.TypeInvestment, account.TypeHSA, account.TypeLoan:
 		return true
 	default:
 		return false

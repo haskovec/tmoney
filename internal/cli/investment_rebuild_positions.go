@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/spf13/cobra"
 )
@@ -75,7 +74,7 @@ func runInvestmentRebuildPositions(opts *investmentRebuildPositionsOptions, w io
 	}
 	processed := 0
 	for _, acct := range accounts {
-		if acct.Type != account.TypeInvestment {
+		if !acct.Type.IsInvestmentType() {
 			continue
 		}
 		res, err := svc.Investment.RebuildPositions(acct.ID)

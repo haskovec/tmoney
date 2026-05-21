@@ -41,10 +41,13 @@ tmoney -f personal.tdb account balance
 ## Features
 
 ### Accounts
-- Multiple account types: checking, savings, credit card, investment, cash, loan, asset
+- Multiple account types: checking, savings, credit card, investment, HSA, cash, loan, asset
 - Per-account currency setting (USD, EUR, GBP)
 - Credit limit for credit card accounts
-- Interest rate (APR) for checking, savings, credit card, investment, and loan accounts
+- Interest rate (APR) for checking, savings, credit card, investment, HSA, and loan accounts
+- HSA (Health Savings Account) behaves like an investment account — supports
+  cash flows plus securities buy/sell/dividend operations with optional lot
+  tracking, since HSAs typically allow invested funds above a cash threshold
 - Dynamic account dialog that shows only relevant fields for the selected account type
 - Open/close account lifecycle
 
@@ -358,7 +361,7 @@ tmoney account add --name "Savings" --type savings \
   --institution "First Bank" --currency USD
 ```
 
-Account types: `checking`, `savings`, `credit_card`, `investment`, `cash`, `loan`, `asset`
+Account types: `checking`, `savings`, `credit_card`, `investment`, `hsa`, `cash`, `loan`, `asset`
 
 ### Transactions
 

@@ -225,7 +225,7 @@ func (s *Service) isEligible(t *transaction.Transaction, acctByID map[types.ID]*
 	if !ok || !a.Active {
 		return false, nil
 	}
-	if a.Type == account.TypeInvestment {
+	if a.Type.IsInvestmentType() {
 		return false, nil
 	}
 	count, err := s.splitRepo.CountByTransaction(t.ID)

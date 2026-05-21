@@ -19,6 +19,13 @@ const (
 	TypeCash       Type = "cash"
 	TypeLoan       Type = "loan"
 	TypeAsset      Type = "asset"
+	// TypeHSA is a Health Savings Account. Cash flows in (payroll
+	// deductions, employer match) and out (medical expenses); above a
+	// custodian-specific threshold the balance can also be invested in
+	// securities, so HSAs share the investment account's lot-tracking
+	// and buy/sell/dividend semantics. Use IsInvestmentType() to gate
+	// behavior that applies to both investment and HSA accounts.
+	TypeHSA Type = "hsa"
 )
 
 // AllTypes returns all valid account types.
@@ -28,6 +35,7 @@ func AllTypes() []Type {
 		TypeSavings,
 		TypeCreditCard,
 		TypeInvestment,
+		TypeHSA,
 		TypeCash,
 		TypeLoan,
 		TypeAsset,
@@ -43,7 +51,7 @@ func (at Type) String() string {
 func (at Type) IsValid() bool {
 	switch at {
 	case TypeChecking, TypeSavings, TypeCreditCard,
-		TypeInvestment, TypeCash, TypeLoan, TypeAsset:
+		TypeInvestment, TypeHSA, TypeCash, TypeLoan, TypeAsset:
 		return true
 	}
 	return false
@@ -60,6 +68,8 @@ func (at Type) DisplayName() string {
 		return "Credit Card"
 	case TypeInvestment:
 		return "Investment"
+	case TypeHSA:
+		return "HSA"
 	case TypeCash:
 		return "Cash"
 	case TypeLoan:
@@ -74,8 +84,20 @@ func (at Type) DisplayName() string {
 // IsAssetType returns true if the account type represents an asset (positive balance = money you have).
 func (at Type) IsAssetType() bool {
 	switch at {
-	case TypeChecking, TypeSavings, TypeInvestment,
+	case TypeChecking, TypeSavings, TypeInvestment, TypeHSA,
 		TypeCash, TypeAsset:
+		return true
+	}
+	return false
+}
+
+// IsInvestmentType returns true if the account type supports investment
+// operations (buy/sell/dividend/lot tracking). Both pure investment
+// accounts and HSAs qualify — HSAs allow securities purchases above a
+// cash-balance threshold. All other account types return false.
+func (at Type) IsInvestmentType() bool {
+	switch at {
+	case TypeInvestment, TypeHSA:
 		return true
 	}
 	return false
@@ -184,8 +206,8 @@ func (a *Account) Validate() types.ValidationErrors {
 		v.Percentage("interest_rate", a.InterestRate.Money)
 	}
 
-	if a.TrackLots && a.Type != TypeInvestment {
-		v.AddError("track_lots", "can only be enabled for investment accounts")
+	if a.TrackLots && !a.Type.IsInvestmentType() {
+		v.AddError("track_lots", "can only be enabled for investment or HSA accounts")
 	}
 
 	// Optional field length limits

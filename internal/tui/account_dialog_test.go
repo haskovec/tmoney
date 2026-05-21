@@ -38,9 +38,10 @@ func TestAccountTypeFromIndex(t *testing.T) {
 		{1, account.TypeSavings},
 		{2, account.TypeCreditCard},
 		{3, account.TypeInvestment},
-		{4, account.TypeCash},
-		{5, account.TypeLoan},
-		{6, account.TypeAsset},
+		{4, account.TypeHSA},
+		{5, account.TypeCash},
+		{6, account.TypeLoan},
+		{7, account.TypeAsset},
 		{-1, account.TypeChecking},  // out of range defaults to checking
 		{100, account.TypeChecking}, // out of range defaults to checking
 	}
@@ -62,9 +63,10 @@ func TestAccountTypeToIndex(t *testing.T) {
 		{account.TypeSavings, 1},
 		{account.TypeCreditCard, 2},
 		{account.TypeInvestment, 3},
-		{account.TypeCash, 4},
-		{account.TypeLoan, 5},
-		{account.TypeAsset, 6},
+		{account.TypeHSA, 4},
+		{account.TypeCash, 5},
+		{account.TypeLoan, 6},
+		{account.TypeAsset, 7},
 		{account.Type("unknown"), 0}, // unknown defaults to 0
 	}
 
@@ -314,9 +316,9 @@ func TestBuildEditAccountDialog_Loan(t *testing.T) {
 	d := buildEditAccountDialog(acct)
 	fields := d.Fields()
 
-	// Type should be Loan (index 5)
-	if fields[acctFieldType].SelectedIndex != 5 {
-		t.Errorf("type selectedIndex = %d, want 5", fields[acctFieldType].SelectedIndex)
+	// Type should be Loan (index 6)
+	if fields[acctFieldType].SelectedIndex != 6 {
+		t.Errorf("type selectedIndex = %d, want 6", fields[acctFieldType].SelectedIndex)
 	}
 
 	// Interest rate should be populated and visible

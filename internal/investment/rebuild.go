@@ -5,7 +5,6 @@ import (
 	"sort"
 
 	"github.com/alpacahq/alpacadecimal"
-	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -144,7 +143,7 @@ func (s *Service) HealAllAccounts() (int, error) {
 	}
 	healed := 0
 	for _, acct := range accounts {
-		if acct.Type != account.TypeInvestment {
+		if !acct.Type.IsInvestmentType() {
 			continue
 		}
 		res, err := s.RebuildPositions(acct.ID)

@@ -452,7 +452,7 @@ func (s *Service) getInvestmentAccount(accountID types.ID) (*account.Account, er
 		return nil, fmt.Errorf("failed to get account: %w", err)
 	}
 
-	if acct.Type != account.TypeInvestment {
+	if !acct.Type.IsInvestmentType() {
 		return nil, &account.NotInvestmentError{
 			AccountID: accountID.String(),
 			Type:      string(acct.Type),
@@ -792,7 +792,7 @@ func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, d
 	if err != nil {
 		return nil, fmt.Errorf("failed to get regular account: %w", err)
 	}
-	if regularAcct.Type == account.TypeInvestment {
+	if regularAcct.Type.IsInvestmentType() {
 		return nil, &NotRegularAccountError{
 			AccountID: regularAccountID.String(),
 			Type:      string(regularAcct.Type),
@@ -865,7 +865,7 @@ func (s *Service) DepositFromAccount(investmentAccountID, regularAccountID types
 	if err != nil {
 		return nil, fmt.Errorf("failed to get regular account: %w", err)
 	}
-	if regularAcct.Type == account.TypeInvestment {
+	if regularAcct.Type.IsInvestmentType() {
 		return nil, &NotRegularAccountError{
 			AccountID: regularAccountID.String(),
 			Type:      string(regularAcct.Type),

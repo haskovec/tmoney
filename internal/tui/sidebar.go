@@ -15,6 +15,7 @@ var accountGroupOrder = []account.Type{
 	account.TypeCash,
 	account.TypeCreditCard,
 	account.TypeInvestment,
+	account.TypeHSA,
 	account.TypeLoan,
 	account.TypeAsset,
 }
@@ -26,6 +27,7 @@ var accountGroupLabels = map[account.Type]string{
 	account.TypeCash:       "Cash",
 	account.TypeCreditCard: "Credit Cards",
 	account.TypeInvestment: "Investments",
+	account.TypeHSA:        "Health Savings",
 	account.TypeLoan:       "Loans",
 	account.TypeAsset:      "Assets",
 }

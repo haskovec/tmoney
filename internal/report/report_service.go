@@ -122,7 +122,7 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 
 		// For investment accounts, use the investment valuer to get total value
 		// (cash + holdings market value) instead of the raw transaction balance.
-		if accountType == account.TypeInvestment && s.investmentValue != nil {
+		if accountType.IsInvestmentType() && s.investmentValue != nil {
 			asOfDate := types.NewDate(asOf.Year(), asOf.Month(), asOf.Day())
 			result, err := s.investmentValue.GetAccountValuation(accountID, asOfDate)
 			if err == nil {

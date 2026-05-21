@@ -35,7 +35,7 @@ func buildNonInvestmentAccountOptions(accounts []*account.Account) ([]string, []
 	ids := make([]types.ID, 0, len(accounts))
 
 	for _, acct := range accounts {
-		if acct.Type == account.TypeInvestment {
+		if acct.Type.IsInvestmentType() {
 			continue
 		}
 		options = append(options, acct.Name)
