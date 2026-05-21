@@ -118,6 +118,7 @@ type PaycheckLine struct {
 	Section     PaycheckSection
 	selectField *Field // category or transfer picker (combined list)
 	amountField *Field // signed amount as typed by the user
+	notesField  *Field // optional free-form description (stored as Split.Memo)
 
 	// categoryCount is captured at construction so the line can
 	// self-classify (IsTransfer/CategoryIndex/AccountIndex) without
@@ -131,6 +132,10 @@ func (l *PaycheckLine) SelectField() *Field { return l.selectField }
 
 // AmountField exposes the line's amount input.
 func (l *PaycheckLine) AmountField() *Field { return l.amountField }
+
+// NotesField exposes the line's free-form notes input. The value is
+// persisted as Split.Memo when the wizard saves.
+func (l *PaycheckLine) NotesField() *Field { return l.notesField }
 
 // IsTransfer reports whether the line's current select points at
 // the transfer half of the combined picker (i.e. an account
@@ -282,7 +287,7 @@ func NewPaycheckWizard(categoryOptions []string, categoryIDs []types.ID, account
 
 	w := &PaycheckWizard{
 		visible:         true,
-		width:           80,
+		width:           96,
 		categoryOptions: categoryOptions,
 		categoryIDs:     categoryIDs,
 		accountOptions:  accountOptions,
@@ -356,6 +361,10 @@ func (w *PaycheckWizard) AddRow(section PaycheckSection) *PaycheckLine {
 			Type:          FieldSelect,
 			Options:       w.combinedOptions,
 			SelectedIndex: 0,
+		},
+		notesField: &Field{
+			Type:        FieldText,
+			Placeholder: "Notes",
 		},
 		categoryCount: len(w.categoryOptions),
 	}
@@ -436,6 +445,11 @@ func (w *PaycheckWizard) buildLineSplit(line *PaycheckLine) (*scheduled.Split, e
 		BaseModel: types.NewBaseModel(),
 		Amount:    amt,
 	}
+	if line.notesField != nil {
+		if notes := strings.TrimSpace(line.notesField.Value); notes != "" {
+			sp.Memo = types.NullableString{String: notes, Valid: true}
+		}
+	}
 	if line.IsTransfer() {
 		accountID := w.lookupAccountID(line.AccountIndex())
 		if accountID.IsNil() {
@@ -506,6 +520,7 @@ func (w *PaycheckWizard) collectFocusables() []wizardFocusTarget {
 			out = append(out,
 				wizardFocusTarget{kind: wizardFocusField, field: line.selectField},
 				wizardFocusTarget{kind: wizardFocusField, field: line.amountField},
+				wizardFocusTarget{kind: wizardFocusField, field: line.notesField},
 				wizardFocusTarget{kind: wizardFocusRemove, line: line, section: s},
 			)
 		}
@@ -753,20 +768,28 @@ func (w *PaycheckWizard) headerLabelWidth() int {
 	return maxLen
 }
 
-// renderLine renders one section row: select + amount + [−] remove.
-// Returns the rendered string plus hit zones for the select, amount,
-// and remove cells.
+// renderLine renders one section row: select + amount + notes + [−]
+// remove. Returns the rendered string plus hit zones for the select,
+// amount, notes, and remove cells.
 func (w *PaycheckWizard) renderLine(styles Styles, fill lipgloss.Style, line *PaycheckLine, focused wizardFocusTarget, contentWidth, row int) (string, []wizardHitZone) {
-	selW := max(contentWidth/2-8, 20)
-	amtW := 14
+	amtW := 12
+	removeText := "[−]"
+	removeW := lipgloss.Width(removeText)
+	// Reserve the row's prefix (2) + three single-space gaps + the
+	// remove button, then split what's left between select and notes.
+	const prefixW = 2
+	remaining := max(contentWidth-prefixW-3-removeW-amtW, 24)
+	selW := max(remaining*4/7, 20)
+	notesW := max(remaining-selW, 10)
 
 	selFocused := focused.field == line.selectField
 	amtFocused := focused.field == line.amountField
+	notesFocused := focused.field == line.notesField
 
 	selStr := padFill(w.renderFieldValue(styles, fill, line.selectField, selFocused, selW), selW, fill)
 	amtStr := padFill(w.renderFieldValue(styles, fill, line.amountField, amtFocused, amtW), amtW, fill)
+	notesStr := padFill(w.renderFieldValue(styles, fill, line.notesField, notesFocused, notesW), notesW, fill)
 
-	removeText := "[−]"
 	var removeLabel string
 	if focused.kind == wizardFocusRemove && focused.line == line {
 		removeLabel = styles.DialogButtonFocused.Render(removeText)
@@ -775,26 +798,36 @@ func (w *PaycheckWizard) renderLine(styles Styles, fill lipgloss.Style, line *Pa
 	}
 
 	prefix := fill.Render("  ")
-	pre := 2
-	out := prefix + selStr + fill.Render(" ") + amtStr + fill.Render(" ") + removeLabel
+	out := prefix + selStr + fill.Render(" ") + amtStr + fill.Render(" ") + notesStr + fill.Render(" ") + removeLabel
+
+	selStart := prefixW
+	amtStart := selStart + selW + 1
+	notesStart := amtStart + amtW + 1
+	removeStart := notesStart + notesW + 1
 
 	zones := []wizardHitZone{
 		{
 			row:    row,
-			colMin: pre,
-			colMax: pre + selW,
+			colMin: selStart,
+			colMax: selStart + selW,
 			target: wizardFocusTarget{kind: wizardFocusField, field: line.selectField},
 		},
 		{
 			row:    row,
-			colMin: pre + selW + 1,
-			colMax: pre + selW + 1 + amtW,
+			colMin: amtStart,
+			colMax: amtStart + amtW,
 			target: wizardFocusTarget{kind: wizardFocusField, field: line.amountField},
 		},
 		{
 			row:    row,
-			colMin: pre + selW + 1 + amtW + 1,
-			colMax: pre + selW + 1 + amtW + 1 + lipgloss.Width(removeText),
+			colMin: notesStart,
+			colMax: notesStart + notesW,
+			target: wizardFocusTarget{kind: wizardFocusField, field: line.notesField},
+		},
+		{
+			row:    row,
+			colMin: removeStart,
+			colMax: removeStart + removeW,
 			target: wizardFocusTarget{kind: wizardFocusRemove, line: line},
 		},
 	}
@@ -1437,6 +1470,9 @@ func NewPaycheckWizardFromSchedule(
 		line := w.AddRow(section)
 		line.selectField.SelectedIndex = selectIdx
 		line.amountField.Value = sp.Amount.String()
+		if sp.Memo.Valid {
+			line.notesField.Value = sp.Memo.String
+		}
 	}
 
 	return w

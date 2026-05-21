@@ -288,6 +288,51 @@ func TestPaycheckWizard_BuildSplits_PreservesSignedAmounts(t *testing.T) {
 	}
 }
 
+// TestPaycheckWizard_BuildSplits_PersistsNotesAsMemo asserts the
+// per-row Notes field is written to Split.Memo (and that empty notes
+// stay NULL).
+func TestPaycheckWizard_BuildSplits_PersistsNotesAsMemo(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+
+	gross := w.AddRow(PaycheckPreTax)
+	gross.SetCategoryIndex(indexOf(gross.SelectField().Options, "Income > Salary"))
+	gross.AmountField().Value = "5000"
+	gross.NotesField().Value = "Base pay"
+
+	fed := w.AddRow(PaycheckTax)
+	fed.SetCategoryIndex(indexOf(fed.SelectField().Options, "Tax > Federal"))
+	fed.AmountField().Value = "-800"
+	// Note: no notes set on this row — Split.Memo should stay NULL.
+
+	_, splits, err := w.BuildSplits()
+	if err != nil {
+		t.Fatalf("BuildSplits: %v", err)
+	}
+	if len(splits) != 2 {
+		t.Fatalf("split count = %d, want 2", len(splits))
+	}
+
+	var sawSalary, sawFederal bool
+	for _, sp := range splits {
+		if sp.CategoryID.Valid && sp.CategoryID.ID == fx.salaryID {
+			sawSalary = true
+			if !sp.Memo.Valid || sp.Memo.String != "Base pay" {
+				t.Errorf("salary row Memo = %+v, want valid=true value=%q", sp.Memo, "Base pay")
+			}
+		}
+		if sp.CategoryID.Valid && sp.CategoryID.ID == fx.federalID {
+			sawFederal = true
+			if sp.Memo.Valid {
+				t.Errorf("federal row Memo unexpectedly set: %q", sp.Memo.String)
+			}
+		}
+	}
+	if !sawSalary || !sawFederal {
+		t.Fatalf("missing expected split rows: salary=%v federal=%v", sawSalary, sawFederal)
+	}
+}
+
 // TestPaycheckWizard_BuildSplits_SkipsEmptyRows asserts an empty
 // amount row is silently skipped instead of producing a zero-amount
 // split.
