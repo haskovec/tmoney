@@ -302,11 +302,11 @@ func NewPaycheckWizard(categoryOptions []string, categoryIDs []types.ID, account
 		SelectedIndex: defaultPaycheckFrequencyIndex,
 	}
 	w.nextPaydayField = &Field{
-		Label:       "Next payday",
-		Type:        FieldText,
-		Value:       time.Now().Format("01/02/2006"),
-		Placeholder: "MM/DD/YYYY",
-		Width:       12,
+		Label:    "Next payday",
+		Type:     FieldDate,
+		Value:    time.Now().Format("01/02/2006"),
+		Width:    10,
+		dateMask: dateMaskUS,
 	}
 	w.accountField = &Field{
 		Label:         "Deposit account",
@@ -855,6 +855,36 @@ func (w *PaycheckWizard) renderFieldValue(styles Styles, fill lipgloss.Style, f 
 		}
 		padN := max(inner-len(runes), 0)
 		return fill.Render("[ " + string(runes) + strings.Repeat(" ", padN) + " ]")
+	case FieldDate:
+		// Fixed-width 10-char masked date inside `[ ... ]`. Mirrors the
+		// generic *Dialog.renderDateFieldContent so the widget behaves
+		// identically across dialogs.
+		value := f.Value
+		if len(value) != 10 {
+			if len(value) < 10 {
+				value += strings.Repeat(" ", 10-len(value))
+			} else {
+				value = value[:10]
+			}
+		}
+		bracketOverhead := 4 // "[ " + " ]"
+		inner := max(width-bracketOverhead, 10)
+		padN := max(inner-10, 0)
+		if !focused {
+			return fill.Render("[ " + value + strings.Repeat(" ", padN) + " ]")
+		}
+		cursorStyle := lipgloss.NewStyle().Reverse(true)
+		pos := f.cursorPos
+		if pos < 0 || pos > 9 || f.dateSeparators()[pos] {
+			pos = 0
+		}
+		before := value[:pos]
+		cursorChar := cursorStyle.Render(string(value[pos]))
+		after := ""
+		if pos+1 < 10 {
+			after = value[pos+1:]
+		}
+		return fill.Render("[ ") + fill.Render(before) + cursorChar + fill.Render(after+strings.Repeat(" ", padN)) + fill.Render(" ]")
 	case FieldSelect:
 		// `value ▼` — no brackets; focused option gets a reverse
 		// highlight just over the value cell.
@@ -956,6 +986,8 @@ func (w *PaycheckWizard) dispatchFieldKey(f *Field, msg tea.KeyPressMsg) {
 		w.dispatchTextFieldKey(f, msg)
 	case FieldSelect:
 		w.dispatchSelectFieldKey(f, msg)
+	case FieldDate:
+		w.dispatchDateFieldKey(f, msg)
 	}
 }
 
@@ -979,6 +1011,33 @@ func (w *PaycheckWizard) dispatchTextFieldKey(f *Field, msg tea.KeyPressMsg) {
 		if msg.Text != "" {
 			for _, r := range msg.Text {
 				f.InsertChar(r)
+			}
+		}
+	}
+}
+
+func (w *PaycheckWizard) dispatchDateFieldKey(f *Field, msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "left":
+		f.dateCursorLeft()
+		return
+	case "right":
+		f.dateCursorRight()
+		return
+	case "home", "ctrl+a":
+		f.dateCursorHome()
+		return
+	case "end", "ctrl+e":
+		f.dateCursorEnd()
+		return
+	case "backspace":
+		f.dateBackspace()
+		return
+	}
+	if msg.Text != "" {
+		for _, r := range msg.Text {
+			if r >= '0' && r <= '9' {
+				f.dateOverwriteDigit(r)
 			}
 		}
 	}

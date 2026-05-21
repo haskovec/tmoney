@@ -106,9 +106,10 @@ func TestPaycheckWizard_OpensWithEmptyForm(t *testing.T) {
 		t.Errorf("default frequency option = %v, want fortnightly", opt.frequency)
 	}
 
-	// Next payday is a text field for now (parsed on submit).
-	if w.NextPayday().Type != FieldText {
-		t.Errorf("next payday should be FieldText, got %v", w.NextPayday().Type)
+	// Next payday is a masked MM/DD/YYYY date field, matching the
+	// transaction dialogs' Date input behavior.
+	if w.NextPayday().Type != FieldDate {
+		t.Errorf("next payday should be FieldDate, got %v", w.NextPayday().Type)
 	}
 	if w.NextPayday().Value == "" {
 		t.Error("next payday should be seeded with today's date")
