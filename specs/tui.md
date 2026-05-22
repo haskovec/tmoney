@@ -164,6 +164,11 @@ When "Split transaction" is checked:
 
 Lines may be **categorized** (pick a category from the combo box) or **transfers** (pick the `Transfer →` sentinel option in the combo, then pick a target account). Line amounts may be mixed-sign — the parent amount is the signed sum of all lines. The "Imbalance" indicator updates live as the user types; **Save is disabled until imbalance is zero** (no auto-balancing plug). See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md) for the full primitive.
 
+The Category / Target picker also exposes a `[+ Add new category…]`
+action row below the `Transfer →` sentinel — Down past `Transfer →`
+parks on it and Enter opens the create-category sub-dialog (see
+[Category Combo Box](#category-combo-box)) for the originating row.
+
 ### Scheduled Transaction Preview Dialog
 
 Pressing Enter on a due scheduled transaction (Scheduled view or Dashboard's Due panel) opens this preview dialog rather than posting immediately. The dialog is pre-filled with the schedule's template values and lets the user adjust **this one occurrence** before saving. For a multi-line scheduled transaction (e.g., a paycheck):
@@ -204,7 +209,7 @@ Semantics (full detail in [`specs/multiline-splits-and-paycheck.md`](multiline-s
 - Save is disabled while a multi-line preview is imbalanced.
 - To modify the template for all future occurrences, press `e` (Edit Series) on the scheduled item in the list instead of `Enter`.
 
-For a single-line scheduled transaction, the preview renders the regular Transaction Entry/Edit Dialog shape pre-filled with template values.
+For a single-line scheduled transaction, the preview renders the regular Transaction Entry/Edit Dialog shape pre-filled with template values. The Category combo on the single-line preview exposes a `[+ Add new category…]` action row to create a new category inline (see [Category Combo Box](#category-combo-box)).
 
 ### Paycheck Schedule Wizard
 
@@ -246,6 +251,13 @@ The wizard is organized into five sections that mirror US pay-stub structure (ea
 ```
 
 Only universally-applicable rows are pre-populated: a single `Income:Salary` row in Earnings, and the three federal-statutory withholdings (`Tax:Federal`, `Tax:Social Security`, `Tax:Medicare`) in Taxes. Employer-specific items (HSA, 401(k), supplemental life, state income tax, health insurance) are added via `[+ Add line]`. Rows left at $0 are silently dropped on save.
+
+Each row's Category picker exposes a `[+ Add new category…]` action
+row at the bottom of the option list to create a new category inline
+(see [Category Combo Box](#category-combo-box)). The create-category
+sub-dialog opens with its Type radio defaulted per the originating
+section: Earnings and Net Pay Destination rows default to Income;
+Tax, Pre-tax, and Post-tax rows default to Expense.
 
 The Earnings section supports multiple lines so real pay-stub itemization (base salary plus shift differential, housing allowance, **imputed income** for employer-paid benefits like LTD coverage) can live on the recurring template. Imputed income is entered as two independent lines — a positive earnings line and a same-category negative offset in Post-tax — because the offset is what keeps the parent transaction's net deposit equal to what actually hits the bank.
 
@@ -465,9 +477,22 @@ return to the canonical blank.
 
 ### Category Combo Box
 
-The Category field on the New Transaction dialog is a typeahead combo
-box: typing filters the option list inline; arrow keys navigate the
-filtered subset; Enter or Tab commits the highlighted match.
+The Category field is a typeahead combo box on:
+
+- The New Transaction and Edit Transaction dialogs.
+- The New Scheduled Transaction and Edit Scheduled Transaction dialogs.
+- The Scheduled Transaction Preview dialog (single-line schedules).
+
+On those surfaces, typing filters the option list inline; arrow keys
+navigate the filtered subset; Enter or Tab commits the highlighted
+match.
+
+The Split Transaction dialog and the Paycheck Schedule Wizard use a
+simpler index-navigated picker (no typeahead) — Up/Down cycles through
+the full option list rather than a typed-filter subset — but they
+expose the same `[+ Add new category…]` action at the bottom of the
+option list, so the create-category sub-dialog opens identically from
+every Category-input surface.
 
 | Key | Action |
 |-----|--------|
@@ -497,10 +522,24 @@ sub-dialog with three fields:
   top-level parent on save).
 - **Income/Expense** — radio.
 
+The Type radio defaults are context-aware:
+
+- Earnings and Net Pay Destination rows of the Paycheck Wizard
+  default to Income.
+- Tax, Pre-tax, and Post-tax rows of the Paycheck Wizard default to
+  Expense.
+- The Transaction, Split, Scheduled, and Scheduled Preview dialogs
+  infer the default from the typed amount: a parseable strictly-
+  positive number defaults to Income; anything else (empty, zero,
+  negative, or unparseable) defaults to Expense.
+
+The user can override the default with a single keystroke before
+confirming; the default is just a head-start, not a constraint.
+
 On confirm the new category (and parent, if needed) is persisted
-immediately; the transaction dialog reopens with all other field
+immediately; the originating dialog reopens with all other field
 values preserved, the new category auto-selected, and focus advanced
-to Amount. Cancel returns to the transaction dialog with the previous
+to Amount. Cancel returns to the originating dialog with the previous
 selection intact.
 
 ## Status Bar

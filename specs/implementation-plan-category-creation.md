@@ -399,7 +399,7 @@ the docs in line.
     `category.TypeExpense` explicitly. Full suite (5339 tests across
     26 packages) and `golangci-lint run ./...` green.
 
-- [ ] **CC-007 — Task 7: Spec + README updates** (doc only)
+- [x] **CC-007 — Task 7: Spec + README updates** (doc only)
   - GREEN: update `specs/tui.md` "Category Combo Box" section (line
     466) to enumerate the surfaces (typeahead combos vs index-navigated
     custom widgets); add the context-aware Type default paragraph to
@@ -411,7 +411,26 @@ the docs in line.
     split, scheduled, and paycheck.
   - Confirm: spec accurately enumerates the surfaces; README matches
     reality.
-  - Done: _pending._
+  - Done: `specs/tui.md` "Category Combo Box" opening rewritten to
+    enumerate all five Category-input surfaces — three typeahead-combo
+    surfaces (Transaction new/edit, Scheduled new/edit, Scheduled
+    Preview single-line) and two index-navigated picker surfaces (Split
+    Dialog, Paycheck Wizard). A new context-aware-Type-default
+    paragraph documents the paycheck-section vs. amount-based
+    inference rules (Earnings/Net Pay → Income; Tax/Pre-tax/Post-tax →
+    Expense; positive amount → Income; everything else → Expense) and
+    notes that the default is just a head-start, not a constraint.
+    One-line `[+ Add new category…]` mentions added to the Split
+    Transaction Dialog, Scheduled Transaction Preview Dialog, and
+    Paycheck Schedule Wizard sections, each linking back to "Category
+    Combo Box" so the per-surface coverage is discoverable. The
+    "originating dialog" phrasing in the on-confirm/cancel sentence
+    replaced the previous "transaction dialog" wording to match the
+    five-surface reality. `README.md` inline-category-creation bullet
+    now enumerates "transaction, split, scheduled, or paycheck flow"
+    instead of just "transaction flow". Phase 1 is now complete — the
+    documented feature is user-visible across every category-input
+    surface in the TUI.
 
 ## Task 0 — Refactor `applyCreatedCategory` into shared core + router ✅ done
 
