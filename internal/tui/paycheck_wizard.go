@@ -710,6 +710,10 @@ func (w *PaycheckWizard) Render(styles Styles) string {
 	addLine(buttonsRow)
 
 	content := strings.Join(lines, "\n")
+	// Re-emit the dialog bg after inner SGR resets so styled spans
+	// (Muted "[x]", Placeholder "Optional", etc.) don't punch holes
+	// through the panel to the desktop bg — matches *Dialog.Render.
+	content = repaintBg(content, ColorDialogBg)
 	return styles.Dialog.Width(w.width).Render(content)
 }
 
