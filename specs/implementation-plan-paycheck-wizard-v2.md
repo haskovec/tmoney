@@ -127,7 +127,7 @@ slice rewrites part of the form in place; integration points
 (`Transactions → New Paycheck Schedule…` menu, save dispatch via
 `scheduled.Service`) are preserved.
 
-- [ ] **PW2-004 — Restructure wizard to v2 layout with new pre-population**
+- [x] **PW2-004 — Restructure wizard to v2 layout with new pre-population**
   - RED: test `TestPaycheckWizard_V2Layout_OpensWithSpecPrePopulation`
     — invoking the wizard opens a form whose structure matches the
     v2 spec:
@@ -156,6 +156,24 @@ slice rewrites part of the form in place; integration points
   - Confirm: existing `TestPaycheckWizard_OpensWithEmptyForm` is
     replaced or rewritten to match v2 expectations; new test passes;
     full suite green.
+  - Done: added `PaycheckEarnings` and `PaycheckNetPayDestination`
+    enum values, grew `sections` from `[3]` to `[5]`, and seeded
+    Earnings (`Income > Salary`) and Tax (`Federal`, `Social
+    Security`, `Medicare`) defaults in `NewPaycheckWizard` via a new
+    `seedSection` helper. Added `EarningsLines()` and
+    `AdditionalTransfers()` accessors; updated `Title()`,
+    iteration bounds in `AddRow` / `RemoveRow` / `BuildSplits` /
+    `computeTotal` / `collectFocusables` / `Render`. Per-section
+    `addRowLabel()` matches the spec mockup wording (incl.
+    `[+ Add transfer]` for Net Pay Destinations).
+    `NewPaycheckWizardFromSchedule` now clears the pre-populated
+    rows up front so the schedule's existing splits are the only
+    content rendered (PW2-008 will replace the heuristic routing
+    with `paycheck_section` tag dispatch). Replaced
+    `TestPaycheckWizard_OpensWithEmptyForm` with
+    `TestPaycheckWizard_V2Layout_OpensWithSpecPrePopulation`;
+    fixture gained `Tax > Medicare`; AddRow/RemoveRow tests
+    adjusted for pre-populated row counts.
 
 - [ ] **PW2-005 — `[+ Add line]` affordance for each section**
   - RED: test `TestPaycheckWizard_AddLine_AppendsRowToSection` — for

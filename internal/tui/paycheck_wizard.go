@@ -25,11 +25,14 @@ import (
 // The wizard renders a single modal organized into:
 //   - A header block of scalar fields (employer, frequency, next
 //     payday, deposit account, memo).
-//   - Three sections (Pre-Tax / Taxes / Post-Tax). Each section
-//     starts empty; the user clicks `+ Add` to append a row, and
-//     each row exposes a `−` to remove itself. Sections are purely
-//     organizational — the saved schedule flattens them into one
-//     list of splits.
+//   - Five sections mirroring US pay-stub structure (Earnings /
+//     Pre-Tax / Taxes / Post-Tax / Net Pay Destinations). Earnings
+//     opens with one Income:Salary row; Taxes opens with three rows
+//     (Federal, Social Security, Medicare); the rest start empty.
+//     The user clicks `+ Add` to append a row in any mutable
+//     section, and each row exposes a `−` to remove itself.
+//     Net Pay Destinations holds *additional* transfers — the
+//     primary deposit lives in the header's account picker.
 //   - A live "net deposit" total computed from the signed sum of
 //     every row's amount.
 //   - Save / Cancel buttons.
@@ -49,9 +52,10 @@ type PaycheckWizard struct {
 	accountField    *Field // select — primary deposit account
 	memoField       *Field // text — optional memo
 
-	// Three sections of rows, indexed by PaycheckSection. Each section
-	// is empty by default; rows are appended via AddRow.
-	sections [3][]*PaycheckLine
+	// Five sections of rows, indexed by PaycheckSection. Earnings and
+	// Taxes are pre-populated per the v2 spec; the other sections
+	// start empty. Additional rows are appended via AddRow.
+	sections [5][]*PaycheckLine
 
 	// combinedOptions is the category-or-transfer picker's option list.
 	// It is `categoryOptions` followed by `→ <Account>` entries — one
@@ -88,27 +92,55 @@ type wizardHitZone struct {
 	target wizardFocusTarget
 }
 
-// PaycheckSection identifies which of the wizard's three visual
-// groupings a row belongs to. Sections are purely organizational —
-// the saved schedule is just a flat list of splits.
+// PaycheckSection identifies which of the wizard's five visual
+// groupings a row belongs to. Sections are organizational in the UI
+// but also drive the `paycheck_section` tag persisted on each split
+// for exact round-trip in the Edit-as-paycheck flow (see
+// specs/multiline-splits-and-paycheck.md, "Section tagging").
 type PaycheckSection int
 
 const (
-	PaycheckPreTax PaycheckSection = iota
+	PaycheckEarnings PaycheckSection = iota
+	PaycheckPreTax
 	PaycheckTax
 	PaycheckPostTax
+	PaycheckNetPayDestination
 )
 
 func (s PaycheckSection) Title() string {
 	switch s {
+	case PaycheckEarnings:
+		return "EARNINGS"
 	case PaycheckPreTax:
 		return "PRE-TAX"
 	case PaycheckTax:
 		return "TAXES"
 	case PaycheckPostTax:
 		return "POST-TAX"
+	case PaycheckNetPayDestination:
+		return "NET PAY DESTINATIONS"
 	}
 	return ""
+}
+
+// addRowLabel returns the "+ Add ..." button label shown at the
+// bottom of the section. Matches the v2 spec mockup in
+// specs/multiline-splits-and-paycheck.md (Net Pay Destinations uses
+// "[+ Add transfer]" since rows there are always transfers).
+func (s PaycheckSection) addRowLabel() string {
+	switch s {
+	case PaycheckEarnings:
+		return "[+ Add earnings line]"
+	case PaycheckPreTax:
+		return "[+ Add pre-tax line]"
+	case PaycheckTax:
+		return "[+ Add tax line]"
+	case PaycheckPostTax:
+		return "[+ Add post-tax line]"
+	case PaycheckNetPayDestination:
+		return "[+ Add transfer]"
+	}
+	return "[+ Add row]"
 }
 
 // PaycheckLine is one row in a section: a category-or-transfer
@@ -269,9 +301,12 @@ func findCategoryOptionIndex(options []string, displayName string) int {
 	return 0
 }
 
-// NewPaycheckWizard builds a wizard with empty sections. The user
-// fills in scalar header fields and adds rows under each section
-// before saving.
+// NewPaycheckWizard builds a wizard with five sections, pre-populating
+// Earnings with one Income:Salary row and Taxes with three rows
+// (Federal/Social Security/Medicare) per the v2 spec
+// (specs/multiline-splits-and-paycheck.md, "Pre-populated rows").
+// Pre-tax, Post-tax, and Net Pay Destinations start empty — those
+// items vary by employer and are added via the "[+ Add line]" button.
 //
 // categoryOptions / categoryIDs come from buildCategoryOptions (the
 // leading "(None)" entry at index 0). accounts is filtered to
@@ -325,29 +360,55 @@ func NewPaycheckWizard(categoryOptions []string, categoryIDs []types.ID, account
 		Placeholder: "Optional",
 	}
 
+	// Pre-populate Earnings + Tax per the v2 spec. Rows whose default
+	// category isn't found in categoryOptions still get added — the
+	// select falls back to "(None)" (index 0) and the row's empty
+	// amount means it's elided on save unless the user fills it in.
+	w.seedSection(PaycheckEarnings, "Income > Salary")
+	w.seedSection(PaycheckTax, "Tax > Federal", "Tax > Social Security", "Tax > Medicare")
+
 	return w
+}
+
+// seedSection appends a row to the given section for each provided
+// default category display name. Used by the v2 pre-population in
+// NewPaycheckWizard.
+func (w *PaycheckWizard) seedSection(section PaycheckSection, defaults ...string) {
+	for _, name := range defaults {
+		line := w.AddRow(section)
+		if line == nil {
+			continue
+		}
+		if idx := findCategoryOptionIndex(w.categoryOptions, name); idx > 0 {
+			line.SetCategoryIndex(idx)
+		}
+	}
 }
 
 // IsVisible reports whether the wizard should render.
 func (w *PaycheckWizard) IsVisible() bool { return w != nil && w.visible }
 
 // Structural accessors used by tests.
-func (w *PaycheckWizard) Employer() *Field              { return w.employerField }
-func (w *PaycheckWizard) Frequency() *Field             { return w.frequencyField }
-func (w *PaycheckWizard) NextPayday() *Field            { return w.nextPaydayField }
-func (w *PaycheckWizard) DepositAccount() *Field        { return w.accountField }
-func (w *PaycheckWizard) Memo() *Field                  { return w.memoField }
-func (w *PaycheckWizard) PrimaryAccount() *Field        { return w.accountField } // back-compat
-func (w *PaycheckWizard) PreTaxLines() []*PaycheckLine  { return w.sections[PaycheckPreTax] }
-func (w *PaycheckWizard) TaxLines() []*PaycheckLine     { return w.sections[PaycheckTax] }
-func (w *PaycheckWizard) PostTaxLines() []*PaycheckLine { return w.sections[PaycheckPostTax] }
-func (w *PaycheckWizard) Sections() [3][]*PaycheckLine  { return w.sections }
+func (w *PaycheckWizard) Employer() *Field               { return w.employerField }
+func (w *PaycheckWizard) Frequency() *Field              { return w.frequencyField }
+func (w *PaycheckWizard) NextPayday() *Field             { return w.nextPaydayField }
+func (w *PaycheckWizard) DepositAccount() *Field         { return w.accountField }
+func (w *PaycheckWizard) Memo() *Field                   { return w.memoField }
+func (w *PaycheckWizard) PrimaryAccount() *Field         { return w.accountField } // back-compat
+func (w *PaycheckWizard) EarningsLines() []*PaycheckLine { return w.sections[PaycheckEarnings] }
+func (w *PaycheckWizard) PreTaxLines() []*PaycheckLine   { return w.sections[PaycheckPreTax] }
+func (w *PaycheckWizard) TaxLines() []*PaycheckLine      { return w.sections[PaycheckTax] }
+func (w *PaycheckWizard) PostTaxLines() []*PaycheckLine  { return w.sections[PaycheckPostTax] }
+func (w *PaycheckWizard) AdditionalTransfers() []*PaycheckLine {
+	return w.sections[PaycheckNetPayDestination]
+}
+func (w *PaycheckWizard) Sections() [5][]*PaycheckLine { return w.sections }
 
 // AddRow appends an empty row to the given section and returns it.
 // The amount and category select default to empty/(None) and the
 // line is positioned as the last focusable target in its section.
 func (w *PaycheckWizard) AddRow(section PaycheckSection) *PaycheckLine {
-	if section < PaycheckPreTax || section > PaycheckPostTax {
+	if section < PaycheckEarnings || section > PaycheckNetPayDestination {
 		return nil
 	}
 	line := &PaycheckLine{
@@ -378,7 +439,7 @@ func (w *PaycheckWizard) RemoveRow(line *PaycheckLine) {
 	if line == nil {
 		return
 	}
-	for s := PaycheckPreTax; s <= PaycheckPostTax; s++ {
+	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
 		for i, l := range w.sections[s] {
 			if l == line {
 				w.sections[s] = append(w.sections[s][:i], w.sections[s][i+1:]...)
@@ -400,7 +461,10 @@ func (w *PaycheckWizard) BuildSplits() (types.Money, []*scheduled.Split, error) 
 
 	splits := make([]*scheduled.Split, 0)
 
-	for s := PaycheckPreTax; s <= PaycheckPostTax; s++ {
+	// Iterate sections in spec order (earnings → pre-tax → tax →
+	// post-tax → net-pay-destination) so the persisted split ordering
+	// matches the wizard layout.
+	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
 		for _, line := range w.sections[s] {
 			sp, err := w.buildLineSplit(line)
 			if err != nil {
@@ -515,7 +579,7 @@ func (w *PaycheckWizard) collectFocusables() []wizardFocusTarget {
 		{kind: wizardFocusField, field: w.accountField},
 		{kind: wizardFocusField, field: w.memoField},
 	}
-	for s := PaycheckPreTax; s <= PaycheckPostTax; s++ {
+	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
 		for _, line := range w.sections[s] {
 			out = append(out,
 				wizardFocusTarget{kind: wizardFocusField, field: line.selectField},
@@ -621,7 +685,7 @@ func (w *PaycheckWizard) Render(styles Styles) string {
 	addLine("")
 
 	// Sections.
-	for s := PaycheckPreTax; s <= PaycheckPostTax; s++ {
+	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
 		addLine(fillStyle.Render(styles.Bold.Render(s.Title())))
 		addLine(fillStyle.Render(strings.Repeat("─", contentWidth)))
 
@@ -631,7 +695,7 @@ func (w *PaycheckWizard) Render(styles Styles) string {
 			w.hitZones = append(w.hitZones, zones...)
 		}
 
-		addLabel := fmt.Sprintf("[+ Add %s row]", strings.ToLower(s.Title()))
+		addLabel := s.addRowLabel()
 		var addRow string
 		if focused.kind == wizardFocusAddRow && focused.section == s {
 			addRow = "  " + styles.DialogButtonFocused.Render(addLabel)
@@ -949,7 +1013,7 @@ func (w *PaycheckWizard) renderFieldValue(styles Styles, fill lipgloss.Style, f 
 // computeTotal returns the signed sum of every populated row.
 func (w *PaycheckWizard) computeTotal() types.Money {
 	total := types.ZeroMoney
-	for s := PaycheckPreTax; s <= PaycheckPostTax; s++ {
+	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
 		for _, line := range w.sections[s] {
 			amtStr := strings.TrimSpace(line.amountField.Value)
 			if amtStr == "" {
@@ -1405,6 +1469,13 @@ func NewPaycheckWizardFromSchedule(
 	w := NewPaycheckWizard(categoryOptions, categoryIDs, accounts)
 	if st == nil {
 		return w
+	}
+
+	// Drop the v2 default-seeded rows — the schedule's existing splits
+	// drive section content; we don't want the defaults appended on top.
+	// (PW2-008 will rewrite this routing to use the paycheck_section tag.)
+	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
+		w.sections[s] = nil
 	}
 
 	if st.HasPayee() {

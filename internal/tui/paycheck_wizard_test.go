@@ -23,6 +23,7 @@ type paycheckWizardFixture struct {
 	healthID        types.ID
 	federalID       types.ID
 	ssID            types.ID
+	medicareID      types.ID
 
 	accounts     []*account.Account
 	checkingID   types.ID
@@ -35,6 +36,7 @@ func newPaycheckWizardFixture() *paycheckWizardFixture {
 	healthID := types.NewID()
 	federalID := types.NewID()
 	ssID := types.NewID()
+	medicareID := types.NewID()
 	checkingID := types.NewID()
 	savingsID := types.NewID()
 	retire401kID := types.NewID()
@@ -46,6 +48,7 @@ func newPaycheckWizardFixture() *paycheckWizardFixture {
 			"Insurance > Health",
 			"Tax > Federal",
 			"Tax > Social Security",
+			"Tax > Medicare",
 		},
 		categoryIDs: []types.ID{
 			types.NilID,
@@ -53,11 +56,13 @@ func newPaycheckWizardFixture() *paycheckWizardFixture {
 			healthID,
 			federalID,
 			ssID,
+			medicareID,
 		},
-		salaryID:  salaryID,
-		healthID:  healthID,
-		federalID: federalID,
-		ssID:      ssID,
+		salaryID:   salaryID,
+		healthID:   healthID,
+		federalID:  federalID,
+		ssID:       ssID,
+		medicareID: medicareID,
 		accounts: []*account.Account{
 			{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 			{BaseModel: types.BaseModel{ID: savingsID}, Name: "Savings", Active: true, Type: account.TypeSavings},
@@ -79,10 +84,14 @@ func indexOf(haystack []string, needle string) int {
 	return -1
 }
 
-// TestPaycheckWizard_OpensWithEmptyForm asserts the new wizard opens
-// with all three sections empty (no preset rows) and the header
-// fields seeded to sensible defaults.
-func TestPaycheckWizard_OpensWithEmptyForm(t *testing.T) {
+// TestPaycheckWizard_V2Layout_OpensWithSpecPrePopulation asserts the v2
+// wizard opens with five sections pre-populated per
+// specs/multiline-splits-and-paycheck.md "Pre-populated rows" table:
+// Earnings has one Income:Salary row, Pre-tax is empty, Taxes has
+// three rows (Federal/Social Security/Medicare), Post-tax is empty,
+// and Net Pay Destinations has no additional transfers (the primary
+// deposit picker lives in the header).
+func TestPaycheckWizard_V2Layout_OpensWithSpecPrePopulation(t *testing.T) {
 	fx := newPaycheckWizardFixture()
 	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
 	if w == nil {
@@ -92,30 +101,25 @@ func TestPaycheckWizard_OpensWithEmptyForm(t *testing.T) {
 		t.Error("wizard should be visible after construction")
 	}
 
+	// Header field defaults (carried over from v1).
 	if got := w.Employer().Value; got != "" {
 		t.Errorf("employer should start empty, got %q", got)
 	}
 	if w.Employer().Type != FieldText {
 		t.Errorf("employer should be FieldText, got %v", w.Employer().Type)
 	}
-
 	if got, want := w.Frequency().SelectedIndex, defaultPaycheckFrequencyIndex; got != want {
 		t.Errorf("frequency default = %d, want %d (Fortnightly)", got, want)
 	}
 	if opt := paycheckFrequencyForIndex(w.Frequency().SelectedIndex); opt.frequency != scheduled.FrequencyFortnightly {
 		t.Errorf("default frequency option = %v, want fortnightly", opt.frequency)
 	}
-
-	// Next payday is a masked MM/DD/YYYY date field, matching the
-	// transaction dialogs' Date input behavior.
 	if w.NextPayday().Type != FieldDate {
 		t.Errorf("next payday should be FieldDate, got %v", w.NextPayday().Type)
 	}
 	if w.NextPayday().Value == "" {
 		t.Error("next payday should be seeded with today's date")
 	}
-
-	// Deposit account: select with all accounts, default first.
 	if w.DepositAccount().Type != FieldSelect {
 		t.Errorf("deposit account should be FieldSelect, got %v", w.DepositAccount().Type)
 	}
@@ -123,29 +127,91 @@ func TestPaycheckWizard_OpensWithEmptyForm(t *testing.T) {
 		t.Errorf("deposit default = %q, want Checking", got)
 	}
 
-	// Sections all empty.
+	// Earnings: 1 row pre-populated with Income > Salary, empty amount.
+	earnings := w.EarningsLines()
+	if got := len(earnings); got != 1 {
+		t.Fatalf("EarningsLines count = %d, want 1", got)
+	}
+	if got, want := selectedLineOption(earnings[0]), "Income > Salary"; got != want {
+		t.Errorf("Earnings row[0] category = %q, want %q", got, want)
+	}
+	if earnings[0].AmountField().Value != "" {
+		t.Errorf("Earnings row[0] amount = %q, want empty",
+			earnings[0].AmountField().Value)
+	}
+	if earnings[0].Section != PaycheckEarnings {
+		t.Errorf("Earnings row[0] Section = %v, want PaycheckEarnings",
+			earnings[0].Section)
+	}
+
+	// Pre-tax: 0 rows (added via [+ Add pre-tax line]).
 	if got := len(w.PreTaxLines()); got != 0 {
-		t.Errorf("pre-tax should start empty, got %d rows", got)
+		t.Errorf("PreTaxLines count = %d, want 0", got)
 	}
-	if got := len(w.TaxLines()); got != 0 {
-		t.Errorf("tax should start empty, got %d rows", got)
+
+	// Taxes: 3 rows pre-populated in order Federal, Social Security,
+	// Medicare; all with empty amounts.
+	tax := w.TaxLines()
+	if got := len(tax); got != 3 {
+		t.Fatalf("TaxLines count = %d, want 3", got)
 	}
+	wantTaxCats := []string{"Tax > Federal", "Tax > Social Security", "Tax > Medicare"}
+	for i, want := range wantTaxCats {
+		if got := selectedLineOption(tax[i]); got != want {
+			t.Errorf("Tax row[%d] category = %q, want %q", i, got, want)
+		}
+		if tax[i].AmountField().Value != "" {
+			t.Errorf("Tax row[%d] amount = %q, want empty",
+				i, tax[i].AmountField().Value)
+		}
+		if tax[i].Section != PaycheckTax {
+			t.Errorf("Tax row[%d] Section = %v, want PaycheckTax",
+				i, tax[i].Section)
+		}
+	}
+
+	// Post-tax: 0 rows (added via [+ Add post-tax line]).
 	if got := len(w.PostTaxLines()); got != 0 {
-		t.Errorf("post-tax should start empty, got %d rows", got)
+		t.Errorf("PostTaxLines count = %d, want 0", got)
+	}
+
+	// Net Pay Destinations: 0 additional transfers. The primary
+	// deposit picker is in the header (w.DepositAccount()).
+	if got := len(w.AdditionalTransfers()); got != 0 {
+		t.Errorf("AdditionalTransfers count = %d, want 0", got)
 	}
 }
 
-// TestPaycheckWizard_AddRow_AppendsToSection asserts AddRow creates
-// an empty row in the requested section and that the line knows its
-// section.
+// selectedLineOption returns the display string currently selected in
+// a paycheck line's category-or-transfer picker, or "" if unset.
+func selectedLineOption(line *PaycheckLine) string {
+	f := line.SelectField()
+	if f == nil || f.SelectedIndex < 0 || f.SelectedIndex >= len(f.Options) {
+		return ""
+	}
+	return f.Options[f.SelectedIndex]
+}
+
+// TestPaycheckWizard_AddRow_AppendsToSection asserts AddRow appends an
+// empty row to the requested section (on top of any v2-pre-populated
+// rows) and that the line knows its section.
 func TestPaycheckWizard_AddRow_AppendsToSection(t *testing.T) {
 	fx := newPaycheckWizardFixture()
 	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
 
+	earningsBefore := len(w.EarningsLines())
+	preBefore := len(w.PreTaxLines())
+	taxBefore := len(w.TaxLines())
+	postBefore := len(w.PostTaxLines())
+
+	earn := w.AddRow(PaycheckEarnings)
 	pre := w.AddRow(PaycheckPreTax)
 	tax := w.AddRow(PaycheckTax)
 	post := w.AddRow(PaycheckPostTax)
 
+	if earn.Section != PaycheckEarnings {
+		t.Errorf("earn.Section = %v, want PaycheckEarnings", earn.Section)
+	}
 	if pre.Section != PaycheckPreTax {
 		t.Errorf("pre.Section = %v, want PaycheckPreTax", pre.Section)
 	}
@@ -156,16 +222,20 @@ func TestPaycheckWizard_AddRow_AppendsToSection(t *testing.T) {
 		t.Errorf("post.Section = %v, want PaycheckPostTax", post.Section)
 	}
 
-	if got := len(w.PreTaxLines()); got != 1 {
-		t.Errorf("pre-tax count = %d, want 1", got)
+	if got, want := len(w.EarningsLines()), earningsBefore+1; got != want {
+		t.Errorf("earnings count = %d, want %d", got, want)
 	}
-	if got := len(w.TaxLines()); got != 1 {
-		t.Errorf("tax count = %d, want 1", got)
+	if got, want := len(w.PreTaxLines()), preBefore+1; got != want {
+		t.Errorf("pre-tax count = %d, want %d", got, want)
 	}
-	if got := len(w.PostTaxLines()); got != 1 {
-		t.Errorf("post-tax count = %d, want 1", got)
+	if got, want := len(w.TaxLines()), taxBefore+1; got != want {
+		t.Errorf("tax count = %d, want %d", got, want)
+	}
+	if got, want := len(w.PostTaxLines()), postBefore+1; got != want {
+		t.Errorf("post-tax count = %d, want %d", got, want)
 	}
 
+	// Newly-added rows default to empty amount and the (None) category.
 	if pre.AmountField().Value != "" {
 		t.Errorf("new row amount should be empty, got %q", pre.AmountField().Value)
 	}
@@ -178,19 +248,20 @@ func TestPaycheckWizard_AddRow_AppendsToSection(t *testing.T) {
 }
 
 // TestPaycheckWizard_RemoveRow_RemovesByPointer asserts RemoveRow
-// drops the row from its section.
+// drops the row from its section. Uses Pre-tax which starts empty in
+// v2 so the assertion is independent of pre-populated row counts.
 func TestPaycheckWizard_RemoveRow_RemovesByPointer(t *testing.T) {
 	fx := newPaycheckWizardFixture()
 	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
 
-	a := w.AddRow(PaycheckTax)
-	b := w.AddRow(PaycheckTax)
+	a := w.AddRow(PaycheckPreTax)
+	b := w.AddRow(PaycheckPreTax)
 
 	w.RemoveRow(a)
-	if got := len(w.TaxLines()); got != 1 {
-		t.Fatalf("tax count after remove = %d, want 1", got)
+	if got := len(w.PreTaxLines()); got != 1 {
+		t.Fatalf("pre-tax count after remove = %d, want 1", got)
 	}
-	if w.TaxLines()[0] != b {
+	if w.PreTaxLines()[0] != b {
 		t.Error("remaining row should be b")
 	}
 }
