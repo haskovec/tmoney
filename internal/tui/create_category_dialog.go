@@ -225,6 +225,8 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 	switch a.createCatSource {
 	case createCatSourceTxnDialog:
 		a.applyCreatedCategoryToTxn(newCat, cats)
+	case createCatSourceSchedPreview:
+		a.applyCreatedCategoryToSchedPreview(newCat, cats)
 	default:
 		// No source recorded — surface plumbing not wired (or the source
 		// enum was reset before the router fired). Close the sub-dialog

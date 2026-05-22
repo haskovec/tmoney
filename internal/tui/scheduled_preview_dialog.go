@@ -186,7 +186,8 @@ func buildPreviewHeaderSingle(dateStr, payeeName, memo, amountStr string, catego
 	f.Required = true
 
 	d.AddTextField("Payee", payeeName, "Payee name", 0)
-	d.AddComboField("Category", categoryOptions, catIdx)
+	catField := d.AddComboField("Category", categoryOptions, catIdx)
+	catField.AddNewLabel = "[+ Add new category…]"
 
 	af := d.AddTextField("Amount", amountStr, "-50.00", 12)
 	af.Required = true
@@ -360,8 +361,84 @@ func (a *App) handleSchedulePreviewDialogKey(msg tea.KeyPressMsg) (tea.Model, te
 		return a, nil
 	case DialogActionSubmit:
 		return a.submitSchedulePreviewDialog()
+	case DialogActionAddNew:
+		return a.openCreateCategorySubDialogFromSchedPreview()
 	}
 	return a, nil
+}
+
+// openCreateCategorySubDialogFromSchedPreview hides the schedule preview
+// header dialog and opens the inline create-category sub-dialog seeded with
+// the typed query from the Category combo. The preview's field state is
+// preserved by keeping the dialog alive (just hidden) for the duration of
+// the divert; restoration on cancel and post-create wiring happens through
+// the createCatDialog handlers.
+func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd) {
+	if a.schedPreviewDialog == nil {
+		return a, nil
+	}
+	header := a.schedPreviewDialog.HeaderDialog()
+	if header == nil {
+		return a, nil
+	}
+	fields := header.Fields()
+	if len(fields) <= previewSingleFieldCat {
+		return a, nil
+	}
+	catField := fields[previewSingleFieldCat]
+	query := catField.Query
+	// Consume the trigger and clear the typed query — the create-category
+	// dialog now owns it. This way, when we restore the preview, its
+	// Category combo doesn't carry stale typed text.
+	catField.AddNewTriggered = false
+	catField.Query = ""
+
+	// createCatSource must be set before parentsForCreateCatDialog so the
+	// helper picks the right source for the parents list.
+	a.createCatSource = createCatSourceSchedPreview
+	parents := a.parentsForCreateCatDialog()
+	parent, name := splitCategoryQuery(query)
+	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents)
+	header.SetVisible(false)
+	return a, nil
+}
+
+// applyCreatedCategoryToSchedPreview is the per-surface applier called by
+// the createCategoryRequestMsg router when the originating surface was the
+// (single-line) schedule preview dialog. It reloads the dialog's category
+// list with newCat pre-selected on the Category combo, advances focus to
+// Amount, re-shows the preview, and clears the create-category sub-dialog.
+// Persistence happened in persistCategory; the router passes in the
+// freshly-created category.
+func (a *App) applyCreatedCategoryToSchedPreview(newCat *category.Category, cats []*category.Category) {
+	if a.schedPreviewDialog == nil {
+		a.createCatDialog = nil
+		return
+	}
+	header := a.schedPreviewDialog.HeaderDialog()
+	if header == nil {
+		a.createCatDialog = nil
+		return
+	}
+	options, ids := buildCategoryOptions(cats)
+	a.schedPreviewDialog.categoryIDs = ids
+
+	if len(header.Fields()) > previewSingleFieldCat {
+		catField := header.Fields()[previewSingleFieldCat]
+		catField.Options = options
+		newIdx := 0
+		for i, id := range ids {
+			if id == newCat.ID {
+				newIdx = i
+				break
+			}
+		}
+		catField.SelectedIndex = newIdx
+		// Focus advances to Amount so the user can keep typing.
+		header.SetFocusIndex(previewSingleFieldAmount)
+		header.SetVisible(true)
+	}
+	a.createCatDialog = nil
 }
 
 // handleSchedulePreviewMultiLineKey routes keys for a multi-line

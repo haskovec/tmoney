@@ -165,7 +165,7 @@ the docs in line.
     the Task 0 router (`createCatSource = createCatSourceTxnDialog` →
     `applyCreatedCategoryToTxn`) handles dispatch end-to-end.
 
-- [ ] **CC-002 — Task 2: Scheduled Preview Dialog (single-line) wires `AddNewLabel`** (low risk)
+- [x] **CC-002 — Task 2: Scheduled Preview Dialog (single-line) wires `AddNewLabel`** (low risk)
   - RED: `TestBuildPreviewHeaderSingle_CategoryComboHasAddNewLabel`;
     `TestApp_SchedPreview_AddNew_{OpensCreateCategoryDialog, CancelRestoresState, SubmitPersistsAndAdvancesFocus}`.
   - GREEN: capture the `*Field` at
@@ -177,7 +177,22 @@ the docs in line.
     surface applier.
   - Confirm: multi-line preview unaffected (it routes through the
     embedded split editor — covered by Task 4).
-  - Done: _pending._
+  - Done: single-line preview's Category combo now sets
+    `AddNewLabel = "[+ Add new category…]"` so the action row is visible.
+    `handleSchedulePreviewDialogKey` handles `DialogActionAddNew` by
+    diverting into `openCreateCategorySubDialogFromSchedPreview`, which
+    sets `createCatSource = createCatSourceSchedPreview` and hides the
+    header dialog. The Task 0 router dispatches to the new
+    `applyCreatedCategoryToSchedPreview`, which rebuilds the dialog's
+    `categoryIDs` + Category combo options, selects the new category,
+    and advances focus to Amount. `cancelCreateCatDialog` now restores
+    the originating surface based on `createCatSource` (txn dialog vs.
+    sched preview). `topLevelParentNames` was refactored to take
+    `[]*category.Category` directly and a shared
+    `App.parentsForCreateCatDialog()` helper picks the parents source
+    based on `createCatSource` (cached `txnDialogData` for txn, live
+    `categorySvc.List()` for sched preview). 4 new tests added; full
+    `./internal/tui/` suite (1696 tests) and `golangci-lint` green.
 
 - [ ] **CC-003 — Task 3: Scheduled new + edit Dialog — `AddSelectField` → `AddComboField` + `AddNewLabel`** (highest risk — input-handling conversion)
   - RED: `TestBuildNewScheduledDialog_CategoryIsCombo`;

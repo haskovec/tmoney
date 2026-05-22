@@ -447,7 +447,10 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 	catField.AddNewTriggered = false
 	catField.Query = ""
 
-	parents := topLevelParentNames(a.txnDialogData)
+	var parents []string
+	if a.txnDialogData != nil {
+		parents = topLevelParentNames(a.txnDialogData.categories)
+	}
 	parent, name := splitCategoryQuery(query)
 	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents)
 	a.createCatSource = createCatSourceTxnDialog
@@ -455,15 +458,12 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// topLevelParentNames returns the names of non-system top-level categories
-// loaded into the transaction dialog data. Used to populate the Parent combo
-// in the create-category sub-dialog. Returns an empty slice when data is nil.
-func topLevelParentNames(data *transactionDialogData) []string {
-	if data == nil {
-		return nil
-	}
+// topLevelParentNames returns the names of non-system top-level categories.
+// Used to populate the Parent combo in the create-category sub-dialog.
+// Returns an empty slice for an empty or nil input.
+func topLevelParentNames(categories []*category.Category) []string {
 	var names []string
-	for _, c := range data.categories {
+	for _, c := range categories {
 		if c.IsSystem || !c.IsTopLevel() {
 			continue
 		}
@@ -492,17 +492,27 @@ func (a *App) handleCreateCatDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	return a, nil
 }
 
-// cancelCreateCatDialog closes the sub-dialog and re-shows the transaction
-// dialog. All txn dialog field state is preserved (the dialog was hidden,
-// not destroyed). Focus is left wherever it was (Category field). The
-// createCatSource discriminator is reset so a future open from a different
-// surface starts in a clean state.
+// cancelCreateCatDialog closes the sub-dialog and re-shows whichever
+// originating transaction-entry surface is current. All originating-dialog
+// field state is preserved (the dialog was hidden, not destroyed). Focus is
+// left wherever it was (Category field). The createCatSource discriminator
+// is reset so a future open from a different surface starts in a clean
+// state.
 func (a *App) cancelCreateCatDialog() {
 	a.createCatDialog = nil
-	a.createCatSource = createCatSourceNone
-	if a.txnDialog != nil {
-		a.txnDialog.SetVisible(true)
+	switch a.createCatSource {
+	case createCatSourceTxnDialog:
+		if a.txnDialog != nil {
+			a.txnDialog.SetVisible(true)
+		}
+	case createCatSourceSchedPreview:
+		if a.schedPreviewDialog != nil {
+			if header := a.schedPreviewDialog.HeaderDialog(); header != nil {
+				header.SetVisible(true)
+			}
+		}
 	}
+	a.createCatSource = createCatSourceNone
 }
 
 // submitCreateCatDialog validates the sub-dialog and, on success, returns a
@@ -513,12 +523,33 @@ func (a *App) submitCreateCatDialog() (tea.Model, tea.Cmd) {
 	if a.createCatDialog == nil {
 		return a, nil
 	}
-	parents := topLevelParentNames(a.txnDialogData)
+	parents := a.parentsForCreateCatDialog()
 	cmd := submitCreateCategoryDialog(a.createCatDialog, parents)
 	if cmd == nil {
 		return a, nil
 	}
 	return a, cmd
+}
+
+// parentsForCreateCatDialog returns the existing top-level parent names that
+// should be presented to the create-category sub-dialog's parent combo. The
+// list is sourced from whichever transaction-entry surface opened the sub-
+// dialog; for surfaces that don't cache categories (e.g. the schedule
+// preview dialog) it falls back to a live categorySvc.List() call. An empty
+// slice is returned when no source matches and no service is available.
+func (a *App) parentsForCreateCatDialog() []string {
+	switch a.createCatSource {
+	case createCatSourceTxnDialog:
+		if a.txnDialogData != nil {
+			return topLevelParentNames(a.txnDialogData.categories)
+		}
+	}
+	if a.categorySvc != nil {
+		if cats, err := a.categorySvc.List(); err == nil {
+			return topLevelParentNames(cats)
+		}
+	}
+	return nil
 }
 
 // applyCreatedCategoryToTxn is the per-surface applier called by the

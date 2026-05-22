@@ -890,3 +890,219 @@ func TestSchedulePreview_ImbalancedSaveDisabled(t *testing.T) {
 			env.originalNext.Time().Format("2006-01-02"))
 	}
 }
+
+// =============================================================================
+// CC-002 — Scheduled Preview → create-category sub-dialog → back
+// =============================================================================
+
+// TestBuildPreviewHeaderSingle_CategoryComboHasAddNewLabel pins that the
+// Category combo built by buildPreviewHeaderSingle carries the AddNewLabel
+// sentinel so the [+ Add new category…] action row appears in the dropdown.
+// CC-002.
+func TestBuildPreviewHeaderSingle_CategoryComboHasAddNewLabel(t *testing.T) {
+	options := []string{"(None)", "Rent", "Food"}
+	d := buildPreviewHeaderSingle("04/15/2026", "Landlord", "Memo", "-1500.00", options, 0)
+	got := d.Fields()[previewSingleFieldCat].AddNewLabel
+	want := "[+ Add new category…]"
+	if got != want {
+		t.Errorf("Category AddNewLabel = %q, want %q", got, want)
+	}
+}
+
+// parkSchedPreviewOnAddNew focuses the Category combo on a single-line
+// preview dialog and parks the highlight on the [+ Add new category…] row
+// with the given typed query, so a subsequent Enter triggers the divert.
+func parkSchedPreviewOnAddNew(t *testing.T, app *App, query string) {
+	t.Helper()
+	if app.schedPreviewDialog == nil {
+		t.Fatal("schedPreviewDialog should be open")
+	}
+	header := app.schedPreviewDialog.HeaderDialog()
+	header.SetFocusIndex(previewSingleFieldCat)
+	cat := header.Fields()[previewSingleFieldCat]
+	cat.Query = query
+	cat.comboHighlight = len(cat.FilteredIndices())
+}
+
+func TestApp_SchedPreview_AddNew_OpensCreateCategoryDialog(t *testing.T) {
+	env := newSchedulePreviewTestEnv(t)
+	parkSchedPreviewOnAddNew(t, env.app, "Donations")
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := env.app.handleSchedulePreviewDialogKey(enter)
+	updated, ok := model.(*App)
+	if !ok {
+		t.Fatalf("handleSchedulePreviewDialogKey returned %T, want *App", model)
+	}
+
+	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+		t.Fatal("createCatDialog should be visible after [+ Add new] is activated")
+	}
+	if updated.createCatSource != createCatSourceSchedPreview {
+		t.Errorf("createCatSource = %d, want createCatSourceSchedPreview (%d)",
+			updated.createCatSource, createCatSourceSchedPreview)
+	}
+	if updated.schedPreviewDialog == nil {
+		t.Fatal("schedPreviewDialog should be kept (hidden) so its state survives the divert")
+	}
+	if updated.schedPreviewDialog.IsVisible() {
+		t.Error("schedPreviewDialog should be hidden while createCatDialog is shown")
+	}
+	if updated.createCatDialog.Title() != "New Category" {
+		t.Errorf("createCatDialog title = %q, want %q",
+			updated.createCatDialog.Title(), "New Category")
+	}
+	// The typed query was Donations (no colon), so it pre-fills the Name
+	// field. The Parent combo defaults to "(top-level)".
+	cFields := updated.createCatDialog.Fields()
+	if cFields[0].Value != "Donations" {
+		t.Errorf("Name field = %q, want %q (seeded from typed query)",
+			cFields[0].Value, "Donations")
+	}
+}
+
+func TestApp_SchedPreview_AddNew_CancelRestoresState(t *testing.T) {
+	env := newSchedulePreviewTestEnv(t)
+
+	// Make a distinctive edit before opening the sub-dialog so we can
+	// assert it survives the round-trip.
+	headerFields := env.app.schedPreviewDialog.HeaderDialog().Fields()
+	headerFields[previewSingleFieldMemo].Value = "May rent (edited)"
+	headerFields[previewSingleFieldAmount].Value = "-1499.00"
+	prevCat := headerFields[previewSingleFieldCat].SelectedIndex
+
+	parkSchedPreviewOnAddNew(t, env.app, "")
+	prevFocus := env.app.schedPreviewDialog.HeaderDialog().FocusIndex()
+
+	// Open create-category dialog.
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := env.app.handleSchedulePreviewDialogKey(enter)
+	app := model.(*App)
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+
+	// Cancel via Esc.
+	esc := tea.KeyPressMsg{Code: tea.KeyEsc}
+	model, _ = app.handleCreateCatDialogKey(esc)
+	app = model.(*App)
+
+	if app.createCatDialog != nil {
+		t.Error("createCatDialog should be cleared after cancel")
+	}
+	if app.createCatSource != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after cancel", app.createCatSource)
+	}
+	if app.schedPreviewDialog == nil || !app.schedPreviewDialog.IsVisible() {
+		t.Fatal("schedPreviewDialog should be restored to visible after cancel")
+	}
+
+	// All previously edited field values preserved.
+	fields := app.schedPreviewDialog.HeaderDialog().Fields()
+	if fields[previewSingleFieldMemo].Value != "May rent (edited)" {
+		t.Errorf("Memo preserved? got %q, want %q",
+			fields[previewSingleFieldMemo].Value, "May rent (edited)")
+	}
+	if fields[previewSingleFieldAmount].Value != "-1499.00" {
+		t.Errorf("Amount preserved? got %q, want %q",
+			fields[previewSingleFieldAmount].Value, "-1499.00")
+	}
+	if fields[previewSingleFieldCat].SelectedIndex != prevCat {
+		t.Errorf("Category SelectedIndex changed on cancel: got %d, want %d",
+			fields[previewSingleFieldCat].SelectedIndex, prevCat)
+	}
+	if app.schedPreviewDialog.HeaderDialog().FocusIndex() != prevFocus {
+		t.Errorf("FocusIndex changed on cancel: got %d, want %d (Category)",
+			app.schedPreviewDialog.HeaderDialog().FocusIndex(), prevFocus)
+	}
+}
+
+func TestApp_SchedPreview_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
+	env := newSchedulePreviewTestEnv(t)
+
+	// Distinctive edits we expect to survive the divert.
+	headerFields := env.app.schedPreviewDialog.HeaderDialog().Fields()
+	headerFields[previewSingleFieldMemo].Value = "May rent (edited)"
+	headerFields[previewSingleFieldAmount].Value = "-1499.00"
+
+	parkSchedPreviewOnAddNew(t, env.app, "")
+
+	// Open create-category sub-dialog.
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := env.app.handleSchedulePreviewDialogKey(enter)
+	app := model.(*App)
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+
+	// Fill: Name=Cleaning, Parent=(top-level), Type=Expense.
+	cFields := app.createCatDialog.Fields()
+	cFields[0].Value = "Cleaning"
+	cFields[1].SelectedIndex = 0 // (top-level)
+	cFields[2].SelectedIndex = 0 // Expense
+
+	// Submit triggers persist + reopen.
+	model, cmd := app.submitCreateCatDialog()
+	app = model.(*App)
+	if cmd == nil {
+		t.Fatal("submit should produce a tea.Cmd that emits createCategoryRequestMsg")
+	}
+	msg := cmd()
+	model, _ = app.Update(msg)
+	app = model.(*App)
+
+	// New category persisted.
+	got, err := env.app.categorySvc.List()
+	if err != nil {
+		t.Fatalf("categorySvc.List: %v", err)
+	}
+	var found *category.Category
+	for _, c := range got {
+		if c.Name == "Cleaning" {
+			found = c
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("'Cleaning' should be persisted after submit")
+	}
+
+	// Sub-dialog closed; preview dialog visible again.
+	if app.createCatDialog != nil {
+		t.Error("createCatDialog should be cleared after submit")
+	}
+	if app.createCatSource != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after submit", app.createCatSource)
+	}
+	if app.schedPreviewDialog == nil || !app.schedPreviewDialog.IsVisible() {
+		t.Fatal("schedPreviewDialog should be visible again after submit")
+	}
+
+	// Other fields preserved.
+	fields := app.schedPreviewDialog.HeaderDialog().Fields()
+	if fields[previewSingleFieldMemo].Value != "May rent (edited)" {
+		t.Errorf("Memo preserved? got %q", fields[previewSingleFieldMemo].Value)
+	}
+	if fields[previewSingleFieldAmount].Value != "-1499.00" {
+		t.Errorf("Amount preserved? got %q", fields[previewSingleFieldAmount].Value)
+	}
+
+	// Category field's SelectedIndex points to the new category.
+	catField := fields[previewSingleFieldCat]
+	if catField.Options[catField.SelectedIndex] != "Cleaning" {
+		t.Errorf("Category selected = %q, want %q",
+			catField.Options[catField.SelectedIndex], "Cleaning")
+	}
+	// And the parallel ID slice resolves to the new category's ID.
+	ids := app.schedPreviewDialog.categoryIDs
+	if ids[catField.SelectedIndex] != found.ID {
+		t.Errorf("categoryIDs[%d] = %s, want %s",
+			catField.SelectedIndex, ids[catField.SelectedIndex], found.ID)
+	}
+
+	// Focus advances to Amount (previewSingleFieldAmount).
+	if app.schedPreviewDialog.HeaderDialog().FocusIndex() != previewSingleFieldAmount {
+		t.Errorf("FocusIndex after submit = %d, want %d (Amount)",
+			app.schedPreviewDialog.HeaderDialog().FocusIndex(), previewSingleFieldAmount)
+	}
+}
