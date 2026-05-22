@@ -1121,6 +1121,160 @@ func TestSplitItemRepo_TransferLine_Update(t *testing.T) {
 }
 
 // =============================================================================
+// PaycheckSection Round-Trip (PW2-002)
+// =============================================================================
+
+// paycheckSectionFixtures sets up an account, category, and parent transaction
+// ready to receive paycheck-tagged child splits.
+func paycheckSectionFixtures(t *testing.T) (
+	acct *account.Account,
+	cat *category.Category,
+	txn *Transaction,
+	splitRepo *SplitRepository,
+) {
+	t.Helper()
+	database := createTestDB(t)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+	txnRepo := NewRepository(database)
+	splitRepo = NewSplitRepository(database)
+
+	now := time.Now()
+	today := types.NewDate(now.Year(), now.Month(), now.Day())
+
+	acct = account.NewAccount("Checking", account.TypeChecking, "USD",
+		types.ZeroMoney, today)
+	if err := accountRepo.Create(acct); err != nil {
+		t.Fatalf("Create account: %v", err)
+	}
+
+	cat = category.NewCategory("Salary", category.TypeIncome)
+	if err := categoryRepo.Create(cat); err != nil {
+		t.Fatalf("Create category: %v", err)
+	}
+
+	txn = NewTransaction(acct.ID, today, types.MustNewMoney("5000.00"))
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("Create transaction: %v", err)
+	}
+	return acct, cat, txn, splitRepo
+}
+
+func TestSplitItemRepo_PaycheckSection_RoundTrip(t *testing.T) {
+	t.Run("tag persists through Create + GetByID", func(t *testing.T) {
+		_, cat, txn, splitRepo := paycheckSectionFixtures(t)
+
+		split := NewSplit(txn.ID, cat.ID, types.MustNewMoney("5000.00"))
+		split.PaycheckSection = types.NullableString{String: "earnings", Valid: true}
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		got, err := splitRepo.GetByID(split.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if !got.PaycheckSection.Valid {
+			t.Fatalf("PaycheckSection invalid after round-trip, want valid")
+		}
+		if got.PaycheckSection.String != "earnings" {
+			t.Errorf("PaycheckSection = %q, want %q", got.PaycheckSection.String, "earnings")
+		}
+	})
+
+	t.Run("tag persists through ListByTransaction", func(t *testing.T) {
+		_, cat, txn, splitRepo := paycheckSectionFixtures(t)
+
+		split := NewSplit(txn.ID, cat.ID, types.MustNewMoney("5000.00"))
+		split.PaycheckSection = types.NullableString{String: "tax", Valid: true}
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		list, err := splitRepo.ListByTransaction(txn.ID)
+		if err != nil {
+			t.Fatalf("ListByTransaction: %v", err)
+		}
+		if len(list) != 1 {
+			t.Fatalf("list length = %d, want 1", len(list))
+		}
+		if !list[0].PaycheckSection.Valid || list[0].PaycheckSection.String != "tax" {
+			t.Errorf("ListByTransaction PaycheckSection = %+v, want valid 'tax'",
+				list[0].PaycheckSection)
+		}
+	})
+
+	t.Run("Update preserves tag", func(t *testing.T) {
+		_, cat, txn, splitRepo := paycheckSectionFixtures(t)
+
+		split := NewSplit(txn.ID, cat.ID, types.MustNewMoney("5000.00"))
+		split.PaycheckSection = types.NullableString{String: "post_tax", Valid: true}
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		// Modify a different field and update; tag should round-trip.
+		split.Amount = types.MustNewMoney("4500.00")
+		if err := splitRepo.Update(split); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+
+		got, err := splitRepo.GetByID(split.ID)
+		if err != nil {
+			t.Fatalf("GetByID after update: %v", err)
+		}
+		if !got.PaycheckSection.Valid || got.PaycheckSection.String != "post_tax" {
+			t.Errorf("PaycheckSection after Update = %+v, want valid 'post_tax'",
+				got.PaycheckSection)
+		}
+	})
+}
+
+func TestSplitItemRepo_NullPaycheckSection_RoundTrip(t *testing.T) {
+	t.Run("unset tag stays NULL through Create + GetByID", func(t *testing.T) {
+		_, cat, txn, splitRepo := paycheckSectionFixtures(t)
+
+		// Generic dialog code path: PaycheckSection left at zero value.
+		split := NewSplit(txn.ID, cat.ID, types.MustNewMoney("5000.00"))
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		got, err := splitRepo.GetByID(split.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if got.PaycheckSection.Valid {
+			t.Errorf("PaycheckSection should be NULL (Valid=false), got %+v",
+				got.PaycheckSection)
+		}
+	})
+
+	t.Run("unset tag stays NULL through Update", func(t *testing.T) {
+		_, cat, txn, splitRepo := paycheckSectionFixtures(t)
+
+		split := NewSplit(txn.ID, cat.ID, types.MustNewMoney("5000.00"))
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		split.Amount = types.MustNewMoney("4500.00")
+		if err := splitRepo.Update(split); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+
+		got, err := splitRepo.GetByID(split.ID)
+		if err != nil {
+			t.Fatalf("GetByID after update: %v", err)
+		}
+		if got.PaycheckSection.Valid {
+			t.Errorf("PaycheckSection should remain NULL after Update, got %+v",
+				got.PaycheckSection)
+		}
+	})
+}
+
+// =============================================================================
 // Integration Tests
 // =============================================================================
 

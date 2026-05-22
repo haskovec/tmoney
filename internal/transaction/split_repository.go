@@ -22,7 +22,7 @@ func NewSplitRepository(database *db.DB) *SplitRepository {
 
 // splitColumns lists every column the repository reads/writes, in scan order.
 const splitColumns = `id, transaction_id, category_id, transfer_account_id,
-	transfer_id, amount, memo, created_at`
+	transfer_id, amount, memo, paycheck_section, created_at`
 
 // categoryArg returns the value to write for category_id: NULL for transfer-
 // lines (CategoryID.IsNil()), otherwise the UUID string.
@@ -88,8 +88,8 @@ func (r *SplitRepository) Create(split *Split) error {
 	query := `
 		INSERT INTO transaction_splits (
 			id, transaction_id, category_id, transfer_account_id, transfer_id,
-			amount, memo, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			amount, memo, paycheck_section, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = r.db.Conn().Exec(query,
@@ -100,6 +100,7 @@ func (r *SplitRepository) Create(split *Split) error {
 		dbutil.NullID(split.TransferID),
 		split.Amount,
 		dbutil.NullString(split.Memo),
+		dbutil.NullString(split.PaycheckSection),
 		split.CreatedAt,
 	)
 	if err != nil {
@@ -228,8 +229,8 @@ func (r *SplitRepository) Update(split *Split) error {
 	insertQuery := fmt.Sprintf(`
 		INSERT INTO transaction_splits (
 			id, transaction_id, category_id, transfer_account_id, transfer_id,
-			amount, memo, created_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), %s, %s, %s, ?, ?, ?)
+			amount, memo, paycheck_section, created_at
+		) VALUES (CAST(? AS UUID), CAST(? AS UUID), %s, %s, %s, ?, ?, ?, ?)
 	`, catCast, xferAcctCast, xferIDCast)
 
 	_, err = r.db.Conn().Exec(insertQuery,
@@ -240,6 +241,7 @@ func (r *SplitRepository) Update(split *Split) error {
 		dbutil.NullID(split.TransferID),
 		split.Amount.String(),
 		dbutil.NullString(split.Memo),
+		dbutil.NullString(split.PaycheckSection),
 		split.CreatedAt.Time(),
 	)
 	if err != nil {
@@ -397,6 +399,7 @@ func (r *SplitRepository) scanSplits(rows *sql.Rows) ([]*Split, error) {
 			&split.TransferID,
 			&split.Amount,
 			&split.Memo,
+			&split.PaycheckSection,
 			&split.CreatedAt,
 		)
 		if err != nil {

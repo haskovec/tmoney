@@ -77,7 +77,7 @@ the repository layer.
     `scheduled.Split` (`internal/scheduled/split_item.go`) as
     `types.NullableString`. Repo plumbing is task PW2-002.
 
-- [ ] **PW2-002 — Split repos read/write `paycheck_section`**
+- [x] **PW2-002 — Split repos read/write `paycheck_section`**
   - RED: test `TestSplitItemRepo_PaycheckSection_RoundTrip` — create a
     split with `PaycheckSection = "earnings"`; reload via the repo;
     field comes back set. Test `TestSplitItemRepo_NullPaycheckSection_RoundTrip`
@@ -91,6 +91,12 @@ the repository layer.
     *not* set `PaycheckSection` — they pass through whatever the
     caller supplied (usually empty/NULL).
   - Confirm: tests green; full suite green.
+  - Done: both repos now write `paycheck_section` via
+    `dbutil.NullString` on `Create` and `Update`, and `scanSplits`
+    reads the column on `GetByID` / `ListByTransaction` /
+    `ListByScheduledTransaction`. The scheduled parent loader
+    (`Repository.loadSplits`) inherits the tag transparently because
+    it delegates to `SplitRepository.ListByScheduledTransaction`.
 
 ## Phase 2: Default Category Seeds
 
