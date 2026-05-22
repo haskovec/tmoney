@@ -25,6 +25,13 @@ type Split struct {
 	CategoryID        types.NullableID `json:"category_id"`
 	TransferAccountID types.NullableID `json:"transfer_account_id"`
 
+	// PaycheckSection tags this split's role in the paycheck wizard
+	// (earnings | pre_tax | tax | post_tax | net_pay_destination). NULL
+	// when the schedule line was not produced by the wizard. The generic
+	// multi-line scheduled dialog leaves it NULL; the wizard sets it on
+	// save.
+	PaycheckSection types.NullableString `json:"paycheck_section"`
+
 	// Optional properties
 	Memo types.NullableString `json:"memo"`
 }

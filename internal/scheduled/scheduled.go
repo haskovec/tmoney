@@ -374,7 +374,7 @@ func (st *Transaction) IsCompleted() bool {
 
 // CalculateNextDate calculates the next occurrence date after the current next_date.
 func (st *Transaction) CalculateNextDate() types.Date {
-	return calculateNextDate(st.NextDate, st.Frequency, st.Interval, st.DayOfMonth, st.SecondaryDayOfMonth, st.DayOfWeek)
+	return calculateNextDate(st.NextDate, st.Frequency, st.Interval, st.DayOfMonth, st.SecondaryDayOfMonth)
 }
 
 // AdvanceSchedule advances the schedule to the next occurrence.
@@ -404,7 +404,7 @@ func (st *Transaction) AdvanceSchedule() bool {
 }
 
 // calculateNextDate calculates the next occurrence date based on frequency and settings.
-func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMonth, secondaryDayOfMonth, dayOfWeek types.NullableInt) types.Date {
+func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMonth, secondaryDayOfMonth types.NullableInt) types.Date {
 	if interval < 1 {
 		interval = 1
 	}

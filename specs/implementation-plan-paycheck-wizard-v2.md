@@ -57,7 +57,7 @@ used by the v1 plan.
 Add the nullable enum column to both split tables and wire it through
 the repository layer.
 
-- [ ] **PW2-001 — Add `paycheck_section` column to `split_items` and `scheduled_split_items`**
+- [x] **PW2-001 — Add `paycheck_section` column to `split_items` and `scheduled_split_items`**
   - RED: test asserts the new migration (next number, e.g.
     `017_paycheck_section.sql`) adds a nullable enum column
     `paycheck_section` to both tables, with the value set restricted
@@ -71,6 +71,11 @@ the repository layer.
     follow the existing pattern for nullable string-y columns; e.g.
     `*string` or a sentinel zero value). Bump `CurrentSchemaVersion`.
   - Confirm: `go build ./... && go test ./internal/db/... ./internal/transaction/... ./internal/scheduled/...` green.
+  - Done: shipped as migration `020_paycheck_section.sql` (next
+    available number after 019); `PaycheckSection` lives on
+    `transaction.Split` (`internal/transaction/transaction.go`) and
+    `scheduled.Split` (`internal/scheduled/split_item.go`) as
+    `types.NullableString`. Repo plumbing is task PW2-002.
 
 - [ ] **PW2-002 — Split repos read/write `paycheck_section`**
   - RED: test `TestSplitItemRepo_PaycheckSection_RoundTrip` — create a

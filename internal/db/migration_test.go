@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -3173,6 +3174,271 @@ func TestMigration015ScheduledSplitItems(t *testing.T) {
 		`)
 		if err == nil {
 			t.Error("expected check constraint to reject row with neither category_id nor transfer_account_id")
+		}
+	})
+}
+
+func TestMigration020PaycheckSection(t *testing.T) {
+	t.Run("transaction_splits and scheduled_split_items have nullable paycheck_section column", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		for _, tableName := range []string{"transaction_splits", "scheduled_split_items"} {
+			var isNullable string
+			err = db.Conn().QueryRow(`
+				SELECT is_nullable FROM information_schema.columns
+				WHERE table_name = ? AND column_name = 'paycheck_section'
+			`, tableName).Scan(&isNullable)
+			if err != nil {
+				t.Fatalf("paycheck_section column missing on %s: %v", tableName, err)
+			}
+			if isNullable != "YES" {
+				t.Errorf("expected %s.paycheck_section to be nullable, got is_nullable=%q", tableName, isNullable)
+			}
+		}
+	})
+
+	t.Run("transaction_splits accepts every valid paycheck_section enum value and NULL", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert account: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO categories (id, name, type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'Salary', 'income')
+		`)
+		if err != nil {
+			t.Fatalf("insert category: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (id, account_id, date, amount, status)
+			VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'2024-01-15', 100.00, 'uncleared'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert transaction: %v", err)
+		}
+
+		validSections := []string{
+			"earnings", "pre_tax", "tax", "post_tax", "net_pay_destination",
+		}
+		for i, section := range validSections {
+			rowID := fmt.Sprintf("aaaaaaaa-aaaa-aaaa-aaaa-%012d", i+1)
+			_, err = db.Conn().Exec(`
+				INSERT INTO transaction_splits (
+					id, transaction_id, category_id, amount, paycheck_section
+				) VALUES (?, '33333333-3333-3333-3333-333333333333',
+					'22222222-2222-2222-2222-222222222222', 10.00, ?)
+			`, rowID, section)
+			if err != nil {
+				t.Errorf("transaction_splits should accept paycheck_section=%q: %v", section, err)
+			}
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO transaction_splits (
+				id, transaction_id, category_id, amount, paycheck_section
+			) VALUES (
+				'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+				'33333333-3333-3333-3333-333333333333',
+				'22222222-2222-2222-2222-222222222222',
+				10.00, NULL
+			)
+		`)
+		if err != nil {
+			t.Errorf("transaction_splits should accept NULL paycheck_section: %v", err)
+		}
+	})
+
+	t.Run("transaction_splits rejects invalid paycheck_section value", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert account: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO categories (id, name, type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'Salary', 'income')
+		`)
+		if err != nil {
+			t.Fatalf("insert category: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (id, account_id, date, amount, status)
+			VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'2024-01-15', 100.00, 'uncleared'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert transaction: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO transaction_splits (
+				id, transaction_id, category_id, amount, paycheck_section
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				'22222222-2222-2222-2222-222222222222',
+				10.00, 'bogus_value'
+			)
+		`)
+		if err == nil {
+			t.Error("expected CHECK constraint to reject paycheck_section='bogus_value'")
+		}
+	})
+
+	t.Run("scheduled_split_items accepts every valid paycheck_section enum value and NULL", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert account: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO categories (id, name, type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'Salary', 'income')
+		`)
+		if err != nil {
+			t.Fatalf("insert category: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_transactions (
+				id, account_id, frequency, interval, start_date, next_date
+			) VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'monthly', 1, '2024-01-01', '2024-01-15'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert scheduled_transaction: %v", err)
+		}
+
+		validSections := []string{
+			"earnings", "pre_tax", "tax", "post_tax", "net_pay_destination",
+		}
+		for i, section := range validSections {
+			rowID := fmt.Sprintf("cccccccc-cccc-cccc-cccc-%012d", i+1)
+			_, err = db.Conn().Exec(`
+				INSERT INTO scheduled_split_items (
+					id, scheduled_transaction_id, category_id, amount, paycheck_section
+				) VALUES (?, '33333333-3333-3333-3333-333333333333',
+					'22222222-2222-2222-2222-222222222222', 10.00, ?)
+			`, rowID, section)
+			if err != nil {
+				t.Errorf("scheduled_split_items should accept paycheck_section=%q: %v", section, err)
+			}
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_split_items (
+				id, scheduled_transaction_id, category_id, amount, paycheck_section
+			) VALUES (
+				'dddddddd-dddd-dddd-dddd-dddddddddddd',
+				'33333333-3333-3333-3333-333333333333',
+				'22222222-2222-2222-2222-222222222222',
+				10.00, NULL
+			)
+		`)
+		if err != nil {
+			t.Errorf("scheduled_split_items should accept NULL paycheck_section: %v", err)
+		}
+	})
+
+	t.Run("scheduled_split_items rejects invalid paycheck_section value", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dbPath := filepath.Join(tmpDir, "test.tdb")
+
+		db, err := Create(dbPath)
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date)
+			VALUES ('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert account: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO categories (id, name, type)
+			VALUES ('22222222-2222-2222-2222-222222222222', 'Salary', 'income')
+		`)
+		if err != nil {
+			t.Fatalf("insert category: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_transactions (
+				id, account_id, frequency, interval, start_date, next_date
+			) VALUES (
+				'33333333-3333-3333-3333-333333333333',
+				'11111111-1111-1111-1111-111111111111',
+				'monthly', 1, '2024-01-01', '2024-01-15'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert scheduled_transaction: %v", err)
+		}
+
+		_, err = db.Conn().Exec(`
+			INSERT INTO scheduled_split_items (
+				id, scheduled_transaction_id, category_id, amount, paycheck_section
+			) VALUES (
+				'44444444-4444-4444-4444-444444444444',
+				'33333333-3333-3333-3333-333333333333',
+				'22222222-2222-2222-2222-222222222222',
+				10.00, 'bogus_value'
+			)
+		`)
+		if err == nil {
+			t.Error("expected CHECK constraint to reject paycheck_section='bogus_value'")
 		}
 	})
 }

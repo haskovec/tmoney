@@ -565,7 +565,8 @@ func (r *Repository) Search(criteria SearchCriteria) ([]*Transaction, error) {
 
 	// Build final query
 	for _, join := range joins {
-		query.WriteString(" " + join)
+		query.WriteString(" ")
+		query.WriteString(join)
 	}
 
 	if len(conditions) > 0 {

@@ -843,6 +843,7 @@ func (w *PaycheckWizard) renderLine(styles Styles, fill lipgloss.Style, line *Pa
 //   - FieldText: `[ value ]` (bracketed with spaces inside).
 //   - FieldSelect: `value ▼` (no brackets; focused value gets a
 //     reverse-highlight inside the surrounding fill).
+//
 // fill is the dialog-bg style used for padding so the cell fills
 // uniformly with the dialog's background.
 func (w *PaycheckWizard) renderFieldValue(styles Styles, fill lipgloss.Style, f *Field, focused bool, width int) string {

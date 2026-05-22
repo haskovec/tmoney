@@ -368,6 +368,12 @@ type Split struct {
 	TransferAccountID types.NullableID `json:"transfer_account_id"`
 	TransferID        types.NullableID `json:"transfer_id"`
 
+	// PaycheckSection tags this split's role in the paycheck wizard
+	// (earnings | pre_tax | tax | post_tax | net_pay_destination). NULL
+	// when the split was not produced by the wizard. The generic split
+	// dialog leaves it NULL; the wizard sets it on save.
+	PaycheckSection types.NullableString `json:"paycheck_section"`
+
 	// Optional properties
 	Memo types.NullableString `json:"memo"`
 }
