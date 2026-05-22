@@ -107,6 +107,27 @@ const (
 	PaycheckNetPayDestination
 )
 
+// tagString returns the value persisted in the split's
+// `paycheck_section` column for rows belonging to this section. The
+// strings match the CHECK constraint in migration 020 and are read
+// back by NewPaycheckWizardFromSchedule (PW2-008) to route lines to
+// their original section on Edit-as-paycheck.
+func (s PaycheckSection) tagString() string {
+	switch s {
+	case PaycheckEarnings:
+		return "earnings"
+	case PaycheckPreTax:
+		return "pre_tax"
+	case PaycheckTax:
+		return "tax"
+	case PaycheckPostTax:
+		return "post_tax"
+	case PaycheckNetPayDestination:
+		return "net_pay_destination"
+	}
+	return ""
+}
+
 func (s PaycheckSection) Title() string {
 	switch s {
 	case PaycheckEarnings:
@@ -593,6 +614,9 @@ func (w *PaycheckWizard) buildLineSplit(line *PaycheckLine) (*scheduled.Split, e
 	sp := &scheduled.Split{
 		BaseModel: types.NewBaseModel(),
 		Amount:    amt,
+	}
+	if tag := line.Section.tagString(); tag != "" {
+		sp.PaycheckSection = types.NullableString{String: tag, Valid: true}
 	}
 	if line.notesField != nil {
 		if notes := strings.TrimSpace(line.notesField.Value); notes != "" {

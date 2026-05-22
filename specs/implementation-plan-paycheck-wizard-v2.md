@@ -212,7 +212,7 @@ slice rewrites part of the form in place; integration points
     BuildSplits tests still pass because the underlying `AddRow`
     primitive is unchanged.
 
-- [ ] **PW2-006 — BuildSplits tags lines with `paycheck_section`; $0 rows elided**
+- [x] **PW2-006 — BuildSplits tags lines with `paycheck_section`; $0 rows elided**
   - RED: test `TestPaycheckWizard_BuildSplits_TagsEachLine` — fill out
     a wizard with one row in each section; call `BuildSplits()`;
     every returned `*scheduled.Split` has `PaycheckSection` set to
@@ -238,6 +238,18 @@ slice rewrites part of the form in place; integration points
     empty or parses to zero. Categorized vs transfer-line shape per
     row is unchanged from v1.
   - Confirm: tests green.
+  - Done: added a private `PaycheckSection.tagString()` mapping
+    (`earnings` / `pre_tax` / `tax` / `post_tax` /
+    `net_pay_destination`) that mirrors the CHECK constraint in
+    migration 020, and stamped it onto each `*scheduled.Split`
+    produced by `buildLineSplit` so every wizard-emitted row carries
+    a non-NULL `PaycheckSection` for PW2-008 to read back. The
+    section-order walk and the empty/zero-amount skip were already in
+    place from PW2-004/PW2-005 — verified by the three new tests
+    (`TestPaycheckWizard_BuildSplits_TagsEachLine`,
+    `TestPaycheckWizard_BuildSplits_ElidesZeroRows`,
+    `TestPaycheckWizard_BuildSplits_BalanceInvariant`) in
+    `internal/tui/paycheck_wizard_test.go`.
 
 ## Phase 4: Round-Trip via `paycheck_section`
 

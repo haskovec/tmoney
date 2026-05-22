@@ -535,6 +535,165 @@ func TestPaycheckWizard_BuildSplits_SkipsEmptyRows(t *testing.T) {
 	}
 }
 
+// TestPaycheckWizard_BuildSplits_TagsEachLine asserts that BuildSplits
+// stamps the matching `paycheck_section` enum string on every returned
+// split, so the saved schedule can be round-tripped back into the wizard
+// by reading the tag (PW2-008). Section assignment comes from the row's
+// Section, not its category — a tax-section row with an unusual category
+// still tags as `tax`.
+func TestPaycheckWizard_BuildSplits_TagsEachLine(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+
+	// Wipe the v2 pre-population so the test owns every row.
+	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
+		w.sections[s] = nil
+	}
+
+	earn := w.AddRow(PaycheckEarnings)
+	earn.SetCategoryIndex(indexOf(earn.SelectField().Options, "Income > Salary"))
+	earn.AmountField().Value = "5000"
+
+	pre := w.AddRow(PaycheckPreTax)
+	// 401k is account index 2 in the fixture.
+	pre.SetAccountIndex(2)
+	pre.AmountField().Value = "-300"
+
+	tax := w.AddRow(PaycheckTax)
+	tax.SetCategoryIndex(indexOf(tax.SelectField().Options, "Tax > Federal"))
+	tax.AmountField().Value = "-800"
+
+	post := w.AddRow(PaycheckPostTax)
+	post.SetCategoryIndex(indexOf(post.SelectField().Options, "Insurance > Health"))
+	post.AmountField().Value = "-150"
+
+	xfer := w.AddRow(PaycheckNetPayDestination)
+	// Savings is account index 1 (Checking is the deposit account at 0).
+	xfer.SetAccountIndex(1)
+	xfer.AmountField().Value = "-500"
+
+	_, splits, err := w.BuildSplits()
+	if err != nil {
+		t.Fatalf("BuildSplits: %v", err)
+	}
+	if got, want := len(splits), 5; got != want {
+		t.Fatalf("split count = %d, want %d", got, want)
+	}
+
+	// Splits are returned in section order — assert each position
+	// carries the expected tag string.
+	wantTags := []string{"earnings", "pre_tax", "tax", "post_tax", "net_pay_destination"}
+	for i, want := range wantTags {
+		sp := splits[i]
+		if !sp.PaycheckSection.Valid {
+			t.Errorf("splits[%d] PaycheckSection should be Valid (tag %q)", i, want)
+			continue
+		}
+		if sp.PaycheckSection.String != want {
+			t.Errorf("splits[%d] PaycheckSection = %q, want %q", i, sp.PaycheckSection.String, want)
+		}
+	}
+}
+
+// TestPaycheckWizard_BuildSplits_ElidesZeroRows asserts that a row with
+// an empty amount and a row whose amount parses to zero are both
+// silently elided, even when their categories are valid. The wizard
+// opens with three pre-populated tax rows; filling in only two of them
+// should produce two splits, not three.
+func TestPaycheckWizard_BuildSplits_ElidesZeroRows(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+
+	// Earnings is pre-populated with one Income > Salary row — fill it
+	// in so BuildSplits doesn't fail on "add at least one row".
+	earnings := w.EarningsLines()
+	if len(earnings) != 1 {
+		t.Fatalf("Earnings pre-population count = %d, want 1", len(earnings))
+	}
+	earnings[0].AmountField().Value = "5000"
+
+	tax := w.TaxLines()
+	if len(tax) != 3 {
+		t.Fatalf("Tax pre-population count = %d, want 3", len(tax))
+	}
+	// Federal: real amount.
+	tax[0].AmountField().Value = "-800"
+	// Social Security: empty (elided).
+	// Medicare: explicit zero (also elided).
+	tax[2].AmountField().Value = "0"
+
+	_, splits, err := w.BuildSplits()
+	if err != nil {
+		t.Fatalf("BuildSplits: %v", err)
+	}
+	if got, want := len(splits), 2; got != want {
+		t.Fatalf("split count = %d, want %d (Earnings + Federal only)", got, want)
+	}
+
+	// The two emitted splits are Earnings (Salary, +5000) and Tax
+	// (Federal, -800). No Social Security or Medicare rows leak through.
+	for _, sp := range splits {
+		if !sp.PaycheckSection.Valid {
+			t.Errorf("split tag missing on amount=%s", sp.Amount.String())
+		}
+	}
+	if sp := splits[0]; sp.Amount.String() != "5000" || sp.PaycheckSection.String != "earnings" {
+		t.Errorf("splits[0] = (%s, %q), want (5000, earnings)", sp.Amount.String(), sp.PaycheckSection.String)
+	}
+	if sp := splits[1]; sp.Amount.String() != "-800" || sp.PaycheckSection.String != "tax" {
+		t.Errorf("splits[1] = (%s, %q), want (-800, tax)", sp.Amount.String(), sp.PaycheckSection.String)
+	}
+}
+
+// TestPaycheckWizard_BuildSplits_BalanceInvariant asserts the
+// parent_amount returned by BuildSplits equals the signed sum of all
+// returned splits, across mixed sections.
+func TestPaycheckWizard_BuildSplits_BalanceInvariant(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+
+	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
+		w.sections[s] = nil
+	}
+
+	earn := w.AddRow(PaycheckEarnings)
+	earn.SetCategoryIndex(indexOf(earn.SelectField().Options, "Income > Salary"))
+	earn.AmountField().Value = "5234.17"
+
+	pre := w.AddRow(PaycheckPreTax)
+	pre.SetAccountIndex(2)
+	pre.AmountField().Value = "-275.50"
+
+	fed := w.AddRow(PaycheckTax)
+	fed.SetCategoryIndex(indexOf(fed.SelectField().Options, "Tax > Federal"))
+	fed.AmountField().Value = "-812.04"
+
+	med := w.AddRow(PaycheckTax)
+	med.SetCategoryIndex(indexOf(med.SelectField().Options, "Tax > Medicare"))
+	med.AmountField().Value = "-75.90"
+
+	post := w.AddRow(PaycheckPostTax)
+	post.SetCategoryIndex(indexOf(post.SelectField().Options, "Insurance > Health"))
+	post.AmountField().Value = "-152.33"
+
+	xfer := w.AddRow(PaycheckNetPayDestination)
+	xfer.SetAccountIndex(1)
+	xfer.AmountField().Value = "-400.00"
+
+	parent, splits, err := w.BuildSplits()
+	if err != nil {
+		t.Fatalf("BuildSplits: %v", err)
+	}
+
+	sum := types.ZeroMoney
+	for _, sp := range splits {
+		sum = sum.Add(sp.Amount)
+	}
+	if !parent.Equal(sum) {
+		t.Errorf("parent (%s) != signed sum of splits (%s)", parent.String(), sum.String())
+	}
+}
+
 // TestPaycheckWizard_Save_CreatesMultiLineSchedule drives the
 // wizard end-to-end against a real DB and confirms the saved
 // schedule mirrors the user's input.
