@@ -256,7 +256,7 @@ slice rewrites part of the form in place; integration points
 Replace the v1 category-name heuristic in `Edit as paycheck →` with
 direct reads of the `paycheck_section` tag.
 
-- [ ] **PW2-007 — Detection heuristic uses tags + earnings line**
+- [x] **PW2-007 — Detection heuristic uses tags + earnings line**
   - RED: test `TestLooksLikePaycheck_V2_RequiresTagsAndEarnings` —
     `looksLikePaycheck(st, ...)` returns true when (a) the schedule
     is multi-line, (b) **every** split item has a non-NULL
@@ -278,6 +278,25 @@ direct reads of the `paycheck_section` tag.
     (`buildEditScheduledDialog`).
   - Confirm: tests green; the v1 heuristic tests are replaced or
     deleted; full suite green.
+  - Done: rewrote `looksLikePaycheck` in
+    `internal/tui/paycheck_wizard.go` to walk the schedule's splits,
+    bail to `false` on any nil/NULL-tagged split, and require at
+    least one `earnings`-tagged line. Dropped the
+    `categoryOptions` / `categoryIDs` arguments — only call site
+    (`internal/tui/scheduled_dialog.go:333`, the
+    Edit-as-paycheck affordance gate in
+    `buildEditScheduledDialog`) updated to the single-arg form.
+    The `TestScheduledDialog_EditAsPaycheck_RelaunchesWizard`
+    fixture grew `PaycheckSection` tags on its five splits
+    (earnings / tax / tax / post_tax / pre_tax) so the affordance
+    still surfaces — the v1 section-routing in
+    `NewPaycheckWizardFromSchedule` is unchanged, so the test's
+    section-count assertions still pass (PW2-008 will rewrite that
+    routing to read the tags). Three new tag-heuristic tests live
+    in `internal/tui/paycheck_wizard_test.go`
+    (`TestLooksLikePaycheck_V2_RequiresTagsAndEarnings`,
+    `…_NullTagHidesAffordance`,
+    `…_NoEarningsTag_Returns_False`).
 
 - [ ] **PW2-008 — `NewPaycheckWizardFromSchedule` reads tags to group lines**
   - RED: test `TestNewPaycheckWizardFromSchedule_V2_GroupsByTag` —

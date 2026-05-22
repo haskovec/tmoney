@@ -889,3 +889,89 @@ func categoryByID(cats []*category.Category, id types.ID) string {
 	}
 	return ""
 }
+
+// taggedSplit builds a categorized scheduled.Split tagged with the
+// given paycheck_section enum string. Helper for the v2
+// looksLikePaycheck tests.
+func taggedSplit(categoryID types.ID, amount, tag string) *scheduled.Split {
+	return &scheduled.Split{
+		BaseModel:       types.NewBaseModel(),
+		Amount:          types.MustNewMoney(amount),
+		CategoryID:      types.NullableID{ID: categoryID, Valid: true},
+		PaycheckSection: types.NullableString{String: tag, Valid: true},
+	}
+}
+
+// TestLooksLikePaycheck_V2_RequiresTagsAndEarnings asserts the v2
+// heuristic: a schedule looks like a paycheck iff it is multi-line,
+// every split carries a non-NULL paycheck_section tag, and at least
+// one split is tagged "earnings".
+func TestLooksLikePaycheck_V2_RequiresTagsAndEarnings(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	st := scheduled.NewTransaction(fx.checkingID, scheduled.FrequencyFortnightly, types.Today())
+	st.SetAmount(types.MustNewMoney("3890"))
+	st.ClearCategory()
+	st.Splits = scheduled.SplitCollection{
+		taggedSplit(fx.salaryID, "5000", "earnings"),
+		taggedSplit(fx.federalID, "-800", "tax"),
+		taggedSplit(fx.ssID, "-310", "tax"),
+	}
+	if !looksLikePaycheck(st) {
+		t.Errorf("fully-tagged paycheck with earnings line should look like a paycheck")
+	}
+
+	// Single-line schedule: not multi-line, so not a paycheck even with a
+	// valid earnings tag.
+	single := scheduled.NewTransaction(fx.checkingID, scheduled.FrequencyMonthly, types.Today())
+	single.SetAmount(types.MustNewMoney("5000"))
+	if looksLikePaycheck(single) {
+		t.Errorf("single-line schedule should not look like a paycheck")
+	}
+}
+
+// TestLooksLikePaycheck_V2_NullTagHidesAffordance asserts that a
+// schedule whose splits are otherwise paycheck-shaped but include at
+// least one untagged (NULL paycheck_section) line returns false —
+// the affordance only surfaces when every line was produced by the
+// wizard. The NULL state is the "treat as generic multi-line split"
+// signal per migration 020.
+func TestLooksLikePaycheck_V2_NullTagHidesAffordance(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	st := scheduled.NewTransaction(fx.checkingID, scheduled.FrequencyFortnightly, types.Today())
+	st.SetAmount(types.MustNewMoney("3890"))
+	st.ClearCategory()
+	// First split has NULL paycheck_section (e.g. added via the generic
+	// multi-line split dialog); the other two carry tags.
+	st.Splits = scheduled.SplitCollection{
+		{
+			BaseModel:  types.NewBaseModel(),
+			Amount:     types.MustNewMoney("5000"),
+			CategoryID: types.NullableID{ID: fx.salaryID, Valid: true},
+		},
+		taggedSplit(fx.federalID, "-800", "tax"),
+		taggedSplit(fx.ssID, "-310", "tax"),
+	}
+	if looksLikePaycheck(st) {
+		t.Errorf("schedule with one NULL-tagged split should not look like a paycheck")
+	}
+}
+
+// TestLooksLikePaycheck_V2_NoEarningsTag_Returns_False asserts that a
+// fully-tagged multi-line schedule with no `earnings`-tagged line
+// returns false: a paycheck must have at least one earnings row to be
+// reopenable in the wizard.
+func TestLooksLikePaycheck_V2_NoEarningsTag_Returns_False(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	st := scheduled.NewTransaction(fx.checkingID, scheduled.FrequencyFortnightly, types.Today())
+	st.SetAmount(types.MustNewMoney("-1110"))
+	st.ClearCategory()
+	// Tagged splits but no `earnings` line — e.g. a deductions-only
+	// schedule that happened to be tagged for some other reason.
+	st.Splits = scheduled.SplitCollection{
+		taggedSplit(fx.federalID, "-800", "tax"),
+		taggedSplit(fx.ssID, "-310", "tax"),
+	}
+	if looksLikePaycheck(st) {
+		t.Errorf("fully-tagged schedule without an earnings line should not look like a paycheck")
+	}
+}

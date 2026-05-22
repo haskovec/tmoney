@@ -1535,34 +1535,29 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 // ===========================================================================
 
 // looksLikePaycheck reports whether a scheduled transaction matches
-// the paycheck heuristic: multi-line, at least one categorized
-// positive-amount split, and at least one categorized negative
-// split whose category display name starts with "Tax > ".
-func looksLikePaycheck(st *scheduled.Transaction, categoryOptions []string, categoryIDs []types.ID) bool {
+// the v2 paycheck heuristic: the schedule is multi-line, **every**
+// split carries a non-NULL `paycheck_section` tag (i.e. it was
+// produced by the wizard, not by the generic multi-line split
+// dialog), and at least one split is tagged `earnings`.
+//
+// A NULL tag on any single line treats the schedule as a generic
+// multi-line split — the Edit-as-paycheck affordance stays hidden so
+// the user can't lose tags by round-tripping through a heuristic that
+// would have to guess the section for the untagged line.
+func looksLikePaycheck(st *scheduled.Transaction) bool {
 	if st == nil || len(st.Splits) == 0 {
 		return false
 	}
-	nameByID := make(map[types.ID]string, len(categoryIDs))
-	for i, id := range categoryIDs {
-		if i < len(categoryOptions) {
-			nameByID[id] = categoryOptions[i]
-		}
-	}
-
-	var hasIncomeLine, hasTaxLine bool
+	hasEarnings := false
 	for _, sp := range st.Splits {
-		if !sp.CategoryID.Valid {
-			continue
+		if sp == nil || !sp.PaycheckSection.Valid {
+			return false
 		}
-		name := nameByID[sp.CategoryID.ID]
-		switch {
-		case sp.Amount.IsPositive():
-			hasIncomeLine = true
-		case sp.Amount.IsNegative() && strings.HasPrefix(name, "Tax > "):
-			hasTaxLine = true
+		if sp.PaycheckSection.String == "earnings" {
+			hasEarnings = true
 		}
 	}
-	return hasIncomeLine && hasTaxLine
+	return hasEarnings
 }
 
 // NewPaycheckWizardFromSchedule builds a paycheck wizard pre-filled

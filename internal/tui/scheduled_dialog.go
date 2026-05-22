@@ -330,7 +330,7 @@ func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string
 	// point that closes this dialog and reopens the schedule in the
 	// paycheck wizard with values pre-filled. Visible only when the
 	// schedule matches the paycheck heuristic.
-	if looksLikePaycheck(st, categoryOptions, categoryIDs) {
+	if looksLikePaycheck(st) {
 		d.SetButtons([]DialogButton{
 			{Label: "Save", Primary: true},
 			{Label: "Cancel"},

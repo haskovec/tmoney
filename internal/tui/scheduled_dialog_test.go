@@ -1838,11 +1838,11 @@ func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 	st.SetPayee(employerPayeeID)
 	st.ClearCategory()
 	st.Splits = scheduled.SplitCollection{
-		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("5000"), CategoryID: types.NullableID{ID: salaryID, Valid: true}},
-		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-800"), CategoryID: types.NullableID{ID: federalID, Valid: true}},
-		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-310"), CategoryID: types.NullableID{ID: ssID, Valid: true}},
-		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-150"), CategoryID: types.NullableID{ID: healthID, Valid: true}},
-		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-500"), TransferAccountID: types.NullableID{ID: retire401kID, Valid: true}},
+		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("5000"), CategoryID: types.NullableID{ID: salaryID, Valid: true}, PaycheckSection: types.NullableString{String: "earnings", Valid: true}},
+		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-800"), CategoryID: types.NullableID{ID: federalID, Valid: true}, PaycheckSection: types.NullableString{String: "tax", Valid: true}},
+		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-310"), CategoryID: types.NullableID{ID: ssID, Valid: true}, PaycheckSection: types.NullableString{String: "tax", Valid: true}},
+		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-150"), CategoryID: types.NullableID{ID: healthID, Valid: true}, PaycheckSection: types.NullableString{String: "post_tax", Valid: true}},
+		{BaseModel: types.NewBaseModel(), Amount: types.MustNewMoney("-500"), TransferAccountID: types.NullableID{ID: retire401kID, Valid: true}, PaycheckSection: types.NullableString{String: "pre_tax", Valid: true}},
 	}
 
 	// Build the edit dialog and assert the affordance is present.
