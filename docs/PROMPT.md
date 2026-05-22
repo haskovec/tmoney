@@ -1,5 +1,5 @@
 study README.md
-study specs/implementation-plan-multiline-splits-and-paycheck.md and pick the most important thing to do
+study specs/implementation-plan-paycheck-wizard-v2.md and pick the most important thing to do
 
 IMPORTANT:
 - author property based tests or unit tests (whichever is best)
@@ -10,4 +10,4 @@ IMPORTANT:
 - always run go fmt before committing files
 - lint the code with golangci-lint
 - when tests pass commit the changes and push
-- update the specs/implementation-plan-multiline-splits-and-paycheck.md file marking the task as done
+- update the specs/implementation-plan-paycheck-wizard-v2.md file marking the task as done
