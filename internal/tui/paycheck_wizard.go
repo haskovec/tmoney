@@ -1610,9 +1610,22 @@ func (a *App) openCreateCategorySubDialogFromPaycheck() (tea.Model, tea.Cmd) {
 	a.createCatSource = createCatSourcePaycheckWizard
 	a.createCatPaycheckLine = line
 	parents := a.parentsForCreateCatDialog()
-	a.createCatDialog = buildCreateCategoryDialog("", "", parents)
+	a.createCatDialog = buildCreateCategoryDialog("", "", parents, defaultTypeForPaycheckSection(line.Section))
 	w.SetVisible(false)
 	return a, nil
+}
+
+// defaultTypeForPaycheckSection returns the create-category Type default for a
+// paycheck-wizard section. Earnings and Net Pay Destination rows describe
+// money flowing in (Income); Tax, Pre-Tax, and Post-Tax rows describe money
+// flowing out (Expense).
+func defaultTypeForPaycheckSection(s PaycheckSection) category.Type {
+	switch s {
+	case PaycheckEarnings, PaycheckNetPayDestination:
+		return category.TypeIncome
+	default:
+		return category.TypeExpense
+	}
 }
 
 // applyCreatedCategoryToPaycheck is the per-surface applier called by the

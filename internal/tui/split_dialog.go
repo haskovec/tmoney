@@ -855,7 +855,11 @@ func (a *App) openCreateCategorySubDialogFromSplit() (tea.Model, tea.Cmd) {
 	a.createCatSource = createCatSourceSplitDialog
 	a.createCatSplitRow = a.splitDialog.rowIndex
 	parents := a.parentsForCreateCatDialog()
-	a.createCatDialog = buildCreateCategoryDialog("", "", parents)
+	defaultType := category.TypeExpense
+	if rowIdx := a.splitDialog.rowIndex; rowIdx >= 0 && rowIdx < len(a.splitDialog.rows) {
+		defaultType = inferCategoryTypeFromAmount(a.splitDialog.rows[rowIdx].amountField.Value)
+	}
+	a.createCatDialog = buildCreateCategoryDialog("", "", parents, defaultType)
 	a.splitDialog.SetVisible(false)
 	return a, nil
 }

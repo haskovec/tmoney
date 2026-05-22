@@ -398,7 +398,11 @@ func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd)
 	a.createCatSource = createCatSourceSchedPreview
 	parents := a.parentsForCreateCatDialog()
 	parent, name := splitCategoryQuery(query)
-	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents)
+	defaultType := category.TypeExpense
+	if len(fields) > previewSingleFieldAmount {
+		defaultType = inferCategoryTypeFromAmount(fields[previewSingleFieldAmount].Value)
+	}
+	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, defaultType)
 	header.SetVisible(false)
 	return a, nil
 }

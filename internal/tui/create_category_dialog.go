@@ -57,9 +57,15 @@ type createCategoryRequestMsg struct {
 // not in existingParents, it is seeded as the combo's Query (the new-parent
 // path) so submission flags NewParent=true.
 //
+// defaultType controls the initial selection of the Type radio: TypeIncome
+// preselects "Income" (index 1); anything else preselects "Expense" (index 0).
+// Callers pass a context-aware default — the amount-bearing surfaces infer
+// it from the typed amount via inferCategoryTypeFromAmount; the Paycheck
+// Wizard picks per the originating section.
+//
 // Focus starts on Name when name is empty; on Parent when name is filled
 // but parent is empty; on Type when both are filled.
-func buildCreateCategoryDialog(name, parent string, existingParents []string) *Dialog {
+func buildCreateCategoryDialog(name, parent string, existingParents []string, defaultType category.Type) *Dialog {
 	d := NewDialog("New Category")
 
 	nameField := d.AddTextField("Name", name, "Category name", 0)
@@ -83,7 +89,11 @@ func buildCreateCategoryDialog(name, parent string, existingParents []string) *D
 		}
 	}
 
-	d.AddRadioField("Type", []string{"Expense", "Income"}, 0)
+	typeIdx := 0
+	if defaultType == category.TypeIncome {
+		typeIdx = 1
+	}
+	d.AddRadioField("Type", []string{"Expense", "Income"}, typeIdx)
 
 	switch {
 	case name == "":
@@ -96,6 +106,49 @@ func buildCreateCategoryDialog(name, parent string, existingParents []string) *D
 
 	d.SetVisible(true)
 	return d
+}
+
+// inferCategoryTypeFromAmount returns the default category Type to seed the
+// create-category sub-dialog with, based on the typed amount on the
+// originating row/dialog. A parseable strictly-positive value indicates
+// Income; anything else (empty, zero, negative, unparseable) indicates
+// Expense. The helper accepts the same lightweight money formats that
+// parseAmountInput does (a leading "$", a leading "+"/"-" sign).
+//
+// This drives the four amount-bearing surfaces (Transaction, Scheduled
+// new/edit, Scheduled Preview, Split row); the Paycheck Wizard picks its
+// default from the originating section instead.
+func inferCategoryTypeFromAmount(s string) category.Type {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return category.TypeExpense
+	}
+
+	negative := false
+	if strings.HasPrefix(trimmed, "-") {
+		negative = true
+		trimmed = trimmed[1:]
+	} else if strings.HasPrefix(trimmed, "+") {
+		trimmed = trimmed[1:]
+	}
+	trimmed = strings.TrimPrefix(trimmed, "$")
+	if strings.HasPrefix(trimmed, "-") {
+		negative = true
+		trimmed = trimmed[1:]
+	}
+
+	candidate := trimmed
+	if negative {
+		candidate = "-" + trimmed
+	}
+	m, err := types.NewMoney(candidate)
+	if err != nil {
+		return category.TypeExpense
+	}
+	if m.IsPositive() {
+		return category.TypeIncome
+	}
+	return category.TypeExpense
 }
 
 // collectCreateCategoryRequest validates the dialog's input and, on success,

@@ -35,7 +35,7 @@ func newCategorySvcForPersistTest(t *testing.T) (*category.Service, []*category.
 }
 
 func TestBuildCreateCategoryDialog_FieldShape(t *testing.T) {
-	d := buildCreateCategoryDialog("", "", []string{"Food", "Bills", "Auto"})
+	d := buildCreateCategoryDialog("", "", []string{"Food", "Bills", "Auto"}, category.TypeExpense)
 
 	fields := d.Fields()
 	if len(fields) != 3 {
@@ -85,7 +85,7 @@ func TestBuildCreateCategoryDialog_FieldShape(t *testing.T) {
 }
 
 func TestBuildCreateCategoryDialog_TabCyclesAcrossFields(t *testing.T) {
-	d := buildCreateCategoryDialog("", "", []string{"Food"})
+	d := buildCreateCategoryDialog("", "", []string{"Food"}, category.TypeExpense)
 
 	// Initial focus on Name.
 	if got := d.FocusIndex(); got != 0 {
@@ -104,7 +104,7 @@ func TestBuildCreateCategoryDialog_TabCyclesAcrossFields(t *testing.T) {
 
 func TestSubmitCreateCategoryDialog_ExistingParent(t *testing.T) {
 	parents := []string{"Food", "Bills", "Auto"}
-	d := buildCreateCategoryDialog("", "", parents)
+	d := buildCreateCategoryDialog("", "", parents, category.TypeExpense)
 	fields := d.Fields()
 
 	fields[0].Value = "Groceries"
@@ -136,7 +136,7 @@ func TestSubmitCreateCategoryDialog_ExistingParent(t *testing.T) {
 
 func TestSubmitCreateCategoryDialog_NewTopLevelParent(t *testing.T) {
 	parents := []string{"Food", "Bills", "Auto"}
-	d := buildCreateCategoryDialog("", "", parents)
+	d := buildCreateCategoryDialog("", "", parents, category.TypeExpense)
 	fields := d.Fields()
 
 	fields[0].Value = "Donations"
@@ -165,7 +165,7 @@ func TestSubmitCreateCategoryDialog_NewTopLevelParent(t *testing.T) {
 
 func TestSubmitCreateCategoryDialog_TopLevelCategory(t *testing.T) {
 	parents := []string{"Food"}
-	d := buildCreateCategoryDialog("", "", parents)
+	d := buildCreateCategoryDialog("", "", parents, category.TypeExpense)
 	fields := d.Fields()
 
 	fields[0].Value = "Misc"
@@ -192,7 +192,7 @@ func TestSubmitCreateCategoryDialog_QueryMatchingExistingParentResolvesToExistin
 	// If the user types a parent name (case-insensitive) that already exists,
 	// it must be flagged as existing — no duplicate top-level created.
 	parents := []string{"Food", "Bills"}
-	d := buildCreateCategoryDialog("", "", parents)
+	d := buildCreateCategoryDialog("", "", parents, category.TypeExpense)
 	fields := d.Fields()
 
 	fields[0].Value = "Sushi"
@@ -214,7 +214,7 @@ func TestSubmitCreateCategoryDialog_QueryMatchingExistingParentResolvesToExistin
 
 func TestSubmitCreateCategoryDialog_EmptyNameSetsInlineError(t *testing.T) {
 	parents := []string{"Food"}
-	d := buildCreateCategoryDialog("", "", parents)
+	d := buildCreateCategoryDialog("", "", parents, category.TypeExpense)
 	fields := d.Fields()
 
 	fields[0].Value = "   " // whitespace only
@@ -230,7 +230,7 @@ func TestSubmitCreateCategoryDialog_EmptyNameSetsInlineError(t *testing.T) {
 }
 
 func TestCreateCategoryDialog_EscEmitsCancel(t *testing.T) {
-	d := buildCreateCategoryDialog("", "", []string{"Food"})
+	d := buildCreateCategoryDialog("", "", []string{"Food"}, category.TypeExpense)
 
 	action := d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if action != DialogActionCancel {
@@ -239,7 +239,7 @@ func TestCreateCategoryDialog_EscEmitsCancel(t *testing.T) {
 }
 
 func TestBuildCreateCategoryDialog_SeedsNameFromQuery(t *testing.T) {
-	d := buildCreateCategoryDialog("Donations", "", []string{"Food"})
+	d := buildCreateCategoryDialog("Donations", "", []string{"Food"}, category.TypeExpense)
 	fields := d.Fields()
 
 	if fields[0].Value != "Donations" {
@@ -255,7 +255,7 @@ func TestBuildCreateCategoryDialog_SeedsNameFromQuery(t *testing.T) {
 func TestBuildCreateCategoryDialog_SeedsExistingParent(t *testing.T) {
 	// When parent matches an existing entry (case-insensitive), the Parent
 	// combo's SelectedIndex resolves to it and Query is left empty.
-	d := buildCreateCategoryDialog("Sushi", "Food", []string{"Auto", "Food", "Bills"})
+	d := buildCreateCategoryDialog("Sushi", "Food", []string{"Auto", "Food", "Bills"}, category.TypeExpense)
 	fields := d.Fields()
 
 	if fields[0].Value != "Sushi" {
@@ -285,7 +285,7 @@ func TestBuildCreateCategoryDialog_SeedsExistingParent(t *testing.T) {
 
 func TestBuildCreateCategoryDialog_SeedsExistingParentCaseInsensitive(t *testing.T) {
 	// Parent match is case-insensitive — typing "food" still resolves to "Food".
-	d := buildCreateCategoryDialog("Sushi", "food", []string{"Food", "Bills"})
+	d := buildCreateCategoryDialog("Sushi", "food", []string{"Food", "Bills"}, category.TypeExpense)
 	fields := d.Fields()
 
 	if fields[1].Query != "" {
@@ -306,7 +306,7 @@ func TestBuildCreateCategoryDialog_SeedsExistingParentCaseInsensitive(t *testing
 func TestBuildCreateCategoryDialog_SeedsNewParentAsQuery(t *testing.T) {
 	// When parent is a non-empty name not in existingParents, it's seeded
 	// as Query (the new-parent path) so submission flags NewParent=true.
-	d := buildCreateCategoryDialog("Endowment", "Charity", []string{"Food", "Bills"})
+	d := buildCreateCategoryDialog("Endowment", "Charity", []string{"Food", "Bills"}, category.TypeExpense)
 	fields := d.Fields()
 
 	if fields[0].Value != "Endowment" {
@@ -438,6 +438,271 @@ func TestPersistCategory_NilService(t *testing.T) {
 	}
 }
 
+// TestInferCategoryTypeFromAmount pins the amount → default-Type mapping used
+// by the four amount-bearing surfaces (Transaction, Scheduled new/edit,
+// Scheduled Preview, Split row). Positive parseable amounts seed Income;
+// everything else (empty, negative, unparseable) seeds Expense.
+func TestInferCategoryTypeFromAmount(t *testing.T) {
+	cases := []struct {
+		in   string
+		want category.Type
+	}{
+		{"", category.TypeExpense},
+		{"50.00", category.TypeIncome},
+		{"-50.00", category.TypeExpense},
+		{"$50", category.TypeIncome},
+		{"$-50", category.TypeExpense},
+		{"-$50", category.TypeExpense},
+		{"abc", category.TypeExpense},
+		{"   ", category.TypeExpense},
+		{"0", category.TypeExpense},
+		{"0.00", category.TypeExpense},
+		{"+25", category.TypeIncome},
+	}
+	for _, tc := range cases {
+		got := inferCategoryTypeFromAmount(tc.in)
+		if got != tc.want {
+			t.Errorf("inferCategoryTypeFromAmount(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestBuildCreateCategoryDialog_DefaultTypeIncome pins that the dialog's Type
+// radio respects a non-default defaultType argument: passing TypeIncome
+// preselects "Income" (SelectedIndex == 1).
+func TestBuildCreateCategoryDialog_DefaultTypeIncome(t *testing.T) {
+	d := buildCreateCategoryDialog("", "", []string{"Food"}, category.TypeIncome)
+	fields := d.Fields()
+	if len(fields) < 3 {
+		t.Fatalf("len(fields) = %d, want >=3", len(fields))
+	}
+	if fields[2].SelectedIndex != 1 {
+		t.Errorf("Type.SelectedIndex = %d, want 1 (Income)", fields[2].SelectedIndex)
+	}
+}
+
+// TestBuildCreateCategoryDialog_DefaultTypeExpense pins that the Expense
+// default (the existing behavior) still works when the caller passes
+// TypeExpense.
+func TestBuildCreateCategoryDialog_DefaultTypeExpense(t *testing.T) {
+	d := buildCreateCategoryDialog("", "", []string{"Food"}, category.TypeExpense)
+	fields := d.Fields()
+	if fields[2].SelectedIndex != 0 {
+		t.Errorf("Type.SelectedIndex = %d, want 0 (Expense)", fields[2].SelectedIndex)
+	}
+}
+
+// =============================================================================
+// CC-006 — per-surface default Type radio
+// =============================================================================
+
+// TestApp_TxnDialog_AddNew_DefaultTypeFromPositiveAmount: when the user has
+// typed a positive amount on the Transaction dialog, the create-category
+// sub-dialog opens with Income preselected.
+func TestApp_TxnDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
+	app := newAppForTxnAddNew(t, "", nil, nil)
+	app.txnDialog.Fields()[3].Value = "100.00" // amount
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleTransactionDialogKey(enter)
+	updated := model.(*App)
+	if updated.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for positive amount)", got)
+	}
+}
+
+// TestApp_TxnDialog_AddNew_DefaultTypeFromNegativeAmount: when the amount is
+// negative, the create-category sub-dialog opens with Expense preselected.
+func TestApp_TxnDialog_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
+	app := newAppForTxnAddNew(t, "", nil, nil)
+	app.txnDialog.Fields()[3].Value = "-9.50"
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleTransactionDialogKey(enter)
+	updated := model.(*App)
+	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 0 {
+		t.Errorf("Type.SelectedIndex = %d, want 0 (Expense for negative amount)", got)
+	}
+}
+
+// TestApp_SchedDialog_AddNew_DefaultTypeFromPositiveAmount: positive amount on
+// the New Scheduled dialog → Income default.
+func TestApp_SchedDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
+	app := newAppForSchedAddNew(t, "", nil, nil)
+	app.schedDialog.Fields()[schedFieldAmount].Value = "3500.00"
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleScheduledDialogKey(enter)
+	updated := model.(*App)
+	if updated.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for positive amount)", got)
+	}
+}
+
+// TestApp_SchedDialog_AddNew_DefaultTypeFromNegativeAmount: negative amount on
+// the New Scheduled dialog → Expense default.
+func TestApp_SchedDialog_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
+	app := newAppForSchedAddNew(t, "", nil, nil)
+	// Helper already seeds "-1500.00" but pin it.
+	app.schedDialog.Fields()[schedFieldAmount].Value = "-1500.00"
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleScheduledDialogKey(enter)
+	updated := model.(*App)
+	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 0 {
+		t.Errorf("Type.SelectedIndex = %d, want 0 (Expense for negative amount)", got)
+	}
+}
+
+// TestApp_SchedPreview_AddNew_DefaultTypeFromPositiveAmount: positive amount
+// on the schedule preview single-line dialog → Income default.
+func TestApp_SchedPreview_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
+	env := newSchedulePreviewTestEnv(t)
+	parkSchedPreviewOnAddNew(t, env.app, "")
+	header := env.app.schedPreviewDialog.HeaderDialog()
+	header.Fields()[previewSingleFieldAmount].Value = "3500.00"
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := env.app.handleSchedulePreviewDialogKey(enter)
+	updated := model.(*App)
+	if updated.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for positive amount)", got)
+	}
+}
+
+// TestApp_SchedPreview_AddNew_DefaultTypeFromNegativeAmount: negative amount on
+// the preview → Expense default.
+func TestApp_SchedPreview_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
+	env := newSchedulePreviewTestEnv(t)
+	parkSchedPreviewOnAddNew(t, env.app, "")
+	header := env.app.schedPreviewDialog.HeaderDialog()
+	header.Fields()[previewSingleFieldAmount].Value = "-1500.00"
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := env.app.handleSchedulePreviewDialogKey(enter)
+	updated := model.(*App)
+	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 0 {
+		t.Errorf("Type.SelectedIndex = %d, want 0 (Expense for negative amount)", got)
+	}
+}
+
+// TestApp_SplitDialog_AddNew_DefaultTypeFromPositiveAmount: positive amount on
+// the originating split row → Income default.
+func TestApp_SplitDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
+	app := newAppForSplitAddNew(t, nil, nil)
+	app.splitDialog.rows[0].amountField.Value = "100.00"
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleSplitDialogKey(enter)
+	updated := model.(*App)
+	if updated.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for positive amount)", got)
+	}
+}
+
+// TestApp_SplitDialog_AddNew_DefaultTypeFromNegativeAmount: negative amount on
+// the originating split row → Expense default.
+func TestApp_SplitDialog_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
+	app := newAppForSplitAddNew(t, nil, nil)
+	app.splitDialog.rows[0].amountField.Value = "-100.00"
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleSplitDialogKey(enter)
+	updated := model.(*App)
+	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 0 {
+		t.Errorf("Type.SelectedIndex = %d, want 0 (Expense for negative amount)", got)
+	}
+}
+
+// TestApp_PaycheckWizard_AddNew_DefaultTypeFromTaxSection: the AddNew sentinel
+// on a Tax-section line opens the sub-dialog with Expense preselected.
+func TestApp_PaycheckWizard_AddNew_DefaultTypeFromTaxSection(t *testing.T) {
+	app, _ := newAppForPaycheckAddNew(t, nil, nil) // helper parks on a Pre-Tax line
+	// The helper parks the focused line in Pre-Tax (which also defaults to
+	// Expense). Pin the section to confirm and assert the default.
+	if app.paycheckWizard == nil {
+		t.Fatal("paycheckWizard should be set")
+	}
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handlePaycheckWizardKey(enter)
+	updated := model.(*App)
+	if updated.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 0 {
+		t.Errorf("Type.SelectedIndex = %d, want 0 (Expense for pre-tax line)", got)
+	}
+}
+
+// TestApp_PaycheckWizard_AddNew_DefaultTypeFromEarningsSection: the AddNew
+// sentinel on an Earnings-section line opens the sub-dialog with Income
+// preselected.
+func TestApp_PaycheckWizard_AddNew_DefaultTypeFromEarningsSection(t *testing.T) {
+	app, _ := newAppForPaycheckAddNew(t, nil, nil)
+	w := app.paycheckWizard
+	// Replace the parked Pre-Tax line with an Earnings line parked on AddNew.
+	earnings := w.AddRow(PaycheckEarnings)
+	earnings.SelectField().SelectedIndex = len(earnings.SelectField().Options) - 1
+	if !earnings.IsAddNew() {
+		t.Fatal("earnings line should be parked on AddNew sentinel")
+	}
+	for i, target := range w.collectFocusables() {
+		if target.kind == wizardFocusField && target.field == earnings.SelectField() {
+			w.focusIndex = i
+			break
+		}
+	}
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handlePaycheckWizardKey(enter)
+	updated := model.(*App)
+	if updated.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for earnings line)", got)
+	}
+}
+
+// TestApp_PaycheckWizard_AddNew_DefaultTypeFromNetPaySection: the AddNew
+// sentinel on a Net Pay Destination line — these rows are usually transfer
+// accounts but the AddNew sentinel is reachable; Net Pay defaults to Income.
+func TestApp_PaycheckWizard_AddNew_DefaultTypeFromNetPaySection(t *testing.T) {
+	app, _ := newAppForPaycheckAddNew(t, nil, nil)
+	w := app.paycheckWizard
+	netPay := w.AddRow(PaycheckNetPayDestination)
+	netPay.SelectField().SelectedIndex = len(netPay.SelectField().Options) - 1
+	if !netPay.IsAddNew() {
+		t.Fatal("net pay line should be parked on AddNew sentinel")
+	}
+	for i, target := range w.collectFocusables() {
+		if target.kind == wizardFocusField && target.field == netPay.SelectField() {
+			w.focusIndex = i
+			break
+		}
+	}
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handlePaycheckWizardKey(enter)
+	updated := model.(*App)
+	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for net-pay line)", got)
+	}
+}
+
 // TestApplyCreatedCategory_UnknownSourceClearsDialog covers the router's
 // safety branch: if a createCategoryRequestMsg arrives with no source set
 // (e.g. the surface plumbing didn't set createCatSource before opening), the
@@ -447,7 +712,7 @@ func TestApplyCreatedCategory_UnknownSourceClearsDialog(t *testing.T) {
 	svc, _ := newCategorySvcForPersistTest(t)
 	app := &App{
 		categorySvc:     svc,
-		createCatDialog: buildCreateCategoryDialog("X", "", nil),
+		createCatDialog: buildCreateCategoryDialog("X", "", nil, category.TypeExpense),
 		createCatSource: createCatSourceNone,
 	}
 	if app.createCatDialog == nil {

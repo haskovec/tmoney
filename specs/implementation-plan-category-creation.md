@@ -355,7 +355,7 @@ the docs in line.
     suite (5325 tests across 26 packages) and `golangci-lint run ./...`
     green.
 
-- [ ] **CC-006 — Task 6: Context-aware Type radio default** (low risk)
+- [x] **CC-006 — Task 6: Context-aware Type radio default** (low risk)
   - RED: table-driven test for `inferCategoryTypeFromAmount` covering
     `""`, `"50.00"`, `"-50.00"`, `"$50"`, `"$-50"`, `"-$50"`, `"abc"`.
     One integration test per surface asserting the create-category
@@ -371,7 +371,33 @@ the docs in line.
   - Confirm: all existing create-category tests pass with explicit
     `category.TypeExpense` at call sites; new helper used uniformly
     across the four amount-bearing surfaces.
-  - Done: _pending._
+  - Done: `buildCreateCategoryDialog` now takes a `defaultType
+    category.Type` parameter that controls the Type radio's initial
+    `SelectedIndex` (`TypeIncome` → 1, anything else → 0). A new shared
+    `inferCategoryTypeFromAmount(s string) category.Type` helper —
+    using the same lightweight `$`/sign normalization as
+    `parseAmountInput` — returns `TypeIncome` for parseable strictly-
+    positive values and `TypeExpense` for empty, zero, negative, or
+    unparseable input. The four amount-bearing openers
+    (`openCreateCategorySubDialog`,
+    `openCreateCategorySubDialogFromSched`,
+    `openCreateCategorySubDialogFromSchedPreview`,
+    `openCreateCategorySubDialogFromSplit`) infer the default from
+    their originating amount field (txn `fields[3]`,
+    `fields[schedFieldAmount]`, `fields[previewSingleFieldAmount]`,
+    and the originating row's `amountField` respectively). The
+    paycheck opener picks via the new
+    `defaultTypeForPaycheckSection(s PaycheckSection)` helper —
+    Earnings and Net Pay Destination default to Income; Tax, Pre-Tax,
+    and Post-Tax default to Expense. 13 new tests added
+    (`TestInferCategoryTypeFromAmount` table covering 11 inputs;
+    `TestBuildCreateCategoryDialog_DefaultTypeIncome` /
+    `_DefaultTypeExpense`; per-surface integration trio across
+    txn/sched/sched-preview/split positive+negative amount and
+    paycheck tax/earnings/net-pay sections). All 15 pre-existing
+    `buildCreateCategoryDialog` call sites updated to pass
+    `category.TypeExpense` explicitly. Full suite (5339 tests across
+    26 packages) and `golangci-lint run ./...` green.
 
 - [ ] **CC-007 — Task 7: Spec + README updates** (doc only)
   - GREEN: update `specs/tui.md` "Category Combo Box" section (line

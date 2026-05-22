@@ -452,7 +452,11 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 		parents = topLevelParentNames(a.txnDialogData.categories)
 	}
 	parent, name := splitCategoryQuery(query)
-	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents)
+	defaultType := category.TypeExpense
+	if len(fields) > 3 {
+		defaultType = inferCategoryTypeFromAmount(fields[3].Value)
+	}
+	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, defaultType)
 	a.createCatSource = createCatSourceTxnDialog
 	a.txnDialog.SetVisible(false)
 	return a, nil
