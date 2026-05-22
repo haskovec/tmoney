@@ -112,23 +112,160 @@ Shared persistence stays in `persistCategory(req) (*category.Category, error)`.
   of ~60 lines each; future changes (e.g., spec adjustments) would have
   to land five times.
 
-## Task ordering
+## Status Legend
 
-| # | Task | Risk |
-|---|---|---|
-| 0 | Refactor `applyCreatedCategory` → shared `persistCategory` core + router ✅ done | foundational |
-| 1 | New/Edit Transaction: set `AddNewLabel` + wire router | low |
-| 2 | Scheduled Preview (single-line): same as Task 1 | low |
-| 3 | Scheduled new + edit: `AddSelectField` → `AddComboField` + `AddNewLabel` | **highest** (input-handling conversion) |
-| 4 | Split Dialog: append `[+ Add new category…]` sentinel past Transfer | medium (custom widget) |
-| 5 | Paycheck Wizard: append sentinel; section-aware Type default; shift transfer indices on rebuild | **medium-high** (index-shift footgun) |
-| 6 | Context-aware Type radio default — shared helper + paycheck-section switch | low |
-| 7 | Spec + README updates | doc only |
+- `[ ]` Not started
+- `[x]` Complete
 
-Task 0 is the keystone. Tasks 1 & 2 lock in the router on the simplest
-surfaces. Task 3 is the riskiest mechanical change. Tasks 4 & 5 are
-custom-widget integrations. Task 6 is the cross-cutting UX value-add.
-Task 7 brings the docs in line.
+## Task Checklist
+
+Each item is one small session of work following a red-green
+(test-first) pattern. Mark items as complete with `[x]` as they are
+finished. The detailed design notes for each task live in the
+`## Task N — …` sections below — refer to them when starting a task.
+
+Task ordering — task 0 is the keystone; tasks 1 & 2 lock in the router
+on the simplest surfaces; task 3 is the riskiest mechanical change
+(`AddSelectField` → `AddComboField`); tasks 4 & 5 are custom-widget
+integrations; task 6 is the cross-cutting UX value-add; task 7 brings
+the docs in line.
+
+- [x] **CC-000 — Task 0: Refactor `applyCreatedCategory` into shared `persistCategory` core + router** (foundational)
+  - RED: unit tests against `persistCategory(req)` for top-level,
+    existing-parent (child inherits parent Type), new-parent
+    (parent+child both created), and nil-service guard. Router test
+    pinning the unknown-source safety branch.
+  - GREEN: extract persistence half out of
+    `internal/tui/transaction_dialog.go`; add `createCategorySource`
+    enum + `createCatSource` scratch field on `App`; the router
+    dispatcher lives in `create_category_dialog.go`. Existing
+    transaction-dialog Add-New tests pass unmodified.
+  - Confirm: `go build ./... && go test ./internal/tui/... && golangci-lint run ./internal/tui/...` green.
+  - Done: shipped on `main` as commit `refactor(tui): split applyCreatedCategory into persistCategory + router`. `persistCategory` is pure persistence; `applyCreatedCategory` is a 10-line router that dispatches on `createCatSource` into per-surface appliers, with `applyCreatedCategoryToTxn` as the only wired surface. 5 unit tests added (`TestPersistCategory_TopLevel/_ExistingParent/_NewParent/_NilService`, `TestApplyCreatedCategory_UnknownSourceClearsDialog`). Full suite (5296 tests) and lint green.
+
+- [ ] **CC-001 — Task 1: New/Edit Transaction Dialog sets `AddNewLabel` + wires router** (low risk)
+  - RED: `TestBuildTransactionDialog_CategoryComboHasAddNewLabel` reads
+    `d.Fields()[2].AddNewLabel` after `buildTransactionDialog(...)` and
+    asserts `"[+ Add new category…]"`. Remove the manual `AddNewLabel`
+    injection in `transaction_dialog_test.go:1138` and verify the
+    existing TD-008 flow tests still pass.
+  - GREEN: capture the `*Field` returned by `d.AddComboField("Category", ...)`
+    at `internal/tui/transaction_dialog.go:229` and set
+    `f.AddNewLabel = "[+ Add new category…]"`. Opener already sets
+    `createCatSource = createCatSourceTxnDialog` (landed in CC-000).
+  - Confirm: existing `TestApp_TxnDialog_AddNew_*` tests pass without
+    manual `AddNewLabel` injection.
+  - Done: _pending._
+
+- [ ] **CC-002 — Task 2: Scheduled Preview Dialog (single-line) wires `AddNewLabel`** (low risk)
+  - RED: `TestBuildPreviewHeaderSingle_CategoryComboHasAddNewLabel`;
+    `TestApp_SchedPreview_AddNew_{OpensCreateCategoryDialog, CancelRestoresState, SubmitPersistsAndAdvancesFocus}`.
+  - GREEN: capture the `*Field` at
+    `internal/tui/scheduled_preview_dialog.go:189`; extend
+    `handleSchedulePreviewDialogKey` to handle `DialogActionAddNew`;
+    add `openCreateCategorySubDialogFromSchedPreview()` (sets
+    `createCatSource = createCatSourceSchedPreview`) and
+    `applyCreatedCategoryToSchedPreview(newCat, cats)` as the per-
+    surface applier.
+  - Confirm: multi-line preview unaffected (it routes through the
+    embedded split editor — covered by Task 4).
+  - Done: _pending._
+
+- [ ] **CC-003 — Task 3: Scheduled new + edit Dialog — `AddSelectField` → `AddComboField` + `AddNewLabel`** (highest risk — input-handling conversion)
+  - RED: `TestBuildNewScheduledDialog_CategoryIsCombo`;
+    `TestBuildNewScheduledDialog_CategoryComboHasAddNewLabel`;
+    `TestBuildEditScheduledDialog_CategoryIsCombo`;
+    `TestApp_SchedDialog_AddNew_*` trio; integration regression-pin
+    `TestSubmitScheduledDialog_CategoryRoundTrip` (pick, save, reload,
+    assert preselection); behaviour pin
+    `TestScheduledDialog_CategoryCombo_TabAwayPreservesPreviousSelection`.
+  - GREEN: convert `AddSelectField` → `AddComboField` at
+    `internal/tui/scheduled_dialog.go:197` and `:273`; capture the
+    `*Field`; set `AddNewLabel`; extend
+    `handleScheduledDialogKey` (lines 428-445) to handle
+    `DialogActionAddNew`; add per-surface opener + applier as in CC-002.
+  - Confirm: all existing `scheduled_dialog_test.go` tests pass; the
+    "Edit as paycheck →" alternate button is untouched.
+  - Done: _pending._
+
+- [ ] **CC-004 — Task 4: Split Dialog appends `[+ Add new category…]` sentinel past Transfer** (medium risk — custom widget)
+  - RED: `TestSplitDialog_CategoryCount_IncludesAddNewSentinel`;
+    `TestSplitDialog_DownPastTransfer_LandsOnAddNew`;
+    `TestSplitDialog_EnterOnAddNew_ReturnsDialogActionAddNew`;
+    `TestApp_SplitDialog_AddNew_{OpensCreateCategoryDialog, AppliesToCurrentRow}`.
+  - GREEN: add `addNewSentinelLabel` constant; bump
+    `categoryOptionCount()` `+1` → `+2`; add `isAddNewSentinel(idx)`
+    helper; extend `categoryOptionLabel`; update Down/Up handling at
+    `internal/tui/split_dialog.go:476-491` so the new sentinel sits
+    after `Transfer →`; app-level handler at lines 769-787 switches on
+    `DialogActionAddNew`; new `openCreateCategorySubDialogFromSplit()`
+    sets `createCatSource = createCatSourceSplitDialog` and
+    `createCatSplitRow = sd.rowIndex`; new
+    `applyCreatedCategoryToSplit(newCat, cats)` rebuilds
+    `sd.categoryOptions` / `sd.categoryIDs` and points the originating
+    row at the new index.
+  - Confirm: existing split-dialog tests pass; Down past `Transfer →`
+    reveals `[+ Add new category…]`; Up steps back to `Transfer →`.
+  - Done: _pending._
+
+- [ ] **CC-005 — Task 5: Paycheck Wizard appends sentinel + section-aware Type default; shifts transfer indices on rebuild** (medium-high risk — index-shift footgun)
+  - RED: `TestPaycheckWizard_CombinedOptionsIncludesAddNewSentinel`;
+    `TestPaycheckWizard_IsAddNew_TrueForLastIndex`;
+    `TestPaycheckWizard_EnterOnAddNew_ReturnsDialogActionAddNew`;
+    `TestApp_PaycheckWizard_AddNew_OpensCreateCategoryDialog_TaxLine_DefaultsExpense`;
+    `TestApp_PaycheckWizard_AddNew_OpensCreateCategoryDialog_EarningsLine_DefaultsIncome`;
+    `TestApp_PaycheckWizard_AddNew_AppliesToOriginatingLine`;
+    footgun-pinning
+    `TestPaycheckWizard_AddNew_PreservesTransferLineSelections`.
+  - GREEN: append AddNew sentinel to `combinedOptions`
+    (`internal/tui/paycheck_wizard.go:338-342`); add `IsAddNew()` next
+    to `IsTransfer()`; detect Enter-on-AddNew in `dispatchSelectFieldKey`
+    (lines 1257-1264); extend `handlePaycheckWizardKey` to handle
+    `DialogActionAddNew`; new opener seeds
+    `createCatPaycheckLine = target.line` and the section-aware Type
+    default; new `applyCreatedCategoryToPaycheck(newCat, cats)`
+    rebuilds `combinedOptions`, updates each line's
+    `selectField.Options` explicitly (lines share the backing slice),
+    shifts every transfer-mode line's `SelectedIndex` and
+    `line.categoryCount` by `(newCategoryCount - oldCategoryCount)`,
+    and points the originating line at the new category's index.
+  - Confirm: each line's select includes `[+ Add new category…]`;
+    sub-dialog Type radio pre-set per originating section; after
+    submit, other lines (incl. transfers) retain their effective
+    selections.
+  - Done: _pending._
+
+- [ ] **CC-006 — Task 6: Context-aware Type radio default** (low risk)
+  - RED: table-driven test for `inferCategoryTypeFromAmount` covering
+    `""`, `"50.00"`, `"-50.00"`, `"$50"`, `"$-50"`, `"-$50"`, `"abc"`.
+    One integration test per surface asserting the create-category
+    dialog opens with the expected Type SelectedIndex (0 = Expense,
+    1 = Income per `create_category_dialog.go:68`).
+  - GREEN: extend `buildCreateCategoryDialog` at
+    `internal/tui/create_category_dialog.go:44` to accept
+    `defaultType category.Type`; add shared
+    `inferCategoryTypeFromAmount(s string) category.Type`; each of the
+    five openers passes the right default (Amount-derived on
+    Transaction/Scheduled/Scheduled Preview/Split rows; section-based
+    on Paycheck Wizard).
+  - Confirm: all existing create-category tests pass with explicit
+    `category.TypeExpense` at call sites; new helper used uniformly
+    across the four amount-bearing surfaces.
+  - Done: _pending._
+
+- [ ] **CC-007 — Task 7: Spec + README updates** (doc only)
+  - GREEN: update `specs/tui.md` "Category Combo Box" section (line
+    466) to enumerate the surfaces (typeahead combos vs index-navigated
+    custom widgets); add the context-aware Type default paragraph to
+    "Activating [+ Add new category…]" (line 489); add the
+    `[+ Add new category…]` action-row mention to "Split Transaction
+    Dialog" (line 136), "Scheduled Transaction Preview Dialog" (line
+    167), and "Paycheck Schedule Wizard" (line 209). Update
+    `README.md:65-67` so "transaction flow" enumerates transaction,
+    split, scheduled, and paycheck.
+  - Confirm: spec accurately enumerates the surfaces; README matches
+    reality.
+  - Done: _pending._
 
 ## Task 0 — Refactor `applyCreatedCategory` into shared core + router ✅ done
 
