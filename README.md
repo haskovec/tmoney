@@ -91,12 +91,14 @@ tmoney -f personal.tdb account balance
   line edits are one-off — the schedule's next occurrence reopens with
   the original template.
 - **Paycheck wizard** (Transactions → New Paycheck Schedule…): a
-  guided form that creates a multi-line scheduled paycheck from
-  gross / tax / retirement / health-insurance / net-deposit inputs.
-  The wizard is pure UI sugar — the saved record is a standard
-  multi-line scheduled transaction. A paycheck-shaped schedule can be
-  reopened in the wizard via the **Edit as paycheck →** affordance in
-  the Edit Series dialog. See
+  guided form that creates a multi-line scheduled paycheck, organized
+  into five pay-stub-aligned sections — Earnings (multi-line, for
+  base salary plus shift differential, imputed income, etc.),
+  Pre-tax Deductions, Taxes, Post-tax Deductions, and Net Pay
+  Destinations. The wizard is pure UI sugar — the saved record is a
+  standard multi-line scheduled transaction. A paycheck-shaped
+  schedule can be reopened in the wizard via the **Edit as
+  paycheck →** affordance in the Edit Series dialog. See
   [`specs/multiline-splits-and-paycheck.md`](specs/multiline-splits-and-paycheck.md)
   for the full feature spec.
 

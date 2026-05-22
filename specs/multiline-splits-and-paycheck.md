@@ -9,6 +9,15 @@
 > MS-014 / MS-023 / MS-030 are manual visual smoke checks that remain
 > open until exercised in a real terminal).
 >
+> **Paycheck wizard v2 specced** (May 2026, implementation pending).
+> The wizard is being reorganized into five pay-stub-aligned sections
+> (Earnings / Pre-tax / Taxes / Post-tax / Net Pay Destinations) with
+> multi-line earnings support (imputed income, shift differential,
+> etc.). Round-trip is preserved via a new nullable
+> `paycheck_section` column on `split_items` and
+> `scheduled_split_items`. See the "Paycheck Wizard" section below
+> for the v2 design.
+>
 > Deferred out of scope for v1 (carried forward as separate work):
 > CLI surface for multi-line scheduled creation and the paycheck
 > wizard (TUI-only in v1); tax-aware reports that distinguish
@@ -50,7 +59,7 @@ Related specs:
 
 ### Extending `split_items`
 
-The existing `split_items` table gains two nullable columns:
+The existing `split_items` table gains three nullable columns:
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -61,6 +70,7 @@ The existing `split_items` table gains two nullable columns:
 | `transfer_id` | UUID NULL | **(new)** Shared identifier linking this line to its paired single-line counter-transaction in the target account. |
 | `amount` | decimal | (existing) Signed amount (mixed signs now allowed per-row). |
 | `memo` | string NULL | (existing) |
+| `paycheck_section` | enum NULL | **(v2)** Wizard-layout hint: `earnings`, `pre_tax`, `tax`, `post_tax`, or `net_pay_destination`. NULL for non-paycheck transactions. See [Paycheck Wizard → Section tagging](#section-tagging--paycheck_section). |
 
 **Constraints:**
 1. Exactly one of `category_id` or `transfer_account_id` must be set per row.
@@ -78,6 +88,7 @@ A new table mirrors `split_items` for scheduled transactions (no `transfer_id`, 
 | `transfer_account_id` | UUID NULL | Transfer target for this line |
 | `amount` | decimal | Signed amount |
 | `memo` | string NULL | Optional per-line memo |
+| `paycheck_section` | enum NULL | **(v2)** Wizard-layout hint: `earnings`, `pre_tax`, `tax`, `post_tax`, or `net_pay_destination`. NULL for non-paycheck schedules. See [Paycheck Wizard → Section tagging](#section-tagging--paycheck_section). |
 
 **Constraint:** exactly one of `category_id` or `transfer_account_id` per row.
 
@@ -86,6 +97,8 @@ A scheduled transaction is **multi-line** when it has one or more `scheduled_spl
 ### Migration
 
 Strictly additive — no backfill. The new columns on `split_items` and the new `scheduled_split_items` table are introduced via a schema migration; existing rows are unchanged. The legacy patterns (paired-single-line transfers, same-sign splits, single-line schedules) keep working alongside the new primitive.
+
+The v2 `paycheck_section` column is also additive and nullable. Existing rows (including the v1 paycheck-wizard schedules) come back with NULL — they remain valid as multi-line schedules, but the Edit-as-paycheck affordance is hidden until they are re-saved through the v2 wizard, which tags every line.
 
 ## Mixed-Sign Splits
 
@@ -205,7 +218,7 @@ Auto-post bypasses the preview entirely and posts using template values exactly.
 
 ## Paycheck Wizard
 
-A guided UI form (TUI-only, v1) creates a multi-line scheduled paycheck. The wizard is **pure UI sugar**: the saved record is a standard multi-line scheduled transaction. No `kind` field, no paycheck-specific table.
+A guided UI form (TUI-only) creates a multi-line scheduled paycheck. The wizard is **pure UI sugar**: the saved record is a standard multi-line scheduled transaction. No `kind` field, no paycheck-specific table. The v2 layout below replaces the v1 form.
 
 ### Entry point
 
@@ -213,64 +226,126 @@ Menu: `Transactions → New Paycheck Schedule…`
 
 ### Form layout
 
+The wizard is organized into five sections that mirror US pay-stub structure (earnings → pre-tax deductions → statutory withholdings → post-tax deductions → net pay destinations):
+
 ```
 PAYCHECK SCHEDULE                                              [×]
 
 Employer (payee):  [_______________________]
 Pay frequency:     [Biweekly ▼]    Next payday: [MM/DD/YYYY]
 
-Gross pay:         $[__________]   → category [Income:Salary ▼]
+EARNINGS
+  $[__________]   [Income:Salary ▼]
+  [+ Add earnings line]
 
 PRE-TAX DEDUCTIONS
-  Federal income tax     $[____]   [Tax:Federal ▼]
-  State income tax       $[____]   [Tax:State ▼]
-  Social Security        $[____]   [Tax:Social Security ▼]
-  Medicare               $[____]   [Tax:Medicare ▼]
-  401(k) contribution    $[____]   Transfer → [401k account ▼]
   [+ Add pre-tax line]
 
+TAXES
+  $[____]   [Tax:Federal ▼]
+  $[____]   [Tax:Social Security ▼]
+  $[____]   [Tax:Medicare ▼]
+  [+ Add tax line]
+
 POST-TAX DEDUCTIONS
-  Health insurance       $[____]   [Insurance:Health ▼]
-  HSA contribution       $[____]   Transfer → [HSA account ▼]
   [+ Add post-tax line]
 
 NET PAY DESTINATIONS
-  Primary deposit account: [Checking ▼]  ($X,XXX.XX — remainder)
-  Additional transfers:
-    Savings              $[____]   Transfer → [Savings ▼]
+  Primary deposit: [Checking ▼]   ($X,XXX.XX — remainder)
   [+ Add transfer]
 
 [Cancel]                                              [Save]
 ```
 
+### Pre-populated rows
+
+The wizard opens with the following rows visible, ready to fill in:
+
+| Section | Pre-populated rows |
+|---|---|
+| Earnings | 1 row with `Income:Salary` |
+| Pre-tax Deductions | None |
+| Taxes | 3 rows: `Tax:Federal`, `Tax:Social Security`, `Tax:Medicare` |
+| Post-tax Deductions | None |
+| Net Pay Destinations | Primary deposit picker only (defaults to the wizard's selected account) |
+
+Only universally-applicable items are pre-populated. Items that vary by employer — HSA, 401(k), supplemental life, state income tax, health insurance — are added via the `[+ Add line]` button at the bottom of each section.
+
+### Multi-line earnings
+
+Real pay stubs itemize earnings: base salary, shift differential, housing allowance, **imputed income** for employer-paid benefits (long-term disability coverage, group-term life over $50k, personal use of company car). The Earnings section supports any number of lines, all of which sum into "gross pay" for the net-pay computation.
+
+Bonus and retro pay are **not** template items — they're irregular and belong in the post-time preview dialog when they actually occur, not on the recurring schedule.
+
+### Imputed income
+
+Imputed-income items (e.g., the value of employer-paid LTD coverage added to taxable wages even though no cash changes hands) are entered as **two independent lines**:
+
+- An earnings line, e.g., `Income:Imputed LTD +44.03`
+- An offsetting post-tax line with the same category, e.g., `Income:Imputed LTD −44.03`
+
+The offset is mechanically necessary — without it, the parent transaction's amount would exceed the actual net deposit by the imputed amount, and the checking account balance would drift by that amount every paycheck. Real pay stubs include the same offset, usually listed as a deduction with the benefit's name (e.g., `LONG TERM DIS -44.03`).
+
+The wizard treats the two lines as independent; the user keeps them in sync. If they fall out of sync, the imbalance indicator on the next post-time preview flags it.
+
+The same-category convention nets imputed income to $0 in spending-by-category reports while keeping the earnings line visible for W-2/gross-pay reconciliation.
+
+### $0 row elision on save
+
+Rows the user leaves at $0 are silently dropped on save. Pre-populated rows are starting points, not commitments — leaving `Tax:Medicare` at $0 means "I don't have this," and the row is omitted from the saved schedule. To pause a recurring item for one paycheck (e.g., skip 401(k) for a single pay period), edit it at post-time preview, not in the template.
+
 ### Computed remainder
 
-The "Primary deposit account" line is computed at wizard-save time as:
+The "Primary deposit" line in Net Pay Destinations is the schedule's parent account. Its amount is computed at save time as the signed sum of all other lines:
 
 ```
-remainder = gross − sum(pre-tax deductions) − sum(post-tax deductions) − sum(additional transfers)
+remainder = sum(earnings) + sum(pre-tax deductions) + sum(taxes) + sum(post-tax deductions) + sum(additional transfers)
 ```
 
-This computed value is stored as a fixed line on the resulting multi-line schedule. There is no runtime plug — on subsequent edits (in the preview or in Edit Series), the line is just another line.
+(All deduction/transfer amounts are negative; remainder is positive.) The computed value is stored as the parent `amount`. There is no runtime plug — on subsequent edits (preview or Edit Series), the parent amount is just another field.
 
-### Pre-tax vs post-tax grouping
+### Section tagging — `paycheck_section`
 
-The wizard groups deductions into pre-tax and post-tax for visual organization only. The flag is **not stored** on the saved lines. If a future tax-aware report is needed, the metadata belongs on the category master (a `tax_treatment` field on `categories`), not on individual lines.
+To support exact round-trip editing, the wizard tags each saved split item with the section it was entered in, via the new nullable `paycheck_section` column on `split_items` and `scheduled_split_items`:
+
+| Section in wizard | `paycheck_section` value |
+|---|---|
+| Earnings | `earnings` |
+| Pre-tax Deductions | `pre_tax` |
+| Taxes | `tax` |
+| Post-tax Deductions | `post_tax` |
+| Net Pay Destinations (additional transfers) | `net_pay_destination` |
+
+The column is nullable so non-paycheck transactions can leave it NULL. The generic multi-line dialog does not expose this field — it's wizard-only — but it preserves the column value on edits to existing lines. Lines added via the generic dialog have a NULL `paycheck_section`.
+
+`paycheck_section` is a wizard-layout hint only. It is **not** a tax classifier — the pre-tax vs post-tax distinction for tax-aware reports belongs on the category master as a separate `tax_treatment` field if/when those reports are added (see Out of Scope).
 
 ### Default categories
 
-The wizard pre-populates category dropdowns with the following defaults. These are seeded into the database on file initialization (existing databases gain them on next open if missing):
+Seeded into new databases on file initialization (and added to existing databases on next open if missing):
 
 - `Income:Salary`
+- `Income:Bonus`
+- `Income:Retro Pay`
 - `Tax:Federal`
 - `Tax:State`
 - `Tax:Social Security`
 - `Tax:Medicare`
 - `Insurance:Health`
 
-### Round-trip edits
+`Income:Bonus` and `Income:Retro Pay` are seeded but **not** pre-populated in the wizard; they're available in the dropdown for use in the post-time preview when an irregular bonus or retro-pay event occurs.
 
-After save, the schedule is just a standard multi-line schedule. Editing it via the regular `e` action opens the generic multi-line scheduled-transaction dialog. An "Edit as paycheck →" button on a paycheck-shaped schedule (heuristic: has gross income line, tax category lines, structured similarly) may relaunch the wizard with current values pre-filled. Best-effort; hidden when the schedule has been edited into a shape the wizard cannot represent.
+### Round-trip — Edit as paycheck →
+
+A scheduled transaction qualifies as "paycheck-shaped" (and gets the `Edit as paycheck →` affordance in the Edit Series dialog) when all of:
+
+1. It has `scheduled_split_items` children (multi-line).
+2. **Every** split item has a non-NULL `paycheck_section`.
+3. At least one line is tagged `earnings`.
+
+When opened via Edit-as-paycheck, the wizard groups lines by their `paycheck_section` tag — display order within the wizard is by section, not by storage order. Existing pre-tax / tax / post-tax lines appear in their original sections.
+
+If any line lacks a tag (e.g., the schedule was edited in the generic dialog and a new line was added), the affordance is hidden. Re-saving the schedule through the wizard re-tags every line and the affordance returns. The v1 paycheck schedules already in the wild (NULL tags everywhere) take the same path: they open in the generic dialog until re-saved through the v2 wizard.
 
 ## Reports Impact
 

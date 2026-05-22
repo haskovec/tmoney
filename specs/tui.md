@@ -210,6 +210,8 @@ For a single-line scheduled transaction, the preview renders the regular Transac
 
 A guided form (TUI-only) creates a multi-line scheduled paycheck. Opened from **Transactions → New Paycheck Schedule…**. The wizard is pure UI sugar — the saved record is a standard multi-line scheduled transaction.
 
+The wizard is organized into five sections that mirror US pay-stub structure (earnings → pre-tax deductions → statutory withholdings → post-tax deductions → net pay destinations):
+
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  PAYCHECK SCHEDULE                                      [×]  │
@@ -218,25 +220,24 @@ A guided form (TUI-only) creates a multi-line scheduled paycheck. Opened from **
 │  Employer (payee):  [_______________________]                │
 │  Pay frequency:     [Biweekly ▼]    Next payday: [MM/DD/YYYY]│
 │                                                              │
-│  Gross pay:         $[__________]   → [Income:Salary ▼]      │
+│  EARNINGS                                                    │
+│    $[__________]   [Income:Salary ▼]                         │
+│    [+ Add earnings line]                                     │
 │                                                              │
 │  PRE-TAX DEDUCTIONS                                          │
-│    Federal income tax     $[____]   [Tax:Federal ▼]          │
-│    State income tax       $[____]   [Tax:State ▼]            │
-│    Social Security        $[____]   [Tax:Social Security ▼]  │
-│    Medicare               $[____]   [Tax:Medicare ▼]         │
-│    401(k) contribution    $[____]   Transfer → [401k ▼]      │
 │    [+ Add pre-tax line]                                      │
 │                                                              │
+│  TAXES                                                       │
+│    $[____]   [Tax:Federal ▼]                                 │
+│    $[____]   [Tax:Social Security ▼]                         │
+│    $[____]   [Tax:Medicare ▼]                                │
+│    [+ Add tax line]                                          │
+│                                                              │
 │  POST-TAX DEDUCTIONS                                         │
-│    Health insurance       $[____]   [Insurance:Health ▼]     │
-│    HSA contribution       $[____]   Transfer → [HSA ▼]       │
 │    [+ Add post-tax line]                                     │
 │                                                              │
 │  NET PAY DESTINATIONS                                        │
-│    Primary deposit:       [Checking ▼]   ($X,XXX.XX — remainder) │
-│    Additional transfers:                                     │
-│      Savings              $[____]   Transfer → [Savings ▼]   │
+│    Primary deposit: [Checking ▼]   ($X,XXX.XX — remainder)   │
 │    [+ Add transfer]                                          │
 │                                                              │
 ├──────────────────────────────────────────────────────────────┤
@@ -244,7 +245,11 @@ A guided form (TUI-only) creates a multi-line scheduled paycheck. Opened from **
 └──────────────────────────────────────────────────────────────┘
 ```
 
-The "Primary deposit" line is computed at save time as `gross − sum(deductions) − sum(additional transfers)` and stored as a fixed line on the resulting schedule. Pre-tax / post-tax groupings are visual organization only — they are not stored on the saved lines. Saved record is a standard multi-line scheduled transaction; editing it later via `e` opens the generic multi-line scheduled-transaction dialog. A paycheck-shaped schedule offers an **Edit as paycheck →** affordance that relaunches this wizard with current values pre-filled. See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md).
+Only universally-applicable rows are pre-populated: a single `Income:Salary` row in Earnings, and the three federal-statutory withholdings (`Tax:Federal`, `Tax:Social Security`, `Tax:Medicare`) in Taxes. Employer-specific items (HSA, 401(k), supplemental life, state income tax, health insurance) are added via `[+ Add line]`. Rows left at $0 are silently dropped on save.
+
+The Earnings section supports multiple lines so real pay-stub itemization (base salary plus shift differential, housing allowance, **imputed income** for employer-paid benefits like LTD coverage) can live on the recurring template. Imputed income is entered as two independent lines — a positive earnings line and a same-category negative offset in Post-tax — because the offset is what keeps the parent transaction's net deposit equal to what actually hits the bank.
+
+The "Primary deposit" line is the schedule's parent account; its amount is computed at save time as the signed sum of all other lines. Each saved split item is tagged with its `paycheck_section` (`earnings` / `pre_tax` / `tax` / `post_tax` / `net_pay_destination`) so the wizard can round-trip — the **Edit as paycheck →** affordance in the Edit Series dialog relaunches this wizard with values pre-filled, lines grouped back into their original sections. The affordance hides if any line is NULL-tagged (e.g., added via the generic multi-line dialog) until the schedule is re-saved through the wizard. See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md) for the full spec, including the `paycheck_section` data-model addition.
 
 ### Scheduled Transactions View
 
