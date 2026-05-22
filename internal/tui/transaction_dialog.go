@@ -226,7 +226,8 @@ func buildTransactionDialog(data *transactionDialogData, categoryOptions []strin
 			}
 		}
 	}
-	d.AddComboField("Category", categoryOptions, catIdx)
+	catField := d.AddComboField("Category", categoryOptions, catIdx)
+	catField.AddNewLabel = "[+ Add new category…]"
 
 	// Amount
 	amountValue := ""

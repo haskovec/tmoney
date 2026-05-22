@@ -143,7 +143,7 @@ the docs in line.
   - Confirm: `go build ./... && go test ./internal/tui/... && golangci-lint run ./internal/tui/...` green.
   - Done: shipped on `main` as commit `refactor(tui): split applyCreatedCategory into persistCategory + router`. `persistCategory` is pure persistence; `applyCreatedCategory` is a 10-line router that dispatches on `createCatSource` into per-surface appliers, with `applyCreatedCategoryToTxn` as the only wired surface. 5 unit tests added (`TestPersistCategory_TopLevel/_ExistingParent/_NewParent/_NilService`, `TestApplyCreatedCategory_UnknownSourceClearsDialog`). Full suite (5296 tests) and lint green.
 
-- [ ] **CC-001 — Task 1: New/Edit Transaction Dialog sets `AddNewLabel` + wires router** (low risk)
+- [x] **CC-001 — Task 1: New/Edit Transaction Dialog sets `AddNewLabel` + wires router** (low risk)
   - RED: `TestBuildTransactionDialog_CategoryComboHasAddNewLabel` reads
     `d.Fields()[2].AddNewLabel` after `buildTransactionDialog(...)` and
     asserts `"[+ Add new category…]"`. Remove the manual `AddNewLabel`
@@ -155,7 +155,15 @@ the docs in line.
     `createCatSource = createCatSourceTxnDialog` (landed in CC-000).
   - Confirm: existing `TestApp_TxnDialog_AddNew_*` tests pass without
     manual `AddNewLabel` injection.
-  - Done: _pending._
+  - Done: production code now sets `AddNewLabel = "[+ Add new category…]"`
+    on the Category combo for both new and edit Transaction dialogs.
+    New `TestBuildTransactionDialog_CategoryComboHasAddNewLabel` pins
+    the behaviour; the manual `cat.AddNewLabel = …` injection in
+    `newAppForTxnAddNew` was removed and all `TestApp_TxnDialog_AddNew_*`
+    flow tests still pass. Full suite (5297 tests) and `golangci-lint`
+    green. The feature is now user-visible on the simplest surface and
+    the Task 0 router (`createCatSource = createCatSourceTxnDialog` →
+    `applyCreatedCategoryToTxn`) handles dispatch end-to-end.
 
 - [ ] **CC-002 — Task 2: Scheduled Preview Dialog (single-line) wires `AddNewLabel`** (low risk)
   - RED: `TestBuildPreviewHeaderSingle_CategoryComboHasAddNewLabel`;

@@ -257,6 +257,21 @@ func TestBuildTransactionDialog_FieldTypes(t *testing.T) {
 	}
 }
 
+// TestBuildTransactionDialog_CategoryComboHasAddNewLabel pins that the Category
+// combo built by buildTransactionDialog carries the AddNewLabel sentinel so the
+// [+ Add new category…] action row appears in the dropdown. CC-001.
+func TestBuildTransactionDialog_CategoryComboHasAddNewLabel(t *testing.T) {
+	data := &transactionDialogData{}
+	options := []string{"(None)", "Groceries"}
+
+	d := buildTransactionDialog(data, options, []types.ID{types.NilID, types.NewID()}, types.ZeroDate)
+	got := d.Fields()[2].AddNewLabel
+	want := "[+ Add new category…]"
+	if got != want {
+		t.Errorf("Category AddNewLabel = %q, want %q", got, want)
+	}
+}
+
 // TestBuildTransactionDialog_DateFieldOverwriteSemantics asserts that the Date
 // field built by buildTransactionDialog uses the FieldDate widget's overwrite
 // semantics: typing two digits overwrites the month digits in place and the
@@ -1135,7 +1150,6 @@ func newAppForTxnAddNew(t *testing.T, query string, categorySvc *category.Servic
 	d.Fields()[4].Value = "Latte"
 	d.SetFocusIndex(2) // Category
 	cat := d.Fields()[2]
-	cat.AddNewLabel = "[+ Add new category…]"
 	cat.Query = query
 	// Park the combo highlight on the AddNew action row so Enter triggers
 	// the divert. The row sits at len(filteredIndices) — this is what the
