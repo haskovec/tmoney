@@ -116,7 +116,7 @@ Shared persistence stays in `persistCategory(req) (*category.Category, error)`.
 
 | # | Task | Risk |
 |---|---|---|
-| 0 | Refactor `applyCreatedCategory` → shared `persistCategory` core + router | foundational |
+| 0 | Refactor `applyCreatedCategory` → shared `persistCategory` core + router ✅ done | foundational |
 | 1 | New/Edit Transaction: set `AddNewLabel` + wire router | low |
 | 2 | Scheduled Preview (single-line): same as Task 1 | low |
 | 3 | Scheduled new + edit: `AddSelectField` → `AddComboField` + `AddNewLabel` | **highest** (input-handling conversion) |
@@ -130,7 +130,7 @@ surfaces. Task 3 is the riskiest mechanical change. Tasks 4 & 5 are
 custom-widget integrations. Task 6 is the cross-cutting UX value-add.
 Task 7 brings the docs in line.
 
-## Task 0 — Refactor `applyCreatedCategory` into shared core + router
+## Task 0 — Refactor `applyCreatedCategory` into shared core + router ✅ done
 
 **Files touched:**
 - `internal/tui/transaction_dialog.go:524-585` — extract persistence half

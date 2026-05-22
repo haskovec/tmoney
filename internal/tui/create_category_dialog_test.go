@@ -1,11 +1,38 @@
 package tui
 
 import (
+	"path/filepath"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/db"
 )
+
+// newCategorySvcForPersistTest builds a real DuckDB-backed category service
+// seeded with the default category set so persistCategory tests exercise the
+// same wiring production uses. Returns the service plus the seeded category
+// list so callers can resolve "Food" etc. without an extra List() call.
+func newCategorySvcForPersistTest(t *testing.T) (*category.Service, []*category.Category) {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "persistcategory.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	repo := category.NewRepository(database)
+	svc := category.NewService(repo, database)
+	if err := svc.SeedDefaultCategories(); err != nil {
+		t.Fatalf("SeedDefaultCategories: %v", err)
+	}
+	cats, err := svc.List()
+	if err != nil {
+		t.Fatalf("svc.List: %v", err)
+	}
+	return svc, cats
+}
 
 func TestBuildCreateCategoryDialog_FieldShape(t *testing.T) {
 	d := buildCreateCategoryDialog("", "", []string{"Food", "Bills", "Auto"})
@@ -292,5 +319,163 @@ func TestBuildCreateCategoryDialog_SeedsNewParentAsQuery(t *testing.T) {
 	// typed name doesn't match any existing parent.
 	if fields[1].SelectedIndex != 0 {
 		t.Errorf("Parent.SelectedIndex = %d, want 0 when parent is typed-but-unknown", fields[1].SelectedIndex)
+	}
+}
+
+// =============================================================================
+// persistCategory — shared persistence core for the create-category router
+// =============================================================================
+
+// TestPersistCategory_TopLevel: ParentName empty → new top-level category
+// created with the requested Type.
+func TestPersistCategory_TopLevel(t *testing.T) {
+	svc, _ := newCategorySvcForPersistTest(t)
+	app := &App{categorySvc: svc}
+
+	got, err := app.persistCategory(createCategoryRequest{
+		Name: "Hobbies",
+		Type: category.TypeExpense,
+	})
+	if err != nil {
+		t.Fatalf("persistCategory: %v", err)
+	}
+	if got == nil {
+		t.Fatal("persistCategory returned nil category")
+	}
+	if got.Name != "Hobbies" {
+		t.Errorf("Name = %q, want %q", got.Name, "Hobbies")
+	}
+	if got.ParentID.Valid {
+		t.Error("top-level category should have ParentID.Valid == false")
+	}
+	if got.Type != category.TypeExpense {
+		t.Errorf("Type = %v, want Expense", got.Type)
+	}
+}
+
+// TestPersistCategory_ExistingParent: ParentName names an existing parent,
+// NewParent=false → child inherits the parent's Type even if req.Type differs.
+func TestPersistCategory_ExistingParent(t *testing.T) {
+	svc, cats := newCategorySvcForPersistTest(t)
+	app := &App{categorySvc: svc}
+
+	var foodType category.Type
+	var hasFood bool
+	for _, c := range cats {
+		if c.Name == "Food" && c.IsTopLevel() {
+			foodType = c.Type
+			hasFood = true
+			break
+		}
+	}
+	if !hasFood {
+		t.Fatal("default seed should include 'Food' parent")
+	}
+
+	got, err := app.persistCategory(createCategoryRequest{
+		Name:       "Sushi",
+		ParentName: "Food",
+		NewParent:  false,
+		Type:       category.TypeIncome, // intentionally wrong; parent wins
+	})
+	if err != nil {
+		t.Fatalf("persistCategory: %v", err)
+	}
+	if !got.ParentID.Valid {
+		t.Error("child should carry a valid ParentID")
+	}
+	if got.Type != foodType {
+		t.Errorf("child Type = %v, want %v (inherited from parent)", got.Type, foodType)
+	}
+}
+
+// TestPersistCategory_NewParent: ParentName names a new top-level to create,
+// NewParent=true → both parent and child persisted; child references parent.
+func TestPersistCategory_NewParent(t *testing.T) {
+	svc, _ := newCategorySvcForPersistTest(t)
+	app := &App{categorySvc: svc}
+
+	got, err := app.persistCategory(createCategoryRequest{
+		Name:       "Endowment",
+		ParentName: "Charity",
+		NewParent:  true,
+		Type:       category.TypeExpense,
+	})
+	if err != nil {
+		t.Fatalf("persistCategory: %v", err)
+	}
+
+	all, err := svc.List()
+	if err != nil {
+		t.Fatalf("svc.List: %v", err)
+	}
+	var charity *category.Category
+	for _, c := range all {
+		if c.Name == "Charity" && c.IsTopLevel() {
+			charity = c
+			break
+		}
+	}
+	if charity == nil {
+		t.Fatal("new parent 'Charity' should be persisted")
+	}
+	if !got.ParentID.Valid || got.ParentID.ID != charity.ID {
+		t.Errorf("child.ParentID = %+v, want valid pointing to Charity (%s)", got.ParentID, charity.ID)
+	}
+	if charity.Type != category.TypeExpense {
+		t.Errorf("new parent Type = %v, want Expense (from request)", charity.Type)
+	}
+}
+
+// TestPersistCategory_NilService returns an error rather than panicking when
+// the category service hasn't been wired into the App. Defensive — covers the
+// edge case of an App constructed for a non-category-bearing surface.
+func TestPersistCategory_NilService(t *testing.T) {
+	app := &App{}
+	_, err := app.persistCategory(createCategoryRequest{Name: "X"})
+	if err == nil {
+		t.Fatal("persistCategory with nil categorySvc should return an error")
+	}
+}
+
+// TestApplyCreatedCategory_UnknownSourceClearsDialog covers the router's
+// safety branch: if a createCategoryRequestMsg arrives with no source set
+// (e.g. the surface plumbing didn't set createCatSource before opening), the
+// router must still close the sub-dialog so the user isn't stuck on an inert
+// overlay. The new category should still be persisted.
+func TestApplyCreatedCategory_UnknownSourceClearsDialog(t *testing.T) {
+	svc, _ := newCategorySvcForPersistTest(t)
+	app := &App{
+		categorySvc:     svc,
+		createCatDialog: buildCreateCategoryDialog("X", "", nil),
+		createCatSource: createCatSourceNone,
+	}
+	if app.createCatDialog == nil {
+		t.Fatal("test setup: createCatDialog should be non-nil")
+	}
+
+	if err := app.applyCreatedCategory(createCategoryRequest{
+		Name: "Bonsai",
+		Type: category.TypeExpense,
+	}); err != nil {
+		t.Fatalf("applyCreatedCategory: %v", err)
+	}
+	if app.createCatDialog != nil {
+		t.Error("router should clear createCatDialog even when source is unknown")
+	}
+	if app.createCatSource != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after dispatch", app.createCatSource)
+	}
+
+	cats, _ := svc.List()
+	var found bool
+	for _, c := range cats {
+		if c.Name == "Bonsai" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("'Bonsai' should be persisted even under the unknown-source branch")
 	}
 }

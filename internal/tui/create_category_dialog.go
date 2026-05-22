@@ -1,10 +1,28 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/types"
+)
+
+// createCategorySource identifies which transaction-entry surface opened the
+// inline create-category sub-dialog. The post-create router (applyCreatedCategory)
+// dispatches on this so the new category lands back in the right field of the
+// originating dialog without each surface having to own a copy of the
+// persistence logic.
+type createCategorySource int
+
+const (
+	createCatSourceNone createCategorySource = iota
+	createCatSourceTxnDialog
+	createCatSourceSchedDialog
+	createCatSourceSchedPreview
+	createCatSourceSplitDialog
+	createCatSourcePaycheckWizard
 )
 
 // createCategoryRequest captures the user's intent to create a new category.
@@ -144,4 +162,76 @@ func submitCreateCategoryDialog(d *Dialog, existingParents []string) tea.Cmd {
 	return func() tea.Msg {
 		return createCategoryRequestMsg{request: req}
 	}
+}
+
+// persistCategory creates the requested category (and its parent, when
+// req.NewParent is true) using the App's category service and returns the new
+// leaf category. Pure persistence — no UI side effects, no dialog mutations.
+// The returned category's Type follows the request, except in the existing-
+// parent path where the child inherits the parent's Type (matches the prior
+// behavior of applyCreatedCategory).
+func (a *App) persistCategory(req createCategoryRequest) (*category.Category, error) {
+	if a.categorySvc == nil {
+		return nil, fmt.Errorf("category service unavailable")
+	}
+
+	catType := req.Type
+	var parentID types.ID
+	if req.ParentName != "" {
+		if req.NewParent {
+			parent := category.NewCategory(req.ParentName, catType)
+			if err := a.categorySvc.Create(parent); err != nil {
+				return nil, fmt.Errorf("create parent: %w", err)
+			}
+			parentID = parent.ID
+		} else {
+			existing, err := a.categorySvc.GetByName(req.ParentName, nil)
+			if err != nil {
+				return nil, fmt.Errorf("lookup parent: %w", err)
+			}
+			parentID = existing.ID
+			catType = existing.Type
+		}
+	}
+
+	var newCat *category.Category
+	if parentID == types.NilID {
+		newCat = category.NewCategory(req.Name, catType)
+	} else {
+		newCat = category.NewSubcategory(req.Name, parentID, catType)
+	}
+	if err := a.categorySvc.Create(newCat); err != nil {
+		return nil, fmt.Errorf("create category: %w", err)
+	}
+	return newCat, nil
+}
+
+// applyCreatedCategory is the router for the createCategoryRequestMsg path. It
+// persists the requested category and dispatches to the per-surface applier
+// matching a.createCatSource so the new category lands back in the originating
+// field of whichever transaction-entry surface opened the sub-dialog. Surface
+// scratch fields (e.g. createCatSource) are cleared after dispatch.
+func (a *App) applyCreatedCategory(req createCategoryRequest) error {
+	newCat, err := a.persistCategory(req)
+	if err != nil {
+		return err
+	}
+
+	cats, err := a.categorySvc.List()
+	if err != nil {
+		return fmt.Errorf("reload categories: %w", err)
+	}
+
+	switch a.createCatSource {
+	case createCatSourceTxnDialog:
+		a.applyCreatedCategoryToTxn(newCat, cats)
+	default:
+		// No source recorded — surface plumbing not wired (or the source
+		// enum was reset before the router fired). Close the sub-dialog
+		// so the user isn't stuck on an inert overlay.
+		a.createCatDialog = nil
+	}
+
+	a.createCatSource = createCatSourceNone
+	return nil
 }

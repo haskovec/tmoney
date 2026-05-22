@@ -136,10 +136,13 @@ type App struct {
 	txnDialogLastSavedDate types.Date
 
 	// createCatDialog is the inline create-category sub-dialog opened from
-	// the transaction dialog's Category combo via the [+ Add new category…]
-	// action row. While it is non-nil and visible, txnDialog is hidden but
-	// kept alive so its field state survives the divert.
+	// any of the transaction-entry surfaces via the [+ Add new category…]
+	// action row. While it is non-nil and visible, the originating dialog
+	// is hidden but kept alive so its field state survives the divert. The
+	// createCatSource field below records which surface opened it so the
+	// post-create router can dispatch back to the right applier.
 	createCatDialog *Dialog
+	createCatSource createCategorySource
 
 	// Split dialog state
 	splitDialog           *SplitDialog

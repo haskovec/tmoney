@@ -449,6 +449,7 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 	parents := topLevelParentNames(a.txnDialogData)
 	parent, name := splitCategoryQuery(query)
 	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents)
+	a.createCatSource = createCatSourceTxnDialog
 	a.txnDialog.SetVisible(false)
 	return a, nil
 }
@@ -492,9 +493,12 @@ func (a *App) handleCreateCatDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 
 // cancelCreateCatDialog closes the sub-dialog and re-shows the transaction
 // dialog. All txn dialog field state is preserved (the dialog was hidden,
-// not destroyed). Focus is left wherever it was (Category field).
+// not destroyed). Focus is left wherever it was (Category field). The
+// createCatSource discriminator is reset so a future open from a different
+// surface starts in a clean state.
 func (a *App) cancelCreateCatDialog() {
 	a.createCatDialog = nil
+	a.createCatSource = createCatSourceNone
 	if a.txnDialog != nil {
 		a.txnDialog.SetVisible(true)
 	}
@@ -516,49 +520,14 @@ func (a *App) submitCreateCatDialog() (tea.Model, tea.Cmd) {
 	return a, cmd
 }
 
-// applyCreatedCategory persists the requested category (creating its parent
-// first when the user typed a new top-level name), reloads the txn dialog's
-// category list with the new entry selected, advances focus to Amount, and
-// closes the create-category sub-dialog. Returns the err to bubble up if
-// persistence fails.
-func (a *App) applyCreatedCategory(req createCategoryRequest) error {
-	if a.categorySvc == nil {
-		return fmt.Errorf("category service unavailable")
-	}
-
-	catType := req.Type
-	var parentID types.ID
-	if req.ParentName != "" {
-		if req.NewParent {
-			parent := category.NewCategory(req.ParentName, catType)
-			if err := a.categorySvc.Create(parent); err != nil {
-				return fmt.Errorf("create parent: %w", err)
-			}
-			parentID = parent.ID
-		} else {
-			existing, err := a.categorySvc.GetByName(req.ParentName, nil)
-			if err != nil {
-				return fmt.Errorf("lookup parent: %w", err)
-			}
-			parentID = existing.ID
-			catType = existing.Type
-		}
-	}
-
-	var newCat *category.Category
-	if parentID == types.NilID {
-		newCat = category.NewCategory(req.Name, catType)
-	} else {
-		newCat = category.NewSubcategory(req.Name, parentID, catType)
-	}
-	if err := a.categorySvc.Create(newCat); err != nil {
-		return fmt.Errorf("create category: %w", err)
-	}
-
-	cats, err := a.categorySvc.List()
-	if err != nil {
-		return fmt.Errorf("reload categories: %w", err)
-	}
+// applyCreatedCategoryToTxn is the per-surface applier called by the
+// createCategoryRequestMsg router when the originating surface was the New /
+// Edit Transaction dialog. It reloads the dialog's category list with newCat
+// pre-selected on the Category combo, advances focus to Amount, re-shows the
+// transaction dialog, and clears the create-category sub-dialog. The actual
+// persistence happens in persistCategory; the router has already called it
+// and passes the freshly-created category in.
+func (a *App) applyCreatedCategoryToTxn(newCat *category.Category, cats []*category.Category) {
 	if a.txnDialogData != nil {
 		a.txnDialogData.categories = cats
 	}
@@ -581,7 +550,6 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 		a.txnDialog.SetVisible(true)
 	}
 	a.createCatDialog = nil
-	return nil
 }
 
 // submitTransactionDialog parses dialog fields, validates, and saves the transaction.
