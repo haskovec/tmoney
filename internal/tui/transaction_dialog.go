@@ -505,6 +505,10 @@ func (a *App) cancelCreateCatDialog() {
 		if a.txnDialog != nil {
 			a.txnDialog.SetVisible(true)
 		}
+	case createCatSourceSchedDialog:
+		if a.schedDialog != nil {
+			a.schedDialog.SetVisible(true)
+		}
 	case createCatSourceSchedPreview:
 		if a.schedPreviewDialog != nil {
 			if header := a.schedPreviewDialog.HeaderDialog(); header != nil {

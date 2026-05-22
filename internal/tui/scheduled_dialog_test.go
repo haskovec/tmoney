@@ -133,7 +133,7 @@ func TestBuildNewScheduledDialog_FieldTypes(t *testing.T) {
 	}{
 		{"Account", FieldSelect},
 		{"Payee", FieldText},
-		{"Category", FieldSelect},
+		{"Category", FieldCombo},
 		{"Amount", FieldText},
 		{"Memo", FieldText},
 		{"Frequency", FieldSelect},
@@ -2004,5 +2004,359 @@ func TestScheduledDialog_NonPaycheckShape_HidesEditAsPaycheck(t *testing.T) {
 				t.Errorf("Edit-as-paycheck button should be hidden for %s", tc.name)
 			}
 		})
+	}
+}
+
+// =============================================================================
+// CC-003 — Scheduled new + edit Dialog → create-category sub-dialog → back
+// =============================================================================
+
+// TestBuildNewScheduledDialog_CategoryIsCombo pins that the New Scheduled
+// dialog's Category field is a typeahead combo, not a plain Select. Without
+// this the [+ Add new category…] action row cannot render.
+func TestBuildNewScheduledDialog_CategoryIsCombo(t *testing.T) {
+	d := buildNewScheduledDialog([]string{"Checking"}, []string{"(None)", "Rent"})
+	if got := d.Fields()[schedFieldCategory].Type; got != FieldCombo {
+		t.Errorf("Category field type = %v, want FieldCombo", got)
+	}
+}
+
+// TestBuildNewScheduledDialog_CategoryComboHasAddNewLabel pins that the
+// Category combo carries the AddNewLabel sentinel so the action row appears
+// in the dropdown.
+func TestBuildNewScheduledDialog_CategoryComboHasAddNewLabel(t *testing.T) {
+	d := buildNewScheduledDialog([]string{"Checking"}, []string{"(None)", "Rent"})
+	got := d.Fields()[schedFieldCategory].AddNewLabel
+	want := "[+ Add new category…]"
+	if got != want {
+		t.Errorf("Category AddNewLabel = %q, want %q", got, want)
+	}
+}
+
+// TestBuildEditScheduledDialog_CategoryIsCombo pins that the Edit Scheduled
+// dialog's Category field is also a typeahead combo.
+func TestBuildEditScheduledDialog_CategoryIsCombo(t *testing.T) {
+	accountID := types.NewID()
+	st := scheduled.NewTransaction(accountID, scheduled.FrequencyMonthly, types.NewDate(2024, time.January, 1))
+	d := buildEditScheduledDialog(st,
+		[]string{"Checking"}, []types.ID{accountID},
+		[]string{"(None)", "Rent"}, []types.ID{types.NilID, types.NewID()},
+		map[types.ID]string{})
+	if got := d.Fields()[schedFieldCategory].Type; got != FieldCombo {
+		t.Errorf("Edit Category field type = %v, want FieldCombo", got)
+	}
+	want := "[+ Add new category…]"
+	if got := d.Fields()[schedFieldCategory].AddNewLabel; got != want {
+		t.Errorf("Edit Category AddNewLabel = %q, want %q", got, want)
+	}
+}
+
+// TestScheduledDialog_CategoryCombo_TabAwayPreservesPreviousSelection pins
+// that typing a query with no matches into the Category combo and pressing
+// Tab does not blow away the previously-selected SelectedIndex (the typed
+// query is discarded).
+func TestScheduledDialog_CategoryCombo_TabAwayPreservesPreviousSelection(t *testing.T) {
+	d := buildNewScheduledDialog([]string{"Checking"}, []string{"(None)", "Rent", "Food"})
+	d.SetFocusIndex(schedFieldCategory)
+	cat := d.Fields()[schedFieldCategory]
+	cat.SelectedIndex = 2 // "Food"
+	cat.comboHighlight = 2
+	// Type a non-matching query so commitComboHighlight has no row to commit.
+	cat.Query = "zzzzz"
+	cat.comboHighlight = 0 // highlight head of (empty) filtered list
+
+	action := d.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if action != DialogActionNone {
+		t.Errorf("Tab action = %v, want DialogActionNone", action)
+	}
+	if cat.Query != "" {
+		t.Errorf("Tab should clear Query, got %q", cat.Query)
+	}
+	if cat.SelectedIndex != 2 {
+		t.Errorf("Tab with non-matching query should preserve SelectedIndex; got %d, want 2", cat.SelectedIndex)
+	}
+}
+
+// newAppForSchedAddNew builds an *App with a New Scheduled dialog whose
+// Category combo carries the supplied categories, focus on Category, and
+// a typed query parked on the [+ Add new category…] action row. Mirrors
+// newAppForTxnAddNew. categorySvc may be nil for tests that don't submit
+// the sub-dialog.
+func newAppForSchedAddNew(t *testing.T, query string, categorySvc *category.Service, cats []*category.Category) *App {
+	t.Helper()
+	accountOptions := []string{"Checking"}
+	accountIDs := []types.ID{types.NewID()}
+	categoryOptions, categoryIDs := buildCategoryOptions(cats)
+
+	app := &App{
+		currentView: ViewScheduled,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		categorySvc: categorySvc,
+		schedDialogData: &scheduledDialogData{
+			mode:     scheduledDialogModeNew,
+			payeeMap: make(map[string]*payee.Payee),
+		},
+		schedDialogAccountIDs:      accountIDs,
+		schedDialogCategoryIDs:     categoryIDs,
+		schedDialogCategoryOptions: categoryOptions,
+	}
+	d := buildNewScheduledDialog(accountOptions, categoryOptions)
+	// Capture distinctive scalar state we expect to see preserved across the
+	// divert.
+	d.Fields()[schedFieldPayee].Value = "Landlord"
+	d.Fields()[schedFieldAmount].Value = "-1500.00"
+	d.Fields()[schedFieldMemo].Value = "Monthly rent"
+	d.SetFocusIndex(schedFieldCategory)
+	cat := d.Fields()[schedFieldCategory]
+	cat.Query = query
+	cat.comboHighlight = len(cat.FilteredIndices())
+	app.schedDialog = d
+	return app
+}
+
+func TestApp_SchedDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
+	app := newAppForSchedAddNew(t, "Donations", nil, nil)
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleScheduledDialogKey(enter)
+	updated := model.(*App)
+
+	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+		t.Fatal("createCatDialog should be visible after [+ Add new] is activated")
+	}
+	if updated.createCatSource != createCatSourceSchedDialog {
+		t.Errorf("createCatSource = %d, want createCatSourceSchedDialog (%d)",
+			updated.createCatSource, createCatSourceSchedDialog)
+	}
+	if updated.schedDialog == nil {
+		t.Fatal("schedDialog should be kept (hidden) so its state survives the divert")
+	}
+	if updated.schedDialog.IsVisible() {
+		t.Error("schedDialog should be hidden while createCatDialog is shown")
+	}
+	if updated.createCatDialog.Title() != "New Category" {
+		t.Errorf("createCatDialog title = %q, want %q",
+			updated.createCatDialog.Title(), "New Category")
+	}
+	// Typed query was "Donations" (no colon) so it seeds the Name field.
+	cFields := updated.createCatDialog.Fields()
+	if cFields[0].Value != "Donations" {
+		t.Errorf("Name field = %q, want %q (seeded from typed query)",
+			cFields[0].Value, "Donations")
+	}
+}
+
+func TestApp_SchedDialog_AddNew_CancelRestoresState(t *testing.T) {
+	app := newAppForSchedAddNew(t, "", nil, nil)
+	prevCat := app.schedDialog.Fields()[schedFieldCategory].SelectedIndex
+	prevFocus := app.schedDialog.FocusIndex()
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleScheduledDialogKey(enter)
+	app = model.(*App)
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+
+	esc := tea.KeyPressMsg{Code: tea.KeyEsc}
+	model, _ = app.handleCreateCatDialogKey(esc)
+	app = model.(*App)
+
+	if app.createCatDialog != nil {
+		t.Error("createCatDialog should be cleared after cancel")
+	}
+	if app.createCatSource != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after cancel", app.createCatSource)
+	}
+	if app.schedDialog == nil || !app.schedDialog.IsVisible() {
+		t.Fatal("schedDialog should be restored to visible after cancel")
+	}
+
+	fields := app.schedDialog.Fields()
+	if fields[schedFieldPayee].Value != "Landlord" {
+		t.Errorf("Payee preserved? got %q, want %q",
+			fields[schedFieldPayee].Value, "Landlord")
+	}
+	if fields[schedFieldAmount].Value != "-1500.00" {
+		t.Errorf("Amount preserved? got %q, want %q",
+			fields[schedFieldAmount].Value, "-1500.00")
+	}
+	if fields[schedFieldMemo].Value != "Monthly rent" {
+		t.Errorf("Memo preserved? got %q, want %q",
+			fields[schedFieldMemo].Value, "Monthly rent")
+	}
+	if fields[schedFieldCategory].SelectedIndex != prevCat {
+		t.Errorf("Category SelectedIndex changed on cancel: got %d, want %d",
+			fields[schedFieldCategory].SelectedIndex, prevCat)
+	}
+	if app.schedDialog.FocusIndex() != prevFocus {
+		t.Errorf("FocusIndex changed on cancel: got %d, want %d",
+			app.schedDialog.FocusIndex(), prevFocus)
+	}
+}
+
+func TestApp_SchedDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "cc003.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	repo := category.NewRepository(database)
+	svc := category.NewService(repo, database)
+	if err := svc.SeedDefaultCategories(); err != nil {
+		t.Fatalf("SeedDefaultCategories: %v", err)
+	}
+	cats, err := svc.List()
+	if err != nil {
+		t.Fatalf("svc.List: %v", err)
+	}
+
+	app := newAppForSchedAddNew(t, "", svc, cats)
+
+	// Open sub-dialog.
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleScheduledDialogKey(enter)
+	app = model.(*App)
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+
+	// Fill: Name=Cleaning, Parent=(top-level), Type=Expense.
+	cFields := app.createCatDialog.Fields()
+	cFields[0].Value = "Cleaning"
+	cFields[1].SelectedIndex = 0
+	cFields[2].SelectedIndex = 0
+
+	model, cmd := app.submitCreateCatDialog()
+	app = model.(*App)
+	if cmd == nil {
+		t.Fatal("submit should produce a tea.Cmd that emits createCategoryRequestMsg")
+	}
+	msg := cmd()
+	model, _ = app.Update(msg)
+	app = model.(*App)
+
+	// Persisted.
+	got, err := svc.List()
+	if err != nil {
+		t.Fatalf("svc.List after submit: %v", err)
+	}
+	var found *category.Category
+	for _, c := range got {
+		if c.Name == "Cleaning" {
+			found = c
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("'Cleaning' should be persisted after submit")
+	}
+
+	if app.createCatDialog != nil {
+		t.Error("createCatDialog should be cleared after submit")
+	}
+	if app.createCatSource != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after submit", app.createCatSource)
+	}
+	if app.schedDialog == nil || !app.schedDialog.IsVisible() {
+		t.Fatal("schedDialog should be visible again after submit")
+	}
+
+	fields := app.schedDialog.Fields()
+	if fields[schedFieldPayee].Value != "Landlord" {
+		t.Errorf("Payee preserved? got %q", fields[schedFieldPayee].Value)
+	}
+	if fields[schedFieldAmount].Value != "-1500.00" {
+		t.Errorf("Amount preserved? got %q", fields[schedFieldAmount].Value)
+	}
+	if fields[schedFieldMemo].Value != "Monthly rent" {
+		t.Errorf("Memo preserved? got %q", fields[schedFieldMemo].Value)
+	}
+
+	// Category points at the new category.
+	catField := fields[schedFieldCategory]
+	if catField.Options[catField.SelectedIndex] != "Cleaning" {
+		t.Errorf("Category selected = %q, want %q",
+			catField.Options[catField.SelectedIndex], "Cleaning")
+	}
+	if app.schedDialogCategoryIDs[catField.SelectedIndex] != found.ID {
+		t.Errorf("schedDialogCategoryIDs[%d] = %s, want %s",
+			catField.SelectedIndex,
+			app.schedDialogCategoryIDs[catField.SelectedIndex],
+			found.ID)
+	}
+
+	if app.schedDialog.FocusIndex() != schedFieldAmount {
+		t.Errorf("FocusIndex after submit = %d, want %d (Amount)",
+			app.schedDialog.FocusIndex(), schedFieldAmount)
+	}
+}
+
+// TestSubmitScheduledDialog_CategoryRoundTrip pins the regression that
+// submitScheduledDialog still resolves the Category SelectedIndex to a
+// categoryID after the Select→Combo conversion. Picks a category, drives
+// the submit cmd to completion, reloads the saved schedule, and asserts
+// it carries the picked category.
+func TestSubmitScheduledDialog_CategoryRoundTrip(t *testing.T) {
+	app, schedSvc, acct, incomeCat, _ := createMultiLineScheduledTestApp(t)
+
+	categoryOptions, categoryIDs := buildCategoryOptions([]*category.Category{incomeCat})
+	app.schedDialogData = &scheduledDialogData{
+		mode:     scheduledDialogModeNew,
+		accounts: []*account.Account{acct},
+		payeeMap: make(map[string]*payee.Payee),
+	}
+	app.schedDialogAccountIDs = []types.ID{acct.ID}
+	app.schedDialogCategoryIDs = categoryIDs
+	app.schedDialogCategoryOptions = categoryOptions
+
+	d := buildNewScheduledDialog([]string{acct.Name}, categoryOptions)
+	d.Fields()[schedFieldAccount].SelectedIndex = 0
+	d.Fields()[schedFieldPayee].Value = "Employer"
+	d.Fields()[schedFieldAmount].Value = "4000.00"
+	d.Fields()[schedFieldMemo].Value = "Salary"
+	// Select the "Salary" income category (index 1; index 0 is "(None)").
+	catField := d.Fields()[schedFieldCategory]
+	salaryIdx := 0
+	for i, opt := range categoryOptions {
+		if opt == incomeCat.Name {
+			salaryIdx = i
+			break
+		}
+	}
+	if salaryIdx == 0 {
+		t.Fatalf("category options missing %q: %v", incomeCat.Name, categoryOptions)
+	}
+	catField.SelectedIndex = salaryIdx
+	catField.comboHighlight = salaryIdx
+	app.schedDialog = d
+
+	_, cmd := app.submitScheduledDialog()
+	if cmd == nil {
+		t.Fatal("submit should produce a cmd for a valid schedule")
+	}
+	if msg := cmd(); msg != nil {
+		if errM, ok := msg.(errMsg); ok {
+			t.Fatalf("submit returned errMsg: %v", errM.err)
+		}
+	}
+
+	saved, err := schedSvc.List()
+	if err != nil {
+		t.Fatalf("schedSvc.List: %v", err)
+	}
+	if len(saved) != 1 {
+		t.Fatalf("expected 1 saved schedule, got %d", len(saved))
+	}
+	got := saved[0]
+	if !got.HasCategory() || got.CategoryID.ID != incomeCat.ID {
+		t.Errorf("saved schedule CategoryID = %v, want %v",
+			got.CategoryID, incomeCat.ID)
 	}
 }

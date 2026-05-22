@@ -194,7 +194,7 @@ the docs in line.
     `categorySvc.List()` for sched preview). 4 new tests added; full
     `./internal/tui/` suite (1696 tests) and `golangci-lint` green.
 
-- [ ] **CC-003 — Task 3: Scheduled new + edit Dialog — `AddSelectField` → `AddComboField` + `AddNewLabel`** (highest risk — input-handling conversion)
+- [x] **CC-003 — Task 3: Scheduled new + edit Dialog — `AddSelectField` → `AddComboField` + `AddNewLabel`** (highest risk — input-handling conversion)
   - RED: `TestBuildNewScheduledDialog_CategoryIsCombo`;
     `TestBuildNewScheduledDialog_CategoryComboHasAddNewLabel`;
     `TestBuildEditScheduledDialog_CategoryIsCombo`;
@@ -209,7 +209,24 @@ the docs in line.
     `DialogActionAddNew`; add per-surface opener + applier as in CC-002.
   - Confirm: all existing `scheduled_dialog_test.go` tests pass; the
     "Edit as paycheck →" alternate button is untouched.
-  - Done: _pending._
+  - Done: New + Edit Scheduled dialogs now use `FieldCombo` for Category
+    with `AddNewLabel = "[+ Add new category…]"` set. The pre-existing
+    `TestBuildNewScheduledDialog_FieldTypes` expectation was flipped
+    from `FieldSelect` to `FieldCombo` (the only test that pinned the
+    type). `handleScheduledDialogKey` routes `DialogActionAddNew` into
+    a new `openCreateCategorySubDialogFromSched`, which sets
+    `createCatSource = createCatSourceSchedDialog` and hides the
+    scheduled dialog. The Task 0 router dispatches to the new
+    `applyCreatedCategoryToSched`, which rebuilds
+    `schedDialogCategoryIDs` + `schedDialogCategoryOptions` and the
+    Category combo's options/SelectedIndex, then advances focus to
+    Amount. `cancelCreateCatDialog` learned a third branch to restore
+    the scheduled dialog. 8 new tests added (Category-is-Combo for new
+    + edit, AddNewLabel, Tab-away preserves prior SelectedIndex,
+    open/cancel/submit trio, and the submit→reload category
+    round-trip). Full suite (5309 tests across 26 packages) and
+    `golangci-lint run ./...` green; "Edit as paycheck →" alternate
+    button untouched.
 
 - [ ] **CC-004 — Task 4: Split Dialog appends `[+ Add new category…]` sentinel past Transfer** (medium risk — custom widget)
   - RED: `TestSplitDialog_CategoryCount_IncludesAddNewSentinel`;

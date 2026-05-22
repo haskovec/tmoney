@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -193,8 +194,10 @@ func buildNewScheduledDialog(accountOptions, categoryOptions []string) *Dialog {
 	// Payee
 	d.AddTextField("Payee", "", "Payee name", 0)
 
-	// Category
-	d.AddSelectField("Category", categoryOptions, 0)
+	// Category — typeahead combo so the [+ Add new category…] action row
+	// surfaces for inline creation (CC-003).
+	catField := d.AddComboField("Category", categoryOptions, 0)
+	catField.AddNewLabel = "[+ Add new category…]"
 
 	// Amount (empty = variable)
 	d.AddTextField("Amount", "", "Empty = variable", 12)
@@ -270,7 +273,8 @@ func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string
 			}
 		}
 	}
-	d.AddSelectField("Category", categoryOptions, catIdx)
+	editCatField := d.AddComboField("Category", categoryOptions, catIdx)
+	editCatField.AddNewLabel = "[+ Add new category…]"
 
 	// Amount
 	amountStr := ""
@@ -439,9 +443,72 @@ func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 		return a, nil
 	case DialogActionAlternate:
 		return a.relaunchAsPaycheckWizard()
+	case DialogActionAddNew:
+		return a.openCreateCategorySubDialogFromSched()
 	}
 
 	return a, nil
+}
+
+// openCreateCategorySubDialogFromSched hides the scheduled dialog and opens
+// the inline create-category sub-dialog seeded with the typed query from the
+// Category combo. The scheduled dialog's field state is preserved by keeping
+// the dialog alive (just hidden) for the duration of the divert; restoration
+// on cancel and post-create wiring happens through the createCatDialog
+// handlers.
+func (a *App) openCreateCategorySubDialogFromSched() (tea.Model, tea.Cmd) {
+	if a.schedDialog == nil {
+		return a, nil
+	}
+	fields := a.schedDialog.Fields()
+	if len(fields) <= schedFieldCategory {
+		return a, nil
+	}
+	catField := fields[schedFieldCategory]
+	query := catField.Query
+	catField.AddNewTriggered = false
+	catField.Query = ""
+
+	// createCatSource must be set before parentsForCreateCatDialog so the
+	// helper picks the right parents source.
+	a.createCatSource = createCatSourceSchedDialog
+	parents := a.parentsForCreateCatDialog()
+	parent, name := splitCategoryQuery(query)
+	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents)
+	a.schedDialog.SetVisible(false)
+	return a, nil
+}
+
+// applyCreatedCategoryToSched is the per-surface applier called by the
+// createCategoryRequestMsg router when the originating surface was the New /
+// Edit Scheduled Transaction dialog. It reloads the dialog's category list
+// with newCat pre-selected on the Category combo, advances focus to Amount,
+// re-shows the scheduled dialog, and clears the create-category sub-dialog.
+func (a *App) applyCreatedCategoryToSched(newCat *category.Category, cats []*category.Category) {
+	if a.schedDialog == nil {
+		a.createCatDialog = nil
+		return
+	}
+	options, ids := buildCategoryOptions(cats)
+	a.schedDialogCategoryIDs = ids
+	a.schedDialogCategoryOptions = options
+
+	if len(a.schedDialog.Fields()) > schedFieldCategory {
+		catField := a.schedDialog.Fields()[schedFieldCategory]
+		catField.Options = options
+		newIdx := 0
+		for i, id := range ids {
+			if id == newCat.ID {
+				newIdx = i
+				break
+			}
+		}
+		catField.SelectedIndex = newIdx
+		// Focus advances to Amount so the user can keep typing.
+		a.schedDialog.SetFocusIndex(schedFieldAmount)
+		a.schedDialog.SetVisible(true)
+	}
+	a.createCatDialog = nil
 }
 
 // submitScheduledDialog parses dialog fields, validates, and saves the scheduled transaction.

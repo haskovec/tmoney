@@ -225,6 +225,8 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 	switch a.createCatSource {
 	case createCatSourceTxnDialog:
 		a.applyCreatedCategoryToTxn(newCat, cats)
+	case createCatSourceSchedDialog:
+		a.applyCreatedCategoryToSched(newCat, cats)
 	case createCatSourceSchedPreview:
 		a.applyCreatedCategoryToSchedPreview(newCat, cats)
 	default:
