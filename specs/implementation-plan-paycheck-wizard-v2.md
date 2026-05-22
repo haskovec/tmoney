@@ -100,7 +100,7 @@ the repository layer.
 
 ## Phase 2: Default Category Seeds
 
-- [ ] **PW2-003 — Seed `Income:Bonus` and `Income:Retro Pay`**
+- [x] **PW2-003 — Seed `Income:Bonus` and `Income:Retro Pay`**
   - RED: test `TestFileInit_BonusAndRetroPayCategoriesExist` — opening
     or creating a database ensures `Income:Bonus` and `Income:Retro Pay`
     exist as subcategories of `Income`. Test that the existing
@@ -113,6 +113,12 @@ the repository layer.
     missing pairs idempotently — no new caller needed.
   - Confirm: tests green; manual smoke not required (covered by the
     automated test).
+  - Done: added `{Income, Bonus}` and `{Income, Retro Pay}` to
+    `PaycheckCategories` in
+    `internal/category/category_service.go`. Verified by
+    `TestFileInit_BonusAndRetroPayCategoriesExist` in
+    `internal/category/category_service_test.go` (also re-checks the
+    existing `Income:Salary`, `Tax:*`, and `Insurance:Health` seeds).
 
 ## Phase 3: Wizard Layout v2
 

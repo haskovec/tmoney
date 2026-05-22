@@ -411,6 +411,88 @@ func TestDefaultCategoriesContent(t *testing.T) {
 	})
 }
 
+// TestFileInit_BonusAndRetroPayCategoriesExist verifies that the
+// paycheck-wizard seed step (EnsurePaycheckCategories, invoked on every
+// database open by app.NewServices) creates Income:Bonus and
+// Income:Retro Pay alongside the previously-seeded Income:Salary, Tax,
+// and Insurance categories. This is the v2 paycheck wizard's
+// pre-population requirement for the post-time preview dialog.
+func TestFileInit_BonusAndRetroPayCategoriesExist(t *testing.T) {
+	database := createTestDB(t)
+	repo := NewRepository(database)
+	svc := NewService(repo, database)
+
+	if err := svc.EnsurePaycheckCategories(); err != nil {
+		t.Fatalf("EnsurePaycheckCategories: %v", err)
+	}
+
+	income, err := repo.GetByName("Income", nil)
+	if err != nil {
+		t.Fatalf("Income parent not found: %v", err)
+	}
+
+	t.Run("Income:Bonus exists as income subcategory", func(t *testing.T) {
+		bonus, err := repo.GetByName("Bonus", &income.ID)
+		if err != nil {
+			t.Fatalf("Income:Bonus not found: %v", err)
+		}
+		if bonus.Type != TypeIncome {
+			t.Errorf("Income:Bonus type = %v, want %v", bonus.Type, TypeIncome)
+		}
+	})
+
+	t.Run("Income:Retro Pay exists as income subcategory", func(t *testing.T) {
+		retro, err := repo.GetByName("Retro Pay", &income.ID)
+		if err != nil {
+			t.Fatalf("Income:Retro Pay not found: %v", err)
+		}
+		if retro.Type != TypeIncome {
+			t.Errorf("Income:Retro Pay type = %v, want %v", retro.Type, TypeIncome)
+		}
+	})
+
+	t.Run("Income:Salary seed unaffected", func(t *testing.T) {
+		salary, err := repo.GetByName("Salary", &income.ID)
+		if err != nil {
+			t.Fatalf("Income:Salary not found: %v", err)
+		}
+		if salary.Type != TypeIncome {
+			t.Errorf("Income:Salary type = %v, want %v", salary.Type, TypeIncome)
+		}
+	})
+
+	t.Run("Tax seeds unaffected", func(t *testing.T) {
+		tax, err := repo.GetByName("Tax", nil)
+		if err != nil {
+			t.Fatalf("Tax parent not found: %v", err)
+		}
+		for _, child := range []string{"Federal", "State", "Social Security", "Medicare"} {
+			got, err := repo.GetByName(child, &tax.ID)
+			if err != nil {
+				t.Errorf("Tax:%s not found: %v", child, err)
+				continue
+			}
+			if got.Type != TypeExpense {
+				t.Errorf("Tax:%s type = %v, want %v", child, got.Type, TypeExpense)
+			}
+		}
+	})
+
+	t.Run("Insurance:Health seed unaffected", func(t *testing.T) {
+		insurance, err := repo.GetByName("Insurance", nil)
+		if err != nil {
+			t.Fatalf("Insurance parent not found: %v", err)
+		}
+		health, err := repo.GetByName("Health", &insurance.ID)
+		if err != nil {
+			t.Fatalf("Insurance:Health not found: %v", err)
+		}
+		if health.Type != TypeExpense {
+			t.Errorf("Insurance:Health type = %v, want %v", health.Type, TypeExpense)
+		}
+	})
+}
+
 func TestService_Create(t *testing.T) {
 	t.Run("creates valid category", func(t *testing.T) {
 		database := createTestDB(t)

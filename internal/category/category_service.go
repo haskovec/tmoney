@@ -159,6 +159,8 @@ type PaycheckCategory struct {
 // databases gain them without a migration.
 var PaycheckCategories = []PaycheckCategory{
 	{Parent: "Income", Child: "Salary", Type: TypeIncome},
+	{Parent: "Income", Child: "Bonus", Type: TypeIncome},
+	{Parent: "Income", Child: "Retro Pay", Type: TypeIncome},
 	{Parent: "Tax", Child: "Federal", Type: TypeExpense},
 	{Parent: "Tax", Child: "State", Type: TypeExpense},
 	{Parent: "Tax", Child: "Social Security", Type: TypeExpense},
