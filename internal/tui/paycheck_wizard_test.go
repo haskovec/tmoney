@@ -975,3 +975,201 @@ func TestLooksLikePaycheck_V2_NoEarningsTag_Returns_False(t *testing.T) {
 		t.Errorf("fully-tagged schedule without an earnings line should not look like a paycheck")
 	}
 }
+
+// TestNewPaycheckWizardFromSchedule_V2_GroupsByTag asserts the v2
+// pre-fill walks the schedule's splits and routes each row into the
+// wizard section named by its paycheck_section tag — independent of
+// storage order. The fixture deliberately stores the splits in a
+// shuffled (non-section) order so the test proves routing comes from
+// the tag, not the position.
+func TestNewPaycheckWizardFromSchedule_V2_GroupsByTag(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+
+	st := scheduled.NewTransaction(fx.checkingID, scheduled.FrequencyFortnightly, types.MustParseDate("2026-03-15"))
+	st.SetAmount(types.MustNewMoney("3090"))
+	st.ClearCategory()
+	// Stored order is deliberately mixed: net_pay_destination, post_tax,
+	// post_tax, pre_tax, tax, tax, earnings.
+	st.Splits = scheduled.SplitCollection{
+		{
+			BaseModel:         types.NewBaseModel(),
+			Amount:            types.MustNewMoney("-300"),
+			TransferAccountID: types.NullableID{ID: fx.savingsID, Valid: true},
+			PaycheckSection:   types.NullableString{String: "net_pay_destination", Valid: true},
+		},
+		{
+			BaseModel:       types.NewBaseModel(),
+			Amount:          types.MustNewMoney("-150"),
+			CategoryID:      types.NullableID{ID: fx.healthID, Valid: true},
+			PaycheckSection: types.NullableString{String: "post_tax", Valid: true},
+		},
+		{
+			BaseModel:       types.NewBaseModel(),
+			Amount:          types.MustNewMoney("-50"),
+			CategoryID:      types.NullableID{ID: fx.healthID, Valid: true},
+			PaycheckSection: types.NullableString{String: "post_tax", Valid: true},
+		},
+		{
+			BaseModel:         types.NewBaseModel(),
+			Amount:            types.MustNewMoney("-500"),
+			TransferAccountID: types.NullableID{ID: fx.retire401kID, Valid: true},
+			PaycheckSection:   types.NullableString{String: "pre_tax", Valid: true},
+		},
+		{
+			BaseModel:       types.NewBaseModel(),
+			Amount:          types.MustNewMoney("-800"),
+			CategoryID:      types.NullableID{ID: fx.federalID, Valid: true},
+			PaycheckSection: types.NullableString{String: "tax", Valid: true},
+		},
+		{
+			BaseModel:       types.NewBaseModel(),
+			Amount:          types.MustNewMoney("-310"),
+			CategoryID:      types.NullableID{ID: fx.ssID, Valid: true},
+			PaycheckSection: types.NullableString{String: "tax", Valid: true},
+		},
+		{
+			BaseModel:       types.NewBaseModel(),
+			Amount:          types.MustNewMoney("5000"),
+			CategoryID:      types.NullableID{ID: fx.salaryID, Valid: true},
+			PaycheckSection: types.NullableString{String: "earnings", Valid: true},
+		},
+	}
+
+	w := NewPaycheckWizardFromSchedule(st, fx.accounts, nil, fx.categoryOptions, fx.categoryIDs)
+	if w == nil {
+		t.Fatal("NewPaycheckWizardFromSchedule returned nil")
+	}
+
+	if got := len(w.EarningsLines()); got != 1 {
+		t.Errorf("EarningsLines count = %d, want 1", got)
+	}
+	if got := len(w.PreTaxLines()); got != 1 {
+		t.Errorf("PreTaxLines count = %d, want 1", got)
+	}
+	if got := len(w.TaxLines()); got != 2 {
+		t.Errorf("TaxLines count = %d, want 2", got)
+	}
+	if got := len(w.PostTaxLines()); got != 2 {
+		t.Errorf("PostTaxLines count = %d, want 2", got)
+	}
+	if got := len(w.AdditionalTransfers()); got != 1 {
+		t.Errorf("AdditionalTransfers count = %d, want 1", got)
+	}
+
+	// Earnings row: categorized Salary at the raw stored signed amount.
+	earn := w.EarningsLines()
+	if len(earn) > 0 {
+		if earn[0].IsTransfer() {
+			t.Error("earnings row should be categorized, not a transfer-line")
+		}
+		if got, want := selectedLineOption(earn[0]), "Income > Salary"; got != want {
+			t.Errorf("earnings[0] category = %q, want %q", got, want)
+		}
+		if got, want := earn[0].AmountField().Value, "5000"; got != want {
+			t.Errorf("earnings[0] amount = %q, want %q", got, want)
+		}
+	}
+
+	// Pre-tax row: the 401k transfer-line tagged pre_tax.
+	pre := w.PreTaxLines()
+	if len(pre) > 0 {
+		if !pre[0].IsTransfer() {
+			t.Error("pre-tax row should be a transfer-line (401k)")
+		}
+		if got, want := pre[0].AmountField().Value, "-500"; got != want {
+			t.Errorf("pre-tax[0] amount = %q, want %q", got, want)
+		}
+	}
+
+	// Tax rows preserve storage order — Federal first (storage index 4),
+	// Social Security second (storage index 5).
+	tax := w.TaxLines()
+	if len(tax) == 2 {
+		if got, want := selectedLineOption(tax[0]), "Tax > Federal"; got != want {
+			t.Errorf("tax[0] category = %q, want %q", got, want)
+		}
+		if got, want := selectedLineOption(tax[1]), "Tax > Social Security"; got != want {
+			t.Errorf("tax[1] category = %q, want %q", got, want)
+		}
+	}
+
+	// Net Pay Destinations row: the Savings transfer tagged net_pay_destination.
+	xfer := w.AdditionalTransfers()
+	if len(xfer) > 0 {
+		if !xfer[0].IsTransfer() {
+			t.Error("net pay destination row should be a transfer-line (Savings)")
+		}
+		if got, want := xfer[0].AmountField().Value, "-300"; got != want {
+			t.Errorf("net_pay_destination[0] amount = %q, want %q", got, want)
+		}
+	}
+}
+
+// TestNewPaycheckWizardFromSchedule_V2_MultipleEarningsLines asserts
+// that a paycheck with two earnings-tagged lines (e.g. Salary +5000
+// plus Imputed LTD +44.03) opens with both rows in the Earnings
+// section, in storage order.
+func TestNewPaycheckWizardFromSchedule_V2_MultipleEarningsLines(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	imputedID := types.NewID()
+	categoryOptions := append([]string{}, fx.categoryOptions...)
+	categoryOptions = append(categoryOptions, "Income > Imputed LTD")
+	categoryIDs := append([]types.ID{}, fx.categoryIDs...)
+	categoryIDs = append(categoryIDs, imputedID)
+
+	st := scheduled.NewTransaction(fx.checkingID, scheduled.FrequencyFortnightly, types.MustParseDate("2026-03-15"))
+	st.SetAmount(types.MustNewMoney("5044.03"))
+	st.ClearCategory()
+	st.Splits = scheduled.SplitCollection{
+		{
+			BaseModel:       types.NewBaseModel(),
+			Amount:          types.MustNewMoney("5000"),
+			CategoryID:      types.NullableID{ID: fx.salaryID, Valid: true},
+			PaycheckSection: types.NullableString{String: "earnings", Valid: true},
+		},
+		{
+			BaseModel:       types.NewBaseModel(),
+			Amount:          types.MustNewMoney("44.03"),
+			CategoryID:      types.NullableID{ID: imputedID, Valid: true},
+			PaycheckSection: types.NullableString{String: "earnings", Valid: true},
+		},
+	}
+
+	w := NewPaycheckWizardFromSchedule(st, fx.accounts, nil, categoryOptions, categoryIDs)
+	if w == nil {
+		t.Fatal("NewPaycheckWizardFromSchedule returned nil")
+	}
+
+	earn := w.EarningsLines()
+	if got := len(earn); got != 2 {
+		t.Fatalf("EarningsLines count = %d, want 2", got)
+	}
+	// Storage order: salary first, imputed second.
+	if got, want := selectedLineOption(earn[0]), "Income > Salary"; got != want {
+		t.Errorf("earnings[0] category = %q, want %q", got, want)
+	}
+	if got, want := earn[0].AmountField().Value, "5000"; got != want {
+		t.Errorf("earnings[0] amount = %q, want %q", got, want)
+	}
+	if got, want := selectedLineOption(earn[1]), "Income > Imputed LTD"; got != want {
+		t.Errorf("earnings[1] category = %q, want %q", got, want)
+	}
+	if got, want := earn[1].AmountField().Value, "44.03"; got != want {
+		t.Errorf("earnings[1] amount = %q, want %q", got, want)
+	}
+
+	// The other sections stay empty (no defaults leak through when the
+	// schedule's splits are the only content).
+	if got := len(w.PreTaxLines()); got != 0 {
+		t.Errorf("PreTaxLines count = %d, want 0", got)
+	}
+	if got := len(w.TaxLines()); got != 0 {
+		t.Errorf("TaxLines count = %d, want 0", got)
+	}
+	if got := len(w.PostTaxLines()); got != 0 {
+		t.Errorf("PostTaxLines count = %d, want 0", got)
+	}
+	if got := len(w.AdditionalTransfers()); got != 0 {
+		t.Errorf("AdditionalTransfers count = %d, want 0", got)
+	}
+}

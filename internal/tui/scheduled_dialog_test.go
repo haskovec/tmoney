@@ -1897,16 +1897,29 @@ func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 		t.Errorf("deposit account pre-fill = %q, want %q", got, want)
 	}
 
-	// Pre-fill walks the schedule's splits and routes each row into
-	// the appropriate section by heuristic: positive categorized →
-	// PreTax (gross income), negative with "Tax > " → Tax, transfer
-	// or other negative → PostTax.
+	// Pre-fill walks the schedule's splits and routes each row by its
+	// paycheck_section tag (PW2-008): earnings → Earnings, pre_tax →
+	// Pre-tax, tax → Tax, post_tax → Post-tax, net_pay_destination →
+	// Additional Transfers. The fixture's tags route Salary to
+	// Earnings, Federal/Social Security to Tax, the 401(k) transfer to
+	// Pre-tax, and Health to Post-tax.
+	earn := w.EarningsLines()
+	if len(earn) != 1 {
+		t.Fatalf("got %d earnings rows, want 1 (Salary)", len(earn))
+	}
+	if got := earn[0].AmountField().Value; got != "5000" {
+		t.Errorf("earnings salary amount = %q, want 5000", got)
+	}
+
 	pre := w.PreTaxLines()
 	if len(pre) != 1 {
-		t.Fatalf("got %d pre-tax rows, want 1 (Salary)", len(pre))
+		t.Fatalf("got %d pre-tax rows, want 1 (401k transfer)", len(pre))
 	}
-	if got := pre[0].AmountField().Value; got != "5000" {
-		t.Errorf("pre-tax salary amount = %q, want 5000", got)
+	if !pre[0].IsTransfer() {
+		t.Error("pre-tax row should be a transfer-line (401k)")
+	}
+	if got := w.DepositAccount().Options[pre[0].AccountIndex()]; got != "401k" {
+		t.Errorf("pre-tax transfer destination = %q, want 401k", got)
 	}
 
 	tax := w.TaxLines()
@@ -1915,21 +1928,15 @@ func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 	}
 
 	post := w.PostTaxLines()
-	if len(post) != 2 {
-		t.Fatalf("got %d post-tax rows, want 2 (Health + 401k transfer)", len(post))
+	if len(post) != 1 {
+		t.Fatalf("got %d post-tax rows, want 1 (Health)", len(post))
+	}
+	if post[0].IsTransfer() {
+		t.Error("post-tax row should be categorized (Health), not a transfer")
 	}
 
-	// Confirm the transfer-line row points at 401k.
-	sawTransfer := false
-	for _, row := range post {
-		if row.IsTransfer() {
-			if got := w.DepositAccount().Options[row.AccountIndex()]; got == "401k" {
-				sawTransfer = true
-			}
-		}
-	}
-	if !sawTransfer {
-		t.Error("expected a post-tax transfer row pointing at 401k")
+	if got := len(w.AdditionalTransfers()); got != 0 {
+		t.Errorf("got %d additional-transfer rows, want 0", got)
 	}
 }
 

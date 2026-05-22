@@ -1560,12 +1560,35 @@ func looksLikePaycheck(st *scheduled.Transaction) bool {
 	return hasEarnings
 }
 
+// sectionForTag maps a paycheck_section tag string (as persisted by
+// BuildSplits via PaycheckSection.tagString) back to the enum value.
+// Unknown or empty tags route to PaycheckPostTax as a defensive fallback
+// — in practice looksLikePaycheck rejects schedules with any NULL tag
+// so the Edit-as-paycheck affordance never opens such a schedule.
+func sectionForTag(tag string) PaycheckSection {
+	switch tag {
+	case "earnings":
+		return PaycheckEarnings
+	case "pre_tax":
+		return PaycheckPreTax
+	case "tax":
+		return PaycheckTax
+	case "post_tax":
+		return PaycheckPostTax
+	case "net_pay_destination":
+		return PaycheckNetPayDestination
+	}
+	return PaycheckPostTax
+}
+
 // NewPaycheckWizardFromSchedule builds a paycheck wizard pre-filled
-// from a multi-line scheduled transaction. Sections are inferred via
-// a heuristic that matches the looksLikePaycheck classification:
-//   - positive categorized → PreTax (gross income)
-//   - negative categorized whose display name starts with "Tax > " → Tax
-//   - everything else → PostTax (transfers, health, etc.)
+// from a multi-line scheduled transaction. Sections come from the
+// `paycheck_section` tag stamped on each split by BuildSplits — storage
+// order within each section is preserved, but section assignment is
+// driven by the tag, not the position. Untagged or unknown-tag splits
+// land in Post-tax as a defensive fallback; in practice
+// looksLikePaycheck rejects schedules with any NULL tag before this
+// path is reached.
 func NewPaycheckWizardFromSchedule(
 	st *scheduled.Transaction,
 	accounts []*account.Account,
@@ -1578,9 +1601,8 @@ func NewPaycheckWizardFromSchedule(
 		return w
 	}
 
-	// Drop the v2 default-seeded rows — the schedule's existing splits
-	// drive section content; we don't want the defaults appended on top.
-	// (PW2-008 will rewrite this routing to use the paycheck_section tag.)
+	// Drop the v2 default-seeded rows — the schedule's tagged splits are
+	// the only content; defaults must not be appended on top.
 	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
 		w.sections[s] = nil
 	}
@@ -1625,12 +1647,13 @@ func NewPaycheckWizardFromSchedule(
 		if sp == nil {
 			continue
 		}
-		section := PaycheckPostTax
-		var (
-			selectIdx int
-		)
+		section := sectionForTag(sp.PaycheckSection.String)
+		if !sp.PaycheckSection.Valid {
+			section = PaycheckPostTax
+		}
+
+		var selectIdx int
 		if sp.TransferAccountID.Valid {
-			// Find the account in accountIDs to build the combined index.
 			for i, id := range w.accountIDs {
 				if id == sp.TransferAccountID.ID {
 					selectIdx = len(w.categoryOptions) + i
@@ -1641,12 +1664,6 @@ func NewPaycheckWizardFromSchedule(
 			name := categoryNameByID[sp.CategoryID.ID]
 			if idx := findCategoryOptionIndex(w.categoryOptions, name); idx > 0 {
 				selectIdx = idx
-			}
-			switch {
-			case sp.Amount.IsPositive():
-				section = PaycheckPreTax
-			case strings.HasPrefix(name, "Tax > "):
-				section = PaycheckTax
 			}
 		}
 

@@ -298,7 +298,7 @@ direct reads of the `paycheck_section` tag.
     `…_NullTagHidesAffordance`,
     `…_NoEarningsTag_Returns_False`).
 
-- [ ] **PW2-008 — `NewPaycheckWizardFromSchedule` reads tags to group lines**
+- [x] **PW2-008 — `NewPaycheckWizardFromSchedule` reads tags to group lines**
   - RED: test `TestNewPaycheckWizardFromSchedule_V2_GroupsByTag` —
     given a schedule whose splits carry the v2 tags (one
     `earnings`-tagged positive line, two `tax`-tagged negatives, one
@@ -329,6 +329,39 @@ direct reads of the `paycheck_section` tag.
     (`TestScheduledDialog_EditAsPaycheck_RelaunchesWizard`) is
     updated to use tagged splits in its fixture and continues to
     pass; full suite green.
+  - Done: replaced the v1 category-name routing in
+    `NewPaycheckWizardFromSchedule` with tag-based dispatch through a
+    new private helper `sectionForTag(string) PaycheckSection` that
+    inverts `PaycheckSection.tagString()`
+    (`earnings`/`pre_tax`/`tax`/`post_tax`/`net_pay_destination` →
+    the matching `PaycheckSection`; unknown/empty falls back to
+    `PaycheckPostTax`). The split-loop now reads
+    `sp.PaycheckSection.String` to pick the section, then routes the
+    transfer-account vs categorized branch as before. Storage order
+    within each section is preserved (rows are appended one by one).
+    NULL-tagged splits are defensively routed to `PaycheckPostTax`,
+    though `looksLikePaycheck` rejects any such schedule before this
+    path opens. The amount field is still pre-filled with
+    `sp.Amount.String()` verbatim — v2's `BuildSplits` preserves the
+    user's typed sign (unlike v1's `buildDeductionSplit` flip), so
+    `-800` round-trips as `-800`; the plan's "positive strings"
+    phrasing was inherited from v1 and no longer applies under
+    v2. Two new tests
+    (`TestNewPaycheckWizardFromSchedule_V2_GroupsByTag` and
+    `TestNewPaycheckWizardFromSchedule_V2_MultipleEarningsLines`)
+    exercise the routing — the first deliberately stores splits in a
+    shuffled non-section order (net_pay_destination, post_tax,
+    post_tax, pre_tax, tax, tax, earnings) to prove section
+    assignment comes from the tag, not the position. The existing
+    round-trip test
+    (`TestScheduledDialog_EditAsPaycheck_RelaunchesWizard`) had its
+    section-count assertions updated to match the v2 tag-based
+    routing: Salary (tagged `earnings`) lands in EarningsLines,
+    Federal/Social Security in TaxLines, the 401(k) transfer
+    (tagged `pre_tax`) in PreTaxLines, and Health in PostTaxLines —
+    with zero AdditionalTransfers since no `net_pay_destination`-
+    tagged line exists in the fixture. Full suite (5291 tests) and
+    lint stay green.
 
 ## Phase 5: Smoke Check
 
