@@ -515,6 +515,11 @@ func (a *App) cancelCreateCatDialog() {
 				header.SetVisible(true)
 			}
 		}
+	case createCatSourceSplitDialog:
+		if a.splitDialog != nil {
+			a.splitDialog.SetVisible(true)
+		}
+		a.createCatSplitRow = -1
 	}
 	a.createCatSource = createCatSourceNone
 }

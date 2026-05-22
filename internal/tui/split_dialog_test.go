@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -407,10 +409,22 @@ func TestSplitDialog_HandleKey_CategoryUpDown(t *testing.T) {
 		t.Errorf("categoryIndex after down = %d, want 3 (Transfer sentinel)", sd.rows[0].categoryIndex)
 	}
 
-	// Down at max (should stay at sentinel)
+	// Down -> [+ Add new category…] sentinel (CC-004)
 	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	if sd.rows[0].categoryIndex != 4 {
+		t.Errorf("categoryIndex after down = %d, want 4 (AddNew sentinel)", sd.rows[0].categoryIndex)
+	}
+
+	// Down at max (should stay at AddNew sentinel)
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	if sd.rows[0].categoryIndex != 4 {
+		t.Errorf("categoryIndex should stay at 4 (AddNew), got %d", sd.rows[0].categoryIndex)
+	}
+
+	// Up -> Transfer
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp})
 	if sd.rows[0].categoryIndex != 3 {
-		t.Errorf("categoryIndex should stay at 3, got %d", sd.rows[0].categoryIndex)
+		t.Errorf("categoryIndex after up = %d, want 3 (Transfer)", sd.rows[0].categoryIndex)
 	}
 
 	// Up -> Household
@@ -503,18 +517,31 @@ func TestSplitDialog_SelectTransfer_OpensAccountPicker(t *testing.T) {
 	if sd.rows[0].accountIndex != 1 {
 		t.Errorf("after second Down, accountIndex = %d, want 1 (401k)", sd.rows[0].accountIndex)
 	}
-	// Saturate at the last account.
+	// Down past the last account exits transferMode and lands on the
+	// AddNew sentinel (CC-004) so the AddNew action row is reachable
+	// from the natural Down-Down-Down navigation path.
 	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
-	if sd.rows[0].accountIndex != 1 {
-		t.Errorf("Down at last account should saturate, got %d", sd.rows[0].accountIndex)
+	if sd.rows[0].transferMode {
+		t.Errorf("Down at last account should exit transferMode")
+	}
+	if !sd.isAddNewSentinel(sd.rows[0].categoryIndex) {
+		t.Errorf("Down at last account should land on AddNew sentinel; got categoryIndex=%d", sd.rows[0].categoryIndex)
+	}
+	// Saturate at AddNew.
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	if !sd.isAddNewSentinel(sd.rows[0].categoryIndex) {
+		t.Errorf("Down past AddNew should saturate; got categoryIndex=%d", sd.rows[0].categoryIndex)
 	}
 
-	// Up cycles back, then reverts to category mode when stepping past
-	// the first account.
-	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp})
-	if sd.rows[0].accountIndex != 0 {
-		t.Errorf("Up from second account → accountIndex = %d, want 0", sd.rows[0].accountIndex)
+	// Re-enter transferMode to exercise the Up-from-account-zero path.
+	sd.rows[0].categoryIndex = 1                     // Food
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // -> Transfer + auto-swap
+	if !sd.rows[0].transferMode {
+		t.Fatalf("re-entry: Down from Food should auto-swap into transferMode")
 	}
+	// Up at accountIndex=0 reverts to category mode at the last real
+	// category (existing behavior — Up never enters transferMode and
+	// never lands on the Transfer sentinel; it jumps past it).
 	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp})
 	if sd.rows[0].transferMode {
 		t.Errorf("Up from first account should leave transfer mode")
@@ -1153,5 +1180,346 @@ func TestApp_BuildTransactionDialog_EditMode_ChecksSplitBoxIfSplitsExist(t *test
 	fields := d.Fields()
 	if !fields[6].Checked {
 		t.Error("split checkbox should be checked when editing a transaction with splits")
+	}
+}
+
+// =============================================================================
+// CC-004 — [+ Add new category…] sentinel
+// =============================================================================
+
+// TestSplitDialog_CategoryCount_IncludesAddNewSentinel pins that the split
+// row's category option space carries BOTH sentinels — `Transfer →` and
+// `[+ Add new category…]` — past the real categories.
+func TestSplitDialog_CategoryCount_IncludesAddNewSentinel(t *testing.T) {
+	sd := NewSplitDialog(
+		types.MustNewMoney("-100.00"),
+		[]string{"(None)", "Food", "Household"},
+		[]types.ID{types.NilID, types.NewID(), types.NewID()},
+	)
+
+	// 3 real categories + Transfer sentinel + AddNew sentinel = 5
+	if got, want := sd.categoryOptionCount(), 5; got != want {
+		t.Errorf("categoryOptionCount() = %d, want %d (3 real + Transfer + AddNew)", got, want)
+	}
+	if !sd.isAddNewSentinel(4) {
+		t.Errorf("isAddNewSentinel(4) should be true (AddNew sentinel sits past Transfer)")
+	}
+	if sd.isAddNewSentinel(3) {
+		t.Errorf("isAddNewSentinel(3) should be false (that's the Transfer sentinel)")
+	}
+	if got, want := sd.categoryOptionLabel(4), "[+ Add new category…]"; got != want {
+		t.Errorf("categoryOptionLabel(4) = %q, want %q", got, want)
+	}
+}
+
+// TestSplitDialog_DownPastTransfer_LandsOnAddNew exercises the navigation
+// path: from the last real category, Down lands on Transfer; another Down
+// reveals the AddNew sentinel; subsequent Down saturates there.
+// Transfer targets are NOT configured here so Transfer is inert (no
+// auto-swap into transferMode).
+func TestSplitDialog_DownPastTransfer_LandsOnAddNew(t *testing.T) {
+	sd := NewSplitDialog(
+		types.MustNewMoney("-100.00"),
+		[]string{"(None)", "Food"},
+		[]types.ID{types.NilID, types.NewID()},
+	)
+
+	// (None) → Food
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	// Food → Transfer
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	if !sd.isTransferSentinel(sd.rows[0].categoryIndex) {
+		t.Fatalf("after two Down presses, expected Transfer sentinel; got %d", sd.rows[0].categoryIndex)
+	}
+
+	// Transfer → AddNew
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	if !sd.isAddNewSentinel(sd.rows[0].categoryIndex) {
+		t.Errorf("after three Down presses, expected AddNew sentinel; got %d", sd.rows[0].categoryIndex)
+	}
+	if sd.rows[0].transferMode {
+		t.Errorf("landing on AddNew must not switch into transferMode")
+	}
+
+	// Down at saturation stays put.
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	if !sd.isAddNewSentinel(sd.rows[0].categoryIndex) {
+		t.Errorf("Down past AddNew should saturate; got categoryIndex=%d", sd.rows[0].categoryIndex)
+	}
+
+	// Up steps back to Transfer, then to last real cat (Food).
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp})
+	if !sd.isTransferSentinel(sd.rows[0].categoryIndex) {
+		t.Errorf("Up from AddNew should step back to Transfer; got %d", sd.rows[0].categoryIndex)
+	}
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp})
+	if sd.rows[0].categoryIndex != 1 {
+		t.Errorf("Up from Transfer should step back to last real cat (1); got %d", sd.rows[0].categoryIndex)
+	}
+}
+
+// TestSplitDialog_EnterOnAddNew_ReturnsDialogActionAddNew pins that Enter
+// on the AddNew sentinel produces DialogActionAddNew (so the App-level
+// router can divert into the create-category sub-dialog). Enter on a
+// real category, by contrast, just advances focus to Amount.
+func TestSplitDialog_EnterOnAddNew_ReturnsDialogActionAddNew(t *testing.T) {
+	sd := NewSplitDialog(
+		types.MustNewMoney("-100.00"),
+		[]string{"(None)", "Food"},
+		[]types.ID{types.NilID, types.NewID()},
+	)
+	// Park on AddNew sentinel directly.
+	sd.rows[0].categoryIndex = 3 // (None)=0, Food=1, Transfer=2, AddNew=3
+
+	got := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if got != DialogActionAddNew {
+		t.Errorf("Enter on AddNew sentinel = %v, want DialogActionAddNew", got)
+	}
+}
+
+// TestSplitDialog_EnterOnRealCategory_AdvancesFocus pins the regression
+// that the new AddNew handling on Enter doesn't break the existing
+// "Enter on Category field advances to Amount" behavior for non-sentinel
+// selections.
+func TestSplitDialog_EnterOnRealCategory_AdvancesFocus(t *testing.T) {
+	sd := NewSplitDialog(
+		types.MustNewMoney("-100.00"),
+		[]string{"(None)", "Food"},
+		[]types.ID{types.NilID, types.NewID()},
+	)
+	sd.rows[0].categoryIndex = 1 // Food
+	got := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if got != DialogActionNone {
+		t.Errorf("Enter on real category should not propagate as AddNew; got %v", got)
+	}
+	if sd.FieldFocus() != splitFieldAmount {
+		t.Errorf("Enter on Category should advance focus to Amount; got %v", sd.FieldFocus())
+	}
+}
+
+// TestSplitDialog_Validate_RejectsAddNewSentinel pins that landing on the
+// AddNew sentinel without ever activating it is not a valid saveable
+// state — validate rejects it with the same "category required" wording
+// the (None) row produces.
+func TestSplitDialog_Validate_RejectsAddNewSentinel(t *testing.T) {
+	sd := NewSplitDialog(
+		types.MustNewMoney("-100.00"),
+		[]string{"(None)", "Food"},
+		[]types.ID{types.NilID, types.NewID()},
+	)
+	sd.rows[0].categoryIndex = 3 // AddNew
+	sd.rows[0].amountField.Value = "-100.00"
+
+	err := sd.validate()
+	if err == nil {
+		t.Fatal("validate should reject the AddNew sentinel as a saveable category")
+	}
+}
+
+// newAppForSplitAddNew builds an *App with a SplitDialog whose first row
+// is parked on the AddNew sentinel and is otherwise pre-populated so we
+// can assert that field values survive the open-cancel and open-submit
+// round-trips. categorySvc may be nil for tests that don't drive submit.
+func newAppForSplitAddNew(t *testing.T, categorySvc *category.Service, cats []*category.Category) *App {
+	t.Helper()
+	categoryOptions, categoryIDs := buildCategoryOptions(cats)
+	if len(categoryOptions) == 0 {
+		categoryOptions = []string{"(None)"}
+		categoryIDs = []types.ID{types.NilID}
+	}
+
+	parentAcctID := types.NewID()
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), categoryOptions, categoryIDs)
+	// Seed scalar state we expect to see preserved across the divert.
+	sd.rows[0].amountField.Value = "-100.00"
+	sd.rows[0].memoField.Value = "groceries"
+	// Park the row on the AddNew sentinel.
+	sd.rows[0].categoryIndex = sd.categoryOptionCount() - 1
+	if !sd.isAddNewSentinel(sd.rows[0].categoryIndex) {
+		t.Fatalf("test setup: rows[0].categoryIndex should be on AddNew sentinel")
+	}
+
+	app := &App{
+		keys:              defaultKeyMap(),
+		menubar:           NewMenuBar(),
+		statusbar:         NewStatusBar(),
+		sidebar:           NewSidebar(),
+		categorySvc:       categorySvc,
+		splitDialog:       sd,
+		createCatSplitRow: -1,
+		pendingSplitTxn: &pendingSplitTransaction{
+			accountID: parentAcctID,
+			amount:    types.MustNewMoney("-100.00"),
+		},
+	}
+	return app
+}
+
+func TestApp_SplitDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
+	app := newAppForSplitAddNew(t, nil, nil)
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleSplitDialogKey(enter)
+	updated := model.(*App)
+
+	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+		t.Fatal("createCatDialog should be visible after Enter on AddNew sentinel")
+	}
+	if updated.createCatSource != createCatSourceSplitDialog {
+		t.Errorf("createCatSource = %d, want createCatSourceSplitDialog (%d)",
+			updated.createCatSource, createCatSourceSplitDialog)
+	}
+	if updated.createCatSplitRow != 0 {
+		t.Errorf("createCatSplitRow = %d, want 0 (the originating row)", updated.createCatSplitRow)
+	}
+	if updated.splitDialog == nil {
+		t.Fatal("splitDialog should be kept (hidden) so its state survives the divert")
+	}
+	if updated.splitDialog.IsVisible() {
+		t.Error("splitDialog should be hidden while createCatDialog is shown")
+	}
+	if updated.createCatDialog.Title() != "New Category" {
+		t.Errorf("createCatDialog title = %q, want %q",
+			updated.createCatDialog.Title(), "New Category")
+	}
+}
+
+func TestApp_SplitDialog_AddNew_CancelRestoresState(t *testing.T) {
+	app := newAppForSplitAddNew(t, nil, nil)
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleSplitDialogKey(enter)
+	app = model.(*App)
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+
+	esc := tea.KeyPressMsg{Code: tea.KeyEsc}
+	model, _ = app.handleCreateCatDialogKey(esc)
+	app = model.(*App)
+
+	if app.createCatDialog != nil {
+		t.Error("createCatDialog should be cleared after cancel")
+	}
+	if app.createCatSource != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after cancel", app.createCatSource)
+	}
+	if app.splitDialog == nil || !app.splitDialog.IsVisible() {
+		t.Fatal("splitDialog should be restored to visible after cancel")
+	}
+	if got := app.splitDialog.rows[0].amountField.Value; got != "-100.00" {
+		t.Errorf("amount preserved? got %q, want %q", got, "-100.00")
+	}
+	if got := app.splitDialog.rows[0].memoField.Value; got != "groceries" {
+		t.Errorf("memo preserved? got %q, want %q", got, "groceries")
+	}
+}
+
+func TestApp_SplitDialog_AddNew_AppliesToCurrentRow(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "cc004.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	repo := category.NewRepository(database)
+	svc := category.NewService(repo, database)
+	if err := svc.SeedDefaultCategories(); err != nil {
+		t.Fatalf("SeedDefaultCategories: %v", err)
+	}
+	cats, err := svc.List()
+	if err != nil {
+		t.Fatalf("svc.List: %v", err)
+	}
+
+	app := newAppForSplitAddNew(t, svc, cats)
+
+	// Add a second row whose category we want to see preserved across the
+	// rebuild. We pick "Food" if present, otherwise just any non-(None)
+	// real category.
+	app.splitDialog.addRow()
+	preserveIdx := 1
+	preserveName := app.splitDialog.categoryOptions[preserveIdx]
+	app.splitDialog.rows[1].categoryIndex = preserveIdx
+	app.splitDialog.rows[1].amountField.Value = "-50.00"
+
+	// Park rowIndex back on row 0 (where AddNew is parked).
+	app.splitDialog.rowIndex = 0
+
+	// Open sub-dialog.
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handleSplitDialogKey(enter)
+	app = model.(*App)
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+
+	// Fill: Name=Gym, Parent=(top-level), Type=Expense.
+	cFields := app.createCatDialog.Fields()
+	cFields[0].Value = "YogaStudio"
+	cFields[1].SelectedIndex = 0
+	cFields[2].SelectedIndex = 0
+
+	model, cmd := app.submitCreateCatDialog()
+	app = model.(*App)
+	if cmd == nil {
+		t.Fatal("submit should produce a tea.Cmd")
+	}
+	msg := cmd()
+	model, _ = app.Update(msg)
+	app = model.(*App)
+
+	// Persisted.
+	got, err := svc.List()
+	if err != nil {
+		t.Fatalf("svc.List after submit: %v", err)
+	}
+	var found *category.Category
+	for _, c := range got {
+		if c.Name == "YogaStudio" {
+			found = c
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("'Gym' should be persisted after submit")
+	}
+
+	if app.createCatDialog != nil {
+		t.Error("createCatDialog should be cleared after submit")
+	}
+	if app.createCatSource != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after submit", app.createCatSource)
+	}
+	if app.splitDialog == nil || !app.splitDialog.IsVisible() {
+		t.Fatal("splitDialog should be visible again after submit")
+	}
+
+	// Originating row points at the new category.
+	sd := app.splitDialog
+	origCatIdx := sd.rows[0].categoryIndex
+	if sd.rows[0].transferMode {
+		t.Errorf("originating row should be in category mode, not transfer mode")
+	}
+	if sd.isAddNewSentinel(origCatIdx) || sd.isTransferSentinel(origCatIdx) {
+		t.Fatalf("originating row should land on a real category, not a sentinel (got idx=%d)", origCatIdx)
+	}
+	if sd.categoryOptions[origCatIdx] != "YogaStudio" {
+		t.Errorf("rows[0] category = %q, want %q", sd.categoryOptions[origCatIdx], "YogaStudio")
+	}
+	if sd.categoryIDs[origCatIdx] != found.ID {
+		t.Errorf("rows[0] categoryID = %s, want %s", sd.categoryIDs[origCatIdx], found.ID)
+	}
+
+	// Other row's category was preserved by name (its index may have shifted).
+	otherCatIdx := sd.rows[1].categoryIndex
+	if sd.isAddNewSentinel(otherCatIdx) || sd.isTransferSentinel(otherCatIdx) {
+		t.Fatalf("other row drifted onto a sentinel (got idx=%d)", otherCatIdx)
+	}
+	if sd.categoryOptions[otherCatIdx] != preserveName {
+		t.Errorf("rows[1] category = %q, want %q (preserved across rebuild)",
+			sd.categoryOptions[otherCatIdx], preserveName)
 	}
 }

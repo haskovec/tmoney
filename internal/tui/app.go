@@ -143,6 +143,11 @@ type App struct {
 	// post-create router can dispatch back to the right applier.
 	createCatDialog *Dialog
 	createCatSource createCategorySource
+	// createCatSplitRow is the row index in splitDialog whose Category combo
+	// activated [+ Add new category…]. Used by applyCreatedCategoryToSplit to
+	// point the originating row at the freshly-created category after the
+	// sub-dialog returns. -1 when no split-sourced sub-dialog is in flight.
+	createCatSplitRow int
 
 	// Split dialog state
 	splitDialog           *SplitDialog
@@ -384,6 +389,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		lotRepo:                   svc.LotRepo,
 		positionRepo:              svc.PositionRepo,
 		corporateActionSvc:        svc.CorporateAction,
+		createCatSplitRow:         -1,
 	}
 
 	a.menubar.SetMenuItemsBuilder(viewMenuIndex, func() []menuItem {

@@ -228,7 +228,7 @@ the docs in line.
     `golangci-lint run ./...` green; "Edit as paycheck →" alternate
     button untouched.
 
-- [ ] **CC-004 — Task 4: Split Dialog appends `[+ Add new category…]` sentinel past Transfer** (medium risk — custom widget)
+- [x] **CC-004 — Task 4: Split Dialog appends `[+ Add new category…]` sentinel past Transfer** (medium risk — custom widget)
   - RED: `TestSplitDialog_CategoryCount_IncludesAddNewSentinel`;
     `TestSplitDialog_DownPastTransfer_LandsOnAddNew`;
     `TestSplitDialog_EnterOnAddNew_ReturnsDialogActionAddNew`;
@@ -246,7 +246,44 @@ the docs in line.
     row at the new index.
   - Confirm: existing split-dialog tests pass; Down past `Transfer →`
     reveals `[+ Add new category…]`; Up steps back to `Transfer →`.
-  - Done: _pending._
+  - Done: The Split dialog's per-row Category picker now exposes
+    `[+ Add new category…]` as a sentinel past `Transfer →` (index
+    layout: real cats `[0..N-1]`, Transfer at `N`, AddNew at `N+1`).
+    `categoryOptionCount` returns `N+2`; `isAddNewSentinel` /
+    `categoryOptionLabel` were extended; `validate()` rejects landing
+    on the AddNew sentinel without activating it. Down at the last
+    transfer-mode account now exits transferMode to the AddNew
+    sentinel so AddNew is reachable even when transfer targets are
+    configured (the existing `Saturate at last account` assertion in
+    `TestSplitDialog_SelectTransfer_OpensAccountPicker` was updated to
+    pin the new behavior). Enter on the AddNew sentinel returns
+    `DialogActionAddNew`; the App-level `handleSplitDialogKey` switch
+    diverts into a new `openCreateCategorySubDialogFromSplit`, which
+    seeds `createCatSource = createCatSourceSplitDialog`,
+    `createCatSplitRow = sd.rowIndex`, hides the split dialog via a
+    newly-added `SetVisible`, and opens the create-category sub-dialog
+    with empty Name/Parent (the split picker has no typed query to
+    harvest). `cancelCreateCatDialog` learned a `createCatSourceSplitDialog`
+    branch to re-show the split dialog and reset `createCatSplitRow`.
+    The Task 0 router dispatches to a new
+    `applyCreatedCategoryToSplit`, which rebuilds
+    `sd.categoryOptions` / `sd.categoryIDs` from
+    `buildCategoryOptions`, re-maps non-originating rows to their
+    preserved category by ID (so a row that pointed at "Food" before
+    the rebuild still points at "Food" after, even if its index
+    shifted), and points the originating row at the new category. A
+    new `App.createCatSplitRow` scratch field tracks which row owns
+    the sub-dialog (-1 when no split-sourced sub-dialog is in flight).
+    7 new tests added (`TestSplitDialog_CategoryCount_IncludesAddNewSentinel`,
+    `TestSplitDialog_DownPastTransfer_LandsOnAddNew`,
+    `TestSplitDialog_EnterOnAddNew_ReturnsDialogActionAddNew`,
+    `TestSplitDialog_EnterOnRealCategory_AdvancesFocus`,
+    `TestSplitDialog_Validate_RejectsAddNewSentinel`,
+    `TestApp_SplitDialog_AddNew_OpensCreateCategoryDialog`,
+    `TestApp_SplitDialog_AddNew_CancelRestoresState`,
+    `TestApp_SplitDialog_AddNew_AppliesToCurrentRow`). Full suite
+    (5317 tests across 26 packages) and `golangci-lint run ./...`
+    green.
 
 - [ ] **CC-005 — Task 5: Paycheck Wizard appends sentinel + section-aware Type default; shifts transfer indices on rebuild** (medium-high risk — index-shift footgun)
   - RED: `TestPaycheckWizard_CombinedOptionsIncludesAddNewSentinel`;

@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -16,6 +17,13 @@ import (
 // transfer-line targeting another account. See
 // specs/multiline-splits-and-paycheck.md ("Display").
 const transferSentinelLabel = "Transfer →"
+
+// addNewSentinelLabel is the bottom-most option in a split row's category
+// picker, mirroring the [+ Add new category…] action row on typeahead
+// combos in other transaction-entry surfaces. Activating it (Enter on the
+// Category field while parked here) returns DialogActionAddNew so the
+// App-level router can divert into the inline create-category sub-dialog.
+const addNewSentinelLabel = "[+ Add new category…]"
 
 // splitDialogFocus indicates which top-level area of the split dialog has focus.
 type splitDialogFocus int
@@ -163,6 +171,13 @@ func (sd *SplitDialog) IsVisible() bool {
 	return sd.visible
 }
 
+// SetVisible toggles the rendered state of the split dialog. Used when an
+// inline sub-dialog (e.g. the create-category dialog) needs to overlay it
+// while keeping the instance alive so row state survives the divert.
+func (sd *SplitDialog) SetVisible(v bool) {
+	sd.visible = v
+}
+
 // Rows returns the split rows.
 func (sd *SplitDialog) Rows() []splitRow {
 	return sd.rows
@@ -183,10 +198,12 @@ func (sd *SplitDialog) FieldFocus() splitFieldFocus {
 	return sd.fieldFocus
 }
 
-// categoryOptionCount returns the total number of selectable items
-// in a row's category combo, including the trailing Transfer sentinel.
+// categoryOptionCount returns the total number of selectable items in a
+// row's category combo, including the trailing Transfer and AddNew
+// sentinels. Index layout: real categories at [0..N-1], Transfer at N,
+// AddNew at N+1.
 func (sd *SplitDialog) categoryOptionCount() int {
-	return len(sd.categoryOptions) + 1
+	return len(sd.categoryOptions) + 2
 }
 
 // isTransferSentinel reports whether the given option index points
@@ -195,9 +212,19 @@ func (sd *SplitDialog) isTransferSentinel(idx int) bool {
 	return idx == len(sd.categoryOptions)
 }
 
+// isAddNewSentinel reports whether the given option index points at the
+// [+ Add new category…] action row appended after the Transfer sentinel.
+func (sd *SplitDialog) isAddNewSentinel(idx int) bool {
+	return idx == len(sd.categoryOptions)+1
+}
+
 // categoryOptionLabel returns the display label for the given option
-// index, mapping the trailing sentinel index to transferSentinelLabel.
+// index, mapping the Transfer and AddNew sentinel positions to their
+// constant labels.
 func (sd *SplitDialog) categoryOptionLabel(idx int) string {
+	if sd.isAddNewSentinel(idx) {
+		return addNewSentinelLabel
+	}
 	if sd.isTransferSentinel(idx) {
 		return transferSentinelLabel
 	}
@@ -314,6 +341,12 @@ func (sd *SplitDialog) validate() error {
 		} else {
 			// Category must be selected (index > 0 means not "(None)")
 			if row.categoryIndex <= 0 {
+				return fmt.Errorf("split %d: category is required", i+1)
+			}
+			// The AddNew sentinel is an action row, not a saveable
+			// selection — landing here without activating it (Enter on the
+			// Category field) is treated as "no category picked".
+			if sd.isAddNewSentinel(row.categoryIndex) {
 				return fmt.Errorf("split %d: category is required", i+1)
 			}
 			// The Transfer sentinel without a configured picker is not a
@@ -439,6 +472,15 @@ func (sd *SplitDialog) handleEnter() DialogAction {
 		sd.errorMsg = ""
 		return DialogActionNone
 	case splitFocusRows:
+		// Enter on the AddNew sentinel diverts into the create-category
+		// sub-dialog. Other selections (real categories, Transfer, or any
+		// non-Category field) fall through to the focus-advance path.
+		if sd.fieldFocus == splitFieldCategory && sd.rowIndex >= 0 && sd.rowIndex < len(sd.rows) {
+			row := &sd.rows[sd.rowIndex]
+			if !row.transferMode && sd.isAddNewSentinel(row.categoryIndex) {
+				return DialogActionAddNew
+			}
+		}
 		// Advance to next field within row, or next row, or add button
 		sd.focusNext()
 		return DialogActionNone
@@ -469,8 +511,16 @@ func (sd *SplitDialog) handleRowFieldKey(msg tea.KeyPressMsg) {
 					row.accountIndex = 0
 				}
 			case "down":
-				if row.accountIndex < len(sd.transferAccountIDs)-1 {
+				switch {
+				case row.accountIndex < len(sd.transferAccountIDs)-1:
 					row.accountIndex++
+				default:
+					// Past the last account: exit transfer mode and land
+					// on the AddNew sentinel so the user can keep walking
+					// the option list past the transfer block.
+					row.transferMode = false
+					row.categoryIndex = len(sd.categoryOptions) + 1
+					row.accountIndex = 0
 				}
 			}
 		default:
@@ -781,9 +831,105 @@ func (a *App) handleSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case DialogActionCancel:
 		a.closeSplitDialog()
 		return a, nil
+	case DialogActionAddNew:
+		return a.openCreateCategorySubDialogFromSplit()
 	}
 
 	return a, nil
+}
+
+// openCreateCategorySubDialogFromSplit hides the split dialog and opens the
+// inline create-category sub-dialog for the currently-focused row's
+// Category field. The split dialog's row state (other rows, amount fields,
+// etc.) is preserved by keeping the dialog alive (just hidden) for the
+// duration of the divert; restoration on cancel and post-create wiring
+// happen through the createCatDialog handlers.
+//
+// Unlike the typeahead-combo surfaces, the split dialog has no typed query
+// to harvest — the sub-dialog opens with empty Name and Parent fields.
+func (a *App) openCreateCategorySubDialogFromSplit() (tea.Model, tea.Cmd) {
+	if a.splitDialog == nil {
+		return a, nil
+	}
+
+	a.createCatSource = createCatSourceSplitDialog
+	a.createCatSplitRow = a.splitDialog.rowIndex
+	parents := a.parentsForCreateCatDialog()
+	a.createCatDialog = buildCreateCategoryDialog("", "", parents)
+	a.splitDialog.SetVisible(false)
+	return a, nil
+}
+
+// applyCreatedCategoryToSplit is the per-surface applier called by the
+// createCategoryRequestMsg router when the originating surface was the
+// split dialog. It rebuilds the dialog's category option slices to include
+// the freshly-persisted category, points the originating row at it, and
+// re-shows the split dialog. Other rows' selections are preserved by
+// looking up their previously-selected category ID in the rebuilt slice.
+func (a *App) applyCreatedCategoryToSplit(newCat *category.Category, cats []*category.Category) {
+	defer func() {
+		a.createCatDialog = nil
+		a.createCatSplitRow = -1
+	}()
+	sd := a.splitDialog
+	if sd == nil {
+		return
+	}
+
+	options, ids := buildCategoryOptions(cats)
+
+	// Build a map from old categoryID to new index so non-originating
+	// rows preserve their selection by identity, not by stale index.
+	idToNewIdx := make(map[types.ID]int, len(ids))
+	for i, id := range ids {
+		idToNewIdx[id] = i
+	}
+
+	// Snapshot each row's selected categoryID before swapping slices.
+	priorIDs := make([]types.ID, len(sd.rows))
+	for i, row := range sd.rows {
+		switch {
+		case row.transferMode:
+			priorIDs[i] = types.NilID
+		case row.categoryIndex >= 0 && row.categoryIndex < len(sd.categoryIDs):
+			priorIDs[i] = sd.categoryIDs[row.categoryIndex]
+		default:
+			priorIDs[i] = types.NilID
+		}
+	}
+
+	sd.categoryOptions = options
+	sd.categoryIDs = ids
+
+	// Re-map non-originating rows to their preserved category by ID.
+	for i := range sd.rows {
+		if i == a.createCatSplitRow {
+			continue
+		}
+		if sd.rows[i].transferMode {
+			continue
+		}
+		if newIdx, ok := idToNewIdx[priorIDs[i]]; ok {
+			sd.rows[i].categoryIndex = newIdx
+		} else {
+			sd.rows[i].categoryIndex = 0 // (None)
+		}
+	}
+
+	// Point the originating row at the new category.
+	if a.createCatSplitRow >= 0 && a.createCatSplitRow < len(sd.rows) {
+		newIdx := 0
+		for i, id := range ids {
+			if id == newCat.ID {
+				newIdx = i
+				break
+			}
+		}
+		sd.rows[a.createCatSplitRow].transferMode = false
+		sd.rows[a.createCatSplitRow].categoryIndex = newIdx
+	}
+
+	sd.SetVisible(true)
 }
 
 // submitSplitDialog validates splits, builds the transaction, and saves it.
