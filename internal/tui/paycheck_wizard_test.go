@@ -247,6 +247,115 @@ func TestPaycheckWizard_AddRow_AppendsToSection(t *testing.T) {
 	}
 }
 
+// TestPaycheckWizard_AddLine_AppendsRowToSection asserts that each
+// section's `[+ Add …]` helper appends one row to that section with
+// an empty amount field and the section's appropriate default:
+//
+//   - Earnings        → categorized, defaulted to Income > Salary
+//   - Pre-tax / Tax / Post-tax → categorized, defaulted to (None)
+//   - Net Pay Destinations    → transfer-line, defaulted to a
+//     non-deposit account
+//
+// The five helpers (`AddEarningsLine`, `AddPreTaxLine`, `AddTaxLine`,
+// `AddPostTaxLine`, `AddAdditionalTransfer`) are also the dispatch
+// targets used when the user activates a `[+ Add …]` button in the
+// rendered wizard.
+func TestPaycheckWizard_AddLine_AppendsRowToSection(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+
+	earnBefore := len(w.EarningsLines())
+	preBefore := len(w.PreTaxLines())
+	taxBefore := len(w.TaxLines())
+	postBefore := len(w.PostTaxLines())
+	xferBefore := len(w.AdditionalTransfers())
+
+	earn := w.AddEarningsLine()
+	pre := w.AddPreTaxLine()
+	tax := w.AddTaxLine()
+	post := w.AddPostTaxLine()
+	xfer := w.AddAdditionalTransfer()
+
+	if earn == nil || pre == nil || tax == nil || post == nil || xfer == nil {
+		t.Fatalf("Add* helper returned nil: earn=%v pre=%v tax=%v post=%v xfer=%v",
+			earn, pre, tax, post, xfer)
+	}
+
+	// Each section's row count grows by exactly one.
+	if got, want := len(w.EarningsLines()), earnBefore+1; got != want {
+		t.Errorf("EarningsLines count = %d, want %d", got, want)
+	}
+	if got, want := len(w.PreTaxLines()), preBefore+1; got != want {
+		t.Errorf("PreTaxLines count = %d, want %d", got, want)
+	}
+	if got, want := len(w.TaxLines()), taxBefore+1; got != want {
+		t.Errorf("TaxLines count = %d, want %d", got, want)
+	}
+	if got, want := len(w.PostTaxLines()), postBefore+1; got != want {
+		t.Errorf("PostTaxLines count = %d, want %d", got, want)
+	}
+	if got, want := len(w.AdditionalTransfers()), xferBefore+1; got != want {
+		t.Errorf("AdditionalTransfers count = %d, want %d", got, want)
+	}
+
+	// Section assignment on each new line.
+	if earn.Section != PaycheckEarnings {
+		t.Errorf("earn.Section = %v, want PaycheckEarnings", earn.Section)
+	}
+	if pre.Section != PaycheckPreTax {
+		t.Errorf("pre.Section = %v, want PaycheckPreTax", pre.Section)
+	}
+	if tax.Section != PaycheckTax {
+		t.Errorf("tax.Section = %v, want PaycheckTax", tax.Section)
+	}
+	if post.Section != PaycheckPostTax {
+		t.Errorf("post.Section = %v, want PaycheckPostTax", post.Section)
+	}
+	if xfer.Section != PaycheckNetPayDestination {
+		t.Errorf("xfer.Section = %v, want PaycheckNetPayDestination", xfer.Section)
+	}
+
+	// All five rows start with an empty amount.
+	for name, line := range map[string]*PaycheckLine{
+		"earnings": earn, "pre-tax": pre, "tax": tax, "post-tax": post, "transfer": xfer,
+	} {
+		if line.AmountField().Value != "" {
+			t.Errorf("%s row amount = %q, want empty", name, line.AmountField().Value)
+		}
+	}
+
+	// Earnings line is categorized and pre-selected with Income > Salary.
+	if earn.IsTransfer() {
+		t.Error("AddEarningsLine should produce a categorized row, not a transfer-line")
+	}
+	if got, want := selectedLineOption(earn), "Income > Salary"; got != want {
+		t.Errorf("AddEarningsLine default category = %q, want %q", got, want)
+	}
+
+	// Pre-tax / Tax / Post-tax start categorized at (None) so the user picks.
+	for name, line := range map[string]*PaycheckLine{
+		"pre-tax": pre, "tax": tax, "post-tax": post,
+	} {
+		if line.IsTransfer() {
+			t.Errorf("%s row should default to categorized, not transfer-line", name)
+		}
+		if got := line.SelectField().SelectedIndex; got != 0 {
+			t.Errorf("%s row default category index = %d, want 0 ((None))", name, got)
+		}
+	}
+
+	// Net Pay Destinations row defaults to a transfer targeting some
+	// account other than the deposit account (which is the schedule's
+	// parent — a self-transfer would be rejected on save).
+	if !xfer.IsTransfer() {
+		t.Error("AddAdditionalTransfer should produce a transfer-line")
+	}
+	depositIdx := w.DepositAccount().SelectedIndex
+	if xfer.AccountIndex() == depositIdx {
+		t.Errorf("AddAdditionalTransfer should not default to the deposit account (idx %d)", depositIdx)
+	}
+}
+
 // TestPaycheckWizard_RemoveRow_RemovesByPointer asserts RemoveRow
 // drops the row from its section. Uses Pre-tax which starts empty in
 // v2 so the assertion is independent of pre-populated row counts.

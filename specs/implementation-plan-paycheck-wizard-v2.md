@@ -175,7 +175,7 @@ slice rewrites part of the form in place; integration points
     fixture gained `Tax > Medicare`; AddRow/RemoveRow tests
     adjusted for pre-populated row counts.
 
-- [ ] **PW2-005 — `[+ Add line]` affordance for each section**
+- [x] **PW2-005 — `[+ Add line]` affordance for each section**
   - RED: test `TestPaycheckWizard_AddLine_AppendsRowToSection` — for
     each of the four mutable sections (Earnings, Pre-tax, Taxes,
     Post-tax), pressing the section's "+ Add" button appends a new
@@ -193,6 +193,24 @@ slice rewrites part of the form in place; integration points
     section.
   - Confirm: tests green; manual smoke: open wizard, click each Add
     button, verify rows appear.
+  - Done: added five named helpers — `AddEarningsLine`,
+    `AddPreTaxLine`, `AddTaxLine`, `AddPostTaxLine`, and
+    `AddAdditionalTransfer` — alongside a private `addLineForSection`
+    dispatcher used by the `wizardFocusAddRow` activation path in
+    `activate`. `AddEarningsLine` seeds `Income > Salary`;
+    `AddPreTaxLine` / `AddTaxLine` / `AddPostTaxLine` leave the row
+    categorized at `(None)` so the user picks (and can flip to a
+    transfer-line via the combined picker); `AddAdditionalTransfer`
+    auto-targets the first account other than the current deposit
+    account (falling back to index 0 when no alternative exists), so
+    the new transfer row doesn't collide with the schedule's parent
+    account. The `[+ Add …]` render path already existed from
+    PW2-004; this commit only rewires its activation to the new
+    helpers so each section's new row picks up the right defaults.
+    Verified by new `TestPaycheckWizard_AddLine_AppendsRowToSection`
+    in `internal/tui/paycheck_wizard_test.go`; the existing AddRow /
+    BuildSplits tests still pass because the underlying `AddRow`
+    primitive is unchanged.
 
 - [ ] **PW2-006 — BuildSplits tags lines with `paycheck_section`; $0 rows elided**
   - RED: test `TestPaycheckWizard_BuildSplits_TagsEachLine` — fill out

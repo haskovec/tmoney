@@ -433,6 +433,91 @@ func (w *PaycheckWizard) AddRow(section PaycheckSection) *PaycheckLine {
 	return line
 }
 
+// AddEarningsLine appends a new row to the Earnings section,
+// pre-selected with `Income > Salary` (or left at the leading `(None)`
+// when that category isn't in the picker). Used by the
+// `[+ Add earnings line]` affordance.
+func (w *PaycheckWizard) AddEarningsLine() *PaycheckLine {
+	line := w.AddRow(PaycheckEarnings)
+	if line == nil {
+		return nil
+	}
+	if idx := findCategoryOptionIndex(w.categoryOptions, "Income > Salary"); idx > 0 {
+		line.SetCategoryIndex(idx)
+	}
+	return line
+}
+
+// AddPreTaxLine appends a new categorized row to the Pre-tax section.
+// Pre-tax items vary by employer (401k, HSA, supplemental life, …) —
+// the row defaults to `(None)` so the user picks the category or
+// flips it to a transfer-line via the combined picker.
+func (w *PaycheckWizard) AddPreTaxLine() *PaycheckLine {
+	return w.AddRow(PaycheckPreTax)
+}
+
+// AddTaxLine appends a new categorized row to the Taxes section.
+// Defaults to `(None)`; the three universal tax rows
+// (Federal / Social Security / Medicare) are already pre-populated by
+// `NewPaycheckWizard`, so any added row is for an additional tax
+// (e.g., state income tax) the user picks themselves.
+func (w *PaycheckWizard) AddTaxLine() *PaycheckLine {
+	return w.AddRow(PaycheckTax)
+}
+
+// AddPostTaxLine appends a new categorized row to the Post-tax
+// section. Defaults to `(None)`; post-tax deductions vary by employer.
+func (w *PaycheckWizard) AddPostTaxLine() *PaycheckLine {
+	return w.AddRow(PaycheckPostTax)
+}
+
+// AddAdditionalTransfer appends a new transfer-line row to the Net
+// Pay Destinations section, pre-selected with the first available
+// account other than the current deposit account (or the first
+// account when no alternative exists). Net Pay Destinations holds
+// *additional* transfers — the primary deposit is the schedule's
+// parent account in the header picker.
+func (w *PaycheckWizard) AddAdditionalTransfer() *PaycheckLine {
+	line := w.AddRow(PaycheckNetPayDestination)
+	if line == nil {
+		return nil
+	}
+	depositIdx := -1
+	if w.accountField != nil {
+		depositIdx = w.accountField.SelectedIndex
+	}
+	for i := range w.accountIDs {
+		if i == depositIdx {
+			continue
+		}
+		line.SetAccountIndex(i)
+		return line
+	}
+	if len(w.accountIDs) > 0 {
+		line.SetAccountIndex(0)
+	}
+	return line
+}
+
+// addLineForSection dispatches `[+ Add …]` clicks/Enter to the
+// section-specific helper so the new row picks up that section's
+// defaults.
+func (w *PaycheckWizard) addLineForSection(section PaycheckSection) *PaycheckLine {
+	switch section {
+	case PaycheckEarnings:
+		return w.AddEarningsLine()
+	case PaycheckPreTax:
+		return w.AddPreTaxLine()
+	case PaycheckTax:
+		return w.AddTaxLine()
+	case PaycheckPostTax:
+		return w.AddPostTaxLine()
+	case PaycheckNetPayDestination:
+		return w.AddAdditionalTransfer()
+	}
+	return nil
+}
+
 // RemoveRow removes the given row from its section. Best-effort: a
 // nil line or a line not found in any section is a no-op.
 func (w *PaycheckWizard) RemoveRow(line *PaycheckLine) {
@@ -1229,7 +1314,10 @@ func (w *PaycheckWizard) activate(target wizardFocusTarget) DialogAction {
 	case wizardFocusCancel:
 		return DialogActionCancel
 	case wizardFocusAddRow:
-		line := w.AddRow(target.section)
+		line := w.addLineForSection(target.section)
+		if line == nil {
+			return DialogActionNone
+		}
 		// Move focus onto the new row's select field for convenience.
 		focusables := w.collectFocusables()
 		for i, f := range focusables {
