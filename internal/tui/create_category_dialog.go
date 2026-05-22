@@ -231,6 +231,8 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 		a.applyCreatedCategoryToSchedPreview(newCat, cats)
 	case createCatSourceSplitDialog:
 		a.applyCreatedCategoryToSplit(newCat, cats)
+	case createCatSourcePaycheckWizard:
+		a.applyCreatedCategoryToPaycheck(newCat, cats)
 	default:
 		// No source recorded — surface plumbing not wired (or the source
 		// enum was reset before the router fired). Close the sub-dialog

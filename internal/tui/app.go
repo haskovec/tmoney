@@ -148,6 +148,11 @@ type App struct {
 	// point the originating row at the freshly-created category after the
 	// sub-dialog returns. -1 when no split-sourced sub-dialog is in flight.
 	createCatSplitRow int
+	// createCatPaycheckLine is the paycheck-wizard line whose select field
+	// activated [+ Add new category…]. Used by applyCreatedCategoryToPaycheck
+	// to point the originating line at the freshly-created category after the
+	// sub-dialog returns. nil when no paycheck-sourced sub-dialog is in flight.
+	createCatPaycheckLine *PaycheckLine
 
 	// Split dialog state
 	splitDialog           *SplitDialog

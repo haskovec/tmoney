@@ -285,7 +285,7 @@ the docs in line.
     (5317 tests across 26 packages) and `golangci-lint run ./...`
     green.
 
-- [ ] **CC-005 — Task 5: Paycheck Wizard appends sentinel + section-aware Type default; shifts transfer indices on rebuild** (medium-high risk — index-shift footgun)
+- [x] **CC-005 — Task 5: Paycheck Wizard appends sentinel + section-aware Type default; shifts transfer indices on rebuild** (medium-high risk — index-shift footgun)
   - RED: `TestPaycheckWizard_CombinedOptionsIncludesAddNewSentinel`;
     `TestPaycheckWizard_IsAddNew_TrueForLastIndex`;
     `TestPaycheckWizard_EnterOnAddNew_ReturnsDialogActionAddNew`;
@@ -310,7 +310,50 @@ the docs in line.
     sub-dialog Type radio pre-set per originating section; after
     submit, other lines (incl. transfers) retain their effective
     selections.
-  - Done: _pending._
+  - Done: The Paycheck Wizard's per-line select picker now exposes
+    `[+ Add new category…]` as a sentinel appended after the transfer
+    block (layout: categories `[0..N-1]`, transfers `[N..N+|A|-1]`,
+    AddNew at `N+|A|`). `paycheckAddNewSentinelLabel` is a package
+    constant; `NewPaycheckWizard` and `applyCreatedCategoryToPaycheck`
+    both append it to `combinedOptions`. New `PaycheckLine.IsAddNew()`
+    accessor reports the sentinel state; `IsTransfer()` now excludes
+    the trailing sentinel (`< len(Options)-1`); `SetAccountIndex`
+    upper bound was tightened by 1 so it can't accidentally land on
+    the sentinel. `handleEnter` diverts via the new
+    `PaycheckWizard.lineForSelectField` helper: when the focused field
+    is a line's select parked on AddNew, it returns
+    `DialogActionAddNew`; otherwise the existing advance-focus
+    behavior is preserved. `handlePaycheckWizardKey` switches on
+    `DialogActionAddNew` into the new
+    `openCreateCategorySubDialogFromPaycheck`, which seeds
+    `createCatSource = createCatSourcePaycheckWizard`,
+    `createCatPaycheckLine = line`, hides the wizard via a newly-added
+    `PaycheckWizard.SetVisible`, and opens the create-category sub-
+    dialog with empty Name/Parent. `cancelCreateCatDialog` learned a
+    `createCatSourcePaycheckWizard` branch to re-show the wizard and
+    reset `createCatPaycheckLine`. The Task 0 router dispatches to the
+    new `applyCreatedCategoryToPaycheck`, which: rebuilds
+    `w.combinedOptions` with the AddNew sentinel; updates each line's
+    `selectField.Options` and `categoryCount` explicitly (lines share
+    the backing slice); re-maps category-mode lines by ID (the new
+    category may insert alphabetically into the middle, shifting
+    subsequent indices); shifts transfer-mode lines' `SelectedIndex`
+    by `delta = newCatCount - oldCatCount`; and points the originating
+    line at the new category's index. A new `App.createCatPaycheckLine`
+    scratch field tracks which line owns the sub-dialog (nil when no
+    paycheck-sourced sub-dialog is in flight). The context-aware Type
+    default (per-section) is deferred to CC-006 — the sub-dialog
+    currently opens with the existing default (Expense). 8 new tests
+    added (`TestPaycheckWizard_CombinedOptionsIncludesAddNewSentinel`,
+    `TestPaycheckWizard_IsAddNew_TrueForLastIndex`,
+    `TestPaycheckWizard_EnterOnAddNew_ReturnsDialogActionAddNew`,
+    `TestPaycheckWizard_EnterOnRealCategory_AdvancesFocus`,
+    `TestApp_PaycheckWizard_AddNew_OpensCreateCategoryDialog`,
+    `TestApp_PaycheckWizard_AddNew_CancelRestoresState`,
+    `TestApp_PaycheckWizard_AddNew_AppliesToOriginatingLine`,
+    `TestPaycheckWizard_AddNew_PreservesTransferLineSelections`). Full
+    suite (5325 tests across 26 packages) and `golangci-lint run ./...`
+    green.
 
 - [ ] **CC-006 — Task 6: Context-aware Type radio default** (low risk)
   - RED: table-driven test for `inferCategoryTypeFromAmount` covering

@@ -520,6 +520,11 @@ func (a *App) cancelCreateCatDialog() {
 			a.splitDialog.SetVisible(true)
 		}
 		a.createCatSplitRow = -1
+	case createCatSourcePaycheckWizard:
+		if a.paycheckWizard != nil {
+			a.paycheckWizard.SetVisible(true)
+		}
+		a.createCatPaycheckLine = nil
 	}
 	a.createCatSource = createCatSourceNone
 }

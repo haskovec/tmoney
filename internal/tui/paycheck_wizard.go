@@ -92,6 +92,13 @@ type wizardHitZone struct {
 	target wizardFocusTarget
 }
 
+// paycheckAddNewSentinelLabel is the action-row label appended to every
+// paycheck-line select field's option list. Enter on this entry diverts into
+// the inline create-category sub-dialog (mirrors the [+ Add new category…]
+// row that appears in the typeahead-combo surfaces, but here the user
+// navigates to it with Up/Down rather than typing to filter).
+const paycheckAddNewSentinelLabel = "[+ Add new category…]"
+
 // PaycheckSection identifies which of the wizard's five visual
 // groupings a row belongs to. Sections are organizational in the UI
 // but also drive the `paycheck_section` tag persisted on each split
@@ -192,12 +199,25 @@ func (l *PaycheckLine) NotesField() *Field { return l.notesField }
 
 // IsTransfer reports whether the line's current select points at
 // the transfer half of the combined picker (i.e. an account
-// destination rather than a category).
+// destination rather than a category). The trailing
+// [+ Add new category…] sentinel sits past the transfer entries and is
+// excluded.
 func (l *PaycheckLine) IsTransfer() bool {
 	if l.selectField == nil {
 		return false
 	}
-	return l.selectField.SelectedIndex >= l.categoryCount
+	idx := l.selectField.SelectedIndex
+	return idx >= l.categoryCount && idx < len(l.selectField.Options)-1
+}
+
+// IsAddNew reports whether the line's current select points at the
+// trailing [+ Add new category…] action-row sentinel. Enter on a line
+// in this state diverts into the inline create-category sub-dialog.
+func (l *PaycheckLine) IsAddNew() bool {
+	if l.selectField == nil || len(l.selectField.Options) == 0 {
+		return false
+	}
+	return l.selectField.SelectedIndex == len(l.selectField.Options)-1
 }
 
 // CategoryIndex returns the index into categoryOptions for a
@@ -232,13 +252,15 @@ func (l *PaycheckLine) SetCategoryIndex(idx int) {
 }
 
 // SetAccountIndex converts the line into a transfer-line targeting
-// the given account index.
+// the given account index. The trailing [+ Add new category…] sentinel
+// occupies the last slot of Options, so the valid transfer range stops
+// one short of len(Options).
 func (l *PaycheckLine) SetAccountIndex(idx int) {
 	if l.selectField == nil {
 		return
 	}
 	target := l.categoryCount + idx
-	if target < l.categoryCount || target >= len(l.selectField.Options) {
+	if target < l.categoryCount || target >= len(l.selectField.Options)-1 {
 		return
 	}
 	l.selectField.SelectedIndex = target
@@ -335,11 +357,12 @@ func findCategoryOptionIndex(options []string, displayName string) int {
 func NewPaycheckWizard(categoryOptions []string, categoryIDs []types.ID, accounts []*account.Account) *PaycheckWizard {
 	accountOptions, accountIDs := buildSplitTransferAccountOptions(accounts)
 
-	combined := make([]string, 0, len(categoryOptions)+len(accountOptions))
+	combined := make([]string, 0, len(categoryOptions)+len(accountOptions)+1)
 	combined = append(combined, categoryOptions...)
 	for _, name := range accountOptions {
 		combined = append(combined, "→ "+name)
 	}
+	combined = append(combined, paycheckAddNewSentinelLabel)
 
 	w := &PaycheckWizard{
 		visible:         true,
@@ -408,6 +431,16 @@ func (w *PaycheckWizard) seedSection(section PaycheckSection, defaults ...string
 
 // IsVisible reports whether the wizard should render.
 func (w *PaycheckWizard) IsVisible() bool { return w != nil && w.visible }
+
+// SetVisible toggles the wizard's render flag. Used by the
+// inline create-category sub-dialog flow to hide the wizard during the
+// divert and restore it on cancel or post-create.
+func (w *PaycheckWizard) SetVisible(v bool) {
+	if w == nil {
+		return
+	}
+	w.visible = v
+}
 
 // Structural accessors used by tests.
 func (w *PaycheckWizard) Employer() *Field               { return w.employerField }
@@ -1180,12 +1213,35 @@ func (w *PaycheckWizard) HandleKey(msg tea.KeyPressMsg) DialogAction {
 func (w *PaycheckWizard) handleEnter() DialogAction {
 	target := w.focusedTarget()
 	if target.kind == wizardFocusField {
-		// On a field: advance focus (don't activate).
+		// Enter on a section-line select field that is parked on the
+		// [+ Add new category…] sentinel diverts into the inline create-
+		// category sub-dialog instead of advancing focus.
+		if line := w.lineForSelectField(target.field); line != nil && line.IsAddNew() {
+			return DialogActionAddNew
+		}
+		// Otherwise: advance focus (don't activate).
 		w.focusIndex++
 		w.clampFocus()
 		return DialogActionNone
 	}
 	return w.activate(target)
+}
+
+// lineForSelectField returns the PaycheckLine that owns f when f is one
+// of a section-line's select fields, or nil when f is a header field (or
+// not a select field at all).
+func (w *PaycheckWizard) lineForSelectField(f *Field) *PaycheckLine {
+	if f == nil {
+		return nil
+	}
+	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
+		for _, line := range w.sections[s] {
+			if line.selectField == f {
+				return line
+			}
+		}
+	}
+	return nil
 }
 
 func (w *PaycheckWizard) dispatchFieldKey(f *Field, msg tea.KeyPressMsg) {
@@ -1446,6 +1502,8 @@ func (a *App) handlePaycheckWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	case DialogActionCancel:
 		a.closePaycheckWizard()
 		return a, nil
+	case DialogActionAddNew:
+		return a.openCreateCategorySubDialogFromPaycheck()
 	}
 	return a, nil
 }
@@ -1528,6 +1586,116 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 		}
 		return scheduledDialogSavedMsg{}
 	}
+}
+
+// openCreateCategorySubDialogFromPaycheck hides the paycheck wizard and opens
+// the inline create-category sub-dialog for the wizard line that activated the
+// [+ Add new category…] sentinel. The wizard's row state is preserved by
+// keeping the wizard instance alive (just hidden) for the duration of the
+// divert; restoration on cancel and post-create wiring happen through the
+// createCatDialog handlers.
+//
+// Unlike the typeahead-combo surfaces, the wizard has no typed query to
+// harvest — the sub-dialog opens with empty Name and Parent fields.
+func (a *App) openCreateCategorySubDialogFromPaycheck() (tea.Model, tea.Cmd) {
+	w := a.paycheckWizard
+	if w == nil {
+		return a, nil
+	}
+	line := w.lineForSelectField(w.focusedTarget().field)
+	if line == nil {
+		return a, nil
+	}
+
+	a.createCatSource = createCatSourcePaycheckWizard
+	a.createCatPaycheckLine = line
+	parents := a.parentsForCreateCatDialog()
+	a.createCatDialog = buildCreateCategoryDialog("", "", parents)
+	w.SetVisible(false)
+	return a, nil
+}
+
+// applyCreatedCategoryToPaycheck is the per-surface applier called by the
+// createCategoryRequestMsg router when the originating surface was the
+// paycheck wizard. It rebuilds the wizard's combined picker options to include
+// the freshly-persisted category, points the originating line at the new
+// category, preserves every other category-mode line's selection by ID, and
+// shifts every transfer-mode line's SelectedIndex by the new-category-count
+// delta so the same account remains selected. The wizard is re-shown and the
+// sub-dialog is cleared.
+func (a *App) applyCreatedCategoryToPaycheck(newCat *category.Category, cats []*category.Category) {
+	defer func() {
+		a.createCatDialog = nil
+		a.createCatPaycheckLine = nil
+	}()
+	w := a.paycheckWizard
+	if w == nil {
+		return
+	}
+
+	oldCatCount := len(w.categoryOptions)
+	oldCategoryIDs := w.categoryIDs
+
+	options, ids := buildCategoryOptions(cats)
+	w.categoryOptions = options
+	w.categoryIDs = ids
+
+	combined := make([]string, 0, len(options)+len(w.accountOptions)+1)
+	combined = append(combined, options...)
+	for _, name := range w.accountOptions {
+		combined = append(combined, "→ "+name)
+	}
+	combined = append(combined, paycheckAddNewSentinelLabel)
+	w.combinedOptions = combined
+
+	newCatCount := len(options)
+	delta := newCatCount - oldCatCount
+
+	idToNewIdx := make(map[types.ID]int, len(ids))
+	for i, id := range ids {
+		idToNewIdx[id] = i
+	}
+
+	newCatIdx := 0
+	if idx, ok := idToNewIdx[newCat.ID]; ok {
+		newCatIdx = idx
+	}
+
+	originating := a.createCatPaycheckLine
+	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
+		for _, line := range w.sections[s] {
+			// Lines were built with selectField.Options pointing at the prior
+			// combinedOptions slice; reassigning w.combinedOptions does not
+			// propagate, so each line's Options must be updated explicitly.
+			line.selectField.Options = combined
+			line.categoryCount = newCatCount
+
+			if line == originating {
+				line.selectField.SelectedIndex = newCatIdx
+				continue
+			}
+
+			oldIdx := line.selectField.SelectedIndex
+			switch {
+			case oldIdx >= oldCatCount:
+				// Transfer-mode line (or — defensively — the AddNew sentinel,
+				// which shouldn't persist on a line). Shift by the
+				// category-count delta so the same account stays selected.
+				line.selectField.SelectedIndex = oldIdx + delta
+			case oldIdx >= 0 && oldIdx < len(oldCategoryIDs):
+				// Category-mode line. Preserve by ID — the new category may
+				// have been inserted alphabetically into the middle, shifting
+				// subsequent indices.
+				if newIdx, ok := idToNewIdx[oldCategoryIDs[oldIdx]]; ok {
+					line.selectField.SelectedIndex = newIdx
+				} else {
+					line.selectField.SelectedIndex = 0
+				}
+			}
+		}
+	}
+
+	w.SetVisible(true)
 }
 
 // ===========================================================================

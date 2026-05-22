@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
@@ -1171,5 +1172,452 @@ func TestNewPaycheckWizardFromSchedule_V2_MultipleEarningsLines(t *testing.T) {
 	}
 	if got := len(w.AdditionalTransfers()); got != 0 {
 		t.Errorf("AdditionalTransfers count = %d, want 0", got)
+	}
+}
+
+// CC-005 — Inline category creation from the paycheck wizard.
+
+// TestPaycheckWizard_CombinedOptionsIncludesAddNewSentinel pins the layout
+// invariant the AddNew flow depends on: combinedOptions ends with the
+// [+ Add new category…] sentinel, sitting one past the last transfer entry.
+func TestPaycheckWizard_CombinedOptionsIncludesAddNewSentinel(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+	if w == nil {
+		t.Fatal("NewPaycheckWizard returned nil")
+	}
+
+	if got := w.combinedOptions[len(w.combinedOptions)-1]; got != paycheckAddNewSentinelLabel {
+		t.Errorf("last combinedOptions entry = %q, want %q", got, paycheckAddNewSentinelLabel)
+	}
+
+	wantLen := len(w.categoryOptions) + len(w.accountOptions) + 1
+	if len(w.combinedOptions) != wantLen {
+		t.Errorf("len(combinedOptions) = %d, want %d (cats + accts + 1 AddNew)",
+			len(w.combinedOptions), wantLen)
+	}
+
+	// Each pre-populated line (Earnings + 3 Taxes) inherits combinedOptions.
+	for _, line := range w.EarningsLines() {
+		if got := line.SelectField().Options[len(line.SelectField().Options)-1]; got != paycheckAddNewSentinelLabel {
+			t.Errorf("earnings line Options last entry = %q, want sentinel", got)
+		}
+	}
+	for _, line := range w.TaxLines() {
+		if got := line.SelectField().Options[len(line.SelectField().Options)-1]; got != paycheckAddNewSentinelLabel {
+			t.Errorf("tax line Options last entry = %q, want sentinel", got)
+		}
+	}
+}
+
+// TestPaycheckWizard_IsAddNew_TrueForLastIndex pins the accessor's contract:
+// IsAddNew reports true when SelectedIndex points at the last entry of Options
+// (the AddNew sentinel), and IsTransfer reports false there (the AddNew row
+// sits past the transfer block, but it is not a transfer).
+func TestPaycheckWizard_IsAddNew_TrueForLastIndex(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+
+	line := w.AddPreTaxLine()
+	if line == nil {
+		t.Fatal("AddPreTaxLine returned nil")
+	}
+
+	// Default: (None) at index 0 — not AddNew, not Transfer.
+	if line.IsAddNew() {
+		t.Error("IsAddNew should be false at index 0 (None)")
+	}
+	if line.IsTransfer() {
+		t.Error("IsTransfer should be false at index 0 (None)")
+	}
+
+	// Park on a transfer entry — IsTransfer true, IsAddNew false.
+	transferIdx := len(w.categoryOptions) // first transfer entry
+	line.SelectField().SelectedIndex = transferIdx
+	if !line.IsTransfer() {
+		t.Error("IsTransfer should be true on a transfer index")
+	}
+	if line.IsAddNew() {
+		t.Error("IsAddNew should be false on a transfer index")
+	}
+
+	// Park on the AddNew sentinel — IsAddNew true, IsTransfer false.
+	line.SelectField().SelectedIndex = len(line.SelectField().Options) - 1
+	if !line.IsAddNew() {
+		t.Error("IsAddNew should be true at len(Options)-1")
+	}
+	if line.IsTransfer() {
+		t.Error("IsTransfer should be false on the AddNew sentinel")
+	}
+}
+
+// TestPaycheckWizard_EnterOnAddNew_ReturnsDialogActionAddNew exercises
+// HandleKey end-to-end: with focus on a line's select field parked on the
+// AddNew sentinel, Enter returns DialogActionAddNew so the parent App can
+// divert into the create-category sub-dialog.
+func TestPaycheckWizard_EnterOnAddNew_ReturnsDialogActionAddNew(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+
+	line := w.AddPreTaxLine()
+	if line == nil {
+		t.Fatal("AddPreTaxLine returned nil")
+	}
+	line.SelectField().SelectedIndex = len(line.SelectField().Options) - 1
+
+	// Walk focusables to land focus on this line's select field.
+	focused := false
+	for i, target := range w.collectFocusables() {
+		if target.kind == wizardFocusField && target.field == line.SelectField() {
+			w.focusIndex = i
+			focused = true
+			break
+		}
+	}
+	if !focused {
+		t.Fatal("could not find focus index for the AddNew-parked line")
+	}
+
+	action := w.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if action != DialogActionAddNew {
+		t.Errorf("HandleKey(Enter) = %v, want DialogActionAddNew", action)
+	}
+}
+
+// TestPaycheckWizard_EnterOnRealCategory_AdvancesFocus pins the regression
+// that ordinary category selections (not on AddNew) still advance focus on
+// Enter — the AddNew detection must not change non-sentinel behavior.
+func TestPaycheckWizard_EnterOnRealCategory_AdvancesFocus(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+
+	line := w.AddPreTaxLine()
+	if line == nil {
+		t.Fatal("AddPreTaxLine returned nil")
+	}
+	line.SelectField().SelectedIndex = 1 // a real category
+
+	startIdx := -1
+	for i, target := range w.collectFocusables() {
+		if target.kind == wizardFocusField && target.field == line.SelectField() {
+			w.focusIndex = i
+			startIdx = i
+			break
+		}
+	}
+	if startIdx < 0 {
+		t.Fatal("could not find focus index for the line's select field")
+	}
+
+	action := w.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if action != DialogActionNone {
+		t.Errorf("HandleKey(Enter) = %v, want DialogActionNone", action)
+	}
+	if w.focusIndex != startIdx+1 {
+		t.Errorf("focusIndex = %d, want %d (advanced one)", w.focusIndex, startIdx+1)
+	}
+}
+
+// newAppForPaycheckAddNew builds an *App whose paycheck wizard has a pre-tax
+// row parked on the AddNew sentinel and is otherwise pre-populated, so we
+// can assert that field values survive the open-cancel and open-submit
+// round-trips. categorySvc may be nil for tests that don't drive submit.
+func newAppForPaycheckAddNew(t *testing.T, categorySvc *category.Service, cats []*category.Category) (*App, *PaycheckLine) {
+	t.Helper()
+	fx := newPaycheckWizardFixture()
+	categoryOptions, categoryIDs := fx.categoryOptions, fx.categoryIDs
+	if len(cats) > 0 {
+		categoryOptions, categoryIDs = buildCategoryOptions(cats)
+	}
+
+	w := NewPaycheckWizard(categoryOptions, categoryIDs, fx.accounts)
+	// Seed a few scalar values we expect to see preserved across the divert.
+	w.Employer().Value = "Acme"
+	w.Memo().Value = "Biweekly"
+
+	// Add one transfer line in Net Pay Destinations so we can pin that its
+	// SelectedIndex shifts by the category-count delta after the rebuild.
+	transferLine := w.AddRow(PaycheckNetPayDestination)
+	transferLine.SetAccountIndex(0)
+
+	// Park a pre-tax line on the AddNew sentinel.
+	line := w.AddPreTaxLine()
+	line.SelectField().SelectedIndex = len(line.SelectField().Options) - 1
+	if !line.IsAddNew() {
+		t.Fatalf("test setup: line should be parked on AddNew sentinel")
+	}
+
+	// Move focus onto that line's select field.
+	for i, target := range w.collectFocusables() {
+		if target.kind == wizardFocusField && target.field == line.SelectField() {
+			w.focusIndex = i
+			break
+		}
+	}
+
+	app := &App{
+		keys:           defaultKeyMap(),
+		menubar:        NewMenuBar(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		categorySvc:    categorySvc,
+		paycheckWizard: w,
+	}
+	return app, line
+}
+
+func TestApp_PaycheckWizard_AddNew_OpensCreateCategoryDialog(t *testing.T) {
+	app, line := newAppForPaycheckAddNew(t, nil, nil)
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handlePaycheckWizardKey(enter)
+	updated := model.(*App)
+
+	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+		t.Fatal("createCatDialog should be visible after Enter on AddNew sentinel")
+	}
+	if updated.createCatSource != createCatSourcePaycheckWizard {
+		t.Errorf("createCatSource = %d, want createCatSourcePaycheckWizard (%d)",
+			updated.createCatSource, createCatSourcePaycheckWizard)
+	}
+	if updated.createCatPaycheckLine != line {
+		t.Error("createCatPaycheckLine should reference the originating line")
+	}
+	if updated.paycheckWizard == nil {
+		t.Fatal("paycheckWizard should be kept (hidden) so its state survives the divert")
+	}
+	if updated.paycheckWizard.IsVisible() {
+		t.Error("paycheckWizard should be hidden while createCatDialog is shown")
+	}
+	if updated.createCatDialog.Title() != "New Category" {
+		t.Errorf("createCatDialog title = %q, want %q",
+			updated.createCatDialog.Title(), "New Category")
+	}
+}
+
+func TestApp_PaycheckWizard_AddNew_CancelRestoresState(t *testing.T) {
+	app, _ := newAppForPaycheckAddNew(t, nil, nil)
+
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handlePaycheckWizardKey(enter)
+	app = model.(*App)
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+
+	esc := tea.KeyPressMsg{Code: tea.KeyEsc}
+	model, _ = app.handleCreateCatDialogKey(esc)
+	app = model.(*App)
+
+	if app.createCatDialog != nil {
+		t.Error("createCatDialog should be cleared after cancel")
+	}
+	if app.createCatSource != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after cancel", app.createCatSource)
+	}
+	if app.createCatPaycheckLine != nil {
+		t.Error("createCatPaycheckLine should be cleared after cancel")
+	}
+	if app.paycheckWizard == nil || !app.paycheckWizard.IsVisible() {
+		t.Fatal("paycheckWizard should be restored to visible after cancel")
+	}
+	if got := app.paycheckWizard.Employer().Value; got != "Acme" {
+		t.Errorf("Employer preserved? got %q, want %q", got, "Acme")
+	}
+	if got := app.paycheckWizard.Memo().Value; got != "Biweekly" {
+		t.Errorf("Memo preserved? got %q, want %q", got, "Biweekly")
+	}
+}
+
+// TestApp_PaycheckWizard_AddNew_AppliesToOriginatingLine drives the
+// open → submit flow end-to-end against a real category service: pre-tax
+// row activates AddNew, user submits a new category, and the line points
+// at the freshly-created category afterwards. The companion test below
+// pins the transfer-line index shift.
+func TestApp_PaycheckWizard_AddNew_AppliesToOriginatingLine(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "cc005.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	repo := category.NewRepository(database)
+	svc := category.NewService(repo, database)
+	if err := svc.SeedDefaultCategories(); err != nil {
+		t.Fatalf("SeedDefaultCategories: %v", err)
+	}
+	cats, err := svc.List()
+	if err != nil {
+		t.Fatalf("svc.List: %v", err)
+	}
+
+	app, line := newAppForPaycheckAddNew(t, svc, cats)
+
+	// Open sub-dialog.
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handlePaycheckWizardKey(enter)
+	app = model.(*App)
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+
+	// Fill: Name=CommuterPass, Parent=(top-level), Type=Expense.
+	cFields := app.createCatDialog.Fields()
+	cFields[0].Value = "CommuterPass"
+	cFields[1].SelectedIndex = 0
+	cFields[2].SelectedIndex = 0
+
+	model, cmd := app.submitCreateCatDialog()
+	app = model.(*App)
+	if cmd == nil {
+		t.Fatal("submit should produce a tea.Cmd")
+	}
+	msg := cmd()
+	model, _ = app.Update(msg)
+	app = model.(*App)
+
+	// Persisted.
+	got, err := svc.List()
+	if err != nil {
+		t.Fatalf("svc.List after submit: %v", err)
+	}
+	var found *category.Category
+	for _, c := range got {
+		if c.Name == "CommuterPass" {
+			found = c
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("'CommuterPass' should be persisted after submit")
+	}
+
+	if app.createCatDialog != nil {
+		t.Error("createCatDialog should be cleared after submit")
+	}
+	if app.createCatSource != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after submit", app.createCatSource)
+	}
+	if app.createCatPaycheckLine != nil {
+		t.Error("createCatPaycheckLine should be cleared after submit")
+	}
+	if app.paycheckWizard == nil || !app.paycheckWizard.IsVisible() {
+		t.Fatal("paycheckWizard should be visible again after submit")
+	}
+
+	// Originating line points at the new category.
+	w := app.paycheckWizard
+	if line.IsAddNew() {
+		t.Error("originating line should no longer be on the AddNew sentinel")
+	}
+	if line.IsTransfer() {
+		t.Error("originating line should be in category mode, not transfer mode")
+	}
+	idx := line.SelectField().SelectedIndex
+	if idx < 0 || idx >= len(w.categoryOptions) {
+		t.Fatalf("originating line idx %d out of category range", idx)
+	}
+	if w.categoryOptions[idx] != "CommuterPass" {
+		t.Errorf("originating line category = %q, want %q",
+			w.categoryOptions[idx], "CommuterPass")
+	}
+	if w.categoryIDs[idx] != found.ID {
+		t.Errorf("originating line categoryID = %s, want %s",
+			w.categoryIDs[idx], found.ID)
+	}
+}
+
+// TestPaycheckWizard_AddNew_PreservesTransferLineSelections pins the
+// footgun: after the rebuild, transfer-mode lines' SelectedIndex must
+// shift by the category-count delta so the same account stays selected.
+func TestPaycheckWizard_AddNew_PreservesTransferLineSelections(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "cc005-transfers.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("db.Create: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	repo := category.NewRepository(database)
+	svc := category.NewService(repo, database)
+	if err := svc.SeedDefaultCategories(); err != nil {
+		t.Fatalf("SeedDefaultCategories: %v", err)
+	}
+	cats, err := svc.List()
+	if err != nil {
+		t.Fatalf("svc.List: %v", err)
+	}
+
+	app, _ := newAppForPaycheckAddNew(t, svc, cats)
+	w := app.paycheckWizard
+
+	// Find the transfer-mode line and the account name it points at, so
+	// we can re-verify identity after the rebuild.
+	var transferLine *PaycheckLine
+	for _, ln := range w.AdditionalTransfers() {
+		if ln.IsTransfer() {
+			transferLine = ln
+			break
+		}
+	}
+	if transferLine == nil {
+		t.Fatal("test setup: expected at least one transfer-mode line")
+	}
+	wantAcctIdx := transferLine.AccountIndex()
+	wantAcctName := w.accountOptions[wantAcctIdx]
+
+	// Drive the open + submit flow.
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	model, _ := app.handlePaycheckWizardKey(enter)
+	app = model.(*App)
+	if app.createCatDialog == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	cFields := app.createCatDialog.Fields()
+	cFields[0].Value = "Cleaning" // alphabetically inserts in the middle
+	cFields[1].SelectedIndex = 0
+	cFields[2].SelectedIndex = 0
+
+	model, cmd := app.submitCreateCatDialog()
+	app = model.(*App)
+	if cmd == nil {
+		t.Fatal("submit should produce a tea.Cmd")
+	}
+	model, _ = app.Update(cmd())
+	app = model.(*App)
+
+	w = app.paycheckWizard
+	// Transfer line identity is preserved across the rebuild: still in
+	// transfer mode, still pointing at the same account by name.
+	if !transferLine.IsTransfer() {
+		t.Fatal("transfer line should still be in transfer mode after rebuild")
+	}
+	if transferLine.IsAddNew() {
+		t.Error("transfer line drifted onto AddNew sentinel")
+	}
+	gotAcctIdx := transferLine.AccountIndex()
+	if gotAcctIdx < 0 || gotAcctIdx >= len(w.accountOptions) {
+		t.Fatalf("transfer line AccountIndex = %d out of range", gotAcctIdx)
+	}
+	if got := w.accountOptions[gotAcctIdx]; got != wantAcctName {
+		t.Errorf("transfer line account = %q, want %q (preserved across rebuild)",
+			got, wantAcctName)
+	}
+
+	// Sanity: pre-populated category lines (Earnings → Income > Salary,
+	// Taxes → Federal/SS/Medicare) still reference their original
+	// categories by name after the alphabetical insert shifts indices.
+	salaryLines := w.EarningsLines()
+	if len(salaryLines) > 0 {
+		idx := salaryLines[0].SelectField().SelectedIndex
+		if idx < 0 || idx >= len(w.categoryOptions) {
+			t.Fatalf("salary line idx %d out of category range", idx)
+		}
+		if got := w.categoryOptions[idx]; got != "Income > Salary" {
+			t.Errorf("salary line category = %q, want 'Income > Salary' (preserved by ID)", got)
+		}
 	}
 }
