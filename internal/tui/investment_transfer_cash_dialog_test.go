@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -69,10 +70,10 @@ func TestBuildNonInvestmentAccountOptions_AllInvestment(t *testing.T) {
 
 // --- buildTransferCashDialog tests ---
 
-func TestBuildTransferCashDialog_Deposit(t *testing.T) {
+func TestBuildTransferCashDialog_NewDefaultsToDepositInto(t *testing.T) {
 	options := []string{"Checking", "Savings"}
 
-	d := buildTransferCashDialog("deposit", options, nil, nil)
+	d := buildTransferCashDialog("Brokerage", options, nil, nil)
 
 	if d == nil {
 		t.Fatal("dialog should not be nil")
@@ -80,64 +81,70 @@ func TestBuildTransferCashDialog_Deposit(t *testing.T) {
 	if !d.IsVisible() {
 		t.Error("dialog should be visible")
 	}
-	if d.Title() != "Transfer Cash In" {
-		t.Errorf("title = %q, want %q", d.Title(), "Transfer Cash In")
+	if d.Title() != "Transfer Cash" {
+		t.Errorf("title = %q, want %q", d.Title(), "Transfer Cash")
 	}
 
 	fields := d.Fields()
-	if len(fields) != 4 {
-		t.Fatalf("expected 4 fields, got %d", len(fields))
+	if len(fields) != 5 {
+		t.Fatalf("expected 5 fields, got %d", len(fields))
 	}
 
-	// Field 0: Account (select)
+	// Field 0: Direction (select)
 	if fields[0].Type != FieldSelect {
-		t.Errorf("field 0 type = %d, want FieldSelect (%d)", fields[0].Type, FieldSelect)
+		t.Errorf("field 0 type = %d, want FieldSelect", fields[0].Type)
 	}
-	if fields[0].Label != "Account" {
-		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Account")
+	if fields[0].Label != "Direction" {
+		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Direction")
+	}
+	if fields[0].SelectedIndex != 0 {
+		t.Errorf("direction default = %d, want 0 (deposit)", fields[0].SelectedIndex)
+	}
+	if len(fields[0].Options) != 2 {
+		t.Fatalf("expected 2 direction options, got %d", len(fields[0].Options))
+	}
+	if !strings.Contains(fields[0].Options[0], "Brokerage") {
+		t.Errorf("deposit option = %q, expected to mention investment account name", fields[0].Options[0])
+	}
+	if !strings.Contains(fields[0].Options[1], "Brokerage") {
+		t.Errorf("withdraw option = %q, expected to mention investment account name", fields[0].Options[1])
 	}
 
-	// Field 1: Amount (text, required)
-	if fields[1].Type != FieldText {
-		t.Errorf("field 1 type = %d, want FieldText", fields[1].Type)
+	// Field 1: Other account (select)
+	if fields[1].Type != FieldSelect {
+		t.Errorf("field 1 type = %d, want FieldSelect", fields[1].Type)
 	}
-	if fields[1].Label != "Amount" {
-		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Amount")
+
+	// Field 2: Amount (text, required)
+	if fields[2].Type != FieldText {
+		t.Errorf("field 2 type = %d, want FieldText", fields[2].Type)
 	}
-	if !fields[1].Required {
+	if fields[2].Label != "Amount" {
+		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "Amount")
+	}
+	if !fields[2].Required {
 		t.Error("amount field should be required")
 	}
 
-	// Field 2: Date (masked, required)
-	if fields[2].Type != FieldDate {
-		t.Errorf("field 2 type = %d, want FieldDate", fields[2].Type)
+	// Field 3: Date (masked, required)
+	if fields[3].Type != FieldDate {
+		t.Errorf("field 3 type = %d, want FieldDate", fields[3].Type)
 	}
-	if fields[2].Label != "Date" {
-		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "Date")
-	}
-	if !fields[2].Required {
+	if !fields[3].Required {
 		t.Error("date field should be required")
 	}
 	today := time.Now().Format("01/02/2006")
-	if fields[2].Value != today {
-		t.Errorf("date default = %q, want %q", fields[2].Value, today)
+	if fields[3].Value != today {
+		t.Errorf("date default = %q, want %q", fields[3].Value, today)
 	}
 
-	// Field 3: Memo (text)
-	if fields[3].Label != "Memo" {
-		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Memo")
-	}
-}
-
-func TestBuildTransferCashDialog_Withdraw(t *testing.T) {
-	d := buildTransferCashDialog("withdraw", []string{"Checking"}, nil, nil)
-
-	if d.Title() != "Transfer Cash Out" {
-		t.Errorf("title = %q, want %q", d.Title(), "Transfer Cash Out")
+	// Field 4: Memo (text)
+	if fields[4].Label != "Memo" {
+		t.Errorf("field 4 label = %q, want %q", fields[4].Label, "Memo")
 	}
 }
 
-func TestBuildTransferCashDialog_EditTransaction(t *testing.T) {
+func TestBuildTransferCashDialog_EditPositiveAmount_DefaultsToDeposit(t *testing.T) {
 	acctID := types.NewID()
 	linkedAcctID := types.NewID()
 	date := types.NewDate(2024, time.March, 15)
@@ -152,31 +159,28 @@ func TestBuildTransferCashDialog_EditTransaction(t *testing.T) {
 	accountIDs := []types.ID{types.NewID(), linkedAcctID}
 	options := []string{"Checking", "Savings"}
 
-	d := buildTransferCashDialog("deposit", options, txn, accountIDs)
+	d := buildTransferCashDialog("Brokerage", options, txn, accountIDs)
 	fields := d.Fields()
 
-	// Account selector should pre-select the matching account
-	if fields[0].SelectedIndex != 1 {
-		t.Errorf("account selected = %d, want 1", fields[0].SelectedIndex)
+	if fields[0].SelectedIndex != 0 {
+		t.Errorf("direction = %d, want 0 (deposit) for positive amount", fields[0].SelectedIndex)
 	}
 
-	// Amount should be pre-filled
-	if fields[1].Value != "500.00" {
-		t.Errorf("amount = %q, want %q", fields[1].Value, "500.00")
+	if fields[1].SelectedIndex != 1 {
+		t.Errorf("account selected = %d, want 1", fields[1].SelectedIndex)
 	}
-
-	// Date should match
-	if fields[2].Value != "03/15/2024" {
-		t.Errorf("date = %q, want %q", fields[2].Value, "03/15/2024")
+	if fields[2].Value != "500.00" {
+		t.Errorf("amount = %q, want %q", fields[2].Value, "500.00")
 	}
-
-	// Memo should be pre-filled
-	if fields[3].Value != "Fund transfer" {
-		t.Errorf("memo = %q, want %q", fields[3].Value, "Fund transfer")
+	if fields[3].Value != "03/15/2024" {
+		t.Errorf("date = %q, want %q", fields[3].Value, "03/15/2024")
+	}
+	if fields[4].Value != "Fund transfer" {
+		t.Errorf("memo = %q, want %q", fields[4].Value, "Fund transfer")
 	}
 }
 
-func TestBuildTransferCashDialog_EditNegativeAmount(t *testing.T) {
+func TestBuildTransferCashDialog_EditNegativeAmount_DefaultsToWithdraw(t *testing.T) {
 	acctID := types.NewID()
 	date := types.NewDate(2024, time.June, 1)
 
@@ -185,12 +189,16 @@ func TestBuildTransferCashDialog_EditNegativeAmount(t *testing.T) {
 		types.MustNewMoney("-250.00"),
 	)
 
-	d := buildTransferCashDialog("withdraw", []string{"Checking"}, txn, nil)
+	d := buildTransferCashDialog("Brokerage", []string{"Checking"}, txn, nil)
 	fields := d.Fields()
 
-	// Negative amount should be displayed as positive
-	if fields[1].Value != "250.00" {
-		t.Errorf("amount = %q, want %q (negated)", fields[1].Value, "250.00")
+	if fields[0].SelectedIndex != 1 {
+		t.Errorf("direction = %d, want 1 (withdraw) for negative amount", fields[0].SelectedIndex)
+	}
+
+	// Amount field displays the absolute value (sign is conveyed by Direction).
+	if fields[2].Value != "250.00" {
+		t.Errorf("amount = %q, want %q (absolute value)", fields[2].Value, "250.00")
 	}
 }
 
@@ -201,12 +209,11 @@ func TestSubmitTransferCashDialog_ValidationErrors(t *testing.T) {
 	linkedAcctIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		transferCashDialog: buildTransferCashDialog("deposit", []string{"Checking"}, nil, linkedAcctIDs),
+		transferCashDialog: buildTransferCashDialog("Brokerage", []string{"Checking"}, nil, linkedAcctIDs),
 		transferCashDialogData: &transferCashDialogData{
 			accountIDs: linkedAcctIDs,
 		},
 		transferCashDialogAccountIDs: linkedAcctIDs,
-		transferCashDirection:        "deposit",
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -217,8 +224,8 @@ func TestSubmitTransferCashDialog_ValidationErrors(t *testing.T) {
 
 	// Set invalid values
 	fields := app.transferCashDialog.Fields()
-	fields[1].Value = ""           // empty amount
-	fields[2].Value = "not-a-date" // invalid date
+	fields[2].Value = ""           // empty amount
+	fields[3].Value = "not-a-date" // invalid date
 
 	model, cmd := app.submitTransferCashDialog()
 	updatedApp := model.(*App)
@@ -231,10 +238,10 @@ func TestSubmitTransferCashDialog_ValidationErrors(t *testing.T) {
 	}
 
 	fields = updatedApp.transferCashDialog.Fields()
-	if fields[1].Error == "" {
+	if fields[2].Error == "" {
 		t.Error("amount field should have error")
 	}
-	if fields[2].Error == "" {
+	if fields[3].Error == "" {
 		t.Error("date field should have error")
 	}
 }
@@ -244,12 +251,11 @@ func TestSubmitTransferCashDialog_InvalidAmount(t *testing.T) {
 	linkedAcctIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		transferCashDialog: buildTransferCashDialog("deposit", []string{"Checking"}, nil, linkedAcctIDs),
+		transferCashDialog: buildTransferCashDialog("Brokerage", []string{"Checking"}, nil, linkedAcctIDs),
 		transferCashDialogData: &transferCashDialogData{
 			accountIDs: linkedAcctIDs,
 		},
 		transferCashDialogAccountIDs: linkedAcctIDs,
-		transferCashDirection:        "deposit",
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -259,8 +265,8 @@ func TestSubmitTransferCashDialog_InvalidAmount(t *testing.T) {
 	}
 
 	fields := app.transferCashDialog.Fields()
-	fields[1].Value = "not-valid"  // invalid amount
-	fields[2].Value = "03/15/2024" // valid date
+	fields[2].Value = "not-valid"  // invalid amount
+	fields[3].Value = "03/15/2024" // valid date
 
 	model, _ := app.submitTransferCashDialog()
 	updatedApp := model.(*App)
@@ -269,7 +275,7 @@ func TestSubmitTransferCashDialog_InvalidAmount(t *testing.T) {
 		t.Error("dialog should remain open on amount error")
 	}
 	fields = updatedApp.transferCashDialog.Fields()
-	if fields[1].Error == "" {
+	if fields[2].Error == "" {
 		t.Error("amount field should have error")
 	}
 }
@@ -278,12 +284,11 @@ func TestSubmitTransferCashDialog_NoAccounts(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		transferCashDialog: buildTransferCashDialog("deposit", []string{}, nil, nil),
+		transferCashDialog: buildTransferCashDialog("Brokerage", []string{}, nil, nil),
 		transferCashDialogData: &transferCashDialogData{
 			accountIDs: nil,
 		},
 		transferCashDialogAccountIDs: nil,
-		transferCashDirection:        "deposit",
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -293,8 +298,8 @@ func TestSubmitTransferCashDialog_NoAccounts(t *testing.T) {
 	}
 
 	fields := app.transferCashDialog.Fields()
-	fields[1].Value = "500.00"
-	fields[2].Value = "03/15/2024"
+	fields[2].Value = "500.00"
+	fields[3].Value = "03/15/2024"
 
 	model, cmd := app.submitTransferCashDialog()
 	updatedApp := model.(*App)
@@ -312,12 +317,11 @@ func TestSubmitTransferCashDialog_ValidDeposit(t *testing.T) {
 	linkedAcctIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		transferCashDialog: buildTransferCashDialog("deposit", []string{"Checking"}, nil, linkedAcctIDs),
+		transferCashDialog: buildTransferCashDialog("Brokerage", []string{"Checking"}, nil, linkedAcctIDs),
 		transferCashDialogData: &transferCashDialogData{
 			accountIDs: linkedAcctIDs,
 		},
 		transferCashDialogAccountIDs: linkedAcctIDs,
-		transferCashDirection:        "deposit",
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -327,8 +331,9 @@ func TestSubmitTransferCashDialog_ValidDeposit(t *testing.T) {
 	}
 
 	fields := app.transferCashDialog.Fields()
-	fields[1].Value = "500.00"
-	fields[2].Value = "03/15/2024"
+	// Direction defaults to deposit (index 0)
+	fields[2].Value = "500.00"
+	fields[3].Value = "03/15/2024"
 
 	model, cmd := app.submitTransferCashDialog()
 	updatedApp := model.(*App)
@@ -346,12 +351,11 @@ func TestSubmitTransferCashDialog_ValidWithdraw(t *testing.T) {
 	linkedAcctIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		transferCashDialog: buildTransferCashDialog("withdraw", []string{"Checking"}, nil, linkedAcctIDs),
+		transferCashDialog: buildTransferCashDialog("Brokerage", []string{"Checking"}, nil, linkedAcctIDs),
 		transferCashDialogData: &transferCashDialogData{
 			accountIDs: linkedAcctIDs,
 		},
 		transferCashDialogAccountIDs: linkedAcctIDs,
-		transferCashDirection:        "withdraw",
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -361,9 +365,10 @@ func TestSubmitTransferCashDialog_ValidWithdraw(t *testing.T) {
 	}
 
 	fields := app.transferCashDialog.Fields()
-	fields[1].Value = "250.00"
-	fields[2].Value = "06/01/2024"
-	fields[3].Value = "Monthly withdrawal"
+	fields[0].SelectedIndex = 1 // flip to withdraw
+	fields[2].Value = "250.00"
+	fields[3].Value = "06/01/2024"
+	fields[4].Value = "Monthly withdrawal"
 
 	model, cmd := app.submitTransferCashDialog()
 	updatedApp := model.(*App)
@@ -381,12 +386,11 @@ func TestSubmitTransferCashDialog_DollarSignInAmount(t *testing.T) {
 	linkedAcctIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		transferCashDialog: buildTransferCashDialog("deposit", []string{"Checking"}, nil, linkedAcctIDs),
+		transferCashDialog: buildTransferCashDialog("Brokerage", []string{"Checking"}, nil, linkedAcctIDs),
 		transferCashDialogData: &transferCashDialogData{
 			accountIDs: linkedAcctIDs,
 		},
 		transferCashDialogAccountIDs: linkedAcctIDs,
-		transferCashDirection:        "deposit",
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -396,8 +400,8 @@ func TestSubmitTransferCashDialog_DollarSignInAmount(t *testing.T) {
 	}
 
 	fields := app.transferCashDialog.Fields()
-	fields[1].Value = "$500.00" // dollar sign in amount
-	fields[2].Value = "03/15/2024"
+	fields[2].Value = "$500.00" // dollar sign in amount
+	fields[3].Value = "03/15/2024"
 
 	model, cmd := app.submitTransferCashDialog()
 	updatedApp := model.(*App)
@@ -414,8 +418,7 @@ func TestSubmitTransferCashDialog_DollarSignInAmount(t *testing.T) {
 
 func TestHandleTransferCashDialogKey_Cancel(t *testing.T) {
 	app := &App{
-		transferCashDialog:    buildTransferCashDialog("deposit", []string{"Checking"}, nil, nil),
-		transferCashDirection: "deposit",
+		transferCashDialog: buildTransferCashDialog("Brokerage", []string{"Checking"}, nil, nil),
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
@@ -424,9 +427,6 @@ func TestHandleTransferCashDialogKey_Cancel(t *testing.T) {
 
 	if updatedApp.transferCashDialog != nil {
 		t.Error("dialog should be closed after Escape")
-	}
-	if updatedApp.transferCashDirection != "" {
-		t.Error("direction should be cleared after cancel")
 	}
 }
 
@@ -463,10 +463,9 @@ func TestSubmitTransferCashDialog_NilDialog(t *testing.T) {
 
 func TestCloseTransferCashDialog(t *testing.T) {
 	app := &App{
-		transferCashDialog:           buildTransferCashDialog("deposit", []string{"Checking"}, nil, nil),
+		transferCashDialog:           buildTransferCashDialog("Brokerage", []string{"Checking"}, nil, nil),
 		transferCashDialogData:       &transferCashDialogData{},
 		transferCashDialogAccountIDs: []types.ID{types.NewID()},
-		transferCashDirection:        "deposit",
 	}
 
 	app.closeTransferCashDialog()
@@ -479,9 +478,6 @@ func TestCloseTransferCashDialog(t *testing.T) {
 	}
 	if app.transferCashDialogAccountIDs != nil {
 		t.Error("transferCashDialogAccountIDs should be nil after close")
-	}
-	if app.transferCashDirection != "" {
-		t.Error("transferCashDirection should be empty after close")
 	}
 }
 

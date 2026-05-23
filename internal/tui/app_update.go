@@ -237,7 +237,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !ok {
 			return a, nil
 		}
-		a.transferCashDialog = buildTransferCashDialog(a.transferCashDirection, acctOptions, editTxn, acctIDs)
+		investmentAccountName := ""
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			investmentAccountName = a.investmentRegister.account.Name
+		}
+		a.transferCashDialog = buildTransferCashDialog(investmentAccountName, acctOptions, editTxn, acctIDs)
 		if editTxn == nil {
 			a.transferCashDialog.SeedDateField(a.txnDialogLastSavedDate)
 		}

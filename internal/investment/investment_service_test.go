@@ -3237,6 +3237,148 @@ func TestService_DepositFromAccount(t *testing.T) {
 }
 
 // =============================================================================
+// UpdateTransferCash — reproduces the scenario from the in-TUI bug report:
+// user accidentally created a deposit-from-savings (cash flowing the wrong
+// way), then tried to edit the transfer to flip the direction.
+// =============================================================================
+
+func TestService_UpdateTransferCash(t *testing.T) {
+	t.Run("flip deposit-in to withdraw-out keeps amount, swaps signs", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		savings := createCheckAccount(t, accountRepo, "Savings")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Original wrong-direction transfer: cash flows savings → brokerage.
+		orig, err := svc.DepositFromAccount(invAcct.ID, savings.ID, date, types.MustNewMoney("1170.33"), "to savings")
+		if err != nil {
+			t.Fatalf("DepositFromAccount() error = %v", err)
+		}
+		if orig.InvestmentTransaction.TotalAmount.String() != "1170.33" {
+			t.Fatalf("setup precondition: expected investment +1170.33, got %s", orig.InvestmentTransaction.TotalAmount.String())
+		}
+		if orig.RegularTransaction.Amount.String() != "-1170.33" {
+			t.Fatalf("setup precondition: expected savings -1170.33, got %s", orig.RegularTransaction.Amount.String())
+		}
+
+		// User flips direction: now cash flows brokerage → savings.
+		fixed, err := svc.UpdateTransferCash(
+			orig.InvestmentTransaction.ID,
+			invAcct.ID, savings.ID, date,
+			types.MustNewMoney("1170.33"),
+			"to savings",
+			"out",
+		)
+		if err != nil {
+			t.Fatalf("UpdateTransferCash() error = %v", err)
+		}
+		if fixed.InvestmentTransaction.TotalAmount.String() != "-1170.33" {
+			t.Errorf("after flip: expected investment -1170.33, got %s", fixed.InvestmentTransaction.TotalAmount.String())
+		}
+		if fixed.RegularTransaction.Amount.String() != "1170.33" {
+			t.Errorf("after flip: expected savings +1170.33, got %s", fixed.RegularTransaction.Amount.String())
+		}
+
+		// The original investment-side row must be gone (replaced).
+		if _, err := svc.repo.GetByID(orig.InvestmentTransaction.ID); err == nil {
+			t.Error("original investment txn should have been deleted by UpdateTransferCash")
+		}
+
+		// Only the new transfer pair should remain — no orphan savings rows.
+		txnRepo := transaction.NewRepository(svc.db)
+		savingsTxns, err := txnRepo.ListByAccount(savings.ID)
+		if err != nil {
+			t.Fatalf("ListByAccount() error = %v", err)
+		}
+		if len(savingsTxns) != 1 {
+			t.Fatalf("expected exactly 1 savings txn after edit, got %d", len(savingsTxns))
+		}
+		if savingsTxns[0].Amount.String() != "1170.33" {
+			t.Errorf("savings txn amount = %s, want 1170.33", savingsTxns[0].Amount.String())
+		}
+		if !savingsTxns[0].IsTransfer() {
+			t.Error("remaining savings txn should still be linked as a transfer")
+		}
+		if savingsTxns[0].TransferID.ID != fixed.TransferID {
+			t.Errorf("savings txn transfer_id = %s, want %s", savingsTxns[0].TransferID.ID, fixed.TransferID)
+		}
+	})
+
+	t.Run("edit-in-place same direction: amount and memo change cleanly", func(t *testing.T) {
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		savings := createCheckAccount(t, accountRepo, "Savings")
+		date := types.NewDate(2024, time.March, 15)
+
+		// Real withdrawal: brokerage → savings.
+		orig, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("500.00"), "initial")
+		if err != nil {
+			t.Fatalf("TransferCash() error = %v", err)
+		}
+
+		// Edit: same direction, new amount and memo.
+		fixed, err := svc.UpdateTransferCash(
+			orig.InvestmentTransaction.ID,
+			invAcct.ID, savings.ID, date,
+			types.MustNewMoney("750.00"),
+			"updated",
+			"out",
+		)
+		if err != nil {
+			t.Fatalf("UpdateTransferCash() error = %v", err)
+		}
+		if fixed.InvestmentTransaction.TotalAmount.String() != "-750" {
+			t.Errorf("investment amount after edit = %s, want -750", fixed.InvestmentTransaction.TotalAmount.String())
+		}
+		if fixed.RegularTransaction.Amount.String() != "750" {
+			t.Errorf("savings amount after edit = %s, want 750", fixed.RegularTransaction.Amount.String())
+		}
+		if fixed.InvestmentTransaction.Memo.String != "updated" {
+			t.Errorf("memo after edit = %q, want %q", fixed.InvestmentTransaction.Memo.String, "updated")
+		}
+
+		// Original rows must be gone.
+		if _, err := svc.repo.GetByID(orig.InvestmentTransaction.ID); err == nil {
+			t.Error("original investment txn should have been deleted")
+		}
+		txnRepo := transaction.NewRepository(svc.db)
+		if _, err := txnRepo.GetByID(orig.RegularTransaction.ID); err == nil {
+			t.Error("original savings-side txn should have been deleted")
+		}
+	})
+
+	t.Run("invalid direction returns error and original transfer is gone", func(t *testing.T) {
+		// Documents current behavior: UpdateTransferCash deletes the old
+		// pair before validating direction, so a bad direction string
+		// leaves the database with no transfer at all. The TUI never
+		// passes an invalid direction (it's read from a 2-option select),
+		// so this can only happen via direct service misuse, but it's
+		// worth pinning down so a future refactor that swaps validation
+		// order doesn't silently change behavior.
+		svc, accountRepo := createTestService(t)
+		invAcct := createInvAccount(t, accountRepo, "Brokerage")
+		savings := createCheckAccount(t, accountRepo, "Savings")
+		date := types.NewDate(2024, time.March, 15)
+
+		orig, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("100.00"), "")
+		if err != nil {
+			t.Fatalf("TransferCash() error = %v", err)
+		}
+
+		_, err = svc.UpdateTransferCash(
+			orig.InvestmentTransaction.ID,
+			invAcct.ID, savings.ID, date,
+			types.MustNewMoney("100.00"),
+			"",
+			"sideways",
+		)
+		if err == nil {
+			t.Fatal("UpdateTransferCash with invalid direction should return error")
+		}
+	})
+}
+
+// =============================================================================
 // SM-090: Share transfer between investment accounts (non-lot)
 // =============================================================================
 

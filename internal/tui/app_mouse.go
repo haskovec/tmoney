@@ -549,7 +549,6 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				}
 				return a, nil
 			case investment.TransactionTypeTransferCash:
-				a.transferCashDirection = "deposit"
 				return a, a.loadTransferCashDialogData()
 			case investment.TransactionTypeTransferShares:
 				return a, a.loadTransferSharesDialogData()

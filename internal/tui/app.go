@@ -260,11 +260,13 @@ type App struct {
 	cashOperationDialog *Dialog
 	cashOperationType   investment.TransactionType
 
-	// Transfer cash dialog state (between investment and regular accounts)
+	// Transfer cash dialog state (between investment and regular accounts).
+	// Direction (deposit into vs. withdraw from the investment account) is
+	// part of the dialog itself — see Direction select in
+	// buildTransferCashDialog — not a separate App-level field.
 	transferCashDialog           *Dialog
 	transferCashDialogData       *transferCashDialogData
 	transferCashDialogAccountIDs []types.ID
-	transferCashDirection        string // "deposit" or "withdraw"
 
 	// Transfer shares dialog state (between investment accounts)
 	transferSharesDialog            *Dialog
