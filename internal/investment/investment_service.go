@@ -1148,6 +1148,61 @@ func (s *Service) TransferShares(
 	}, nil
 }
 
+// DeleteTransaction deletes an investment transaction and cascades to its
+// paired counterpart when the transaction is part of a transfer:
+//   - transfer_cash: also deletes the paired regular-side row(s) in the
+//     transactions table (linked by transfer_id).
+//   - transfer_shares: also deletes the paired investment-side row in the
+//     other investment account (also linked by transfer_id).
+//
+// Without this cascade the user is left with an orphaned counterpart that
+// still has transfer_id set, which is what happened to the savings-side
+// row when the wrong-direction cash transfer was deleted from the
+// investment register.
+//
+// Non-transfer transactions are simply forwarded to repo.Delete.
+func (s *Service) DeleteTransaction(id types.ID) error {
+	txn, err := s.repo.GetByID(id)
+	if err != nil {
+		return fmt.Errorf("failed to load transaction for delete: %w", err)
+	}
+
+	if txn.TransferID.Valid {
+		switch txn.Type {
+		case TransactionTypeTransferCash:
+			if s.txnRepo != nil {
+				regs, lerr := s.txnRepo.ListByTransferID(txn.TransferID.ID)
+				if lerr != nil {
+					return fmt.Errorf("failed to find regular-side transfer rows: %w", lerr)
+				}
+				for _, r := range regs {
+					if err := s.txnRepo.Delete(r.ID); err != nil {
+						return fmt.Errorf("failed to delete regular-side transfer row: %w", err)
+					}
+				}
+			}
+		case TransactionTypeTransferShares:
+			// The counterpart lives in the other investment account; find by transfer_id.
+			others, lerr := s.repo.ListByAccount(txn.TransferAccountID.ID, TransactionFilter{})
+			if lerr != nil {
+				return fmt.Errorf("failed to list destination-account transfers: %w", lerr)
+			}
+			for _, o := range others {
+				if o.TransferID.Valid && o.TransferID.ID == txn.TransferID.ID && o.ID != txn.ID {
+					if err := s.repo.Delete(o.ID); err != nil {
+						return fmt.Errorf("failed to delete paired share-transfer row: %w", err)
+					}
+				}
+			}
+		}
+	}
+
+	if err := s.repo.Delete(id); err != nil {
+		return fmt.Errorf("failed to delete investment transaction: %w", err)
+	}
+	return nil
+}
+
 // AccountShares is a per-account share total for a security, used by
 // preview surfaces (e.g. the stock-split dialog) to show what a holding
 // would look like before and after an action is applied.

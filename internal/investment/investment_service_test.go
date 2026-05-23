@@ -3379,6 +3379,97 @@ func TestService_UpdateTransferCash(t *testing.T) {
 }
 
 // =============================================================================
+// DeleteTransaction — exercises the cascade for paired transfer rows.
+// The plain investmentRepo.Delete is a low-level primitive that leaves the
+// regular-side (for transfer_cash) or other-investment-side (for
+// transfer_shares) counterpart orphaned, which is what the user hit when
+// pressing `d` on a wrong-direction cash transfer in the investment register.
+// =============================================================================
+
+func TestService_DeleteTransaction_CashTransferCascadesToRegularSide(t *testing.T) {
+	svc, accountRepo := createTestService(t)
+	invAcct := createInvAccount(t, accountRepo, "Brokerage")
+	savings := createCheckAccount(t, accountRepo, "Savings")
+	date := types.NewDate(2024, time.March, 15)
+
+	result, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("1170.33"), "to savings")
+	if err != nil {
+		t.Fatalf("TransferCash() error = %v", err)
+	}
+
+	if err := svc.DeleteTransaction(result.InvestmentTransaction.ID); err != nil {
+		t.Fatalf("DeleteTransaction() error = %v", err)
+	}
+
+	// Investment side gone.
+	if _, err := svc.repo.GetByID(result.InvestmentTransaction.ID); err == nil {
+		t.Error("investment-side transaction should have been deleted")
+	}
+
+	// Savings side gone too — no orphan with a dangling transfer_id.
+	txnRepo := transaction.NewRepository(svc.db)
+	savingsTxns, err := txnRepo.ListByAccount(savings.ID)
+	if err != nil {
+		t.Fatalf("ListByAccount() error = %v", err)
+	}
+	if len(savingsTxns) != 0 {
+		t.Errorf("expected savings account to be empty after delete, got %d txns (orphaned counterparts)", len(savingsTxns))
+	}
+}
+
+func TestService_DeleteTransaction_ShareTransferCascadesToOtherInvestmentSide(t *testing.T) {
+	env := createFullTestService(t)
+	src := createInvAccount(t, env.accountRepo, "Source Brokerage")
+	dst := createInvAccount(t, env.accountRepo, "Dest Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(src.ID, date, types.MustNewMoney("10000.00"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	totalAmt := types.MustNewMoney("5000.00")
+	if _, err := env.svc.Buy(src.ID, sec.ID, date, types.MustNewQuantity("50"), &totalAmt, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	xfer, err := env.svc.TransferShares(src.ID, dst.ID, sec.ID, date, types.MustNewQuantity("20"), "rollover", nil)
+	if err != nil {
+		t.Fatalf("TransferShares() error = %v", err)
+	}
+
+	if err := env.svc.DeleteTransaction(xfer.SourceTransaction.ID); err != nil {
+		t.Fatalf("DeleteTransaction() error = %v", err)
+	}
+
+	if _, err := env.svc.repo.GetByID(xfer.SourceTransaction.ID); err == nil {
+		t.Error("source-side share-transfer txn should have been deleted")
+	}
+	if _, err := env.svc.repo.GetByID(xfer.DestinationTransaction.ID); err == nil {
+		t.Error("destination-side share-transfer txn should have been deleted (counterpart cascade)")
+	}
+}
+
+func TestService_DeleteTransaction_NonTransfer_DeletesSingleRow(t *testing.T) {
+	// Sanity check: for non-transfer types, DeleteTransaction behaves
+	// like the underlying repo delete — one row out, no cascade lookups.
+	svc, accountRepo := createTestService(t)
+	invAcct := createInvAccount(t, accountRepo, "Brokerage")
+	date := types.NewDate(2024, time.March, 15)
+
+	dep, err := svc.Deposit(invAcct.ID, date, types.MustNewMoney("1000.00"), "")
+	if err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	if err := svc.DeleteTransaction(dep.ID); err != nil {
+		t.Fatalf("DeleteTransaction() error = %v", err)
+	}
+	if _, err := svc.repo.GetByID(dep.ID); err == nil {
+		t.Error("deposit transaction should have been deleted")
+	}
+}
+
+// =============================================================================
 // SM-090: Share transfer between investment accounts (non-lot)
 // =============================================================================
 

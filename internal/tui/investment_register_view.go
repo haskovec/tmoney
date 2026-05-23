@@ -351,14 +351,22 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 		txn := a.selectedInvestmentTransaction()
 		if txn != nil {
 			txnID := txn.ID
+			// Transfer-typed rows have a paired counterpart in another
+			// account that must be deleted with them — surface that in
+			// the confirmation prompt so the user isn't surprised when
+			// the savings (or other-investment) side also disappears.
+			prompt := fmt.Sprintf("Delete this %s transaction?", txn.Type.DisplayName())
+			if txn.TransferID.Valid {
+				prompt = fmt.Sprintf("Delete this %s transaction? Both sides will be removed.", txn.Type.DisplayName())
+			}
 			a.showConfirmDialog(
 				"Delete Transaction",
-				fmt.Sprintf("Delete this %s transaction?", txn.Type.DisplayName()),
+				prompt,
 				func() tea.Msg {
-					if a.investmentRepo == nil {
-						return errMsg{err: fmt.Errorf("investment repository not available")}
+					if a.investmentSvc == nil {
+						return errMsg{err: fmt.Errorf("investment service not available")}
 					}
-					if err := a.investmentRepo.Delete(txnID); err != nil {
+					if err := a.investmentSvc.DeleteTransaction(txnID); err != nil {
 						return errMsg{err: err}
 					}
 					return investmentTransactionDeletedMsg{}
