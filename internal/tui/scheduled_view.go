@@ -93,20 +93,28 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 			data.dueTxns = due
 			data.dueCount = len(due)
 
-			upcoming, err := a.scheduledTxnSvc.ListUpcoming(30)
+			// Every active schedule belongs on this view — the user wants to
+			// see the next occurrence of each, regardless of how far out it
+			// is. A bounded "upcoming" window hid monthly+ schedules from
+			// view right after posting, since the next occurrence was past
+			// the cutoff.
+			all, err := a.scheduledTxnSvc.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
-			// Filter out items already in due list
-			dueIDs := make(map[string]bool)
+			dueIDs := make(map[string]bool, len(due))
 			for _, d := range due {
 				dueIDs[d.ID.String()] = true
 			}
 			var filteredUpcoming []*scheduled.Transaction
-			for _, u := range upcoming {
-				if !dueIDs[u.ID.String()] {
-					filteredUpcoming = append(filteredUpcoming, u)
+			for _, u := range all {
+				if dueIDs[u.ID.String()] {
+					continue
 				}
+				if u.IsCompleted() {
+					continue
+				}
+				filteredUpcoming = append(filteredUpcoming, u)
 			}
 			data.upcomingTxns = filteredUpcoming
 
