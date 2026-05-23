@@ -63,7 +63,6 @@ func (r *Repository) Create(price *Price) error {
 
 // CreateOrUpdate inserts a new price or updates an existing one for the same security+date.
 func (r *Repository) CreateOrUpdate(price *Price) error {
-	// Check if a price already exists for this security+date
 	var existingID string
 	err := r.db.Conn().QueryRow(
 		`SELECT CAST(id AS VARCHAR) FROM security_prices WHERE CAST(security_id AS VARCHAR) = ? AND date = ?`,
@@ -71,36 +70,24 @@ func (r *Repository) CreateOrUpdate(price *Price) error {
 	).Scan(&existingID)
 
 	if err == sql.ErrNoRows {
-		// No existing price, just create
 		return r.Create(price)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to check existing price: %w", err)
 	}
 
-	// Delete existing and insert new (DuckDB UPDATE limitation)
-	_, err = r.db.Conn().Exec(
-		`DELETE FROM security_prices WHERE CAST(id AS VARCHAR) = ?`, existingID,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to delete existing price for upsert: %w", err)
-	}
-
-	query := `
-		INSERT INTO security_prices (id, security_id, date, price, source, created_at)
-		VALUES (?, CAST(? AS UUID), ?, ?, ?, ?)
-	`
-
-	_, err = r.db.Conn().Exec(query,
-		price.ID,
-		price.SecurityID.String(),
-		price.Date.Time(),
+	_, err = r.db.Conn().Exec(`
+		UPDATE security_prices SET
+			price = ?,
+			source = ?
+		WHERE CAST(id AS VARCHAR) = ?
+	`,
 		price.Price.String(),
 		price.Source.String(),
-		price.CreatedAt,
+		existingID,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert price for upsert: %w", err)
+		return fmt.Errorf("failed to update price for upsert: %w", err)
 	}
 
 	return nil
