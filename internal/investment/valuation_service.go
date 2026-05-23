@@ -15,23 +15,22 @@ import (
 //
 // The returned struct also carries the total-return breakdown
 // (RealizedGain, DividendsReceived, InterestReceived, FeesPaid,
-// TotalCostDeployed, TotalReturn, TotalReturnPct). RealizedGain and
-// DividendsReceived are summed across the per-holding values produced by
-// enrichHoldingTotalReturn; InterestReceived, FeesPaid (per-security
-// commissions + account-level fee transactions), and TotalCostDeployed are
-// pulled from authoritative account-level helpers so closed positions
-// contribute even before TR-015 wires them into the holdings list. The
-// legacy TotalGainLoss / TotalGainPct fields retain their unrealized-only
-// meaning.
+// TotalCostDeployed, TotalReturn, TotalReturnPct). InterestReceived,
+// FeesPaid (per-security commissions + account-level fee transactions),
+// and TotalCostDeployed are pulled from authoritative account-level
+// helpers. RealizedGain and DividendsReceived are summed across the
+// per-holding values produced by enrichHoldingTotalReturn, **including
+// synthesized rows for closed positions** — so an account whose positions
+// have all been sold still reports the realized gains and dividends those
+// positions produced. The legacy TotalGainLoss / TotalGainPct fields
+// retain their unrealized-only meaning.
 //
-// When opts.IncludeClosed is true, Holdings additionally contains
+// When opts.IncludeClosed is true, the returned Holdings slice contains
 // synthesized rows for securities the account has ever held but no longer
 // holds (Shares == 0, MarketValue / CostBasis zero, IsClosed = true) with
-// total-return components populated from the ledger. Closed-row totals are
-// already reflected in the account-level RealizedGain / DividendsReceived
-// because those account-level numbers come from authoritative ledger
-// helpers (not from summing per-holding values), so adding closed rows to
-// the Holdings slice does not change the account-level totals.
+// total-return components populated from the ledger. When false, those
+// rows are filtered out of the returned slice, but their realized gain
+// and dividends are still counted in the account-level totals.
 //
 // HasClosedPositions is set whenever the account has at least one
 // fully-sold security, regardless of opts.IncludeClosed — it advises the
@@ -47,7 +46,11 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts 
 		return nil, fmt.Errorf("failed to get cash balance: %w", err)
 	}
 
-	holdings, err := s.getHoldings(acct, asOf, opts)
+	// Always pull the full holdings list (open + closed) for accumulation
+	// so closed positions contribute their realized gain and dividends to
+	// the account-level totals. Filter to open-only for the returned slice
+	// when the caller didn't ask for closed.
+	holdingsAll, err := s.getHoldings(acct, asOf, ValuationOptions{IncludeClosed: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get holdings: %w", err)
 	}
@@ -56,11 +59,21 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts 
 	totalCostBasis := types.ZeroMoney
 	realizedGain := types.ZeroMoney
 	dividendsReceived := types.ZeroMoney
-	for _, h := range holdings {
+	for _, h := range holdingsAll {
 		marketValue = marketValue.Add(h.MarketValue)
 		totalCostBasis = totalCostBasis.Add(h.CostBasis)
 		realizedGain = realizedGain.Add(h.RealizedGain)
 		dividendsReceived = dividendsReceived.Add(h.DividendsReceived)
+	}
+
+	holdings := holdingsAll
+	if !opts.IncludeClosed {
+		holdings = make([]Holding, 0, len(holdingsAll))
+		for _, h := range holdingsAll {
+			if !h.IsClosed {
+				holdings = append(holdings, h)
+			}
+		}
 	}
 
 	totalValue := cashBalance.Add(marketValue)

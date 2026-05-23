@@ -2141,3 +2141,61 @@ func TestAccountValuation_HasClosedPositionsFlag(t *testing.T) {
 		}
 	})
 }
+
+// Account-level RealizedGain and DividendsReceived must include the
+// contribution from securities the account no longer holds, regardless of
+// opts.IncludeClosed. Without this, an account whose positions have all
+// been sold (and which paid dividends along the way) would render the
+// portfolio summary's Realized / Div / Total return as $0 even though the
+// ledger records the gains.
+func TestGetAccountValuation_ClosedPositionsContributeToTotals(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	aapl := createSec(t, env.secRepo, "AAPL")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+	d3 := types.NewDate(2024, time.May, 1)
+	asOf := types.NewDate(2024, time.June, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// Buy 10 @ $100, get a $75 dividend, sell all 10 @ $120 → fully closed.
+	buyAAPL := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"),
+		&buyAAPL, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(AAPL) error = %v", err)
+	}
+	if _, err := env.svc.Dividend(acct.ID, aapl.ID, d2, types.MustNewMoney("75"), ""); err != nil {
+		t.Fatalf("Dividend(AAPL) error = %v", err)
+	}
+	sellAAPL := types.MustNewMoney("1200")
+	if _, err := env.svc.Sell(acct.ID, aapl.ID, d3, types.MustNewQuantity("10"),
+		&sellAAPL, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(AAPL) error = %v", err)
+	}
+
+	check := func(t *testing.T, opts ValuationOptions, label string) {
+		t.Helper()
+		val, err := env.svc.GetAccountValuation(acct.ID, asOf, opts)
+		if err != nil {
+			t.Fatalf("[%s] GetAccountValuation() error = %v", label, err)
+		}
+		if val.RealizedGain.String() != "200" {
+			t.Errorf("[%s] Expected RealizedGain '200' (1200 − 1000), got %q", label, val.RealizedGain.String())
+		}
+		if val.DividendsReceived.String() != "75" {
+			t.Errorf("[%s] Expected DividendsReceived '75', got %q", label, val.DividendsReceived.String())
+		}
+		if val.TotalReturn.String() != "275" {
+			t.Errorf("[%s] Expected TotalReturn '275' (0 unreal + 200 real + 75 div), got %q", label, val.TotalReturn.String())
+		}
+	}
+
+	t.Run("IncludeClosed=false", func(t *testing.T) {
+		check(t, ValuationOptions{}, "IncludeClosed=false")
+	})
+	t.Run("IncludeClosed=true", func(t *testing.T) {
+		check(t, ValuationOptions{IncludeClosed: true}, "IncludeClosed=true")
+	})
+}
