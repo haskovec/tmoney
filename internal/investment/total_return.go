@@ -203,10 +203,12 @@ func (s *Service) replayRealizedGain(accountID, securityID types.ID, txns []*Tra
 // realizedGain is the dispatcher entry point that valuation code calls
 // to obtain realized gain for an (account, security) pair. The bool
 // return ("unavailable") is true when a real number cannot be produced
-// — currently only the non-lot path in the presence of any corporate
-// action, since the ledger reflects post-action share counts that the
-// chronological replay is unaware of. Callers surface this as
-// Holding.RealizedGainUnavailable.
+// — currently only the non-lot path when *this* security has any
+// corporate action on file, since the ledger reflects post-action share
+// counts that the chronological replay is unaware of. A corporate
+// action on an unrelated security does not affect this security's
+// replay, so the check is scoped to ListBySecurity rather than CountAll.
+// Callers surface this as Holding.RealizedGainUnavailable.
 //
 // The lot-tracked path is robust to corporate actions because the
 // corporate-action service mutates lots in place and transaction_lots
@@ -217,11 +219,11 @@ func (s *Service) realizedGain(accountID, securityID types.ID, trackLots bool) (
 		gain, err := s.realizedGainLotTracked(accountID, securityID)
 		return gain, false, err
 	}
-	n, err := s.corporateActionRepo.CountAll()
+	actions, err := s.corporateActionRepo.ListBySecurity(securityID)
 	if err != nil {
-		return types.ZeroMoney, false, fmt.Errorf("failed to count corporate actions: %w", err)
+		return types.ZeroMoney, false, fmt.Errorf("failed to list corporate actions for security: %w", err)
 	}
-	if n > 0 {
+	if len(actions) > 0 {
 		return types.ZeroMoney, true, nil
 	}
 	gain, err := s.realizedGainNonLot(accountID, securityID)

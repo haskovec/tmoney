@@ -2199,3 +2199,147 @@ func TestGetAccountValuation_ClosedPositionsContributeToTotals(t *testing.T) {
 		check(t, ValuationOptions{IncludeClosed: true}, "IncludeClosed=true")
 	})
 }
+
+// Reported: lot-tracked account with one fully-closed position (buy 1
+// share, sell 1 share at a loss) reported $0 realized at the account
+// level instead of the actual loss. The portfolio also has other open
+// positions to ensure the regression isn't masked by an empty-list
+// shortcut.
+func TestGetAccountValuation_FullyClosedLotTrackedPosition_RealizesLoss(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Wealthfront IRA")
+	schf := createSec(t, env.secRepo, "SCHF")
+	other := createSec(t, env.secRepo, "VTI")
+	d1 := types.NewDate(2019, time.August, 8)
+	d2 := types.NewDate(2019, time.September, 3)
+	asOf := types.NewDate(2019, time.December, 31)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("1000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// Buy SCHF 1 @ $30.95
+	buySCHF := types.MustNewMoney("30.95")
+	if _, err := env.svc.Buy(acct.ID, schf.ID, d1, types.MustNewQuantity("1"),
+		&buySCHF, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(SCHF) error = %v", err)
+	}
+	// Buy VTI 1 @ $100 (stays open)
+	buyVTI := types.MustNewMoney("100")
+	if _, err := env.svc.Buy(acct.ID, other.ID, d1, types.MustNewQuantity("1"),
+		&buyVTI, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(VTI) error = %v", err)
+	}
+
+	// Sell all SCHF @ $30.66 — fully closes the position at a loss
+	schfLots, err := env.lotRepo.ListByAccountAndSecurity(acct.ID, schf.ID, false)
+	if err != nil {
+		t.Fatalf("ListByAccountAndSecurity() error = %v", err)
+	}
+	if len(schfLots) != 1 {
+		t.Fatalf("expected 1 SCHF lot, got %d", len(schfLots))
+	}
+	sellSCHF := types.MustNewMoney("30.66")
+	allocs := []SellLotAllocation{{LotID: schfLots[0].ID, Shares: types.MustNewQuantity("1")}}
+	if _, err := env.svc.Sell(acct.ID, schf.ID, d2, types.MustNewQuantity("1"),
+		&sellSCHF, nil, types.ZeroMoney, "", allocs); err != nil {
+		t.Fatalf("Sell(SCHF) error = %v", err)
+	}
+
+	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetAccountValuation() error = %v", err)
+	}
+
+	if val.RealizedGain.String() != "-0.29" {
+		t.Errorf("Expected account RealizedGain '-0.29' (30.66 − 30.95), got %q", val.RealizedGain.String())
+	}
+}
+
+// Reported: a non-lot account whose realized-gain path was incorrectly
+// gated on the GLOBAL corporate-action count — so a stock split on any
+// unrelated security (e.g. AAPL in some other account) made every other
+// security in this account report "unavailable" → $0 realized at the
+// account level. The unavailable gate must be scoped to *this* security.
+func TestRealizedGain_NonLot_CorporateActionOnUnrelatedSecurity_StillComputed(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Wealthfront IRA")
+	schf := createSec(t, env.secRepo, "SCHF")
+	aapl := createSec(t, env.secRepo, "AAPL") // gets a corp action; unrelated to SCHF
+	d1 := types.NewDate(2019, time.August, 8)
+	d2 := types.NewDate(2019, time.September, 3)
+	dSplit := types.NewDate(2020, time.August, 31)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("1000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// SCHF: buy 1 @ $30.95, sell 1 @ $30.66 (no corp action on SCHF).
+	buySCHF := types.MustNewMoney("30.95")
+	if _, err := env.svc.Buy(acct.ID, schf.ID, d1, types.MustNewQuantity("1"),
+		&buySCHF, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(SCHF) error = %v", err)
+	}
+	sellSCHF := types.MustNewMoney("30.66")
+	if _, err := env.svc.Sell(acct.ID, schf.ID, d2, types.MustNewQuantity("1"),
+		&sellSCHF, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(SCHF) error = %v", err)
+	}
+
+	// Apply a stock split to AAPL (unrelated security). Pre-fix, this
+	// would make SCHF's non-lot realized return "unavailable".
+	caSvc := NewCorporateActionService(env.caRepo, env.lotRepo, env.positionRepo, env.priceRepo, env.invRepo, env.secRepo, env.db)
+	if _, err := caSvc.Split(aapl.ID, dSplit, SplitParams{Numerator: 4, Denominator: 1}); err != nil {
+		t.Fatalf("Split(AAPL) error = %v", err)
+	}
+
+	got, unavailable, err := env.svc.realizedGain(acct.ID, schf.ID, false)
+	if err != nil {
+		t.Fatalf("realizedGain(SCHF) error = %v", err)
+	}
+	if unavailable {
+		t.Errorf("Expected unavailable=false for SCHF (no corp action on this security)")
+	}
+	if got.String() != "-0.29" {
+		t.Errorf("Expected SCHF realized '-0.29', got %q", got.String())
+	}
+}
+
+// Same scenario but on a non-lot-tracked account. With no corporate
+// actions in the database, the non-lot replay path should yield the
+// same -0.29 realized loss.
+func TestGetAccountValuation_FullyClosedNonLotPosition_RealizesLoss(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Wealthfront IRA")
+	schf := createSec(t, env.secRepo, "SCHF")
+	other := createSec(t, env.secRepo, "VTI")
+	d1 := types.NewDate(2019, time.August, 8)
+	d2 := types.NewDate(2019, time.September, 3)
+	asOf := types.NewDate(2019, time.December, 31)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("1000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buySCHF := types.MustNewMoney("30.95")
+	if _, err := env.svc.Buy(acct.ID, schf.ID, d1, types.MustNewQuantity("1"),
+		&buySCHF, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(SCHF) error = %v", err)
+	}
+	buyVTI := types.MustNewMoney("100")
+	if _, err := env.svc.Buy(acct.ID, other.ID, d1, types.MustNewQuantity("1"),
+		&buyVTI, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(VTI) error = %v", err)
+	}
+	sellSCHF := types.MustNewMoney("30.66")
+	if _, err := env.svc.Sell(acct.ID, schf.ID, d2, types.MustNewQuantity("1"),
+		&sellSCHF, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(SCHF) error = %v", err)
+	}
+
+	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetAccountValuation() error = %v", err)
+	}
+
+	if val.RealizedGain.String() != "-0.29" {
+		t.Errorf("Expected account RealizedGain '-0.29' (30.66 − 30.95), got %q", val.RealizedGain.String())
+	}
+}
