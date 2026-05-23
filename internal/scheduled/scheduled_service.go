@@ -83,6 +83,15 @@ func (s *Service) Update(st *Transaction) error {
 	if err := s.validateScheduledSplits(st); err != nil {
 		return err
 	}
+	// NextDate is the date of the next pending occurrence; it must never
+	// precede StartDate. When the user shifts StartDate forward past the
+	// current NextDate, advance NextDate with it so the schedule list and
+	// due-detection see the new anchor. Backward StartDate shifts leave
+	// NextDate alone — an in-progress schedule shouldn't roll back to its
+	// origin just because the user corrected the recorded anchor.
+	if st.NextDate.Before(st.StartDate) {
+		st.NextDate = st.StartDate
+	}
 	// Clear existing children first: the parent's DELETE+INSERT (under the
 	// hood of repo.Update) would otherwise trip the FK from
 	// scheduled_split_items.

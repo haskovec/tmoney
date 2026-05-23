@@ -156,6 +156,75 @@ func TestService_Update(t *testing.T) {
 			t.Error("Update() expected error for zero interval")
 		}
 	})
+
+	t.Run("moves NextDate forward when StartDate is edited past NextDate", func(t *testing.T) {
+		// User scenario: created a schedule with a wrong (earlier) start date,
+		// re-opens edit and moves StartDate forward. NextDate must follow so
+		// the schedule list (ordered by NextDate) shows the new date and the
+		// "due" check stops firing on the stale older date.
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		amount, _ := types.NewMoney("-50.00")
+		original := types.MustParseDate("2026-05-01")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, original, amount)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		// Sanity: NewTransactionWithAmount seeds NextDate=StartDate.
+		if !st.NextDate.Equal(original) {
+			t.Fatalf("setup: NextDate=%s, want %s", st.NextDate, original)
+		}
+
+		later := types.MustParseDate("2026-06-15")
+		st.StartDate = later
+
+		if err := svc.Update(st); err != nil {
+			t.Fatalf("Update() error = %v", err)
+		}
+
+		retrieved, _ := svc.GetByID(st.ID)
+		if !retrieved.StartDate.Equal(later) {
+			t.Errorf("StartDate=%s, want %s", retrieved.StartDate, later)
+		}
+		if !retrieved.NextDate.Equal(later) {
+			t.Errorf("NextDate=%s, want %s (NextDate should advance with StartDate)", retrieved.NextDate, later)
+		}
+	})
+
+	t.Run("preserves NextDate when StartDate is edited backward of NextDate", func(t *testing.T) {
+		// An in-progress schedule may have NextDate ahead of StartDate after
+		// posts. Editing StartDate backward (e.g. correcting the recorded
+		// anchor) must not roll the schedule's position back to the origin.
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		amount, _ := types.NewMoney("-50.00")
+		startDate := types.MustParseDate("2026-05-01")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, startDate, amount)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		// Simulate an in-progress schedule whose NextDate has been advanced by
+		// posts beyond StartDate.
+		advanced := types.MustParseDate("2026-07-01")
+		st.NextDate = advanced
+		if err := svc.Update(st); err != nil {
+			t.Fatalf("Update() error = %v", err)
+		}
+
+		// Now the user shifts StartDate backward.
+		earlier := types.MustParseDate("2026-04-15")
+		st.StartDate = earlier
+		if err := svc.Update(st); err != nil {
+			t.Fatalf("Update() error = %v", err)
+		}
+
+		retrieved, _ := svc.GetByID(st.ID)
+		if !retrieved.NextDate.Equal(advanced) {
+			t.Errorf("NextDate=%s, want %s (NextDate should be preserved when StartDate moves backward)", retrieved.NextDate, advanced)
+		}
+	})
 }
 
 func TestService_Delete(t *testing.T) {
