@@ -207,11 +207,9 @@ func (r *Repository) List(filter Filter) ([]*Security, error) {
 }
 
 // Update updates an existing security in the database.
-// Uses DELETE + INSERT pattern due to DuckDB limitations with UPDATE on indexed tables.
 func (r *Repository) Update(security *Security) error {
 	security.Touch()
 
-	// Check for duplicate ticker+currency (excluding current security)
 	var exists bool
 	err := r.db.Conn().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM securities WHERE ticker = ? AND currency = ? AND CAST(id AS VARCHAR) != ?)`,
@@ -224,31 +222,18 @@ func (r *Repository) Update(security *Security) error {
 		return &dberrors.DuplicateError{Entity: "security", Field: "ticker+currency", Value: security.Ticker + "+" + security.Currency}
 	}
 
-	// Check if security exists
-	var count int
-	err = r.db.Conn().QueryRow(`SELECT COUNT(*) FROM securities WHERE CAST(id AS VARCHAR) = ?`, security.ID.String()).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("failed to check security exists: %w", err)
-	}
-	if count == 0 {
-		return &dberrors.NotFoundError{Entity: "security", ID: security.ID.String()}
-	}
-
-	// Delete the existing record
-	_, err = r.db.Conn().Exec(`DELETE FROM securities WHERE CAST(id AS VARCHAR) = ?`, security.ID.String())
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
-	}
-
-	// Insert the updated record
-	insertQuery := `
-		INSERT INTO securities (
-			id, ticker, name, security_type, asset_class, currency,
-			exchange, hidden, created_at, updated_at
-		) VALUES (CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	_, err = r.db.Conn().Exec(insertQuery,
-		security.ID.String(),
+	result, err := r.db.Conn().Exec(`
+		UPDATE securities SET
+			ticker = ?,
+			name = ?,
+			security_type = ?,
+			asset_class = ?,
+			currency = ?,
+			exchange = ?,
+			hidden = ?,
+			updated_at = ?
+		WHERE CAST(id AS VARCHAR) = ?
+	`,
 		security.Ticker,
 		security.Name,
 		security.SecurityType.String(),
@@ -256,11 +241,19 @@ func (r *Repository) Update(security *Security) error {
 		security.Currency,
 		dbutil.NullString(security.Exchange),
 		security.Hidden,
-		security.CreatedAt.Time(),
 		security.UpdatedAt.Time(),
+		security.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update security: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "security", ID: security.ID.String()}
 	}
 
 	return nil
