@@ -1057,3 +1057,249 @@ func TestApp_ShowVoidConfirmation_NilGuards(t *testing.T) {
 		t.Error("showVoidConfirmation() should return nil when register is nil")
 	}
 }
+
+func TestApp_ShowDeleteConfirmation_AlreadyVoid(t *testing.T) {
+	accountID := types.NewID()
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		transactionSvc: &transaction.Service{},
+		register: &registerData{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
+				{
+					BaseModel: types.BaseModel{ID: types.NewID()},
+					AccountID: accountID,
+					Date:      types.Today(),
+					Amount:    types.ZeroMoney,
+					Status:    transaction.StatusVoid,
+				},
+			},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	_, cmd := app.showDeleteConfirmation()
+
+	if cmd != nil {
+		t.Error("showDeleteConfirmation() should return nil cmd for void transaction")
+	}
+
+	notifications := app.statusbar.Notifications()
+	if len(notifications) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(notifications))
+	}
+	if !contains(notifications[0].Text, "void") {
+		t.Errorf("notification = %q, should mention void", notifications[0].Text)
+	}
+	if app.confirmDialog != nil {
+		t.Error("confirmDialog should be nil for void transaction")
+	}
+}
+
+func TestApp_ShowDeleteConfirmation_ReconciledBlocked(t *testing.T) {
+	accountID := types.NewID()
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		transactionSvc: &transaction.Service{},
+		register: &registerData{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
+				{
+					BaseModel: types.BaseModel{ID: types.NewID()},
+					AccountID: accountID,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-50"),
+					Status:    transaction.StatusReconciled,
+				},
+			},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	_, cmd := app.showDeleteConfirmation()
+
+	if cmd != nil {
+		t.Error("showDeleteConfirmation() should return nil cmd for reconciled transaction")
+	}
+
+	notifications := app.statusbar.Notifications()
+	if len(notifications) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(notifications))
+	}
+	if !contains(notifications[0].Text, "reconciled") {
+		t.Errorf("notification = %q, should mention reconciled", notifications[0].Text)
+	}
+	if app.confirmDialog != nil {
+		t.Error("confirmDialog should be nil for reconciled transaction")
+	}
+}
+
+func TestApp_ShowDeleteConfirmation_ShowsDialog(t *testing.T) {
+	accountID := types.NewID()
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		transactionSvc: &transaction.Service{},
+		register: &registerData{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
+				{
+					BaseModel: types.BaseModel{ID: types.NewID()},
+					AccountID: accountID,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-50"),
+					Status:    transaction.StatusCleared,
+				},
+			},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	_, _ = app.showDeleteConfirmation()
+
+	if app.confirmDialog == nil {
+		t.Fatal("confirmDialog should be set after showDeleteConfirmation()")
+	}
+	if !app.confirmDialog.IsVisible() {
+		t.Error("confirmDialog should be visible")
+	}
+	if app.confirmDialog.Title() != "Delete Transaction" {
+		t.Errorf("dialog title = %q, want %q", app.confirmDialog.Title(), "Delete Transaction")
+	}
+	if app.confirmAction == nil {
+		t.Error("confirmAction should be set")
+	}
+}
+
+func TestApp_ShowDeleteConfirmation_TransferMessage(t *testing.T) {
+	accountID := types.NewID()
+	transferAccountID := types.NewID()
+	transferPairID := types.NewID()
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        NewSidebar(),
+		transactionSvc: &transaction.Service{},
+		register: &registerData{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
+				{
+					BaseModel:         types.BaseModel{ID: types.NewID()},
+					AccountID:         accountID,
+					TransferID:        types.NullableID{ID: transferPairID, Valid: true},
+					TransferAccountID: types.NullableID{ID: transferAccountID, Valid: true},
+					Date:              types.Today(),
+					Amount:            types.MustNewMoney("-50"),
+					Status:            transaction.StatusCleared,
+				},
+			},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  map[types.ID]string{transferAccountID: "Savings"},
+		},
+	}
+
+	app.buildRegisterTable()
+	_, _ = app.showDeleteConfirmation()
+
+	if app.confirmDialog == nil {
+		t.Fatal("confirmDialog should be set")
+	}
+	errorMsg := app.confirmDialog.ErrorMsg()
+	if !contains(errorMsg, "transfer") {
+		t.Errorf("dialog message = %q, should mention 'transfer'", errorMsg)
+	}
+	if !contains(errorMsg, "Both sides") {
+		t.Errorf("dialog message = %q, should mention 'Both sides'", errorMsg)
+	}
+}
+
+func TestApp_DeleteKey_InRegisterView(t *testing.T) {
+	accountID := types.NewID()
+
+	sidebar := NewSidebar()
+	sidebar.SetFocused(false)
+
+	app := &App{
+		currentView:    ViewRegister,
+		keys:           defaultKeyMap(),
+		statusbar:      NewStatusBar(),
+		sidebar:        sidebar,
+		transactionSvc: &transaction.Service{},
+		register: &registerData{
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			transactions: []*transaction.Transaction{
+				{
+					BaseModel: types.BaseModel{ID: types.NewID()},
+					AccountID: accountID,
+					Date:      types.Today(),
+					Amount:    types.MustNewMoney("-25"),
+					Status:    transaction.StatusUncleared,
+				},
+			},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+
+	msg := tea.KeyPressMsg{Code: 'd', Text: "d"}
+	_, _ = app.handleRegisterKeys(msg)
+
+	if app.confirmDialog == nil {
+		t.Fatal("pressing 'd' should show confirmation dialog")
+	}
+	if !app.confirmDialog.IsVisible() {
+		t.Error("confirmation dialog should be visible")
+	}
+	if app.confirmDialog.Title() != "Delete Transaction" {
+		t.Errorf("dialog title = %q, want %q", app.confirmDialog.Title(), "Delete Transaction")
+	}
+}
+
+func TestApp_ShowDeleteConfirmation_NilGuards(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		statusbar:   NewStatusBar(),
+	}
+	_, cmd := app.showDeleteConfirmation()
+	if cmd != nil {
+		t.Error("showDeleteConfirmation() should return nil when table is nil")
+	}
+
+	app.table = NewTable([]Column{{Header: "A", Width: 10}})
+	_, cmd = app.showDeleteConfirmation()
+	if cmd != nil {
+		t.Error("showDeleteConfirmation() should return nil when register is nil")
+	}
+}

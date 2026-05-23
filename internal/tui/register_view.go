@@ -141,6 +141,8 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.toggleTransactionStatus()
 	case msg.String() == "v":
 		return a.showVoidConfirmation()
+	case key.Matches(msg, a.keys.Delete):
+		return a.showDeleteConfirmation()
 	case msg.String() == "r":
 		a.showStartReconciliationDialog()
 		return a, nil
@@ -294,6 +296,64 @@ func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
 			cmd = undo.NewVoidTransferCommand(a.transactionSvc, txnID)
 		} else {
 			cmd = undo.NewVoidTransactionCommand(a.transactionSvc, txnID)
+		}
+		if err := a.undoManager.Execute(cmd); err != nil {
+			return errMsg{err: err}
+		}
+		return a.loadRegisterData(accountID)()
+	})
+
+	return a, nil
+}
+
+// showDeleteConfirmation shows a confirmation dialog before hard-deleting the
+// selected transaction. Delete is distinct from void: it removes the row(s)
+// entirely rather than zeroing them out. Runs through the undo manager so
+// Ctrl+Z restores the deletion.
+func (a *App) showDeleteConfirmation() (tea.Model, tea.Cmd) {
+	if a.table == nil || a.register == nil || a.transactionSvc == nil {
+		return a, nil
+	}
+
+	cursor := a.table.Cursor()
+	if cursor < 0 || cursor >= len(a.register.transactions) {
+		return a, nil
+	}
+
+	txn := a.register.transactions[cursor]
+
+	// Cannot delete void transactions (Service.Delete rejects with IsVoidError).
+	// Surface a status-bar notification before opening the dialog the user can't complete.
+	if txn.IsVoid() {
+		a.statusbar.AddNotification("Cannot delete void transaction", NotificationAlert)
+		return a, nil
+	}
+
+	// Cannot delete reconciled transactions (Service.Delete rejects with IsReconciledError).
+	if txn.IsReconciled() {
+		a.statusbar.AddNotification("Cannot delete reconciled transaction (un-reconcile first)", NotificationAlert)
+		return a, nil
+	}
+
+	msg := "Delete this transaction? This cannot be undone except via Ctrl+Z."
+	if txn.IsTransfer() {
+		msg = "Delete this transfer? Both sides will be removed."
+	}
+
+	accountID := a.sidebar.SelectedAccountID()
+	txnID := txn.ID
+	isTransfer := txn.IsTransfer()
+
+	a.showConfirmDialog("Delete Transaction", msg, func() tea.Msg {
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
+		}
+
+		var cmd undo.Command
+		if isTransfer {
+			cmd = undo.NewDeleteTransferCommand(a.transactionSvc, txn.TransferID.ID)
+		} else {
+			cmd = undo.NewDeleteTransactionCommand(a.transactionSvc, txnID)
 		}
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
