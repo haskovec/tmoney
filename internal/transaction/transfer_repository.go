@@ -35,10 +35,10 @@ func (r *TransferRepository) Create(pair *TransferPair) error {
 		return fmt.Errorf("failed to create from transaction: %w", err)
 	}
 
-	// Create the to transaction
+	// Create the to transaction. If this fails, manually unwind the from
+	// transaction — the two Create calls are not wrapped in a SQL transaction,
+	// so partial state is otherwise possible.
 	if err := r.txnRepo.Create(pair.ToTransaction); err != nil {
-		// Note: Due to DuckDB limitations, we can't use transactions,
-		// so if this fails, we need to clean up the from transaction
 		_ = r.txnRepo.Delete(pair.FromTransaction.ID)
 		return fmt.Errorf("failed to create to transaction: %w", err)
 	}

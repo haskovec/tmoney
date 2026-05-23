@@ -175,24 +175,9 @@ func (r *SplitRepository) ListByTransaction(transactionID types.ID) ([]*Split, e
 }
 
 // Update updates an existing split in the database.
-// Note: Uses DELETE + INSERT (non-transactional) due to DuckDB limitations.
 func (r *SplitRepository) Update(split *Split) error {
-	// Check if split exists
-	var count int
-	err := r.db.Conn().QueryRow(
-		`SELECT COUNT(*) FROM transaction_splits WHERE CAST(id AS VARCHAR) = ?`,
-		split.ID.String(),
-	).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("failed to check split exists: %w", err)
-	}
-	if count == 0 {
-		return &dberrors.NotFoundError{Entity: "split", ID: split.ID.String()}
-	}
-
-	// Verify transaction exists
 	var txnExists bool
-	err = r.db.Conn().QueryRow(
+	err := r.db.Conn().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM transactions WHERE CAST(id AS VARCHAR) = ?)`,
 		split.TransactionID.String(),
 	).Scan(&txnExists)
@@ -207,18 +192,9 @@ func (r *SplitRepository) Update(split *Split) error {
 		return err
 	}
 
-	// Delete the existing record
-	_, err = r.db.Conn().Exec(
-		`DELETE FROM transaction_splits WHERE CAST(id AS VARCHAR) = ?`,
-		split.ID.String(),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
-	}
-
-	// Insert the updated record. category_id, transfer_account_id, and
-	// transfer_id are written as either CAST(? AS UUID) or plain NULL so
-	// DuckDB accepts NULLs without a type assertion on the bind value.
+	// category_id, transfer_account_id, and transfer_id are written as
+	// either CAST(? AS UUID) or plain NULL so DuckDB accepts NULLs without
+	// a type assertion on the bind value.
 	catCast := "CAST(? AS UUID)"
 	if split.CategoryID.IsNil() {
 		catCast = "?"
@@ -226,15 +202,19 @@ func (r *SplitRepository) Update(split *Split) error {
 	xferAcctCast := dbutil.NullUUIDCast(split.TransferAccountID)
 	xferIDCast := dbutil.NullUUIDCast(split.TransferID)
 
-	insertQuery := fmt.Sprintf(`
-		INSERT INTO transaction_splits (
-			id, transaction_id, category_id, transfer_account_id, transfer_id,
-			amount, memo, paycheck_section, created_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), %s, %s, %s, ?, ?, ?, ?)
+	query := fmt.Sprintf(`
+		UPDATE transaction_splits SET
+			transaction_id = CAST(? AS UUID),
+			category_id = %s,
+			transfer_account_id = %s,
+			transfer_id = %s,
+			amount = ?,
+			memo = ?,
+			paycheck_section = ?
+		WHERE CAST(id AS VARCHAR) = ?
 	`, catCast, xferAcctCast, xferIDCast)
 
-	_, err = r.db.Conn().Exec(insertQuery,
-		split.ID.String(),
+	result, err := r.db.Conn().Exec(query,
 		split.TransactionID.String(),
 		categoryStringArg(split),
 		dbutil.NullID(split.TransferAccountID),
@@ -242,10 +222,18 @@ func (r *SplitRepository) Update(split *Split) error {
 		split.Amount.String(),
 		dbutil.NullString(split.Memo),
 		dbutil.NullString(split.PaycheckSection),
-		split.CreatedAt.Time(),
+		split.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update split: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "split", ID: split.ID.String()}
 	}
 
 	return nil
