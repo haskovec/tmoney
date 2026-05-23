@@ -104,44 +104,42 @@ func (r *LotRepository) ListByAccountAndSecurity(accountID, securityID types.ID,
 func (r *LotRepository) Update(lot *Lot) error {
 	lot.Touch()
 
-	var count int
-	err := r.db.Conn().QueryRow(
-		`SELECT COUNT(*) FROM investment_lots WHERE CAST(id AS VARCHAR) = ?`, lot.ID.String(),
-	).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("failed to check lot exists: %w", err)
-	}
-	if count == 0 {
-		return &dberrors.NotFoundError{Entity: "lot", ID: lot.ID.String()}
-	}
-
-	_, err = r.db.Conn().Exec(`DELETE FROM investment_lots WHERE CAST(id AS VARCHAR) = ?`, lot.ID.String())
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
-	}
-
-	query := `
-		INSERT INTO investment_lots (
-			id, account_id, security_id, shares, original_shares, cost_per_share,
-			purchase_date, source_transaction_id, closed, created_at, updated_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?, ?, CAST(? AS UUID), ?, ?, ?)
-	`
-	_, err = r.db.Conn().Exec(query,
-		lot.ID.String(), lot.AccountID.String(), lot.SecurityID.String(),
+	result, err := r.db.Conn().Exec(`
+		UPDATE investment_lots SET
+			account_id = CAST(? AS UUID),
+			security_id = CAST(? AS UUID),
+			shares = ?,
+			original_shares = ?,
+			cost_per_share = ?,
+			purchase_date = ?,
+			source_transaction_id = CAST(? AS UUID),
+			closed = ?,
+			updated_at = ?
+		WHERE CAST(id AS VARCHAR) = ?
+	`,
+		lot.AccountID.String(), lot.SecurityID.String(),
 		lot.Shares.String(), lot.OriginalShares.String(), lot.CostPerShare.String(),
 		lot.PurchaseDate.Time(), lot.SourceTransactionID.String(),
-		lot.Closed, lot.CreatedAt.Time(), lot.UpdatedAt.Time(),
+		lot.Closed, lot.UpdatedAt.Time(),
+		lot.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update lot: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "lot", ID: lot.ID.String()}
 	}
 	return nil
 }
 
 // UpdateSharesAndClosed updates only the shares and closed fields of an
-// existing lot using a real SQL UPDATE. This avoids the DELETE+INSERT
-// pattern of Update, which is blocked by foreign-key references from
-// investment_transaction_lots.
+// existing lot. Narrow-write helper used by sell/edit and the rebuild
+// tool to avoid a read-modify-write round trip through Update.
 func (r *LotRepository) UpdateSharesAndClosed(id types.ID, shares types.Quantity, closed bool) error {
 	res, err := r.db.Conn().Exec(
 		`UPDATE investment_lots SET shares = ?, closed = ?, updated_at = ? WHERE CAST(id AS VARCHAR) = ?`,

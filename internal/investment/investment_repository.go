@@ -187,46 +187,28 @@ func (r *Repository) EarliestSinceDate(securityID types.ID, since types.Date) (*
 }
 
 // Update updates an existing investment transaction in the database.
-// Uses DELETE + INSERT pattern due to DuckDB limitations with UPDATE on indexed tables.
 func (r *Repository) Update(txn *Transaction) error {
 	txn.Touch()
 
-	// Check if transaction exists
-	var count int
-	err := r.db.Conn().QueryRow(
-		`SELECT COUNT(*) FROM investment_transactions WHERE CAST(id AS VARCHAR) = ?`,
-		txn.ID.String(),
-	).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("failed to check investment transaction exists: %w", err)
-	}
-	if count == 0 {
-		return &dberrors.NotFoundError{Entity: "investment_transaction", ID: txn.ID.String()}
-	}
-
-	// Delete the existing record
-	_, err = r.db.Conn().Exec(
-		`DELETE FROM investment_transactions WHERE CAST(id AS VARCHAR) = ?`,
-		txn.ID.String(),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
-	}
-
-	// Insert the updated record
 	query := `
-		INSERT INTO investment_transactions (
-			id, account_id, date, transaction_type, security_id, shares,
-			price_per_share, total_amount, commission, memo, status,
-			transfer_id, transfer_account_id,
-			created_at, updated_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ` + dbutil.NullUUIDCast(txn.SecurityID) + `, ?, ?, ?, ?, ?, ?,
-			` + dbutil.NullUUIDCast(txn.TransferID) + `, ` + dbutil.NullUUIDCast(txn.TransferAccountID) + `,
-			?, ?)
+		UPDATE investment_transactions SET
+			account_id = CAST(? AS UUID),
+			date = ?,
+			transaction_type = ?,
+			security_id = ` + dbutil.NullUUIDCast(txn.SecurityID) + `,
+			shares = ?,
+			price_per_share = ?,
+			total_amount = ?,
+			commission = ?,
+			memo = ?,
+			status = ?,
+			transfer_id = ` + dbutil.NullUUIDCast(txn.TransferID) + `,
+			transfer_account_id = ` + dbutil.NullUUIDCast(txn.TransferAccountID) + `,
+			updated_at = ?
+		WHERE CAST(id AS VARCHAR) = ?
 	`
 
-	_, err = r.db.Conn().Exec(query,
-		txn.ID.String(),
+	result, err := r.db.Conn().Exec(query,
 		txn.AccountID.String(),
 		txn.Date.Time(),
 		txn.Type.String(),
@@ -239,11 +221,19 @@ func (r *Repository) Update(txn *Transaction) error {
 		txn.Status.String(),
 		dbutil.NullID(txn.TransferID),
 		dbutil.NullID(txn.TransferAccountID),
-		txn.CreatedAt.Time(),
 		txn.UpdatedAt.Time(),
+		txn.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update investment transaction: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "investment_transaction", ID: txn.ID.String()}
 	}
 
 	return nil
