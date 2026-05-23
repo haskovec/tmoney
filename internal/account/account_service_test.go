@@ -233,6 +233,52 @@ func TestService_Update(t *testing.T) {
 			t.Errorf("Expected ServiceValidationError, got %T", err)
 		}
 	})
+
+	t.Run("renames account that has transactions", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database)
+
+		account := NewAccount("Old Name", TypeChecking, "USD", types.MustNewMoney("100.00"), types.Today())
+		if err := svc.Create(account); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		_, err := database.Conn().Exec(`
+			INSERT INTO transactions (id, account_id, date, amount, status)
+			VALUES
+				(gen_random_uuid(), ?, CURRENT_DATE, -25.00, 'cleared'),
+				(gen_random_uuid(), ?, CURRENT_DATE, -10.00, 'uncleared')
+		`, account.ID.String(), account.ID.String())
+		if err != nil {
+			t.Fatalf("Failed to insert transactions: %v", err)
+		}
+
+		account.Name = "New Name"
+		if err := svc.Update(account); err != nil {
+			t.Fatalf("Update() failed renaming account with transactions: %v", err)
+		}
+
+		retrieved, err := svc.GetByID(account.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if retrieved.Name != "New Name" {
+			t.Errorf("Expected name 'New Name', got %q", retrieved.Name)
+		}
+
+		var txnCount int
+		err = database.Conn().QueryRow(
+			`SELECT COUNT(*) FROM transactions WHERE CAST(account_id AS VARCHAR) = ?`,
+			account.ID.String(),
+		).Scan(&txnCount)
+		if err != nil {
+			t.Fatalf("Failed to count transactions: %v", err)
+		}
+		if txnCount != 2 {
+			t.Errorf("Expected 2 transactions on renamed account, got %d", txnCount)
+		}
+	})
 }
 
 func TestService_Delete(t *testing.T) {

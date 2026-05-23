@@ -193,12 +193,9 @@ func (r *Repository) List(activeOnly bool) ([]*Account, error) {
 }
 
 // Update updates an existing account in the database.
-// Note: Uses DELETE + INSERT (non-transactional) due to DuckDB limitations
-// with UPDATE operations on tables that have indexes.
 func (r *Repository) Update(account *Account) error {
 	account.Touch()
 
-	// Check for duplicate name (excluding current account)
 	var exists bool
 	err := r.db.Conn().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM accounts WHERE name = ? AND CAST(id AS VARCHAR) != ?)`,
@@ -211,32 +208,13 @@ func (r *Repository) Update(account *Account) error {
 		return &dberrors.DuplicateError{Entity: "account", Field: "name", Value: account.Name}
 	}
 
-	// Check if account exists and get created_at
-	var count int
-	err = r.db.Conn().QueryRow(`SELECT COUNT(*) FROM accounts WHERE CAST(id AS VARCHAR) = ?`, account.ID.String()).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("failed to check account exists: %w", err)
-	}
-	if count == 0 {
-		return &dberrors.NotFoundError{Entity: "account", ID: account.ID.String()}
-	}
-
-	// Delete the existing record (non-transactional due to DuckDB index bug)
-	_, err = r.db.Conn().Exec(`DELETE FROM accounts WHERE CAST(id AS VARCHAR) = ?`, account.ID.String())
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
-	}
-
-	// Insert the updated record with string ID to avoid type issues
-	insertQuery := `
-		INSERT INTO accounts (
-			id, name, type, currency, institution, account_number,
-			opening_balance, opening_date, credit_limit, interest_rate,
-			notes, active, track_lots, created_at, updated_at
-		) VALUES (CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	_, err = r.db.Conn().Exec(insertQuery,
-		account.ID.String(),
+	result, err := r.db.Conn().Exec(`
+		UPDATE accounts SET
+			name = ?, type = ?, currency = ?, institution = ?, account_number = ?,
+			opening_balance = ?, opening_date = ?, credit_limit = ?, interest_rate = ?,
+			notes = ?, active = ?, track_lots = ?, updated_at = ?
+		WHERE CAST(id AS VARCHAR) = ?
+	`,
 		account.Name,
 		account.Type.String(),
 		account.Currency,
@@ -249,11 +227,19 @@ func (r *Repository) Update(account *Account) error {
 		dbutil.NullString(account.Notes),
 		account.Active,
 		account.TrackLots,
-		account.CreatedAt.Time(),
 		account.UpdatedAt.Time(),
+		account.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update account: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "account", ID: account.ID.String()}
 	}
 
 	return nil
