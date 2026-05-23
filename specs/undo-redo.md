@@ -171,16 +171,9 @@ func (m *UndoManager) Redo() (string, error) {
 
 | Platform | Undo | Redo |
 |----------|------|------|
-| macOS | `Cmd+Z` | `Cmd+Y` |
-| Windows/Linux | `Ctrl+Z` | `Ctrl+Y` |
+| All | `Ctrl+Z` | `Ctrl+Y` |
 
-### Platform Detection
-
-Detect the platform at startup:
-- `runtime.GOOS == "darwin"` → macOS keybindings
-- Otherwise → Windows/Linux keybindings
-
-Note: Bubbletea receives `Cmd+Z` as a distinct key event on macOS terminals that support it. Some terminals may send `Ctrl+Z` regardless — handle both on macOS.
+On macOS the default Terminal.app does not forward `Cmd+Z` to TUIs, and `Cmd+Z` is not reliably distinguishable from `Ctrl+Z` across terminals. To keep the label honest with what the user must actually press, the binding is `Ctrl+Z` everywhere.
 
 ### Status Bar Feedback
 
@@ -231,8 +224,8 @@ Add an Edit menu to the TUI menu bar:
 
 | Menu Item | Shortcut | Action |
 |-----------|----------|--------|
-| Undo | Cmd+Z / Ctrl+Z | Undo last operation |
-| Redo | Cmd+Y / Ctrl+Y | Redo last undone operation |
+| Undo | Ctrl+Z | Undo last operation |
+| Redo | Ctrl+Y | Redo last undone operation |
 
 The Edit menu shows the specific action that would be undone/redone:
 - "Undo Create transaction"

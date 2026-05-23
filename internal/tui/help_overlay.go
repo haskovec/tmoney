@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"runtime"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -385,18 +384,14 @@ func helpOverlayCloseHit(styles Styles, view View, screenWidth, screenHeight, x,
 	return x >= closeStart && x < closeEnd
 }
 
-// undoShortcutLabel returns the platform-appropriate label for the undo shortcut.
+// undoShortcutLabel returns the label for the undo shortcut. The app listens
+// for Ctrl+Z on every platform; the label matches the actual key.
 func undoShortcutLabel() string {
-	if runtime.GOOS == "darwin" {
-		return "Cmd+Z"
-	}
 	return "Ctrl+Z"
 }
 
-// redoShortcutLabel returns the platform-appropriate label for the redo shortcut.
+// redoShortcutLabel returns the label for the redo shortcut. The app listens
+// for Ctrl+Y on every platform; the label matches the actual key.
 func redoShortcutLabel() string {
-	if runtime.GOOS == "darwin" {
-		return "Cmd+Y"
-	}
 	return "Ctrl+Y"
 }

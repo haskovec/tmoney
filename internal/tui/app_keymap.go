@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"runtime"
-
 	"charm.land/bubbles/v2/key"
 )
 
@@ -160,30 +158,18 @@ func defaultKeyMap() keyMap {
 	}
 }
 
-// undoKeyBinding returns the platform-aware undo key binding.
-// On macOS, Cmd+Z is the primary binding; Ctrl+Z is also accepted
-// because some terminals send Ctrl+Z for Cmd+Z.
+// undoKeyBinding returns the undo key binding. The app listens for Ctrl+Z
+// on every platform; the label matches the actual key the user must press.
 func undoKeyBinding() key.Binding {
-	if runtime.GOOS == "darwin" {
-		return key.NewBinding(
-			key.WithKeys("ctrl+z"),
-			key.WithHelp("Cmd+Z", "undo"),
-		)
-	}
 	return key.NewBinding(
 		key.WithKeys("ctrl+z"),
 		key.WithHelp("Ctrl+Z", "undo"),
 	)
 }
 
-// redoKeyBinding returns the platform-aware redo key binding.
+// redoKeyBinding returns the redo key binding. The app listens for Ctrl+Y
+// on every platform; the label matches the actual key the user must press.
 func redoKeyBinding() key.Binding {
-	if runtime.GOOS == "darwin" {
-		return key.NewBinding(
-			key.WithKeys("ctrl+y"),
-			key.WithHelp("Cmd+Y", "redo"),
-		)
-	}
 	return key.NewBinding(
 		key.WithKeys("ctrl+y"),
 		key.WithHelp("Ctrl+Y", "redo"),
