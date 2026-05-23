@@ -396,6 +396,27 @@ func (r *Repository) Delete(id types.ID) error {
 	return nil
 }
 
+// HealNextDates corrects any rows where next_date precedes start_date —
+// poisoned by an older binary that updated start_date without syncing
+// next_date. Sets next_date := start_date in a single SQL UPDATE and
+// returns the count of rows healed.
+func (r *Repository) HealNextDates() (int, error) {
+	result, err := r.db.Conn().Exec(`
+		UPDATE scheduled_transactions
+		SET next_date = start_date,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE next_date < start_date
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("HealNextDates: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("HealNextDates: rows affected: %w", err)
+	}
+	return int(rows), nil
+}
+
 // CountByAccount returns the number of scheduled transactions for an account.
 func (r *Repository) CountByAccount(accountID types.ID) (int, error) {
 	var count int

@@ -227,6 +227,91 @@ func TestService_Update(t *testing.T) {
 	})
 }
 
+func TestService_HealNextDates(t *testing.T) {
+	t.Run("heals rows where NextDate precedes StartDate", func(t *testing.T) {
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		// Simulate the poisoned state an older binary would have left: the
+		// row was edited to advance StartDate but NextDate kept the prior
+		// (earlier) value. Bypass Service.Update (which now normalizes) by
+		// going through the repo directly.
+		amount, _ := types.NewMoney("-50.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.MustParseDate("2026-05-01"), amount)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		// Directly poison the row: StartDate forward, NextDate stale.
+		st.StartDate = types.MustParseDate("2026-06-15")
+		st.NextDate = types.MustParseDate("2026-05-01")
+		if err := svc.repo.Update(st); err != nil {
+			t.Fatalf("repo.Update() error = %v", err)
+		}
+
+		healed, err := svc.HealNextDates()
+		if err != nil {
+			t.Fatalf("HealNextDates() error = %v", err)
+		}
+		if healed != 1 {
+			t.Errorf("healed = %d, want 1", healed)
+		}
+
+		retrieved, _ := svc.GetByID(st.ID)
+		if !retrieved.NextDate.Equal(retrieved.StartDate) {
+			t.Errorf("after heal: NextDate=%s, StartDate=%s (want equal)", retrieved.NextDate, retrieved.StartDate)
+		}
+	})
+
+	t.Run("no-op on healthy rows", func(t *testing.T) {
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		amount, _ := types.NewMoney("-50.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.MustParseDate("2026-05-01"), amount)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		healed, err := svc.HealNextDates()
+		if err != nil {
+			t.Fatalf("HealNextDates() error = %v", err)
+		}
+		if healed != 0 {
+			t.Errorf("healed = %d on healthy DB, want 0", healed)
+		}
+	})
+
+	t.Run("preserves rows where NextDate is ahead of StartDate", func(t *testing.T) {
+		// In-progress schedule: NextDate has been advanced past StartDate
+		// by posts. The heal must not touch these.
+		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+		acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+		amount, _ := types.NewMoney("-50.00")
+		st := NewTransactionWithAmount(acct.ID, FrequencyMonthly, types.MustParseDate("2026-05-01"), amount)
+		if err := svc.Create(st); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		advanced := types.MustParseDate("2026-07-01")
+		st.NextDate = advanced
+		if err := svc.repo.Update(st); err != nil {
+			t.Fatalf("repo.Update() error = %v", err)
+		}
+
+		healed, err := svc.HealNextDates()
+		if err != nil {
+			t.Fatalf("HealNextDates() error = %v", err)
+		}
+		if healed != 0 {
+			t.Errorf("healed = %d, want 0 (NextDate ahead of StartDate is valid)", healed)
+		}
+		retrieved, _ := svc.GetByID(st.ID)
+		if !retrieved.NextDate.Equal(advanced) {
+			t.Errorf("after heal: NextDate=%s, want %s (must not touch healthy rows)", retrieved.NextDate, advanced)
+		}
+	})
+}
+
 func TestService_Delete(t *testing.T) {
 	t.Run("deletes scheduled transaction", func(t *testing.T) {
 		svc, accountRepo, _, _ := createTestScheduledTransactionService(t)

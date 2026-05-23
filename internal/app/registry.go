@@ -88,6 +88,10 @@ func NewServices(database *db.DB) *Services {
 
 	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
 	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database)
+	// Heal any schedule rows poisoned by older binaries that updated
+	// StartDate without syncing NextDate. Best-effort, mirrors the
+	// HealAllAccounts precedent below.
+	_, _ = scheduledSvc.HealNextDates()
 	reconciliationSvc := reconciliation.NewService(reconciliationRepo, txnRepo, accountRepo, database)
 	priceSvc := price.NewService(priceRepo, securityRepo, database)
 	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, corporateActionRepo, database)

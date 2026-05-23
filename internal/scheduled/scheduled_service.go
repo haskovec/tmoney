@@ -115,6 +115,14 @@ func (s *Service) Delete(id types.ID) error {
 	return s.repo.Delete(id)
 }
 
+// HealNextDates corrects rows whose NextDate precedes StartDate. Older
+// binaries updated StartDate without syncing NextDate; this normalizes
+// any poisoned rows by setting NextDate := StartDate. Intended to run
+// once on file open. Returns the count of rows healed.
+func (s *Service) HealNextDates() (int, error) {
+	return s.repo.HealNextDates()
+}
+
 // List returns all scheduled transactions ordered by next_date ascending.
 func (s *Service) List() ([]*Transaction, error) {
 	return s.repo.List()
