@@ -309,9 +309,7 @@ func (r *Repository) GetAliasesByPayee(payeeID types.ID) ([]*Alias, error) {
 }
 
 // UpdateAlias updates an existing alias in the database.
-// Note: Uses DELETE + INSERT (non-transactional) due to DuckDB limitations.
 func (r *Repository) UpdateAlias(alias *Alias) error {
-	// Verify payee exists
 	var exists bool
 	err := r.db.Conn().QueryRow(`SELECT EXISTS(SELECT 1 FROM payees WHERE CAST(id AS VARCHAR) = ?)`, alias.PayeeID.String()).Scan(&exists)
 	if err != nil {
@@ -321,7 +319,6 @@ func (r *Repository) UpdateAlias(alias *Alias) error {
 		return &dberrors.NotFoundError{Entity: "payee", ID: alias.PayeeID.String()}
 	}
 
-	// Check for duplicate pattern (excluding current alias)
 	err = r.db.Conn().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM payee_aliases WHERE pattern = ? AND CAST(id AS VARCHAR) != ?)`,
 		alias.Pattern, alias.ID.String(),
@@ -333,37 +330,28 @@ func (r *Repository) UpdateAlias(alias *Alias) error {
 		return &dberrors.DuplicateError{Entity: "alias", Field: "pattern", Value: alias.Pattern}
 	}
 
-	// Check if alias exists
-	var count int
-	err = r.db.Conn().QueryRow(`SELECT COUNT(*) FROM payee_aliases WHERE CAST(id AS VARCHAR) = ?`, alias.ID.String()).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("failed to check alias exists: %w", err)
-	}
-	if count == 0 {
-		return &dberrors.NotFoundError{Entity: "alias", ID: alias.ID.String()}
-	}
-
-	// Delete the existing record
-	_, err = r.db.Conn().Exec(`DELETE FROM payee_aliases WHERE CAST(id AS VARCHAR) = ?`, alias.ID.String())
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
-	}
-
-	// Insert the updated record
-	insertQuery := `
-		INSERT INTO payee_aliases (
-			id, payee_id, pattern, match_type, created_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?)
-	`
-	_, err = r.db.Conn().Exec(insertQuery,
-		alias.ID.String(),
+	result, err := r.db.Conn().Exec(`
+		UPDATE payee_aliases SET
+			payee_id = CAST(? AS UUID),
+			pattern = ?,
+			match_type = ?
+		WHERE CAST(id AS VARCHAR) = ?
+	`,
 		alias.PayeeID.String(),
 		alias.Pattern,
 		alias.MatchType.String(),
-		alias.CreatedAt.Time(),
+		alias.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update alias: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "alias", ID: alias.ID.String()}
 	}
 
 	return nil
