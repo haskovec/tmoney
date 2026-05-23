@@ -196,51 +196,37 @@ func (r *Repository) ListByAccountID(accountID types.ID) ([]*Session, error) {
 }
 
 // Update updates an existing reconciliation session in the database.
-// Note: Uses DELETE + INSERT due to DuckDB limitations with UPDATE operations on tables that have indexes.
 func (r *Repository) Update(session *Session) error {
 	session.Touch()
 
-	// Check if session exists
-	var count int
-	err := r.db.Conn().QueryRow(
-		`SELECT COUNT(*) FROM reconciliation_sessions WHERE CAST(id AS VARCHAR) = ?`,
-		session.ID.String(),
-	).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("failed to check reconciliation session exists: %w", err)
-	}
-	if count == 0 {
-		return &dberrors.NotFoundError{Entity: "reconciliation session", ID: session.ID.String()}
-	}
-
-	// Delete the existing record
-	_, err = r.db.Conn().Exec(
-		`DELETE FROM reconciliation_sessions WHERE CAST(id AS VARCHAR) = ?`,
-		session.ID.String(),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
-	}
-
-	// Insert the updated record
-	insertQuery := `
-		INSERT INTO reconciliation_sessions (
-			id, account_id, statement_date, statement_balance,
-			status, completed_at, created_at, updated_at
-		) VALUES (CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?)
-	`
-	_, err = r.db.Conn().Exec(insertQuery,
-		session.ID.String(),
+	result, err := r.db.Conn().Exec(`
+		UPDATE reconciliation_sessions SET
+			account_id = CAST(? AS UUID),
+			statement_date = ?,
+			statement_balance = ?,
+			status = ?,
+			completed_at = ?,
+			updated_at = ?
+		WHERE CAST(id AS VARCHAR) = ?
+	`,
 		session.AccountID.String(),
 		session.StatementDate.Time(),
 		session.StatementBalance.String(),
 		session.Status.String(),
 		dbutil.NullTimestamp(session.CompletedAt),
-		session.CreatedAt.Time(),
 		session.UpdatedAt.Time(),
+		session.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update reconciliation session: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "reconciliation session", ID: session.ID.String()}
 	}
 
 	return nil
