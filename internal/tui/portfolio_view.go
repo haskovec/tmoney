@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -123,6 +124,9 @@ func (a *App) buildPortfolioHoldingsTable() {
 	}
 
 	holdings := a.portfolioData.valuation.Holdings
+	sort.SliceStable(holdings, func(i, j int) bool {
+		return holdings[i].MarketValue.Cmp(holdings[j].MarketValue) > 0
+	})
 	rows := make([][]string, len(holdings))
 	for i, h := range holdings {
 		rows[i] = a.formatHoldingRow(&h)
