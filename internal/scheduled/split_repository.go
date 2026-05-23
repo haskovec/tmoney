@@ -149,54 +149,44 @@ func (r *SplitRepository) ListByScheduledTransaction(scheduledTransactionID type
 }
 
 // Update updates an existing scheduled split in the database.
-// Note: Uses DELETE + INSERT (non-transactional) due to DuckDB limitations.
 func (r *SplitRepository) Update(split *Split) error {
-	var count int
-	err := r.db.Conn().QueryRow(
-		`SELECT COUNT(*) FROM scheduled_split_items WHERE CAST(id AS VARCHAR) = ?`,
-		split.ID.String(),
-	).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("failed to check scheduled split exists: %w", err)
-	}
-	if count == 0 {
-		return &dberrors.NotFoundError{Entity: "scheduled_split", ID: split.ID.String()}
-	}
-
 	if err := r.verifyReferences(split); err != nil {
 		return err
-	}
-
-	_, err = r.db.Conn().Exec(
-		`DELETE FROM scheduled_split_items WHERE CAST(id AS VARCHAR) = ?`,
-		split.ID.String(),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
 	}
 
 	catCast := dbutil.NullUUIDCast(split.CategoryID)
 	xferAcctCast := dbutil.NullUUIDCast(split.TransferAccountID)
 
-	insertQuery := fmt.Sprintf(`
-		INSERT INTO scheduled_split_items (
-			id, scheduled_transaction_id, category_id, transfer_account_id,
-			amount, memo, paycheck_section, created_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), %s, %s, ?, ?, ?, ?)
+	query := fmt.Sprintf(`
+		UPDATE scheduled_split_items SET
+			scheduled_transaction_id = CAST(? AS UUID),
+			category_id = %s,
+			transfer_account_id = %s,
+			amount = ?,
+			memo = ?,
+			paycheck_section = ?
+		WHERE CAST(id AS VARCHAR) = ?
 	`, catCast, xferAcctCast)
 
-	_, err = r.db.Conn().Exec(insertQuery,
-		split.ID.String(),
+	result, err := r.db.Conn().Exec(query,
 		split.ScheduledTransactionID.String(),
 		dbutil.NullID(split.CategoryID),
 		dbutil.NullID(split.TransferAccountID),
 		split.Amount.String(),
 		dbutil.NullString(split.Memo),
 		dbutil.NullString(split.PaycheckSection),
-		split.CreatedAt.Time(),
+		split.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update scheduled split: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "scheduled_split", ID: split.ID.String()}
 	}
 
 	return nil

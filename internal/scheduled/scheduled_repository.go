@@ -261,26 +261,11 @@ func (r *Repository) ListAutoPostDue() ([]*Transaction, error) {
 }
 
 // Update updates an existing scheduled transaction in the database.
-// Note: Uses DELETE + INSERT (non-transactional) due to DuckDB limitations.
 func (r *Repository) Update(st *Transaction) error {
 	st.Touch()
 
-	// Check if scheduled transaction exists
-	var count int
-	err := r.db.Conn().QueryRow(
-		`SELECT COUNT(*) FROM scheduled_transactions WHERE CAST(id AS VARCHAR) = ?`,
-		st.ID.String(),
-	).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("failed to check scheduled transaction exists: %w", err)
-	}
-	if count == 0 {
-		return &dberrors.NotFoundError{Entity: "scheduled_transaction", ID: st.ID.String()}
-	}
-
-	// Verify account exists
 	var accountExists bool
-	err = r.db.Conn().QueryRow(
+	err := r.db.Conn().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM accounts WHERE CAST(id AS VARCHAR) = ?)`,
 		st.AccountID.String(),
 	).Scan(&accountExists)
@@ -291,7 +276,6 @@ func (r *Repository) Update(st *Transaction) error {
 		return &dberrors.NotFoundError{Entity: "account", ID: st.AccountID.String()}
 	}
 
-	// Verify payee exists if specified
 	if st.PayeeID.Valid {
 		var payeeExists bool
 		err := r.db.Conn().QueryRow(
@@ -306,7 +290,6 @@ func (r *Repository) Update(st *Transaction) error {
 		}
 	}
 
-	// Verify category exists if specified
 	if st.CategoryID.Valid {
 		var categoryExists bool
 		err := r.db.Conn().QueryRow(
@@ -321,27 +304,29 @@ func (r *Repository) Update(st *Transaction) error {
 		}
 	}
 
-	// Delete the existing record
-	_, err = r.db.Conn().Exec(
-		`DELETE FROM scheduled_transactions WHERE CAST(id AS VARCHAR) = ?`,
-		st.ID.String(),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
-	}
-
-	// Insert the updated record
-	insertQuery := `
-		INSERT INTO scheduled_transactions (
-			id, account_id, payee_id, category_id, amount, memo,
-			frequency, interval, start_date, end_date, occurrences,
-			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
-			amount_estimate_count, auto_post, post_lead_days,
-			created_at, updated_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	_, err = r.db.Conn().Exec(insertQuery,
-		st.ID.String(),
+	result, err := r.db.Conn().Exec(`
+		UPDATE scheduled_transactions SET
+			account_id = CAST(? AS UUID),
+			payee_id = ?,
+			category_id = ?,
+			amount = ?,
+			memo = ?,
+			frequency = ?,
+			interval = ?,
+			start_date = ?,
+			end_date = ?,
+			occurrences = ?,
+			day_of_month = ?,
+			secondary_day_of_month = ?,
+			day_of_week = ?,
+			next_date = ?,
+			occurrences_remaining = ?,
+			amount_estimate_count = ?,
+			auto_post = ?,
+			post_lead_days = ?,
+			updated_at = ?
+		WHERE CAST(id AS VARCHAR) = ?
+	`,
 		st.AccountID.String(),
 		dbutil.NullID(st.PayeeID),
 		dbutil.NullID(st.CategoryID),
@@ -360,11 +345,19 @@ func (r *Repository) Update(st *Transaction) error {
 		dbutil.NullInt(st.AmountEstimateCount),
 		st.AutoPost,
 		st.PostLeadDays,
-		st.CreatedAt.Time(),
 		st.UpdatedAt.Time(),
+		st.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update scheduled transaction: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "scheduled_transaction", ID: st.ID.String()}
 	}
 
 	return nil
