@@ -106,15 +106,19 @@ func (a *App) buildPortfolioHoldingsTable() {
 	}
 
 	columns := []Column{
-		{Header: "Ticker", Width: 10, Align: AlignLeft},
-		{Header: "Shares", Width: 12, Align: AlignRight},
-		{Header: "Avg Cost", Width: 12, Align: AlignRight},
-		{Header: "Price", Width: 12, Align: AlignRight},
-		{Header: "Price Date", Width: 10, Align: AlignLeft},
-		{Header: "Mkt Value", Width: 14, Align: AlignRight},
-		{Header: "Cost Basis", Width: 14, Align: AlignRight},
-		{Header: "Gain/Loss", Width: 14, Align: AlignRight},
-		{Header: "G/L %", Width: 8, Align: AlignRight},
+		{Header: "Ticker", Width: 8, Align: AlignLeft},
+		{Header: "Shares", Width: 9, Align: AlignRight},
+		{Header: "Avg Cost", Width: 10, Align: AlignRight},
+		{Header: "Price", Width: 10, Align: AlignRight},
+		{Header: "Date", Width: 10, Align: AlignLeft},
+		{Header: "Mkt Value", Width: 12, Align: AlignRight},
+		{Header: "Cost Basis", Width: 12, Align: AlignRight},
+		{Header: "Unreal", Width: 11, Align: AlignRight},
+		{Header: "Div", Width: 10, Align: AlignRight},
+		{Header: "Real", Width: 11, Align: AlignRight},
+		{Header: "Fees", Width: 9, Align: AlignRight},
+		{Header: "Total Ret", Width: 12, Align: AlignRight},
+		{Header: "Ret %", Width: 8, Align: AlignRight},
 	}
 
 	if a.portfolioHoldingsTable == nil {
@@ -171,13 +175,39 @@ func (a *App) formatHoldingRow(h *investment.Holding) []string {
 	// Cost basis
 	costBasis := formatDashboardMoney(h.CostBasis)
 
-	// Gain/loss
-	gainLoss := formatDashboardMoney(h.GainLoss)
+	// Unrealized gain (legacy Gain/Loss = MarketValue - CostBasis)
+	unreal := formatDashboardMoney(h.GainLoss)
 
-	// Gain/loss %
-	glPct := fmt.Sprintf("%.2f%%", h.GainPct)
+	// Cash dividends received against this position (DRIPs excluded — see spec)
+	div := formatDashboardMoney(h.DividendsReceived)
 
-	return []string{ticker, shares, avgCost, price, priceDate, mktValue, costBasis, gainLoss, glPct}
+	// Realized gain (from sells / fee liquidations). Non-lot accounts can't
+	// replay realized gain across corporate actions, in which case the
+	// holding flags it unavailable.
+	real := formatDashboardMoney(h.RealizedGain)
+	if h.RealizedGainUnavailable {
+		real = "n/a"
+	}
+
+	// Fees paid (commissions). Stored as positive magnitude on the holding;
+	// displayed negative so the subtraction in the total-return formula
+	// reads naturally on the row.
+	fees := formatDashboardMoney(h.FeesPaid)
+	if !h.FeesPaid.IsZero() {
+		fees = formatDashboardMoney(h.FeesPaid.Neg())
+	}
+
+	// Total return = unreal + real + div − fees (per investment-total-return spec)
+	totalRet := formatDashboardMoney(h.TotalReturn)
+
+	// Return % over total cost deployed. Nil when no buys ever (shares only
+	// received via transfer) — show placeholder.
+	retPct := "—"
+	if h.TotalReturnPct != nil {
+		retPct = fmt.Sprintf("%.2f%%", *h.TotalReturnPct)
+	}
+
+	return []string{ticker, shares, avgCost, price, priceDate, mktValue, costBasis, unreal, div, real, fees, totalRet, retPct}
 }
 
 // buildPortfolioLotsTable creates and populates the lot detail table.
@@ -224,6 +254,10 @@ func formatLotDetailRow(lot *investment.LotDetail) []string {
 }
 
 // renderPortfolioSummary renders the summary bar showing account totals.
+// Line 1 is the position snapshot (cash, value, cost, unrealized). Line 2
+// is the total-return breakdown — the same shape as the investment
+// register's TR row — so the user can see how realized gain, dividends,
+// interest, and fees combine into the account-level total return.
 func (a *App) renderPortfolioSummary(contentWidth int) string {
 	if a.portfolioData == nil || a.portfolioData.valuation == nil {
 		return ""
@@ -261,7 +295,57 @@ func (a *App) renderPortfolioSummary(contentWidth int) string {
 		parts = append(parts, labelStr+" "+valueStyle.Render(m.value))
 	}
 
-	return strings.Join(parts, "  ")
+	line1 := strings.Join(parts, "  ")
+	line2 := a.renderPortfolioTotalReturnLine()
+	if line2 == "" {
+		return line1
+	}
+	return line1 + "\n" + line2
+}
+
+// renderPortfolioTotalReturnLine builds the total-return breakdown line:
+// Realized · Div · Int · Fees · Total return $ (pct%). FeesPaid is stored
+// as a positive magnitude on the valuation per the total-return spec; we
+// negate it before formatting so the subtraction reads naturally.
+func (a *App) renderPortfolioTotalReturnLine() string {
+	if a.portfolioData == nil || a.portfolioData.valuation == nil {
+		return ""
+	}
+	v := a.portfolioData.valuation
+
+	money := func(m types.Money) string {
+		s := formatDashboardMoney(m)
+		switch {
+		case m.IsNegative():
+			return a.styles.Negative.Render(s)
+		case m.IsZero():
+			return a.styles.Bold.Render(s)
+		default:
+			return a.styles.Positive.Render(s)
+		}
+	}
+
+	feeStr := formatDashboardMoney(v.FeesPaid)
+	feeRendered := a.styles.Bold.Render(feeStr)
+	if !v.FeesPaid.IsZero() {
+		feeStr = formatDashboardMoney(v.FeesPaid.Neg())
+		feeRendered = a.styles.Negative.Render(feeStr)
+	}
+
+	parts := []string{
+		a.styles.Muted.Render("Realized") + " " + money(v.RealizedGain),
+		a.styles.Muted.Render("Div") + " " + money(v.DividendsReceived),
+		a.styles.Muted.Render("Int") + " " + money(v.InterestReceived),
+		a.styles.Muted.Render("Fees") + " " + feeRendered,
+	}
+
+	pctStr := "—"
+	if v.TotalReturnPct != nil {
+		pctStr = fmt.Sprintf("%.2f%%", *v.TotalReturnPct)
+	}
+	total := a.styles.Muted.Render("Total return") + " " + money(v.TotalReturn) + " (" + pctStr + ")"
+
+	return strings.Join(parts, " · ") + "  " + total
 }
 
 // renderPortfolioView renders the portfolio view.
@@ -297,7 +381,7 @@ func (a *App) renderPortfolioView() string {
 	headerHeight := 1
 	statusBarHeight := 1
 	titleHeight := 1
-	summaryHeight := 1
+	summaryHeight := 2
 	separatorHeight := 1
 	paddingHeight := 2 // top/bottom padding
 	hintHeight := 1

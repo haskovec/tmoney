@@ -110,8 +110,8 @@ func TestFormatHoldingRow(t *testing.T) {
 
 	row := app.formatHoldingRow(holding)
 
-	if len(row) != 9 {
-		t.Fatalf("expected 9 columns, got %d", len(row))
+	if len(row) != 13 {
+		t.Fatalf("expected 13 columns, got %d", len(row))
 	}
 
 	// Ticker
@@ -142,13 +142,29 @@ func TestFormatHoldingRow(t *testing.T) {
 	if row[6] != "$12000.00" {
 		t.Errorf("cost basis = %q, want %q", row[6], "$12000.00")
 	}
-	// Gain/loss
+	// Unrealized gain
 	if row[7] != "$3000.00" {
-		t.Errorf("gain/loss = %q, want %q", row[7], "$3000.00")
+		t.Errorf("unreal = %q, want %q", row[7], "$3000.00")
 	}
-	// Gain/loss %
-	if row[8] != "25.00%" {
-		t.Errorf("gain/loss %% = %q, want %q", row[8], "25.00%")
+	// Dividends (default zero)
+	if row[8] != "$0.00" {
+		t.Errorf("div = %q, want %q", row[8], "$0.00")
+	}
+	// Realized gain (default zero)
+	if row[9] != "$0.00" {
+		t.Errorf("real = %q, want %q", row[9], "$0.00")
+	}
+	// Fees (default zero)
+	if row[10] != "$0.00" {
+		t.Errorf("fees = %q, want %q", row[10], "$0.00")
+	}
+	// Total return (default zero — fields not populated on test holding)
+	if row[11] != "$0.00" {
+		t.Errorf("total ret = %q, want %q", row[11], "$0.00")
+	}
+	// Return % (nil → placeholder)
+	if row[12] != "—" {
+		t.Errorf("ret %% = %q, want %q", row[12], "—")
 	}
 }
 
@@ -214,10 +230,83 @@ func TestFormatHoldingRow_NegativeGainLoss(t *testing.T) {
 	row := app.formatHoldingRow(holding)
 
 	if row[7] != "-$500.00" {
-		t.Errorf("gain/loss = %q, want %q", row[7], "-$500.00")
+		t.Errorf("unreal = %q, want %q", row[7], "-$500.00")
 	}
-	if row[8] != "-10.00%" {
-		t.Errorf("gain/loss %% = %q, want %q", row[8], "-10.00%")
+}
+
+func TestFormatHoldingRow_TotalReturnColumns(t *testing.T) {
+	secID := types.NewID()
+	retPct := 12.5
+
+	holding := &investment.Holding{
+		SecurityID:        secID,
+		Shares:            types.MustNewQuantity("10"),
+		AvgCost:           types.MustNewMoney("100"),
+		CurrentPrice:      types.MustNewMoney("95"),
+		PriceDate:         types.NewDate(2024, time.July, 1),
+		MarketValue:       types.MustNewMoney("950"),
+		CostBasis:         types.MustNewMoney("1000"),
+		GainLoss:          types.MustNewMoney("-50"),
+		GainPct:           -5.0,
+		HasPricing:        true,
+		DividendsReceived: types.MustNewMoney("75"),
+		RealizedGain:      types.MustNewMoney("100"),
+		FeesPaid:          types.MustNewMoney("25"),
+		TotalReturn:       types.MustNewMoney("100"),
+		TotalReturnPct:    &retPct,
+	}
+
+	app := &App{
+		portfolioData: &portfolioViewData{
+			securityNames: map[types.ID]string{secID: "DIV"},
+		},
+	}
+
+	row := app.formatHoldingRow(holding)
+
+	if row[7] != "-$50.00" {
+		t.Errorf("unreal = %q, want %q", row[7], "-$50.00")
+	}
+	if row[8] != "$75.00" {
+		t.Errorf("div = %q, want %q", row[8], "$75.00")
+	}
+	if row[9] != "$100.00" {
+		t.Errorf("real = %q, want %q", row[9], "$100.00")
+	}
+	// Fees are stored positive; displayed negative.
+	if row[10] != "-$25.00" {
+		t.Errorf("fees = %q, want %q", row[10], "-$25.00")
+	}
+	if row[11] != "$100.00" {
+		t.Errorf("total ret = %q, want %q", row[11], "$100.00")
+	}
+	if row[12] != "12.50%" {
+		t.Errorf("ret %% = %q, want %q", row[12], "12.50%")
+	}
+}
+
+func TestFormatHoldingRow_RealizedUnavailable(t *testing.T) {
+	secID := types.NewID()
+
+	holding := &investment.Holding{
+		SecurityID:              secID,
+		Shares:                  types.MustNewQuantity("10"),
+		MarketValue:             types.MustNewMoney("1000"),
+		CostBasis:               types.MustNewMoney("1000"),
+		HasPricing:              true,
+		RealizedGainUnavailable: true,
+	}
+
+	app := &App{
+		portfolioData: &portfolioViewData{
+			securityNames: map[types.ID]string{secID: "MRG"},
+		},
+	}
+
+	row := app.formatHoldingRow(holding)
+
+	if row[9] != "n/a" {
+		t.Errorf("real = %q, want %q", row[9], "n/a")
 	}
 }
 
@@ -293,45 +382,37 @@ func TestFormatLotDetailRow_NegativeGain(t *testing.T) {
 
 func TestPortfolioSummaryBar(t *testing.T) {
 	acctID := types.NewID()
+	trPct := 30.0
 
 	app := &App{
 		styles: testStyles(),
 		portfolioData: &portfolioViewData{
 			valuation: &investment.AccountValuation{
-				AccountID:      acctID,
-				CashBalance:    types.MustNewMoney("5000.00"),
-				MarketValue:    types.MustNewMoney("15000.00"),
-				TotalValue:     types.MustNewMoney("20000.00"),
-				TotalCostBasis: types.MustNewMoney("12000.00"),
-				TotalGainLoss:  types.MustNewMoney("3000.00"),
-				TotalGainPct:   25.0,
+				AccountID:         acctID,
+				CashBalance:       types.MustNewMoney("5000.00"),
+				MarketValue:       types.MustNewMoney("15000.00"),
+				TotalValue:        types.MustNewMoney("20000.00"),
+				TotalCostBasis:    types.MustNewMoney("12000.00"),
+				TotalGainLoss:     types.MustNewMoney("3000.00"),
+				TotalGainPct:      25.0,
+				RealizedGain:      types.MustNewMoney("200.00"),
+				DividendsReceived: types.MustNewMoney("400.00"),
+				InterestReceived:  types.MustNewMoney("50.00"),
+				FeesPaid:          types.MustNewMoney("50.00"),
+				TotalReturn:       types.MustNewMoney("3600.00"),
+				TotalReturnPct:    &trPct,
 			},
 		},
 	}
 
 	summary := app.renderPortfolioSummary(100)
 
-	// Should contain all metric labels
-	if !strings.Contains(summary, "Cash:") {
-		t.Error("summary should contain Cash label")
+	// Line 1: position snapshot
+	for _, label := range []string{"Cash:", "Mkt Value:", "Total:", "Cost Basis:", "Gain/Loss:", "G/L %:"} {
+		if !strings.Contains(summary, label) {
+			t.Errorf("summary should contain %q label", label)
+		}
 	}
-	if !strings.Contains(summary, "Mkt Value:") {
-		t.Error("summary should contain Mkt Value label")
-	}
-	if !strings.Contains(summary, "Total:") {
-		t.Error("summary should contain Total label")
-	}
-	if !strings.Contains(summary, "Cost Basis:") {
-		t.Error("summary should contain Cost Basis label")
-	}
-	if !strings.Contains(summary, "Gain/Loss:") {
-		t.Error("summary should contain Gain/Loss label")
-	}
-	if !strings.Contains(summary, "G/L %:") {
-		t.Error("summary should contain G/L % label")
-	}
-
-	// Should contain money values
 	if !strings.Contains(summary, "$5000.00") {
 		t.Error("summary should contain cash balance value")
 	}
@@ -339,7 +420,54 @@ func TestPortfolioSummaryBar(t *testing.T) {
 		t.Error("summary should contain total value")
 	}
 	if !strings.Contains(summary, "25.00%") {
-		t.Error("summary should contain gain/loss percentage")
+		t.Error("summary should contain G/L %")
+	}
+
+	// Line 2: total-return breakdown
+	for _, label := range []string{"Realized", "Div", "Int", "Fees", "Total return"} {
+		if !strings.Contains(summary, label) {
+			t.Errorf("summary should contain %q label", label)
+		}
+	}
+	if !strings.Contains(summary, "$400.00") {
+		t.Error("summary should contain dividends value")
+	}
+	if !strings.Contains(summary, "$3600.00") {
+		t.Error("summary should contain total return value")
+	}
+	if !strings.Contains(summary, "30.00%") {
+		t.Error("summary should contain total return %")
+	}
+	// Fees shown as negative (per spec)
+	if !strings.Contains(summary, "-$50.00") {
+		t.Error("summary should display fees as negative magnitude")
+	}
+}
+
+func TestPortfolioSummaryBar_NilTotalReturnPct(t *testing.T) {
+	acctID := types.NewID()
+
+	app := &App{
+		styles: testStyles(),
+		portfolioData: &portfolioViewData{
+			valuation: &investment.AccountValuation{
+				AccountID:      acctID,
+				CashBalance:    types.MustNewMoney("0"),
+				MarketValue:    types.MustNewMoney("1000"),
+				TotalValue:     types.MustNewMoney("1000"),
+				TotalCostBasis: types.MustNewMoney("0"),
+				TotalGainLoss:  types.MustNewMoney("0"),
+				TotalGainPct:   0,
+				TotalReturn:    types.MustNewMoney("0"),
+				TotalReturnPct: nil,
+			},
+		},
+	}
+
+	summary := app.renderPortfolioSummary(100)
+
+	if !strings.Contains(summary, "—") {
+		t.Error("nil TotalReturnPct should render as '—' placeholder")
 	}
 }
 
