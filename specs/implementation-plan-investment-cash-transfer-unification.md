@@ -408,19 +408,28 @@ refactor consumes them, then docs and verification.
     `InvestmentCashTransferResult`. All seven tests pass; full suite
     and `golangci-lint` clean.
 
-- [ ] **P1-003 — Extend `UpdateTransferCash` for inv↔inv**
-  - RED: `TestUpdateTransferCash_InvToInv_HappyPath` — create an
-    inv↔inv pair, edit the amount and memo, verify both sides reflect
-    the change and the `transferID` is preserved (or replaced
-    consistently per the existing pattern).
-  - GREEN: in `internal/investment/update_edit.go`, update
-    `UpdateTransferCash` so the old-counterpart cleanup searches
-    both repos (existing search is `txnRepo`-only) and the dispatch
-    on recreation picks between `TransferCash` / `DepositFromAccount`
-    / `TransferCashBetweenInvestments` based on the destination
-    account's type. The `direction` argument still drives in/out for
-    the existing cases; for inv↔inv the source vs destination
-    semantics flow naturally from the From/To shape.
+- [x] **P1-003 — Extend `UpdateTransferCash` for inv↔inv**
+  - RED: `TestUpdateTransferCash_InvToInv_HappyPath` — given an
+    inv↔inv pair created via `TransferCashBetweenInvestments`,
+    editing the amount and memo produces a fresh pair on the same
+    accounts with the new fields, both legs share a new `transferID`,
+    and the original rows are gone (no leftover destination cash).
+  - RED: `TestUpdateTransferCash_InvToInv_FlipDirection` — passing
+    `direction="in"` with the second account being another investment
+    account flips the source/destination orientation so the same
+    method can be used to fix a wrong-way IRA→IRA transfer.
+  - GREEN: in `internal/investment/update_edit.go`, made
+    `UpdateTransferCash` dispatch on the second account's type. When
+    that account is also an investment account, the method routes to
+    `TransferCashBetweenInvestments` (with the source/destination
+    derived from `direction`). The old-counterpart cleanup now
+    searches the investment repo (by `transfer_account_id` /
+    `transfer_id`) in addition to the regular-transaction repo, so an
+    inv↔inv original is fully reaped before the new pair lands.
+    `CashTransferResult` gains a `CounterpartInvestmentTransaction`
+    field that carries the destination-side investment row on inv↔inv
+    edits (nil on inv↔reg edits). Existing inv↔reg behavior is
+    unchanged.
 
 ### P1-3: Service hardening (TDD)
 

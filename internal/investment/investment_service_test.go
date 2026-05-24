@@ -3568,6 +3568,160 @@ func TestService_UpdateTransferCash(t *testing.T) {
 }
 
 // =============================================================================
+// UpdateTransferCash — inv↔inv flavor. When both legs are investment accounts
+// (e.g., an IRA→IRA rollover originally created via
+// TransferCashBetweenInvestments), the edit path must clean up the
+// other-investment-side counterpart (not a txnRepo row) and recreate the pair
+// via TransferCashBetweenInvestments.
+// =============================================================================
+
+func TestUpdateTransferCash_InvToInv_HappyPath(t *testing.T) {
+	svc, accountRepo := createTestService(t)
+	src := createInvAccount(t, accountRepo, "Source IRA")
+	dst := createInvAccount(t, accountRepo, "Dest IRA")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := svc.Deposit(src.ID, date, types.MustNewMoney("2000.00"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	orig, err := svc.TransferCashBetweenInvestments(src.ID, dst.ID, date, types.MustNewMoney("500.00"), "rollover")
+	if err != nil {
+		t.Fatalf("TransferCashBetweenInvestments() error = %v", err)
+	}
+
+	// Edit amount and memo, keep direction (source → destination).
+	fixed, err := svc.UpdateTransferCash(
+		orig.SourceTransaction.ID,
+		src.ID, dst.ID, date,
+		types.MustNewMoney("750.00"),
+		"rollover (updated)",
+		"out",
+	)
+	if err != nil {
+		t.Fatalf("UpdateTransferCash() error = %v", err)
+	}
+
+	if fixed.InvestmentTransaction == nil {
+		t.Fatal("expected primary investment transaction in result")
+	}
+	if fixed.CounterpartInvestmentTransaction == nil {
+		t.Fatal("expected counterpart investment transaction in result for inv↔inv edit")
+	}
+	if fixed.RegularTransaction != nil {
+		t.Errorf("expected RegularTransaction nil for inv↔inv edit, got %+v", fixed.RegularTransaction)
+	}
+
+	if fixed.InvestmentTransaction.AccountID != src.ID {
+		t.Errorf("primary AccountID = %s, want source %s", fixed.InvestmentTransaction.AccountID, src.ID)
+	}
+	if fixed.CounterpartInvestmentTransaction.AccountID != dst.ID {
+		t.Errorf("counterpart AccountID = %s, want dest %s", fixed.CounterpartInvestmentTransaction.AccountID, dst.ID)
+	}
+	if fixed.InvestmentTransaction.TotalAmount.String() != "-750" {
+		t.Errorf("primary amount = %q, want -750", fixed.InvestmentTransaction.TotalAmount.String())
+	}
+	if fixed.CounterpartInvestmentTransaction.TotalAmount.String() != "750" {
+		t.Errorf("counterpart amount = %q, want 750", fixed.CounterpartInvestmentTransaction.TotalAmount.String())
+	}
+	if fixed.InvestmentTransaction.Memo.String != "rollover (updated)" {
+		t.Errorf("primary memo = %q, want %q", fixed.InvestmentTransaction.Memo.String, "rollover (updated)")
+	}
+	if fixed.CounterpartInvestmentTransaction.Memo.String != "rollover (updated)" {
+		t.Errorf("counterpart memo = %q, want %q", fixed.CounterpartInvestmentTransaction.Memo.String, "rollover (updated)")
+	}
+	if !fixed.InvestmentTransaction.TransferID.Valid || !fixed.CounterpartInvestmentTransaction.TransferID.Valid {
+		t.Error("both legs should be linked as transfers")
+	}
+	if fixed.InvestmentTransaction.TransferID.ID != fixed.CounterpartInvestmentTransaction.TransferID.ID {
+		t.Errorf("transfer_id mismatch between legs: primary=%s counterpart=%s",
+			fixed.InvestmentTransaction.TransferID.ID, fixed.CounterpartInvestmentTransaction.TransferID.ID)
+	}
+
+	// Original investment rows must be gone (replaced).
+	if _, err := svc.repo.GetByID(orig.SourceTransaction.ID); err == nil {
+		t.Error("original source transaction should have been deleted by UpdateTransferCash")
+	}
+	if _, err := svc.repo.GetByID(orig.DestinationTransaction.ID); err == nil {
+		t.Error("original destination transaction should have been deleted by UpdateTransferCash")
+	}
+
+	// Cash balances reflect the new amount only — no orphan +500 on the destination
+	// (the failure mode if we forgot to clean up the old destination leg).
+	dstBalance, err := svc.GetCashBalance(dst.ID)
+	if err != nil {
+		t.Fatalf("GetCashBalance(dst) error = %v", err)
+	}
+	if dstBalance.String() != "750" {
+		t.Errorf("destination balance = %q, want 750 (no leftover from original 500 leg)", dstBalance.String())
+	}
+	srcBalance, err := svc.GetCashBalance(src.ID)
+	if err != nil {
+		t.Fatalf("GetCashBalance(src) error = %v", err)
+	}
+	if srcBalance.String() != "1250" {
+		t.Errorf("source balance = %q, want 1250 (2000 deposit - 750 transfer)", srcBalance.String())
+	}
+}
+
+func TestUpdateTransferCash_InvToInv_FlipDirection(t *testing.T) {
+	// User originally moved cash A→B but meant B→A. Edit flips the
+	// direction by passing direction="in" (which means "cash arrives at
+	// investmentAccountID"), swapping source/destination.
+	svc, accountRepo := createTestService(t)
+	a := createInvAccount(t, accountRepo, "IRA A")
+	b := createInvAccount(t, accountRepo, "IRA B")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := svc.Deposit(b.ID, date, types.MustNewMoney("2000.00"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	// Wrong-way transfer: A → B (but A has no cash, ends up negative).
+	orig, err := svc.TransferCashBetweenInvestments(a.ID, b.ID, date, types.MustNewMoney("400.00"), "")
+	if err != nil {
+		t.Fatalf("TransferCashBetweenInvestments() error = %v", err)
+	}
+
+	// Flip: investmentAccountID=A, regularAccountID=B, direction="in" means
+	// cash arrives at A. So new orientation is B → A.
+	fixed, err := svc.UpdateTransferCash(
+		orig.SourceTransaction.ID,
+		a.ID, b.ID, date,
+		types.MustNewMoney("400.00"),
+		"",
+		"in",
+	)
+	if err != nil {
+		t.Fatalf("UpdateTransferCash() error = %v", err)
+	}
+
+	// After flip: A should be the destination (positive), B the source (negative).
+	if fixed.InvestmentTransaction.AccountID != b.ID {
+		t.Errorf("primary AccountID = %s, want B %s (source after flip)", fixed.InvestmentTransaction.AccountID, b.ID)
+	}
+	if fixed.CounterpartInvestmentTransaction.AccountID != a.ID {
+		t.Errorf("counterpart AccountID = %s, want A %s (destination after flip)", fixed.CounterpartInvestmentTransaction.AccountID, a.ID)
+	}
+	if fixed.InvestmentTransaction.TotalAmount.String() != "-400" {
+		t.Errorf("source amount = %q, want -400", fixed.InvestmentTransaction.TotalAmount.String())
+	}
+	if fixed.CounterpartInvestmentTransaction.TotalAmount.String() != "400" {
+		t.Errorf("destination amount = %q, want 400", fixed.CounterpartInvestmentTransaction.TotalAmount.String())
+	}
+
+	// Final balances: A=+400 (received), B=1600 (2000 deposit - 400 sent).
+	aBalance, _ := svc.GetCashBalance(a.ID)
+	if aBalance.String() != "400" {
+		t.Errorf("A balance = %q, want 400", aBalance.String())
+	}
+	bBalance, _ := svc.GetCashBalance(b.ID)
+	if bBalance.String() != "1600" {
+		t.Errorf("B balance = %q, want 1600", bBalance.String())
+	}
+}
+
+// =============================================================================
 // DeleteTransaction — exercises the cascade for paired transfer rows.
 // The plain investmentRepo.Delete is a low-level primitive that leaves the
 // regular-side (for transfer_cash) or other-investment-side (for

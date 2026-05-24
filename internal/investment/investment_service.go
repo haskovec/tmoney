@@ -762,11 +762,15 @@ func (s *Service) feeLiquidationWithLots(txn *Transaction, accountID, securityID
 }
 
 // CashTransferResult contains both sides of a cash transfer between
-// an investment account and a regular account.
+// an investment account and a regular account. For an inv↔inv transfer
+// surfaced through UpdateTransferCash's dispatch, RegularTransaction is nil
+// and CounterpartInvestmentTransaction carries the destination-side investment
+// row instead.
 type CashTransferResult struct {
-	InvestmentTransaction *Transaction
-	RegularTransaction    *transaction.Transaction
-	TransferID            types.ID
+	InvestmentTransaction            *Transaction
+	RegularTransaction               *transaction.Transaction
+	CounterpartInvestmentTransaction *Transaction
+	TransferID                       types.ID
 }
 
 // TransferCash creates a cash transfer between an investment account and a regular (non-investment) account.

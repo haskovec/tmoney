@@ -404,38 +404,98 @@ func (s *Service) UpdateInterest(oldID types.ID, accountID types.ID, date types.
 	return s.Interest(accountID, date, amount, memo)
 }
 
-// UpdateTransferCash edits an existing cash transfer (investment ↔ regular).
-// Both sides of the original transfer are deleted before re-creating the pair.
+// UpdateTransferCash edits an existing cash transfer. Both sides of the
+// original transfer are deleted before re-creating the pair.
+//
+// Dispatch is polymorphic on the type of the second account argument:
+//
+//   - If regularAccountID points at a non-investment account, the new pair is
+//     created via TransferCash (direction="out") or DepositFromAccount
+//     (direction="in"). The counterpart lives in the regular-transaction repo.
+//   - If regularAccountID points at another investment account, the new pair is
+//     created via TransferCashBetweenInvestments. For direction="out" the
+//     investmentAccountID is the source; for direction="in" it is the
+//     destination (i.e. the orientation flips). The counterpart lives in the
+//     investment repo and is exposed on
+//     CashTransferResult.CounterpartInvestmentTransaction.
+//
+// The old-counterpart cleanup searches both repos so an inv↔inv original is
+// fully reaped before the new pair lands.
 func (s *Service) UpdateTransferCash(
 	oldInvestmentTxnID types.ID,
 	investmentAccountID, regularAccountID types.ID,
 	date types.Date,
 	amount types.Money,
 	memo string,
-	direction string, // "in" = deposit into investment, "out" = withdrawal from investment
+	direction string, // "in" = cash arrives at investmentAccountID, "out" = cash leaves it
 ) (*CashTransferResult, error) {
 	old, err := s.repo.GetByID(oldInvestmentTxnID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load transfer for edit: %w", err)
 	}
-	if old.TransferID.Valid && s.txnRepo != nil {
-		// Find and delete the regular-side transaction by transfer_id.
-		regList, lerr := s.txnRepo.ListByTransferID(old.TransferID.ID)
-		if lerr == nil {
-			for _, r := range regList {
-				_ = s.txnRepo.Delete(r.ID)
+	if old.TransferID.Valid {
+		// Regular-side counterpart (inv↔reg original).
+		if s.txnRepo != nil {
+			if regList, lerr := s.txnRepo.ListByTransferID(old.TransferID.ID); lerr == nil {
+				for _, r := range regList {
+					_ = s.txnRepo.Delete(r.ID)
+				}
+			}
+		}
+		// Investment-side counterpart (inv↔inv original): lives in the
+		// other investment account, identified by transfer_account_id.
+		if old.TransferAccountID.Valid {
+			if others, lerr := s.repo.ListByAccount(old.TransferAccountID.ID, TransactionFilter{}); lerr == nil {
+				for _, o := range others {
+					if o.TransferID.Valid && o.TransferID.ID == old.TransferID.ID && o.ID != old.ID {
+						_ = s.repo.Delete(o.ID)
+					}
+				}
 			}
 		}
 	}
 	if err := s.repo.Delete(oldInvestmentTxnID); err != nil {
 		return nil, fmt.Errorf("failed to delete transfer for edit: %w", err)
 	}
+
+	// Validate direction up front so the inv↔inv branch and the inv↔reg branch
+	// share one error site.
+	if direction != "in" && direction != "out" {
+		return nil, fmt.Errorf("UpdateTransferCash: invalid direction %q (want 'in' or 'out')", direction)
+	}
+
+	// Dispatch on the second account's type.
+	otherAcct, err := s.accountRepo.GetByID(regularAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load destination account: %w", err)
+	}
+	if otherAcct.Type.IsInvestmentType() {
+		// inv↔inv: route to TransferCashBetweenInvestments.
+		var srcID, dstID types.ID
+		switch direction {
+		case "out":
+			srcID, dstID = investmentAccountID, regularAccountID
+		case "in":
+			srcID, dstID = regularAccountID, investmentAccountID
+		}
+		invResult, err := s.TransferCashBetweenInvestments(srcID, dstID, date, amount, memo)
+		if err != nil {
+			return nil, err
+		}
+		return &CashTransferResult{
+			InvestmentTransaction:            invResult.SourceTransaction,
+			CounterpartInvestmentTransaction: invResult.DestinationTransaction,
+			TransferID:                       invResult.TransferID,
+		}, nil
+	}
+
 	switch direction {
 	case "out":
 		return s.TransferCash(investmentAccountID, regularAccountID, date, amount, memo)
 	case "in":
 		return s.DepositFromAccount(investmentAccountID, regularAccountID, date, amount, memo)
 	default:
+		// Unreachable: direction was validated above.
 		return nil, fmt.Errorf("UpdateTransferCash: invalid direction %q (want 'in' or 'out')", direction)
 	}
 }
