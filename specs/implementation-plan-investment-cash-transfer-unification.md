@@ -463,14 +463,30 @@ refactor consumes them, then docs and verification.
 
 ### P1-4: Undo commands (TDD)
 
-- [ ] **P1-005 — Three new investment cash-transfer undo commands**
-  - RED: per command — `TestCreateInvestmentTransferCashCommand_Roundtrip`
-    (Execute then Undo leaves zero rows), `…Deposit…`, `…ToInvestmentTransfer…`.
-  - GREEN: add the three commands in `internal/undo/`. Pattern
-    matches the existing `NewCreateTransferCommand` shape: store the
-    service handle + inputs; `Execute()` creates and stores the
-    pair's `transferID`; `Undo()` deletes both rows via the
-    service's existing delete paths.
+- [x] **P1-005 — Three new investment cash-transfer undo commands**
+  - RED: `TestCreateInvestmentTransferCashCommand_Roundtrip`,
+    `TestCreateInvestmentDepositCommand_Roundtrip`, and
+    `TestCreateInvestmentToInvestmentTransferCommand_Roundtrip` in
+    `internal/undo/investment_transfer_test.go` — each Execute creates
+    the pair and Undo removes both legs (no orphan).
+  - RED (cascade fix): `TestService_DeleteTransaction_InvToInvCashTransferCascadesToOtherInvestmentSide`
+    in `internal/investment/investment_service_test.go` — exposes a
+    latent bug where `DeleteTransaction` only cascaded via the regular-
+    transaction repo, leaving the destination-side investment row
+    orphaned on inv↔inv. The cascade now mirrors the TransferShares
+    pattern (also scan the `TransferAccountID` investment account for a
+    matching transfer_id), which the inv↔inv undo path relies on.
+  - GREEN: added `internal/undo/investment_transfer.go` with
+    `NewCreateInvestmentTransferCashCommand` (wraps `TransferCash`),
+    `NewCreateInvestmentDepositCommand` (wraps `DepositFromAccount`),
+    and `NewCreateInvestmentToInvestmentTransferCommand` (wraps
+    `TransferCashBetweenInvestments`). Each stores the service handle
+    + inputs; `Execute()` invokes the service and stashes the result
+    pair; `Undo()` calls `Service.DeleteTransaction` on the
+    investment/source leg, relying on the (now-complete) cascade to
+    reap the counterpart. Each command exposes `Result()` so callers
+    can recover the created pair (mirrors the existing
+    `CreateTransferCommand.Pair()` shape).
 
 ### P1-5: Dialog unification
 

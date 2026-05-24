@@ -1259,6 +1259,22 @@ func (s *Service) DeleteTransaction(id types.ID) error {
 					}
 				}
 			}
+			// inv↔inv cash transfers store the counterpart in the OTHER
+			// investment account (no regular-side row exists). Cascade in the
+			// investment repo the same way TransferShares does.
+			if txn.TransferAccountID.Valid {
+				others, lerr := s.repo.ListByAccount(txn.TransferAccountID.ID, TransactionFilter{})
+				if lerr != nil {
+					return fmt.Errorf("failed to list destination-account transfers: %w", lerr)
+				}
+				for _, o := range others {
+					if o.TransferID.Valid && o.TransferID.ID == txn.TransferID.ID && o.ID != txn.ID {
+						if err := s.repo.Delete(o.ID); err != nil {
+							return fmt.Errorf("failed to delete paired investment cash-transfer row: %w", err)
+						}
+					}
+				}
+			}
 		case TransactionTypeTransferShares:
 			// The counterpart lives in the other investment account; find by transfer_id.
 			others, lerr := s.repo.ListByAccount(txn.TransferAccountID.ID, TransactionFilter{})

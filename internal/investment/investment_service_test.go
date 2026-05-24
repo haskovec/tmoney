@@ -3792,6 +3792,33 @@ func TestService_DeleteTransaction_ShareTransferCascadesToOtherInvestmentSide(t 
 	}
 }
 
+func TestService_DeleteTransaction_InvToInvCashTransferCascadesToOtherInvestmentSide(t *testing.T) {
+	// Inv↔inv cash transfers (e.g. IRA→IRA rollovers) store both legs in the
+	// investment repo. Deleting either leg must cascade to remove its
+	// counterpart — otherwise the user is left with a phantom credit on the
+	// destination account.
+	svc, accountRepo := createTestService(t)
+	src := createInvAccount(t, accountRepo, "E*Trade IRA")
+	dst := createInvAccount(t, accountRepo, "Wealthfront IRA")
+	date := types.NewDate(2024, time.March, 15)
+
+	xfer, err := svc.TransferCashBetweenInvestments(src.ID, dst.ID, date, types.MustNewMoney("2000.00"), "rollover")
+	if err != nil {
+		t.Fatalf("TransferCashBetweenInvestments() error = %v", err)
+	}
+
+	if err := svc.DeleteTransaction(xfer.SourceTransaction.ID); err != nil {
+		t.Fatalf("DeleteTransaction() error = %v", err)
+	}
+
+	if _, err := svc.repo.GetByID(xfer.SourceTransaction.ID); err == nil {
+		t.Error("source-side cash-transfer txn should have been deleted")
+	}
+	if _, err := svc.repo.GetByID(xfer.DestinationTransaction.ID); err == nil {
+		t.Error("destination-side cash-transfer txn should have been deleted (counterpart cascade)")
+	}
+}
+
 func TestService_DeleteTransaction_NonTransfer_DeletesSingleRow(t *testing.T) {
 	// Sanity check: for non-transfer types, DeleteTransaction behaves
 	// like the underlying repo delete — one row out, no cascade lookups.
