@@ -627,22 +627,21 @@ refactor consumes them, then docs and verification.
 
 ### P1-8: Documentation
 
-- [ ] **P1-011 — Update `transactions.md`, `README.md`, `cli.md`**
-  - `specs/transactions.md`: describe the unified Transfer dialog
-    model (From/To, dispatch table, Status-on-Edit, sticky-date),
-    the new `TransferCashBetweenInvestments` service method, and the
-    invariant that `transaction.Service.CreateTransfer` /
-    `UpdateTransfer` reject investment accounts.
-  - `README.md`: in the Investment section, mention that the TUI now
-    supports cash transfers between two investment accounts (e.g.,
-    IRA→IRA rollovers). Add a note that CLI parity for linked cash
-    transfers involving investment accounts is deferred to a future
-    phase.
-  - `specs/cli.md`: in the `transfer add` section, document that
-    investment accounts are now rejected and direct users to the TUI.
-    Optionally add a one-line forward-pointer in the `investment`
-    section header.
-  - **Leave `specs/cli-router.md` alone** — historical document.
+- [x] **P1-011 — Update `transactions.md`, `README.md`, `cli.md`**
+  - `specs/transactions.md`: the dispatch table, hardening invariant,
+    and unified-dialog (From/To, Status-on-Edit, sticky-date) sections
+    landed up front in commit `de41bad`. Augmented in the P2-003 doc
+    pass to add a Phase-2 "Investment-target dispatch" note under
+    Transfer-Line Rules and to call out the void cascade alongside the
+    delete cascade.
+  - `README.md`: the IRA→IRA TUI capability and the deferred-CLI note
+    landed in `de41bad` (Features section line 57–60, Transactions CLI
+    section line 393–397, Investment section line 724–730). No further
+    additions needed.
+  - `specs/cli.md`: `transfer add` rejection text and the
+    `investment`-section forward-pointer landed in `de41bad`
+    (line 269–277 and line 1023–1030). No further additions needed.
+  - `specs/cli-router.md` left alone (historical document).
 
 ### P1-9: Verification + commit
 
@@ -818,16 +817,29 @@ lands and we trace the exact split-counterpart code path.
     `golangci-lint run` clean.
 
 - [ ] **P2-004 — Spec + manual verification + commit**
-  - Update `specs/multiline-splits-and-paycheck.md` to document
-    investment-target transfer-line behavior. Note any UI implications
-    for the paycheck wizard if the user can pick an investment
-    account in a Net Pay Destination row.
-  - Manually create a paycheck schedule with a 401k contribution
-    transfer line, post it via the post-time preview dialog, and
-    verify the resulting `investment.Transaction` in the 401k account
-    is type `TransferCash`, signed correctly, and linked via
-    `transferID` to the parent's split row.
-  - `go test ./...` + lint + commit + push.
+  - [x] Spec: extended `specs/multiline-splits-and-paycheck.md` so the
+    "Paired counterpart" section calls out the dispatch by target
+    account type (regular vs. investment), with the table picker and
+    lookup queries for both. The cascade-rules table now covers the
+    void cascade and notes that every cascade applies uniformly to
+    bank-side and investment-side counterparts. Added an
+    "Investment-account destinations" note under the paycheck
+    wizard's pre-populated-rows section to point out that Net Pay
+    Destination rows pointing at an investment or HSA account land as
+    `transfer_cash` rows on `investment_transactions`. The
+    transaction-spec side of the same update lives in
+    `specs/transactions.md` Transfer-Line Rules § Investment-target
+    dispatch.
+  - [ ] Manual verification: create a paycheck schedule with a 401k
+    contribution transfer line, post it via the post-time preview
+    dialog, and confirm the resulting `investment.Transaction` in the
+    401k account is type `TransferCash`, signed correctly, and linked
+    via `transferID` to the parent's split row. (Service-level
+    integration test
+    `TestSplitCounterpart_ScheduledPaycheckPosting_LandsInvestmentRow`
+    already covers the same code path.)
+  - [ ] Final `go test ./...` + lint + commit + push for the manual-
+    verification commit.
 
 ---
 

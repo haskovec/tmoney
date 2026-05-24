@@ -132,27 +132,48 @@ A split line may be a **transfer** instead of a categorized line.
 
 ### Paired counterpart
 
-When a transaction is saved with a transfer-line, a paired single-line transaction is automatically created in the target account, linked via the same `transfer_id` on the *transactions* row. The pair side has no split children — it's a plain single-line transaction (e.g., `+500.00 from Employer`) whose `transfer_id` matches the split-item's `transfer_id`.
+When a transaction is saved with a transfer-line, a paired single-line transaction is automatically created in the target account, linked via the same `transfer_id`. The pair side has no split children — it's a plain single-line transaction (e.g., `+500.00 from Employer`) whose `transfer_id` matches the split-item's `transfer_id`.
 
-Lookup of the pair from a transfer-line:
+**Dispatch by target account type.** The table the paired row lives in depends on the target account's type:
+
+| Target account type | Pair lives in | Row shape |
+|---|---|---|
+| Non-investment (checking, savings, credit_card, …) | `transactions` | Plain single-line transaction with `transfer_id` set |
+| Investment-type (`investment`, `hsa`) | `investment_transactions` | Row of type `transfer_cash`, signed in the destination frame, with `transfer_id` set |
+
+The investment-target case is what makes a paycheck → 401k contribution line work correctly: the 401k account is investment-type, so the counterpart is minted on `investment_transactions` and feeds into investment cash balances, total-return reporting, and the investment register — instead of being a malformed regular row in the investment account's ledger.
+
+Lookup of the pair from a transfer-line must therefore consult both tables:
 
 ```sql
+-- non-investment target
 SELECT * FROM transactions
 WHERE transfer_id = <split_item.transfer_id>
   AND id != <parent_transaction.id>
+
+-- investment target
+SELECT * FROM investment_transactions
+WHERE transfer_id = <split_item.transfer_id>
 ```
+
+The transaction service routes the create / find / delete / amount-update path through an `InvestmentCashCounterpartAdapter` so the cycle between `transaction.Service` and `investment.Service` stays broken; the adapter is wired at app-construction time. Without a wired adapter, transfer-lines targeting investment accounts are rejected at the service layer rather than silently creating a malformed regular row.
 
 ### Cascade rules
 
+The cascades below apply uniformly to bank-side and investment-side counterparts; the service picks the right table by inspecting the target account's type.
+
 | Action | Effect |
 |--------|--------|
-| Save transaction with new transfer-line | Create paired counter-transaction in target account; assign matching `transfer_id` |
-| Edit transfer-line amount | Update paired side amount in lock-step |
-| Edit transfer-line target account | Delete old paired side; create new paired side in new target |
+| Save transaction with new transfer-line | Create paired counter-transaction in target account (regular table or `investment_transactions` per dispatch); assign matching `transfer_id` |
+| Edit transfer-line amount | Update paired side amount in lock-step (regular row `Update` or investment-row `TotalAmount` update via the adapter) |
+| Edit transfer-line target account | Delete old paired side; create new paired side in new target — including cross-table moves (bank → inv, inv → bank, inv → inv) |
 | Delete transfer-line from parent | Cascade delete paired side; parent retains other lines (may now be imbalanced — see Hard Validation) |
-| Delete entire parent transaction | Cascade delete all paired sides |
+| Delete entire parent transaction | Cascade delete all paired sides (regular and investment alike) |
+| Void entire parent transaction | Same cascade as Delete: paired sides are removed before the parent is set to `**VOID**` and splits are dropped |
 | Delete paired side from target register | Reverse cascade: remove the corresponding line from the parent; parent must be rebalanced before saving |
 | Edit paired side amount in target register | Update parent's transfer-line amount; parent must remain balanced |
+
+A reconciled paired counterpart (on either table) blocks every cascade with `IsReconciledError`. The user must un-reconcile the counterpart before editing or deleting the parent.
 
 ### Self-transfer prohibited
 
@@ -270,6 +291,8 @@ The wizard opens with the following rows visible, ready to fill in:
 | Net Pay Destinations | Primary deposit picker only (defaults to the wizard's selected account) |
 
 Only universally-applicable items are pre-populated. Items that vary by employer — HSA, 401(k), supplemental life, state income tax, health insurance — are added via the `[+ Add line]` button at the bottom of each section.
+
+**Investment-account destinations.** Net Pay Destination rows accept an investment-type account (`investment` or `hsa`) as the target. The wizard does not filter the account picker by type, and the underlying transfer-line dispatch (see [Transfer Lines → Paired counterpart](#paired-counterpart)) routes the paired row to `investment_transactions` as a `transfer_cash` entry. Practically, this is how a paycheck schedule's 401(k) contribution line or HSA contribution line lands as a real investment cash flow rather than as a malformed row in the investment account's regular ledger.
 
 ### Multi-line earnings
 

@@ -198,17 +198,38 @@ for the design rationale and full implementation plan.
    parent's other lines are unchanged.
 4. Editing the split-line's target account deletes the old paired
    side and creates a new one in the new target account (a fresh
-   `transfer_id` is minted).
+   `transfer_id` is minted). Cross-table moves (bank→inv, inv→bank)
+   route through the right repository for each direction.
 5. Deleting the split-line deletes the paired side; the parent
    retains its other lines and may be left imbalanced (the next Save
    on the parent is blocked until rebalanced).
-6. Deleting the paired side from its own register reverse-cascades:
+6. Deleting *or voiding* the parent transaction cascades to every
+   paired side before the parent's splits are removed. Bank-side
+   counterparts are deleted from `transactions`; investment-side
+   counterparts are deleted from `investment_transactions` via the
+   investment service. (A reconciled paired side blocks the
+   cascade.)
+7. Deleting the paired side from its own register reverse-cascades:
    the parent's transfer-line is removed (same imbalance-blocking
    rule applies).
-7. A transfer-line's `transfer_account_id` must not equal the
+8. A transfer-line's `transfer_account_id` must not equal the
    parent's `account_id` (no self-transfers).
-8. If either side is reconciled, the cascade is refused — the user
+9. If either side is reconciled, the cascade is refused — the user
    must unreconcile first.
+
+**Investment-target dispatch.** When a transfer-line's
+`transfer_account_id` points at an investment-type account
+(`investment` or `hsa`), the paired counter-transaction is created
+on `investment_transactions` as a `transfer_cash` row, not on
+`transactions`. The dispatch lives in `transaction.Service` and
+calls into `investment.Service` via an
+`InvestmentCashCounterpartAdapter` wired at app construction time;
+without that adapter, transfer-lines targeting investment accounts
+are rejected at the service layer. Every cascade above
+(create / amount edit / target move / parent delete / parent void /
+single-line delete) honors the dispatch — see
+[`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md#paired-counterpart)
+for the full table.
 
 ## Validation Rules
 
