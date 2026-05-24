@@ -54,7 +54,10 @@ tmoney -f personal.tdb account balance
 ### Transactions
 - Standard transactions with payee, category, and memo
 - Split transactions across multiple categories
-- Linked transfers between accounts
+- Linked transfers between accounts, including between two investment
+  accounts (e.g., IRA-to-IRA cash rollovers). A single Transfer dialog
+  in the TUI handles every combination — bank↔bank, bank↔investment,
+  and investment↔investment — with explicit From / To pickers
 - Cleared/pending status tracking
 - Full-text search with date, amount, and category filters
 - Sticky last-used date across every new-transaction dialog (within a
@@ -387,7 +390,9 @@ tmoney transaction add --account Checking --amount 3500.00 \
 # Void a transaction by ID (transfer counterparts are voided too)
 tmoney transaction void <id>
 
-# Create a transfer between accounts
+# Create a transfer between accounts (both accounts must be non-investment;
+# linked cash transfers involving an investment account are TUI-only — CLI
+# parity is deferred to a future phase)
 tmoney transfer add --from Checking --to Savings --amount 500.00
 tmoney transfer add --from Checking --to Savings --amount 500.00 \
   --date 2024-03-01 --memo "Monthly savings"
@@ -715,6 +720,14 @@ tmoney -f personal.tdb investment transfer --from Brokerage --to RolloverIRA \
 source account to the destination account. Date defaults to today.
 For lot-tracked source accounts, pass `--lot <id>` to allocate against
 a specific open lot.
+
+> **Linked cash transfers involving an investment account are
+> TUI-only.** Moving cash (not shares) between an investment account
+> and another account — whether bank↔investment or
+> investment↔investment (e.g., an IRA-to-IRA rollover) — is supported
+> only through the unified TUI Transfer dialog. CLI parity is a
+> planned future phase; see
+> [`specs/implementation-plan-investment-cash-transfer-unification.md`](specs/implementation-plan-investment-cash-transfer-unification.md).
 
 ```bash
 # Apply a forward stock split (4-for-1)

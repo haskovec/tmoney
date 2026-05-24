@@ -266,6 +266,16 @@ tmoney -f personal.tdb import register.csv --account "BoA Checking" \
 
 Investment-account operations: trades, cash flow, corporate actions, and portfolio reporting.
 
+> **Note**: `investment deposit` and `investment withdraw` are
+> one-sided cash flows (no linked counterpart in another account).
+> Linked cash transfers involving an investment account — whether
+> bank↔investment or investment↔investment (e.g. IRA-to-IRA cash
+> rollovers) — are handled by the unified TUI Transfer dialog and
+> have no CLI command yet. CLI parity is a planned future phase; see
+> [`implementation-plan-investment-cash-transfer-unification.md`](implementation-plan-investment-cash-transfer-unification.md).
+> The existing `investment transfer` (no `-cash` suffix) moves
+> **shares** between two investment accounts, not cash.
+
 ### `investment buy`
 
 `Use: investment buy` · `Args: NoArgs`
@@ -1009,6 +1019,15 @@ tmoney transfer add --from Checking --to Savings --amount 500.00
 tmoney transfer add --from Checking --to Savings --amount 500.00 \
   --date 2024-03-01 --memo "Monthly savings"
 ```
+
+> **Both accounts must be non-investment.** Passing an investment
+> account as `--from` or `--to` returns an error directing you to the
+> TUI. Linked cash transfers involving an investment account
+> (bank↔investment or investment↔investment, e.g. IRA-to-IRA cash
+> rollovers) are handled by the unified TUI Transfer dialog — CLI
+> parity is deferred to a future phase. See
+> [`implementation-plan-investment-cash-transfer-unification.md`](implementation-plan-investment-cash-transfer-unification.md)
+> for the deferred design.
 
 ### `transfer link`
 

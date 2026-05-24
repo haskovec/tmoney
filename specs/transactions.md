@@ -106,7 +106,12 @@ There are two shapes of transfer in TMoney, and they coexist:
    per account, linked by a shared `transfer_id`. This is the legacy
    shape that `tmoney transfer add` and the TUI's `t` (new transfer)
    action emit, and the only shape produced by `transfer link` import
-   matching.
+   matching. When both accounts are non-investment, both linked rows
+   live in the `transactions` table. When one or both legs are an
+   investment account, the investment-side row lives in the
+   `investment_transactions` table as a `transfer_cash` row — see
+   [Investment-Account Transfers](#investment-account-transfers) for
+   the dispatch rules.
 2. **Transfer-lines** — one line of a multi-line split on a parent
    transaction whose `transfer_account_id` is set; the service mints a
    single-line *paired counter-transaction* in the target account
@@ -142,6 +147,45 @@ register renders the other account's name from `transfer_account_id`.
 2. Amounts are equal but opposite signs
 3. Deleting one side prompts to delete the other
 4. Editing amount on one side updates the other
+
+### Investment-Account Transfers
+
+A whole-transaction transfer where at least one leg is an investment
+account dispatches to a different service method based on the
+`(from.type, to.type)` combination. The dialog and CLI behavior:
+
+| From → To | Service method | Notes |
+|---|---|---|
+| reg → reg | `transaction.Service.CreateTransfer` | Legacy bank↔bank; both rows in `transactions` table. |
+| reg → inv | `investment.Service.DepositFromAccount` | Deposit into investment; investment-side row is `transfer_cash` in `investment_transactions`. |
+| inv → reg | `investment.Service.TransferCash` | Withdraw from investment; investment-side row is `transfer_cash` in `investment_transactions`. |
+| inv → inv | `investment.Service.TransferCashBetweenInvestments` | Both rows in `investment_transactions`, type `transfer_cash`, signed opposite. |
+
+The dispatcher lives in the unified TUI Transfer dialog
+(`transfer_dialog.go`) and in the `tmoney transfer add` CLI command.
+Each dispatch path integrates with the undo manager via a dedicated
+undo command in `internal/undo/`.
+
+**Hardening invariant**: `transaction.Service.CreateTransfer` and
+`UpdateTransfer` reject any account whose type satisfies
+`Type.IsInvestmentType()`. Callers wanting to move cash to/from an
+investment account must use the `investment.Service` family. This
+closes a data-integrity hole where the legacy `CreateTransfer` would
+silently create a regular `transaction.Transaction` row in an
+investment account's ledger.
+
+**Unified TUI dialog**: a single Transfer dialog handles all four
+combinations. Field order is `From`, `To`, `Amount`, `Date`, `Memo`.
+On Edit, `From → To` renders as a read-only body message (the
+accounts cannot be changed on an existing pair; delete and recreate
+to move a transfer); editable fields are `Amount`, `Date`, `Memo`,
+and `Status` (Cleared/Uncleared, applied to both legs). The dialog
+reads and writes `txnDialogLastSavedDate` (sticky-date) on open and
+save for all dispatch paths.
+
+See
+[`specs/implementation-plan-investment-cash-transfer-unification.md`](implementation-plan-investment-cash-transfer-unification.md)
+for the design rationale and full implementation plan.
 
 ### Transfer-Line Rules
 
