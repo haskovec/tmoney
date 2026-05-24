@@ -791,14 +791,31 @@ lands and we trace the exact split-counterpart code path.
   path via `scheduled.Service.PostWithEdits`. Full `go test ./...`
   (5407 tests across 26 packages) and `golangci-lint run` clean.
 
-- [ ] **P2-003 — Void/edit of parent with mixed counterparts**
-  - RED: posting a paycheck-style parent with one bank-side transfer
-    line + one investment-side transfer line, then voiding the parent,
-    reverses both counterparts coherently.
-  - RED: editing the line amount of an investment-side transfer
-    line propagates correctly.
-  - GREEN: extend the existing void / edit-line code paths to call
-    the investment service when a counterpart is investment-side.
+- [x] **P2-003 — Void/edit of parent with mixed counterparts**
+  - RED: `TestVoidTransaction_OfParentWithInvestmentSplit_CascadesToInvestmentRow`
+    and `TestVoidTransaction_OfParentWithMixedCounterparts_CascadesBoth`
+    in `internal/transaction/split_investment_test.go` posted a
+    paycheck-style parent with bank-side and/or investment-side
+    transfer-lines and voided the parent — exposing the latent bug
+    where `VoidTransaction` deleted the splits but never cascaded to
+    the paired counter-transactions, leaving both bank-side and
+    investment-side counterparts orphaned with dangling `transfer_id`s.
+  - RED: `TestSplitCounterpart_VoidParent_CascadesToInvestmentRow` in
+    `internal/investment/split_counterpart_test.go` exercises the same
+    void path against the real `investment.Service` wiring.
+  - GREEN (amount-edit path): the existing P2-002 cascade in
+    `updatePairedAmount` already handles the investment-side case;
+    `TestSplitCounterpart_UpdateSplitAmount_PropagatesToInvestmentRow`
+    locks in the integration-level behavior (and passed first try
+    without any code change).
+  - GREEN (void cascade): `VoidTransaction` now calls
+    `deleteTransferLinePairs(id)` before `splitRepo.DeleteByTransaction`,
+    mirroring the `Delete` cascade. The helper iterates the parent's
+    transfer-line splits and routes each `deletePairedCounterTransaction`
+    call through both the regular and investment repos. A reconciled
+    counterpart blocks the void with `IsReconciledError`. Full
+    `go test ./...` (5411 tests across 26 packages) and
+    `golangci-lint run` clean.
 
 - [ ] **P2-004 — Spec + manual verification + commit**
   - Update `specs/multiline-splits-and-paycheck.md` to document

@@ -621,3 +621,122 @@ func TestCreateTransferLineCounterpart_RegularStillUsesRegularRepo(t *testing.T)
 		t.Errorf("expected 1 paired regular row in Savings, got %d", len(savingsRows))
 	}
 }
+
+// TestVoidTransaction_OfParentWithInvestmentSplit_CascadesToInvestmentRow
+// verifies that voiding a multi-line parent with an investment-side
+// transfer-line removes the investment counterpart. Without the cascade
+// fix, the investment row was orphaned after void.
+func TestVoidTransaction_OfParentWithInvestmentSplit_CascadesToInvestmentRow(t *testing.T) {
+	svc, accountRepo, adapter, categoryRepo := createTestServiceWithAdapter(t)
+	checking := createTestAccount(t, accountRepo, "Checking")
+	ira := createTestAccountOfType(t, accountRepo, "IRA", account.TypeInvestment)
+
+	salary := category.NewCategory("Salary", category.TypeIncome)
+	if err := categoryRepo.Create(salary); err != nil {
+		t.Fatalf("Create salary category: %v", err)
+	}
+
+	parent := NewTransaction(checking.ID, types.Today(), types.MustNewMoney("800.00"))
+	salaryLine := NewSplit(parent.ID, salary.ID, types.MustNewMoney("1000.00"))
+	contribLine := &Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-200.00"),
+		TransferAccountID: types.NullableID{ID: ira.ID, Valid: true},
+	}
+	if err := svc.CreateWithSplits(parent, []*Split{salaryLine, contribLine}); err != nil {
+		t.Fatalf("CreateWithSplits() error = %v", err)
+	}
+	if len(adapter.rows) != 1 {
+		t.Fatalf("expected 1 investment counterpart pre-void, got %d", len(adapter.rows))
+	}
+
+	if err := svc.VoidTransaction(parent.ID); err != nil {
+		t.Fatalf("VoidTransaction(parent) error = %v", err)
+	}
+
+	if len(adapter.rows) != 0 {
+		t.Errorf("expected 0 investment counterparts after parent void, got %d (cascade missed)", len(adapter.rows))
+	}
+
+	got, err := svc.GetByID(parent.ID)
+	if err != nil {
+		t.Fatalf("GetByID(parent) error = %v", err)
+	}
+	if got.Status != StatusVoid {
+		t.Errorf("parent.Status = %s, want StatusVoid", got.Status)
+	}
+	if !got.Amount.IsZero() {
+		t.Errorf("parent.Amount = %s, want 0", got.Amount.String())
+	}
+	remaining, err := svc.GetSplits(parent.ID)
+	if err != nil {
+		t.Fatalf("GetSplits(parent) error = %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Errorf("expected 0 splits after void, got %d", len(remaining))
+	}
+}
+
+// TestVoidTransaction_OfParentWithMixedCounterparts_CascadesBoth verifies
+// that voiding a paycheck-style parent with one bank-side and one
+// investment-side transfer-line cleans up BOTH counterparts coherently.
+func TestVoidTransaction_OfParentWithMixedCounterparts_CascadesBoth(t *testing.T) {
+	svc, accountRepo, adapter, categoryRepo := createTestServiceWithAdapter(t)
+	checking := createTestAccount(t, accountRepo, "Checking")
+	savings := createTestAccount(t, accountRepo, "Savings")
+	ira := createTestAccountOfType(t, accountRepo, "IRA", account.TypeInvestment)
+
+	salary := category.NewCategory("Salary", category.TypeIncome)
+	if err := categoryRepo.Create(salary); err != nil {
+		t.Fatalf("Create salary category: %v", err)
+	}
+
+	parent := NewTransaction(checking.ID, types.Today(), types.MustNewMoney("700.00"))
+	salaryLine := NewSplit(parent.ID, salary.ID, types.MustNewMoney("1000.00"))
+	savingsLine := &Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-100.00"),
+		TransferAccountID: types.NullableID{ID: savings.ID, Valid: true},
+	}
+	contribLine := &Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-200.00"),
+		TransferAccountID: types.NullableID{ID: ira.ID, Valid: true},
+	}
+	if err := svc.CreateWithSplits(parent, []*Split{salaryLine, savingsLine, contribLine}); err != nil {
+		t.Fatalf("CreateWithSplits() error = %v", err)
+	}
+
+	// Pre-state: 1 paired regular row in Savings, 1 adapter row for IRA.
+	savingsBefore, err := svc.ListByAccount(savings.ID)
+	if err != nil {
+		t.Fatalf("ListByAccount(savings) pre-void: %v", err)
+	}
+	if len(savingsBefore) != 1 {
+		t.Fatalf("expected 1 paired row in Savings pre-void, got %d", len(savingsBefore))
+	}
+	if len(adapter.rows) != 1 {
+		t.Fatalf("expected 1 investment counterpart pre-void, got %d", len(adapter.rows))
+	}
+
+	if err := svc.VoidTransaction(parent.ID); err != nil {
+		t.Fatalf("VoidTransaction(parent) error = %v", err)
+	}
+
+	savingsAfter, err := svc.ListByAccount(savings.ID)
+	if err != nil {
+		t.Fatalf("ListByAccount(savings) post-void: %v", err)
+	}
+	if len(savingsAfter) != 0 {
+		t.Errorf("expected 0 paired rows in Savings after void, got %d (bank cascade missed)", len(savingsAfter))
+	}
+	if len(adapter.rows) != 0 {
+		t.Errorf("expected 0 investment counterparts after void, got %d (investment cascade missed)", len(adapter.rows))
+	}
+}

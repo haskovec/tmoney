@@ -267,3 +267,155 @@ func TestSplitCounterpart_ScheduledPaycheckPosting_LandsInvestmentRow(t *testing
 		t.Errorf("expected 0 regular rows in IRA after scheduled post, got %d", len(regRows))
 	}
 }
+
+// TestSplitCounterpart_VoidParent_CascadesToInvestmentRow exercises the
+// P2-003 acceptance criterion end-to-end against the real investment
+// service: voiding a paycheck-style parent removes the investment-side
+// TransferCash counterpart along with the parent's splits.
+func TestSplitCounterpart_VoidParent_CascadesToInvestmentRow(t *testing.T) {
+	database := createTestDB(t)
+
+	txnRepo := transaction.NewRepository(database)
+	splitRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+
+	invRepo := NewRepository(database)
+	positionRepo := NewPositionRepository(database)
+	lotRepo := NewLotRepository(database)
+	transactionLotRepo := NewTransactionLotRepository(database)
+	caRepo := NewCorporateActionRepository(database)
+
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, nil, txnRepo, caRepo, database)
+	txnSvc.SetInvestmentCounterpart(invSvc)
+
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	_ = accountRepo.Create(checking)
+	ira := account.NewAccount("IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	_ = accountRepo.Create(ira)
+
+	salary := category.NewCategory("Salary", category.TypeIncome)
+	_ = categoryRepo.Create(salary)
+
+	parent := transaction.NewTransaction(checking.ID, types.Today(), types.MustNewMoney("800.00"))
+	salaryLine := transaction.NewSplit(parent.ID, salary.ID, types.MustNewMoney("1000.00"))
+	contribLine := &transaction.Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-200.00"),
+		TransferAccountID: types.NullableID{ID: ira.ID, Valid: true},
+	}
+	if err := txnSvc.CreateWithSplits(parent, []*transaction.Split{salaryLine, contribLine}); err != nil {
+		t.Fatalf("CreateWithSplits: %v", err)
+	}
+
+	if rows, _ := invRepo.ListByAccount(ira.ID, TransactionFilter{}); len(rows) != 1 {
+		t.Fatalf("expected 1 investment row pre-void, got %d", len(rows))
+	}
+
+	if err := txnSvc.VoidTransaction(parent.ID); err != nil {
+		t.Fatalf("VoidTransaction(parent): %v", err)
+	}
+
+	rows, err := invRepo.ListByAccount(ira.ID, TransactionFilter{})
+	if err != nil {
+		t.Fatalf("ListByAccount(IRA) post-void: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("expected 0 investment rows after parent void, got %d (cascade missed)", len(rows))
+	}
+
+	got, err := txnSvc.GetByID(parent.ID)
+	if err != nil {
+		t.Fatalf("GetByID(parent) post-void: %v", err)
+	}
+	if got.Status != transaction.StatusVoid {
+		t.Errorf("parent.Status = %s, want StatusVoid", got.Status)
+	}
+}
+
+// TestSplitCounterpart_UpdateSplitAmount_PropagatesToInvestmentRow is the
+// edit-line half of the P2-003 acceptance criterion: editing a transfer-
+// line split's amount must update the linked investment-side row's
+// TotalAmount accordingly, with the sign flipped to the destination frame.
+func TestSplitCounterpart_UpdateSplitAmount_PropagatesToInvestmentRow(t *testing.T) {
+	database := createTestDB(t)
+
+	txnRepo := transaction.NewRepository(database)
+	splitRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+
+	invRepo := NewRepository(database)
+	positionRepo := NewPositionRepository(database)
+	lotRepo := NewLotRepository(database)
+	transactionLotRepo := NewTransactionLotRepository(database)
+	caRepo := NewCorporateActionRepository(database)
+
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, nil, txnRepo, caRepo, database)
+	txnSvc.SetInvestmentCounterpart(invSvc)
+
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	_ = accountRepo.Create(checking)
+	ira := account.NewAccount("IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	_ = accountRepo.Create(ira)
+
+	salary := category.NewCategory("Salary", category.TypeIncome)
+	_ = categoryRepo.Create(salary)
+
+	parent := transaction.NewTransaction(checking.ID, types.Today(), types.MustNewMoney("800.00"))
+	salaryLine := transaction.NewSplit(parent.ID, salary.ID, types.MustNewMoney("1000.00"))
+	contribLine := &transaction.Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            types.MustNewMoney("-200.00"),
+		TransferAccountID: types.NullableID{ID: ira.ID, Valid: true},
+	}
+	if err := txnSvc.CreateWithSplits(parent, []*transaction.Split{salaryLine, contribLine}); err != nil {
+		t.Fatalf("CreateWithSplits: %v", err)
+	}
+
+	// Find the persisted transfer-line split and bump its amount from
+	// -200 to -250 (a "raised 401k contribution" edit). The salary line
+	// is reduced to keep the splits in balance with the new -250 amount
+	// (parent stays at +800 = 950 + -50 - 200 ... but we just want the
+	// transfer-line amount edit to flow to the investment row).
+	splits, err := txnSvc.GetSplits(parent.ID)
+	if err != nil {
+		t.Fatalf("GetSplits: %v", err)
+	}
+	var xfer *transaction.Split
+	for _, s := range splits {
+		if s.TransferAccountID.Valid {
+			xfer = s
+		}
+	}
+	if xfer == nil {
+		t.Fatalf("transfer-line not found")
+	}
+
+	xfer.Amount = types.MustNewMoney("-250.00")
+	if err := txnSvc.UpdateSplit(xfer); err != nil {
+		t.Fatalf("UpdateSplit: %v", err)
+	}
+
+	// Investment side must now read +250.
+	invRows, err := invRepo.ListByAccount(ira.ID, TransactionFilter{})
+	if err != nil {
+		t.Fatalf("ListByAccount(IRA) post-edit: %v", err)
+	}
+	if len(invRows) != 1 {
+		t.Fatalf("expected 1 investment row post-edit, got %d", len(invRows))
+	}
+	if !invRows[0].TotalAmount.Equal(types.MustNewMoney("250.00")) {
+		t.Errorf("investment-row TotalAmount = %s, want 250.00 (negated split)", invRows[0].TotalAmount.String())
+	}
+}

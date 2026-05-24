@@ -1060,7 +1060,11 @@ func (s *Service) UnReconcileTransaction(id types.ID) error {
 
 // VoidTransaction voids a transaction by setting its amount to 0, memo to **VOID**,
 // and status to void. For transfers, both sides are voided atomically.
-// For split transactions, all splits are removed.
+// For split transactions, all splits are removed and any paired
+// counter-transactions minted from transfer-line splits are cascade-
+// deleted alongside the splits — matching the Delete cascade. Bank-side
+// and investment-side counterparts are both handled; a reconciled
+// counterpart blocks the void with IsReconciledError.
 // Void and reconciled transactions cannot be voided.
 func (s *Service) VoidTransaction(id types.ID) error {
 	txn, err := s.txnRepo.GetByID(id)
@@ -1081,6 +1085,13 @@ func (s *Service) VoidTransaction(id types.ID) error {
 	// If this is a transfer, void both sides
 	if txn.IsTransfer() {
 		return s.voidTransfer(txn.TransferID.ID)
+	}
+
+	// Cascade to paired counter-transactions of any transfer-typed split-
+	// lines before deleting the splits — otherwise the counterparts (bank
+	// or investment) are orphaned with a dangling transfer_id.
+	if err := s.deleteTransferLinePairs(id); err != nil {
+		return err
 	}
 
 	// Delete splits if any
