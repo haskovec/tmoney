@@ -260,14 +260,6 @@ type App struct {
 	cashOperationDialog *Dialog
 	cashOperationType   investment.TransactionType
 
-	// Transfer cash dialog state (between investment and regular accounts).
-	// Direction (deposit into vs. withdraw from the investment account) is
-	// part of the dialog itself — see Direction select in
-	// buildTransferCashDialog — not a separate App-level field.
-	transferCashDialog           *Dialog
-	transferCashDialogData       *transferCashDialogData
-	transferCashDialogAccountIDs []types.ID
-
 	// Transfer shares dialog state (between investment accounts)
 	transferSharesDialog            *Dialog
 	transferSharesDialogData        *transferSharesDialogData
@@ -573,11 +565,6 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// If dividend dialog is visible, route all keys to it
 	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
 		return a.handleDividendDialogKey(msg)
-	}
-
-	// If transfer cash dialog is visible, route all keys to it
-	if a.transferCashDialog != nil && a.transferCashDialog.IsVisible() {
-		return a.handleTransferCashDialogKey(msg)
 	}
 
 	// If transfer shares dialog is visible, route all keys to it

@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -229,35 +230,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
-	case transferCashDialogDataMsg:
-		a.transferCashDialogData = msg.data
-		acctOptions, acctIDs := buildNonInvestmentAccountOptions(msg.data.accounts)
-		a.transferCashDialogAccountIDs = acctIDs
-		editTxn, ok := a.loadInvestmentEditTxn()
-		if !ok {
-			return a, nil
-		}
-		investmentAccountName := ""
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			investmentAccountName = a.investmentRegister.account.Name
-		}
-		a.transferCashDialog = buildTransferCashDialog(investmentAccountName, acctOptions, editTxn, acctIDs)
-		if editTxn == nil {
-			a.transferCashDialog.SeedDateField(a.txnDialogLastSavedDate)
-		}
-		return a, nil
-
-	case transferCashDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.investmentEditTxnID = types.NilID
-		a.statusbar.AddNotification("Cash transfer saved", NotificationInfo)
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
-		}
-		return a, nil
-
 	case transferSharesDialogDataMsg:
 		a.transferSharesDialogData = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
@@ -404,9 +376,30 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		accountOptions, accountIDs := buildAccountOptions(msg.data.accounts)
 		a.transferDialogAccountIDs = accountIDs
 
-		if msg.data.mode == transferDialogModeEdit && msg.data.existing != nil {
+		if msg.data.mode == transferDialogModeEdit {
 			fromName, toName := transferAccountNames(msg.data)
-			a.transferDialog = buildEditTransferDialog(fromName, toName, msg.data.existing)
+			switch {
+			case msg.data.existingInvestment != nil:
+				e := msg.data.existingInvestment
+				a.transferDialog = buildEditTransferDialog(fromName, toName, e.amount, e.date, e.memo, e.status)
+			case msg.data.existing != nil:
+				pair := msg.data.existing
+				amount := types.MustNewMoney("0")
+				if pair.ToTransaction != nil {
+					amount = pair.ToTransaction.Amount
+				}
+				date := types.Today()
+				memo := ""
+				status := transaction.StatusUncleared
+				if pair.FromTransaction != nil {
+					date = pair.FromTransaction.Date
+					if pair.FromTransaction.Memo.Valid {
+						memo = pair.FromTransaction.Memo.String
+					}
+					status = pair.FromTransaction.Status
+				}
+				a.transferDialog = buildEditTransferDialog(fromName, toName, amount, date, memo, status)
+			}
 			return a, nil
 		}
 
@@ -427,10 +420,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.savedDate.IsZero() {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
-		accountID := a.sidebar.SelectedAccountID()
+		a.investmentEditTxnID = types.NilID
+		a.statusbar.AddNotification("Transfer saved", NotificationInfo)
 		return a, tea.Batch(
-			a.loadRegisterData(accountID),
-			a.loadSidebarData(),
+			a.reloadCurrentView(),
 		)
 
 	case scheduledDialogDataMsg:

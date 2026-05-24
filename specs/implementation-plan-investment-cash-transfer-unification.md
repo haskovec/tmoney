@@ -562,32 +562,68 @@ refactor consumes them, then docs and verification.
 
 ### P1-6: Investment register integration
 
-- [ ] **P1-009 — Wire investment register Transfer Cash entries**
-  - In `investment_register_view.go` and `app_mouse.go`: the "New
-    Transaction → Transfer Cash" path and the Enter-on-TransferCash-row
-    path call `loadTransferDialogData` (in a mode that defaults From
-    to the current investment account; in edit mode, pre-fills with
-    the existing transfer pair, which now might be inv↔inv).
-  - Update or replace existing tests in
-    `investment_transfer_cash_dialog_test.go` (the file goes away)
-    against the unified dialog's behavior with an investment-account
-    default.
+- [x] **P1-009 — Wire investment register Transfer Cash entries**
+  - In `investment_register_view.go` and `app_mouse.go`, the
+    investment type selector's `TransactionTypeTransferCash` branch
+    now dispatches to the unified dialog: `loadTransferDialogData()`
+    for new mode (the sidebar's selected account — i.e. the
+    investment account whose register the user is in — pre-selects as
+    "From"), and a new `loadEditInvestmentTransferDialogData(invTxnID)`
+    for edit mode.
+  - The new loader looks up the investment-side row in
+    `investmentRepo`, resolves the counterpart leg from
+    `TransferAccountID`/`TransferID` against either the investment or
+    regular repo, derives From/To by the sign of the investment-side
+    `TotalAmount`, and packages the result as
+    `data.existingInvestment` (a new `investmentTransferEdit` shape).
+  - `loadEditTransferDialogData` (used from bank registers) was
+    extended in the same pass to detect when the counterpart account
+    is investment-typed and build the same `existingInvestment`
+    payload, so an Enter on the regular-side leg of an inv↔reg
+    transfer also opens the unified Edit Transfer dialog.
+  - `buildEditTransferDialog` lost its `*transaction.TransferPair`
+    parameter and now takes primitive `(amount, date, memo, status)`,
+    so it serves both edit shapes. `transferAccountNames` handles
+    both `data.existing` and `data.existingInvestment`.
+  - `submitEditTransferDialog` branches on `existingInvestment != nil`
+    and routes through a new `dispatchInvestmentEditTransfer` helper
+    that picks `investmentAccountID`/`otherAccountID`/`direction`
+    from the From/To types and calls
+    `investmentSvc.UpdateTransferCash` with the user-edited Status.
+  - `transferDialogSavedMsg` handler now clears
+    `investmentEditTxnID`, surfaces a "Transfer saved" toast, and
+    delegates to `reloadCurrentView()` so an inv-involving save in
+    the investment register triggers `loadInvestmentRegisterData`.
+  - Added `statusToRegular` (inverse of `statusFromRegular`) for the
+    status mapping on the load path.
+  - New tests: `TestStatusToRegular_Mapping`,
+    `TestTransferAccountNames_InvestmentEdit`,
+    `TestApp_Update_TransferDialogDataMsg_InvestmentEdit`,
+    `TestApp_SubmitEditTransferDialog_InvestmentEdit_Dispatches` in
+    `transfer_dialog_test.go`. Full TUI suite + `go test ./...` +
+    `golangci-lint run` all clean.
 
 ### P1-7: Delete dead code
 
-- [ ] **P1-010 — Remove `investment_transfer_cash_dialog.go` and
+- [x] **P1-010 — Remove `investment_transfer_cash_dialog.go` and
   related dead state**
-  - Delete `investment_transfer_cash_dialog.go` and
-    `investment_transfer_cash_dialog_test.go`.
-  - Delete `App.transferCashDialog`, `App.transferCashDialogData`,
-    `App.transferCashDialogAccountIDs`, and all references in
-    `app.go`, `app_update.go`, `app_view.go`, `app_helpers.go`,
-    `app_mouse.go`.
-  - Delete `transferCashDialogDataMsg`, `transferCashDialogSavedMsg`,
-    and any helper functions that only the old dialog used (e.g.,
-    `buildNonInvestmentAccountOptions`).
-  - Verify: `go build ./...` passes; `grep -r transferCashDialog`
-    returns nothing.
+  - Deleted `investment_transfer_cash_dialog.go` and
+    `investment_transfer_cash_dialog_test.go` outright.
+  - Stripped `App.transferCashDialog`/`transferCashDialogData`/
+    `transferCashDialogAccountIDs` and every reference to them in
+    `app.go`, `app_update.go`, `app_view.go`, `app_helpers.go`, and
+    `app_mouse.go` — the key/mouse/render passes no longer test for
+    the legacy dialog.
+  - Removed the `transferCashDialogDataMsg` and
+    `transferCashDialogSavedMsg` case arms from the App's Update
+    routing; the unified dialog's existing
+    `transferDialogDataMsg`/`transferDialogSavedMsg` arms cover both
+    new and edit paths now.
+  - `buildNonInvestmentAccountOptions` is gone (no remaining callers
+    after the legacy dialog's deletion).
+  - Verification: `grep -r transferCashDialog ./internal/` returns
+    nothing; `go build ./...`, `go test ./...` (5394 pass),
+    `golangci-lint run` all clean.
 
 ### P1-8: Documentation
 

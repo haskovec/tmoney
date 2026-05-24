@@ -3,6 +3,7 @@ package tui
 import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // handleMouseEvent handles mouse events (clicks, wheel scrolling).
@@ -443,18 +444,6 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	if a.transferCashDialog != nil && a.transferCashDialog.IsVisible() {
-		action := a.transferCashDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case DialogActionSubmit:
-			return a.submitTransferCashDialog()
-		case DialogActionCancel:
-			a.transferCashDialog.SetVisible(false)
-			a.transferCashDialog = nil
-		}
-		return a, nil
-	}
-
 	if a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible() {
 		action := a.transferSharesDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
@@ -549,7 +538,10 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				}
 				return a, nil
 			case investment.TransactionTypeTransferCash:
-				return a, a.loadTransferCashDialogData()
+				if a.investmentEditTxnID != types.NilID {
+					return a, a.loadEditInvestmentTransferDialogData(a.investmentEditTxnID)
+				}
+				return a, a.loadTransferDialogData()
 			case investment.TransactionTypeTransferShares:
 				return a, a.loadTransferSharesDialogData()
 			}

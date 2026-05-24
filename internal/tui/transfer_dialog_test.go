@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -1050,7 +1051,11 @@ func TestBuildEditTransferDialog_Prefill(t *testing.T) {
 		},
 	}
 
-	d := buildEditTransferDialog("Checking", "Savings", pair)
+	amount := pair.ToTransaction.Amount
+	date := pair.FromTransaction.Date
+	memo := pair.FromTransaction.Memo.String
+	status := pair.FromTransaction.Status
+	d := buildEditTransferDialog("Checking", "Savings", amount, date, memo, status)
 
 	if d.Title() != "Edit Transfer" {
 		t.Errorf("title = %q, want %q", d.Title(), "Edit Transfer")
@@ -1218,5 +1223,172 @@ func TestApp_Update_TransferDialogDataMsg_EditMode(t *testing.T) {
 	}
 	if fields[1].Value != "04/01/2024" {
 		t.Errorf("Date = %q, want %q", fields[1].Value, "04/01/2024")
+	}
+}
+
+// =============================================================================
+// P1-009: Investment-edit dispatch through the unified Transfer dialog
+// =============================================================================
+
+func TestStatusToRegular_Mapping(t *testing.T) {
+	cases := []struct {
+		in   investment.TransactionStatus
+		want transaction.Status
+	}{
+		{investment.TransactionStatusPending, transaction.StatusUncleared},
+		{investment.TransactionStatusCleared, transaction.StatusCleared},
+		{investment.TransactionStatusReconciled, transaction.StatusReconciled},
+	}
+	for _, c := range cases {
+		got := statusToRegular(c.in)
+		if got != c.want {
+			t.Errorf("statusToRegular(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestTransferAccountNames_InvestmentEdit verifies the read-only "From → To"
+// banner shows the right account names when the edit payload is the
+// investment shape (P1-009 dispatch path).
+func TestTransferAccountNames_InvestmentEdit(t *testing.T) {
+	iraA := types.NewID()
+	iraB := types.NewID()
+	data := &transferDialogData{
+		accounts: []*account.Account{
+			{BaseModel: types.BaseModel{ID: iraA}, Name: "IRA A", Type: account.TypeInvestment},
+			{BaseModel: types.BaseModel{ID: iraB}, Name: "IRA B", Type: account.TypeInvestment},
+		},
+		existingInvestment: &investmentTransferEdit{
+			fromAccountID: iraA,
+			toAccountID:   iraB,
+		},
+	}
+	from, to := transferAccountNames(data)
+	if from != "IRA A" {
+		t.Errorf("from = %q, want %q", from, "IRA A")
+	}
+	if to != "IRA B" {
+		t.Errorf("to = %q, want %q", to, "IRA B")
+	}
+}
+
+// TestApp_Update_TransferDialogDataMsg_InvestmentEdit verifies the edit-mode
+// data message with an investmentTransferEdit payload opens the dialog with
+// the right title, "From → To" banner, and pre-filled fields.
+func TestApp_Update_TransferDialogDataMsg_InvestmentEdit(t *testing.T) {
+	iraA := types.NewID()
+	iraB := types.NewID()
+
+	app := &App{
+		currentView: ViewInvestmentRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	data := &transferDialogData{
+		accounts: []*account.Account{
+			{BaseModel: types.BaseModel{ID: iraA}, Name: "IRA A", Type: account.TypeInvestment},
+			{BaseModel: types.BaseModel{ID: iraB}, Name: "IRA B", Type: account.TypeInvestment},
+		},
+		accountIDs: []types.ID{iraA, iraB},
+		mode:       transferDialogModeEdit,
+		existingInvestment: &investmentTransferEdit{
+			fromAccountID:   iraA,
+			toAccountID:     iraB,
+			amount:          types.MustNewMoney("400.00"),
+			date:            types.NewDate(2024, time.March, 15),
+			memo:            "rollover",
+			status:          transaction.StatusCleared,
+			investmentTxnID: types.NewID(),
+		},
+	}
+
+	model, _ := app.Update(transferDialogDataMsg{data: data})
+	updated := model.(*App)
+
+	if updated.transferDialog == nil {
+		t.Fatal("dialog should be created")
+	}
+	if updated.transferDialog.Title() != "Edit Transfer" {
+		t.Errorf("title = %q, want %q", updated.transferDialog.Title(), "Edit Transfer")
+	}
+	body := updated.transferDialog.Message()
+	if !strings.Contains(body, "IRA A") || !strings.Contains(body, "IRA B") {
+		t.Errorf("message = %q, want From → To with both IRA names", body)
+	}
+	fields := updated.transferDialog.Fields()
+	if len(fields) != 4 {
+		t.Fatalf("expected 4 fields, got %d", len(fields))
+	}
+	if fields[0].Value != "400" {
+		t.Errorf("Amount = %q, want 400", fields[0].Value)
+	}
+	if fields[1].Value != "03/15/2024" {
+		t.Errorf("Date = %q, want 03/15/2024", fields[1].Value)
+	}
+	if fields[2].Value != "rollover" {
+		t.Errorf("Memo = %q, want rollover", fields[2].Value)
+	}
+	if fields[3].SelectedIndex != 1 {
+		t.Errorf("Status selectedIndex = %d, want 1 (Cleared)", fields[3].SelectedIndex)
+	}
+}
+
+// TestApp_SubmitEditTransferDialog_InvestmentEdit_Dispatches verifies the
+// edit-mode submit path returns a non-nil command when the dialog data
+// carries an investmentTransferEdit payload (the path through
+// dispatchInvestmentEditTransfer). The actual UpdateTransferCash invocation
+// fires inside the returned tea.Cmd; we only assert the dispatch closes the
+// dialog and produces a cmd.
+func TestApp_SubmitEditTransferDialog_InvestmentEdit_Dispatches(t *testing.T) {
+	iraA := types.NewID()
+	iraB := types.NewID()
+	invTxnID := types.NewID()
+
+	app := &App{
+		currentView: ViewInvestmentRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		transferDialog: func() *Dialog {
+			d := NewDialog("Edit Transfer")
+			d.AddTextField("Amount", "400.00", "", 12)
+			d.AddDateField("Date", "03/15/2024")
+			d.AddTextField("Memo", "rollover", "", 0)
+			d.AddRadioField("Status", []string{"Uncleared", "Cleared"}, 1)
+			d.SetVisible(true)
+			return d
+		}(),
+		transferDialogData: &transferDialogData{
+			accounts: []*account.Account{
+				{BaseModel: types.BaseModel{ID: iraA}, Name: "IRA A", Type: account.TypeInvestment},
+				{BaseModel: types.BaseModel{ID: iraB}, Name: "IRA B", Type: account.TypeInvestment},
+			},
+			accountIDs: []types.ID{iraA, iraB},
+			mode:       transferDialogModeEdit,
+			existingInvestment: &investmentTransferEdit{
+				fromAccountID:   iraA,
+				toAccountID:     iraB,
+				amount:          types.MustNewMoney("400.00"),
+				date:            types.NewDate(2024, time.March, 15),
+				memo:            "rollover",
+				status:          transaction.StatusCleared,
+				investmentTxnID: invTxnID,
+			},
+		},
+		transferDialogAccountIDs: []types.ID{iraA, iraB},
+	}
+
+	model, cmd := app.submitTransferDialog()
+	updated := model.(*App)
+
+	if cmd == nil {
+		t.Fatal("investment edit submit should return a non-nil cmd")
+	}
+	if updated.transferDialog != nil {
+		t.Error("dialog should be closed after submit")
 	}
 }

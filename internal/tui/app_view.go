@@ -185,12 +185,6 @@ func (a *App) renderLayout() string {
 		layout = OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
-	// Overlay transfer cash dialog if visible
-	if a.transferCashDialog != nil && a.transferCashDialog.IsVisible() {
-		overlay := a.transferCashDialog.Render(a.styles)
-		layout = OverlayCenter(layout, overlay, a.width, a.height)
-	}
-
 	// Overlay transfer shares dialog if visible
 	if a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible() {
 		overlay := a.transferSharesDialog.Render(a.styles)

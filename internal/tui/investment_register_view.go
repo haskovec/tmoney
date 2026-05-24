@@ -555,7 +555,10 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyPressMsg) (tea.Model, t
 			}
 			return a, nil
 		case investment.TransactionTypeTransferCash:
-			return a, a.loadTransferCashDialogData()
+			if a.investmentEditTxnID != types.NilID {
+				return a, a.loadEditInvestmentTransferDialogData(a.investmentEditTxnID)
+			}
+			return a, a.loadTransferDialogData()
 		case investment.TransactionTypeTransferShares:
 			return a, a.loadTransferSharesDialogData()
 		}
