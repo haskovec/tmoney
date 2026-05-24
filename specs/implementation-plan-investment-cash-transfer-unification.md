@@ -490,15 +490,25 @@ refactor consumes them, then docs and verification.
 
 ### P1-5: Dialog unification
 
-- [ ] **P1-006 — Dispatch in `submitTransferDialog`**
+- [x] **P1-006 — Dispatch in `submitTransferDialog`**
   - RED: dialog-level unit tests covering all four (From.Type,
     To.Type) combinations: the right undo command is constructed
     with the right service.
   - RED: same-account rejection error path.
-  - GREEN: in `submitTransferDialog`, look up From and To account
-    types, branch into one of four undo-command constructions, and
-    execute via `undoManager.Execute`. Remove the
-    `transactionSvc`-only assumption.
+  - GREEN: added `chooseTransferDispatch(fromType, toType)` and
+    `accountTypeByID(accounts, id)` pure helpers in
+    `internal/tui/transfer_dialog.go`, plus a `transferDispatchKind`
+    enum with the four (RegToReg, InvToReg, RegToInv, InvToInv)
+    cases. `submitTransferDialog` now looks up From/To types from
+    `transferDialogData.accounts`, picks a dispatch kind, and
+    branches into one of four undo-command constructions executed
+    via `undoManager.Execute`. The reg/reg path keeps its existing
+    memo-via-UpdateTransfer follow-up; the three investment paths
+    pass the memo straight into the undo command. HSA accounts
+    take the investment paths (covered by a dedicated test).
+    Same-account rejection still fires before dispatch via the
+    existing pre-dispatch validation; the dialog-level error stays
+    on the unchanged code path.
 
 - [ ] **P1-007 — Sticky-date on the unified dialog**
   - RED: `TestTransferDialog_SeedsLastSavedDate` — when

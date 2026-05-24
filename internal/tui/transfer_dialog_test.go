@@ -12,6 +12,203 @@ import (
 )
 
 // =============================================================================
+// Dispatcher Tests (P1-006)
+// =============================================================================
+
+func TestChooseTransferDispatch_RegToReg(t *testing.T) {
+	got := chooseTransferDispatch(account.TypeChecking, account.TypeSavings)
+	if got != transferDispatchRegToReg {
+		t.Errorf("checking→savings dispatch = %v, want regToReg", got)
+	}
+}
+
+func TestChooseTransferDispatch_InvToReg(t *testing.T) {
+	got := chooseTransferDispatch(account.TypeInvestment, account.TypeChecking)
+	if got != transferDispatchInvToReg {
+		t.Errorf("investment→checking dispatch = %v, want invToReg", got)
+	}
+}
+
+func TestChooseTransferDispatch_RegToInv(t *testing.T) {
+	got := chooseTransferDispatch(account.TypeChecking, account.TypeInvestment)
+	if got != transferDispatchRegToInv {
+		t.Errorf("checking→investment dispatch = %v, want regToInv", got)
+	}
+}
+
+func TestChooseTransferDispatch_InvToInv(t *testing.T) {
+	got := chooseTransferDispatch(account.TypeInvestment, account.TypeInvestment)
+	if got != transferDispatchInvToInv {
+		t.Errorf("investment→investment dispatch = %v, want invToInv", got)
+	}
+}
+
+// HSA counts as an investment-type account (per account.Type.IsInvestmentType),
+// so it must take the investment-side dispatch paths on both ends — otherwise
+// an HSA → checking sweep would create a malformed regular transaction in the
+// HSA register.
+func TestChooseTransferDispatch_HSATreatedAsInvestment(t *testing.T) {
+	if got := chooseTransferDispatch(account.TypeHSA, account.TypeChecking); got != transferDispatchInvToReg {
+		t.Errorf("HSA→checking dispatch = %v, want invToReg", got)
+	}
+	if got := chooseTransferDispatch(account.TypeChecking, account.TypeHSA); got != transferDispatchRegToInv {
+		t.Errorf("checking→HSA dispatch = %v, want regToInv", got)
+	}
+	if got := chooseTransferDispatch(account.TypeHSA, account.TypeInvestment); got != transferDispatchInvToInv {
+		t.Errorf("HSA→investment dispatch = %v, want invToInv", got)
+	}
+}
+
+func TestAccountTypeByID_Found(t *testing.T) {
+	id := types.NewID()
+	accts := []*account.Account{
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Type: account.TypeChecking},
+		{BaseModel: types.BaseModel{ID: id}, Type: account.TypeInvestment},
+	}
+	if got := accountTypeByID(accts, id); got != account.TypeInvestment {
+		t.Errorf("accountTypeByID = %v, want investment", got)
+	}
+}
+
+func TestAccountTypeByID_NotFound(t *testing.T) {
+	accts := []*account.Account{
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Type: account.TypeChecking},
+	}
+	got := accountTypeByID(accts, types.NewID())
+	if got != "" {
+		t.Errorf("accountTypeByID for missing ID = %q, want empty (so dispatcher falls through to reg/reg)", got)
+	}
+	// Empty type must dispatch to reg/reg so callers don't accidentally route
+	// to an investment path with an unknown account.
+	if chooseTransferDispatch(got, account.TypeChecking) != transferDispatchRegToReg {
+		t.Error("unknown account type should dispatch to regToReg")
+	}
+}
+
+// TestApp_SubmitTransferDialog_DispatchesInvToInv exercises submitTransferDialog
+// with two investment accounts in the dialog data and asserts the dialog
+// closes and a cmd is produced. The actual undo command construction lives
+// inside the returned closure, so we only verify the synchronous path here;
+// end-to-end correctness of the investment-side service calls is covered by
+// the service- and undo-package tests.
+func TestApp_SubmitTransferDialog_DispatchesInvToInv(t *testing.T) {
+	fromID := types.NewID()
+	toID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		transferDialog: func() *Dialog {
+			d := NewDialog("New Transfer")
+			d.AddSelectField("From", []string{"IRA A", "IRA B"}, 0)
+			d.AddSelectField("To", []string{"IRA A", "IRA B"}, 1)
+			d.AddTextField("Amount", "1000.00", "", 12)
+			d.AddDateField("Date", "01/15/2024")
+			d.AddTextField("Memo", "rollover", "", 0)
+			d.SetVisible(true)
+			return d
+		}(),
+		transferDialogData: &transferDialogData{
+			accounts: []*account.Account{
+				{BaseModel: types.BaseModel{ID: fromID}, Name: "IRA A", Type: account.TypeInvestment},
+				{BaseModel: types.BaseModel{ID: toID}, Name: "IRA B", Type: account.TypeInvestment},
+			},
+		},
+		transferDialogAccountIDs: []types.ID{fromID, toID},
+	}
+
+	model, cmd := app.submitTransferDialog()
+	updatedApp := model.(*App)
+
+	if cmd == nil {
+		t.Fatal("inv↔inv transfer should return a non-nil cmd")
+	}
+	if updatedApp.transferDialog != nil {
+		t.Error("transfer dialog should be closed after a valid submit")
+	}
+}
+
+func TestApp_SubmitTransferDialog_DispatchesInvToReg(t *testing.T) {
+	fromID := types.NewID()
+	toID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		transferDialog: func() *Dialog {
+			d := NewDialog("New Transfer")
+			d.AddSelectField("From", []string{"Brokerage", "Checking"}, 0)
+			d.AddSelectField("To", []string{"Brokerage", "Checking"}, 1)
+			d.AddTextField("Amount", "250.00", "", 12)
+			d.AddDateField("Date", "01/15/2024")
+			d.AddTextField("Memo", "", "", 0)
+			d.SetVisible(true)
+			return d
+		}(),
+		transferDialogData: &transferDialogData{
+			accounts: []*account.Account{
+				{BaseModel: types.BaseModel{ID: fromID}, Name: "Brokerage", Type: account.TypeInvestment},
+				{BaseModel: types.BaseModel{ID: toID}, Name: "Checking", Type: account.TypeChecking},
+			},
+		},
+		transferDialogAccountIDs: []types.ID{fromID, toID},
+	}
+
+	model, cmd := app.submitTransferDialog()
+	updatedApp := model.(*App)
+
+	if cmd == nil {
+		t.Fatal("inv→reg transfer should return a non-nil cmd")
+	}
+	if updatedApp.transferDialog != nil {
+		t.Error("transfer dialog should be closed after a valid submit")
+	}
+}
+
+func TestApp_SubmitTransferDialog_DispatchesRegToInv(t *testing.T) {
+	fromID := types.NewID()
+	toID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     NewMenuBar(),
+		statusbar:   NewStatusBar(),
+		sidebar:     NewSidebar(),
+		transferDialog: func() *Dialog {
+			d := NewDialog("New Transfer")
+			d.AddSelectField("From", []string{"Checking", "Brokerage"}, 0)
+			d.AddSelectField("To", []string{"Checking", "Brokerage"}, 1)
+			d.AddTextField("Amount", "500.00", "", 12)
+			d.AddDateField("Date", "01/15/2024")
+			d.AddTextField("Memo", "", "", 0)
+			d.SetVisible(true)
+			return d
+		}(),
+		transferDialogData: &transferDialogData{
+			accounts: []*account.Account{
+				{BaseModel: types.BaseModel{ID: fromID}, Name: "Checking", Type: account.TypeChecking},
+				{BaseModel: types.BaseModel{ID: toID}, Name: "Brokerage", Type: account.TypeInvestment},
+			},
+		},
+		transferDialogAccountIDs: []types.ID{fromID, toID},
+	}
+
+	model, cmd := app.submitTransferDialog()
+	updatedApp := model.(*App)
+
+	if cmd == nil {
+		t.Fatal("reg→inv transfer should return a non-nil cmd")
+	}
+	if updatedApp.transferDialog != nil {
+		t.Error("transfer dialog should be closed after a valid submit")
+	}
+}
+
+// =============================================================================
 // Pure Function Tests
 // =============================================================================
 

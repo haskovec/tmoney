@@ -20,6 +20,56 @@ const (
 	transferDialogModeEdit
 )
 
+// transferDispatchKind identifies which service path the unified Transfer
+// dialog should take, based on the (From.Type, To.Type) combination. Mapped
+// 1:1 to the four undo commands in the new-transfer flow.
+type transferDispatchKind int
+
+const (
+	// transferDispatchRegToReg covers bank↔bank — both legs are non-investment.
+	transferDispatchRegToReg transferDispatchKind = iota
+	// transferDispatchInvToReg covers cash leaving an investment account for a
+	// regular account (e.g. brokerage → checking withdrawal).
+	transferDispatchInvToReg
+	// transferDispatchRegToInv covers cash flowing from a regular account into
+	// an investment account (e.g. checking → 401k contribution).
+	transferDispatchRegToInv
+	// transferDispatchInvToInv covers cash moving between two investment
+	// accounts (e.g. IRA → IRA rollover).
+	transferDispatchInvToInv
+)
+
+// chooseTransferDispatch picks the service path for the unified Transfer
+// dialog from the From/To account types. HSA counts as an investment type
+// (see account.Type.IsInvestmentType).
+func chooseTransferDispatch(fromType, toType account.Type) transferDispatchKind {
+	fromInv := fromType.IsInvestmentType()
+	toInv := toType.IsInvestmentType()
+	switch {
+	case fromInv && toInv:
+		return transferDispatchInvToInv
+	case fromInv:
+		return transferDispatchInvToReg
+	case toInv:
+		return transferDispatchRegToInv
+	default:
+		return transferDispatchRegToReg
+	}
+}
+
+// accountTypeByID returns the Type for the account with the given ID, or the
+// zero value if the account is not in the slice. Unknown accounts dispatch as
+// non-investment, falling through to the regular transfer path where the
+// existing service-layer guards take over.
+func accountTypeByID(accounts []*account.Account, id types.ID) account.Type {
+	for _, a := range accounts {
+		if a.ID == id {
+			return a.Type
+		}
+	}
+	return ""
+}
+
 // transferDialogData holds the loaded data needed for the transfer dialog.
 type transferDialogData struct {
 	accounts   []*account.Account
@@ -303,27 +353,67 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	// Memo
 	memo := strings.TrimSpace(fields[4].Value)
 
+	// Dispatch on the (From, To) account types so each combination posts via
+	// the right service. Account types come from the loaded accounts list,
+	// which the dialog data populates from accountSvc.List(true).
+	fromType := accountTypeByID(a.transferDialogData.accounts, fromAccountID)
+	toType := accountTypeByID(a.transferDialogData.accounts, toAccountID)
+	kind := chooseTransferDispatch(fromType, toType)
+
 	// Close dialog before async save for responsive UI
 	a.closeTransferDialog()
 
 	return a, func() tea.Msg {
-		if a.transactionSvc == nil || a.undoManager == nil {
-			return errMsg{err: fmt.Errorf("transaction service not available")}
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 
-		cmd := undo.NewCreateTransferCommand(a.transactionSvc, fromAccountID, toAccountID, date, amount)
-		if err := a.undoManager.Execute(cmd); err != nil {
-			return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
-		}
-
-		// Set memo if provided (undo of the transfer deletes both sides, so no separate undo needed)
-		if memo != "" {
-			pair := cmd.Pair()
-			if pair != nil {
-				transferID := pair.FromTransaction.TransferID.ID
-				if err := a.transactionSvc.UpdateTransfer(transferID, date, amount, memo, transaction.StatusUncleared); err != nil {
-					return errMsg{err: fmt.Errorf("transfer created but failed to set memo: %w", err)}
+		switch kind {
+		case transferDispatchRegToReg:
+			if a.transactionSvc == nil {
+				return errMsg{err: fmt.Errorf("transaction service not available")}
+			}
+			cmd := undo.NewCreateTransferCommand(a.transactionSvc, fromAccountID, toAccountID, date, amount)
+			if err := a.undoManager.Execute(cmd); err != nil {
+				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
+			}
+			// Set memo if provided. CreateTransfer doesn't accept memo, so we
+			// apply it via UpdateTransfer after the create. Undo of the transfer
+			// deletes both sides, so the memo-set step needs no separate undo.
+			if memo != "" {
+				pair := cmd.Pair()
+				if pair != nil {
+					transferID := pair.FromTransaction.TransferID.ID
+					if err := a.transactionSvc.UpdateTransfer(transferID, date, amount, memo, transaction.StatusUncleared); err != nil {
+						return errMsg{err: fmt.Errorf("transfer created but failed to set memo: %w", err)}
+					}
 				}
+			}
+		case transferDispatchInvToReg:
+			if a.investmentSvc == nil {
+				return errMsg{err: fmt.Errorf("investment service not available")}
+			}
+			cmd := undo.NewCreateInvestmentTransferCashCommand(a.investmentSvc, fromAccountID, toAccountID, date, amount, memo)
+			if err := a.undoManager.Execute(cmd); err != nil {
+				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
+			}
+		case transferDispatchRegToInv:
+			if a.investmentSvc == nil {
+				return errMsg{err: fmt.Errorf("investment service not available")}
+			}
+			// DepositFromAccount expects (investmentAccountID, regularAccountID);
+			// here the investment account is the destination.
+			cmd := undo.NewCreateInvestmentDepositCommand(a.investmentSvc, toAccountID, fromAccountID, date, amount, memo)
+			if err := a.undoManager.Execute(cmd); err != nil {
+				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
+			}
+		case transferDispatchInvToInv:
+			if a.investmentSvc == nil {
+				return errMsg{err: fmt.Errorf("investment service not available")}
+			}
+			cmd := undo.NewCreateInvestmentToInvestmentTransferCommand(a.investmentSvc, fromAccountID, toAccountID, date, amount, memo)
+			if err := a.undoManager.Execute(cmd); err != nil {
+				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 			}
 		}
 
