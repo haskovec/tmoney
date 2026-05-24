@@ -510,16 +510,22 @@ refactor consumes them, then docs and verification.
     existing pre-dispatch validation; the dialog-level error stays
     on the unchanged code path.
 
-- [ ] **P1-007 — Sticky-date on the unified dialog**
-  - RED: `TestTransferDialog_SeedsLastSavedDate` — when
-    `txnDialogLastSavedDate` is set on the App, opening the dialog
-    seeds the Date field with that value.
-  - RED: `TestTransferDialog_WritesLastSavedDateOnSave` — after a
-    successful submit, `txnDialogLastSavedDate` equals the saved
-    date.
-  - GREEN: call `dialog.SeedDateField(a.txnDialogLastSavedDate)` in
-    the existing dialog-build path; update on save in the submit
-    handler.
+- [x] **P1-007 — Sticky-date on the unified dialog**
+  - The sticky-date wiring landed earlier in commit `3e58d2d`
+    (`feat(tui): sticky last-used date for the account transfer
+    dialog`) for the regular New-Transfer dialog. After P1-006
+    unified the dialog, all four (From, To) dispatch paths return
+    `transferDialogSavedMsg{savedDate: date}` from the same closure,
+    so the existing sticky-date wiring in `app_update.go`
+    transparently covers inv↔reg, reg↔inv, and inv↔inv as well —
+    no additional code needed.
+  - Tests covering the spec's acceptance criteria already exist in
+    `internal/tui/transfer_dialog_test.go`:
+    `TestApp_Update_TransferDialogDataMsg_SeedsFromStickyDate`
+    (seeds Date field from `txnDialogLastSavedDate` on open) and
+    `TestApp_SubmitTransferDialog_PassesSavedDateInMessage`
+    (writes `txnDialogLastSavedDate` on save). All TUI and full-suite
+    tests + `golangci-lint` clean.
 
 - [ ] **P1-008 — Status-on-Edit applies to both legs**
   - RED: per dispatch path — open Edit on an existing inv↔reg /
