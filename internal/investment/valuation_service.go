@@ -59,11 +59,15 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts 
 	totalCostBasis := types.ZeroMoney
 	realizedGain := types.ZeroMoney
 	dividendsReceived := types.ZeroMoney
+	anyRealizedUnavailable := false
 	for _, h := range holdingsAll {
 		marketValue = marketValue.Add(h.MarketValue)
 		totalCostBasis = totalCostBasis.Add(h.CostBasis)
 		realizedGain = realizedGain.Add(h.RealizedGain)
 		dividendsReceived = dividendsReceived.Add(h.DividendsReceived)
+		if h.RealizedGainUnavailable {
+			anyRealizedUnavailable = true
+		}
 	}
 
 	holdings := holdingsAll
@@ -124,23 +128,24 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts 
 	}
 
 	return &AccountValuation{
-		AccountID:           accountID,
-		CashBalance:         cashBalance,
-		MarketValue:         marketValue,
-		TotalValue:          totalValue,
-		TotalCostBasis:      totalCostBasis,
-		TotalGainLoss:       totalGainLoss,
-		TotalGainPct:        totalGainPct,
-		Holdings:            holdings,
-		RealizedGain:        realizedGain,
-		DividendsReceived:   dividendsReceived,
-		InterestReceived:    interestReceived,
-		FeesPaid:            feesPaid,
-		TotalCostDeployed:   totalCostDeployed,
-		TotalReturn:         totalReturn,
-		TotalReturnPct:      totalReturnPct,
-		HasClosedPositions:  hasClosedPositions,
-		ClosedPositionCount: closedPositionCount,
+		AccountID:              accountID,
+		CashBalance:            cashBalance,
+		MarketValue:            marketValue,
+		TotalValue:             totalValue,
+		TotalCostBasis:         totalCostBasis,
+		TotalGainLoss:          totalGainLoss,
+		TotalGainPct:           totalGainPct,
+		Holdings:               holdings,
+		RealizedGain:           realizedGain,
+		DividendsReceived:      dividendsReceived,
+		InterestReceived:       interestReceived,
+		FeesPaid:               feesPaid,
+		TotalCostDeployed:      totalCostDeployed,
+		TotalReturn:            totalReturn,
+		TotalReturnPct:         totalReturnPct,
+		HasClosedPositions:     hasClosedPositions,
+		ClosedPositionCount:    closedPositionCount,
+		AnyRealizedUnavailable: anyRealizedUnavailable,
 	}, nil
 }
 

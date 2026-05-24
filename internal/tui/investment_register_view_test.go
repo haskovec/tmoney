@@ -13,6 +13,62 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+func TestRenderInvestmentTotalReturnLines_PartialMarker(t *testing.T) {
+	trPct := 30.0
+	app := &App{
+		styles: testStyles(),
+		investmentRegister: &investmentRegisterData{
+			valuation: &investment.AccountValuation{
+				AccountID:              types.NewID(),
+				TotalGainLoss:          types.MustNewMoney("200"),
+				RealizedGain:           types.MustNewMoney("-0.29"),
+				DividendsReceived:      types.MustNewMoney("50"),
+				InterestReceived:       types.MustNewMoney("5"),
+				FeesPaid:               types.MustNewMoney("0"),
+				TotalReturn:            types.MustNewMoney("254.71"),
+				TotalReturnPct:         &trPct,
+				AnyRealizedUnavailable: true,
+			},
+		},
+	}
+
+	breakdown, total := app.renderInvestmentTotalReturnLines()
+	if !strings.Contains(breakdown, "(partial)") {
+		t.Errorf("expected '(partial)' on breakdown line; got %q", breakdown)
+	}
+	if !strings.Contains(total, "(partial)") {
+		t.Errorf("expected '(partial)' on total-return line; got %q", total)
+	}
+}
+
+func TestRenderInvestmentTotalReturnLines_NoPartialMarker(t *testing.T) {
+	trPct := 30.0
+	app := &App{
+		styles: testStyles(),
+		investmentRegister: &investmentRegisterData{
+			valuation: &investment.AccountValuation{
+				AccountID:              types.NewID(),
+				TotalGainLoss:          types.MustNewMoney("200"),
+				RealizedGain:           types.MustNewMoney("-0.29"),
+				DividendsReceived:      types.MustNewMoney("50"),
+				InterestReceived:       types.MustNewMoney("5"),
+				FeesPaid:               types.MustNewMoney("0"),
+				TotalReturn:            types.MustNewMoney("254.71"),
+				TotalReturnPct:         &trPct,
+				AnyRealizedUnavailable: false,
+			},
+		},
+	}
+
+	breakdown, total := app.renderInvestmentTotalReturnLines()
+	if strings.Contains(breakdown, "(partial)") {
+		t.Errorf("unexpected '(partial)' on breakdown line; got %q", breakdown)
+	}
+	if strings.Contains(total, "(partial)") {
+		t.Errorf("unexpected '(partial)' on total-return line; got %q", total)
+	}
+}
+
 func TestInvestmentRegisterData(t *testing.T) {
 	acct := &account.Account{
 		BaseModel: types.NewBaseModel(),

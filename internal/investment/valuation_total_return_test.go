@@ -2303,6 +2303,99 @@ func TestRealizedGain_NonLot_CorporateActionOnUnrelatedSecurity_StillComputed(t 
 	}
 }
 
+// When a non-lot account has BOTH a security with a corp action
+// (realized is unavailable for that security) and a security without
+// (realized is computable), the account-level RealizedGain is a
+// partial sum and AnyRealizedUnavailable=true flags the UI to mark it.
+func TestGetAccountValuation_PartialRealized_WhenAnyHoldingUnavailable(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Wealthfront IRA")
+	schf := createSec(t, env.secRepo, "SCHF")     // no corp action — replays fine
+	aapl := createSec(t, env.secRepo, "AAPL")     // gets a split — unavailable
+	d1 := types.NewDate(2019, time.August, 8)
+	d2 := types.NewDate(2019, time.September, 3)
+	dSplit := types.NewDate(2020, time.August, 31)
+	dSell := types.NewDate(2020, time.December, 1)
+	asOf := types.NewDate(2021, time.January, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// SCHF: buy 1 @ $30.95, sell 1 @ $30.66 → realized −0.29.
+	buySCHF := types.MustNewMoney("30.95")
+	if _, err := env.svc.Buy(acct.ID, schf.ID, d1, types.MustNewQuantity("1"),
+		&buySCHF, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(SCHF) error = %v", err)
+	}
+	sellSCHF := types.MustNewMoney("30.66")
+	if _, err := env.svc.Sell(acct.ID, schf.ID, d2, types.MustNewQuantity("1"),
+		&sellSCHF, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(SCHF) error = %v", err)
+	}
+	// AAPL: buy 10 @ $100, then 4:1 split, then sell 20 @ $30. Replay
+	// is unreliable here so realized is reported as unavailable.
+	buyAAPL := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"),
+		&buyAAPL, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(AAPL) error = %v", err)
+	}
+	caSvc := NewCorporateActionService(env.caRepo, env.lotRepo, env.positionRepo, env.priceRepo, env.invRepo, env.secRepo, env.db)
+	if _, err := caSvc.Split(aapl.ID, dSplit, SplitParams{Numerator: 4, Denominator: 1}); err != nil {
+		t.Fatalf("Split(AAPL) error = %v", err)
+	}
+	sellAAPL := types.MustNewMoney("600")
+	if _, err := env.svc.Sell(acct.ID, aapl.ID, dSell, types.MustNewQuantity("20"),
+		&sellAAPL, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(AAPL) error = %v", err)
+	}
+
+	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetAccountValuation() error = %v", err)
+	}
+	if !val.AnyRealizedUnavailable {
+		t.Errorf("Expected AnyRealizedUnavailable=true (AAPL has corp action), got false")
+	}
+	// RealizedGain is the partial sum — only SCHF contributes; AAPL
+	// contributes 0 since it's unavailable.
+	if val.RealizedGain.String() != "-0.29" {
+		t.Errorf("Expected partial RealizedGain '-0.29' (SCHF only), got %q", val.RealizedGain.String())
+	}
+}
+
+// Negative case: when no contributing holding is unavailable, the flag
+// must be false so the UI doesn't render an alarming "(partial)" suffix.
+func TestGetAccountValuation_AnyRealizedUnavailable_FalseWhenAllAvailable(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	schf := createSec(t, env.secRepo, "SCHF")
+	d1 := types.NewDate(2019, time.August, 8)
+	d2 := types.NewDate(2019, time.September, 3)
+	asOf := types.NewDate(2019, time.December, 31)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("1000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buySCHF := types.MustNewMoney("30.95")
+	if _, err := env.svc.Buy(acct.ID, schf.ID, d1, types.MustNewQuantity("1"),
+		&buySCHF, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy(SCHF) error = %v", err)
+	}
+	sellSCHF := types.MustNewMoney("30.66")
+	if _, err := env.svc.Sell(acct.ID, schf.ID, d2, types.MustNewQuantity("1"),
+		&sellSCHF, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell(SCHF) error = %v", err)
+	}
+
+	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetAccountValuation() error = %v", err)
+	}
+	if val.AnyRealizedUnavailable {
+		t.Errorf("Expected AnyRealizedUnavailable=false when no holding is unavailable, got true")
+	}
+}
+
 // Same scenario but on a non-lot-tracked account. With no corporate
 // actions in the database, the non-lot replay path should yield the
 // same -0.29 realized loss.

@@ -518,6 +518,23 @@ func TestInvestmentPortfolio_RealizedGainUnavailable(t *testing.T) {
 	if !strings.Contains(output, "50.00") {
 		t.Errorf("expected the $50 dividend to render even with corporate-action gate; got:\n%s", output)
 	}
+	// Account-totals block must flag the partial-realized state so the
+	// summary number isn't silently incomplete.
+	for _, line := range []string{"Realized gain", "Total return", "Total return %"} {
+		idx := strings.Index(output, line)
+		if idx < 0 {
+			t.Errorf("expected output to contain %q row; got:\n%s", line, output)
+			continue
+		}
+		end := strings.Index(output[idx:], "\n")
+		if end < 0 {
+			end = len(output) - idx
+		}
+		row := output[idx : idx+end]
+		if !strings.Contains(row, "(partial)") {
+			t.Errorf("expected %q row to carry '(partial)' marker; got: %q", line, row)
+		}
+	}
 }
 
 // TR-019: the portfolio command prints an Account totals block below the

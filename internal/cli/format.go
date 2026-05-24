@@ -885,12 +885,20 @@ func printAccountTotals(w io.Writer, acct *account.Account, valuation *investmen
 	row("Total value", formatMoney(valuation.TotalValue, acct.Currency))
 	row("Cost basis (open)", formatMoney(valuation.TotalCostBasis, acct.Currency))
 	row("Unrealized gain", formatMoney(valuation.TotalGainLoss, acct.Currency))
-	row("Realized gain", formatMoney(valuation.RealizedGain, acct.Currency))
+	realizedStr := formatMoney(valuation.RealizedGain, acct.Currency)
+	totalReturnStr := formatMoney(valuation.TotalReturn, acct.Currency)
+	totalReturnPctStr := formatReturnPct(valuation.TotalReturnPct)
+	if valuation.AnyRealizedUnavailable {
+		realizedStr += " (partial)"
+		totalReturnStr += " (partial)"
+		totalReturnPctStr += " (partial)"
+	}
+	row("Realized gain", realizedStr)
 	row("Dividends received", formatMoney(valuation.DividendsReceived, acct.Currency))
 	row("Interest received", formatMoney(valuation.InterestReceived, acct.Currency))
 	row("Fees paid", formatFeesPaid(valuation.FeesPaid, acct.Currency))
-	row("Total return", formatMoney(valuation.TotalReturn, acct.Currency))
-	row("Total return %", formatReturnPct(valuation.TotalReturnPct))
+	row("Total return", totalReturnStr)
+	row("Total return %", totalReturnPctStr)
 	tw.Flush()
 }
 

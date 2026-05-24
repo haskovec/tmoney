@@ -471,6 +471,66 @@ func TestPortfolioSummaryBar_NilTotalReturnPct(t *testing.T) {
 	}
 }
 
+func TestPortfolioSummaryBar_PartialRealizedMarker(t *testing.T) {
+	acctID := types.NewID()
+	trPct := 30.0
+
+	app := &App{
+		styles: testStyles(),
+		portfolioData: &portfolioViewData{
+			valuation: &investment.AccountValuation{
+				AccountID:              acctID,
+				CashBalance:            types.MustNewMoney("100"),
+				MarketValue:            types.MustNewMoney("1000"),
+				TotalValue:             types.MustNewMoney("1100"),
+				TotalCostBasis:         types.MustNewMoney("800"),
+				TotalGainLoss:          types.MustNewMoney("200"),
+				TotalGainPct:           25.0,
+				RealizedGain:           types.MustNewMoney("-0.29"),
+				TotalReturn:            types.MustNewMoney("199.71"),
+				TotalReturnPct:         &trPct,
+				AnyRealizedUnavailable: true,
+			},
+		},
+	}
+
+	summary := app.renderPortfolioSummary(100)
+
+	if !strings.Contains(summary, "(partial)") {
+		t.Errorf("expected '(partial)' marker when AnyRealizedUnavailable=true; got %q", summary)
+	}
+}
+
+func TestPortfolioSummaryBar_NoPartialMarkerWhenAllAvailable(t *testing.T) {
+	acctID := types.NewID()
+	trPct := 30.0
+
+	app := &App{
+		styles: testStyles(),
+		portfolioData: &portfolioViewData{
+			valuation: &investment.AccountValuation{
+				AccountID:              acctID,
+				CashBalance:            types.MustNewMoney("100"),
+				MarketValue:            types.MustNewMoney("1000"),
+				TotalValue:             types.MustNewMoney("1100"),
+				TotalCostBasis:         types.MustNewMoney("800"),
+				TotalGainLoss:          types.MustNewMoney("200"),
+				TotalGainPct:           25.0,
+				RealizedGain:           types.MustNewMoney("-0.29"),
+				TotalReturn:            types.MustNewMoney("199.71"),
+				TotalReturnPct:         &trPct,
+				AnyRealizedUnavailable: false,
+			},
+		},
+	}
+
+	summary := app.renderPortfolioSummary(100)
+
+	if strings.Contains(summary, "(partial)") {
+		t.Errorf("expected no '(partial)' marker when AnyRealizedUnavailable=false; got %q", summary)
+	}
+}
+
 func TestPortfolioSummaryBar_NilValuation(t *testing.T) {
 	app := &App{
 		styles:        testStyles(),

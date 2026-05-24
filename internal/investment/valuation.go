@@ -35,6 +35,15 @@ type AccountValuation struct {
 	TotalReturnPct      *float64    `json:"total_return_pct,omitempty"`
 	HasClosedPositions  bool        `json:"has_closed_positions"`
 	ClosedPositionCount int         `json:"closed_position_count"`
+
+	// AnyRealizedUnavailable is true when at least one of the
+	// contributing holdings has RealizedGainUnavailable=true (a non-lot
+	// security with a corporate action on file, where the chronological
+	// replay can't produce a reliable number). When set, RealizedGain
+	// (and TotalReturn, which sums it) is a partial figure — the UI
+	// should mark it accordingly so the user knows the value is
+	// incomplete rather than a true zero.
+	AnyRealizedUnavailable bool `json:"any_realized_unavailable,omitempty"`
 }
 
 // Holding represents a rolled-up holding of a single security in an account.

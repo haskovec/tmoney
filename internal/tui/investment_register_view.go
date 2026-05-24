@@ -270,9 +270,13 @@ func (a *App) renderInvestmentTotalReturnLines() (string, string) {
 		feeRendered = a.styles.Negative.Render(feeStr)
 	}
 
+	realizedField := a.styles.Muted.Render("Realized") + " " + money(v.RealizedGain)
+	if v.AnyRealizedUnavailable {
+		realizedField += " " + a.styles.Muted.Render("(partial)")
+	}
 	parts := []string{
 		a.styles.Muted.Render("Unrealized") + " " + money(v.TotalGainLoss),
-		a.styles.Muted.Render("Realized") + " " + money(v.RealizedGain),
+		realizedField,
 		a.styles.Muted.Render("Div") + " " + money(v.DividendsReceived),
 		a.styles.Muted.Render("Int") + " " + money(v.InterestReceived),
 		a.styles.Muted.Render("Fees") + " " + feeRendered,
@@ -284,6 +288,9 @@ func (a *App) renderInvestmentTotalReturnLines() (string, string) {
 		pctStr = fmt.Sprintf("%.2f%%", *v.TotalReturnPct)
 	}
 	total := a.styles.Muted.Render("Total return") + " " + money(v.TotalReturn) + " (" + pctStr + ")"
+	if v.AnyRealizedUnavailable {
+		total += " " + a.styles.Muted.Render("(partial)")
+	}
 
 	return breakdown, total
 }
