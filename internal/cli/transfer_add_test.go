@@ -183,6 +183,47 @@ func TestTransferAdd_DestAccountNotFound(t *testing.T) {
 	}
 }
 
+func TestTransferAdd_RejectsInvestmentAccount(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("setup: db.Create: %v", err)
+	}
+	repo := account.NewRepository(database)
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	if err := repo.Create(checking); err != nil {
+		t.Fatalf("setup: create checking: %v", err)
+	}
+	ira := account.NewAccount("Rollover IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	if err := repo.Create(ira); err != nil {
+		t.Fatalf("setup: create ira: %v", err)
+	}
+	database.Close()
+
+	cases := []struct {
+		name      string
+		from      string
+		to        string
+		errPhrase string
+	}{
+		{"source is investment", "Rollover IRA", "Checking", "investment-type"},
+		{"destination is investment", "Checking", "Rollover IRA", "investment-type"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			err := executeWith([]string{"transfer", "add", "--file", dbPath, "--from", tc.from, "--to", tc.to, "--amount", "100"}, stdout, stderr)
+			if err == nil {
+				t.Fatalf("expected rejection error; stdout=%s stderr=%s", stdout, stderr)
+			}
+			if !strings.Contains(err.Error(), tc.errPhrase) {
+				t.Errorf("expected error to contain %q, got: %v", tc.errPhrase, err)
+			}
+		})
+	}
+}
+
 func TestTransferAdd_InvalidDate(t *testing.T) {
 	dbPath, _, _ := setupTransferAccounts(t)
 

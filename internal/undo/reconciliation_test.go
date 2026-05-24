@@ -37,7 +37,7 @@ func createReconTestEnv(t *testing.T) *reconTestEnv {
 	accountRepo := account.NewRepository(database)
 	reconRepo := reconciliation.NewRepository(database)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	reconSvc := reconciliation.NewService(reconRepo, txnRepo, accountRepo, database)
 
 	return &reconTestEnv{

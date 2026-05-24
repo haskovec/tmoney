@@ -433,21 +433,33 @@ refactor consumes them, then docs and verification.
 
 ### P1-3: Service hardening (TDD)
 
-- [ ] **P1-004 — Reject investment accounts in
+- [x] **P1-004 — Reject investment accounts in
   `transaction.Service.CreateTransfer`**
   - RED: `TestCreateTransfer_RejectsInvestmentSource` — `from` is
     an investment account, returns a clear error mentioning
     `investment.Service`.
   - RED: `TestCreateTransfer_RejectsInvestmentDest` — same for `to`.
   - RED: `TestUpdateTransfer_RejectsInvestmentAccounts` — same for
-    `UpdateTransfer`.
-  - GREEN: add `accountRepo.GetByID` checks at the top of both
-    methods; introduce a new `NotRegularAccountError` if not already
-    present in the transaction error set.
-  - Audit: search the test suite for any fixture that creates a
-    `transaction.Transaction` in an investment account via
-    `CreateTransfer`; either remove (probably no real cases) or
-    convert to the investment service.
+    `UpdateTransfer` (seeds a malformed pair via the repo, then
+    confirms the guard fires).
+  - RED (CLI): `TestTransferAdd_RejectsInvestmentAccount` exercises
+    the new rejection through the `tmoney transfer add` entry point
+    on both legs.
+  - GREEN: added `NotRegularAccountError` in
+    `internal/transaction/transaction_errors.go` and the helper
+    `Service.rejectInvestmentAccount` in
+    `internal/transaction/transaction_service.go`. The helper looks
+    up the account via a new `accountRepo *account.Repository`
+    field on the service (threaded through `NewService` and every
+    callsite — `internal/app/registry.go`, all integration and
+    package tests). `CreateTransfer` rejects investment-type
+    accounts on either leg before constructing the pair;
+    `UpdateTransfer` rejects them after loading the existing pair
+    so malformed legacy rows still surface a clean error.
+  - Audit: searched `CreateTransfer` callers in tests/CLI — every
+    fixture uses non-investment account pairs (checking/savings),
+    so no fixture conversion was needed. Full `go test ./...`
+    passes after the hardening change.
 
 ### P1-4: Undo commands (TDD)
 

@@ -273,7 +273,7 @@ func newSchedulePreviewTestEnv(t *testing.T) *schedulePreviewTestEnv {
 	splitTxnRepo := transaction.NewSplitRepository(database)
 	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 
-	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, accountRepo, database)
 	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database)
 	accountSvc := account.NewService(accountRepo, database)
 	payeeSvc := payee.NewService(payeeRepo, database)
@@ -626,7 +626,7 @@ func newSchedulePreviewMultiLineEnv(t *testing.T) *schedulePreviewMultiLineEnv {
 	splitTxnRepo := transaction.NewSplitRepository(database)
 	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 
-	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, accountRepo, database)
 	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database)
 	accountSvc := account.NewService(accountRepo, database)
 	payeeSvc := payee.NewService(payeeRepo, database)

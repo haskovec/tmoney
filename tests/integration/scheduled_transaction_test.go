@@ -36,7 +36,8 @@ func createScheduledTestService(t *testing.T) (*scheduled.Service, *db.DB, func(
 	splitRepo := transaction.NewSplitRepository(database)
 	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	accountRepo := account.NewRepository(database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	svc := scheduled.NewService(stRepo, txnRepo, txnSvc, database)
 
 	cleanup := func() {

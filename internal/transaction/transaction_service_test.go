@@ -37,13 +37,18 @@ func createTestTransactionService(t *testing.T) (*Service, *account.Repository) 
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	return svc, accountRepo
 }
 
 func createTestAccount(t *testing.T, repo *account.Repository, name string) *account.Account {
 	t.Helper()
-	acct := account.NewAccount(name, account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	return createTestAccountOfType(t, repo, name, account.TypeChecking)
+}
+
+func createTestAccountOfType(t *testing.T, repo *account.Repository, name string, accountType account.Type) *account.Account {
+	t.Helper()
+	acct := account.NewAccount(name, accountType, "USD", types.ZeroMoney, types.Today())
 	if err := repo.Create(acct); err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
@@ -106,7 +111,7 @@ func TestTransactionService_Create(t *testing.T) {
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		// Create account, category, and payee with default category
 		acct := createTestAccount(t, accountRepo, "Checking")
@@ -214,7 +219,7 @@ func TestTransactionService_Delete(t *testing.T) {
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -307,7 +312,7 @@ func TestTransactionService_CreateWithSplits(t *testing.T) {
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -354,7 +359,7 @@ func TestTransactionService_CreateWithSplits(t *testing.T) {
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -387,7 +392,7 @@ func TestTransactionService_CreateWithSplits(t *testing.T) {
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -428,7 +433,7 @@ func TestTransactionService_MixedSignSplit_Allowed(t *testing.T) {
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 	acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -481,7 +486,7 @@ func TestTransactionService_LegacySameSignSplit_StillWorks(t *testing.T) {
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 	acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -531,7 +536,7 @@ func TestTransactionService_TransferLine_CreatesPair(t *testing.T) {
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -666,7 +671,7 @@ func TestTransactionService_EditTransferLineAmount_UpdatesPair(t *testing.T) {
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -779,7 +784,7 @@ func TestTransactionService_EditTransferLineTarget_MovesPair(t *testing.T) {
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -896,7 +901,7 @@ func TestTransactionService_DeleteTransferLine_DeletesPair(t *testing.T) {
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -985,7 +990,7 @@ func TestTransactionService_DeleteParent_DeletesAllPairs(t *testing.T) {
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -1071,7 +1076,7 @@ func TestTransactionService_DeletePairedSide_RemovesParentLine(t *testing.T) {
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -1170,7 +1175,7 @@ func TestTransactionService_EditPairedSideAmount_UpdatesParentLine(t *testing.T)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -1281,7 +1286,7 @@ func TestTransactionService_ValidateSplitTotals(t *testing.T) {
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -1660,7 +1665,7 @@ func TestTransactionService_Duplicate(t *testing.T) {
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -1786,7 +1791,7 @@ func TestTransactionService_AddSplit_TransferError(t *testing.T) {
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		checking := createTestAccount(t, accountRepo, "Checking")
 		savings := createTestAccount(t, accountRepo, "Savings")
@@ -1837,7 +1842,7 @@ func createTestTransactionServiceWithCategories(t *testing.T) (
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	return svc, accountRepo, categoryRepo, payeeRepo
 }
 
@@ -2790,7 +2795,7 @@ func TestTransactionService_VoidTransaction(t *testing.T) {
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -3352,7 +3357,7 @@ func TestTransactionService_SplitOperations_ReconciledGuard(t *testing.T) {
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -3406,7 +3411,7 @@ func TestTransactionService_SplitOperations_ReconciledGuard(t *testing.T) {
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -3609,4 +3614,58 @@ func TestTransactionService_TransferOperations_ReconciledGuard(t *testing.T) {
 			t.Errorf("Expected reconciled status, got %s", updatedPair.FromTransaction.Status)
 		}
 	})
+}
+
+func TestCreateTransfer_RejectsInvestmentSource(t *testing.T) {
+	svc, accountRepo := createTestTransactionService(t)
+	ira := createTestAccountOfType(t, accountRepo, "Rollover IRA", account.TypeInvestment)
+	checking := createTestAccountOfType(t, accountRepo, "Checking", account.TypeChecking)
+
+	amount, _ := types.NewMoney("500.00")
+	_, err := svc.CreateTransfer(ira.ID, checking.ID, types.Today(), amount)
+	if err == nil {
+		t.Fatal("CreateTransfer() expected error when source is an investment account")
+	}
+	if _, ok := err.(*NotRegularAccountError); !ok {
+		t.Errorf("Expected *NotRegularAccountError, got %T: %v", err, err)
+	}
+}
+
+func TestCreateTransfer_RejectsInvestmentDest(t *testing.T) {
+	svc, accountRepo := createTestTransactionService(t)
+	checking := createTestAccountOfType(t, accountRepo, "Checking", account.TypeChecking)
+	hsa := createTestAccountOfType(t, accountRepo, "HSA", account.TypeHSA)
+
+	amount, _ := types.NewMoney("500.00")
+	_, err := svc.CreateTransfer(checking.ID, hsa.ID, types.Today(), amount)
+	if err == nil {
+		t.Fatal("CreateTransfer() expected error when destination is an investment account")
+	}
+	if _, ok := err.(*NotRegularAccountError); !ok {
+		t.Errorf("Expected *NotRegularAccountError, got %T: %v", err, err)
+	}
+}
+
+func TestUpdateTransfer_RejectsInvestmentAccounts(t *testing.T) {
+	// To exercise the UpdateTransfer guard, we plant a transfer pair whose
+	// "from" account is an investment account via the repository (bypassing
+	// the now-hardened CreateTransfer), then attempt UpdateTransfer.
+	svc, accountRepo := createTestTransactionService(t)
+	ira := createTestAccountOfType(t, accountRepo, "Rollover IRA", account.TypeInvestment)
+	checking := createTestAccountOfType(t, accountRepo, "Checking", account.TypeChecking)
+
+	amount, _ := types.NewMoney("500.00")
+	pair := NewTransferPair(ira.ID, checking.ID, types.Today(), amount)
+	if err := svc.transferRepo.Create(pair); err != nil {
+		t.Fatalf("seed transfer pair via repo: %v", err)
+	}
+
+	newAmount, _ := types.NewMoney("750.00")
+	err := svc.UpdateTransfer(pair.FromTransaction.TransferID.ID, types.Today(), newAmount, "memo", StatusUncleared)
+	if err == nil {
+		t.Fatal("UpdateTransfer() expected error when a leg is an investment account")
+	}
+	if _, ok := err.(*NotRegularAccountError); !ok {
+		t.Errorf("Expected *NotRegularAccountError, got %T: %v", err, err)
+	}
 }

@@ -23,9 +23,8 @@ func TestBalanceCalculation_VoidExcludedFromCurrentBalance(t *testing.T) {
 		splitRepo := NewSplitRepository(database)
 		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
-		// accountRepo used via accountpkg.NewRepository inline
-
-		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		accountRepo := accountpkg.NewRepository(database)
+		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 		accountSvc := accountpkg.NewService(accountpkg.NewRepository(database), database)
 
 		account := accountpkg.NewAccount("Checking", accountpkg.TypeChecking, "USD",
@@ -78,9 +77,8 @@ func TestBalanceCalculation_ClearedBalanceIncludesOnlyClearedAndReconciled(t *te
 		splitRepo := NewSplitRepository(database)
 		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
-		// accountRepo used via accountpkg.NewRepository inline
-
-		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		accountRepo := accountpkg.NewRepository(database)
+		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 		accountSvc := accountpkg.NewService(accountpkg.NewRepository(database), database)
 
 		account := accountpkg.NewAccount("Checking", accountpkg.TypeChecking, "USD",
@@ -150,9 +148,8 @@ func TestBalanceCalculation_VoidTransferExcludesBothSides(t *testing.T) {
 		splitRepo := NewSplitRepository(database)
 		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
-		// accountRepo used via accountpkg.NewRepository inline
-
-		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		accountRepo := accountpkg.NewRepository(database)
+		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 		accountSvc := accountpkg.NewService(accountpkg.NewRepository(database), database)
 
 		checking := accountpkg.NewAccount("Checking", accountpkg.TypeChecking, "USD",
@@ -207,9 +204,8 @@ func TestBalanceCalculation_GetAllBalancesExcludesVoid(t *testing.T) {
 		splitRepo := NewSplitRepository(database)
 		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
-		// accountRepo used via accountpkg.NewRepository inline
-
-		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		accountRepo := accountpkg.NewRepository(database)
+		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 		accountSvc := accountpkg.NewService(accountpkg.NewRepository(database), database)
 
 		account := accountpkg.NewAccount("Checking", accountpkg.TypeChecking, "USD",
@@ -251,9 +247,8 @@ func TestBalanceCalculation_ReconciledInClearedBalance(t *testing.T) {
 		splitRepo := NewSplitRepository(database)
 		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
-		// accountRepo used via accountpkg.NewRepository inline
-
-		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		accountRepo := accountpkg.NewRepository(database)
+		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 		accountSvc := accountpkg.NewService(accountpkg.NewRepository(database), database)
 
 		account := accountpkg.NewAccount("Checking", accountpkg.TypeChecking, "USD",
@@ -291,9 +286,8 @@ func TestBalanceCalculation_UnReconciledRemainsInClearedBalance(t *testing.T) {
 		splitRepo := NewSplitRepository(database)
 		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
-		// accountRepo used via accountpkg.NewRepository inline
-
-		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		accountRepo := accountpkg.NewRepository(database)
+		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 		accountSvc := accountpkg.NewService(accountpkg.NewRepository(database), database)
 
 		account := accountpkg.NewAccount("Checking", accountpkg.TypeChecking, "USD",
@@ -484,10 +478,10 @@ func TestStatusLifecycle_SplitVoidWithBalanceImpact(t *testing.T) {
 		splitRepo := NewSplitRepository(database)
 		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
-		// accountRepo used via accountpkg.NewRepository inline
+		accountRepo := accountpkg.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 		accountSvc := accountpkg.NewService(accountpkg.NewRepository(database), database)
 
 		account := accountpkg.NewAccount("Checking", accountpkg.TypeChecking, "USD",
@@ -547,9 +541,8 @@ func TestStatusLifecycle_MultipleVoidsWithBalance(t *testing.T) {
 		splitRepo := NewSplitRepository(database)
 		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
-		// accountRepo used via accountpkg.NewRepository inline
-
-		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		accountRepo := accountpkg.NewRepository(database)
+		txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 		accountSvc := accountpkg.NewService(accountpkg.NewRepository(database), database)
 
 		account := accountpkg.NewAccount("Checking", accountpkg.TypeChecking, "USD",

@@ -33,7 +33,8 @@ func createSplitTestService(t *testing.T) (*transaction.Service, *db.DB, func())
 	splitRepo := transaction.NewSplitRepository(database)
 	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
-	svc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	accountRepo := account.NewRepository(database)
+	svc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 	cleanup := func() {
 		database.Close()

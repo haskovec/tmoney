@@ -3,6 +3,7 @@ package transaction
 import (
 	"fmt"
 
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/payee"
@@ -15,6 +16,7 @@ type Service struct {
 	splitRepo    *SplitRepository
 	transferRepo *TransferRepository
 	payeeRepo    *payee.Repository
+	accountRepo  *account.Repository
 	db           *db.DB
 }
 
@@ -24,6 +26,7 @@ func NewService(
 	splitRepo *SplitRepository,
 	transferRepo *TransferRepository,
 	payeeRepo *payee.Repository,
+	accountRepo *account.Repository,
 	database *db.DB,
 ) *Service {
 	return &Service{
@@ -31,6 +34,7 @@ func NewService(
 		splitRepo:    splitRepo,
 		transferRepo: transferRepo,
 		payeeRepo:    payeeRepo,
+		accountRepo:  accountRepo,
 		db:           database,
 	}
 }
@@ -647,12 +651,40 @@ func (s *Service) ValidateSplitTotals(transactionID types.ID) (bool, error) {
 // Transfer Operations
 // =============================================================================
 
+// rejectInvestmentAccount returns a NotRegularAccountError if the given
+// account is investment-type. Used to keep linked cash transfers involving
+// an investment account out of the regular transaction.Transaction ledger.
+func (s *Service) rejectInvestmentAccount(accountID types.ID) error {
+	if s.accountRepo == nil {
+		return nil
+	}
+	acct, err := s.accountRepo.GetByID(accountID)
+	if err != nil {
+		return err
+	}
+	if acct.Type.IsInvestmentType() {
+		return &NotRegularAccountError{AccountID: accountID.String(), Type: acct.Type.String()}
+	}
+	return nil
+}
+
 // CreateTransfer creates a linked transfer between two accounts.
 // This creates two transactions: one debit in the from account, one credit in the to account.
+//
+// Investment-type accounts are rejected on either leg: linked cash transfers
+// involving an investment account must go through investment.Service so the
+// investment-side row is created as an investment.Transaction.
 func (s *Service) CreateTransfer(fromAccountID, toAccountID types.ID, date types.Date, amount types.Money) (*TransferPair, error) {
 	// Validate amount is positive
 	if !amount.IsPositive() {
 		return nil, &InvalidTransferAmountError{Amount: amount}
+	}
+
+	if err := s.rejectInvestmentAccount(fromAccountID); err != nil {
+		return nil, err
+	}
+	if err := s.rejectInvestmentAccount(toAccountID); err != nil {
+		return nil, err
 	}
 
 	// Create the transfer pair
@@ -684,9 +716,20 @@ func (s *Service) GetTransferCounterpart(transactionID types.ID) (*Transaction, 
 // UpdateTransfer updates both sides of a transfer.
 // Only amount, date, memo, and status can be updated.
 // Reconciled transfers cannot be edited.
+//
+// Investment-type accounts are rejected on either leg: linked cash transfers
+// involving an investment account must go through investment.Service so the
+// investment-side row is updated as an investment.Transaction.
 func (s *Service) UpdateTransfer(transferID types.ID, date types.Date, amount types.Money, memo string, status Status) error {
 	pair, err := s.transferRepo.GetByTransferID(transferID)
 	if err != nil {
+		return err
+	}
+
+	if err := s.rejectInvestmentAccount(pair.FromTransaction.AccountID); err != nil {
+		return err
+	}
+	if err := s.rejectInvestmentAccount(pair.ToTransaction.AccountID); err != nil {
 		return err
 	}
 

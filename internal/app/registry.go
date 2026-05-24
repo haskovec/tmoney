@@ -86,7 +86,7 @@ func NewServices(database *db.DB) *Services {
 		security.WithPositionChecker(positionRepo),
 	)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database)
 	// Heal any schedule rows poisoned by older binaries that updated
 	// StartDate without syncing NextDate. Best-effort, mirrors the

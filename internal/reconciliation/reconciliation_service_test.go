@@ -20,7 +20,7 @@ func createTestReconciliationService(t *testing.T) (*Service, *transaction.Servi
 	accountRepo := account.NewRepository(database)
 
 	reconSvc := NewService(reconRepo, txnRepo, accountRepo, database)
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	return reconSvc, txnSvc, accountRepo
 }
 

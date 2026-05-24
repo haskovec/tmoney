@@ -108,3 +108,18 @@ type SelfTransferError struct {
 func (e *SelfTransferError) Error() string {
 	return fmt.Sprintf("transfer-line target account %s equals parent account; self-transfer is not allowed", e.AccountID)
 }
+
+// NotRegularAccountError is returned when CreateTransfer / UpdateTransfer is
+// invoked with an investment-type account on either leg. Linked cash
+// transfers that touch an investment account must go through
+// investment.Service (TransferCash / DepositFromAccount /
+// TransferCashBetweenInvestments) so the investment-side row is created as
+// an investment.Transaction.
+type NotRegularAccountError struct {
+	AccountID string
+	Type      string
+}
+
+func (e *NotRegularAccountError) Error() string {
+	return fmt.Sprintf("account %s is an investment-type account (%s); use investment.Service for linked cash transfers", e.AccountID, e.Type)
+}

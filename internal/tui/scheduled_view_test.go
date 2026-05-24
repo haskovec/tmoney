@@ -563,7 +563,7 @@ func TestScheduledView_EnterOnDueItem_OpensPreview(t *testing.T) {
 	splitTxnRepo := transaction.NewSplitRepository(database)
 	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 
-	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, accountRepo, database)
 	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database)
 	accountSvc := account.NewService(accountRepo, database)
 	payeeSvc := payee.NewService(payeeRepo, database)

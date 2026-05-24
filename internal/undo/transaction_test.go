@@ -50,7 +50,7 @@ func createTestEnv(t *testing.T) *testEnv {
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	svc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	return &testEnv{
 		txnSvc:       svc,
 		accountRepo:  accountRepo,

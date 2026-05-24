@@ -20,7 +20,7 @@ func createTestScheduledTransactionService(t *testing.T) (*Service, *account.Rep
 	accountRepo := account.NewRepository(database)
 	payeeRepo := payee.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 	svc := NewService(stRepo, txnRepo, txnSvc, database)
 	return svc, accountRepo, payeeRepo, categoryRepo
@@ -634,7 +634,7 @@ func TestService_EstimateAmount(t *testing.T) {
 		transferRepo := transaction.NewTransferRepository(database, txnRepo)
 		accountRepo := account.NewRepository(database)
 		payeeRepo := payee.NewRepository(database)
-		txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, database)
+		txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
 		svc := NewService(stRepo, txnRepo, txnSvc, database)
 
