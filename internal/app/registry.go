@@ -95,6 +95,12 @@ func NewServices(database *db.DB) *Services {
 	reconciliationSvc := reconciliation.NewService(reconciliationRepo, txnRepo, accountRepo, database)
 	priceSvc := price.NewService(priceRepo, securityRepo, database)
 	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, corporateActionRepo, database)
+	// Wire investment.Service as the adapter that the transaction
+	// service uses to mint and clean up the investment-side counterpart
+	// of transfer-line splits (e.g. paycheck → 401k contribution lines).
+	// Set after both services exist to break the transaction↔investment
+	// import cycle.
+	txnSvc.SetInvestmentCounterpart(investmentSvc)
 	// Silently heal any desynced positions/lots so the user doesn't have to
 	// run rebuild-positions manually after upgrading. This is a no-op on
 	// databases that contain corporate-action records.

@@ -993,6 +993,95 @@ func (s *Service) TransferCashBetweenInvestments(
 	}, nil
 }
 
+// CreateTransferCashCounterpart mints a one-sided investment.Transaction
+// of type TransferCash on invAcctID, linked by the caller-supplied
+// transferID to otherAcctID. The signed amount controls direction
+// (positive = cash arriving, negative = cash leaving), matching the sign
+// of the destination leg of TransferCash / DepositFromAccount.
+//
+// Used by transaction.Service to mint the investment-side counterpart
+// of a transfer-line split (e.g. a paycheck → 401k contribution line)
+// whose target is an investment account, replacing the malformed regular
+// counterpart that older code produced. Satisfies the
+// transaction.InvestmentCashCounterpartAdapter contract.
+func (s *Service) CreateTransferCashCounterpart(
+	invAcctID, otherAcctID types.ID,
+	date types.Date,
+	amount types.Money,
+	memo string,
+	transferID types.ID,
+) (types.ID, error) {
+	if err := s.requireInvestmentAccount(invAcctID); err != nil {
+		return types.ID{}, err
+	}
+
+	txn := NewTransaction(invAcctID, date, TransactionTypeTransferCash, amount)
+	txn.SetTransfer(transferID, otherAcctID)
+	if memo != "" {
+		txn.SetMemo(memo)
+	}
+
+	if err := s.validateTransaction(txn); err != nil {
+		return types.ID{}, err
+	}
+
+	if err := s.repo.Create(txn); err != nil {
+		return types.ID{}, fmt.Errorf("failed to create investment-side counterpart: %w", err)
+	}
+
+	return txn.ID, nil
+}
+
+// FindTransferCashCounterpart returns the investment row linked to the
+// given transferID. Returns found=false (no error) if no investment-side
+// row exists. reconciled reports whether the row is fully reconciled,
+// which callers use to block cascading deletes/edits.
+func (s *Service) FindTransferCashCounterpart(transferID types.ID) (rowID types.ID, reconciled bool, found bool, err error) {
+	rows, err := s.repo.ListByTransferID(transferID)
+	if err != nil {
+		return types.ID{}, false, false, fmt.Errorf("failed to look up investment-side counterpart: %w", err)
+	}
+	if len(rows) == 0 {
+		return types.ID{}, false, false, nil
+	}
+	row := rows[0]
+	return row.ID, row.IsReconciled(), true, nil
+}
+
+// DeleteTransferCashCounterpart removes the investment row identified by
+// rowID. The caller is responsible for the regular-side parent or
+// counterpart cleanup; no cascade is performed here.
+func (s *Service) DeleteTransferCashCounterpart(rowID types.ID) error {
+	if err := s.repo.Delete(rowID); err != nil {
+		return fmt.Errorf("failed to delete investment-side counterpart: %w", err)
+	}
+	return nil
+}
+
+// UpdateTransferCashCounterpartAmount mirrors a transfer-line amount edit
+// onto the investment-side counterpart row. The caller supplies the new
+// signed amount in the destination's frame of reference (positive = cash
+// arriving, negative = cash leaving) — i.e. the inverse of the parent
+// split's amount.
+//
+// The caller is responsible for checking that the row is not reconciled
+// before invoking this (use FindTransferCashCounterpart's reconciled
+// return). A no-op if the new amount already matches.
+func (s *Service) UpdateTransferCashCounterpartAmount(rowID types.ID, newAmount types.Money) error {
+	row, err := s.repo.GetByID(rowID)
+	if err != nil {
+		return fmt.Errorf("failed to load investment-side counterpart: %w", err)
+	}
+	if row.TotalAmount.Equal(newAmount) {
+		return nil
+	}
+	row.TotalAmount = newAmount
+	if err := s.repo.Update(row); err != nil {
+		return fmt.Errorf("failed to update investment-side counterpart amount: %w", err)
+	}
+	return nil
+}
+
 // ShareTransferResult contains both sides of a share transfer between two investment accounts.
 type ShareTransferResult struct {
 	SourceTransaction      *Transaction

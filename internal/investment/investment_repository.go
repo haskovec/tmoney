@@ -162,6 +162,41 @@ func (r *Repository) ListByAccount(accountID types.ID, filter TransactionFilter)
 	return transactions, nil
 }
 
+// ListByTransferID retrieves all investment transactions linked by a
+// shared transfer_id. Used to find the investment-side counterpart of
+// a transfer-line split (where the parent transaction lives on the
+// regular transactions table) and the destination-side row of an
+// inv↔inv cash transfer.
+func (r *Repository) ListByTransferID(transferID types.ID) ([]*Transaction, error) {
+	query := `
+		SELECT ` + investmentTransactionColumns + `
+		FROM investment_transactions
+		WHERE CAST(transfer_id AS VARCHAR) = ?
+		ORDER BY created_at ASC
+	`
+
+	rows, err := r.db.Conn().Query(query, transferID.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list investment transactions by transfer_id: %w", err)
+	}
+	defer rows.Close()
+
+	transactions := make([]*Transaction, 0)
+	for rows.Next() {
+		t, err := scanTransaction(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan investment transaction: %w", err)
+		}
+		transactions = append(transactions, t)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating investment transactions: %w", err)
+	}
+
+	return transactions, nil
+}
+
 // EarliestSinceDate returns the earliest investment transaction (by
 // date, then by created_at) on or after a given date for a security,
 // across all accounts. Returns sql.ErrNoRows wrapped as a NotFound when

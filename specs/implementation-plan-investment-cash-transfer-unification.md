@@ -675,7 +675,7 @@ refactor consumes them, then docs and verification.
 Phase 2 is sketched here; details will be filled in once Phase 1
 lands and we trace the exact split-counterpart code path.
 
-- [ ] **P2-001 — Trace the split-counterpart creation path**
+- [x] **P2-001 — Trace the split-counterpart creation path**
   - Map every code path that mints a counterpart `transaction.Transaction`
     for a transfer-line split: direct `CreateWithSplits`, scheduled
     `PostWithEdits`, any others (link-transfers, import flows).
@@ -683,7 +683,64 @@ lands and we trace the exact split-counterpart code path.
     based on `accountRepo.GetByID(split.TransferAccountID).Type`.
   - Append findings as notes to this document.
 
-- [ ] **P2-002 — Investment-target dispatch in split path (TDD)**
+  **Findings (recorded 2026-05-24):**
+
+  All counterpart-creation lives in `internal/transaction/transaction_service.go`.
+  Two physical insertion points need the dispatch:
+
+  | Path | File:Line | Current behavior |
+  |---|---|---|
+  | Initial create of a transfer-line split | `transaction_service.go:358` (inside `CreateWithSplits`) | Blindly mints a regular `Transaction` in `split.TransferAccountID.ID` with `SetTransfer(split.TransferID.ID, parent.AccountID)`. |
+  | Target-account change on an existing transfer-line split | `transaction_service.go:526` (inside `moveTransferLine`) | Same shape — fresh regular `Transaction` in the new target. |
+
+  Both paths funnel every higher-level entry through these two writes:
+
+  - `scheduled.Service.PostScheduled` (line 202) and the multi-line post
+    helper (line 432) call `txnSvc.CreateWithSplits`.
+  - `scheduled.Service.PostWithEdits` (line 535) calls `txnSvc.CreateWithSplits`.
+  - The TUI new-multi-line-transaction flow uses the same `CreateWithSplits`.
+  - `imexport/import_service.go` builds splits with only `CategoryID`/`Amount`
+    — never `TransferAccountID` — so imports do not need the dispatch.
+  - `transferlink/transferlink.go` joins pre-existing rows via `SetTransfer`;
+    no split counterpart is minted.
+
+  So a single dispatch helper used at both `:358` and `:526` covers every
+  callsite.
+
+  **Cascade / sync paths (counterpart lookups by `transfer_id`):**
+
+  These already exist on the regular-table side only and will fail to find
+  an investment-side counterpart once dispatch lands:
+
+  - `findPairedByTransferID` at line 538 — calls `txnRepo.ListByTransferID`,
+    which only scans `transactions`. Used by `updatePairedAmount`
+    (line 551), `moveTransferLine`'s old-counterpart delete (line 507),
+    and `deletePairedCounterTransaction` (line 250).
+  - `deleteTransferLinePairs` (line 231) — drives the `Delete`-of-parent
+    cascade through the same helper.
+  - `deletePairedSideOfMultiLine` (line 210) — reverse direction: when
+    the user deletes the paired leg, the parent split is removed. This
+    runs off `splitRepo.GetByTransferID` in `Delete` (line 167), which
+    already works regardless of which table the paired row lives in.
+
+  P2-002 needs to extend `findPairedByTransferID` (and the move/delete
+  cascade, and `updatePairedAmount`) to also consult `investmentRepo`
+  by `transfer_id` — exactly analogous to the cascade fix the P1-005
+  block landed for inv↔inv `DeleteTransaction`.
+
+  **Type predicate:** `account.Type.IsInvestmentType()` lives at
+  `internal/account/account.go:98` and already returns true for both
+  `TypeInvestment` and `TypeHSA`. `transaction.Service` already carries
+  an `accountRepo *account.Repository` field (`transaction_service.go:19`,
+  threaded through `NewService` in P1-004), so no new wiring is needed
+  on the service. An `investmentSvc`/`investmentRepo` handle does need
+  to be threaded in to mint the investment-side `TransferCash` row and
+  to find it during cascade.
+
+  **Split struct:** `transaction.Split.TransferAccountID` and
+  `TransferID` are `types.NullableID`; `.Valid` indicates "set".
+
+- [x] **P2-002 — Investment-target dispatch in split path (TDD)**
   - RED: `TestCreateWithSplits_InvestmentTargetSplit` — given a parent
     transaction in a checking account with a transfer-line split
     whose `TransferAccountID` is an investment account, the resulting
@@ -695,6 +752,44 @@ lands and we trace the exact split-counterpart code path.
   - RED: error cases — investment account is invalid, account
     closed, etc.
   - GREEN: implement dispatch at the identified insertion point.
+
+  **Implementation:** added a thin
+  `InvestmentCashCounterpartAdapter` interface in
+  `internal/transaction/transaction_service.go` (Create / Find / Delete
+  / UpdateAmount) and wired `investment.Service` as its implementation
+  via a new `txnSvc.SetInvestmentCounterpart` setter called from
+  `internal/app/registry.go` (post-construction to break the
+  transaction↔investment import cycle). Investment-side primitives
+  live in `investment_service.go`: `CreateTransferCashCounterpart`,
+  `FindTransferCashCounterpart` (backed by a new
+  `investment.Repository.ListByTransferID`),
+  `DeleteTransferCashCounterpart`, and
+  `UpdateTransferCashCounterpartAmount`. Both create-path insertion
+  points identified in P2-001 (`CreateWithSplits` line 358 and
+  `moveTransferLine` line 526) collapse into a single helper
+  `createTransferLineCounterpart` that dispatches by
+  `accountRepo.GetByID(target).Type.IsInvestmentType()`; HSAs route
+  through the adapter the same as pure investment accounts. The
+  rollback logic in `rollbackCreateWithSplits` was extended so
+  investment-side rows are reaped on partial-create failure
+  (no orphan investment rows). `deletePairedCounterTransaction` and
+  `updatePairedAmount` now check both the regular-table and
+  investment-table sides via the adapter, so the delete-cascade and
+  amount-edit cascade (e.g. P2-003's amount edit) work uniformly
+  across bank and investment counterparts.
+
+  **Tests:** ten unit tests in
+  `internal/transaction/split_investment_test.go` exercise the
+  dispatch with a stub adapter — happy path (investment + HSA),
+  no-adapter rejection, rollback, amount-edit, target-move (bank↔inv
+  both directions), delete-of-parent cascade, single-split delete
+  cascade, and a regression guard that bank targets still hit the
+  regular path. Three integration tests in
+  `internal/investment/split_counterpart_test.go` exercise the real
+  `transaction.Service`+`investment.Service` wiring: the canonical
+  paycheck→IRA case, the delete cascade, and the scheduled-posting
+  path via `scheduled.Service.PostWithEdits`. Full `go test ./...`
+  (5407 tests across 26 packages) and `golangci-lint run` clean.
 
 - [ ] **P2-003 — Void/edit of parent with mixed counterparts**
   - RED: posting a paycheck-style parent with one bank-side transfer

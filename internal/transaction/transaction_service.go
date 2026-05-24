@@ -10,14 +10,54 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+// InvestmentCashCounterpartAdapter lets the transaction service create,
+// inspect, and clean up an investment.Transaction row that serves as the
+// paired counterpart of a transfer-line split whose target is an
+// investment account (e.g. a paycheck → 401k contribution line, an
+// auto-deposit to a brokerage).
+//
+// The transaction package cannot import investment (investment already
+// imports transaction). Wiring an adapter at app-construction time
+// breaks the cycle. When the adapter is nil, transfer-line splits to
+// investment accounts are rejected at the service layer rather than
+// silently creating a malformed regular-table row.
+type InvestmentCashCounterpartAdapter interface {
+	// CreateTransferCashCounterpart mints the investment-side row.
+	// amount carries the sign in the destination frame (positive = cash
+	// arriving, negative = cash leaving); the caller provides the
+	// shared transferID. Returns the new row's ID for rollback.
+	CreateTransferCashCounterpart(
+		invAcctID, otherAcctID types.ID,
+		date types.Date,
+		amount types.Money,
+		memo string,
+		transferID types.ID,
+	) (types.ID, error)
+
+	// FindTransferCashCounterpart returns the investment row linked to
+	// the given transferID. found=false means no investment-side row
+	// exists for this transferID (the counterpart may live on the
+	// regular table, or no counterpart was ever minted).
+	FindTransferCashCounterpart(transferID types.ID) (rowID types.ID, reconciled bool, found bool, err error)
+
+	// DeleteTransferCashCounterpart removes the investment row by ID.
+	DeleteTransferCashCounterpart(rowID types.ID) error
+
+	// UpdateTransferCashCounterpartAmount mirrors a transfer-line amount
+	// edit onto the investment row. newAmount is in the destination
+	// frame (same convention as CreateTransferCashCounterpart).
+	UpdateTransferCashCounterpartAmount(rowID types.ID, newAmount types.Money) error
+}
+
 // Service provides business logic for transaction operations.
 type Service struct {
-	txnRepo      *Repository
-	splitRepo    *SplitRepository
-	transferRepo *TransferRepository
-	payeeRepo    *payee.Repository
-	accountRepo  *account.Repository
-	db           *db.DB
+	txnRepo               *Repository
+	splitRepo             *SplitRepository
+	transferRepo          *TransferRepository
+	payeeRepo             *payee.Repository
+	accountRepo           *account.Repository
+	investmentCounterpart InvestmentCashCounterpartAdapter
+	db                    *db.DB
 }
 
 // NewService creates a new Service.
@@ -37,6 +77,16 @@ func NewService(
 		accountRepo:  accountRepo,
 		db:           database,
 	}
+}
+
+// SetInvestmentCounterpart wires an adapter for routing transfer-line
+// splits whose target is an investment account through the investment
+// service. Wired after construction so transaction.NewService can be
+// called before investment.NewService (which depends on transaction).
+// Calling with nil disables the dispatch (transfer-line splits to
+// investment accounts will be rejected with NotRegularAccountError).
+func (s *Service) SetInvestmentCounterpart(a InvestmentCashCounterpartAdapter) {
+	s.investmentCounterpart = a
 }
 
 // =============================================================================
@@ -245,21 +295,40 @@ func (s *Service) deleteTransferLinePairs(parentID types.ID) error {
 }
 
 // deletePairedCounterTransaction removes the single-line counter-transaction
-// linked to a transfer-line's transfer_id. Returns nil if no paired side
-// exists; returns IsReconciledError if the paired side is reconciled.
+// linked to a transfer-line's transfer_id. The counterpart may live on
+// the regular transactions table (bank target) or on the
+// investment_transactions table (investment target) — both are checked.
+// Returns nil if no paired side exists; returns IsReconciledError if the
+// paired side is reconciled.
 func (s *Service) deletePairedCounterTransaction(transferID types.ID) error {
 	paired, err := s.findPairedByTransferID(transferID)
 	if err != nil {
 		return err
 	}
-	if paired == nil {
+	if paired != nil {
+		if paired.IsReconciled() {
+			return &IsReconciledError{ID: paired.ID.String()}
+		}
+		if err := s.txnRepo.Delete(paired.ID); err != nil {
+			return fmt.Errorf("failed to delete paired transfer transaction: %w", err)
+		}
 		return nil
 	}
-	if paired.IsReconciled() {
-		return &IsReconciledError{ID: paired.ID.String()}
+	if s.investmentCounterpart == nil {
+		return nil
 	}
-	if err := s.txnRepo.Delete(paired.ID); err != nil {
-		return fmt.Errorf("failed to delete paired transfer transaction: %w", err)
+	rowID, reconciled, found, err := s.investmentCounterpart.FindTransferCashCounterpart(transferID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	if reconciled {
+		return &IsReconciledError{ID: rowID.String()}
+	}
+	if err := s.investmentCounterpart.DeleteTransferCashCounterpart(rowID); err != nil {
+		return fmt.Errorf("failed to delete investment-side paired transfer transaction: %w", err)
 	}
 	return nil
 }
@@ -341,8 +410,9 @@ func (s *Service) CreateWithSplits(transaction *Transaction, splits []*Split) er
 	}
 
 	// Track paired-counter-transactions so we can roll them back on a later
-	// failure.
-	createdPairs := make([]types.ID, 0, len(splits))
+	// failure. Investment-side counterparts are tracked separately so the
+	// rollback routes through the right repository.
+	createdPairs := make([]transferLinePair, 0, len(splits))
 
 	for _, split := range splits {
 		split.TransactionID = transaction.ID
@@ -355,24 +425,97 @@ func (s *Service) CreateWithSplits(transaction *Transaction, splits []*Split) er
 			continue
 		}
 
-		paired := NewTransaction(split.TransferAccountID.ID, transaction.Date, split.Amount.Neg())
-		paired.SetTransfer(split.TransferID.ID, transaction.AccountID)
-		if err := s.txnRepo.Create(paired); err != nil {
+		pair, err := s.createTransferLineCounterpart(transaction.AccountID, transaction.Date, split)
+		if err != nil {
 			s.rollbackCreateWithSplits(transaction.ID, createdPairs)
-			return fmt.Errorf("failed to create paired transfer transaction: %w", err)
+			return err
 		}
-		createdPairs = append(createdPairs, paired.ID)
+		createdPairs = append(createdPairs, pair)
 	}
 
 	return nil
 }
 
+// transferLinePair identifies a counterpart row created for a transfer-
+// line split. isInvestment routes cleanup to the right repository.
+type transferLinePair struct {
+	rowID        types.ID
+	isInvestment bool
+}
+
+// createTransferLineCounterpart mints the paired counter-transaction for
+// a transfer-line split. If the target account is investment-type, the
+// row is created on the investment_transactions table via the configured
+// InvestmentCashCounterpartAdapter; otherwise a regular transaction is
+// created on the transactions table.
+//
+// The split must already carry a valid TransferID (CreateWithSplits and
+// moveTransferLine mint it before calling here).
+func (s *Service) createTransferLineCounterpart(
+	parentAcctID types.ID,
+	parentDate types.Date,
+	split *Split,
+) (transferLinePair, error) {
+	targetAcctID := split.TransferAccountID.ID
+	counterAmount := split.Amount.Neg()
+	transferID := split.TransferID.ID
+
+	isInv, err := s.targetIsInvestment(targetAcctID)
+	if err != nil {
+		return transferLinePair{}, err
+	}
+
+	if isInv {
+		if s.investmentCounterpart == nil {
+			return transferLinePair{}, fmt.Errorf(
+				"transfer-line split targets investment account %s but no investment-counterpart adapter is wired on transaction.Service",
+				targetAcctID.String(),
+			)
+		}
+		rowID, err := s.investmentCounterpart.CreateTransferCashCounterpart(
+			targetAcctID, parentAcctID, parentDate, counterAmount, "", transferID,
+		)
+		if err != nil {
+			return transferLinePair{}, fmt.Errorf("failed to create investment-side paired transfer transaction: %w", err)
+		}
+		return transferLinePair{rowID: rowID, isInvestment: true}, nil
+	}
+
+	paired := NewTransaction(targetAcctID, parentDate, counterAmount)
+	paired.SetTransfer(transferID, parentAcctID)
+	if err := s.txnRepo.Create(paired); err != nil {
+		return transferLinePair{}, fmt.Errorf("failed to create paired transfer transaction: %w", err)
+	}
+	return transferLinePair{rowID: paired.ID, isInvestment: false}, nil
+}
+
+// targetIsInvestment reports whether the given account is an investment-
+// type account (TypeInvestment or TypeHSA). Returns false (no error) if
+// accountRepo is not wired — only test fixtures hit that path.
+func (s *Service) targetIsInvestment(acctID types.ID) (bool, error) {
+	if s.accountRepo == nil {
+		return false, nil
+	}
+	acct, err := s.accountRepo.GetByID(acctID)
+	if err != nil {
+		return false, fmt.Errorf("failed to load target account: %w", err)
+	}
+	return acct.Type.IsInvestmentType(), nil
+}
+
 // rollbackCreateWithSplits best-effort removes paired counter-transactions
 // and the parent transaction (which cascades its splits) after a partial
-// CreateWithSplits failure.
-func (s *Service) rollbackCreateWithSplits(parentID types.ID, pairedIDs []types.ID) {
-	for _, id := range pairedIDs {
-		_ = s.txnRepo.Delete(id)
+// CreateWithSplits failure. Investment-side counterparts are routed
+// through the adapter so they don't leak.
+func (s *Service) rollbackCreateWithSplits(parentID types.ID, pairs []transferLinePair) {
+	for _, p := range pairs {
+		if p.isInvestment {
+			if s.investmentCounterpart != nil {
+				_ = s.investmentCounterpart.DeleteTransferCashCounterpart(p.rowID)
+			}
+			continue
+		}
+		_ = s.txnRepo.Delete(p.rowID)
 	}
 	_, _ = s.splitRepo.DeleteByTransaction(parentID)
 	_ = s.txnRepo.Delete(parentID)
@@ -502,19 +645,12 @@ func (s *Service) UpdateSplit(split *Split) error {
 // moveTransferLine handles the target-account-change cascade: delete the old
 // paired counter-transaction, mint a fresh transfer_id on the split-line,
 // persist the split, and create a new paired counterpart in the new target.
+// The new counterpart is routed to the investment table when the new
+// target is an investment account.
 func (s *Service) moveTransferLine(parent *Transaction, existing, split *Split) error {
 	if existing.TransferID.Valid {
-		oldPaired, err := s.findPairedByTransferID(existing.TransferID.ID)
-		if err != nil {
+		if err := s.deletePairedCounterTransaction(existing.TransferID.ID); err != nil {
 			return err
-		}
-		if oldPaired != nil {
-			if oldPaired.IsReconciled() {
-				return &IsReconciledError{ID: oldPaired.ID.String()}
-			}
-			if err := s.txnRepo.Delete(oldPaired.ID); err != nil {
-				return fmt.Errorf("failed to delete old paired transaction: %w", err)
-			}
 		}
 	}
 
@@ -523,10 +659,8 @@ func (s *Service) moveTransferLine(parent *Transaction, existing, split *Split) 
 		return err
 	}
 
-	paired := NewTransaction(split.TransferAccountID.ID, parent.Date, split.Amount.Neg())
-	paired.SetTransfer(split.TransferID.ID, parent.AccountID)
-	if err := s.txnRepo.Create(paired); err != nil {
-		return fmt.Errorf("failed to create new paired transaction: %w", err)
+	if _, err := s.createTransferLineCounterpart(parent.AccountID, parent.Date, split); err != nil {
+		return err
 	}
 	return nil
 }
@@ -548,19 +682,33 @@ func (s *Service) findPairedByTransferID(transferID types.ID) (*Transaction, err
 
 // updatePairedAmount sets the paired counter-transaction's amount to mirror a
 // transfer-line amount edit. A reconciled paired side blocks the cascade.
+// Handles both regular-side and investment-side counterparts.
 func (s *Service) updatePairedAmount(transferID types.ID, newAmount types.Money) error {
 	paired, err := s.findPairedByTransferID(transferID)
 	if err != nil {
 		return err
 	}
-	if paired == nil {
+	if paired != nil {
+		if paired.IsReconciled() {
+			return &IsReconciledError{ID: paired.ID.String()}
+		}
+		paired.Amount = newAmount
+		return s.txnRepo.Update(paired)
+	}
+	if s.investmentCounterpart == nil {
 		return nil
 	}
-	if paired.IsReconciled() {
-		return &IsReconciledError{ID: paired.ID.String()}
+	rowID, reconciled, found, err := s.investmentCounterpart.FindTransferCashCounterpart(transferID)
+	if err != nil {
+		return err
 	}
-	paired.Amount = newAmount
-	return s.txnRepo.Update(paired)
+	if !found {
+		return nil
+	}
+	if reconciled {
+		return &IsReconciledError{ID: rowID.String()}
+	}
+	return s.investmentCounterpart.UpdateTransferCashCounterpartAmount(rowID, newAmount)
 }
 
 // DeleteSplit removes a split from a transaction.
