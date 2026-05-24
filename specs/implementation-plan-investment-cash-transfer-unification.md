@@ -527,13 +527,38 @@ refactor consumes them, then docs and verification.
     (writes `txnDialogLastSavedDate` on save). All TUI and full-suite
     tests + `golangci-lint` clean.
 
-- [ ] **P1-008 — Status-on-Edit applies to both legs**
-  - RED: per dispatch path — open Edit on an existing inv↔reg /
-    inv↔inv pair, toggle Status to Cleared, save; verify both legs
-    have `cleared` status.
-  - GREEN: extend the investment Update methods to accept a status
-    parameter and apply it on the freshly-created rows; wire the
-    Status radio's selected value through the submit handler.
+- [x] **P1-008 — Status-on-Edit applies to both legs**
+  - RED: three new service-level tests in
+    `internal/investment/investment_service_test.go` —
+    `TestUpdateTransferCash_InvToReg_AppliesStatusToBothLegs`,
+    `TestUpdateTransferCash_RegToInv_AppliesStatusToBothLegs`,
+    `TestUpdateTransferCash_InvToInv_AppliesStatusToBothLegs` — each
+    creates a transfer (which mints freshly-Pending/Uncleared legs),
+    then re-runs `UpdateTransferCash` with
+    `transaction.StatusCleared`, and asserts both legs (and the
+    persisted rows) carry the matching cleared status. Status mapping
+    pinned at `statusFromRegular`:
+    Uncleared↔Pending, Cleared↔Cleared, Reconciled↔Reconciled.
+  - GREEN: `investment.Service.UpdateTransferCash` gained a trailing
+    `status transaction.Status` parameter (in
+    `internal/investment/update_edit.go`). After the new pair lands
+    via `TransferCash` / `DepositFromAccount` /
+    `TransferCashBetweenInvestments`, two new helpers
+    (`applyInvestmentStatus`, `applyRegularStatus`) persist the
+    mapped status onto each leg — the investment legs via
+    `repo.Update`, the regular leg (when present) via `txnRepo.Update`.
+    Both helpers no-op when the row already has the target status.
+  - Bank↔bank edit-mode in `submitEditTransferDialog` already threads
+    the Status radio's value into `transaction.Service.UpdateTransfer`,
+    which has accepted a `status` parameter from the start; no change
+    needed there. The inv-involving dispatch path through
+    `submitEditTransferDialog` lands alongside P1-009, since the
+    edit-mode data loader has to be taught to fetch investment-side
+    legs (the regular-only `transferRepo.GetByTransferID` cannot see
+    them today) before the dispatch is reachable.
+  - Legacy `investment_transfer_cash_dialog.go` callsite updated to
+    pass `transaction.StatusUncleared` (preserves prior behavior — the
+    legacy dialog has no Status field).
 
 ### P1-6: Investment register integration
 

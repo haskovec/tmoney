@@ -3457,6 +3457,7 @@ func TestService_UpdateTransferCash(t *testing.T) {
 			types.MustNewMoney("1170.33"),
 			"to savings",
 			"out",
+			transaction.StatusUncleared,
 		)
 		if err != nil {
 			t.Fatalf("UpdateTransferCash() error = %v", err)
@@ -3512,6 +3513,7 @@ func TestService_UpdateTransferCash(t *testing.T) {
 			types.MustNewMoney("750.00"),
 			"updated",
 			"out",
+			transaction.StatusUncleared,
 		)
 		if err != nil {
 			t.Fatalf("UpdateTransferCash() error = %v", err)
@@ -3560,6 +3562,7 @@ func TestService_UpdateTransferCash(t *testing.T) {
 			types.MustNewMoney("100.00"),
 			"",
 			"sideways",
+			transaction.StatusUncleared,
 		)
 		if err == nil {
 			t.Fatal("UpdateTransferCash with invalid direction should return error")
@@ -3597,6 +3600,7 @@ func TestUpdateTransferCash_InvToInv_HappyPath(t *testing.T) {
 		types.MustNewMoney("750.00"),
 		"rollover (updated)",
 		"out",
+		transaction.StatusUncleared,
 	)
 	if err != nil {
 		t.Fatalf("UpdateTransferCash() error = %v", err)
@@ -3691,6 +3695,7 @@ func TestUpdateTransferCash_InvToInv_FlipDirection(t *testing.T) {
 		types.MustNewMoney("400.00"),
 		"",
 		"in",
+		transaction.StatusUncleared,
 	)
 	if err != nil {
 		t.Fatalf("UpdateTransferCash() error = %v", err)
@@ -3718,6 +3723,163 @@ func TestUpdateTransferCash_InvToInv_FlipDirection(t *testing.T) {
 	bBalance, _ := svc.GetCashBalance(b.ID)
 	if bBalance.String() != "1600" {
 		t.Errorf("B balance = %q, want 1600", bBalance.String())
+	}
+}
+
+// =============================================================================
+// UpdateTransferCash — status threading. The unified Transfer dialog's
+// Status-on-Edit radio (P1-008) flows a transaction.Status value through to
+// UpdateTransferCash, which must apply the corresponding status to both
+// freshly-created legs of the pair: investment-side rows get the matching
+// investment.TransactionStatus, regular-side rows get the same transaction.Status.
+// Status defaults map: Uncleared↔Pending; Cleared↔Cleared; Reconciled↔Reconciled.
+// =============================================================================
+
+func TestUpdateTransferCash_InvToReg_AppliesStatusToBothLegs(t *testing.T) {
+	svc, accountRepo := createTestService(t)
+	invAcct := createInvAccount(t, accountRepo, "Brokerage")
+	savings := createCheckAccount(t, accountRepo, "Savings")
+	date := types.NewDate(2024, time.March, 15)
+
+	orig, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("500.00"), "")
+	if err != nil {
+		t.Fatalf("TransferCash() error = %v", err)
+	}
+
+	// Edit the same pair, but flip status to Cleared.
+	fixed, err := svc.UpdateTransferCash(
+		orig.InvestmentTransaction.ID,
+		invAcct.ID, savings.ID, date,
+		types.MustNewMoney("500.00"),
+		"",
+		"out",
+		transaction.StatusCleared,
+	)
+	if err != nil {
+		t.Fatalf("UpdateTransferCash() error = %v", err)
+	}
+
+	if fixed.InvestmentTransaction.Status != TransactionStatusCleared {
+		t.Errorf("investment leg status = %q, want %q",
+			fixed.InvestmentTransaction.Status, TransactionStatusCleared)
+	}
+	if fixed.RegularTransaction == nil {
+		t.Fatal("expected regular leg in result for inv↔reg edit")
+	}
+	if fixed.RegularTransaction.Status != transaction.StatusCleared {
+		t.Errorf("regular leg status = %q, want %q",
+			fixed.RegularTransaction.Status, transaction.StatusCleared)
+	}
+
+	// Persisted state matches in-memory result.
+	persistedInv, err := svc.repo.GetByID(fixed.InvestmentTransaction.ID)
+	if err != nil {
+		t.Fatalf("GetByID(investment) error = %v", err)
+	}
+	if persistedInv.Status != TransactionStatusCleared {
+		t.Errorf("persisted investment status = %q, want %q",
+			persistedInv.Status, TransactionStatusCleared)
+	}
+	txnRepo := transaction.NewRepository(svc.db)
+	persistedReg, err := txnRepo.GetByID(fixed.RegularTransaction.ID)
+	if err != nil {
+		t.Fatalf("GetByID(regular) error = %v", err)
+	}
+	if persistedReg.Status != transaction.StatusCleared {
+		t.Errorf("persisted regular status = %q, want %q",
+			persistedReg.Status, transaction.StatusCleared)
+	}
+}
+
+func TestUpdateTransferCash_RegToInv_AppliesStatusToBothLegs(t *testing.T) {
+	svc, accountRepo := createTestService(t)
+	invAcct := createInvAccount(t, accountRepo, "Brokerage")
+	savings := createCheckAccount(t, accountRepo, "Savings")
+	date := types.NewDate(2024, time.March, 15)
+
+	orig, err := svc.DepositFromAccount(invAcct.ID, savings.ID, date, types.MustNewMoney("600.00"), "")
+	if err != nil {
+		t.Fatalf("DepositFromAccount() error = %v", err)
+	}
+
+	fixed, err := svc.UpdateTransferCash(
+		orig.InvestmentTransaction.ID,
+		invAcct.ID, savings.ID, date,
+		types.MustNewMoney("600.00"),
+		"",
+		"in",
+		transaction.StatusCleared,
+	)
+	if err != nil {
+		t.Fatalf("UpdateTransferCash() error = %v", err)
+	}
+
+	if fixed.InvestmentTransaction.Status != TransactionStatusCleared {
+		t.Errorf("investment leg status = %q, want %q",
+			fixed.InvestmentTransaction.Status, TransactionStatusCleared)
+	}
+	if fixed.RegularTransaction == nil {
+		t.Fatal("expected regular leg in result for reg→inv edit")
+	}
+	if fixed.RegularTransaction.Status != transaction.StatusCleared {
+		t.Errorf("regular leg status = %q, want %q",
+			fixed.RegularTransaction.Status, transaction.StatusCleared)
+	}
+}
+
+func TestUpdateTransferCash_InvToInv_AppliesStatusToBothLegs(t *testing.T) {
+	svc, accountRepo := createTestService(t)
+	src := createInvAccount(t, accountRepo, "Source IRA")
+	dst := createInvAccount(t, accountRepo, "Dest IRA")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := svc.Deposit(src.ID, date, types.MustNewMoney("2000.00"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	orig, err := svc.TransferCashBetweenInvestments(src.ID, dst.ID, date, types.MustNewMoney("500.00"), "rollover")
+	if err != nil {
+		t.Fatalf("TransferCashBetweenInvestments() error = %v", err)
+	}
+
+	fixed, err := svc.UpdateTransferCash(
+		orig.SourceTransaction.ID,
+		src.ID, dst.ID, date,
+		types.MustNewMoney("500.00"),
+		"rollover",
+		"out",
+		transaction.StatusCleared,
+	)
+	if err != nil {
+		t.Fatalf("UpdateTransferCash() error = %v", err)
+	}
+
+	if fixed.InvestmentTransaction == nil || fixed.CounterpartInvestmentTransaction == nil {
+		t.Fatal("expected both inv legs in result for inv↔inv edit")
+	}
+	if fixed.InvestmentTransaction.Status != TransactionStatusCleared {
+		t.Errorf("primary inv leg status = %q, want %q",
+			fixed.InvestmentTransaction.Status, TransactionStatusCleared)
+	}
+	if fixed.CounterpartInvestmentTransaction.Status != TransactionStatusCleared {
+		t.Errorf("counterpart inv leg status = %q, want %q",
+			fixed.CounterpartInvestmentTransaction.Status, TransactionStatusCleared)
+	}
+
+	persistedSrc, err := svc.repo.GetByID(fixed.InvestmentTransaction.ID)
+	if err != nil {
+		t.Fatalf("GetByID(src) error = %v", err)
+	}
+	if persistedSrc.Status != TransactionStatusCleared {
+		t.Errorf("persisted src status = %q, want %q",
+			persistedSrc.Status, TransactionStatusCleared)
+	}
+	persistedDst, err := svc.repo.GetByID(fixed.CounterpartInvestmentTransaction.ID)
+	if err != nil {
+		t.Fatalf("GetByID(dst) error = %v", err)
+	}
+	if persistedDst.Status != TransactionStatusCleared {
+		t.Errorf("persisted dst status = %q, want %q",
+			persistedDst.Status, TransactionStatusCleared)
 	}
 }
 

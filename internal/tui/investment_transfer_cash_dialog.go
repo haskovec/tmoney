@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -242,6 +243,9 @@ func (a *App) submitTransferCashDialog() (tea.Model, tea.Cmd) {
 			if depositIntoInvestment {
 				directionToken = "in"
 			}
+			// Legacy dialog has no Status field; preserve historic behavior
+			// (status resets to Uncleared/Pending on edit). The unified
+			// Transfer dialog is what threads user-selected status through.
 			_, txnErr = a.investmentSvc.UpdateTransferCash(
 				editTxnID,
 				investmentAccountID,
@@ -250,6 +254,7 @@ func (a *App) submitTransferCashDialog() (tea.Model, tea.Cmd) {
 				amountVal,
 				memo,
 				directionToken,
+				transaction.StatusUncleared,
 			)
 		} else if depositIntoInvestment {
 			_, txnErr = a.investmentSvc.DepositFromAccount(investmentAccountID, regularAccountID, date, amountVal, memo)

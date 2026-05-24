@@ -5,8 +5,27 @@ import (
 
 	"github.com/alpacahq/alpacadecimal"
 	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
+
+// statusFromRegular maps a transaction.Status (the bank-side status that the
+// unified Transfer dialog edits) to the corresponding investment-side
+// TransactionStatus. Uncleared maps to Pending — both represent the default
+// "unposted" state in their respective domains. Void on the bank side has no
+// investment equivalent and is treated as Pending (the dialog never produces
+// it; this fallback only matters if a future caller passes through a void
+// status).
+func statusFromRegular(s transaction.Status) TransactionStatus {
+	switch s {
+	case transaction.StatusCleared:
+		return TransactionStatusCleared
+	case transaction.StatusReconciled:
+		return TransactionStatusReconciled
+	default:
+		return TransactionStatusPending
+	}
+}
 
 // reverseTxnEffects undoes a transaction's effect on positions and lots.
 // Callers MUST invoke this *before* deleting the underlying transaction,
@@ -421,6 +440,12 @@ func (s *Service) UpdateInterest(oldID types.ID, accountID types.ID, date types.
 //
 // The old-counterpart cleanup searches both repos so an inv↔inv original is
 // fully reaped before the new pair lands.
+//
+// status is the user-selected cleared/uncleared/reconciled state from the
+// unified Transfer dialog's Status radio. It is applied to both freshly-
+// created legs after the new pair lands. The investment legs receive the
+// statusFromRegular-mapped TransactionStatus, the regular leg (if any)
+// receives status verbatim.
 func (s *Service) UpdateTransferCash(
 	oldInvestmentTxnID types.ID,
 	investmentAccountID, regularAccountID types.ID,
@@ -428,6 +453,7 @@ func (s *Service) UpdateTransferCash(
 	amount types.Money,
 	memo string,
 	direction string, // "in" = cash arrives at investmentAccountID, "out" = cash leaves it
+	status transaction.Status,
 ) (*CashTransferResult, error) {
 	old, err := s.repo.GetByID(oldInvestmentTxnID)
 	if err != nil {
@@ -482,6 +508,12 @@ func (s *Service) UpdateTransferCash(
 		if err != nil {
 			return nil, err
 		}
+		if err := s.applyInvestmentStatus(invResult.SourceTransaction, status); err != nil {
+			return nil, err
+		}
+		if err := s.applyInvestmentStatus(invResult.DestinationTransaction, status); err != nil {
+			return nil, err
+		}
 		return &CashTransferResult{
 			InvestmentTransaction:            invResult.SourceTransaction,
 			CounterpartInvestmentTransaction: invResult.DestinationTransaction,
@@ -489,15 +521,63 @@ func (s *Service) UpdateTransferCash(
 		}, nil
 	}
 
+	var result *CashTransferResult
 	switch direction {
 	case "out":
-		return s.TransferCash(investmentAccountID, regularAccountID, date, amount, memo)
+		result, err = s.TransferCash(investmentAccountID, regularAccountID, date, amount, memo)
 	case "in":
-		return s.DepositFromAccount(investmentAccountID, regularAccountID, date, amount, memo)
+		result, err = s.DepositFromAccount(investmentAccountID, regularAccountID, date, amount, memo)
 	default:
 		// Unreachable: direction was validated above.
 		return nil, fmt.Errorf("UpdateTransferCash: invalid direction %q (want 'in' or 'out')", direction)
 	}
+	if err != nil {
+		return nil, err
+	}
+	if err := s.applyInvestmentStatus(result.InvestmentTransaction, status); err != nil {
+		return nil, err
+	}
+	if err := s.applyRegularStatus(result.RegularTransaction, status); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// applyInvestmentStatus persists the status mapped from a transaction.Status
+// onto an investment-side leg. No-op when the row already carries the target
+// status (avoids a needless write on the default-Pending case).
+func (s *Service) applyInvestmentStatus(txn *Transaction, status transaction.Status) error {
+	if txn == nil {
+		return nil
+	}
+	target := statusFromRegular(status)
+	if txn.Status == target {
+		return nil
+	}
+	txn.SetStatus(target)
+	if err := s.repo.Update(txn); err != nil {
+		return fmt.Errorf("failed to update investment leg status: %w", err)
+	}
+	return nil
+}
+
+// applyRegularStatus persists the status onto a regular-side leg. No-op when
+// the row already carries the target status.
+func (s *Service) applyRegularStatus(txn *transaction.Transaction, status transaction.Status) error {
+	if txn == nil {
+		return nil
+	}
+	if txn.Status == status {
+		return nil
+	}
+	if s.txnRepo == nil {
+		return fmt.Errorf("transaction repository not configured")
+	}
+	txn.SetStatus(status)
+	if err := s.txnRepo.Update(txn); err != nil {
+		return fmt.Errorf("failed to update regular leg status: %w", err)
+	}
+	return nil
 }
 
 // UpdateTransferShares edits an existing share transfer between two
