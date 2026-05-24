@@ -1,5 +1,5 @@
 study README.md
-study specs/implementation-plan-category-creation.md and pick the most important thing to do
+study specs/implementation-plan-investment-cash-transfer-unification.md and pick the most important thing to do
 
 IMPORTANT:
 - author property based tests or unit tests (whichever is best)
@@ -10,4 +10,4 @@ IMPORTANT:
 - always run go fmt before committing files
 - lint the code with golangci-lint
 - when tests pass commit the changes and push
-- update the specs/implementation-plan-category-creation.md file marking the task as done
+- update the specs/implementation-plan-investment-cash-transfer-unification.md file marking the task as done
