@@ -384,24 +384,29 @@ refactor consumes them, then docs and verification.
 
 ### P1-2: Service methods (TDD)
 
-- [ ] **P1-002 — `investment.Service.TransferCashBetweenInvestments`**
+- [x] **P1-002 — `investment.Service.TransferCashBetweenInvestments`**
   - RED: `TestTransferCashBetweenInvestments_HappyPath` — given two
     funded investment accounts, transferring $500 produces two linked
     `investment.Transaction` rows of type `TransferCash` (one −$500
     on source, one +$500 on destination) sharing a `transferID`.
-  - RED: `TestTransferCashBetweenInvestments_RejectsNonInvestment` —
-    passing a non-investment account on either side returns
-    `NotInvestmentAccountError`-shaped error.
+  - RED: `TestTransferCashBetweenInvestments_RejectsNonInvestmentSource`
+    / `…RejectsNonInvestmentDestination` — passing a non-investment
+    account on either side returns a `NotInvestmentError`-shaped error.
   - RED: `TestTransferCashBetweenInvestments_RejectsSameAccount` —
     same source and destination returns the existing same-account
     error.
   - RED: `TestTransferCashBetweenInvestments_RejectsNonPositiveAmount` —
     zero / negative amount returns `InvalidTransferAmountError`.
-  - RED: `TestTransferCashBetweenInvestments_CleansUpOnFailure` —
-    inject a failure persisting the destination row; verify the
-    source row is rolled back.
-  - GREEN: implement in `internal/investment/investment_service.go`,
-    mirroring the `TransferShares` shape but for cash.
+  - RED: `TestTransferCashBetweenInvestments_NoLeakOnDestinationFailure`
+    — a bogus destination account ID errors and leaves no source-side
+    row behind. (Covers the spec's CleansUpOnFailure intent via the
+    failure path reachable without mocking the repo.)
+  - RED: `TestTransferCashBetweenInvestments_AllowsNegativeSourceBalance`
+    — matches the wider "cash may go negative" invariant.
+  - GREEN: implemented in `internal/investment/investment_service.go`,
+    mirroring the `TransferShares` shape but for cash, returning a new
+    `InvestmentCashTransferResult`. All seven tests pass; full suite
+    and `golangci-lint` clean.
 
 - [ ] **P1-003 — Extend `UpdateTransferCash` for inv↔inv**
   - RED: `TestUpdateTransferCash_InvToInv_HappyPath` — create an

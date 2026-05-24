@@ -915,6 +915,80 @@ func (s *Service) DepositFromAccount(investmentAccountID, regularAccountID types
 	}, nil
 }
 
+// InvestmentCashTransferResult contains both sides of a cash transfer between
+// two investment accounts (e.g. an IRA-to-IRA rollover). Parallel in shape to
+// ShareTransferResult, but no security is involved.
+type InvestmentCashTransferResult struct {
+	SourceTransaction      *Transaction
+	DestinationTransaction *Transaction
+	TransferID             types.ID
+}
+
+// TransferCashBetweenInvestments creates a cash transfer between two investment
+// accounts. The source account is debited and the destination credited; no
+// regular-account row is involved. Both legs are linked by a shared transfer_id
+// and typed TransferCash. Mirrors the TransferShares pattern.
+func (s *Service) TransferCashBetweenInvestments(
+	sourceAccountID, destAccountID types.ID,
+	date types.Date,
+	amount types.Money,
+	memo string,
+) (*InvestmentCashTransferResult, error) {
+	if !amount.IsPositive() {
+		return nil, &InvalidTransferAmountError{Amount: amount}
+	}
+
+	if sourceAccountID == destAccountID {
+		return nil, fmt.Errorf("cannot transfer between the same account")
+	}
+
+	if err := s.requireInvestmentAccount(sourceAccountID); err != nil {
+		return nil, err
+	}
+	if err := s.requireInvestmentAccount(destAccountID); err != nil {
+		return nil, err
+	}
+
+	// Cash balance is allowed to go negative — see Withdrawal for rationale.
+
+	transferID := types.NewID()
+
+	// Source row: negative amount (cash leaving the source account).
+	negAmount := amount.Neg()
+	srcTxn := NewTransaction(sourceAccountID, date, TransactionTypeTransferCash, negAmount)
+	srcTxn.SetTransfer(transferID, destAccountID)
+	if memo != "" {
+		srcTxn.SetMemo(memo)
+	}
+	if err := s.validateTransaction(srcTxn); err != nil {
+		return nil, err
+	}
+
+	// Destination row: positive amount (cash arriving at the destination).
+	dstTxn := NewTransaction(destAccountID, date, TransactionTypeTransferCash, amount)
+	dstTxn.SetTransfer(transferID, sourceAccountID)
+	if memo != "" {
+		dstTxn.SetMemo(memo)
+	}
+	if err := s.validateTransaction(dstTxn); err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.Create(srcTxn); err != nil {
+		return nil, fmt.Errorf("failed to create source transfer transaction: %w", err)
+	}
+	if err := s.repo.Create(dstTxn); err != nil {
+		_ = s.repo.Delete(srcTxn.ID)
+		return nil, fmt.Errorf("failed to create destination transfer transaction: %w", err)
+	}
+
+	return &InvestmentCashTransferResult{
+		SourceTransaction:      srcTxn,
+		DestinationTransaction: dstTxn,
+		TransferID:             transferID,
+	}, nil
+}
+
 // ShareTransferResult contains both sides of a share transfer between two investment accounts.
 type ShareTransferResult struct {
 	SourceTransaction      *Transaction

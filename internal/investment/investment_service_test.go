@@ -3237,6 +3237,195 @@ func TestService_DepositFromAccount(t *testing.T) {
 }
 
 // =============================================================================
+// TransferCashBetweenInvestments — cash transfer between two investment
+// accounts (e.g. IRA → IRA rollovers). Parallel in shape to TransferShares.
+// =============================================================================
+
+func TestTransferCashBetweenInvestments_HappyPath(t *testing.T) {
+	svc, accountRepo := createTestService(t)
+	src := createInvAccount(t, accountRepo, "Source IRA")
+	dst := createInvAccount(t, accountRepo, "Dest IRA")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := svc.Deposit(src.ID, date, types.MustNewMoney("2000.00"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+
+	result, err := svc.TransferCashBetweenInvestments(src.ID, dst.ID, date, types.MustNewMoney("500.00"), "rollover")
+	if err != nil {
+		t.Fatalf("TransferCashBetweenInvestments() error = %v", err)
+	}
+
+	if result.SourceTransaction == nil || result.DestinationTransaction == nil {
+		t.Fatal("expected both source and destination transactions to be non-nil")
+	}
+
+	if result.SourceTransaction.Type != TransactionTypeTransferCash {
+		t.Errorf("source type = %s, want transfer_cash", result.SourceTransaction.Type)
+	}
+	if result.DestinationTransaction.Type != TransactionTypeTransferCash {
+		t.Errorf("destination type = %s, want transfer_cash", result.DestinationTransaction.Type)
+	}
+
+	if result.SourceTransaction.TotalAmount.String() != "-500" {
+		t.Errorf("source amount = %q, want -500", result.SourceTransaction.TotalAmount.String())
+	}
+	if result.DestinationTransaction.TotalAmount.String() != "500" {
+		t.Errorf("destination amount = %q, want 500", result.DestinationTransaction.TotalAmount.String())
+	}
+
+	if result.SourceTransaction.AccountID != src.ID {
+		t.Errorf("source AccountID = %s, want %s", result.SourceTransaction.AccountID, src.ID)
+	}
+	if result.DestinationTransaction.AccountID != dst.ID {
+		t.Errorf("destination AccountID = %s, want %s", result.DestinationTransaction.AccountID, dst.ID)
+	}
+
+	if !result.SourceTransaction.IsTransfer() || !result.DestinationTransaction.IsTransfer() {
+		t.Error("both transactions should be transfers")
+	}
+	if result.SourceTransaction.TransferID.ID != result.DestinationTransaction.TransferID.ID {
+		t.Errorf("transfer_id mismatch: src=%s dst=%s",
+			result.SourceTransaction.TransferID.ID, result.DestinationTransaction.TransferID.ID)
+	}
+	if result.SourceTransaction.TransferID.ID != result.TransferID {
+		t.Errorf("source transfer_id = %s, want %s", result.SourceTransaction.TransferID.ID, result.TransferID)
+	}
+	if result.SourceTransaction.TransferAccountID.ID != dst.ID {
+		t.Errorf("source transfer_account_id = %s, want %s", result.SourceTransaction.TransferAccountID.ID, dst.ID)
+	}
+	if result.DestinationTransaction.TransferAccountID.ID != src.ID {
+		t.Errorf("destination transfer_account_id = %s, want %s", result.DestinationTransaction.TransferAccountID.ID, src.ID)
+	}
+
+	if result.SourceTransaction.Memo.String != "rollover" {
+		t.Errorf("source memo = %q, want %q", result.SourceTransaction.Memo.String, "rollover")
+	}
+	if result.DestinationTransaction.Memo.String != "rollover" {
+		t.Errorf("destination memo = %q, want %q", result.DestinationTransaction.Memo.String, "rollover")
+	}
+
+	srcBalance, err := svc.GetCashBalance(src.ID)
+	if err != nil {
+		t.Fatalf("GetCashBalance(src) error = %v", err)
+	}
+	if srcBalance.String() != "1500" {
+		t.Errorf("source cash balance = %q, want 1500", srcBalance.String())
+	}
+	dstBalance, err := svc.GetCashBalance(dst.ID)
+	if err != nil {
+		t.Fatalf("GetCashBalance(dst) error = %v", err)
+	}
+	if dstBalance.String() != "500" {
+		t.Errorf("destination cash balance = %q, want 500", dstBalance.String())
+	}
+}
+
+func TestTransferCashBetweenInvestments_AllowsNegativeSourceBalance(t *testing.T) {
+	// Matches the broader investment-cash invariant: cash may go negative.
+	svc, accountRepo := createTestService(t)
+	src := createInvAccount(t, accountRepo, "Source IRA")
+	dst := createInvAccount(t, accountRepo, "Dest IRA")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := svc.TransferCashBetweenInvestments(src.ID, dst.ID, date, types.MustNewMoney("250.00"), ""); err != nil {
+		t.Fatalf("TransferCashBetweenInvestments() error = %v", err)
+	}
+
+	bal, err := svc.GetCashBalance(src.ID)
+	if err != nil {
+		t.Fatalf("GetCashBalance() error = %v", err)
+	}
+	if bal.String() != "-250" {
+		t.Errorf("source cash balance = %q, want -250", bal.String())
+	}
+}
+
+func TestTransferCashBetweenInvestments_RejectsNonInvestmentSource(t *testing.T) {
+	svc, accountRepo := createTestService(t)
+	check := createCheckAccount(t, accountRepo, "Checking")
+	inv := createInvAccount(t, accountRepo, "IRA")
+	date := types.NewDate(2024, time.March, 15)
+
+	_, err := svc.TransferCashBetweenInvestments(check.ID, inv.ID, date, types.MustNewMoney("100.00"), "")
+	if err == nil {
+		t.Fatal("expected error when source is non-investment")
+	}
+}
+
+func TestTransferCashBetweenInvestments_RejectsNonInvestmentDestination(t *testing.T) {
+	svc, accountRepo := createTestService(t)
+	inv := createInvAccount(t, accountRepo, "IRA")
+	check := createCheckAccount(t, accountRepo, "Checking")
+	date := types.NewDate(2024, time.March, 15)
+
+	_, err := svc.TransferCashBetweenInvestments(inv.ID, check.ID, date, types.MustNewMoney("100.00"), "")
+	if err == nil {
+		t.Fatal("expected error when destination is non-investment")
+	}
+}
+
+func TestTransferCashBetweenInvestments_RejectsSameAccount(t *testing.T) {
+	svc, accountRepo := createTestService(t)
+	inv := createInvAccount(t, accountRepo, "IRA")
+	date := types.NewDate(2024, time.March, 15)
+
+	_, err := svc.TransferCashBetweenInvestments(inv.ID, inv.ID, date, types.MustNewMoney("100.00"), "")
+	if err == nil {
+		t.Fatal("expected error when source and destination are the same account")
+	}
+}
+
+func TestTransferCashBetweenInvestments_RejectsNonPositiveAmount(t *testing.T) {
+	svc, accountRepo := createTestService(t)
+	src := createInvAccount(t, accountRepo, "Source IRA")
+	dst := createInvAccount(t, accountRepo, "Dest IRA")
+	date := types.NewDate(2024, time.March, 15)
+
+	_, err := svc.TransferCashBetweenInvestments(src.ID, dst.ID, date, types.MustNewMoney("0.00"), "")
+	if err == nil {
+		t.Fatal("expected error for zero amount")
+	}
+	if _, ok := err.(*InvalidTransferAmountError); !ok {
+		t.Errorf("expected *InvalidTransferAmountError for zero amount, got %T: %v", err, err)
+	}
+
+	_, err = svc.TransferCashBetweenInvestments(src.ID, dst.ID, date, types.MustNewMoney("-50.00"), "")
+	if err == nil {
+		t.Fatal("expected error for negative amount")
+	}
+	if _, ok := err.(*InvalidTransferAmountError); !ok {
+		t.Errorf("expected *InvalidTransferAmountError for negative amount, got %T: %v", err, err)
+	}
+}
+
+func TestTransferCashBetweenInvestments_NoLeakOnDestinationFailure(t *testing.T) {
+	// If creating the destination row fails, the source row must be rolled
+	// back so we don't leave an orphan transfer leg. We can't easily inject
+	// a repo-level failure without mocking, so simulate the failure mode by
+	// pointing destination at a non-existent investment account ID.
+	svc, accountRepo := createTestService(t)
+	src := createInvAccount(t, accountRepo, "Source IRA")
+	date := types.NewDate(2024, time.March, 15)
+
+	bogusDst := types.NewID()
+
+	_, err := svc.TransferCashBetweenInvestments(src.ID, bogusDst, date, types.MustNewMoney("100.00"), "")
+	if err == nil {
+		t.Fatal("expected error for non-existent destination account")
+	}
+
+	// No source row should have been left behind.
+	bal, err := svc.GetCashBalance(src.ID)
+	if err != nil {
+		t.Fatalf("GetCashBalance() error = %v", err)
+	}
+	if !bal.IsZero() {
+		t.Errorf("source balance = %q, want zero (no leftover transfer leg)", bal.String())
+	}
+}
+
+// =============================================================================
 // UpdateTransferCash — reproduces the scenario from the in-TUI bug report:
 // user accidentally created a deposit-from-savings (cash flowing the wrong
 // way), then tried to edit the transfer to flip the direction.

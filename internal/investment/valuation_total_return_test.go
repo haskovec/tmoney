@@ -2310,8 +2310,8 @@ func TestRealizedGain_NonLot_CorporateActionOnUnrelatedSecurity_StillComputed(t 
 func TestGetAccountValuation_PartialRealized_WhenAnyHoldingUnavailable(t *testing.T) {
 	env := createFullTestService(t)
 	acct := createInvAccount(t, env.accountRepo, "Wealthfront IRA")
-	schf := createSec(t, env.secRepo, "SCHF")     // no corp action — replays fine
-	aapl := createSec(t, env.secRepo, "AAPL")     // gets a split — unavailable
+	schf := createSec(t, env.secRepo, "SCHF") // no corp action — replays fine
+	aapl := createSec(t, env.secRepo, "AAPL") // gets a split — unavailable
 	d1 := types.NewDate(2019, time.August, 8)
 	d2 := types.NewDate(2019, time.September, 3)
 	dSplit := types.NewDate(2020, time.August, 31)
