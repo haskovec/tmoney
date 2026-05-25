@@ -19,6 +19,11 @@ linked changes:
 
 Mark items as complete with `[x]` as they are finished.
 
+**Status: Phase 1 and Phase 2 complete (closed out 2026-05-25).** Future
+phases (CLI parity, FX, investment-wide undo, Transfer Shares
+From/To) remain as separate initiatives — see
+[Future Phases](#future-phases).
+
 ## Status Legend
 
 - `[ ]` Not started
@@ -645,27 +650,22 @@ refactor consumes them, then docs and verification.
 
 ### P1-9: Verification + commit
 
-- [ ] **P1-012 — Manual TUI verification**
-  - Build and launch against a test database with at least two
-    investment accounts (one lot-tracked, one not), one bank
-    checking account, and one savings account. Verify each scenario:
-    - New transfer: bank→bank, bank→inv, inv→bank, inv→inv.
-    - For each: both legs appear in their respective registers,
-      linked via `transferID`, sticky-date seeded on the next open.
-    - Undo each: Ctrl+Z removes both legs.
-    - Edit each pair (Enter on a leg): From→To displayed as read-only;
-      Amount/Date/Memo/Status edits apply to both legs.
-    - (R) hardening regression: `tmoney -f test.tdb transfer add
-      --from <inv> --to <bank> --amount 100` errors with the new
-      message; `--from <bank> --to <inv>` also errors.
+- [x] **P1-012 — Manual TUI verification**
+  - Verified by the user against a real database covering all four
+    transfer combinations (bank↔bank, bank↔inv, inv↔bank, inv↔inv):
+    both legs land in their respective registers linked by
+    `transferID`, sticky-date seeds on next open, Ctrl+Z removes
+    both legs, Edit shows From→To as read-only and applies
+    Amount/Date/Memo/Status edits to both legs, and the
+    hardening regression — `tmoney -f … transfer add` with an
+    investment account on either leg — surfaces the new error.
 
-- [ ] **P1-013 — `go test ./...` + lint + commit + push**
-  - `go test ./...` clean.
-  - `golangci-lint run` clean.
-  - Stage and commit Phase 1 with a message describing the unified
-    Transfer dialog, new inv↔inv service method, hardening fix, and
-    referencing this plan.
-  - Push.
+- [x] **P1-013 — `go test ./...` + lint + commit + push**
+  - Phase 1 was delivered incrementally rather than as a single
+    close-out commit — see the commit chain `5e2b0ff` → `8031f05` →
+    `e261e90` → (sticky-date in `3e58d2d`) → `de799c6` → `e0c4fb4`
+    for P1-004 through P1-010. Each commit landed on `main` after
+    `go test ./...` and `golangci-lint run` clean.
 
 ---
 
@@ -816,7 +816,7 @@ lands and we trace the exact split-counterpart code path.
     `go test ./...` (5411 tests across 26 packages) and
     `golangci-lint run` clean.
 
-- [ ] **P2-004 — Spec + manual verification + commit**
+- [x] **P2-004 — Spec + manual verification + commit**
   - [x] Spec: extended `specs/multiline-splits-and-paycheck.md` so the
     "Paired counterpart" section calls out the dispatch by target
     account type (regular vs. investment), with the table picker and
@@ -830,16 +830,17 @@ lands and we trace the exact split-counterpart code path.
     transaction-spec side of the same update lives in
     `specs/transactions.md` Transfer-Line Rules § Investment-target
     dispatch.
-  - [ ] Manual verification: create a paycheck schedule with a 401k
-    contribution transfer line, post it via the post-time preview
-    dialog, and confirm the resulting `investment.Transaction` in the
-    401k account is type `TransferCash`, signed correctly, and linked
-    via `transferID` to the parent's split row. (Service-level
-    integration test
-    `TestSplitCounterpart_ScheduledPaycheckPosting_LandsInvestmentRow`
-    already covers the same code path.)
-  - [ ] Final `go test ./...` + lint + commit + push for the manual-
-    verification commit.
+  - [x] Manual verification (user-run): a paycheck schedule with a
+    401k contribution transfer line, posted via the post-time
+    preview dialog, produces an `investment.Transaction` of type
+    `TransferCash` in the 401k account, signed correctly and linked
+    via `transferID` to the parent's split row. Behavior matches the
+    service-level integration test
+    `TestSplitCounterpart_ScheduledPaycheckPosting_LandsInvestmentRow`.
+  - [x] Phase 2 shipped in commit `90b73f3` (P2-001/P2-002 — split
+    dispatch) and `2b18c26` (P2-003 — void cascade). Doc updates
+    landed in `5e926ce`. Each commit passed `go test ./...` and
+    `golangci-lint run` clean.
 
 ---
 
