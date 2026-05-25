@@ -109,9 +109,7 @@ func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // (currently the prices list), a second click on the same row within
 // the double-click threshold opens the row.
 func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd) {
-	// Table offset within content: 1 (top padding) + 1 (title) + 1 (separator) = 3
-	const tableContentOffset = 3
-	tableY := contentY - tableContentOffset
+	tableY := contentY - a.tableContentRowOffset()
 
 	tbl := a.activeTable()
 	if tbl == nil {

@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/investment"
 )
 
 func TestApp_MouseClick_MenuBar_OpensDropdown(t *testing.T) {
@@ -175,6 +176,80 @@ func TestApp_MouseClick_Table_SelectsRow(t *testing.T) {
 
 	if updatedApp.table.Cursor() != 1 {
 		t.Errorf("table cursor = %d, want 1", updatedApp.table.Cursor())
+	}
+}
+
+func TestApp_MouseClick_InvestmentRegister_TotalReturnLines_SelectsRow(t *testing.T) {
+	// When the investment register's two total-return header lines are
+	// rendered, the table starts 2 rows lower than a plain register. A
+	// click on data row N must still land on N, not N+2.
+	app := &App{
+		currentView:      ViewInvestmentRegister,
+		keys:             defaultKeyMap(),
+		menubar:          NewMenuBar(),
+		sidebar:          NewSidebar(),
+		statusbar:        NewStatusBar(),
+		investmentTable:  NewTable([]Column{{Header: "Date", Width: 10}}),
+		investmentRegister: &investmentRegisterData{
+			account:   &account.Account{Name: "Brokerage", Type: account.TypeInvestment},
+			valuation: &investment.AccountValuation{}, // non-nil triggers TR breakdown
+		},
+		width:  100,
+		height: 24,
+	}
+	app.styles.Resize(100, 24)
+	app.sidebar.SetFocused(false)
+	app.investmentTable.SetRows([][]string{{"r1"}, {"r2"}, {"r3"}, {"r4"}})
+
+	sidebarWidth := app.styles.SidebarWidth()
+
+	// Y layout with TR breakdown:
+	//   0 menu bar
+	//   1 top padding
+	//   2 title
+	//   3 TR breakdown (Unrealized · Realized · Div · Int · Fees)
+	//   4 TR total line
+	//   5 separator
+	//   6 table header
+	//   7 header border
+	//   8 data row 0
+	//   9 data row 1
+	msg := tea.MouseClickMsg{X: sidebarWidth + 5, Y: 9, Button: tea.MouseLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if got := updatedApp.investmentTable.Cursor(); got != 1 {
+		t.Errorf("investment table cursor = %d, want 1", got)
+	}
+}
+
+func TestApp_MouseClick_InvestmentRegister_NoValuation_SelectsRow(t *testing.T) {
+	// Before the valuation loads, the TR breakdown is not rendered, so
+	// the table sits at the base offset like a plain register.
+	app := &App{
+		currentView:        ViewInvestmentRegister,
+		keys:               defaultKeyMap(),
+		menubar:            NewMenuBar(),
+		sidebar:            NewSidebar(),
+		statusbar:          NewStatusBar(),
+		investmentTable:    NewTable([]Column{{Header: "Date", Width: 10}}),
+		investmentRegister: &investmentRegisterData{account: &account.Account{Name: "Brokerage", Type: account.TypeInvestment}},
+		width:              100,
+		height:             24,
+	}
+	app.styles.Resize(100, 24)
+	app.sidebar.SetFocused(false)
+	app.investmentTable.SetRows([][]string{{"r1"}, {"r2"}, {"r3"}})
+
+	sidebarWidth := app.styles.SidebarWidth()
+
+	// Y=7 is data row 1 (same as regular register).
+	msg := tea.MouseClickMsg{X: sidebarWidth + 5, Y: 7, Button: tea.MouseLeft}
+	model, _ := app.Update(msg)
+	updatedApp := model.(*App)
+
+	if got := updatedApp.investmentTable.Cursor(); got != 1 {
+		t.Errorf("investment table cursor = %d, want 1", got)
 	}
 }
 

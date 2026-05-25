@@ -19,6 +19,34 @@ func (a *App) updateStatusBar() {
 	a.statusbar.SetKeyHints(a.getKeyHints())
 }
 
+// tableContentRowOffset returns the number of content rows that precede
+// the active table's first y in the current view. Used by the mouse
+// click handler to translate a screen-space Y into a table-space Y.
+//
+// Base layout: top padding (1) + title (1) + separator (1) = 3. Views
+// that render extra header rows (the investment register's two-line
+// total-return breakdown, the portfolio summary, the portfolio lots
+// sub-header) add to the base.
+func (a *App) tableContentRowOffset() int {
+	const baseOffset = 3
+	switch a.currentView {
+	case ViewInvestmentRegister:
+		if a.investmentRegister != nil && a.investmentRegister.valuation != nil {
+			return baseOffset + 2 // total-return breakdown (components + total)
+		}
+	case ViewPortfolio:
+		offset := baseOffset
+		if a.portfolioData != nil && a.portfolioData.valuation != nil {
+			offset += 2 // summary line 1 (snapshot) + line 2 (TR breakdown)
+		}
+		if a.portfolioMode == portfolioViewLots {
+			offset++ // "Lots for <ticker>" sub-header
+		}
+		return offset
+	}
+	return baseOffset
+}
+
 // activeTable returns the currently active table for the current view, or nil.
 func (a *App) activeTable() *Table {
 	switch a.currentView {
