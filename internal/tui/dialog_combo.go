@@ -5,6 +5,44 @@ import (
 	"strings"
 )
 
+// handleComboNavigationKey processes the combo-specific navigation keys that
+// must fire before the dialog's default key dispatch: Esc clears a non-empty
+// query in place; Enter on the AddNew action row triggers
+// DialogActionAddNew without advancing focus or clearing the query (the
+// parent dialog reads Query at the moment of trigger); Enter/Tab/Shift+Tab
+// on a regular match commit the highlighted match before advancing focus.
+//
+// Returns handled=true when the key was consumed and the caller should
+// return action; handled=false when the key should fall through to the
+// dialog's default dispatch (e.g. Esc on an empty query falls through to
+// Cancel; any other key falls through to handleComboFieldKey).
+func (d *Dialog) handleComboNavigationKey(field *Field, keyStr string) (handled bool, action DialogAction) {
+	switch keyStr {
+	case "esc":
+		if field.Query != "" {
+			field.clearComboQuery()
+			return true, DialogActionNone
+		}
+	case "enter":
+		if field.IsAddNewHighlighted() {
+			field.AddNewTriggered = true
+			return true, DialogActionAddNew
+		}
+		field.commitComboHighlight()
+		d.FocusNext()
+		return true, DialogActionNone
+	case "tab":
+		field.commitComboHighlight()
+		d.FocusNext()
+		return true, DialogActionNone
+	case "shift+tab":
+		field.commitComboHighlight()
+		d.FocusPrev()
+		return true, DialogActionNone
+	}
+	return false, DialogActionNone
+}
+
 // AddComboField adds a typeahead combo box and returns it. Typing filters
 // the option list with leaf-prefix-first ranking; Up/Down navigate the
 // filtered subset; Enter/Tab commit the highlighted match.

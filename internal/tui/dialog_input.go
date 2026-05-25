@@ -8,34 +8,9 @@ import (
 func (d *Dialog) HandleKey(msg tea.KeyPressMsg) DialogAction {
 	keyStr := msg.String()
 
-	// FieldCombo intercepts navigation keys: Esc clears a non-empty query
-	// in-place; Enter on the AddNew action row triggers DialogActionAddNew
-	// without advancing focus or clearing the query (the parent dialog
-	// reads Query at the moment of trigger); Enter/Tab/Shift+Tab on a
-	// regular match commit the highlighted match before advancing focus.
 	if field := d.FocusedField(); field != nil && field.Type == FieldCombo {
-		switch keyStr {
-		case "esc":
-			if field.Query != "" {
-				field.clearComboQuery()
-				return DialogActionNone
-			}
-		case "enter":
-			if field.IsAddNewHighlighted() {
-				field.AddNewTriggered = true
-				return DialogActionAddNew
-			}
-			field.commitComboHighlight()
-			d.FocusNext()
-			return DialogActionNone
-		case "tab":
-			field.commitComboHighlight()
-			d.FocusNext()
-			return DialogActionNone
-		case "shift+tab":
-			field.commitComboHighlight()
-			d.FocusPrev()
-			return DialogActionNone
+		if handled, action := d.handleComboNavigationKey(field, keyStr); handled {
+			return action
 		}
 	}
 
