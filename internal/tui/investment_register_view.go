@@ -195,9 +195,11 @@ func (a *App) renderInvestmentRegister() string {
 	sections = append(sections, titleRow)
 
 	// Total-return breakdown (one line of components + one line for total).
+	totalReturnLines := 0
 	if breakdown, total := a.renderInvestmentTotalReturnLines(); breakdown != "" {
 		sections = append(sections, breakdown)
 		sections = append(sections, total)
+		totalReturnLines = 2
 	}
 
 	// Separator
@@ -207,9 +209,9 @@ func (a *App) renderInvestmentRegister() string {
 	// Table
 	headerHeight := 1
 	statusBarHeight := 1
-	titleHeight := 2      // title + separator
-	paddingHeight := 2    // top/bottom padding
-	scrollInfoHeight := 1 // reserve a row for the scroll info line so a long list doesn't overflow the status bar
+	titleHeight := 2 + totalReturnLines // title + separator (+ optional total-return breakdown)
+	paddingHeight := 2                  // top/bottom padding
+	scrollInfoHeight := 1               // reserve a row for the scroll info line so a long list doesn't overflow the status bar
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight-scrollInfoHeight, 1)
 
 	if a.investmentTable != nil && len(a.investmentRegister.transactions) > 0 {
