@@ -248,11 +248,11 @@ func (f *Field) CursorPos() int {
 	return f.cursorPos
 }
 
-// dateSeparators returns the separator-position set for this field's mask.
+// DateSeparators returns the separator-position set for this field's mask.
 // Defaults to the US (MM/DD/YYYY) layout when dateMask is empty so that
 // any FieldDate constructed without going through the helpers still
 // behaves correctly.
-func (f *Field) dateSeparators() map[int]bool {
+func (f *Field) DateSeparators() map[int]bool {
 	mask := f.dateMask
 	if mask == "" {
 		mask = dateMaskUS
@@ -260,14 +260,14 @@ func (f *Field) dateSeparators() map[int]bool {
 	return dateMaskSeparatorPositions(mask)
 }
 
-// dateCursorRight advances the cursor to the next digit position, skipping
+// DateCursorRight advances the cursor to the next digit position, skipping
 // literal separator characters in the field's mask. Stops at the last
 // digit (index 9).
-func (f *Field) dateCursorRight() {
+func (f *Field) DateCursorRight() {
 	if f.Type != FieldDate {
 		return
 	}
-	seps := f.dateSeparators()
+	seps := f.DateSeparators()
 	for f.cursorPos < 9 {
 		f.cursorPos++
 		if !seps[f.cursorPos] {
@@ -276,14 +276,14 @@ func (f *Field) dateCursorRight() {
 	}
 }
 
-// dateCursorLeft moves the cursor to the previous digit position, skipping
+// DateCursorLeft moves the cursor to the previous digit position, skipping
 // literal separator characters in the field's mask. Stops at the first
 // digit (index 0).
-func (f *Field) dateCursorLeft() {
+func (f *Field) DateCursorLeft() {
 	if f.Type != FieldDate {
 		return
 	}
-	seps := f.dateSeparators()
+	seps := f.DateSeparators()
 	for f.cursorPos > 0 {
 		f.cursorPos--
 		if !seps[f.cursorPos] {
@@ -292,30 +292,30 @@ func (f *Field) dateCursorLeft() {
 	}
 }
 
-// dateCursorHome jumps the cursor to the first digit (index 0).
-func (f *Field) dateCursorHome() {
+// DateCursorHome jumps the cursor to the first digit (index 0).
+func (f *Field) DateCursorHome() {
 	if f.Type != FieldDate {
 		return
 	}
 	f.cursorPos = 0
 }
 
-// dateCursorEnd jumps the cursor to the last digit (index 9).
-func (f *Field) dateCursorEnd() {
+// DateCursorEnd jumps the cursor to the last digit (index 9).
+func (f *Field) DateCursorEnd() {
 	if f.Type != FieldDate {
 		return
 	}
 	f.cursorPos = 9
 }
 
-// dateOverwriteDigit replaces the digit at the cursor with r (which must be
+// DateOverwriteDigit replaces the digit at the cursor with r (which must be
 // '0'..'9') and advances the cursor to the next digit position. Non-digit
 // runes are ignored.
-func (f *Field) dateOverwriteDigit(r rune) {
+func (f *Field) DateOverwriteDigit(r rune) {
 	if f.Type != FieldDate || r < '0' || r > '9' {
 		return
 	}
-	if f.dateSeparators()[f.cursorPos] {
+	if f.DateSeparators()[f.cursorPos] {
 		return
 	}
 	if len(f.Value) != 10 {
@@ -324,10 +324,10 @@ func (f *Field) dateOverwriteDigit(r rune) {
 	b := []byte(f.Value)
 	b[f.cursorPos] = byte(r)
 	f.Value = string(b)
-	f.dateCursorRight()
+	f.DateCursorRight()
 }
 
-// dateBackspace handles the Backspace key on a FieldDate.
+// DateBackspace handles the Backspace key on a FieldDate.
 //
 // For a strict (non-optional) field, it overwrites the digit at the cursor
 // with '0' and steps the cursor back — preserving the canonical
@@ -340,13 +340,13 @@ func (f *Field) dateOverwriteDigit(r rune) {
 // "  /  /    ".
 //
 // No-op at the first digit (cursorPos == 0).
-func (f *Field) dateBackspace() {
+func (f *Field) DateBackspace() {
 	if f.Type != FieldDate || f.cursorPos <= 0 {
 		return
 	}
-	seps := f.dateSeparators()
+	seps := f.DateSeparators()
 	if f.OptionalBlank {
-		f.dateCursorLeft()
+		f.DateCursorLeft()
 		if len(f.Value) == 10 && !seps[f.cursorPos] {
 			b := []byte(f.Value)
 			b[f.cursorPos] = ' '
@@ -359,7 +359,7 @@ func (f *Field) dateBackspace() {
 		b[f.cursorPos] = '0'
 		f.Value = string(b)
 	}
-	f.dateCursorLeft()
+	f.DateCursorLeft()
 }
 
 // SelectNext moves to the next option (FieldSelect and FieldRadio).

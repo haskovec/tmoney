@@ -775,11 +775,11 @@ func (sd *SplitDialog) renderTextField(styles Styles, f *Field, focused bool, wi
 		cursorStyle := lipgloss.NewStyle().Reverse(true)
 		var before, cursorChar, after string
 
-		if f.cursorPos < len(runes) {
-			before = string(runes[:f.cursorPos])
-			cursorChar = cursorStyle.Render(string(runes[f.cursorPos]))
-			if f.cursorPos+1 < len(runes) {
-				after = string(runes[f.cursorPos+1:])
+		if f.CursorPos() < len(runes) {
+			before = string(runes[:f.CursorPos()])
+			cursorChar = cursorStyle.Render(string(runes[f.CursorPos()]))
+			if f.CursorPos()+1 < len(runes) {
+				after = string(runes[f.CursorPos()+1:])
 			}
 		} else {
 			before = string(runes)
@@ -787,7 +787,7 @@ func (sd *SplitDialog) renderTextField(styles Styles, f *Field, focused bool, wi
 		}
 
 		displayLen := len(runes)
-		if f.cursorPos >= len(runes) {
+		if f.CursorPos() >= len(runes) {
 			displayLen++
 		}
 		pad := max(width-displayLen, 0)

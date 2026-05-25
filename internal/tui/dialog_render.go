@@ -236,7 +236,7 @@ func (d *Dialog) renderDateFieldContent(field *Field, focused bool) string {
 	}
 	cursorStyle := lipgloss.NewStyle().Reverse(true)
 	pos := field.cursorPos
-	if pos < 0 || pos > 9 || field.dateSeparators()[pos] {
+	if pos < 0 || pos > 9 || field.DateSeparators()[pos] {
 		// Defensive: snap to first digit if cursor is somewhere unexpected.
 		pos = 0
 	}

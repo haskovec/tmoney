@@ -132,26 +132,26 @@ func (d *Dialog) handleCheckboxFieldKey(field *Field, msg tea.KeyPressMsg) {
 func (d *Dialog) handleDateFieldKey(field *Field, msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "left":
-		field.dateCursorLeft()
+		field.DateCursorLeft()
 		return
 	case "right":
-		field.dateCursorRight()
+		field.DateCursorRight()
 		return
 	case "home", "ctrl+a":
-		field.dateCursorHome()
+		field.DateCursorHome()
 		return
 	case "end", "ctrl+e":
-		field.dateCursorEnd()
+		field.DateCursorEnd()
 		return
 	case "backspace":
-		field.dateBackspace()
+		field.DateBackspace()
 		field.Error = ""
 		return
 	}
 	if msg.Text != "" {
 		for _, r := range msg.Text {
 			if r >= '0' && r <= '9' {
-				field.dateOverwriteDigit(r)
+				field.DateOverwriteDigit(r)
 				field.Error = ""
 			}
 		}

@@ -1076,18 +1076,18 @@ func (w *PaycheckWizard) renderFieldValue(styles Styles, fill lipgloss.Style, f 
 		if focused {
 			cursorStyle := lipgloss.NewStyle().Reverse(true)
 			var before, cursorChar, after string
-			if f.cursorPos < len(runes) {
-				before = string(runes[:f.cursorPos])
-				cursorChar = cursorStyle.Render(string(runes[f.cursorPos]))
-				if f.cursorPos+1 < len(runes) {
-					after = string(runes[f.cursorPos+1:])
+			if f.CursorPos() < len(runes) {
+				before = string(runes[:f.CursorPos()])
+				cursorChar = cursorStyle.Render(string(runes[f.CursorPos()]))
+				if f.CursorPos()+1 < len(runes) {
+					after = string(runes[f.CursorPos()+1:])
 				}
 			} else {
 				before = string(runes)
 				cursorChar = cursorStyle.Render(" ")
 			}
 			displayLen := len(runes)
-			if f.cursorPos >= len(runes) {
+			if f.CursorPos() >= len(runes) {
 				displayLen++
 			}
 			padN := max(inner-displayLen, 0)
@@ -1118,8 +1118,8 @@ func (w *PaycheckWizard) renderFieldValue(styles Styles, fill lipgloss.Style, f 
 			return fill.Render("[ " + value + strings.Repeat(" ", padN) + " ]")
 		}
 		cursorStyle := lipgloss.NewStyle().Reverse(true)
-		pos := f.cursorPos
-		if pos < 0 || pos > 9 || f.dateSeparators()[pos] {
+		pos := f.CursorPos()
+		if pos < 0 || pos > 9 || f.DateSeparators()[pos] {
 			pos = 0
 		}
 		before := value[:pos]
@@ -1286,25 +1286,25 @@ func (w *PaycheckWizard) dispatchTextFieldKey(f *Field, msg tea.KeyPressMsg) {
 func (w *PaycheckWizard) dispatchDateFieldKey(f *Field, msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "left":
-		f.dateCursorLeft()
+		f.DateCursorLeft()
 		return
 	case "right":
-		f.dateCursorRight()
+		f.DateCursorRight()
 		return
 	case "home", "ctrl+a":
-		f.dateCursorHome()
+		f.DateCursorHome()
 		return
 	case "end", "ctrl+e":
-		f.dateCursorEnd()
+		f.DateCursorEnd()
 		return
 	case "backspace":
-		f.dateBackspace()
+		f.DateBackspace()
 		return
 	}
 	if msg.Text != "" {
 		for _, r := range msg.Text {
 			if r >= '0' && r <= '9' {
-				f.dateOverwriteDigit(r)
+				f.DateOverwriteDigit(r)
 			}
 		}
 	}
