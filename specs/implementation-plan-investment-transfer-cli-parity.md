@@ -488,12 +488,12 @@ enhancement that the new commands need, then the new commands.
 
 ### P-A1: Lift dispatch helper to `internal/transaction/`
 
-- [ ] **P-A1-001 — Plan doc**
+- [x] **P-A1-001 — Plan doc**
   - This file. GREEN: file exists at
     `specs/implementation-plan-investment-transfer-cli-parity.md`
     with all sections.
 
-- [ ] **P-A1-002 — Export `ChooseTransferDispatch` from `internal/transaction/`**
+- [x] **P-A1-002 — Export `ChooseTransferDispatch` from `internal/transaction/`**
   - RED: `TestChooseTransferDispatch_AllFourCombinations` in
     `internal/transaction/dispatch_test.go` — exercises every
     `(account.Type, account.Type)` combination and asserts the

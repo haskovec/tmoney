@@ -16,32 +16,39 @@ import (
 
 // =============================================================================
 // Dispatcher Tests (P1-006)
+//
+// The dispatcher itself was lifted to internal/transaction/dispatch.go in
+// P-A1-002 and is exhaustively tested there
+// (TestChooseTransferDispatch_AllFourCombinations). The TUI-side tests below
+// keep a thin smoke check that the TUI still pins the right dispatch result
+// for each of the four kinds — the assertions also document which
+// transaction.Dispatch* constant maps to which input shape.
 // =============================================================================
 
 func TestChooseTransferDispatch_RegToReg(t *testing.T) {
-	got := chooseTransferDispatch(account.TypeChecking, account.TypeSavings)
-	if got != transferDispatchRegToReg {
+	got := transaction.ChooseTransferDispatch(account.TypeChecking, account.TypeSavings)
+	if got != transaction.DispatchRegToReg {
 		t.Errorf("checking→savings dispatch = %v, want regToReg", got)
 	}
 }
 
 func TestChooseTransferDispatch_InvToReg(t *testing.T) {
-	got := chooseTransferDispatch(account.TypeInvestment, account.TypeChecking)
-	if got != transferDispatchInvToReg {
+	got := transaction.ChooseTransferDispatch(account.TypeInvestment, account.TypeChecking)
+	if got != transaction.DispatchInvToReg {
 		t.Errorf("investment→checking dispatch = %v, want invToReg", got)
 	}
 }
 
 func TestChooseTransferDispatch_RegToInv(t *testing.T) {
-	got := chooseTransferDispatch(account.TypeChecking, account.TypeInvestment)
-	if got != transferDispatchRegToInv {
+	got := transaction.ChooseTransferDispatch(account.TypeChecking, account.TypeInvestment)
+	if got != transaction.DispatchRegToInv {
 		t.Errorf("checking→investment dispatch = %v, want regToInv", got)
 	}
 }
 
 func TestChooseTransferDispatch_InvToInv(t *testing.T) {
-	got := chooseTransferDispatch(account.TypeInvestment, account.TypeInvestment)
-	if got != transferDispatchInvToInv {
+	got := transaction.ChooseTransferDispatch(account.TypeInvestment, account.TypeInvestment)
+	if got != transaction.DispatchInvToInv {
 		t.Errorf("investment→investment dispatch = %v, want invToInv", got)
 	}
 }
@@ -51,13 +58,13 @@ func TestChooseTransferDispatch_InvToInv(t *testing.T) {
 // an HSA → checking sweep would create a malformed regular transaction in the
 // HSA register.
 func TestChooseTransferDispatch_HSATreatedAsInvestment(t *testing.T) {
-	if got := chooseTransferDispatch(account.TypeHSA, account.TypeChecking); got != transferDispatchInvToReg {
+	if got := transaction.ChooseTransferDispatch(account.TypeHSA, account.TypeChecking); got != transaction.DispatchInvToReg {
 		t.Errorf("HSA→checking dispatch = %v, want invToReg", got)
 	}
-	if got := chooseTransferDispatch(account.TypeChecking, account.TypeHSA); got != transferDispatchRegToInv {
+	if got := transaction.ChooseTransferDispatch(account.TypeChecking, account.TypeHSA); got != transaction.DispatchRegToInv {
 		t.Errorf("checking→HSA dispatch = %v, want regToInv", got)
 	}
-	if got := chooseTransferDispatch(account.TypeHSA, account.TypeInvestment); got != transferDispatchInvToInv {
+	if got := transaction.ChooseTransferDispatch(account.TypeHSA, account.TypeInvestment); got != transaction.DispatchInvToInv {
 		t.Errorf("HSA→investment dispatch = %v, want invToInv", got)
 	}
 }
@@ -83,7 +90,7 @@ func TestAccountTypeByID_NotFound(t *testing.T) {
 	}
 	// Empty type must dispatch to reg/reg so callers don't accidentally route
 	// to an investment path with an unknown account.
-	if chooseTransferDispatch(got, account.TypeChecking) != transferDispatchRegToReg {
+	if transaction.ChooseTransferDispatch(got, account.TypeChecking) != transaction.DispatchRegToReg {
 		t.Error("unknown account type should dispatch to regToReg")
 	}
 }
