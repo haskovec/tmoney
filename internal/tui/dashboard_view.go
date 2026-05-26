@@ -12,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -195,12 +196,12 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 		(totalWidth-6)/2, 20)
 
 	// Build assets column
-	assetsLines := []string{a.styles.SectionHead.Render(padRight("ASSETS", colWidth))}
+	assetsLines := []string{a.styles.SectionHead.Render(widget.PadRight("ASSETS", colWidth))}
 	if len(report.Assets) == 0 {
 		assetsLines = append(assetsLines, a.styles.Muted.Render("  (none)"))
 	} else {
 		for _, acct := range report.Assets {
-			name := truncate(acct.Name, colWidth-14)
+			name := widget.Truncate(acct.Name, colWidth-14)
 			amount := formatDashboardMoney(acct.Balance)
 			if acct.EstimatedValue {
 				amount = "~" + amount
@@ -242,12 +243,12 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	assetsLines = append(assetsLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalAmt)-4, totalLabel, a.styles.Positive.Bold(true).Render(totalAmt)))
 
 	// Build liabilities column
-	liabLines := []string{a.styles.SectionHead.Render(padRight("LIABILITIES", colWidth))}
+	liabLines := []string{a.styles.SectionHead.Render(widget.PadRight("LIABILITIES", colWidth))}
 	if len(report.Liabilities) == 0 {
 		liabLines = append(liabLines, a.styles.Muted.Render("  (none)"))
 	} else {
 		for _, acct := range report.Liabilities {
-			name := truncate(acct.Name, colWidth-14)
+			name := widget.Truncate(acct.Name, colWidth-14)
 			amount := formatDashboardMoney(acct.Balance)
 			if acct.EstimatedValue {
 				amount = "~" + amount
@@ -271,7 +272,7 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	// Join columns side by side
 	var rows []string
 	for i := range assetsLines {
-		left := padRight(assetsLines[i], colWidth)
+		left := widget.PadRight(assetsLines[i], colWidth)
 		right := liabLines[i]
 		rows = append(rows, left+"  "+right)
 	}
@@ -353,7 +354,7 @@ func (a *App) renderDashboardHoldings(accountID types.ID, colWidth int) []string
 				ticker = t
 			}
 		}
-		ticker = truncate(ticker, colWidth-20)
+		ticker = widget.Truncate(ticker, colWidth-20)
 		amount := formatDashboardMoney(h.MarketValue)
 		if !h.HasPricing {
 			amount = "~" + amount
@@ -423,7 +424,7 @@ func (a *App) formatScheduledItem(st *scheduled.Transaction, isDue bool) string 
 			payee = name
 		}
 	}
-	payee = truncate(payee, 20)
+	payee = widget.Truncate(payee, 20)
 
 	// Amount
 	var amount string

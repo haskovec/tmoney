@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -122,18 +124,18 @@ func TestBuildNewAccountDialog_FieldTypes(t *testing.T) {
 
 	expected := []struct {
 		label     string
-		fieldType FieldType
+		fieldType dialog.FieldType
 	}{
-		{"Name", FieldText},
-		{"Type", FieldSelect},
-		{"Currency", FieldText},
-		{"Opening Balance", FieldText},
-		{"Opening Date", FieldDate},
-		{"Institution", FieldText},
-		{"Account #", FieldText},
-		{"Notes", FieldText},
-		{"Credit Limit", FieldText},
-		{"Interest Rate", FieldText},
+		{"Name", dialog.FieldText},
+		{"Type", dialog.FieldSelect},
+		{"Currency", dialog.FieldText},
+		{"Opening Balance", dialog.FieldText},
+		{"Opening Date", dialog.FieldDate},
+		{"Institution", dialog.FieldText},
+		{"Account #", dialog.FieldText},
+		{"Notes", dialog.FieldText},
+		{"Credit Limit", dialog.FieldText},
+		{"Interest Rate", dialog.FieldText},
 	}
 
 	for i, exp := range expected {
@@ -343,8 +345,8 @@ func TestApp_Update_AccountDialogDataMsg_New(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -372,8 +374,8 @@ func TestApp_Update_AccountDialogDataMsg_Edit(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -406,10 +408,10 @@ func TestApp_HandleAccountDialogKey_Cancel(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			return d
 		}(),
@@ -432,10 +434,10 @@ func TestApp_HandleAccountDialogKey_TabCycles(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			return d
 		}(),
@@ -460,10 +462,10 @@ func TestApp_SubmitAccountDialog_EmptyName(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			// Clear the name field
 			d.Fields()[acctFieldName].Value = ""
@@ -489,10 +491,10 @@ func TestApp_SubmitAccountDialog_EmptyCurrency(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Account"
 			d.Fields()[acctFieldCurrency].Value = ""
@@ -518,10 +520,10 @@ func TestApp_SubmitAccountDialog_InvalidOpeningBalance(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Account"
 			d.Fields()[acctFieldOpeningBalance].Value = "not-a-number"
@@ -547,10 +549,10 @@ func TestApp_SubmitAccountDialog_InvalidDate(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Account"
 			d.Fields()[acctFieldOpeningDate].Value = "not-a-date"
@@ -576,10 +578,10 @@ func TestApp_SubmitAccountDialog_InvalidCreditLimit(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Card"
 			// Set type to Credit Card so credit limit field is visible
@@ -608,10 +610,10 @@ func TestApp_SubmitAccountDialog_InvalidInterestRate(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Loan"
 			// Default type is Checking which shows interest rate
@@ -638,10 +640,10 @@ func TestApp_SubmitAccountDialog_MultipleErrors(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = ""
 			d.Fields()[acctFieldCurrency].Value = ""
@@ -701,10 +703,10 @@ func TestApp_SubmitAccountDialog_ValidNew(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "My Checking"
 			return d
@@ -735,10 +737,10 @@ func TestApp_SubmitAccountDialog_ValidEdit(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildEditAccountDialog(existing)
 			d.Fields()[acctFieldName].Value = "New Name"
 			return d
@@ -765,8 +767,8 @@ func TestApp_SubmitAccountDialog_ValidEdit(t *testing.T) {
 
 func TestApp_CloseAccountDialog(t *testing.T) {
 	app := &App{
-		acctDialog: func() *Dialog {
-			d := NewDialog("New Account")
+		acctDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Account")
 			d.SetVisible(true)
 			return d
 		}(),
@@ -787,8 +789,8 @@ func TestApp_Update_AccountDialogSavedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -804,8 +806,8 @@ func TestApp_Update_AccountDeletedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -825,8 +827,8 @@ func TestApp_Update_AccountClosedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -839,7 +841,7 @@ func TestApp_Update_AccountClosedMsg(t *testing.T) {
 }
 
 func TestApp_RenderLayout_WithAccountDialog(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	app := &App{
 		currentView: ViewDashboard,
@@ -848,10 +850,10 @@ func TestApp_RenderLayout_WithAccountDialog(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			return d
 		}(),
@@ -867,15 +869,15 @@ func TestApp_HandleMenuAction_NewAccount(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
-	_, cmd := app.handleMenuAction(MenuActionNewAccount, "")
+	_, cmd := app.handleMenuAction(widget.MenuActionNewAccount, "")
 
 	if cmd == nil {
-		t.Error("MenuActionNewAccount should return a non-nil cmd")
+		t.Error("widget.MenuActionNewAccount should return a non-nil cmd")
 	}
 }
 
@@ -883,16 +885,16 @@ func TestApp_HandleMenuAction_EditAccount_NoSelection(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
-	_, cmd := app.handleMenuAction(MenuActionEditAccount, "")
+	_, cmd := app.handleMenuAction(widget.MenuActionEditAccount, "")
 
 	// No account selected, should not return a cmd
 	if cmd != nil {
-		t.Error("MenuActionEditAccount with no selection should return nil cmd")
+		t.Error("widget.MenuActionEditAccount with no selection should return nil cmd")
 	}
 }
 
@@ -901,8 +903,8 @@ func TestApp_HandleMenuAction_EditAccount_WithSelection(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -912,15 +914,15 @@ func TestApp_HandleMenuAction_EditAccount_WithSelection(t *testing.T) {
 	app.sidebar.MoveDown() // move to account
 	app.sidebar.Select()
 
-	_, cmd := app.handleMenuAction(MenuActionEditAccount, "")
+	_, cmd := app.handleMenuAction(widget.MenuActionEditAccount, "")
 
 	if cmd == nil {
-		t.Error("MenuActionEditAccount with selection should return a non-nil cmd")
+		t.Error("widget.MenuActionEditAccount with selection should return a non-nil cmd")
 	}
 }
 
 // =============================================================================
-// Dynamic Field Visibility Tests
+// Dynamic dialog.Field Visibility Tests
 // =============================================================================
 
 func TestAccountTypeShowsCreditLimit(t *testing.T) {
@@ -1119,10 +1121,10 @@ func TestApp_HandleAccountDialogKey_TypeChangeUpdatesVisibility(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			// Focus the Type field
 			d.SetFocusIndex(acctFieldType)
@@ -1160,10 +1162,10 @@ func TestApp_SubmitAccountDialog_HiddenCreditLimitIgnored(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "My Checking"
 			// Credit limit has invalid value but field is hidden (default Checking type)
@@ -1185,10 +1187,10 @@ func TestApp_SubmitAccountDialog_HiddenInterestRateIgnored(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *Dialog {
+		acctDialog: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "My Cash"
 			// Change type to Cash
@@ -1261,7 +1263,7 @@ func TestDialog_FocusPrev_SkipsHiddenFields(t *testing.T) {
 
 func TestDialog_Render_SkipsHiddenFields(t *testing.T) {
 	d := buildNewAccountDialog()
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(80, 30)
 
 	output := d.Render(styles)
@@ -1283,7 +1285,7 @@ func TestDialog_Render_ShowsCreditLimitForCreditCard(t *testing.T) {
 	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeCreditCard)
 	updateAccountFieldVisibility(d)
 
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(80, 30)
 
 	output := d.Render(styles)
@@ -1302,7 +1304,7 @@ func TestDialog_Render_HidesBothForCash(t *testing.T) {
 	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeCash)
 	updateAccountFieldVisibility(d)
 
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(80, 30)
 
 	output := d.Render(styles)

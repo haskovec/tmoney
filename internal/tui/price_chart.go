@@ -163,7 +163,7 @@ func composeChartBox(title, inner string, innerW, innerH int) string {
 		vBar        = "│"
 	)
 
-	// Build the title segment: `─ <title> `. Truncate on display width
+	// Build the title segment: `─ <title> `. widget.Truncate on display width
 	// if it would consume the entire top edge — leave at least one
 	// trailing dash before the corner.
 	segment := fmt.Sprintf("%s %s ", hBar, title)

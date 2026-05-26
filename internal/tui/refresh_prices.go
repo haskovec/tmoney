@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/price"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 // defaultRefreshProviderName is the provider used by the TUI's "u"
@@ -32,7 +33,7 @@ func (a *App) startPriceRefresh() tea.Cmd {
 		return nil
 	}
 	a.refreshingPrices = true
-	a.refreshNotifID = a.statusbar.AddNotificationWithID("Updating prices…", NotificationInfo)
+	a.refreshNotifID = a.statusbar.AddNotificationWithID("Updating prices…", widget.NotificationInfo)
 	return a.refreshPricesCmd()
 }
 

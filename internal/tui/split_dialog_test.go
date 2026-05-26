@@ -11,6 +11,8 @@ import (
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -255,8 +257,8 @@ func TestSplitDialog_HandleKey_EscCancels(t *testing.T) {
 	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
 	action := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEsc})
-	if action != DialogActionCancel {
-		t.Errorf("Esc should return DialogActionCancel, got %d", action)
+	if action != dialog.DialogActionCancel {
+		t.Errorf("Esc should return dialog.DialogActionCancel, got %d", action)
 	}
 }
 
@@ -342,8 +344,8 @@ func TestSplitDialog_HandleKey_EnterOnSave_Valid(t *testing.T) {
 
 	sd.focus = splitFocusSaveBtn
 	action := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if action != DialogActionSubmit {
-		t.Errorf("Enter on Save with valid data should return DialogActionSubmit, got %d", action)
+	if action != dialog.DialogActionSubmit {
+		t.Errorf("Enter on Save with valid data should return dialog.DialogActionSubmit, got %d", action)
 	}
 }
 
@@ -352,8 +354,8 @@ func TestSplitDialog_HandleKey_EnterOnSave_Invalid(t *testing.T) {
 
 	sd.focus = splitFocusSaveBtn
 	action := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if action != DialogActionNone {
-		t.Errorf("Enter on Save with invalid data should return DialogActionNone, got %d", action)
+	if action != dialog.DialogActionNone {
+		t.Errorf("Enter on Save with invalid data should return dialog.DialogActionNone, got %d", action)
 	}
 	if sd.errorMsg == "" {
 		t.Error("expected error message to be set")
@@ -365,8 +367,8 @@ func TestSplitDialog_HandleKey_EnterOnCancel(t *testing.T) {
 
 	sd.focus = splitFocusCancelBtn
 	action := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if action != DialogActionCancel {
-		t.Errorf("Enter on Cancel should return DialogActionCancel, got %d", action)
+	if action != dialog.DialogActionCancel {
+		t.Errorf("Enter on Cancel should return dialog.DialogActionCancel, got %d", action)
 	}
 }
 
@@ -439,7 +441,7 @@ func TestSplitDialog_HandleKey_CategoryUpDown(t *testing.T) {
 // the trailing entry, reachable via Down navigation and rendered when
 // selected. (MS-011 wires up the account-picker swap.)
 func TestSplitDialog_TransferSentinel_PresentInCategoryCombo(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	sd := NewSplitDialog(types.MustNewMoney("-100.00"),
 		[]string{"(None)", "Food"},
@@ -471,7 +473,7 @@ func TestSplitDialog_TransferSentinel_PresentInCategoryCombo(t *testing.T) {
 // buildSplits emits a transfer-line split with category_id=NilID and
 // transfer_account_id set to the picked account.
 func TestSplitDialog_SelectTransfer_OpensAccountPicker(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	parentAcctID := types.NewID()
@@ -723,7 +725,7 @@ func TestSplitDialog_HandleKey_CtrlD_NoRemoveLastRow(t *testing.T) {
 // imbalance is visible right where the user's eyes land before
 // committing.
 func TestSplitDialog_ImbalanceIndicator_VisibleAndLive(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	catIDs := []types.ID{types.NilID, types.NewID()}
@@ -801,7 +803,7 @@ func TestSplitDialog_SaveDisabledOnImbalance(t *testing.T) {
 	// Pressing Enter on the disabled Save button does not submit.
 	sd.focus = splitFocusSaveBtn
 	action := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if action == DialogActionSubmit {
+	if action == dialog.DialogActionSubmit {
 		t.Errorf("Enter on disabled Save must not submit; got action %d", action)
 	}
 	if sd.errorMsg == "" {
@@ -817,7 +819,7 @@ func TestSplitDialog_SaveDisabledOnImbalance(t *testing.T) {
 	// And Enter on enabled Save submits.
 	sd.focus = splitFocusSaveBtn
 	action = sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if action != DialogActionSubmit {
+	if action != dialog.DialogActionSubmit {
 		t.Errorf("Enter on enabled Save should submit; got action %d", action)
 	}
 }
@@ -827,7 +829,7 @@ func TestSplitDialog_SaveDisabledOnImbalance(t *testing.T) {
 // =============================================================================
 
 func TestSplitDialog_Render(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	sd := NewSplitDialog(types.MustNewMoney("-150.00"), []string{"(None)", "Food", "Household"}, []types.ID{types.NilID, types.NewID(), types.NewID()})
 
@@ -864,13 +866,13 @@ func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
 		currentView: ViewRegister,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddTextField("Date", "01/15/2024", "", 10)
 			d.AddTextField("Payee", "Grocery Store", "", 0)
 			d.AddSelectField("Category", []string{"(None)", "Food"}, 1)
@@ -940,8 +942,8 @@ func TestApp_HandleSplitDialogKey_Cancel(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		splitDialog: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID}),
 		pendingSplitTxn: &pendingSplitTransaction{
@@ -967,8 +969,8 @@ func TestApp_Update_SplitDialogSavedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 	app.sidebar.SetAccounts([]*account.Account{
@@ -984,7 +986,7 @@ func TestApp_Update_SplitDialogSavedMsg(t *testing.T) {
 }
 
 func TestApp_RenderLayout_WithSplitDialog(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	app := &App{
 		currentView: ViewRegister,
@@ -993,8 +995,8 @@ func TestApp_RenderLayout_WithSplitDialog(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
 		register: &registerData{
 			account: &account.Account{
@@ -1022,10 +1024,10 @@ func TestApp_SplitDialogKeyRouting(t *testing.T) {
 		width:       120,
 		height:      30,
 		ready:       true,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		splitDialog: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()}),
 		pendingSplitTxn: &pendingSplitTransaction{
@@ -1114,10 +1116,10 @@ func TestApp_HandleRegisterKeys_EnterOnSplitTransaction_OpensEditFlow(t *testing
 		currentView: ViewRegister,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
 			account: &account.Account{
@@ -1259,7 +1261,7 @@ func TestSplitDialog_DownPastTransfer_LandsOnAddNew(t *testing.T) {
 }
 
 // TestSplitDialog_EnterOnAddNew_ReturnsDialogActionAddNew pins that Enter
-// on the AddNew sentinel produces DialogActionAddNew (so the App-level
+// on the AddNew sentinel produces dialog.DialogActionAddNew (so the App-level
 // router can divert into the create-category sub-dialog). Enter on a
 // real category, by contrast, just advances focus to Amount.
 func TestSplitDialog_EnterOnAddNew_ReturnsDialogActionAddNew(t *testing.T) {
@@ -1272,8 +1274,8 @@ func TestSplitDialog_EnterOnAddNew_ReturnsDialogActionAddNew(t *testing.T) {
 	sd.rows[0].categoryIndex = 3 // (None)=0, Food=1, Transfer=2, AddNew=3
 
 	got := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got != DialogActionAddNew {
-		t.Errorf("Enter on AddNew sentinel = %v, want DialogActionAddNew", got)
+	if got != dialog.DialogActionAddNew {
+		t.Errorf("Enter on AddNew sentinel = %v, want dialog.DialogActionAddNew", got)
 	}
 }
 
@@ -1289,7 +1291,7 @@ func TestSplitDialog_EnterOnRealCategory_AdvancesFocus(t *testing.T) {
 	)
 	sd.rows[0].categoryIndex = 1 // Food
 	got := sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got != DialogActionNone {
+	if got != dialog.DialogActionNone {
 		t.Errorf("Enter on real category should not propagate as AddNew; got %v", got)
 	}
 	if sd.FieldFocus() != splitFieldAmount {
@@ -1341,8 +1343,8 @@ func newAppForSplitAddNew(t *testing.T, categorySvc *category.Service, cats []*c
 
 	app := &App{
 		keys:              defaultKeyMap(),
-		menubar:           NewMenuBar(),
-		statusbar:         NewStatusBar(),
+		menubar:           widget.NewMenuBar(),
+		statusbar:         widget.NewStatusBar(),
 		sidebar:           NewSidebar(),
 		categorySvc:       categorySvc,
 		splitDialog:       sd,

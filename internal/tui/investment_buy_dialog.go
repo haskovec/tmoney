@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -65,15 +66,15 @@ func buildSecurityOptions(securities []*security.Security) ([]string, []types.ID
 	return options, ids
 }
 
-// buildBuyDialog creates a Dialog for entering a new buy transaction.
-// Field order: Date(0), Security(1), Shares(2), Total(3), Price/Share(4),
+// buildBuyDialog creates a dialog.Dialog for entering a new buy transaction.
+// dialog.Field order: Date(0), Security(1), Shares(2), Total(3), Price/Share(4),
 // Commission(5), Memo(6) — Date leads for consistency with the regular
 // transaction dialog and so batch-entry on the sticky date can tab
 // straight through to the next field. Total leads Price/Share because
 // the common workflow is to type the total (from a brokerage statement)
 // and let Price/Share auto-compute.
-func buildBuyDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *Dialog {
-	d := NewDialog("Buy Securities")
+func buildBuyDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *dialog.Dialog {
+	d := dialog.NewDialog("Buy Securities")
 	d.SetWidth(70)
 
 	// Date (index 0)
@@ -174,9 +175,9 @@ func (a *App) handleBuyDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	action := a.buyDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitBuyDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeBuyDialog()
 		return a, nil
 	}

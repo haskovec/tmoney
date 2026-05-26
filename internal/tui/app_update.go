@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -50,12 +51,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.count == 1 {
 				text = "1 scheduled due"
 			}
-			a.statusbar.AddNotification(text, NotificationAlert)
+			a.statusbar.AddNotification(text, widget.NotificationAlert)
 		}
 		return a, nil
 
-	case ToastClearMsg:
-		// Auto-clear after ToastDuration. If a newer toast was set in
+	case widget.ToastClearMsg:
+		// Auto-clear after widget.ToastDuration. If a newer toast was set in
 		// the meantime, it carries its own clear cmd, so dropping the
 		// current toast here is safe — the next clear will fire when
 		// that one's timer expires.
@@ -111,7 +112,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case investmentTransactionDeletedMsg:
-		a.statusbar.AddNotification("Transaction deleted", NotificationInfo)
+		a.statusbar.AddNotification("Transaction deleted", widget.NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
 		}
@@ -143,7 +144,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.investmentEditTxnID = types.NilID
 		a.invalidatePriceHistoryCache()
-		a.statusbar.AddNotification("Buy transaction saved", NotificationInfo)
+		a.statusbar.AddNotification("Buy transaction saved", widget.NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
 		}
@@ -170,7 +171,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.investmentEditTxnID = types.NilID
 		a.invalidatePriceHistoryCache()
-		a.statusbar.AddNotification("Sell transaction saved", NotificationInfo)
+		a.statusbar.AddNotification("Sell transaction saved", widget.NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
 		}
@@ -207,7 +208,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.dividendDialogReinvest {
 			label = "Reinvest dividend"
 		}
-		a.statusbar.AddNotification(label+" transaction saved", NotificationInfo)
+		a.statusbar.AddNotification(label+" transaction saved", widget.NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
 		}
@@ -224,7 +225,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			label = a.cashOperationType.DisplayName()
 		}
-		a.statusbar.AddNotification(label+" transaction saved", NotificationInfo)
+		a.statusbar.AddNotification(label+" transaction saved", widget.NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
 		}
@@ -256,7 +257,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
 		a.investmentEditTxnID = types.NilID
-		a.statusbar.AddNotification("Share transfer saved", NotificationInfo)
+		a.statusbar.AddNotification("Share transfer saved", widget.NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
 		}
@@ -271,7 +272,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case stockSplitDialogSavedMsg:
-		a.statusbar.AddNotification("Stock split executed", NotificationInfo)
+		a.statusbar.AddNotification("Stock split executed", widget.NotificationInfo)
 		return a, a.refreshAfterCorporateAction()
 
 	case mergerDialogDataMsg:
@@ -287,7 +288,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case mergerDialogSavedMsg:
-		a.statusbar.AddNotification("Merger executed", NotificationInfo)
+		a.statusbar.AddNotification("Merger executed", widget.NotificationInfo)
 		return a, a.refreshAfterCorporateAction()
 
 	case spinOffDialogDataMsg:
@@ -299,7 +300,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case spinOffDialogSavedMsg:
-		a.statusbar.AddNotification("Spin-off executed", NotificationInfo)
+		a.statusbar.AddNotification("Spin-off executed", widget.NotificationInfo)
 		return a, a.refreshAfterCorporateAction()
 
 	case corporateActionViewLoadedMsg:
@@ -308,7 +309,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case corporateActionDeletedMsg:
-		a.statusbar.AddNotification("Corporate action reversed", NotificationInfo)
+		a.statusbar.AddNotification("Corporate action reversed", widget.NotificationInfo)
 		// Invalidate downstream view caches so re-entering them refetches.
 		a.portfolioData = nil
 		return a, a.loadCorporateActionViewData()
@@ -421,7 +422,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
 		a.investmentEditTxnID = types.NilID
-		a.statusbar.AddNotification("Transfer saved", NotificationInfo)
+		a.statusbar.AddNotification("Transfer saved", widget.NotificationInfo)
 		return a, tea.Batch(
 			a.reloadCurrentView(),
 		)
@@ -482,7 +483,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case autoPostCompletedMsg:
 		if msg.summary != nil && msg.summary.PostedCount > 0 {
 			text := fmt.Sprintf("Auto-posted %d scheduled transaction(s)", msg.summary.PostedCount)
-			a.statusbar.AddNotification(text, NotificationInfo)
+			a.statusbar.AddNotification(text, widget.NotificationInfo)
 			// Register auto-post as a single undo step
 			if a.undoManager != nil && a.transactionSvc != nil && a.scheduledTxnSvc != nil {
 				cmd := undo.NewAutoPostCommand(a.transactionSvc, a.scheduledTxnSvc, msg.summary)
@@ -520,7 +521,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case backupCreatedMsg:
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Backup created: %s", backupFilename(msg.path)),
-			NotificationInfo,
+			widget.NotificationInfo,
 		)
 		return a, nil
 
@@ -529,7 +530,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		model, cmd := a.switchDatabase(msg.db)
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Restored from backup (safety backup: %s)", backupFilename(msg.safetyBackupPath)),
-			NotificationInfo,
+			widget.NotificationInfo,
 		)
 		return model, cmd
 
@@ -559,7 +560,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.switchView(ViewRegister)
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Reconciliation completed for %s", acctName),
-			NotificationInfo,
+			widget.NotificationInfo,
 		)
 		accountID := a.sidebar.SelectedAccountID()
 		return a, tea.Batch(
@@ -571,7 +572,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.reconciliation = nil
 		a.reconciliationTable = nil
 		a.switchView(ViewRegister)
-		a.statusbar.AddNotification("Reconciliation cancelled", NotificationInfo)
+		a.statusbar.AddNotification("Reconciliation cancelled", widget.NotificationInfo)
 		return a, nil
 
 	case accountDeletedMsg:
@@ -595,11 +596,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case undoResultMsg:
 		if errors.Is(msg.err, undo.ErrNothingToUndo) {
-			a.statusbar.AddNotification("Nothing to undo", NotificationInfo)
+			a.statusbar.AddNotification("Nothing to undo", widget.NotificationInfo)
 			return a, nil
 		}
 		if errors.Is(msg.err, undo.ErrNothingToRedo) {
-			a.statusbar.AddNotification("Nothing to redo", NotificationInfo)
+			a.statusbar.AddNotification("Nothing to redo", widget.NotificationInfo)
 			return a, nil
 		}
 		if msg.err != nil {
@@ -608,7 +609,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.statusbar.AddNotification(
 			fmt.Sprintf("%s: %s", msg.action, msg.description),
-			NotificationInfo,
+			widget.NotificationInfo,
 		)
 		// Reload current view data after undo/redo
 		return a, a.reloadCurrentView()
@@ -619,22 +620,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case securityAddedMsg:
-		a.statusbar.AddNotification("Security added", NotificationInfo)
+		a.statusbar.AddNotification("Security added", widget.NotificationInfo)
 		return a, a.loadSecurityViewData()
 
 	case securityUpdatedMsg:
-		a.statusbar.AddNotification("Security updated", NotificationInfo)
+		a.statusbar.AddNotification("Security updated", widget.NotificationInfo)
 		return a, a.loadSecurityViewData()
 
 	case securityDeletedMsg:
-		a.statusbar.AddNotification("Security deleted", NotificationInfo)
+		a.statusbar.AddNotification("Security deleted", widget.NotificationInfo)
 		return a, a.loadSecurityViewData()
 
 	case securityHiddenMsg:
 		if msg.hidden {
-			a.statusbar.AddNotification("Security hidden", NotificationInfo)
+			a.statusbar.AddNotification("Security hidden", widget.NotificationInfo)
 		} else {
-			a.statusbar.AddNotification("Security unhidden", NotificationInfo)
+			a.statusbar.AddNotification("Security unhidden", widget.NotificationInfo)
 		}
 		return a, a.loadSecurityViewData()
 
@@ -699,24 +700,24 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case priceAddedMsg:
-		a.statusbar.AddNotification("Price added", NotificationInfo)
+		a.statusbar.AddNotification("Price added", widget.NotificationInfo)
 		a.evictSelectedSecurityFromHistoryCache()
 		return a, a.reloadPriceViewKeepingMode()
 
 	case priceUpdatedMsg:
-		a.statusbar.AddNotification("Price updated", NotificationInfo)
+		a.statusbar.AddNotification("Price updated", widget.NotificationInfo)
 		a.evictSelectedSecurityFromHistoryCache()
 		return a, a.reloadPriceViewKeepingMode()
 
 	case priceDeletedMsg:
-		a.statusbar.AddNotification("Price deleted", NotificationInfo)
+		a.statusbar.AddNotification("Price deleted", widget.NotificationInfo)
 		a.evictSelectedSecurityFromHistoryCache()
 		return a, a.reloadPriceViewKeepingMode()
 
 	case priceImportedMsg:
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Imported %d prices (%d skipped)", msg.imported, msg.skipped),
-			NotificationInfo,
+			widget.NotificationInfo,
 		)
 		a.evictSelectedSecurityFromHistoryCache()
 		return a, a.reloadPriceViewKeepingMode()
@@ -749,7 +750,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case importCompletedMsg:
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Imported: %d created, %d updated, %d skipped", msg.created, msg.updated, msg.skipped),
-			NotificationInfo,
+			widget.NotificationInfo,
 		)
 		// Reload data so the new transactions appear in the dashboard /
 		// register without the user having to navigate away and back.
@@ -774,7 +775,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.ambiguous > 0 {
 			summary += fmt.Sprintf(" (%d ambiguous left for review)", msg.ambiguous)
 		}
-		a.statusbar.AddNotification(summary, NotificationInfo)
+		a.statusbar.AddNotification(summary, widget.NotificationInfo)
 		var cmds []tea.Cmd
 		cmds = append(cmds, a.loadSidebarData(), a.loadDashboardData())
 		if a.currentView == ViewRegister && a.register != nil {
@@ -801,7 +802,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.err = msg.err
 			return a, nil
 		}
-		a.statusbar.AddNotification(summarizeRefreshResult(msg.result), NotificationInfo)
+		a.statusbar.AddNotification(summarizeRefreshResult(msg.result), widget.NotificationInfo)
 		// PC-016: bulk refresh can silently change any subset of
 		// tickers' prices, and the result doesn't enumerate which.
 		// Drop every chart-history cache entry so the next render

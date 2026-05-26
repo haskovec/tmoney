@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -18,7 +19,7 @@ func TestApp_SwitchView(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	// Switch to Register view
@@ -100,8 +101,8 @@ func TestApp_Update_AltKeyMenuShortcuts(t *testing.T) {
 			app := &App{
 				currentView: ViewDashboard,
 				keys:        defaultKeyMap(),
-				menubar:     NewMenuBar(),
-				statusbar:   NewStatusBar(),
+				menubar:     widget.NewMenuBar(),
+				statusbar:   widget.NewStatusBar(),
 			}
 
 			model, _ := app.Update(tt.key)
@@ -121,8 +122,8 @@ func TestApp_ToggleMenu_ClosesSameMenu(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	// Open File menu
@@ -147,8 +148,8 @@ func TestApp_ToggleMenu_SwitchesToDifferentMenu(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	// Open File menu
@@ -177,7 +178,7 @@ func TestApp_SwitchView_UpdatesStatusBar(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	app.switchView(ViewScheduled)
@@ -191,9 +192,9 @@ func TestApp_SwitchView_Register_SetsFocus(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		table:       NewTable([]Column{{Header: "Test", Width: 10}}),
+		table:       widget.NewTable([]widget.Column{{Header: "Test", Width: 10}}),
 	}
 
 	app.sidebar.SetFocused(true)
@@ -213,9 +214,9 @@ func TestApp_SwitchView_Dashboard_SetsFocus(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		table:       NewTable([]Column{{Header: "Test", Width: 10}}),
+		table:       widget.NewTable([]widget.Column{{Header: "Test", Width: 10}}),
 	}
 
 	app.sidebar.SetFocused(false)
@@ -235,9 +236,9 @@ func TestApp_SwitchView_Scheduled_SetsFocus(t *testing.T) {
 	app := &App{
 		currentView:    ViewDashboard,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
-		scheduledTable: NewTable([]Column{{Header: "Test", Width: 10}}),
+		scheduledTable: widget.NewTable([]widget.Column{{Header: "Test", Width: 10}}),
 	}
 
 	app.sidebar.SetFocused(true)
@@ -257,9 +258,9 @@ func TestApp_SwitchView_Reports_SetsFocus(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		table:       NewTable([]Column{{Header: "Test", Width: 10}}),
+		table:       widget.NewTable([]widget.Column{{Header: "Test", Width: 10}}),
 	}
 
 	app.sidebar.SetFocused(true)
@@ -285,7 +286,7 @@ func TestApp_SwitchView_Reports_SetsFocus(t *testing.T) {
 //     whose items include the wizard entry alongside the existing
 //     New Transaction / New Transfer / etc rows.
 //
-//  2. Behavioral: dispatching MenuActionNewPaycheckSchedule from the
+//  2. Behavioral: dispatching widget.MenuActionNewPaycheckSchedule from the
 //     menu action handler returns a tea.Cmd that fetches accounts +
 //     categories and emits a paycheckWizardDataMsg. Dispatching that
 //     message through Update constructs the wizard on the App.
@@ -294,26 +295,26 @@ func TestApp_SwitchView_Reports_SetsFocus(t *testing.T) {
 // MS-026 only needs the menu entry to open the wizard.
 func TestTransactionsMenu_NewPaycheckSchedule_Item(t *testing.T) {
 	// (1) Structural — the menu item is present.
-	menus := defaultMenus()
+	menus := widget.DefaultMenus()
 	txnMenu := menus[4]
-	if txnMenu.label != "Transactions" {
-		t.Fatalf("expected Transactions menu at index 4, got %q", txnMenu.label)
+	if txnMenu.Label != "Transactions" {
+		t.Fatalf("expected Transactions menu at index 4, got %q", txnMenu.Label)
 	}
 	foundLabel := false
 	foundAction := false
-	for _, item := range txnMenu.items {
-		if item.label == "New Paycheck Schedule..." {
+	for _, item := range txnMenu.Items {
+		if item.Label == "New Paycheck Schedule..." {
 			foundLabel = true
 		}
-		if item.action == MenuActionNewPaycheckSchedule {
+		if item.Action == widget.MenuActionNewPaycheckSchedule {
 			foundAction = true
 		}
 	}
 	if !foundLabel {
-		t.Errorf("Transactions menu should include `New Paycheck Schedule...` item; got %+v", txnMenu.items)
+		t.Errorf("Transactions menu should include `New Paycheck Schedule...` item; got %+v", txnMenu.Items)
 	}
 	if !foundAction {
-		t.Errorf("Transactions menu should include MenuActionNewPaycheckSchedule action")
+		t.Errorf("Transactions menu should include widget.MenuActionNewPaycheckSchedule action")
 	}
 
 	// (2) Behavioral — activating the action opens the wizard.
@@ -356,10 +357,10 @@ func TestTransactionsMenu_NewPaycheckSchedule_Item(t *testing.T) {
 		width:           120,
 		height:          30,
 		keys:            defaultKeyMap(),
-		menubar:         NewMenuBar(),
-		statusbar:       NewStatusBar(),
+		menubar:         widget.NewMenuBar(),
+		statusbar:       widget.NewStatusBar(),
 		sidebar:         NewSidebar(),
-		styles:          NewStyles(),
+		styles:          widget.NewStyles(),
 		accountSvc:      accountSvc,
 		categorySvc:     categorySvc,
 		scheduledTxnSvc: schedSvc,
@@ -368,9 +369,9 @@ func TestTransactionsMenu_NewPaycheckSchedule_Item(t *testing.T) {
 
 	// Dispatch the menu action directly (avoids depending on dropdown
 	// navigation details — the action enum is the contract).
-	_, cmd := app.handleMenuAction(MenuActionNewPaycheckSchedule, "")
+	_, cmd := app.handleMenuAction(widget.MenuActionNewPaycheckSchedule, "")
 	if cmd == nil {
-		t.Fatal("MenuActionNewPaycheckSchedule should return a tea.Cmd to load wizard data")
+		t.Fatal("widget.MenuActionNewPaycheckSchedule should return a tea.Cmd to load wizard data")
 	}
 
 	// Synchronous side-effect: nothing yet. The wizard is constructed

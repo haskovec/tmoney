@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -24,10 +25,10 @@ type spinOffDialogDataMsg struct {
 // spinOffDialogSavedMsg is sent when a spin-off has been executed.
 type spinOffDialogSavedMsg struct{}
 
-// buildSpinOffDialog creates a Dialog for executing a corporate spin-off.
+// buildSpinOffDialog creates a dialog.Dialog for executing a corporate spin-off.
 // If preSelectedParentID is non-nil, the parent security selector is pre-selected.
-func buildSpinOffDialog(securityOptions []string, securityIDs []types.ID, preSelectedParentID *types.ID) *Dialog {
-	d := NewDialog("Spin-Off")
+func buildSpinOffDialog(securityOptions []string, securityIDs []types.ID, preSelectedParentID *types.ID) *dialog.Dialog {
+	d := dialog.NewDialog("Spin-Off")
 	d.SetWidth(60)
 
 	// Parent Security selector
@@ -61,7 +62,7 @@ func buildSpinOffDialog(securityOptions []string, securityIDs []types.ID, preSel
 	f = d.AddTextField("Spin-Off Price", "", "25.00", 10)
 	f.Required = true
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Execute", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -103,9 +104,9 @@ func (a *App) handleSpinOffDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	action := a.spinOffDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitSpinOffDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeSpinOffDialog()
 		return a, nil
 	}

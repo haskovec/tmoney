@@ -7,6 +7,8 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 func TestShortcutSections(t *testing.T) {
@@ -115,7 +117,7 @@ func TestViewShortcutSections(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.view.String(), func(t *testing.T) {
 			sections := viewShortcutSections(tt.view)
-			// Should always have Global, Navigation, view-specific, Dialog, and Mouse sections
+			// Should always have Global, Navigation, view-specific, dialog.Dialog, and Mouse sections
 			if len(sections) != 5 {
 				t.Errorf("expected 5 sections for %v, got %d", tt.view, len(sections))
 			}
@@ -147,7 +149,7 @@ func TestViewShortcutSections(t *testing.T) {
 }
 
 func TestRenderHelpOverlay(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 50)
 
 	t.Run("renders for dashboard view", func(t *testing.T) {
@@ -192,7 +194,7 @@ func TestRenderHelpOverlay(t *testing.T) {
 	t.Run("contains close hint", func(t *testing.T) {
 		result := renderHelpOverlay(styles, ViewDashboard, 120, 50)
 		// The close hint text goes through lipgloss styling, so check for key parts
-		stripped := stripAnsi(result)
+		stripped := widget.StripAnsi(result)
 		if !strings.Contains(stripped, "Esc to close") {
 			t.Errorf("overlay should contain close hint, got stripped: %s", stripped)
 		}
@@ -232,10 +234,10 @@ func TestApp_HelpOverlayToggle(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		menubar:     NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
 		ready:       true,
@@ -275,10 +277,10 @@ func TestApp_HelpOverlayBlocksOtherKeys(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		menubar:     NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
 		ready:       true,
@@ -309,10 +311,10 @@ func TestApp_HelpOverlayRendered(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		menubar:     NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
 		ready:       true,
@@ -338,10 +340,10 @@ func TestApp_MenuActionKeyboardShortcuts(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		menubar:     NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
 		ready:       true,
@@ -349,10 +351,10 @@ func TestApp_MenuActionKeyboardShortcuts(t *testing.T) {
 
 	// Simulate selecting Keyboard Shortcuts from Help menu
 	app.menubar.Activate()
-	_, _ = app.handleMenuAction(MenuActionKeyboardShortcuts, "")
+	_, _ = app.handleMenuAction(widget.MenuActionKeyboardShortcuts, "")
 
 	if !app.showHelp {
-		t.Error("showHelp should be true after MenuActionKeyboardShortcuts")
+		t.Error("showHelp should be true after widget.MenuActionKeyboardShortcuts")
 	}
 	if app.menubar.IsActive() {
 		t.Error("menu bar should be deactivated after selecting keyboard shortcuts")
@@ -360,7 +362,7 @@ func TestApp_MenuActionKeyboardShortcuts(t *testing.T) {
 }
 
 func TestApp_HelpOverlayCloseHit(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	view := ViewDashboard
 	screenW, screenH := 120, 40
 
@@ -375,7 +377,7 @@ func TestApp_HelpOverlayCloseHit(t *testing.T) {
 	}
 	startCol := (screenW - overlayW) / 2
 	startRow := (screenH - overlayH) / 2
-	contentWidth := overlayW - dialogHorizontalOverhead
+	contentWidth := overlayW - dialog.DialogHorizontalOverhead
 	xCenter := startCol + 3 + contentWidth - 2 // middle of "[x]"
 	titleY := startRow + 2
 
@@ -396,10 +398,10 @@ func TestApp_HelpOverlayClickClosesOnX(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		menubar:     NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
 		ready:       true,
@@ -417,7 +419,7 @@ func TestApp_HelpOverlayClickClosesOnX(t *testing.T) {
 	}
 	startCol := (app.width - overlayW) / 2
 	startRow := (app.height - len(lines)) / 2
-	contentWidth := overlayW - dialogHorizontalOverhead
+	contentWidth := overlayW - dialog.DialogHorizontalOverhead
 	x := startCol + 3 + contentWidth - 2
 	y := startRow + 2
 
@@ -431,10 +433,10 @@ func TestApp_HelpOverlayClickElsewhereDoesNotClose(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		menubar:     NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
 		ready:       true,

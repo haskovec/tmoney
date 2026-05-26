@@ -13,6 +13,8 @@ import (
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -236,15 +238,15 @@ func TestBuildTransactionDialog_FieldTypes(t *testing.T) {
 
 	expected := []struct {
 		label     string
-		fieldType FieldType
+		fieldType dialog.FieldType
 	}{
-		{"Date", FieldDate},
-		{"Payee", FieldText},
-		{"Category", FieldCombo},
-		{"Amount", FieldText},
-		{"Memo", FieldText},
-		{"Status", FieldRadio},
-		{"Split transaction", FieldCheckbox},
+		{"Date", dialog.FieldDate},
+		{"Payee", dialog.FieldText},
+		{"Category", dialog.FieldCombo},
+		{"Amount", dialog.FieldText},
+		{"Memo", dialog.FieldText},
+		{"Status", dialog.FieldRadio},
+		{"Split transaction", dialog.FieldCheckbox},
 	}
 
 	for i, exp := range expected {
@@ -273,7 +275,7 @@ func TestBuildTransactionDialog_CategoryComboHasAddNewLabel(t *testing.T) {
 }
 
 // TestBuildTransactionDialog_DateFieldOverwriteSemantics asserts that the Date
-// field built by buildTransactionDialog uses the FieldDate widget's overwrite
+// field built by buildTransactionDialog uses the dialog.FieldDate widget's overwrite
 // semantics: typing two digits overwrites the month digits in place and the
 // resulting Value is still a canonical 10-char MM/DD/YYYY string.
 func TestBuildTransactionDialog_DateFieldOverwriteSemantics(t *testing.T) {
@@ -299,7 +301,7 @@ func TestBuildTransactionDialog_DateFieldOverwriteSemantics(t *testing.T) {
 }
 
 // TestBuildTransactionDialog_CategoryFieldFiltersAndCommits asserts that the
-// Category field built by buildTransactionDialog uses the FieldCombo widget:
+// Category field built by buildTransactionDialog uses the dialog.FieldCombo widget:
 // typing narrows the filtered list, Enter commits the highlighted match, and
 // SelectedIndex resolves to that match's index in the full options list.
 func TestBuildTransactionDialog_CategoryFieldFiltersAndCommits(t *testing.T) {
@@ -314,8 +316,8 @@ func TestBuildTransactionDialog_CategoryFieldFiltersAndCommits(t *testing.T) {
 	d.HandleKey(tea.KeyPressMsg{Code: 'g', Text: "g"})
 
 	cat := d.Fields()[2]
-	if cat.Type != FieldCombo {
-		t.Fatalf("Category field type = %v, want FieldCombo", cat.Type)
+	if cat.Type != dialog.FieldCombo {
+		t.Fatalf("Category field type = %v, want dialog.FieldCombo", cat.Type)
 	}
 	if cat.Query != "g" {
 		t.Errorf("Query after typing 'g' = %q, want %q", cat.Query, "g")
@@ -350,10 +352,10 @@ func TestApp_HandleRegisterKeys_NewKey(t *testing.T) {
 		currentView: ViewRegister,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
 			account: &account.Account{
@@ -384,8 +386,8 @@ func TestApp_Update_TransactionDialogDataMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -417,11 +419,11 @@ func TestApp_HandleTransactionDialogKey_Cancel(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.SetVisible(true)
 			return d
@@ -446,11 +448,11 @@ func TestApp_HandleTransactionDialogKey_TabCycles(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "", "Payee name", 0)
 			d.SetVisible(true)
@@ -482,8 +484,8 @@ func TestApp_Update_TransactionDialogSavedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 	// Set up sidebar with a selected account
@@ -504,8 +506,8 @@ func TestApp_Update_TransactionDialogSavedMsg_StoresStickyDate(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 	app.sidebar.SetAccounts([]*account.Account{
@@ -525,8 +527,8 @@ func TestApp_Update_TransactionDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 	app := &App{
 		currentView:            ViewRegister,
 		keys:                   defaultKeyMap(),
-		menubar:                NewMenuBar(),
-		statusbar:              NewStatusBar(),
+		menubar:                widget.NewMenuBar(),
+		statusbar:              widget.NewStatusBar(),
 		sidebar:                NewSidebar(),
 		txnDialogLastSavedDate: types.NewDate(2024, time.January, 15),
 	}
@@ -553,8 +555,8 @@ func TestApp_Update_TransactionDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -579,12 +581,12 @@ func TestApp_TransactionDialogCancel_DoesNotUpdateStickyDate(t *testing.T) {
 	app := &App{
 		currentView:            ViewRegister,
 		keys:                   defaultKeyMap(),
-		menubar:                NewMenuBar(),
-		statusbar:              NewStatusBar(),
+		menubar:                widget.NewMenuBar(),
+		statusbar:              widget.NewStatusBar(),
 		sidebar:                NewSidebar(),
 		txnDialogLastSavedDate: initial,
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			// User typed a different date but cancels
 			d.AddDateField("Date", "02/01/2024")
 			d.SetVisible(true)
@@ -611,11 +613,11 @@ func TestApp_SubmitTransactionDialog_PassesSavedDateInMessage(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Coffee Shop", "", 0)
 			d.AddComboField("Category", []string{"(None)", "Food"}, 0)
@@ -657,8 +659,8 @@ func TestApp_SubmitThenSaved_UpdatesStickyDate_AcrossOpens(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 	app.sidebar.SetAccounts([]*account.Account{
@@ -707,11 +709,11 @@ func TestApp_CheckPayeeAutoFill(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "kroger", "Payee name", 0)
 			d.AddComboField("Category", []string{"(None)", "Groceries"}, 0)
@@ -746,11 +748,11 @@ func TestApp_CheckPayeeAutoFill_NoMatch(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "unknown", "Payee name", 0)
 			d.AddComboField("Category", []string{"(None)", "Groceries"}, 0)
@@ -779,11 +781,11 @@ func TestApp_SubmitTransactionDialog_InvalidDate(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "13/45/2024")
 			d.AddTextField("Payee", "Test Payee", "", 0)
 			d.AddComboField("Category", []string{"(None)"}, 0)
@@ -814,11 +816,11 @@ func TestApp_SubmitTransactionDialog_InvalidAmount(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Test Payee", "", 0)
 			d.AddComboField("Category", []string{"(None)"}, 0)
@@ -849,11 +851,11 @@ func TestApp_SubmitTransactionDialog_MultipleErrors(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "13/45/2024")
 			d.AddTextField("Payee", "", "", 0)
 			d.AddComboField("Category", []string{"(None)"}, 0)
@@ -890,11 +892,11 @@ func TestApp_SubmitTransactionDialog_ValidNonSplit(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Coffee Shop", "", 0)
 			d.AddComboField("Category", []string{"(None)", "Food"}, 0)
@@ -931,8 +933,8 @@ func TestApp_SubmitTransactionDialog_ValidNonSplit(t *testing.T) {
 
 func TestApp_CloseTransactionDialog(t *testing.T) {
 	app := &App{
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.SetVisible(true)
 			return d
 		}(),
@@ -962,8 +964,8 @@ func TestApp_CheckPayeeAutoFill_NilDialog(t *testing.T) {
 func TestApp_CheckPayeeAutoFill_EmptyPayee(t *testing.T) {
 	catID := types.NewID()
 	app := &App{
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "", "", 0)
 			d.AddComboField("Category", []string{"(None)", "Food"}, 0)
@@ -998,8 +1000,8 @@ func TestApp_SubmitTransactionDialog_NilDialog(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -1016,8 +1018,8 @@ func TestApp_HandleTransactionDialogKey_NilDialog(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -1084,7 +1086,7 @@ func TestParseAmountInput_DollarNegative(t *testing.T) {
 }
 
 func TestApp_RenderLayout_WithTransactionDialog(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	app := &App{
 		currentView: ViewRegister,
@@ -1093,8 +1095,8 @@ func TestApp_RenderLayout_WithTransactionDialog(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
 		register: &registerData{
 			account: &account.Account{
@@ -1107,8 +1109,8 @@ func TestApp_RenderLayout_WithTransactionDialog(t *testing.T) {
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
 		},
-		txnDialog: func() *Dialog {
-			d := NewDialog("New Transaction")
+		txnDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.SetVisible(true)
 			return d
@@ -1135,8 +1137,8 @@ func newAppForTxnAddNew(t *testing.T, query string, categorySvc *category.Servic
 	app := &App{
 		currentView:          ViewRegister,
 		keys:                 defaultKeyMap(),
-		menubar:              NewMenuBar(),
-		statusbar:            NewStatusBar(),
+		menubar:              widget.NewMenuBar(),
+		statusbar:            widget.NewStatusBar(),
 		sidebar:              NewSidebar(),
 		categorySvc:          categorySvc,
 		txnDialogData:        &transactionDialogData{categories: cats, payeeMap: make(map[string]*payee.Payee)},
@@ -1154,7 +1156,7 @@ func newAppForTxnAddNew(t *testing.T, query string, categorySvc *category.Servic
 	// Park the combo highlight on the AddNew action row so Enter triggers
 	// the divert. The row sits at len(filteredIndices) — this is what the
 	// user reaches by pressing Down past the last filtered match.
-	cat.comboHighlight = len(cat.FilteredIndices())
+	cat.ComboHighlight = len(cat.FilteredIndices())
 	app.txnDialog = d
 	return app
 }
@@ -1757,10 +1759,10 @@ func TestApp_HandleRegisterKeys_EnterOpensEditFlow_ForPlainTransaction(t *testin
 		currentView: ViewRegister,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
 			account: &account.Account{
@@ -1803,10 +1805,10 @@ func TestApp_HandleRegisterKeys_EnterOnVoidTransaction_NoOp(t *testing.T) {
 		currentView: ViewRegister,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
 			account: &account.Account{
@@ -1851,10 +1853,10 @@ func TestApp_HandleRegisterKeys_EnterOnReconciledTransaction_NoOp(t *testing.T) 
 		currentView: ViewRegister,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
 			account: &account.Account{
@@ -1917,8 +1919,8 @@ func TestApp_Update_TransactionDialogDataMsg_EditMode(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 

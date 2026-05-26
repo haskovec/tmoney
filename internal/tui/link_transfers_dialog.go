@@ -8,6 +8,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/transferlink"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 )
 
 // linkTransfersPreviewedMsg carries the FindUnlinked result back to the
@@ -58,8 +59,8 @@ func (a *App) runLinkTransfersExecute() tea.Cmd {
 // buildLinkTransfersDialog renders the preview summary with sample pairs
 // and a Confirm button. If the result is empty, the dialog only offers
 // a Close action.
-func buildLinkTransfersDialog(r *transferlink.Result) *Dialog {
-	d := NewDialog("Link Transfers")
+func buildLinkTransfersDialog(r *transferlink.Result) *dialog.Dialog {
+	d := dialog.NewDialog("Link Transfers")
 	d.SetWidth(72)
 
 	d.AddTextField("Scanned", fmt.Sprintf("%d eligible transactions", r.Scanned), "", 0)
@@ -79,7 +80,7 @@ func buildLinkTransfersDialog(r *transferlink.Result) *Dialog {
 	if len(r.Clean) == 0 {
 		primary = "Close"
 	}
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: primary, Primary: true},
 		{Label: "Cancel"},
 	})
@@ -119,10 +120,10 @@ func (a *App) handleLinkTransfersDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.
 	}
 	action := a.linkTransfersDialog.HandleKey(msg)
 	switch action {
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeLinkTransfersDialog()
 		return a, nil
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitLinkTransfersDialog()
 	}
 	return a, nil

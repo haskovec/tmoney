@@ -5,11 +5,12 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestApp_RenderReports_Loading(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	app := &App{
 		currentView: ViewReports,
@@ -26,7 +27,7 @@ func TestApp_RenderReports_Loading(t *testing.T) {
 }
 
 func TestApp_RenderNetWorthReport(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 30)
 
 	app := &App{
@@ -78,7 +79,7 @@ func TestApp_RenderNetWorthReport(t *testing.T) {
 }
 
 func TestApp_RenderNetWorthReport_NegativeNetWorth(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	app := &App{
@@ -106,7 +107,7 @@ func TestApp_RenderNetWorthReport_NegativeNetWorth(t *testing.T) {
 }
 
 func TestApp_RenderNetWorthReport_NoData(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	app := &App{
@@ -127,7 +128,7 @@ func TestApp_RenderNetWorthReport_NoData(t *testing.T) {
 }
 
 func TestApp_RenderSpendingReport(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 30)
 
 	app := &App{
@@ -202,7 +203,7 @@ func TestApp_RenderSpendingReport(t *testing.T) {
 }
 
 func TestApp_RenderSpendingReport_Empty(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	app := &App{
@@ -229,7 +230,7 @@ func TestApp_RenderSpendingReport_Empty(t *testing.T) {
 }
 
 func TestApp_RenderSpendingReport_NoData(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	app := &App{
@@ -363,8 +364,8 @@ func TestApp_HandleReportsKeys_SwitchReportTypes(t *testing.T) {
 	app := &App{
 		currentView: ViewReports,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		reports: &reportsViewData{
 			rtype: reportTypeNetWorth,
@@ -393,8 +394,8 @@ func TestApp_HandleReportsKeys_PeriodNavigation(t *testing.T) {
 	app := &App{
 		currentView: ViewReports,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		reports: &reportsViewData{
 			rtype: reportTypeSpending,
@@ -422,8 +423,8 @@ func TestApp_HandleReportsKeys_PeriodNav_NetWorthIgnored(t *testing.T) {
 	app := &App{
 		currentView: ViewReports,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		reports: &reportsViewData{
 			rtype: reportTypeNetWorth,
@@ -444,8 +445,8 @@ func TestApp_HandleReportsKeys_YearlyToggle(t *testing.T) {
 	app := &App{
 		currentView: ViewReports,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		reports: &reportsViewData{
 			rtype: reportTypeSpending,
@@ -466,8 +467,8 @@ func TestApp_HandleReportsKeys_MonthlyToggle(t *testing.T) {
 	app := &App{
 		currentView: ViewReports,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		reports: &reportsViewData{
 			rtype: reportTypeSpending,
@@ -488,8 +489,8 @@ func TestApp_HandleReportsKeys_NilReports(t *testing.T) {
 	app := &App{
 		currentView: ViewReports,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		reports:     nil,
 	}
@@ -506,8 +507,8 @@ func TestApp_Update_ReportsViewDataLoaded(t *testing.T) {
 	app := &App{
 		currentView: ViewReports,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	data := &reportsViewData{
@@ -627,7 +628,7 @@ func TestApp_ReportsPeriodNav_NetWorthIgnored(t *testing.T) {
 }
 
 func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 30)
 
 	// Test net worth dispatch
@@ -671,7 +672,7 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 }
 
 func TestApp_RenderNetWorthReport_ImprovedNoData(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	app := &App{
@@ -692,7 +693,7 @@ func TestApp_RenderNetWorthReport_ImprovedNoData(t *testing.T) {
 }
 
 func TestApp_RenderSpendingReport_ImprovedNoData(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	app := &App{

@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 // reportType represents which report is being displayed.
@@ -260,7 +261,7 @@ func (a *App) renderSpendingReport() string {
 		sections = append(sections, "")
 		sections = append(sections, a.styles.Muted.Render("  No spending data for this period"))
 	} else {
-		// Column header
+		// widget.Column header
 		tableWidth := max(contentWidth-4, 1)
 		barWidth := max(
 			// Reserve space for name(20), amount(12), percent(8), gaps(2)
@@ -272,7 +273,7 @@ func (a *App) renderSpendingReport() string {
 		// Category rows
 		for _, cat := range sr.Categories {
 			// Parent category row with bar
-			name := truncate(cat.Name, 20)
+			name := widget.Truncate(cat.Name, 20)
 			amount := formatDashboardMoney(cat.Amount)
 			pct := fmt.Sprintf("%.1f%%", cat.Percentage)
 			bar := renderSpendingBar(cat.Percentage, barWidth)
@@ -286,7 +287,7 @@ func (a *App) renderSpendingReport() string {
 
 			// Subcategory rows
 			for _, sub := range cat.Subcategories {
-				subName := "  " + truncate(sub.Name, 18)
+				subName := "  " + widget.Truncate(sub.Name, 18)
 				subAmount := formatDashboardMoney(sub.Amount)
 				subLine := fmt.Sprintf("  %-20s %12s",
 					a.styles.Muted.Render(subName),

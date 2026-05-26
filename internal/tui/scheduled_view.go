@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -181,7 +182,7 @@ func (a *App) handleScheduledKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.handleSidebarKeys(msg)
 	}
 
-	// Table-focused key handling
+	// widget.Table-focused key handling
 	if a.scheduledTable == nil || a.scheduled == nil {
 		return a, nil
 	}
@@ -307,7 +308,7 @@ func (a *App) renderScheduled() string {
 			Render(strings.Join(sections, "\n"))
 	}
 
-	// Table
+	// widget.Table
 	headerHeight := 1
 	statusBarHeight := 1
 	titleHeight := 2   // title + separator
@@ -333,18 +334,18 @@ func (a *App) buildScheduledTable() {
 		return
 	}
 
-	columns := []Column{
-		{Header: " ", Width: 3, Align: AlignCenter},
-		{Header: "Next Date", Width: 10, Align: AlignLeft},
-		{Header: "Payee", MinWidth: 12, Align: AlignLeft},
-		{Header: "Amount", Width: 12, Align: AlignRight},
-		{Header: "Frequency", Width: 10, Align: AlignLeft},
-		{Header: "Account", MinWidth: 10, Align: AlignLeft},
-		{Header: "Auto", Width: 10, Align: AlignLeft},
+	columns := []widget.Column{
+		{Header: " ", Width: 3, Align: widget.AlignCenter},
+		{Header: "Next Date", Width: 10, Align: widget.AlignLeft},
+		{Header: "Payee", MinWidth: 12, Align: widget.AlignLeft},
+		{Header: "Amount", Width: 12, Align: widget.AlignRight},
+		{Header: "Frequency", Width: 10, Align: widget.AlignLeft},
+		{Header: "Account", MinWidth: 10, Align: widget.AlignLeft},
+		{Header: "Auto", Width: 10, Align: widget.AlignLeft},
 	}
 
 	if a.scheduledTable == nil {
-		a.scheduledTable = NewTable(columns)
+		a.scheduledTable = widget.NewTable(columns)
 	} else {
 		a.scheduledTable.SetColumns(columns)
 	}

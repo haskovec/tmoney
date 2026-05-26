@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 )
 
 // fileDialogMode indicates which file dialog is active.
@@ -32,14 +33,14 @@ const (
 )
 
 // buildNewFileDialog creates a dialog for creating a new database file.
-func buildNewFileDialog() *Dialog {
-	d := NewDialog("New File")
+func buildNewFileDialog() *dialog.Dialog {
+	d := dialog.NewDialog("New File")
 
 	defaultPath := filepath.Join(db.DefaultDirectory(), "new.tdb")
 	f := d.AddTextField("Path", defaultPath, "Path to new .tdb file", 0)
 	f.Required = true
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Create", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -48,14 +49,14 @@ func buildNewFileDialog() *Dialog {
 }
 
 // buildOpenFileDialog creates a dialog for opening an existing database file.
-func buildOpenFileDialog() *Dialog {
-	d := NewDialog("Open File")
+func buildOpenFileDialog() *dialog.Dialog {
+	d := dialog.NewDialog("Open File")
 
 	defaultPath := filepath.Join(db.DefaultDirectory(), "")
 	f := d.AddTextField("Path", defaultPath, "Path to .tdb file", 0)
 	f.Required = true
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Open", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -64,8 +65,8 @@ func buildOpenFileDialog() *Dialog {
 }
 
 // buildOpenRecentDialog creates a dialog for selecting from recent files.
-func buildOpenRecentDialog(recentFiles []string) *Dialog {
-	d := NewDialog("Open Recent")
+func buildOpenRecentDialog(recentFiles []string) *dialog.Dialog {
+	d := dialog.NewDialog("Open Recent")
 
 	if len(recentFiles) == 0 {
 		d.AddSelectField("File", []string{"(no recent files)"}, 0)
@@ -75,7 +76,7 @@ func buildOpenRecentDialog(recentFiles []string) *Dialog {
 		d.AddSelectField("File", options, 0)
 	}
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Open", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -96,9 +97,9 @@ func (a *App) handleFileDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	action := a.fileDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitFileDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeFileDialog()
 		return a, nil
 	}
@@ -316,17 +317,17 @@ func listDirectoryEntries(dir string) ([]string, error) {
 }
 
 // buildBrowseDialog creates a file browser dialog for the given directory.
-func buildBrowseDialog(dir string, entries []string) *Dialog {
-	// Truncate long directory paths for the title
+func buildBrowseDialog(dir string, entries []string) *dialog.Dialog {
+	// widget.Truncate long directory paths for the title
 	title := "Open File — " + dir
 	if len(title) > 52 {
 		title = "Open File — ..." + dir[len(dir)-37:]
 	}
 
-	d := NewDialog(title)
+	d := dialog.NewDialog(title)
 	d.SetWidth(60)
 	d.AddListField("File", entries, 0, 12)
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Open", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -348,11 +349,11 @@ func (a *App) browseDialogListHit(msg tea.MouseMsg) int {
 	if m.X < startCol || m.X >= endCol || m.Y < startRow || m.Y >= endRow {
 		return -1
 	}
-	contentWidth := max(d.Width()-dialogHorizontalOverhead, 10)
+	contentWidth := max(d.Width()-dialog.DialogHorizontalOverhead, 10)
 	localX := m.X - startCol - 3
 	localY := m.Y - startRow - 2
 	hit := d.HitTestContent(localX, localY, contentWidth)
-	if hit.Zone != DialogHitField || hit.ListItemIndex < 0 {
+	if hit.Zone != dialog.DialogHitField || hit.ListItemIndex < 0 {
 		return -1
 	}
 	return hit.ListItemIndex

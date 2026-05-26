@@ -5,6 +5,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -278,7 +279,7 @@ func (s *Sidebar) HitTest(y int) int {
 }
 
 // Render renders the sidebar content for the given dimensions.
-func (s *Sidebar) Render(styles Styles, width, height int) string {
+func (s *Sidebar) Render(styles widget.Styles, width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
@@ -316,7 +317,7 @@ func (s *Sidebar) Render(styles Styles, width, height int) string {
 		lines = append(lines, strings.Repeat(" ", innerWidth))
 	}
 
-	// Truncate if too many lines
+	// widget.Truncate if too many lines
 	if len(lines) > height {
 		lines = lines[:height]
 	}
@@ -330,7 +331,7 @@ func (s *Sidebar) Render(styles Styles, width, height int) string {
 }
 
 // renderItem renders a single sidebar item.
-func (s *Sidebar) renderItem(styles Styles, item sidebarItem, index int, width int) string {
+func (s *Sidebar) renderItem(styles widget.Styles, item sidebarItem, index int, width int) string {
 	isCursor := s.focused && index == s.cursor
 	isSelected := item.kind == sidebarItemAccount && item.accountID == s.selectedAccountID
 
@@ -347,7 +348,7 @@ func (s *Sidebar) renderItem(styles Styles, item sidebarItem, index int, width i
 func padToWidth(text string, width int) string {
 	w := lipgloss.Width(text)
 	if w >= width {
-		// Truncate to fit (simple rune-based truncation)
+		// widget.Truncate to fit (simple rune-based truncation)
 		result := ""
 		for _, r := range text {
 			if lipgloss.Width(result+string(r)) > width {
@@ -365,7 +366,7 @@ func padToWidth(text string, width int) string {
 }
 
 // renderGroupHeader renders a group header line.
-func (s *Sidebar) renderGroupHeader(styles Styles, item sidebarItem, isCursor bool, width int) string {
+func (s *Sidebar) renderGroupHeader(styles widget.Styles, item sidebarItem, isCursor bool, width int) string {
 	text := padToWidth(" "+item.groupKey, width)
 
 	if isCursor {
@@ -376,7 +377,7 @@ func (s *Sidebar) renderGroupHeader(styles Styles, item sidebarItem, isCursor bo
 }
 
 // renderAccountItem renders an account line.
-func (s *Sidebar) renderAccountItem(styles Styles, item sidebarItem, isCursor, isSelected bool, width int) string {
+func (s *Sidebar) renderAccountItem(styles widget.Styles, item sidebarItem, isCursor, isSelected bool, width int) string {
 	indicator := " "
 	if isSelected {
 		indicator = "◀"
@@ -389,7 +390,7 @@ func (s *Sidebar) renderAccountItem(styles Styles, item sidebarItem, isCursor, i
 
 	name := item.account.Name
 	if lipgloss.Width(name) > nameWidth {
-		// Truncate name to fit
+		// widget.Truncate name to fit
 		truncated := ""
 		for _, r := range name {
 			if lipgloss.Width(truncated+string(r)) > nameWidth-1 {

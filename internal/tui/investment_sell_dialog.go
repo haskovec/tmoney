@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -37,14 +38,14 @@ func buildLotLabel(lot *investment.Lot) string {
 	)
 }
 
-// buildSellDialog creates a Dialog for entering a new sell transaction.
+// buildSellDialog creates a dialog.Dialog for entering a new sell transaction.
 // If lots is non-nil, lot allocation fields are added after the Shares field.
-// Field order: Date(0), Security(1), Shares(2), [lots...], Total,
+// dialog.Field order: Date(0), Security(1), Shares(2), [lots...], Total,
 // Price/Share, Commission, Memo. Total leads Price/Share because the
 // common workflow is to type the total (from a brokerage statement) and
 // let Price/Share auto-compute.
-func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID, lots []*investment.Lot) *Dialog {
-	d := NewDialog("Sell Securities")
+func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID, lots []*investment.Lot) *dialog.Dialog {
+	d := dialog.NewDialog("Sell Securities")
 	d.SetWidth(70)
 
 	// Date (index 0)
@@ -170,9 +171,9 @@ func (a *App) handleSellDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	action := a.sellDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitSellDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeSellDialog()
 		return a, nil
 	}

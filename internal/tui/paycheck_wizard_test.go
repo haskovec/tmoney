@@ -11,6 +11,8 @@ import (
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -106,8 +108,8 @@ func TestPaycheckWizard_V2Layout_OpensWithSpecPrePopulation(t *testing.T) {
 	if got := w.Employer().Value; got != "" {
 		t.Errorf("employer should start empty, got %q", got)
 	}
-	if w.Employer().Type != FieldText {
-		t.Errorf("employer should be FieldText, got %v", w.Employer().Type)
+	if w.Employer().Type != dialog.FieldText {
+		t.Errorf("employer should be dialog.FieldText, got %v", w.Employer().Type)
 	}
 	if got, want := w.Frequency().SelectedIndex, defaultPaycheckFrequencyIndex; got != want {
 		t.Errorf("frequency default = %d, want %d (Fortnightly)", got, want)
@@ -115,14 +117,14 @@ func TestPaycheckWizard_V2Layout_OpensWithSpecPrePopulation(t *testing.T) {
 	if opt := paycheckFrequencyForIndex(w.Frequency().SelectedIndex); opt.frequency != scheduled.FrequencyFortnightly {
 		t.Errorf("default frequency option = %v, want fortnightly", opt.frequency)
 	}
-	if w.NextPayday().Type != FieldDate {
-		t.Errorf("next payday should be FieldDate, got %v", w.NextPayday().Type)
+	if w.NextPayday().Type != dialog.FieldDate {
+		t.Errorf("next payday should be dialog.FieldDate, got %v", w.NextPayday().Type)
 	}
 	if w.NextPayday().Value == "" {
 		t.Error("next payday should be seeded with today's date")
 	}
-	if w.DepositAccount().Type != FieldSelect {
-		t.Errorf("deposit account should be FieldSelect, got %v", w.DepositAccount().Type)
+	if w.DepositAccount().Type != dialog.FieldSelect {
+		t.Errorf("deposit account should be dialog.FieldSelect, got %v", w.DepositAccount().Type)
 	}
 	if got := w.DepositAccount().Options[w.DepositAccount().SelectedIndex]; got != "Checking" {
 		t.Errorf("deposit default = %q, want Checking", got)
@@ -745,8 +747,8 @@ func TestPaycheckWizard_Save_CreatesMultiLineSchedule(t *testing.T) {
 	app := &App{
 		currentView:     ViewDashboard,
 		keys:            defaultKeyMap(),
-		menubar:         NewMenuBar(),
-		statusbar:       NewStatusBar(),
+		menubar:         widget.NewMenuBar(),
+		statusbar:       widget.NewStatusBar(),
 		sidebar:         NewSidebar(),
 		accountSvc:      accountSvc,
 		payeeSvc:        payeeSvc,
@@ -1253,7 +1255,7 @@ func TestPaycheckWizard_IsAddNew_TrueForLastIndex(t *testing.T) {
 
 // TestPaycheckWizard_EnterOnAddNew_ReturnsDialogActionAddNew exercises
 // HandleKey end-to-end: with focus on a line's select field parked on the
-// AddNew sentinel, Enter returns DialogActionAddNew so the parent App can
+// AddNew sentinel, Enter returns dialog.DialogActionAddNew so the parent App can
 // divert into the create-category sub-dialog.
 func TestPaycheckWizard_EnterOnAddNew_ReturnsDialogActionAddNew(t *testing.T) {
 	fx := newPaycheckWizardFixture()
@@ -1279,8 +1281,8 @@ func TestPaycheckWizard_EnterOnAddNew_ReturnsDialogActionAddNew(t *testing.T) {
 	}
 
 	action := w.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if action != DialogActionAddNew {
-		t.Errorf("HandleKey(Enter) = %v, want DialogActionAddNew", action)
+	if action != dialog.DialogActionAddNew {
+		t.Errorf("HandleKey(Enter) = %v, want dialog.DialogActionAddNew", action)
 	}
 }
 
@@ -1310,8 +1312,8 @@ func TestPaycheckWizard_EnterOnRealCategory_AdvancesFocus(t *testing.T) {
 	}
 
 	action := w.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if action != DialogActionNone {
-		t.Errorf("HandleKey(Enter) = %v, want DialogActionNone", action)
+	if action != dialog.DialogActionNone {
+		t.Errorf("HandleKey(Enter) = %v, want dialog.DialogActionNone", action)
 	}
 	if w.focusIndex != startIdx+1 {
 		t.Errorf("focusIndex = %d, want %d (advanced one)", w.focusIndex, startIdx+1)
@@ -1357,8 +1359,8 @@ func newAppForPaycheckAddNew(t *testing.T, categorySvc *category.Service, cats [
 
 	app := &App{
 		keys:           defaultKeyMap(),
-		menubar:        NewMenuBar(),
-		statusbar:      NewStatusBar(),
+		menubar:        widget.NewMenuBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
 		categorySvc:    categorySvc,
 		paycheckWizard: w,

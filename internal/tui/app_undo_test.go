@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -15,8 +17,8 @@ func TestApp_UndoKeyBinding(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		undoManager: mgr,
 	}
 
@@ -47,8 +49,8 @@ func TestApp_RedoKeyBinding(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		undoManager: mgr,
 	}
 
@@ -77,8 +79,8 @@ func TestApp_UndoResultMsg_NothingToUndo(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := undoResultMsg{action: "Undo", err: undo.ErrNothingToUndo}
@@ -101,8 +103,8 @@ func TestApp_UndoResultMsg_NothingToRedo(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := undoResultMsg{action: "Redo", err: undo.ErrNothingToRedo}
@@ -125,8 +127,8 @@ func TestApp_UndoResultMsg_Success(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := undoResultMsg{action: "Undo", description: "Create transaction"}
@@ -150,8 +152,8 @@ func TestApp_RedoResultMsg_Success(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := undoResultMsg{action: "Redo", description: "Delete account"}
@@ -174,8 +176,8 @@ func TestApp_UndoResultMsg_Error(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := undoResultMsg{action: "Undo", err: fmt.Errorf("database error")}
@@ -217,18 +219,18 @@ func TestApp_MenuUndo(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		undoManager: mgr,
 	}
 
 	// Simulate menu action
-	_, cmd := app.handleMenuAction(MenuActionUndo, "")
+	_, cmd := app.handleMenuAction(widget.MenuActionUndo, "")
 	if cmd == nil {
-		t.Fatal("MenuActionUndo should return a command")
+		t.Fatal("widget.MenuActionUndo should return a command")
 	}
 
-	// Menu should be deactivated
+	// widget.Menu should be deactivated
 	if app.menubar.IsActive() {
 		t.Error("menu should be deactivated after undo")
 	}
@@ -239,14 +241,14 @@ func TestApp_MenuRedo(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		undoManager: mgr,
 	}
 
-	_, cmd := app.handleMenuAction(MenuActionRedo, "")
+	_, cmd := app.handleMenuAction(widget.MenuActionRedo, "")
 	if cmd == nil {
-		t.Fatal("MenuActionRedo should return a command")
+		t.Fatal("widget.MenuActionRedo should return a command")
 	}
 
 	if app.menubar.IsActive() {
@@ -259,13 +261,13 @@ func TestApp_UndoKeyBindingNotActiveInDialogs(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		undoManager: mgr,
 	}
 
 	// Open a transaction dialog
-	app.txnDialog = NewDialog("Test")
+	app.txnDialog = dialog.NewDialog("Test")
 	app.txnDialog.AddTextField("Name", "", "", 0)
 	app.txnDialog.SetVisible(true)
 	app.txnDialogData = &transactionDialogData{}

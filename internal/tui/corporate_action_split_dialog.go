@@ -8,6 +8,7 @@ import (
 	"github.com/alpacahq/alpacadecimal"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -29,10 +30,10 @@ type stockSplitDialogDataMsg struct {
 // stockSplitDialogSavedMsg is sent when a stock split has been executed.
 type stockSplitDialogSavedMsg struct{}
 
-// buildStockSplitDialog creates a Dialog for executing a stock split.
+// buildStockSplitDialog creates a dialog.Dialog for executing a stock split.
 // If preSelectedSecurityID is non-nil, the security selector is pre-selected.
-func buildStockSplitDialog(securityOptions []string, securityIDs []types.ID, sharesMap map[types.ID][]investment.AccountShares, preSelectedSecurityID *types.ID) *Dialog {
-	d := NewDialog("Stock Split")
+func buildStockSplitDialog(securityOptions []string, securityIDs []types.ID, sharesMap map[types.ID][]investment.AccountShares, preSelectedSecurityID *types.ID) *dialog.Dialog {
+	d := dialog.NewDialog("Stock Split")
 	d.SetWidth(60)
 
 	// Security selector
@@ -55,7 +56,7 @@ func buildStockSplitDialog(securityOptions []string, securityIDs []types.ID, sha
 	f = d.AddTextField("Ratio", "", "4:1", 10)
 	f.Required = true
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Execute", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -170,9 +171,9 @@ func (a *App) handleStockSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 
 	action := a.stockSplitDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitStockSplitDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeStockSplitDialog()
 		return a, nil
 	}

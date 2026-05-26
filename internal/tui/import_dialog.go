@@ -10,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/imexport"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -80,8 +81,8 @@ type importCompletedMsg struct {
 
 // buildImportOptionsDialog creates the first-step dialog asking for file
 // path, target account, format, and duplicate handling.
-func buildImportOptionsDialog(accounts []*account.Account, defaultAccountID types.ID) (*Dialog, []types.ID) {
-	d := NewDialog("Import Transactions")
+func buildImportOptionsDialog(accounts []*account.Account, defaultAccountID types.ID) (*dialog.Dialog, []types.ID) {
+	d := dialog.NewDialog("Import Transactions")
 	d.SetWidth(64)
 
 	pathField := d.AddTextField("File", "", "Path to .csv, .qif, .ofx or .qfx file", 0)
@@ -105,7 +106,7 @@ func buildImportOptionsDialog(accounts []*account.Account, defaultAccountID type
 	d.AddSelectField("Format", importFormatOptions, 0)
 	d.AddSelectField("Duplicates", importDuplicateOptions, 0)
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Preview", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -116,15 +117,15 @@ func buildImportOptionsDialog(accounts []*account.Account, defaultAccountID type
 // buildImportSourcePickerDialog creates the dialog shown when the file
 // contains rows for more than one source account. The user picks exactly
 // one source to import in this pass.
-func buildImportSourcePickerDialog(sources []string, target string) *Dialog {
-	d := NewDialog("Pick Source Account")
+func buildImportSourcePickerDialog(sources []string, target string) *dialog.Dialog {
+	d := dialog.NewDialog("Pick Source Account")
 	d.SetWidth(64)
 
 	d.AddTextField("Importing into", target, "", 0)
 	d.AddTextField("File contains", fmt.Sprintf("%d accounts — pick one", len(sources)), "", 0)
 	d.AddSelectField("Source account", sources, 0)
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Continue", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -139,8 +140,8 @@ func buildImportSourcePickerDialog(sources []string, target string) *Dialog {
 // editable but no submit handler reads them — only state.preview is used
 // when the user confirms. Default focus is on the primary button so a
 // single Enter confirms.
-func buildImportConfirmDialog(state *importDialogState) *Dialog {
-	d := NewDialog("Confirm Import")
+func buildImportConfirmDialog(state *importDialogState) *dialog.Dialog {
+	d := dialog.NewDialog("Confirm Import")
 	d.SetWidth(64)
 
 	r := state.preview
@@ -180,7 +181,7 @@ func buildImportConfirmDialog(state *importDialogState) *Dialog {
 	if parsed == 0 {
 		primary = "Close"
 	}
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: primary, Primary: true},
 		{Label: "Cancel"},
 	})
@@ -259,10 +260,10 @@ func (a *App) handleImportDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	action := a.importDialog.HandleKey(msg)
 	switch action {
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeImportDialog()
 		return a, nil
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitImportDialog()
 	}
 	return a, nil

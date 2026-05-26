@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 )
 
 // backupCreatedMsg is sent when a manual backup has been created.
@@ -21,13 +22,13 @@ type restoreConfirmedMsg struct {
 }
 
 // buildRestoreBackupDialog creates a dialog for selecting a backup to restore from.
-func buildRestoreBackupDialog(dbPath string) (*Dialog, []backup.BackupInfo, error) {
+func buildRestoreBackupDialog(dbPath string) (*dialog.Dialog, []backup.BackupInfo, error) {
 	backups, err := backup.ListBackups(dbPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to list backups: %w", err)
 	}
 
-	d := NewDialog("Restore from Backup")
+	d := dialog.NewDialog("Restore from Backup")
 
 	if len(backups) == 0 {
 		d.AddSelectField("Backup", []string{"(no backups available)"}, 0)
@@ -68,7 +69,7 @@ func createAutoBackupOnQuit(dbPath string) {
 
 // backupDialogState holds the state for the restore backup dialog.
 type backupDialogState struct {
-	dialog  *Dialog
+	dialog  *dialog.Dialog
 	backups []backup.BackupInfo
 }
 
@@ -80,9 +81,9 @@ func (a *App) handleBackupDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	action := a.backupDialog.dialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitBackupDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.backupDialog = nil
 		return a, nil
 	}

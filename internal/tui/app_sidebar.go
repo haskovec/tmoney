@@ -4,6 +4,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -92,7 +93,7 @@ func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.C
 
 	// Account item - require a double click to drill in.
 	if a.sidebarClicks == nil {
-		a.sidebarClicks = NewClickTracker(doubleClickThreshold)
+		a.sidebarClicks = widget.NewClickTracker(widget.DoubleClickThreshold)
 	}
 	if !a.sidebarClicks.Click(idx) {
 		return a, nil

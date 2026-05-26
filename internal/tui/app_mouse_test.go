@@ -6,15 +6,17 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 func TestApp_MouseClick_MenuBar_OpensDropdown(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,
 	}
@@ -37,9 +39,9 @@ func TestApp_MouseClick_MenuBar_ToggleDropdown(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,
 	}
@@ -67,9 +69,9 @@ func TestApp_MouseClick_MenuBar_SwitchMenu(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,
 	}
@@ -97,9 +99,9 @@ func TestApp_MouseClick_Dropdown_SelectsItem(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,
 	}
@@ -114,7 +116,7 @@ func TestApp_MouseClick_Dropdown_SelectsItem(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	// Menu should be deactivated after selection
+	// widget.Menu should be deactivated after selection
 	if updatedApp.menubar.IsActive() {
 		t.Error("menu should be deactivated after selecting a dropdown item")
 	}
@@ -124,9 +126,9 @@ func TestApp_MouseClick_OutsideMenu_ClosesDropdown(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,
 	}
@@ -149,10 +151,10 @@ func TestApp_MouseClick_Table_SelectsRow(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
-		table:       NewTable([]Column{{Header: "A", Width: 10}}),
+		statusbar:   widget.NewStatusBar(),
+		table:       widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
 		register:    &registerData{},
 		width:       100,
 		height:      24,
@@ -184,12 +186,12 @@ func TestApp_MouseClick_InvestmentRegister_TotalReturnLines_SelectsRow(t *testin
 	// rendered, the table starts 2 rows lower than a plain register. A
 	// click on data row N must still land on N, not N+2.
 	app := &App{
-		currentView:      ViewInvestmentRegister,
-		keys:             defaultKeyMap(),
-		menubar:          NewMenuBar(),
-		sidebar:          NewSidebar(),
-		statusbar:        NewStatusBar(),
-		investmentTable:  NewTable([]Column{{Header: "Date", Width: 10}}),
+		currentView:     ViewInvestmentRegister,
+		keys:            defaultKeyMap(),
+		menubar:         widget.NewMenuBar(),
+		sidebar:         NewSidebar(),
+		statusbar:       widget.NewStatusBar(),
+		investmentTable: widget.NewTable([]widget.Column{{Header: "Date", Width: 10}}),
 		investmentRegister: &investmentRegisterData{
 			account:   &account.Account{Name: "Brokerage", Type: account.TypeInvestment},
 			valuation: &investment.AccountValuation{}, // non-nil triggers TR breakdown
@@ -229,10 +231,10 @@ func TestApp_MouseClick_InvestmentRegister_NoValuation_SelectsRow(t *testing.T) 
 	app := &App{
 		currentView:        ViewInvestmentRegister,
 		keys:               defaultKeyMap(),
-		menubar:            NewMenuBar(),
+		menubar:            widget.NewMenuBar(),
 		sidebar:            NewSidebar(),
-		statusbar:          NewStatusBar(),
-		investmentTable:    NewTable([]Column{{Header: "Date", Width: 10}}),
+		statusbar:          widget.NewStatusBar(),
+		investmentTable:    widget.NewTable([]widget.Column{{Header: "Date", Width: 10}}),
 		investmentRegister: &investmentRegisterData{account: &account.Account{Name: "Brokerage", Type: account.TypeInvestment}},
 		width:              100,
 		height:             24,
@@ -257,10 +259,10 @@ func TestApp_MouseClick_FocusSwitchToTable(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
-		table:       NewTable([]Column{{Header: "A", Width: 10}}),
+		statusbar:   widget.NewStatusBar(),
+		table:       widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
 		register:    &registerData{},
 		width:       100,
 		height:      24,
@@ -293,10 +295,10 @@ func TestApp_MouseClick_FocusSwitchToSidebar(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
-		table:       NewTable([]Column{{Header: "A", Width: 10}}),
+		statusbar:   widget.NewStatusBar(),
+		table:       widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
 		register:    &registerData{},
 		width:       100,
 		height:      24,
@@ -329,10 +331,10 @@ func TestApp_MouseWheel_ScrollsTable(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
-		table:       NewTable([]Column{{Header: "A", Width: 10}}),
+		statusbar:   widget.NewStatusBar(),
+		table:       widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
 		register:    &registerData{},
 		width:       100,
 		height:      24,
@@ -365,9 +367,9 @@ func TestApp_MouseWheel_ScrollsSidebar(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
 	}
@@ -395,9 +397,9 @@ func TestApp_MouseClick_IgnoredDuringHelpOverlay(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		showHelp:    true,
 		width:       80,
 		height:      24,
@@ -409,23 +411,23 @@ func TestApp_MouseClick_IgnoredDuringHelpOverlay(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	// Menu should not open
+	// widget.Menu should not open
 	if updatedApp.menubar.IsActive() {
 		t.Error("menu should not open while help overlay is visible")
 	}
 }
 
 func TestApp_MouseClick_Dialog_CloseButton(t *testing.T) {
-	dlg := NewDialog("Confirm")
-	dlg.SetButtons([]DialogButton{{Label: "Cancel"}, {Label: "OK", Primary: true}})
+	dlg := dialog.NewDialog("Confirm")
+	dlg.SetButtons([]dialog.DialogButton{{Label: "Cancel"}, {Label: "OK", Primary: true}})
 	dlg.SetVisible(true)
 
 	app := &App{
 		currentView:   ViewDashboard,
 		keys:          defaultKeyMap(),
-		menubar:       NewMenuBar(),
+		menubar:       widget.NewMenuBar(),
 		sidebar:       NewSidebar(),
-		statusbar:     NewStatusBar(),
+		statusbar:     widget.NewStatusBar(),
 		confirmDialog: dlg,
 		confirmAction: func() tea.Msg { return nil },
 		width:         80,
@@ -434,7 +436,7 @@ func TestApp_MouseClick_Dialog_CloseButton(t *testing.T) {
 	app.styles.Resize(80, 24)
 
 	// Click the [x] close button
-	contentWidth := dlg.Width() - dialogHorizontalOverhead
+	contentWidth := dlg.Width() - dialog.DialogHorizontalOverhead
 	startCol, startRow, _, _ := dlg.DialogBounds(80, 24)
 	clickX := startCol + 3 + contentWidth - 2
 	clickY := startRow + 2
@@ -449,17 +451,17 @@ func TestApp_MouseClick_Dialog_CloseButton(t *testing.T) {
 }
 
 func TestApp_MouseClick_Dialog_SubmitButton(t *testing.T) {
-	dlg := NewDialog("Confirm")
-	dlg.SetButtons([]DialogButton{{Label: "Cancel"}, {Label: "OK", Primary: true}})
+	dlg := dialog.NewDialog("Confirm")
+	dlg.SetButtons([]dialog.DialogButton{{Label: "Cancel"}, {Label: "OK", Primary: true}})
 	dlg.SetVisible(true)
 
 	submitted := false
 	app := &App{
 		currentView:   ViewDashboard,
 		keys:          defaultKeyMap(),
-		menubar:       NewMenuBar(),
+		menubar:       widget.NewMenuBar(),
 		sidebar:       NewSidebar(),
-		statusbar:     NewStatusBar(),
+		statusbar:     widget.NewStatusBar(),
 		confirmDialog: dlg,
 		confirmAction: func() tea.Msg { submitted = true; return nil },
 		width:         80,
@@ -467,7 +469,7 @@ func TestApp_MouseClick_Dialog_SubmitButton(t *testing.T) {
 	}
 	app.styles.Resize(80, 24)
 
-	contentWidth := dlg.Width() - dialogHorizontalOverhead
+	contentWidth := dlg.Width() - dialog.DialogHorizontalOverhead
 	buttonRow := dlg.ContentHeight() - 1
 	startCol, startRow, _, _ := dlg.DialogBounds(80, 24)
 
@@ -475,7 +477,7 @@ func TestApp_MouseClick_Dialog_SubmitButton(t *testing.T) {
 	var okX int
 	for x := range contentWidth {
 		hit := dlg.HitTestContent(x, buttonRow, contentWidth)
-		if hit.Zone == DialogHitButton && hit.ButtonIndex == 1 {
+		if hit.Zone == dialog.DialogHitButton && hit.ButtonIndex == 1 {
 			okX = x
 			break
 		}
@@ -502,16 +504,16 @@ func TestApp_MouseClick_Dialog_SubmitButton(t *testing.T) {
 }
 
 func TestApp_MouseClick_Dialog_CancelButton(t *testing.T) {
-	dlg := NewDialog("Confirm")
-	dlg.SetButtons([]DialogButton{{Label: "Cancel"}, {Label: "OK", Primary: true}})
+	dlg := dialog.NewDialog("Confirm")
+	dlg.SetButtons([]dialog.DialogButton{{Label: "Cancel"}, {Label: "OK", Primary: true}})
 	dlg.SetVisible(true)
 
 	app := &App{
 		currentView:   ViewDashboard,
 		keys:          defaultKeyMap(),
-		menubar:       NewMenuBar(),
+		menubar:       widget.NewMenuBar(),
 		sidebar:       NewSidebar(),
-		statusbar:     NewStatusBar(),
+		statusbar:     widget.NewStatusBar(),
 		confirmDialog: dlg,
 		confirmAction: func() tea.Msg { return nil },
 		width:         80,
@@ -519,7 +521,7 @@ func TestApp_MouseClick_Dialog_CancelButton(t *testing.T) {
 	}
 	app.styles.Resize(80, 24)
 
-	contentWidth := dlg.Width() - dialogHorizontalOverhead
+	contentWidth := dlg.Width() - dialog.DialogHorizontalOverhead
 	buttonRow := dlg.ContentHeight() - 1
 	startCol, startRow, _, _ := dlg.DialogBounds(80, 24)
 
@@ -527,7 +529,7 @@ func TestApp_MouseClick_Dialog_CancelButton(t *testing.T) {
 	var cancelX int
 	for x := range contentWidth {
 		hit := dlg.HitTestContent(x, buttonRow, contentWidth)
-		if hit.Zone == DialogHitButton && hit.ButtonIndex == 0 {
+		if hit.Zone == dialog.DialogHitButton && hit.ButtonIndex == 0 {
 			cancelX = x
 			break
 		}
@@ -547,15 +549,15 @@ func TestApp_MouseClick_Dialog_CancelButton(t *testing.T) {
 }
 
 func TestApp_MouseClick_Dialog_OutsideNoAction(t *testing.T) {
-	dlg := NewDialog("Confirm")
+	dlg := dialog.NewDialog("Confirm")
 	dlg.SetVisible(true)
 
 	app := &App{
 		currentView:   ViewDashboard,
 		keys:          defaultKeyMap(),
-		menubar:       NewMenuBar(),
+		menubar:       widget.NewMenuBar(),
 		sidebar:       NewSidebar(),
-		statusbar:     NewStatusBar(),
+		statusbar:     widget.NewStatusBar(),
 		confirmDialog: dlg,
 		confirmAction: func() tea.Msg { return nil },
 		width:         80,
@@ -577,9 +579,9 @@ func TestApp_MouseClick_HelpOverlay_StillBlocked(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		showHelp:    true,
 		width:       80,
 		height:      24,
@@ -591,14 +593,14 @@ func TestApp_MouseClick_HelpOverlay_StillBlocked(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	// Menu should not open
+	// widget.Menu should not open
 	if updatedApp.menubar.IsActive() {
 		t.Error("menu should not open while help overlay is visible")
 	}
 }
 
 func TestApp_MouseWheel_Dialog_ListField(t *testing.T) {
-	dlg := NewDialog("Browse")
+	dlg := dialog.NewDialog("Browse")
 	dlg.AddListField("File", []string{"../", "docs/", "main.go", "go.mod", "go.sum"}, 0, 3)
 	dlg.SetFocusIndex(0) // Focus on list field
 	dlg.SetVisible(true)
@@ -606,9 +608,9 @@ func TestApp_MouseWheel_Dialog_ListField(t *testing.T) {
 	app := &App{
 		currentView:   ViewDashboard,
 		keys:          defaultKeyMap(),
-		menubar:       NewMenuBar(),
+		menubar:       widget.NewMenuBar(),
 		sidebar:       NewSidebar(),
-		statusbar:     NewStatusBar(),
+		statusbar:     widget.NewStatusBar(),
 		confirmDialog: dlg,
 		confirmAction: func() tea.Msg { return nil },
 		width:         80,
@@ -635,9 +637,9 @@ func TestApp_MouseRelease_Ignored(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -125,10 +126,10 @@ func buildAccountOptions(accounts []*account.Account) ([]string, []types.ID) {
 	return options, ids
 }
 
-// buildTransferDialog creates a Dialog for entering a new transfer.
+// buildTransferDialog creates a dialog.Dialog for entering a new transfer.
 // defaultFromIndex is the index of the currently selected account to pre-select as "From".
-func buildTransferDialog(accountOptions []string, defaultFromIndex int) *Dialog {
-	d := NewDialog("New Transfer")
+func buildTransferDialog(accountOptions []string, defaultFromIndex int) *dialog.Dialog {
+	d := dialog.NewDialog("New Transfer")
 
 	// From account
 	d.AddSelectField("From", accountOptions, defaultFromIndex)
@@ -160,8 +161,8 @@ func buildTransferDialog(accountOptions []string, defaultFromIndex int) *Dialog 
 // message ("Checking → Savings") since UpdateTransfer cannot move a
 // transfer between accounts. Editable fields are Amount (positive),
 // Date, Memo, and Status — all pre-filled from the supplied values.
-func buildEditTransferDialog(fromName, toName string, amount types.Money, date types.Date, memo string, status transaction.Status) *Dialog {
-	d := NewDialog("Edit Transfer")
+func buildEditTransferDialog(fromName, toName string, amount types.Money, date types.Date, memo string, status transaction.Status) *dialog.Dialog {
+	d := dialog.NewDialog("Edit Transfer")
 	d.SetMessage(fromName + " → " + toName)
 
 	f := d.AddTextField("Amount", amount.String(), "100.00", 12)
@@ -424,9 +425,9 @@ func (a *App) handleTransferDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 
 	action := a.transferDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitTransferDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeTransferDialog()
 		return a, nil
 	}

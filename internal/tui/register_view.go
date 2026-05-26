@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -117,7 +118,7 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.handleSidebarKeys(msg)
 	}
 
-	// Table-focused key handling
+	// widget.Table-focused key handling
 	if a.table == nil || a.register == nil {
 		return a, nil
 	}
@@ -177,11 +178,11 @@ func (a *App) openEditTransactionFlow() (tea.Model, tea.Cmd) {
 	txn := a.register.transactions[cursor]
 
 	if txn.IsVoid() {
-		a.statusbar.AddNotification("Cannot edit void transaction", NotificationAlert)
+		a.statusbar.AddNotification("Cannot edit void transaction", widget.NotificationAlert)
 		return a, nil
 	}
 	if txn.IsReconciled() {
-		a.statusbar.AddNotification("Cannot edit reconciled transaction (un-reconcile first)", NotificationAlert)
+		a.statusbar.AddNotification("Cannot edit reconciled transaction (un-reconcile first)", widget.NotificationAlert)
 		return a, nil
 	}
 
@@ -207,13 +208,13 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 
 	// Cannot toggle void transactions
 	if txn.IsVoid() {
-		a.statusbar.AddNotification("Cannot change status of void transaction", NotificationAlert)
+		a.statusbar.AddNotification("Cannot change status of void transaction", widget.NotificationAlert)
 		return a, nil
 	}
 
 	// Cannot toggle reconciled transactions
 	if txn.IsReconciled() {
-		a.statusbar.AddNotification("Cannot change status of reconciled transaction (un-reconcile first)", NotificationAlert)
+		a.statusbar.AddNotification("Cannot change status of reconciled transaction (un-reconcile first)", widget.NotificationAlert)
 		return a, nil
 	}
 
@@ -265,13 +266,13 @@ func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
 
 	// Cannot void already-void transactions
 	if txn.IsVoid() {
-		a.statusbar.AddNotification("Transaction is already void", NotificationAlert)
+		a.statusbar.AddNotification("Transaction is already void", widget.NotificationAlert)
 		return a, nil
 	}
 
 	// Cannot void reconciled transactions
 	if txn.IsReconciled() {
-		a.statusbar.AddNotification("Cannot void reconciled transaction (un-reconcile first)", NotificationAlert)
+		a.statusbar.AddNotification("Cannot void reconciled transaction (un-reconcile first)", widget.NotificationAlert)
 		return a, nil
 	}
 
@@ -325,13 +326,13 @@ func (a *App) showDeleteConfirmation() (tea.Model, tea.Cmd) {
 	// Cannot delete void transactions (Service.Delete rejects with IsVoidError).
 	// Surface a status-bar notification before opening the dialog the user can't complete.
 	if txn.IsVoid() {
-		a.statusbar.AddNotification("Cannot delete void transaction", NotificationAlert)
+		a.statusbar.AddNotification("Cannot delete void transaction", widget.NotificationAlert)
 		return a, nil
 	}
 
 	// Cannot delete reconciled transactions (Service.Delete rejects with IsReconciledError).
 	if txn.IsReconciled() {
-		a.statusbar.AddNotification("Cannot delete reconciled transaction (un-reconcile first)", NotificationAlert)
+		a.statusbar.AddNotification("Cannot delete reconciled transaction (un-reconcile first)", widget.NotificationAlert)
 		return a, nil
 	}
 
@@ -370,16 +371,16 @@ func (a *App) buildRegisterTable() {
 		return
 	}
 
-	columns := []Column{
-		{Header: "Date", Width: 10, Align: AlignLeft},
-		{Header: "S", Width: 1, Align: AlignCenter},
-		{Header: "Payee", MinWidth: 12, Align: AlignLeft},
-		{Header: "Category", MinWidth: 10, Align: AlignLeft},
-		{Header: "Amount", Width: 12, Align: AlignRight},
+	columns := []widget.Column{
+		{Header: "Date", Width: 10, Align: widget.AlignLeft},
+		{Header: "S", Width: 1, Align: widget.AlignCenter},
+		{Header: "Payee", MinWidth: 12, Align: widget.AlignLeft},
+		{Header: "Category", MinWidth: 10, Align: widget.AlignLeft},
+		{Header: "Amount", Width: 12, Align: widget.AlignRight},
 	}
 
 	if a.table == nil {
-		a.table = NewTable(columns)
+		a.table = widget.NewTable(columns)
 	} else {
 		a.table.SetColumns(columns)
 	}
@@ -393,7 +394,7 @@ func (a *App) buildRegisterTable() {
 	// Apply void row styling
 	for i, txn := range a.register.transactions {
 		if txn.IsVoid() {
-			a.table.SetRowStyle(i, RowStyleVoid)
+			a.table.SetRowStyle(i, widget.RowStyleVoid)
 		}
 	}
 }
@@ -462,11 +463,11 @@ func (a *App) renderRegister() string {
 	if a.register.balance != nil {
 		balStr = "Bal: " + formatDashboardMoney(a.register.balance.CurrentBalance)
 	}
-	// Truncate account name if it would overflow available space
+	// widget.Truncate account name if it would overflow available space
 	maxNameWidth := max(
 		// 4 padding + 2 gap
 		contentWidth-lipgloss.Width(balStr)-6, 10)
-	acctName = truncate(acctName, maxNameWidth)
+	acctName = widget.Truncate(acctName, maxNameWidth)
 	padding := max(contentWidth-lipgloss.Width(acctName)-lipgloss.Width(balStr)-4, 1)
 
 	balStyle := a.styles.Positive
@@ -480,7 +481,7 @@ func (a *App) renderRegister() string {
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
-	// Table
+	// widget.Table
 	headerHeight := 1
 	statusBarHeight := 1
 	titleHeight := 2      // title + separator

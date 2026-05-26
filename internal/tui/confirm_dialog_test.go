@@ -4,17 +4,19 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 func TestApp_HandleConfirmDialogKey_Cancel(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
-	d := NewDialog("Confirm")
-	d.SetButtons([]DialogButton{
+	d := dialog.NewDialog("Confirm")
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "No"},
 		{Label: "Yes", Primary: true},
 	})
@@ -37,12 +39,12 @@ func TestApp_HandleConfirmDialogKey_Confirm(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	called := false
-	d := NewDialog("Confirm")
-	d.SetButtons([]DialogButton{
+	d := dialog.NewDialog("Confirm")
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "No"},
 		{Label: "Yes", Primary: true},
 	})

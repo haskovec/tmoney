@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -306,7 +307,7 @@ func TestSidebar_SetAccounts_WithBalances(t *testing.T) {
 
 func TestSidebar_Render_Empty(t *testing.T) {
 	s := NewSidebar()
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(80, 24)
 
 	result := s.Render(styles, 20, 10)
@@ -317,7 +318,7 @@ func TestSidebar_Render_Empty(t *testing.T) {
 
 func TestSidebar_Render_EmptyShowsMessage(t *testing.T) {
 	s := NewSidebar()
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(80, 24)
 
 	result := s.Render(styles, 25, 10)
@@ -331,7 +332,7 @@ func TestSidebar_Render_EmptyShowsMessage(t *testing.T) {
 
 func TestSidebar_Render_ZeroDimensions(t *testing.T) {
 	s := NewSidebar()
-	styles := NewStyles()
+	styles := widget.NewStyles()
 
 	if s.Render(styles, 0, 10) != "" {
 		t.Error("Render() with width=0 should return empty string")
@@ -349,7 +350,7 @@ func TestSidebar_Render_WithAccounts(t *testing.T) {
 	}
 	s.SetAccounts(accounts, nil)
 
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(80, 24)
 
 	result := s.Render(styles, 20, 10)
@@ -377,7 +378,7 @@ func TestSidebar_Render_RowCountStableWhenAccountSelected(t *testing.T) {
 	}
 	s.SetAccounts(accounts, nil)
 
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(184, 64)
 
 	const sidebarWidth = 32
@@ -536,7 +537,7 @@ func TestSidebar_ScrollOnMoveDown(t *testing.T) {
 	s.SetAccounts(accounts, nil)
 	// 8 items total
 
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(80, 24)
 
 	// Move cursor to the bottom and render with small viewport

@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -162,7 +163,7 @@ func TestSubmitMergerDialog_TransitionsToConfirmation(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	// Dialog should be closed
+	// dialog.Dialog should be closed
 	if updatedApp.mergerDialog != nil {
 		t.Error("merger dialog should be closed after submit")
 	}
@@ -353,7 +354,7 @@ func TestRenderMergerConfirmation_NotNil(t *testing.T) {
 				},
 			},
 		},
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
 	}
@@ -381,7 +382,7 @@ func TestRenderMergerConfirmation_ContainsSourceAndTarget(t *testing.T) {
 			date:          "06/10/2024",
 			accounts:      []mergerAffectedAccount{},
 		},
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
 	}
@@ -405,7 +406,7 @@ func TestRenderMergerConfirmation_ContainsCashInfo(t *testing.T) {
 			date:          "06/10/2024",
 			accounts:      []mergerAffectedAccount{},
 		},
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
 	}
@@ -425,7 +426,7 @@ func TestRenderMergerConfirmation_NoAccounts(t *testing.T) {
 			date:          "06/10/2024",
 			accounts:      []mergerAffectedAccount{},
 		},
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
 	}
@@ -462,7 +463,7 @@ func TestRenderMergerConfirmation_WithLotTrackingAccount(t *testing.T) {
 				},
 			},
 		},
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
 	}
@@ -496,7 +497,7 @@ func TestRenderMergerConfirmation_WithNonLotAccount(t *testing.T) {
 				},
 			},
 		},
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
 	}
@@ -509,7 +510,7 @@ func TestRenderMergerConfirmation_WithNonLotAccount(t *testing.T) {
 
 func TestApp_Update_MergerConfirmDataMsg(t *testing.T) {
 	app := &App{
-		statusbar: NewStatusBar(),
+		statusbar: widget.NewStatusBar(),
 		mergerConfirmParams: &mergerConfirmParams{
 			sourceSecurityID: types.NewID(),
 		},

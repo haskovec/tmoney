@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -100,7 +101,7 @@ func accountTypeShowsInterestRate(at account.Type) bool {
 
 // updateAccountFieldVisibility updates the Hidden state of credit limit and interest rate
 // fields based on the currently selected account type.
-func updateAccountFieldVisibility(d *Dialog) {
+func updateAccountFieldVisibility(d *dialog.Dialog) {
 	fields := d.Fields()
 	if len(fields) <= acctFieldInterestRate {
 		return
@@ -125,9 +126,9 @@ func updateAccountFieldVisibility(d *Dialog) {
 	}
 }
 
-// buildNewAccountDialog creates a Dialog for creating a new account.
-func buildNewAccountDialog() *Dialog {
-	d := NewDialog("New Account")
+// buildNewAccountDialog creates a dialog.Dialog for creating a new account.
+func buildNewAccountDialog() *dialog.Dialog {
+	d := dialog.NewDialog("New Account")
 
 	// Name
 	f := d.AddTextField("Name", "", "Account name", 0)
@@ -168,9 +169,9 @@ func buildNewAccountDialog() *Dialog {
 	return d
 }
 
-// buildEditAccountDialog creates a Dialog for editing an existing account.
-func buildEditAccountDialog(acct *account.Account) *Dialog {
-	d := NewDialog("Edit Account")
+// buildEditAccountDialog creates a dialog.Dialog for editing an existing account.
+func buildEditAccountDialog(acct *account.Account) *dialog.Dialog {
+	d := dialog.NewDialog("Edit Account")
 
 	// Name
 	f := d.AddTextField("Name", acct.Name, "Account name", 0)
@@ -279,9 +280,9 @@ func (a *App) handleAccountDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	action := a.acctDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitAccountDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeAccountDialog()
 		return a, nil
 	}

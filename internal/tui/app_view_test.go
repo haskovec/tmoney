@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -64,7 +65,7 @@ func TestApp_GetKeyHints(t *testing.T) {
 }
 
 func TestApp_RenderLayout(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(80, 24)
 	app := &App{
 		currentView: ViewDashboard,
@@ -73,8 +74,8 @@ func TestApp_RenderLayout(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
 	}
 
@@ -113,7 +114,7 @@ func TestApp_GetKeyHints_Reports(t *testing.T) {
 }
 
 func TestApp_View_Error(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(80, 24)
 	app := &App{
 		ready:  true,
@@ -137,7 +138,7 @@ func TestApp_KeyHints_RegisterIncludesVoid(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	hints := app.getKeyHints()
@@ -157,14 +158,14 @@ func TestApp_View_ComponentWidths(t *testing.T) {
 			app := &App{
 				currentView: ViewDashboard,
 				keys:        defaultKeyMap(),
-				menubar:     NewMenuBar(),
+				menubar:     widget.NewMenuBar(),
 				sidebar:     NewSidebar(),
-				statusbar:   NewStatusBar(),
+				statusbar:   widget.NewStatusBar(),
 				width:       termWidth,
 				height:      24,
 				ready:       true,
 			}
-			app.styles = NewStyles()
+			app.styles = widget.NewStyles()
 			app.styles.Resize(termWidth, 24)
 			app.sidebar.SetAccounts([]*account.Account{checking}, nil)
 
@@ -226,9 +227,9 @@ func TestApp_View_RegisterLoadedWidths(t *testing.T) {
 			app := &App{
 				currentView: ViewRegister,
 				keys:        defaultKeyMap(),
-				menubar:     NewMenuBar(),
+				menubar:     widget.NewMenuBar(),
 				sidebar:     NewSidebar(),
-				statusbar:   NewStatusBar(),
+				statusbar:   widget.NewStatusBar(),
 				width:       termWidth,
 				height:      24,
 				ready:       true,
@@ -241,7 +242,7 @@ func TestApp_View_RegisterLoadedWidths(t *testing.T) {
 					accountNames:  map[types.ID]string{},
 				},
 			}
-			app.styles = NewStyles()
+			app.styles = widget.NewStyles()
 			app.styles.Resize(termWidth, 24)
 			app.sidebar.SetAccounts([]*account.Account{checking}, nil)
 			app.sidebar.SetFocused(false)
@@ -264,7 +265,7 @@ func TestApp_View_RegisterLoadedWidths(t *testing.T) {
 
 			if maxLineWidth > termWidth {
 				t.Errorf("Line %d is %d cols, exceeds terminal width %d", widestLine, maxLineWidth, termWidth)
-				t.Logf("Line content: %q", stripAnsi(viewLines[widestLine]))
+				t.Logf("Line content: %q", widget.StripAnsi(viewLines[widestLine]))
 			}
 			if len(viewLines) != 24 {
 				t.Errorf("View has %d lines, want 24", len(viewLines))
@@ -289,14 +290,14 @@ func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       120,
 		height:      24,
 		ready:       true,
 	}
-	app.styles = NewStyles()
+	app.styles = widget.NewStyles()
 	app.styles.Resize(120, 24)
 	app.sidebar.SetAccounts([]*account.Account{checking}, nil)
 
@@ -330,11 +331,11 @@ func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
 	if !strings.Contains(regLines[0], "File") && !strings.Contains(regLines[0], "\033") {
 		t.Logf("First line (raw bytes): %q", regLines[0])
 		t.Logf("First line visual width: %d", lipgloss.Width(regLines[0]))
-		t.Errorf("First line should contain menu bar, got visual content: %q", stripAnsi(regLines[0]))
+		t.Errorf("First line should contain menu bar, got visual content: %q", widget.StripAnsi(regLines[0]))
 	}
 
 	// Log the first few lines for debugging
 	for i := 0; i < min(5, len(regLines)); i++ {
-		t.Logf("Line %d (width=%d): %q", i, lipgloss.Width(regLines[i]), stripAnsi(regLines[i]))
+		t.Logf("Line %d (width=%d): %q", i, lipgloss.Width(regLines[i]), widget.StripAnsi(regLines[i]))
 	}
 }

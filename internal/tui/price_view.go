@@ -13,6 +13,8 @@ import (
 	"github.com/haskovec/tmoney/internal/imexport"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -232,15 +234,15 @@ func (a *App) buildPriceListTable() {
 		return
 	}
 
-	columns := []Column{
-		{Header: "Ticker", Width: 10, Align: AlignLeft},
-		{Header: "Name", Width: 32, Align: AlignLeft},
-		{Header: "Latest Price", Width: 15, Align: AlignRight},
-		{Header: "Date", Width: 12, Align: AlignLeft},
+	columns := []widget.Column{
+		{Header: "Ticker", Width: 10, Align: widget.AlignLeft},
+		{Header: "Name", Width: 32, Align: widget.AlignLeft},
+		{Header: "Latest Price", Width: 15, Align: widget.AlignRight},
+		{Header: "Date", Width: 12, Align: widget.AlignLeft},
 	}
 
 	if a.priceListTable == nil {
-		a.priceListTable = NewTable(columns)
+		a.priceListTable = widget.NewTable(columns)
 	} else {
 		a.priceListTable.SetColumns(columns)
 	}
@@ -264,14 +266,14 @@ func (a *App) buildPriceTable() {
 		return
 	}
 
-	columns := []Column{
-		{Header: "Date", Width: 12, Align: AlignLeft},
-		{Header: "Price", Width: 15, Align: AlignRight},
-		{Header: "Source", Width: 12, Align: AlignLeft},
+	columns := []widget.Column{
+		{Header: "Date", Width: 12, Align: widget.AlignLeft},
+		{Header: "Price", Width: 15, Align: widget.AlignRight},
+		{Header: "Source", Width: 12, Align: widget.AlignLeft},
 	}
 
 	if a.priceTable == nil {
-		a.priceTable = NewTable(columns)
+		a.priceTable = widget.NewTable(columns)
 	} else {
 		a.priceTable.SetColumns(columns)
 	}
@@ -787,8 +789,8 @@ const (
 )
 
 // buildAddPriceDialog builds the dialog for adding a new price.
-func buildAddPriceDialog(sec *security.Security) *Dialog {
-	d := NewDialog(fmt.Sprintf("Add Price — %s", sec.Ticker))
+func buildAddPriceDialog(sec *security.Security) *dialog.Dialog {
+	d := dialog.NewDialog(fmt.Sprintf("Add Price — %s", sec.Ticker))
 
 	today := time.Now().Format("2006-01-02")
 	f := d.AddDateFieldISO("Date", today)
@@ -797,7 +799,7 @@ func buildAddPriceDialog(sec *security.Security) *Dialog {
 	f = d.AddTextField("Price", "", "e.g. 185.50", 15)
 	f.Required = true
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Save", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -806,8 +808,8 @@ func buildAddPriceDialog(sec *security.Security) *Dialog {
 }
 
 // buildEditPriceDialog builds the dialog for editing an existing price.
-func buildEditPriceDialog(sec *security.Security, p *price.Price) *Dialog {
-	d := NewDialog(fmt.Sprintf("Edit Price — %s", sec.Ticker))
+func buildEditPriceDialog(sec *security.Security, p *price.Price) *dialog.Dialog {
+	d := dialog.NewDialog(fmt.Sprintf("Edit Price — %s", sec.Ticker))
 
 	dateStr := p.Date.Time().Format("2006-01-02")
 	f := d.AddDateFieldISO("Date", dateStr)
@@ -817,7 +819,7 @@ func buildEditPriceDialog(sec *security.Security, p *price.Price) *Dialog {
 	f = d.AddTextField("Price", priceStr, "e.g. 185.50", 15)
 	f.Required = true
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Save", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -829,11 +831,11 @@ func buildEditPriceDialog(sec *security.Security, p *price.Price) *Dialog {
 func (a *App) handlePriceDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.priceDialog.HandleKey(msg)
 	switch action {
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.priceDialog.SetVisible(false)
 		a.priceDialog = nil
 		return a, nil
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitPriceDialog()
 	}
 	return a, nil
@@ -919,15 +921,15 @@ func (a *App) updatePrice(id, securityID types.ID, date types.Date, amount types
 // Bulk import dialog
 
 // buildImportPriceDialog builds the dialog for importing prices from CSV.
-func buildImportPriceDialog() *Dialog {
-	d := NewDialog("Import Prices")
+func buildImportPriceDialog() *dialog.Dialog {
+	d := dialog.NewDialog("Import Prices")
 
 	f := d.AddTextField("CSV File", "", "Path to CSV file", 0)
 	f.Required = true
 
 	d.AddCheckboxField("Overwrite existing", false)
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Import", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -939,11 +941,11 @@ func buildImportPriceDialog() *Dialog {
 func (a *App) handlePriceImportDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.priceImportDialog.HandleKey(msg)
 	switch action {
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.priceImportDialog.SetVisible(false)
 		a.priceImportDialog = nil
 		return a, nil
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitImportPriceDialog()
 	}
 	return a, nil

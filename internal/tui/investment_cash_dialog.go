@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -16,10 +17,10 @@ type cashOperationDialogSavedMsg struct {
 	savedDate types.Date
 }
 
-// buildCashOperationDialog creates a Dialog for cash-only investment operations
+// buildCashOperationDialog creates a dialog.Dialog for cash-only investment operations
 // (Deposit, Withdrawal, Fee, Interest). These share the same fields: Date, Amount, Memo.
-func buildCashOperationDialog(title string, editTxn *investment.Transaction) *Dialog {
-	d := NewDialog(title)
+func buildCashOperationDialog(title string, editTxn *investment.Transaction) *dialog.Dialog {
+	d := dialog.NewDialog(title)
 	d.SetWidth(70)
 
 	// Date
@@ -67,9 +68,9 @@ func (a *App) handleCashOperationDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.
 
 	action := a.cashOperationDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitCashOperationDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeCashOperationDialog()
 		return a, nil
 	}

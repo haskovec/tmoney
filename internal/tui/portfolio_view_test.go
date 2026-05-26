@@ -8,11 +8,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-func testStyles() Styles {
-	s := NewStyles()
+func testStyles() widget.Styles {
+	s := widget.NewStyles()
 	s.Resize(120, 40)
 	return s
 }
@@ -574,7 +575,7 @@ func TestBuildPortfolioHoldingsTable(t *testing.T) {
 		t.Fatal("holdings table should be created")
 	}
 
-	rows := app.portfolioHoldingsTable.rows
+	rows := app.portfolioHoldingsTable.Rows()
 	if len(rows) != 1 {
 		t.Fatalf("expected 1 row, got %d", len(rows))
 	}
@@ -626,7 +627,7 @@ func TestBuildPortfolioHoldingsTable_MultipleHoldings(t *testing.T) {
 		t.Fatal("holdings table should be created")
 	}
 
-	rows := app.portfolioHoldingsTable.rows
+	rows := app.portfolioHoldingsTable.Rows()
 	if len(rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(rows))
 	}
@@ -679,7 +680,7 @@ func TestBuildPortfolioLotsTable(t *testing.T) {
 		t.Fatal("lots table should be created")
 	}
 
-	rows := app.portfolioLotsTable.rows
+	rows := app.portfolioLotsTable.Rows()
 	if len(rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(rows))
 	}
@@ -860,7 +861,7 @@ func TestPortfolioViewToggle_RegisterToPortfolio(t *testing.T) {
 	app := &App{
 		currentView: ViewInvestmentRegister,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
@@ -869,7 +870,7 @@ func TestPortfolioViewToggle_RegisterToPortfolio(t *testing.T) {
 				Type:      account.TypeInvestment,
 			},
 		},
-		investmentTable: NewTable(nil),
+		investmentTable: widget.NewTable(nil),
 	}
 
 	// Simulate pressing 'p' to switch to portfolio
@@ -896,7 +897,7 @@ func TestPortfolioViewToggle_PortfolioToRegister(t *testing.T) {
 	app := &App{
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
 		portfolioData: &portfolioViewData{
 			account: &account.Account{
@@ -906,7 +907,7 @@ func TestPortfolioViewToggle_PortfolioToRegister(t *testing.T) {
 			},
 		},
 		portfolioMode:          portfolioViewHoldings,
-		portfolioHoldingsTable: NewTable(nil),
+		portfolioHoldingsTable: widget.NewTable(nil),
 	}
 
 	// Simulate pressing 'r' to switch to register
@@ -932,7 +933,7 @@ func TestPortfolioKeys_LotDrillDown(t *testing.T) {
 		height:      40,
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
 		portfolioData: &portfolioViewData{
 			account: &account.Account{
@@ -988,7 +989,7 @@ func TestPortfolioKeys_LotDrillDown_NonLotTracking(t *testing.T) {
 		height:      40,
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
 		portfolioData: &portfolioViewData{
 			account: &account.Account{
@@ -1034,7 +1035,7 @@ func TestPortfolioKeys_EscapeFromLots(t *testing.T) {
 	app := &App{
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
 		portfolioData: &portfolioViewData{
 			account: &account.Account{
@@ -1046,8 +1047,8 @@ func TestPortfolioKeys_EscapeFromLots(t *testing.T) {
 			lotSecurityID: secID,
 		},
 		portfolioMode:          portfolioViewLots,
-		portfolioHoldingsTable: NewTable(nil),
-		portfolioLotsTable:     NewTable(nil),
+		portfolioHoldingsTable: widget.NewTable(nil),
+		portfolioLotsTable:     widget.NewTable(nil),
 	}
 
 	// Press Escape from lot view - should go back to holdings
@@ -1070,7 +1071,7 @@ func TestPortfolioKeys_EscapeFromHoldings(t *testing.T) {
 	app := &App{
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
 		portfolioData: &portfolioViewData{
 			account: &account.Account{
@@ -1080,7 +1081,7 @@ func TestPortfolioKeys_EscapeFromHoldings(t *testing.T) {
 			},
 		},
 		portfolioMode:          portfolioViewHoldings,
-		portfolioHoldingsTable: NewTable(nil),
+		portfolioHoldingsTable: widget.NewTable(nil),
 	}
 
 	// Press Escape from holdings - should go to investment register
@@ -1105,7 +1106,7 @@ func TestPortfolioKeys_Navigation(t *testing.T) {
 		height:      40,
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
 		portfolioData: &portfolioViewData{
 			account: &account.Account{
@@ -1148,7 +1149,7 @@ func TestPortfolioLoadedMsg_Handler(t *testing.T) {
 	app := &App{
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		styles:      testStyles(),
 	}
 
@@ -1187,7 +1188,7 @@ func TestPortfolioLotDetailMsg_Handler(t *testing.T) {
 	app := &App{
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		styles:      testStyles(),
 		portfolioData: &portfolioViewData{
 			account: &account.Account{
@@ -1288,8 +1289,8 @@ func TestViewPortfolioString(t *testing.T) {
 func TestActivePortfolioTable_HoldingsMode(t *testing.T) {
 	app := &App{
 		portfolioMode:          portfolioViewHoldings,
-		portfolioHoldingsTable: NewTable(nil),
-		portfolioLotsTable:     NewTable(nil),
+		portfolioHoldingsTable: widget.NewTable(nil),
+		portfolioLotsTable:     widget.NewTable(nil),
 	}
 
 	tbl := app.activePortfolioTable()
@@ -1301,8 +1302,8 @@ func TestActivePortfolioTable_HoldingsMode(t *testing.T) {
 func TestActivePortfolioTable_LotsMode(t *testing.T) {
 	app := &App{
 		portfolioMode:          portfolioViewLots,
-		portfolioHoldingsTable: NewTable(nil),
-		portfolioLotsTable:     NewTable(nil),
+		portfolioHoldingsTable: widget.NewTable(nil),
+		portfolioLotsTable:     widget.NewTable(nil),
 	}
 
 	tbl := app.activePortfolioTable()

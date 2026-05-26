@@ -12,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -183,9 +184,9 @@ func leadDaysFromIndex(index int) int {
 	}
 }
 
-// buildNewScheduledDialog creates a Dialog for creating a new scheduled transaction.
-func buildNewScheduledDialog(accountOptions, categoryOptions []string) *Dialog {
-	d := NewDialog("New Scheduled Transaction")
+// buildNewScheduledDialog creates a dialog.Dialog for creating a new scheduled transaction.
+func buildNewScheduledDialog(accountOptions, categoryOptions []string) *dialog.Dialog {
+	d := dialog.NewDialog("New Scheduled Transaction")
 	d.SetWidth(62)
 
 	// Account
@@ -239,9 +240,9 @@ func buildNewScheduledDialog(accountOptions, categoryOptions []string) *Dialog {
 	return d
 }
 
-// buildEditScheduledDialog creates a Dialog for editing an existing scheduled transaction.
-func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string, accountIDs []types.ID, categoryOptions []string, categoryIDs []types.ID, payeeNames map[types.ID]string) *Dialog {
-	d := NewDialog("Edit Scheduled Transaction")
+// buildEditScheduledDialog creates a dialog.Dialog for editing an existing scheduled transaction.
+func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string, accountIDs []types.ID, categoryOptions []string, categoryIDs []types.ID, payeeNames map[types.ID]string) *dialog.Dialog {
+	d := dialog.NewDialog("Edit Scheduled Transaction")
 	d.SetWidth(62)
 
 	// Account - find the matching index
@@ -335,10 +336,10 @@ func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string
 	// paycheck wizard with values pre-filled. Visible only when the
 	// schedule matches the paycheck heuristic.
 	if looksLikePaycheck(st) {
-		d.SetButtons([]DialogButton{
+		d.SetButtons([]dialog.DialogButton{
 			{Label: "Save", Primary: true},
 			{Label: "Cancel"},
-			{Label: "Edit as paycheck →", Action: DialogActionAlternate},
+			{Label: "Edit as paycheck →", Action: dialog.DialogActionAlternate},
 		})
 	}
 
@@ -436,14 +437,14 @@ func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 
 	action := a.schedDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitScheduledDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeScheduledDialog()
 		return a, nil
-	case DialogActionAlternate:
+	case dialog.DialogActionAlternate:
 		return a.relaunchAsPaycheckWizard()
-	case DialogActionAddNew:
+	case dialog.DialogActionAddNew:
 		return a.openCreateCategorySubDialogFromSched()
 	}
 
@@ -598,7 +599,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	switch durationChoice {
 	case durationUntilDate:
 		endDateRaw := fields[schedFieldEndDate].Value
-		if isBlankDateInput(endDateRaw) {
+		if dialog.IsBlankDateInput(endDateRaw) {
 			fields[schedFieldEndDate].Error = "End date is required"
 			hasErrors = true
 		} else {

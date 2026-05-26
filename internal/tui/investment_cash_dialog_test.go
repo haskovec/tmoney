@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -27,9 +28,9 @@ func TestBuildCashOperationDialog_Deposit(t *testing.T) {
 		t.Fatalf("expected 3 fields, got %d", len(fields))
 	}
 
-	// Field 0: Date (masked, required, default today)
-	if fields[0].Type != FieldDate {
-		t.Errorf("field 0 type = %d, want FieldDate (%d)", fields[0].Type, FieldDate)
+	// dialog.Field 0: Date (masked, required, default today)
+	if fields[0].Type != dialog.FieldDate {
+		t.Errorf("field 0 type = %d, want dialog.FieldDate (%d)", fields[0].Type, dialog.FieldDate)
 	}
 	if fields[0].Label != "Date" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Date")
@@ -42,9 +43,9 @@ func TestBuildCashOperationDialog_Deposit(t *testing.T) {
 		t.Errorf("date default = %q, want %q", fields[0].Value, today)
 	}
 
-	// Field 1: Amount (text, required)
-	if fields[1].Type != FieldText {
-		t.Errorf("field 1 type = %d, want FieldText", fields[1].Type)
+	// dialog.Field 1: Amount (text, required)
+	if fields[1].Type != dialog.FieldText {
+		t.Errorf("field 1 type = %d, want dialog.FieldText", fields[1].Type)
 	}
 	if fields[1].Label != "Amount" {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Amount")
@@ -56,7 +57,7 @@ func TestBuildCashOperationDialog_Deposit(t *testing.T) {
 		t.Errorf("amount default = %q, want empty for new", fields[1].Value)
 	}
 
-	// Field 2: Memo (text)
+	// dialog.Field 2: Memo (text)
 	if fields[2].Label != "Memo" {
 		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "Memo")
 	}

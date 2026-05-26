@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -316,10 +317,10 @@ func newSchedulePreviewTestEnv(t *testing.T) *schedulePreviewTestEnv {
 		width:           120,
 		height:          30,
 		keys:            defaultKeyMap(),
-		menubar:         NewMenuBar(),
-		statusbar:       NewStatusBar(),
+		menubar:         widget.NewMenuBar(),
+		statusbar:       widget.NewStatusBar(),
 		sidebar:         NewSidebar(),
-		styles:          NewStyles(),
+		styles:          widget.NewStyles(),
 		accountSvc:      accountSvc,
 		payeeSvc:        payeeSvc,
 		categorySvc:     categorySvc,
@@ -396,7 +397,7 @@ func TestSchedulePreview_SaveCreatesTransactionAndAdvances(t *testing.T) {
 		t.Fatalf("submitSchedulePreviewDialog returned %T, want *App", model)
 	}
 
-	// Dialog must close synchronously so the UI returns to the
+	// dialog.Dialog must close synchronously so the UI returns to the
 	// scheduled view immediately; the actual save happens in the tea.Cmd.
 	if updated.schedPreviewDialog != nil {
 		t.Error("preview dialog should be cleared on Save")
@@ -672,10 +673,10 @@ func newSchedulePreviewMultiLineEnv(t *testing.T) *schedulePreviewMultiLineEnv {
 		width:           120,
 		height:          30,
 		keys:            defaultKeyMap(),
-		menubar:         NewMenuBar(),
-		statusbar:       NewStatusBar(),
+		menubar:         widget.NewMenuBar(),
+		statusbar:       widget.NewStatusBar(),
 		sidebar:         NewSidebar(),
-		styles:          NewStyles(),
+		styles:          widget.NewStyles(),
 		accountSvc:      accountSvc,
 		payeeSvc:        payeeSvc,
 		categorySvc:     categorySvc,
@@ -861,7 +862,7 @@ func TestSchedulePreview_ImbalancedSaveDisabled(t *testing.T) {
 	if !ok {
 		t.Fatalf("submitSchedulePreviewDialog returned %T, want *App", model)
 	}
-	// Dialog must stay open so the user can fix the imbalance.
+	// dialog.Dialog must stay open so the user can fix the imbalance.
 	if updated.schedPreviewDialog == nil {
 		t.Error("preview dialog should remain open while imbalanced")
 	}
@@ -921,7 +922,7 @@ func parkSchedPreviewOnAddNew(t *testing.T, app *App, query string) {
 	header.SetFocusIndex(previewSingleFieldCat)
 	cat := header.Fields()[previewSingleFieldCat]
 	cat.Query = query
-	cat.comboHighlight = len(cat.FilteredIndices())
+	cat.ComboHighlight = len(cat.FilteredIndices())
 }
 
 func TestApp_SchedPreview_AddNew_OpensCreateCategoryDialog(t *testing.T) {

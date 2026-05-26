@@ -5,16 +5,18 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 func newAboutTestApp() *App {
 	return &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		menubar:     NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
 		ready:       true,
@@ -25,10 +27,10 @@ func TestApp_MenuActionAboutOpensDialog(t *testing.T) {
 	app := newAboutTestApp()
 
 	app.menubar.Activate()
-	_, _ = app.handleMenuAction(MenuActionAbout, "")
+	_, _ = app.handleMenuAction(widget.MenuActionAbout, "")
 
 	if app.aboutDialog == nil || !app.aboutDialog.IsVisible() {
-		t.Fatal("aboutDialog should be visible after MenuActionAbout")
+		t.Fatal("aboutDialog should be visible after widget.MenuActionAbout")
 	}
 	if app.menubar.IsActive() {
 		t.Error("menu bar should be deactivated after selecting About")
@@ -54,7 +56,7 @@ func TestApp_MenuActionAboutOpensDialog(t *testing.T) {
 func TestApp_AboutDialogRendersInView(t *testing.T) {
 	app := newAboutTestApp()
 
-	_, _ = app.handleMenuAction(MenuActionAbout, "")
+	_, _ = app.handleMenuAction(widget.MenuActionAbout, "")
 
 	view := app.View()
 	if !strings.Contains(view.Content, "Terminal Money") {
@@ -70,7 +72,7 @@ func TestApp_AboutDialogRendersInView(t *testing.T) {
 
 func TestApp_AboutDialogClosesOnEnter(t *testing.T) {
 	app := newAboutTestApp()
-	_, _ = app.handleMenuAction(MenuActionAbout, "")
+	_, _ = app.handleMenuAction(widget.MenuActionAbout, "")
 
 	if app.aboutDialog == nil {
 		t.Fatal("about dialog should be open")
@@ -86,7 +88,7 @@ func TestApp_AboutDialogClosesOnEnter(t *testing.T) {
 
 func TestApp_AboutDialogClosesOnEsc(t *testing.T) {
 	app := newAboutTestApp()
-	_, _ = app.handleMenuAction(MenuActionAbout, "")
+	_, _ = app.handleMenuAction(widget.MenuActionAbout, "")
 
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 
@@ -97,7 +99,7 @@ func TestApp_AboutDialogClosesOnEsc(t *testing.T) {
 
 func TestApp_AboutDialogClosesOnOKClick(t *testing.T) {
 	app := newAboutTestApp()
-	_, _ = app.handleMenuAction(MenuActionAbout, "")
+	_, _ = app.handleMenuAction(widget.MenuActionAbout, "")
 
 	d := app.aboutDialog
 	if d == nil {
@@ -106,7 +108,7 @@ func TestApp_AboutDialogClosesOnOKClick(t *testing.T) {
 
 	// Find the OK button's screen coordinates and click on it.
 	startCol, startRow, _, _ := d.DialogBounds(app.width, app.height)
-	contentWidth := d.Width() - dialogHorizontalOverhead
+	contentWidth := d.Width() - dialog.DialogHorizontalOverhead
 	// The button row is the last content row; its rendered height equals
 	// ContentHeight, so the absolute screen Y is startRow + 2 (top border
 	// + top padding) + ContentHeight - 1 (last content row).
@@ -124,7 +126,7 @@ func TestApp_AboutDialogClosesOnOKClick(t *testing.T) {
 
 func TestApp_AboutDialogClosesOnCloseXClick(t *testing.T) {
 	app := newAboutTestApp()
-	_, _ = app.handleMenuAction(MenuActionAbout, "")
+	_, _ = app.handleMenuAction(widget.MenuActionAbout, "")
 
 	d := app.aboutDialog
 	if d == nil {
@@ -134,7 +136,7 @@ func TestApp_AboutDialogClosesOnCloseXClick(t *testing.T) {
 	// The [x] button sits in the top-right of the title row. Title row is
 	// the first content row inside the dialog padding.
 	startCol, startRow, _, _ := d.DialogBounds(app.width, app.height)
-	contentWidth := d.Width() - dialogHorizontalOverhead
+	contentWidth := d.Width() - dialog.DialogHorizontalOverhead
 	titleY := startRow + 2                // top border + top padding
 	xX := startCol + 3 + contentWidth - 2 // somewhere inside "[x]"
 

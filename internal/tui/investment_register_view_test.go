@@ -10,6 +10,8 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -360,7 +362,7 @@ func TestBuildInvestmentRegisterTable_NilData(t *testing.T) {
 
 func TestRenderInvestmentRegister_Loading(t *testing.T) {
 	app := &App{
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 	}
 	app.styles.Resize(80, 24)
 
@@ -374,7 +376,7 @@ func TestRenderInvestmentRegister_NoTransactions(t *testing.T) {
 	app := &App{
 		width:  80,
 		height: 24,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -407,7 +409,7 @@ func TestRenderInvestmentRegister_WithData(t *testing.T) {
 	app := &App{
 		width:  100,
 		height: 30,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -435,7 +437,7 @@ func TestRenderInvestmentRegister_ShowsCashBalance(t *testing.T) {
 	app := &App{
 		width:  100,
 		height: 30,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -472,7 +474,7 @@ func TestInvestmentRegisterLoadedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewInvestmentRegister,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := investmentRegisterLoadedMsg{data: data}
@@ -669,7 +671,7 @@ func TestInvestmentRegisterView_FullScreenRender(t *testing.T) {
 		acctID, date, investment.TransactionTypeBuy, types.MustNewMoney("1850.00"), secID, types.MustNewQuantity("10"),
 	)
 
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	app := &App{
@@ -679,8 +681,8 @@ func TestInvestmentRegisterView_FullScreenRender(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
@@ -746,8 +748,8 @@ func TestHandleInvestmentRegisterKeys_NewOpensTypeSelector(t *testing.T) {
 	if len(fields) != 1 {
 		t.Fatalf("expected 1 field (type selector), got %d", len(fields))
 	}
-	if fields[0].Type != FieldSelect {
-		t.Errorf("field type = %d, want FieldSelect (%d)", fields[0].Type, FieldSelect)
+	if fields[0].Type != dialog.FieldSelect {
+		t.Errorf("field type = %d, want dialog.FieldSelect (%d)", fields[0].Type, dialog.FieldSelect)
 	}
 	if len(fields[0].Options) == 0 {
 		t.Error("type selector should have options")
@@ -1046,7 +1048,7 @@ func TestInvestmentRegisterView_SwitchView(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -1079,7 +1081,7 @@ func TestRenderInvestmentRegister_TotalReturnHeader(t *testing.T) {
 	app := &App{
 		width:  120,
 		height: 30,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -1095,7 +1097,7 @@ func TestRenderInvestmentRegister_TotalReturnHeader(t *testing.T) {
 	app.styles.Resize(120, 30)
 	app.buildInvestmentRegisterTable()
 
-	output := stripAnsi(app.renderInvestmentRegister())
+	output := widget.StripAnsi(app.renderInvestmentRegister())
 
 	wants := []string{
 		"Unrealized", "$4500.00",
@@ -1128,7 +1130,7 @@ func TestRenderInvestmentRegister_TotalReturnPctNilRendersDash(t *testing.T) {
 	app := &App{
 		width:  120,
 		height: 30,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -1144,7 +1146,7 @@ func TestRenderInvestmentRegister_TotalReturnPctNilRendersDash(t *testing.T) {
 	app.styles.Resize(120, 30)
 	app.buildInvestmentRegisterTable()
 
-	output := stripAnsi(app.renderInvestmentRegister())
+	output := widget.StripAnsi(app.renderInvestmentRegister())
 	if !strings.Contains(output, "Total return") {
 		t.Fatalf("output should contain 'Total return' line; got:\n%s", output)
 	}
@@ -1157,7 +1159,7 @@ func TestRenderInvestmentRegister_NilValuationOmitsTotalReturn(t *testing.T) {
 	app := &App{
 		width:  120,
 		height: 30,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -1173,7 +1175,7 @@ func TestRenderInvestmentRegister_NilValuationOmitsTotalReturn(t *testing.T) {
 	app.styles.Resize(120, 30)
 	app.buildInvestmentRegisterTable()
 
-	output := stripAnsi(app.renderInvestmentRegister())
+	output := widget.StripAnsi(app.renderInvestmentRegister())
 	if strings.Contains(output, "Total return") {
 		t.Errorf("output should NOT contain 'Total return' when valuation is nil; got:\n%s", output)
 	}

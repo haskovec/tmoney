@@ -8,6 +8,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -21,7 +23,7 @@ const transferSentinelLabel = "Transfer →"
 // addNewSentinelLabel is the bottom-most option in a split row's category
 // picker, mirroring the [+ Add new category…] action row on typeahead
 // combos in other transaction-entry surfaces. Activating it (Enter on the
-// Category field while parked here) returns DialogActionAddNew so the
+// Category field while parked here) returns dialog.DialogActionAddNew so the
 // App-level router can divert into the inline create-category sub-dialog.
 const addNewSentinelLabel = "[+ Add new category…]"
 
@@ -57,8 +59,8 @@ type splitRow struct {
 	categoryIndex int
 	transferMode  bool
 	accountIndex  int
-	amountField   Field
-	memoField     Field
+	amountField   dialog.Field
+	memoField     dialog.Field
 }
 
 // pendingSplitTransaction holds the transaction data while the split editor is open.
@@ -150,14 +152,14 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 		}
 		sd.rows = append(sd.rows, splitRow{
 			categoryIndex: catIdx,
-			amountField: Field{
-				Type:        FieldText,
+			amountField: dialog.Field{
+				Type:        dialog.FieldText,
 				Value:       s.Amount.String(),
 				Placeholder: "0.00",
 				Width:       12,
 			},
-			memoField: Field{
-				Type:        FieldText,
+			memoField: dialog.Field{
+				Type:        dialog.FieldText,
 				Value:       memo,
 				Placeholder: "Memo",
 			},
@@ -303,13 +305,13 @@ func (sd *SplitDialog) remaining() types.Money {
 func (sd *SplitDialog) addRow() {
 	sd.rows = append(sd.rows, splitRow{
 		categoryIndex: 0,
-		amountField: Field{
-			Type:        FieldText,
+		amountField: dialog.Field{
+			Type:        dialog.FieldText,
 			Placeholder: "0.00",
 			Width:       12,
 		},
-		memoField: Field{
-			Type:        FieldText,
+		memoField: dialog.Field{
+			Type:        dialog.FieldText,
 			Placeholder: "Memo",
 		},
 	})
@@ -424,53 +426,53 @@ func (sd *SplitDialog) buildSplits() ([]*transaction.Split, error) {
 }
 
 // HandleKey processes a key event and returns the resulting action.
-func (sd *SplitDialog) HandleKey(msg tea.KeyPressMsg) DialogAction {
+func (sd *SplitDialog) HandleKey(msg tea.KeyPressMsg) dialog.DialogAction {
 	switch msg.String() {
 	case "esc":
-		return DialogActionCancel
+		return dialog.DialogActionCancel
 	case "ctrl+d":
 		if sd.focus == splitFocusRows && len(sd.rows) > 1 {
 			sd.removeRow(sd.rowIndex)
 			sd.errorMsg = ""
 		}
-		return DialogActionNone
+		return dialog.DialogActionNone
 	case "tab":
 		sd.focusNext()
-		return DialogActionNone
+		return dialog.DialogActionNone
 	case "shift+tab":
 		sd.focusPrev()
-		return DialogActionNone
+		return dialog.DialogActionNone
 	case "enter":
 		return sd.handleEnter()
 	}
 
-	// Field-specific input when focus is on rows
+	// dialog.Field-specific input when focus is on rows
 	if sd.focus == splitFocusRows && sd.rowIndex >= 0 && sd.rowIndex < len(sd.rows) {
 		sd.handleRowFieldKey(msg)
 	}
 
-	return DialogActionNone
+	return dialog.DialogActionNone
 }
 
 // handleEnter processes Enter key based on current focus.
-func (sd *SplitDialog) handleEnter() DialogAction {
+func (sd *SplitDialog) handleEnter() dialog.DialogAction {
 	switch sd.focus {
 	case splitFocusSaveBtn:
 		if err := sd.validate(); err != nil {
 			sd.errorMsg = err.Error()
-			return DialogActionNone
+			return dialog.DialogActionNone
 		}
 		sd.errorMsg = ""
-		return DialogActionSubmit
+		return dialog.DialogActionSubmit
 	case splitFocusCancelBtn:
-		return DialogActionCancel
+		return dialog.DialogActionCancel
 	case splitFocusAddBtn:
 		sd.addRow()
 		sd.focus = splitFocusRows
 		sd.rowIndex = len(sd.rows) - 1
 		sd.fieldFocus = splitFieldCategory
 		sd.errorMsg = ""
-		return DialogActionNone
+		return dialog.DialogActionNone
 	case splitFocusRows:
 		// Enter on the AddNew sentinel diverts into the create-category
 		// sub-dialog. Other selections (real categories, Transfer, or any
@@ -478,14 +480,14 @@ func (sd *SplitDialog) handleEnter() DialogAction {
 		if sd.fieldFocus == splitFieldCategory && sd.rowIndex >= 0 && sd.rowIndex < len(sd.rows) {
 			row := &sd.rows[sd.rowIndex]
 			if !row.transferMode && sd.isAddNewSentinel(row.categoryIndex) {
-				return DialogActionAddNew
+				return dialog.DialogActionAddNew
 			}
 		}
 		// Advance to next field within row, or next row, or add button
 		sd.focusNext()
-		return DialogActionNone
+		return dialog.DialogActionNone
 	}
-	return DialogActionNone
+	return dialog.DialogActionNone
 }
 
 // handleRowFieldKey handles key input for the currently focused row field.
@@ -546,8 +548,8 @@ func (sd *SplitDialog) handleRowFieldKey(msg tea.KeyPressMsg) {
 	}
 }
 
-// handleFieldTextKey applies text editing keys to a Field.
-func handleFieldTextKey(f *Field, msg tea.KeyPressMsg) {
+// handleFieldTextKey applies text editing keys to a dialog.Field.
+func handleFieldTextKey(f *dialog.Field, msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "backspace":
 		f.DeleteBack()
@@ -635,8 +637,8 @@ func (sd *SplitDialog) focusPrev() {
 }
 
 // Render renders the split dialog as a styled overlay.
-func (sd *SplitDialog) Render(styles Styles) string {
-	contentWidth := max(sd.width-dialogHorizontalOverhead, 10)
+func (sd *SplitDialog) Render(styles widget.Styles) string {
+	contentWidth := max(sd.width-dialog.DialogHorizontalOverhead, 10)
 
 	var lines []string
 
@@ -664,11 +666,11 @@ func (sd *SplitDialog) Render(styles Styles) string {
 	lines = append(lines, strings.Repeat("─", contentWidth))
 	lines = append(lines, "")
 
-	// Column headers
+	// widget.Column headers
 	catColW := contentWidth / 3
 	amtColW := 14
 	memoColW := max(contentWidth-catColW-amtColW-2, 5)
-	headerLine := padRight("Category", catColW) + " " + padRight("Amount", amtColW) + " " + "Memo"
+	headerLine := widget.PadRight("Category", catColW) + " " + widget.PadRight("Amount", amtColW) + " " + "Memo"
 	lines = append(lines, styles.Bold.Render(headerLine))
 	lines = append(lines, strings.Repeat("─", contentWidth))
 
@@ -689,7 +691,7 @@ func (sd *SplitDialog) Render(styles Styles) string {
 		} else {
 			catText = catText + " ▼"
 		}
-		catText = padRight(catText, catColW)
+		catText = widget.PadRight(catText, catColW)
 
 		// Amount
 		amtFocused := rowFocused && sd.fieldFocus == splitFieldAmount
@@ -765,7 +767,7 @@ func (sd *SplitDialog) Render(styles Styles) string {
 }
 
 // renderTextField renders a text field inline with cursor support.
-func (sd *SplitDialog) renderTextField(styles Styles, f *Field, focused bool, width int) string {
+func (sd *SplitDialog) renderTextField(styles widget.Styles, f *dialog.Field, focused bool, width int) string {
 	if width < 1 {
 		width = 1
 	}
@@ -823,15 +825,15 @@ func (a *App) handleSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	action := a.splitDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		if a.pendingSplitScheduled != nil {
 			return a.submitScheduledSplitDialog()
 		}
 		return a.submitSplitDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeSplitDialog()
 		return a, nil
-	case DialogActionAddNew:
+	case dialog.DialogActionAddNew:
 		return a.openCreateCategorySubDialogFromSplit()
 	}
 

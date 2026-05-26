@@ -9,6 +9,8 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -98,11 +100,11 @@ func TestApp_SubmitTransferDialog_DispatchesInvToInv(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"IRA A", "IRA B"}, 0)
 			d.AddSelectField("To", []string{"IRA A", "IRA B"}, 1)
 			d.AddTextField("Amount", "1000.00", "", 12)
@@ -137,11 +139,11 @@ func TestApp_SubmitTransferDialog_DispatchesInvToReg(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Brokerage", "Checking"}, 0)
 			d.AddSelectField("To", []string{"Brokerage", "Checking"}, 1)
 			d.AddTextField("Amount", "250.00", "", 12)
@@ -176,11 +178,11 @@ func TestApp_SubmitTransferDialog_DispatchesRegToInv(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Brokerage"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Brokerage"}, 1)
 			d.AddTextField("Amount", "500.00", "", 12)
@@ -284,13 +286,13 @@ func TestBuildTransferDialog_FieldTypes(t *testing.T) {
 
 	expected := []struct {
 		label     string
-		fieldType FieldType
+		fieldType dialog.FieldType
 	}{
-		{"From", FieldSelect},
-		{"To", FieldSelect},
-		{"Amount", FieldText},
-		{"Date", FieldDate},
-		{"Memo", FieldText},
+		{"From", dialog.FieldSelect},
+		{"To", dialog.FieldSelect},
+		{"Amount", dialog.FieldText},
+		{"Date", dialog.FieldDate},
+		{"Memo", dialog.FieldText},
 	}
 
 	for i, exp := range expected {
@@ -350,7 +352,7 @@ func TestBuildTransferDialog_DateDefault(t *testing.T) {
 }
 
 // TestBuildTransferDialog_DateFieldOverwriteSemantics asserts that the Date
-// field built by buildTransferDialog uses the FieldDate widget's overwrite
+// field built by buildTransferDialog uses the dialog.FieldDate widget's overwrite
 // semantics: typing two digits overwrites the month digits in place and the
 // resulting Value is still a canonical 10-char MM/DD/YYYY string.
 func TestBuildTransferDialog_DateFieldOverwriteSemantics(t *testing.T) {
@@ -403,10 +405,10 @@ func TestApp_HandleRegisterKeys_TransferKey(t *testing.T) {
 		currentView: ViewRegister,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
 			account: &account.Account{
@@ -440,8 +442,8 @@ func TestApp_Update_TransferDialogDataMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -487,8 +489,8 @@ func TestApp_Update_TransferDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 	app := &App{
 		currentView:            ViewRegister,
 		keys:                   defaultKeyMap(),
-		menubar:                NewMenuBar(),
-		statusbar:              NewStatusBar(),
+		menubar:                widget.NewMenuBar(),
+		statusbar:              widget.NewStatusBar(),
 		sidebar:                NewSidebar(),
 		txnDialogLastSavedDate: types.NewDate(2024, time.January, 15),
 	}
@@ -524,11 +526,11 @@ func TestApp_SubmitTransferDialog_PassesSavedDateInMessage(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "500.00", "", 12)
@@ -563,11 +565,11 @@ func TestApp_HandleTransferDialogKey_Cancel(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "", "100.00", 12)
@@ -602,11 +604,11 @@ func TestApp_HandleTransferDialogKey_TabCycles(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "", "100.00", 12)
@@ -641,8 +643,8 @@ func TestApp_Update_TransferDialogSavedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 	// Set up sidebar with a selected account
@@ -663,11 +665,11 @@ func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking"}, 0)
 			d.AddSelectField("To", []string{"Checking"}, 0) // same account
 			d.AddTextField("Amount", "100.00", "", 12)
@@ -704,11 +706,11 @@ func TestApp_SubmitTransferDialog_NegativeAmount(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "-50.00", "", 12)
@@ -745,11 +747,11 @@ func TestApp_SubmitTransferDialog_InvalidDate(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "100.00", "", 12)
@@ -783,11 +785,11 @@ func TestApp_SubmitTransferDialog_EmptyAmount(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "", "", 12)
@@ -821,11 +823,11 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "500.00", "", 12)
@@ -848,7 +850,7 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 		t.Error("valid transfer should return a non-nil cmd")
 	}
 
-	// Dialog should be closed
+	// dialog.Dialog should be closed
 	if updatedApp.transferDialog != nil {
 		t.Error("transfer dialog should be nil after submit")
 	}
@@ -864,8 +866,8 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 
 func TestApp_CloseTransferDialog(t *testing.T) {
 	app := &App{
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.SetVisible(true)
 			return d
 		}(),
@@ -887,7 +889,7 @@ func TestApp_CloseTransferDialog(t *testing.T) {
 }
 
 func TestApp_RenderLayout_WithTransferDialog(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	app := &App{
 		currentView: ViewRegister,
@@ -896,8 +898,8 @@ func TestApp_RenderLayout_WithTransferDialog(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
 		register: &registerData{
 			account: &account.Account{
@@ -910,8 +912,8 @@ func TestApp_RenderLayout_WithTransferDialog(t *testing.T) {
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
 		},
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.SetVisible(true)
 			return d
@@ -931,8 +933,8 @@ func TestApp_TransferDialogDataMsg_PreSelectsFromAccount(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -980,11 +982,11 @@ func TestApp_SubmitTransferDialog_ZeroAmount(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("New Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
 			d.AddTextField("Amount", "0.00", "", 12)
@@ -1071,12 +1073,12 @@ func TestBuildEditTransferDialog_Prefill(t *testing.T) {
 
 	expected := []struct {
 		label     string
-		fieldType FieldType
+		fieldType dialog.FieldType
 	}{
-		{"Amount", FieldText},
-		{"Date", FieldDate},
-		{"Memo", FieldText},
-		{"Status", FieldRadio},
+		{"Amount", dialog.FieldText},
+		{"Date", dialog.FieldDate},
+		{"Memo", dialog.FieldText},
+		{"Status", dialog.FieldRadio},
 	}
 	for i, exp := range expected {
 		if fields[i].Label != exp.label {
@@ -1113,10 +1115,10 @@ func TestApp_HandleRegisterKeys_EnterOnTransfer_OpensTransferEdit(t *testing.T) 
 		currentView: ViewRegister,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
 			account: &account.Account{
@@ -1185,8 +1187,8 @@ func TestApp_Update_TransferDialogDataMsg_EditMode(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -1282,8 +1284,8 @@ func TestApp_Update_TransferDialogDataMsg_InvestmentEdit(t *testing.T) {
 	app := &App{
 		currentView: ViewInvestmentRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -1350,11 +1352,11 @@ func TestApp_SubmitEditTransferDialog_InvestmentEdit_Dispatches(t *testing.T) {
 	app := &App{
 		currentView: ViewInvestmentRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *Dialog {
-			d := NewDialog("Edit Transfer")
+		transferDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("Edit Transfer")
 			d.AddTextField("Amount", "400.00", "", 12)
 			d.AddDateField("Date", "03/15/2024")
 			d.AddTextField("Memo", "rollover", "", 0)

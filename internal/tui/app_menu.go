@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -47,22 +48,22 @@ func (a *App) handleMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // handleMenuAction processes a menu item selection. The data string
 // carries action-specific context populated from menuItem.data — for
-// example, MenuActionLoadTheme uses it to carry the theme ID. It is
+// example, widget.MenuActionLoadTheme uses it to carry the theme ID. It is
 // the empty string for actions that don't need a payload.
-func (a *App) handleMenuAction(action MenuAction, data string) (tea.Model, tea.Cmd) {
+func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model, tea.Cmd) {
 	switch action {
-	case MenuActionNewFile:
+	case widget.MenuActionNewFile:
 		a.menubar.Deactivate()
 		a.fileDialogMode = fileDialogModeNew
 		a.fileDialog = buildNewFileDialog()
 		return a, nil
 
-	case MenuActionOpenFile:
+	case widget.MenuActionOpenFile:
 		a.menubar.Deactivate()
 		a.openBrowseDialog(db.DefaultDirectory())
 		return a, nil
 
-	case MenuActionOpenRecent:
+	case widget.MenuActionOpenRecent:
 		a.menubar.Deactivate()
 		a.fileDialogMode = fileDialogModeOpenRecent
 		var recent []string
@@ -72,15 +73,15 @@ func (a *App) handleMenuAction(action MenuAction, data string) (tea.Model, tea.C
 		a.fileDialog = buildOpenRecentDialog(recent)
 		return a, nil
 
-	case MenuActionImportTransactions:
+	case widget.MenuActionImportTransactions:
 		a.menubar.Deactivate()
 		return a, a.startImport()
 
-	case MenuActionCreateBackup:
+	case widget.MenuActionCreateBackup:
 		a.menubar.Deactivate()
 		return a, a.createManualBackupCmd()
 
-	case MenuActionRestoreBackup:
+	case widget.MenuActionRestoreBackup:
 		a.menubar.Deactivate()
 		d, backups, err := buildRestoreBackupDialog(a.db.Path())
 		if err != nil {
@@ -90,124 +91,124 @@ func (a *App) handleMenuAction(action MenuAction, data string) (tea.Model, tea.C
 		a.backupDialog = &backupDialogState{dialog: d, backups: backups}
 		return a, nil
 
-	case MenuActionCloseFile:
+	case widget.MenuActionCloseFile:
 		a.quitting = true
 		return a, tea.Quit
 
-	case MenuActionExit:
+	case widget.MenuActionExit:
 		a.quitting = true
 		return a, tea.Quit
 
-	case MenuActionDashboard:
+	case widget.MenuActionDashboard:
 		a.switchView(ViewDashboard)
 
-	case MenuActionNetWorth:
+	case widget.MenuActionNetWorth:
 		a.switchView(ViewReports)
 		now := time.Now()
 		return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()))
 
-	case MenuActionSpendingByCategory:
+	case widget.MenuActionSpendingByCategory:
 		a.switchView(ViewReports)
 		now := time.Now()
 		return a, a.loadReportsViewData(reportTypeSpending, now.Year(), int(now.Month()))
 
-	case MenuActionSecurities:
+	case widget.MenuActionSecurities:
 		a.switchView(ViewSecurities)
 		return a, a.loadSecurityViewData()
 
-	case MenuActionPrices:
+	case widget.MenuActionPrices:
 		a.switchView(ViewPrices)
 		return a, a.loadPriceViewData()
 
-	case MenuActionStockSplit:
+	case widget.MenuActionStockSplit:
 		a.stockSplitDialogPreSelectedID = nil
 		return a, a.loadStockSplitDialogData()
 
-	case MenuActionMerger:
+	case widget.MenuActionMerger:
 		a.mergerDialogPreSelectedID = nil
 		return a, a.loadMergerDialogData()
 
-	case MenuActionSpinOff:
+	case widget.MenuActionSpinOff:
 		a.spinOffDialogPreSelectedID = nil
 		return a, a.loadSpinOffDialogData()
 
-	case MenuActionCorporateActions:
+	case widget.MenuActionCorporateActions:
 		a.corporateActionViewFilter = ""
 		a.switchView(ViewCorporateActions)
 		return a, a.loadCorporateActionViewData()
 
-	case MenuActionNewAccount:
+	case widget.MenuActionNewAccount:
 		return a, a.loadNewAccountDialogData()
 
-	case MenuActionEditAccount:
+	case widget.MenuActionEditAccount:
 		if a.sidebar.SelectedAccountID() != types.NilID {
 			return a, a.loadEditAccountDialogData()
 		}
 
-	case MenuActionCloseAccount:
+	case widget.MenuActionCloseAccount:
 		if a.sidebar.SelectedAccountID() != types.NilID {
 			return a, a.closeSelectedAccount()
 		}
 
-	case MenuActionDeleteAccount:
+	case widget.MenuActionDeleteAccount:
 		if a.sidebar.SelectedAccountID() != types.NilID {
 			return a, a.deleteSelectedAccount()
 		}
 
-	case MenuActionReconcileAccount:
+	case widget.MenuActionReconcileAccount:
 		a.menubar.Deactivate()
 		if a.sidebar.SelectedAccountID() != types.NilID {
 			a.showStartReconciliationDialog()
 		}
 		return a, nil
 
-	case MenuActionNewTransaction:
+	case widget.MenuActionNewTransaction:
 		if a.currentView == ViewRegister {
 			return a, a.loadTransactionDialogData()
 		}
 
-	case MenuActionNewTransfer:
+	case widget.MenuActionNewTransfer:
 		if a.currentView == ViewRegister {
 			return a, a.loadTransferDialogData()
 		}
 
-	case MenuActionLinkTransfers:
+	case widget.MenuActionLinkTransfers:
 		a.menubar.Deactivate()
 		return a, a.startLinkTransfers()
 
-	case MenuActionNewPaycheckSchedule:
+	case widget.MenuActionNewPaycheckSchedule:
 		a.menubar.Deactivate()
 		return a, a.loadPaycheckWizardData()
 
-	case MenuActionUndo:
+	case widget.MenuActionUndo:
 		a.menubar.Deactivate()
 		return a, a.performUndo()
 
-	case MenuActionRedo:
+	case widget.MenuActionRedo:
 		a.menubar.Deactivate()
 		return a, a.performRedo()
 
-	case MenuActionKeyboardShortcuts:
+	case widget.MenuActionKeyboardShortcuts:
 		a.menubar.Deactivate()
 		a.showHelp = true
 		return a, nil
 
-	case MenuActionAbout:
+	case widget.MenuActionAbout:
 		a.menubar.Deactivate()
 		a.showAboutDialog()
 		return a, nil
 
-	case MenuActionLoadTheme:
+	case widget.MenuActionLoadTheme:
 		a.menubar.Deactivate()
 		if data == "" {
 			return a, nil
 		}
 		return a, a.reloadTheme(data)
 
-	case MenuActionToggleClosedPositions:
+	case widget.MenuActionToggleClosedPositions:
 		return a.toggleClosedPositions()
 
-	case MenuActionNone:
+	case widget.MenuActionNone:
 		// No action
 	}
 

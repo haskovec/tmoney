@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 // shortcutEntry represents a single keyboard shortcut for display in the help overlay.
@@ -71,7 +73,7 @@ func mouseShortcuts() shortcutSection {
 	return shortcutSection{
 		Title: "Mouse",
 		Entries: []shortcutEntry{
-			{"Click", "Menu items, accounts, rows"},
+			{"Click", "widget.Menu items, accounts, rows"},
 			{"Scroll", "Navigate lists and tables"},
 		},
 	}
@@ -253,7 +255,7 @@ func viewShortcutSections(view View) []shortcutSection {
 const helpOverlayWidth = 60
 
 // renderHelpOverlay renders the help overlay for the given view and screen dimensions.
-func renderHelpOverlay(styles Styles, view View, screenWidth, screenHeight int) string {
+func renderHelpOverlay(styles widget.Styles, view View, screenWidth, screenHeight int) string {
 	sections := viewShortcutSections(view)
 
 	overlayWidth := helpOverlayWidth
@@ -264,7 +266,7 @@ func renderHelpOverlay(styles Styles, view View, screenWidth, screenHeight int) 
 		overlayWidth = 30
 	}
 
-	contentWidth := overlayWidth - dialogHorizontalOverhead
+	contentWidth := overlayWidth - dialog.DialogHorizontalOverhead
 
 	var lines []string
 
@@ -287,7 +289,7 @@ func renderHelpOverlay(styles Styles, view View, screenWidth, screenHeight int) 
 		}
 	}
 
-	// Dialog border/padding overhead: top border(1) + top padding(1) + bottom padding(1) + bottom border(1)
+	// dialog.Dialog border/padding overhead: top border(1) + top padding(1) + bottom padding(1) + bottom border(1)
 	// Plus header lines (title + separator = 2) and footer lines (blank + separator + hint = 3)
 	dialogOverhead := 4 // border and padding
 	headerLines := 2    // title + separator (already in lines)
@@ -330,9 +332,9 @@ func renderHelpOverlay(styles Styles, view View, screenWidth, screenHeight int) 
 	// Re-emit the dialog bg after inner SGR resets so the styled spans
 	// (Bold section headers, Positive keys, Muted descriptions) don't punch
 	// holes through the panel where the terminal's desktop bg shows through.
-	// Same fix as Dialog.Render — see ae19c72 (fix(tui): repaint dialog bg
+	// Same fix as dialog.Dialog.Render — see ae19c72 (fix(tui): repaint dialog bg
 	// through inner SGR resets).
-	content = repaintBg(content, ColorDialogBg)
+	content = widget.RepaintBg(content, widget.ColorDialogBg)
 
 	// Use dialog style for consistent appearance
 	rendered := styles.Dialog.Width(overlayWidth).Render(content)
@@ -350,9 +352,9 @@ func renderHelpOverlay(styles Styles, view View, screenWidth, screenHeight int) 
 // helpOverlayCloseHit reports whether a click at the given screen
 // coordinates falls on the help overlay's [x] close button. The overlay
 // uses the same border (1) + padding (2 horizontal, 1 vertical) layout
-// as Dialog and is centered on screen, so we re-render to measure its
+// as dialog.Dialog and is centered on screen, so we re-render to measure its
 // final dimensions and then test the title row's right-aligned [x].
-func helpOverlayCloseHit(styles Styles, view View, screenWidth, screenHeight, x, y int) bool {
+func helpOverlayCloseHit(styles widget.Styles, view View, screenWidth, screenHeight, x, y int) bool {
 	rendered := renderHelpOverlay(styles, view, screenWidth, screenHeight)
 	lines := strings.Split(rendered, "\n")
 	overlayHeight := len(lines)
@@ -376,9 +378,9 @@ func helpOverlayCloseHit(styles Styles, view View, screenWidth, screenHeight, x,
 	}
 
 	// Content area starts at startCol + border(1) + padding(2) = +3,
-	// content width = overlayWidth - dialogHorizontalOverhead. The [x]
+	// content width = overlayWidth - dialog.DialogHorizontalOverhead. The [x]
 	// occupies the last 3 columns of the content row.
-	contentWidth := overlayWidth - dialogHorizontalOverhead
+	contentWidth := overlayWidth - dialog.DialogHorizontalOverhead
 	closeStart := startCol + 3 + contentWidth - 3
 	closeEnd := closeStart + 3
 	return x >= closeStart && x < closeEnd

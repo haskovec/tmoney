@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 )
 
 // newCategorySvcForPersistTest builds a real DuckDB-backed category service
@@ -45,8 +46,8 @@ func TestBuildCreateCategoryDialog_FieldShape(t *testing.T) {
 	if fields[0].Label != "Name" {
 		t.Errorf("fields[0].Label = %q, want %q", fields[0].Label, "Name")
 	}
-	if fields[0].Type != FieldText {
-		t.Errorf("fields[0].Type = %v, want FieldText", fields[0].Type)
+	if fields[0].Type != dialog.FieldText {
+		t.Errorf("fields[0].Type = %v, want dialog.FieldText", fields[0].Type)
 	}
 	if !fields[0].Required {
 		t.Error("Name field should be Required")
@@ -55,8 +56,8 @@ func TestBuildCreateCategoryDialog_FieldShape(t *testing.T) {
 	if fields[1].Label != "Parent" {
 		t.Errorf("fields[1].Label = %q, want %q", fields[1].Label, "Parent")
 	}
-	if fields[1].Type != FieldCombo {
-		t.Errorf("fields[1].Type = %v, want FieldCombo", fields[1].Type)
+	if fields[1].Type != dialog.FieldCombo {
+		t.Errorf("fields[1].Type = %v, want dialog.FieldCombo", fields[1].Type)
 	}
 	// First option is the top-level sentinel; existing parents follow.
 	wantParents := []string{"(top-level)", "Food", "Bills", "Auto"}
@@ -72,8 +73,8 @@ func TestBuildCreateCategoryDialog_FieldShape(t *testing.T) {
 	if fields[2].Label != "Type" {
 		t.Errorf("fields[2].Label = %q, want %q", fields[2].Label, "Type")
 	}
-	if fields[2].Type != FieldRadio {
-		t.Errorf("fields[2].Type = %v, want FieldRadio", fields[2].Type)
+	if fields[2].Type != dialog.FieldRadio {
+		t.Errorf("fields[2].Type = %v, want dialog.FieldRadio", fields[2].Type)
 	}
 	if len(fields[2].Options) != 2 {
 		t.Fatalf("Type.Options = %v, want 2 entries", fields[2].Options)
@@ -233,8 +234,8 @@ func TestCreateCategoryDialog_EscEmitsCancel(t *testing.T) {
 	d := buildCreateCategoryDialog("", "", []string{"Food"}, category.TypeExpense)
 
 	action := d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEsc})
-	if action != DialogActionCancel {
-		t.Errorf("HandleKey(Esc) = %v, want DialogActionCancel", action)
+	if action != dialog.DialogActionCancel {
+		t.Errorf("HandleKey(Esc) = %v, want dialog.DialogActionCancel", action)
 	}
 }
 

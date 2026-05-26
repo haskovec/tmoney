@@ -8,6 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -32,9 +34,9 @@ func TestBuildStockSplitDialog_NewDialog(t *testing.T) {
 		t.Fatalf("expected 3 fields, got %d", len(fields))
 	}
 
-	// Field 0: Security (typeahead combo)
-	if fields[0].Type != FieldCombo {
-		t.Errorf("field 0 type = %d, want FieldCombo (%d)", fields[0].Type, FieldCombo)
+	// dialog.Field 0: Security (typeahead combo)
+	if fields[0].Type != dialog.FieldCombo {
+		t.Errorf("field 0 type = %d, want dialog.FieldCombo (%d)", fields[0].Type, dialog.FieldCombo)
 	}
 	if fields[0].Label != "Security" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Security")
@@ -46,9 +48,9 @@ func TestBuildStockSplitDialog_NewDialog(t *testing.T) {
 		t.Errorf("default selected index = %d, want 0", fields[0].SelectedIndex)
 	}
 
-	// Field 1: Date (masked, required, default today)
-	if fields[1].Type != FieldDate {
-		t.Errorf("field 1 type = %d, want FieldDate (%d)", fields[1].Type, FieldDate)
+	// dialog.Field 1: Date (masked, required, default today)
+	if fields[1].Type != dialog.FieldDate {
+		t.Errorf("field 1 type = %d, want dialog.FieldDate (%d)", fields[1].Type, dialog.FieldDate)
 	}
 	if fields[1].Label != "Date" {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Date")
@@ -61,9 +63,9 @@ func TestBuildStockSplitDialog_NewDialog(t *testing.T) {
 		t.Errorf("date default = %q, want %q", fields[1].Value, today)
 	}
 
-	// Field 2: Ratio (text, required)
-	if fields[2].Type != FieldText {
-		t.Errorf("field 2 type = %d, want FieldText (%d)", fields[2].Type, FieldText)
+	// dialog.Field 2: Ratio (text, required)
+	if fields[2].Type != dialog.FieldText {
+		t.Errorf("field 2 type = %d, want dialog.FieldText (%d)", fields[2].Type, dialog.FieldText)
 	}
 	if fields[2].Label != "Ratio" {
 		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "Ratio")
@@ -599,7 +601,7 @@ func TestParseSplitRatio_Integration(t *testing.T) {
 
 func TestApp_Update_StockSplitDialogSavedMsg(t *testing.T) {
 	app := &App{
-		statusbar: NewStatusBar(),
+		statusbar: widget.NewStatusBar(),
 	}
 
 	msg := stockSplitDialogSavedMsg{}

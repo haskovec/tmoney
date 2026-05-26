@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -207,7 +208,7 @@ func TestBuildSecurityTable_SortsByTicker(t *testing.T) {
 
 func TestRenderSecurityView_Loading(t *testing.T) {
 	app := &App{
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 	}
 	app.styles.Resize(80, 24)
 
@@ -221,7 +222,7 @@ func TestRenderSecurityView_NoSecurities(t *testing.T) {
 	app := &App{
 		width:  80,
 		height: 24,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		securityView: &securityViewData{
 			securities: []*security.Security{},
 			showHidden: true,
@@ -241,7 +242,7 @@ func TestRenderSecurityView_WithData(t *testing.T) {
 	app := &App{
 		width:  100,
 		height: 30,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		securityView: &securityViewData{
 			securities: []*security.Security{sec},
 			showHidden: true,
@@ -262,7 +263,7 @@ func TestRenderSecurityView_ShowsFilterStatus(t *testing.T) {
 	app := &App{
 		width:  100,
 		height: 30,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		securityView: &securityViewData{
 			securities: []*security.Security{sec},
 			showHidden: false,
@@ -358,7 +359,7 @@ func TestSecurityViewDataLoadedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewSecurities,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := securityViewDataLoadedMsg{data: data}
@@ -384,7 +385,7 @@ func TestSecurityViewSwitchView(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -563,20 +564,20 @@ func TestSecurityViewHelpOverlay(t *testing.T) {
 }
 
 func TestMenuBarHasSecurities(t *testing.T) {
-	mb := NewMenuBar()
+	mb := widget.NewMenuBar()
 	found := false
-	for _, m := range mb.menus {
-		for _, item := range m.items {
-			if item.action == MenuActionSecurities {
+	for _, m := range mb.Menus() {
+		for _, item := range m.Items {
+			if item.Action == widget.MenuActionSecurities {
 				found = true
-				if item.label != "Security Master" {
-					t.Errorf("menu label = %q, want %q", item.label, "Security Master")
+				if item.Label != "Security Master" {
+					t.Errorf("menu label = %q, want %q", item.Label, "Security Master")
 				}
 			}
 		}
 	}
 	if !found {
-		t.Error("MenuActionSecurities not found in menu bar")
+		t.Error("widget.MenuActionSecurities not found in menu bar")
 	}
 }
 
@@ -627,7 +628,7 @@ func TestSecurityViewUpdate_SecurityAddedMsg(t *testing.T) {
 	app := &App{
 		currentView:  ViewSecurities,
 		keys:         defaultKeyMap(),
-		statusbar:    NewStatusBar(),
+		statusbar:    widget.NewStatusBar(),
 		securityView: &securityViewData{securities: []*security.Security{}},
 	}
 
@@ -653,7 +654,7 @@ func TestSecurityViewUpdate_SecurityUpdatedMsg(t *testing.T) {
 	app := &App{
 		currentView:  ViewSecurities,
 		keys:         defaultKeyMap(),
-		statusbar:    NewStatusBar(),
+		statusbar:    widget.NewStatusBar(),
 		securityView: &securityViewData{securities: []*security.Security{}},
 	}
 
@@ -674,7 +675,7 @@ func TestSecurityViewUpdate_SecurityDeletedMsg(t *testing.T) {
 	app := &App{
 		currentView:  ViewSecurities,
 		keys:         defaultKeyMap(),
-		statusbar:    NewStatusBar(),
+		statusbar:    widget.NewStatusBar(),
 		securityView: &securityViewData{securities: []*security.Security{}},
 	}
 
@@ -695,7 +696,7 @@ func TestSecurityViewUpdate_SecurityHiddenMsg(t *testing.T) {
 	app := &App{
 		currentView:  ViewSecurities,
 		keys:         defaultKeyMap(),
-		statusbar:    NewStatusBar(),
+		statusbar:    widget.NewStatusBar(),
 		securityView: &securityViewData{securities: []*security.Security{}},
 	}
 
@@ -719,7 +720,7 @@ func TestSecurityViewUpdate_SecurityUnhiddenMsg(t *testing.T) {
 	app := &App{
 		currentView:  ViewSecurities,
 		keys:         defaultKeyMap(),
-		statusbar:    NewStatusBar(),
+		statusbar:    widget.NewStatusBar(),
 		securityView: &securityViewData{securities: []*security.Security{}},
 	}
 
@@ -743,9 +744,9 @@ func TestSecurityView_NavigateKeyBinding(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 	}
 
 	// Press '4' to go to securities view
@@ -764,7 +765,7 @@ func TestSecurityView_NavigateKeyBinding(t *testing.T) {
 func TestSecurityView_FullScreenRender(t *testing.T) {
 	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
 
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	app := &App{
@@ -774,8 +775,8 @@ func TestSecurityView_FullScreenRender(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
 		securityView: &securityViewData{
 			securities: []*security.Security{sec},
@@ -795,7 +796,7 @@ func TestSecurityDialogDeleteConfirm(t *testing.T) {
 	app := &App{
 		currentView: ViewSecurities,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		securityView: &securityViewData{
 			securities: []*security.Security{
 				{

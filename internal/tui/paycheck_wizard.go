@@ -11,6 +11,8 @@ import (
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -46,11 +48,11 @@ type PaycheckWizard struct {
 	visible bool
 
 	// Header fields.
-	employerField   *Field // text — employer payee name
-	frequencyField  *Field // select — paycheck frequency picker
-	nextPaydayField *Field // text — schedule start date (MM/DD/YYYY)
-	accountField    *Field // select — primary deposit account
-	memoField       *Field // text — optional memo
+	employerField   *dialog.Field // text — employer payee name
+	frequencyField  *dialog.Field // select — paycheck frequency picker
+	nextPaydayField *dialog.Field // text — schedule start date (MM/DD/YYYY)
+	accountField    *dialog.Field // select — primary deposit account
+	memoField       *dialog.Field // text — optional memo
 
 	// Five sections of rows, indexed by PaycheckSection. Earnings and
 	// Taxes are pre-populated per the v2 spec; the other sections
@@ -176,9 +178,9 @@ func (s PaycheckSection) addRowLabel() string {
 // remove button.
 type PaycheckLine struct {
 	Section     PaycheckSection
-	selectField *Field // category or transfer picker (combined list)
-	amountField *Field // signed amount as typed by the user
-	notesField  *Field // optional free-form description (stored as Split.Memo)
+	selectField *dialog.Field // category or transfer picker (combined list)
+	amountField *dialog.Field // signed amount as typed by the user
+	notesField  *dialog.Field // optional free-form description (stored as Split.Memo)
 
 	// categoryCount is captured at construction so the line can
 	// self-classify (IsTransfer/CategoryIndex/AccountIndex) without
@@ -188,14 +190,14 @@ type PaycheckLine struct {
 
 // SelectField exposes the line's category-or-transfer select for
 // tests and key handling.
-func (l *PaycheckLine) SelectField() *Field { return l.selectField }
+func (l *PaycheckLine) SelectField() *dialog.Field { return l.selectField }
 
 // AmountField exposes the line's amount input.
-func (l *PaycheckLine) AmountField() *Field { return l.amountField }
+func (l *PaycheckLine) AmountField() *dialog.Field { return l.amountField }
 
 // NotesField exposes the line's free-form notes input. The value is
 // persisted as Split.Memo when the wizard saves.
-func (l *PaycheckLine) NotesField() *Field { return l.notesField }
+func (l *PaycheckLine) NotesField() *dialog.Field { return l.notesField }
 
 // IsTransfer reports whether the line's current select points at
 // the transfer half of the combined picker (i.e. an account
@@ -374,33 +376,33 @@ func NewPaycheckWizard(categoryOptions []string, categoryIDs []types.ID, account
 		combinedOptions: combined,
 	}
 
-	w.employerField = &Field{
+	w.employerField = &dialog.Field{
 		Label:       "Employer",
-		Type:        FieldText,
+		Type:        dialog.FieldText,
 		Placeholder: "Payee name",
 	}
-	w.frequencyField = &Field{
+	w.frequencyField = &dialog.Field{
 		Label:         "Pay frequency",
-		Type:          FieldSelect,
+		Type:          dialog.FieldSelect,
 		Options:       buildPaycheckFrequencyLabels(),
 		SelectedIndex: defaultPaycheckFrequencyIndex,
 	}
-	w.nextPaydayField = &Field{
+	w.nextPaydayField = &dialog.Field{
 		Label:    "Next payday",
-		Type:     FieldDate,
+		Type:     dialog.FieldDate,
 		Value:    time.Now().Format("01/02/2006"),
 		Width:    10,
-		dateMask: dateMaskUS,
+		DateMask: dialog.DateMaskUS,
 	}
-	w.accountField = &Field{
+	w.accountField = &dialog.Field{
 		Label:         "Deposit account",
-		Type:          FieldSelect,
+		Type:          dialog.FieldSelect,
 		Options:       accountOptions,
 		SelectedIndex: 0,
 	}
-	w.memoField = &Field{
+	w.memoField = &dialog.Field{
 		Label:       "Memo",
-		Type:        FieldText,
+		Type:        dialog.FieldText,
 		Placeholder: "Optional",
 	}
 
@@ -443,12 +445,12 @@ func (w *PaycheckWizard) SetVisible(v bool) {
 }
 
 // Structural accessors used by tests.
-func (w *PaycheckWizard) Employer() *Field               { return w.employerField }
-func (w *PaycheckWizard) Frequency() *Field              { return w.frequencyField }
-func (w *PaycheckWizard) NextPayday() *Field             { return w.nextPaydayField }
-func (w *PaycheckWizard) DepositAccount() *Field         { return w.accountField }
-func (w *PaycheckWizard) Memo() *Field                   { return w.memoField }
-func (w *PaycheckWizard) PrimaryAccount() *Field         { return w.accountField } // back-compat
+func (w *PaycheckWizard) Employer() *dialog.Field        { return w.employerField }
+func (w *PaycheckWizard) Frequency() *dialog.Field       { return w.frequencyField }
+func (w *PaycheckWizard) NextPayday() *dialog.Field      { return w.nextPaydayField }
+func (w *PaycheckWizard) DepositAccount() *dialog.Field  { return w.accountField }
+func (w *PaycheckWizard) Memo() *dialog.Field            { return w.memoField }
+func (w *PaycheckWizard) PrimaryAccount() *dialog.Field  { return w.accountField } // back-compat
 func (w *PaycheckWizard) EarningsLines() []*PaycheckLine { return w.sections[PaycheckEarnings] }
 func (w *PaycheckWizard) PreTaxLines() []*PaycheckLine   { return w.sections[PaycheckPreTax] }
 func (w *PaycheckWizard) TaxLines() []*PaycheckLine      { return w.sections[PaycheckTax] }
@@ -467,18 +469,18 @@ func (w *PaycheckWizard) AddRow(section PaycheckSection) *PaycheckLine {
 	}
 	line := &PaycheckLine{
 		Section: section,
-		amountField: &Field{
-			Type:        FieldText,
+		amountField: &dialog.Field{
+			Type:        dialog.FieldText,
 			Placeholder: "0.00",
 			Width:       14,
 		},
-		selectField: &Field{
-			Type:          FieldSelect,
+		selectField: &dialog.Field{
+			Type:          dialog.FieldSelect,
 			Options:       w.combinedOptions,
 			SelectedIndex: 0,
 		},
-		notesField: &Field{
-			Type:        FieldText,
+		notesField: &dialog.Field{
+			Type:        dialog.FieldText,
 			Placeholder: "Notes",
 		},
 		categoryCount: len(w.categoryOptions),
@@ -704,7 +706,7 @@ const (
 
 type wizardFocusTarget struct {
 	kind    wizardFocusKind
-	field   *Field
+	field   *dialog.Field
 	section PaycheckSection
 	line    *PaycheckLine
 }
@@ -763,14 +765,14 @@ func (w *PaycheckWizard) focusedTarget() wizardFocusTarget {
 
 // Render returns the wizard's overlay-ready string. As a side-effect
 // it rebuilds w.hitZones so HandleMouse can dispatch clicks.
-func (w *PaycheckWizard) Render(styles Styles) string {
+func (w *PaycheckWizard) Render(styles widget.Styles) string {
 	if w == nil || !w.visible {
 		return ""
 	}
 	w.clampFocus()
 	focused := w.focusedTarget()
 
-	contentWidth := max(w.width-dialogHorizontalOverhead, 40)
+	contentWidth := max(w.width-dialog.DialogHorizontalOverhead, 40)
 	w.hitZones = w.hitZones[:0]
 
 	// fillStyle is used for both internal gap spaces and trailing
@@ -818,7 +820,7 @@ func (w *PaycheckWizard) Render(styles Styles) string {
 	addLine("")
 
 	// Header rows.
-	headerFields := []*Field{w.employerField, w.frequencyField, w.nextPaydayField, w.accountField, w.memoField}
+	headerFields := []*dialog.Field{w.employerField, w.frequencyField, w.nextPaydayField, w.accountField, w.memoField}
 	for _, f := range headerFields {
 		row, zones := w.renderFieldRow(styles, fillStyle, f, focused.field == f, contentWidth, len(lines))
 		addLine(row)
@@ -876,7 +878,7 @@ func (w *PaycheckWizard) Render(styles Styles) string {
 
 	// Buttons. Save sits on the left (Primary, default) so a keyboard
 	// user tabbing through the form lands on it first; matches the
-	// project convention from NewDialog.
+	// project convention from dialog.NewDialog.
 	addLine(fillStyle.Render(strings.Repeat("─", contentWidth)))
 	saveText := "[ Save ]"
 	cancelText := "[ Cancel ]"
@@ -918,8 +920,8 @@ func (w *PaycheckWizard) Render(styles Styles) string {
 	content := strings.Join(lines, "\n")
 	// Re-emit the dialog bg after inner SGR resets so styled spans
 	// (Muted "[x]", Placeholder "Optional", etc.) don't punch holes
-	// through the panel to the desktop bg — matches *Dialog.Render.
-	content = repaintBg(content, ColorDialogBg)
+	// through the panel to the desktop bg — matches *dialog.Dialog.Render.
+	content = widget.RepaintBg(content, widget.ColorDialogBg)
 	return styles.Dialog.Width(w.width).Render(content)
 }
 
@@ -935,8 +937,8 @@ func padFill(s string, n int, fill lipgloss.Style) string {
 // renderFieldRow renders a single labeled scalar field and returns
 // the rendered string plus any hit zones for the value cell. Labels
 // are right-aligned to labelW so the colons line up vertically (the
-// same convention the generic *Dialog uses for its form fields).
-func (w *PaycheckWizard) renderFieldRow(styles Styles, fill lipgloss.Style, f *Field, focused bool, contentWidth, row int) (string, []wizardHitZone) {
+// same convention the generic *dialog.Dialog uses for its form fields).
+func (w *PaycheckWizard) renderFieldRow(styles widget.Styles, fill lipgloss.Style, f *dialog.Field, focused bool, contentWidth, row int) (string, []wizardHitZone) {
 	if f == nil {
 		return "", nil
 	}
@@ -981,7 +983,7 @@ func (w *PaycheckWizard) headerLabelWidth() int {
 // renderLine renders one section row: select + amount + notes + [−]
 // remove. Returns the rendered string plus hit zones for the select,
 // amount, notes, and remove cells.
-func (w *PaycheckWizard) renderLine(styles Styles, fill lipgloss.Style, line *PaycheckLine, focused wizardFocusTarget, contentWidth, row int) (string, []wizardHitZone) {
+func (w *PaycheckWizard) renderLine(styles widget.Styles, fill lipgloss.Style, line *PaycheckLine, focused wizardFocusTarget, contentWidth, row int) (string, []wizardHitZone) {
 	amtW := 12
 	removeText := "[−]"
 	removeW := lipgloss.Width(removeText)
@@ -1045,20 +1047,20 @@ func (w *PaycheckWizard) renderLine(styles Styles, fill lipgloss.Style, line *Pa
 }
 
 // renderFieldValue draws a field's value matching the generic
-// *Dialog field rendering conventions:
+// *dialog.Dialog field rendering conventions:
 //   - FieldText: `[ value ]` (bracketed with spaces inside).
 //   - FieldSelect: `value ▼` (no brackets; focused value gets a
 //     reverse-highlight inside the surrounding fill).
 //
 // fill is the dialog-bg style used for padding so the cell fills
 // uniformly with the dialog's background.
-func (w *PaycheckWizard) renderFieldValue(styles Styles, fill lipgloss.Style, f *Field, focused bool, width int) string {
+func (w *PaycheckWizard) renderFieldValue(styles widget.Styles, fill lipgloss.Style, f *dialog.Field, focused bool, width int) string {
 	if f == nil {
 		return fill.Render(strings.Repeat(" ", width))
 	}
 	switch f.Type {
-	case FieldText:
-		// `[ value ]` — Dialog convention. Inner pad fills with bg.
+	case dialog.FieldText:
+		// `[ value ]` — dialog.Dialog convention. Inner pad fills with bg.
 		bracketOverhead := 4 // "[ " + " ]"
 		inner := max(width-bracketOverhead, 1)
 		val := f.Value
@@ -1099,9 +1101,9 @@ func (w *PaycheckWizard) renderFieldValue(styles Styles, fill lipgloss.Style, f 
 		}
 		padN := max(inner-len(runes), 0)
 		return fill.Render("[ " + string(runes) + strings.Repeat(" ", padN) + " ]")
-	case FieldDate:
+	case dialog.FieldDate:
 		// Fixed-width 10-char masked date inside `[ ... ]`. Mirrors the
-		// generic *Dialog.renderDateFieldContent so the widget behaves
+		// generic *dialog.Dialog.renderDateFieldContent so the widget behaves
 		// identically across dialogs.
 		value := f.Value
 		if len(value) != 10 {
@@ -1129,7 +1131,7 @@ func (w *PaycheckWizard) renderFieldValue(styles Styles, fill lipgloss.Style, f 
 			after = value[pos+1:]
 		}
 		return fill.Render("[ ") + fill.Render(before) + cursorChar + fill.Render(after+strings.Repeat(" ", padN)) + fill.Render(" ]")
-	case FieldSelect:
+	case dialog.FieldSelect:
 		// `value ▼` — no brackets; focused option gets a reverse
 		// highlight just over the value cell.
 		opt := ""
@@ -1148,7 +1150,7 @@ func (w *PaycheckWizard) renderFieldValue(styles Styles, fill lipgloss.Style, f 
 		}
 		return fill.Render(opt + suffix)
 	default:
-		return fill.Render(padRight(f.Value, width))
+		return fill.Render(widget.PadRight(f.Value, width))
 	}
 }
 
@@ -1176,12 +1178,12 @@ func (w *PaycheckWizard) computeTotal() types.Money {
 // ===========================================================================
 
 // HandleKey dispatches a key event into the wizard and returns the
-// action the parent App should take. DialogActionSubmit fires when
-// Enter on Save; DialogActionCancel fires when Esc or Enter on
+// action the parent App should take. dialog.DialogActionSubmit fires when
+// Enter on Save; dialog.DialogActionCancel fires when Esc or Enter on
 // Cancel. Other actions are absorbed.
-func (w *PaycheckWizard) HandleKey(msg tea.KeyPressMsg) DialogAction {
+func (w *PaycheckWizard) HandleKey(msg tea.KeyPressMsg) dialog.DialogAction {
 	if w == nil {
-		return DialogActionNone
+		return dialog.DialogActionNone
 	}
 	w.errorMsg = ""
 	w.clampFocus()
@@ -1189,15 +1191,15 @@ func (w *PaycheckWizard) HandleKey(msg tea.KeyPressMsg) DialogAction {
 	keyStr := msg.String()
 	switch keyStr {
 	case "esc":
-		return DialogActionCancel
+		return dialog.DialogActionCancel
 	case "tab":
 		w.focusIndex++
 		w.clampFocus()
-		return DialogActionNone
+		return dialog.DialogActionNone
 	case "shift+tab":
 		w.focusIndex--
 		w.clampFocus()
-		return DialogActionNone
+		return dialog.DialogActionNone
 	case "enter":
 		return w.handleEnter()
 	}
@@ -1207,22 +1209,22 @@ func (w *PaycheckWizard) HandleKey(msg tea.KeyPressMsg) DialogAction {
 	case wizardFocusField:
 		w.dispatchFieldKey(target.field, msg)
 	}
-	return DialogActionNone
+	return dialog.DialogActionNone
 }
 
-func (w *PaycheckWizard) handleEnter() DialogAction {
+func (w *PaycheckWizard) handleEnter() dialog.DialogAction {
 	target := w.focusedTarget()
 	if target.kind == wizardFocusField {
 		// Enter on a section-line select field that is parked on the
 		// [+ Add new category…] sentinel diverts into the inline create-
 		// category sub-dialog instead of advancing focus.
 		if line := w.lineForSelectField(target.field); line != nil && line.IsAddNew() {
-			return DialogActionAddNew
+			return dialog.DialogActionAddNew
 		}
 		// Otherwise: advance focus (don't activate).
 		w.focusIndex++
 		w.clampFocus()
-		return DialogActionNone
+		return dialog.DialogActionNone
 	}
 	return w.activate(target)
 }
@@ -1230,7 +1232,7 @@ func (w *PaycheckWizard) handleEnter() DialogAction {
 // lineForSelectField returns the PaycheckLine that owns f when f is one
 // of a section-line's select fields, or nil when f is a header field (or
 // not a select field at all).
-func (w *PaycheckWizard) lineForSelectField(f *Field) *PaycheckLine {
+func (w *PaycheckWizard) lineForSelectField(f *dialog.Field) *PaycheckLine {
 	if f == nil {
 		return nil
 	}
@@ -1244,21 +1246,21 @@ func (w *PaycheckWizard) lineForSelectField(f *Field) *PaycheckLine {
 	return nil
 }
 
-func (w *PaycheckWizard) dispatchFieldKey(f *Field, msg tea.KeyPressMsg) {
+func (w *PaycheckWizard) dispatchFieldKey(f *dialog.Field, msg tea.KeyPressMsg) {
 	if f == nil {
 		return
 	}
 	switch f.Type {
-	case FieldText:
+	case dialog.FieldText:
 		w.dispatchTextFieldKey(f, msg)
-	case FieldSelect:
+	case dialog.FieldSelect:
 		w.dispatchSelectFieldKey(f, msg)
-	case FieldDate:
+	case dialog.FieldDate:
 		w.dispatchDateFieldKey(f, msg)
 	}
 }
 
-func (w *PaycheckWizard) dispatchTextFieldKey(f *Field, msg tea.KeyPressMsg) {
+func (w *PaycheckWizard) dispatchTextFieldKey(f *dialog.Field, msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "backspace":
 		f.DeleteBack()
@@ -1283,7 +1285,7 @@ func (w *PaycheckWizard) dispatchTextFieldKey(f *Field, msg tea.KeyPressMsg) {
 	}
 }
 
-func (w *PaycheckWizard) dispatchDateFieldKey(f *Field, msg tea.KeyPressMsg) {
+func (w *PaycheckWizard) dispatchDateFieldKey(f *dialog.Field, msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "left":
 		f.DateCursorLeft()
@@ -1310,7 +1312,7 @@ func (w *PaycheckWizard) dispatchDateFieldKey(f *Field, msg tea.KeyPressMsg) {
 	}
 }
 
-func (w *PaycheckWizard) dispatchSelectFieldKey(f *Field, msg tea.KeyPressMsg) {
+func (w *PaycheckWizard) dispatchSelectFieldKey(f *dialog.Field, msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "up":
 		f.SelectPrev()
@@ -1327,7 +1329,7 @@ func (w *PaycheckWizard) dispatchSelectFieldKey(f *Field, msg tea.KeyPressMsg) {
 // border + padding. Computed by counting newlines in a fresh render
 // (the wizard caches no layout state, so this is the simplest
 // reliable approach).
-func (w *PaycheckWizard) renderedHeightFor(styles Styles) int {
+func (w *PaycheckWizard) renderedHeightFor(styles widget.Styles) int {
 	rendered := w.Render(styles)
 	if rendered == "" {
 		return 0
@@ -1337,7 +1339,7 @@ func (w *PaycheckWizard) renderedHeightFor(styles Styles) int {
 
 // dialogBounds returns the screen-space bounding box of the wizard
 // when centered on a screenWidth × screenHeight terminal.
-func (w *PaycheckWizard) dialogBounds(styles Styles, screenWidth, screenHeight int) (startCol, startRow, endCol, endRow int) {
+func (w *PaycheckWizard) dialogBounds(styles widget.Styles, screenWidth, screenHeight int) (startCol, startRow, endCol, endRow int) {
 	overlayHeight := w.renderedHeightFor(styles)
 	overlayWidth := w.width
 	startCol = max((screenWidth-overlayWidth)/2, 0)
@@ -1350,24 +1352,24 @@ func (w *PaycheckWizard) dialogBounds(styles Styles, screenWidth, screenHeight i
 // HandleMouse processes a mouse event and returns the resulting
 // action. The wizard records hit zones during Render; this routine
 // translates a click to a focus target and acts on it.
-func (w *PaycheckWizard) HandleMouse(msg tea.MouseMsg, styles Styles, screenWidth, screenHeight int) DialogAction {
+func (w *PaycheckWizard) HandleMouse(msg tea.MouseMsg, styles widget.Styles, screenWidth, screenHeight int) dialog.DialogAction {
 	if w == nil {
-		return DialogActionNone
+		return dialog.DialogActionNone
 	}
 	click, ok := msg.(tea.MouseClickMsg)
 	if !ok || click.Button != tea.MouseLeft {
-		return DialogActionNone
+		return dialog.DialogActionNone
 	}
 
 	startCol, startRow, endCol, endRow := w.dialogBounds(styles, screenWidth, screenHeight)
 	m := msg.Mouse()
 	if m.X < startCol || m.X >= endCol || m.Y < startRow || m.Y >= endRow {
-		return DialogActionNone
+		return dialog.DialogActionNone
 	}
 
 	// Convert screen coords to content-local (inside border + padding).
 	// styles.Dialog has Border(1) + Padding(1,2) by convention; match
-	// the same offsets used by the standard Dialog.HandleMouse path.
+	// the same offsets used by the standard dialog.Dialog.HandleMouse path.
 	localX := m.X - startCol - 3
 	localY := m.Y - startRow - 2
 
@@ -1380,23 +1382,23 @@ func (w *PaycheckWizard) HandleMouse(msg tea.MouseMsg, styles Styles, screenWidt
 		}
 		return w.activate(zone.target)
 	}
-	return DialogActionNone
+	return dialog.DialogActionNone
 }
 
 // activate executes the action associated with a focus target. Used
 // by both Enter on a focused element and HandleMouse on a clicked
 // element.
-func (w *PaycheckWizard) activate(target wizardFocusTarget) DialogAction {
+func (w *PaycheckWizard) activate(target wizardFocusTarget) dialog.DialogAction {
 	switch target.kind {
 	case wizardFocusSave:
 		w.focusToTarget(target)
-		return DialogActionSubmit
+		return dialog.DialogActionSubmit
 	case wizardFocusCancel:
-		return DialogActionCancel
+		return dialog.DialogActionCancel
 	case wizardFocusAddRow:
 		line := w.addLineForSection(target.section)
 		if line == nil {
-			return DialogActionNone
+			return dialog.DialogActionNone
 		}
 		// Move focus onto the new row's select field for convenience.
 		focusables := w.collectFocusables()
@@ -1406,16 +1408,16 @@ func (w *PaycheckWizard) activate(target wizardFocusTarget) DialogAction {
 				break
 			}
 		}
-		return DialogActionNone
+		return dialog.DialogActionNone
 	case wizardFocusRemove:
 		w.RemoveRow(target.line)
 		w.clampFocus()
-		return DialogActionNone
+		return dialog.DialogActionNone
 	case wizardFocusField:
 		w.focusToTarget(target)
-		return DialogActionNone
+		return dialog.DialogActionNone
 	}
-	return DialogActionNone
+	return dialog.DialogActionNone
 }
 
 // focusToTarget walks the current focusables and moves focusIndex
@@ -1497,12 +1499,12 @@ func (a *App) handlePaycheckWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	}
 	action := a.paycheckWizard.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitPaycheckWizard()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closePaycheckWizard()
 		return a, nil
-	case DialogActionAddNew:
+	case dialog.DialogActionAddNew:
 		return a.openCreateCategorySubDialogFromPaycheck()
 	}
 	return a, nil

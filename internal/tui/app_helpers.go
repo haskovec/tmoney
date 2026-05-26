@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -48,7 +49,7 @@ func (a *App) tableContentRowOffset() int {
 }
 
 // activeTable returns the currently active table for the current view, or nil.
-func (a *App) activeTable() *Table {
+func (a *App) activeTable() *widget.Table {
 	switch a.currentView {
 	case ViewRegister:
 		return a.table

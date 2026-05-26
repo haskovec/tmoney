@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -169,7 +170,7 @@ func buildCategoryOptions(categories []*category.Category) ([]string, []types.ID
 	return options, ids
 }
 
-// buildTransactionDialog creates a Dialog for entering or editing a transaction.
+// buildTransactionDialog creates a dialog.Dialog for entering or editing a transaction.
 //
 // In new mode (data.mode == transactionDialogModeNew, the zero value), the
 // dialog is titled "New Transaction" and the Date field is seeded from
@@ -180,14 +181,14 @@ func buildCategoryOptions(categories []*category.Category) ([]string, []types.ID
 // pre-filled from data.existing — Date, Payee (resolved via data.payees),
 // Category (resolved via the parallel categoryIDs slice), Amount, Memo, and
 // Status. seedDate is ignored in edit mode.
-func buildTransactionDialog(data *transactionDialogData, categoryOptions []string, categoryIDs []types.ID, seedDate types.Date) *Dialog {
+func buildTransactionDialog(data *transactionDialogData, categoryOptions []string, categoryIDs []types.ID, seedDate types.Date) *dialog.Dialog {
 	editing := data != nil && data.mode == transactionDialogModeEdit && data.existing != nil
 
 	title := "New Transaction"
 	if editing {
 		title = "Edit Transaction"
 	}
-	d := NewDialog(title)
+	d := dialog.NewDialog(title)
 
 	// Date — pre-filled from existing in edit mode, otherwise from sticky
 	// seed or today.
@@ -393,7 +394,7 @@ func (a *App) checkPayeeAutoFill() {
 				fields[2].SelectedIndex = i
 				// Keep the combo's highlight cursor in sync with SelectedIndex
 				// so the dropdown highlights the auto-filled row when opened.
-				fields[2].comboHighlight = i
+				fields[2].ComboHighlight = i
 			}
 			return
 		}
@@ -408,12 +409,12 @@ func (a *App) handleTransactionDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cm
 
 	action := a.txnDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitTransactionDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeTransactionDialog()
 		return a, nil
-	case DialogActionAddNew:
+	case dialog.DialogActionAddNew:
 		return a.openCreateCategorySubDialog()
 	}
 
@@ -487,9 +488,9 @@ func (a *App) handleCreateCatDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	}
 	action := a.createCatDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitCreateCatDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.cancelCreateCatDialog()
 		return a, nil
 	}

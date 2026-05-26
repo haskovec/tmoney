@@ -8,6 +8,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -30,9 +31,9 @@ func TestBuildSellDialog_NewTransaction_NonLotTracking(t *testing.T) {
 		t.Fatalf("expected 7 fields for non-lot-tracking, got %d", len(fields))
 	}
 
-	// Field 0: Date (masked, required, default today)
-	if fields[0].Type != FieldDate {
-		t.Errorf("field 0 type = %d, want FieldDate (%d)", fields[0].Type, FieldDate)
+	// dialog.Field 0: Date (masked, required, default today)
+	if fields[0].Type != dialog.FieldDate {
+		t.Errorf("field 0 type = %d, want dialog.FieldDate (%d)", fields[0].Type, dialog.FieldDate)
 	}
 	if fields[0].Label != "Date" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Date")
@@ -45,9 +46,9 @@ func TestBuildSellDialog_NewTransaction_NonLotTracking(t *testing.T) {
 		t.Errorf("date default = %q, want %q", fields[0].Value, today)
 	}
 
-	// Field 1: Security (typeahead combo)
-	if fields[1].Type != FieldCombo {
-		t.Errorf("field 1 type = %d, want FieldCombo (%d)", fields[1].Type, FieldCombo)
+	// dialog.Field 1: Security (typeahead combo)
+	if fields[1].Type != dialog.FieldCombo {
+		t.Errorf("field 1 type = %d, want dialog.FieldCombo (%d)", fields[1].Type, dialog.FieldCombo)
 	}
 	if fields[1].Label != "Security" {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Security")
@@ -56,7 +57,7 @@ func TestBuildSellDialog_NewTransaction_NonLotTracking(t *testing.T) {
 		t.Errorf("expected 2 security options, got %d", len(fields[1].Options))
 	}
 
-	// Field 2: Shares (text, required)
+	// dialog.Field 2: Shares (text, required)
 	if fields[2].Label != "Shares" {
 		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "Shares")
 	}
@@ -64,22 +65,22 @@ func TestBuildSellDialog_NewTransaction_NonLotTracking(t *testing.T) {
 		t.Error("shares field should be required")
 	}
 
-	// Field 3: Total
+	// dialog.Field 3: Total
 	if fields[3].Label != "Total" {
 		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Total")
 	}
 
-	// Field 4: Price/Share
+	// dialog.Field 4: Price/Share
 	if fields[4].Label != "Price/Share" {
 		t.Errorf("field 4 label = %q, want %q", fields[4].Label, "Price/Share")
 	}
 
-	// Field 5: Commission
+	// dialog.Field 5: Commission
 	if fields[5].Label != "Commission" {
 		t.Errorf("field 5 label = %q, want %q", fields[5].Label, "Commission")
 	}
 
-	// Field 6: Memo
+	// dialog.Field 6: Memo
 	if fields[6].Label != "Memo" {
 		t.Errorf("field 6 label = %q, want %q", fields[6].Label, "Memo")
 	}

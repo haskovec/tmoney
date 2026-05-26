@@ -20,7 +20,9 @@ import (
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transferlink"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/theme"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -98,13 +100,13 @@ type App struct {
 	quitting bool
 	err      error
 
-	// Styles
-	styles Styles
+	// widget.Styles
+	styles widget.Styles
 
 	// Components
 	sidebar   *Sidebar
-	menubar   *MenuBar
-	statusbar *StatusBar
+	menubar   *widget.MenuBar
+	statusbar *widget.StatusBar
 
 	// Services (initialized on start)
 	accountSvc        *account.Service
@@ -121,10 +123,10 @@ type App struct {
 
 	// Register data (loaded when account is selected)
 	register *registerData
-	table    *Table
+	table    *widget.Table
 
 	// Transaction dialog state
-	txnDialog            *Dialog
+	txnDialog            *dialog.Dialog
 	txnDialogData        *transactionDialogData
 	txnDialogCategoryIDs []types.ID
 	// txnDialogLastSavedDate is the date of the last successfully-saved
@@ -141,7 +143,7 @@ type App struct {
 	// is hidden but kept alive so its field state survives the divert. The
 	// createCatSource field below records which surface opened it so the
 	// post-create router can dispatch back to the right applier.
-	createCatDialog *Dialog
+	createCatDialog *dialog.Dialog
 	createCatSource createCategorySource
 	// createCatSplitRow is the row index in splitDialog whose Category combo
 	// activated [+ Add new category…]. Used by applyCreatedCategoryToSplit to
@@ -160,16 +162,16 @@ type App struct {
 	pendingSplitScheduled *pendingSplitScheduled
 
 	// Transfer dialog state
-	transferDialog           *Dialog
+	transferDialog           *dialog.Dialog
 	transferDialogData       *transferDialogData
 	transferDialogAccountIDs []types.ID
 
 	// Account dialog state
-	acctDialog     *Dialog
+	acctDialog     *dialog.Dialog
 	acctDialogData *accountDialogData
 
 	// Scheduled dialog state
-	schedDialog                *Dialog
+	schedDialog                *dialog.Dialog
 	schedDialogData            *scheduledDialogData
 	schedDialogAccountIDs      []types.ID
 	schedDialogCategoryIDs     []types.ID
@@ -189,15 +191,15 @@ type App struct {
 
 	// Scheduled view state
 	scheduled      *scheduledViewData
-	scheduledTable *Table
+	scheduledTable *widget.Table
 
 	// Reports view state
 	reports *reportsViewData
 
 	// Reconciliation view state
 	reconciliation      *reconciliationViewData
-	reconciliationTable *Table
-	reconDialog         *Dialog
+	reconciliationTable *widget.Table
+	reconDialog         *dialog.Dialog
 	// reconDialogLastStatementDate is the statement date used by the most
 	// recent Start Reconciliation in this process. The Start Reconciliation
 	// dialog seeds its Statement Date field from this on subsequent opens so
@@ -207,20 +209,20 @@ type App struct {
 
 	// Security view state
 	securityView         *securityViewData
-	securityTable        *Table
-	securityDialog       *Dialog
+	securityTable        *widget.Table
+	securityDialog       *dialog.Dialog
 	securityDialogMode   securityDialogMode
 	securityDialogEditID types.ID
 	securitySvc          *security.Service
 
 	// Price view state
 	priceView         *priceViewData
-	priceTable        *Table // detail-mode: history for one security
-	priceListTable    *Table // list-mode: latest price per ticker
-	priceDialog       *Dialog
+	priceTable        *widget.Table // detail-mode: history for one security
+	priceListTable    *widget.Table // list-mode: latest price per ticker
+	priceDialog       *dialog.Dialog
 	priceDialogMode   priceDialogMode
 	priceDialogEditID types.ID
-	priceImportDialog *Dialog
+	priceImportDialog *dialog.Dialog
 	priceSvc          *price.Service
 
 	// Bulk price refresh state. While refreshingPrices is true, the `u`
@@ -233,35 +235,35 @@ type App struct {
 
 	// Investment register state
 	investmentRegister     *investmentRegisterData
-	investmentTable        *Table
+	investmentTable        *widget.Table
 	investmentSvc          *investment.Service
 	investmentRepo         *investment.Repository
-	investmentTypeSelector *Dialog
+	investmentTypeSelector *dialog.Dialog
 	investmentEditTxnID    types.ID // set when editing an existing transaction
 
 	// Buy dialog state
-	buyDialog            *Dialog
+	buyDialog            *dialog.Dialog
 	buyDialogData        *buyDialogData
 	buyDialogSecurityIDs []types.ID
 
 	// Sell dialog state
-	sellDialog            *Dialog
+	sellDialog            *dialog.Dialog
 	sellDialogData        *sellDialogData
 	sellDialogSecurityIDs []types.ID
 	sellDialogLots        []*investment.Lot
 
 	// Dividend dialog state
-	dividendDialog            *Dialog
+	dividendDialog            *dialog.Dialog
 	dividendDialogData        *dividendDialogData
 	dividendDialogSecurityIDs []types.ID
 	dividendDialogReinvest    bool // true when dialog is for reinvest dividend
 
 	// Cash operation dialog state (deposit, withdrawal, fee, interest)
-	cashOperationDialog *Dialog
+	cashOperationDialog *dialog.Dialog
 	cashOperationType   investment.TransactionType
 
 	// Transfer shares dialog state (between investment accounts)
-	transferSharesDialog            *Dialog
+	transferSharesDialog            *dialog.Dialog
 	transferSharesDialogData        *transferSharesDialogData
 	transferSharesDialogAccountIDs  []types.ID
 	transferSharesDialogSecurityIDs []types.ID
@@ -269,19 +271,19 @@ type App struct {
 
 	// Portfolio view state
 	portfolioData          *portfolioViewData
-	portfolioHoldingsTable *Table
-	portfolioLotsTable     *Table
+	portfolioHoldingsTable *widget.Table
+	portfolioLotsTable     *widget.Table
 	portfolioMode          portfolioViewMode
 
 	// Corporate action service and stock split dialog state
 	corporateActionSvc            *investment.CorporateActionService
-	stockSplitDialog              *Dialog
+	stockSplitDialog              *dialog.Dialog
 	stockSplitDialogData          *stockSplitDialogData
 	stockSplitDialogSecurityIDs   []types.ID
 	stockSplitDialogPreSelectedID *types.ID
 
 	// Merger dialog state
-	mergerDialog              *Dialog
+	mergerDialog              *dialog.Dialog
 	mergerDialogData          *mergerDialogData
 	mergerDialogSecurityIDs   []types.ID
 	mergerDialogPreSelectedID *types.ID
@@ -291,14 +293,14 @@ type App struct {
 	mergerConfirmParams *mergerConfirmParams
 
 	// Spin-off dialog state
-	spinOffDialog              *Dialog
+	spinOffDialog              *dialog.Dialog
 	spinOffDialogData          *spinOffDialogData
 	spinOffDialogSecurityIDs   []types.ID
 	spinOffDialogPreSelectedID *types.ID
 
 	// Corporate-action register state
 	corporateActionView              *corporateActionViewData
-	corporateActionViewTable         *Table
+	corporateActionViewTable         *widget.Table
 	corporateActionViewFilter        string
 	corporateActionViewFilterEditing bool
 	corporateActionDetail            *investment.CorporateAction
@@ -308,24 +310,24 @@ type App struct {
 	positionRepo *investment.PositionRepository
 
 	// File dialog state
-	fileDialog     *Dialog
+	fileDialog     *dialog.Dialog
 	fileDialogMode fileDialogMode
 	browseDir      string
 
 	// Import dialog state (transaction import via File → Import)
-	importDialog      *Dialog
+	importDialog      *dialog.Dialog
 	importDialogState *importDialogState
 
 	// Link Transfers dialog state (Transactions → Link Transfers)
-	linkTransfersDialog *Dialog
+	linkTransfersDialog *dialog.Dialog
 	linkTransfersResult *transferlink.Result
 
 	// Confirmation dialog state
-	confirmDialog *Dialog
+	confirmDialog *dialog.Dialog
 	confirmAction func() tea.Msg
 
 	// About dialog (Help → About)
-	aboutDialog *Dialog
+	aboutDialog *dialog.Dialog
 
 	// Backup dialog state (for restore selection)
 	backupDialog *backupDialogState
@@ -343,9 +345,9 @@ type App struct {
 	keys keyMap
 
 	// Mouse double-click trackers (lazy-initialized on first click).
-	sidebarClicks      *ClickTracker
-	priceListClicks    *ClickTracker
-	browseDialogClicks *ClickTracker
+	sidebarClicks      *widget.ClickTracker
+	priceListClicks    *widget.ClickTracker
+	browseDialogClicks *widget.ClickTracker
 }
 
 // newTUIServices constructs an *app.Services for use inside the TUI and
@@ -367,10 +369,10 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		db:                        database,
 		cfg:                       cfg,
 		currentView:               ViewDashboard,
-		styles:                    NewStyles(),
+		styles:                    widget.NewStyles(),
 		sidebar:                   NewSidebar(),
-		menubar:                   NewMenuBar(),
-		statusbar:                 NewStatusBar(),
+		menubar:                   widget.NewMenuBar(),
+		statusbar:                 widget.NewStatusBar(),
 		undoManager:               undo.NewManager(),
 		keys:                      defaultKeyMap(),
 		accountSvc:                svc.Account,
@@ -391,21 +393,21 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		createCatSplitRow:         -1,
 	}
 
-	a.menubar.SetMenuItemsBuilder(viewMenuIndex, func() []menuItem {
+	a.menubar.SetMenuItemsBuilder(widget.ViewMenuIndex, func() []widget.MenuItem {
 		var active string
 		var showClosed bool
 		if a.cfg != nil {
 			active = a.cfg.Theme
 			showClosed = a.cfg.ShowClosedPositions
 		}
-		return buildViewMenuItems(active, showClosed)
+		return widget.BuildViewMenuItems(active, showClosed)
 	})
 
 	// Apply the persisted theme (TH-029). On a clean load the styles
 	// adopt the new palette and we're done. On parse issues the styles
 	// adopt the partially-recovered theme and TH-032 surfaces the issue
 	// list to the log file plus a toast on the status bar (the toast's
-	// ClearToastCmd is added to the Init batch below). On an outright
+	// widget.ClearToastCmd is added to the Init batch below). On an outright
 	// load failure (unknown ID, unreadable file) the styles stay on the
 	// embedded default and the user sees the same toast/log pair.
 	// LoadTheme (TH-026) lets a user-dir file shadow the embedded
@@ -416,10 +418,10 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		case err != nil:
 			a.surfaceThemeFailure(cfg.Theme, err)
 		case len(issues) > 0:
-			a.styles.applyTheme(t)
+			a.styles.ApplyTheme(t)
 			a.surfaceThemeIssues(cfg.Theme, issues)
 		default:
-			a.styles.applyTheme(t)
+			a.styles.ApplyTheme(t)
 		}
 	}
 
@@ -437,9 +439,9 @@ func (a *App) Init() tea.Cmd {
 	}
 	// If NewApp surfaced a startup theme issue/failure, the toast is
 	// already on the status bar — schedule its auto-clear here so it
-	// disappears after ToastDuration like any other toast.
+	// disappears after widget.ToastDuration like any other toast.
 	if a.statusbar != nil && a.statusbar.Toast() != nil {
-		cmds = append(cmds, ClearToastCmd())
+		cmds = append(cmds, widget.ClearToastCmd())
 	}
 	return tea.Batch(cmds...)
 }

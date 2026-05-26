@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -71,8 +72,8 @@ func setupRefreshTUITest(t *testing.T, tickers ...string) (*App, *fakeRefreshPro
 		width:     100,
 		height:    30,
 		keys:      defaultKeyMap(),
-		statusbar: NewStatusBar(),
-		styles:    NewStyles(),
+		statusbar: widget.NewStatusBar(),
+		styles:    widget.NewStyles(),
 		priceSvc:  priceSvc,
 	}
 	return a, fp, seeded

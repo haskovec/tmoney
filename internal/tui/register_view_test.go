@@ -6,11 +6,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestApp_RenderRegister_Loading(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	app := &App{
 		currentView: ViewRegister,
@@ -27,7 +28,7 @@ func TestApp_RenderRegister_Loading(t *testing.T) {
 }
 
 func TestApp_RenderRegister_WithData(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 30)
 
 	accountID := types.NewID()
@@ -99,7 +100,7 @@ func TestApp_RenderRegister_WithData(t *testing.T) {
 }
 
 func TestApp_RenderRegister_EmptyTransactions(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	accountID := types.NewID()
@@ -134,7 +135,7 @@ func TestApp_RenderRegister_EmptyTransactions(t *testing.T) {
 }
 
 func TestApp_RenderRegister_NegativeBalance(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	accountID := types.NewID()
@@ -166,7 +167,7 @@ func TestApp_RenderRegister_NegativeBalance(t *testing.T) {
 }
 
 func TestApp_RenderRegister_TransferDisplay(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 30)
 
 	accountID := types.NewID()
@@ -218,10 +219,10 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 		currentView: ViewRegister,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
 			account: &account.Account{
@@ -241,7 +242,7 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 	}
 	app.buildRegisterTable()
 
-	// Table should start focused, sidebar not
+	// widget.Table should start focused, sidebar not
 	app.sidebar.SetFocused(false)
 	app.table.SetFocused(true)
 
@@ -275,10 +276,10 @@ func TestApp_HandleRegisterKeys_RKeyOpensReconciliation(t *testing.T) {
 		currentView: ViewRegister,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
 			account: &account.Account{
@@ -311,10 +312,10 @@ func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
 		currentView: ViewRegister,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		register: &registerData{
 			account: &account.Account{
@@ -360,8 +361,8 @@ func TestApp_Update_RegisterLoaded(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -413,7 +414,7 @@ func TestApp_BuildRegisterTable_RowContent(t *testing.T) {
 	categoryID := types.NewID()
 
 	app := &App{
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		register: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
@@ -479,7 +480,7 @@ func TestApp_BuildRegisterTable_StatusIndicators(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app := &App{
-				styles: NewStyles(),
+				styles: widget.NewStyles(),
 				register: &registerData{
 					account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
 					transactions: []*transaction.Transaction{
@@ -508,7 +509,7 @@ func TestApp_BuildRegisterTable_StatusIndicators(t *testing.T) {
 }
 
 func TestApp_RenderRegister_LongAccountName(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(60, 30) // narrow width to force truncation
 
 	accountID := types.NewID()
@@ -550,7 +551,7 @@ func TestApp_RenderRegister_LongAccountName(t *testing.T) {
 }
 
 func TestApp_RenderRegister_EmptyShowsHint(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	accountID := types.NewID()
@@ -587,7 +588,7 @@ func TestApp_BuildRegisterTable_VoidStatusIndicator(t *testing.T) {
 	accountID := types.NewID()
 
 	app := &App{
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		register: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
 			transactions: []*transaction.Transaction{
@@ -617,7 +618,7 @@ func TestApp_BuildRegisterTable_VoidRowStyling(t *testing.T) {
 	accountID := types.NewID()
 
 	app := &App{
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		register: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
 			transactions: []*transaction.Transaction{
@@ -652,16 +653,16 @@ func TestApp_BuildRegisterTable_VoidRowStyling(t *testing.T) {
 
 	app.buildRegisterTable()
 
-	// Void row (index 1) should have RowStyleVoid
-	if style, ok := app.table.rowStyles[1]; !ok || style != RowStyleVoid {
-		t.Errorf("void row style = %v (ok=%v), want RowStyleVoid", style, ok)
+	// Void row (index 1) should have widget.RowStyleVoid
+	if style, ok := app.table.RowStyles()[1]; !ok || style != widget.RowStyleVoid {
+		t.Errorf("void row style = %v (ok=%v), want widget.RowStyleVoid", style, ok)
 	}
 
 	// Non-void rows should not have a style override
-	if _, ok := app.table.rowStyles[0]; ok {
+	if _, ok := app.table.RowStyles()[0]; ok {
 		t.Error("cleared row should not have a style override")
 	}
-	if _, ok := app.table.rowStyles[2]; ok {
+	if _, ok := app.table.RowStyles()[2]; ok {
 		t.Error("uncleared row should not have a style override")
 	}
 }
@@ -683,7 +684,7 @@ func TestApp_BuildRegisterTable_AllFourStatusIndicators(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app := &App{
-				styles: NewStyles(),
+				styles: widget.NewStyles(),
 				register: &registerData{
 					account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
 					transactions: []*transaction.Transaction{
@@ -717,7 +718,7 @@ func TestApp_ToggleTransactionStatus_VoidBlocked(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -762,7 +763,7 @@ func TestApp_ToggleTransactionStatus_ReconciledBlocked(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -805,7 +806,7 @@ func TestApp_ShowVoidConfirmation_AlreadyVoid(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -854,7 +855,7 @@ func TestApp_ShowVoidConfirmation_ReconciledBlocked(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -897,7 +898,7 @@ func TestApp_ShowVoidConfirmation_ShowsDialog(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -943,7 +944,7 @@ func TestApp_ShowVoidConfirmation_TransferMessage(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -988,7 +989,7 @@ func TestApp_VoidKey_InRegisterView(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        sidebar,
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -1043,7 +1044,7 @@ func TestApp_ShowVoidConfirmation_NilGuards(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 	_, cmd := app.showVoidConfirmation()
 	if cmd != nil {
@@ -1051,7 +1052,7 @@ func TestApp_ShowVoidConfirmation_NilGuards(t *testing.T) {
 	}
 
 	// Nil register
-	app.table = NewTable([]Column{{Header: "A", Width: 10}})
+	app.table = widget.NewTable([]widget.Column{{Header: "A", Width: 10}})
 	_, cmd = app.showVoidConfirmation()
 	if cmd != nil {
 		t.Error("showVoidConfirmation() should return nil when register is nil")
@@ -1064,7 +1065,7 @@ func TestApp_ShowDeleteConfirmation_AlreadyVoid(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -1110,7 +1111,7 @@ func TestApp_ShowDeleteConfirmation_ReconciledBlocked(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -1156,7 +1157,7 @@ func TestApp_ShowDeleteConfirmation_ShowsDialog(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -1202,7 +1203,7 @@ func TestApp_ShowDeleteConfirmation_TransferMessage(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -1249,7 +1250,7 @@ func TestApp_DeleteKey_InRegisterView(t *testing.T) {
 	app := &App{
 		currentView:    ViewRegister,
 		keys:           defaultKeyMap(),
-		statusbar:      NewStatusBar(),
+		statusbar:      widget.NewStatusBar(),
 		sidebar:        sidebar,
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
@@ -1290,14 +1291,14 @@ func TestApp_ShowDeleteConfirmation_NilGuards(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 	_, cmd := app.showDeleteConfirmation()
 	if cmd != nil {
 		t.Error("showDeleteConfirmation() should return nil when table is nil")
 	}
 
-	app.table = NewTable([]Column{{Header: "A", Width: 10}})
+	app.table = widget.NewTable([]widget.Column{{Header: "A", Width: 10}})
 	_, cmd = app.showDeleteConfirmation()
 	if cmd != nil {
 		t.Error("showDeleteConfirmation() should return nil when register is nil")

@@ -1,6 +1,10 @@
 package tui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/haskovec/tmoney/internal/tui/widget"
+)
 
 func TestViewString(t *testing.T) {
 	tests := []struct {
@@ -28,7 +32,7 @@ func TestApp_Init(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	cmd := app.Init()

@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -87,9 +88,9 @@ func TestBuildTransferSharesDialog_Basic(t *testing.T) {
 		t.Fatalf("expected 5 fields (no lots), got %d", len(fields))
 	}
 
-	// Field 0: Date (masked, required)
-	if fields[0].Type != FieldDate {
-		t.Errorf("field 0 type = %d, want FieldDate", fields[0].Type)
+	// dialog.Field 0: Date (masked, required)
+	if fields[0].Type != dialog.FieldDate {
+		t.Errorf("field 0 type = %d, want dialog.FieldDate", fields[0].Type)
 	}
 	if fields[0].Label != "Date" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Date")
@@ -102,25 +103,25 @@ func TestBuildTransferSharesDialog_Basic(t *testing.T) {
 		t.Errorf("date default = %q, want %q", fields[0].Value, today)
 	}
 
-	// Field 1: Security (typeahead combo)
-	if fields[1].Type != FieldCombo {
-		t.Errorf("field 1 type = %d, want FieldCombo (%d)", fields[1].Type, FieldCombo)
+	// dialog.Field 1: Security (typeahead combo)
+	if fields[1].Type != dialog.FieldCombo {
+		t.Errorf("field 1 type = %d, want dialog.FieldCombo (%d)", fields[1].Type, dialog.FieldCombo)
 	}
 	if fields[1].Label != "Security" {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Security")
 	}
 
-	// Field 2: To Account (select)
-	if fields[2].Type != FieldSelect {
-		t.Errorf("field 2 type = %d, want FieldSelect (%d)", fields[2].Type, FieldSelect)
+	// dialog.Field 2: To Account (select)
+	if fields[2].Type != dialog.FieldSelect {
+		t.Errorf("field 2 type = %d, want dialog.FieldSelect (%d)", fields[2].Type, dialog.FieldSelect)
 	}
 	if fields[2].Label != "To Account" {
 		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "To Account")
 	}
 
-	// Field 3: Shares (text, required)
-	if fields[3].Type != FieldText {
-		t.Errorf("field 3 type = %d, want FieldText", fields[3].Type)
+	// dialog.Field 3: Shares (text, required)
+	if fields[3].Type != dialog.FieldText {
+		t.Errorf("field 3 type = %d, want dialog.FieldText", fields[3].Type)
 	}
 	if fields[3].Label != "Shares" {
 		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Shares")
@@ -129,7 +130,7 @@ func TestBuildTransferSharesDialog_Basic(t *testing.T) {
 		t.Error("shares field should be required")
 	}
 
-	// Field 4: Memo (text)
+	// dialog.Field 4: Memo (text)
 	if fields[4].Label != "Memo" {
 		t.Errorf("field 4 label = %q, want %q", fields[4].Label, "Memo")
 	}
@@ -164,11 +165,11 @@ func TestBuildTransferSharesDialog_WithLots(t *testing.T) {
 	}
 
 	// Lot fields at indices 4 and 5
-	if fields[4].Type != FieldText {
-		t.Errorf("lot field 0 type = %d, want FieldText", fields[4].Type)
+	if fields[4].Type != dialog.FieldText {
+		t.Errorf("lot field 0 type = %d, want dialog.FieldText", fields[4].Type)
 	}
-	if fields[5].Type != FieldText {
-		t.Errorf("lot field 1 type = %d, want FieldText", fields[5].Type)
+	if fields[5].Type != dialog.FieldText {
+		t.Errorf("lot field 1 type = %d, want dialog.FieldText", fields[5].Type)
 	}
 
 	// Memo at index 6

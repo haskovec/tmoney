@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -65,8 +66,8 @@ type createCategoryRequestMsg struct {
 //
 // Focus starts on Name when name is empty; on Parent when name is filled
 // but parent is empty; on Type when both are filled.
-func buildCreateCategoryDialog(name, parent string, existingParents []string, defaultType category.Type) *Dialog {
-	d := NewDialog("New Category")
+func buildCreateCategoryDialog(name, parent string, existingParents []string, defaultType category.Type) *dialog.Dialog {
+	d := dialog.NewDialog("New Category")
 
 	nameField := d.AddTextField("Name", name, "Category name", 0)
 	nameField.Required = true
@@ -154,7 +155,7 @@ func inferCategoryTypeFromAmount(s string) category.Type {
 // collectCreateCategoryRequest validates the dialog's input and, on success,
 // returns a populated createCategoryRequest. Returns ok=false and sets an
 // inline error on the offending field when validation fails.
-func collectCreateCategoryRequest(d *Dialog, existingParents []string) (createCategoryRequest, bool) {
+func collectCreateCategoryRequest(d *dialog.Dialog, existingParents []string) (createCategoryRequest, bool) {
 	fields := d.Fields()
 	if len(fields) < 3 {
 		return createCategoryRequest{}, false
@@ -188,7 +189,7 @@ func collectCreateCategoryRequest(d *Dialog, existingParents []string) (createCa
 // returned; otherwise it's flagged as a new top-level to create. When Query
 // is empty, SelectedIndex is consulted — index 0 is "(top-level)" (no
 // parent), index n>0 maps to existingParents[n-1].
-func readParentCombo(f *Field, existingParents []string) (name string, newParent bool) {
+func readParentCombo(f *dialog.Field, existingParents []string) (name string, newParent bool) {
 	q := strings.TrimSpace(f.Query)
 	if q != "" {
 		for _, p := range existingParents {
@@ -207,7 +208,7 @@ func readParentCombo(f *Field, existingParents []string) (name string, newParent
 // submitCreateCategoryDialog returns a tea.Cmd that emits a
 // createCategoryRequestMsg when the dialog input is valid, or nil when
 // validation fails (errors are set inline on the offending fields).
-func submitCreateCategoryDialog(d *Dialog, existingParents []string) tea.Cmd {
+func submitCreateCategoryDialog(d *dialog.Dialog, existingParents []string) tea.Cmd {
 	req, ok := collectCreateCategoryRequest(d, existingParents)
 	if !ok {
 		return nil

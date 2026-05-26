@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 func TestApp_Update_WindowSize(t *testing.T) {
@@ -35,7 +36,7 @@ func TestApp_Update_QuitKey(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 	}
 
 	msg := tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl}
@@ -66,8 +67,8 @@ func TestApp_Update_ViewSwitchKeys(t *testing.T) {
 			app := &App{
 				currentView: ViewDashboard,
 				keys:        defaultKeyMap(),
-				menubar:     NewMenuBar(),
-				statusbar:   NewStatusBar(),
+				menubar:     widget.NewMenuBar(),
+				statusbar:   widget.NewStatusBar(),
 			}
 
 			model, _ := app.Update(tt.key)
@@ -87,8 +88,8 @@ func TestApp_Update_DashboardKey_ReloadsData(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -113,8 +114,8 @@ func TestApp_Update_EscapeKey(t *testing.T) {
 		currentView:  ViewRegister,
 		previousView: ViewDashboard,
 		keys:         defaultKeyMap(),
-		menubar:      NewMenuBar(),
-		statusbar:    NewStatusBar(),
+		menubar:      widget.NewMenuBar(),
+		statusbar:    widget.NewStatusBar(),
 	}
 
 	msg := tea.KeyPressMsg{Code: tea.KeyEsc}
@@ -136,8 +137,8 @@ func TestApp_Update_EscapeKey_RefreshesDestinationView(t *testing.T) {
 		currentView:  ViewInvestmentRegister,
 		previousView: ViewPortfolio,
 		keys:         defaultKeyMap(),
-		menubar:      NewMenuBar(),
-		statusbar:    NewStatusBar(),
+		menubar:      widget.NewMenuBar(),
+		statusbar:    widget.NewStatusBar(),
 		sidebar:      NewSidebar(),
 	}
 
@@ -153,8 +154,8 @@ func TestApp_Update_ErrorDismissedByKeyPress(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		err:         fmt.Errorf("some error"),
 	}
 
@@ -175,8 +176,8 @@ func TestApp_Update_ErrorDismissedByEnter(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		err:         fmt.Errorf("some error"),
 	}
 
@@ -193,8 +194,8 @@ func TestApp_Update_ErrorDismissedByEscape(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		err:         fmt.Errorf("some error"),
 	}
 
@@ -211,8 +212,8 @@ func TestApp_Update_ErrorDismissedBySpace(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		err:         fmt.Errorf("some error"),
 	}
 
@@ -229,8 +230,8 @@ func TestApp_Update_ErrorDoesNotQuit(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		err:         fmt.Errorf("some error"),
 	}
 
@@ -254,8 +255,8 @@ func TestApp_Update_ErrMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := errMsg{err: fmt.Errorf("test error")}
@@ -277,8 +278,8 @@ func TestApp_Update_ErrorThenNormalOperation(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		err:         fmt.Errorf("some error"),
 	}
 
@@ -308,22 +309,22 @@ func TestApp_Update_ToastClearMsg(t *testing.T) {
 	a := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		styles:      NewStyles(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      widget.NewStyles(),
 		width:       80,
 		height:      24,
 	}
-	a.statusbar.SetToast("hello", NotificationInfo)
+	a.statusbar.SetToast("hello", widget.NotificationInfo)
 	if a.statusbar.Toast() == nil {
 		t.Fatal("precondition: SetToast did not register a toast")
 	}
 
-	model, cmd := a.Update(ToastClearMsg{})
+	model, cmd := a.Update(widget.ToastClearMsg{})
 	if cmd != nil {
-		t.Errorf("Update(ToastClearMsg) cmd = %T, want nil", cmd)
+		t.Errorf("Update(widget.ToastClearMsg) cmd = %T, want nil", cmd)
 	}
 	got := model.(*App)
 	if got.statusbar.Toast() != nil {
-		t.Errorf("Toast() = %+v after ToastClearMsg, want nil", got.statusbar.Toast())
+		t.Errorf("widget.Toast() = %+v after widget.ToastClearMsg, want nil", got.statusbar.Toast())
 	}
 }

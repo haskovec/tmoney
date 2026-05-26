@@ -9,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -17,7 +18,7 @@ func TestApp_RenderDashboard_Loading(t *testing.T) {
 		currentView: ViewDashboard,
 		width:       100,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		dashboard:   nil, // not loaded yet
 	}
 	app.styles.Resize(100, 30)
@@ -29,7 +30,7 @@ func TestApp_RenderDashboard_Loading(t *testing.T) {
 }
 
 func TestApp_RenderDashboard_WithData(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 30)
 	app := &App{
 		currentView: ViewDashboard,
@@ -86,7 +87,7 @@ func TestApp_RenderDashboard_WithData(t *testing.T) {
 }
 
 func TestApp_RenderDashboard_NegativeNetWorth(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	app := &App{
 		currentView: ViewDashboard,
@@ -118,7 +119,7 @@ func TestApp_RenderDashboard_NegativeNetWorth(t *testing.T) {
 
 func TestApp_RenderDashboard_WithScheduled(t *testing.T) {
 	payeeID := types.NewID()
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	app := &App{
@@ -163,7 +164,7 @@ func TestApp_RenderDashboard_WithScheduled(t *testing.T) {
 }
 
 func TestApp_RenderDashboard_EmptyData(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(80, 24)
 	app := &App{
 		currentView: ViewDashboard,
@@ -195,8 +196,8 @@ func TestApp_Update_DashboardLoaded(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	data := &dashboardData{
@@ -223,7 +224,7 @@ func TestApp_Update_DashboardLoaded(t *testing.T) {
 }
 
 func TestApp_RenderDashboard_SmallWidth(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(60, 20)
 	app := &App{
 		currentView: ViewDashboard,
@@ -250,7 +251,7 @@ func TestApp_RenderDashboard_SmallWidth(t *testing.T) {
 }
 
 func TestApp_RenderDashboard_NilNetWorth(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(80, 24)
 	app := &App{
 		currentView: ViewDashboard,
@@ -272,7 +273,7 @@ func TestApp_RenderDashboard_NilNetWorth(t *testing.T) {
 }
 
 func TestApp_RenderDashboard_InvestmentAccountWithHoldings(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 
 	investAccountID := types.NewID()
@@ -348,7 +349,7 @@ func TestApp_RenderDashboard_InvestmentAccountWithHoldings(t *testing.T) {
 }
 
 func TestApp_RenderDashboard_InvestmentAccountCollapsed(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 
 	investAccountID := types.NewID()
@@ -403,7 +404,7 @@ func TestApp_RenderDashboard_InvestmentAccountCollapsed(t *testing.T) {
 }
 
 func TestApp_RenderDashboard_InvestmentAccountEstimatedValue(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 
 	investAccountID := types.NewID()
@@ -454,7 +455,7 @@ func TestApp_RenderDashboard_InvestmentAccountEstimatedValue(t *testing.T) {
 }
 
 func TestApp_RenderDashboard_InvestmentNoHoldings(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 
 	investAccountID := types.NewID()
@@ -501,7 +502,7 @@ func TestApp_RenderDashboard_InvestmentNoHoldings(t *testing.T) {
 }
 
 func TestApp_RenderDashboard_InvestmentTopHoldingsLimit(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 
 	investAccountID := types.NewID()
@@ -570,7 +571,7 @@ func TestApp_RenderDashboard_InvestmentTopHoldingsLimit(t *testing.T) {
 
 func TestApp_RenderDashboard_InvestmentHoldingsNilMap(t *testing.T) {
 	// Dashboard should handle nil investmentHoldings gracefully
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 
 	investAccountID := types.NewID()
@@ -608,7 +609,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRRow(t *testing.T) {
 	// TR-023: an investment account card on the dashboard renders a `TR`
 	// line below the account balance row with formatted total return $
 	// and %.
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 
 	investAccountID := types.NewID()
@@ -643,7 +644,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRRow(t *testing.T) {
 		},
 	}
 
-	view := stripAnsi(app.renderDashboard())
+	view := widget.StripAnsi(app.renderDashboard())
 
 	if !contains(view, "TR") {
 		t.Error("dashboard should show 'TR' label for investment accounts")
@@ -659,7 +660,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRRow(t *testing.T) {
 func TestApp_RenderDashboard_InvestmentAccountTRRowNegative(t *testing.T) {
 	// TR-023: a negative total return renders with the negative-money
 	// format (leading minus sign).
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 
 	investAccountID := types.NewID()
@@ -693,7 +694,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRRowNegative(t *testing.T) {
 		},
 	}
 
-	view := stripAnsi(app.renderDashboard())
+	view := widget.StripAnsi(app.renderDashboard())
 
 	if !contains(view, "-$825.00") {
 		t.Errorf("dashboard should show negative TotalReturn '-$825.00', got:\n%s", view)
@@ -706,7 +707,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRRowNegative(t *testing.T) {
 func TestApp_RenderDashboard_InvestmentAccountTRPctNilRendersDash(t *testing.T) {
 	// TR-023: a nil TotalReturnPct (no buys ever — denominator is zero)
 	// renders the "—" placeholder so the line shape stays stable.
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 
 	investAccountID := types.NewID()
@@ -739,7 +740,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRPctNilRendersDash(t *testing.T) 
 		},
 	}
 
-	view := stripAnsi(app.renderDashboard())
+	view := widget.StripAnsi(app.renderDashboard())
 
 	if !contains(view, "TR") {
 		t.Errorf("dashboard should still show TR row when TotalReturnPct is nil, got:\n%s", view)
@@ -752,7 +753,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRPctNilRendersDash(t *testing.T) 
 func TestApp_RenderDashboard_NonInvestmentAccountNoTRRow(t *testing.T) {
 	// TR-023: non-investment accounts (checking, savings, etc.) should
 	// NOT get a TR row.
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 
 	checkingID := types.NewID()
@@ -778,7 +779,7 @@ func TestApp_RenderDashboard_NonInvestmentAccountNoTRRow(t *testing.T) {
 		},
 	}
 
-	view := stripAnsi(app.renderDashboard())
+	view := widget.StripAnsi(app.renderDashboard())
 
 	// The view does have a column-bottom "Total" row, so we can't search
 	// for "TR" alone (it could collide with substrings). Use the
@@ -810,8 +811,8 @@ func TestApp_DashboardInvestmentAccountOpensPortfolioView(t *testing.T) {
 		currentView: ViewDashboard,
 		sidebar:     sidebar,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
@@ -845,8 +846,8 @@ func TestApp_DashboardNonInvestmentAccountOpensRegisterView(t *testing.T) {
 		currentView: ViewDashboard,
 		sidebar:     sidebar,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}

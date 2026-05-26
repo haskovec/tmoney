@@ -6,15 +6,16 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 func TestApp_HandleSidebarKeys_NewAccountShortcut(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 	// Sidebar is focused by default in NewSidebar()
 
@@ -32,9 +33,9 @@ func TestApp_HandleSidebarKeys_NewAccountNotWhenUnfocused(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 	app.sidebar.SetFocused(false)
 
@@ -51,9 +52,9 @@ func TestApp_MouseClick_Sidebar_SingleClick_OnlySelects(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
 	}
@@ -86,16 +87,16 @@ func TestApp_MouseClick_Sidebar_DoubleClick_OpensAccount(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
 	}
 	app.styles.Resize(100, 24)
 
 	now := time.Unix(0, 0)
-	app.sidebarClicks = NewClickTracker(400 * time.Millisecond)
+	app.sidebarClicks = widget.NewClickTracker(400 * time.Millisecond)
 	app.sidebarClicks.SetNowFn(func() time.Time { return now })
 
 	accounts := []*account.Account{
@@ -137,9 +138,9 @@ func TestApp_MouseOpenAccountMsg_SwitchesView(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
 	}
@@ -165,9 +166,9 @@ func TestApp_MouseClick_Sidebar_GroupHeader_JustMovesCursor(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
 	}

@@ -3,6 +3,8 @@ package tui
 import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -26,7 +28,7 @@ func (a *App) handleMouseEvent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a.handleDialogMouse(msg)
 	}
 
-	// Menu bar (row 0)
+	// widget.Menu bar (row 0)
 	if m.Y == 0 {
 		return a.handleMouseMenuBar(msg)
 	}
@@ -131,7 +133,7 @@ func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd
 	// Prices landing list: double-click drills into a ticker's history.
 	if a.currentView == ViewPrices && a.priceView != nil && a.priceView.mode == pricesViewList {
 		if a.priceListClicks == nil {
-			a.priceListClicks = NewClickTracker(doubleClickThreshold)
+			a.priceListClicks = widget.NewClickTracker(widget.DoubleClickThreshold)
 		}
 		if a.priceListClicks.Click(rowIdx) {
 			return a, a.drillIntoSelectedListRow()
@@ -171,7 +173,7 @@ func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleDialogMouse routes mouse events to the currently visible dialog.
-// For non-Dialog overlays (SplitDialog, mergerConfirm, corporateActionHistory),
+// For non-dialog.Dialog overlays (SplitDialog, mergerConfirm, corporateActionHistory),
 // mouse events are blocked (returns no-op). The help overlay accepts a
 // click on its [x] close button.
 func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
@@ -191,17 +193,17 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	// Dialog cascade (same order as handleKeyPress)
+	// dialog.Dialog cascade (same order as handleKeyPress)
 	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
 		action := a.confirmDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			a.confirmDialog.SetVisible(false)
 			fn := a.confirmAction
 			a.confirmDialog = nil
 			a.confirmAction = nil
 			return a, func() tea.Msg { return fn() }
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.confirmDialog.SetVisible(false)
 			a.confirmDialog = nil
 			a.confirmAction = nil
@@ -212,7 +214,7 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.aboutDialog != nil && a.aboutDialog.IsVisible() {
 		action := a.aboutDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit, DialogActionCancel:
+		case dialog.DialogActionSubmit, dialog.DialogActionCancel:
 			a.aboutDialog.SetVisible(false)
 			a.aboutDialog = nil
 		}
@@ -222,9 +224,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.backupDialog != nil && a.backupDialog.dialog.IsVisible() {
 		action := a.backupDialog.dialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitBackupDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.backupDialog.dialog.SetVisible(false)
 			a.backupDialog = nil
 		}
@@ -246,7 +248,7 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 		if listItemRow >= 0 {
 			if a.browseDialogClicks == nil {
-				a.browseDialogClicks = NewClickTracker(doubleClickThreshold)
+				a.browseDialogClicks = widget.NewClickTracker(widget.DoubleClickThreshold)
 			}
 			if a.browseDialogClicks.Click(listItemRow) {
 				return a.submitFileDialog()
@@ -254,9 +256,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitFileDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.closeFileDialog()
 		}
 		return a, nil
@@ -265,9 +267,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.importDialog != nil && a.importDialog.IsVisible() {
 		action := a.importDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitImportDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.closeImportDialog()
 		}
 		return a, nil
@@ -276,9 +278,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.linkTransfersDialog != nil && a.linkTransfersDialog.IsVisible() {
 		action := a.linkTransfersDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitLinkTransfersDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.closeLinkTransfersDialog()
 		}
 		return a, nil
@@ -287,9 +289,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.createCatDialog != nil && a.createCatDialog.IsVisible() {
 		action := a.createCatDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitCreateCatDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.cancelCreateCatDialog()
 		}
 		return a, nil
@@ -298,12 +300,12 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.txnDialog != nil && a.txnDialog.IsVisible() {
 		action := a.txnDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitTransactionDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.txnDialog.SetVisible(false)
 			a.txnDialog = nil
-		case DialogActionAddNew:
+		case dialog.DialogActionAddNew:
 			return a.openCreateCategorySubDialog()
 		}
 		return a, nil
@@ -312,9 +314,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.transferDialog != nil && a.transferDialog.IsVisible() {
 		action := a.transferDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitTransferDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.transferDialog.SetVisible(false)
 			a.transferDialog = nil
 		}
@@ -324,12 +326,12 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.schedDialog != nil && a.schedDialog.IsVisible() {
 		action := a.schedDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitScheduledDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.schedDialog.SetVisible(false)
 			a.schedDialog = nil
-		case DialogActionAlternate:
+		case dialog.DialogActionAlternate:
 			return a.relaunchAsPaycheckWizard()
 		}
 		return a, nil
@@ -338,9 +340,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.paycheckWizard != nil && a.paycheckWizard.IsVisible() {
 		action := a.paycheckWizard.HandleMouse(msg, a.styles, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitPaycheckWizard()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.closePaycheckWizard()
 		}
 		return a, nil
@@ -349,9 +351,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.acctDialog != nil && a.acctDialog.IsVisible() {
 		action := a.acctDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitAccountDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.acctDialog.SetVisible(false)
 			a.acctDialog = nil
 		}
@@ -361,9 +363,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.reconDialog != nil && a.reconDialog.IsVisible() {
 		action := a.reconDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitStartReconciliation()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.reconDialog.SetVisible(false)
 			a.reconDialog = nil
 		}
@@ -373,9 +375,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.securityDialog != nil && a.securityDialog.IsVisible() {
 		action := a.securityDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitSecurityDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.securityDialog.SetVisible(false)
 			a.securityDialog = nil
 		}
@@ -385,9 +387,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.priceDialog != nil && a.priceDialog.IsVisible() {
 		action := a.priceDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitPriceDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.priceDialog.SetVisible(false)
 			a.priceDialog = nil
 		}
@@ -397,9 +399,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.priceImportDialog != nil && a.priceImportDialog.IsVisible() {
 		action := a.priceImportDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitImportPriceDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.priceImportDialog.SetVisible(false)
 			a.priceImportDialog = nil
 		}
@@ -409,9 +411,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.buyDialog != nil && a.buyDialog.IsVisible() {
 		action := a.buyDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitBuyDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.buyDialog.SetVisible(false)
 			a.buyDialog = nil
 		}
@@ -421,9 +423,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.sellDialog != nil && a.sellDialog.IsVisible() {
 		action := a.sellDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitSellDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.sellDialog.SetVisible(false)
 			a.sellDialog = nil
 		}
@@ -433,9 +435,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
 		action := a.dividendDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitDividendDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.dividendDialog.SetVisible(false)
 			a.dividendDialog = nil
 		}
@@ -445,9 +447,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible() {
 		action := a.transferSharesDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitTransferSharesDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.transferSharesDialog.SetVisible(false)
 			a.transferSharesDialog = nil
 		}
@@ -457,9 +459,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible() {
 		action := a.stockSplitDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitStockSplitDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.stockSplitDialog.SetVisible(false)
 			a.stockSplitDialog = nil
 		}
@@ -469,9 +471,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.mergerDialog != nil && a.mergerDialog.IsVisible() {
 		action := a.mergerDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitMergerDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.mergerDialog.SetVisible(false)
 			a.mergerDialog = nil
 		}
@@ -481,9 +483,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.spinOffDialog != nil && a.spinOffDialog.IsVisible() {
 		action := a.spinOffDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitSpinOffDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.spinOffDialog.SetVisible(false)
 			a.spinOffDialog = nil
 		}
@@ -493,9 +495,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible() {
 		action := a.cashOperationDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitCashOperationDialog()
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.cashOperationDialog.SetVisible(false)
 			a.cashOperationDialog = nil
 		}
@@ -505,7 +507,7 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.investmentTypeSelector != nil && a.investmentTypeSelector.IsVisible() {
 		action := a.investmentTypeSelector.HandleMouse(msg, a.width, a.height)
 		switch action {
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			fields := a.investmentTypeSelector.Fields()
 			selectedType := investmentTransactionTypeFromIndex(fields[0].SelectedIndex)
 			a.investmentTypeSelector.SetVisible(false)
@@ -543,7 +545,7 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			case investment.TransactionTypeTransferShares:
 				return a, a.loadTransferSharesDialogData()
 			}
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.investmentTypeSelector.SetVisible(false)
 			a.investmentTypeSelector = nil
 		}

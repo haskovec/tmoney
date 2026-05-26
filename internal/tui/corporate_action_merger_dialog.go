@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -22,10 +23,10 @@ type mergerDialogDataMsg struct {
 // mergerDialogSavedMsg is sent when a merger has been executed.
 type mergerDialogSavedMsg struct{}
 
-// buildMergerDialog creates a Dialog for executing a merger/acquisition.
+// buildMergerDialog creates a dialog.Dialog for executing a merger/acquisition.
 // If preSelectedSourceID is non-nil, the source security selector is pre-selected.
-func buildMergerDialog(securityOptions []string, securityIDs []types.ID, preSelectedSourceID *types.ID) *Dialog {
-	d := NewDialog("Merger / Acquisition")
+func buildMergerDialog(securityOptions []string, securityIDs []types.ID, preSelectedSourceID *types.ID) *dialog.Dialog {
+	d := dialog.NewDialog("Merger / Acquisition")
 	d.SetWidth(55)
 
 	// Source Security selector
@@ -54,7 +55,7 @@ func buildMergerDialog(securityOptions []string, securityIDs []types.ID, preSele
 	// Cash Per Share (optional)
 	d.AddTextField("Cash Per Share", "", "0.00", 10)
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Execute", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -96,9 +97,9 @@ func (a *App) handleMergerDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	action := a.mergerDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitMergerDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeMergerDialog()
 		return a, nil
 	}

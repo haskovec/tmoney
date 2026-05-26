@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -19,8 +20,8 @@ func TestApp_Update_ScheduledDueCount(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	// Test with 3 due transactions
@@ -38,8 +39,8 @@ func TestApp_Update_ScheduledDueCount(t *testing.T) {
 	if notifications[0].Text != "3 scheduled due" {
 		t.Errorf("notification text = %q, want %q", notifications[0].Text, "3 scheduled due")
 	}
-	if notifications[0].Level != NotificationAlert {
-		t.Errorf("notification level = %d, want %d", notifications[0].Level, NotificationAlert)
+	if notifications[0].Level != widget.NotificationAlert {
+		t.Errorf("notification level = %d, want %d", notifications[0].Level, widget.NotificationAlert)
 	}
 }
 
@@ -47,8 +48,8 @@ func TestApp_Update_ScheduledDueCount_Single(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := scheduledDueCountMsg{count: 1}
@@ -68,12 +69,12 @@ func TestApp_Update_ScheduledDueCount_Zero(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	// Add a notification first, then clear with count 0
-	app.statusbar.AddNotification("old", NotificationInfo)
+	app.statusbar.AddNotification("old", widget.NotificationInfo)
 
 	msg := scheduledDueCountMsg{count: 0}
 	model, _ := app.Update(msg)
@@ -85,7 +86,7 @@ func TestApp_Update_ScheduledDueCount_Zero(t *testing.T) {
 }
 
 func TestApp_RenderScheduled_Loading(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	app := &App{
 		currentView: ViewScheduled,
@@ -102,7 +103,7 @@ func TestApp_RenderScheduled_Loading(t *testing.T) {
 }
 
 func TestApp_RenderScheduled_Empty(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	app := &App{
 		currentView: ViewScheduled,
@@ -128,7 +129,7 @@ func TestApp_RenderScheduled_Empty(t *testing.T) {
 }
 
 func TestApp_RenderScheduled_WithDueAndUpcoming(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 30)
 
 	payeeID1 := types.NewID()
@@ -200,7 +201,7 @@ func TestApp_BuildScheduledTable(t *testing.T) {
 	accountID := types.NewID()
 
 	app := &App{
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		scheduled: &scheduledViewData{
 			allTxns: []*scheduled.Transaction{
 				{
@@ -255,7 +256,7 @@ func TestApp_BuildScheduledTable_VariableAmount(t *testing.T) {
 	accountID := types.NewID()
 
 	app := &App{
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		scheduled: &scheduledViewData{
 			allTxns: []*scheduled.Transaction{
 				{
@@ -286,7 +287,7 @@ func TestApp_BuildScheduledTable_OverdueIndicator(t *testing.T) {
 	pastDate := types.Today().AddDays(-3)
 
 	app := &App{
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		scheduled: &scheduledViewData{
 			allTxns: []*scheduled.Transaction{
 				{
@@ -317,7 +318,7 @@ func TestApp_BuildScheduledTable_UpcomingIndicator(t *testing.T) {
 	futureDate := types.Today().AddDays(7)
 
 	app := &App{
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		scheduled: &scheduledViewData{
 			allTxns: []*scheduled.Transaction{
 				{
@@ -350,10 +351,10 @@ func TestApp_HandleScheduledKeys_TableNavigation(t *testing.T) {
 		currentView: ViewScheduled,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		scheduled: &scheduledViewData{
 			allTxns: []*scheduled.Transaction{
@@ -401,10 +402,10 @@ func TestApp_HandleScheduledKeys_TabFocus(t *testing.T) {
 		currentView: ViewScheduled,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		scheduled: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{},
@@ -446,8 +447,8 @@ func TestApp_Update_ScheduledViewDataLoaded(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -511,7 +512,7 @@ func TestApp_FormatScheduledRow_AllFrequencies(t *testing.T) {
 	for _, tt := range frequencies {
 		t.Run(string(tt.freq), func(t *testing.T) {
 			app := &App{
-				styles: NewStyles(),
+				styles: widget.NewStyles(),
 				scheduled: &scheduledViewData{
 					payeeNames:    make(map[types.ID]string),
 					accountNames:  map[types.ID]string{accountID: "Checking"},
@@ -597,10 +598,10 @@ func TestScheduledView_EnterOnDueItem_OpensPreview(t *testing.T) {
 		width:           120,
 		height:          30,
 		keys:            defaultKeyMap(),
-		menubar:         NewMenuBar(),
-		statusbar:       NewStatusBar(),
+		menubar:         widget.NewMenuBar(),
+		statusbar:       widget.NewStatusBar(),
 		sidebar:         NewSidebar(),
-		styles:          NewStyles(),
+		styles:          widget.NewStyles(),
 		accountSvc:      accountSvc,
 		payeeSvc:        payeeSvc,
 		categorySvc:     categorySvc,

@@ -1,13 +1,17 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+
+	tea "charm.land/bubbletea/v2"
+)
 
 // showConfirmDialog displays a confirmation dialog with the given title and message.
 // The action function is called when the user confirms.
 func (a *App) showConfirmDialog(title, message string, action func() tea.Msg) {
-	d := NewDialog(title)
+	d := dialog.NewDialog(title)
 	d.SetWidth(50)
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "No"},
 		{Label: "Yes", Primary: true},
 	})
@@ -25,7 +29,7 @@ func (a *App) handleConfirmDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.confirmDialog.HandleKey(msg)
 
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		a.confirmDialog.SetVisible(false)
 		fn := a.confirmAction
 		a.confirmDialog = nil
@@ -33,7 +37,7 @@ func (a *App) handleConfirmDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, func() tea.Msg {
 			return fn()
 		}
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.confirmDialog.SetVisible(false)
 		a.confirmDialog = nil
 		a.confirmAction = nil

@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -105,24 +106,24 @@ func (a *App) buildPortfolioHoldingsTable() {
 		return
 	}
 
-	columns := []Column{
-		{Header: "Ticker", Width: 8, Align: AlignLeft},
-		{Header: "Shares", Width: 9, Align: AlignRight},
-		{Header: "Avg Cost", Width: 10, Align: AlignRight},
-		{Header: "Price", Width: 10, Align: AlignRight},
-		{Header: "Date", Width: 10, Align: AlignLeft},
-		{Header: "Mkt Value", Width: 12, Align: AlignRight},
-		{Header: "Cost Basis", Width: 12, Align: AlignRight},
-		{Header: "Unreal", Width: 11, Align: AlignRight},
-		{Header: "Div", Width: 10, Align: AlignRight},
-		{Header: "Real", Width: 11, Align: AlignRight},
-		{Header: "Fees", Width: 9, Align: AlignRight},
-		{Header: "Total Ret", Width: 12, Align: AlignRight},
-		{Header: "Ret %", Width: 8, Align: AlignRight},
+	columns := []widget.Column{
+		{Header: "Ticker", Width: 8, Align: widget.AlignLeft},
+		{Header: "Shares", Width: 9, Align: widget.AlignRight},
+		{Header: "Avg Cost", Width: 10, Align: widget.AlignRight},
+		{Header: "Price", Width: 10, Align: widget.AlignRight},
+		{Header: "Date", Width: 10, Align: widget.AlignLeft},
+		{Header: "Mkt Value", Width: 12, Align: widget.AlignRight},
+		{Header: "Cost Basis", Width: 12, Align: widget.AlignRight},
+		{Header: "Unreal", Width: 11, Align: widget.AlignRight},
+		{Header: "Div", Width: 10, Align: widget.AlignRight},
+		{Header: "Real", Width: 11, Align: widget.AlignRight},
+		{Header: "Fees", Width: 9, Align: widget.AlignRight},
+		{Header: "Total Ret", Width: 12, Align: widget.AlignRight},
+		{Header: "Ret %", Width: 8, Align: widget.AlignRight},
 	}
 
 	if a.portfolioHoldingsTable == nil {
-		a.portfolioHoldingsTable = NewTable(columns)
+		a.portfolioHoldingsTable = widget.NewTable(columns)
 	} else {
 		a.portfolioHoldingsTable.SetColumns(columns)
 	}
@@ -216,18 +217,18 @@ func (a *App) buildPortfolioLotsTable() {
 		return
 	}
 
-	columns := []Column{
-		{Header: "Purchase Date", Width: 13, Align: AlignLeft},
-		{Header: "Shares", Width: 12, Align: AlignRight},
-		{Header: "Cost/Share", Width: 12, Align: AlignRight},
-		{Header: "Cost Basis", Width: 14, Align: AlignRight},
-		{Header: "Cur. Value", Width: 14, Align: AlignRight},
-		{Header: "Gain/Loss", Width: 14, Align: AlignRight},
-		{Header: "G/L %", Width: 8, Align: AlignRight},
+	columns := []widget.Column{
+		{Header: "Purchase Date", Width: 13, Align: widget.AlignLeft},
+		{Header: "Shares", Width: 12, Align: widget.AlignRight},
+		{Header: "Cost/Share", Width: 12, Align: widget.AlignRight},
+		{Header: "Cost Basis", Width: 14, Align: widget.AlignRight},
+		{Header: "Cur. Value", Width: 14, Align: widget.AlignRight},
+		{Header: "Gain/Loss", Width: 14, Align: widget.AlignRight},
+		{Header: "G/L %", Width: 8, Align: widget.AlignRight},
 	}
 
 	if a.portfolioLotsTable == nil {
-		a.portfolioLotsTable = NewTable(columns)
+		a.portfolioLotsTable = widget.NewTable(columns)
 	} else {
 		a.portfolioLotsTable.SetColumns(columns)
 	}
@@ -370,7 +371,7 @@ func (a *App) renderPortfolioView() string {
 	acctName := strings.ToUpper(a.portfolioData.account.Name)
 	titleSuffix := " PORTFOLIO"
 	maxNameWidth := max(contentWidth-lipgloss.Width(titleSuffix)-4, 10)
-	acctName = truncate(acctName, maxNameWidth)
+	acctName = widget.Truncate(acctName, maxNameWidth)
 	titleRow := a.styles.Title.Render(acctName + titleSuffix)
 	sections = append(sections, titleRow)
 
@@ -465,7 +466,7 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.handleSidebarKeys(msg)
 	}
 
-	// Table-focused key handling
+	// widget.Table-focused key handling
 	if a.portfolioData == nil {
 		return a, nil
 	}
@@ -530,7 +531,7 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // activePortfolioTable returns whichever portfolio table is currently active.
-func (a *App) activePortfolioTable() *Table {
+func (a *App) activePortfolioTable() *widget.Table {
 	if a.portfolioMode == portfolioViewLots && a.portfolioLotsTable != nil {
 		return a.portfolioLotsTable
 	}
@@ -538,7 +539,7 @@ func (a *App) activePortfolioTable() *Table {
 		return a.portfolioHoldingsTable
 	}
 	// Return a placeholder to avoid nil panics
-	return NewTable(nil)
+	return widget.NewTable(nil)
 }
 
 // setPortfolioTableFocused sets focus on the appropriate portfolio table.

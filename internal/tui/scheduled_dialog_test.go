@@ -13,6 +13,8 @@ import (
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -129,22 +131,22 @@ func TestBuildNewScheduledDialog_FieldTypes(t *testing.T) {
 
 	expected := []struct {
 		label     string
-		fieldType FieldType
+		fieldType dialog.FieldType
 	}{
-		{"Account", FieldSelect},
-		{"Payee", FieldText},
-		{"Category", FieldCombo},
-		{"Amount", FieldText},
-		{"Memo", FieldText},
-		{"Frequency", FieldSelect},
-		{"Interval", FieldText},
-		{"Start Date", FieldDate},
-		{"Duration", FieldRadio},
-		{"End Date", FieldDate},
-		{"Occurrences", FieldText},
-		{"Auto-post", FieldCheckbox},
-		{"Lead time", FieldRadio},
-		{"Split transaction", FieldCheckbox},
+		{"Account", dialog.FieldSelect},
+		{"Payee", dialog.FieldText},
+		{"Category", dialog.FieldCombo},
+		{"Amount", dialog.FieldText},
+		{"Memo", dialog.FieldText},
+		{"Frequency", dialog.FieldSelect},
+		{"Interval", dialog.FieldText},
+		{"Start Date", dialog.FieldDate},
+		{"Duration", dialog.FieldRadio},
+		{"End Date", dialog.FieldDate},
+		{"Occurrences", dialog.FieldText},
+		{"Auto-post", dialog.FieldCheckbox},
+		{"Lead time", dialog.FieldRadio},
+		{"Split transaction", dialog.FieldCheckbox},
 	}
 
 	for i, exp := range expected {
@@ -210,8 +212,8 @@ func TestBuildNewScheduledDialog_EndDateIsOptionalBlank(t *testing.T) {
 	fields := d.Fields()
 
 	endField := fields[schedFieldEndDate]
-	if endField.Type != FieldDate {
-		t.Errorf("End Date Type = %d, want FieldDate", endField.Type)
+	if endField.Type != dialog.FieldDate {
+		t.Errorf("End Date Type = %d, want dialog.FieldDate", endField.Type)
 	}
 	if !endField.OptionalBlank {
 		t.Error("End Date should be OptionalBlank for the new-scheduled dialog")
@@ -221,8 +223,8 @@ func TestBuildNewScheduledDialog_EndDateIsOptionalBlank(t *testing.T) {
 	}
 
 	startField := fields[schedFieldStartDate]
-	if startField.Type != FieldDate {
-		t.Errorf("Start Date Type = %d, want FieldDate", startField.Type)
+	if startField.Type != dialog.FieldDate {
+		t.Errorf("Start Date Type = %d, want dialog.FieldDate", startField.Type)
 	}
 	if startField.OptionalBlank {
 		t.Error("Start Date must not be OptionalBlank — it is required")
@@ -411,10 +413,10 @@ func TestApp_HandleScheduledKeys_NewKey(t *testing.T) {
 		currentView: ViewScheduled,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		scheduled: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{},
@@ -442,10 +444,10 @@ func TestApp_HandleScheduledKeys_EditKey(t *testing.T) {
 		currentView: ViewScheduled,
 		width:       120,
 		height:      30,
-		styles:      NewStyles(),
+		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		scheduled: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{st},
@@ -472,8 +474,8 @@ func TestApp_Update_ScheduledDialogDataMsg_New(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -517,8 +519,8 @@ func TestApp_Update_ScheduledDialogDataMsg_Edit(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -555,10 +557,10 @@ func TestApp_HandleScheduledDialogKey_Cancel(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			return d
 		}(),
@@ -592,10 +594,10 @@ func TestApp_HandleScheduledDialogKey_TabCycles(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			return d
 		}(),
@@ -626,10 +628,10 @@ func TestApp_SubmitScheduledDialog_InvalidStartDate(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			// Syntactically valid 10-char mask shape, but semantically
 			// invalid — the masked widget no longer accepts free-text
@@ -664,10 +666,10 @@ func TestApp_SubmitScheduledDialog_InvalidAmount(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "not-a-number"
 			return d
@@ -698,10 +700,10 @@ func TestApp_SubmitScheduledDialog_InvalidInterval(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldInterval].Value = "abc"
 			return d
@@ -732,10 +734,10 @@ func TestApp_SubmitScheduledDialog_ZeroInterval(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldInterval].Value = "0"
 			return d
@@ -766,10 +768,10 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_MissingEndDate(t *testing.T
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			// Set duration to "Until Date" (index 1)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationUntilDate
@@ -804,10 +806,10 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_InvalidEndDate(t *testing.T
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationUntilDate
 			// 10-char mask shape but month=13/day=45 — masked widget refuses
@@ -842,10 +844,10 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_MissingCount(t *testing.T
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationOccurrences
 			d.Fields()[schedFieldOccurrence].Value = ""
@@ -877,10 +879,10 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_InvalidCount(t *testing.T
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationOccurrences
 			d.Fields()[schedFieldOccurrence].Value = "abc"
@@ -912,10 +914,10 @@ func TestApp_SubmitScheduledDialog_ValidNew(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "100.00"
 			return d
@@ -950,10 +952,10 @@ func TestApp_SubmitScheduledDialog_ValidNew_VariableAmount(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			// Leave amount empty for variable
 			d.Fields()[schedFieldAmount].Value = ""
@@ -986,10 +988,10 @@ func TestApp_SubmitScheduledDialog_DurationIndefinite_BlankEndDateAccepted(t *te
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "50.00"
 			// Leave duration at Indefinite, end date at canonical blank.
@@ -1019,10 +1021,10 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithEndDate(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "50.00"
 			d.Fields()[schedFieldDuration].SelectedIndex = durationUntilDate
@@ -1053,10 +1055,10 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithOccurrences(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "50.00"
 			d.Fields()[schedFieldDuration].SelectedIndex = durationOccurrences
@@ -1089,10 +1091,10 @@ func TestApp_SubmitScheduledDialog_ValidEdit(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildEditScheduledDialog(st,
 				accountOptions, []types.ID{accountID},
 				categoryOptions, []types.ID{types.NilID},
@@ -1125,8 +1127,8 @@ func TestApp_SubmitScheduledDialog_ValidEdit(t *testing.T) {
 
 func TestApp_CloseScheduledDialog(t *testing.T) {
 	app := &App{
-		schedDialog: func() *Dialog {
-			d := NewDialog("New Scheduled Transaction")
+		schedDialog: func() *dialog.Dialog {
+			d := dialog.NewDialog("New Scheduled Transaction")
 			d.SetVisible(true)
 			return d
 		}(),
@@ -1155,8 +1157,8 @@ func TestApp_Update_ScheduledDialogSavedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -1169,7 +1171,7 @@ func TestApp_Update_ScheduledDialogSavedMsg(t *testing.T) {
 }
 
 func TestApp_RenderLayout_WithScheduledDialog(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	app := &App{
 		currentView: ViewScheduled,
@@ -1178,8 +1180,8 @@ func TestApp_RenderLayout_WithScheduledDialog(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
 		scheduled: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{},
@@ -1187,7 +1189,7 @@ func TestApp_RenderLayout_WithScheduledDialog(t *testing.T) {
 			accountNames:  make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 		},
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog([]string{"Checking"}, []string{"(None)"})
 			return d
 		}(),
@@ -1204,8 +1206,8 @@ func TestApp_GetKeyHints_Scheduled(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -1220,7 +1222,7 @@ func TestApp_GetKeyHints_Scheduled(t *testing.T) {
 
 // Test that the empty state message mentions 'n' for new
 func TestApp_RenderScheduled_EmptyState(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 	app := &App{
 		currentView: ViewScheduled,
@@ -1229,8 +1231,8 @@ func TestApp_RenderScheduled_EmptyState(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
 		scheduled: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{},
@@ -1303,16 +1305,16 @@ func TestBuildNewScheduledDialog_AutoPostFields(t *testing.T) {
 	fields := d.Fields()
 
 	// Auto-post checkbox should be unchecked by default
-	if fields[schedFieldAutoPost].Type != FieldCheckbox {
-		t.Errorf("auto-post field type = %v, want %v", fields[schedFieldAutoPost].Type, FieldCheckbox)
+	if fields[schedFieldAutoPost].Type != dialog.FieldCheckbox {
+		t.Errorf("auto-post field type = %v, want %v", fields[schedFieldAutoPost].Type, dialog.FieldCheckbox)
 	}
 	if fields[schedFieldAutoPost].Checked {
 		t.Error("auto-post should default to unchecked")
 	}
 
 	// Lead time radio
-	if fields[schedFieldLeadDays].Type != FieldRadio {
-		t.Errorf("lead time field type = %v, want %v", fields[schedFieldLeadDays].Type, FieldRadio)
+	if fields[schedFieldLeadDays].Type != dialog.FieldRadio {
+		t.Errorf("lead time field type = %v, want %v", fields[schedFieldLeadDays].Type, dialog.FieldRadio)
 	}
 	if fields[schedFieldLeadDays].SelectedIndex != 0 {
 		t.Errorf("lead time default = %d, want 0", fields[schedFieldLeadDays].SelectedIndex)
@@ -1385,7 +1387,7 @@ func TestBuildEditScheduledDialog_AutoPostDisabled(t *testing.T) {
 }
 
 func TestFormatScheduledRow_AutoPostIndicator(t *testing.T) {
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(120, 30)
 
 	tests := []struct {
@@ -1431,8 +1433,8 @@ func TestApp_AutoPostCompletedMsg_WithPosts(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -1449,7 +1451,7 @@ func TestApp_AutoPostCompletedMsg_WithPosts(t *testing.T) {
 	}
 
 	// Status bar should show notification
-	rendered := app.statusbar.Render(NewStyles(), 80)
+	rendered := app.statusbar.Render(widget.NewStyles(), 80)
 	if !strings.Contains(rendered, "Auto-posted 3") {
 		t.Errorf("status bar should show auto-post notification, got: %s", rendered)
 	}
@@ -1459,8 +1461,8 @@ func TestApp_AutoPostCompletedMsg_NoPosts(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -1481,8 +1483,8 @@ func TestApp_AutoPostCompletedMsg_NilSummary(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -1502,10 +1504,10 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithAutoPost(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *Dialog {
+		schedDialog: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "100.00"
 			d.Fields()[schedFieldAutoPost].Checked = true
@@ -1536,9 +1538,9 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithAutoPost(t *testing.T) {
 // the field shape submitScheduledDialog expects. The returned dialog has the
 // Split-transaction checkbox at schedFieldSplit set to splitChecked, so a
 // test can stage a Save with or without Split toggled on.
-func buildSchedDialogWithSplitToggle(t *testing.T, amountStr, startDate string, splitChecked bool, accountName string, categoryOptions []string) *Dialog {
+func buildSchedDialogWithSplitToggle(t *testing.T, amountStr, startDate string, splitChecked bool, accountName string, categoryOptions []string) *dialog.Dialog {
 	t.Helper()
-	d := NewDialog("New Scheduled Transaction")
+	d := dialog.NewDialog("New Scheduled Transaction")
 	d.AddSelectField("Account", []string{accountName}, 0)
 	d.AddTextField("Payee", "Employer", "", 0)
 	d.AddSelectField("Category", categoryOptions, 0)
@@ -1566,8 +1568,8 @@ func TestScheduledDialog_SplitToggle_OpensMultiLineEditor(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		schedDialog: buildSchedDialogWithSplitToggle(t,
 			"4000.00", "01/15/2024", true, "Checking",
@@ -1653,8 +1655,8 @@ func createMultiLineScheduledTestApp(t *testing.T) (*App, *scheduled.Service, *a
 	app := &App{
 		currentView:     ViewScheduled,
 		keys:            defaultKeyMap(),
-		menubar:         NewMenuBar(),
-		statusbar:       NewStatusBar(),
+		menubar:         widget.NewMenuBar(),
+		statusbar:       widget.NewStatusBar(),
 		sidebar:         NewSidebar(),
 		accountSvc:      accountSvc,
 		payeeSvc:        payeeSvc,
@@ -1773,7 +1775,7 @@ func TestScheduledDialog_MultiLineSave_PersistsChildren(t *testing.T) {
 // hasEditAsPaycheckButton reports whether the dialog's button row
 // includes the "Edit as paycheck →" affordance. Used by the MS-029
 // tests to assert visibility based on the looksLikePaycheck heuristic.
-func hasEditAsPaycheckButton(d *Dialog) bool {
+func hasEditAsPaycheckButton(d *dialog.Dialog) bool {
 	for _, b := range d.Buttons() {
 		if strings.Contains(b.Label, "Edit as paycheck") {
 			return true
@@ -1791,7 +1793,7 @@ func hasEditAsPaycheckButton(d *Dialog) bool {
 // filled with the schedule's current values.
 func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 	// Build accounts, categories, payees in memory — buildEditScheduled
-	// Dialog and the relaunch helper consume them by display name and
+	// dialog.Dialog and the relaunch helper consume them by display name and
 	// ID without needing the DB layer.
 	checkingID := types.NewID()
 	retire401kID := types.NewID()
@@ -1855,8 +1857,8 @@ func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		schedDialog: dlg,
 		schedDialogData: &scheduledDialogData{
@@ -2008,7 +2010,7 @@ func TestScheduledDialog_NonPaycheckShape_HidesEditAsPaycheck(t *testing.T) {
 }
 
 // =============================================================================
-// CC-003 — Scheduled new + edit Dialog → create-category sub-dialog → back
+// CC-003 — Scheduled new + edit dialog.Dialog → create-category sub-dialog → back
 // =============================================================================
 
 // TestBuildNewScheduledDialog_CategoryIsCombo pins that the New Scheduled
@@ -2016,8 +2018,8 @@ func TestScheduledDialog_NonPaycheckShape_HidesEditAsPaycheck(t *testing.T) {
 // this the [+ Add new category…] action row cannot render.
 func TestBuildNewScheduledDialog_CategoryIsCombo(t *testing.T) {
 	d := buildNewScheduledDialog([]string{"Checking"}, []string{"(None)", "Rent"})
-	if got := d.Fields()[schedFieldCategory].Type; got != FieldCombo {
-		t.Errorf("Category field type = %v, want FieldCombo", got)
+	if got := d.Fields()[schedFieldCategory].Type; got != dialog.FieldCombo {
+		t.Errorf("Category field type = %v, want dialog.FieldCombo", got)
 	}
 }
 
@@ -2042,8 +2044,8 @@ func TestBuildEditScheduledDialog_CategoryIsCombo(t *testing.T) {
 		[]string{"Checking"}, []types.ID{accountID},
 		[]string{"(None)", "Rent"}, []types.ID{types.NilID, types.NewID()},
 		map[types.ID]string{})
-	if got := d.Fields()[schedFieldCategory].Type; got != FieldCombo {
-		t.Errorf("Edit Category field type = %v, want FieldCombo", got)
+	if got := d.Fields()[schedFieldCategory].Type; got != dialog.FieldCombo {
+		t.Errorf("Edit Category field type = %v, want dialog.FieldCombo", got)
 	}
 	want := "[+ Add new category…]"
 	if got := d.Fields()[schedFieldCategory].AddNewLabel; got != want {
@@ -2060,14 +2062,14 @@ func TestScheduledDialog_CategoryCombo_TabAwayPreservesPreviousSelection(t *test
 	d.SetFocusIndex(schedFieldCategory)
 	cat := d.Fields()[schedFieldCategory]
 	cat.SelectedIndex = 2 // "Food"
-	cat.comboHighlight = 2
+	cat.ComboHighlight = 2
 	// Type a non-matching query so commitComboHighlight has no row to commit.
 	cat.Query = "zzzzz"
-	cat.comboHighlight = 0 // highlight head of (empty) filtered list
+	cat.ComboHighlight = 0 // highlight head of (empty) filtered list
 
 	action := d.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
-	if action != DialogActionNone {
-		t.Errorf("Tab action = %v, want DialogActionNone", action)
+	if action != dialog.DialogActionNone {
+		t.Errorf("Tab action = %v, want dialog.DialogActionNone", action)
 	}
 	if cat.Query != "" {
 		t.Errorf("Tab should clear Query, got %q", cat.Query)
@@ -2091,8 +2093,8 @@ func newAppForSchedAddNew(t *testing.T, query string, categorySvc *category.Serv
 	app := &App{
 		currentView: ViewScheduled,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		categorySvc: categorySvc,
 		schedDialogData: &scheduledDialogData{
@@ -2112,7 +2114,7 @@ func newAppForSchedAddNew(t *testing.T, query string, categorySvc *category.Serv
 	d.SetFocusIndex(schedFieldCategory)
 	cat := d.Fields()[schedFieldCategory]
 	cat.Query = query
-	cat.comboHighlight = len(cat.FilteredIndices())
+	cat.ComboHighlight = len(cat.FilteredIndices())
 	app.schedDialog = d
 	return app
 }
@@ -2334,7 +2336,7 @@ func TestSubmitScheduledDialog_CategoryRoundTrip(t *testing.T) {
 		t.Fatalf("category options missing %q: %v", incomeCat.Name, categoryOptions)
 	}
 	catField.SelectedIndex = salaryIdx
-	catField.comboHighlight = salaryIdx
+	catField.ComboHighlight = salaryIdx
 	app.schedDialog = d
 
 	_, cmd := app.submitScheduledDialog()

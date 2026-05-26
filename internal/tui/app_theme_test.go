@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/applog"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 // TestApp_ReloadTheme_Builtin exercises the success path of TH-020:
@@ -24,8 +25,8 @@ func TestApp_ReloadTheme_Builtin(t *testing.T) {
 	a := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		styles:      NewStyles(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      widget.NewStyles(),
 		cfg:         &config.Config{},
 		width:       100,
 		height:      30,
@@ -76,8 +77,8 @@ func TestApp_ReloadTheme_UnknownID(t *testing.T) {
 	a := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		styles:      NewStyles(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      widget.NewStyles(),
 		cfg:         &config.Config{Theme: "default"},
 		width:       80,
 		height:      24,
@@ -134,7 +135,7 @@ func findMsgInBatch[T any](cmd tea.Cmd) (T, bool) {
 }
 
 // TestApp_HandleMenuAction_LoadTheme covers TH-023: dispatching
-// MenuActionLoadTheme with a theme ID payload routes to reloadTheme,
+// widget.MenuActionLoadTheme with a theme ID payload routes to reloadTheme,
 // which repaints styles, persists the ID onto cfg, and returns a
 // tea.Cmd that emits a tea.WindowSizeMsg matching the App's dims.
 func TestApp_HandleMenuAction_LoadTheme(t *testing.T) {
@@ -143,17 +144,17 @@ func TestApp_HandleMenuAction_LoadTheme(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
-		styles:      NewStyles(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      widget.NewStyles(),
 		cfg:         &config.Config{},
 		width:       100,
 		height:      30,
 	}
 
-	_, cmd := app.handleMenuAction(MenuActionLoadTheme, "turbo-vision")
+	_, cmd := app.handleMenuAction(widget.MenuActionLoadTheme, "turbo-vision")
 	if cmd == nil {
-		t.Fatal("handleMenuAction(MenuActionLoadTheme, ...) returned nil cmd")
+		t.Fatal("handleMenuAction(widget.MenuActionLoadTheme, ...) returned nil cmd")
 	}
 
 	if app.cfg.Theme != "turbo-vision" {
@@ -186,27 +187,27 @@ func TestApp_MenuSelect_LoadTheme(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
-		styles:      NewStyles(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      widget.NewStyles(),
 		cfg:         &config.Config{},
 		width:       100,
 		height:      30,
 	}
-	app.menubar.SetMenuItemsBuilder(viewMenuIndex, func() []menuItem {
-		return buildThemeMenuItems(app.cfg.Theme)
+	app.menubar.SetMenuItemsBuilder(widget.ViewMenuIndex, func() []widget.MenuItem {
+		return widget.BuildThemeMenuItems(app.cfg.Theme)
 	})
 
-	app.menubar.ActivateMenu(viewMenuIndex)
+	app.menubar.ActivateMenu(widget.ViewMenuIndex)
 
 	// Find the index of the turbo-vision item in the freshly-built submenu.
 	current := app.menubar.CurrentMenu()
 	if current == nil {
-		t.Fatal("CurrentMenu() returned nil after ActivateMenu(viewMenuIndex)")
+		t.Fatal("CurrentMenu() returned nil after ActivateMenu(widget.ViewMenuIndex)")
 	}
 	target := -1
-	for i, item := range current.items {
-		if item.data == "turbo-vision" {
+	for i, item := range current.Items {
+		if item.Data == "turbo-vision" {
 			target = i
 			break
 		}
@@ -217,8 +218,8 @@ func TestApp_MenuSelect_LoadTheme(t *testing.T) {
 	app.menubar.SetItemCursor(target)
 
 	action, data := app.menubar.Select()
-	if action != MenuActionLoadTheme {
-		t.Fatalf("Select() action = %v, want MenuActionLoadTheme", action)
+	if action != widget.MenuActionLoadTheme {
+		t.Fatalf("Select() action = %v, want widget.MenuActionLoadTheme", action)
 	}
 	if data != "turbo-vision" {
 		t.Fatalf("Select() data = %q, want %q", data, "turbo-vision")
@@ -226,7 +227,7 @@ func TestApp_MenuSelect_LoadTheme(t *testing.T) {
 
 	_, cmd := app.handleMenuAction(action, data)
 	if cmd == nil {
-		t.Fatal("handleMenuAction(MenuActionLoadTheme, ...) returned nil cmd")
+		t.Fatal("handleMenuAction(widget.MenuActionLoadTheme, ...) returned nil cmd")
 	}
 	if app.cfg.Theme != "turbo-vision" {
 		t.Errorf("cfg.Theme = %q, want %q", app.cfg.Theme, "turbo-vision")
@@ -287,7 +288,7 @@ func TestNewApp_UnknownThemeFallsBackToDefault(t *testing.T) {
 	}
 	t.Cleanup(func() { database.Close() })
 
-	defaultStyles := NewStyles()
+	defaultStyles := widget.NewStyles()
 	wantHeaderFg := defaultStyles.Header.GetForeground()
 
 	cfg := &config.Config{Theme: "nonexistent"}
@@ -331,8 +332,8 @@ negative = "not-a-color"
 	a := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		styles:      NewStyles(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      widget.NewStyles(),
 		cfg:         &config.Config{},
 		width:       80,
 		height:      24,
@@ -343,10 +344,10 @@ negative = "not-a-color"
 		t.Fatal("reloadTheme() returned nil cmd")
 	}
 
-	// Toast on the status bar describes the issue count.
+	// widget.Toast on the status bar describes the issue count.
 	toast := a.statusbar.Toast()
 	if toast == nil {
-		t.Fatal("Toast() = nil, want non-nil after reloadTheme with issues")
+		t.Fatal("widget.Toast() = nil, want non-nil after reloadTheme with issues")
 	}
 	if !strings.Contains(toast.Text, `"broken"`) {
 		t.Errorf("toast text missing theme id: %q", toast.Text)
@@ -354,8 +355,8 @@ negative = "not-a-color"
 	if !strings.Contains(toast.Text, "2 issues") {
 		t.Errorf("toast text missing issue count: %q", toast.Text)
 	}
-	if toast.Level != NotificationAlert {
-		t.Errorf("toast level = %d, want %d", toast.Level, NotificationAlert)
+	if toast.Level != widget.NotificationAlert {
+		t.Errorf("toast level = %d, want %d", toast.Level, widget.NotificationAlert)
 	}
 
 	// Log file contains an entry for each issue.
@@ -382,14 +383,14 @@ negative = "not-a-color"
 	}
 
 	// The cmd batch must still carry the WindowSizeMsg (for the live
-	// repaint) plus a ToastClearMsg producer (for auto-clear).
+	// repaint) plus a widget.ToastClearMsg producer (for auto-clear).
 	if _, ok := findMsgInBatch[tea.WindowSizeMsg](cmd); !ok {
 		t.Error("cmd batch missing tea.WindowSizeMsg")
 	}
 	// findMsgInBatch needs a fresh cmd because invocation is one-shot.
 	cmd = a.reloadTheme("broken")
-	if _, ok := findMsgInBatch[ToastClearMsg](cmd); !ok {
-		t.Error("cmd batch missing ToastClearMsg producer")
+	if _, ok := findMsgInBatch[widget.ToastClearMsg](cmd); !ok {
+		t.Error("cmd batch missing widget.ToastClearMsg producer")
 	}
 }
 
@@ -402,8 +403,8 @@ func TestApp_ReloadTheme_NoIssues_NoToast(t *testing.T) {
 	a := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		styles:      NewStyles(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      widget.NewStyles(),
 		cfg:         &config.Config{},
 		width:       80,
 		height:      24,
@@ -411,7 +412,7 @@ func TestApp_ReloadTheme_NoIssues_NoToast(t *testing.T) {
 
 	a.reloadTheme("turbo-vision")
 	if got := a.statusbar.Toast(); got != nil {
-		t.Errorf("Toast() = %+v, want nil for clean built-in load", got)
+		t.Errorf("widget.Toast() = %+v, want nil for clean built-in load", got)
 	}
 }
 
@@ -426,8 +427,8 @@ func TestApp_ReloadTheme_FailureLogsAndToasts(t *testing.T) {
 	a := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
-		styles:      NewStyles(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      widget.NewStyles(),
 		cfg:         &config.Config{Theme: "default"},
 		width:       80,
 		height:      24,
@@ -440,7 +441,7 @@ func TestApp_ReloadTheme_FailureLogsAndToasts(t *testing.T) {
 
 	toast := a.statusbar.Toast()
 	if toast == nil {
-		t.Fatal("Toast() = nil, want non-nil after failure path")
+		t.Fatal("widget.Toast() = nil, want non-nil after failure path")
 	}
 	if !strings.Contains(toast.Text, `"nonexistent"`) {
 		t.Errorf("toast missing theme id: %q", toast.Text)
@@ -502,11 +503,11 @@ negative = "not-a-color"
 		t.Error("startup toast not set for theme with issues")
 	}
 
-	// Init() should batch in a ClearToastCmd so the startup toast
+	// Init() should batch in a widget.ClearToastCmd so the startup toast
 	// auto-clears like any other.
 	cmd := a.Init()
-	if _, ok := findMsgInBatch[ToastClearMsg](cmd); !ok {
-		t.Error("Init() batch missing ToastClearMsg producer for startup toast")
+	if _, ok := findMsgInBatch[widget.ToastClearMsg](cmd); !ok {
+		t.Error("Init() batch missing widget.ToastClearMsg producer for startup toast")
 	}
 
 	logPath, err := applog.LogPath()

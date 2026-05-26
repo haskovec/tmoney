@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -27,10 +28,10 @@ type dividendDialogSavedMsg struct {
 	savedDate types.Date
 }
 
-// buildDividendDialog creates a Dialog for entering a cash dividend transaction.
-// Field order: Date(0), Security(1), Amount(2), Memo(3).
-func buildDividendDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *Dialog {
-	d := NewDialog("Cash Dividend")
+// buildDividendDialog creates a dialog.Dialog for entering a cash dividend transaction.
+// dialog.Field order: Date(0), Security(1), Amount(2), Memo(3).
+func buildDividendDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *dialog.Dialog {
+	d := dialog.NewDialog("Cash Dividend")
 	d.SetWidth(70)
 
 	// Date (index 0)
@@ -76,12 +77,12 @@ func buildDividendDialog(securityOptions []string, editTxn *investment.Transacti
 	return d
 }
 
-// buildReinvestDividendDialog creates a Dialog for entering a reinvested dividend transaction.
-// Field order: Date(0), Security(1), Shares(2), Total(3), Price/Share(4), Memo(5).
+// buildReinvestDividendDialog creates a dialog.Dialog for entering a reinvested dividend transaction.
+// dialog.Field order: Date(0), Security(1), Shares(2), Total(3), Price/Share(4), Memo(5).
 // Total leads Price/Share because the common workflow is to type the total
 // (from a brokerage statement) and let Price/Share auto-compute.
-func buildReinvestDividendDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *Dialog {
-	d := NewDialog("Reinvest Dividend")
+func buildReinvestDividendDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID) *dialog.Dialog {
+	d := dialog.NewDialog("Reinvest Dividend")
 	d.SetWidth(70)
 
 	// Date (index 0)
@@ -175,12 +176,12 @@ func (a *App) handleDividendDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 
 	action := a.dividendDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		if a.dividendDialogReinvest {
 			return a.submitReinvestDividendDialog()
 		}
 		return a.submitDividendDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeDividendDialog()
 		return a, nil
 	}

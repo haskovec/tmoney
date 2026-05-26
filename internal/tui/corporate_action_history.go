@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -95,15 +96,15 @@ func (a *App) buildCorporateActionViewTable() {
 		return
 	}
 
-	columns := []Column{
-		{Header: "Date", Width: 12, Align: AlignLeft},
-		{Header: "Ticker", Width: 10, Align: AlignLeft},
-		{Header: "Type", Width: 14, Align: AlignLeft},
-		{Header: "Details", MinWidth: 24, Align: AlignLeft},
+	columns := []widget.Column{
+		{Header: "Date", Width: 12, Align: widget.AlignLeft},
+		{Header: "Ticker", Width: 10, Align: widget.AlignLeft},
+		{Header: "Type", Width: 14, Align: widget.AlignLeft},
+		{Header: "Details", MinWidth: 24, Align: widget.AlignLeft},
 	}
 
 	if a.corporateActionViewTable == nil {
-		a.corporateActionViewTable = NewTable(columns)
+		a.corporateActionViewTable = widget.NewTable(columns)
 	} else {
 		a.corporateActionViewTable.SetColumns(columns)
 	}
@@ -230,7 +231,7 @@ func (a *App) renderCorporateActionView() string {
 	// Overlay the details modal when set
 	if a.corporateActionDetail != nil {
 		overlay := a.renderCorporateActionDetails()
-		body = OverlayCenter(body, overlay, a.width, a.height)
+		body = widget.OverlayCenter(body, overlay, a.width, a.height)
 	}
 
 	return body

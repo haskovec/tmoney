@@ -10,6 +10,8 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -51,8 +53,8 @@ type reconciliationClearedTotalMsg struct {
 // buildStartReconciliationDialog builds the dialog for starting a
 // reconciliation session. seedDate seeds the Statement Date field; pass the
 // zero value to leave the field blank (first open in a session).
-func buildStartReconciliationDialog(seedDate types.Date) *Dialog {
-	d := NewDialog("Start Reconciliation")
+func buildStartReconciliationDialog(seedDate types.Date) *dialog.Dialog {
+	d := dialog.NewDialog("Start Reconciliation")
 
 	dateStr := ""
 	if !seedDate.IsZero() {
@@ -64,7 +66,7 @@ func buildStartReconciliationDialog(seedDate types.Date) *Dialog {
 	f = d.AddTextField("Statement Balance", "", "0.00", 12)
 	f.Required = true
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Start", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -83,11 +85,11 @@ func (a *App) showStartReconciliationDialog() {
 func (a *App) handleReconDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.reconDialog.HandleKey(msg)
 	switch action {
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.reconDialog.SetVisible(false)
 		a.reconDialog = nil
 		return a, nil
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitStartReconciliation()
 	}
 	return a, nil
@@ -248,17 +250,17 @@ func (a *App) buildReconciliationTable() {
 		return
 	}
 
-	columns := []Column{
-		{Header: " ", Width: 3, Align: AlignCenter}, // Checkbox
-		{Header: "Date", Width: 10, Align: AlignLeft},
-		{Header: "S", Width: 1, Align: AlignCenter}, // Cleared indicator
-		{Header: "Payee", MinWidth: 12, Align: AlignLeft},
-		{Header: "Category", MinWidth: 10, Align: AlignLeft},
-		{Header: "Amount", Width: 12, Align: AlignRight},
+	columns := []widget.Column{
+		{Header: " ", Width: 3, Align: widget.AlignCenter}, // Checkbox
+		{Header: "Date", Width: 10, Align: widget.AlignLeft},
+		{Header: "S", Width: 1, Align: widget.AlignCenter}, // Cleared indicator
+		{Header: "Payee", MinWidth: 12, Align: widget.AlignLeft},
+		{Header: "Category", MinWidth: 10, Align: widget.AlignLeft},
+		{Header: "Amount", Width: 12, Align: widget.AlignRight},
 	}
 
 	if a.reconciliationTable == nil {
-		a.reconciliationTable = NewTable(columns)
+		a.reconciliationTable = widget.NewTable(columns)
 	} else {
 		a.reconciliationTable.SetColumns(columns)
 	}
@@ -355,7 +357,7 @@ func (a *App) renderReconciliation() string {
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
-	// Table
+	// widget.Table
 	headerHeight := 1
 	statusBarHeight := 1
 	titleHeight := 2   // title + separator
@@ -495,7 +497,7 @@ func (a *App) finishReconciliation() (tea.Model, tea.Cmd) {
 		diffStr := formatDashboardMoney(difference)
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Cannot finish: difference is %s (must be $0.00)", diffStr),
-			NotificationAlert,
+			widget.NotificationAlert,
 		)
 		return a, nil
 	}

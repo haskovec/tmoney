@@ -9,6 +9,8 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -112,9 +114,9 @@ func TestBuildBuyDialog_NewTransaction(t *testing.T) {
 		t.Fatalf("expected 7 fields, got %d", len(fields))
 	}
 
-	// Field 0: Date (masked, required, default today)
-	if fields[0].Type != FieldDate {
-		t.Errorf("field 0 type = %d, want FieldDate (%d)", fields[0].Type, FieldDate)
+	// dialog.Field 0: Date (masked, required, default today)
+	if fields[0].Type != dialog.FieldDate {
+		t.Errorf("field 0 type = %d, want dialog.FieldDate (%d)", fields[0].Type, dialog.FieldDate)
 	}
 	if fields[0].Label != "Date" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Date")
@@ -127,9 +129,9 @@ func TestBuildBuyDialog_NewTransaction(t *testing.T) {
 		t.Errorf("date default = %q, want %q", fields[0].Value, today)
 	}
 
-	// Field 1: Security (typeahead combo)
-	if fields[1].Type != FieldCombo {
-		t.Errorf("field 1 type = %d, want FieldCombo (%d)", fields[1].Type, FieldCombo)
+	// dialog.Field 1: Security (typeahead combo)
+	if fields[1].Type != dialog.FieldCombo {
+		t.Errorf("field 1 type = %d, want dialog.FieldCombo (%d)", fields[1].Type, dialog.FieldCombo)
 	}
 	if fields[1].Label != "Security" {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Security")
@@ -138,9 +140,9 @@ func TestBuildBuyDialog_NewTransaction(t *testing.T) {
 		t.Errorf("expected 2 security options, got %d", len(fields[1].Options))
 	}
 
-	// Field 2: Shares (text, required)
-	if fields[2].Type != FieldText {
-		t.Errorf("field 2 type = %d, want FieldText", fields[2].Type)
+	// dialog.Field 2: Shares (text, required)
+	if fields[2].Type != dialog.FieldText {
+		t.Errorf("field 2 type = %d, want dialog.FieldText", fields[2].Type)
 	}
 	if fields[2].Label != "Shares" {
 		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "Shares")
@@ -152,22 +154,22 @@ func TestBuildBuyDialog_NewTransaction(t *testing.T) {
 		t.Errorf("shares default = %q, want empty for new", fields[2].Value)
 	}
 
-	// Field 3: Total (text)
+	// dialog.Field 3: Total (text)
 	if fields[3].Label != "Total" {
 		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Total")
 	}
 
-	// Field 4: Price/Share (text)
+	// dialog.Field 4: Price/Share (text)
 	if fields[4].Label != "Price/Share" {
 		t.Errorf("field 4 label = %q, want %q", fields[4].Label, "Price/Share")
 	}
 
-	// Field 5: Commission (text)
+	// dialog.Field 5: Commission (text)
 	if fields[5].Label != "Commission" {
 		t.Errorf("field 5 label = %q, want %q", fields[5].Label, "Commission")
 	}
 
-	// Field 6: Memo (text)
+	// dialog.Field 6: Memo (text)
 	if fields[6].Label != "Memo" {
 		t.Errorf("field 6 label = %q, want %q", fields[6].Label, "Memo")
 	}
@@ -845,8 +847,8 @@ func TestApp_Update_BuyDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 	app := &App{
 		currentView:            ViewInvestmentRegister,
 		keys:                   defaultKeyMap(),
-		menubar:                NewMenuBar(),
-		statusbar:              NewStatusBar(),
+		menubar:                widget.NewMenuBar(),
+		statusbar:              widget.NewStatusBar(),
 		sidebar:                NewSidebar(),
 		txnDialogLastSavedDate: types.NewDate(2024, time.January, 15),
 	}
@@ -866,8 +868,8 @@ func TestApp_Update_BuyDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *testing.
 	app := &App{
 		currentView: ViewInvestmentRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -884,8 +886,8 @@ func TestApp_Update_BuyDialogSavedMsg_StoresStickyDate(t *testing.T) {
 	app := &App{
 		currentView: ViewInvestmentRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -910,8 +912,8 @@ func TestApp_Update_BuyDialogSavedMsg_InvalidatesChartCache(t *testing.T) {
 	app := &App{
 		currentView: ViewInvestmentRegister,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		priceView:   &priceViewData{historyCache: cache},
 	}

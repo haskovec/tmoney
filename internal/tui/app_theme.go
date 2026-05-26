@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/applog"
 	"github.com/haskovec/tmoney/internal/tui/theme"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 // themeReloadFailedMsg is sent when reloadTheme cannot load or apply
@@ -32,7 +33,7 @@ type themeReloadFailedMsg struct {
 // TH-032: parse issues encountered during a successful load and any
 // failure-path error are appended to the applog and surfaced as a
 // status-bar toast describing the issue count. The returned cmd is
-// batched with a ClearToastCmd so the toast clears after ToastDuration.
+// batched with a widget.ClearToastCmd so the toast clears after widget.ToastDuration.
 // Successful loads with zero issues set no toast and return the bare
 // WindowSizeMsg cmd.
 func (a *App) reloadTheme(id string) tea.Cmd {
@@ -41,11 +42,11 @@ func (a *App) reloadTheme(id string) tea.Cmd {
 		a.surfaceThemeFailure(id, err)
 		return tea.Batch(
 			func() tea.Msg { return themeReloadFailedMsg{id: id, err: err} },
-			ClearToastCmd(),
+			widget.ClearToastCmd(),
 		)
 	}
 
-	a.styles.applyTheme(t)
+	a.styles.ApplyTheme(t)
 	a.styles.Resize(a.width, a.height)
 
 	if a.cfg != nil {
@@ -65,7 +66,7 @@ func (a *App) reloadTheme(id string) tea.Cmd {
 		return sizeCmd
 	}
 	a.surfaceThemeIssues(id, issues)
-	return tea.Batch(sizeCmd, ClearToastCmd())
+	return tea.Batch(sizeCmd, widget.ClearToastCmd())
 }
 
 // surfaceThemeIssues appends each parse issue to the applog file and
@@ -76,7 +77,7 @@ func (a *App) surfaceThemeIssues(id string, issues []theme.Issue) {
 		_ = applog.Append("theme", formatThemeIssue(id, iss))
 	}
 	if a.statusbar != nil {
-		a.statusbar.SetToast(formatThemeToast(id, len(issues)), NotificationAlert)
+		a.statusbar.SetToast(formatThemeToast(id, len(issues)), widget.NotificationAlert)
 	}
 }
 
@@ -89,7 +90,7 @@ func (a *App) surfaceThemeFailure(id string, err error) {
 		if path, perr := applog.LogPath(); perr == nil {
 			text = fmt.Sprintf("%s, see %s", text, path)
 		}
-		a.statusbar.SetToast(text, NotificationAlert)
+		a.statusbar.SetToast(text, widget.NotificationAlert)
 	}
 }
 

@@ -8,6 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -177,7 +179,7 @@ func TestBuildPriceTable_SortedByDateDesc(t *testing.T) {
 		t.Fatal("priceTable should not be nil")
 	}
 
-	// Table should have rows sorted by date desc (newest first)
+	// widget.Table should have rows sorted by date desc (newest first)
 	if app.priceTable.RowCount() != 3 {
 		t.Fatalf("expected 3 rows, got %d", app.priceTable.RowCount())
 	}
@@ -298,7 +300,7 @@ func TestHandlePriceViewKeys_DeleteShowsConfirm(t *testing.T) {
 		width:     80,
 		height:    24,
 		keys:      defaultKeyMap(),
-		statusbar: NewStatusBar(),
+		statusbar: widget.NewStatusBar(),
 		priceView: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
@@ -419,8 +421,8 @@ func TestBuildAddPriceDialog(t *testing.T) {
 		t.Errorf("date default = %q, want %q", fields[0].Value, today)
 	}
 	// Date field uses the masked-input widget (TD-015).
-	if fields[0].Type != FieldDate {
-		t.Errorf("Date field type = %d, want FieldDate", fields[0].Type)
+	if fields[0].Type != dialog.FieldDate {
+		t.Errorf("Date field type = %d, want dialog.FieldDate", fields[0].Type)
 	}
 }
 
@@ -432,12 +434,12 @@ func TestBuildEditPriceDialog(t *testing.T) {
 
 	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
 
-	dialog := buildEditPriceDialog(sec, p)
-	if dialog == nil {
+	dlg := buildEditPriceDialog(sec, p)
+	if dlg == nil {
 		t.Fatal("buildEditPriceDialog() returned nil")
 	}
 
-	fields := dialog.Fields()
+	fields := dlg.Fields()
 	if len(fields) != 2 {
 		t.Fatalf("expected 2 fields, got %d", len(fields))
 	}
@@ -450,8 +452,8 @@ func TestBuildEditPriceDialog(t *testing.T) {
 		t.Errorf("price value = %q, want %q", fields[1].Value, "185.50")
 	}
 	// Date field uses the masked-input widget (TD-015).
-	if fields[0].Type != FieldDate {
-		t.Errorf("Date field type = %d, want FieldDate", fields[0].Type)
+	if fields[0].Type != dialog.FieldDate {
+		t.Errorf("Date field type = %d, want dialog.FieldDate", fields[0].Type)
 	}
 }
 
@@ -497,7 +499,7 @@ func TestPriceViewString(t *testing.T) {
 
 func TestRenderPriceView_Loading(t *testing.T) {
 	app := &App{
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 	}
 	app.styles.Resize(80, 24)
 
@@ -513,7 +515,7 @@ func TestRenderPriceView_NoPrices(t *testing.T) {
 	app := &App{
 		width:  80,
 		height: 24,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		priceView: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
@@ -539,7 +541,7 @@ func TestRenderPriceView_WithData(t *testing.T) {
 	app := &App{
 		width:  100,
 		height: 30,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		priceView: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
@@ -565,7 +567,7 @@ func TestRenderPriceView_ShowsSecurityInfo(t *testing.T) {
 	app := &App{
 		width:  100,
 		height: 30,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		priceView: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
@@ -593,7 +595,7 @@ func TestPriceViewDataLoadedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := priceViewDataLoadedMsg{data: data}
@@ -617,7 +619,7 @@ func TestPriceViewDataLoadedMsg_ListMode(t *testing.T) {
 	app := &App{
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := priceViewDataLoadedMsg{data: data}
@@ -634,7 +636,7 @@ func TestPriceViewUpdate_PriceAddedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		priceView: &priceViewData{
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
@@ -663,7 +665,7 @@ func TestPriceViewUpdate_PriceUpdatedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		priceView: &priceViewData{
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
@@ -689,7 +691,7 @@ func TestPriceViewUpdate_PriceDeletedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		priceView: &priceViewData{
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
@@ -715,7 +717,7 @@ func TestPriceViewUpdate_PriceImportedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		priceView: &priceViewData{
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
@@ -763,7 +765,7 @@ func pc015TestApp(t *testing.T) (app *App, selectedID, otherID types.ID) {
 	app = &App{
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		priceView: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: selectedSec,
@@ -843,7 +845,7 @@ func TestPriceViewDataLoadedMsg_PreservesExistingHistoryCache(t *testing.T) {
 	app := &App{
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		priceView: &priceViewData{
 			mode:         pricesViewList,
 			latestPrices: []*price.LatestPrice{},
@@ -872,7 +874,7 @@ func TestPriceViewSwitchView(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -890,9 +892,9 @@ func TestPriceViewNavigateKeyBinding(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 	}
 
 	// Press '5' to go to prices view
@@ -969,20 +971,20 @@ func TestPriceViewHelpOverlay(t *testing.T) {
 }
 
 func TestMenuBarHasPrices(t *testing.T) {
-	mb := NewMenuBar()
+	mb := widget.NewMenuBar()
 	found := false
-	for _, m := range mb.menus {
-		for _, item := range m.items {
-			if item.action == MenuActionPrices {
+	for _, m := range mb.Menus() {
+		for _, item := range m.Items {
+			if item.Action == widget.MenuActionPrices {
 				found = true
-				if item.label != "Prices" {
-					t.Errorf("menu label = %q, want %q", item.label, "Prices")
+				if item.Label != "Prices" {
+					t.Errorf("menu label = %q, want %q", item.Label, "Prices")
 				}
 			}
 		}
 	}
 	if !found {
-		t.Error("MenuActionPrices not found in menu bar")
+		t.Error("widget.MenuActionPrices not found in menu bar")
 	}
 }
 
@@ -1069,7 +1071,7 @@ func TestPriceView_FullScreenRender(t *testing.T) {
 	m, _ := types.NewMoney("185.50")
 	p := price.NewPrice(secID, d, m, price.SourceManual)
 
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	app := &App{
@@ -1079,8 +1081,8 @@ func TestPriceView_FullScreenRender(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
 		priceView: &priceViewData{
 			selectedSecurity: sec,
@@ -1104,7 +1106,7 @@ func TestSecurityView_PNavigatesToPrices(t *testing.T) {
 		width:       80,
 		height:      24,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		securityView: &securityViewData{
 			securities: []*security.Security{sec},
@@ -1164,7 +1166,7 @@ func TestRenderPriceView_ListMode_ShowsLatestPrices(t *testing.T) {
 	app := &App{
 		width:  100,
 		height: 30,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		priceView: &priceViewData{
 			mode: pricesViewList,
 			latestPrices: []*price.LatestPrice{
@@ -1433,7 +1435,7 @@ func TestRenderPriceView_ListMode_EmptyShowsHint(t *testing.T) {
 	app := &App{
 		width:  80,
 		height: 24,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		priceView: &priceViewData{
 			mode:         pricesViewList,
 			latestPrices: nil,
@@ -1609,8 +1611,8 @@ func TestHandleKeyPress_PricesDetail_EscStaysInPricesView(t *testing.T) {
 		width:        80,
 		height:       24,
 		keys:         defaultKeyMap(),
-		menubar:      NewMenuBar(),
-		statusbar:    NewStatusBar(),
+		menubar:      widget.NewMenuBar(),
+		statusbar:    widget.NewStatusBar(),
 		priceView: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
@@ -1646,10 +1648,10 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 		width:       100,
 		height:      30,
 		keys:        defaultKeyMap(),
-		styles:      NewStyles(),
-		menubar:     NewMenuBar(),
+		styles:      widget.NewStyles(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		priceView: &priceViewData{
 			mode:       pricesViewList,
 			securities: []*security.Security{sec},
@@ -1659,7 +1661,7 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 		},
 	}
 	app.styles.Resize(100, 30)
-	app.priceListClicks = NewClickTracker(400 * time.Millisecond)
+	app.priceListClicks = widget.NewClickTracker(400 * time.Millisecond)
 	app.priceListClicks.SetNowFn(func() time.Time { return now })
 	app.buildPriceListTable()
 

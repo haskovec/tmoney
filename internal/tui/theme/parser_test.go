@@ -52,15 +52,15 @@ func TestParse_ValidTheme(t *testing.T) {
 		{"Window.Border.Fg", tm.Window.Border.Fg, "#ffffff"},
 		{"Window.Title.Fg", tm.Window.Title.Fg, "#ffff55"},
 
-		{"Dialog.Bg", tm.Dialog.Bg, "#aaaaaa"},
-		{"Dialog.Fg", tm.Dialog.Fg, "#000000"},
-		{"Dialog.Border.Fg", tm.Dialog.Border.Fg, "#000000"},
-		{"Dialog.Title.Fg", tm.Dialog.Title.Fg, "#000000"},
+		{"dialog.Dialog.Bg", tm.Dialog.Bg, "#aaaaaa"},
+		{"dialog.Dialog.Fg", tm.Dialog.Fg, "#000000"},
+		{"dialog.Dialog.Border.Fg", tm.Dialog.Border.Fg, "#000000"},
+		{"dialog.Dialog.Title.Fg", tm.Dialog.Title.Fg, "#000000"},
 
-		{"Table.Header.Fg", tm.Table.Header.Fg, "#ffff55"},
-		{"Table.Row.Fg", tm.Table.Row.Fg, "#aaaaaa"},
-		{"Table.Selected.Fg", tm.Table.Selected.Fg, "#000000"},
-		{"Table.Selected.Bg", tm.Table.Selected.Bg, "#00aaaa"},
+		{"widget.Table.Header.Fg", tm.Table.Header.Fg, "#ffff55"},
+		{"widget.Table.Row.Fg", tm.Table.Row.Fg, "#aaaaaa"},
+		{"widget.Table.Selected.Fg", tm.Table.Selected.Fg, "#000000"},
+		{"widget.Table.Selected.Bg", tm.Table.Selected.Bg, "#00aaaa"},
 
 		{"Text.Positive", tm.Text.Positive, "#55ff55"},
 		{"Text.Negative", tm.Text.Negative, "#ff5555"},

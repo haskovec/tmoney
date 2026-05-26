@@ -69,15 +69,15 @@ func TestEmbeddedDefault_MatchesCurrentPalette(t *testing.T) {
 		{"Window.Border.Fg", tm.Window.Border.Fg, colorBorder},
 		{"Window.Title.Fg", tm.Window.Title.Fg, colorTitle},
 
-		{"Dialog.Bg", tm.Dialog.Bg, ""},
-		{"Dialog.Fg", tm.Dialog.Fg, colorHeaderFg},
-		{"Dialog.Border.Fg", tm.Dialog.Border.Fg, colorBorder},
-		{"Dialog.Title.Fg", tm.Dialog.Title.Fg, colorTitle},
+		{"dialog.Dialog.Bg", tm.Dialog.Bg, ""},
+		{"dialog.Dialog.Fg", tm.Dialog.Fg, colorHeaderFg},
+		{"dialog.Dialog.Border.Fg", tm.Dialog.Border.Fg, colorBorder},
+		{"dialog.Dialog.Title.Fg", tm.Dialog.Title.Fg, colorTitle},
 
-		{"Table.Header.Fg", tm.Table.Header.Fg, colorHeaderFg},
-		{"Table.Row.Fg", tm.Table.Row.Fg, colorHeaderFg},
-		{"Table.Selected.Fg", tm.Table.Selected.Fg, colorSelectedFg},
-		{"Table.Selected.Bg", tm.Table.Selected.Bg, colorSelectedBg},
+		{"widget.Table.Header.Fg", tm.Table.Header.Fg, colorHeaderFg},
+		{"widget.Table.Row.Fg", tm.Table.Row.Fg, colorHeaderFg},
+		{"widget.Table.Selected.Fg", tm.Table.Selected.Fg, colorSelectedFg},
+		{"widget.Table.Selected.Bg", tm.Table.Selected.Bg, colorSelectedBg},
 
 		{"Text.Positive", tm.Text.Positive, colorPositive},
 		{"Text.Negative", tm.Text.Negative, colorNegative},
@@ -92,10 +92,10 @@ func TestEmbeddedDefault_MatchesCurrentPalette(t *testing.T) {
 		}
 	}
 
-	// ColorPending is the same numeric code as ColorMuted; assert the
+	// widget.ColorPending is the same numeric code as widget.ColorMuted; assert the
 	// muted slot matches both so a future divergence trips this.
 	if tm.Text.Muted != colorPending {
-		t.Errorf("Text.Muted = %q, want %q (ColorPending)", tm.Text.Muted, colorPending)
+		t.Errorf("Text.Muted = %q, want %q (widget.ColorPending)", tm.Text.Muted, colorPending)
 	}
 
 	if string(tm.BorderStyle) != "single" {
@@ -148,10 +148,10 @@ func TestEmbeddedLight_Parses(t *testing.T) {
 	// terminal. The dialog panel is the most distinctive surface;
 	// confirm it picks an off-white background and dark foreground.
 	if tm.Dialog.Bg != "#f5f5f5" {
-		t.Errorf("Dialog.Bg = %q, want #f5f5f5 (off-white panel)", tm.Dialog.Bg)
+		t.Errorf("dialog.Dialog.Bg = %q, want #f5f5f5 (off-white panel)", tm.Dialog.Bg)
 	}
 	if tm.Dialog.Fg != "#1a1a1a" {
-		t.Errorf("Dialog.Fg = %q, want #1a1a1a (near-black text)", tm.Dialog.Fg)
+		t.Errorf("dialog.Dialog.Fg = %q, want #1a1a1a (near-black text)", tm.Dialog.Fg)
 	}
 	if tm.Window.Fg != "#1a1a1a" {
 		t.Errorf("Window.Fg = %q, want #1a1a1a", tm.Window.Fg)

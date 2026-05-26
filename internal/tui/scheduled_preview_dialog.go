@@ -10,11 +10,12 @@ import (
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
-// Field indices for the SchedulePreviewDialog's header dialog.
+// dialog.Field indices for the SchedulePreviewDialog's header dialog.
 //
 // Single-line preview fields:
 //
@@ -41,13 +42,13 @@ const (
 // It is pre-filled with the schedule's template values; edits made here
 // flow into the real transaction created at save time but do not modify
 // the template (one-off semantics — see
-// specs/multiline-splits-and-paycheck.md, Post-Time Preview Dialog).
+// specs/multiline-splits-and-paycheck.md, Post-Time Preview dialog.Dialog).
 //
 // The dialog has two shapes:
-//   - For a single-line schedule it owns one Dialog with date / payee /
+//   - For a single-line schedule it owns one dialog.Dialog with date / payee /
 //     category / amount / memo / status fields, mirroring the regular
 //     transaction edit dialog.
-//   - For a multi-line schedule it owns a header Dialog (date / payee /
+//   - For a multi-line schedule it owns a header dialog.Dialog (date / payee /
 //     memo / status) plus an embedded SplitDialog seeded from the
 //     template's children. The header carries no scalar category or
 //     amount since the lines own those.
@@ -66,7 +67,7 @@ type SchedulePreviewDialog struct {
 	// a single-line schedule this includes Category and Amount; for a
 	// multi-line schedule those live in splitDialog and the header is
 	// only date / payee / memo / status.
-	headerDialog *Dialog
+	headerDialog *dialog.Dialog
 
 	// splitDialog is non-nil for multi-line schedules and edits the
 	// line items.
@@ -176,10 +177,10 @@ func NewSchedulePreviewDialog(
 }
 
 // buildPreviewHeaderSingle builds the dialog for a single-line preview.
-// Field layout mirrors the regular transaction edit dialog so the user
+// dialog.Field layout mirrors the regular transaction edit dialog so the user
 // sees a familiar shape.
-func buildPreviewHeaderSingle(dateStr, payeeName, memo, amountStr string, categoryOptions []string, catIdx int) *Dialog {
-	d := NewDialog("Post Scheduled Transaction")
+func buildPreviewHeaderSingle(dateStr, payeeName, memo, amountStr string, categoryOptions []string, catIdx int) *dialog.Dialog {
+	d := dialog.NewDialog("Post Scheduled Transaction")
 	d.SetWidth(62)
 
 	f := d.AddDateField("Date", dateStr)
@@ -203,8 +204,8 @@ func buildPreviewHeaderSingle(dateStr, payeeName, memo, amountStr string, catego
 // preview. The lines (and their imbalance indicator) live in the
 // embedded SplitDialog; the header only carries scalar fields that
 // apply to the parent transaction as a whole.
-func buildPreviewHeaderMulti(dateStr, payeeName, memo string) *Dialog {
-	d := NewDialog("Post Scheduled Transaction")
+func buildPreviewHeaderMulti(dateStr, payeeName, memo string) *dialog.Dialog {
+	d := dialog.NewDialog("Post Scheduled Transaction")
 	d.SetWidth(62)
 
 	f := d.AddDateField("Date", dateStr)
@@ -226,7 +227,7 @@ func (p *SchedulePreviewDialog) Template() *scheduled.Transaction {
 
 // HeaderDialog returns the dialog carrying the parent-transaction
 // fields. Always non-nil.
-func (p *SchedulePreviewDialog) HeaderDialog() *Dialog {
+func (p *SchedulePreviewDialog) HeaderDialog() *dialog.Dialog {
 	return p.headerDialog
 }
 
@@ -356,12 +357,12 @@ func (a *App) handleSchedulePreviewDialogKey(msg tea.KeyPressMsg) (tea.Model, te
 
 	action := a.schedPreviewDialog.HeaderDialog().HandleKey(msg)
 	switch action {
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeSchedulePreviewDialog()
 		return a, nil
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitSchedulePreviewDialog()
-	case DialogActionAddNew:
+	case dialog.DialogActionAddNew:
 		return a.openCreateCategorySubDialogFromSchedPreview()
 	}
 	return a, nil
@@ -466,7 +467,7 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 	if !p.splitFocus {
 		// Tab past the header's last focusable element transitions
 		// into the split editor instead of wrapping back to field 0.
-		if keyStr == "tab" && header.FocusIndex() == header.focusableCount()-1 {
+		if keyStr == "tab" && header.FocusIndex() == header.FocusableCount()-1 {
 			p.splitFocus = true
 			splits.focus = splitFocusRows
 			splits.rowIndex = 0
@@ -475,10 +476,10 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 		}
 		action := header.HandleKey(msg)
 		switch action {
-		case DialogActionCancel:
+		case dialog.DialogActionCancel:
 			a.closeSchedulePreviewDialog()
 			return a, nil
-		case DialogActionSubmit:
+		case dialog.DialogActionSubmit:
 			return a.submitSchedulePreviewDialog()
 		}
 		return a, nil
@@ -494,10 +495,10 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 
 	action := splits.HandleKey(msg)
 	switch action {
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeSchedulePreviewDialog()
 		return a, nil
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitSchedulePreviewDialog()
 	}
 	return a, nil

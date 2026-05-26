@@ -9,6 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -102,17 +104,17 @@ func (a *App) buildSecurityTable() {
 		return
 	}
 
-	columns := []Column{
-		{Header: "Ticker", Width: 10, Align: AlignLeft},
-		{Header: "Name", MinWidth: 15, Align: AlignLeft},
-		{Header: "Type", Width: 12, Align: AlignLeft},
-		{Header: "Asset Class", Width: 20, Align: AlignLeft},
-		{Header: "Currency", Width: 8, Align: AlignCenter},
-		{Header: "Status", Width: 8, Align: AlignCenter},
+	columns := []widget.Column{
+		{Header: "Ticker", Width: 10, Align: widget.AlignLeft},
+		{Header: "Name", MinWidth: 15, Align: widget.AlignLeft},
+		{Header: "Type", Width: 12, Align: widget.AlignLeft},
+		{Header: "Asset Class", Width: 20, Align: widget.AlignLeft},
+		{Header: "Currency", Width: 8, Align: widget.AlignCenter},
+		{Header: "Status", Width: 8, Align: widget.AlignCenter},
 	}
 
 	if a.securityTable == nil {
-		a.securityTable = NewTable(columns)
+		a.securityTable = widget.NewTable(columns)
 	} else {
 		a.securityTable.SetColumns(columns)
 	}
@@ -186,7 +188,7 @@ func (a *App) renderSecurityView() string {
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
-	// Table
+	// widget.Table
 	headerHeight := 1
 	statusBarHeight := 1
 	titleHeight := 2  // title + separator
@@ -400,8 +402,8 @@ const (
 )
 
 // buildAddSecurityDialog builds the dialog for adding a new security.
-func buildAddSecurityDialog() *Dialog {
-	d := NewDialog("Add Security")
+func buildAddSecurityDialog() *dialog.Dialog {
+	d := dialog.NewDialog("Add Security")
 	d.SetWidth(76)
 
 	f := d.AddTextField("Ticker", "", "e.g. AAPL", 20)
@@ -427,7 +429,7 @@ func buildAddSecurityDialog() *Dialog {
 
 	d.AddTextField("Exchange", "", "e.g. NASDAQ", 20)
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Save", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -436,8 +438,8 @@ func buildAddSecurityDialog() *Dialog {
 }
 
 // buildEditSecurityDialog builds the dialog for editing an existing security.
-func buildEditSecurityDialog(sec *security.Security) *Dialog {
-	d := NewDialog("Edit Security")
+func buildEditSecurityDialog(sec *security.Security) *dialog.Dialog {
+	d := dialog.NewDialog("Edit Security")
 	d.SetWidth(76)
 
 	f := d.AddTextField("Ticker", sec.Ticker, "e.g. AAPL", 20)
@@ -487,7 +489,7 @@ func buildEditSecurityDialog(sec *security.Security) *Dialog {
 	}
 	d.AddTextField("Exchange", exchange, "e.g. NASDAQ", 20)
 
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "Save", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -499,11 +501,11 @@ func buildEditSecurityDialog(sec *security.Security) *Dialog {
 func (a *App) handleSecurityDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := a.securityDialog.HandleKey(msg)
 	switch action {
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.securityDialog.SetVisible(false)
 		a.securityDialog = nil
 		return a, nil
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitSecurityDialog()
 	}
 	return a, nil

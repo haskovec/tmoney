@@ -8,6 +8,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -51,8 +52,8 @@ func buildInvestmentAccountOptions(accounts []*account.Account, excludeID types.
 	return options, ids
 }
 
-// buildTransferSharesDialog creates a Dialog for transferring shares between investment accounts.
-// Field order: Date(0), Security(1), To Account(2), Shares(3), [lots...], Memo.
+// buildTransferSharesDialog creates a dialog.Dialog for transferring shares between investment accounts.
+// dialog.Field order: Date(0), Security(1), To Account(2), Shares(3), [lots...], Memo.
 func buildTransferSharesDialog(
 	accountOptions []string,
 	securityOptions []string,
@@ -60,8 +61,8 @@ func buildTransferSharesDialog(
 	accountIDs []types.ID,
 	securityIDs []types.ID,
 	lots []*investment.Lot,
-) *Dialog {
-	d := NewDialog("Transfer Shares")
+) *dialog.Dialog {
+	d := dialog.NewDialog("Transfer Shares")
 	d.SetWidth(70)
 
 	// Date (index 0)
@@ -189,9 +190,9 @@ func (a *App) handleTransferSharesDialogKey(msg tea.KeyPressMsg) (tea.Model, tea
 
 	action := a.transferSharesDialog.HandleKey(msg)
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		return a.submitTransferSharesDialog()
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.closeTransferSharesDialog()
 		return a, nil
 	}

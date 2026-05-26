@@ -8,6 +8,8 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -26,8 +28,8 @@ func TestBuildStartReconciliationDialog(t *testing.T) {
 	if fields[0].Label != "Statement Date" {
 		t.Errorf("field[0].Label = %q, want %q", fields[0].Label, "Statement Date")
 	}
-	if fields[0].Type != FieldDate {
-		t.Errorf("field[0].Type = %v, want FieldDate", fields[0].Type)
+	if fields[0].Type != dialog.FieldDate {
+		t.Errorf("field[0].Type = %v, want dialog.FieldDate", fields[0].Type)
 	}
 	if !fields[0].Required {
 		t.Error("Statement Date field should be required")
@@ -377,9 +379,9 @@ func TestApp_MouseClick_ReconciliationView_TogglesCheck(t *testing.T) {
 	app := &App{
 		currentView: ViewReconciliation,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
+		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
 		reconciliation: &reconciliationViewData{
@@ -488,7 +490,7 @@ func TestUncheckAllReconciliation(t *testing.T) {
 
 func TestRenderReconciliation_Loading(t *testing.T) {
 	app := &App{
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 	}
 	app.styles.Resize(80, 24)
 
@@ -508,7 +510,7 @@ func TestRenderReconciliation_NoCandidates(t *testing.T) {
 	app := &App{
 		width:  80,
 		height: 24,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		reconciliation: &reconciliationViewData{
 			session:      session,
 			account:      &account.Account{Name: "Checking"},
@@ -546,7 +548,7 @@ func TestRenderReconciliation_WithData(t *testing.T) {
 	app := &App{
 		width:  100,
 		height: 30,
-		styles: NewStyles(),
+		styles: widget.NewStyles(),
 		reconciliation: &reconciliationViewData{
 			session:       session,
 			account:       &account.Account{Name: "Checking"},
@@ -720,7 +722,7 @@ func TestHandleReconciliationKeys_FinishWithDifference(t *testing.T) {
 		width:     80,
 		height:    24,
 		keys:      defaultKeyMap(),
-		statusbar: NewStatusBar(),
+		statusbar: widget.NewStatusBar(),
 		reconciliation: &reconciliationViewData{
 			session:       session,
 			candidates:    []*transaction.Transaction{},
@@ -777,7 +779,7 @@ func TestReconciliationView_SwitchView(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -798,7 +800,7 @@ func TestReconciliationUpdate_StartedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 	}
 
@@ -833,7 +835,7 @@ func TestReconciliationUpdate_LoadedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewReconciliation,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 	}
 
 	msg := reconciliationLoadedMsg{data: data}
@@ -872,7 +874,7 @@ func TestReconciliationUpdate_FinishedMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewReconciliation,
 		keys:        defaultKeyMap(),
-		statusbar:   NewStatusBar(),
+		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		reconciliation: &reconciliationViewData{
 			account: &account.Account{Name: "Checking"},
@@ -908,7 +910,7 @@ func TestReconciliationUpdate_CancelledMsg(t *testing.T) {
 		currentView:  ViewReconciliation,
 		previousView: ViewRegister,
 		keys:         defaultKeyMap(),
-		statusbar:    NewStatusBar(),
+		statusbar:    widget.NewStatusBar(),
 		sidebar:      NewSidebar(),
 		reconciliation: &reconciliationViewData{
 			account: &account.Account{Name: "Checking"},
@@ -940,7 +942,7 @@ func TestReconciliationFullScreen(t *testing.T) {
 	}
 	session.StatementDate = types.Today()
 
-	styles := NewStyles()
+	styles := widget.NewStyles()
 	styles.Resize(100, 30)
 
 	app := &App{
@@ -950,8 +952,8 @@ func TestReconciliationFullScreen(t *testing.T) {
 		ready:       true,
 		styles:      styles,
 		sidebar:     NewSidebar(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
 		reconciliation: &reconciliationViewData{
 			session:      session,
@@ -974,8 +976,8 @@ func TestReconciliationBlocksViewSwitching(t *testing.T) {
 	app := &App{
 		currentView: ViewReconciliation,
 		keys:        defaultKeyMap(),
-		menubar:     NewMenuBar(),
-		statusbar:   NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
 		reconciliation: &reconciliationViewData{
 			session:    &reconciliation.Session{AccountID: types.NewID()},
 			candidates: []*transaction.Transaction{},
@@ -1045,19 +1047,19 @@ func TestReconciliationHelpOverlay(t *testing.T) {
 }
 
 func TestMenuBarHasReconcileAccount(t *testing.T) {
-	mb := NewMenuBar()
+	mb := widget.NewMenuBar()
 	found := false
-	for _, m := range mb.menus {
-		for _, item := range m.items {
-			if item.action == MenuActionReconcileAccount {
+	for _, m := range mb.Menus() {
+		for _, item := range m.Items {
+			if item.Action == widget.MenuActionReconcileAccount {
 				found = true
-				if item.label != "Reconcile Account" {
-					t.Errorf("menu label = %q, want %q", item.label, "Reconcile Account")
+				if item.Label != "Reconcile Account" {
+					t.Errorf("menu label = %q, want %q", item.Label, "Reconcile Account")
 				}
 			}
 		}
 	}
 	if !found {
-		t.Error("MenuActionReconcileAccount not found in menu bar")
+		t.Error("widget.MenuActionReconcileAccount not found in menu bar")
 	}
 }

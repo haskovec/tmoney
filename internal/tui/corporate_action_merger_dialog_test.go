@@ -6,6 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -30,9 +32,9 @@ func TestBuildMergerDialog_NewDialog(t *testing.T) {
 		t.Fatalf("expected 5 fields, got %d", len(fields))
 	}
 
-	// Field 0: Source Security (typeahead combo)
-	if fields[0].Type != FieldCombo {
-		t.Errorf("field 0 type = %d, want FieldCombo (%d)", fields[0].Type, FieldCombo)
+	// dialog.Field 0: Source Security (typeahead combo)
+	if fields[0].Type != dialog.FieldCombo {
+		t.Errorf("field 0 type = %d, want dialog.FieldCombo (%d)", fields[0].Type, dialog.FieldCombo)
 	}
 	if fields[0].Label != "Source Security" {
 		t.Errorf("field 0 label = %q, want %q", fields[0].Label, "Source Security")
@@ -44,9 +46,9 @@ func TestBuildMergerDialog_NewDialog(t *testing.T) {
 		t.Errorf("default source index = %d, want 0", fields[0].SelectedIndex)
 	}
 
-	// Field 1: Target Security (typeahead combo)
-	if fields[1].Type != FieldCombo {
-		t.Errorf("field 1 type = %d, want FieldCombo (%d)", fields[1].Type, FieldCombo)
+	// dialog.Field 1: Target Security (typeahead combo)
+	if fields[1].Type != dialog.FieldCombo {
+		t.Errorf("field 1 type = %d, want dialog.FieldCombo (%d)", fields[1].Type, dialog.FieldCombo)
 	}
 	if fields[1].Label != "Target Security" {
 		t.Errorf("field 1 label = %q, want %q", fields[1].Label, "Target Security")
@@ -55,9 +57,9 @@ func TestBuildMergerDialog_NewDialog(t *testing.T) {
 		t.Errorf("expected 2 target options, got %d", len(fields[1].Options))
 	}
 
-	// Field 2: Date (masked, required, default today)
-	if fields[2].Type != FieldDate {
-		t.Errorf("field 2 type = %d, want FieldDate (%d)", fields[2].Type, FieldDate)
+	// dialog.Field 2: Date (masked, required, default today)
+	if fields[2].Type != dialog.FieldDate {
+		t.Errorf("field 2 type = %d, want dialog.FieldDate (%d)", fields[2].Type, dialog.FieldDate)
 	}
 	if fields[2].Label != "Date" {
 		t.Errorf("field 2 label = %q, want %q", fields[2].Label, "Date")
@@ -70,9 +72,9 @@ func TestBuildMergerDialog_NewDialog(t *testing.T) {
 		t.Errorf("date default = %q, want %q", fields[2].Value, today)
 	}
 
-	// Field 3: Exchange Ratio (text, required)
-	if fields[3].Type != FieldText {
-		t.Errorf("field 3 type = %d, want FieldText (%d)", fields[3].Type, FieldText)
+	// dialog.Field 3: Exchange Ratio (text, required)
+	if fields[3].Type != dialog.FieldText {
+		t.Errorf("field 3 type = %d, want dialog.FieldText (%d)", fields[3].Type, dialog.FieldText)
 	}
 	if fields[3].Label != "Exchange Ratio" {
 		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Exchange Ratio")
@@ -87,9 +89,9 @@ func TestBuildMergerDialog_NewDialog(t *testing.T) {
 		t.Errorf("exchange ratio placeholder = %q, want %q", fields[3].Placeholder, "2.0")
 	}
 
-	// Field 4: Cash Per Share (text, optional)
-	if fields[4].Type != FieldText {
-		t.Errorf("field 4 type = %d, want FieldText (%d)", fields[4].Type, FieldText)
+	// dialog.Field 4: Cash Per Share (text, optional)
+	if fields[4].Type != dialog.FieldText {
+		t.Errorf("field 4 type = %d, want dialog.FieldText (%d)", fields[4].Type, dialog.FieldText)
 	}
 	if fields[4].Label != "Cash Per Share" {
 		t.Errorf("field 4 label = %q, want %q", fields[4].Label, "Cash Per Share")
@@ -773,7 +775,7 @@ func TestSubmitMergerDialog_EmptyCashPerShareIsValid(t *testing.T) {
 
 func TestApp_Update_MergerDialogSavedMsg(t *testing.T) {
 	app := &App{
-		statusbar: NewStatusBar(),
+		statusbar: widget.NewStatusBar(),
 	}
 
 	msg := mergerDialogSavedMsg{}

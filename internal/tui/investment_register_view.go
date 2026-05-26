@@ -10,6 +10,8 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -87,18 +89,18 @@ func (a *App) buildInvestmentRegisterTable() {
 		return
 	}
 
-	columns := []Column{
-		{Header: "Date", Width: 10, Align: AlignLeft},
-		{Header: "S", Width: 1, Align: AlignCenter},
-		{Header: "Type", Width: 19, Align: AlignLeft},
-		{Header: "Security", Width: 10, Align: AlignLeft},
-		{Header: "Shares", Width: 12, Align: AlignRight},
-		{Header: "Price", Width: 12, Align: AlignRight},
-		{Header: "Total", Width: 12, Align: AlignRight},
+	columns := []widget.Column{
+		{Header: "Date", Width: 10, Align: widget.AlignLeft},
+		{Header: "S", Width: 1, Align: widget.AlignCenter},
+		{Header: "Type", Width: 19, Align: widget.AlignLeft},
+		{Header: "Security", Width: 10, Align: widget.AlignLeft},
+		{Header: "Shares", Width: 12, Align: widget.AlignRight},
+		{Header: "Price", Width: 12, Align: widget.AlignRight},
+		{Header: "Total", Width: 12, Align: widget.AlignRight},
 	}
 
 	if a.investmentTable == nil {
-		a.investmentTable = NewTable(columns)
+		a.investmentTable = widget.NewTable(columns)
 	} else {
 		a.investmentTable.SetColumns(columns)
 	}
@@ -184,7 +186,7 @@ func (a *App) renderInvestmentRegister() string {
 	cashStr := "Cash: " + formatDashboardMoney(a.investmentRegister.cashBalance)
 
 	maxNameWidth := max(contentWidth-lipgloss.Width(cashStr)-6, 10)
-	acctName = truncate(acctName, maxNameWidth)
+	acctName = widget.Truncate(acctName, maxNameWidth)
 	padding := max(contentWidth-lipgloss.Width(acctName)-lipgloss.Width(cashStr)-4, 1)
 
 	cashStyle := a.styles.Positive
@@ -206,7 +208,7 @@ func (a *App) renderInvestmentRegister() string {
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
-	// Table
+	// widget.Table
 	headerHeight := 1
 	statusBarHeight := 1
 	titleHeight := 2 + totalReturnLines // title + separator (+ optional total-return breakdown)
@@ -320,7 +322,7 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 		return a.handleSidebarKeys(msg)
 	}
 
-	// Table-focused key handling
+	// widget.Table-focused key handling
 	if a.investmentTable == nil || a.investmentRegister == nil {
 		return a, nil
 	}
@@ -508,10 +510,10 @@ func (a *App) openInvestmentTypeSelector(editing bool) {
 		title = "Edit Transaction"
 	}
 
-	d := NewDialog(title)
+	d := dialog.NewDialog(title)
 	d.SetWidth(40)
 	d.AddSelectField("Type", options, selectedIdx)
-	d.SetButtons([]DialogButton{
+	d.SetButtons([]dialog.DialogButton{
 		{Label: "OK", Primary: true},
 		{Label: "Cancel"},
 	})
@@ -524,7 +526,7 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyPressMsg) (tea.Model, t
 	action := a.investmentTypeSelector.HandleKey(msg)
 
 	switch action {
-	case DialogActionSubmit:
+	case dialog.DialogActionSubmit:
 		// Get the selected type
 		fields := a.investmentTypeSelector.Fields()
 		selectedType := investmentTransactionTypeFromIndex(fields[0].SelectedIndex)
@@ -565,7 +567,7 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyPressMsg) (tea.Model, t
 			return a, a.loadTransferSharesDialogData()
 		}
 
-	case DialogActionCancel:
+	case dialog.DialogActionCancel:
 		a.investmentTypeSelector.SetVisible(false)
 		a.investmentTypeSelector = nil
 		return a, nil
