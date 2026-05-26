@@ -270,9 +270,9 @@ Investment-account operations: trades, cash flow, corporate actions, and portfol
 > one-sided cash flows (no linked counterpart in another account).
 > Linked cash transfers involving an investment account — whether
 > bank↔investment or investment↔investment (e.g. IRA-to-IRA cash
-> rollovers) — are handled by the unified TUI Transfer dialog and
-> have no CLI command yet. CLI parity is a planned future phase; see
-> [`implementation-plan-investment-cash-transfer-unification.md`](implementation-plan-investment-cash-transfer-unification.md).
+> rollovers) — go through the unified `tmoney transfer add` command,
+> which dispatches by the (from, to) account types. See
+> [`transfer add`](#transfer-add) below.
 > The existing `investment transfer` (no `-cash` suffix) moves
 > **shares** between two investment accounts, not cash.
 
@@ -1006,7 +1006,18 @@ Transfers between two accounts.
 
 `Use: transfer add` · `Args: NoArgs`
 
-Create a transfer between two accounts.
+Create a transfer between two accounts. The command dispatches
+internally by the `(from.Type, to.Type)` combination so any pairing
+works — bank↔bank, bank↔investment, investment↔bank, and
+investment↔investment. HSA accounts count as investment on either
+leg.
+
+| From → To | Service method |
+|---|---|
+| reg → reg | `transaction.Service.CreateTransfer` |
+| reg → inv | `investment.Service.DepositFromAccount` |
+| inv → reg | `investment.Service.TransferCash` |
+| inv → inv | `investment.Service.TransferCashBetweenInvestments` |
 
 **Required flags:** `--from`, `--to`, `--amount` (must be positive)
 
@@ -1015,19 +1026,24 @@ Create a transfer between two accounts.
 - `--memo string` — Free-form memo
 
 ```bash
+# Bank → bank
 tmoney transfer add --from Checking --to Savings --amount 500.00
 tmoney transfer add --from Checking --to Savings --amount 500.00 \
   --date 2024-03-01 --memo "Monthly savings"
+
+# Bank → investment (e.g. 401k contribution)
+tmoney transfer add --from Checking --to "Brokerage" --amount 1000.00
+
+# Investment → bank (e.g. brokerage withdrawal)
+tmoney transfer add --from "Brokerage" --to Checking --amount 250.00
+
+# Investment → investment (e.g. IRA-to-IRA rollover)
+tmoney transfer add --from "Old IRA" --to "Rollover IRA" --amount 5000.00
 ```
 
-> **Both accounts must be non-investment.** Passing an investment
-> account as `--from` or `--to` returns an error directing you to the
-> TUI. Linked cash transfers involving an investment account
-> (bank↔investment or investment↔investment, e.g. IRA-to-IRA cash
-> rollovers) are handled by the unified TUI Transfer dialog — CLI
-> parity is deferred to a future phase. See
-> [`implementation-plan-investment-cash-transfer-unification.md`](implementation-plan-investment-cash-transfer-unification.md)
-> for the deferred design.
+The success confirmation always prints the new transfer-id and both
+leg transaction-ids so scripts composing follow-up edits/deletes have
+the IDs ready to use.
 
 ### `transfer link`
 

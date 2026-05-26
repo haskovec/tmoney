@@ -510,7 +510,7 @@ enhancement that the new commands need, then the new commands.
 
 ### P-A2: Extend `tmoney transfer add` to dispatch
 
-- [ ] **P-A2-001 — Dispatch in `transfer_add.go` (TDD)**
+- [x] **P-A2-001 — Dispatch in `transfer_add.go` (TDD)**
   - RED: four new tests in
     `internal/cli/transfer_add_test.go`, one per dispatch kind
     (`TestTransferAdd_DispatchRegToReg_CreatesPair`,
@@ -545,7 +545,7 @@ enhancement that the new commands need, then the new commands.
   - `go fix ./... && go fmt ./... && go test ./... && golangci-lint run`
     all clean.
 
-- [ ] **P-A2-002 — Help text + cli.md update**
+- [x] **P-A2-002 — Help text + cli.md update**
   - `transfer_add.go` cobra command: rewrite the `Short` and `Long`
     text to drop the "non-investment only" framing; describe the
     dispatch instead. Note the inv-involving paths.

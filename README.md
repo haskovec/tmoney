@@ -390,12 +390,14 @@ tmoney transaction add --account Checking --amount 3500.00 \
 # Void a transaction by ID (transfer counterparts are voided too)
 tmoney transaction void <id>
 
-# Create a transfer between accounts (both accounts must be non-investment;
-# linked cash transfers involving an investment account are TUI-only — CLI
-# parity is deferred to a future phase)
+# Create a transfer between accounts. Dispatches internally by the
+# (from, to) account types: bank↔bank, bank↔investment, and
+# investment↔investment (e.g. IRA-to-IRA cash rollovers) all work.
 tmoney transfer add --from Checking --to Savings --amount 500.00
 tmoney transfer add --from Checking --to Savings --amount 500.00 \
   --date 2024-03-01 --memo "Monthly savings"
+tmoney transfer add --from Checking --to Brokerage --amount 1000.00
+tmoney transfer add --from "Old IRA" --to "Rollover IRA" --amount 5000.00
 
 # Search transactions
 tmoney transaction search "grocery"
@@ -721,13 +723,11 @@ source account to the destination account. Date defaults to today.
 For lot-tracked source accounts, pass `--lot <id>` to allocate against
 a specific open lot.
 
-> **Linked cash transfers involving an investment account are
-> TUI-only.** Moving cash (not shares) between an investment account
-> and another account — whether bank↔investment or
-> investment↔investment (e.g., an IRA-to-IRA rollover) — is supported
-> only through the unified TUI Transfer dialog. CLI parity is a
-> planned future phase; see
-> [`specs/implementation-plan-investment-cash-transfer-unification.md`](specs/implementation-plan-investment-cash-transfer-unification.md).
+> **Linked cash transfers involving an investment account** — whether
+> bank↔investment or investment↔investment (e.g. IRA-to-IRA cash
+> rollovers) — go through the unified `tmoney transfer add` command,
+> which dispatches by the `(from.Type, to.Type)` combination. See the
+> [Transactions](#transactions) section above for examples.
 
 ```bash
 # Apply a forward stock split (4-for-1)

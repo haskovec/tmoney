@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
@@ -27,7 +29,9 @@ func newTransferAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Create a transfer between two accounts",
-		Long: "Create a transfer between two accounts. " +
+		Long: "Create a transfer between two accounts. The command dispatches by the " +
+			"(from, to) account types so any combination works: bank↔bank, bank↔investment, " +
+			"and investment↔investment (including HSA on either leg). " +
 			"`--from`, `--to`, and `--amount` are required; `--amount` must be positive.",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
@@ -47,24 +51,31 @@ func newTransferAddCmd() *cobra.Command {
 	return cmd
 }
 
-// runTransferAdd creates a transfer between two accounts.
+// transferAddResult is the format-agnostic result of any dispatched
+// transfer create: the shared transfer_id and the two leg transaction IDs,
+// laid out as "from" and "to" matching the user's --from / --to flags.
+type transferAddResult struct {
+	TransferID types.ID
+	FromTxnID  types.ID
+	ToTxnID    types.ID
+}
+
+// runTransferAdd creates a transfer between two accounts. The (from, to)
+// account types pick one of four service methods (see
+// transaction.ChooseTransferDispatch).
 func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 	if opts.file == "" {
 		return fmt.Errorf("--file is required to specify a database")
 	}
 
-	// Parse amount
 	amount, err := types.NewMoney(opts.amount)
 	if err != nil {
 		return fmt.Errorf("invalid --amount: %w", err)
 	}
-
-	// Amount must be positive for transfers
 	if !amount.IsPositive() {
 		return fmt.Errorf("--amount must be positive for transfers")
 	}
 
-	// Parse date (default to today)
 	var date types.Date
 	if opts.date != "" {
 		date, err = types.ParseDate(opts.date)
@@ -81,42 +92,92 @@ func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	// Get source account by name
 	fromAcct, err := svc.Account.GetByName(opts.fromAccount)
 	if err != nil {
 		return fmt.Errorf("source account %q not found", opts.fromAccount)
 	}
-
-	// Get destination account by name
 	toAcct, err := svc.Account.GetByName(opts.toAccount)
 	if err != nil {
 		return fmt.Errorf("destination account %q not found", opts.toAccount)
 	}
 
-	// Create the transfer
-	pair, err := svc.Transaction.CreateTransfer(fromAcct.ID, toAcct.ID, date, amount)
+	result, err := dispatchTransferAdd(svc, fromAcct, toAcct, date, amount, opts.memo)
 	if err != nil {
 		return fmt.Errorf("failed to create transfer: %w", err)
 	}
 
-	// Set memo if provided
-	if opts.memo != "" {
-		err = svc.Transaction.UpdateTransfer(pair.FromTransaction.TransferID.ID, date, amount, opts.memo, transaction.StatusUncleared)
-		if err != nil {
-			return fmt.Errorf("failed to set memo on transfer: %w", err)
-		}
-	}
-
-	// Print confirmation
 	fmt.Fprintln(w, "Transfer created successfully!")
-	fmt.Fprintf(w, "  From:   %s\n", fromAcct.Name)
-	fmt.Fprintf(w, "  To:     %s\n", toAcct.Name)
-	fmt.Fprintf(w, "  Date:   %s\n", date.String())
-	fmt.Fprintf(w, "  Amount: %s\n", formatMoney(amount, fromAcct.Currency))
+	fmt.Fprintf(w, "  Transfer ID:           %s\n", result.TransferID)
+	fmt.Fprintf(w, "  From transaction ID:   %s\n", result.FromTxnID)
+	fmt.Fprintf(w, "  To transaction ID:     %s\n", result.ToTxnID)
+	fmt.Fprintf(w, "  From:                  %s\n", fromAcct.Name)
+	fmt.Fprintf(w, "  To:                    %s\n", toAcct.Name)
+	fmt.Fprintf(w, "  Date:                  %s\n", date.String())
+	fmt.Fprintf(w, "  Amount:                %s\n", formatMoney(amount, fromAcct.Currency))
 	if opts.memo != "" {
-		fmt.Fprintf(w, "  Memo:   %s\n", opts.memo)
+		fmt.Fprintf(w, "  Memo:                  %s\n", opts.memo)
 	}
 
 	autoBackupAfterModification(opts.file)
 	return nil
+}
+
+// dispatchTransferAdd picks the right service method for the
+// (from.Type, to.Type) combination and returns the leg IDs in
+// caller-supplied (from, to) order.
+func dispatchTransferAdd(svc *app.Services, from, to *account.Account, date types.Date, amount types.Money, memo string) (*transferAddResult, error) {
+	switch transaction.ChooseTransferDispatch(from.Type, to.Type) {
+	case transaction.DispatchRegToReg:
+		pair, err := svc.Transaction.CreateTransfer(from.ID, to.ID, date, amount)
+		if err != nil {
+			return nil, err
+		}
+		// CreateTransfer doesn't accept memo; set it via UpdateTransfer.
+		if memo != "" {
+			if err := svc.Transaction.UpdateTransfer(pair.FromTransaction.TransferID.ID, date, amount, memo, transaction.StatusUncleared); err != nil {
+				return nil, fmt.Errorf("transfer created but failed to set memo: %w", err)
+			}
+		}
+		return &transferAddResult{
+			TransferID: pair.FromTransaction.TransferID.ID,
+			FromTxnID:  pair.FromTransaction.ID,
+			ToTxnID:    pair.ToTransaction.ID,
+		}, nil
+	case transaction.DispatchRegToInv:
+		// DepositFromAccount signature: (investmentID, regularID, date, amount, memo).
+		// "From" is the regular account; "To" is the investment account.
+		res, err := svc.Investment.DepositFromAccount(to.ID, from.ID, date, amount, memo)
+		if err != nil {
+			return nil, err
+		}
+		return &transferAddResult{
+			TransferID: res.TransferID,
+			FromTxnID:  res.RegularTransaction.ID,
+			ToTxnID:    res.InvestmentTransaction.ID,
+		}, nil
+	case transaction.DispatchInvToReg:
+		// TransferCash signature: (investmentID, regularID, date, amount, memo).
+		// "From" is the investment account; "To" is the regular account.
+		res, err := svc.Investment.TransferCash(from.ID, to.ID, date, amount, memo)
+		if err != nil {
+			return nil, err
+		}
+		return &transferAddResult{
+			TransferID: res.TransferID,
+			FromTxnID:  res.InvestmentTransaction.ID,
+			ToTxnID:    res.RegularTransaction.ID,
+		}, nil
+	case transaction.DispatchInvToInv:
+		res, err := svc.Investment.TransferCashBetweenInvestments(from.ID, to.ID, date, amount, memo)
+		if err != nil {
+			return nil, err
+		}
+		return &transferAddResult{
+			TransferID: res.TransferID,
+			FromTxnID:  res.SourceTransaction.ID,
+			ToTxnID:    res.DestinationTransaction.ID,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown transfer dispatch kind")
+	}
 }

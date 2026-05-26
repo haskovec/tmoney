@@ -161,10 +161,14 @@ account dispatches to a different service method based on the
 | inv → reg | `investment.Service.TransferCash` | Withdraw from investment; investment-side row is `transfer_cash` in `investment_transactions`. |
 | inv → inv | `investment.Service.TransferCashBetweenInvestments` | Both rows in `investment_transactions`, type `transfer_cash`, signed opposite. |
 
-The dispatcher lives in the unified TUI Transfer dialog
-(`transfer_dialog.go`) and in the `tmoney transfer add` CLI command.
-Each dispatch path integrates with the undo manager via a dedicated
-undo command in `internal/undo/`.
+The shared dispatch helper `transaction.ChooseTransferDispatch`
+(in `internal/transaction/dispatch.go`) is the single source of
+truth used by both the unified TUI Transfer dialog
+(`transfer_dialog.go`) and the `tmoney transfer add` CLI command.
+Each path in the TUI integrates with the undo manager via a
+dedicated undo command in `internal/undo/`. The CLI dispatches
+directly with no undo (CLI processes are one-shot); recovery from a
+mistaken transfer goes through `transfer delete` / `transfer edit`.
 
 **Hardening invariant**: `transaction.Service.CreateTransfer` and
 `UpdateTransfer` reject any account whose type satisfies

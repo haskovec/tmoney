@@ -8,6 +8,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -183,7 +184,12 @@ func TestTransferAdd_DestAccountNotFound(t *testing.T) {
 	}
 }
 
-func TestTransferAdd_RejectsInvestmentAccount(t *testing.T) {
+// setupTransferDispatchAccounts seeds the database with one account of every
+// type that the four dispatch paths exercise: a Checking (reg), two
+// investment accounts (Brokerage, IRA), and an HSA. Returns the path to
+// the closed database and the four account references.
+func setupTransferDispatchAccounts(t *testing.T) (string, *account.Account, *account.Account, *account.Account, *account.Account) {
+	t.Helper()
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.tdb")
 	database, err := db.Create(dbPath)
@@ -191,36 +197,222 @@ func TestTransferAdd_RejectsInvestmentAccount(t *testing.T) {
 		t.Fatalf("setup: db.Create: %v", err)
 	}
 	repo := account.NewRepository(database)
-	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("10000.00"), types.Today())
 	if err := repo.Create(checking); err != nil {
 		t.Fatalf("setup: create checking: %v", err)
+	}
+	brokerage := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	if err := repo.Create(brokerage); err != nil {
+		t.Fatalf("setup: create brokerage: %v", err)
 	}
 	ira := account.NewAccount("Rollover IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
 	if err := repo.Create(ira); err != nil {
 		t.Fatalf("setup: create ira: %v", err)
 	}
+	hsa := account.NewAccount("HSA", account.TypeHSA, "USD", types.ZeroMoney, types.Today())
+	if err := repo.Create(hsa); err != nil {
+		t.Fatalf("setup: create hsa: %v", err)
+	}
 	database.Close()
+	return dbPath, checking, brokerage, ira, hsa
+}
 
+// assertTransferLegsExist opens the DB and asserts that exactly one
+// transaction exists in the regular `transactions` table for the regular
+// account (if non-nil), one investment row exists in the
+// `investment_transactions` table for each investment account in invAccts,
+// and that all legs share the same transfer_id.
+func assertTransferLegsExist(t *testing.T, dbPath string, regAcct *account.Account, invAccts []*account.Account, expectAmount string) {
+	t.Helper()
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("post: db.Open: %v", err)
+	}
+	defer database.Close()
+
+	var transferID types.ID
+	txnRepo := transaction.NewRepository(database)
+	if regAcct != nil {
+		regs, err := txnRepo.ListByAccount(regAcct.ID)
+		if err != nil {
+			t.Fatalf("list reg txns: %v", err)
+		}
+		if len(regs) != 1 {
+			t.Fatalf("expected 1 regular leg in %s, got %d", regAcct.Name, len(regs))
+		}
+		if !regs[0].IsTransfer() {
+			t.Errorf("regular leg in %s is not a transfer", regAcct.Name)
+		}
+		transferID = regs[0].TransferID.ID
+	}
+
+	invRepo := investment.NewRepository(database)
+	for _, acct := range invAccts {
+		rows, err := invRepo.ListByAccount(acct.ID, investment.TransactionFilter{})
+		if err != nil {
+			t.Fatalf("list inv txns for %s: %v", acct.Name, err)
+		}
+		var legs []*investment.Transaction
+		for _, r := range rows {
+			if r.IsTransfer() {
+				legs = append(legs, r)
+			}
+		}
+		if len(legs) != 1 {
+			t.Fatalf("expected 1 transfer-cash leg in %s, got %d (rows=%d)", acct.Name, len(legs), len(rows))
+		}
+		if transferID == (types.ID{}) {
+			transferID = legs[0].TransferID.ID
+		} else if legs[0].TransferID.ID != transferID {
+			t.Errorf("transfer_id mismatch on %s leg: got %s, want %s", acct.Name, legs[0].TransferID.ID, transferID)
+		}
+	}
+
+	if expectAmount != "" {
+		want := types.MustNewMoney(expectAmount)
+		if regAcct != nil {
+			regs, _ := txnRepo.ListByAccount(regAcct.ID)
+			if !regs[0].Amount.Abs().Equal(want.Abs()) {
+				t.Errorf("regular leg amount = %s, want abs %s", regs[0].Amount, want.Abs())
+			}
+		}
+		for _, acct := range invAccts {
+			rows, _ := invRepo.ListByAccount(acct.ID, investment.TransactionFilter{})
+			for _, r := range rows {
+				if r.IsTransfer() && !r.TotalAmount.Abs().Equal(want.Abs()) {
+					t.Errorf("inv leg amount = %s, want abs %s", r.TotalAmount, want.Abs())
+				}
+			}
+		}
+	}
+}
+
+func TestTransferAdd_DispatchRegToReg_CreatesPair(t *testing.T) {
+	dbPath, _, _ := setupTransferAccounts(t)
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := executeWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--to", "Savings", "--amount", "75.00"}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("transfer add reg→reg: %v\nstderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout.String(), "Transfer created successfully") {
+		t.Errorf("expected success line, got: %s", stdout.String())
+	}
+	// Open and verify both regular-side legs exist with same transfer_id.
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	defer database.Close()
+	acctRepo := account.NewRepository(database)
+	checking, _ := acctRepo.GetByName("Checking")
+	savings, _ := acctRepo.GetByName("Savings")
+	txnRepo := transaction.NewRepository(database)
+	src, _ := txnRepo.ListByAccount(checking.ID)
+	dst, _ := txnRepo.ListByAccount(savings.ID)
+	if len(src) != 1 || len(dst) != 1 {
+		t.Fatalf("expected one leg per account, got src=%d dst=%d", len(src), len(dst))
+	}
+	if src[0].TransferID.ID != dst[0].TransferID.ID {
+		t.Errorf("transfer_id mismatch reg→reg")
+	}
+}
+
+func TestTransferAdd_DispatchRegToInv_CreatesPair(t *testing.T) {
+	dbPath, checking, brokerage, _, _ := setupTransferDispatchAccounts(t)
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := executeWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--to", "Brokerage", "--amount", "500.00"}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("transfer add reg→inv: %v\nstderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout.String(), "Transfer created successfully") {
+		t.Errorf("expected success line, got: %s", stdout.String())
+	}
+	assertTransferLegsExist(t, dbPath, checking, []*account.Account{brokerage}, "500.00")
+}
+
+func TestTransferAdd_DispatchInvToReg_CreatesPair(t *testing.T) {
+	dbPath, checking, brokerage, _, _ := setupTransferDispatchAccounts(t)
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := executeWith([]string{"transfer", "add", "--file", dbPath, "--from", "Brokerage", "--to", "Checking", "--amount", "250.00"}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("transfer add inv→reg: %v\nstderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout.String(), "Transfer created successfully") {
+		t.Errorf("expected success line, got: %s", stdout.String())
+	}
+	assertTransferLegsExist(t, dbPath, checking, []*account.Account{brokerage}, "250.00")
+}
+
+func TestTransferAdd_DispatchInvToInv_CreatesPair(t *testing.T) {
+	dbPath, _, brokerage, ira, _ := setupTransferDispatchAccounts(t)
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := executeWith([]string{"transfer", "add", "--file", dbPath, "--from", "Brokerage", "--to", "Rollover IRA", "--amount", "1000.00"}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("transfer add inv→inv: %v\nstderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout.String(), "Transfer created successfully") {
+		t.Errorf("expected success line, got: %s", stdout.String())
+	}
+	assertTransferLegsExist(t, dbPath, nil, []*account.Account{brokerage, ira}, "1000.00")
+}
+
+// HSA accounts satisfy IsInvestmentType, so HSA on either leg routes
+// via the investment-side dispatch paths.
+func TestTransferAdd_HSACountsAsInvestment(t *testing.T) {
 	cases := []struct {
-		name      string
-		from      string
-		to        string
-		errPhrase string
+		name string
+		from string
+		to   string
 	}{
-		{"source is investment", "Rollover IRA", "Checking", "investment-type"},
-		{"destination is investment", "Checking", "Rollover IRA", "investment-type"},
+		{"reg→hsa", "Checking", "HSA"},
+		{"hsa→reg", "HSA", "Checking"},
+		{"hsa→inv", "HSA", "Brokerage"},
+		{"inv→hsa", "Brokerage", "HSA"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			dbPath, checking, brokerage, _, hsa := setupTransferDispatchAccounts(t)
+
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-			err := executeWith([]string{"transfer", "add", "--file", dbPath, "--from", tc.from, "--to", tc.to, "--amount", "100"}, stdout, stderr)
-			if err == nil {
-				t.Fatalf("expected rejection error; stdout=%s stderr=%s", stdout, stderr)
+			err := executeWith([]string{"transfer", "add", "--file", dbPath, "--from", tc.from, "--to", tc.to, "--amount", "100.00"}, stdout, stderr)
+			if err != nil {
+				t.Fatalf("transfer add %s: %v\nstderr=%s", tc.name, err, stderr)
 			}
-			if !strings.Contains(err.Error(), tc.errPhrase) {
-				t.Errorf("expected error to contain %q, got: %v", tc.errPhrase, err)
+			// Verify legs landed in the right tables.
+			var regAcct *account.Account
+			invAccts := []*account.Account{}
+			for _, side := range []string{tc.from, tc.to} {
+				switch side {
+				case "Checking":
+					regAcct = checking
+				case "HSA":
+					invAccts = append(invAccts, hsa)
+				case "Brokerage":
+					invAccts = append(invAccts, brokerage)
+				}
 			}
+			assertTransferLegsExist(t, dbPath, regAcct, invAccts, "100.00")
 		})
+	}
+}
+
+func TestTransferAdd_PrintsIDsInConfirmation(t *testing.T) {
+	dbPath, _, _ := setupTransferAccounts(t)
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := executeWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--to", "Savings", "--amount", "42.00"}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("transfer add: %v\nstderr=%s", err, stderr)
+	}
+	out := stdout.String()
+	for _, want := range []string{"Transfer ID:", "From transaction ID:", "To transaction ID:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output, got: %s", want, out)
+		}
 	}
 }
 
