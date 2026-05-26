@@ -19,6 +19,7 @@ type transactionSearchOptions struct {
 	toDate    string
 	minAmount string
 	maxAmount string
+	showIDs   bool
 }
 
 // newTransactionSearchCmd registers `tmoney transaction search <term>`.
@@ -44,6 +45,7 @@ func newTransactionSearchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.toDate, "to", "", "Latest date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&opts.minAmount, "min", "", "Minimum amount (most negative for expenses)")
 	cmd.Flags().StringVar(&opts.maxAmount, "max", "", "Maximum amount")
+	cmd.Flags().BoolVar(&opts.showIDs, "show-ids", false, "Prefix each row with the transaction's UUID")
 	return cmd
 }
 
@@ -163,7 +165,7 @@ func runTransactionSearch(opts *transactionSearchOptions, w io.Writer) error {
 		accountCurrencies[a.ID] = a.Currency
 	}
 
-	printSearchResults(w, opts.term, transactions, accountNames, accountCurrencies, payeeNames, categoryNames)
+	printSearchResults(w, opts.term, transactions, accountNames, accountCurrencies, payeeNames, categoryNames, opts.showIDs)
 
 	return nil
 }

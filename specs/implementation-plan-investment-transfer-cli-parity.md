@@ -572,7 +572,7 @@ enhancement that the new commands need, then the new commands.
 
 ### P-A3: `--show-ids` on `transaction list` / `transaction search`
 
-- [ ] **P-A3-001 — Add `--show-ids` flag**
+- [x] **P-A3-001 — Add `--show-ids` flag**
   - RED:
     `TestTransactionList_ShowIDs_AddsIDColumn` in
     `internal/cli/transaction_list_test.go` — runs the command with

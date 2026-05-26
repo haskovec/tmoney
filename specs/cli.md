@@ -941,11 +941,13 @@ List transactions for an account.
 - `--from string` — Earliest date (`YYYY-MM-DD`)
 - `--to string` — Latest date (`YYYY-MM-DD`)
 - `--status string` — Filter by status: `uncleared`, `cleared`, `reconciled`, `void`
+- `--show-ids` — Prefix each row with the transaction's UUID (off by default). Useful for scripting `transfer edit` / `transfer delete` against discovered transaction IDs.
 
 ```bash
 tmoney transaction list --account Checking
 tmoney transaction list --account Checking --limit 20
 tmoney transaction list --account Checking --from 2024-01-01 --to 2024-01-31
+tmoney transaction list --account Checking --show-ids
 ```
 
 ```
@@ -970,11 +972,13 @@ Search transactions whose payee or memo contains `<term>`.
 - `--to string` — Latest date (`YYYY-MM-DD`)
 - `--min string` — Minimum amount
 - `--max string` — Maximum amount
+- `--show-ids` — Prefix each row with the transaction's UUID (off by default). Useful for scripting `transfer edit` / `transfer delete` against discovered transaction IDs.
 
 ```bash
 tmoney transaction search "grocery"
 tmoney transaction search "electric" --from 2024-01-01 --to 2024-12-31
 tmoney transaction search "restaurant" --account Visa --min 20 --max 100
+tmoney transaction search "amazon" --show-ids
 ```
 
 ```

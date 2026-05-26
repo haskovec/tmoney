@@ -17,6 +17,7 @@ type transactionListOptions struct {
 	fromDate string
 	toDate   string
 	status   string
+	showIDs  bool
 }
 
 // newTransactionListCmd registers `tmoney transaction list`. The
@@ -43,6 +44,7 @@ func newTransactionListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.fromDate, "from", "", "Earliest date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&opts.toDate, "to", "", "Latest date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&opts.status, "status", "", "Filter by status: uncleared, cleared, reconciled, void")
+	cmd.Flags().BoolVar(&opts.showIDs, "show-ids", false, "Prefix each row with the transaction's UUID")
 	_ = cmd.MarkFlagRequired("account")
 	return cmd
 }
@@ -130,7 +132,7 @@ func runTransactionList(opts *transactionListOptions, w io.Writer) error {
 		categoryNames[c.ID] = c.Name
 	}
 
-	printTransactionsTable(w, acct, transactions, payeeNames, categoryNames)
+	printTransactionsTable(w, acct, transactions, payeeNames, categoryNames, opts.showIDs)
 
 	return nil
 }

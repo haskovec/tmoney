@@ -165,7 +165,9 @@ func printBalancesTable(w io.Writer, accounts []*account.Account, balances map[t
 }
 
 // printTransactionsTable prints transactions in a formatted table.
-func printTransactionsTable(w io.Writer, acct *account.Account, transactions []*transaction.Transaction, payeeNames map[types.ID]string, categoryNames map[types.ID]string) {
+// When showIDs is true, each row (including the header) is prefixed with the
+// transaction's UUID for use with `transfer edit` / `transfer delete`.
+func printTransactionsTable(w io.Writer, acct *account.Account, transactions []*transaction.Transaction, payeeNames map[types.ID]string, categoryNames map[types.ID]string, showIDs bool) {
 	fmt.Fprintf(w, "TRANSACTIONS: %s\n", acct.Name)
 	fmt.Fprintln(w, strings.Repeat("=", len("TRANSACTIONS: ")+len(acct.Name)))
 
@@ -175,8 +177,13 @@ func printTransactionsTable(w io.Writer, acct *account.Account, transactions []*
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "Date\tPayee\tCategory\tAmount\tStatus")
-	fmt.Fprintln(tw, "----\t-----\t--------\t------\t------")
+	if showIDs {
+		fmt.Fprintln(tw, "ID\tDate\tPayee\tCategory\tAmount\tStatus")
+		fmt.Fprintln(tw, "--\t----\t-----\t--------\t------\t------")
+	} else {
+		fmt.Fprintln(tw, "Date\tPayee\tCategory\tAmount\tStatus")
+		fmt.Fprintln(tw, "----\t-----\t--------\t------\t------")
+	}
 
 	for _, txn := range transactions {
 		py := "-"
@@ -199,13 +206,24 @@ func printTransactionsTable(w io.Writer, acct *account.Account, transactions []*
 			cat = "-"
 		}
 
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			txn.Date.String(),
-			py,
-			cat,
-			formatMoney(txn.Amount, acct.Currency),
-			txn.Status.Code(),
-		)
+		if showIDs {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				txn.ID.String(),
+				txn.Date.String(),
+				py,
+				cat,
+				formatMoney(txn.Amount, acct.Currency),
+				txn.Status.Code(),
+			)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				txn.Date.String(),
+				py,
+				cat,
+				formatMoney(txn.Amount, acct.Currency),
+				txn.Status.Code(),
+			)
+		}
 	}
 
 	tw.Flush()
@@ -214,7 +232,9 @@ func printTransactionsTable(w io.Writer, acct *account.Account, transactions []*
 }
 
 // printSearchResults prints search results in a formatted table.
-func printSearchResults(w io.Writer, searchTerm string, transactions []*transaction.Transaction, accountNames map[types.ID]string, accountCurrencies map[types.ID]string, payeeNames map[types.ID]string, categoryNames map[types.ID]string) {
+// When showIDs is true, each row (including the header) is prefixed with the
+// transaction's UUID for use with `transfer edit` / `transfer delete`.
+func printSearchResults(w io.Writer, searchTerm string, transactions []*transaction.Transaction, accountNames map[types.ID]string, accountCurrencies map[types.ID]string, payeeNames map[types.ID]string, categoryNames map[types.ID]string, showIDs bool) {
 	fmt.Fprintf(w, "SEARCH RESULTS: %q\n", searchTerm)
 	fmt.Fprintln(w, strings.Repeat("=", len("SEARCH RESULTS: ")+len(searchTerm)+2))
 
@@ -224,8 +244,13 @@ func printSearchResults(w io.Writer, searchTerm string, transactions []*transact
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "Account\tDate\tPayee\tCategory\tAmount")
-	fmt.Fprintln(tw, "-------\t----\t-----\t--------\t------")
+	if showIDs {
+		fmt.Fprintln(tw, "ID\tAccount\tDate\tPayee\tCategory\tAmount")
+		fmt.Fprintln(tw, "--\t-------\t----\t-----\t--------\t------")
+	} else {
+		fmt.Fprintln(tw, "Account\tDate\tPayee\tCategory\tAmount")
+		fmt.Fprintln(tw, "-------\t----\t-----\t--------\t------")
+	}
 
 	for _, txn := range transactions {
 		acctName := accountNames[txn.AccountID]
@@ -254,13 +279,24 @@ func printSearchResults(w io.Writer, searchTerm string, transactions []*transact
 			cat = "-"
 		}
 
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			acctName,
-			txn.Date.String(),
-			py,
-			cat,
-			formatMoney(txn.Amount, currency),
-		)
+		if showIDs {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				txn.ID.String(),
+				acctName,
+				txn.Date.String(),
+				py,
+				cat,
+				formatMoney(txn.Amount, currency),
+			)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				acctName,
+				txn.Date.String(),
+				py,
+				cat,
+				formatMoney(txn.Amount, currency),
+			)
+		}
 	}
 
 	tw.Flush()

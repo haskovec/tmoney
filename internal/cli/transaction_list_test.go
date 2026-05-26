@@ -379,6 +379,75 @@ func TestTransactionList_NegativeLimit(t *testing.T) {
 	}
 }
 
+func TestTransactionList_ShowIDs_AddsIDColumn(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("setup: db.Create: %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("setup: create account: %v", err)
+	}
+
+	txnRepo := transaction.NewRepository(database)
+	txn := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-12.34"))
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("setup: create transaction: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err = executeWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--show-ids"}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("executeWith(transaction list --show-ids): %v\nstderr=%s", err, stderr)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, txn.ID.String()) {
+		t.Errorf("expected transaction UUID %q in --show-ids output, got:\n%s", txn.ID.String(), out)
+	}
+	if !strings.Contains(out, "ID\t") && !strings.Contains(out, "ID ") {
+		t.Errorf("expected ID column header in --show-ids output, got:\n%s", out)
+	}
+}
+
+func TestTransactionList_DefaultOmitsIDColumn(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("setup: db.Create: %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("setup: create account: %v", err)
+	}
+
+	txnRepo := transaction.NewRepository(database)
+	txn := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-12.34"))
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("setup: create transaction: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err = executeWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("executeWith(transaction list): %v\nstderr=%s", err, stderr)
+	}
+
+	out := stdout.String()
+	if strings.Contains(out, txn.ID.String()) {
+		t.Errorf("expected transaction UUID NOT in default output, got:\n%s", out)
+	}
+}
+
 func TestTransactionCmd_HelpListsList(t *testing.T) {
 	_, restore := stubLaunchers(t)
 	defer restore()

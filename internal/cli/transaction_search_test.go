@@ -415,6 +415,88 @@ func TestTransactionSearch_InvalidToDate(t *testing.T) {
 	}
 }
 
+func TestTransactionSearch_ShowIDs_AddsIDColumn(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	payeeRepo := payee.NewRepository(database)
+	py := payee.NewPayee("Amazon")
+	if err := payeeRepo.Create(py); err != nil {
+		t.Fatalf("failed to create payee: %v", err)
+	}
+
+	txnRepo := transaction.NewRepository(database)
+	txn := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-50.00"))
+	txn.SetPayee(py.ID)
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err = executeWith([]string{"transaction", "search", "Amazon", "--file", dbPath, "--show-ids"}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("executeWith(transaction search --show-ids): %v\nstderr=%s", err, stderr)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, txn.ID.String()) {
+		t.Errorf("expected transaction UUID %q in --show-ids output, got:\n%s", txn.ID.String(), out)
+	}
+}
+
+func TestTransactionSearch_DefaultOmitsIDColumn(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.tdb")
+
+	database, err := db.Create(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test database: %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	payeeRepo := payee.NewRepository(database)
+	py := payee.NewPayee("Amazon")
+	if err := payeeRepo.Create(py); err != nil {
+		t.Fatalf("failed to create payee: %v", err)
+	}
+
+	txnRepo := transaction.NewRepository(database)
+	txn := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-50.00"))
+	txn.SetPayee(py.ID)
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("failed to create transaction: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err = executeWith([]string{"transaction", "search", "Amazon", "--file", dbPath}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("executeWith(transaction search): %v\nstderr=%s", err, stderr)
+	}
+
+	out := stdout.String()
+	if strings.Contains(out, txn.ID.String()) {
+		t.Errorf("expected transaction UUID NOT in default output, got:\n%s", out)
+	}
+}
+
 func TestTransactionSearch_Help(t *testing.T) {
 	_, restore := stubLaunchers(t)
 	defer restore()
