@@ -9,6 +9,8 @@
 >
 > No changes to v1 slot semantics, parser behavior, or fallback rules. Adding optional slots is naturally backward-compatible (per the Schema versioning section): existing theme files keep working unchanged.
 
+> **Addendum (2026-05-25):** `dialog.fg` is now propagated through inner SGR resets. The previous renderer wrapped the dialog content with the outer Dialog style (which sets both `dialog.fg` and `dialog.bg` when both are opaque), but only re-emitted the background SGR after each inner reset (`widget.RepaintBg`). Inner styled spans — the red required-`*` marker, muted placeholder text, the bold title — close with `\x1b[m` which wipes *both* outer colors, so raw text after such a span lost its foreground and reverted to terminal default. Visible symptom on the `light` theme: labels without a required marker stayed near-black (correct), but values to the right of a `Date*:` or `Shares*:` label rendered in the terminal default foreground (often white on dark terminals). The new `widget.RepaintDialog` re-emits *both* `dialog.fg` and `dialog.bg` after every reset when `dialog.bg` is opaque; it is a no-op when `dialog.bg` is transparent (the `default` theme), preserving the existing transparent-panel look. No theme-file schema changes.
+
 ## Overview
 
 TMoney's TUI currently uses a single hard-coded color palette in `internal/tui/styles.go`. This spec defines a skinnable theme system that lets users choose between built-in themes (including a faithful Turbo Vision look) and define their own theme files. A pywal helper subcommand generates a theme from the user's system color scheme for Omarchy/pywal users.

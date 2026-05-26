@@ -350,6 +350,117 @@ func TestRepaintDesktop_RestoresBgAfterResets(t *testing.T) {
 	}
 }
 
+// TestRepaintFgBg_TransparentNoop verifies that when both fg and bg are
+// transparent (NoColor), RepaintFgBg returns the input unchanged — no
+// stray SGR codes get appended.
+func TestRepaintFgBg_TransparentNoop(t *testing.T) {
+	in := "\x1b[1mTitle\x1b[m  raw  \x1b[38;5;240mmuted\x1b[m"
+	got := RepaintFgBg(in, lipgloss.NoColor{}, lipgloss.NoColor{})
+	if got != in {
+		t.Errorf("RepaintFgBg with both transparent should be a no-op\n got=%q\nwant=%q", got, in)
+	}
+}
+
+// TestRepaintFgBg_BgOnly_MatchesRepaintBg verifies that when fg is
+// transparent and bg is set, RepaintFgBg produces the same output as
+// the legacy RepaintBg path (used by repaintDesktop) — the change is
+// strictly additive for that surface.
+func TestRepaintFgBg_BgOnly_MatchesRepaintBg(t *testing.T) {
+	bg := lipgloss.Color("#0000aa")
+	in := "\x1b[1mDASH\x1b[m  raw  \x1b[38;5;240mMay\x1b[m"
+
+	want := RepaintBg(in, bg)
+	got := RepaintFgBg(in, lipgloss.NoColor{}, bg)
+	if got != want {
+		t.Errorf("RepaintFgBg(fg=nil, bg=X) should match RepaintBg(X)\n got=%q\nwant=%q", got, want)
+	}
+}
+
+// TestRepaintFgBg_RestoresFgAfterResets is the load-bearing fix for the
+// "black labels / white values" inconsistency in themed dialogs. When
+// the outer Dialog style sets both fg and bg, an inner styled span (the
+// red required-`*` marker) closes with `\x1b[m` which wipes both, and
+// the trailing raw value text reverts to terminal-default fg. This
+// test asserts that after RepaintFgBg, every reset is followed by both
+// the fg-set and bg-set SGRs so raw text picks the dialog colors back
+// up.
+func TestRepaintFgBg_RestoresFgAfterResets(t *testing.T) {
+	fg := lipgloss.Color("#1a1a1a")
+	bg := lipgloss.Color("#f5f5f5")
+
+	fgs := fgSGR(fg)
+	bgs := bgSGR(bg)
+	if fgs == "" || bgs == "" {
+		t.Fatalf("expected non-empty SGR sequences; fgs=%q bgs=%q", fgs, bgs)
+	}
+
+	// Mimic a "Date*: [ 01/09/2023 ]" row shape: raw text, styled red
+	// `*`, more raw text. The reset after the `*` must restore both
+	// fg and bg.
+	in := "Date" + "\x1b[38;5;160m*\x1b[m" + ": [ 01/09/2023 ]"
+	got := RepaintFgBg(in, fg, bg)
+
+	want := "Date" + "\x1b[38;5;160m*\x1b[m" + fgs + bgs + ": [ 01/09/2023 ]"
+	if got != want {
+		t.Errorf("RepaintFgBg did not restore fg+bg after reset\n got=%q\nwant=%q", got, want)
+	}
+}
+
+// TestRepaintDialog_DefaultThemeNoop verifies that under the default
+// theme — where dialog.bg is transparent — RepaintDialog is a no-op.
+// This protects the existing transparent-bg dialog look: re-emitting
+// dialog.fg ("15" = white) after every reset would force raw text into
+// white only after styled spans, leaving raw text *before* any reset
+// at terminal default — i.e. would create a new inconsistency.
+func TestRepaintDialog_DefaultThemeNoop(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+	def, _, err := theme.LoadBuiltin("default")
+	if err != nil {
+		t.Fatalf("LoadBuiltin(default): %v", err)
+	}
+	s := NewStyles()
+	s.ApplyTheme(def)
+
+	in := "Date" + "\x1b[38;5;160m*\x1b[m" + ": [ 01/09/2023 ]"
+	got := RepaintDialog(in)
+	if got != in {
+		t.Errorf("RepaintDialog should be a no-op when dialog.bg is transparent\n got=%q\nwant=%q", got, in)
+	}
+}
+
+// TestRepaintDialog_LightThemeRestoresFgBg is the load-bearing fix for
+// the "black labels / white values" inconsistency reported under the
+// light theme: dialog.fg = #1a1a1a and dialog.bg = #f5f5f5 are both
+// opaque, so the outer Dialog style sets both, and inner styled spans
+// (red required-`*`, muted placeholder) close with `\x1b[m` that wipes
+// both. Without the fix, raw text after such a span renders at
+// terminal-default fg (often white on dark terminals) instead of the
+// theme's near-black dialog.fg. RepaintDialog must restore *both*
+// after every reset.
+func TestRepaintDialog_LightThemeRestoresFgBg(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+	lt, _, err := theme.LoadBuiltin("light")
+	if err != nil {
+		t.Fatalf("LoadBuiltin(light): %v", err)
+	}
+	s := NewStyles()
+	s.ApplyTheme(lt)
+
+	fgs := fgSGR(ColorDialogFg)
+	bgs := bgSGR(ColorDialogBg)
+	if fgs == "" || bgs == "" {
+		t.Fatalf("expected non-empty SGR for both colors; fgs=%q bgs=%q", fgs, bgs)
+	}
+
+	// "Date*: [ 01/09/2023 ]" shape: raw, styled `*`, more raw.
+	in := "Date" + "\x1b[38;5;160m*\x1b[m" + ": [ 01/09/2023 ]"
+	got := RepaintDialog(in)
+	want := "Date" + "\x1b[38;5;160m*\x1b[m" + fgs + bgs + ": [ 01/09/2023 ]"
+	if got != want {
+		t.Errorf("RepaintDialog did not restore fg+bg under light theme\n got=%q\nwant=%q", got, want)
+	}
+}
+
 // TestRenderViewContent_TurboVisionFillsGaps is the end-to-end guard:
 // rendering a multi-chunk dashboard-shaped row through RenderViewContent
 // under Turbo Vision should produce output where every cell carries the

@@ -519,6 +519,20 @@ func bgSGR(c color.Color) string {
 	return sample[:idx]
 }
 
+// fgSGR returns the "set foreground" SGR sequence lipgloss emits for c,
+// or "" when c is transparent. Mirror of bgSGR.
+func fgSGR(c color.Color) string {
+	if _, transparent := c.(lipgloss.NoColor); transparent {
+		return ""
+	}
+	sample := lipgloss.NewStyle().Foreground(c).Render("\x00")
+	idx := strings.IndexByte(sample, 0)
+	if idx <= 0 {
+		return ""
+	}
+	return sample[:idx]
+}
+
 // RepaintBg re-emits the background SGR for c after every SGR full-reset
 // in s. Without this, inner styled spans (Bold, Muted, Placeholder, etc.)
 // close with `\x1b[m` which clears the outer Background, and any
@@ -528,15 +542,49 @@ func bgSGR(c color.Color) string {
 //
 // No-op when c is transparent.
 func RepaintBg(s string, c color.Color) string {
-	bg := bgSGR(c)
-	if bg == "" {
+	return RepaintFgBg(s, lipgloss.NoColor{}, c)
+}
+
+// RepaintFgBg re-emits the foreground and background SGRs for fg/bg
+// after every SGR full-reset in s. Use this for surfaces that set both
+// fg and bg on the outer style (e.g. themed dialog panels with
+// dialog.fg + dialog.bg): inner styled spans (required-`*` marker, muted
+// placeholder, dialog title) close with `\x1b[m` which clears *both*
+// outer colors, so raw-text gaps and subsequent unstyled chunks revert
+// to terminal-default unless we re-inject the colors after each reset.
+//
+// Either color may be transparent (lipgloss.NoColor{}) and is omitted
+// from the repaint. No-op when both are transparent.
+func RepaintFgBg(s string, fg, bg color.Color) string {
+	repaint := fgSGR(fg) + bgSGR(bg)
+	if repaint == "" {
 		return s
 	}
 	// `\x1b[0m` is checked first; `\x1b[m` is not a substring of
 	// `\x1b[0m` (third byte differs) so the second pass is safe.
-	s = strings.ReplaceAll(s, "\x1b[0m", "\x1b[0m"+bg)
-	s = strings.ReplaceAll(s, "\x1b[m", "\x1b[m"+bg)
+	s = strings.ReplaceAll(s, "\x1b[0m", "\x1b[0m"+repaint)
+	s = strings.ReplaceAll(s, "\x1b[m", "\x1b[m"+repaint)
 	return s
+}
+
+// RepaintDialog re-emits the dialog's outer fg and bg SGRs after every
+// inner SGR reset in s, matching the (fg, bg) the dialog's outer
+// `styles.Dialog` style will actually apply.
+//
+// Mirrors the policy in initBaseStyles: the outer dialog style only
+// sets Foreground when both ColorDialogBg and ColorDialogFg are opaque
+// (transparent-bg themes — e.g. the default theme — leave fg to the
+// terminal default too). Re-emitting fg in that case would push raw-
+// text spans into the configured fg color even though the surrounding
+// raw text outside any reset would still be terminal default — i.e.
+// it would invent a new inconsistency in the opposite direction.
+//
+// No-op under the default theme.
+func RepaintDialog(s string) string {
+	if IsTransparent(ColorDialogBg) {
+		return s
+	}
+	return RepaintFgBg(s, ColorDialogFg, ColorDialogBg)
 }
 
 // repaintDesktop is repaintBg specialized to the active desktop color.

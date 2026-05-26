@@ -918,10 +918,11 @@ func (w *PaycheckWizard) Render(styles widget.Styles) string {
 	addLine(buttonsRow)
 
 	content := strings.Join(lines, "\n")
-	// Re-emit the dialog bg after inner SGR resets so styled spans
-	// (Muted "[x]", Placeholder "Optional", etc.) don't punch holes
-	// through the panel to the desktop bg — matches *dialog.Dialog.Render.
-	content = widget.RepaintBg(content, widget.ColorDialogBg)
+	// Re-emit the dialog's outer fg + bg after inner SGR resets so
+	// styled spans (Muted "[x]", Placeholder "Optional", etc.) don't
+	// punch holes through the panel and raw text after a styled span
+	// keeps the theme's dialog.fg — matches *dialog.Dialog.Render.
+	content = widget.RepaintDialog(content)
 	return styles.Dialog.Width(w.width).Render(content)
 }
 

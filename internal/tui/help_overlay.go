@@ -329,12 +329,12 @@ func renderHelpOverlay(styles widget.Styles, view View, screenWidth, screenHeigh
 
 	content := strings.Join(lines, "\n")
 
-	// Re-emit the dialog bg after inner SGR resets so the styled spans
-	// (Bold section headers, Positive keys, Muted descriptions) don't punch
-	// holes through the panel where the terminal's desktop bg shows through.
-	// Same fix as dialog.Dialog.Render — see ae19c72 (fix(tui): repaint dialog bg
-	// through inner SGR resets).
-	content = widget.RepaintBg(content, widget.ColorDialogBg)
+	// Re-emit the dialog's outer fg + bg after inner SGR resets so
+	// styled spans (Bold section headers, Positive keys, Muted
+	// descriptions) don't punch holes through the panel, and raw text
+	// after a styled span keeps the theme's dialog.fg instead of
+	// reverting to terminal default. Same fix as dialog.Dialog.Render.
+	content = widget.RepaintDialog(content)
 
 	// Use dialog style for consistent appearance
 	rendered := styles.Dialog.Width(overlayWidth).Render(content)

@@ -59,10 +59,13 @@ func (d *Dialog) Render(styles widget.Styles) string {
 	lines = append(lines, d.renderButtonRow(styles, contentWidth))
 
 	content := strings.Join(lines, "\n")
-	// Re-emit the dialog bg after inner SGR resets so unstyled gaps
-	// (title row right-pad, between-button gap, placeholder padding,
-	// etc.) don't punch holes through the panel to the desktop bg.
-	content = widget.RepaintBg(content, widget.ColorDialogBg)
+	// Re-emit the dialog's outer fg + bg after inner SGR resets so
+	// unstyled gaps (title row right-pad, between-button gap,
+	// placeholder padding, etc.) don't punch holes through the panel
+	// and so raw text after a styled span (red required-`*`, muted
+	// placeholder) keeps the theme's dialog.fg instead of reverting to
+	// terminal default.
+	content = widget.RepaintDialog(content)
 	return styles.Dialog.Width(d.width).Render(content)
 }
 
