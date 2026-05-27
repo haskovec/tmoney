@@ -578,7 +578,7 @@ func handleFieldTextKey(f *dialog.Field, msg tea.KeyPressMsg) {
 }
 
 // focusNext advances focus to the next focusable element.
-// Order: row0.category -> row0.amount -> row0.memo -> row1.category -> ... -> addBtn -> cancelBtn -> saveBtn -> wrap
+// Order: row0.category -> row0.amount -> row0.memo -> row1.category -> ... -> addBtn -> saveBtn -> cancelBtn -> wrap
 func (sd *SplitDialog) focusNext() {
 	switch sd.focus {
 	case splitFocusRows:
@@ -596,10 +596,10 @@ func (sd *SplitDialog) focusNext() {
 		// Move to add button
 		sd.focus = splitFocusAddBtn
 	case splitFocusAddBtn:
-		sd.focus = splitFocusCancelBtn
-	case splitFocusCancelBtn:
 		sd.focus = splitFocusSaveBtn
 	case splitFocusSaveBtn:
+		sd.focus = splitFocusCancelBtn
+	case splitFocusCancelBtn:
 		// Wrap to first row
 		sd.focus = splitFocusRows
 		sd.rowIndex = 0
@@ -622,17 +622,17 @@ func (sd *SplitDialog) focusPrev() {
 			sd.fieldFocus = splitFieldMemo
 			return
 		}
-		// Wrap to save button
-		sd.focus = splitFocusSaveBtn
+		// Wrap to the last button (Cancel)
+		sd.focus = splitFocusCancelBtn
 	case splitFocusAddBtn:
 		// Back to last row, last field
 		sd.focus = splitFocusRows
 		sd.rowIndex = len(sd.rows) - 1
 		sd.fieldFocus = splitFieldMemo
-	case splitFocusCancelBtn:
-		sd.focus = splitFocusAddBtn
 	case splitFocusSaveBtn:
-		sd.focus = splitFocusCancelBtn
+		sd.focus = splitFocusAddBtn
+	case splitFocusCancelBtn:
+		sd.focus = splitFocusSaveBtn
 	}
 }
 
@@ -678,18 +678,24 @@ func (sd *SplitDialog) Render(styles widget.Styles) string {
 	for i, row := range sd.rows {
 		rowFocused := sd.focus == splitFocusRows && sd.rowIndex == i
 
-		// Category — or, in transfer mode, the account picker.
-		var catText string
+		// Category — or, in transfer mode, the account picker. Truncate the
+		// label so the cell (label + " ▼", plus reverse-pad when focused)
+		// never exceeds catColW; an overflowing row would wrap to a second
+		// terminal line and break both the layout and mouse hit-testing.
+		var catLabel string
 		switch {
 		case row.transferMode && row.accountIndex < len(sd.transferAccountOptions):
-			catText = transferSentinelLabel + " " + sd.transferAccountOptions[row.accountIndex]
+			catLabel = transferSentinelLabel + " " + sd.transferAccountOptions[row.accountIndex]
 		default:
-			catText = sd.categoryOptionLabel(row.categoryIndex)
+			catLabel = sd.categoryOptionLabel(row.categoryIndex)
 		}
+		var catText string
 		if rowFocused && sd.fieldFocus == splitFieldCategory {
-			catText = lipgloss.NewStyle().Reverse(true).Render(" "+catText+" ") + " ▼"
+			catLabel = widget.TruncateRunes(catLabel, max(catColW-4, 1)) // " " + label + " " + " ▼"
+			catText = lipgloss.NewStyle().Reverse(true).Render(" "+catLabel+" ") + " ▼"
 		} else {
-			catText = catText + " ▼"
+			catLabel = widget.TruncateRunes(catLabel, max(catColW-2, 1)) // label + " ▼"
+			catText = catLabel + " ▼"
 		}
 		catText = widget.PadRight(catText, catColW)
 
@@ -736,34 +742,118 @@ func (sd *SplitDialog) Render(styles widget.Styles) string {
 	// Separator
 	lines = append(lines, strings.Repeat("─", contentWidth))
 
-	// Buttons. Save is rendered in a muted style while the dialog is
-	// imbalanced (MS-013); pressing Enter on it in that state surfaces
-	// the validation error rather than submitting.
-	cancelLabel := "[ Cancel ]"
-	saveLabel := "[ Save ]"
-	saveEnabled := sd.IsSaveEnabled()
-	if sd.focus == splitFocusCancelBtn {
-		cancelLabel = lipgloss.NewStyle().Reverse(true).Bold(true).Render("[ Cancel ]")
-	}
-	switch {
-	case sd.focus == splitFocusSaveBtn && saveEnabled:
-		saveLabel = lipgloss.NewStyle().Reverse(true).Bold(true).Render("[ Save ]")
-	case sd.focus == splitFocusSaveBtn && !saveEnabled:
-		// Focused-but-disabled: keep it visible/focusable but dim, so
-		// keyboard users see why the action isn't firing.
-		saveLabel = styles.Muted.Render("[ Save ]")
-	case !saveEnabled:
-		saveLabel = styles.Muted.Render("[ Save ]")
-	}
-
-	btnGap := max(contentWidth-lipgloss.Width(cancelLabel)-lipgloss.Width(saveLabel), 4)
-	leftPad := btnGap / 3
-	midPad := btnGap - leftPad
-	buttonRow := strings.Repeat(" ", leftPad) + cancelLabel + strings.Repeat(" ", midPad) + saveLabel
+	// Buttons. Save first, then Cancel — rendered through the shared
+	// dialog button row so spacing, theming, and the focused
+	// shortcut-letter highlight match every other dialog. Save renders
+	// muted while the dialog is imbalanced (MS-013); clicking/Enter on it
+	// in that state surfaces the validation error rather than submitting.
+	buttonRow := dialog.RenderButtonRow(styles, []dialog.ButtonSpec{
+		{Label: "Save", Focused: sd.focus == splitFocusSaveBtn, Disabled: !sd.IsSaveEnabled()},
+		{Label: "Cancel", Focused: sd.focus == splitFocusCancelBtn},
+	}, contentWidth)
 	lines = append(lines, buttonRow)
 
 	content := strings.Join(lines, "\n")
+	// Re-emit the dialog's outer fg + bg after inner SGR resets so styled
+	// spans (reversed selected row, muted [x]/imbalance, placeholder memo
+	// cells, bold headers) don't punch terminal-default holes through a
+	// themed dialog panel. Mirrors dialog.Dialog.Render; no-op on the
+	// transparent default theme.
+	content = widget.RepaintDialog(content)
 	return styles.Dialog.Width(sd.width).Render(content)
+}
+
+// HandleMouseLocal applies a left-click at content-local coordinates
+// (relative to the first content line inside the split panel's
+// border+padding) and returns the resulting action. The row layout
+// mirrors Render: title(0), sep(1), summary(2), sep(3), blank(4),
+// headers(5), sep(6), then one line per split row, the [+ Add split]
+// line, blank, imbalance, blank, optional error+blank, sep, button row.
+func (sd *SplitDialog) HandleMouseLocal(localX, localY int) dialog.DialogAction {
+	contentWidth := max(sd.width-dialog.DialogHorizontalOverhead, 10)
+	if localY < 0 || localX < 0 || localX >= contentWidth {
+		return dialog.DialogActionNone
+	}
+
+	// Title row: [x] close button is right-aligned ("[x]" = 3 chars).
+	if localY == 0 {
+		if localX >= contentWidth-3 {
+			return dialog.DialogActionCancel
+		}
+		return dialog.DialogActionNone
+	}
+
+	const rowsStart = 7
+
+	// Split rows: clicking one focuses that row and the field under the
+	// cursor (category / amount / memo columns).
+	if localY >= rowsStart && localY < rowsStart+len(sd.rows) {
+		sd.focus = splitFocusRows
+		sd.rowIndex = localY - rowsStart
+		sd.fieldFocus = sd.columnFieldAt(localX, contentWidth)
+		return dialog.DialogActionNone
+	}
+
+	addLine := rowsStart + len(sd.rows)
+	if localY == addLine {
+		sd.addRow()
+		sd.focus = splitFocusRows
+		sd.rowIndex = len(sd.rows) - 1
+		sd.fieldFocus = splitFieldCategory
+		sd.errorMsg = ""
+		return dialog.DialogActionNone
+	}
+
+	// Button row sits after add-split, blank, imbalance, blank (+ optional
+	// error + blank), and a separator.
+	buttonsLine := addLine + 5
+	if sd.errorMsg != "" {
+		buttonsLine += 2
+	}
+	if localY == buttonsLine {
+		return sd.hitTestButtonRow(localX, contentWidth)
+	}
+
+	return dialog.DialogActionNone
+}
+
+// columnFieldAt maps an x offset within a split row to its field. The
+// layout matches Render: category occupies [0, catColW), amount occupies
+// a 14-wide column after a single-space gap, and memo fills the rest.
+func (sd *SplitDialog) columnFieldAt(localX, contentWidth int) splitFieldFocus {
+	catColW := contentWidth / 3
+	amtStart := catColW + 1
+	amtEnd := amtStart + 14
+	switch {
+	case localX < catColW:
+		return splitFieldCategory
+	case localX >= amtStart && localX < amtEnd:
+		return splitFieldAmount
+	case localX >= amtEnd+1:
+		return splitFieldMemo
+	default:
+		return splitFieldCategory
+	}
+}
+
+// hitTestButtonRow maps an x offset on the button row to Save or Cancel,
+// using the same shared layout as Render. A click on Save validates
+// first: an imbalanced/invalid dialog surfaces the error and stays open.
+func (sd *SplitDialog) hitTestButtonRow(localX, contentWidth int) dialog.DialogAction {
+	switch dialog.ButtonRowHitTest([]string{"Save", "Cancel"}, localX, contentWidth) {
+	case 0: // Save
+		if err := sd.validate(); err != nil {
+			sd.errorMsg = err.Error()
+			return dialog.DialogActionNone
+		}
+		sd.errorMsg = ""
+		sd.focus = splitFocusSaveBtn
+		return dialog.DialogActionSubmit
+	case 1: // Cancel
+		sd.focus = splitFocusCancelBtn
+		return dialog.DialogActionCancel
+	}
+	return dialog.DialogActionNone
 }
 
 // renderTextField renders a text field inline with cursor support.

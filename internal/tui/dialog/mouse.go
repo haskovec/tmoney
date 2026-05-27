@@ -145,49 +145,58 @@ func (d *Dialog) HitTestContent(x, y, contentWidth int) DialogHitResult {
 // hitTestButtonRow maps an x coordinate to a button in the button row.
 func (d *Dialog) hitTestButtonRow(x, contentWidth int) DialogHitResult {
 	none := DialogHitResult{Zone: DialogHitNone, ListItemIndex: -1}
-	if len(d.buttons) == 0 {
+	labels := make([]string, len(d.buttons))
+	for i, btn := range d.buttons {
+		labels[i] = btn.Label
+	}
+	idx := ButtonRowHitTest(labels, x, contentWidth)
+	if idx < 0 {
 		return none
 	}
+	return DialogHitResult{Zone: DialogHitButton, ButtonIndex: idx, ListItemIndex: -1}
+}
 
-	// Calculate button widths (matching renderButtonRow)
-	btnWidths := make([]int, len(d.buttons))
+// ButtonRowHitTest maps an x offset within the content area to a button
+// index (or -1 if the click missed all buttons), using the same even-
+// spacing layout as RenderButtonRow. Exposed so custom dialogs hit-test
+// their button rows identically to how they render them.
+func ButtonRowHitTest(labels []string, x, contentWidth int) int {
+	if len(labels) == 0 {
+		return -1
+	}
+
+	btnWidths := make([]int, len(labels))
 	totalBtnWidth := 0
-	for i, btn := range d.buttons {
-		w := len([]rune(btn.Label)) + 4 // "[ " + label + " ]"
+	for i, l := range labels {
+		w := len([]rune(l)) + 4 // "[ " + label + " ]"
 		btnWidths[i] = w
 		totalBtnWidth += w
 	}
 
-	numGaps := len(d.buttons) + 1
+	numGaps := len(labels) + 1
 	totalGapSpace := max(contentWidth-totalBtnWidth, numGaps)
 	gapSize := totalGapSpace / numGaps
 	extraGap := totalGapSpace % numGaps
 
 	pos := 0
-	for i := range d.buttons {
+	for i := range labels {
 		gap := gapSize
 		if i < extraGap {
 			gap++
 		}
 		pos += gap
 		if x >= pos && x < pos+btnWidths[i] {
-			return DialogHitResult{
-				Zone:          DialogHitButton,
-				ButtonIndex:   i,
-				ListItemIndex: -1,
-			}
+			return i
 		}
 		pos += btnWidths[i]
 	}
-
-	return none
+	return -1
 }
 
 // HandleMouse processes a mouse event and returns the resulting action.
 // screenWidth and screenHeight are the terminal dimensions for computing dialog position.
 func (d *Dialog) HandleMouse(msg tea.MouseMsg, screenWidth, screenHeight int) DialogAction {
 	startCol, startRow, endCol, endRow := d.DialogBounds(screenWidth, screenHeight)
-	contentWidth := max(d.width-DialogHorizontalOverhead, 10)
 	m := msg.Mouse()
 
 	// Handle wheel events on focused list field
@@ -223,6 +232,17 @@ func (d *Dialog) HandleMouse(msg tea.MouseMsg, screenWidth, screenHeight int) Di
 	localX := m.X - startCol - 3
 	localY := m.Y - startRow - 2
 
+	return d.HandleMouseLocal(localX, localY)
+}
+
+// HandleMouseLocal applies a left-click at content-local coordinates
+// (relative to the first content line inside the dialog's border+padding)
+// and returns the resulting action. Use it when the dialog is composited
+// at a non-standard screen position (e.g. stacked beneath another panel),
+// so the caller supplies its own localized coordinates rather than relying
+// on DialogBounds-based centering.
+func (d *Dialog) HandleMouseLocal(localX, localY int) DialogAction {
+	contentWidth := max(d.width-DialogHorizontalOverhead, 10)
 	hit := d.HitTestContent(localX, localY, contentWidth)
 
 	switch hit.Zone {

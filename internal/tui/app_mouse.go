@@ -337,6 +337,10 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	if a.schedPreviewDialog != nil && a.schedPreviewDialog.IsVisible() {
+		return a.handleSchedulePreviewMouse(msg)
+	}
+
 	if a.paycheckWizard != nil && a.paycheckWizard.IsVisible() {
 		action := a.paycheckWizard.HandleMouse(msg, a.styles, a.width, a.height)
 		switch action {

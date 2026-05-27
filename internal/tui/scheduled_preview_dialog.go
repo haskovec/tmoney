@@ -5,12 +5,14 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -150,6 +152,8 @@ func NewSchedulePreviewDialog(
 		parentAmount := template.Amount.Money
 		seedSplits := transactionSplitsFromScheduled(template)
 		p.splitDialog = NewSplitDialogFromExisting(parentAmount, categoryOptions, categoryIDs, seedSplits)
+		// Match the header dialog's width so the two stacked panels line up.
+		p.splitDialog.width = 62
 
 		accountOptions, accountIDs := buildSplitTransferAccountOptions(accounts)
 		p.splitDialog.SetTransferTargets(accountOptions, accountIDs, template.AccountID)
@@ -214,6 +218,11 @@ func buildPreviewHeaderMulti(dateStr, payeeName, memo string) *dialog.Dialog {
 	d.AddTextField("Payee", payeeName, "Payee name", 0)
 	d.AddTextField("Memo", memo, "Optional memo", 0)
 	d.AddRadioField("Status", []string{"Uncleared", "Cleared"}, previewStatusUnclearedIdx)
+
+	// The multi-line preview's single Save/Cancel bar lives on the
+	// embedded split panel below this header, so the header carries no
+	// buttons of its own.
+	d.SetButtons(nil)
 
 	d.SetVisible(true)
 	return d
@@ -330,6 +339,76 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 // closeSchedulePreviewDialog clears preview dialog state.
 func (a *App) closeSchedulePreviewDialog() {
 	a.schedPreviewDialog = nil
+}
+
+// handleSchedulePreviewMouse routes a left-click to the schedule preview
+// dialog. For a single-line preview the header dialog is centered alone
+// and handled directly. For a multi-line preview the header is stacked
+// over the embedded split panel and centered together, so the click is
+// mapped to whichever panel it lands in using the same overlay-centering
+// math the view uses to render them.
+func (a *App) handleSchedulePreviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	p := a.schedPreviewDialog
+	if p == nil {
+		return a, nil
+	}
+	header := p.HeaderDialog()
+	if header == nil {
+		return a, nil
+	}
+
+	click, ok := msg.(tea.MouseClickMsg)
+	if !ok || click.Button != tea.MouseLeft {
+		return a, nil
+	}
+
+	if !p.IsMultiLine() {
+		switch header.HandleMouse(msg, a.width, a.height) {
+		case dialog.DialogActionSubmit:
+			return a.submitSchedulePreviewDialog()
+		case dialog.DialogActionCancel:
+			a.closeSchedulePreviewDialog()
+		case dialog.DialogActionAddNew:
+			return a.openCreateCategorySubDialogFromSchedPreview()
+		}
+		return a, nil
+	}
+
+	// Reconstruct the composited overlay exactly as app_view builds it so
+	// the click maps to identical coordinates.
+	headerStr := header.Render(a.styles)
+	splitStr := p.SplitDialog().Render(a.styles)
+	overlay := lipgloss.JoinVertical(lipgloss.Left, headerStr, splitStr)
+	startCol, startRow := widget.OverlayTopLeft(overlay, a.width, a.height)
+	headerLines := strings.Count(headerStr, "\n") + 1
+
+	m := msg.Mouse()
+	relY := m.Y - startRow
+	if relY < 0 {
+		return a, nil
+	}
+
+	// Content-local offsets within a panel: border (1) + h-pad (2) on X,
+	// border (1) + v-pad (1) on Y.
+	if relY < headerLines {
+		if header.HandleMouseLocal(m.X-startCol-3, relY-2) == dialog.DialogActionCancel {
+			a.closeSchedulePreviewDialog()
+			return a, nil
+		}
+		p.splitFocus = false
+		return a, nil
+	}
+
+	sd := p.SplitDialog()
+	switch sd.HandleMouseLocal(m.X-startCol-3, relY-headerLines-2) {
+	case dialog.DialogActionSubmit:
+		return a.submitSchedulePreviewDialog()
+	case dialog.DialogActionCancel:
+		a.closeSchedulePreviewDialog()
+		return a, nil
+	}
+	p.splitFocus = true
+	return a, nil
 }
 
 // handleSchedulePreviewDialogKey routes keys to the preview dialog. Esc

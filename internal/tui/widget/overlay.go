@@ -7,22 +7,30 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// OverlayTopLeft returns the screen coordinates where OverlayCenter would
+// place the top-left corner of overlay. Callers that need to hit-test a
+// centered overlay (e.g. mapping a mouse click back to dialog-local
+// coordinates) use this so the math stays identical to rendering.
+func OverlayTopLeft(overlay string, screenWidth, screenHeight int) (startCol, startRow int) {
+	ovLines := strings.Split(overlay, "\n")
+	overlayWidth := 0
+	for _, line := range ovLines {
+		if w := lipgloss.Width(line); w > overlayWidth {
+			overlayWidth = w
+		}
+	}
+	overlayHeight := len(ovLines)
+	startCol = max((screenWidth-overlayWidth)/2, 0)
+	startRow = max((screenHeight-overlayHeight)/2, 0)
+	return startCol, startRow
+}
+
 // OverlayCenter places the overlay string centered on top of the background string.
 func OverlayCenter(background, overlay string, screenWidth, screenHeight int) string {
 	bgLines := strings.Split(background, "\n")
 	ovLines := strings.Split(overlay, "\n")
 
-	overlayWidth := 0
-	for _, line := range ovLines {
-		w := lipgloss.Width(line)
-		if w > overlayWidth {
-			overlayWidth = w
-		}
-	}
-	overlayHeight := len(ovLines)
-
-	startCol := max((screenWidth-overlayWidth)/2, 0)
-	startRow := max((screenHeight-overlayHeight)/2, 0)
+	startCol, startRow := OverlayTopLeft(overlay, screenWidth, screenHeight)
 
 	for i, ovLine := range ovLines {
 		targetRow := startRow + i

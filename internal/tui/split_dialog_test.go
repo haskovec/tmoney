@@ -12,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/theme"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -19,6 +20,154 @@ import (
 // =============================================================================
 // Pure Function Tests - SplitDialog
 // =============================================================================
+
+// TestSplitDialog_Render_TurboVisionNoNakedResets guards the dark-band
+// regression: SplitDialog.Render must run its content through
+// widget.RepaintDialog before wrapping in the themed panel, just like
+// dialog.Dialog.Render. Under a theme with an opaque dialog.bg
+// (turbo-vision), the reversed selected row, muted [x]/imbalance, and
+// placeholder memo cells emit inner SGR resets that would otherwise
+// expose terminal-default bands. After the repaint, no reset may be
+// followed immediately by a raw space.
+func TestSplitDialog_Render_TurboVisionNoNakedResets(t *testing.T) {
+	t.Cleanup(func() { restoreDefaultTheme(t) })
+
+	turbo, _, err := theme.LoadBuiltin("turbo-vision")
+	if err != nil {
+		t.Fatalf("LoadBuiltin(turbo-vision): %v", err)
+	}
+	styles := widget.NewStyles()
+	styles.ApplyTheme(turbo)
+
+	amount := types.MustNewMoney("-150.00")
+	catOptions := []string{"(None)", "Food", "Household"}
+	catIDs := []types.ID{types.NilID, types.NewID(), types.NewID()}
+	sd := NewSplitDialog(amount, catOptions, catIDs)
+
+	out := sd.Render(styles)
+
+	for _, naked := range []string{"\x1b[m ", "\x1b[0m "} {
+		if idx := strings.Index(out, naked); idx >= 0 {
+			t.Errorf("found naked reset %q followed by raw space at %d (terminal-default band):\n%q", naked, idx, out)
+		}
+	}
+}
+
+// TestSplitDialog_Render_SaveBeforeCancel locks in the Save-first button
+// order so the split panel matches the app-wide convention.
+func TestSplitDialog_Render_SaveBeforeCancel(t *testing.T) {
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
+	out := sd.Render(widget.NewStyles())
+	saveIdx := strings.Index(out, "Save")
+	cancelIdx := strings.Index(out, "Cancel")
+	if saveIdx < 0 || cancelIdx < 0 {
+		t.Fatalf("expected both buttons rendered; save=%d cancel=%d", saveIdx, cancelIdx)
+	}
+	if saveIdx > cancelIdx {
+		t.Errorf("Save should render before Cancel; saveIdx=%d cancelIdx=%d", saveIdx, cancelIdx)
+	}
+}
+
+// TestSplitDialog_Render_LongCategoryDoesNotWrap guards the mouse
+// hit-testing assumption that each split row renders as exactly one
+// terminal line: a long category label must be truncated, not wrapped to
+// a second line (which would shift the button row below where the
+// hit-test expects it).
+func TestSplitDialog_Render_LongCategoryDoesNotWrap(t *testing.T) {
+	styles := widget.NewStyles()
+	ids := []types.ID{types.NilID, types.NewID()}
+
+	short := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, ids)
+	short.rows[0].categoryIndex = 1
+
+	long := NewSplitDialog(types.MustNewMoney("-100.00"),
+		[]string{"(None)", "Insurance > Long Term Disability Coverage Plus Extra Riders"}, ids)
+	long.rows[0].categoryIndex = 1
+
+	shortLines := strings.Count(short.Render(styles), "\n")
+	longLines := strings.Count(long.Render(styles), "\n")
+	if shortLines != longLines {
+		t.Errorf("long category changed rendered line count (row wrapped): short=%d long=%d", shortLines, longLines)
+	}
+}
+
+// TestSplitDialog_HandleMouseLocal_CloseButton verifies the [x] close
+// button (top-right of the title row) cancels.
+func TestSplitDialog_HandleMouseLocal_CloseButton(t *testing.T) {
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
+	contentWidth := sd.width - dialog.DialogHorizontalOverhead // 58
+	if got := sd.HandleMouseLocal(contentWidth-2, 0); got != dialog.DialogActionCancel {
+		t.Errorf("click on [x] = %d, want DialogActionCancel", got)
+	}
+}
+
+// TestSplitDialog_HandleMouseLocal_CancelButton verifies a click on the
+// Cancel button cancels regardless of validity.
+func TestSplitDialog_HandleMouseLocal_CancelButton(t *testing.T) {
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
+	// 1 row -> buttons on line 13. With even spacing at contentWidth 58,
+	// Cancel occupies x in [35,45).
+	if got := sd.HandleMouseLocal(40, 13); got != dialog.DialogActionCancel {
+		t.Errorf("click on Cancel = %d, want DialogActionCancel", got)
+	}
+	if sd.focus != splitFocusCancelBtn {
+		t.Errorf("focus = %d, want splitFocusCancelBtn", sd.focus)
+	}
+}
+
+// TestSplitDialog_HandleMouseLocal_SaveButton_Invalid verifies that
+// clicking Save on an imbalanced/invalid dialog is detected (sets an
+// error) but does not submit.
+func TestSplitDialog_HandleMouseLocal_SaveButton_Invalid(t *testing.T) {
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
+	if got := sd.HandleMouseLocal(15, 13); got != dialog.DialogActionNone {
+		t.Errorf("click on Save (invalid) = %d, want DialogActionNone", got)
+	}
+	if sd.errorMsg == "" {
+		t.Error("expected validation errorMsg to be set after Save click on invalid dialog")
+	}
+}
+
+// TestSplitDialog_HandleMouseLocal_SaveButton_Valid verifies a click on
+// Save submits a balanced dialog.
+func TestSplitDialog_HandleMouseLocal_SaveButton_Valid(t *testing.T) {
+	foodID := types.NewID()
+	existing := []*transaction.Split{{CategoryID: foodID, Amount: types.MustNewMoney("-100.00")}}
+	sd := NewSplitDialogFromExisting(types.MustNewMoney("-100.00"),
+		[]string{"(None)", "Food"}, []types.ID{types.NilID, foodID}, existing)
+	if got := sd.HandleMouseLocal(15, 13); got != dialog.DialogActionSubmit {
+		t.Errorf("click on Save (valid) = %d, want DialogActionSubmit (errorMsg=%q)", got, sd.errorMsg)
+	}
+}
+
+// TestSplitDialog_HandleMouseLocal_RowSelect verifies clicking a split
+// row focuses that row and the field under the cursor column.
+func TestSplitDialog_HandleMouseLocal_RowSelect(t *testing.T) {
+	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})
+	// Row 0 renders on line 7. Click in the amount column.
+	contentWidth := sd.width - dialog.DialogHorizontalOverhead
+	catColW := contentWidth / 3
+	if got := sd.HandleMouseLocal(catColW+2, 7); got != dialog.DialogActionNone {
+		t.Errorf("row click = %d, want DialogActionNone", got)
+	}
+	if sd.focus != splitFocusRows || sd.rowIndex != 0 || sd.fieldFocus != splitFieldAmount {
+		t.Errorf("after row click: focus=%d row=%d field=%d; want rows/0/amount", sd.focus, sd.rowIndex, sd.fieldFocus)
+	}
+}
+
+// TestBuildPreviewHeaderMulti_NoButtons verifies the multi-line preview
+// header carries no Save/Cancel buttons of its own.
+func TestBuildPreviewHeaderMulti_NoButtons(t *testing.T) {
+	h := buildPreviewHeaderMulti("05/15/2026", "Employer", "")
+	// 4 fields (Date, Payee, Memo, Status), 0 buttons.
+	if got := h.FocusableCount(); got != 4 {
+		t.Errorf("FocusableCount() = %d, want 4 (fields only, no buttons)", got)
+	}
+	out := h.Render(widget.NewStyles())
+	if strings.Contains(out, "[ Save ]") || strings.Contains(out, "[ Cancel ]") {
+		t.Errorf("multi-line header should render no buttons; got:\n%s", out)
+	}
+}
 
 func TestNewSplitDialog(t *testing.T) {
 	amount := types.MustNewMoney("-150.00")
@@ -288,16 +437,16 @@ func TestSplitDialog_HandleKey_TabCycles(t *testing.T) {
 		t.Errorf("after tab 3: focus=%d, want splitFocusAddBtn", sd.focus)
 	}
 
+	// Tab -> save button (Save comes before Cancel)
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if sd.focus != splitFocusSaveBtn {
+		t.Errorf("after tab 4: focus=%d, want splitFocusSaveBtn", sd.focus)
+	}
+
 	// Tab -> cancel button
 	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	if sd.focus != splitFocusCancelBtn {
-		t.Errorf("after tab 4: focus=%d, want splitFocusCancelBtn", sd.focus)
-	}
-
-	// Tab -> save button
-	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
-	if sd.focus != splitFocusSaveBtn {
-		t.Errorf("after tab 5: focus=%d, want splitFocusSaveBtn", sd.focus)
+		t.Errorf("after tab 5: focus=%d, want splitFocusCancelBtn", sd.focus)
 	}
 
 	// Tab -> wrap to first row
@@ -311,16 +460,16 @@ func TestSplitDialog_HandleKey_ShiftTabCycles(t *testing.T) {
 	sd := NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID})
 
 	// Start at rows, row 0, category
-	// Shift-Tab should wrap to save button
-	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-	if sd.focus != splitFocusSaveBtn {
-		t.Errorf("shift-tab from start: focus=%d, want splitFocusSaveBtn", sd.focus)
-	}
-
-	// Shift-Tab -> cancel
+	// Shift-Tab should wrap to the last button (Cancel)
 	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	if sd.focus != splitFocusCancelBtn {
-		t.Errorf("shift-tab: focus=%d, want splitFocusCancelBtn", sd.focus)
+		t.Errorf("shift-tab from start: focus=%d, want splitFocusCancelBtn", sd.focus)
+	}
+
+	// Shift-Tab -> save
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	if sd.focus != splitFocusSaveBtn {
+		t.Errorf("shift-tab: focus=%d, want splitFocusSaveBtn", sd.focus)
 	}
 
 	// Shift-Tab -> add

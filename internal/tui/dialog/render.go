@@ -52,11 +52,14 @@ func (d *Dialog) Render(styles widget.Styles) string {
 		lines = append(lines, "")
 	}
 
-	// Separator
-	lines = append(lines, strings.Repeat("─", contentWidth))
-
-	// Buttons
-	lines = append(lines, d.renderButtonRow(styles, contentWidth))
+	// Separator + buttons. Omitted entirely for a buttonless dialog (e.g.
+	// the multi-line scheduled-preview header, whose single action bar
+	// lives on the embedded split panel below it) so no dangling
+	// separator hangs at the bottom of the box.
+	if len(d.buttons) > 0 {
+		lines = append(lines, strings.Repeat("─", contentWidth))
+		lines = append(lines, d.renderButtonRow(styles, contentWidth))
+	}
 
 	content := strings.Join(lines, "\n")
 	// Re-emit the dialog's outer fg + bg after inner SGR resets so
@@ -465,26 +468,52 @@ func (d *Dialog) renderButtonRow(styles widget.Styles, contentWidth int) string 
 	if len(d.buttons) == 0 {
 		return ""
 	}
-
-	var btnStrs []string
-	totalBtnWidth := 0
-
+	specs := make([]ButtonSpec, len(d.buttons))
 	for i, btn := range d.buttons {
 		btnIdx := len(d.fields) + i
-		focused := btnIdx == d.focusIndex
+		specs[i] = ButtonSpec{Label: btn.Label, Focused: btnIdx == d.focusIndex}
+	}
+	return RenderButtonRow(styles, specs, contentWidth)
+}
+
+// ButtonSpec describes one action button for RenderButtonRow.
+type ButtonSpec struct {
+	Label   string
+	Focused bool
+	// Disabled renders the button muted (still occupying its slot). Used
+	// for an action that is temporarily unavailable, e.g. Save while a
+	// split dialog is imbalanced.
+	Disabled bool
+}
+
+// RenderButtonRow renders an evenly-spaced row of action buttons using the
+// theme's dialog-button styles. Exposed so custom dialogs (e.g. the split
+// editor) render their buttons identically to the standard dialog —
+// matching spacing, theming, and the focused shortcut-letter highlight.
+func RenderButtonRow(styles widget.Styles, btns []ButtonSpec, contentWidth int) string {
+	if len(btns) == 0 {
+		return ""
+	}
+
+	btnStrs := make([]string, len(btns))
+	totalBtnWidth := 0
+	for i, b := range btns {
 		var label string
-		if focused && !widget.IsTransparent(widget.ColorDialogButtonShortcutFg) {
-			label = renderFocusedButton(styles, btn.Label)
-		} else if focused {
-			label = styles.DialogButtonFocused.Render("[ " + btn.Label + " ]")
-		} else {
-			label = styles.DialogButton.Render("[ " + btn.Label + " ]")
+		switch {
+		case b.Disabled:
+			label = styles.Muted.Render("[ " + b.Label + " ]")
+		case b.Focused && !widget.IsTransparent(widget.ColorDialogButtonShortcutFg):
+			label = renderFocusedButton(styles, b.Label)
+		case b.Focused:
+			label = styles.DialogButtonFocused.Render("[ " + b.Label + " ]")
+		default:
+			label = styles.DialogButton.Render("[ " + b.Label + " ]")
 		}
-		btnStrs = append(btnStrs, label)
+		btnStrs[i] = label
 		totalBtnWidth += lipgloss.Width(label)
 	}
 
-	// Distribute buttons with even spacing
+	// Distribute buttons with even spacing.
 	numGaps := len(btnStrs) + 1
 	totalGapSpace := max(contentWidth-totalBtnWidth, numGaps)
 	gapSize := totalGapSpace / numGaps
@@ -562,11 +591,10 @@ func (d *Dialog) ContentHeight() int {
 		h += 2 // error line + blank line
 	}
 
-	// Separator before buttons
-	h++
-	// Button row
+	// Separator + button row (both omitted when the dialog has no buttons,
+	// matching Render).
 	if len(d.buttons) > 0 {
-		h++
+		h += 2
 	}
 
 	return h
