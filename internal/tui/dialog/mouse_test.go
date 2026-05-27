@@ -363,6 +363,41 @@ func TestDialog_HandleMouse_ClickButton_Cancel(t *testing.T) {
 	}
 }
 
+func TestDialog_HandleMouse_ClickButton_Alternate(t *testing.T) {
+	d := NewDialog("Test")
+	d.SetButtons([]DialogButton{
+		{Label: "Save", Primary: true},
+		{Label: "Cancel"},
+		{Label: "Edit as paycheck →", Action: DialogActionAlternate},
+	})
+	d.SetVisible(true)
+	screenW, screenH := 80, 24
+
+	startCol, startRow, _, _ := d.DialogBounds(screenW, screenH)
+	contentWidth := d.Width() - DialogHorizontalOverhead
+	buttonRow := d.ContentHeight() - 1
+
+	// Find the alternate (3rd) button x position.
+	var altX int
+	for x := range contentWidth {
+		hit := d.HitTestContent(x, buttonRow, contentWidth)
+		if hit.Zone == DialogHitButton && hit.ButtonIndex == 2 {
+			altX = x
+			break
+		}
+	}
+
+	action := d.HandleMouse(tea.MouseClickMsg{
+		X:      startCol + 3 + altX,
+		Y:      startRow + 2 + buttonRow,
+		Button: tea.MouseLeft,
+	}, screenW, screenH)
+
+	if action != DialogActionAlternate {
+		t.Errorf("expected DialogActionAlternate, got %d", action)
+	}
+}
+
 func TestDialog_HandleMouse_OutsideDialog(t *testing.T) {
 	d := NewDialog("Test")
 	d.SetVisible(true)

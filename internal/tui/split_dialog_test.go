@@ -169,6 +169,62 @@ func TestBuildPreviewHeaderMulti_NoButtons(t *testing.T) {
 	}
 }
 
+// TestNewSplitDialogFromExisting_SeedsTransferRow verifies a split with
+// TransferAccountID set seeds a transfer-mode row (not a "(None)" category
+// row), that SetTransferTargets resolves the destination to an
+// accountIndex, that validate passes without a category, and that
+// buildSplits round-trips the transfer. Regression for paycheck transfer
+// lines failing "category is required" on post.
+func TestNewSplitDialogFromExisting_SeedsTransferRow(t *testing.T) {
+	checkingID := types.NewID()
+	savingsID := types.NewID()
+	parentAccountID := types.NewID()
+	foodID := types.NewID()
+
+	existing := []*transaction.Split{
+		{BaseModel: types.NewBaseModel(), CategoryID: foodID, Amount: types.MustNewMoney("-40.00")},
+		{BaseModel: types.NewBaseModel(), TransferAccountID: types.NullableID{ID: checkingID, Valid: true}, Amount: types.MustNewMoney("-60.00")},
+	}
+
+	sd := NewSplitDialogFromExisting(types.MustNewMoney("-100.00"),
+		[]string{"(None)", "Food"}, []types.ID{types.NilID, foodID}, existing)
+	// Checking is index 0 in the (parent-excluded) transfer-target list.
+	sd.SetTransferTargets([]string{"Checking", "Savings"},
+		[]types.ID{checkingID, savingsID}, parentAccountID)
+
+	rows := sd.Rows()
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d, want 2", len(rows))
+	}
+	if rows[0].transferMode {
+		t.Error("row 0 (category split) should not be transfer mode")
+	}
+	if !rows[1].transferMode {
+		t.Fatal("row 1 (transfer split) should be transfer mode")
+	}
+	if rows[1].accountIndex != 0 {
+		t.Errorf("row 1 accountIndex = %d, want 0 (Checking)", rows[1].accountIndex)
+	}
+
+	if err := sd.validate(); err != nil {
+		t.Errorf("validate() = %v, want nil (transfer row needs no category)", err)
+	}
+
+	built, err := sd.buildSplits()
+	if err != nil {
+		t.Fatalf("buildSplits() error: %v", err)
+	}
+	if len(built) != 2 {
+		t.Fatalf("built = %d splits, want 2", len(built))
+	}
+	if !built[1].TransferAccountID.Valid || built[1].TransferAccountID.ID != checkingID {
+		t.Errorf("built[1] TransferAccountID = %+v, want valid %v", built[1].TransferAccountID, checkingID)
+	}
+	if !built[1].CategoryID.IsNil() {
+		t.Errorf("built[1] CategoryID = %v, want nil for a transfer line", built[1].CategoryID)
+	}
+}
+
 func TestNewSplitDialog(t *testing.T) {
 	amount := types.MustNewMoney("-150.00")
 	catOptions := []string{"(None)", "Food", "Household"}

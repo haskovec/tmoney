@@ -276,8 +276,15 @@ func (d *Dialog) HandleMouseLocal(localX, localY int) DialogAction {
 	case DialogHitButton:
 		if hit.ButtonIndex >= 0 && hit.ButtonIndex < len(d.buttons) {
 			d.focusIndex = len(d.fields) + hit.ButtonIndex
-			if d.buttons[hit.ButtonIndex].Primary {
+			btn := d.buttons[hit.ButtonIndex]
+			// Mirror HandleKey's Enter mapping: primary submits, a button
+			// with a custom Action returns it (e.g. "Edit as paycheck →"),
+			// otherwise cancel.
+			if btn.Primary {
 				return DialogActionSubmit
+			}
+			if btn.Action != DialogActionNone {
+				return btn.Action
 			}
 			return DialogActionCancel
 		}

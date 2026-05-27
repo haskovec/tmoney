@@ -61,6 +61,12 @@ type splitRow struct {
 	accountIndex  int
 	amountField   dialog.Field
 	memoField     dialog.Field
+
+	// seedTransferAccountID remembers the transfer destination when a row
+	// is seeded from an existing transfer-split (NewSplitDialogFromExisting)
+	// before SetTransferTargets has supplied the account list.
+	// SetTransferTargets resolves it to accountIndex and clears it.
+	seedTransferAccountID types.NullableID
 }
 
 // pendingSplitTransaction holds the transaction data while the split editor is open.
@@ -139,6 +145,36 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 		return sd
 	}
 	for _, s := range existing {
+		memo := ""
+		if s.Memo.Valid {
+			memo = s.Memo.String
+		}
+		amountField := dialog.Field{
+			Type:        dialog.FieldText,
+			Value:       s.Amount.String(),
+			Placeholder: "0.00",
+			Width:       12,
+		}
+		memoField := dialog.Field{
+			Type:        dialog.FieldText,
+			Value:       memo,
+			Placeholder: "Memo",
+		}
+
+		// A transfer-split (TransferAccountID set, no category) seeds a
+		// transfer-mode row. The account list isn't known until
+		// SetTransferTargets, so stash the destination ID for it to
+		// resolve into an accountIndex.
+		if s.TransferAccountID.Valid {
+			sd.rows = append(sd.rows, splitRow{
+				transferMode:          true,
+				seedTransferAccountID: s.TransferAccountID,
+				amountField:           amountField,
+				memoField:             memoField,
+			})
+			continue
+		}
+
 		catIdx := 0
 		for i, id := range categoryIDs {
 			if id == s.CategoryID {
@@ -146,23 +182,10 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 				break
 			}
 		}
-		memo := ""
-		if s.Memo.Valid {
-			memo = s.Memo.String
-		}
 		sd.rows = append(sd.rows, splitRow{
 			categoryIndex: catIdx,
-			amountField: dialog.Field{
-				Type:        dialog.FieldText,
-				Value:       s.Amount.String(),
-				Placeholder: "0.00",
-				Width:       12,
-			},
-			memoField: dialog.Field{
-				Type:        dialog.FieldText,
-				Value:       memo,
-				Placeholder: "Memo",
-			},
+			amountField:   amountField,
+			memoField:     memoField,
 		})
 	}
 	return sd
@@ -251,6 +274,31 @@ func (sd *SplitDialog) SetTransferTargets(options []string, ids []types.ID, excl
 		}
 		sd.transferAccountOptions = append(sd.transferAccountOptions, options[i])
 		sd.transferAccountIDs = append(sd.transferAccountIDs, id)
+	}
+
+	// Resolve rows seeded from existing transfer-splits to their index in
+	// the now-known transfer-target list.
+	for i := range sd.rows {
+		row := &sd.rows[i]
+		if !row.transferMode || !row.seedTransferAccountID.Valid {
+			continue
+		}
+		found := false
+		for j, id := range sd.transferAccountIDs {
+			if id == row.seedTransferAccountID.ID {
+				row.accountIndex = j
+				found = true
+				break
+			}
+		}
+		if !found {
+			// Destination unavailable (excluded as the parent account or
+			// since deleted): fall back to a category row so the dialog
+			// stays consistent rather than silently retargeting the cash.
+			row.transferMode = false
+			row.accountIndex = 0
+		}
+		row.seedTransferAccountID = types.NullableID{}
 	}
 }
 
