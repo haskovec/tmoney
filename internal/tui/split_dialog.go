@@ -86,7 +86,11 @@ type pendingSplitTransaction struct {
 }
 
 // splitDialogSavedMsg is sent when a split transaction has been saved.
-type splitDialogSavedMsg struct{}
+// savedID is the ID of the saved parent transaction so the register can move
+// the cursor onto its row after reload.
+type splitDialogSavedMsg struct {
+	savedID types.ID
+}
 
 // SplitDialog is a custom dialog for editing split transaction entries.
 type SplitDialog struct {
@@ -1130,7 +1134,7 @@ func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 					return errMsg{err: fmt.Errorf("failed to save split transaction: %w", err)}
 				}
 			}
-			return splitDialogSavedMsg{}
+			return splitDialogSavedMsg{savedID: updated.ID}
 		}
 
 		// Build transaction (no category when using splits)
@@ -1145,7 +1149,7 @@ func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 			}
 		}
 
-		return splitDialogSavedMsg{}
+		return splitDialogSavedMsg{savedID: txn.ID}
 	}
 }
 

@@ -27,6 +27,9 @@ type sellDialogDataMsg struct {
 // session's sticky-date seed for subsequent dialog opens.
 type sellDialogSavedMsg struct {
 	savedDate types.Date
+	// savedID is the ID of the saved transaction so the investment register
+	// can move the cursor onto its row after reload.
+	savedID types.ID
 }
 
 // buildLotLabel creates a display label for a lot allocation field.
@@ -336,9 +339,10 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			_, err = a.investmentSvc.UpdateSell(
+			saved, err = a.investmentSvc.UpdateSell(
 				editTxnID,
 				accountID,
 				securityID,
@@ -351,7 +355,7 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 				lotAllocations,
 			)
 		} else {
-			_, err = a.investmentSvc.Sell(
+			saved, err = a.investmentSvc.Sell(
 				accountID,
 				securityID,
 				date,
@@ -367,6 +371,6 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save sell transaction: %w", err)}
 		}
 
-		return sellDialogSavedMsg{savedDate: date}
+		return sellDialogSavedMsg{savedDate: date, savedID: saved.ID}
 	}
 }

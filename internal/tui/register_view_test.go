@@ -464,6 +464,101 @@ func TestApp_BuildRegisterTable_RowContent(t *testing.T) {
 	}
 }
 
+// TestApp_BuildRegisterTable_SelectsPendingByID verifies the cursor lands on
+// the just-saved transaction's row, matched by ID — even when that row sorts
+// into the middle of the list (e.g. a back-dated entry), not at the top.
+func TestApp_BuildRegisterTable_SelectsPendingByID(t *testing.T) {
+	accountID := types.NewID()
+
+	// Rows in display order (date DESC): a newer txn, the back-dated new txn,
+	// then an older one. The new entry is at index 1, not the top.
+	newID := types.NewID()
+	txns := []*transaction.Transaction{
+		{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Date: types.NewDate(2024, 3, 10), Amount: types.MustNewMoney("-10")},
+		{BaseModel: types.BaseModel{ID: newID}, AccountID: accountID, Date: types.NewDate(2024, 2, 5), Amount: types.MustNewMoney("-20")},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Date: types.NewDate(2024, 1, 1), Amount: types.MustNewMoney("-30")},
+	}
+
+	app := &App{
+		styles: widget.NewStyles(),
+		register: &registerData{
+			account:       &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking"},
+			transactions:  txns,
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("0")},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+		pendingRegisterSelectID: newID,
+	}
+
+	app.buildRegisterTable()
+
+	if app.table.Cursor() != 1 {
+		t.Errorf("cursor = %d, want 1 (the back-dated new transaction)", app.table.Cursor())
+	}
+	if !app.pendingRegisterSelectID.IsNil() {
+		t.Error("pendingRegisterSelectID should be cleared after selection")
+	}
+}
+
+// TestApp_BuildRegisterTable_NoPendingLeavesCursor verifies that with no
+// pending selection the cursor stays where it was (clamped), so unrelated
+// reloads (delete, toggle-clear) don't jump the cursor.
+func TestApp_BuildRegisterTable_NoPendingLeavesCursor(t *testing.T) {
+	accountID := types.NewID()
+	txns := []*transaction.Transaction{
+		{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Date: types.NewDate(2024, 3, 10), Amount: types.MustNewMoney("-10")},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Date: types.NewDate(2024, 2, 5), Amount: types.MustNewMoney("-20")},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Date: types.NewDate(2024, 1, 1), Amount: types.MustNewMoney("-30")},
+	}
+
+	app := &App{
+		styles: widget.NewStyles(),
+		register: &registerData{
+			account:       &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking"},
+			transactions:  txns,
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("0")},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+
+	app.buildRegisterTable()
+	app.table.SetCursor(2)
+	// Rebuild (simulating a reload with no pending selection).
+	app.buildRegisterTable()
+
+	if app.table.Cursor() != 2 {
+		t.Errorf("cursor = %d, want 2 (unchanged)", app.table.Cursor())
+	}
+}
+
+// TestApp_Update_TransactionDialogSaved_SetsPendingSelectID verifies the saved
+// message's ID is stashed so the next register build can re-select the row.
+func TestApp_Update_TransactionDialogSaved_SetsPendingSelectID(t *testing.T) {
+	accountID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+	app.sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
+	}, nil)
+
+	savedID := types.NewID()
+	model, _ := app.Update(transactionDialogSavedMsg{savedID: savedID})
+	updatedApp := model.(*App)
+
+	if updatedApp.pendingRegisterSelectID != savedID {
+		t.Errorf("pendingRegisterSelectID = %v, want %v", updatedApp.pendingRegisterSelectID, savedID)
+	}
+}
+
 func TestApp_BuildRegisterTable_StatusIndicators(t *testing.T) {
 	accountID := types.NewID()
 

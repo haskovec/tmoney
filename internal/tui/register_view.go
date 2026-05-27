@@ -391,6 +391,20 @@ func (a *App) buildRegisterTable() {
 	}
 	a.table.SetRows(rows)
 
+	// After a save, move the cursor onto the just-saved row by matching its
+	// transaction ID. Selecting by ID (not position) keeps the cursor on the
+	// row even when it sorts into the middle of the list, e.g. a back-dated
+	// entry. Cleared after applying so unrelated reloads don't move the cursor.
+	if !a.pendingRegisterSelectID.IsNil() {
+		for i, txn := range a.register.transactions {
+			if txn.ID == a.pendingRegisterSelectID {
+				a.table.SetCursor(i)
+				break
+			}
+		}
+		a.pendingRegisterSelectID = types.NilID
+	}
+
 	// Apply void row styling
 	for i, txn := range a.register.transactions {
 		if txn.IsVoid() {

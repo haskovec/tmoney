@@ -49,6 +49,9 @@ type transactionDialogDataMsg struct {
 // as the sticky seed for the next dialog open.
 type transactionDialogSavedMsg struct {
 	savedDate types.Date
+	// savedID is the ID of the saved transaction so the register can move the
+	// cursor onto its row after reload.
+	savedID types.ID
 }
 
 // parseDateInput parses a date string in MM/DD/YYYY format.
@@ -749,7 +752,7 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 					return errMsg{err: fmt.Errorf("failed to save transaction: %w", err)}
 				}
 			}
-			return transactionDialogSavedMsg{savedDate: date}
+			return transactionDialogSavedMsg{savedDate: date, savedID: updated.ID}
 		}
 
 		// Build transaction
@@ -764,6 +767,6 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 			}
 		}
 
-		return transactionDialogSavedMsg{savedDate: date}
+		return transactionDialogSavedMsg{savedDate: date, savedID: txn.ID}
 	}
 }

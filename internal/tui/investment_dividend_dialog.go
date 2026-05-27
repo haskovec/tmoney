@@ -26,6 +26,9 @@ type dividendDialogDataMsg struct {
 // session's sticky-date seed for subsequent dialog opens.
 type dividendDialogSavedMsg struct {
 	savedDate types.Date
+	// savedID is the ID of the saved transaction so the investment register
+	// can move the cursor onto its row after reload.
+	savedID types.ID
 }
 
 // buildDividendDialog creates a dialog.Dialog for entering a cash dividend transaction.
@@ -258,17 +261,18 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			_, err = a.investmentSvc.UpdateDividend(editTxnID, accountID, securityID, date, *amount, memo)
+			saved, err = a.investmentSvc.UpdateDividend(editTxnID, accountID, securityID, date, *amount, memo)
 		} else {
-			_, err = a.investmentSvc.Dividend(accountID, securityID, date, *amount, memo)
+			saved, err = a.investmentSvc.Dividend(accountID, securityID, date, *amount, memo)
 		}
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to save dividend transaction: %w", err)}
 		}
 
-		return dividendDialogSavedMsg{savedDate: date}
+		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID}
 	}
 }
 
@@ -358,9 +362,10 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			_, err = a.investmentSvc.UpdateReinvestDividend(
+			saved, err = a.investmentSvc.UpdateReinvestDividend(
 				editTxnID,
 				accountID,
 				securityID,
@@ -371,7 +376,7 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 				memo,
 			)
 		} else {
-			_, err = a.investmentSvc.ReinvestDividend(
+			saved, err = a.investmentSvc.ReinvestDividend(
 				accountID,
 				securityID,
 				date,
@@ -385,6 +390,6 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save reinvest dividend transaction: %w", err)}
 		}
 
-		return dividendDialogSavedMsg{savedDate: date}
+		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID}
 	}
 }

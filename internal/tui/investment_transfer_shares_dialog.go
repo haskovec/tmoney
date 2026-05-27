@@ -30,6 +30,10 @@ type transferSharesDialogDataMsg struct {
 // session's sticky-date seed for subsequent dialog opens.
 type transferSharesDialogSavedMsg struct {
 	savedDate types.Date
+	// savedID is the ID of the saved source-account leg so the investment
+	// register (which shows the source account) can move the cursor onto its
+	// row after reload.
+	savedID types.ID
 }
 
 // buildInvestmentAccountOptions builds parallel display name and ID slices
@@ -331,9 +335,10 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var result *investment.ShareTransferResult
 		var txnErr error
 		if editTxnID != types.NilID {
-			_, txnErr = a.investmentSvc.UpdateTransferShares(
+			result, txnErr = a.investmentSvc.UpdateTransferShares(
 				editTxnID,
 				sourceAccountID,
 				destAccountID,
@@ -344,7 +349,7 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 				lotAllocations,
 			)
 		} else {
-			_, txnErr = a.investmentSvc.TransferShares(
+			result, txnErr = a.investmentSvc.TransferShares(
 				sourceAccountID,
 				destAccountID,
 				securityID,
@@ -358,6 +363,10 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to transfer shares: %w", txnErr)}
 		}
 
-		return transferSharesDialogSavedMsg{savedDate: date}
+		savedID := types.NilID
+		if result != nil && result.SourceTransaction != nil {
+			savedID = result.SourceTransaction.ID
+		}
+		return transferSharesDialogSavedMsg{savedDate: date, savedID: savedID}
 	}
 }

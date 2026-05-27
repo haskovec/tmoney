@@ -26,6 +26,9 @@ type buyDialogDataMsg struct {
 // session's sticky-date seed for subsequent dialog opens.
 type buyDialogSavedMsg struct {
 	savedDate types.Date
+	// savedID is the ID of the saved transaction so the investment register
+	// can move the cursor onto its row after reload.
+	savedID types.ID
 }
 
 // buildSecurityOptions builds parallel display name and ID slices for the security selector.
@@ -313,9 +316,10 @@ func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			_, err = a.investmentSvc.UpdateBuy(
+			saved, err = a.investmentSvc.UpdateBuy(
 				editTxnID,
 				accountID,
 				securityID,
@@ -327,7 +331,7 @@ func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
 				memo,
 			)
 		} else {
-			_, err = a.investmentSvc.Buy(
+			saved, err = a.investmentSvc.Buy(
 				accountID,
 				securityID,
 				date,
@@ -342,6 +346,6 @@ func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save buy transaction: %w", err)}
 		}
 
-		return buyDialogSavedMsg{savedDate: date}
+		return buyDialogSavedMsg{savedDate: date, savedID: saved.ID}
 	}
 }

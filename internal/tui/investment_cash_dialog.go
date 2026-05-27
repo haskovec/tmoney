@@ -15,6 +15,9 @@ import (
 // session's sticky-date seed for subsequent dialog opens.
 type cashOperationDialogSavedMsg struct {
 	savedDate types.Date
+	// savedID is the ID of the saved transaction so the investment register
+	// can move the cursor onto its row after reload.
+	savedID types.ID
 }
 
 // buildCashOperationDialog creates a dialog.Dialog for cash-only investment operations
@@ -135,30 +138,31 @@ func (a *App) submitCashOperationDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
+		var saved *investment.Transaction
 		var txnErr error
 		if editTxnID != types.NilID {
 			switch txnType {
 			case investment.TransactionTypeDeposit:
-				_, txnErr = a.investmentSvc.UpdateDeposit(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentSvc.UpdateDeposit(editTxnID, accountID, date, amountVal, memo)
 			case investment.TransactionTypeWithdrawal:
-				_, txnErr = a.investmentSvc.UpdateWithdrawal(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentSvc.UpdateWithdrawal(editTxnID, accountID, date, amountVal, memo)
 			case investment.TransactionTypeFee:
-				_, txnErr = a.investmentSvc.UpdateFee(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentSvc.UpdateFee(editTxnID, accountID, date, amountVal, memo)
 			case investment.TransactionTypeInterest:
-				_, txnErr = a.investmentSvc.UpdateInterest(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentSvc.UpdateInterest(editTxnID, accountID, date, amountVal, memo)
 			default:
 				return errMsg{err: fmt.Errorf("unsupported cash operation type: %s", txnType)}
 			}
 		} else {
 			switch txnType {
 			case investment.TransactionTypeDeposit:
-				_, txnErr = a.investmentSvc.Deposit(accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentSvc.Deposit(accountID, date, amountVal, memo)
 			case investment.TransactionTypeWithdrawal:
-				_, txnErr = a.investmentSvc.Withdrawal(accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentSvc.Withdrawal(accountID, date, amountVal, memo)
 			case investment.TransactionTypeFee:
-				_, txnErr = a.investmentSvc.Fee(accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentSvc.Fee(accountID, date, amountVal, memo)
 			case investment.TransactionTypeInterest:
-				_, txnErr = a.investmentSvc.Interest(accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentSvc.Interest(accountID, date, amountVal, memo)
 			default:
 				return errMsg{err: fmt.Errorf("unsupported cash operation type: %s", txnType)}
 			}
@@ -168,6 +172,6 @@ func (a *App) submitCashOperationDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save %s transaction: %w", txnType.DisplayName(), txnErr)}
 		}
 
-		return cashOperationDialogSavedMsg{savedDate: date}
+		return cashOperationDialogSavedMsg{savedDate: date, savedID: saved.ID}
 	}
 }

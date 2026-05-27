@@ -241,6 +241,14 @@ type App struct {
 	investmentTypeSelector *dialog.Dialog
 	investmentEditTxnID    types.ID // set when editing an existing transaction
 
+	// After a save+reload, the register/investment-register build step moves
+	// the cursor onto the row whose transaction ID matches. Selecting by ID
+	// (rather than position) keeps the cursor on the saved row even when it
+	// sorts into the middle of the list (e.g. a back-dated entry). NilID means
+	// "no pending selection"; the build step clears the field after applying.
+	pendingRegisterSelectID   types.ID
+	pendingInvestmentSelectID types.ID
+
 	// Buy dialog state
 	buyDialog            *dialog.Dialog
 	buyDialogData        *buyDialogData

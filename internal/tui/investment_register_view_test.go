@@ -91,6 +91,39 @@ func TestInvestmentRegisterData(t *testing.T) {
 	}
 }
 
+// TestApp_BuildInvestmentRegisterTable_SelectsPendingByID verifies the cursor
+// lands on the just-saved investment transaction's row, matched by ID, even
+// when that row is not at the top of the list.
+func TestApp_BuildInvestmentRegisterTable_SelectsPendingByID(t *testing.T) {
+	acctID := types.NewID()
+	newID := types.NewID()
+
+	txns := []*investment.Transaction{
+		{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: acctID, Date: types.NewDate(2024, time.March, 10), Type: investment.TransactionTypeBuy, TotalAmount: types.MustNewMoney("100")},
+		{BaseModel: types.BaseModel{ID: newID}, AccountID: acctID, Date: types.NewDate(2024, time.February, 5), Type: investment.TransactionTypeDeposit, TotalAmount: types.MustNewMoney("200")},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: acctID, Date: types.NewDate(2024, time.January, 1), Type: investment.TransactionTypeBuy, TotalAmount: types.MustNewMoney("300")},
+	}
+
+	app := &App{
+		styles: widget.NewStyles(),
+		investmentRegister: &investmentRegisterData{
+			account:       &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Brokerage", Type: account.TypeInvestment},
+			transactions:  txns,
+			securityNames: map[types.ID]string{},
+		},
+		pendingInvestmentSelectID: newID,
+	}
+
+	app.buildInvestmentRegisterTable()
+
+	if app.investmentTable.Cursor() != 1 {
+		t.Errorf("cursor = %d, want 1 (the just-saved transaction)", app.investmentTable.Cursor())
+	}
+	if !app.pendingInvestmentSelectID.IsNil() {
+		t.Error("pendingInvestmentSelectID should be cleared after selection")
+	}
+}
+
 func TestInvestmentRegisterData_WithTransactions(t *testing.T) {
 	acctID := types.NewID()
 	secID := types.NewID()

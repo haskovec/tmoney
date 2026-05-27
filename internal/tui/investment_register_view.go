@@ -110,6 +110,20 @@ func (a *App) buildInvestmentRegisterTable() {
 		rows[i] = a.formatInvestmentRegisterRow(txn)
 	}
 	a.investmentTable.SetRows(rows)
+
+	// After a save, move the cursor onto the just-saved row by matching its
+	// transaction ID. Selecting by ID (not position) keeps the cursor on the
+	// row even when it sorts into the middle of the list, e.g. a back-dated
+	// entry. Cleared after applying so unrelated reloads don't move the cursor.
+	if !a.pendingInvestmentSelectID.IsNil() {
+		for i, txn := range a.investmentRegister.transactions {
+			if txn.ID == a.pendingInvestmentSelectID {
+				a.investmentTable.SetCursor(i)
+				break
+			}
+		}
+		a.pendingInvestmentSelectID = types.NilID
+	}
 }
 
 // formatInvestmentRegisterRow formats an investment transaction into table row strings.

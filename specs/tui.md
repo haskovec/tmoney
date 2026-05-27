@@ -95,6 +95,14 @@ Key:
 - `▸` = Selected row
 - `◀` = Currently selected account in sidebar
 
+After saving a new or edited transaction, the cursor moves to that
+transaction's row, matched by ID rather than by position. This keeps the
+selection on the saved row wherever it sorts — including a back-dated entry
+that lands in the middle of the list, not at the top. The same applies to the
+investment register (buy, sell, dividend, reinvest, cash operations, and share
+transfers). Reloads that aren't saves — toggling cleared status, deleting —
+leave the cursor where it was.
+
 ### Transaction Entry/Edit Dialog
 
 Modal dialog for entering or editing transactions.

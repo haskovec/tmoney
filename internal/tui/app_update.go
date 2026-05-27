@@ -143,6 +143,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
 		a.investmentEditTxnID = types.NilID
+		a.pendingInvestmentSelectID = msg.savedID
 		a.invalidatePriceHistoryCache()
 		a.statusbar.AddNotification("Buy transaction saved", widget.NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
@@ -170,6 +171,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
 		a.investmentEditTxnID = types.NilID
+		a.pendingInvestmentSelectID = msg.savedID
 		a.invalidatePriceHistoryCache()
 		a.statusbar.AddNotification("Sell transaction saved", widget.NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
@@ -200,6 +202,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
 		a.investmentEditTxnID = types.NilID
+		a.pendingInvestmentSelectID = msg.savedID
 		// Reinvest dividends auto-create a price row; cash dividends do
 		// not. The chart history cache is cheap to rebuild, so clear
 		// unconditionally rather than branching on dividendDialogReinvest.
@@ -219,6 +222,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
 		a.investmentEditTxnID = types.NilID
+		a.pendingInvestmentSelectID = msg.savedID
 		label := string(a.cashOperationType)
 		if label == "" {
 			label = "Cash operation"
@@ -257,6 +261,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
 		a.investmentEditTxnID = types.NilID
+		a.pendingInvestmentSelectID = msg.savedID
 		a.statusbar.AddNotification("Share transfer saved", widget.NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
@@ -353,6 +358,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.savedDate.IsZero() {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
+		a.pendingRegisterSelectID = msg.savedID
 		accountID := a.sidebar.SelectedAccountID()
 		return a, tea.Batch(
 			a.loadRegisterData(accountID),
@@ -366,6 +372,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case splitDialogSavedMsg:
+		a.pendingRegisterSelectID = msg.savedID
 		accountID := a.sidebar.SelectedAccountID()
 		return a, tea.Batch(
 			a.loadRegisterData(accountID),
