@@ -8,8 +8,9 @@ TMoney is a terminal-based personal finance application written in Go. It provid
 
 ```
 tmoney/
-├── cmd/tmoney/          # Application entry point, CLI commands, argument parsing
+├── main.go              # Thin entry point — calls cli.Execute()
 ├── internal/
+│   ├── cli/             # Cobra-based CLI (noun-verb subcommands) + TUI launcher
 │   ├── account/         # Account feature (model, repository, service)
 │   ├── category/        # Category feature (model, repository, service)
 │   ├── payee/           # Payee feature (model, repository, service)
@@ -42,7 +43,7 @@ The application follows a vertical slice architecture where code is organized by
 ```
 ┌──────────────────────────────────────────────────┐
 │          Presentation Layer                       │
-│    CLI (cmd/tmoney/)  │  TUI (internal/tui/)     │
+│   CLI (internal/cli/) │  TUI (internal/tui/)     │
 ├──────────────────────────────────────────────────┤
 │          Composition Root (internal/app/)         │
 ├──────────────────────────────────────────────────┤
@@ -135,14 +136,27 @@ DuckDB connection management, schema migrations, and file validation.
 
 ### Presentation Layer
 
-#### CLI (`cmd/tmoney/`)
+#### CLI (`internal/cli/`)
 
-- `main.go` — Entry point, routes to TUI or CLI command handlers
-- `args.go` — Argument parsing into a `cliOptions` struct
-- `commands.go` — Command handler functions (one per CLI operation)
-- `format.go` — Output formatting (`formatMoney`, table printing)
+The CLI is built on [Cobra](https://github.com/spf13/cobra) with a
+noun-verb taxonomy (`tmoney account add`, `tmoney transfer edit`,
+`tmoney investment buy`). A thin `main.go` at the repo root calls
+`cli.Execute()`.
 
-When no command flags are provided, the application launches the TUI. Otherwise, the specified command runs against the database and exits.
+- `root.go` — `newRootCmd()` wires the persistent `--file`/`-f` flag and
+  registers every noun command group (`account`, `transaction`,
+  `transfer`, `scheduled`, `reconcile`, `security`, `price`,
+  `investment`, `db`, `report`, `theme`, plus `import`/`export`).
+- One file per command group and per verb (e.g. `transfer.go` registers
+  the `transfer` parent; `transfer_add.go`, `transfer_edit.go`,
+  `transfer_delete.go` implement its verbs). Each verb has a sibling
+  `*_test.go`.
+- `tui.go` — Launches the Bubbletea TUI; the root command with no
+  subcommand (optionally a file path or `--file`) drops into the TUI.
+- `format.go` — Shared output formatting (`formatMoney`, table printing).
+
+When invoked with no subcommand the application launches the TUI;
+otherwise the named subcommand runs against the database and exits.
 
 #### TUI (`internal/tui/`)
 

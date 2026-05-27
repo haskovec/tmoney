@@ -4,7 +4,7 @@
 
 ## Overview
 
-TMoney's current CLI exposes ~50 verbs as flat top-level flags (`--add-account`, `--backup`, `--buy`, `--import`, etc.) parsed in `cmd/tmoney/main.go`'s `run()` function. This specification replaces that flag-based dispatch with a Cobra-based subcommand router using a noun-verb taxonomy (`tmoney account add`, `tmoney db backup`, `tmoney investment buy`).
+Before this work, TMoney's CLI exposed ~50 verbs as flat top-level flags (`--add-account`, `--backup`, `--buy`, `--import`, etc.) parsed in a monolithic `run()` function (then located in `cmd/tmoney/main.go`, since relocated). This specification replaced that flag-based dispatch with a Cobra-based subcommand router using a noun-verb taxonomy (`tmoney account add`, `tmoney db backup`, `tmoney investment buy`). The migration is complete: the entry point is now a thin `main.go` at the repo root that calls `cli.Execute()`, with every command defined under `internal/cli/`.
 
 This spec is a prerequisite for the theming feature ([`specs/theming.md`](theming.md)), which introduces the first Cobra subcommands (`tmoney theme list`, `tmoney theme generate-from-wal`). The full migration of all existing verbs is in scope but explicitly opportunistic — verbs migrate in batches as part of separate work, not all-at-once with theming.
 
