@@ -18,7 +18,7 @@ Requires Go 1.26 or later.
 ```bash
 git clone https://github.com/haskovec/tmoney.git
 cd tmoney
-go build -o tmoney ./cmd/tmoney
+go build -o tmoney .
 ```
 
 The resulting `tmoney` binary is self-contained with no runtime dependencies.
