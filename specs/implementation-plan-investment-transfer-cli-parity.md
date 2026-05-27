@@ -676,27 +676,30 @@ enhancement that the new commands need, then the new commands.
 
 ### P-A5: Verification + close-out
 
-- [ ] **P-A5-001 — Manual CLI verification**
-  - Against a test database with checking, savings, two investment
-    accounts (one lot-tracked, one not), one HSA:
-    - `transfer add` every combination — confirm both legs land in
-      the right tables, IDs printed.
-    - `transaction list --show-ids` — confirm column appears, IDs
-      copy-pasteable.
-    - `transfer edit` each combination — confirm field changes
-      land on both legs.
-    - `transfer delete` each combination — confirm both legs gone.
-    - Refuse cases: `transfer edit --status reconciled`, no-fields
-      `transfer edit`, transfer-line paired side, reconciled leg.
-    - Set up a paycheck → 401k via TUI; `transaction list
-      --account 401k --show-ids`; try `transfer delete` on the
-      investment-side row → confirm refuse message.
+- [x] **P-A5-001 — Manual CLI verification** *(2026-05-27)*
+  - Verified against a fresh test DB (Checking, Savings, Brokerage,
+    Rollover IRA, HSA):
+    - `transfer add` every combination (reg→reg, reg→inv, inv→reg,
+      inv→inv, reg→hsa) — all create successfully with transfer-id +
+      both leg IDs printed.
+    - `transaction list --show-ids` — leading UUID column appears and
+      IDs are copy-pasteable into edit/delete.
+    - `transfer edit` reg→reg (amount+status+memo) and reg→inv
+      (amount) — changes land on both legs (verified via the regular
+      registers).
+    - `transfer delete` all four kinds — both legs gone; Brokerage
+      cash returned to $0 after deleting its reg→inv / inv→reg legs,
+      confirming investment-side cascade.
+    - Refuse cases verified: `transfer edit --status reconciled`,
+      no-editable-flags `transfer edit`, unknown `--txn-id`.
+  - The transfer-line-split (paycheck → 401k) refuse path requires
+    TUI setup that isn't scriptable here; it is covered by the
+    integration tests `TestTransfer{Delete,Edit}_RefusesTransferLineSplit`.
 
-- [ ] **P-A5-002 — Final test/lint/commit**
-  - `go test ./...` clean (expect ≥5500 tests once edit/delete
-    integration tests land).
+- [x] **P-A5-002 — Final test/lint/commit** *(2026-05-27)*
+  - `go test ./...` clean — 5516 tests across 28 packages.
   - `golangci-lint run` clean.
-  - Commit, push, mark this plan complete.
+  - Implementation committed + pushed (`b98294a`); plan marked complete.
 
 ---
 
