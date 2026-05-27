@@ -399,6 +399,12 @@ tmoney transfer add --from Checking --to Savings --amount 500.00 \
 tmoney transfer add --from Checking --to Brokerage --amount 1000.00
 tmoney transfer add --from "Old IRA" --to "Rollover IRA" --amount 5000.00
 
+# Edit or delete a transfer by either leg's UUID (find IDs with
+# `transaction list --show-ids`). Both work for every account-type
+# combination. Only supplied flags take effect on edit.
+tmoney transfer edit --txn-id <id> --amount 600.00 --status cleared
+tmoney transfer delete --txn-id <id>
+
 # Search transactions
 tmoney transaction search "grocery"
 tmoney transaction search "electric" --from 2024-01-01 --to 2024-12-31

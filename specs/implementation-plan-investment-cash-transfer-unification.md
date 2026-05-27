@@ -846,7 +846,14 @@ lands and we trace the exact split-counterpart code path.
 
 ## Future Phases
 
-### Future-A — CLI parity for linked cash transfers (deferred from Q8)
+### Future-A — CLI parity for linked cash transfers (deferred from Q8) — **completed**
+
+> **Completed** — see
+> [`implementation-plan-investment-transfer-cli-parity.md`](implementation-plan-investment-transfer-cli-parity.md).
+> `tmoney transfer add` now dispatches all four `(from, to)` combinations
+> internally (no investment rejection), and `tmoney transfer edit` /
+> `tmoney transfer delete` were added with the same dispatch. The
+> original exploration below is retained for historical context.
 
 The existing `tmoney investment deposit` / `withdraw` commands are
 **one-sided** — they create a cash flow on the investment account

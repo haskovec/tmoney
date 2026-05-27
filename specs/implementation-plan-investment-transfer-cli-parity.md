@@ -590,7 +590,7 @@ enhancement that the new commands need, then the new commands.
 
 ### P-A4: `transfer edit` + `transfer delete` + docs
 
-- [ ] **P-A4-001 — Leg-id resolver helper**
+- [x] **P-A4-001 — Leg-id resolver helper**
   - RED: tests for a new pure helper
     `resolveTransferPair(svc, legID) (TransferPairLike, dispatchKind, error)`
     in `internal/cli/transfer_resolve.go` (or inside a CLI utility
@@ -607,7 +607,7 @@ enhancement that the new commands need, then the new commands.
     `invRepo.ListByTransferID`) and return both legs' shape
     (account-id, type, amount, date, memo, status).
 
-- [ ] **P-A4-002 — `tmoney transfer delete`**
+- [x] **P-A4-002 — `tmoney transfer delete`**
   - RED: `internal/cli/transfer_delete_test.go` with one test per
     dispatch kind. Each creates a transfer via the appropriate
     service (or `transfer add`), then runs `runTransferDelete
@@ -623,7 +623,7 @@ enhancement that the new commands need, then the new commands.
     `investment.Service.DeleteTransaction` on the investment-side
     leg (the existing inv↔inv cascade handles the other leg).
 
-- [ ] **P-A4-003 — `tmoney transfer edit`**
+- [x] **P-A4-003 — `tmoney transfer edit`**
   - RED: per-dispatch-kind tests in
     `internal/cli/transfer_edit_test.go`. Each edits some subset
     of fields and asserts both legs reflect the change.
@@ -646,7 +646,7 @@ enhancement that the new commands need, then the new commands.
     resolver uses `statusFromRegular` / `statusToRegular` (the
     helpers introduced in P1-008/P1-009).
 
-- [ ] **P-A4-004 — Docs sweep**
+- [x] **P-A4-004 — Docs sweep**
   - `specs/cli.md`: add new sections for `transfer edit` and
     `transfer delete` with flag tables and examples. Mention
     `--show-ids` on the list/search commands in their existing

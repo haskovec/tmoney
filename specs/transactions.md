@@ -145,7 +145,7 @@ register renders the other account's name from `transfer_account_id`.
 
 1. Both transactions share the same `transfer_id`
 2. Amounts are equal but opposite signs
-3. Deleting one side prompts to delete the other
+3. Deleting one side removes both sides as a pair (the TUI prompts for confirmation; the CLI's `transfer delete` deletes both without prompting)
 4. Editing amount on one side updates the other
 
 ### Investment-Account Transfers
@@ -257,12 +257,15 @@ When payee is selected, auto-populate category from payee's default.
 
 All properties except `id` and `created_at` can be modified.
 
-For transfers, editing amount updates both sides.
+For transfers, editing amount updates both sides. On the CLI, `tmoney
+transfer edit --txn-id <leg-uuid>` is the non-TUI entry point; it
+mirrors the TUI's editable-field set (amount, date, memo, status —
+not from/to).
 
 ### Delete Transaction
 
 - Regular transaction: delete immediately
-- Whole-transaction transfer: prompt to delete both sides
+- Whole-transaction transfer: both sides are deleted as a pair (TUI prompts; CLI's `transfer delete` does not)
 - Multi-line transaction with transfer-lines: cascade delete every paired counter-transaction in target accounts
 - Single transfer-line removed from a parent split: cascade delete its paired counter-transaction; parent retains other lines (may be imbalanced — hard validation blocks the next Save until rebalanced)
 - Paired side deleted from its own (target) register: reverse cascade — remove the corresponding line from the parent split

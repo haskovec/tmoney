@@ -1049,6 +1049,53 @@ The success confirmation always prints the new transfer-id and both
 leg transaction-ids so scripts composing follow-up edits/deletes have
 the IDs ready to use.
 
+### `transfer edit`
+
+`Use: transfer edit` · `Args: NoArgs`
+
+Edit a whole-transaction transfer identified by the UUID of either leg
+(`--txn-id`). Use `tmoney transaction list --show-ids` to find the ID.
+Only the supplied flags take effect (matching `security edit`); at
+least one editable flag is required. From/To accounts are not editable
+— delete and re-add to move a transfer between accounts. Dispatches by
+account type the same way `transfer add` does, so every combination
+(bank↔bank, bank↔investment, investment↔investment) is supported.
+
+**Required flags:** `--txn-id`
+
+**Editable flags (at least one required):**
+- `--amount string` — New transfer amount (must be positive)
+- `--date string` — New transfer date `YYYY-MM-DD`
+- `--memo string` — New memo
+- `--status string` — New status: `cleared` or `uncleared`
+
+`--status reconciled` is rejected — reconciling is owned by `tmoney
+reconcile`. Reconciled transfers cannot be edited. Transfer-line
+splits (e.g. a paycheck's 401k contribution line) are refused with a
+pointer to the TUI.
+
+```bash
+tmoney -f personal.tdb transfer edit --txn-id <uuid> --amount 600.00
+tmoney -f personal.tdb transfer edit --txn-id <uuid> --date 2024-04-01 --memo "fixed date"
+tmoney -f personal.tdb transfer edit --txn-id <uuid> --status cleared
+```
+
+### `transfer delete`
+
+`Use: transfer delete` · `Args: NoArgs`
+
+Delete both legs of a whole-transaction transfer identified by the
+UUID of either leg (`--txn-id`). Use `tmoney transaction list
+--show-ids` to find the ID. Dispatches by account type, so every
+combination is supported. Reconciled transfers are refused; so are
+transfer-line splits (edit/delete those in the TUI).
+
+**Required flags:** `--txn-id`
+
+```bash
+tmoney -f personal.tdb transfer delete --txn-id <uuid>
+```
+
 ### `transfer link`
 
 `Use: transfer link` · `Args: NoArgs`

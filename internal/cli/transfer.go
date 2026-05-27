@@ -10,9 +10,11 @@ func newTransferCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "transfer",
 		Short: "Manage transfers between accounts",
-		Long: "Subcommands for creating new transfers and linking " +
-			"unlinked transfer pairs across accounts after import.",
+		Long: "Subcommands for creating, editing, deleting, and linking " +
+			"transfers between accounts.",
 		Example: "  tmoney transfer add --from Checking --to Savings --amount 500.00\n" +
+			"  tmoney transfer edit --txn-id <uuid> --amount 600.00\n" +
+			"  tmoney transfer delete --txn-id <uuid>\n" +
 			"  tmoney transfer link --confirm",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -21,6 +23,8 @@ func newTransferCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newTransferAddCmd())
+	cmd.AddCommand(newTransferEditCmd())
+	cmd.AddCommand(newTransferDeleteCmd())
 	cmd.AddCommand(newTransferLinkCmd())
 	return cmd
 }
