@@ -268,6 +268,113 @@ func TestSplitCounterpart_ScheduledPaycheckPosting_LandsInvestmentRow(t *testing
 	}
 }
 
+// TestSplitCounterpart_FutureDatedPaycheckPosting_LandsInvestmentRows is the
+// regression test for posting a paycheck dated in the future whose transfer
+// legs fund a 401k (investment) and an HSA. The investment-side TransferCash
+// counterparts must be accepted at the future date — historically the
+// investment domain rejected any future-dated transaction, so the whole post
+// was rolled back with "date cannot be in the future".
+func TestSplitCounterpart_FutureDatedPaycheckPosting_LandsInvestmentRows(t *testing.T) {
+	database := createTestDB(t)
+
+	txnRepo := transaction.NewRepository(database)
+	splitRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+	scheduledRepo := scheduled.NewRepository(database)
+
+	invRepo := NewRepository(database)
+	positionRepo := NewPositionRepository(database)
+	lotRepo := NewLotRepository(database)
+	transactionLotRepo := NewTransactionLotRepository(database)
+	caRepo := NewCorporateActionRepository(database)
+
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, nil, txnRepo, caRepo, database)
+	txnSvc.SetInvestmentCounterpart(invSvc)
+	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database)
+
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	_ = accountRepo.Create(checking)
+	retirement := account.NewAccount("401k", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	_ = accountRepo.Create(retirement)
+	hsa := account.NewAccount("HSA", account.TypeHSA, "USD", types.ZeroMoney, types.Today())
+	_ = accountRepo.Create(hsa)
+
+	salary := category.NewCategory("Salary", category.TypeIncome)
+	_ = categoryRepo.Create(salary)
+
+	// Paycheck: +1000 salary, −200 to 401k, −100 to HSA → net +700 in checking.
+	net, _ := types.NewMoney("700.00")
+	gross, _ := types.NewMoney("1000.00")
+	retire, _ := types.NewMoney("-200.00")
+	health, _ := types.NewMoney("-100.00")
+
+	st := scheduled.NewTransactionWithAmount(checking.ID, scheduled.FrequencyMonthly, types.Today(), net)
+	st.Splits = scheduled.SplitCollection{
+		scheduled.NewCategorizedSplit(st.ID, salary.ID, gross),
+		scheduled.NewTransferSplit(st.ID, retirement.ID, retire),
+		scheduled.NewTransferSplit(st.ID, hsa.ID, health),
+	}
+	if err := scheduledSvc.Create(st); err != nil {
+		t.Fatalf("scheduledSvc.Create: %v", err)
+	}
+
+	// Post one day into the future (the user's scenario: the preview seeds
+	// tomorrow's payday).
+	future := types.Today().AddDays(1)
+	parent := transaction.NewTransaction(checking.ID, future, net)
+	salaryLine := transaction.NewSplit(parent.ID, salary.ID, gross)
+	retireLine := &transaction.Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            retire,
+		TransferAccountID: types.NullableID{ID: retirement.ID, Valid: true},
+	}
+	hsaLine := &transaction.Split{
+		BaseModel:         types.NewBaseModel(),
+		TransactionID:     parent.ID,
+		CategoryID:        types.NilID,
+		Amount:            health,
+		TransferAccountID: types.NullableID{ID: hsa.ID, Valid: true},
+	}
+
+	if _, err := scheduledSvc.PostWithEdits(st.ID, parent, []*transaction.Split{salaryLine, retireLine, hsaLine}); err != nil {
+		t.Fatalf("PostWithEdits (future-dated paycheck): %v", err)
+	}
+
+	// Both investment accounts must hold a future-dated TransferCash row.
+	for _, tc := range []struct {
+		name    string
+		acctID  types.ID
+		wantAmt string
+	}{
+		{"401k", retirement.ID, "200.00"},
+		{"HSA", hsa.ID, "100.00"},
+	} {
+		invRows, err := invRepo.ListByAccount(tc.acctID, TransactionFilter{})
+		if err != nil {
+			t.Fatalf("ListByAccount(%s): %v", tc.name, err)
+		}
+		if len(invRows) != 1 {
+			t.Fatalf("expected 1 investment row in %s, got %d", tc.name, len(invRows))
+		}
+		row := invRows[0]
+		if row.Type != TransactionTypeTransferCash {
+			t.Errorf("%s row.Type = %q, want %q", tc.name, row.Type, TransactionTypeTransferCash)
+		}
+		if !row.TotalAmount.Equal(types.MustNewMoney(tc.wantAmt)) {
+			t.Errorf("%s row.TotalAmount = %s, want %s", tc.name, row.TotalAmount.String(), tc.wantAmt)
+		}
+		if !row.Date.Equal(future) {
+			t.Errorf("%s row.Date = %s, want %s (future)", tc.name, row.Date.String(), future.String())
+		}
+	}
+}
+
 // TestSplitCounterpart_VoidParent_CascadesToInvestmentRow exercises the
 // P2-003 acceptance criterion end-to-end against the real investment
 // service: voiding a paycheck-style parent removes the investment-side

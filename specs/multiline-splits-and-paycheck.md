@@ -143,6 +143,8 @@ When a transaction is saved with a transfer-line, a paired single-line transacti
 
 The investment-target case is what makes a paycheck → 401k contribution line work correctly: the 401k account is investment-type, so the counterpart is minted on `investment_transactions` and feeds into investment cash balances, total-return reporting, and the investment register — instead of being a malformed regular row in the investment account's ledger.
 
+**Future-dated posts.** The investment-side `transfer_cash` counterpart is accepted even when the post date is in the future — e.g. posting a paycheck the day before payday, or auto-posting with `post_lead_days`. Investment transactions are restricted to non-future dates only for *position- or price-bearing* types (`buy`, `sell`, `reinvest_dividend`, `fee_liquidation`, `transfer_shares`, `exchange`), because those would mint a future-dated price row or a future share/lot change. Pure cash movements (`deposit`, `withdrawal`, `fee`, `interest`, `transfer_cash`, and `dividend` — a payment linked to a security with no share price or count change) carry no such hazard and share the same future-date latitude as bank transactions. Without this carve-out, a paycheck whose legs fund a 401k or HSA could not be posted ahead of payday.
+
 Lookup of the pair from a transfer-line must therefore consult both tables:
 
 ```sql

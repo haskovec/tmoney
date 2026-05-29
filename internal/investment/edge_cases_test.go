@@ -462,9 +462,13 @@ func TestSM180_PriceDateValidation(t *testing.T) {
 		}
 	})
 
-	t.Run("investment transaction with future date is rejected", func(t *testing.T) {
+	t.Run("position/price-bearing transaction with future date is rejected", func(t *testing.T) {
 		futureDate := types.Today().AddYears(1)
-		txn := NewTransaction(types.NewID(), futureDate, TransactionTypeDeposit, types.MustNewMoney("100.00"))
+		// A buy mutates shares and auto-creates a price row, so it stays
+		// restricted to non-future dates.
+		txn := NewTransaction(types.NewID(), futureDate, TransactionTypeBuy, types.MustNewMoney("100.00"))
+		txn.SetSecurity(types.NewID())
+		txn.SetShares(types.MustNewQuantity("10"))
 
 		errs := txn.Validate()
 		if !errs.HasErrors() {
@@ -472,6 +476,44 @@ func TestSM180_PriceDateValidation(t *testing.T) {
 		}
 		if !hasFieldError(errs, "date") {
 			t.Error("Expected 'date' field error")
+		}
+	})
+
+	t.Run("cash transaction with future date is accepted", func(t *testing.T) {
+		futureDate := types.Today().AddYears(1)
+		// Pure cash ops (deposit, withdrawal, fee, interest, transfer_cash)
+		// carry no price/share hazard and may be dated forward.
+		txn := NewTransaction(types.NewID(), futureDate, TransactionTypeDeposit, types.MustNewMoney("100.00"))
+
+		errs := txn.Validate()
+		if hasFieldError(errs, "date") {
+			t.Errorf("Future date should be valid for a cash transaction, got error: %v", errs)
+		}
+	})
+
+	t.Run("future-dated transfer_cash is accepted", func(t *testing.T) {
+		futureDate := types.Today().AddYears(1)
+		// The paycheck-into-401k/HSA case: a transfer-cash counterpart minted
+		// for a future-dated scheduled post must validate.
+		txn := NewTransaction(types.NewID(), futureDate, TransactionTypeTransferCash, types.MustNewMoney("200.00"))
+		txn.SetTransfer(types.NewID(), types.NewID())
+
+		errs := txn.Validate()
+		if hasFieldError(errs, "date") {
+			t.Errorf("Future date should be valid for transfer_cash, got error: %v", errs)
+		}
+	})
+
+	t.Run("future-dated dividend is accepted", func(t *testing.T) {
+		futureDate := types.Today().AddYears(1)
+		// A dividend is linked to a security but involves no share price or
+		// count change, so it is treated as a cash op.
+		txn := NewTransaction(types.NewID(), futureDate, TransactionTypeDividend, types.MustNewMoney("50.00"))
+		txn.SetSecurity(types.NewID())
+
+		errs := txn.Validate()
+		if hasFieldError(errs, "date") {
+			t.Errorf("Future date should be valid for a dividend, got error: %v", errs)
 		}
 	})
 
@@ -500,14 +542,14 @@ func TestSM180_PriceDateValidation(t *testing.T) {
 		}
 	})
 
-	t.Run("deposit with future date rejected via service", func(t *testing.T) {
+	t.Run("deposit with future date accepted via service", func(t *testing.T) {
 		env := createFullTestService(t)
 		acct := createInvAccount(t, env.accountRepo, "FutureDeposit")
 
 		futureDate := types.Today().AddYears(1)
 		_, err := env.svc.Deposit(acct.ID, futureDate, types.MustNewMoney("1000.00"), "")
-		if err == nil {
-			t.Fatal("Expected error for deposit with future date")
+		if err != nil {
+			t.Fatalf("deposit with future date should succeed, got: %v", err)
 		}
 	})
 }

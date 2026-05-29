@@ -118,6 +118,18 @@ func (itt TransactionType) RequiresShares() bool {
 	return false
 }
 
+// mutatesPositionOrPrice reports whether posting this type would create a
+// future-dated price row (buy/sell/reinvest auto-create one) or a future
+// share/lot change — the only reason an investment transaction is restricted
+// to non-future dates. Pure cash operations (deposit, withdrawal, fee,
+// interest, transfer_cash, and dividend — a payment linked to a security but
+// involving no share price or count change) carry no such hazard and may be
+// dated in the future, mirroring bank transactions (e.g. posting a scheduled
+// paycheck whose transfer legs fund a 401k or HSA a day early).
+func (itt TransactionType) mutatesPositionOrPrice() bool {
+	return itt.RequiresShares()
+}
+
 // AffectsCash returns true if this transaction type affects the account cash position.
 func (itt TransactionType) AffectsCash() bool {
 	switch itt {
@@ -424,7 +436,12 @@ func (t *Transaction) Validate() types.ValidationErrors {
 	// Required fields
 	v.RequiredID("account_id", t.AccountID)
 	v.RequiredDate("date", t.Date)
-	v.NotFutureDate("date", t.Date)
+	// Only position/price-bearing types are restricted to non-future dates;
+	// cash operations (incl. dividend) may be scheduled forward. See
+	// mutatesPositionOrPrice.
+	if t.Type.mutatesPositionOrPrice() {
+		v.NotFutureDate("date", t.Date)
+	}
 
 	// Type must be valid
 	if !t.Type.IsValid() {
