@@ -191,6 +191,100 @@ func (c *PostScheduledTransactionCommand) CreatedTransaction() *transaction.Tran
 }
 
 // =============================================================================
+// PostScheduledTransferCommand
+// =============================================================================
+
+// PostScheduledTransferCommand posts one occurrence of a single-line transfer
+// schedule from the post-time preview, using the edited date / amount and
+// applying the edited memo + status to both legs. PostWithDate creates a clean
+// linked transfer pair via the transaction service. Undo deletes the created
+// pair (deleting either leg cascades to its counterpart) and restores the
+// schedule to its previous state.
+type PostScheduledTransferCommand struct {
+	svc        *scheduled.Service
+	txnSvc     *transaction.Service
+	id         types.ID
+	date       types.Date
+	amount     types.Money
+	memo       string
+	cleared    bool
+	beforeST   *scheduled.Transaction
+	createdTxn *transaction.Transaction
+}
+
+// NewPostScheduledTransferCommand creates a command that posts a transfer
+// schedule occurrence on the given date for the given (positive) amount.
+func NewPostScheduledTransferCommand(
+	svc *scheduled.Service,
+	txnSvc *transaction.Service,
+	id types.ID,
+	date types.Date,
+	amount types.Money,
+	memo string,
+	cleared bool,
+) *PostScheduledTransferCommand {
+	return &PostScheduledTransferCommand{
+		svc:     svc,
+		txnSvc:  txnSvc,
+		id:      id,
+		date:    date,
+		amount:  amount,
+		memo:    memo,
+		cleared: cleared,
+	}
+}
+
+func (c *PostScheduledTransferCommand) Execute() error {
+	before, err := c.svc.GetByID(c.id)
+	if err != nil {
+		return err
+	}
+	c.beforeST = before
+
+	amount := c.amount
+	txn, err := c.svc.PostWithDate(c.id, c.date, &amount)
+	if err != nil {
+		return err
+	}
+	c.createdTxn = txn
+
+	// Apply the preview's edited memo + status to both legs. PostWithDate
+	// posts using the template memo and uncleared status; this overwrites
+	// them with the user's one-off edits.
+	status := transaction.StatusUncleared
+	if c.cleared {
+		status = transaction.StatusCleared
+	}
+	if txn.TransferID.Valid {
+		if err := c.txnSvc.UpdateTransfer(txn.TransferID.ID, c.date, c.amount, c.memo, status); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *PostScheduledTransferCommand) Undo() error {
+	if c.createdTxn != nil {
+		if err := c.txnSvc.Delete(c.createdTxn.ID); err != nil {
+			return err
+		}
+	}
+	if c.beforeST != nil {
+		return c.svc.Update(c.beforeST)
+	}
+	return nil
+}
+
+func (c *PostScheduledTransferCommand) Description() string {
+	return "Post scheduled transfer"
+}
+
+// CreatedTransaction returns the From-leg transaction created by Execute.
+func (c *PostScheduledTransferCommand) CreatedTransaction() *transaction.Transaction {
+	return c.createdTxn
+}
+
+// =============================================================================
 // PostScheduledTransactionWithEditsCommand
 // =============================================================================
 

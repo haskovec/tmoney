@@ -129,6 +129,12 @@ type Transaction struct {
 	Amount     types.NullableMoney  `json:"amount"` // Null if variable amount
 	Memo       types.NullableString `json:"memo"`
 
+	// TransferAccountID, when set, marks this as a single-line transfer
+	// schedule: account_id is the source ("From") and TransferAccountID is
+	// the destination ("To"). Mutually exclusive with CategoryID and with
+	// multi-line Splits. Posting creates a clean linked transfer pair.
+	TransferAccountID types.NullableID `json:"transfer_account_id"`
+
 	// Variable amount estimation
 	AmountEstimateCount types.NullableInt `json:"amount_estimate_count"` // Use average of last N transactions
 
@@ -214,6 +220,26 @@ func (st *Transaction) ClearCategory() {
 // HasCategory returns true if the scheduled transaction has a category set.
 func (st *Transaction) HasCategory() bool {
 	return st.CategoryID.Valid
+}
+
+// SetTransfer marks this as a single-line transfer schedule whose destination
+// ("To") is transferAccountID. The source ("From") is the schedule's own
+// AccountID. Clears any category, since the two shapes are mutually exclusive.
+func (st *Transaction) SetTransfer(transferAccountID types.ID) {
+	st.TransferAccountID = types.NullableID{ID: transferAccountID, Valid: true}
+	st.CategoryID = types.NullableID{Valid: false}
+	st.Touch()
+}
+
+// ClearTransfer removes the transfer destination.
+func (st *Transaction) ClearTransfer() {
+	st.TransferAccountID = types.NullableID{Valid: false}
+	st.Touch()
+}
+
+// IsTransfer returns true if this is a single-line transfer schedule.
+func (st *Transaction) IsTransfer() bool {
+	return st.TransferAccountID.Valid
 }
 
 // SetAmount sets the amount for this scheduled transaction.
@@ -658,6 +684,25 @@ func (st *Transaction) Validate() types.ValidationErrors {
 	// Optional field length limits
 	if st.Memo.Valid {
 		v.MaxLength("memo", st.Memo.String, 1000)
+	}
+
+	// Single-line transfer invariants.
+	if st.TransferAccountID.Valid {
+		// Mutually exclusive with a scalar category and with multi-line splits.
+		if st.CategoryID.Valid {
+			v.AddError("transfer_account_id", "a transfer schedule cannot also set a category")
+		}
+		if len(st.Splits) > 0 {
+			v.AddError("transfer_account_id", "a transfer schedule cannot also have split lines")
+		}
+		// Cannot transfer to the source account.
+		if st.TransferAccountID.ID == st.AccountID {
+			v.AddError("transfer_account_id", "cannot transfer to the same account")
+		}
+		// A transfer always carries a fixed (estimated) amount.
+		if !st.Amount.Valid {
+			v.AddError("amount", "a transfer schedule requires an amount")
+		}
 	}
 
 	return v.Errors()

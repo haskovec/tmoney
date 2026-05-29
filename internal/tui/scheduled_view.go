@@ -214,6 +214,8 @@ func (a *App) handleScheduledKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.deleteSelectedScheduled()
 	case key.Matches(msg, a.keys.New):
 		return a, a.loadNewScheduledDialogData()
+	case msg.String() == "t":
+		return a, a.loadNewScheduledTransferDialogData()
 	case key.Matches(msg, a.keys.Edit):
 		return a, a.loadEditScheduledDialogData()
 	}
@@ -373,9 +375,16 @@ func (a *App) formatScheduledRow(st *scheduled.Transaction, isDue bool) []string
 	// Next date
 	dateStr := st.NextDate.Time().Format("01/02/06")
 
-	// Payee
+	// Payee — for a transfer schedule there is no payee; show the
+	// destination account as "→ To" in this column instead.
 	payee := ""
-	if st.HasPayee() {
+	if st.IsTransfer() {
+		if name, ok := a.scheduled.accountNames[st.TransferAccountID.ID]; ok {
+			payee = "→ " + name
+		} else {
+			payee = "→ transfer"
+		}
+	} else if st.HasPayee() {
 		if name, ok := a.scheduled.payeeNames[st.PayeeID.ID]; ok {
 			payee = name
 		}

@@ -84,6 +84,13 @@ tmoney -f personal.tdb account balance
 - Multiple frequencies: daily, weekly, biweekly, monthly, quarterly, yearly
 - Fixed or indefinite duration
 - Variable amount estimation (single-line schedules only)
+- **Scheduled transfers** (`t` on the Scheduled view): a recurring transfer
+  between two regular accounts — e.g. a monthly credit-card payment from
+  Checking, or a savings sweep. Stored as a single-line transfer (From → To);
+  posting creates a clean linked transfer pair, identical to an ad-hoc
+  transfer. Put an estimate on the schedule and edit the real amount in the
+  post-time preview. Investment-account destinations (401k/HSA) use the
+  paycheck/multi-line flow instead.
 - Post or skip workflow
 - **Multi-line templates** for compound events (paychecks, etc.):
   a single scheduled transaction can carry multiple categorized and/or
@@ -226,6 +233,7 @@ Press `?` at any time to show the help overlay.
 | `s` | Skip occurrence |
 | `e` | Edit series — modify the template (affects all future occurrences) |
 | `n` | New scheduled transaction |
+| `t` | New scheduled transfer (recurring transfer between two accounts) |
 | `d` | Delete scheduled transaction |
 
 #### Reports

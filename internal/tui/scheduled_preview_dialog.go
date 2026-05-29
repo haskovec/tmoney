@@ -37,6 +37,13 @@ const (
 	previewMultiFieldMemo     = 2
 	previewMultiFieldStatus   = 3
 	previewStatusUnclearedIdx = 0
+
+	// Transfer preview fields. From/To render as a read-only body message
+	// ("Checking → Visa"); only Date / Amount / Memo / Status are editable.
+	previewXferFieldDate   = 0
+	previewXferFieldAmount = 1
+	previewXferFieldMemo   = 2
+	previewXferFieldStatus = 3
 )
 
 // SchedulePreviewDialog is the Quicken-style "post one occurrence" dialog
@@ -146,6 +153,17 @@ func NewSchedulePreviewDialog(
 
 	dateStr := template.NextDate.Time().Format("01/02/2006")
 
+	if template.IsTransfer() {
+		fromName := accountNameByID(accounts, template.AccountID)
+		toName := accountNameByID(accounts, template.TransferAccountID.ID)
+		amountStr := ""
+		if template.HasAmount() {
+			amountStr = template.Amount.Money.Abs().String()
+		}
+		p.headerDialog = buildPreviewHeaderTransfer(fromName, toName, dateStr, amountStr, memo)
+		return p
+	}
+
 	if len(template.Splits) > 0 {
 		p.headerDialog = buildPreviewHeaderMulti(dateStr, payeeName, memo)
 
@@ -226,6 +244,85 @@ func buildPreviewHeaderMulti(dateStr, payeeName, memo string) *dialog.Dialog {
 
 	d.SetVisible(true)
 	return d
+}
+
+// submitSchedulePreviewTransfer posts one occurrence of a transfer schedule
+// using the edited date / amount / memo / status, creating a clean linked
+// transfer pair. Edits are one-off — the template is untouched.
+func (a *App) submitSchedulePreviewTransfer(template *scheduled.Transaction, header *dialog.Dialog) (tea.Model, tea.Cmd) {
+	header.ClearErrors()
+	fields := header.Fields()
+	hasErrors := false
+
+	date, err := parseDateInput(fields[previewXferFieldDate].Value)
+	if err != nil {
+		fields[previewXferFieldDate].Error = "Invalid date (MM/DD/YYYY)"
+		hasErrors = true
+	}
+
+	var magnitude types.Money
+	if m, perr := parseAmountInput(strings.TrimSpace(fields[previewXferFieldAmount].Value)); perr != nil {
+		fields[previewXferFieldAmount].Error = "Invalid amount"
+		hasErrors = true
+	} else {
+		magnitude = m.Abs()
+	}
+
+	memo := strings.TrimSpace(fields[previewXferFieldMemo].Value)
+	cleared := fields[previewXferFieldStatus].SelectedIndex == 1
+
+	if hasErrors {
+		return a, nil
+	}
+
+	templateID := template.ID
+	a.closeSchedulePreviewDialog()
+
+	return a, func() tea.Msg {
+		if a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("undo manager not available")}
+		}
+		cmd := undo.NewPostScheduledTransferCommand(
+			a.scheduledTxnSvc,
+			a.transactionSvc,
+			templateID,
+			date,
+			magnitude,
+			memo,
+			cleared,
+		)
+		if err := a.undoManager.Execute(cmd); err != nil {
+			return errMsg{err: fmt.Errorf("failed to post scheduled transfer: %w", err)}
+		}
+		return scheduledPostedMsg{}
+	}
+}
+
+// buildPreviewHeaderTransfer builds the header for a single-line transfer
+// preview. From/To are read-only (re-orienting a transfer is an Edit-Series
+// action); Date / Amount / Memo / Status are editable for this one occurrence.
+func buildPreviewHeaderTransfer(fromName, toName, dateStr, amountStr, memo string) *dialog.Dialog {
+	d := dialog.NewDialog("Post Scheduled Transfer")
+	d.SetWidth(62)
+	d.SetMessage(fromName + " → " + toName)
+
+	f := d.AddDateField("Date", dateStr)
+	f.Required = true
+
+	af := d.AddTextField("Amount", amountStr, "100.00", 12)
+	af.Required = true
+
+	d.AddTextField("Memo", memo, "Optional memo", 0)
+	d.AddRadioField("Status", []string{"Uncleared", "Cleared"}, previewStatusUnclearedIdx)
+
+	d.SetVisible(true)
+	return d
+}
+
+// IsTransfer reports whether this preview is for a single-line transfer
+// schedule.
+func (p *SchedulePreviewDialog) IsTransfer() bool {
+	return p.template != nil && p.template.IsTransfer()
 }
 
 // Template returns the underlying scheduled transaction this preview
@@ -603,6 +700,10 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 	header := a.schedPreviewDialog.HeaderDialog()
 	if header == nil || template == nil {
 		return a, nil
+	}
+
+	if a.schedPreviewDialog.IsTransfer() {
+		return a.submitSchedulePreviewTransfer(template, header)
 	}
 
 	header.ClearErrors()

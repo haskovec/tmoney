@@ -74,14 +74,29 @@ func (r *Repository) Create(st *Transaction) error {
 		}
 	}
 
+	// Verify transfer destination account exists if specified
+	if st.TransferAccountID.Valid {
+		var transferAccountExists bool
+		err := r.db.Conn().QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM accounts WHERE CAST(id AS VARCHAR) = ?)`,
+			st.TransferAccountID.ID.String(),
+		).Scan(&transferAccountExists)
+		if err != nil {
+			return fmt.Errorf("failed to check transfer account exists: %w", err)
+		}
+		if !transferAccountExists {
+			return &dberrors.NotFoundError{Entity: "account", ID: st.TransferAccountID.ID.String()}
+		}
+	}
+
 	query := `
 		INSERT INTO scheduled_transactions (
-			id, account_id, payee_id, category_id, amount, memo,
+			id, account_id, payee_id, category_id, transfer_account_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = r.db.Conn().Exec(query,
@@ -89,6 +104,7 @@ func (r *Repository) Create(st *Transaction) error {
 		st.AccountID,
 		dbutil.NullID(st.PayeeID),
 		dbutil.NullID(st.CategoryID),
+		dbutil.NullID(st.TransferAccountID),
 		dbutil.NullMoney(st.Amount),
 		dbutil.NullString(st.Memo),
 		st.Frequency,
@@ -117,7 +133,7 @@ func (r *Repository) Create(st *Transaction) error {
 // GetByID retrieves a scheduled transaction by its ID.
 func (r *Repository) GetByID(id types.ID) (*Transaction, error) {
 	query := `
-		SELECT id, account_id, payee_id, category_id, amount, memo,
+		SELECT id, account_id, payee_id, category_id, transfer_account_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
@@ -132,6 +148,7 @@ func (r *Repository) GetByID(id types.ID) (*Transaction, error) {
 		&st.AccountID,
 		&st.PayeeID,
 		&st.CategoryID,
+		&st.TransferAccountID,
 		&st.Amount,
 		&st.Memo,
 		&st.Frequency,
@@ -177,7 +194,7 @@ func (r *Repository) loadSplits(st *Transaction) error {
 // List retrieves all scheduled transactions ordered by next_date ascending.
 func (r *Repository) List() ([]*Transaction, error) {
 	query := `
-		SELECT id, account_id, payee_id, category_id, amount, memo,
+		SELECT id, account_id, payee_id, category_id, transfer_account_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
@@ -192,7 +209,7 @@ func (r *Repository) List() ([]*Transaction, error) {
 // ListByAccount retrieves all scheduled transactions for a specific account.
 func (r *Repository) ListByAccount(accountID types.ID) ([]*Transaction, error) {
 	query := `
-		SELECT id, account_id, payee_id, category_id, amount, memo,
+		SELECT id, account_id, payee_id, category_id, transfer_account_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
@@ -208,7 +225,7 @@ func (r *Repository) ListByAccount(accountID types.ID) ([]*Transaction, error) {
 // ListDue retrieves all scheduled transactions that are due (next_date <= today).
 func (r *Repository) ListDue() ([]*Transaction, error) {
 	query := `
-		SELECT id, account_id, payee_id, category_id, amount, memo,
+		SELECT id, account_id, payee_id, category_id, transfer_account_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
@@ -227,7 +244,7 @@ func (r *Repository) ListUpcoming(days int) ([]*Transaction, error) {
 	targetDate := types.Today().AddDays(days)
 
 	query := `
-		SELECT id, account_id, payee_id, category_id, amount, memo,
+		SELECT id, account_id, payee_id, category_id, transfer_account_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
@@ -246,7 +263,7 @@ func (r *Repository) ListAutoPostDue() ([]*Transaction, error) {
 	today := types.Today().Time()
 
 	query := `
-		SELECT id, account_id, payee_id, category_id, amount, memo,
+		SELECT id, account_id, payee_id, category_id, transfer_account_id, amount, memo,
 			frequency, interval, start_date, end_date, occurrences,
 			day_of_month, secondary_day_of_month, day_of_week, next_date, occurrences_remaining,
 			amount_estimate_count, auto_post, post_lead_days,
@@ -304,11 +321,27 @@ func (r *Repository) Update(st *Transaction) error {
 		}
 	}
 
+	// Verify transfer destination account exists if specified
+	if st.TransferAccountID.Valid {
+		var transferAccountExists bool
+		err := r.db.Conn().QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM accounts WHERE CAST(id AS VARCHAR) = ?)`,
+			st.TransferAccountID.ID.String(),
+		).Scan(&transferAccountExists)
+		if err != nil {
+			return fmt.Errorf("failed to check transfer account exists: %w", err)
+		}
+		if !transferAccountExists {
+			return &dberrors.NotFoundError{Entity: "account", ID: st.TransferAccountID.ID.String()}
+		}
+	}
+
 	result, err := r.db.Conn().Exec(`
 		UPDATE scheduled_transactions SET
 			account_id = CAST(? AS UUID),
 			payee_id = ?,
 			category_id = ?,
+			transfer_account_id = ?,
 			amount = ?,
 			memo = ?,
 			frequency = ?,
@@ -330,6 +363,7 @@ func (r *Repository) Update(st *Transaction) error {
 		st.AccountID.String(),
 		dbutil.NullID(st.PayeeID),
 		dbutil.NullID(st.CategoryID),
+		dbutil.NullID(st.TransferAccountID),
 		dbutil.NullMoney(st.Amount),
 		dbutil.NullString(st.Memo),
 		st.Frequency.String(),
@@ -478,6 +512,7 @@ func (r *Repository) scanTransactions(rows *sql.Rows) ([]*Transaction, error) {
 			&st.AccountID,
 			&st.PayeeID,
 			&st.CategoryID,
+			&st.TransferAccountID,
 			&st.Amount,
 			&st.Memo,
 			&st.Frequency,

@@ -1,0 +1,22 @@
+-- Migration 022: Single-line scheduled transfers.
+--
+-- Adds transfer_account_id to scheduled_transactions so a schedule can
+-- represent a recurring transfer (e.g. a monthly credit-card payment from
+-- Checking) as a first-class single-line row — account_id is the source
+-- ("From"), transfer_account_id is the destination ("To"). This mirrors how
+-- the regular transactions table carries transfer_account_id and lets the
+-- post-time preview create a clean linked transfer pair (identical to the
+-- register's `t`) instead of a one-line split.
+--
+-- A parent scheduled_transactions row is now one of three mutually exclusive
+-- shapes: categorized (category_id set), transfer (transfer_account_id set),
+-- or multi-line (scheduled_split_items children). Service-layer validation
+-- enforces the exclusivity.
+--
+-- Deliberately a plain nullable column with NO foreign key and NO index:
+-- an FK here would make scheduled_transactions another child of accounts,
+-- and an index would let DuckDB rewrite UPDATEs as DELETE+INSERT — both of
+-- which reintroduce the account-rename UPDATE failure that migrations 016
+-- and 021 removed. Referential integrity is checked at the service layer.
+
+ALTER TABLE scheduled_transactions ADD COLUMN transfer_account_id UUID;

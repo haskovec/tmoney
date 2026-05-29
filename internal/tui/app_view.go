@@ -303,7 +303,7 @@ func (a *App) getKeyHints() string {
 	case ViewRegister:
 		return "↑↓ navigate  enter edit  n new  t transfer  c clear  v void  r reconcile  d delete  esc back  " + common
 	case ViewScheduled:
-		return "↑↓ navigate  enter post  s skip  n new  e edit  d delete  esc back  " + common
+		return "↑↓ navigate  enter post  s skip  n new  t transfer  e edit  d delete  esc back  " + common
 	case ViewReports:
 		return "←→ period  n net worth  s spending  y year  m month  esc back  " + common
 	case ViewReconciliation:

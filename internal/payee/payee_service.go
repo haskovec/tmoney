@@ -313,7 +313,8 @@ func (s *Service) MergePayees(sourceID, targetID types.ID) error {
 			occurrences, day_of_month, secondary_day_of_month, day_of_week, next_date,
 			occurrences_remaining, amount_estimate_count,
 			auto_post, post_lead_days,
-			created_at, CURRENT_TIMESTAMP AS updated_at
+			created_at, CURRENT_TIMESTAMP AS updated_at,
+			transfer_account_id
 		FROM scheduled_transactions
 		WHERE CAST(payee_id AS VARCHAR) = ?
 	`, targetID.String(), sourceID.String())

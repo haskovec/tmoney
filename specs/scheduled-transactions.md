@@ -13,9 +13,10 @@ A scheduled transaction may be **single-line** (one account, one payee, one cate
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
 | `id` | UUID | Yes | Unique identifier |
-| `account_id` | UUID | Yes | Account for the transaction |
+| `account_id` | UUID | Yes | Account for the transaction (the "From" account on a transfer schedule) |
 | `payee_id` | UUID | No | Payee reference |
-| `category_id` | UUID | No | Default category |
+| `category_id` | UUID | No | Default category (NULL on transfer and multi-line schedules) |
+| `transfer_account_id` | UUID | No | Destination ("To") account when this is a single-line transfer schedule. Mutually exclusive with `category_id` and with split children. |
 | `amount` | decimal | No | Scheduled amount (null if variable) |
 | `memo` | string | No | Transaction memo |
 | `created_at` | timestamp | Yes | When record was created |
@@ -119,6 +120,35 @@ When `next_date` is reached (or passed):
 ### Auto-Post Interaction
 
 Auto-post bypasses the preview entirely and creates the transaction(s) using template values exactly. Users who want preview-before-post on a given schedule leave auto-post off. For paychecks, most users leave auto-post off precisely because of FICA-penny fluctuations.
+
+## Single-Line Transfers
+
+A scheduled transaction may be a **single-line transfer**: `transfer_account_id`
+is set (the destination), `account_id` is the source, `category_id` is NULL, and
+there are no split children. This models a recurring transfer between two
+**regular** accounts — a monthly credit-card payment from Checking, a savings
+sweep, a loan payment.
+
+- Created in the TUI via `t` on the Scheduled view (mirrors the register's
+  `t`), which opens a From / To / Amount / Memo dialog plus the recurrence
+  fields. The From/To pickers exclude investment-type accounts.
+- The stored `amount` is the signed effect on the source account (negative).
+  The dialog shows a positive magnitude; the list shows the negative amount.
+- **Amount is required** (an estimate). There is no variable/null transfer
+  amount — the post-time preview pre-fills the estimate and the user edits the
+  real figure for that one occurrence (one-off; the template keeps the estimate).
+- Posting (preview Enter, or auto-post) creates a **clean linked transfer pair**
+  via the transaction service's transfer path — identical to an ad-hoc
+  transfer, not a one-line split. For bank↔bank both legs are regular rows.
+- A schedule is exactly one of three shapes: categorized single-line, transfer
+  single-line, or multi-line — enforced by validation.
+- **Investment-account destinations** (401k/HSA) are out of scope here; fund
+  those on a schedule via the paycheck wizard / a multi-line scheduled
+  transaction (whose transfer lines route to `investment_transactions`). See
+  [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md).
+
+The CLI does not yet support creating transfer schedules (`scheduled add` is
+category-only); this is a TUI-only feature in v1.
 
 ## Multi-Line Schedules
 

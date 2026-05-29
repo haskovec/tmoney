@@ -76,11 +76,12 @@ const (
 
 // scheduledDialogData holds the loaded data needed for the scheduled dialog.
 type scheduledDialogData struct {
-	mode      scheduledDialogMode
-	scheduled *scheduled.Transaction // non-nil when editing
-	accounts  []*account.Account
-	payees    []*payee.Payee
-	payeeMap  map[string]*payee.Payee // lowercase name -> payee
+	mode       scheduledDialogMode
+	scheduled  *scheduled.Transaction // non-nil when editing
+	accounts   []*account.Account
+	payees     []*payee.Payee
+	payeeMap   map[string]*payee.Payee // lowercase name -> payee
+	isTransfer bool                    // true for the single-line transfer dialog
 }
 
 // scheduledDialogDataMsg is sent when scheduled dialog data has been loaded.
@@ -392,9 +393,10 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 	st := a.scheduled.allTxns[cursor]
 	return func() tea.Msg {
 		data := &scheduledDialogData{
-			mode:      scheduledDialogModeEdit,
-			scheduled: st,
-			payeeMap:  make(map[string]*payee.Payee),
+			mode:       scheduledDialogModeEdit,
+			scheduled:  st,
+			payeeMap:   make(map[string]*payee.Payee),
+			isTransfer: st.IsTransfer(),
 		}
 
 		if a.accountSvc != nil {
@@ -438,6 +440,9 @@ func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	action := a.schedDialog.HandleKey(msg)
 	switch action {
 	case dialog.DialogActionSubmit:
+		if a.schedDialogData != nil && a.schedDialogData.isTransfer {
+			return a.submitScheduledTransferDialog()
+		}
 		return a.submitScheduledDialog()
 	case dialog.DialogActionCancel:
 		a.closeScheduledDialog()

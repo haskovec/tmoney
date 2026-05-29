@@ -436,6 +436,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case scheduledDialogDataMsg:
 		a.schedDialogData = msg.data
+
+		// Single-line transfer schedules use a distinct dialog whose From/To
+		// pickers exclude investment accounts (regular↔regular only).
+		if msg.data.isTransfer {
+			accountOptions, accountIDs := buildNonInvestmentAccountOptions(msg.data.accounts)
+			a.schedDialogAccountIDs = accountIDs
+			if msg.data.mode == scheduledDialogModeEdit && msg.data.scheduled != nil {
+				a.schedDialog = buildEditScheduledTransferDialog(msg.data.scheduled, accountOptions, accountIDs)
+			} else {
+				a.schedDialog = buildNewScheduledTransferDialog(accountOptions)
+			}
+			return a, nil
+		}
+
 		accountOptions, accountIDs := buildAccountOptions(msg.data.accounts)
 		a.schedDialogAccountIDs = accountIDs
 

@@ -189,7 +189,24 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 		// Post all overdue occurrences for this scheduled transaction
 		for !st.IsCompleted() && s.isAutoPostDue(st, today) {
 			var txn *transaction.Transaction
-			if len(st.Splits) > 0 {
+			if st.IsTransfer() {
+				// Single-line transfer: post template values exactly as a clean
+				// linked transfer pair.
+				if s.txnSvc == nil {
+					return nil, fmt.Errorf("transfer auto-post requires a transaction service; scheduled.NewService was called with txnSvc=nil")
+				}
+				magnitude := st.Amount.Money.Abs()
+				pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, st.NextDate, magnitude)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create transfer auto-post transaction: %w", err)
+				}
+				if st.Memo.Valid && st.Memo.String != "" {
+					if err := s.txnSvc.UpdateTransfer(pair.FromTransaction.TransferID.ID, st.NextDate, magnitude, st.Memo.String, transaction.StatusUncleared); err != nil {
+						return nil, fmt.Errorf("transfer auto-post created but failed to set memo: %w", err)
+					}
+				}
+				txn = pair.FromTransaction
+			} else if len(st.Splits) > 0 {
 				// Multi-line schedule: delegate to the multi-line create path
 				// so transfer-line counterparts are minted and persisted.
 				if s.txnSvc == nil {
@@ -364,6 +381,11 @@ func (s *Service) PostWithDate(id types.ID, date types.Date, amount *types.Money
 // template and advances the schedule. The returned transaction is the
 // newly-created real transaction.
 func (s *Service) postSingleLine(st *Transaction, date types.Date, amount *types.Money) (*transaction.Transaction, error) {
+	// Single-line transfer schedules create a clean linked transfer pair.
+	if st.IsTransfer() {
+		return s.postSingleLineTransfer(st, date, amount)
+	}
+
 	// Determine the amount to use
 	var txnAmount types.Money
 	switch {
@@ -412,6 +434,51 @@ func (s *Service) postSingleLine(st *Transaction, date types.Date, amount *types
 	}
 
 	return txn, nil
+}
+
+// postSingleLineTransfer creates a clean linked transfer pair from a
+// single-line transfer schedule (account_id = From, transfer_account_id = To)
+// and advances the schedule. The schedule stores the amount as the signed
+// effect on the source account (negative); CreateTransfer wants a positive
+// magnitude, so the amount is taken as an absolute value. An optional override
+// (the post-time preview's edited amount) replaces the stored estimate for
+// this one occurrence without changing the template.
+func (s *Service) postSingleLineTransfer(st *Transaction, date types.Date, amount *types.Money) (*transaction.Transaction, error) {
+	if s.txnSvc == nil {
+		return nil, fmt.Errorf("posting a transfer schedule requires a transaction service; scheduled.NewService was called with txnSvc=nil")
+	}
+
+	var magnitude types.Money
+	switch {
+	case amount != nil:
+		magnitude = amount.Abs()
+	case st.HasAmount():
+		magnitude = st.Amount.Money.Abs()
+	default:
+		return nil, &AmountRequiredError{ID: st.ID.String()}
+	}
+
+	pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, date, magnitude)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create scheduled transfer: %w", err)
+	}
+
+	// Carry the schedule's memo onto both legs (CreateTransfer takes no memo).
+	if st.Memo.Valid && st.Memo.String != "" {
+		transferID := pair.FromTransaction.TransferID.ID
+		if err := s.txnSvc.UpdateTransfer(transferID, date, magnitude, st.Memo.String, transaction.StatusUncleared); err != nil {
+			return pair.FromTransaction, fmt.Errorf("transfer created but failed to set memo: %w", err)
+		}
+		// Reflect the persisted memo on the returned (in-memory) From leg.
+		pair.FromTransaction.SetMemo(st.Memo.String)
+	}
+
+	st.AdvanceSchedule()
+	if err := s.repo.Update(st); err != nil {
+		return pair.FromTransaction, fmt.Errorf("transfer created but failed to update schedule: %w", err)
+	}
+
+	return pair.FromTransaction, nil
 }
 
 // postMultiLine creates a multi-line real transaction from a multi-line

@@ -327,6 +327,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		action := a.schedDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
 		case dialog.DialogActionSubmit:
+			if a.schedDialogData != nil && a.schedDialogData.isTransfer {
+				return a.submitScheduledTransferDialog()
+			}
 			return a.submitScheduledDialog()
 		case dialog.DialogActionCancel:
 			a.schedDialog.SetVisible(false)

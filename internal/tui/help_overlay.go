@@ -117,6 +117,7 @@ func scheduledShortcuts() shortcutSection {
 			{"s", "Skip occurrence"},
 			{"e", "Edit scheduled transaction"},
 			{"n", "New scheduled transaction"},
+			{"t", "New scheduled transfer"},
 			{"d", "Delete scheduled transaction"},
 		},
 	}

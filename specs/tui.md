@@ -431,6 +431,7 @@ Each menu label has its shortcut letter underlined to indicate the `Alt+key` sho
 | `s` | Skip occurrence |
 | `e` | Edit series — modify the template (affects all future occurrences) |
 | `n` | New scheduled transaction |
+| `t` | New scheduled transfer (mirrors the register's `t`) |
 | `d` | Delete scheduled transaction |
 
 ## Dialogs
