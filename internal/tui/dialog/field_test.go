@@ -151,6 +151,53 @@ func TestField_InsertChar_NonTextFieldIgnored(t *testing.T) {
 	}
 }
 
+func TestAddNumericField_SetsFlag(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddNumericField("Shares", "10", "0", 12)
+
+	if f.Type != FieldText {
+		t.Errorf("Type = %d, want FieldText (numeric is a plain text field)", f.Type)
+	}
+	if !f.NumericOnly {
+		t.Error("AddNumericField should set NumericOnly = true")
+	}
+	if f.Value != "10" || f.Placeholder != "0" || f.Width != 12 {
+		t.Errorf("AddNumericField did not forward its args: %+v", f)
+	}
+	// A plain text field stays non-numeric.
+	if d.AddTextField("Memo", "", "", 0).NumericOnly {
+		t.Error("AddTextField must leave NumericOnly false")
+	}
+}
+
+func TestField_numericAccepts(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+		r     rune
+		want  bool
+	}{
+		{"digit zero", "", '0', true},
+		{"digit nine", "12", '9', true},
+		{"first dot", "12", '.', true},
+		{"second dot rejected", "1.2", '.', false},
+		{"leading dot ok", "", '.', true},
+		{"letter rejected", "1", 'a', false},
+		{"minus rejected", "", '-', false},
+		{"dollar rejected", "", '$', false},
+		{"comma rejected", "1", ',', false},
+		{"space rejected", "1", ' ', false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &Field{Type: FieldText, Value: tc.value, NumericOnly: true}
+			if got := f.numericAccepts(tc.r); got != tc.want {
+				t.Errorf("numericAccepts(%q) with value %q = %v, want %v", tc.r, tc.value, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestField_DeleteBack(t *testing.T) {
 	f := &Field{Type: FieldText, Value: "hello", cursorPos: 5}
 

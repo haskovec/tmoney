@@ -12,6 +12,19 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+func TestBuildDividendDialog_NumericFields(t *testing.T) {
+	d := buildDividendDialog([]string{"AAPL - Apple Inc."}, nil, []types.ID{types.NewID()})
+	assertNumericFields(t, d, []string{"Amount"}, []string{"Memo"})
+}
+
+func TestBuildReinvestDividendDialog_NumericFields(t *testing.T) {
+	d := buildReinvestDividendDialog([]string{"AAPL - Apple Inc."}, nil, []types.ID{types.NewID()})
+	assertNumericFields(t, d,
+		[]string{"Shares", "Total", "Price/Share"},
+		[]string{"Memo"},
+	)
+}
+
 func TestBuildDividendDialog_NewTransaction(t *testing.T) {
 	options := []string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."}
 	ids := []types.ID{types.NewID(), types.NewID()}

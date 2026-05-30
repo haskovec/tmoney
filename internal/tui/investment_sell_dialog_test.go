@@ -12,6 +12,20 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+func TestBuildSellDialog_NumericFields(t *testing.T) {
+	lot := &investment.Lot{
+		BaseModel:    types.NewBaseModel(),
+		Shares:       types.MustNewQuantity("100"),
+		CostPerShare: types.MustNewMoney("150.00"),
+		PurchaseDate: types.NewDate(2023, time.June, 15),
+	}
+	d := buildSellDialog([]string{"AAPL - Apple Inc."}, nil, []types.ID{types.NewID()}, []*investment.Lot{lot})
+	assertNumericFields(t, d,
+		[]string{"Shares", "Total", "Price/Share", "Commission"},
+		[]string{"Memo"},
+	)
+}
+
 func TestBuildSellDialog_NewTransaction_NonLotTracking(t *testing.T) {
 	options := []string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."}
 	ids := []types.ID{types.NewID(), types.NewID()}

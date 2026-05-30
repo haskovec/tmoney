@@ -76,12 +76,12 @@ func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, 
 	if editTxn != nil && editTxn.Shares.Valid && !editTxn.Shares.Quantity.IsZero() {
 		sharesVal = editTxn.Shares.Quantity.String()
 	}
-	f = d.AddTextField("Shares", sharesVal, "10", 12)
+	f = d.AddNumericField("Shares", sharesVal, "10", 12)
 	f.Required = true
 
 	// Lot allocation fields (only for lot-tracking accounts)
 	for _, lot := range lots {
-		d.AddTextField(buildLotLabel(lot), "", "0", 12)
+		d.AddNumericField(buildLotLabel(lot), "", "0", 12)
 	}
 
 	// Total Amount
@@ -93,21 +93,21 @@ func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, 
 		}
 		totalVal = fmt.Sprintf("%.2f", amt.Float64())
 	}
-	d.AddTextField("Total", totalVal, "1850.00", 12)
+	d.AddNumericField("Total", totalVal, "1850.00", 12)
 
 	// Price Per Share
 	priceVal := ""
 	if editTxn != nil && editTxn.PricePerShare.Valid {
 		priceVal = fmt.Sprintf("%.2f", editTxn.PricePerShare.Money.Float64())
 	}
-	d.AddTextField("Price/Share", priceVal, "185.00", 12)
+	d.AddNumericField("Price/Share", priceVal, "185.00", 12)
 
 	// Commission
 	commVal := ""
 	if editTxn != nil && editTxn.Commission.Valid && !editTxn.Commission.Money.IsZero() {
 		commVal = fmt.Sprintf("%.2f", editTxn.Commission.Money.Float64())
 	}
-	d.AddTextField("Commission", commVal, "0.00", 12)
+	d.AddNumericField("Commission", commVal, "0.00", 12)
 
 	// Memo
 	memoVal := ""

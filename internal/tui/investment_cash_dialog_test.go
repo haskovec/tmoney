@@ -13,6 +13,11 @@ import (
 
 // --- Build dialog tests ---
 
+func TestBuildCashOperationDialog_NumericFields(t *testing.T) {
+	d := buildCashOperationDialog("Deposit", nil)
+	assertNumericFields(t, d, []string{"Amount"}, []string{"Memo"})
+}
+
 func TestBuildCashOperationDialog_Deposit(t *testing.T) {
 	d := buildCashOperationDialog("Deposit", nil)
 

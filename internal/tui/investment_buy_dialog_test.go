@@ -175,6 +175,50 @@ func TestBuildBuyDialog_NewTransaction(t *testing.T) {
 	}
 }
 
+// assertNumericFields is the wiring guard shared by the investment-dialog
+// builder tests: every field whose label is in numericLabels must be
+// NumericOnly (routed through AddNumericField), and every label in plainLabels
+// must not be (e.g. Memo). It also asserts that any per-lot allocation field
+// (label prefixed "Lot:") is NumericOnly.
+func assertNumericFields(t *testing.T, d *dialog.Dialog, numericLabels, plainLabels []string) {
+	t.Helper()
+	byLabel := make(map[string]*dialog.Field)
+	for _, f := range d.Fields() {
+		byLabel[f.Label] = f
+		if strings.HasPrefix(f.Label, "Lot:") && !f.NumericOnly {
+			t.Errorf("per-lot field %q should be NumericOnly", f.Label)
+		}
+	}
+	for _, lbl := range numericLabels {
+		f, ok := byLabel[lbl]
+		if !ok {
+			t.Errorf("no field labeled %q", lbl)
+			continue
+		}
+		if !f.NumericOnly {
+			t.Errorf("field %q should be NumericOnly", lbl)
+		}
+	}
+	for _, lbl := range plainLabels {
+		f, ok := byLabel[lbl]
+		if !ok {
+			t.Errorf("no field labeled %q", lbl)
+			continue
+		}
+		if f.NumericOnly {
+			t.Errorf("field %q should not be NumericOnly", lbl)
+		}
+	}
+}
+
+func TestBuildBuyDialog_NumericFields(t *testing.T) {
+	d := buildBuyDialog([]string{"AAPL - Apple Inc."}, nil, []types.ID{types.NewID()})
+	assertNumericFields(t, d,
+		[]string{"Shares", "Total", "Price/Share", "Commission"},
+		[]string{"Memo"},
+	)
+}
+
 // TestBuildBuyDialog_DateFieldMaskedOverwrite verifies the buy dialog's
 // Date field uses overwrite-style masked input — typing a digit replaces
 // the digit at the cursor and auto-advances over the slash.

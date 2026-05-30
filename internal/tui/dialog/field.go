@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"strings"
 	"time"
 
 	"github.com/haskovec/tmoney/internal/types"
@@ -144,6 +145,15 @@ type Field struct {
 	// use isBlankDateInput to detect the unfilled state and treat it as
 	// missing rather than invalid.
 	OptionalBlank bool
+	// NumericOnly, when true on a FieldText, restricts typed input to the
+	// digits 0-9 and at most one decimal point. Any other rune (sign, '$',
+	// comma, letter, space) is silently dropped at the input layer, mirroring
+	// the digit-only filter on FieldDate. The field is otherwise an ordinary
+	// FieldText — cursor, edit, paste, and render behavior are unchanged.
+	// Set via AddNumericField; used by the investment-register dialogs whose
+	// Shares/Amount/Price/Total/Commission fields are always positive
+	// magnitudes. Programmatic Value prefills are not filtered.
+	NumericOnly bool
 	// DateMask describes the format of a FieldDate ('M', 'D', 'Y' mark
 	// digit positions; any other character is a literal separator).
 	// Defaults to dateMaskUS ("MM/DD/YYYY") via the helpers below; ISO
@@ -159,6 +169,17 @@ type Field struct {
 	// absolute option index. When AddNewLabel is set, the highlight may
 	// also point one past the last filtered match — the action row.
 	ComboHighlight int
+}
+
+// numericAccepts reports whether r is a permissible keystroke for a
+// NumericOnly field: a digit always, or a decimal point only when the field
+// does not already contain one (so the value can never grow a second dot and
+// always parses as a number). Callers gate on f.NumericOnly before using it.
+func (f *Field) numericAccepts(r rune) bool {
+	if r >= '0' && r <= '9' {
+		return true
+	}
+	return r == '.' && !strings.ContainsRune(f.Value, '.')
 }
 
 // InsertChar inserts a character at the cursor position.
@@ -415,6 +436,17 @@ func (d *Dialog) AddTextField(label, value, placeholder string, width int) *Fiel
 		cursorPos:   len([]rune(value)),
 	}
 	d.fields = append(d.fields, f)
+	return f
+}
+
+// AddNumericField adds a text input field that accepts only digits and a
+// single decimal point (see Field.NumericOnly), returning it. It is an
+// ordinary FieldText in every other respect; the input restriction is applied
+// at the key-handling layer. Used by the investment-register dialogs for
+// Shares/Amount/Price/Total/Commission and per-lot allocation fields.
+func (d *Dialog) AddNumericField(label, value, placeholder string, width int) *Field {
+	f := d.AddTextField(label, value, placeholder, width)
+	f.NumericOnly = true
 	return f
 }
 

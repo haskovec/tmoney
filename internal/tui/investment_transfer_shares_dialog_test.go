@@ -64,6 +64,24 @@ func TestBuildInvestmentAccountOptions_NoOtherInvestment(t *testing.T) {
 
 // --- buildTransferSharesDialog tests ---
 
+func TestBuildTransferSharesDialog_NumericFields(t *testing.T) {
+	lot := &investment.Lot{
+		BaseModel:    types.NewBaseModel(),
+		Shares:       types.MustNewQuantity("100"),
+		CostPerShare: types.MustNewMoney("150.00"),
+		PurchaseDate: types.NewDate(2023, time.June, 15),
+	}
+	d := buildTransferSharesDialog(
+		[]string{"IRA"},
+		[]string{"AAPL - Apple Inc."},
+		nil,
+		[]types.ID{types.NewID()},
+		[]types.ID{types.NewID()},
+		[]*investment.Lot{lot},
+	)
+	assertNumericFields(t, d, []string{"Shares"}, []string{"Memo"})
+}
+
 func TestBuildTransferSharesDialog_Basic(t *testing.T) {
 	acctOptions := []string{"IRA"}
 	secOptions := []string{"AAPL - Apple Inc", "MSFT - Microsoft Corp"}

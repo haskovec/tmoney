@@ -88,15 +88,27 @@ func (d *Dialog) handleTextFieldKey(field *Field, msg tea.KeyPressMsg) {
 		field.MoveCursorEnd()
 		return
 	case "space":
+		if field.NumericOnly {
+			return // space is not a digit or decimal point
+		}
 		field.InsertChar(' ')
 		field.Error = ""
 		return
 	}
 	if msg.Text != "" {
+		inserted := false
 		for _, r := range msg.Text {
+			if field.NumericOnly && !field.numericAccepts(r) {
+				continue // silently drop non-numeric input
+			}
 			field.InsertChar(r)
+			inserted = true
 		}
-		field.Error = ""
+		// Clearing the error only when a rune actually landed keeps a visible
+		// validation message in place while the user mashes rejected keys.
+		if inserted {
+			field.Error = ""
+		}
 	}
 }
 

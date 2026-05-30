@@ -43,7 +43,7 @@ func buildCashOperationDialog(title string, editTxn *investment.Transaction) *di
 		}
 		amountVal = fmt.Sprintf("%.2f", amt.Float64())
 	}
-	f = d.AddTextField("Amount", amountVal, "500.00", 12)
+	f = d.AddNumericField("Amount", amountVal, "500.00", 12)
 	f.Required = true
 
 	// Memo

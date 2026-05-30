@@ -106,12 +106,12 @@ func buildTransferSharesDialog(
 	if editTxn != nil && editTxn.Shares.Valid && !editTxn.Shares.Quantity.IsZero() {
 		sharesVal = editTxn.Shares.Quantity.String()
 	}
-	f = d.AddTextField("Shares", sharesVal, "10", 12)
+	f = d.AddNumericField("Shares", sharesVal, "10", 12)
 	f.Required = true
 
 	// Lot allocation fields (only for lot-tracking source accounts)
 	for _, lot := range lots {
-		d.AddTextField(buildLotLabel(lot), "", "0", 12)
+		d.AddNumericField(buildLotLabel(lot), "", "0", 12)
 	}
 
 	// Memo

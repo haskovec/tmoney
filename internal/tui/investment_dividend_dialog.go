@@ -66,7 +66,7 @@ func buildDividendDialog(securityOptions []string, editTxn *investment.Transacti
 		}
 		amountVal = fmt.Sprintf("%.2f", amt.Float64())
 	}
-	f = d.AddTextField("Amount", amountVal, "50.00", 12)
+	f = d.AddNumericField("Amount", amountVal, "50.00", 12)
 	f.Required = true
 
 	// Memo
@@ -113,7 +113,7 @@ func buildReinvestDividendDialog(securityOptions []string, editTxn *investment.T
 	if editTxn != nil && editTxn.Shares.Valid && !editTxn.Shares.Quantity.IsZero() {
 		sharesVal = editTxn.Shares.Quantity.String()
 	}
-	f = d.AddTextField("Shares", sharesVal, "10", 12)
+	f = d.AddNumericField("Shares", sharesVal, "10", 12)
 	f.Required = true
 
 	// Total Amount
@@ -125,14 +125,14 @@ func buildReinvestDividendDialog(securityOptions []string, editTxn *investment.T
 		}
 		totalVal = fmt.Sprintf("%.2f", amt.Float64())
 	}
-	d.AddTextField("Total", totalVal, "1850.00", 12)
+	d.AddNumericField("Total", totalVal, "1850.00", 12)
 
 	// Price Per Share
 	priceVal := ""
 	if editTxn != nil && editTxn.PricePerShare.Valid {
 		priceVal = fmt.Sprintf("%.2f", editTxn.PricePerShare.Money.Float64())
 	}
-	d.AddTextField("Price/Share", priceVal, "185.00", 12)
+	d.AddNumericField("Price/Share", priceVal, "185.00", 12)
 
 	// Memo
 	memoVal := ""

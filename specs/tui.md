@@ -484,6 +484,34 @@ permit the all-blank canonical mask (`  /  /    `) as a meaningful
 cursor with a space instead of overwriting with `0`, so the user can
 return to the canonical blank.
 
+### Numeric Fields
+
+The investment-register entry dialogs use a **numeric-only** text
+field for their quantity and money inputs. These fields accept only
+the digits `0`–`9` and a single decimal point; any other keystroke —
+a second `.`, a sign, `$`, a comma, a space, or a letter — is
+silently dropped at the input layer (the same approach the masked
+Date field takes with non-digits), so the field value is always a
+clean, parseable non-negative number. The field is an ordinary text
+input in every other respect (cursor movement, Backspace, click-to-
+position). On-submit validation (required, positive, price-or-total)
+is unchanged and still runs as the backstop.
+
+This applies to:
+
+- **Buy** — Shares, Total, Price/Share, Commission
+- **Sell** — Shares, Total, Price/Share, Commission, and the per-lot
+  allocation fields
+- **Dividend** — Amount
+- **Reinvest Dividend** — Shares, Total, Price/Share
+- **Cash operations** (Deposit / Withdrawal / Fee / Interest) — Amount
+- **Transfer Shares** — Shares and the per-lot allocation fields
+
+All of these are positive magnitudes, so no sign is ever accepted.
+The regular transaction **Amount** field is a normal text field and
+is unaffected — it still accepts a leading `-` for expenses. (Memo
+fields on these dialogs are likewise plain text.)
+
 ### Category Combo Box
 
 The Category field is a typeahead combo box on:

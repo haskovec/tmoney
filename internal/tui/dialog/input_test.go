@@ -350,3 +350,131 @@ func TestDialog_HandleKey_UpDownInListField(t *testing.T) {
 		t.Errorf("after Up: SelectedIndex = %d, want 0", d.Fields()[0].SelectedIndex)
 	}
 }
+
+// Numeric-only text field (AddNumericField): digits and at most one decimal
+// point are accepted; everything else is silently dropped at the input layer.
+
+// typeRunes feeds each rune of s to the dialog as an individual key press,
+// the way a user types one character at a time.
+func typeRunes(d *Dialog, s string) {
+	for _, r := range s {
+		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+}
+
+func TestDialog_HandleKey_NumericField_AcceptsDigitsAndOneDot(t *testing.T) {
+	cases := []struct {
+		name, typed, want string
+	}{
+		{"digits", "12345", "12345"},
+		{"one dot", "10.50", "10.50"},
+		{"leading dot", ".5", ".5"},
+		{"second dot dropped", "1.2.3", "1.23"},
+		{"trailing dot kept", "12.", "12."},
+		{"letters dropped", "1a2b3", "123"},
+		{"dollar dropped", "$10", "10"},
+		{"minus dropped", "-5", "5"},
+		{"comma dropped", "1,234.50", "1234.50"},
+		{"mixed junk", "ab1.2cd.3", "1.23"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDialog("Test")
+			d.AddNumericField("Shares", "", "", 12)
+			typeRunes(d, tc.typed)
+			if got := d.Fields()[0].Value; got != tc.want {
+				t.Errorf("typed %q: Value = %q, want %q", tc.typed, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDialog_HandleKey_NumericField_RejectsSpaceKey(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddNumericField("Shares", "", "", 12)
+
+	// The dedicated space key (String() == "space").
+	d.HandleKey(tea.KeyPressMsg{Code: '1', Text: "1"})
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeySpace})
+	d.HandleKey(tea.KeyPressMsg{Code: '2', Text: "2"})
+	// A space delivered as a literal rune.
+	d.HandleKey(tea.KeyPressMsg{Code: ' ', Text: " "})
+	d.HandleKey(tea.KeyPressMsg{Code: '3', Text: "3"})
+
+	if got := d.Fields()[0].Value; got != "123" {
+		t.Errorf("Value = %q, want %q (spaces must be dropped)", got, "123")
+	}
+}
+
+func TestDialog_HandleKey_NumericField_BackspaceStillDeletes(t *testing.T) {
+	d := NewDialog("Test")
+	d.AddNumericField("Shares", "12.5", "", 12)
+	d.Fields()[0].MoveCursorEnd()
+
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if got := d.Fields()[0].Value; got != "12." {
+		t.Errorf("after backspace: Value = %q, want %q", got, "12.")
+	}
+	// Deleting the dot frees up a new one to be typed.
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	d.HandleKey(tea.KeyPressMsg{Code: '7', Text: "7"})
+	d.HandleKey(tea.KeyPressMsg{Code: '.', Text: "."})
+	if got := d.Fields()[0].Value; got != "127." {
+		t.Errorf("after re-typing dot: Value = %q, want %q", got, "127.")
+	}
+}
+
+func TestDialog_HandleKey_NumericField_ValidInsertClearsError(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddNumericField("Shares", "", "", 12)
+	f.Error = "Shares must be positive"
+
+	d.HandleKey(tea.KeyPressMsg{Code: '5', Text: "5"})
+
+	if f.Error != "" {
+		t.Errorf("Error should clear after a valid digit, got %q", f.Error)
+	}
+}
+
+func TestDialog_HandleKey_NumericField_RejectedKeyKeepsError(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddNumericField("Shares", "5", "", 12)
+	f.Error = "Shares must be positive"
+
+	// A rejected rune changes nothing, so the visible error stays put.
+	d.HandleKey(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if f.Value != "5" {
+		t.Errorf("Value = %q, want %q (letter must be dropped)", f.Value, "5")
+	}
+	if f.Error == "" {
+		t.Error("Error should remain after a rejected keystroke")
+	}
+
+	// A rejected second dot likewise leaves the error in place.
+	f2 := d.AddNumericField("Total", "1.5", "", 12)
+	f2.Error = "Invalid amount"
+	d.SetFocusIndex(1)
+	d.Fields()[1].MoveCursorEnd()
+	d.HandleKey(tea.KeyPressMsg{Code: '.', Text: "."})
+	if f2.Value != "1.5" {
+		t.Errorf("Value = %q, want %q (second dot must be dropped)", f2.Value, "1.5")
+	}
+	if f2.Error == "" {
+		t.Error("Error should remain after a rejected second dot")
+	}
+}
+
+func TestDialog_HandleKey_NumericField_SpaceKeyDoesNotClearError(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddNumericField("Shares", "5", "", 12)
+	f.Error = "Shares must be positive"
+
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeySpace})
+
+	if f.Value != "5" {
+		t.Errorf("Value = %q, want %q (space must be dropped)", f.Value, "5")
+	}
+	if f.Error == "" {
+		t.Error("Error should remain after a rejected space on a numeric field")
+	}
+}
