@@ -10,7 +10,7 @@ require (
 	github.com/NimbleMarkets/ntcharts/v2 v2.0.3
 	github.com/alpacahq/alpacadecimal v0.0.9
 	github.com/charmbracelet/x/ansi v0.11.7
-	github.com/duckdb/duckdb-go/v2 v2.10503.0
+	github.com/duckdb/duckdb-go/v2 v2.10503.1
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.10.2
 )
