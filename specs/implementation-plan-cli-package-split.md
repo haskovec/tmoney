@@ -168,7 +168,7 @@ are deleted in Phase 6.
 
 ## Phase 1: Foundation
 
-- [ ] **PS-001 — Create `internal/cli/cmdutil`**
+- [x] **PS-001 — Create `internal/cli/cmdutil`**
   - GREEN: new package `cmdutil` with exported `FormatMoney` (body moved from
     `format.go:23`), `OpenServices` + `AutoBackupAfterModification` (bodies moved
     from `helpers.go`), and a new `RequireFile(file string) error` folding the
