@@ -491,12 +491,49 @@ are deleted in Phase 6.
     import the root `internal/cli` (R2/D5 cycle-free), source diffs are mechanical
     only, and coverage is exactly 1:1.
 
-- [ ] **PS-011 — `internal/cli/reconcile`** (no alias; domain is `reconciliation`)
-  - Source: `reconcile.go` (`newReconcileCmd`→`NewCmd`) + `_start`, `_mark`,
-    `_finish`, `_status`. Printer: `printReconcileStatus`. `reconcile_finish.go`
-    imports `internal/reconciliation` (`DifferenceError`).
-  - Tests: 4 files → `package reconcile_test` (no fixtures, no white-box).
-    `workflow_test.go` also drives reconcile but **stays residual**.
+- [x] **PS-011 — `internal/cli/reconcile`** (no alias; domain is `reconciliation`)
+  - DONE: `git mv`'d the 5 source files into `internal/cli/reconcile/`
+    (`reconcile.go` + `start/mark/finish/status.go`), changed the package clause
+    to `reconcile`, and renamed `newReconcileCmd`→exported `reconcile.NewCmd()`
+    (verb ctors stay unexported). **No domain alias** — the reconcile domain
+    package is `internal/reconciliation` (distinct name), so `internal/reconciliation`
+    (`finish.go` for `DifferenceError`, `format.go` for `Status`) and the foreign
+    `internal/account` (`format.go`) are imported unaliased. Lifted
+    `printReconcileStatus` out of `format.go` into `internal/cli/reconcile/format.go`
+    (unexported, using `cmdutil.FormatMoney`); deleted it + the now-unused
+    `internal/account` and `internal/reconciliation` imports from the residual
+    `format.go` (which still compiles — `printNetWorthReport`/`printSpendingReport`
+    remain, report noun not yet moved). Swapped every
+    `openServices`/`autoBackupAfterModification`/`formatMoney` call and the four
+    `--file` guards to `cmdutil.OpenServices`/`AutoBackupAfterModification`/
+    `FormatMoney`/`RequireFile` (`cmdutil.RequireFile`'s message is byte-identical
+    to the `fmt.Errorf` guards it replaced; `autoBackupAfterModification` correctly
+    travels with the data-modifying `start`/`finish` only — `mark`/`status` never
+    had it). Rewired `root.go` to import `internal/cli/reconcile` and call
+    `reconcile.NewCmd()`.
+  - DONE (tests): `start/mark/finish/status_test.go` → external
+    `package reconcile_test`, importing `cli` (`ExecuteWith`, `SwapTUILauncher`) +
+    foreign domains (`account`/`db`/`reconciliation`/`transaction`/`types`,
+    unaliased); mechanically repointed `executeWith`→`cli.ExecuteWith` and
+    `_, restore := stubLaunchers(t)`→
+    `restore := cli.SwapTUILauncher(func(string) error { return nil })`. No
+    fixtures, no white-box files (all 4 external) — matches the plan. The
+    cross-noun `workflow_test.go` **stays residual** `package cli` and still drives
+    the reconcile lifecycle via `cli.ExecuteWith`, still exercising the lifted
+    `printReconcileStatus` output. The `testutil_test.go` `createInvestmentTestDB`
+    shim stays (still consumed by `workflow_test.go`).
+  - VERIFIED: `go fix ./...`, `go build ./...`, `go vet ./internal/cli/...`,
+    `gofmt -l` all clean; `go test ./...` green (5598 passed in 38 packages — the
+    PS-010 baseline of 5598, now in 38 pkgs since `reconcile` is its own test
+    package; coverage 1:1, all 33 reconcile test functions preserved — start 10,
+    mark 8, finish 8, status 7); `golangci-lint run ./internal/cli/...` clean. An
+    adversarial 3-lens review (behavior-equivalence / coverage-1:1 / spec-conformance+
+    cycle-safety) returned pass on all three with no blockers/majors/minors:
+    `go list -deps` confirms the production `internal/cli/reconcile` does not import
+    the root `internal/cli` (R2/D5 cycle-free — direct deps are `account`,
+    `cli/cmdutil`, `reconciliation`, `types`, `cobra`), source diffs are mechanical
+    only, and no residual `package cli` code references `newReconcileCmd` or
+    `printReconcileStatus`.
 
 - [ ] **PS-012 — `internal/cli/db`** (alias `dbpkg`)
   - Source: `db.go` (`newDBCmd`→`NewCmd`) + `_create`, `_backup`, `_restore`,

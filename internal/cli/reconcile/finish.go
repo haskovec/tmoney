@@ -1,9 +1,10 @@
-package cli
+package reconcile
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
@@ -44,11 +45,11 @@ func newReconcileFinishCmd() *cobra.Command {
 
 // runReconcileFinish completes the reconciliation for an account.
 func runReconcileFinish(opts *reconcileFinishOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -81,7 +82,7 @@ func runReconcileFinish(opts *reconcileFinishOptions, w io.Writer) error {
 	if err != nil {
 		if diffErr, ok := err.(*reconciliation.DifferenceError); ok {
 			return fmt.Errorf("cannot complete reconciliation. Difference: %s\nUse `tmoney reconcile mark` to mark additional transactions, or --force to complete anyway",
-				formatMoney(diffErr.Difference, account.Currency))
+				cmdutil.FormatMoney(diffErr.Difference, account.Currency))
 		}
 		return fmt.Errorf("failed to finish reconciliation: %w", err)
 	}
@@ -89,8 +90,8 @@ func runReconcileFinish(opts *reconcileFinishOptions, w io.Writer) error {
 	fmt.Fprintf(w, "Reconciliation completed for %s\n", account.Name)
 	fmt.Fprintf(w, "  Statement date:         %s\n", session.StatementDate.String())
 	fmt.Fprintf(w, "  Transactions reconciled: %d\n", len(txnIDs))
-	fmt.Fprintf(w, "  Balance:                %s\n", formatMoney(session.StatementBalance, account.Currency))
+	fmt.Fprintf(w, "  Balance:                %s\n", cmdutil.FormatMoney(session.StatementBalance, account.Currency))
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

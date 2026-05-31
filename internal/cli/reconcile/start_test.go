@@ -1,4 +1,4 @@
-package cli
+package reconcile_test
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -14,14 +15,14 @@ import (
 
 func TestReconcileStart_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "start",
 		"--account", "Checking",
 		"--statement-date", "2024-01-31",
 		"--statement-balance", "5000",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(reconcile start) without --file should return error")
+		t.Fatal("cli.ExecuteWith(reconcile start) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -30,14 +31,14 @@ func TestReconcileStart_MissingFile(t *testing.T) {
 
 func TestReconcileStart_MissingAccount(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "start",
 		"--file", "test.tdb",
 		"--statement-date", "2024-01-31",
 		"--statement-balance", "5000",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(reconcile start) without --account should return error")
+		t.Fatal("cli.ExecuteWith(reconcile start) without --account should return error")
 	}
 	if !strings.Contains(err.Error(), `required flag(s) "account" not set`) {
 		t.Errorf("expected Cobra required-flag error mentioning account, got: %v", err)
@@ -46,14 +47,14 @@ func TestReconcileStart_MissingAccount(t *testing.T) {
 
 func TestReconcileStart_MissingDate(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "start",
 		"--file", "test.tdb",
 		"--account", "Checking",
 		"--statement-balance", "5000",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(reconcile start) without --statement-date should return error")
+		t.Fatal("cli.ExecuteWith(reconcile start) without --statement-date should return error")
 	}
 	if !strings.Contains(err.Error(), "statement-date") {
 		t.Errorf("expected error to mention statement-date, got: %v", err)
@@ -62,14 +63,14 @@ func TestReconcileStart_MissingDate(t *testing.T) {
 
 func TestReconcileStart_MissingBalance(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "start",
 		"--file", "test.tdb",
 		"--account", "Checking",
 		"--statement-date", "2024-01-31",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(reconcile start) without --statement-balance should return error")
+		t.Fatal("cli.ExecuteWith(reconcile start) without --statement-balance should return error")
 	}
 	if !strings.Contains(err.Error(), "statement-balance") {
 		t.Errorf("expected error to mention statement-balance, got: %v", err)
@@ -86,7 +87,7 @@ func TestReconcileStart_InvalidDate(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"reconcile", "start",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -111,7 +112,7 @@ func TestReconcileStart_InvalidBalance(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"reconcile", "start",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -136,7 +137,7 @@ func TestReconcileStart_AccountNotFound(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"reconcile", "start",
 		"--file", dbPath,
 		"--account", "NonExistent",
@@ -185,7 +186,7 @@ func TestReconcileStart_Success(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"reconcile", "start",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -193,7 +194,7 @@ func TestReconcileStart_Success(t *testing.T) {
 		"--statement-balance", "850.00",
 	}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(reconcile start): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(reconcile start): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -210,12 +211,12 @@ func TestReconcileStart_Success(t *testing.T) {
 }
 
 func TestReconcileStart_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"reconcile", "start", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(reconcile start --help): %v", err)
+	if err := cli.ExecuteWith([]string{"reconcile", "start", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(reconcile start --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "start") {
 		t.Errorf("expected `reconcile start --help` to describe the command; got:\n%s", stdout.String())
@@ -223,12 +224,12 @@ func TestReconcileStart_Help(t *testing.T) {
 }
 
 func TestReconcileCmd_HelpListsStart(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"reconcile", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(reconcile --help): %v", err)
+	if err := cli.ExecuteWith([]string{"reconcile", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(reconcile --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "start") {
 		t.Errorf("expected `reconcile --help` to list `start`; got:\n%s", stdout.String())

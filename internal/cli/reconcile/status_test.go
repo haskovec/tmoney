@@ -1,4 +1,4 @@
-package cli
+package reconcile_test
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/types"
@@ -14,11 +15,11 @@ import (
 
 func TestReconcileStatus_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "status", "--account", "Checking",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(reconcile status) without --file should return error")
+		t.Fatal("cli.ExecuteWith(reconcile status) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -27,11 +28,11 @@ func TestReconcileStatus_MissingFile(t *testing.T) {
 
 func TestReconcileStatus_MissingAccount(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "status", "--file", "test.tdb",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(reconcile status) without --account should return error")
+		t.Fatal("cli.ExecuteWith(reconcile status) without --account should return error")
 	}
 	if !strings.Contains(err.Error(), `required flag(s) "account" not set`) {
 		t.Errorf("expected Cobra required-flag error mentioning \"account\", got: %v", err)
@@ -61,13 +62,13 @@ func TestReconcileStatus_NoSession(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"reconcile", "status",
 		"--file", dbPath,
 		"--account", "Checking",
 	}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(reconcile status): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(reconcile status): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -116,13 +117,13 @@ func TestReconcileStatus_WithActiveSession(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"reconcile", "status",
 		"--file", dbPath,
 		"--account", "Checking",
 	}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(reconcile status): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(reconcile status): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -151,13 +152,13 @@ func TestReconcileStatus_AccountNotFound(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"reconcile", "status",
 		"--file", dbPath,
 		"--account", "Nope",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(reconcile status) for unknown account should return error")
+		t.Fatal("cli.ExecuteWith(reconcile status) for unknown account should return error")
 	}
 	if !strings.Contains(err.Error(), `account "Nope" not found`) {
 		t.Errorf("expected account-not-found error, got: %v", err)
@@ -165,12 +166,12 @@ func TestReconcileStatus_AccountNotFound(t *testing.T) {
 }
 
 func TestReconcileStatus_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"reconcile", "status", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(reconcile status --help): %v", err)
+	if err := cli.ExecuteWith([]string{"reconcile", "status", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(reconcile status --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "status") {
 		t.Errorf("expected `reconcile status --help` to describe the command; got:\n%s", stdout.String())
@@ -178,12 +179,12 @@ func TestReconcileStatus_Help(t *testing.T) {
 }
 
 func TestReconcileCmd_HelpListsStatus(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"reconcile", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(reconcile --help): %v", err)
+	if err := cli.ExecuteWith([]string{"reconcile", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(reconcile --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "status") {
 		t.Errorf("expected `reconcile --help` to list `status`; got:\n%s", stdout.String())

@@ -1,12 +1,12 @@
-package cli
+package reconcile
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// newReconcileCmd returns the `reconcile` parent command. Child verbs
+// NewCmd returns the `reconcile` parent command. Child verbs
 // are registered as they migrate from the legacy `--flag` dispatcher.
-func newReconcileCmd() *cobra.Command {
+func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reconcile",
 		Short: "Reconcile an account against a statement",

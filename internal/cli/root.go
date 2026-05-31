@@ -7,6 +7,7 @@ import (
 	"github.com/haskovec/tmoney/internal/cli/account"
 	"github.com/haskovec/tmoney/internal/cli/investment"
 	"github.com/haskovec/tmoney/internal/cli/price"
+	"github.com/haskovec/tmoney/internal/cli/reconcile"
 	"github.com/haskovec/tmoney/internal/cli/scheduled"
 	"github.com/haskovec/tmoney/internal/cli/security"
 	"github.com/haskovec/tmoney/internal/cli/transaction"
@@ -94,7 +95,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(transaction.NewCmd())
 	cmd.AddCommand(transfer.NewCmd())
 	cmd.AddCommand(scheduled.NewCmd())
-	cmd.AddCommand(newReconcileCmd())
+	cmd.AddCommand(reconcile.NewCmd())
 	cmd.AddCommand(security.NewCmd())
 	cmd.AddCommand(price.NewCmd())
 	cmd.AddCommand(investment.NewCmd())

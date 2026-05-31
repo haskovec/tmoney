@@ -1,9 +1,10 @@
-package cli
+package reconcile
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -38,11 +39,11 @@ func newReconcileStatusCmd() *cobra.Command {
 
 // runReconcileStatus shows the reconciliation status for an account.
 func runReconcileStatus(opts *reconcileStatusOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}

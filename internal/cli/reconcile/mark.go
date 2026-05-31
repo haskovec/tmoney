@@ -1,9 +1,10 @@
-package cli
+package reconcile
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -40,11 +41,11 @@ func newReconcileMarkCmd() *cobra.Command {
 
 // runReconcileMark marks transactions for reconciliation.
 func runReconcileMark(opts *reconcileMarkOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -86,7 +87,7 @@ func runReconcileMark(opts *reconcileMarkOptions, w io.Writer) error {
 	}
 
 	fmt.Fprintf(w, "Marked %d transaction(s) for reconciliation\n", len(txnIDs))
-	fmt.Fprintf(w, "  Current difference: %s\n", formatMoney(difference, currency))
+	fmt.Fprintf(w, "  Current difference: %s\n", cmdutil.FormatMoney(difference, currency))
 
 	return nil
 }

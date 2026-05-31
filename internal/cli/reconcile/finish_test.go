@@ -1,4 +1,4 @@
-package cli
+package reconcile_test
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -15,11 +16,11 @@ import (
 
 func TestReconcileFinish_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "finish", "--account", "Checking",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(reconcile finish) without --file should return error")
+		t.Fatal("cli.ExecuteWith(reconcile finish) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -28,11 +29,11 @@ func TestReconcileFinish_MissingFile(t *testing.T) {
 
 func TestReconcileFinish_MissingAccount(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "finish", "--file", "test.tdb",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(reconcile finish) without --account should return error")
+		t.Fatal("cli.ExecuteWith(reconcile finish) without --account should return error")
 	}
 	if !strings.Contains(err.Error(), `required flag(s) "account" not set`) {
 		t.Errorf("expected Cobra required-flag error mentioning \"account\", got: %v", err)
@@ -62,13 +63,13 @@ func TestReconcileFinish_NoActiveSession(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"reconcile", "finish",
 		"--file", dbPath,
 		"--account", "Checking",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(reconcile finish) with no active session should return error")
+		t.Fatal("cli.ExecuteWith(reconcile finish) with no active session should return error")
 	}
 	if !strings.Contains(err.Error(), "no active reconciliation") {
 		t.Errorf("expected error to mention no active session, got: %v", err)
@@ -119,13 +120,13 @@ func TestReconcileFinish_Success(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"reconcile", "finish",
 		"--file", dbPath,
 		"--account", "Checking",
 	}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(reconcile finish): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(reconcile finish): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -197,13 +198,13 @@ func TestReconcileFinish_WithDifference(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"reconcile", "finish",
 		"--file", dbPath,
 		"--account", "Checking",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(reconcile finish) with non-zero difference should return error")
+		t.Fatal("cli.ExecuteWith(reconcile finish) with non-zero difference should return error")
 	}
 	if !strings.Contains(err.Error(), "Difference") {
 		t.Errorf("expected error to mention Difference, got: %v", err)
@@ -250,14 +251,14 @@ func TestReconcileFinish_WithForce(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"reconcile", "finish",
 		"--file", dbPath,
 		"--account", "Checking",
 		"--force",
 	}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(reconcile finish --force): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(reconcile finish --force): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -267,12 +268,12 @@ func TestReconcileFinish_WithForce(t *testing.T) {
 }
 
 func TestReconcileFinish_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"reconcile", "finish", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(reconcile finish --help): %v", err)
+	if err := cli.ExecuteWith([]string{"reconcile", "finish", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(reconcile finish --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "finish") {
 		t.Errorf("expected `reconcile finish --help` to describe the command; got:\n%s", stdout.String())
@@ -280,12 +281,12 @@ func TestReconcileFinish_Help(t *testing.T) {
 }
 
 func TestReconcileCmd_HelpListsFinish(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"reconcile", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(reconcile --help): %v", err)
+	if err := cli.ExecuteWith([]string{"reconcile", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(reconcile --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "finish") {
 		t.Errorf("expected `reconcile --help` to list `finish`; got:\n%s", stdout.String())

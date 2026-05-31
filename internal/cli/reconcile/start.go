@@ -1,9 +1,10 @@
-package cli
+package reconcile
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -46,8 +47,8 @@ func newReconcileStartCmd() *cobra.Command {
 
 // runReconcileStart starts a reconciliation session for an account.
 func runReconcileStart(opts *reconcileStartOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	stmtDate, err := types.ParseDate(opts.statementDate)
@@ -60,7 +61,7 @@ func runReconcileStart(opts *reconcileStartOptions, w io.Writer) error {
 		return fmt.Errorf("invalid --statement-balance: %w", err)
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -84,9 +85,9 @@ func runReconcileStart(opts *reconcileStartOptions, w io.Writer) error {
 	_ = session
 	fmt.Fprintf(w, "Reconciliation started for %s\n", account.Name)
 	fmt.Fprintf(w, "  Statement date:    %s\n", stmtDate.String())
-	fmt.Fprintf(w, "  Statement balance: %s\n", formatMoney(stmtBalance, account.Currency))
+	fmt.Fprintf(w, "  Statement balance: %s\n", cmdutil.FormatMoney(stmtBalance, account.Currency))
 	fmt.Fprintf(w, "  Unreconciled transactions: %d\n", len(candidates))
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }
