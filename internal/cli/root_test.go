@@ -6,21 +6,19 @@ import (
 	"testing"
 )
 
-// stubLaunchers swaps tuiLauncher with a capturing stub for the
-// duration of a test, returning a restore func.
+// stubLaunchers swaps the TUI launcher with a capturing stub for the
+// duration of a test, returning a restore func. It delegates to the
+// exported SwapTUILauncher seam so package cli tests and noun subpackage
+// tests intercept launches the same way.
 func stubLaunchers(t *testing.T) (tuiCalls *[]string, restore func()) {
 	t.Helper()
 	tui := []string{}
 
-	origTUI := tuiLauncher
-
-	tuiLauncher = func(file string) error {
+	restore = SwapTUILauncher(func(file string) error {
 		tui = append(tui, file)
 		return nil
-	}
-	return &tui, func() {
-		tuiLauncher = origTUI
-	}
+	})
+	return &tui, restore
 }
 
 func TestExecute_NoArgs_LaunchesTUI(t *testing.T) {

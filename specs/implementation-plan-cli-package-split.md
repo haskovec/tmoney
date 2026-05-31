@@ -203,12 +203,20 @@ are deleted in Phase 6.
     with `t.Fatalf` (matches the fixtures' own error-handling style; a failed
     flush would make the reopen tests flaky). Behavior is otherwise identical.
 
-- [ ] **PS-003 — Export the test harness from `cli`**
-  - GREEN: rename `executeWith` → exported `ExecuteWith(args []string, stdout,
-    stderr io.Writer) error` in `root.go`; keep a package-`cli` `executeWith`
-    shim delegating to it. Add `SwapTUILauncher(fn func(string) error) (restore
-    func())` exporting the launcher-swap seam; rewrite `root_test.go`'s
-    `stubLaunchers` to call it. Build + full suite green.
+- [x] **PS-003 — Export the test harness from `cli`**
+  - GREEN: renamed `executeWith` → exported `ExecuteWith(args []string, stdout,
+    stderr io.Writer) error` in `root.go`; kept a package-`cli` `executeWith`
+    shim delegating to it (removed in PS-015). Added `SwapTUILauncher(fn
+    func(string) error) (restore func())` next to `tuiLauncher`, exporting the
+    launcher-swap seam; rewrote `root_test.go`'s `stubLaunchers` to delegate to
+    it (the ~54 `*_Help`/launch tests that call `stubLaunchers` are unchanged).
+    `Execute()` now calls `ExecuteWith`.
+  - TESTS: added `harness_export_test.go` (`package cli_test`, the first
+    external test package) proving the cycle-free recipe every noun PR relies
+    on — `cli.ExecuteWith` drives the full root by argv, and `cli.SwapTUILauncher`
+    intercepts launches with LIFO-safe restore (never invoking the real TUI).
+    Build + full suite green (`go test ./...`: 5595 passed); `golangci-lint`
+    clean.
 
 ## Phase 2: Pilot
 
