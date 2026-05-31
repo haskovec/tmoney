@@ -1,4 +1,4 @@
-package cli
+package investment_test
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -55,13 +56,13 @@ func createInvestmentSplitTestDB(t *testing.T, trackLots bool) string {
 
 func TestInvestmentSplit_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "split",
 		"--ticker", "AAPL",
 		"--ratio", "4:1",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment split) without --file should return error")
+		t.Fatal("cli.ExecuteWith(investment split) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -70,13 +71,13 @@ func TestInvestmentSplit_MissingFile(t *testing.T) {
 
 func TestInvestmentSplit_MissingTicker(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "split",
 		"--file", "/fake.tdb",
 		"--ratio", "4:1",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment split) without --ticker should return error")
+		t.Fatal("cli.ExecuteWith(investment split) without --ticker should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "ticker") {
 		t.Errorf("expected Cobra required-flag error mentioning ticker, got: %v", err)
@@ -85,13 +86,13 @@ func TestInvestmentSplit_MissingTicker(t *testing.T) {
 
 func TestInvestmentSplit_MissingRatio(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "split",
 		"--file", "/fake.tdb",
 		"--ticker", "AAPL",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment split) without --ratio should return error")
+		t.Fatal("cli.ExecuteWith(investment split) without --ratio should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "ratio") {
 		t.Errorf("expected Cobra required-flag error mentioning ratio, got: %v", err)
@@ -100,7 +101,7 @@ func TestInvestmentSplit_MissingRatio(t *testing.T) {
 
 func TestInvestmentSplit_InvalidRatio(t *testing.T) {
 	dbPath := createInvestmentSplitTestDB(t, false)
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "split",
 		"--file", dbPath,
 		"--ticker", "AAPL",
@@ -113,7 +114,7 @@ func TestInvestmentSplit_InvalidRatio(t *testing.T) {
 
 func TestInvestmentSplit_SecurityNotFound(t *testing.T) {
 	dbPath := createInvestmentSplitTestDB(t, false)
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "split",
 		"--file", dbPath,
 		"--ticker", "ZZZZ",
@@ -128,14 +129,14 @@ func TestInvestmentSplit_ForwardSplit(t *testing.T) {
 	dbPath := createInvestmentSplitTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "split",
 		"--file", dbPath,
 		"--ticker", "AAPL",
 		"--ratio", "4:1",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment split) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment split) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -157,14 +158,14 @@ func TestInvestmentSplit_ReverseSplit(t *testing.T) {
 	dbPath := createInvestmentSplitTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "split",
 		"--file", dbPath,
 		"--ticker", "AAPL",
 		"--ratio", "1:10",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment split reverse) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment split reverse) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -180,7 +181,7 @@ func TestInvestmentSplit_WithDate(t *testing.T) {
 	dbPath := createInvestmentSplitTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "split",
 		"--file", dbPath,
 		"--ticker", "AAPL",
@@ -188,7 +189,7 @@ func TestInvestmentSplit_WithDate(t *testing.T) {
 		"--date", "2025-01-15",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment split with date) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment split with date) returned error: %v", err)
 	}
 
 	if !strings.Contains(stdout.String(), "2025-01-15") {
@@ -200,14 +201,14 @@ func TestInvestmentSplit_WithLotTracking(t *testing.T) {
 	dbPath := createInvestmentSplitTestDB(t, true)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "split",
 		"--file", dbPath,
 		"--ticker", "AAPL",
 		"--ratio", "4:1",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment split lot-tracking) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment split lot-tracking) returned error: %v", err)
 	}
 
 	if !strings.Contains(stdout.String(), "Stock split applied successfully") {
@@ -216,7 +217,7 @@ func TestInvestmentSplit_WithLotTracking(t *testing.T) {
 }
 
 func TestInvestmentSplit_InvalidDate(t *testing.T) {
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "split",
 		"--file", "test.tdb",
 		"--ticker", "AAPL",
@@ -229,12 +230,12 @@ func TestInvestmentSplit_InvalidDate(t *testing.T) {
 }
 
 func TestInvestmentSplit_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "split", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment split --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "split", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment split --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "split") {
 		t.Errorf("expected `investment split --help` to describe the command; got:\n%s", stdout.String())
@@ -242,12 +243,12 @@ func TestInvestmentSplit_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsSplit(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "split") {
 		t.Errorf("expected `investment --help` to list `split`; got:\n%s", stdout.String())

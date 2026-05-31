@@ -1,9 +1,10 @@
-package cli
+package investment
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -52,8 +53,8 @@ func newInvestmentDividendCmd() *cobra.Command {
 // runInvestmentDividend executes `tmoney investment dividend`: record a
 // cash dividend for a security.
 func runInvestmentDividend(opts *investmentDividendOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	amount, err := types.NewMoney(opts.amount)
@@ -71,7 +72,7 @@ func runInvestmentDividend(opts *investmentDividendOptions, w io.Writer) error {
 		date = types.Today()
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -98,8 +99,8 @@ func runInvestmentDividend(opts *investmentDividendOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Account:  %s\n", acct.Name)
 	fmt.Fprintf(w, "  Security: %s (%s)\n", sec.Ticker, sec.Name)
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
-	fmt.Fprintf(w, "  Amount:   %s\n", formatMoney(amount, acct.Currency))
+	fmt.Fprintf(w, "  Amount:   %s\n", cmdutil.FormatMoney(amount, acct.Currency))
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

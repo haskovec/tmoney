@@ -1,4 +1,4 @@
-package cli
+package investment_test
 
 import (
 	"bytes"
@@ -7,15 +7,16 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestInvestmentRebuildPositions_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"investment", "rebuild-positions"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"investment", "rebuild-positions"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(rebuild-positions) without --file should return error")
+		t.Fatal("cli.ExecuteWith(rebuild-positions) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -37,7 +38,7 @@ func TestInvestmentRebuildPositions_NoInvestmentAccounts(t *testing.T) {
 	database.Close()
 
 	stdout := &bytes.Buffer{}
-	err = executeWith([]string{"investment", "rebuild-positions", "--file", dbPath}, stdout, &bytes.Buffer{})
+	err = cli.ExecuteWith([]string{"investment", "rebuild-positions", "--file", dbPath}, stdout, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("rebuild-positions error = %v", err)
 	}
@@ -61,7 +62,7 @@ func TestInvestmentRebuildPositions_AllAccountsBasic(t *testing.T) {
 	database.Close()
 
 	stdout := &bytes.Buffer{}
-	err = executeWith([]string{"investment", "rebuild-positions", "--file", dbPath}, stdout, &bytes.Buffer{})
+	err = cli.ExecuteWith([]string{"investment", "rebuild-positions", "--file", dbPath}, stdout, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("rebuild-positions error = %v", err)
 	}
@@ -79,7 +80,7 @@ func TestInvestmentRebuildPositions_UnknownAccount(t *testing.T) {
 	}
 	database.Close()
 
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"investment", "rebuild-positions",
 		"--file", dbPath,
 		"--account", "Nope",

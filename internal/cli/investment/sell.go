@@ -1,10 +1,11 @@
-package cli
+package investment
 
 import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -63,8 +64,8 @@ func newInvestmentSellCmd() *cobra.Command {
 // runInvestmentSell executes `tmoney investment sell`: sell shares of a
 // security in an investment account.
 func runInvestmentSell(opts *investmentSellOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 	if opts.amount == "" && opts.pricePerShare == "" {
 		return fmt.Errorf("--amount (total) and/or --price-per-share is required")
@@ -111,7 +112,7 @@ func runInvestmentSell(opts *investmentSellOptions, w io.Writer) error {
 		date = types.Today()
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -130,13 +131,13 @@ func runInvestmentSell(opts *investmentSellOptions, w io.Writer) error {
 		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.ticker)
 	}
 
-	var lotAllocations []investment.SellLotAllocation
+	var lotAllocations []investmentdom.SellLotAllocation
 	if opts.lot != "" {
 		lotID, err := types.ParseID(opts.lot)
 		if err != nil {
 			return fmt.Errorf("invalid --lot: %w", err)
 		}
-		lotAllocations = []investment.SellLotAllocation{
+		lotAllocations = []investmentdom.SellLotAllocation{
 			{LotID: lotID, Shares: shares},
 		}
 	}
@@ -152,13 +153,13 @@ func runInvestmentSell(opts *investmentSellOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
 	fmt.Fprintf(w, "  Shares:   %s\n", shares.String())
 	if txn.PricePerShare.Valid {
-		fmt.Fprintf(w, "  Price:    %s\n", formatMoney(txn.PricePerShare.Money, acct.Currency))
+		fmt.Fprintf(w, "  Price:    %s\n", cmdutil.FormatMoney(txn.PricePerShare.Money, acct.Currency))
 	}
 	if txn.Commission.Valid {
-		fmt.Fprintf(w, "  Commission: %s\n", formatMoney(txn.Commission.Money, acct.Currency))
+		fmt.Fprintf(w, "  Commission: %s\n", cmdutil.FormatMoney(txn.Commission.Money, acct.Currency))
 	}
-	fmt.Fprintf(w, "  Total:    %s\n", formatMoney(txn.TotalAmount, acct.Currency))
+	fmt.Fprintf(w, "  Total:    %s\n", cmdutil.FormatMoney(txn.TotalAmount, acct.Currency))
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

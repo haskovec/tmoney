@@ -1,9 +1,10 @@
-package cli
+package investment
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -47,8 +48,8 @@ func newInvestmentFeeCmd() *cobra.Command {
 // runInvestmentFee executes `tmoney investment fee`: record a fee in an
 // investment account.
 func runInvestmentFee(opts *investmentFeeOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	amount, err := types.NewMoney(opts.amount)
@@ -66,7 +67,7 @@ func runInvestmentFee(opts *investmentFeeOptions, w io.Writer) error {
 		date = types.Today()
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -85,11 +86,11 @@ func runInvestmentFee(opts *investmentFeeOptions, w io.Writer) error {
 	fmt.Fprintln(w, "Investment fee transaction created successfully!")
 	fmt.Fprintf(w, "  Account: %s\n", acct.Name)
 	fmt.Fprintf(w, "  Date:    %s\n", date.String())
-	fmt.Fprintf(w, "  Amount:  %s\n", formatMoney(amount, acct.Currency))
+	fmt.Fprintf(w, "  Amount:  %s\n", cmdutil.FormatMoney(amount, acct.Currency))
 	if opts.memo != "" {
 		fmt.Fprintf(w, "  Memo:    %s\n", opts.memo)
 	}
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

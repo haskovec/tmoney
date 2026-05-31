@@ -1,20 +1,23 @@
-package cli
+package investment_test
 
 import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/haskovec/tmoney/internal/cli"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 )
 
 func TestInvestmentWithdraw_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "withdraw",
 		"--account", "Brokerage",
 		"--amount", "500",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment withdraw) without --file should return error")
+		t.Fatal("cli.ExecuteWith(investment withdraw) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -23,13 +26,13 @@ func TestInvestmentWithdraw_MissingFile(t *testing.T) {
 
 func TestInvestmentWithdraw_MissingAccount(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "withdraw",
 		"--file", "/fake.tdb",
 		"--amount", "500",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment withdraw) without --account should return error")
+		t.Fatal("cli.ExecuteWith(investment withdraw) without --account should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "account") {
 		t.Errorf("expected Cobra required-flag error mentioning account, got: %v", err)
@@ -38,13 +41,13 @@ func TestInvestmentWithdraw_MissingAccount(t *testing.T) {
 
 func TestInvestmentWithdraw_MissingAmount(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "withdraw",
 		"--file", "/fake.tdb",
 		"--account", "Brokerage",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment withdraw) without --amount should return error")
+		t.Fatal("cli.ExecuteWith(investment withdraw) without --amount should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "amount") {
 		t.Errorf("expected Cobra required-flag error mentioning amount, got: %v", err)
@@ -52,10 +55,10 @@ func TestInvestmentWithdraw_MissingAmount(t *testing.T) {
 }
 
 func TestInvestmentWithdraw_Basic(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "withdraw",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -63,7 +66,7 @@ func TestInvestmentWithdraw_Basic(t *testing.T) {
 		"--memo", "Quarterly draw",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment withdraw) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment withdraw) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -79,10 +82,10 @@ func TestInvestmentWithdraw_Basic(t *testing.T) {
 }
 
 func TestInvestmentWithdraw_WithDate(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "withdraw",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -90,7 +93,7 @@ func TestInvestmentWithdraw_WithDate(t *testing.T) {
 		"--date", "2025-04-15",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment withdraw with date) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment withdraw with date) returned error: %v", err)
 	}
 
 	if !strings.Contains(stdout.String(), "2025-04-15") {
@@ -99,9 +102,9 @@ func TestInvestmentWithdraw_WithDate(t *testing.T) {
 }
 
 func TestInvestmentWithdraw_AccountNotFound(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "withdraw",
 		"--file", dbPath,
 		"--account", "NonExistent",
@@ -113,9 +116,9 @@ func TestInvestmentWithdraw_AccountNotFound(t *testing.T) {
 }
 
 func TestInvestmentWithdraw_InvalidAmount(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "withdraw",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -127,9 +130,9 @@ func TestInvestmentWithdraw_InvalidAmount(t *testing.T) {
 }
 
 func TestInvestmentWithdraw_InvalidDate(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "withdraw",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -142,9 +145,9 @@ func TestInvestmentWithdraw_InvalidDate(t *testing.T) {
 }
 
 func TestInvestmentWithdraw_AllowsNegativeCash(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "withdraw",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -157,12 +160,12 @@ func TestInvestmentWithdraw_AllowsNegativeCash(t *testing.T) {
 }
 
 func TestInvestmentWithdraw_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "withdraw", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment withdraw --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "withdraw", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment withdraw --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "withdraw") {
 		t.Errorf("expected `investment withdraw --help` to describe the command; got:\n%s", stdout.String())
@@ -170,12 +173,12 @@ func TestInvestmentWithdraw_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsWithdraw(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "withdraw") {
 		t.Errorf("expected `investment --help` to list `withdraw`; got:\n%s", stdout.String())

@@ -245,7 +245,36 @@ are deleted in Phase 6.
 
 ## Phase 3: Highest value + complexity
 
-- [ ] **PS-005 — `internal/cli/investment`** (alias `investmentdom`; 13 verbs)
+- [x] **PS-005 — `internal/cli/investment`** (alias `investmentdom`; 13 verbs)
+  - DONE: `git mv`'d the 14 source files into `internal/cli/investment/`
+    (`investment.go` + `buy/sell/dividend/reinvest/fee/deposit/withdraw/transfer/
+    split/merge/spin_off/portfolio/rebuild_positions.go`), changed the package
+    clause to `investment`, aliased `internal/investment` as `investmentdom`, and
+    renamed `newInvestmentCmd`→exported `investment.NewCmd()` (verb ctors stay
+    unexported). Lifted the 8-function portfolio-printer cluster
+    (`printPortfolioSummary`, `printPortfolioWithLots`, `printAccountTotals`,
+    `printClosedPositions`, `partitionHoldings`, `formatGainLoss`,
+    `formatReturnPct`, `formatFeesPaid`) out of `format.go` into
+    `internal/cli/investment/format.go` (unexported, calling
+    `cmdutil.FormatMoney`); deleted them + the now-unused `app`/`investment`
+    imports from the residual `format.go` (−248 lines). Swapped every
+    `openServices`/`autoBackupAfterModification`/`formatMoney` call and the
+    `--file` guard to `cmdutil.*`/`cmdutil.RequireFile`. Rewired `root.go` to
+    import `internal/cli/investment` and call `investment.NewCmd()`.
+  - DONE (tests): 13 `*_test.go` → external `package investment_test`, importing
+    `cli` (`ExecuteWith`, `SwapTUILauncher`) + `clitest` (fixtures) + aliased
+    `investmentdom` (portfolio only); mechanically repointed
+    `executeWith`→`cli.ExecuteWith`, `create{Investment,CorporateAction}TestDB`/
+    `ptrMoney`→`clitest.*`, and `_, restore := stubLaunchers(t)`→
+    `restore := cli.SwapTUILauncher(...)`. The 4 portfolio-local DB helpers
+    (`createPortfolioCmdTestDB*`) traveled with `portfolio_test.go`. No white-box
+    files (all 13 external). Removed the now-orphaned `ptrMoney` +
+    `createCorporateActionTestDB` shims (and the `types` import) from
+    `testutil_test.go` — investment was their only consumer; the remaining
+    fixture shims stay (still used by security/price/`workflow_test.go`).
+  - VERIFIED: `go build ./...`, `go vet ./...`, `go fix ./...`, `gofmt -l` all
+    clean; `go test ./...` green (investment pkg 100% relocated coverage);
+    `golangci-lint run` clean.
   - Source: `investment.go` (`newInvestmentCmd`→`NewCmd`) + `investment_buy.go`,
     `_sell`, `_dividend`, `_reinvest`, `_fee`, `_deposit`, `_withdraw`,
     `_transfer`, `_split`, `_merge`, `_spin_off`, `_portfolio`,

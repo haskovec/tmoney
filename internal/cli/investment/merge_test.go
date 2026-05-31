@@ -1,21 +1,24 @@
-package cli
+package investment_test
 
 import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/haskovec/tmoney/internal/cli"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 )
 
 func TestInvestmentMerge_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--source", "AAPL",
 		"--target", "GOOG",
 		"--exchange-ratio", "0.5",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment merge) without --file should return error")
+		t.Fatal("cli.ExecuteWith(investment merge) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -24,14 +27,14 @@ func TestInvestmentMerge_MissingFile(t *testing.T) {
 
 func TestInvestmentMerge_MissingSource(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", "test.tdb",
 		"--target", "GOOG",
 		"--exchange-ratio", "0.5",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment merge) without --source should return error")
+		t.Fatal("cli.ExecuteWith(investment merge) without --source should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "source") {
 		t.Errorf("expected Cobra required-flag error mentioning source, got: %v", err)
@@ -40,14 +43,14 @@ func TestInvestmentMerge_MissingSource(t *testing.T) {
 
 func TestInvestmentMerge_MissingTarget(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", "test.tdb",
 		"--source", "AAPL",
 		"--exchange-ratio", "0.5",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment merge) without --target should return error")
+		t.Fatal("cli.ExecuteWith(investment merge) without --target should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "target") {
 		t.Errorf("expected Cobra required-flag error mentioning target, got: %v", err)
@@ -56,14 +59,14 @@ func TestInvestmentMerge_MissingTarget(t *testing.T) {
 
 func TestInvestmentMerge_MissingRatio(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", "test.tdb",
 		"--source", "AAPL",
 		"--target", "GOOG",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment merge) without --exchange-ratio should return error")
+		t.Fatal("cli.ExecuteWith(investment merge) without --exchange-ratio should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "exchange-ratio") {
 		t.Errorf("expected Cobra required-flag error mentioning exchange-ratio, got: %v", err)
@@ -71,8 +74,8 @@ func TestInvestmentMerge_MissingRatio(t *testing.T) {
 }
 
 func TestInvestmentMerge_InvalidRatio(t *testing.T) {
-	dbPath := createCorporateActionTestDB(t, false, true)
-	err := executeWith([]string{
+	dbPath := clitest.CreateCorporateActionTestDB(t, false, true)
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", dbPath,
 		"--source", "AAPL",
@@ -85,7 +88,7 @@ func TestInvestmentMerge_InvalidRatio(t *testing.T) {
 }
 
 func TestInvestmentMerge_InvalidCashPerShare(t *testing.T) {
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", "test.tdb",
 		"--source", "AAPL",
@@ -99,7 +102,7 @@ func TestInvestmentMerge_InvalidCashPerShare(t *testing.T) {
 }
 
 func TestInvestmentMerge_InvalidDate(t *testing.T) {
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", "test.tdb",
 		"--source", "AAPL",
@@ -113,8 +116,8 @@ func TestInvestmentMerge_InvalidDate(t *testing.T) {
 }
 
 func TestInvestmentMerge_SourceNotFound(t *testing.T) {
-	dbPath := createCorporateActionTestDB(t, false, true)
-	err := executeWith([]string{
+	dbPath := clitest.CreateCorporateActionTestDB(t, false, true)
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", dbPath,
 		"--source", "ZZZZ",
@@ -127,8 +130,8 @@ func TestInvestmentMerge_SourceNotFound(t *testing.T) {
 }
 
 func TestInvestmentMerge_TargetNotFound(t *testing.T) {
-	dbPath := createCorporateActionTestDB(t, false, true)
-	err := executeWith([]string{
+	dbPath := clitest.CreateCorporateActionTestDB(t, false, true)
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", dbPath,
 		"--source", "AAPL",
@@ -141,10 +144,10 @@ func TestInvestmentMerge_TargetNotFound(t *testing.T) {
 }
 
 func TestInvestmentMerge_Basic(t *testing.T) {
-	dbPath := createCorporateActionTestDB(t, false, true)
+	dbPath := clitest.CreateCorporateActionTestDB(t, false, true)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", dbPath,
 		"--source", "AAPL",
@@ -152,7 +155,7 @@ func TestInvestmentMerge_Basic(t *testing.T) {
 		"--exchange-ratio", "0.5",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment merge) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment merge) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -174,10 +177,10 @@ func TestInvestmentMerge_Basic(t *testing.T) {
 }
 
 func TestInvestmentMerge_WithCashPerShare(t *testing.T) {
-	dbPath := createCorporateActionTestDB(t, false, true)
+	dbPath := clitest.CreateCorporateActionTestDB(t, false, true)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", dbPath,
 		"--source", "AAPL",
@@ -186,7 +189,7 @@ func TestInvestmentMerge_WithCashPerShare(t *testing.T) {
 		"--cash-per-share", "10.50",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment merge with cash) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment merge with cash) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -199,10 +202,10 @@ func TestInvestmentMerge_WithCashPerShare(t *testing.T) {
 }
 
 func TestInvestmentMerge_WithDate(t *testing.T) {
-	dbPath := createCorporateActionTestDB(t, false, true)
+	dbPath := clitest.CreateCorporateActionTestDB(t, false, true)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", dbPath,
 		"--source", "AAPL",
@@ -211,7 +214,7 @@ func TestInvestmentMerge_WithDate(t *testing.T) {
 		"--date", "2025-06-01",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment merge with date) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment merge with date) returned error: %v", err)
 	}
 
 	if !strings.Contains(stdout.String(), "2025-06-01") {
@@ -220,10 +223,10 @@ func TestInvestmentMerge_WithDate(t *testing.T) {
 }
 
 func TestInvestmentMerge_WithLotTracking(t *testing.T) {
-	dbPath := createCorporateActionTestDB(t, true, true)
+	dbPath := clitest.CreateCorporateActionTestDB(t, true, true)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "merge",
 		"--file", dbPath,
 		"--source", "AAPL",
@@ -231,7 +234,7 @@ func TestInvestmentMerge_WithLotTracking(t *testing.T) {
 		"--exchange-ratio", "0.5",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment merge lot-tracking) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment merge lot-tracking) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -241,12 +244,12 @@ func TestInvestmentMerge_WithLotTracking(t *testing.T) {
 }
 
 func TestInvestmentMerge_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "merge", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment merge --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "merge", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment merge --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "merge") {
 		t.Errorf("expected `investment merge --help` to describe the command; got:\n%s", stdout.String())
@@ -254,12 +257,12 @@ func TestInvestmentMerge_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsMerge(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "merge") {
 		t.Errorf("expected `investment --help` to list `merge`; got:\n%s", stdout.String())

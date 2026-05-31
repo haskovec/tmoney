@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/haskovec/tmoney/internal/cli/account"
+	"github.com/haskovec/tmoney/internal/cli/investment"
 	"github.com/spf13/cobra"
 )
 
@@ -91,7 +92,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newReconcileCmd())
 	cmd.AddCommand(newSecurityCmd())
 	cmd.AddCommand(newPriceCmd())
-	cmd.AddCommand(newInvestmentCmd())
+	cmd.AddCommand(investment.NewCmd())
 	cmd.AddCommand(newImportCmd())
 	cmd.AddCommand(newExportCmd())
 	cmd.AddCommand(newReportCmd())

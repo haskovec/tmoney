@@ -1,4 +1,4 @@
-package cli
+package investment_test
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -58,7 +59,7 @@ func createInvestmentTransferTestDB(t *testing.T) string {
 
 func TestInvestmentTransfer_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--from", "Source IRA",
 		"--to", "Dest 401k",
@@ -66,7 +67,7 @@ func TestInvestmentTransfer_MissingFile(t *testing.T) {
 		"--shares", "5",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment transfer) without --file should return error")
+		t.Fatal("cli.ExecuteWith(investment transfer) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -75,7 +76,7 @@ func TestInvestmentTransfer_MissingFile(t *testing.T) {
 
 func TestInvestmentTransfer_MissingFrom(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--file", "/fake.tdb",
 		"--to", "Dest 401k",
@@ -83,7 +84,7 @@ func TestInvestmentTransfer_MissingFrom(t *testing.T) {
 		"--shares", "5",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment transfer) without --from should return error")
+		t.Fatal("cli.ExecuteWith(investment transfer) without --from should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "from") {
 		t.Errorf("expected Cobra required-flag error mentioning from, got: %v", err)
@@ -92,7 +93,7 @@ func TestInvestmentTransfer_MissingFrom(t *testing.T) {
 
 func TestInvestmentTransfer_MissingTo(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--file", "/fake.tdb",
 		"--from", "Source IRA",
@@ -100,7 +101,7 @@ func TestInvestmentTransfer_MissingTo(t *testing.T) {
 		"--shares", "5",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment transfer) without --to should return error")
+		t.Fatal("cli.ExecuteWith(investment transfer) without --to should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "to") {
 		t.Errorf("expected Cobra required-flag error mentioning to, got: %v", err)
@@ -109,7 +110,7 @@ func TestInvestmentTransfer_MissingTo(t *testing.T) {
 
 func TestInvestmentTransfer_MissingTicker(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--file", "/fake.tdb",
 		"--from", "Source IRA",
@@ -117,7 +118,7 @@ func TestInvestmentTransfer_MissingTicker(t *testing.T) {
 		"--shares", "5",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment transfer) without --ticker should return error")
+		t.Fatal("cli.ExecuteWith(investment transfer) without --ticker should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "ticker") {
 		t.Errorf("expected Cobra required-flag error mentioning ticker, got: %v", err)
@@ -126,7 +127,7 @@ func TestInvestmentTransfer_MissingTicker(t *testing.T) {
 
 func TestInvestmentTransfer_MissingShares(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--file", "/fake.tdb",
 		"--from", "Source IRA",
@@ -134,7 +135,7 @@ func TestInvestmentTransfer_MissingShares(t *testing.T) {
 		"--ticker", "AAPL",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment transfer) without --shares should return error")
+		t.Fatal("cli.ExecuteWith(investment transfer) without --shares should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "shares") {
 		t.Errorf("expected Cobra required-flag error mentioning shares, got: %v", err)
@@ -145,7 +146,7 @@ func TestInvestmentTransfer_Basic(t *testing.T) {
 	dbPath := createInvestmentTransferTestDB(t)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--file", dbPath,
 		"--from", "Source IRA",
@@ -154,7 +155,7 @@ func TestInvestmentTransfer_Basic(t *testing.T) {
 		"--shares", "5",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment transfer) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment transfer) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -176,7 +177,7 @@ func TestInvestmentTransfer_WithDate(t *testing.T) {
 	dbPath := createInvestmentTransferTestDB(t)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--file", dbPath,
 		"--from", "Source IRA",
@@ -187,7 +188,7 @@ func TestInvestmentTransfer_WithDate(t *testing.T) {
 		"--memo", "rollover",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment transfer with date) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment transfer with date) returned error: %v", err)
 	}
 
 	if !strings.Contains(stdout.String(), "2025-04-15") {
@@ -198,7 +199,7 @@ func TestInvestmentTransfer_WithDate(t *testing.T) {
 func TestInvestmentTransfer_SourceAccountNotFound(t *testing.T) {
 	dbPath := createInvestmentTransferTestDB(t)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--file", dbPath,
 		"--from", "NonExistent",
@@ -214,7 +215,7 @@ func TestInvestmentTransfer_SourceAccountNotFound(t *testing.T) {
 func TestInvestmentTransfer_DestAccountNotFound(t *testing.T) {
 	dbPath := createInvestmentTransferTestDB(t)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--file", dbPath,
 		"--from", "Source IRA",
@@ -230,7 +231,7 @@ func TestInvestmentTransfer_DestAccountNotFound(t *testing.T) {
 func TestInvestmentTransfer_SecurityNotFound(t *testing.T) {
 	dbPath := createInvestmentTransferTestDB(t)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--file", dbPath,
 		"--from", "Source IRA",
@@ -246,7 +247,7 @@ func TestInvestmentTransfer_SecurityNotFound(t *testing.T) {
 func TestInvestmentTransfer_InvalidShares(t *testing.T) {
 	dbPath := createInvestmentTransferTestDB(t)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--file", dbPath,
 		"--from", "Source IRA",
@@ -262,7 +263,7 @@ func TestInvestmentTransfer_InvalidShares(t *testing.T) {
 func TestInvestmentTransfer_InvalidDate(t *testing.T) {
 	dbPath := createInvestmentTransferTestDB(t)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "transfer",
 		"--file", dbPath,
 		"--from", "Source IRA",
@@ -277,12 +278,12 @@ func TestInvestmentTransfer_InvalidDate(t *testing.T) {
 }
 
 func TestInvestmentTransfer_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "transfer", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment transfer --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "transfer", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment transfer --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "transfer") {
 		t.Errorf("expected `investment transfer --help` to describe the command; got:\n%s", stdout.String())
@@ -290,12 +291,12 @@ func TestInvestmentTransfer_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsTransfer(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "transfer") {
 		t.Errorf("expected `investment --help` to list `transfer`; got:\n%s", stdout.String())

@@ -1,4 +1,4 @@
-package cli
+package investment_test
 
 import (
 	"bytes"
@@ -8,6 +8,8 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/cli"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -15,7 +17,7 @@ import (
 
 func TestInvestmentSell_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--account", "Brokerage",
 		"--ticker", "AAPL",
@@ -23,7 +25,7 @@ func TestInvestmentSell_MissingFile(t *testing.T) {
 		"--amount", "800",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment sell) without --file should return error")
+		t.Fatal("cli.ExecuteWith(investment sell) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -32,7 +34,7 @@ func TestInvestmentSell_MissingFile(t *testing.T) {
 
 func TestInvestmentSell_MissingAccount(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", "/fake.tdb",
 		"--ticker", "AAPL",
@@ -40,7 +42,7 @@ func TestInvestmentSell_MissingAccount(t *testing.T) {
 		"--amount", "800",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment sell) without --account should return error")
+		t.Fatal("cli.ExecuteWith(investment sell) without --account should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "account") {
 		t.Errorf("expected Cobra required-flag error mentioning account, got: %v", err)
@@ -49,7 +51,7 @@ func TestInvestmentSell_MissingAccount(t *testing.T) {
 
 func TestInvestmentSell_MissingTicker(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", "/fake.tdb",
 		"--account", "Brokerage",
@@ -57,7 +59,7 @@ func TestInvestmentSell_MissingTicker(t *testing.T) {
 		"--amount", "800",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment sell) without --ticker should return error")
+		t.Fatal("cli.ExecuteWith(investment sell) without --ticker should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "ticker") {
 		t.Errorf("expected Cobra required-flag error mentioning ticker, got: %v", err)
@@ -66,7 +68,7 @@ func TestInvestmentSell_MissingTicker(t *testing.T) {
 
 func TestInvestmentSell_MissingShares(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", "/fake.tdb",
 		"--account", "Brokerage",
@@ -74,7 +76,7 @@ func TestInvestmentSell_MissingShares(t *testing.T) {
 		"--amount", "800",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment sell) without --shares should return error")
+		t.Fatal("cli.ExecuteWith(investment sell) without --shares should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "shares") {
 		t.Errorf("expected Cobra required-flag error mentioning shares, got: %v", err)
@@ -82,10 +84,10 @@ func TestInvestmentSell_MissingShares(t *testing.T) {
 }
 
 func TestInvestmentSell_MissingAmountAndPrice(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -93,7 +95,7 @@ func TestInvestmentSell_MissingAmountAndPrice(t *testing.T) {
 		"--shares", "5",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment sell) without --amount or --price-per-share should return error")
+		t.Fatal("cli.ExecuteWith(investment sell) without --amount or --price-per-share should return error")
 	}
 	if !strings.Contains(err.Error(), "--amount") {
 		t.Errorf("expected error to mention --amount, got: %v", err)
@@ -101,9 +103,9 @@ func TestInvestmentSell_MissingAmountAndPrice(t *testing.T) {
 }
 
 func TestInvestmentSell_Basic(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	if err := executeWith([]string{
+	if err := cli.ExecuteWith([]string{
 		"investment", "buy", "--file", dbPath,
 		"--account", "Brokerage", "--ticker", "AAPL",
 		"--shares", "10", "--price-per-share", "150",
@@ -112,7 +114,7 @@ func TestInvestmentSell_Basic(t *testing.T) {
 	}
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -121,7 +123,7 @@ func TestInvestmentSell_Basic(t *testing.T) {
 		"--price-per-share", "160",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment sell) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment sell) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -134,9 +136,9 @@ func TestInvestmentSell_Basic(t *testing.T) {
 }
 
 func TestInvestmentSell_WithTotalAmount(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	if err := executeWith([]string{
+	if err := cli.ExecuteWith([]string{
 		"investment", "buy", "--file", dbPath,
 		"--account", "Brokerage", "--ticker", "AAPL",
 		"--shares", "10", "--price-per-share", "150",
@@ -145,7 +147,7 @@ func TestInvestmentSell_WithTotalAmount(t *testing.T) {
 	}
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -154,7 +156,7 @@ func TestInvestmentSell_WithTotalAmount(t *testing.T) {
 		"--amount", "800",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment sell with --amount) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment sell with --amount) returned error: %v", err)
 	}
 
 	if !strings.Contains(stdout.String(), "Sell transaction created successfully") {
@@ -163,9 +165,9 @@ func TestInvestmentSell_WithTotalAmount(t *testing.T) {
 }
 
 func TestInvestmentSell_WithCommission(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	if err := executeWith([]string{
+	if err := cli.ExecuteWith([]string{
 		"investment", "buy", "--file", dbPath,
 		"--account", "Brokerage", "--ticker", "AAPL",
 		"--shares", "10", "--price-per-share", "150",
@@ -174,7 +176,7 @@ func TestInvestmentSell_WithCommission(t *testing.T) {
 	}
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -184,7 +186,7 @@ func TestInvestmentSell_WithCommission(t *testing.T) {
 		"--commission", "10",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment sell with commission) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment sell with commission) returned error: %v", err)
 	}
 
 	if !strings.Contains(stdout.String(), "Commission") {
@@ -193,9 +195,9 @@ func TestInvestmentSell_WithCommission(t *testing.T) {
 }
 
 func TestInvestmentSell_InsufficientShares(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	if err := executeWith([]string{
+	if err := cli.ExecuteWith([]string{
 		"investment", "buy", "--file", dbPath,
 		"--account", "Brokerage", "--ticker", "AAPL",
 		"--shares", "10", "--price-per-share", "150",
@@ -203,7 +205,7 @@ func TestInvestmentSell_InsufficientShares(t *testing.T) {
 		t.Fatalf("failed to buy shares: %v", err)
 	}
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -217,9 +219,9 @@ func TestInvestmentSell_InsufficientShares(t *testing.T) {
 }
 
 func TestInvestmentSell_AccountNotFound(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "NonExistent",
@@ -233,9 +235,9 @@ func TestInvestmentSell_AccountNotFound(t *testing.T) {
 }
 
 func TestInvestmentSell_SecurityNotFound(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -249,9 +251,9 @@ func TestInvestmentSell_SecurityNotFound(t *testing.T) {
 }
 
 func TestInvestmentSell_InvalidShares(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -265,9 +267,9 @@ func TestInvestmentSell_InvalidShares(t *testing.T) {
 }
 
 func TestInvestmentSell_InvalidDate(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -306,7 +308,7 @@ func TestInvestmentSell_WithLotAllocation(t *testing.T) {
 	if _, err := svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("50000"), ""); err != nil {
 		t.Fatalf("failed to deposit: %v", err)
 	}
-	if _, err := svc.Investment.Buy(acct.ID, sec.ID, types.Today(), types.MustNewQuantity("10"), nil, ptrMoney("150"), types.ZeroMoney, ""); err != nil {
+	if _, err := svc.Investment.Buy(acct.ID, sec.ID, types.Today(), types.MustNewQuantity("10"), nil, clitest.PtrMoney("150"), types.ZeroMoney, ""); err != nil {
 		t.Fatalf("failed to buy: %v", err)
 	}
 
@@ -318,7 +320,7 @@ func TestInvestmentSell_WithLotAllocation(t *testing.T) {
 	database.Close()
 
 	stdout := &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -328,7 +330,7 @@ func TestInvestmentSell_WithLotAllocation(t *testing.T) {
 		"--lot", lotID,
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment sell with --lot) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment sell with --lot) returned error: %v", err)
 	}
 
 	if !strings.Contains(stdout.String(), "Sell transaction created successfully") {
@@ -337,12 +339,12 @@ func TestInvestmentSell_WithLotAllocation(t *testing.T) {
 }
 
 func TestInvestmentSell_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "sell", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment sell --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "sell", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment sell --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "sell") {
 		t.Errorf("expected `investment sell --help` to describe the command; got:\n%s", stdout.String())
@@ -350,12 +352,12 @@ func TestInvestmentSell_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsSell(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "sell") {
 		t.Errorf("expected `investment --help` to list `sell`; got:\n%s", stdout.String())

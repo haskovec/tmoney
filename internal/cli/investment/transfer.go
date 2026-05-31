@@ -1,10 +1,11 @@
-package cli
+package investment
 
 import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -60,8 +61,8 @@ func newInvestmentTransferCmd() *cobra.Command {
 // runInvestmentTransfer executes `tmoney investment transfer`: move
 // shares of a security from one investment account to another.
 func runInvestmentTransfer(opts *investmentTransferOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	shares, err := types.NewQuantity(opts.shares)
@@ -79,7 +80,7 @@ func runInvestmentTransfer(opts *investmentTransferOptions, w io.Writer) error {
 		date = types.Today()
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -103,13 +104,13 @@ func runInvestmentTransfer(opts *investmentTransferOptions, w io.Writer) error {
 		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.ticker)
 	}
 
-	var lotAllocations []investment.SellLotAllocation
+	var lotAllocations []investmentdom.SellLotAllocation
 	if opts.lot != "" {
 		lotID, err := types.ParseID(opts.lot)
 		if err != nil {
 			return fmt.Errorf("invalid --lot: %w", err)
 		}
-		lotAllocations = []investment.SellLotAllocation{
+		lotAllocations = []investmentdom.SellLotAllocation{
 			{LotID: lotID, Shares: shares},
 		}
 	}
@@ -125,6 +126,6 @@ func runInvestmentTransfer(opts *investmentTransferOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
 	fmt.Fprintf(w, "  Shares:   %s\n", shares.String())
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

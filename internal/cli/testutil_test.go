@@ -5,7 +5,6 @@ import (
 
 	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/security"
-	"github.com/haskovec/tmoney/internal/types"
 )
 
 // These are package-cli shims delegating to internal/cli/clitest so the
@@ -26,13 +25,4 @@ func createTestDBWithSecurityAndPrices(t *testing.T) (string, *security.Security
 func createInvestmentTestDB(t *testing.T, trackLots bool) string {
 	t.Helper()
 	return clitest.CreateInvestmentTestDB(t, trackLots)
-}
-
-func ptrMoney(s string) *types.Money {
-	return clitest.PtrMoney(s)
-}
-
-func createCorporateActionTestDB(t *testing.T, trackLots bool, withSecondSecurity bool) string {
-	t.Helper()
-	return clitest.CreateCorporateActionTestDB(t, trackLots, withSecondSecurity)
 }

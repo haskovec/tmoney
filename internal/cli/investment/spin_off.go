@@ -1,11 +1,12 @@
-package cli
+package investment
 
 import (
 	"fmt"
 	"io"
 	"strconv"
 
-	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -61,8 +62,8 @@ func newInvestmentSpinOffCmd() *cobra.Command {
 // runInvestmentSpinOff executes `tmoney investment spin-off`: apply a
 // corporate spin-off.
 func runInvestmentSpinOff(opts *investmentSpinOffOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	shareRatio, err := strconv.ParseFloat(opts.shareRatio, 64)
@@ -90,12 +91,12 @@ func runInvestmentSpinOff(opts *investmentSpinOffOptions, w io.Writer) error {
 		date = types.Today()
 	}
 
-	params := investment.SpinOffParams{
+	params := investmentdom.SpinOffParams{
 		ShareRatio:          shareRatio,
 		ParentAllocationPct: parentAlloc,
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -128,9 +129,9 @@ func runInvestmentSpinOff(opts *investmentSpinOffOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
 	fmt.Fprintf(w, "  Share Ratio: %s\n", opts.shareRatio)
 	fmt.Fprintf(w, "  Parent Allocation: %s%%\n", opts.parentAllocation)
-	fmt.Fprintf(w, "  Spin-off Price: %s\n", formatMoney(spinPrice, "USD"))
+	fmt.Fprintf(w, "  Spin-off Price: %s\n", cmdutil.FormatMoney(spinPrice, "USD"))
 	fmt.Fprintf(w, "  Action ID: %s\n", action.ID.String())
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

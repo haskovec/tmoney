@@ -1,12 +1,19 @@
-package cli
+// Package investment holds the `tmoney investment` command group (buy, sell,
+// dividend, reinvest, fee, deposit, withdraw, transfer, split, merge, spin-off,
+// portfolio, rebuild-positions). It is one of the per-noun CLI subpackages
+// carved out of internal/cli; it depends only on the shared cmdutil hub, the
+// investment domain package (imported as investmentdom to avoid the name
+// collision) plus the account/app/security/types domain packages — never on a
+// sibling noun package or on internal/cli itself.
+package investment
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// newInvestmentCmd returns the `investment` parent command. Child verbs
-// are registered as they migrate from the legacy `--flag` dispatcher.
-func newInvestmentCmd() *cobra.Command {
+// NewCmd returns the `investment` parent command with every investment verb
+// registered as a subcommand.
+func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "investment",
 		Short: "Manage investment transactions",

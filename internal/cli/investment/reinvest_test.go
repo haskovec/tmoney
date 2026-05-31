@@ -1,14 +1,17 @@
-package cli
+package investment_test
 
 import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/haskovec/tmoney/internal/cli"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 )
 
 func TestInvestmentReinvest_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--account", "Brokerage",
 		"--ticker", "AAPL",
@@ -16,7 +19,7 @@ func TestInvestmentReinvest_MissingFile(t *testing.T) {
 		"--amount", "300",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment reinvest) without --file should return error")
+		t.Fatal("cli.ExecuteWith(investment reinvest) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -25,7 +28,7 @@ func TestInvestmentReinvest_MissingFile(t *testing.T) {
 
 func TestInvestmentReinvest_MissingAccount(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", "/fake.tdb",
 		"--ticker", "AAPL",
@@ -33,7 +36,7 @@ func TestInvestmentReinvest_MissingAccount(t *testing.T) {
 		"--amount", "300",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment reinvest) without --account should return error")
+		t.Fatal("cli.ExecuteWith(investment reinvest) without --account should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "account") {
 		t.Errorf("expected Cobra required-flag error mentioning account, got: %v", err)
@@ -42,7 +45,7 @@ func TestInvestmentReinvest_MissingAccount(t *testing.T) {
 
 func TestInvestmentReinvest_MissingTicker(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", "/fake.tdb",
 		"--account", "Brokerage",
@@ -50,7 +53,7 @@ func TestInvestmentReinvest_MissingTicker(t *testing.T) {
 		"--amount", "300",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment reinvest) without --ticker should return error")
+		t.Fatal("cli.ExecuteWith(investment reinvest) without --ticker should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "ticker") {
 		t.Errorf("expected Cobra required-flag error mentioning ticker, got: %v", err)
@@ -59,7 +62,7 @@ func TestInvestmentReinvest_MissingTicker(t *testing.T) {
 
 func TestInvestmentReinvest_MissingShares(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", "/fake.tdb",
 		"--account", "Brokerage",
@@ -67,7 +70,7 @@ func TestInvestmentReinvest_MissingShares(t *testing.T) {
 		"--amount", "300",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment reinvest) without --shares should return error")
+		t.Fatal("cli.ExecuteWith(investment reinvest) without --shares should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "shares") {
 		t.Errorf("expected Cobra required-flag error mentioning shares, got: %v", err)
@@ -75,9 +78,9 @@ func TestInvestmentReinvest_MissingShares(t *testing.T) {
 }
 
 func TestInvestmentReinvest_MissingAmountAndPrice(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -90,10 +93,10 @@ func TestInvestmentReinvest_MissingAmountAndPrice(t *testing.T) {
 }
 
 func TestInvestmentReinvest_BasicWithPricePerShare(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -102,7 +105,7 @@ func TestInvestmentReinvest_BasicWithPricePerShare(t *testing.T) {
 		"--price-per-share", "150",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment reinvest) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment reinvest) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -115,10 +118,10 @@ func TestInvestmentReinvest_BasicWithPricePerShare(t *testing.T) {
 }
 
 func TestInvestmentReinvest_BasicWithAmount(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -127,7 +130,7 @@ func TestInvestmentReinvest_BasicWithAmount(t *testing.T) {
 		"--amount", "300",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment reinvest) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment reinvest) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -137,10 +140,10 @@ func TestInvestmentReinvest_BasicWithAmount(t *testing.T) {
 }
 
 func TestInvestmentReinvest_WithDateAndMemo(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -151,7 +154,7 @@ func TestInvestmentReinvest_WithDateAndMemo(t *testing.T) {
 		"--memo", "DRIP",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment reinvest with date/memo) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment reinvest with date/memo) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -161,9 +164,9 @@ func TestInvestmentReinvest_WithDateAndMemo(t *testing.T) {
 }
 
 func TestInvestmentReinvest_AccountNotFound(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", dbPath,
 		"--account", "NonExistent",
@@ -177,9 +180,9 @@ func TestInvestmentReinvest_AccountNotFound(t *testing.T) {
 }
 
 func TestInvestmentReinvest_SecurityNotFound(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -193,9 +196,9 @@ func TestInvestmentReinvest_SecurityNotFound(t *testing.T) {
 }
 
 func TestInvestmentReinvest_InvalidShares(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -209,9 +212,9 @@ func TestInvestmentReinvest_InvalidShares(t *testing.T) {
 }
 
 func TestInvestmentReinvest_InvalidAmount(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -225,9 +228,9 @@ func TestInvestmentReinvest_InvalidAmount(t *testing.T) {
 }
 
 func TestInvestmentReinvest_InvalidPricePerShare(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -241,9 +244,9 @@ func TestInvestmentReinvest_InvalidPricePerShare(t *testing.T) {
 }
 
 func TestInvestmentReinvest_InvalidDate(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "reinvest",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -258,12 +261,12 @@ func TestInvestmentReinvest_InvalidDate(t *testing.T) {
 }
 
 func TestInvestmentReinvest_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "reinvest", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment reinvest --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "reinvest", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment reinvest --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "reinvest") {
 		t.Errorf("expected `investment reinvest --help` to describe the command; got:\n%s", stdout.String())
@@ -271,12 +274,12 @@ func TestInvestmentReinvest_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsReinvest(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "reinvest") {
 		t.Errorf("expected `investment --help` to list `reinvest`; got:\n%s", stdout.String())

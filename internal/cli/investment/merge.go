@@ -1,11 +1,12 @@
-package cli
+package investment
 
 import (
 	"fmt"
 	"io"
 	"strconv"
 
-	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -56,8 +57,8 @@ func newInvestmentMergeCmd() *cobra.Command {
 // runInvestmentMerge executes `tmoney investment merge`: apply a merger or
 // acquisition between two securities.
 func runInvestmentMerge(opts *investmentMergeOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	ratio, err := strconv.ParseFloat(opts.exchangeRatio, 64)
@@ -83,12 +84,12 @@ func runInvestmentMerge(opts *investmentMergeOptions, w io.Writer) error {
 		date = types.Today()
 	}
 
-	params := investment.MergerParams{
+	params := investmentdom.MergerParams{
 		ExchangeRatio: ratio,
 		CashPerShare:  cashPerShare,
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -125,6 +126,6 @@ func runInvestmentMerge(opts *investmentMergeOptions, w io.Writer) error {
 	}
 	fmt.Fprintf(w, "  Action ID: %s\n", action.ID.String())
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

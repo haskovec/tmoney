@@ -1,10 +1,11 @@
-package cli
+package investment
 
 import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -49,11 +50,11 @@ func newInvestmentSplitCmd() *cobra.Command {
 // runInvestmentSplit executes `tmoney investment split`: apply a stock
 // split or reverse split to a security.
 func runInvestmentSplit(opts *investmentSplitOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	params, err := investment.ParseSplitRatio(opts.ratio)
+	params, err := investmentdom.ParseSplitRatio(opts.ratio)
 	if err != nil {
 		return fmt.Errorf("invalid --ratio: %w", err)
 	}
@@ -68,7 +69,7 @@ func runInvestmentSplit(opts *investmentSplitOptions, w io.Writer) error {
 		date = types.Today()
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -93,6 +94,6 @@ func runInvestmentSplit(opts *investmentSplitOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Ratio:    %s\n", params.RatioString())
 	fmt.Fprintf(w, "  Action ID: %s\n", action.ID.String())
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

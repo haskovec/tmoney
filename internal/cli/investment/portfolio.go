@@ -1,10 +1,11 @@
-package cli
+package investment
 
 import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
@@ -54,8 +55,8 @@ func newInvestmentPortfolioCmd() *cobra.Command {
 // runInvestmentPortfolio executes `tmoney investment portfolio`: show the
 // investment portfolio for an account.
 func runInvestmentPortfolio(opts *investmentPortfolioOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	var asOf types.Date
@@ -69,7 +70,7 @@ func runInvestmentPortfolio(opts *investmentPortfolioOptions, w io.Writer) error
 		asOf = types.Today()
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -80,7 +81,7 @@ func runInvestmentPortfolio(opts *investmentPortfolioOptions, w io.Writer) error
 		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	valuation, err := svc.Investment.GetAccountValuation(acct.ID, asOf, investment.ValuationOptions{IncludeClosed: opts.includeClosed})
+	valuation, err := svc.Investment.GetAccountValuation(acct.ID, asOf, investmentdom.ValuationOptions{IncludeClosed: opts.includeClosed})
 	if err != nil {
 		return fmt.Errorf("failed to get portfolio valuation: %w", err)
 	}

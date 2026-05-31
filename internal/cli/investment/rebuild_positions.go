@@ -1,10 +1,11 @@
-package cli
+package investment
 
 import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/spf13/cobra"
 )
 
@@ -44,11 +45,11 @@ func newInvestmentRebuildPositionsCmd() *cobra.Command {
 
 // runInvestmentRebuildPositions runs the rebuild against one or every investment account.
 func runInvestmentRebuildPositions(opts *investmentRebuildPositionsOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -64,7 +65,7 @@ func runInvestmentRebuildPositions(opts *investmentRebuildPositionsOptions, w io
 			return fmt.Errorf("rebuild failed: %w", err)
 		}
 		printRebuildResult(w, res)
-		autoBackupAfterModification(opts.file)
+		cmdutil.AutoBackupAfterModification(opts.file)
 		return nil
 	}
 
@@ -88,12 +89,12 @@ func runInvestmentRebuildPositions(opts *investmentRebuildPositionsOptions, w io
 		fmt.Fprintln(w, "No investment accounts found.")
 		return nil
 	}
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }
 
 // printRebuildResult writes a human-readable summary for one account's rebuild.
-func printRebuildResult(w io.Writer, res *investment.RebuildResult) {
+func printRebuildResult(w io.Writer, res *investmentdom.RebuildResult) {
 	if res.HasCorporateActions {
 		fmt.Fprintf(w, "%s: skipped (corporate-action history present; rebuild not safe)\n", res.AccountName)
 		return

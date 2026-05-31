@@ -1,4 +1,4 @@
-package cli
+package investment_test
 
 import (
 	"bytes"
@@ -9,8 +9,10 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/cli"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/investment"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -18,12 +20,12 @@ import (
 
 func TestInvestmentPortfolio_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--account", "Brokerage",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment portfolio) without --file should return error")
+		t.Fatal("cli.ExecuteWith(investment portfolio) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -32,12 +34,12 @@ func TestInvestmentPortfolio_MissingFile(t *testing.T) {
 
 func TestInvestmentPortfolio_MissingAccount(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", "test.tdb",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(investment portfolio) without --account should return error")
+		t.Fatal("cli.ExecuteWith(investment portfolio) without --account should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "account") {
 		t.Errorf("expected Cobra required-flag error mentioning account, got: %v", err)
@@ -46,7 +48,7 @@ func TestInvestmentPortfolio_MissingAccount(t *testing.T) {
 
 func TestInvestmentPortfolio_AccountNotFound(t *testing.T) {
 	dbPath := createPortfolioCmdTestDB(t, false)
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "NonExistent",
@@ -57,16 +59,16 @@ func TestInvestmentPortfolio_AccountNotFound(t *testing.T) {
 }
 
 func TestInvestmentPortfolio_EmptyAccount(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -88,13 +90,13 @@ func TestInvestmentPortfolio_WithHoldings(t *testing.T) {
 	dbPath := createPortfolioCmdTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -150,14 +152,14 @@ func TestInvestmentPortfolio_WithAsOf(t *testing.T) {
 	dbPath := createPortfolioCmdTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 		"--as-of", "2099-12-31",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio --as-of) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio --as-of) returned error: %v", err)
 	}
 
 	if !strings.Contains(stdout.String(), "PORTFOLIO: Brokerage") {
@@ -168,7 +170,7 @@ func TestInvestmentPortfolio_WithAsOf(t *testing.T) {
 func TestInvestmentPortfolio_InvalidAsOf(t *testing.T) {
 	dbPath := createPortfolioCmdTestDB(t, false)
 
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -183,14 +185,14 @@ func TestInvestmentPortfolio_ShowLotsWithLotTracking(t *testing.T) {
 	dbPath := createPortfolioCmdTestDB(t, true) // lot-tracking enabled
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 		"--show-lots",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio --show-lots) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio --show-lots) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -227,14 +229,14 @@ func TestInvestmentPortfolio_ShowLotsNonLotTracking(t *testing.T) {
 	dbPath := createPortfolioCmdTestDB(t, false) // lot-tracking disabled
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 		"--show-lots",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio --show-lots non-lot) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio --show-lots non-lot) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -250,13 +252,13 @@ func TestInvestmentPortfolio_OmitsClosedByDefault(t *testing.T) {
 	dbPath := createPortfolioCmdTestDBWithClosed(t)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -275,14 +277,14 @@ func TestInvestmentPortfolio_IncludeClosed_PrintsHeading(t *testing.T) {
 	dbPath := createPortfolioCmdTestDBWithClosed(t)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 		"--include-closed",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio --include-closed) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio --include-closed) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -303,14 +305,14 @@ func TestInvestmentPortfolio_IncludeClosed_RendersClosedPositionsTable(t *testin
 	dbPath := createPortfolioCmdTestDBWithClosed(t)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 		"--include-closed",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio --include-closed) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio --include-closed) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -365,13 +367,13 @@ func TestInvestmentPortfolio_HintFooter_WhenClosedExistsAndFlagOff(t *testing.T)
 	dbPath := createPortfolioCmdTestDBWithClosed(t)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -397,14 +399,14 @@ func TestInvestmentPortfolio_HintFooter_SuppressedWithFlag(t *testing.T) {
 	dbPath := createPortfolioCmdTestDBWithClosed(t)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 		"--include-closed",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio --include-closed) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio --include-closed) returned error: %v", err)
 	}
 
 	if strings.Contains(stdout.String(), "Hint:") {
@@ -418,13 +420,13 @@ func TestInvestmentPortfolio_HintFooter_AbsentWhenNoClosed(t *testing.T) {
 	dbPath := createPortfolioCmdTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio) returned error: %v", err)
 	}
 
 	if strings.Contains(stdout.String(), "Hint:") {
@@ -436,14 +438,14 @@ func TestInvestmentPortfolio_IncludeClosed_NoClosedPositions_NoHeading(t *testin
 	dbPath := createPortfolioCmdTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 		"--include-closed",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio --include-closed) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio --include-closed) returned error: %v", err)
 	}
 
 	if strings.Contains(stdout.String(), "Closed positions") {
@@ -458,13 +460,13 @@ func TestInvestmentPortfolio_TotalReturnColumns(t *testing.T) {
 	dbPath := createPortfolioCmdTestDBWithTotalReturn(t)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -500,13 +502,13 @@ func TestInvestmentPortfolio_RealizedGainUnavailable(t *testing.T) {
 	dbPath := createPortfolioCmdTestDBWithCorporateAction(t)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -544,13 +546,13 @@ func TestInvestmentPortfolio_AccountTotalsBlock(t *testing.T) {
 	dbPath := createPortfolioCmdTestDBWithTotalReturn(t)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -585,16 +587,16 @@ func TestInvestmentPortfolio_AccountTotalsBlock(t *testing.T) {
 // TR-019: when TotalReturnPct is nil (no buys ever, denominator is zero),
 // the "Total return %" row renders the "—" placeholder rather than 0%.
 func TestInvestmentPortfolio_TotalReturnPctNilRendersDash(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "portfolio",
 		"--file", dbPath,
 		"--account", "Brokerage",
 	}, stdout, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("executeWith(investment portfolio) returned error: %v", err)
+		t.Fatalf("cli.ExecuteWith(investment portfolio) returned error: %v", err)
 	}
 
 	output := stdout.String()
@@ -614,12 +616,12 @@ func TestInvestmentPortfolio_TotalReturnPctNilRendersDash(t *testing.T) {
 }
 
 func TestInvestmentPortfolio_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "portfolio", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment portfolio --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "portfolio", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment portfolio --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "portfolio") {
 		t.Errorf("expected `investment portfolio --help` to describe the command; got:\n%s", stdout.String())
@@ -627,12 +629,12 @@ func TestInvestmentPortfolio_Help(t *testing.T) {
 }
 
 func TestInvestmentCmd_HelpListsPortfolio(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(investment --help): %v", err)
+	if err := cli.ExecuteWith([]string{"investment", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(investment --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "portfolio") {
 		t.Errorf("expected `investment --help` to list `portfolio`; got:\n%s", stdout.String())
@@ -683,10 +685,10 @@ func createPortfolioCmdTestDB(t *testing.T, trackLots bool) string {
 		t.Fatalf("failed to deposit cash: %v", err)
 	}
 
-	if _, err := svc.Investment.Buy(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("10"), nil, ptrMoney("150"), types.ZeroMoney, ""); err != nil {
+	if _, err := svc.Investment.Buy(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("10"), nil, clitest.PtrMoney("150"), types.ZeroMoney, ""); err != nil {
 		t.Fatalf("failed to buy AAPL: %v", err)
 	}
-	if _, err := svc.Investment.Buy(acct.ID, msft.ID, types.Today(), types.MustNewQuantity("5"), nil, ptrMoney("400"), types.ZeroMoney, ""); err != nil {
+	if _, err := svc.Investment.Buy(acct.ID, msft.ID, types.Today(), types.MustNewQuantity("5"), nil, clitest.PtrMoney("400"), types.ZeroMoney, ""); err != nil {
 		t.Fatalf("failed to buy MSFT: %v", err)
 	}
 
@@ -736,14 +738,14 @@ func createPortfolioCmdTestDBWithClosed(t *testing.T) string {
 		t.Fatalf("failed to deposit cash: %v", err)
 	}
 
-	if _, err := svc.Investment.Buy(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("10"), nil, ptrMoney("150"), types.ZeroMoney, ""); err != nil {
+	if _, err := svc.Investment.Buy(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("10"), nil, clitest.PtrMoney("150"), types.ZeroMoney, ""); err != nil {
 		t.Fatalf("failed to buy AAPL: %v", err)
 	}
 
-	if _, err := svc.Investment.Buy(acct.ID, msft.ID, types.Today(), types.MustNewQuantity("5"), nil, ptrMoney("400"), types.ZeroMoney, ""); err != nil {
+	if _, err := svc.Investment.Buy(acct.ID, msft.ID, types.Today(), types.MustNewQuantity("5"), nil, clitest.PtrMoney("400"), types.ZeroMoney, ""); err != nil {
 		t.Fatalf("failed to buy MSFT: %v", err)
 	}
-	if _, err := svc.Investment.Sell(acct.ID, msft.ID, types.Today(), types.MustNewQuantity("5"), nil, ptrMoney("450"), types.ZeroMoney, "", nil); err != nil {
+	if _, err := svc.Investment.Sell(acct.ID, msft.ID, types.Today(), types.MustNewQuantity("5"), nil, clitest.PtrMoney("450"), types.ZeroMoney, "", nil); err != nil {
 		t.Fatalf("failed to sell MSFT: %v", err)
 	}
 
@@ -786,10 +788,10 @@ func createPortfolioCmdTestDBWithTotalReturn(t *testing.T) string {
 	if _, err := svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("100000"), "initial deposit"); err != nil {
 		t.Fatalf("failed to deposit cash: %v", err)
 	}
-	if _, err := svc.Investment.Buy(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("10"), nil, ptrMoney("150"), types.MustNewMoney("5"), ""); err != nil {
+	if _, err := svc.Investment.Buy(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("10"), nil, clitest.PtrMoney("150"), types.MustNewMoney("5"), ""); err != nil {
 		t.Fatalf("failed to buy AAPL: %v", err)
 	}
-	if _, err := svc.Investment.Sell(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("3"), nil, ptrMoney("160"), types.MustNewMoney("2"), "", nil); err != nil {
+	if _, err := svc.Investment.Sell(acct.ID, aapl.ID, types.Today(), types.MustNewQuantity("3"), nil, clitest.PtrMoney("160"), types.MustNewMoney("2"), "", nil); err != nil {
 		t.Fatalf("failed to sell AAPL: %v", err)
 	}
 	if _, err := svc.Investment.Dividend(acct.ID, aapl.ID, types.Today(), types.MustNewMoney("50"), ""); err != nil {
@@ -839,16 +841,16 @@ func createPortfolioCmdTestDBWithCorporateAction(t *testing.T) string {
 	if _, err := svc.Investment.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
 		t.Fatalf("failed to deposit cash: %v", err)
 	}
-	if _, err := svc.Investment.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"), nil, ptrMoney("100"), types.ZeroMoney, ""); err != nil {
+	if _, err := svc.Investment.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"), nil, clitest.PtrMoney("100"), types.ZeroMoney, ""); err != nil {
 		t.Fatalf("failed to buy AAPL: %v", err)
 	}
 	if _, err := svc.Investment.Dividend(acct.ID, aapl.ID, d1, types.MustNewMoney("50"), ""); err != nil {
 		t.Fatalf("failed to record AAPL dividend: %v", err)
 	}
-	if _, err := svc.CorporateAction.Split(aapl.ID, dSplit, investment.SplitParams{Numerator: 4, Denominator: 1}); err != nil {
+	if _, err := svc.CorporateAction.Split(aapl.ID, dSplit, investmentdom.SplitParams{Numerator: 4, Denominator: 1}); err != nil {
 		t.Fatalf("failed to split AAPL: %v", err)
 	}
-	if _, err := svc.Investment.Sell(acct.ID, aapl.ID, d2, types.MustNewQuantity("5"), nil, ptrMoney("30"), types.ZeroMoney, "", nil); err != nil {
+	if _, err := svc.Investment.Sell(acct.ID, aapl.ID, d2, types.MustNewQuantity("5"), nil, clitest.PtrMoney("30"), types.ZeroMoney, "", nil); err != nil {
 		t.Fatalf("failed to sell AAPL: %v", err)
 	}
 
