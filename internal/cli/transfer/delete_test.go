@@ -1,4 +1,4 @@
-package cli
+package transfer_test
 
 import (
 	"bytes"
@@ -7,16 +7,18 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/cli"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestTransferDelete_MissingTxnID(t *testing.T) {
-	dbPath, _, _ := setupTransferAccounts(t)
+	dbPath, _, _ := clitest.SetupTransferAccounts(t)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"transfer", "delete", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "delete", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("transfer delete without --txn-id should error")
 	}
@@ -26,11 +28,11 @@ func TestTransferDelete_MissingTxnID(t *testing.T) {
 }
 
 func TestTransferDelete_DispatchRegToReg(t *testing.T) {
-	dbPath, checking, savings := setupTransferAccounts(t)
+	dbPath, checking, savings := clitest.SetupTransferAccounts(t)
 
 	var legID types.ID
 	func() {
-		svc := openSvc(t, dbPath)
+		svc := clitest.OpenSvc(t, dbPath)
 		pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"))
 		if err != nil {
 			t.Fatalf("CreateTransfer: %v", err)
@@ -39,14 +41,14 @@ func TestTransferDelete_DispatchRegToReg(t *testing.T) {
 	}()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr); err != nil {
 		t.Fatalf("transfer delete reg→reg: %v\nstderr=%s", err, stderr)
 	}
 	if !strings.Contains(stdout.String(), "Transfer deleted successfully") {
 		t.Errorf("expected success line, got: %s", stdout.String())
 	}
 
-	svc := openSvc(t, dbPath)
+	svc := clitest.OpenSvc(t, dbPath)
 	for _, acct := range []*account.Account{checking, savings} {
 		txns, err := svc.TransactionRepo.ListByAccount(acct.ID)
 		if err != nil {
@@ -59,11 +61,11 @@ func TestTransferDelete_DispatchRegToReg(t *testing.T) {
 }
 
 func TestTransferDelete_DispatchRegToInv(t *testing.T) {
-	dbPath, checking, brokerage, _, _ := setupTransferDispatchAccounts(t)
+	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
 
 	var legID types.ID
 	func() {
-		svc := openSvc(t, dbPath)
+		svc := clitest.OpenSvc(t, dbPath)
 		res, err := svc.Investment.DepositFromAccount(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("500.00"), "fund")
 		if err != nil {
 			t.Fatalf("DepositFromAccount: %v", err)
@@ -72,18 +74,18 @@ func TestTransferDelete_DispatchRegToInv(t *testing.T) {
 	}()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr); err != nil {
 		t.Fatalf("transfer delete reg→inv: %v\nstderr=%s", err, stderr)
 	}
 	assertTransferGone(t, dbPath, checking, []*account.Account{brokerage})
 }
 
 func TestTransferDelete_DispatchInvToReg(t *testing.T) {
-	dbPath, checking, brokerage, _, _ := setupTransferDispatchAccounts(t)
+	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
 
 	var legID types.ID
 	func() {
-		svc := openSvc(t, dbPath)
+		svc := clitest.OpenSvc(t, dbPath)
 		res, err := svc.Investment.TransferCash(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("250.00"), "draw")
 		if err != nil {
 			t.Fatalf("TransferCash: %v", err)
@@ -93,18 +95,18 @@ func TestTransferDelete_DispatchInvToReg(t *testing.T) {
 	}()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr); err != nil {
 		t.Fatalf("transfer delete inv→reg: %v\nstderr=%s", err, stderr)
 	}
 	assertTransferGone(t, dbPath, checking, []*account.Account{brokerage})
 }
 
 func TestTransferDelete_DispatchInvToInv(t *testing.T) {
-	dbPath, _, brokerage, ira, _ := setupTransferDispatchAccounts(t)
+	dbPath, _, brokerage, ira, _ := clitest.SetupTransferDispatchAccounts(t)
 
 	var legID types.ID
 	func() {
-		svc := openSvc(t, dbPath)
+		svc := clitest.OpenSvc(t, dbPath)
 		res, err := svc.Investment.TransferCashBetweenInvestments(brokerage.ID, ira.ID, types.Today(), types.MustNewMoney("1000.00"), "rollover")
 		if err != nil {
 			t.Fatalf("TransferCashBetweenInvestments: %v", err)
@@ -113,29 +115,29 @@ func TestTransferDelete_DispatchInvToInv(t *testing.T) {
 	}()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr); err != nil {
 		t.Fatalf("transfer delete inv→inv: %v\nstderr=%s", err, stderr)
 	}
 	assertTransferGone(t, dbPath, nil, []*account.Account{brokerage, ira})
 }
 
 func TestTransferDelete_RefusesTransferLineSplit(t *testing.T) {
-	dbPath, checking, brokerage, _, _ := setupTransferDispatchAccounts(t)
+	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
 
 	var invLegID types.ID
 	func() {
-		svc := openSvc(t, dbPath)
+		svc := clitest.OpenSvc(t, dbPath)
 		parent := transaction.NewTransaction(checking.ID, types.Today(), types.MustNewMoney("-200.00"))
 		line := transaction.NewSplit(parent.ID, types.NilID, types.MustNewMoney("-200.00"))
 		line.TransferAccountID = types.NullableID{ID: brokerage.ID, Valid: true}
 		if err := svc.Transaction.CreateWithSplits(parent, []*transaction.Split{line}); err != nil {
 			t.Fatalf("CreateWithSplits: %v", err)
 		}
-		invLegID = findInvestmentLegForTest(t, svc, brokerage.ID)
+		invLegID = clitest.FindInvestmentLegForTest(t, svc, brokerage.ID)
 	}()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", invLegID.String()}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", invLegID.String()}, stdout, stderr)
 	if err == nil {
 		t.Fatal("transfer delete on a transfer-line split should refuse")
 	}
@@ -145,11 +147,11 @@ func TestTransferDelete_RefusesTransferLineSplit(t *testing.T) {
 }
 
 func TestTransferDelete_RefusesReconciledLeg(t *testing.T) {
-	dbPath, checking, savings := setupTransferAccounts(t)
+	dbPath, checking, savings := clitest.SetupTransferAccounts(t)
 
 	var legID types.ID
 	func() {
-		svc := openSvc(t, dbPath)
+		svc := clitest.OpenSvc(t, dbPath)
 		pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"))
 		if err != nil {
 			t.Fatalf("CreateTransfer: %v", err)
@@ -160,7 +162,7 @@ func TestTransferDelete_RefusesReconciledLeg(t *testing.T) {
 	}()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr)
 	if err == nil {
 		t.Fatal("transfer delete on a reconciled transfer should refuse")
 	}
@@ -173,7 +175,7 @@ func TestTransferDelete_RefusesReconciledLeg(t *testing.T) {
 // regular account (if non-nil) or the listed investment accounts.
 func assertTransferGone(t *testing.T, dbPath string, regAcct *account.Account, invAccts []*account.Account) {
 	t.Helper()
-	svc := openSvc(t, dbPath)
+	svc := clitest.OpenSvc(t, dbPath)
 	if regAcct != nil {
 		txns, err := svc.TransactionRepo.ListByAccount(regAcct.ID)
 		if err != nil {

@@ -1,4 +1,4 @@
-package cli
+package transfer_test
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -47,7 +48,7 @@ func setupLinkScenario(t *testing.T, txns ...*transaction.Transaction) (string, 
 
 func TestTransferLink_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"transfer", "link"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "link"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(transfer link) without --file should return error")
 	}
@@ -60,7 +61,7 @@ func TestTransferLink_PreviewEmpty(t *testing.T) {
 	dbPath, _, _ := setupLinkScenario(t)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"transfer", "link", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "link", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("executeWith(transfer link): %v\nstderr=%s", err, stderr)
 	}
@@ -93,7 +94,7 @@ func TestTransferLink_PreviewWithCleanPair(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transfer", "link", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transfer", "link", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("executeWith(transfer link): %v\nstderr=%s", err, stderr)
 	}
@@ -125,7 +126,7 @@ func TestTransferLink_ConfirmExecutes(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transfer", "link", "--file", dbPath, "--confirm"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transfer", "link", "--file", dbPath, "--confirm"}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("executeWith(transfer link --confirm): %v\nstderr=%s", err, stderr)
 	}
@@ -186,7 +187,7 @@ func TestTransferLink_MaxDaysWindowExcludes(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transfer", "link", "--file", dbPath, "--max-days", "2"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transfer", "link", "--file", dbPath, "--max-days", "2"}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("executeWith(transfer link --max-days=2): %v\nstderr=%s", err, stderr)
 	}
@@ -228,7 +229,7 @@ func TestTransferLink_AmbiguousPairs(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transfer", "link", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transfer", "link", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("executeWith(transfer link): %v\nstderr=%s", err, stderr)
 	}
@@ -243,7 +244,7 @@ func TestTransferLink_AmbiguousPairs(t *testing.T) {
 	// because there are no clean pairs to act on.
 	stdout.Reset()
 	stderr.Reset()
-	err = executeWith([]string{"transfer", "link", "--file", dbPath, "--confirm"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transfer", "link", "--file", dbPath, "--confirm"}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("executeWith(transfer link --confirm): %v\nstderr=%s", err, stderr)
 	}
@@ -259,7 +260,7 @@ func TestTransferLink_InvalidMaxDays(t *testing.T) {
 	dbPath, _, _ := setupLinkScenario(t)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"transfer", "link", "--file", dbPath, "--max-days", "-1"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "link", "--file", dbPath, "--max-days", "-1"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(transfer link --max-days=-1) should return error")
 	}
@@ -269,11 +270,11 @@ func TestTransferLink_InvalidMaxDays(t *testing.T) {
 }
 
 func TestTransferCmd_HelpListsLink(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"transfer", "--help"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"transfer", "--help"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith(transfer --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "link") {
@@ -282,11 +283,11 @@ func TestTransferCmd_HelpListsLink(t *testing.T) {
 }
 
 func TestTransferLink_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"transfer", "link", "--help"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"transfer", "link", "--help"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith(transfer link --help): %v", err)
 	}
 	out := stdout.String()

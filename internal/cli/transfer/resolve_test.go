@@ -1,31 +1,18 @@
-package cli
+package transfer
 
 import (
 	"errors"
 	"strings"
 	"testing"
 
-	"github.com/haskovec/tmoney/internal/app"
-	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// openSvc opens the application services for a database file and registers a
-// cleanup that closes the underlying connection.
-func openSvc(t *testing.T, dbPath string) *app.Services {
-	t.Helper()
-	database, svc, err := openServices(dbPath)
-	if err != nil {
-		t.Fatalf("openServices: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
-	return svc
-}
-
 func TestResolveTransferPair_NotFound(t *testing.T) {
-	dbPath, _, _ := setupTransferAccounts(t)
-	svc := openSvc(t, dbPath)
+	dbPath, _, _ := clitest.SetupTransferAccounts(t)
+	svc := clitest.OpenSvc(t, dbPath)
 
 	_, err := resolveTransferPair(svc, types.NewID())
 	if err == nil {
@@ -37,8 +24,8 @@ func TestResolveTransferPair_NotFound(t *testing.T) {
 }
 
 func TestResolveTransferPair_NonTransfer(t *testing.T) {
-	dbPath, checking, _ := setupTransferAccounts(t)
-	svc := openSvc(t, dbPath)
+	dbPath, checking, _ := clitest.SetupTransferAccounts(t)
+	svc := clitest.OpenSvc(t, dbPath)
 
 	// A plain (non-transfer) transaction.
 	txn := transaction.NewTransaction(checking.ID, types.Today(), types.MustNewMoney("-25.00"))
@@ -56,8 +43,8 @@ func TestResolveTransferPair_NonTransfer(t *testing.T) {
 }
 
 func TestResolveTransferPair_RegToReg(t *testing.T) {
-	dbPath, checking, savings := setupTransferAccounts(t)
-	svc := openSvc(t, dbPath)
+	dbPath, checking, savings := clitest.SetupTransferAccounts(t)
+	svc := clitest.OpenSvc(t, dbPath)
 
 	pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"))
 	if err != nil {
@@ -86,8 +73,8 @@ func TestResolveTransferPair_RegToReg(t *testing.T) {
 }
 
 func TestResolveTransferPair_RegToInv(t *testing.T) {
-	dbPath, checking, brokerage, _, _ := setupTransferDispatchAccounts(t)
-	svc := openSvc(t, dbPath)
+	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
+	svc := clitest.OpenSvc(t, dbPath)
 
 	res, err := svc.Investment.DepositFromAccount(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("500.00"), "fund")
 	if err != nil {
@@ -116,8 +103,8 @@ func TestResolveTransferPair_RegToInv(t *testing.T) {
 }
 
 func TestResolveTransferPair_InvToReg(t *testing.T) {
-	dbPath, checking, brokerage, _, _ := setupTransferDispatchAccounts(t)
-	svc := openSvc(t, dbPath)
+	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
+	svc := clitest.OpenSvc(t, dbPath)
 
 	res, err := svc.Investment.TransferCash(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("250.00"), "draw")
 	if err != nil {
@@ -142,8 +129,8 @@ func TestResolveTransferPair_InvToReg(t *testing.T) {
 }
 
 func TestResolveTransferPair_InvToInv(t *testing.T) {
-	dbPath, _, brokerage, ira, _ := setupTransferDispatchAccounts(t)
-	svc := openSvc(t, dbPath)
+	dbPath, _, brokerage, ira, _ := clitest.SetupTransferDispatchAccounts(t)
+	svc := clitest.OpenSvc(t, dbPath)
 
 	res, err := svc.Investment.TransferCashBetweenInvestments(brokerage.ID, ira.ID, types.Today(), types.MustNewMoney("1000.00"), "rollover")
 	if err != nil {
@@ -168,8 +155,8 @@ func TestResolveTransferPair_InvToInv(t *testing.T) {
 }
 
 func TestResolveTransferPair_RefusesTransferLineSplit(t *testing.T) {
-	dbPath, checking, brokerage, _, _ := setupTransferDispatchAccounts(t)
-	svc := openSvc(t, dbPath)
+	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
+	svc := clitest.OpenSvc(t, dbPath)
 
 	// Build a parent split transaction in Checking with one transfer-line
 	// targeting the Brokerage investment account (paycheck → 401k shape).
@@ -181,7 +168,7 @@ func TestResolveTransferPair_RefusesTransferLineSplit(t *testing.T) {
 	}
 
 	// The investment-side counterpart row carries the split's transfer_id.
-	invLeg := findInvestmentLegForTest(t, svc, brokerage.ID)
+	invLeg := clitest.FindInvestmentLegForTest(t, svc, brokerage.ID)
 
 	_, err := resolveTransferPair(svc, invLeg)
 	if err == nil {
@@ -194,18 +181,4 @@ func TestResolveTransferPair_RefusesTransferLineSplit(t *testing.T) {
 	if !strings.Contains(err.Error(), "multi-line split") {
 		t.Errorf("expected 'multi-line split' in message, got: %v", err)
 	}
-}
-
-// findInvestmentLegForTest returns the ID of the single investment transaction
-// in the given investment account.
-func findInvestmentLegForTest(t *testing.T, svc *app.Services, invAcctID types.ID) types.ID {
-	t.Helper()
-	rows, err := svc.InvestmentRepo.ListByAccount(invAcctID, investment.TransactionFilter{})
-	if err != nil {
-		t.Fatalf("list investment txns: %v", err)
-	}
-	if len(rows) != 1 {
-		t.Fatalf("expected 1 investment row, got %d", len(rows))
-	}
-	return rows[0].ID
 }

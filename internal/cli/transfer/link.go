@@ -1,4 +1,4 @@
-package cli
+package transfer
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/spf13/cobra"
 )
@@ -49,14 +50,14 @@ func newTransferLinkCmd() *cobra.Command {
 // runTransferLink performs a dry-run preview of candidate transfer pairs
 // and, when opts.confirm is set, links the clean pairs.
 func runTransferLink(opts *transferLinkOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 	if opts.maxDays < 0 {
 		return fmt.Errorf("--max-days must be a non-negative integer, got %d", opts.maxDays)
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -90,7 +91,7 @@ func runTransferLink(opts *transferLinkOptions, w io.Writer) error {
 		return fmt.Errorf("%d link errors", len(errs))
 	}
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }
 

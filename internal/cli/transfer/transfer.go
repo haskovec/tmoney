@@ -1,12 +1,12 @@
-package cli
+package transfer
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// newTransferCmd returns the `transfer` parent command. Child verbs are
+// NewCmd returns the `transfer` parent command. Child verbs are
 // registered as they migrate from the legacy `--flag` dispatcher.
-func newTransferCmd() *cobra.Command {
+func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "transfer",
 		Short: "Manage transfers between accounts",

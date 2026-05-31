@@ -1,4 +1,4 @@
-package cli
+package transfer
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
@@ -65,8 +66,8 @@ func newTransferEditCmd() *cobra.Command {
 // runTransferEdit updates a transfer's editable fields. The (from, to) account
 // types pick which service method applies the update.
 func runTransferEdit(opts *transferEditOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	if !opts.amountChanged && !opts.dateChanged && !opts.memoChanged && !opts.statusChanged {
@@ -78,7 +79,7 @@ func runTransferEdit(opts *transferEditOptions, w io.Writer) error {
 		return fmt.Errorf("invalid --txn-id: %w", err)
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -134,13 +135,13 @@ func runTransferEdit(opts *transferEditOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  From:     %s\n", res.fromAccount.Name)
 	fmt.Fprintf(w, "  To:       %s\n", res.toAccount.Name)
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
-	fmt.Fprintf(w, "  Amount:   %s\n", formatMoney(amount, res.fromAccount.Currency))
+	fmt.Fprintf(w, "  Amount:   %s\n", cmdutil.FormatMoney(amount, res.fromAccount.Currency))
 	fmt.Fprintf(w, "  Status:   %s\n", status)
 	if memo != "" {
 		fmt.Fprintf(w, "  Memo:     %s\n", memo)
 	}
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }
 

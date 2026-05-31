@@ -407,21 +407,53 @@ are deleted in Phase 6.
     `internal/cli/transaction` package does not import `internal/cli` (R2/D5
     cycle-free).
 
-- [ ] **PS-009 — `internal/cli/transfer`** (no alias needed)
-  - Source: `transfer.go` (`newTransferCmd`→`NewCmd`) + `_add`, `_edit`,
-    `_delete`, `_link`, **and the whole `transfer_resolve.go`** (`resolveTransferPair`
-    + family, `resolvedTransfer`, `errTransferLineSplit`, `isNotFound`).
-    `parseEditStatus` lives in `transfer_edit.go` (not resolve.go — spec note).
-    No format.go printers (`transfer_link.go` has its own local
-    `printLinkTransferPreview`/`writeCandidateTable`).
-  - Tests: `transfer_add/edit/delete/link_test.go` → `package transfer_test`;
-    **`transfer_resolve_test.go` → `package transfer` internal** (calls
-    `resolveTransferPair`, reads unexported fields). Relocate test-local helpers
-    `setupTransferAccounts`, `setupTransferDispatchAccounts` (in
-    `transfer_add_test.go`), `openSvc`, `findInvestmentLegForTest` — note
-    `findInvestmentLegForTest` is shared by edit/delete (external) **and**
-    resolve (internal); duplicate it across the two test packages or hoist it
-    into `clitest`.
+- [x] **PS-009 — `internal/cli/transfer`** (no alias needed)
+  - DONE: `git mv`'d the 6 source files into `internal/cli/transfer/`
+    (`transfer.go` + `add/edit/delete/link/resolve.go`), changed the package
+    clause to `transfer`, and renamed `newTransferCmd`→exported `transfer.NewCmd()`
+    (verb ctors stay unexported). **No domain alias** — there is no
+    `internal/transfer`; the link domain `internal/transferlink` (distinct name)
+    is imported unaliased. The whole `transfer_resolve.go` family
+    (`resolveTransferPair`, `resolveFromRegularLeg`, `resolveFromInvestmentLeg`,
+    `findInvestmentLeg`, `refuseIfMultiLineSplit`, `investmentStatusToRegular`,
+    `isNotFound`, `resolvedTransfer`, `errTransferLineSplit`) moved together;
+    `parseEditStatus` stayed in `edit.go`. **No format.go printers** —
+    `printLinkTransferPreview`/`writeCandidateTable` are local in `link.go`
+    (residual `internal/cli/format.go` is untouched — empty diff). Swapped every
+    `openServices`/`autoBackupAfterModification`/`formatMoney` call and the four
+    `--file` guards to `cmdutil.OpenServices`/`AutoBackupAfterModification`/
+    `FormatMoney`/`RequireFile` (`cmdutil.RequireFile`'s message is byte-identical
+    to the `fmt.Errorf` guards it replaced). Rewired `root.go` to import
+    `internal/cli/transfer` and call `transfer.NewCmd()`.
+  - DONE (tests): `add/edit/delete/link_test.go` → external
+    `package transfer_test`, importing `cli` (`ExecuteWith`, `SwapTUILauncher`) +
+    `clitest` (shared fixtures) + domain pkgs; mechanically repointed
+    `executeWith`→`cli.ExecuteWith` and `_, restore := stubLaunchers(t)`→
+    `restore := cli.SwapTUILauncher(func(string) error { return nil })`.
+    **`resolve_test.go` stays `package transfer` internal (R3)** — it calls
+    `resolveTransferPair` and reads the unexported `resolvedTransfer` fields /
+    `*errTransferLineSplit`. The four cross-boundary helpers
+    (`setupTransferAccounts`, `setupTransferDispatchAccounts`, `openSvc`,
+    `findInvestmentLegForTest`) — each used by **both** the internal `resolve_test`
+    and the external `add`/`edit`/`delete` tests — were **hoisted into
+    `clitest`** (`SetupTransferAccounts`, `SetupTransferDispatchAccounts`,
+    `OpenSvc`, `FindInvestmentLegForTest`) rather than duplicated, with 3 additive
+    `clitest` smoke tests (matching the PS-002 precedent). `clitest.OpenSvc` opens
+    via `db.Open`+`app.NewServices` (cli-free per D5/R2; behavior-equivalent for
+    the schedule-free fixtures) — documented inline. Single-package helpers
+    (`assertTransferLegsExist`, `assertInvTransferAmount`, `assertTransferGone`,
+    `reconcileLegs`, `setupLinkScenario`) stayed local with their files.
+  - VERIFIED: `go fix ./...`, `go build ./...`, `go vet ./internal/cli/...`,
+    `gofmt -l` all clean; `go test ./...` green (5598 passed in 36 packages — the
+    PS-008 baseline of 5595, now in 36 pkgs since `transfer` is its own test
+    package, +3 additive `clitest` smoke tests; all 50 transfer test functions
+    preserved 1:1 — add 20, edit 7, delete 7, link 9, resolve 7);
+    `golangci-lint run ./internal/cli/...` clean. An adversarial 3-lens review
+    (behavior / coverage-1:1 / spec-conformance+cycle-safety) returned pass on all
+    three with no blockers/majors/minors: `go list -deps` confirms neither the
+    production `internal/cli/transfer` nor `clitest` imports the root
+    `internal/cli` (R2/D5 cycle-free), the source diffs are mechanical only, and
+    coverage is exactly 1:1.
 
 - [ ] **PS-010 — `internal/cli/scheduled`** (alias `scheduleddom`)
   - Source: `scheduled.go` (`newScheduledCmd`→`NewCmd`) + `_add`, `_list`,

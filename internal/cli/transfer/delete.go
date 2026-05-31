@@ -1,10 +1,11 @@
-package cli
+package transfer
 
 import (
 	"fmt"
 	"io"
 
 	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
@@ -44,8 +45,8 @@ func newTransferDeleteCmd() *cobra.Command {
 // types pick which service method performs the cascade (see resolveTransferPair
 // and transaction.ChooseTransferDispatch).
 func runTransferDelete(opts *transferDeleteOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	legID, err := types.ParseID(opts.txnID)
@@ -53,7 +54,7 @@ func runTransferDelete(opts *transferDeleteOptions, w io.Writer) error {
 		return fmt.Errorf("invalid --txn-id: %w", err)
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -77,9 +78,9 @@ func runTransferDelete(opts *transferDeleteOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  From:          %s\n", res.fromAccount.Name)
 	fmt.Fprintf(w, "  To:            %s\n", res.toAccount.Name)
 	fmt.Fprintf(w, "  Date:          %s\n", res.date.String())
-	fmt.Fprintf(w, "  Amount:        %s\n", formatMoney(res.amount, res.fromAccount.Currency))
+	fmt.Fprintf(w, "  Amount:        %s\n", cmdutil.FormatMoney(res.amount, res.fromAccount.Currency))
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }
 

@@ -1,4 +1,4 @@
-package cli
+package transfer
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
@@ -64,8 +65,8 @@ type transferAddResult struct {
 // account types pick one of four service methods (see
 // transaction.ChooseTransferDispatch).
 func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	amount, err := types.NewMoney(opts.amount)
@@ -86,7 +87,7 @@ func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 		date = types.Today()
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -113,12 +114,12 @@ func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  From:                  %s\n", fromAcct.Name)
 	fmt.Fprintf(w, "  To:                    %s\n", toAcct.Name)
 	fmt.Fprintf(w, "  Date:                  %s\n", date.String())
-	fmt.Fprintf(w, "  Amount:                %s\n", formatMoney(amount, fromAcct.Currency))
+	fmt.Fprintf(w, "  Amount:                %s\n", cmdutil.FormatMoney(amount, fromAcct.Currency))
 	if opts.memo != "" {
 		fmt.Fprintf(w, "  Memo:                  %s\n", opts.memo)
 	}
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }
 
