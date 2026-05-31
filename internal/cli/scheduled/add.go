@@ -1,4 +1,4 @@
-package cli
+package scheduled
 
 import (
 	"fmt"
@@ -6,7 +6,8 @@ import (
 	"strings"
 
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	scheduleddom "github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -67,14 +68,14 @@ func newScheduledAddCmd() *cobra.Command {
 
 // runScheduledAdd creates a new scheduled transaction.
 func runScheduledAdd(cmd *cobra.Command, opts *scheduledAddOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	frequency, err := scheduled.ParseFrequency(opts.frequency)
+	frequency, err := scheduleddom.ParseFrequency(opts.frequency)
 	if err != nil {
 		validFreqs := []string{}
-		for _, f := range scheduled.AllFrequencies() {
+		for _, f := range scheduleddom.AllFrequencies() {
 			validFreqs = append(validFreqs, string(f))
 		}
 		return fmt.Errorf("invalid --frequency %q: valid values are %s", opts.frequency, strings.Join(validFreqs, ", "))
@@ -99,7 +100,7 @@ func runScheduledAdd(cmd *cobra.Command, opts *scheduledAddOptions, w io.Writer)
 		}
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -110,7 +111,7 @@ func runScheduledAdd(cmd *cobra.Command, opts *scheduledAddOptions, w io.Writer)
 		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	st := scheduled.NewTransaction(acct.ID, frequency, startDate)
+	st := scheduleddom.NewTransaction(acct.ID, frequency, startDate)
 
 	if opts.amount != "" {
 		amount, err := types.NewMoney(opts.amount)
@@ -191,7 +192,7 @@ func runScheduledAdd(cmd *cobra.Command, opts *scheduledAddOptions, w io.Writer)
 	fmt.Fprintf(w, "  Frequency: %s\n", frequency.DisplayName())
 	fmt.Fprintf(w, "  Next Date: %s\n", st.NextDate.String())
 	if st.HasAmount() {
-		fmt.Fprintf(w, "  Amount:    %s\n", formatMoney(st.Amount.Money, acct.Currency))
+		fmt.Fprintf(w, "  Amount:    %s\n", cmdutil.FormatMoney(st.Amount.Money, acct.Currency))
 	} else {
 		fmt.Fprintf(w, "  Amount:    Variable\n")
 	}
@@ -212,6 +213,6 @@ func runScheduledAdd(cmd *cobra.Command, opts *scheduledAddOptions, w io.Writer)
 		}
 	}
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

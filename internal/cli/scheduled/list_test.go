@@ -1,4 +1,4 @@
-package cli
+package scheduled_test
 
 import (
 	"bytes"
@@ -7,17 +7,18 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
-	"github.com/haskovec/tmoney/internal/scheduled"
+	scheduleddom "github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestScheduledList_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"scheduled", "list"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "list"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(scheduled list) without --file should return error")
+		t.Fatal("cli.ExecuteWith(scheduled list) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -35,9 +36,9 @@ func TestScheduledList_NoTransactions(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(scheduled list): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -76,10 +77,10 @@ func TestScheduledList_WithTransactions(t *testing.T) {
 		t.Fatalf("failed to create payee: %v", err)
 	}
 
-	stRepo := scheduled.NewRepository(database)
-	st := scheduled.NewTransactionWithAmount(
+	stRepo := scheduleddom.NewRepository(database)
+	st := scheduleddom.NewTransactionWithAmount(
 		acct.ID,
-		scheduled.FrequencyMonthly,
+		scheduleddom.FrequencyMonthly,
 		types.Today(),
 		types.MustNewMoney("-15.99"),
 	)
@@ -91,9 +92,9 @@ func TestScheduledList_WithTransactions(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(scheduled list): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -125,10 +126,10 @@ func TestScheduledList_DueOnly(t *testing.T) {
 		t.Fatalf("failed to create test account: %v", err)
 	}
 
-	stRepo := scheduled.NewRepository(database)
-	st := scheduled.NewTransactionWithAmount(
+	stRepo := scheduleddom.NewRepository(database)
+	st := scheduleddom.NewTransactionWithAmount(
 		acct.ID,
-		scheduled.FrequencyMonthly,
+		scheduleddom.FrequencyMonthly,
 		types.Today(),
 		types.MustNewMoney("-10.00"),
 	)
@@ -139,9 +140,9 @@ func TestScheduledList_DueOnly(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "list", "--due", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "list", "--due", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(scheduled list --due): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(scheduled list --due): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -172,12 +173,12 @@ func TestScheduledList_FilterByAccount(t *testing.T) {
 		t.Fatalf("failed to create savings account: %v", err)
 	}
 
-	stRepo := scheduled.NewRepository(database)
-	st1 := scheduled.NewTransactionWithAmount(checking.ID, scheduled.FrequencyMonthly, types.Today(), types.MustNewMoney("-10.00"))
+	stRepo := scheduleddom.NewRepository(database)
+	st1 := scheduleddom.NewTransactionWithAmount(checking.ID, scheduleddom.FrequencyMonthly, types.Today(), types.MustNewMoney("-10.00"))
 	if err := stRepo.Create(st1); err != nil {
 		t.Fatalf("failed to create scheduled transaction 1: %v", err)
 	}
-	st2 := scheduled.NewTransactionWithAmount(savings.ID, scheduled.FrequencyMonthly, types.Today(), types.MustNewMoney("-20.00"))
+	st2 := scheduleddom.NewTransactionWithAmount(savings.ID, scheduleddom.FrequencyMonthly, types.Today(), types.MustNewMoney("-20.00"))
 	if err := stRepo.Create(st2); err != nil {
 		t.Fatalf("failed to create scheduled transaction 2: %v", err)
 	}
@@ -185,9 +186,9 @@ func TestScheduledList_FilterByAccount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "list", "--account", "Checking", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "list", "--account", "Checking", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(scheduled list --account Checking): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(scheduled list --account Checking): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -214,8 +215,8 @@ func TestScheduledList_VariableAmount(t *testing.T) {
 		t.Fatalf("failed to create test account: %v", err)
 	}
 
-	stRepo := scheduled.NewRepository(database)
-	st := scheduled.NewTransaction(acct.ID, scheduled.FrequencyMonthly, types.Today())
+	stRepo := scheduleddom.NewRepository(database)
+	st := scheduleddom.NewTransaction(acct.ID, scheduleddom.FrequencyMonthly, types.Today())
 	if err := stRepo.Create(st); err != nil {
 		t.Fatalf("failed to create scheduled transaction: %v", err)
 	}
@@ -223,9 +224,9 @@ func TestScheduledList_VariableAmount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(scheduled list): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -249,8 +250,8 @@ func TestScheduledList_WithOccurrences(t *testing.T) {
 		t.Fatalf("failed to create test account: %v", err)
 	}
 
-	stRepo := scheduled.NewRepository(database)
-	st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, types.Today(), types.MustNewMoney("-50.00"))
+	stRepo := scheduleddom.NewRepository(database)
+	st := scheduleddom.NewTransactionWithAmount(acct.ID, scheduleddom.FrequencyMonthly, types.Today(), types.MustNewMoney("-50.00"))
 	st.SetOccurrences(5)
 	if err := stRepo.Create(st); err != nil {
 		t.Fatalf("failed to create scheduled transaction: %v", err)
@@ -259,9 +260,9 @@ func TestScheduledList_WithOccurrences(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(scheduled list): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -291,10 +292,10 @@ func TestScheduledList_ShowsAutoPostIndicator(t *testing.T) {
 		t.Fatalf("failed to create test account: %v", err)
 	}
 
-	stRepo := scheduled.NewRepository(database)
-	st := scheduled.NewTransactionWithAmount(
+	stRepo := scheduleddom.NewRepository(database)
+	st := scheduleddom.NewTransactionWithAmount(
 		acct.ID,
-		scheduled.FrequencyMonthly,
+		scheduleddom.FrequencyMonthly,
 		types.Today(),
 		types.MustNewMoney("-1500.00"),
 	)
@@ -304,9 +305,9 @@ func TestScheduledList_ShowsAutoPostIndicator(t *testing.T) {
 		t.Fatalf("failed to create scheduled transaction: %v", err)
 	}
 
-	st2 := scheduled.NewTransactionWithAmount(
+	st2 := scheduleddom.NewTransactionWithAmount(
 		acct.ID,
-		scheduled.FrequencyMonthly,
+		scheduleddom.FrequencyMonthly,
 		types.Today(),
 		types.MustNewMoney("-50.00"),
 	)
@@ -317,9 +318,9 @@ func TestScheduledList_ShowsAutoPostIndicator(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(scheduled list): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -352,10 +353,10 @@ func TestScheduledList_AutoPostZeroLeadDays(t *testing.T) {
 		t.Fatalf("failed to create test account: %v", err)
 	}
 
-	stRepo := scheduled.NewRepository(database)
-	st := scheduled.NewTransactionWithAmount(
+	stRepo := scheduleddom.NewRepository(database)
+	st := scheduleddom.NewTransactionWithAmount(
 		acct.ID,
-		scheduled.FrequencyMonthly,
+		scheduleddom.FrequencyMonthly,
 		types.Today(),
 		types.MustNewMoney("-100.00"),
 	)
@@ -367,9 +368,9 @@ func TestScheduledList_AutoPostZeroLeadDays(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(scheduled list): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -388,9 +389,9 @@ func TestScheduledList_AccountNotFound(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "list", "--account", "Nope", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "list", "--account", "Nope", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(scheduled list) with unknown account should return error")
+		t.Fatal("cli.ExecuteWith(scheduled list) with unknown account should return error")
 	}
 	if !strings.Contains(err.Error(), "Nope") || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected error to mention unknown account, got: %v", err)
@@ -398,12 +399,12 @@ func TestScheduledList_AccountNotFound(t *testing.T) {
 }
 
 func TestScheduledCmd_HelpListsList(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"scheduled", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(scheduled --help): %v", err)
+	if err := cli.ExecuteWith([]string{"scheduled", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(scheduled --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "list") {
 		t.Errorf("expected `scheduled --help` to list `list`; got:\n%s", stdout.String())
@@ -411,12 +412,12 @@ func TestScheduledCmd_HelpListsList(t *testing.T) {
 }
 
 func TestScheduledList_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"scheduled", "list", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(scheduled list --help): %v", err)
+	if err := cli.ExecuteWith([]string{"scheduled", "list", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(scheduled list --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "list") {
 		t.Errorf("expected `scheduled list --help` to describe the command; got:\n%s", stdout.String())

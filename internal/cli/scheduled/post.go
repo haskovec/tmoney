@@ -1,9 +1,10 @@
-package cli
+package scheduled
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
@@ -48,11 +49,11 @@ func newScheduledPostCmd() *cobra.Command {
 
 // runScheduledPost posts a scheduled transaction (creates a real transaction).
 func runScheduledPost(opts *scheduledPostOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -121,7 +122,7 @@ func runScheduledPost(opts *scheduledPostOptions, w io.Writer) error {
 	if payeeName != "-" {
 		fmt.Fprintf(w, "  Payee:       %s\n", payeeName)
 	}
-	fmt.Fprintf(w, "  Amount:      %s\n", formatMoney(txn.Amount, currency))
+	fmt.Fprintf(w, "  Amount:      %s\n", cmdutil.FormatMoney(txn.Amount, currency))
 	fmt.Fprintf(w, "  Date:        %s\n", txn.Date.String())
 	fmt.Fprintf(w, "  Frequency:   %s\n", st.Frequency.DisplayName())
 	fmt.Fprintf(w, "  Previous:    %s\n", oldNextDate.String())
@@ -131,6 +132,6 @@ func runScheduledPost(opts *scheduledPostOptions, w io.Writer) error {
 		fmt.Fprintln(w, "  Status:      Completed (no more occurrences)")
 	}
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

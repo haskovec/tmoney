@@ -1,9 +1,10 @@
-package cli
+package scheduled
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -38,11 +39,11 @@ func newScheduledSkipCmd() *cobra.Command {
 
 // runScheduledSkip skips a scheduled transaction (advances to next date without posting).
 func runScheduledSkip(opts *scheduledSkipOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -93,6 +94,6 @@ func runScheduledSkip(opts *scheduledSkipOptions, w io.Writer) error {
 		fmt.Fprintln(w, "  Status:      Completed (no more occurrences)")
 	}
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

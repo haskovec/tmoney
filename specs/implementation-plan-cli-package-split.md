@@ -455,10 +455,41 @@ are deleted in Phase 6.
     `internal/cli` (R2/D5 cycle-free), the source diffs are mechanical only, and
     coverage is exactly 1:1.
 
-- [ ] **PS-010 — `internal/cli/scheduled`** (alias `scheduleddom`)
-  - Source: `scheduled.go` (`newScheduledCmd`→`NewCmd`) + `_add`, `_list`,
-    `_post`, `_skip`. Printer: `printScheduledTransactionsTable`.
-  - Tests: 4 files → `package scheduled_test` (no fixtures, no white-box).
+- [x] **PS-010 — `internal/cli/scheduled`** (alias `scheduleddom`)
+  - DONE: `git mv`'d the 5 source files into `internal/cli/scheduled/`
+    (`scheduled.go` + `add/list/post/skip.go`), changed the package clause to
+    `scheduled`, aliased `internal/scheduled` as `scheduleddom` in the files that
+    reference it (`add`, `list`, plus the new `format.go`; `post.go`/`skip.go`
+    touch only the foreign `internal/transaction`, left unaliased per convention),
+    and renamed `newScheduledCmd`→exported `scheduled.NewCmd()` (verb ctors stay
+    unexported). Lifted `printScheduledTransactionsTable` out of `format.go` into
+    `internal/cli/scheduled/format.go` (unexported, using `cmdutil.FormatMoney` and
+    `scheduleddom.Transaction`); deleted it + the now-unused `internal/scheduled`
+    import from the residual `format.go` (−84 lines). Swapped every
+    `openServices`/`autoBackupAfterModification`/`formatMoney` call and the four
+    `--file` guards to `cmdutil.OpenServices`/`AutoBackupAfterModification`/
+    `FormatMoney`/`RequireFile` (`cmdutil.RequireFile`'s message is byte-identical
+    to the `fmt.Errorf` guards it replaced). Rewired `root.go` to import
+    `internal/cli/scheduled` and call `scheduled.NewCmd()`.
+  - DONE (tests): `add/list/post/skip_test.go` → external `package scheduled_test`,
+    importing `cli` (`ExecuteWith`, `SwapTUILauncher`) + aliased `scheduleddom`
+    (list/post/skip) + foreign domains (`account`/`db`/`payee`/`transaction`/`types`,
+    unaliased); mechanically repointed `executeWith`→`cli.ExecuteWith` and
+    `_, restore := stubLaunchers(t)`→
+    `restore := cli.SwapTUILauncher(func(string) error { return nil })`. No
+    fixtures, no white-box files (all 4 external) — matches the plan. The
+    `testutil_test.go` `createInvestmentTestDB` shim stays (still consumed by the
+    residual `workflow_test.go`).
+  - VERIFIED: `go fix ./...`, `go build ./...`, `go vet ./internal/cli/...`,
+    `gofmt -l` all clean; `go test ./...` green (5598 passed in 37 packages — the
+    PS-009 baseline of 5598, now in 37 pkgs since `scheduled` is its own test
+    package; coverage 1:1, all 46 scheduled test functions preserved — add 12,
+    list 12, post 11, skip 7); `golangci-lint run ./internal/cli/...` clean. An
+    adversarial 3-lens review (behavior / coverage-1:1 / spec-conformance+
+    cycle-safety) returned pass on all three with no blockers/majors:
+    `go list -deps` confirms the production `internal/cli/scheduled` does not
+    import the root `internal/cli` (R2/D5 cycle-free), source diffs are mechanical
+    only, and coverage is exactly 1:1.
 
 - [ ] **PS-011 — `internal/cli/reconcile`** (no alias; domain is `reconciliation`)
   - Source: `reconcile.go` (`newReconcileCmd`→`NewCmd`) + `_start`, `_mark`,

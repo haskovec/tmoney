@@ -1,10 +1,11 @@
-package cli
+package scheduled
 
 import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	scheduleddom "github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -45,17 +46,17 @@ func newScheduledListCmd() *cobra.Command {
 
 // runScheduledList lists scheduled transactions.
 func runScheduledList(opts *scheduledListOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
 	defer database.Close()
 
-	var scheduledTxns []*scheduled.Transaction
+	var scheduledTxns []*scheduleddom.Transaction
 	if opts.due {
 		scheduledTxns, err = svc.Scheduled.ListDue()
 	} else {
@@ -71,7 +72,7 @@ func runScheduledList(opts *scheduledListOptions, w io.Writer) error {
 			return fmt.Errorf("account %q not found", opts.account)
 		}
 
-		var filtered []*scheduled.Transaction
+		var filtered []*scheduleddom.Transaction
 		for _, st := range scheduledTxns {
 			if st.AccountID == acct.ID {
 				filtered = append(filtered, st)

@@ -1,4 +1,4 @@
-package cli
+package scheduled_test
 
 import (
 	"bytes"
@@ -7,18 +7,19 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
-	"github.com/haskovec/tmoney/internal/scheduled"
+	scheduleddom "github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestScheduledSkip_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"scheduled", "skip", "abc123"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "skip", "abc123"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(scheduled skip) without --file should return error")
+		t.Fatal("cli.ExecuteWith(scheduled skip) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -36,9 +37,9 @@ func TestScheduledSkip_MissingID(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "skip", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "skip", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(scheduled skip) without ID arg should return error")
+		t.Fatal("cli.ExecuteWith(scheduled skip) without ID arg should return error")
 	}
 	if !strings.Contains(err.Error(), "accepts 1 arg") {
 		t.Errorf("expected Cobra arg-count error, got: %v", err)
@@ -56,9 +57,9 @@ func TestScheduledSkip_InvalidID(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "skip", "invalid-uuid", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "skip", "invalid-uuid", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(scheduled skip) with invalid ID should return error")
+		t.Fatal("cli.ExecuteWith(scheduled skip) with invalid ID should return error")
 	}
 	if !strings.Contains(err.Error(), "invalid scheduled transaction ID") {
 		t.Errorf("error should mention invalid ID, got: %v", err)
@@ -76,9 +77,9 @@ func TestScheduledSkip_NotFound(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "skip", "00000000-0000-0000-0000-000000000000", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "skip", "00000000-0000-0000-0000-000000000000", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(scheduled skip) with nonexistent ID should return error")
+		t.Fatal("cli.ExecuteWith(scheduled skip) with nonexistent ID should return error")
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("error should mention not found, got: %v", err)
@@ -106,8 +107,8 @@ func TestScheduledSkip_Success(t *testing.T) {
 		t.Fatalf("failed to create payee: %v", err)
 	}
 
-	stRepo := scheduled.NewRepository(database)
-	st := scheduled.NewTransactionWithAmount(acct.ID, scheduled.FrequencyMonthly, types.Today(), types.MustNewMoney("-15.99"))
+	stRepo := scheduleddom.NewRepository(database)
+	st := scheduleddom.NewTransactionWithAmount(acct.ID, scheduleddom.FrequencyMonthly, types.Today(), types.MustNewMoney("-15.99"))
 	st.SetPayee(py.ID)
 	if err := stRepo.Create(st); err != nil {
 		t.Fatalf("failed to create scheduled transaction: %v", err)
@@ -118,9 +119,9 @@ func TestScheduledSkip_Success(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"scheduled", "skip", stID, "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"scheduled", "skip", stID, "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(scheduled skip): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(scheduled skip): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -147,12 +148,12 @@ func TestScheduledSkip_Success(t *testing.T) {
 }
 
 func TestScheduledSkip_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"scheduled", "skip", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(scheduled skip --help): %v", err)
+	if err := cli.ExecuteWith([]string{"scheduled", "skip", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(scheduled skip --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "skip") {
 		t.Errorf("expected `scheduled skip --help` to describe the command; got:\n%s", stdout.String())
@@ -160,12 +161,12 @@ func TestScheduledSkip_Help(t *testing.T) {
 }
 
 func TestScheduledCmd_HelpListsSkip(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"scheduled", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(scheduled --help): %v", err)
+	if err := cli.ExecuteWith([]string{"scheduled", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(scheduled --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "skip") {
 		t.Errorf("expected `scheduled --help` to list `skip`; got:\n%s", stdout.String())

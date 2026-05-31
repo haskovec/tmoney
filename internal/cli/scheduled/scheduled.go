@@ -1,12 +1,12 @@
-package cli
+package scheduled
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// newScheduledCmd returns the `scheduled` parent command. Child verbs
-// are registered as they migrate from the legacy `--flag` dispatcher.
-func newScheduledCmd() *cobra.Command {
+// NewCmd returns the `scheduled` parent command. Child verbs are
+// registered as they migrate from the legacy `--flag` dispatcher.
+func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scheduled",
 		Short: "Manage TMoney scheduled transactions",
