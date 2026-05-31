@@ -1,4 +1,4 @@
-package cli
+package report
 
 import (
 	"fmt"
@@ -7,19 +7,12 @@ import (
 	"text/tabwriter"
 
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
-	"github.com/haskovec/tmoney/internal/report"
+	reportdom "github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// formatMoney is a package-cli shim delegating to cmdutil.FormatMoney so the
-// in-package print* helpers keep compiling unchanged during the split. It is
-// removed in the final cleanup phase once every caller references cmdutil.
-func formatMoney(m types.Money, currency string) string {
-	return cmdutil.FormatMoney(m, currency)
-}
-
 // printNetWorthReport prints the net worth report.
-func printNetWorthReport(w io.Writer, rpt *report.NetWorth) {
+func printNetWorthReport(w io.Writer, rpt *reportdom.NetWorth) {
 	fmt.Fprintln(w, "NET WORTH REPORT")
 	fmt.Fprintln(w, "================")
 	fmt.Fprintf(w, "As of: %s\n\n", rpt.AsOfDate.Format("January 2, 2006"))
@@ -32,7 +25,7 @@ func printNetWorthReport(w io.Writer, rpt *report.NetWorth) {
 	} else {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		for _, ab := range rpt.Assets {
-			balStr := formatMoney(ab.Balance, "USD")
+			balStr := cmdutil.FormatMoney(ab.Balance, "USD")
 			if ab.EstimatedValue {
 				balStr = "~" + balStr
 			}
@@ -40,7 +33,7 @@ func printNetWorthReport(w io.Writer, rpt *report.NetWorth) {
 		}
 		tw.Flush()
 	}
-	fmt.Fprintf(w, "\nTotal Assets:\t\t%s\n\n", formatMoney(rpt.TotalAssets, "USD"))
+	fmt.Fprintf(w, "\nTotal Assets:\t\t%s\n\n", cmdutil.FormatMoney(rpt.TotalAssets, "USD"))
 
 	// Liabilities section
 	fmt.Fprintln(w, "LIABILITIES")
@@ -50,7 +43,7 @@ func printNetWorthReport(w io.Writer, rpt *report.NetWorth) {
 	} else {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		for _, ab := range rpt.Liabilities {
-			balStr := formatMoney(ab.Balance, "USD")
+			balStr := cmdutil.FormatMoney(ab.Balance, "USD")
 			if ab.EstimatedValue {
 				balStr = "~" + balStr
 			}
@@ -58,15 +51,15 @@ func printNetWorthReport(w io.Writer, rpt *report.NetWorth) {
 		}
 		tw.Flush()
 	}
-	fmt.Fprintf(w, "\nTotal Liabilities:\t%s\n\n", formatMoney(rpt.TotalLiabilities, "USD"))
+	fmt.Fprintf(w, "\nTotal Liabilities:\t%s\n\n", cmdutil.FormatMoney(rpt.TotalLiabilities, "USD"))
 
 	// Net worth
 	fmt.Fprintln(w, "========================")
-	fmt.Fprintf(w, "NET WORTH:\t\t%s\n", formatMoney(rpt.NetWorth, "USD"))
+	fmt.Fprintf(w, "NET WORTH:\t\t%s\n", cmdutil.FormatMoney(rpt.NetWorth, "USD"))
 }
 
 // printSpendingReport prints the spending by category report.
-func printSpendingReport(w io.Writer, rpt *report.Spending) {
+func printSpendingReport(w io.Writer, rpt *reportdom.Spending) {
 	fmt.Fprintln(w, "SPENDING BY CATEGORY")
 	fmt.Fprintln(w, "====================")
 	fmt.Fprintf(w, "Period: %s\n\n", rpt.Period)
@@ -99,7 +92,7 @@ func printSpendingReport(w io.Writer, rpt *report.Spending) {
 
 		fmt.Fprintf(tw, "%s\t%s\t%.1f%%\t%s\n",
 			cs.Name,
-			formatMoney(cs.Amount, "USD"),
+			cmdutil.FormatMoney(cs.Amount, "USD"),
 			cs.Percentage,
 			bar,
 		)
@@ -114,7 +107,7 @@ func printSpendingReport(w io.Writer, rpt *report.Spending) {
 
 			fmt.Fprintf(tw, "  %s\t%s\t%.1f%%\t%s\n",
 				sub.Name,
-				formatMoney(sub.Amount, "USD"),
+				cmdutil.FormatMoney(sub.Amount, "USD"),
 				sub.Percentage,
 				subBar,
 			)
@@ -122,5 +115,5 @@ func printSpendingReport(w io.Writer, rpt *report.Spending) {
 	}
 	tw.Flush()
 
-	fmt.Fprintf(w, "\n------------------------\nTotal Spending:\t%s\n", formatMoney(rpt.TotalSpending, "USD"))
+	fmt.Fprintf(w, "\n------------------------\nTotal Spending:\t%s\n", cmdutil.FormatMoney(rpt.TotalSpending, "USD"))
 }

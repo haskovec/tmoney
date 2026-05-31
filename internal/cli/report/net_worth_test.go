@@ -1,4 +1,4 @@
-package cli
+package report_test
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -14,9 +15,9 @@ import (
 
 func TestReportNetWorth_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"report", "net-worth"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"report", "net-worth"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(report net-worth) without --file should return error")
+		t.Fatal("cli.ExecuteWith(report net-worth) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file/file, got: %v", err)
@@ -33,8 +34,8 @@ func TestReportNetWorth_Empty(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"report", "net-worth", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(report net-worth): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"report", "net-worth", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(report net-worth): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -78,8 +79,8 @@ func TestReportNetWorth_WithAccounts(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"report", "net-worth", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(report net-worth): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"report", "net-worth", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(report net-worth): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -100,8 +101,8 @@ func TestReportNetWorth_WithAsOf(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"report", "net-worth", "--as-of", "2024-01-15", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(report net-worth --as-of): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"report", "net-worth", "--as-of", "2024-01-15", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(report net-worth --as-of): %v\nstderr=%s", err, stderr)
 	}
 	if !strings.Contains(stdout.String(), "January 15, 2024") {
 		t.Errorf("expected 'January 15, 2024' in output, got:\n%s", stdout.String())
@@ -118,9 +119,9 @@ func TestReportNetWorth_InvalidAsOf(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"report", "net-worth", "--as-of", "not-a-date", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"report", "net-worth", "--as-of", "not-a-date", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(report net-worth --as-of=not-a-date) should return error")
+		t.Fatal("cli.ExecuteWith(report net-worth --as-of=not-a-date) should return error")
 	}
 	if !strings.Contains(err.Error(), "invalid --as-of date") {
 		t.Errorf("expected 'invalid --as-of date' in error, got: %v", err)
@@ -153,16 +154,16 @@ func TestReportNetWorth_IncludeClosed(t *testing.T) {
 	database.Close()
 
 	stdoutDefault, stderrDefault := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"report", "net-worth", "--file", dbPath}, stdoutDefault, stderrDefault); err != nil {
-		t.Fatalf("executeWith(report net-worth): %v\nstderr=%s", err, stderrDefault)
+	if err := cli.ExecuteWith([]string{"report", "net-worth", "--file", dbPath}, stdoutDefault, stderrDefault); err != nil {
+		t.Fatalf("cli.ExecuteWith(report net-worth): %v\nstderr=%s", err, stderrDefault)
 	}
 	if strings.Contains(stdoutDefault.String(), "ClosedSavings") {
 		t.Errorf("default report should not include closed account; got:\n%s", stdoutDefault.String())
 	}
 
 	stdoutAll, stderrAll := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"report", "net-worth", "--include-closed", "--file", dbPath}, stdoutAll, stderrAll); err != nil {
-		t.Fatalf("executeWith(report net-worth --include-closed): %v\nstderr=%s", err, stderrAll)
+	if err := cli.ExecuteWith([]string{"report", "net-worth", "--include-closed", "--file", dbPath}, stdoutAll, stderrAll); err != nil {
+		t.Fatalf("cli.ExecuteWith(report net-worth --include-closed): %v\nstderr=%s", err, stderrAll)
 	}
 	if !strings.Contains(stdoutAll.String(), "ClosedSavings") {
 		t.Errorf("--include-closed report should include closed account; got:\n%s", stdoutAll.String())
@@ -171,19 +172,19 @@ func TestReportNetWorth_IncludeClosed(t *testing.T) {
 
 func TestReportNetWorth_RejectsExtraArgs(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"report", "net-worth", "extra", "--file", "x.tdb"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"report", "net-worth", "extra", "--file", "x.tdb"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(report net-worth extra) should return error")
+		t.Fatal("cli.ExecuteWith(report net-worth extra) should return error")
 	}
 }
 
 func TestReportCmd_HelpListsNetWorth(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"report", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(report --help): %v", err)
+	if err := cli.ExecuteWith([]string{"report", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(report --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "net-worth") {
 		t.Errorf("expected `report --help` to list `net-worth`; got:\n%s", stdout.String())
@@ -191,12 +192,12 @@ func TestReportCmd_HelpListsNetWorth(t *testing.T) {
 }
 
 func TestReportNetWorth_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"report", "net-worth", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(report net-worth --help): %v", err)
+	if err := cli.ExecuteWith([]string{"report", "net-worth", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(report net-worth --help): %v", err)
 	}
 	out := stdout.String()
 	for _, want := range []string{"net-worth", "--as-of", "--include-closed"} {

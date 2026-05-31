@@ -1,4 +1,4 @@
-package cli
+package report
 
 import (
 	"fmt"
@@ -7,7 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	reportdom "github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -52,20 +53,20 @@ func newReportSpendingCmd() *cobra.Command {
 
 // runReportSpending generates and displays the spending-by-category report.
 func runReportSpending(opts *reportSpendingOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 	if opts.month == "" && opts.year == 0 && opts.fromDate == "" {
 		return fmt.Errorf("report spending requires --month YYYY-MM, --year YYYY, or --from/--to date range")
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
 	defer database.Close()
 
-	var rpt *report.Spending
+	var rpt *reportdom.Spending
 	switch {
 	case opts.month != "":
 		year, month, err := parseYearMonth(opts.month)

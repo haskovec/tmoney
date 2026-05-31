@@ -1,11 +1,12 @@
-package cli
+package report
 
 import (
 	"fmt"
 	"io"
 	"time"
 
-	"github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	reportdom "github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -46,11 +47,11 @@ func newReportNetWorthCmd() *cobra.Command {
 
 // runReportNetWorth generates and displays the net-worth report.
 func runReportNetWorth(opts *reportNetWorthOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -67,7 +68,7 @@ func runReportNetWorth(opts *reportNetWorthOptions, w io.Writer) error {
 		asOf = time.Now()
 	}
 
-	var rpt *report.NetWorth
+	var rpt *reportdom.NetWorth
 	if opts.includeClosed {
 		rpt, err = svc.Report.NetWorthAsOfIncludingClosed(asOf)
 	} else {

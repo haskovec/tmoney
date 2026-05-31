@@ -1,13 +1,13 @@
-package cli
+package report
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// newReportCmd returns the `report` parent command. Child verbs
+// NewCmd returns the `report` parent command. Child verbs
 // (`net-worth`, `spending`) are registered as they migrate from the
 // legacy `--report --report-type` dispatcher.
-func newReportCmd() *cobra.Command {
+func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "report",
 		Short: "Generate financial reports",

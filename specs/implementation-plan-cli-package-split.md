@@ -575,15 +575,54 @@ are deleted in Phase 6.
 
 ## Phase 5: Small / special
 
-- [ ] **PS-013 — `internal/cli/report`** (alias `reportdom`)
-  - Source: `report.go` (`newReportCmd`→`NewCmd`) + `report_net_worth.go`,
-    `report_spending.go`. Printers: `printNetWorthReport`, `printSpendingReport`.
-    `parseYearMonth` lives in `report_spending.go` (→ unexported in `report`).
-    Verb `net-worth` uses ctor `newReportNetWorthCmd` / file `report_net_worth.go`.
-  - Tests: `report_net_worth_test.go` → `package report_test`.
-    **`report_spending_test.go`**: split — `TestParseYearMonth` into a small
-    `package report` internal file; the rest → `package report_test`. `*_Help`
-    tests use `SwapTUILauncher`.
+- [x] **PS-013 — `internal/cli/report`** (alias `reportdom`)
+  - DONE: `git mv`'d the 3 source files into `internal/cli/report/`
+    (`report.go` + `net_worth.go`, `spending.go`), changed the package clause to
+    `report`, aliased `internal/report` as `reportdom` in the files that reference
+    it (`net_worth`, `spending`, and the new `format.go`), and renamed
+    `newReportCmd`→exported `report.NewCmd()` (verb ctors `newReportNetWorthCmd`/
+    `newReportSpendingCmd` stay unexported). Lifted `printNetWorthReport`/
+    `printSpendingReport` out of `format.go` into `internal/cli/report/format.go`
+    (unexported, using `cmdutil.FormatMoney` + `reportdom`). `parseYearMonth`
+    traveled with `spending.go` (unexported, still `package report`). Swapped every
+    `openServices` call and the two `--file` guards to `cmdutil.OpenServices`/
+    `cmdutil.RequireFile` (`cmdutil.RequireFile`'s message is byte-identical to the
+    `fmt.Errorf` guards it replaced; report verbs never used
+    `formatMoney`/`autoBackupAfterModification` directly — read-only commands).
+    Rewired `root.go` to import `internal/cli/report` and call `report.NewCmd()`.
+  - **Subsumed PS-015/PS-016 cleanup for `format.go`.** `printNetWorthReport`/
+    `printSpendingReport` were the **last two printers** in the residual
+    `internal/cli/format.go`; once they moved, the residual `formatMoney` shim had
+    zero callers (grep-confirmed: only `format.go` referenced it), which the active
+    `unused` linter (v2 default set) flags, and removing it leaves `format.go` with
+    no declarations. So PS-013 necessarily **`git rm`'d the residual `format.go`
+    entirely** — it held nothing but those two printers + the `formatMoney` shim.
+    This pulls forward the `format.go` deletion PS-016 had tentatively scheduled and
+    the `formatMoney`-shim removal from PS-015. The other shims (`openServices`,
+    `autoBackupAfterModification`, `executeWith`) **remain** (still used by
+    `import.go`/`export.go`/residual tests) and are removed in PS-015. The residual
+    `format_test.go` is untouched — it exercises `roothelp.go`'s `printHelp`/
+    `printVersion`, never `format.go`.
+  - DONE (tests): `net_worth_test.go` → external `package report_test`, importing
+    `cli` (`ExecuteWith`, `SwapTUILauncher`) + foreign domains
+    (`account`/`db`/`transaction`/`types`, unaliased). `spending_test.go` → external
+    `package report_test` minus `TestParseYearMonth` (+ `category` import). Both
+    mechanically repointed `executeWith`→`cli.ExecuteWith` and
+    `_, restore := stubLaunchers(t)`→
+    `restore := cli.SwapTUILauncher(func(string) error { return nil })`.
+    **`TestParseYearMonth` → internal `package report` file
+    `spending_internal_test.go` (R3 white-box)** — it calls the unexported
+    `parseYearMonth` directly with no command execution, so (unlike price's
+    `update_test.go`) it needs **no** partial inline root and imports only
+    `testing`; cycle-free by construction (`package report` test imports zero
+    `internal/cli`). No `clitest` fixtures needed (report tests build DBs inline
+    via `db.Create` + repos).
+  - VERIFIED: `go fix ./...`, `go build ./...`, `go vet ./internal/cli/...`,
+    `gofmt -l internal/cli/` all clean; `go test ./...` green (report pkg: 30 passed
+    = all 22 report test functions preserved 1:1 — net-worth 9, spending 12 +
+    `TestParseYearMonth` with its 8 subtests); `golangci-lint run ./internal/cli/...`
+    clean (confirms the `formatMoney`/`format.go` orphan is fully resolved, not
+    merely tolerated).
 
 - [ ] **PS-014 — `internal/cli/theme`** (alias `tuitheme` for `internal/tui/theme`)
   - Source: `theme.go` (`newThemeCmd`→`NewCmd`) + `theme_list.go`,
@@ -603,14 +642,18 @@ are deleted in Phase 6.
 ## Phase 6: Final cleanup
 
 - [ ] **PS-015 — Delete shims**
-  - GREEN: remove the package-`cli` shims `formatMoney`, `openServices`,
+  - GREEN: remove the package-`cli` shims `openServices`,
     `autoBackupAfterModification`, `executeWith`, and the `testutil_test.go`
     fixture wrappers — every caller now references `cmdutil.*` / `cli.ExecuteWith`
     / `clitest.*` directly. Delete `testutil_test.go`. Build + full suite green.
+  - NOTE: the `formatMoney` shim was **already removed in PS-013** (it became
+    orphaned the moment report's printers — the last in `format.go` — moved out, and
+    `unused` would have failed lint). Only the three remaining shims are left here.
 
-- [ ] **PS-016 — Collapse `format.go`, tidy `root.go`, remove cruft**
-  - GREEN: confirm `format.go` holds nothing but already-moved code and delete it
-    (only `roothelp.go`'s `printHelp`/`printVersion` remain residual). Verify
+- [ ] **PS-016 — Tidy `root.go`, remove cruft** (`format.go` already deleted in PS-013)
+  - GREEN: the residual `format.go` was **already deleted in PS-013** (it held only
+    the report printers + the `formatMoney` shim; `roothelp.go`'s `printHelp`/
+    `printVersion` remain residual). Verify
     `root.go` `newRootCmd()` calls 11 `<noun>.NewCmd()` + 3 local
     (`newVersionCmd`/`newImportCmd`/`newExportCmd`). Resolve the `RequireFile`
     message decision for `export.go`. Delete untracked `price.tdb`/`security.tdb`
