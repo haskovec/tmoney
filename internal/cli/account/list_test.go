@@ -1,4 +1,4 @@
-package cli
+package account_test
 
 import (
 	"bytes"
@@ -6,16 +6,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haskovec/tmoney/internal/account"
+	accountdom "github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestAccountList_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"account", "list"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "list"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(account list) without --file should return error")
+		t.Fatal("cli.ExecuteWith(account list) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file/file, got: %v", err)
@@ -24,9 +25,9 @@ func TestAccountList_MissingFile(t *testing.T) {
 
 func TestAccountList_FileNotFound(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"account", "list", "--file", "/nonexistent/path.tdb"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "list", "--file", "/nonexistent/path.tdb"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(account list) with nonexistent file should return error")
+		t.Fatal("cli.ExecuteWith(account list) with nonexistent file should return error")
 	}
 }
 
@@ -40,8 +41,8 @@ func TestAccountList_NoAccounts(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"account", "list", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(account list): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"account", "list", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(account list): %v\nstderr=%s", err, stderr)
 	}
 
 	if !strings.Contains(stdout.String(), "No accounts found") {
@@ -56,16 +57,16 @@ func TestAccountList_WithAccounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setup: db.Create: %v", err)
 	}
-	repo := account.NewRepository(database)
-	acct := account.NewAccount("Test Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	repo := accountdom.NewRepository(database)
+	acct := accountdom.NewAccount("Test Checking", accountdom.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
 	if err := repo.Create(acct); err != nil {
 		t.Fatalf("setup: create account: %v", err)
 	}
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"account", "list", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(account list): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"account", "list", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(account list): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -86,8 +87,8 @@ func TestAccountList_ShortFileFlag(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"account", "list", "-f", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(account list -f): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"account", "list", "-f", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(account list -f): %v\nstderr=%s", err, stderr)
 	}
 }
 
@@ -98,13 +99,13 @@ func TestAccountList_IncludeClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setup: db.Create: %v", err)
 	}
-	repo := account.NewRepository(database)
+	repo := accountdom.NewRepository(database)
 
-	active := account.NewAccount("Active Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	active := accountdom.NewAccount("Active Checking", accountdom.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
 	if err := repo.Create(active); err != nil {
 		t.Fatalf("setup: create active: %v", err)
 	}
-	closed := account.NewAccount("Closed Savings", account.TypeSavings, "USD", types.MustNewMoney("0"), types.Today())
+	closed := accountdom.NewAccount("Closed Savings", accountdom.TypeSavings, "USD", types.MustNewMoney("0"), types.Today())
 	closed.Close()
 	if err := repo.Create(closed); err != nil {
 		t.Fatalf("setup: create closed: %v", err)
@@ -113,8 +114,8 @@ func TestAccountList_IncludeClosed(t *testing.T) {
 
 	// Without --include-closed: only active
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"account", "list", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(account list): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"account", "list", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(account list): %v\nstderr=%s", err, stderr)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "Active Checking") {
@@ -127,8 +128,8 @@ func TestAccountList_IncludeClosed(t *testing.T) {
 	// With --include-closed: both shown
 	stdout.Reset()
 	stderr.Reset()
-	if err := executeWith([]string{"account", "list", "--file", dbPath, "--include-closed"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(account list --include-closed): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"account", "list", "--file", dbPath, "--include-closed"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(account list --include-closed): %v\nstderr=%s", err, stderr)
 	}
 	out = stdout.String()
 	if !strings.Contains(out, "Active Checking") {
@@ -141,19 +142,19 @@ func TestAccountList_IncludeClosed(t *testing.T) {
 
 func TestAccountList_RejectsExtraArgs(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"account", "list", "--file", "x.tdb", "extra"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "list", "--file", "x.tdb", "extra"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(account list ... extra) should return error")
+		t.Fatal("cli.ExecuteWith(account list ... extra) should return error")
 	}
 }
 
 func TestAccountCmd_HelpListsList(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"account", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(account --help): %v", err)
+	if err := cli.ExecuteWith([]string{"account", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(account --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "list") {
 		t.Errorf("expected `account --help` to list `list`; got:\n%s", stdout.String())
@@ -161,12 +162,12 @@ func TestAccountCmd_HelpListsList(t *testing.T) {
 }
 
 func TestAccountList_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"account", "list", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(account list --help): %v", err)
+	if err := cli.ExecuteWith([]string{"account", "list", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(account list --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "list") {
 		t.Errorf("expected `account list --help` to describe the command; got:\n%s", stdout.String())

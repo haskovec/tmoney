@@ -1,11 +1,12 @@
-package cli
+package account
 
 import (
 	"fmt"
 	"io"
 	"strings"
 
-	"github.com/haskovec/tmoney/internal/account"
+	accountdom "github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -59,15 +60,15 @@ func newAccountAddCmd() *cobra.Command {
 
 // runAccountAdd creates a new account.
 func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	// Parse account type
-	acctType, err := account.ParseType(opts.accountType)
+	acctType, err := accountdom.ParseType(opts.accountType)
 	if err != nil {
 		validTypes := []string{}
-		for _, t := range account.AllTypes() {
+		for _, t := range accountdom.AllTypes() {
 			validTypes = append(validTypes, string(t))
 		}
 		return fmt.Errorf("invalid --type %q: valid types are %s", opts.accountType, strings.Join(validTypes, ", "))
@@ -97,7 +98,7 @@ func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 		}
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -109,7 +110,7 @@ func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 	}
 
 	// Create account
-	acct := account.NewAccount(opts.name, acctType, currency, openingBalance, openingDate)
+	acct := accountdom.NewAccount(opts.name, acctType, currency, openingBalance, openingDate)
 
 	// Set optional fields
 	if opts.institution != "" {
@@ -124,7 +125,7 @@ func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 
 	// Handle type-specific fields
 	if opts.creditLimit != "" {
-		if acctType != account.TypeCreditCard {
+		if acctType != accountdom.TypeCreditCard {
 			return fmt.Errorf("--credit-limit is only valid for credit_card accounts")
 		}
 		creditLimit, err := types.NewMoney(opts.creditLimit)
@@ -135,7 +136,7 @@ func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 	}
 
 	if opts.interestRate != "" {
-		if acctType != account.TypeLoan {
+		if acctType != accountdom.TypeLoan {
 			return fmt.Errorf("--interest-rate is only valid for loan accounts")
 		}
 		interestRate, err := types.NewMoney(opts.interestRate)
@@ -155,7 +156,7 @@ func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Name:            %s\n", acct.Name)
 	fmt.Fprintf(w, "  Type:            %s\n", acct.Type.DisplayName())
 	fmt.Fprintf(w, "  Currency:        %s\n", acct.Currency)
-	fmt.Fprintf(w, "  Opening Balance: %s\n", formatMoney(acct.OpeningBalance, acct.Currency))
+	fmt.Fprintf(w, "  Opening Balance: %s\n", cmdutil.FormatMoney(acct.OpeningBalance, acct.Currency))
 	fmt.Fprintf(w, "  Opening Date:    %s\n", acct.OpeningDate.String())
 	if acct.Institution.Valid {
 		fmt.Fprintf(w, "  Institution:     %s\n", acct.Institution.String)
@@ -164,7 +165,7 @@ func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Account Number:  %s\n", acct.AccountNumber.String)
 	}
 	if acct.CreditLimit.Valid {
-		fmt.Fprintf(w, "  Credit Limit:    %s\n", formatMoney(acct.CreditLimit.Money, acct.Currency))
+		fmt.Fprintf(w, "  Credit Limit:    %s\n", cmdutil.FormatMoney(acct.CreditLimit.Money, acct.Currency))
 	}
 	if acct.InterestRate.Valid {
 		fmt.Fprintf(w, "  Interest Rate:   %s%%\n", acct.InterestRate.Money.String())
@@ -173,6 +174,6 @@ func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Notes:           %s\n", acct.Notes.String)
 	}
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

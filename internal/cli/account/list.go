@@ -1,9 +1,10 @@
-package cli
+package account
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -37,11 +38,11 @@ func newAccountListCmd() *cobra.Command {
 
 // runAccountList lists accounts from the database.
 func runAccountList(opts *accountListOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}

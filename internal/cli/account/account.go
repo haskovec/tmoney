@@ -1,13 +1,18 @@
-package cli
+// Package account holds the `tmoney account` command group (add, list,
+// show, balance). It is one of the per-noun CLI subpackages carved out of
+// internal/cli; it depends only on the shared cmdutil hub, the account
+// domain package (imported as accountdom to avoid the name collision), and
+// types — never on a sibling noun package or on internal/cli itself.
+package account
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// newAccountCmd returns the `account` parent command. Child verbs
+// NewCmd returns the `account` parent command. Child verbs
 // (`add`, `list`, `show`, `balance`) are registered as they migrate
 // from the legacy `--flag` dispatcher.
-func newAccountCmd() *cobra.Command {
+func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "account",
 		Short: "Manage TMoney accounts",

@@ -220,16 +220,28 @@ are deleted in Phase 6.
 
 ## Phase 2: Pilot
 
-- [ ] **PS-004 — `internal/cli/account`** (alias `accountdom`)
-  - Source: `account.go` (`newAccountCmd`→`NewCmd`), `account_add.go`,
-    `account_list.go`, `account_show.go`, `account_balance.go`. Printers from
-    `format.go`: `printAccountsTable`, `printAccountDetails`, `printBalancesTable`
-    (→ unexported, call `cmdutil.FormatMoney`).
-  - Tests: `account_add_test.go`, `account_list_test.go`, `account_show_test.go`,
-    `account_balance_test.go` → `package account_test` (no fixtures, no
-    white-box). Repoint to `cli.ExecuteWith`.
-  - Rewire `root.go:61` → `account.NewCmd()`. This PR establishes the alias +
-    printer-lift + external-test recipe for all that follow.
+- [x] **PS-004 — `internal/cli/account`** (alias `accountdom`)
+  - GREEN: `git mv`'d the 5 source files into `internal/cli/account/`
+    (`account.go`, `add.go`, `list.go`, `show.go`, `balance.go`), changed the
+    package clause to `account`, aliased `internal/account` as `accountdom`, and
+    renamed `newAccountCmd`→exported `account.NewCmd()` (verb ctors stay
+    unexported). Lifted `printAccountsTable`/`printAccountDetails`/
+    `printBalancesTable` out of `format.go` into a new
+    `internal/cli/account/format.go` (unexported, calling `cmdutil.FormatMoney`);
+    deleted them from the residual `format.go` (−113 lines). Swapped every
+    `openServices`/`autoBackupAfterModification`/`formatMoney` call and the
+    `--file` guard to `cmdutil.OpenServices`/`AutoBackupAfterModification`/
+    `FormatMoney`/`RequireFile`. Rewired `root.go` to import
+    `internal/cli/account` and call `account.NewCmd()`.
+  - TESTS: `add_test.go`, `list_test.go`, `show_test.go`, `balance_test.go` →
+    external `package account_test`, importing `cli` (`ExecuteWith`,
+    `SwapTUILauncher`) + aliased `accountdom`; mechanically repointed
+    `executeWith`→`cli.ExecuteWith` and `stubLaunchers(t)` (the help tests
+    discarded its tui-calls slice)→`cli.SwapTUILauncher`. No fixtures, no
+    white-box. Build + full suite green (`go test ./...`: 5595 passed, the
+    PS-003 baseline — coverage 1:1); `go vet`, `gofmt`, `golangci-lint` clean.
+  - This PR establishes the alias + printer-lift + external-`_test` recipe every
+    noun PR that follows copies.
 
 ## Phase 3: Highest value + complexity
 
