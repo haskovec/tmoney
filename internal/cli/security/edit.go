@@ -1,10 +1,11 @@
-package cli
+package security
 
 import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	securitydom "github.com/haskovec/tmoney/internal/security"
 	"github.com/spf13/cobra"
 )
 
@@ -55,11 +56,11 @@ func newSecurityEditCmd() *cobra.Command {
 
 // runSecurityEdit edits an existing security.
 func runSecurityEdit(opts *securityEditOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -77,14 +78,14 @@ func runSecurityEdit(opts *securityEditOptions, w io.Writer) error {
 		sec.Name = opts.name
 	}
 	if opts.secType != "" {
-		secType, err := security.ParseType(opts.secType)
+		secType, err := securitydom.ParseType(opts.secType)
 		if err != nil {
 			return fmt.Errorf("invalid --type: %w", err)
 		}
 		sec.SecurityType = secType
 	}
 	if opts.assetClass != "" {
-		ac, err := security.ParseAssetClass(opts.assetClass)
+		ac, err := securitydom.ParseAssetClass(opts.assetClass)
 		if err != nil {
 			return fmt.Errorf("invalid --asset-class: %w", err)
 		}
@@ -108,6 +109,6 @@ func runSecurityEdit(opts *securityEditOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Asset Class: %s\n", sec.AssetClass.DisplayName())
 	fmt.Fprintf(w, "  Currency:    %s\n", sec.Currency)
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

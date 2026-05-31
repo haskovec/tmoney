@@ -1,4 +1,4 @@
-package cli
+package security_test
 
 import (
 	"bytes"
@@ -6,19 +6,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/cli"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/db"
 )
 
 func TestSecurityAdd_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"security", "add",
 		"--ticker", "AAPL",
 		"--name", "Apple",
 		"--type", "stock",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(security add) without --file should return error")
+		t.Fatal("cli.ExecuteWith(security add) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file/file, got: %v", err)
@@ -27,14 +29,14 @@ func TestSecurityAdd_MissingFile(t *testing.T) {
 
 func TestSecurityAdd_MissingTicker(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", "/fake.tdb",
 		"--name", "Apple",
 		"--type", "stock",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(security add) without --ticker should return error")
+		t.Fatal("cli.ExecuteWith(security add) without --ticker should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "ticker") {
 		t.Errorf("expected Cobra required-flag error mentioning ticker, got: %v", err)
@@ -43,14 +45,14 @@ func TestSecurityAdd_MissingTicker(t *testing.T) {
 
 func TestSecurityAdd_MissingName(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", "/fake.tdb",
 		"--ticker", "AAPL",
 		"--type", "stock",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(security add) without --name should return error")
+		t.Fatal("cli.ExecuteWith(security add) without --name should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "name") {
 		t.Errorf("expected Cobra required-flag error mentioning name, got: %v", err)
@@ -59,14 +61,14 @@ func TestSecurityAdd_MissingName(t *testing.T) {
 
 func TestSecurityAdd_MissingType(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", "/fake.tdb",
 		"--ticker", "AAPL",
 		"--name", "Apple",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(security add) without --type should return error")
+		t.Fatal("cli.ExecuteWith(security add) without --type should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "type") {
 		t.Errorf("expected Cobra required-flag error mentioning type, got: %v", err)
@@ -83,7 +85,7 @@ func TestSecurityAdd_InvalidType(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", dbPath,
 		"--ticker", "AAPL",
@@ -91,7 +93,7 @@ func TestSecurityAdd_InvalidType(t *testing.T) {
 		"--type", "invalid_type",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(security add) with invalid --type should return error")
+		t.Fatal("cli.ExecuteWith(security add) with invalid --type should return error")
 	}
 	if !strings.Contains(err.Error(), "invalid --type") {
 		t.Errorf("expected error to mention 'invalid --type', got: %v", err)
@@ -108,7 +110,7 @@ func TestSecurityAdd_Success(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", dbPath,
 		"--ticker", "AAPL",
@@ -119,7 +121,7 @@ func TestSecurityAdd_Success(t *testing.T) {
 		"--exchange", "NASDAQ",
 	}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(security add): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(security add): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -136,8 +138,8 @@ func TestSecurityAdd_Success(t *testing.T) {
 
 	// Verify security is persisted by listing via the Cobra command.
 	stdout.Reset()
-	if err := executeWith([]string{"security", "list", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(security list): %v", err)
+	if err := cli.ExecuteWith([]string{"security", "list", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(security list): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "AAPL") {
 		t.Error("security should be persisted and visible in list")
@@ -154,7 +156,7 @@ func TestSecurityAdd_DefaultValues(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", dbPath,
 		"--ticker", "GOOG",
@@ -162,7 +164,7 @@ func TestSecurityAdd_DefaultValues(t *testing.T) {
 		"--type", "stock",
 	}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(security add): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(security add): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -184,7 +186,7 @@ func TestSecurityAdd_InvalidAssetClass(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", dbPath,
 		"--ticker", "AAPL",
@@ -193,7 +195,7 @@ func TestSecurityAdd_InvalidAssetClass(t *testing.T) {
 		"--asset-class", "not_a_real_class",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(security add) with invalid --asset-class should error")
+		t.Fatal("cli.ExecuteWith(security add) with invalid --asset-class should error")
 	}
 	if !strings.Contains(err.Error(), "invalid --asset-class") {
 		t.Errorf("expected error to mention 'invalid --asset-class', got: %v", err)
@@ -201,10 +203,10 @@ func TestSecurityAdd_InvalidAssetClass(t *testing.T) {
 }
 
 func TestSecurityAdd_Duplicate(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
+	dbPath, _ := clitest.CreateTestDBWithSecurity(t)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", dbPath,
 		"--ticker", "AAPL",
@@ -217,12 +219,12 @@ func TestSecurityAdd_Duplicate(t *testing.T) {
 }
 
 func TestSecurityAdd_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"security", "add", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(security add --help): %v", err)
+	if err := cli.ExecuteWith([]string{"security", "add", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(security add --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "add") {
 		t.Errorf("expected `security add --help` to describe the command; got:\n%s", stdout.String())
@@ -230,12 +232,12 @@ func TestSecurityAdd_Help(t *testing.T) {
 }
 
 func TestSecurityCmd_HelpListsAdd(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"security", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(security --help): %v", err)
+	if err := cli.ExecuteWith([]string{"security", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(security --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "add") {
 		t.Errorf("expected `security --help` to list `add`; got:\n%s", stdout.String())

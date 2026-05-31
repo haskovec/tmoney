@@ -1,4 +1,4 @@
-package cli
+package security_test
 
 import (
 	"bytes"
@@ -6,16 +6,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/cli"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/security"
+	securitydom "github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestSecurityDelete_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"security", "delete", "AAPL"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"security", "delete", "AAPL"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(security delete AAPL) without --file should return error")
+		t.Fatal("cli.ExecuteWith(security delete AAPL) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file/file, got: %v", err)
@@ -24,9 +26,9 @@ func TestSecurityDelete_MissingFile(t *testing.T) {
 
 func TestSecurityDelete_MissingTicker(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"security", "delete"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"security", "delete"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(security delete) without ticker should return error")
+		t.Fatal("cli.ExecuteWith(security delete) without ticker should return error")
 	}
 	if !strings.Contains(err.Error(), "arg") {
 		t.Errorf("expected Cobra arg-count error, got: %v", err)
@@ -43,7 +45,7 @@ func TestSecurityDelete_NotFound(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"security", "delete", "FAKE", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"security", "delete", "FAKE", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("deleting non-existent security should return error")
 	}
@@ -53,11 +55,11 @@ func TestSecurityDelete_NotFound(t *testing.T) {
 }
 
 func TestSecurityDelete_Success(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
+	dbPath, _ := clitest.CreateTestDBWithSecurity(t)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"security", "delete", "AAPL", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(security delete AAPL): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"security", "delete", "AAPL", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(security delete AAPL): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -69,7 +71,7 @@ func TestSecurityDelete_Success(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := executeWith([]string{"security", "show", "AAPL", "--file", dbPath}, stdout, stderr); err == nil {
+	if err := cli.ExecuteWith([]string{"security", "show", "AAPL", "--file", dbPath}, stdout, stderr); err == nil {
 		t.Error("deleted security should not be found via `security show`")
 	}
 }
@@ -82,8 +84,8 @@ func TestSecurityDelete_WithPricesSuggestsHide(t *testing.T) {
 		t.Fatalf("setup: db.Create: %v", err)
 	}
 
-	repo := security.NewRepository(database)
-	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	repo := securitydom.NewRepository(database)
+	sec := securitydom.NewSecurity("AAPL", "Apple Inc.", securitydom.TypeStock)
 	if err := repo.Create(sec); err != nil {
 		t.Fatalf("setup: create security: %v", err)
 	}
@@ -98,7 +100,7 @@ func TestSecurityDelete_WithPricesSuggestsHide(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"security", "delete", "AAPL", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"security", "delete", "AAPL", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("deleting security with prices should return error")
 	}
@@ -109,19 +111,19 @@ func TestSecurityDelete_WithPricesSuggestsHide(t *testing.T) {
 
 func TestSecurityDelete_RejectsExtraArgs(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"security", "delete", "AAPL", "EXTRA", "--file", "x.tdb"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"security", "delete", "AAPL", "EXTRA", "--file", "x.tdb"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(security delete AAPL EXTRA) should return error")
+		t.Fatal("cli.ExecuteWith(security delete AAPL EXTRA) should return error")
 	}
 }
 
 func TestSecurityDelete_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"security", "delete", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(security delete --help): %v", err)
+	if err := cli.ExecuteWith([]string{"security", "delete", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(security delete --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "delete") {
 		t.Errorf("expected `security delete --help` to describe the command; got:\n%s", stdout.String())
@@ -129,12 +131,12 @@ func TestSecurityDelete_Help(t *testing.T) {
 }
 
 func TestSecurityCmd_HelpListsDelete(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"security", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(security --help): %v", err)
+	if err := cli.ExecuteWith([]string{"security", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(security --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "delete") {
 		t.Errorf("expected `security --help` to list `delete`; got:\n%s", stdout.String())

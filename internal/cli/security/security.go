@@ -1,12 +1,17 @@
-package cli
+// Package security holds the `tmoney security` command group (add, list,
+// show, edit, hide, unhide, delete). It is one of the per-noun CLI subpackages
+// carved out of internal/cli; it depends only on the shared cmdutil hub and
+// the security domain package (imported as securitydom to avoid the name
+// collision) — never on a sibling noun package or on internal/cli itself.
+package security
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// newSecurityCmd returns the `security` parent command. Child verbs
-// are registered as they migrate from the legacy `--flag` dispatcher.
-func newSecurityCmd() *cobra.Command {
+// NewCmd returns the `security` parent command with every security verb
+// registered as a subcommand.
+func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "security",
 		Short: "Manage securities (stocks, ETFs, mutual funds)",

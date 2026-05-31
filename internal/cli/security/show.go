@@ -1,9 +1,10 @@
-package cli
+package security
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -36,11 +37,11 @@ func newSecurityShowCmd() *cobra.Command {
 
 // runSecurityShow shows detailed information for a specific security.
 func runSecurityShow(opts *securityShowOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}

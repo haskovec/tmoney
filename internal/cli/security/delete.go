@@ -1,11 +1,12 @@
-package cli
+package security
 
 import (
 	"errors"
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	securitydom "github.com/haskovec/tmoney/internal/security"
 	"github.com/spf13/cobra"
 )
 
@@ -38,11 +39,11 @@ func newSecurityDeleteCmd() *cobra.Command {
 
 // runSecurityDelete deletes a security.
 func runSecurityDelete(opts *securityDeleteOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -54,7 +55,7 @@ func runSecurityDelete(opts *securityDeleteOptions, w io.Writer) error {
 	}
 
 	if err := svc.Security.Delete(sec.ID); err != nil {
-		var depErr *security.HasDependentsError
+		var depErr *securitydom.HasDependentsError
 		if errors.As(err, &depErr) {
 			return fmt.Errorf("%s\nUse tmoney security hide %s instead", depErr.Error(), sec.Ticker)
 		}
@@ -63,6 +64,6 @@ func runSecurityDelete(opts *securityDeleteOptions, w io.Writer) error {
 
 	fmt.Fprintf(w, "Security %s (%s) deleted successfully.\n", sec.Ticker, sec.Name)
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

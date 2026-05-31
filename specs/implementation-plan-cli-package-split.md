@@ -292,14 +292,35 @@ are deleted in Phase 6.
   - Do NOT move `investment_transfer*` to the `transfer` noun — they are
     investment's share-transfer verb.
 
-- [ ] **PS-006 — `internal/cli/security`** (alias `securitydom`; 7 verbs)
-  - Source: `security.go` (`newSecurityCmd`→`NewCmd`) + `_add`, `_list`, `_show`,
-    `_edit`, `_hide`, `_unhide`, `_delete`. Printers: `printSecuritiesTable`,
-    `printSecurityDetails`.
-  - Tests: 7 files → `package security_test`. Fixture:
-    `clitest.CreateTestDBWithSecurity`. 4 test files import `internal/security`
-    → alias `securitydom` there too.
-  - CLEANUP: delete stray `internal/cli/security.tdb`; confirm `t.TempDir()` usage.
+- [x] **PS-006 — `internal/cli/security`** (alias `securitydom`; 7 verbs)
+  - DONE: `git mv`'d the 8 source files into `internal/cli/security/`
+    (`security.go` + `add/list/show/edit/hide/unhide/delete.go`), changed the
+    package clause to `security`, aliased `internal/security` as `securitydom` in
+    the 4 files that use it (`add`, `list`, `edit`, `delete`), and renamed
+    `newSecurityCmd`→exported `security.NewCmd()` (verb ctors stay unexported).
+    Lifted `printSecuritiesTable`/`printSecurityDetails` out of `format.go` into
+    `internal/cli/security/format.go` (unexported; uses `securitydom` — neither
+    printer calls `cmdutil.FormatMoney`); deleted them + the now-unused
+    `internal/security` import from the residual `format.go` (−58 lines). Swapped
+    every `openServices`/`autoBackupAfterModification`/`formatMoney` call and the
+    `--file` guard to `cmdutil.OpenServices`/`AutoBackupAfterModification`/
+    `RequireFile`. Rewired `root.go` to import `internal/cli/security` and call
+    `security.NewCmd()`.
+  - DONE (tests): 7 `*_test.go` → external `package security_test`, importing
+    `cli` (`ExecuteWith`, `SwapTUILauncher`) + `clitest` (fixtures) + aliased
+    `securitydom` (list/hide/unhide/delete) + `types` (delete); mechanically
+    repointed `executeWith`→`cli.ExecuteWith`,
+    `createTestDBWithSecurity(t)`→`clitest.CreateTestDBWithSecurity(t)`, and
+    `_, restore := stubLaunchers(t)`→
+    `restore := cli.SwapTUILauncher(func(string) error { return nil })`. No
+    white-box files (all 7 external). The `testutil_test.go` fixture shims stay —
+    `createTestDBWithSecurity`/`createTestDBWithSecurityAndPrices` are still
+    consumed by the residual `price_*_test.go` (PS-007 not yet done).
+  - VERIFIED: `go fix ./...`, `go build ./...`, `go vet ./...`, `gofmt -l` all
+    clean; `go test ./...` green (5595 passed in 33 packages — the PS-003/PS-004
+    baseline, coverage 1:1); `golangci-lint run ./...` clean.
+  - CLEANUP: deleted stray gitignored `internal/cli/security.tdb` (1 MB); all 7
+    test files use `t.TempDir()` / the `clitest` fixture (no on-disk fixtures).
 
 - [ ] **PS-007 — `internal/cli/price`** (alias `pricedom`; 5 verbs)
   - Source: `price.go` (`newPriceCmd`→`NewCmd`) + `_add`, `_list`, `_current`,

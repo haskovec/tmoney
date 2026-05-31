@@ -1,9 +1,10 @@
-package cli
+package security
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -37,11 +38,11 @@ func newSecurityUnhideCmd() *cobra.Command {
 
 // runSecurityUnhide unhides a security.
 func runSecurityUnhide(opts *securityUnhideOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -58,6 +59,6 @@ func runSecurityUnhide(opts *securityUnhideOptions, w io.Writer) error {
 
 	fmt.Fprintf(w, "Security %s (%s) unhidden successfully.\n", sec.Ticker, sec.Name)
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }
