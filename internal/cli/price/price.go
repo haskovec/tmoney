@@ -1,12 +1,12 @@
-package cli
+package price
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// newPriceCmd returns the `price` parent command. Child verbs are
+// NewCmd returns the `price` parent command. Child verbs are
 // registered as they migrate from the legacy `--flag` dispatcher.
-func newPriceCmd() *cobra.Command {
+func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "price",
 		Short: "Manage security prices",

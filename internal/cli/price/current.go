@@ -1,9 +1,10 @@
-package cli
+package price
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -37,11 +38,11 @@ func newPriceCurrentCmd() *cobra.Command {
 
 // runPriceCurrent shows the most recent price for a security.
 func runPriceCurrent(opts *priceCurrentOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -62,7 +63,7 @@ func runPriceCurrent(opts *priceCurrentOptions, w io.Writer) error {
 	fmt.Fprintf(w, "Ticker:  %s\n", sec.Ticker)
 	fmt.Fprintf(w, "Name:    %s\n", sec.Name)
 	fmt.Fprintf(w, "Date:    %s\n", p.Date.String())
-	fmt.Fprintf(w, "Price:   %s\n", formatMoney(p.Price, sec.Currency))
+	fmt.Fprintf(w, "Price:   %s\n", cmdutil.FormatMoney(p.Price, sec.Currency))
 	fmt.Fprintf(w, "Source:  %s\n", p.Source.DisplayName())
 
 	return nil

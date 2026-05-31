@@ -1,4 +1,4 @@
-package cli
+package price_test
 
 import (
 	"bytes"
@@ -6,13 +6,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/haskovec/tmoney/internal/cli"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 )
 
 func TestPriceImport_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"price", "import", "prices.csv"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"price", "import", "prices.csv"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(price import prices.csv) without --file should return error")
+		t.Fatal("cli.ExecuteWith(price import prices.csv) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file/file, got: %v", err)
@@ -21,9 +24,9 @@ func TestPriceImport_MissingFile(t *testing.T) {
 
 func TestPriceImport_MissingCSVPath(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"price", "import", "--file", "/fake.tdb"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"price", "import", "--file", "/fake.tdb"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(price import) without CSV path should return error")
+		t.Fatal("cli.ExecuteWith(price import) without CSV path should return error")
 	}
 	if !strings.Contains(err.Error(), "arg") {
 		t.Errorf("expected Cobra arg-count error, got: %v", err)
@@ -32,19 +35,19 @@ func TestPriceImport_MissingCSVPath(t *testing.T) {
 
 func TestPriceImport_RejectsExtraArgs(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"price", "import", "a.csv", "b.csv", "--file", "x.tdb"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"price", "import", "a.csv", "b.csv", "--file", "x.tdb"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(price import a.csv b.csv) should return error")
+		t.Fatal("cli.ExecuteWith(price import a.csv b.csv) should return error")
 	}
 }
 
 func TestPriceImport_FileNotFound(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
+	dbPath, _ := clitest.CreateTestDBWithSecurity(t)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"price", "import", "/nonexistent/prices.csv", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"price", "import", "/nonexistent/prices.csv", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(price import) with nonexistent CSV should return error")
+		t.Fatal("cli.ExecuteWith(price import) with nonexistent CSV should return error")
 	}
 	if !strings.Contains(err.Error(), "failed to open") {
 		t.Errorf("error should mention file open failure, got: %v", err)
@@ -52,7 +55,7 @@ func TestPriceImport_FileNotFound(t *testing.T) {
 }
 
 func TestPriceImport_Success(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
+	dbPath, _ := clitest.CreateTestDBWithSecurity(t)
 
 	tmpDir := t.TempDir()
 	csvPath := filepath.Join(tmpDir, "prices.csv")
@@ -62,8 +65,8 @@ func TestPriceImport_Success(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"price", "import", csvPath, "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(price import): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"price", "import", csvPath, "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(price import): %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -75,8 +78,8 @@ func TestPriceImport_Success(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := executeWith([]string{"price", "list", "AAPL", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(price list AAPL): %v", err)
+	if err := cli.ExecuteWith([]string{"price", "list", "AAPL", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(price list AAPL): %v", err)
 	}
 	priceOutput := stdout.String()
 	for _, want := range []string{"150.00", "152.50", "148.75"} {
@@ -87,11 +90,11 @@ func TestPriceImport_Success(t *testing.T) {
 }
 
 func TestPriceImport_WithOverwrite(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
+	dbPath, _ := clitest.CreateTestDBWithSecurity(t)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"price", "add", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "150.00", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(price add): %v", err)
+	if err := cli.ExecuteWith([]string{"price", "add", "--ticker", "AAPL", "--date", "2024-01-15", "--price", "150.00", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(price add): %v", err)
 	}
 
 	tmpDir := t.TempDir()
@@ -102,8 +105,8 @@ func TestPriceImport_WithOverwrite(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := executeWith([]string{"price", "import", csvPath, "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(price import): %v", err)
+	if err := cli.ExecuteWith([]string{"price", "import", csvPath, "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(price import): %v", err)
 	}
 	output := stdout.String()
 	if !strings.Contains(output, "Skipped:        1") {
@@ -114,8 +117,8 @@ func TestPriceImport_WithOverwrite(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := executeWith([]string{"price", "import", csvPath, "--overwrite", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(price import --overwrite): %v", err)
+	if err := cli.ExecuteWith([]string{"price", "import", csvPath, "--overwrite", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(price import --overwrite): %v", err)
 	}
 	output = stdout.String()
 	if !strings.Contains(output, "Imported:       2") {
@@ -127,7 +130,7 @@ func TestPriceImport_WithOverwrite(t *testing.T) {
 }
 
 func TestPriceImport_UnknownTicker(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
+	dbPath, _ := clitest.CreateTestDBWithSecurity(t)
 
 	tmpDir := t.TempDir()
 	csvPath := filepath.Join(tmpDir, "prices.csv")
@@ -137,8 +140,8 @@ func TestPriceImport_UnknownTicker(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"price", "import", csvPath, "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(price import): %v", err)
+	if err := cli.ExecuteWith([]string{"price", "import", csvPath, "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(price import): %v", err)
 	}
 
 	output := stdout.String()
@@ -157,7 +160,7 @@ func TestPriceImport_UnknownTicker(t *testing.T) {
 }
 
 func TestPriceImport_DisplaysSummary(t *testing.T) {
-	dbPath, _ := createTestDBWithSecurity(t)
+	dbPath, _ := clitest.CreateTestDBWithSecurity(t)
 
 	tmpDir := t.TempDir()
 	csvPath := filepath.Join(tmpDir, "prices.csv")
@@ -167,8 +170,8 @@ func TestPriceImport_DisplaysSummary(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"price", "import", csvPath, "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(price import): %v", err)
+	if err := cli.ExecuteWith([]string{"price", "import", csvPath, "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(price import): %v", err)
 	}
 
 	output := stdout.String()
@@ -183,12 +186,12 @@ func TestPriceImport_DisplaysSummary(t *testing.T) {
 }
 
 func TestPriceImport_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"price", "import", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(price import --help): %v", err)
+	if err := cli.ExecuteWith([]string{"price", "import", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(price import --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "import") {
 		t.Errorf("expected `price import --help` to describe the command; got:\n%s", stdout.String())
@@ -196,12 +199,12 @@ func TestPriceImport_Help(t *testing.T) {
 }
 
 func TestPriceCmd_HelpListsImport(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"price", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(price --help): %v", err)
+	if err := cli.ExecuteWith([]string{"price", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(price --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "import") {
 		t.Errorf("expected `price --help` to list `import`; got:\n%s", stdout.String())

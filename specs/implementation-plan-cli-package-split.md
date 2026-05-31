@@ -322,18 +322,52 @@ are deleted in Phase 6.
   - CLEANUP: deleted stray gitignored `internal/cli/security.tdb` (1 MB); all 7
     test files use `t.TempDir()` / the `clitest` fixture (no on-disk fixtures).
 
-- [ ] **PS-007 — `internal/cli/price`** (alias `pricedom`; 5 verbs)
-  - Source: `price.go` (`newPriceCmd`→`NewCmd`) + `_add`, `_list`, `_current`,
-    `_import`, `_update`. Printer: `printPricesTable`. `price_update.go` carries
-    its own `registerPriceProviders` hook var, `printRefreshResult`,
-    `displayOutcome` (travel with the file, not from format.go).
-  - Tests: `price_add/current/import/list_test.go` → `package price_test`
-    (fixtures `clitest.CreateTestDBWithSecurity`,
-    `clitest.CreateTestDBWithSecurityAndPrices`). **`price_update_test.go` →
-    `package price` internal** (mutates `registerPriceProviders`); it runs
-    `price update` via a partial inline root + `clitest` fixture. `*_Help` tests
-    use `SwapTUILauncher`.
-  - CLEANUP: delete stray `internal/cli/price.tdb`.
+- [x] **PS-007 — `internal/cli/price`** (alias `pricedom`; 5 verbs)
+  - DONE: `git mv`'d the 6 source files into `internal/cli/price/`
+    (`price.go` + `add/current/import/list/update.go`), changed the package
+    clause to `price`, aliased `internal/price` as `pricedom` in the 3 files that
+    reference it (`add`, `import`, `update`) plus the new `format.go`
+    (`current.go`/`list.go` have no domain-price refs, so no alias), and renamed
+    `newPriceCmd`→exported `price.NewCmd()` (verb ctors stay unexported). Lifted
+    `printPricesTable` out of `format.go` into `internal/cli/price/format.go`
+    (unexported, using `pricedom`); deleted it + the now-unused `internal/price`
+    import from the residual `format.go`. `price_update.go`'s own
+    `registerPriceProviders` hook var, `printRefreshResult`, and `displayOutcome`
+    traveled with the file (not from format.go). Swapped every
+    `openServices`/`autoBackupAfterModification`/`formatMoney` call and the
+    `--file` guard to `cmdutil.OpenServices`/`AutoBackupAfterModification`/
+    `FormatMoney`/`RequireFile` (`cmdutil.RequireFile`'s message is byte-identical
+    to both the `fmt.Errorf` and `errors.New` guards it replaced). Rewired
+    `root.go` to import `internal/cli/price` and call `price.NewCmd()`.
+  - DONE (tests): `price_add/current/import/list_test.go` → external
+    `package price_test`, importing `cli` (`ExecuteWith`, `SwapTUILauncher`) +
+    `clitest` (`CreateTestDBWithSecurity`/`CreateTestDBWithSecurityAndPrices`);
+    mechanically repointed `executeWith`→`cli.ExecuteWith`,
+    `createTestDBWithSecurity[AndPrices]`→`clitest.*`, and
+    `_, restore := stubLaunchers(t)`→
+    `restore := cli.SwapTUILauncher(func(string) error { return nil })`.
+    **`price_update_test.go` is the first genuinely white-box file (R3)** — it
+    mutates the unexported `registerPriceProviders`, so it stays `package price`
+    internal (`update_test.go`) and runs the command via a partial inline root
+    helper `execPrice` (throwaway `*cobra.Command` with the persistent `--file`
+    flag + `NewCmd()`), **not** `cli.ExecuteWith` (which would cycle
+    `price → cli → price`). Its 2 help tests (`TestPriceUpdate_Help`,
+    `TestPriceCmd_HelpListsUpdate`) were split out to external
+    `update_help_test.go` (`package price_test`) using `cli.ExecuteWith` +
+    `cli.SwapTUILauncher`. Removed the now-orphaned
+    `createTestDBWithSecurity`/`createTestDBWithSecurityAndPrices` shims (and the
+    `security` import) from `testutil_test.go`; `createInvestmentTestDB` stays
+    (still consumed by `workflow_test.go`).
+  - VERIFIED: `go fix ./...`, `go build ./...`, `go vet ./...`, `gofmt -l` all
+    clean; `go test ./...` green (5595 passed in 34 packages — the PS-006 baseline
+    of 5595, now in 34 pkgs since `price` is its own test package; coverage 1:1,
+    all 49 price test functions preserved); `golangci-lint run ./internal/cli/...`
+    clean. An adversarial 3-lens review (behavior / coverage / spec-conformance)
+    confirmed no behavior change, `execPrice` is behaviorally equivalent to the
+    real root for the white-box tests, and `go list -test -deps` shows the
+    internal `package price` test imports zero `internal/cli` (R2/D5 cycle-free).
+  - CLEANUP: deleted stray gitignored `internal/cli/price.tdb` (1 MB); all test
+    files use `t.TempDir()` / the `clitest` fixture (no on-disk fixtures).
 
 ## Phase 4: Standard 4-verb nouns
 

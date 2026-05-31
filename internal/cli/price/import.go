@@ -1,4 +1,4 @@
-package cli
+package price
 
 import (
 	"fmt"
@@ -6,8 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/imexport"
-	"github.com/haskovec/tmoney/internal/price"
+	pricedom "github.com/haskovec/tmoney/internal/price"
 	"github.com/spf13/cobra"
 )
 
@@ -43,8 +44,8 @@ func newPriceImportCmd() *cobra.Command {
 
 // runPriceImport imports prices from a CSV file.
 func runPriceImport(opts *priceImportOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	file, err := os.Open(opts.csvPath)
@@ -69,13 +70,13 @@ func runPriceImport(opts *priceImportOptions, w io.Writer) error {
 		return nil
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
 	defer database.Close()
 
-	var prices []*price.Price
+	var prices []*pricedom.Price
 	tickerErrors := 0
 	hiddenSkipped := 0
 	for _, rec := range parseResult.Records {
@@ -91,7 +92,7 @@ func runPriceImport(opts *priceImportOptions, w io.Writer) error {
 			continue
 		}
 
-		p := price.NewPrice(sec.ID, rec.Date, rec.Price, price.SourceImport)
+		p := pricedom.NewPrice(sec.ID, rec.Date, rec.Price, pricedom.SourceImport)
 		prices = append(prices, p)
 	}
 
@@ -116,6 +117,6 @@ func runPriceImport(opts *priceImportOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Parse errors:   %d\n", len(parseResult.Errors))
 	}
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

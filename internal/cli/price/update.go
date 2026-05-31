@@ -1,4 +1,4 @@
-package cli
+package price
 
 import (
 	"errors"
@@ -7,7 +7,8 @@ import (
 	"text/tabwriter"
 
 	"github.com/haskovec/tmoney/internal/app"
-	"github.com/haskovec/tmoney/internal/price"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	pricedom "github.com/haskovec/tmoney/internal/price"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +16,7 @@ import (
 // a freshly opened Services. Tests override this to point providers at a
 // local httptest server with a fixed clock.
 var registerPriceProviders = func(svc *app.Services) {
-	svc.Price.ProviderRegistry().Register(price.NewYahooProvider())
+	svc.Price.ProviderRegistry().Register(pricedom.NewYahooProvider())
 }
 
 // priceUpdateOptions are the inputs to `tmoney price update`.
@@ -58,8 +59,8 @@ func newPriceUpdateCmd() *cobra.Command {
 // for each visible security with a ticker (or the explicit ticker filter),
 // printing per-ticker outcomes and a summary.
 func runPriceUpdate(opts *priceUpdateOptions, w io.Writer) error {
-	if opts.file == "" {
-		return errors.New("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	providerName := opts.provider
@@ -67,7 +68,7 @@ func runPriceUpdate(opts *priceUpdateOptions, w io.Writer) error {
 		providerName = "yahoo"
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -81,7 +82,7 @@ func runPriceUpdate(opts *priceUpdateOptions, w io.Writer) error {
 	}
 
 	printRefreshResult(w, result)
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 
 	if result.HasFailures() {
 		return errors.New("one or more tickers failed to update")
@@ -91,7 +92,7 @@ func runPriceUpdate(opts *priceUpdateOptions, w io.Writer) error {
 
 // printRefreshResult writes a per-ticker table followed by an aggregate
 // summary line describing the run outcome.
-func printRefreshResult(w io.Writer, result *price.RefreshResult) {
+func printRefreshResult(w io.Writer, result *pricedom.RefreshResult) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "TICKER\tSTATUS\tDATE\tPRICE\tNOTE")
 	for _, e := range result.Entries {
@@ -117,26 +118,26 @@ func printRefreshResult(w io.Writer, result *price.RefreshResult) {
 
 	counts := result.CountByOutcome()
 	fmt.Fprintf(w, "\n%d updated, %d up-to-date, %d skipped, %d failed\n",
-		counts[price.OutcomeUpdated],
-		counts[price.OutcomeUpToDate],
-		counts[price.OutcomeSkippedHidden]+counts[price.OutcomeSkippedNoTicker]+counts[price.OutcomeSkippedCurrency],
-		counts[price.OutcomeFailed],
+		counts[pricedom.OutcomeUpdated],
+		counts[pricedom.OutcomeUpToDate],
+		counts[pricedom.OutcomeSkippedHidden]+counts[pricedom.OutcomeSkippedNoTicker]+counts[pricedom.OutcomeSkippedCurrency],
+		counts[pricedom.OutcomeFailed],
 	)
 }
 
-func displayOutcome(o price.RefreshOutcome) string {
+func displayOutcome(o pricedom.RefreshOutcome) string {
 	switch o {
-	case price.OutcomeUpdated:
+	case pricedom.OutcomeUpdated:
 		return "updated"
-	case price.OutcomeUpToDate:
+	case pricedom.OutcomeUpToDate:
 		return "up-to-date"
-	case price.OutcomeSkippedHidden:
+	case pricedom.OutcomeSkippedHidden:
 		return "skipped (hidden)"
-	case price.OutcomeSkippedNoTicker:
+	case pricedom.OutcomeSkippedNoTicker:
 		return "skipped (no ticker)"
-	case price.OutcomeSkippedCurrency:
+	case pricedom.OutcomeSkippedCurrency:
 		return "skipped (currency)"
-	case price.OutcomeFailed:
+	case pricedom.OutcomeFailed:
 		return "failed"
 	default:
 		return string(o)

@@ -1,10 +1,11 @@
-package cli
+package price
 
 import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/price"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	pricedom "github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -45,8 +46,8 @@ func newPriceAddCmd() *cobra.Command {
 
 // runPriceAdd adds a price for a security.
 func runPriceAdd(opts *priceAddOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	priceDate, err := types.ParseDate(opts.date)
@@ -59,7 +60,7 @@ func runPriceAdd(opts *priceAddOptions, w io.Writer) error {
 		return fmt.Errorf("invalid --price: %w", err)
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -70,13 +71,13 @@ func runPriceAdd(opts *priceAddOptions, w io.Writer) error {
 		return fmt.Errorf("security %q not found", opts.ticker)
 	}
 
-	p := price.NewPrice(sec.ID, priceDate, priceAmount, price.SourceManual)
+	p := pricedom.NewPrice(sec.ID, priceDate, priceAmount, pricedom.SourceManual)
 	if err := svc.Price.AddPrice(p); err != nil {
 		return fmt.Errorf("failed to add price: %w", err)
 	}
 
-	fmt.Fprintf(w, "Price added for %s on %s: %s\n", sec.Ticker, priceDate.String(), formatMoney(priceAmount, sec.Currency))
+	fmt.Fprintf(w, "Price added for %s on %s: %s\n", sec.Ticker, priceDate.String(), cmdutil.FormatMoney(priceAmount, sec.Currency))
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

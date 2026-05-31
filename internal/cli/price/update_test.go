@@ -1,8 +1,9 @@
-package cli
+package price
 
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -12,10 +13,29 @@ import (
 
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/price"
+	pricedom "github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/spf13/cobra"
 )
+
+// execPrice runs args against a throwaway root that exposes only the price
+// command plus the inherited persistent --file flag. The white-box update
+// tests use it instead of cli.ExecuteWith, which would form an import cycle
+// (price -> cli -> price). It mirrors how the real root dispatches `price`.
+func execPrice(args []string, stdout, stderr io.Writer) error {
+	root := &cobra.Command{
+		Use:           "tmoney",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	root.PersistentFlags().StringP("file", "f", "", "Database file path")
+	root.AddCommand(NewCmd())
+	root.SetArgs(args)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	return root.Execute()
+}
 
 // =============================================================================
 // `tmoney price update` CLI tests
@@ -28,9 +48,9 @@ func withYahooAt(t *testing.T, baseURL string, now time.Time) func() {
 	t.Helper()
 	prev := registerPriceProviders
 	registerPriceProviders = func(svc *app.Services) {
-		svc.Price.ProviderRegistry().Register(price.NewYahooProvider(
-			price.WithBaseURL(baseURL),
-			price.WithClock(func() time.Time { return now }),
+		svc.Price.ProviderRegistry().Register(pricedom.NewYahooProvider(
+			pricedom.WithBaseURL(baseURL),
+			pricedom.WithClock(func() time.Time { return now }),
 		))
 	}
 	return func() { registerPriceProviders = prev }
@@ -72,7 +92,7 @@ func yahooFixture(t *testing.T, ticker string, date string, price float64) strin
 func TestPriceUpdate_MissingFile(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := executeWith([]string{"price", "update"}, stdout, stderr)
+	err := execPrice([]string{"price", "update"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("expected error for missing --file")
 	}
@@ -97,9 +117,9 @@ func TestPriceUpdate_HappyPath(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := executeWith([]string{"price", "update", "--file", dbPath}, stdout, stderr)
+	err := execPrice([]string{"price", "update", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith error = %v\nstdout: %s", err, stdout.String())
+		t.Fatalf("execPrice error = %v\nstdout: %s", err, stdout.String())
 	}
 
 	out := stdout.String()
@@ -134,8 +154,8 @@ func TestPriceUpdate_HappyPath(t *testing.T) {
 	if stored.Price.String() != "271.06" {
 		t.Errorf("stored price = %q, want 271.06", stored.Price.String())
 	}
-	if stored.Source != price.SourceAPI {
-		t.Errorf("stored source = %q, want %q", stored.Source, price.SourceAPI)
+	if stored.Source != pricedom.SourceAPI {
+		t.Errorf("stored source = %q, want %q", stored.Source, pricedom.SourceAPI)
 	}
 }
 
@@ -165,9 +185,9 @@ func TestPriceUpdate_FilterByPositionalTickers(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := executeWith([]string{"price", "update", "AAPL", "MSFT", "--file", dbPath}, stdout, stderr)
+	err := execPrice([]string{"price", "update", "AAPL", "MSFT", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith error = %v", err)
+		t.Fatalf("execPrice error = %v", err)
 	}
 
 	out := stdout.String()
@@ -207,7 +227,7 @@ func TestPriceUpdate_NonZeroExitOnFailure(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := executeWith([]string{"price", "update", "--file", dbPath}, stdout, stderr)
+	err := execPrice([]string{"price", "update", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("expected non-nil error when a ticker fails")
 	}
@@ -235,7 +255,7 @@ func TestPriceUpdate_UnknownProvider(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := executeWith([]string{"price", "update", "--provider", "doesnotexist", "--file", dbPath}, stdout, stderr)
+	err := execPrice([]string{"price", "update", "--provider", "doesnotexist", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("expected error for unknown provider")
 	}
@@ -259,43 +279,17 @@ func TestPriceUpdate_UpToDateSecondRun(t *testing.T) {
 	defer cleanup()
 
 	// First run: updates.
-	if err := executeWith([]string{"price", "update", "--file", dbPath}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+	if err := execPrice([]string{"price", "update", "--file", dbPath}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 
 	// Second run: should report up-to-date.
 	stdout := &bytes.Buffer{}
-	if err := executeWith([]string{"price", "update", "--file", dbPath}, stdout, &bytes.Buffer{}); err != nil {
+	if err := execPrice([]string{"price", "update", "--file", dbPath}, stdout, &bytes.Buffer{}); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "up-to-date") {
 		t.Errorf("second-run output should report 'up-to-date': %s", out)
-	}
-}
-
-func TestPriceUpdate_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
-	defer restore()
-
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"price", "update", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(price update --help): %v", err)
-	}
-	if !strings.Contains(stdout.String(), "update") {
-		t.Errorf("expected `price update --help` to describe the command; got:\n%s", stdout.String())
-	}
-}
-
-func TestPriceCmd_HelpListsUpdate(t *testing.T) {
-	_, restore := stubLaunchers(t)
-	defer restore()
-
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"price", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(price --help): %v", err)
-	}
-	if !strings.Contains(stdout.String(), "update") {
-		t.Errorf("expected `price --help` to list `update`; got:\n%s", stdout.String())
 	}
 }
