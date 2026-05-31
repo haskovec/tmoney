@@ -186,7 +186,7 @@ are deleted in Phase 6.
     — keep its bespoke guard or give `RequireFile` an optional message; decide
     in PS-016.
 
-- [ ] **PS-002 — Create `internal/cli/clitest` (fixtures only, cli-free)**
+- [x] **PS-002 — Create `internal/cli/clitest` (fixtures only, cli-free)**
   - GREEN: new package `clitest` (regular `.go`, imports `testing`) with exported
     fixtures moved from `testutil_test.go`: `CreateTestDBWithSecurity`,
     `CreateTestDBWithSecurityAndPrices`, `CreateInvestmentTestDB`,
@@ -195,7 +195,13 @@ are deleted in Phase 6.
     shim wrappers in `testutil_test.go` (`func createInvestmentTestDB(t,b) string
     { return clitest.CreateInvestmentTestDB(t,b) }`, etc.) so existing
     `package cli` tests compile unchanged.
-  - TESTS: none new; existing tests pass via shims. Full suite green.
+  - TESTS: added `clitest/fixtures_test.go` — 5 smoke tests that reopen each
+    fixture's DB and assert the rows persisted (+ `PtrMoney` round-trip). Existing
+    `package cli` tests pass unchanged via shims. Full suite green.
+  - NOTE: moving the fixtures out of a `_test.go` file dropped the errcheck
+    `_test\.go` exclusion, so the four `database.Close()` calls are now checked
+    with `t.Fatalf` (matches the fixtures' own error-handling style; a failed
+    flush would make the reopen tests flaky). Behavior is otherwise identical.
 
 - [ ] **PS-003 — Export the test harness from `cli`**
   - GREEN: rename `executeWith` → exported `ExecuteWith(args []string, stdout,
