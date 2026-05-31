@@ -1,4 +1,4 @@
-package cli
+package db_test
 
 import (
 	"bytes"
@@ -6,7 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/cli"
+	dbpkg "github.com/haskovec/tmoney/internal/db"
 )
 
 func TestDBCreate_CreatesNewDatabase(t *testing.T) {
@@ -14,8 +15,8 @@ func TestDBCreate_CreatesNewDatabase(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "newdb.tdb")
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"db", "create", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(db create): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"db", "create", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(db create): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -26,7 +27,7 @@ func TestDBCreate_CreatesNewDatabase(t *testing.T) {
 		t.Errorf("output should contain path, got: %s", out)
 	}
 
-	database, err := db.Open(dbPath)
+	database, err := dbpkg.Open(dbPath)
 	if err != nil {
 		t.Fatalf("failed to open created database: %v", err)
 	}
@@ -37,16 +38,16 @@ func TestDBCreate_AlreadyExists(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "existing.tdb")
 
-	database, err := db.Create(dbPath)
+	database, err := dbpkg.Create(dbPath)
 	if err != nil {
 		t.Fatalf("setup: failed to create initial database: %v", err)
 	}
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"db", "create", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"db", "create", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Error("executeWith(db create) on existing file should return error")
+		t.Error("cli.ExecuteWith(db create) on existing file should return error")
 	}
 }
 
@@ -55,8 +56,8 @@ func TestDBCreate_AddsExtension(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "newdb") // no .tdb extension
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"db", "create", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(db create): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"db", "create", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(db create): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -64,7 +65,7 @@ func TestDBCreate_AddsExtension(t *testing.T) {
 		t.Errorf("output should show .tdb extension was added, got: %s", out)
 	}
 
-	database, err := db.Open(dbPath + ".tdb")
+	database, err := dbpkg.Open(dbPath + ".tdb")
 	if err != nil {
 		t.Fatalf("failed to open created database with .tdb extension: %v", err)
 	}
@@ -80,14 +81,14 @@ func TestDBCreate_ThenListAccounts(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "test.tdb")
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"db", "create", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(db create): %v", err)
+	if err := cli.ExecuteWith([]string{"db", "create", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(db create): %v", err)
 	}
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := executeWith([]string{"account", "list", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(account list) after db create: %v", err)
+	if err := cli.ExecuteWith([]string{"account", "list", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(account list) after db create: %v", err)
 	}
 
 	if !strings.Contains(stdout.String(), "No accounts found") {
@@ -97,9 +98,9 @@ func TestDBCreate_ThenListAccounts(t *testing.T) {
 
 func TestDBCreate_MissingPath(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"db", "create"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"db", "create"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(db create) without path should return error")
+		t.Fatal("cli.ExecuteWith(db create) without path should return error")
 	}
 	if !strings.Contains(err.Error(), "accepts 1 arg(s)") {
 		t.Errorf("expected Cobra arg-count error, got: %v", err)
@@ -107,12 +108,12 @@ func TestDBCreate_MissingPath(t *testing.T) {
 }
 
 func TestDBCmd_HelpListsCreate(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"db", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(db --help): %v", err)
+	if err := cli.ExecuteWith([]string{"db", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(db --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "create") {
 		t.Errorf("expected `db --help` to list `create`; got:\n%s", stdout.String())
@@ -120,12 +121,12 @@ func TestDBCmd_HelpListsCreate(t *testing.T) {
 }
 
 func TestDBCreate_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"db", "create", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(db create --help): %v", err)
+	if err := cli.ExecuteWith([]string{"db", "create", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(db create --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "Create") {
 		t.Errorf("expected `db create --help` to describe the command; got:\n%s", stdout.String())

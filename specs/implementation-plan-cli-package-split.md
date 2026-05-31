@@ -535,11 +535,43 @@ are deleted in Phase 6.
     only, and no residual `package cli` code references `newReconcileCmd` or
     `printReconcileStatus`.
 
-- [ ] **PS-012 — `internal/cli/db`** (alias `dbpkg`)
-  - Source: `db.go` (`newDBCmd`→`NewCmd`) + `_create`, `_backup`, `_restore`,
-    `_list_backups`. No format.go printers (inline tabwriter). `db_create.go`
-    has no `--file` guard (creates, doesn't open) — don't add `RequireFile`.
-  - Tests: 4 files → `package db_test`. `*_Help` tests use `SwapTUILauncher`.
+- [x] **PS-012 — `internal/cli/db`** (alias `dbpkg`)
+  - DONE: `git mv`'d the 5 source files into `internal/cli/db/`
+    (`db.go` + `create/backup/restore/list_backups.go`), changed the package
+    clause to `db`, aliased `internal/db` as `dbpkg` in the one file that
+    references it (`create.go`; `backup`/`restore`/`list_backups` touch only
+    `internal/backup` + stdlib, no domain-`db` ref), and renamed
+    `newDBCmd`→exported `db.NewCmd()` (verb ctors stay unexported). **No
+    format.go printers** — `list-backups` uses an inline `tabwriter`, so the
+    residual `internal/cli/format.go` is untouched (empty diff). `db_create.go`
+    correctly has **no** `--file` guard (it creates, doesn't open) — `RequireFile`
+    was *not* added there. Swapped the three `--file` guards in `backup`/`restore`/
+    `list_backups` to `cmdutil.RequireFile` (`cmdutil.RequireFile`'s message is
+    byte-identical to the `fmt.Errorf("--file is required to specify a database")`
+    guards it replaced); db verbs never used `openServices`/`formatMoney`/
+    `autoBackupAfterModification`, so no other `cmdutil.*` swaps. Rewired `root.go`
+    to import `internal/cli/db` and call `db.NewCmd()`.
+  - DONE (tests): `create/backup/restore/list_backups_test.go` → external
+    `package db_test`, importing `cli` (`ExecuteWith`, `SwapTUILauncher`) +
+    aliased `dbpkg` (for the `dbpkg.Open`/`dbpkg.Create` setup/assert calls) +
+    `internal/backup` (restore/list_backups); mechanically repointed
+    `executeWith`→`cli.ExecuteWith`, `db.{Open,Create}`→`dbpkg.{Open,Create}`, and
+    `_, restore := stubLaunchers(t)`→
+    `restore := cli.SwapTUILauncher(func(string) error { return nil })`. No
+    fixtures, no white-box files (all 4 external) — matches the plan. The
+    `testutil_test.go` `createInvestmentTestDB` shim stays (still consumed by the
+    residual `workflow_test.go`).
+  - VERIFIED: `go fix ./...`, `go build ./...`, `go vet ./internal/cli/...`,
+    `gofmt -l` all clean; `go test ./...` green (5598 passed in 39 packages — the
+    PS-011 baseline of 5598, now in 39 pkgs since `db` is its own test package;
+    coverage 1:1, all 29 db test functions preserved — create 7, backup 7,
+    restore 8, list-backups 7); `golangci-lint run ./internal/cli/...` clean. An
+    adversarial 3-lens review (behavior-equivalence / coverage-1:1 / spec-conformance+
+    cycle-safety) returned pass on all three with no blockers/majors/minors:
+    `go list -deps` confirms the production `internal/cli/db` does not import the
+    root `internal/cli` (R2/D5 cycle-free — direct CLI dep is only
+    `internal/cli/cmdutil`), source diffs are mechanical only, and no residual
+    `package cli` code references `newDBCmd`.
 
 ## Phase 5: Small / special
 

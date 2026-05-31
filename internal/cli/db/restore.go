@@ -1,10 +1,11 @@
-package cli
+package db
 
 import (
 	"fmt"
 	"io"
 
 	"github.com/haskovec/tmoney/internal/backup"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -39,8 +40,8 @@ func newDBRestoreCmd() *cobra.Command {
 
 // runDBRestore restores the database from a backup file.
 func runDBRestore(opts *dbRestoreOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	fmt.Fprintln(w, "Creating backup of current state...")

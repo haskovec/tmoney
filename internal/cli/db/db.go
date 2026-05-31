@@ -1,13 +1,13 @@
-package cli
+package db
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// newDBCmd returns the `db` parent command. Child verbs (`create`,
+// NewCmd returns the `db` parent command. Child verbs (`create`,
 // `backup`, `restore`, `list-backups`) are registered as they migrate
 // from the legacy `--flag` dispatcher.
-func newDBCmd() *cobra.Command {
+func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "db",
 		Short: "Manage TMoney database files",

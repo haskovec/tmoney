@@ -1,4 +1,4 @@
-package cli
+package db
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/haskovec/tmoney/internal/backup"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -38,8 +39,8 @@ func newDBListBackupsCmd() *cobra.Command {
 
 // runDBListBackups lists available backups for the database file.
 func runDBListBackups(opts *dbListBackupsOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	backups, err := backup.ListBackups(opts.file)

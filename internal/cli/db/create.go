@@ -1,10 +1,10 @@
-package cli
+package db
 
 import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/db"
+	dbpkg "github.com/haskovec/tmoney/internal/db"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +15,7 @@ type dbCreateOptions struct {
 
 // newDBCreateCmd registers `tmoney db create <path>`. The single
 // positional argument is the destination file path; if it lacks a
-// `.tdb` extension, db.Create will add one.
+// `.tdb` extension, dbpkg.Create will add one.
 func newDBCreateCmd() *cobra.Command {
 	opts := &dbCreateOptions{}
 	cmd := &cobra.Command{
@@ -36,7 +36,7 @@ func newDBCreateCmd() *cobra.Command {
 
 // runDBCreate creates a new database file at opts.path.
 func runDBCreate(opts *dbCreateOptions, w io.Writer) error {
-	database, err := db.Create(opts.path)
+	database, err := dbpkg.Create(opts.path)
 	if err != nil {
 		return fmt.Errorf("failed to create database: %w", err)
 	}

@@ -1,10 +1,11 @@
-package cli
+package db
 
 import (
 	"fmt"
 	"io"
 
 	"github.com/haskovec/tmoney/internal/backup"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -35,8 +36,8 @@ func newDBBackupCmd() *cobra.Command {
 
 // runDBBackup creates a manual backup of the database file.
 func runDBBackup(opts *dbBackupOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	backupPath, err := backup.CreateManualBackup(opts.file)

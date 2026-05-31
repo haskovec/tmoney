@@ -1,4 +1,4 @@
-package cli
+package db_test
 
 import (
 	"bytes"
@@ -7,22 +7,23 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/backup"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/cli"
+	dbpkg "github.com/haskovec/tmoney/internal/db"
 )
 
 func TestDBListBackups_NoBackups(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "finances.tdb")
 
-	database, err := db.Create(dbPath)
+	database, err := dbpkg.Create(dbPath)
 	if err != nil {
 		t.Fatalf("setup: db.Create: %v", err)
 	}
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"db", "list-backups", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(db list-backups): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"db", "list-backups", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(db list-backups): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -38,7 +39,7 @@ func TestDBListBackups_WithBackups(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "finances.tdb")
 
-	database, err := db.Create(dbPath)
+	database, err := dbpkg.Create(dbPath)
 	if err != nil {
 		t.Fatalf("setup: db.Create: %v", err)
 	}
@@ -49,8 +50,8 @@ func TestDBListBackups_WithBackups(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"db", "list-backups", "--file", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(db list-backups): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"db", "list-backups", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(db list-backups): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -72,15 +73,15 @@ func TestDBListBackups_ShortFileFlag(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "finances.tdb")
 
-	database, err := db.Create(dbPath)
+	database, err := dbpkg.Create(dbPath)
 	if err != nil {
 		t.Fatalf("setup: db.Create: %v", err)
 	}
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"db", "list-backups", "-f", dbPath}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(db list-backups -f): %v\nstderr=%s", err, stderr)
+	if err := cli.ExecuteWith([]string{"db", "list-backups", "-f", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(db list-backups -f): %v\nstderr=%s", err, stderr)
 	}
 	if !strings.Contains(stdout.String(), "BACKUPS:") {
 		t.Errorf("expected 'BACKUPS:' in output, got: %s", stdout.String())
@@ -89,9 +90,9 @@ func TestDBListBackups_ShortFileFlag(t *testing.T) {
 
 func TestDBListBackups_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"db", "list-backups"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"db", "list-backups"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(db list-backups) without --file should return error")
+		t.Fatal("cli.ExecuteWith(db list-backups) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file/file, got: %v", err)
@@ -100,19 +101,19 @@ func TestDBListBackups_MissingFile(t *testing.T) {
 
 func TestDBListBackups_RejectsExtraArgs(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"db", "list-backups", "--file", "x.tdb", "extra"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"db", "list-backups", "--file", "x.tdb", "extra"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(db list-backups ... extra) should return error")
+		t.Fatal("cli.ExecuteWith(db list-backups ... extra) should return error")
 	}
 }
 
 func TestDBCmd_HelpListsListBackups(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"db", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(db --help): %v", err)
+	if err := cli.ExecuteWith([]string{"db", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(db --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "list-backups") {
 		t.Errorf("expected `db --help` to list `list-backups`; got:\n%s", stdout.String())
@@ -120,12 +121,12 @@ func TestDBCmd_HelpListsListBackups(t *testing.T) {
 }
 
 func TestDBListBackups_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"db", "list-backups", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(db list-backups --help): %v", err)
+	if err := cli.ExecuteWith([]string{"db", "list-backups", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(db list-backups --help): %v", err)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "list-backups") {
