@@ -1,10 +1,11 @@
-package cli
+package transaction
 
 import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	transactiondom "github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -52,17 +53,17 @@ func newTransactionSearchCmd() *cobra.Command {
 // runTransactionSearch searches for transactions matching the search
 // term and filters.
 func runTransactionSearch(opts *transactionSearchOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
 	defer database.Close()
 
-	criteria := transaction.SearchCriteria{
+	criteria := transactiondom.SearchCriteria{
 		PayeeName: opts.term,
 		Memo:      opts.term,
 	}
@@ -114,7 +115,7 @@ func runTransactionSearch(opts *transactionSearchOptions, w io.Writer) error {
 	// The repository's Search uses AND logic across PayeeName and Memo,
 	// but we want OR semantics: match if either field contains the term.
 	// Run two queries and merge the results.
-	var transactions []*transaction.Transaction
+	var transactions []*transactiondom.Transaction
 
 	payeeCriteria := criteria
 	payeeCriteria.Memo = ""

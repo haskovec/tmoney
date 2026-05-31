@@ -1,11 +1,12 @@
-package cli
+package transaction
 
 import (
 	"fmt"
 	"io"
 
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	transactiondom "github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -52,8 +53,8 @@ func newTransactionAddCmd() *cobra.Command {
 
 // runTransactionAdd creates a new transaction.
 func runTransactionAdd(opts *transactionAddOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
 	// Parse amount
@@ -73,7 +74,7 @@ func runTransactionAdd(opts *transactionAddOptions, w io.Writer) error {
 		date = types.Today()
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -128,7 +129,7 @@ func runTransactionAdd(opts *transactionAddOptions, w io.Writer) error {
 	}
 
 	// Create transaction
-	txn := transaction.NewTransaction(acct.ID, date, amount)
+	txn := transactiondom.NewTransaction(acct.ID, date, amount)
 	if payeeID.Valid {
 		txn.SetPayee(payeeID.ID)
 	}
@@ -148,7 +149,7 @@ func runTransactionAdd(opts *transactionAddOptions, w io.Writer) error {
 	fmt.Fprintln(w, "Transaction created successfully!")
 	fmt.Fprintf(w, "  Account:  %s\n", acct.Name)
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
-	fmt.Fprintf(w, "  Amount:   %s\n", formatMoney(amount, acct.Currency))
+	fmt.Fprintf(w, "  Amount:   %s\n", cmdutil.FormatMoney(amount, acct.Currency))
 	if payeeName != "" {
 		if payeeCreated {
 			fmt.Fprintf(w, "  Payee:    %s (new)\n", payeeName)
@@ -163,6 +164,6 @@ func runTransactionAdd(opts *transactionAddOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Memo:     %s\n", opts.memo)
 	}
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

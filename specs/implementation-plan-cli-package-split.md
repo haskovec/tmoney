@@ -371,10 +371,41 @@ are deleted in Phase 6.
 
 ## Phase 4: Standard 4-verb nouns
 
-- [ ] **PS-008 — `internal/cli/transaction`** (alias `transactiondom`)
-  - Source: `transaction.go` (`newTransactionCmd`→`NewCmd`) + `_add`, `_list`,
-    `_void`, `_search`. Printers: `printTransactionsTable`, `printSearchResults`.
-  - Tests: 4 files → `package transaction_test` (no fixtures, no white-box).
+- [x] **PS-008 — `internal/cli/transaction`** (alias `transactiondom`)
+  - DONE: `git mv`'d the 5 source files into `internal/cli/transaction/`
+    (`transaction.go` + `add/list/void/search.go`), changed the package clause to
+    `transaction`, aliased `internal/transaction` as `transactiondom` in the 3
+    files that reference it (`add`, `list`, `search`) plus the new `format.go`
+    (`void.go` uses only `svc` + `types`, so no domain import / no alias), and
+    renamed `newTransactionCmd`→exported `transaction.NewCmd()` (verb ctors stay
+    unexported). Lifted `printTransactionsTable`/`printSearchResults` out of
+    `format.go` into `internal/cli/transaction/format.go` (unexported, using
+    `cmdutil.FormatMoney`, `transactiondom.Transaction`, and the unaliased foreign
+    `account.Account`); deleted them + the now-unused `internal/transaction`
+    import from the residual `format.go`. Swapped every
+    `openServices`/`autoBackupAfterModification`/`formatMoney` call and the
+    `--file` guard to `cmdutil.OpenServices`/`AutoBackupAfterModification`/
+    `FormatMoney`/`RequireFile` (`cmdutil.RequireFile`'s message is byte-identical
+    to the `fmt.Errorf` guards it replaced). Rewired `root.go` to import
+    `internal/cli/transaction` and call `transaction.NewCmd()`.
+  - DONE (tests): `add/list/void/search_test.go` → external
+    `package transaction_test`, importing `cli` (`ExecuteWith`, `SwapTUILauncher`)
+    + aliased `transactiondom`; mechanically repointed
+    `executeWith`→`cli.ExecuteWith`, `transaction.{NewRepository,NewTransaction,
+    StatusVoid}`→`transactiondom.*`, and `_, restore := stubLaunchers(t)`→
+    `restore := cli.SwapTUILauncher(func(string) error { return nil })`. No
+    fixtures, no white-box files (all 4 external) — matches the plan. The
+    `testutil_test.go` `createInvestmentTestDB` shim stays (still consumed by the
+    residual `workflow_test.go`).
+  - VERIFIED: `go fix ./...`, `go build ./...`, `go vet ./internal/cli/...`,
+    `gofmt -l` all clean; `go test ./...` green (5595 passed in 35 packages — the
+    PS-007 baseline of 5595, now in 35 pkgs since `transaction` is its own test
+    package; coverage 1:1, all 55 transaction test functions preserved);
+    `golangci-lint run ./internal/cli/...` clean. An adversarial 3-lens review
+    (behavior / coverage-1:1 / spec-conformance+cycle-safety) confirmed only
+    mechanical changes, no dropped/weakened tests, and that the production
+    `internal/cli/transaction` package does not import `internal/cli` (R2/D5
+    cycle-free).
 
 - [ ] **PS-009 — `internal/cli/transfer`** (no alias needed)
   - Source: `transfer.go` (`newTransferCmd`→`NewCmd`) + `_add`, `_edit`,

@@ -1,4 +1,4 @@
-package cli
+package transaction_test
 
 import (
 	"bytes"
@@ -8,17 +8,18 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
-	"github.com/haskovec/tmoney/internal/transaction"
+	transactiondom "github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestTransactionAdd_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"transaction", "add", "--account", "Checking", "--amount", "-50.00"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "add", "--account", "Checking", "--amount", "-50.00"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction add) without --file should return error")
+		t.Fatal("cli.ExecuteWith(transaction add) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -35,9 +36,9 @@ func TestTransactionAdd_MissingAccount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "add", "--file", dbPath, "--amount", "-50.00"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--amount", "-50.00"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction add) without --account should return error")
+		t.Fatal("cli.ExecuteWith(transaction add) without --account should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "account") {
 		t.Errorf("expected Cobra required-flag error mentioning account, got: %v", err)
@@ -54,9 +55,9 @@ func TestTransactionAdd_MissingAmount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction add) without --amount should return error")
+		t.Fatal("cli.ExecuteWith(transaction add) without --amount should return error")
 	}
 	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "amount") {
 		t.Errorf("expected Cobra required-flag error mentioning amount, got: %v", err)
@@ -73,9 +74,9 @@ func TestTransactionAdd_InvalidAmount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "invalid"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "invalid"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction add) with invalid amount should return error")
+		t.Fatal("cli.ExecuteWith(transaction add) with invalid amount should return error")
 	}
 	if !strings.Contains(err.Error(), "invalid --amount") {
 		t.Errorf("expected 'invalid --amount', got: %v", err)
@@ -97,9 +98,9 @@ func TestTransactionAdd_InvalidDate(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-50.00", "--date", "invalid-date"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-50.00", "--date", "invalid-date"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction add) with invalid date should return error")
+		t.Fatal("cli.ExecuteWith(transaction add) with invalid date should return error")
 	}
 	if !strings.Contains(err.Error(), "invalid --date") {
 		t.Errorf("expected 'invalid --date', got: %v", err)
@@ -116,9 +117,9 @@ func TestTransactionAdd_AccountNotFound(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "add", "--file", dbPath, "--account", "Nonexistent", "--amount", "-50.00"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--account", "Nonexistent", "--amount", "-50.00"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction add) with nonexistent account should return error")
+		t.Fatal("cli.ExecuteWith(transaction add) with nonexistent account should return error")
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected 'not found', got: %v", err)
@@ -140,9 +141,9 @@ func TestTransactionAdd_CategoryNotFound(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-50.00", "--category", "Nonexistent"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-50.00", "--category", "Nonexistent"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction add) with nonexistent category should return error")
+		t.Fatal("cli.ExecuteWith(transaction add) with nonexistent category should return error")
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected 'not found', got: %v", err)
@@ -164,9 +165,9 @@ func TestTransactionAdd_Basic(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-50.00"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-50.00"}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction add): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction add): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -185,7 +186,7 @@ func TestTransactionAdd_Basic(t *testing.T) {
 		t.Fatalf("post: db.Open: %v", err)
 	}
 	defer database.Close()
-	txnRepo := transaction.NewRepository(database)
+	txnRepo := transactiondom.NewRepository(database)
 	transactions, err := txnRepo.ListByAccount(acct.ID)
 	if err != nil {
 		t.Fatalf("list transactions: %v", err)
@@ -213,9 +214,9 @@ func TestTransactionAdd_PayeeAutoCreate(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-5.50", "--payee", "Coffee Shop"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-5.50", "--payee", "Coffee Shop"}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction add): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction add): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -261,9 +262,9 @@ func TestTransactionAdd_ExistingPayee(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-5.50", "--payee", "Coffee Shop"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-5.50", "--payee", "Coffee Shop"}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction add): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction add): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -295,9 +296,9 @@ func TestTransactionAdd_WithCategory(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-25.00", "--category", "Food"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-25.00", "--category", "Food"}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction add): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction add): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -310,7 +311,7 @@ func TestTransactionAdd_WithCategory(t *testing.T) {
 		t.Fatalf("post: db.Open: %v", err)
 	}
 	defer database.Close()
-	txnRepo := transaction.NewRepository(database)
+	txnRepo := transactiondom.NewRepository(database)
 	transactions, err := txnRepo.ListByAccount(acct.ID)
 	if err != nil {
 		t.Fatalf("list transactions: %v", err)
@@ -338,9 +339,9 @@ func TestTransactionAdd_WithDateAndMemo(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-15.00", "--date", "2024-01-15", "--memo", "Lunch with friend"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--account", "Checking", "--amount", "-15.00", "--date", "2024-01-15", "--memo", "Lunch with friend"}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction add): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction add): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -356,7 +357,7 @@ func TestTransactionAdd_WithDateAndMemo(t *testing.T) {
 		t.Fatalf("post: db.Open: %v", err)
 	}
 	defer database.Close()
-	txnRepo := transaction.NewRepository(database)
+	txnRepo := transactiondom.NewRepository(database)
 	transactions, err := txnRepo.ListByAccount(acct.ID)
 	if err != nil {
 		t.Fatalf("list transactions: %v", err)
@@ -392,7 +393,7 @@ func TestTransactionAdd_FullExample(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"transaction", "add",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -403,7 +404,7 @@ func TestTransactionAdd_FullExample(t *testing.T) {
 		"--memo", "Birthday dinner",
 	}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction add): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction add): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -415,12 +416,12 @@ func TestTransactionAdd_FullExample(t *testing.T) {
 }
 
 func TestTransactionCmd_HelpListsAdd(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"transaction", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(transaction --help): %v", err)
+	if err := cli.ExecuteWith([]string{"transaction", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(transaction --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "add") {
 		t.Errorf("expected `transaction --help` to list `add`; got:\n%s", stdout.String())
@@ -428,12 +429,12 @@ func TestTransactionCmd_HelpListsAdd(t *testing.T) {
 }
 
 func TestTransactionAdd_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"transaction", "add", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(transaction add --help): %v", err)
+	if err := cli.ExecuteWith([]string{"transaction", "add", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(transaction add --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "add") {
 		t.Errorf("expected `transaction add --help` to describe the command; got:\n%s", stdout.String())

@@ -1,9 +1,10 @@
-package cli
+package transaction
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -36,11 +37,11 @@ func newTransactionVoidCmd() *cobra.Command {
 
 // runTransactionVoid voids a transaction by ID.
 func runTransactionVoid(opts *transactionVoidOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -73,12 +74,12 @@ func runTransactionVoid(opts *transactionVoidOptions, w io.Writer) error {
 	fmt.Fprintln(w, "Transaction voided successfully!")
 	fmt.Fprintf(w, "  Account:  %s\n", accountName)
 	fmt.Fprintf(w, "  Date:     %s\n", txn.Date.String())
-	fmt.Fprintf(w, "  Amount:   %s (was %s)\n", formatMoney(types.ZeroMoney, currency), formatMoney(originalAmount, currency))
+	fmt.Fprintf(w, "  Amount:   %s (was %s)\n", cmdutil.FormatMoney(types.ZeroMoney, currency), cmdutil.FormatMoney(originalAmount, currency))
 	fmt.Fprintf(w, "  Status:   Void\n")
 	if txn.IsTransfer() {
 		fmt.Fprintln(w, "  Note:     Transfer counterpart was also voided")
 	}
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }

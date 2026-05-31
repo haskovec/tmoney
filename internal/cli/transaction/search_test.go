@@ -1,4 +1,4 @@
-package cli
+package transaction_test
 
 import (
 	"bytes"
@@ -7,17 +7,18 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
-	"github.com/haskovec/tmoney/internal/transaction"
+	transactiondom "github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestTransactionSearch_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"transaction", "search", "amazon"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "amazon"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction search) without --file should return error")
+		t.Fatal("cli.ExecuteWith(transaction search) without --file should return error")
 	}
 	if !strings.Contains(err.Error(), "--file") && !strings.Contains(err.Error(), "file") {
 		t.Errorf("expected error to mention --file, got: %v", err)
@@ -26,9 +27,9 @@ func TestTransactionSearch_MissingFile(t *testing.T) {
 
 func TestTransactionSearch_MissingTerm(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"transaction", "search", "--file", "irrelevant.tdb"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "--file", "irrelevant.tdb"}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction search) without positional term should return error")
+		t.Fatal("cli.ExecuteWith(transaction search) without positional term should return error")
 	}
 	if !strings.Contains(err.Error(), "accepts 1 arg(s)") {
 		t.Errorf("expected Cobra exact-args error, got: %v", err)
@@ -62,14 +63,14 @@ func TestTransactionSearch_ByPayee(t *testing.T) {
 		t.Fatalf("failed to create payee: %v", err)
 	}
 
-	txnRepo := transaction.NewRepository(database)
-	txn1 := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-50.00"))
+	txnRepo := transactiondom.NewRepository(database)
+	txn1 := transactiondom.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-50.00"))
 	txn1.SetPayee(py.ID)
 	if err := txnRepo.Create(txn1); err != nil {
 		t.Fatalf("failed to create transaction 1: %v", err)
 	}
 
-	txn2 := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-25.00"))
+	txn2 := transactiondom.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-25.00"))
 	if err := txnRepo.Create(txn2); err != nil {
 		t.Fatalf("failed to create transaction 2: %v", err)
 	}
@@ -77,9 +78,9 @@ func TestTransactionSearch_ByPayee(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "Amazon", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "Amazon", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -118,8 +119,8 @@ func TestTransactionSearch_ByMemo(t *testing.T) {
 		t.Fatalf("failed to create test account: %v", err)
 	}
 
-	txnRepo := transaction.NewRepository(database)
-	txn1 := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-75.00"))
+	txnRepo := transactiondom.NewRepository(database)
+	txn1 := transactiondom.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-75.00"))
 	txn1.SetMemo("Office supplies from Staples")
 	if err := txnRepo.Create(txn1); err != nil {
 		t.Fatalf("failed to create transaction: %v", err)
@@ -128,9 +129,9 @@ func TestTransactionSearch_ByMemo(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "office", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "office", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -150,9 +151,9 @@ func TestTransactionSearch_NoResults(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "nonexistent", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "nonexistent", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -186,14 +187,14 @@ func TestTransactionSearch_WithAccountFilter(t *testing.T) {
 		t.Fatalf("failed to create payee: %v", err)
 	}
 
-	txnRepo := transaction.NewRepository(database)
-	txn1 := transaction.NewTransaction(checking.ID, types.Today(), types.MustNewMoney("-50.00"))
+	txnRepo := transactiondom.NewRepository(database)
+	txn1 := transactiondom.NewTransaction(checking.ID, types.Today(), types.MustNewMoney("-50.00"))
 	txn1.SetPayee(py.ID)
 	if err := txnRepo.Create(txn1); err != nil {
 		t.Fatalf("failed to create checking transaction: %v", err)
 	}
 
-	txn2 := transaction.NewTransaction(savings.ID, types.Today(), types.MustNewMoney("-30.00"))
+	txn2 := transactiondom.NewTransaction(savings.ID, types.Today(), types.MustNewMoney("-30.00"))
 	txn2.SetPayee(py.ID)
 	if err := txnRepo.Create(txn2); err != nil {
 		t.Fatalf("failed to create savings transaction: %v", err)
@@ -202,9 +203,9 @@ func TestTransactionSearch_WithAccountFilter(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "Target", "--account", "Checking", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "Target", "--account", "Checking", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -227,9 +228,9 @@ func TestTransactionSearch_AccountNotFound(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "anything", "--account", "Nonexistent", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "anything", "--account", "Nonexistent", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction search) with nonexistent account should error")
+		t.Fatal("cli.ExecuteWith(transaction search) with nonexistent account should error")
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected 'not found' in error, got: %v", err)
@@ -257,10 +258,10 @@ func TestTransactionSearch_WithMinMaxAmount(t *testing.T) {
 		t.Fatalf("failed to create payee: %v", err)
 	}
 
-	txnRepo := transaction.NewRepository(database)
+	txnRepo := transactiondom.NewRepository(database)
 	amounts := []string{"-10.00", "-50.00", "-100.00", "-200.00"}
 	for _, amt := range amounts {
-		txn := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney(amt))
+		txn := transactiondom.NewTransaction(acct.ID, types.Today(), types.MustNewMoney(amt))
 		txn.SetPayee(py.ID)
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("failed to create transaction: %v", err)
@@ -270,9 +271,9 @@ func TestTransactionSearch_WithMinMaxAmount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "Store", "--min", "-100.00", "--max", "-50.00", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "Store", "--min", "-100.00", "--max", "-50.00", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -292,9 +293,9 @@ func TestTransactionSearch_InvalidMinAmount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "test", "--min", "invalid", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "test", "--min", "invalid", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction search) with invalid --min should return error")
+		t.Fatal("cli.ExecuteWith(transaction search) with invalid --min should return error")
 	}
 	if !strings.Contains(err.Error(), "invalid --min") {
 		t.Errorf("error should mention invalid --min, got: %v", err)
@@ -312,9 +313,9 @@ func TestTransactionSearch_InvalidMaxAmount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "test", "--max", "invalid", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "test", "--max", "invalid", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction search) with invalid --max should return error")
+		t.Fatal("cli.ExecuteWith(transaction search) with invalid --max should return error")
 	}
 	if !strings.Contains(err.Error(), "invalid --max") {
 		t.Errorf("error should mention invalid --max, got: %v", err)
@@ -342,11 +343,11 @@ func TestTransactionSearch_WithDateFilter(t *testing.T) {
 		t.Fatalf("failed to create payee: %v", err)
 	}
 
-	txnRepo := transaction.NewRepository(database)
+	txnRepo := transactiondom.NewRepository(database)
 	dates := []string{"2024-01-15", "2024-02-15", "2024-03-15"}
 	for _, ds := range dates {
 		d, _ := types.ParseDate(ds)
-		txn := transaction.NewTransaction(acct.ID, d, types.MustNewMoney("-5.00"))
+		txn := transactiondom.NewTransaction(acct.ID, d, types.MustNewMoney("-5.00"))
 		txn.SetPayee(py.ID)
 		if err := txnRepo.Create(txn); err != nil {
 			t.Fatalf("failed to create transaction: %v", err)
@@ -356,14 +357,14 @@ func TestTransactionSearch_WithDateFilter(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = cli.ExecuteWith([]string{
 		"transaction", "search", "Coffee",
 		"--from", "2024-02-01",
 		"--to", "2024-02-28",
 		"--file", dbPath,
 	}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
 	}
 
 	output := stdout.String()
@@ -386,9 +387,9 @@ func TestTransactionSearch_InvalidFromDate(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "anything", "--from", "not-a-date", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "anything", "--from", "not-a-date", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction search) with invalid --from should error")
+		t.Fatal("cli.ExecuteWith(transaction search) with invalid --from should error")
 	}
 	if !strings.Contains(err.Error(), "invalid --from") {
 		t.Errorf("expected 'invalid --from' error, got: %v", err)
@@ -406,9 +407,9 @@ func TestTransactionSearch_InvalidToDate(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "anything", "--to", "not-a-date", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "anything", "--to", "not-a-date", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("executeWith(transaction search) with invalid --to should error")
+		t.Fatal("cli.ExecuteWith(transaction search) with invalid --to should error")
 	}
 	if !strings.Contains(err.Error(), "invalid --to") {
 		t.Errorf("expected 'invalid --to' error, got: %v", err)
@@ -436,8 +437,8 @@ func TestTransactionSearch_ShowIDs_AddsIDColumn(t *testing.T) {
 		t.Fatalf("failed to create payee: %v", err)
 	}
 
-	txnRepo := transaction.NewRepository(database)
-	txn := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-50.00"))
+	txnRepo := transactiondom.NewRepository(database)
+	txn := transactiondom.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-50.00"))
 	txn.SetPayee(py.ID)
 	if err := txnRepo.Create(txn); err != nil {
 		t.Fatalf("failed to create transaction: %v", err)
@@ -445,9 +446,9 @@ func TestTransactionSearch_ShowIDs_AddsIDColumn(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "Amazon", "--file", dbPath, "--show-ids"}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "Amazon", "--file", dbPath, "--show-ids"}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction search --show-ids): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction search --show-ids): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -477,8 +478,8 @@ func TestTransactionSearch_DefaultOmitsIDColumn(t *testing.T) {
 		t.Fatalf("failed to create payee: %v", err)
 	}
 
-	txnRepo := transaction.NewRepository(database)
-	txn := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-50.00"))
+	txnRepo := transactiondom.NewRepository(database)
+	txn := transactiondom.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-50.00"))
 	txn.SetPayee(py.ID)
 	if err := txnRepo.Create(txn); err != nil {
 		t.Fatalf("failed to create transaction: %v", err)
@@ -486,9 +487,9 @@ func TestTransactionSearch_DefaultOmitsIDColumn(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{"transaction", "search", "Amazon", "--file", dbPath}, stdout, stderr)
+	err = cli.ExecuteWith([]string{"transaction", "search", "Amazon", "--file", dbPath}, stdout, stderr)
 	if err != nil {
-		t.Fatalf("executeWith(transaction search): %v\nstderr=%s", err, stderr)
+		t.Fatalf("cli.ExecuteWith(transaction search): %v\nstderr=%s", err, stderr)
 	}
 
 	out := stdout.String()
@@ -498,12 +499,12 @@ func TestTransactionSearch_DefaultOmitsIDColumn(t *testing.T) {
 }
 
 func TestTransactionSearch_Help(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"transaction", "search", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(transaction search --help): %v", err)
+	if err := cli.ExecuteWith([]string{"transaction", "search", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(transaction search --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "search") {
 		t.Errorf("expected `transaction search --help` output to mention search; got:\n%s", stdout.String())
@@ -511,12 +512,12 @@ func TestTransactionSearch_Help(t *testing.T) {
 }
 
 func TestTransactionCmd_HelpListsSearch(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"transaction", "--help"}, stdout, stderr); err != nil {
-		t.Fatalf("executeWith(transaction --help): %v", err)
+	if err := cli.ExecuteWith([]string{"transaction", "--help"}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(transaction --help): %v", err)
 	}
 	if !strings.Contains(stdout.String(), "search") {
 		t.Errorf("expected `transaction --help` to list `search`; got:\n%s", stdout.String())

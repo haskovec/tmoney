@@ -1,10 +1,11 @@
-package cli
+package transaction
 
 import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	transactiondom "github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -51,11 +52,11 @@ func newTransactionListCmd() *cobra.Command {
 
 // runTransactionList lists transactions for an account.
 func runTransactionList(opts *transactionListOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -85,7 +86,7 @@ func runTransactionList(opts *transactionListOptions, w io.Writer) error {
 		hasDateFilter = true
 	}
 
-	var transactions []*transaction.Transaction
+	var transactions []*transactiondom.Transaction
 	if hasDateFilter {
 		if opts.fromDate == "" {
 			startDate = types.Date{}
@@ -102,11 +103,11 @@ func runTransactionList(opts *transactionListOptions, w io.Writer) error {
 	}
 
 	if opts.status != "" {
-		status, perr := transaction.ParseStatus(opts.status)
+		status, perr := transactiondom.ParseStatus(opts.status)
 		if perr != nil {
 			return fmt.Errorf("invalid --status: %w", perr)
 		}
-		var filtered []*transaction.Transaction
+		var filtered []*transactiondom.Transaction
 		for _, txn := range transactions {
 			if txn.Status == status {
 				filtered = append(filtered, txn)

@@ -1,13 +1,12 @@
-package cli
+package transaction
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// newTransactionCmd returns the `transaction` parent command. Child
-// verbs are registered as they migrate from the legacy `--flag`
-// dispatcher.
-func newTransactionCmd() *cobra.Command {
+// NewCmd returns the `transaction` parent command. Child verbs are
+// registered as they migrate from the legacy `--flag` dispatcher.
+func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "transaction",
 		Short: "Manage TMoney transactions",
