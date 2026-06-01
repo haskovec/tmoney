@@ -776,10 +776,27 @@ are deleted in Phase 6.
     change is a single 3-line, provably behavior-identical guard swap, so a full
     adversarial review pass was judged disproportionate.
 
-- [ ] **PS-017 — DOCS: update `docs/ARCHITECTURE.md` package overview**
-  - GREEN: reflect the new `internal/cli/{cmdutil,clitest,<noun>...}` layout in
-    the architecture doc's package map. Add a status note to
-    `specs/cli-package-split.md` marking the split complete.
+- [x] **PS-017 — DOCS: update `docs/ARCHITECTURE.md` package overview**
+  - DONE: updated `docs/ARCHITECTURE.md` to the realized layout. (1) Expanded the
+    Project Structure tree's `cli/` node to show `cmdutil/` (shared hub),
+    `clitest/` (cli-free fixtures), and the 11 per-noun packages. (2) Rewrote the
+    stale **CLI (`internal/cli/`)** presentation section — it had described the
+    pre-split monolith (`one file per command group`, `transfer_add.go`,
+    `format.go — Shared output formatting`). The new section documents the
+    top-level root + single-verb commands, the `cmdutil` hub
+    (`FormatMoney`/`OpenServices`/`AutoBackupAfterModification`/`RequireFile`, cli-free
+    leaf), the `clitest` fixtures (never imports `cli`), and the per-noun packages
+    (one exported `NewCmd()` each, one file per verb, printers dissolved out of
+    `format.go`, 9-of-11 domain-import aliases), with a link to
+    `specs/cli-package-split.md`.
+  - DONE: added a `✅ COMPLETE` status note to the top of
+    `specs/cli-package-split.md` recording that all 11 nouns + `cmdutil` + `clitest`
+    landed across PS-001 → PS-017, the shims were removed, and `format.go`/`roothelp.go`
+    were deleted.
+  - VERIFIED: docs-only change (no Go files touched); `go build ./...` clean as a
+    sanity check; markdown links resolve (`../specs/cli-package-split.md` from
+    `docs/`). **This completes the CLI package split — all of Phase 1–6 (PS-001 →
+    PS-017) is done.**
 
 ---
 

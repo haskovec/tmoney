@@ -1,7 +1,15 @@
 # CLI Package Split Specification
 
-> **Status (2026-05-31):** planned, inventory-verified. This spec describes
-> splitting the single, large `internal/cli` package into per-noun subpackages
+> **Status (2026-05-31): ✅ COMPLETE.** All 11 nouns are extracted into
+> `internal/cli/<noun>` packages alongside the shared `cmdutil` hub and the
+> cli-free `clitest` fixtures; the package-`cli` shims were removed and the
+> monolithic `format.go` (plus the dead pre-Cobra `roothelp.go`) deleted. The
+> split landed incrementally across PS-001 → PS-017 — see
+> [`implementation-plan-cli-package-split.md`](implementation-plan-cli-package-split.md)
+> for the per-PR record. The text below describes the realized layout.
+>
+> This spec describes the split of the single, large `internal/cli` package
+> into per-noun subpackages
 > plus a shared `cmdutil` hub and a `clitest` test-support package, mirroring
 > the horizontal extraction already done in `internal/tui` (`widget/`,
 > `dialog/`, `theme/`). The current CLI behavior/reference live in

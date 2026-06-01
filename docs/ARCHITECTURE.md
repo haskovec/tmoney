@@ -11,6 +11,9 @@ tmoney/
 ├── main.go              # Thin entry point — calls cli.Execute()
 ├── internal/
 │   ├── cli/             # Cobra-based CLI (noun-verb subcommands) + TUI launcher
+│   │   ├── cmdutil/     #   shared command hub (FormatMoney, OpenServices, RequireFile)
+│   │   ├── clitest/     #   cli-free test fixtures (DB builders, PtrMoney)
+│   │   └── <noun>/      #   11 per-noun packages (account, transaction, transfer, investment, …)
 │   ├── account/         # Account feature (model, repository, service)
 │   ├── category/        # Category feature (model, repository, service)
 │   ├── payee/           # Payee feature (model, repository, service)
@@ -143,17 +146,34 @@ noun-verb taxonomy (`tmoney account add`, `tmoney transfer edit`,
 `tmoney investment buy`). A thin `main.go` at the repo root calls
 `cli.Execute()`.
 
-- `root.go` — `newRootCmd()` wires the persistent `--file`/`-f` flag and
-  registers every noun command group (`account`, `transaction`,
-  `transfer`, `scheduled`, `reconcile`, `security`, `price`,
-  `investment`, `db`, `report`, `theme`, plus `import`/`export`).
-- One file per command group and per verb (e.g. `transfer.go` registers
-  the `transfer` parent; `transfer_add.go`, `transfer_edit.go`,
-  `transfer_delete.go` implement its verbs). Each verb has a sibling
-  `*_test.go`.
-- `tui.go` — Launches the Bubbletea TUI; the root command with no
-  subcommand (optionally a file path or `--file`) drops into the TUI.
-- `format.go` — Shared output formatting (`formatMoney`, table printing).
+The package is split into one subpackage per noun plus a shared hub,
+mirroring the horizontal extraction in `internal/tui` (`widget/`, `dialog/`,
+`theme/`). See [`specs/cli-package-split.md`](../specs/cli-package-split.md)
+for the full design and per-PR history.
+
+- **Top-level `internal/cli/`** — `root.go` (`newRootCmd()` wires the
+  persistent `--file`/`-f` flag, registers all 11 noun command groups, and
+  exports the `ExecuteWith` + `SwapTUILauncher` test seams), `tui.go` (drops
+  into the Bubbletea TUI when no subcommand is given), and the single-verb
+  commands `version.go`, `import.go`, `export.go` that don't warrant their own
+  package.
+- **`cmdutil/`** — the shared command hub (the `widget/` analog): a cli-free
+  leaf holding `FormatMoney`, `OpenServices`, `AutoBackupAfterModification`,
+  and `RequireFile`. Every noun imports it; it imports no other `cli` package,
+  keeping the dependency graph acyclic.
+- **`clitest/`** — test fixtures only (`CreateInvestmentTestDB`,
+  `CreateTestDBWithSecurity`, `PtrMoney`, transfer-account builders). It imports
+  only domain packages, **never `cli`**, so both external `_test` packages and
+  internal white-box tests can use it without an import cycle.
+- **Per-noun packages** — `account/`, `db/`, `transaction/`, `transfer/`,
+  `scheduled/`, `reconcile/`, `security/`, `price/`, `investment/`, `report/`,
+  `theme/`. Each exposes a single exported `NewCmd()` constructor (e.g.
+  `account.NewCmd()`, which `root.go` registers), one file per verb
+  (`transfer/add.go`, `transfer/edit.go`, `transfer/delete.go`), and the table
+  printers for that noun (the old shared `format.go` god-file dissolved into
+  each noun). The 9 nouns whose package name collides with a same-named domain
+  package alias the domain import (`accountdom`, `pricedom`, …); `transfer` and
+  `reconcile` need no alias.
 
 When invoked with no subcommand the application launches the TUI;
 otherwise the named subcommand runs against the database and exits.
