@@ -738,17 +738,43 @@ are deleted in Phase 6.
     `clitest/transferfixtures.go` surfaced by the review was updated to name the
     surviving `cmdutil.OpenServices`.
 
-- [ ] **PS-016 — Tidy `root.go`, remove cruft** (`format.go` deleted in PS-013; `roothelp.go` deleted in PS-015)
-  - GREEN: the residual `format.go` was **already deleted in PS-013** (it held only
-    the report printers + the `formatMoney` shim) and `roothelp.go` (`printHelp`/
-    `printVersion`) was **deleted in PS-015** as dead pre-Cobra code — so the
-    "optionally fix `printHelp`'s stale legacy `--flag` text" item is **resolved
-    (deleted, not fixed)**. Verify
-    `root.go` `newRootCmd()` calls 11 `<noun>.NewCmd()` + 3 local
-    (`newVersionCmd`/`newImportCmd`/`newExportCmd`). Resolve the `RequireFile`
-    message decision for `export.go` (`import.go`/`export.go` still carry their own
-    `--file == ""` guards — PS-015 deliberately left them untouched). Delete
-    untracked `price.tdb`/`security.tdb` (ensure not `git add`-ed). Full suite green.
+- [x] **PS-016 — Tidy `root.go`, remove cruft** (`format.go` deleted in PS-013; `roothelp.go` deleted in PS-015)
+  - DONE: the residual `format.go` was **already deleted in PS-013** (report printers
+    + the `formatMoney` shim) and `roothelp.go` (`printHelp`/`printVersion`) was
+    **deleted in PS-015** as dead pre-Cobra code — so the "optionally fix
+    `printHelp`'s stale legacy `--flag` text" item is **resolved (deleted, not
+    fixed)**.
+  - VERIFIED `root.go` is already tidy: `newRootCmd()` calls 11 `<noun>.NewCmd()`
+    (`theme`, `db`, `account`, `transaction`, `transfer`, `scheduled`, `reconcile`,
+    `security`, `price`, `investment`, `report`) + 3 local
+    (`newVersionCmd`/`newImportCmd`/`newExportCmd`) = 14 `AddCommand` calls; imports
+    are clean and no shims remain (PS-015 removed the last one). No edit needed.
+  - **`RequireFile` decision resolved.** The 51 identical per-noun guards were folded
+    during the noun PRs; only the two residual single-verb commands still carried
+    inline guards. `import.go`'s guard message was **byte-identical** to
+    `cmdutil.RequireFile`, so it now calls `cmdutil.RequireFile(opts.file)`
+    (`errors.New` vs the old `fmt.Errorf` with no verbs → identical `.Error()`
+    string; zero behavior change). **`export.go` keeps its bespoke guard verbatim** —
+    its message diverges (`--export requires --file to specify a database`), and the
+    split's hard non-goal is "no output/behavior changes," so per the spec's
+    explicit "keep export's bespoke guard" option this is preferred over inventing a
+    variadic-message `RequireFile` API for a single divergent caller.
+    *Flagged (out of scope, no change made):* `export.go`'s message references a
+    pre-Cobra `--export` flag that no longer exists (the command is
+    `tmoney export <file>`) — same class of stale wording as the deleted `printHelp`
+    text; reword only in a deliberate UX pass, since changing it is a user-facing
+    output change.
+  - `.tdb` cruft: **already gone** — `price.tdb`/`security.tdb` were deleted in
+    PS-007/PS-006; `ls internal/cli/*.tdb` finds none, `git ls-files '*.tdb'` is
+    empty, and `*.tdb` is in `.gitignore`, so there is no risk of an accidental
+    `git add`.
+  - VERIFIED: `go fix ./...`, `go build ./...`, `go vet ./internal/cli/...`,
+    `gofmt -l internal/cli/` all clean; `go test ./...` green (**5587 passed in 41
+    packages** — unchanged from the PS-015 baseline, confirming the guard swap is
+    behavior-identical: `import_test.go:TestImport_MissingFile` still passes against
+    the byte-identical message); `golangci-lint run ./internal/cli/...` clean. The
+    change is a single 3-line, provably behavior-identical guard swap, so a full
+    adversarial review pass was judged disproportionate.
 
 - [ ] **PS-017 — DOCS: update `docs/ARCHITECTURE.md` package overview**
   - GREEN: reflect the new `internal/cli/{cmdutil,clitest,<noun>...}` layout in

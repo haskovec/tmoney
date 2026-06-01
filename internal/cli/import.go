@@ -62,8 +62,8 @@ func newImportCmd() *cobra.Command {
 
 // runImport handles `tmoney import <file>`.
 func runImport(opts *importOptions, w io.Writer) error {
-	if opts.file == "" {
-		return fmt.Errorf("--file is required to specify a database")
+	if err := cmdutil.RequireFile(opts.file); err != nil {
+		return err
 	}
 	if opts.skipDuplicates && opts.updateDuplicates {
 		return fmt.Errorf("--skip-duplicates and --update-duplicates are mutually exclusive")
