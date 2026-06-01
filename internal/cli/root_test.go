@@ -26,7 +26,7 @@ func TestExecute_NoArgs_LaunchesTUI(t *testing.T) {
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{}, stdout, stderr); err != nil {
+	if err := ExecuteWith([]string{}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith() unexpected error: %v", err)
 	}
 	if len(*tui) != 1 {
@@ -42,7 +42,7 @@ func TestExecute_PositionalFile_LaunchesTUI(t *testing.T) {
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"foo.tdb"}, stdout, stderr); err != nil {
+	if err := ExecuteWith([]string{"foo.tdb"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith() unexpected error: %v", err)
 	}
 	if len(*tui) != 1 || (*tui)[0] != "foo.tdb" {
@@ -55,7 +55,7 @@ func TestExecute_FileFlag_LaunchesTUI(t *testing.T) {
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"--file=foo.tdb"}, stdout, stderr); err != nil {
+	if err := ExecuteWith([]string{"--file=foo.tdb"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith() unexpected error: %v", err)
 	}
 	if len(*tui) != 1 || (*tui)[0] != "foo.tdb" {
@@ -68,7 +68,7 @@ func TestExecute_ShortFileFlag_LaunchesTUI(t *testing.T) {
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"-f", "foo.tdb"}, stdout, stderr); err != nil {
+	if err := ExecuteWith([]string{"-f", "foo.tdb"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith() unexpected error: %v", err)
 	}
 	if len(*tui) != 1 || (*tui)[0] != "foo.tdb" {
@@ -81,7 +81,7 @@ func TestExecute_Help_ShowsUsage(t *testing.T) {
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"--help"}, stdout, stderr); err != nil {
+	if err := ExecuteWith([]string{"--help"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith(--help) unexpected error: %v", err)
 	}
 	out := stdout.String()

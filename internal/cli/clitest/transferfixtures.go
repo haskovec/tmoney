@@ -81,11 +81,11 @@ func SetupTransferDispatchAccounts(t *testing.T) (string, *account.Account, *acc
 // cleanup that closes the underlying connection.
 //
 // It opens the DB and builds services directly (db.Open + app.NewServices)
-// rather than routing through the CLI's openServices wrapper, because clitest
-// must stay free of internal/cli (D5/R2). The returned *app.Services is
-// identical; only openServices' incidental side effects (recent-files config
-// write, auto-post of due scheduled transactions) are skipped — both are no-ops
-// for these fixtures, which never seed scheduled transactions.
+// rather than routing through cmdutil.OpenServices, because clitest must stay
+// free of internal/cli (D5/R2). The returned *app.Services is identical; only
+// cmdutil.OpenServices' incidental side effects (recent-files config write,
+// auto-post of due scheduled transactions) are skipped — both are no-ops for
+// these fixtures, which never seed scheduled transactions.
 func OpenSvc(t *testing.T, dbPath string) *app.Services {
 	t.Helper()
 	database, err := db.Open(dbPath)

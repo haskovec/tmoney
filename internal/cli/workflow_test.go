@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -49,7 +50,7 @@ func TestRun_FullReconciliationWorkflow(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"reconcile", "start",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -64,7 +65,7 @@ func TestRun_FullReconciliationWorkflow(t *testing.T) {
 	}
 
 	stdout.Reset()
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"reconcile", "status",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -77,7 +78,7 @@ func TestRun_FullReconciliationWorkflow(t *testing.T) {
 	}
 
 	stdout.Reset()
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"reconcile", "finish",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -90,7 +91,7 @@ func TestRun_FullReconciliationWorkflow(t *testing.T) {
 	}
 
 	stdout.Reset()
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"reconcile", "status",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -110,9 +111,9 @@ func TestRun_FullReconciliationWorkflow(t *testing.T) {
 // TestRun_BuyThenSellUpdatesCash exercises investment buy then sell to confirm
 // cash flow is correctly applied across the two verbs.
 func TestRun_BuyThenSellUpdatesCash(t *testing.T) {
-	dbPath := createInvestmentTestDB(t, false)
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
 
-	if err := executeWith([]string{
+	if err := ExecuteWith([]string{
 		"investment", "buy",
 		"--file", dbPath,
 		"--account", "Brokerage",
@@ -124,7 +125,7 @@ func TestRun_BuyThenSellUpdatesCash(t *testing.T) {
 	}
 
 	stdout := &bytes.Buffer{}
-	err := executeWith([]string{
+	err := ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "Brokerage",

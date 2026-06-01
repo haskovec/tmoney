@@ -27,7 +27,7 @@ func TestRun_NoArgs(t *testing.T) {
 	}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := executeWith([]string{}, stdout, stderr)
+	err := ExecuteWith([]string{}, stdout, stderr)
 	// We expect an error when running TUI without a TTY
 	if err == nil {
 		t.Skip("TUI launched successfully (has TTY), skipping test")
@@ -47,7 +47,7 @@ func TestRun_UnknownArgs(t *testing.T) {
 	}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err := executeWith([]string{"some-file.tdb"}, stdout, stderr)
+	err := ExecuteWith([]string{"some-file.tdb"}, stdout, stderr)
 	// We expect an error when running TUI without a TTY
 	if err == nil {
 		t.Skip("TUI launched successfully (has TTY), skipping test")

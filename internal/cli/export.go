@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/imexport"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
@@ -83,7 +84,7 @@ func runExport(opts *exportOptions, w io.Writer) error {
 	}
 
 	// Open database and services
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}

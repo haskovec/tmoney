@@ -18,7 +18,7 @@ func TestVersionSubcommand_PrintsVersionInfo(t *testing.T) {
 	GitCommit = "abcdef1"
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"version"}, stdout, stderr); err != nil {
+	if err := ExecuteWith([]string{"version"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith(version) unexpected error: %v", err)
 	}
 	out := stdout.String()
@@ -31,7 +31,7 @@ func TestVersionSubcommand_PrintsVersionInfo(t *testing.T) {
 
 func TestVersionSubcommand_NoExtraArgs(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"version", "extra"}, stdout, stderr)
+	err := ExecuteWith([]string{"version", "extra"}, stdout, stderr)
 	if err == nil {
 		t.Errorf("expected error from `version extra`, got nil; stdout=%q stderr=%q",
 			stdout.String(), stderr.String())

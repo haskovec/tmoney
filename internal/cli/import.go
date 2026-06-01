@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/imexport"
 	"github.com/spf13/cobra"
 )
@@ -97,7 +98,7 @@ func runImport(opts *importOptions, w io.Writer) error {
 	defer file.Close()
 
 	// Open database and services
-	database, svc, err := openServices(opts.file)
+	database, svc, err := cmdutil.OpenServices(opts.file)
 	if err != nil {
 		return err
 	}
@@ -174,7 +175,7 @@ func runImport(opts *importOptions, w io.Writer) error {
 	// Print execution summary
 	printImportResult(w, opts.importFile, opts.account, result)
 
-	autoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
 }
 

@@ -21,7 +21,7 @@ func writeImportTestFile(path, content string) error {
 
 func TestImport_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"import", "bank.csv", "--account", "Checking"}, stdout, stderr)
+	err := ExecuteWith([]string{"import", "bank.csv", "--account", "Checking"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(import) without --file should return error")
 	}
@@ -32,7 +32,7 @@ func TestImport_MissingFile(t *testing.T) {
 
 func TestImport_MissingAccount(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"import", "bank.csv", "--file", "test.tdb"}, stdout, stderr)
+	err := ExecuteWith([]string{"import", "bank.csv", "--file", "test.tdb"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(import) without --account should return error")
 	}
@@ -43,7 +43,7 @@ func TestImport_MissingAccount(t *testing.T) {
 
 func TestImport_MissingPositionalFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"import", "--file", "test.tdb", "--account", "Checking"}, stdout, stderr)
+	err := ExecuteWith([]string{"import", "--file", "test.tdb", "--account", "Checking"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(import) without positional file should return error")
 	}
@@ -54,7 +54,7 @@ func TestImport_MissingPositionalFile(t *testing.T) {
 
 func TestImport_MutuallyExclusiveDuplicateFlags(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := ExecuteWith([]string{
 		"import", "bank.csv",
 		"--file", "test.tdb",
 		"--account", "Checking",
@@ -71,7 +71,7 @@ func TestImport_MutuallyExclusiveDuplicateFlags(t *testing.T) {
 
 func TestImport_InvalidFormat(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := ExecuteWith([]string{
 		"import", "bank.csv",
 		"--file", "test.tdb",
 		"--account", "Checking",
@@ -102,7 +102,7 @@ func TestImport_NonexistentFile(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"import", "/nonexistent/bank.csv",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -138,7 +138,7 @@ func TestImport_CSVDryRun(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -185,7 +185,7 @@ func TestImport_CSVConfirm(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -243,7 +243,7 @@ func TestImport_ClosedAccount(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Closed Account",
@@ -279,7 +279,7 @@ func TestImport_FormatOverride(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -325,7 +325,7 @@ func TestImport_SkipDuplicates(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -358,7 +358,7 @@ func TestImport_AccountNotFound(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Nonexistent",
@@ -409,7 +409,7 @@ func TestImport_MultiAccountCSV_RequiresSourceAccount(t *testing.T) {
 	dbPath, csvPath := setupMultiAccountImportFixture(t)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -433,7 +433,7 @@ func TestImport_MultiAccountCSV_FiltersBySourceAccount(t *testing.T) {
 	dbPath, csvPath := setupMultiAccountImportFixture(t)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -456,7 +456,7 @@ func TestImport_MultiAccountCSV_UnknownSourceAccount(t *testing.T) {
 	dbPath, csvPath := setupMultiAccountImportFixture(t)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{
+	err := ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -475,7 +475,7 @@ func TestImport_Help(t *testing.T) {
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"import", "--help"}, stdout, stderr); err != nil {
+	if err := ExecuteWith([]string{"import", "--help"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith(import --help): %v\nstderr=%s", err, stderr)
 	}
 	out := stdout.String()

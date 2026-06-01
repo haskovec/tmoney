@@ -59,13 +59,6 @@ func ExecuteWith(args []string, stdout, stderr io.Writer) error {
 	return cmd.Execute()
 }
 
-// executeWith is a package-internal shim retained so the existing
-// `package cli` tests compile unchanged during the package split. It
-// delegates to ExecuteWith and is removed in PS-015.
-func executeWith(args []string, stdout, stderr io.Writer) error {
-	return ExecuteWith(args, stdout, stderr)
-}
-
 func newRootCmd() *cobra.Command {
 	var fileFlag string
 

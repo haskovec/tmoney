@@ -15,7 +15,7 @@ import (
 
 func TestExport_MissingFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"export", "out.csv"}, stdout, stderr)
+	err := ExecuteWith([]string{"export", "out.csv"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(export) without --file should return error")
 	}
@@ -26,7 +26,7 @@ func TestExport_MissingFile(t *testing.T) {
 
 func TestExport_MissingPositionalFile(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"export", "--file", "test.tdb"}, stdout, stderr)
+	err := ExecuteWith([]string{"export", "--file", "test.tdb"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(export) without positional file should return error")
 	}
@@ -45,7 +45,7 @@ func TestExport_UnsupportedFormat(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"export", filepath.Join(tmpDir, "out.csv"),
 		"--file", dbPath,
 		"--format", "ofx",
@@ -69,7 +69,7 @@ func TestExport_UndetectableFormat(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "export.xyz")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 	}, stdout, stderr)
@@ -109,7 +109,7 @@ func TestExport_CSV(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "export.csv")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 	}, stdout, stderr)
@@ -166,7 +166,7 @@ func TestExport_QIF(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "export.qif")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 	}, stdout, stderr)
@@ -218,7 +218,7 @@ func TestExport_WithAccountFilter(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "checking.csv")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -265,7 +265,7 @@ func TestExport_WithDateRange(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "q1.csv")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 		"--from", "2024-01-01",
@@ -299,7 +299,7 @@ func TestExport_FormatOverrideCSV(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "export.txt")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 		"--format", "csv",
@@ -323,7 +323,7 @@ func TestExport_AccountNotFound(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "out.csv")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 		"--account", "Nonexistent",
@@ -352,7 +352,7 @@ func TestExport_NoTransactions(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "out.csv")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = executeWith([]string{
+	err = ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 		"--account", "Empty",
@@ -370,7 +370,7 @@ func TestExport_Help(t *testing.T) {
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"export", "--help"}, stdout, stderr); err != nil {
+	if err := ExecuteWith([]string{"export", "--help"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith(export --help): %v\nstderr=%s", err, stderr)
 	}
 	out := stdout.String()

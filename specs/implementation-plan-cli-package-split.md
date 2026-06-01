@@ -686,24 +686,69 @@ are deleted in Phase 6.
 
 ## Phase 6: Final cleanup
 
-- [ ] **PS-015 — Delete shims**
-  - GREEN: remove the package-`cli` shims `openServices`,
-    `autoBackupAfterModification`, `executeWith`, and the `testutil_test.go`
-    fixture wrappers — every caller now references `cmdutil.*` / `cli.ExecuteWith`
-    / `clitest.*` directly. Delete `testutil_test.go`. Build + full suite green.
+- [x] **PS-015 — Delete shims**
+  - DONE: removed the three remaining package-`cli` shims. `git rm`'d
+    `helpers.go` (it held only the `openServices` + `autoBackupAfterModification`
+    shims) and repointed its two production callers — `import.go` (both
+    `openServices` and `autoBackupAfterModification`) and `export.go`
+    (`openServices`) — to `cmdutil.OpenServices` / `cmdutil.AutoBackupAfterModification`
+    directly, adding the `internal/cli/cmdutil` import to each. Removed the
+    `executeWith` shim from `root.go`; the residual `package cli` internal tests
+    that called it (`root_test.go`, `import_test.go`, `export_test.go`,
+    `version_test.go`, `main_test.go`, `workflow_test.go`) were mechanically
+    repointed `executeWith([]string` → `ExecuteWith([]string` (call sites only —
+    the descriptive `t.Fatal("executeWith(...)")` message strings were left
+    unchanged, matching the noun-PR precedent). `git rm`'d `testutil_test.go` (it
+    held only the `createInvestmentTestDB` fixture shim); its one caller
+    `workflow_test.go` now calls `clitest.CreateInvestmentTestDB` and imports
+    `clitest`. **Did not touch the `--file` guards in import/export** — the
+    `cmdutil.RequireFile` adoption there is PS-016 scope.
+  - BONUS (user-approved dead-code cleanup): `git rm`'d `roothelp.go`
+    (`printHelp` + `printVersion`) and `format_test.go` (the 11 tests —
+    `TestPrintVersion` + 10 `TestPrintHelp_*` — that were the **only** callers of
+    those two functions). Both functions were dead pre-Cobra legacy code with zero
+    production callers: `--help` is Cobra-auto-generated (covered by
+    `root_test.go:TestExecute_Help_ShowsUsage`) and `version` is printed inline by
+    `newVersionCmd` in `version.go` (covered by `version_test.go`, with a
+    *different* output format than the stale `printVersion`). The deleted
+    `printHelp` blob also documented a pre-Cobra `--flag` CLI (`--create`,
+    `--transactions`, `--transfer`, …) that no longer exists — so this **subsumes
+    PS-016's "optionally fix `printHelp`'s stale legacy text"**, deleting it
+    outright rather than fixing it. `format_test.go` was itself a stale misnomer:
+    `format.go` was deleted in PS-013, and this file never tested `formatMoney`
+    (that test went to `cmdutil/format_test.go` in PS-001) — it only ever
+    exercised `roothelp.go`.
   - NOTE: the `formatMoney` shim was **already removed in PS-013** (it became
     orphaned the moment report's printers — the last in `format.go` — moved out, and
-    `unused` would have failed lint). Only the three remaining shims are left here.
+    `unused` would have failed lint). Only the three remaining shims were left here.
+  - VERIFIED: `go fix ./...`, `go build ./...`, `go vet ./internal/cli/...`,
+    `gofmt -l internal/cli/` all clean; `go test ./...` green (**5587 passed in 41
+    packages** — the PS-014 baseline of 5598 minus exactly the 11 deleted dead-code
+    tests; no other test changed); `golangci-lint run ./internal/cli/...` clean
+    (confirms the removed shims left no orphaned references and no new `unused`
+    findings). An adversarial 3-lens review (behavior-equivalence / coverage-1:1 /
+    spec-conformance+cycle-safety) returned **pass** on all three with no
+    blockers/majors: every remaining `executeWith` token is a string literal (not a
+    call), `cmdutil.OpenServices`/`AutoBackupAfterModification`/`ExecuteWith` are
+    behavior-identical to the deleted pure-delegation shims, `printHelp`/`printVersion`
+    had zero production callers module-wide (the `-11` test delta is exactly their
+    sole-caller tests), the import/export `--file` guards are untouched (PS-016
+    scope preserved), and `go list -deps` confirms `clitest` still imports no
+    `internal/cli` package. A stale `openServices` doc-comment reference in
+    `clitest/transferfixtures.go` surfaced by the review was updated to name the
+    surviving `cmdutil.OpenServices`.
 
-- [ ] **PS-016 — Tidy `root.go`, remove cruft** (`format.go` already deleted in PS-013)
+- [ ] **PS-016 — Tidy `root.go`, remove cruft** (`format.go` deleted in PS-013; `roothelp.go` deleted in PS-015)
   - GREEN: the residual `format.go` was **already deleted in PS-013** (it held only
-    the report printers + the `formatMoney` shim; `roothelp.go`'s `printHelp`/
-    `printVersion` remain residual). Verify
+    the report printers + the `formatMoney` shim) and `roothelp.go` (`printHelp`/
+    `printVersion`) was **deleted in PS-015** as dead pre-Cobra code — so the
+    "optionally fix `printHelp`'s stale legacy `--flag` text" item is **resolved
+    (deleted, not fixed)**. Verify
     `root.go` `newRootCmd()` calls 11 `<noun>.NewCmd()` + 3 local
     (`newVersionCmd`/`newImportCmd`/`newExportCmd`). Resolve the `RequireFile`
-    message decision for `export.go`. Delete untracked `price.tdb`/`security.tdb`
-    (ensure not `git add`-ed). Optionally fix `printHelp`'s stale legacy
-    `--flag` text. Full suite green.
+    message decision for `export.go` (`import.go`/`export.go` still carry their own
+    `--file == ""` guards — PS-015 deliberately left them untouched). Delete
+    untracked `price.tdb`/`security.tdb` (ensure not `git add`-ed). Full suite green.
 
 - [ ] **PS-017 — DOCS: update `docs/ARCHITECTURE.md` package overview**
   - GREEN: reflect the new `internal/cli/{cmdutil,clitest,<noun>...}` layout in
