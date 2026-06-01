@@ -1,4 +1,4 @@
-package cli
+package theme
 
 import (
 	"os"
@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/haskovec/tmoney/internal/tui/theme"
+	tuitheme "github.com/haskovec/tmoney/internal/tui/theme"
 )
 
 func TestReadWalColors_Sample(t *testing.T) {
-	wc, err := ReadWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
+	wc, err := readWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
 	if err != nil {
 		t.Fatalf("ReadWalColors returned unexpected error: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestReadWalColors_Sample(t *testing.T) {
 }
 
 func TestReadWalColors_AllPaletteEntriesPopulated(t *testing.T) {
-	wc, err := ReadWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
+	wc, err := readWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
 	if err != nil {
 		t.Fatalf("ReadWalColors returned unexpected error: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestReadWalColors_AllPaletteEntriesPopulated(t *testing.T) {
 
 func TestReadWalColors_MissingFile(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "does-not-exist", "colors.json")
-	_, err := ReadWalColors(missing)
+	_, err := readWalColors(missing)
 	if err == nil {
 		t.Fatalf("expected error for missing file, got nil")
 	}
@@ -89,7 +89,7 @@ func TestReadWalColors_MalformedJSON(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not json"), 0o644); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	_, err := ReadWalColors(path)
+	_, err := readWalColors(path)
 	if err == nil {
 		t.Fatalf("expected error for malformed JSON, got nil")
 	}
@@ -99,7 +99,7 @@ func TestReadWalColors_MalformedJSON(t *testing.T) {
 }
 
 func TestWalToTheme_GeneratesExpectedTOML(t *testing.T) {
-	wc, err := ReadWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
+	wc, err := readWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
 	if err != nil {
 		t.Fatalf("ReadWalColors: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestWalToTheme_GeneratesExpectedTOML(t *testing.T) {
 }
 
 func TestWalToTheme_OmitsSymbolAndShortcutSlots(t *testing.T) {
-	wc, err := ReadWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
+	wc, err := readWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
 	if err != nil {
 		t.Fatalf("ReadWalColors: %v", err)
 	}
@@ -174,12 +174,12 @@ func TestWalToTheme_OmitsSymbolAndShortcutSlots(t *testing.T) {
 }
 
 func TestWalToTheme_OutputParsesAsValidTheme(t *testing.T) {
-	wc, err := ReadWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
+	wc, err := readWalColors(filepath.Join("testdata", "wal-sample-colors.json"))
 	if err != nil {
 		t.Fatalf("ReadWalColors: %v", err)
 	}
 	out := walToThemeTOML(wc, "src", time.Unix(0, 0).UTC())
-	th, issues, err := theme.Parse([]byte(out))
+	th, issues, err := tuitheme.Parse([]byte(out))
 	if err != nil {
 		t.Fatalf("generated TOML failed to parse: %v", err)
 	}
@@ -188,5 +188,32 @@ func TestWalToTheme_OutputParsesAsValidTheme(t *testing.T) {
 	}
 	if th.Name != "wal" {
 		t.Errorf("parsed theme name = %q, want %q", th.Name, "wal")
+	}
+}
+
+// TestWalCachePath_* are white-box tests: walCachePath is unexported, so
+// they stay in package theme (internal) rather than the external
+// package theme_test that holds the generate-from-wal command tests.
+
+func TestWalCachePath_HonorsXDGCacheHome(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "/tmp/myxdgcache")
+	got, err := walCachePath()
+	if err != nil {
+		t.Fatalf("walCachePath: %v", err)
+	}
+	if want := "/tmp/myxdgcache/wal/colors.json"; got != want {
+		t.Errorf("walCachePath = %q, want %q", got, want)
+	}
+}
+
+func TestWalCachePath_FallsBackToHome(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("HOME", "/tmp/fakehome")
+	got, err := walCachePath()
+	if err != nil {
+		t.Fatalf("walCachePath: %v", err)
+	}
+	if want := "/tmp/fakehome/.cache/wal/colors.json"; got != want {
+		t.Errorf("walCachePath = %q, want %q", got, want)
 	}
 }

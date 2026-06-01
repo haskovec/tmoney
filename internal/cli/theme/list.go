@@ -1,4 +1,4 @@
-package cli
+package theme
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/haskovec/tmoney/internal/config"
-	"github.com/haskovec/tmoney/internal/tui/theme"
+	tuitheme "github.com/haskovec/tmoney/internal/tui/theme"
 	"github.com/spf13/cobra"
 )
 
@@ -59,7 +59,7 @@ type themeRow struct {
 // source "user" (matching LoadTheme's resolution order) and uses the
 // user theme's display name.
 func listThemeRows(activeID string) ([]themeRow, error) {
-	userIDs, err := theme.DiscoverUserThemes()
+	userIDs, err := tuitheme.DiscoverUserThemes()
 	if err != nil {
 		return nil, err
 	}
@@ -68,9 +68,9 @@ func listThemeRows(activeID string) ([]themeRow, error) {
 		userSet[id] = struct{}{}
 	}
 
-	rows := make([]themeRow, 0, len(theme.BuiltinIDs())+len(userIDs))
+	rows := make([]themeRow, 0, len(tuitheme.BuiltinIDs())+len(userIDs))
 	seen := make(map[string]bool)
-	for _, id := range theme.BuiltinIDs() {
+	for _, id := range tuitheme.BuiltinIDs() {
 		source := "built-in"
 		if _, ok := userSet[id]; ok {
 			source = "user"
@@ -102,7 +102,7 @@ func listThemeRows(activeID string) ([]themeRow, error) {
 // preferring a user override over the built-in. A theme that fails
 // to parse drops to its ID stem so the listing still renders.
 func themeDisplayName(id string) string {
-	t, _, err := theme.LoadTheme(id)
+	t, _, err := tuitheme.LoadTheme(id)
 	if err != nil || t == nil || t.Name == "" {
 		return id
 	}

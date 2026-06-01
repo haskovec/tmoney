@@ -1,4 +1,4 @@
-package cli
+package theme_test
 
 import (
 	"bytes"
@@ -7,7 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haskovec/tmoney/internal/tui/theme"
+	"github.com/haskovec/tmoney/internal/cli"
+	tuitheme "github.com/haskovec/tmoney/internal/tui/theme"
 )
 
 // installSampleWalCache writes the testdata sample colors.json into
@@ -37,11 +38,11 @@ func TestThemeGenerateFromWal_DefaultOutputWritesToUserThemesDir(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", cacheRoot)
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "generate-from-wal"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "generate-from-wal"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith: %v\nstdout=%s\nstderr=%s", err, stdout, stderr)
 	}
 
@@ -54,7 +55,7 @@ func TestThemeGenerateFromWal_DefaultOutputWritesToUserThemesDir(t *testing.T) {
 		t.Errorf("default-output file missing wal content; got:\n%s", data)
 	}
 	// Round-trip: file must parse cleanly as a theme.
-	if _, issues, perr := theme.Parse(data); perr != nil || len(issues) > 0 {
+	if _, issues, perr := tuitheme.Parse(data); perr != nil || len(issues) > 0 {
 		t.Errorf("generated theme failed to parse: err=%v issues=%v", perr, issues)
 	}
 	// Status message goes to stderr so stdout stays clean for piping.
@@ -71,11 +72,11 @@ func TestThemeGenerateFromWal_StdoutOutput(t *testing.T) {
 	// default path can never accidentally satisfy this test.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "generate-from-wal", "--output", "-"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "generate-from-wal", "--output", "-"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith: %v\nstderr=%s", err, stderr)
 	}
 
@@ -100,11 +101,11 @@ func TestThemeGenerateFromWal_CustomOutputPath(t *testing.T) {
 
 	target := filepath.Join(t.TempDir(), "nested", "custom-wal.toml")
 
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "generate-from-wal", "--output", target}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "generate-from-wal", "--output", target}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith: %v\nstderr=%s", err, stderr)
 	}
 	data, err := os.ReadFile(target)
@@ -120,11 +121,11 @@ func TestThemeGenerateFromWal_MissingPywalCacheReturnsError(t *testing.T) {
 	// XDG_CACHE_HOME points at an empty tempdir → no wal/colors.json.
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := executeWith([]string{"theme", "generate-from-wal"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"theme", "generate-from-wal"}, stdout, stderr)
 	if err == nil {
 		t.Fatalf("expected error for missing pywal cache, got nil")
 	}
@@ -139,11 +140,11 @@ func TestThemeGenerateFromWal_MissingPywalCacheReturnsError(t *testing.T) {
 }
 
 func TestThemeGenerateFromWal_HelpListsOutputFlag(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "generate-from-wal", "--help"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "generate-from-wal", "--help"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith --help: %v", err)
 	}
 	out := stdout.String()
@@ -151,28 +152,5 @@ func TestThemeGenerateFromWal_HelpListsOutputFlag(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("help should mention %q; got:\n%s", want, out)
 		}
-	}
-}
-
-func TestWalCachePath_HonorsXDGCacheHome(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", "/tmp/myxdgcache")
-	got, err := walCachePath()
-	if err != nil {
-		t.Fatalf("walCachePath: %v", err)
-	}
-	if want := "/tmp/myxdgcache/wal/colors.json"; got != want {
-		t.Errorf("walCachePath = %q, want %q", got, want)
-	}
-}
-
-func TestWalCachePath_FallsBackToHome(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", "")
-	t.Setenv("HOME", "/tmp/fakehome")
-	got, err := walCachePath()
-	if err != nil {
-		t.Fatalf("walCachePath: %v", err)
-	}
-	if want := "/tmp/fakehome/.cache/wal/colors.json"; got != want {
-		t.Errorf("walCachePath = %q, want %q", got, want)
 	}
 }

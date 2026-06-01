@@ -624,20 +624,65 @@ are deleted in Phase 6.
     clean (confirms the `formatMoney`/`format.go` orphan is fully resolved, not
     merely tolerated).
 
-- [ ] **PS-014 — `internal/cli/theme`** (alias `tuitheme` for `internal/tui/theme`)
-  - Source: `theme.go` (`newThemeCmd`→`NewCmd`) + `theme_list.go`,
-    `theme_wal.go`, **and the whole `wal.go`** (generation/parse:
-    `walToThemeTOML`, `ReadWalColors`/`WalColors`/`WalSpecial`/`WalColorTable`,
-    `walCachePath`, `activeThemeIDFn` var). No format.go printers. Consider
-    unexporting `ReadWalColors` et al. (no cross-package callers). Verb
-    `generate-from-wal` → ctor `newThemeGenerateFromWalCmd`.
-  - Move `testdata/wal-sample-colors.json` → `internal/cli/theme/testdata/`.
-  - Tests: `theme_test.go`, `theme_list_test.go` → `package theme_test`;
-    **`wal_test.go` + `theme_wal_subcmd_test.go` → `package theme` internal**
-    (call `walToThemeTOML`/`ReadWalColors`/`walCachePath`). Relocate test-local
-    helpers `writeUserTheme`, `writeConfigTheme`, `installSampleWalCache` with
-    their files. `*_Help` tests use `SwapTUILauncher`. (No `theme_wal_test.go`
-    exists — spec hint was wrong; 4 test files total.)
+- [x] **PS-014 — `internal/cli/theme`** (alias `tuitheme` for `internal/tui/theme`)
+  - DONE: `git mv`'d the 4 source files into `internal/cli/theme/`
+    (`theme.go` + `list.go` (was `theme_list.go`), `generate_from_wal.go` (was
+    `theme_wal.go`), and the **whole `wal.go`**), changed the package clause to
+    `theme`, aliased `internal/tui/theme` as `tuitheme` in the 3 files that
+    reference it (`list.go` for `DiscoverUserThemes`/`BuiltinIDs`/`LoadTheme`,
+    `generate_from_wal.go` for `UserThemesDir`; `wal.go` has no domain-theme
+    ref so no alias), and renamed `newThemeCmd`→exported `theme.NewCmd()` (verb
+    ctors `newThemeListCmd`/`newThemeGenerateFromWalCmd` stay unexported). **No
+    format.go printers** — theme never had any (residual `format.go` was already
+    deleted in PS-013; this PR's diff doesn't touch it). **Unexported
+    `ReadWalColors`/`WalColors`/`WalSpecial`/`WalColorTable`** →
+    `readWalColors`/`walColors`/`walSpecial`/`walColorTable` (grep-verified zero
+    cross-package callers — the only external reference was
+    `root.go`'s `newThemeCmd()` call), so `internal/cli/theme` now exports
+    exactly one symbol (`NewCmd`), matching every other noun; this is what makes
+    the white-box test internal (R3). `walCachePath`/`defaultWalThemePath`/
+    `walToThemeTOML`/`activeThemeIDFn` stayed unexported, travelling with their
+    files. Theme verbs never used
+    `openServices`/`autoBackupAfterModification`/`formatMoney`/the `--file` guard,
+    so **no `cmdutil.*` swaps** were needed. Rewired `root.go` to import
+    `internal/cli/theme` and call `theme.NewCmd()` (same position).
+  - DONE (testdata): `git mv`'d `testdata/wal-sample-colors.json` →
+    `internal/cli/theme/testdata/`; the now-empty `internal/cli/testdata/` dir
+    was removed.
+  - DONE (tests): `theme_test.go` (3), `list_test.go` (was `theme_list_test.go`,
+    7), and the command tests carved out of `theme_wal_subcmd_test.go` into
+    `generate_from_wal_test.go` (5) → external `package theme_test`, importing
+    `cli` (`ExecuteWith`, `SwapTUILauncher`) + aliased `tuitheme` (only where
+    `theme.Parse` is used); mechanically repointed `executeWith`→`cli.ExecuteWith`,
+    `theme.Parse`→`tuitheme.Parse`, and `_, restore := stubLaunchers(t)`→
+    `restore := cli.SwapTUILauncher(func(string) error { return nil })`. The
+    test-local helpers `writeUserTheme`/`writeConfigTheme` (with `list_test.go`)
+    and `installSampleWalCache` (with `generate_from_wal_test.go`) travelled with
+    their files. **`wal_test.go` is the white-box file (R3)** — it stays
+    `package theme` internal (calls unexported `readWalColors`/`walToThemeTOML`)
+    and the **2 `TestWalCachePath_*` tests** (white-box `walCachePath`, carved
+    out of the old `theme_wal_subcmd_test.go`) were folded into it. *Refines the
+    plan's test-split hint:* the hint guessed `theme_wal_subcmd_test.go` would go
+    fully internal, but its 5 `generate-from-wal` command tests are black-box and
+    belong external; only its 2 `walCachePath` tests are white-box. Net: 4 test
+    files → 4 test files (3 external + 1 internal), with the subcmd file's tests
+    redistributed by access need (the same internal/external split price's
+    PS-007 used). All 24 theme test functions preserved 1:1 (3+7+5+9).
+  - VERIFIED: `go fix ./internal/cli/...`, `go build ./...`, `go vet
+    ./internal/cli/...`, `gofmt -l internal/cli/` all clean; `go test ./...` green
+    (5598 passed in 41 packages — the PS-013 baseline of 5598, now in 41 pkgs
+    since `theme` is its own test package; coverage 1:1, all 24 theme test
+    functions preserved — theme 3, list 7, generate-from-wal 5, wal 9 incl. the 2
+    moved `walCachePath` tests); `golangci-lint run ./internal/cli/...` clean. An
+    adversarial 3-lens review (behavior-equivalence / coverage-1:1 / spec-conformance+
+    cycle-safety) returned **pass** on all three with no blockers/majors/minors:
+    `go list -deps` confirms the production `internal/cli/theme` does not import
+    the root `internal/cli` and the internal `package theme` test imports zero
+    `internal/cli` (R2/D5 cycle-free), source diffs are mechanical only
+    (`walToThemeTOML`'s TOML body + `readWalColors`'s error strings byte-identical),
+    and no residual `package cli` code references `newThemeCmd`/`ReadWalColors`.
+  - **This completes the noun extractions (all 11 nouns moved).** Remaining:
+    PS-015 (delete shims), PS-016 (tidy `root.go` / cruft), PS-017 (docs).
 
 ## Phase 6: Final cleanup
 

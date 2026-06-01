@@ -1,14 +1,14 @@
-package cli
+package theme
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// newThemeCmd returns the `theme` parent command. Child subcommands
+// NewCmd returns the `theme` parent command. Child subcommands
 // (`list`, `generate-from-wal`) are filled in by their own files; this
 // step (TH-035) only registers the parent and stub children so the
 // command tree is discoverable.
-func newThemeCmd() *cobra.Command {
+func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "theme",
 		Short: "Manage TMoney color themes",

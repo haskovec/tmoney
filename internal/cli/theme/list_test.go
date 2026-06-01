@@ -1,4 +1,4 @@
-package cli
+package theme_test
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/haskovec/tmoney/internal/cli"
 )
 
 // writeUserTheme drops a tiny user theme file at $XDG_CONFIG_HOME/tmoney/themes/<id>.toml
@@ -43,11 +45,11 @@ func TestThemeList_PrintsHeaderAndAllThemes(t *testing.T) {
 	writeUserTheme(t, configRoot, "mine", "My Theme")
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "list"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "list"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith(theme list): %v\nstderr=%s", err, stderr)
 	}
 
@@ -72,11 +74,11 @@ func TestThemeList_BuiltinAndUserSources(t *testing.T) {
 	writeUserTheme(t, configRoot, "mine", "My Theme")
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "list"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "list"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith: %v\nstderr=%s", err, stderr)
 	}
 
@@ -105,11 +107,11 @@ func TestThemeList_UserOverrideOfBuiltinShowsAsUser(t *testing.T) {
 	writeUserTheme(t, configRoot, "default", "User Override")
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "list"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "list"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith: %v\nstderr=%s", err, stderr)
 	}
 
@@ -128,11 +130,11 @@ func TestThemeList_ActiveThemeMarkedWithStar(t *testing.T) {
 	writeConfigTheme(t, configRoot, "turbo-vision")
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "list"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "list"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith: %v\nstderr=%s", err, stderr)
 	}
 
@@ -152,11 +154,11 @@ func TestThemeList_NoActiveThemeInConfig_NoStarShown(t *testing.T) {
 	configRoot := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "list"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "list"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith: %v\nstderr=%s", err, stderr)
 	}
 	if strings.Contains(stdout.String(), "*") {
@@ -170,11 +172,11 @@ func TestThemeList_RowsSortedByID(t *testing.T) {
 	writeUserTheme(t, configRoot, "aaa-early", "Early")
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
 
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "list"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "list"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith: %v\nstderr=%s", err, stderr)
 	}
 
@@ -202,11 +204,11 @@ func TestThemeList_RowsSortedByID(t *testing.T) {
 }
 
 func TestThemeList_HelpListsCommand(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "list", "--help"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "list", "--help"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith --help: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "List") {

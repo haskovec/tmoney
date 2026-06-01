@@ -1,4 +1,4 @@
-package cli
+package theme
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/haskovec/tmoney/internal/tui/theme"
+	tuitheme "github.com/haskovec/tmoney/internal/tui/theme"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +31,7 @@ func walCachePath() (string, error) {
 // equivalent). It is the same directory DiscoverUserThemes scans, so a
 // successful run shows up in View → Theme without further configuration.
 func defaultWalThemePath() (string, error) {
-	dir, err := theme.UserThemesDir()
+	dir, err := tuitheme.UserThemesDir()
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +69,7 @@ func runThemeGenerateFromWal(cmd *cobra.Command, output string, ts time.Time) er
 	if err != nil {
 		return err
 	}
-	wc, err := ReadWalColors(src)
+	wc, err := readWalColors(src)
 	if err != nil {
 		return err
 	}

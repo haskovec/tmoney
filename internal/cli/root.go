@@ -12,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/cli/report"
 	"github.com/haskovec/tmoney/internal/cli/scheduled"
 	"github.com/haskovec/tmoney/internal/cli/security"
+	"github.com/haskovec/tmoney/internal/cli/theme"
 	"github.com/haskovec/tmoney/internal/cli/transaction"
 	"github.com/haskovec/tmoney/internal/cli/transfer"
 	"github.com/spf13/cobra"
@@ -91,7 +92,7 @@ func newRootCmd() *cobra.Command {
 	}
 	cmd.PersistentFlags().StringVarP(&fileFlag, "file", "f", "", "Database file path")
 	cmd.AddCommand(newVersionCmd())
-	cmd.AddCommand(newThemeCmd())
+	cmd.AddCommand(theme.NewCmd())
 	cmd.AddCommand(db.NewCmd())
 	cmd.AddCommand(account.NewCmd())
 	cmd.AddCommand(transaction.NewCmd())

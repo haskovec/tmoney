@@ -1,4 +1,4 @@
-package cli
+package theme
 
 import (
 	"encoding/json"
@@ -10,29 +10,29 @@ import (
 	"time"
 )
 
-// WalColors mirrors the shape of pywal's `colors.json` output. Only
+// walColors mirrors the shape of pywal's `colors.json` output. Only
 // the fields TMoney consumes when generating a theme are decoded; any
 // extra keys (e.g. `wallpaper`, `alpha`, `special.cursor`) are kept
 // intact for round-tripping but unused by the helper.
-type WalColors struct {
+type walColors struct {
 	Wallpaper string        `json:"wallpaper"`
 	Alpha     string        `json:"alpha"`
-	Special   WalSpecial    `json:"special"`
-	Colors    WalColorTable `json:"colors"`
+	Special   walSpecial    `json:"special"`
+	Colors    walColorTable `json:"colors"`
 }
 
-// WalSpecial holds pywal's `special.*` group (background, foreground,
+// walSpecial holds pywal's `special.*` group (background, foreground,
 // cursor). Cursor is kept for completeness but unused by the slot
 // mapping in v1.
-type WalSpecial struct {
+type walSpecial struct {
 	Background string `json:"background"`
 	Foreground string `json:"foreground"`
 	Cursor     string `json:"cursor"`
 }
 
-// WalColorTable holds pywal's `colors.color0` … `colors.color15`
+// walColorTable holds pywal's `colors.color0` … `colors.color15`
 // 16-entry palette.
-type WalColorTable struct {
+type walColorTable struct {
 	Color0  string `json:"color0"`
 	Color1  string `json:"color1"`
 	Color2  string `json:"color2"`
@@ -51,11 +51,11 @@ type WalColorTable struct {
 	Color15 string `json:"color15"`
 }
 
-// ReadWalColors parses the pywal `colors.json` file at path. A missing
+// readWalColors parses the pywal `colors.json` file at path. A missing
 // file produces the user-facing message documented in
 // specs/theming.md so the CLI can surface it verbatim and exit 1.
 // Unparseable JSON is wrapped with the path for context.
-func ReadWalColors(path string) (*WalColors, error) {
+func readWalColors(path string) (*walColors, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -63,7 +63,7 @@ func ReadWalColors(path string) (*WalColors, error) {
 		}
 		return nil, fmt.Errorf("read pywal colors %s: %w", path, err)
 	}
-	var wc WalColors
+	var wc walColors
 	if err := json.Unmarshal(data, &wc); err != nil {
 		return nil, fmt.Errorf("parse pywal colors %s: %w", path, err)
 	}
@@ -76,7 +76,7 @@ func ReadWalColors(path string) (*WalColors, error) {
 // options are intentionally omitted so they fall back to the default
 // theme. sourcePath is embedded in the comment header so users can see
 // where the colors came from; ts is the generation timestamp (RFC3339).
-func walToThemeTOML(wc *WalColors, sourcePath string, ts time.Time) string {
+func walToThemeTOML(wc *walColors, sourcePath string, ts time.Time) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Generated from %s on %s.\n", sourcePath, ts.UTC().Format(time.RFC3339))
 	b.WriteString("# Re-run `tmoney theme generate-from-wal` to regenerate after pywal updates.\n")

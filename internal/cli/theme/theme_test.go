@@ -1,17 +1,19 @@
-package cli
+package theme_test
 
 import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/haskovec/tmoney/internal/cli"
 )
 
 func TestThemeSubcommand_HelpListsChildren(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme", "--help"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme", "--help"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith(theme --help) unexpected error: %v", err)
 	}
 	out := stdout.String()
@@ -23,11 +25,11 @@ func TestThemeSubcommand_HelpListsChildren(t *testing.T) {
 }
 
 func TestThemeSubcommand_NoArgsPrintsHelp(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"theme"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"theme"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith(theme) unexpected error: %v", err)
 	}
 	combined := stdout.String() + stderr.String()
@@ -38,11 +40,11 @@ func TestThemeSubcommand_NoArgsPrintsHelp(t *testing.T) {
 }
 
 func TestExecute_RootHelpListsThemeSubcommand(t *testing.T) {
-	_, restore := stubLaunchers(t)
+	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := executeWith([]string{"--help"}, stdout, stderr); err != nil {
+	if err := cli.ExecuteWith([]string{"--help"}, stdout, stderr); err != nil {
 		t.Fatalf("executeWith(--help) unexpected error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "theme") {
