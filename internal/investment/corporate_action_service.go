@@ -263,6 +263,15 @@ func (s *CorporateActionService) mergerProcessPositions(sourceSecurityID, target
 	}
 
 	for _, pos := range positions {
+		// Skip lot-tracked accounts: their holdings ARE the lots, already
+		// processed by mergerProcessLots. Processing the redundant aggregate
+		// position too would double-create the merged shares.
+		if usesLots, err := s.accountUsesLotsFor(pos.AccountID, sourceSecurityID); err != nil {
+			return err
+		} else if usesLots {
+			continue
+		}
+
 		oldShares := pos.Shares
 		newShares := oldShares.Mul(inverseRatio)
 		newCostPerShare := pos.AverageCostPerShare.Mul(exchangeRatio)
@@ -431,6 +440,15 @@ func (s *CorporateActionService) spinOffProcessPositions(parentSecurityID, spinO
 	}
 
 	for _, pos := range positions {
+		// Skip lot-tracked accounts: their holdings ARE the lots, already
+		// processed by spinOffProcessLots. Processing the redundant aggregate
+		// position too would double-create the spin-off shares.
+		if usesLots, err := s.accountUsesLotsFor(pos.AccountID, parentSecurityID); err != nil {
+			return err
+		} else if usesLots {
+			continue
+		}
+
 		oldAvgCost := pos.AverageCostPerShare
 
 		// Reduce parent position average cost by parent allocation percentage
@@ -485,6 +503,20 @@ func (s *CorporateActionService) spinOffProcessPositions(parentSecurityID, spinO
 	}
 
 	return nil
+}
+
+// accountUsesLotsFor reports whether the account holds (or held) the security
+// via lots — i.e. it is lot-tracked for that security, so its lots were already
+// processed by the lot path. Share-creating corporate actions (merger, spin-off)
+// must skip such accounts in their position path to avoid double-counting,
+// since for a lot-tracked account the position is a redundant aggregate of the
+// lots.
+func (s *CorporateActionService) accountUsesLotsFor(accountID, securityID types.ID) (bool, error) {
+	lots, err := s.lotRepo.ListByAccountAndSecurity(accountID, securityID, true)
+	if err != nil {
+		return false, err
+	}
+	return len(lots) > 0, nil
 }
 
 // ListBySecurity retrieves all corporate actions for a security (as source or target).
