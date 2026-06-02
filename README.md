@@ -124,7 +124,7 @@ tmoney -f personal.tdb account balance
 
 ### Prices
 - Manual entry, CSV import, and history per security
-- Bulk refresh from an online provider (Yahoo Finance by default) — only stores the latest closed-session price, so reruns on the same day are idempotent
+- Bulk refresh from an online provider (Yahoo Finance by default) stores the latest closed-session price, so reruns on the same day are idempotent; historical closes can also be fetched for a specific date via `price lookup` or `price add --fetch`
 
 ### Import / Export
 - Import transactions from CSV, QIF, or OFX/QFX files (Quicken / bank
@@ -585,11 +585,39 @@ tmoney -f personal.tdb price current AAPL
 # Bulk-import prices from a CSV file (Date,Ticker,Price columns)
 tmoney -f personal.tdb price import prices.csv
 tmoney -f personal.tdb price import prices.csv --overwrite
+
+# Look up the provider's closing price on or before a date (prints, does not store)
+tmoney -f personal.tdb price lookup --ticker AAPL --date 2024-01-15
+tmoney -f personal.tdb price lookup --ticker AAPL --date 2024-01-15 --provider yahoo
+
+# Record a price by fetching it from the provider instead of passing --price
+tmoney -f personal.tdb price add --ticker AAPL --date 2024-01-15 --fetch
 ```
 
-`price add` requires `--ticker`, `--date`, and `--price`. The price is
-stored with `source = manual`. Re-adding a price for a date that
-already has one returns an error.
+`price add` requires `--ticker` and `--date`, plus either `--price` or
+`--fetch`. With `--price` the value is stored with `source = manual`.
+Re-adding a price for a date that already has one returns an error.
+
+`price add --fetch` fetches the closing price for `--date` from the
+provider (Yahoo by default; override with `--provider`) instead of
+requiring `--price`, and stores it with `source = api`. Exactly one of
+`--price` or `--fetch` is given. The provider returns the close *on or
+before* `--date`, so a weekend or holiday date resolves to the prior
+trading day.
+
+`price lookup --ticker X --date YYYY-MM-DD` fetches and prints the
+provider's closing price on or before that date — it does **not** store
+anything. It prints the resolved value and date so you can copy it into
+`price add` or sanity-check it before recording. `--provider` defaults
+to `yahoo`.
+
+> **Sanity-check the ticker.** Some symbols are ambiguous on the
+> provider. On Yahoo, `BTC` and `ETH` are the Grayscale Bitcoin/Ethereum
+> Mini Trust ETFs (closing prices around $5–$6), while spot crypto trades
+> under `BTC-USD` / `ETH-USD` (tens of thousands of dollars). Because
+> `price lookup` prints the fetched value and date, verify both before
+> using the number — a ~$60k print for a `BTC` ETF row means you fetched
+> the wrong instrument.
 
 `price list <ticker>` prints the price history for a security.
 Optional `--from` and `--to` flags limit the date range

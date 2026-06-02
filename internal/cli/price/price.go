@@ -24,5 +24,6 @@ func NewCmd() *cobra.Command {
 	cmd.AddCommand(newPriceCurrentCmd())
 	cmd.AddCommand(newPriceImportCmd())
 	cmd.AddCommand(newPriceUpdateCmd())
+	cmd.AddCommand(newPriceLookupCmd())
 	return cmd
 }

@@ -517,12 +517,17 @@ Manage and refresh security prices.
 
 `Use: price add` · `Args: NoArgs`
 
-Record a price for a security on a specific date. The source is set to `manual`.
+Record a price for a security on a specific date. The source is set to `manual`. Pass `--fetch` to look the price up from a provider for the given date instead of supplying it by hand (stored with `source = api`).
 
-**Required flags:** `--ticker`, `--date`, `--price`
+**Required flags:** `--ticker`, `--date`, and `--price` (omit `--price` when using `--fetch`)
+
+**Optional flags:**
+- `--fetch` — Fetch the closing price for `--date` from a provider instead of passing `--price`
+- `--provider string` — Price provider name (default `yahoo`; used with `--fetch`)
 
 ```bash
 tmoney price add --ticker AAPL --date 2024-01-15 --price 150.00
+tmoney price add --ticker AAPL --date 2024-01-15 --fetch
 ```
 
 ### `price current`
@@ -562,6 +567,22 @@ List the price history for a security, optionally filtered by date range.
 ```bash
 tmoney price list AAPL
 tmoney price list AAPL --from 2024-01-01 --to 2024-06-30
+```
+
+### `price lookup`
+
+`Use: price lookup` · `Args: NoArgs`
+
+Fetch the closing price for a security on a specific date from a provider and print it, without recording anything. The provider returns the close on or before the requested date, so weekends and holidays resolve to the prior trading day. Use this to sanity-check a value before recording it with `price add --fetch`.
+
+**Required flags:** `--ticker`, `--date`
+
+**Optional flags:**
+- `--provider string` — Price provider name (default `yahoo`)
+
+```bash
+tmoney price lookup --ticker AAPL --date 2024-01-15
+tmoney price lookup --ticker GBTC --date 2024-07-31 --provider yahoo
 ```
 
 ### `price update`

@@ -66,10 +66,10 @@ func TestPriceAdd_MissingPrice(t *testing.T) {
 		"--date", "2024-01-15",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("cli.ExecuteWith(price add) without --price should return error")
+		t.Fatal("cli.ExecuteWith(price add) without --price or --fetch should return error")
 	}
-	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "price") {
-		t.Errorf("expected Cobra required-flag error mentioning price, got: %v", err)
+	if !strings.Contains(err.Error(), "--price") || !strings.Contains(err.Error(), "--fetch") {
+		t.Errorf("expected an error mentioning --price and --fetch, got: %v", err)
 	}
 }
 
