@@ -390,6 +390,24 @@ func TestEnableLots_BlockedByCorporateAction(t *testing.T) {
 	}
 }
 
+func TestTotalSharesForSecurity(t *testing.T) {
+	env := createFullTestService(t)
+	nonLot := createInvAccount(t, env.accountRepo, "Brokerage")
+	lotAcct := createLotTrackingAccount(t, env.accountRepo, "IRA")
+	sec := createSec(t, env.secRepo, "GBTC")
+	p := types.MustNewMoney("50.00")
+	mustBuy(t, env, nonLot.ID, sec.ID, types.NewDate(2024, time.January, 2), "100", &p)  // non-lot position
+	mustBuy(t, env, lotAcct.ID, sec.ID, types.NewDate(2024, time.January, 2), "127", &p) // lot-tracked
+
+	total, err := env.svc.TotalSharesForSecurity(sec.ID)
+	if err != nil {
+		t.Fatalf("TotalSharesForSecurity: %v", err)
+	}
+	if total.String() != "227" {
+		t.Errorf("total shares = %s, want 227 (100 non-lot + 127 lot)", total.String())
+	}
+}
+
 func mustBuy(t *testing.T, env *testServiceEnv, accountID, securityID types.ID, date types.Date, shares string, price *types.Money) {
 	t.Helper()
 	if _, err := env.svc.Buy(accountID, securityID, date, types.MustNewQuantity(shares), nil, price, types.ZeroMoney, ""); err != nil {

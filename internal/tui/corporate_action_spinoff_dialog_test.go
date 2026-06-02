@@ -72,21 +72,21 @@ func TestBuildSpinOffDialog_NewDialog(t *testing.T) {
 		t.Errorf("date default = %q, want %q", fields[2].Value, today)
 	}
 
-	// dialog.Field 3: Share Ratio (text, required)
+	// dialog.Field 3: Resulting Shares (text, required)
 	if fields[3].Type != dialog.FieldText {
 		t.Errorf("field 3 type = %d, want dialog.FieldText (%d)", fields[3].Type, dialog.FieldText)
 	}
-	if fields[3].Label != "Share Ratio" {
-		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Share Ratio")
+	if fields[3].Label != "Resulting Shares" {
+		t.Errorf("field 3 label = %q, want %q", fields[3].Label, "Resulting Shares")
 	}
 	if !fields[3].Required {
-		t.Error("share ratio field should be required")
+		t.Error("resulting shares field should be required")
 	}
 	if fields[3].Value != "" {
-		t.Errorf("share ratio default = %q, want empty", fields[3].Value)
+		t.Errorf("resulting shares default = %q, want empty", fields[3].Value)
 	}
-	if fields[3].Placeholder != "0.5" {
-		t.Errorf("share ratio placeholder = %q, want %q", fields[3].Placeholder, "0.5")
+	if fields[3].Placeholder != "227" {
+		t.Errorf("resulting shares placeholder = %q, want %q", fields[3].Placeholder, "227")
 	}
 
 	// dialog.Field 4: Parent Allocation % (text, required)

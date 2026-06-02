@@ -439,6 +439,39 @@ func (s *Service) GetCashBalance(accountID types.ID) (types.Money, error) {
 	return balance, nil
 }
 
+// TotalSharesForSecurity sums the current shares held for a security across all
+// investment/HSA accounts — open lots for lot-tracked accounts, the aggregate
+// position otherwise. Used to derive a spin-off's share ratio from a statement's
+// resulting-share count (ratio = resulting_shares / total_shares).
+func (s *Service) TotalSharesForSecurity(securityID types.ID) (types.Quantity, error) {
+	accounts, err := s.accountRepo.List(false)
+	if err != nil {
+		return types.ZeroQuantity, fmt.Errorf("TotalSharesForSecurity: %w", err)
+	}
+	total := types.ZeroQuantity
+	for _, acct := range accounts {
+		if !acct.Type.IsInvestmentType() {
+			continue
+		}
+		if acct.TrackLots {
+			lots, err := s.lotRepo.ListByAccountAndSecurity(acct.ID, securityID, false)
+			if err != nil {
+				return types.ZeroQuantity, fmt.Errorf("TotalSharesForSecurity: %w", err)
+			}
+			for _, l := range lots {
+				total = total.Add(l.Shares)
+			}
+			continue
+		}
+		pos, err := s.positionRepo.GetByAccountAndSecurity(acct.ID, securityID)
+		if err != nil {
+			continue
+		}
+		total = total.Add(pos.Shares)
+	}
+	return total, nil
+}
+
 // requireInvestmentAccount verifies that the given account exists and is an investment account.
 func (s *Service) requireInvestmentAccount(accountID types.ID) error {
 	_, err := s.getInvestmentAccount(accountID)

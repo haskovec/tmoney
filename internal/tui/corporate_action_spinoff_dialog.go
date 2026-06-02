@@ -50,8 +50,9 @@ func buildSpinOffDialog(securityOptions []string, securityIDs []types.ID, preSel
 	f := d.AddDateField("Date", "")
 	f.Required = true
 
-	// Share Ratio (e.g., "0.5" means 1 parent share = 0.5 spin-off shares)
-	f = d.AddTextField("Share Ratio", "", "0.5", 10)
+	// Resulting Shares — the spun-off share count from the statement. The
+	// engine's share ratio is derived as resulting_shares / parent_shares_held.
+	f = d.AddTextField("Resulting Shares", "", "227", 12)
 	f.Required = true
 
 	// Parent Allocation % (e.g., "80" means parent keeps 80% of cost basis)
@@ -165,22 +166,20 @@ func (a *App) submitSpinOffDialog() (tea.Model, tea.Cmd) {
 		hasErrors = true
 	}
 
-	// Share Ratio (index 3)
-	ratioStr := strings.TrimSpace(fields[3].Value)
-	if ratioStr == "" {
-		fields[3].Error = "Share ratio is required"
+	// Resulting Shares (index 3). The engine's share ratio is derived at
+	// execution time from the parent's current total shares
+	// (ratio = resulting_shares / parent_shares).
+	resultingStr := strings.TrimSpace(fields[3].Value)
+	var resultingShares float64
+	if resultingStr == "" {
+		fields[3].Error = "Resulting shares is required"
 		hasErrors = true
-	}
-	var shareRatio float64
-	if ratioStr != "" {
-		shareRatio, err = strconv.ParseFloat(ratioStr, 64)
-		if err != nil {
-			fields[3].Error = "Invalid number"
-			hasErrors = true
-		} else if shareRatio <= 0 {
-			fields[3].Error = "Must be positive"
-			hasErrors = true
-		}
+	} else if resultingShares, err = strconv.ParseFloat(resultingStr, 64); err != nil {
+		fields[3].Error = "Invalid number"
+		hasErrors = true
+	} else if resultingShares <= 0 {
+		fields[3].Error = "Must be positive"
+		hasErrors = true
 	}
 
 	// Parent Allocation % (index 4)
@@ -223,20 +222,30 @@ func (a *App) submitSpinOffDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	params := investment.SpinOffParams{
-		ShareRatio:          shareRatio,
-		ParentAllocationPct: parentAllocPct,
-	}
 	priceMoney := types.NewMoneyFromFloat(spinOffPrice)
 
 	// Close dialog before async execution
 	a.closeSpinOffDialog()
 
 	return a, func() tea.Msg {
-		if a.corporateActionSvc == nil {
-			return errMsg{err: fmt.Errorf("corporate action service not available")}
+		if a.investmentSvc == nil || a.corporateActionSvc == nil {
+			return errMsg{err: fmt.Errorf("investment services not available")}
 		}
 
+		// Derive the engine's share ratio from the parent's current total shares.
+		total, terr := a.investmentSvc.TotalSharesForSecurity(parentSecurityID)
+		if terr != nil {
+			return errMsg{err: fmt.Errorf("failed to read parent holding: %w", terr)}
+		}
+		totalF, _ := strconv.ParseFloat(total.String(), 64)
+		if totalF <= 0 {
+			return errMsg{err: fmt.Errorf("parent security has no shares to spin off from")}
+		}
+
+		params := investment.SpinOffParams{
+			ShareRatio:          resultingShares / totalF,
+			ParentAllocationPct: parentAllocPct,
+		}
 		_, err := a.corporateActionSvc.SpinOff(parentSecurityID, spinOffSecurityID, spinOffDate, params, priceMoney)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to execute spin-off: %w", err)}
