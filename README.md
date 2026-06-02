@@ -230,6 +230,12 @@ Press `?` at any time to show the help overlay.
 | `r` | Reconcile account (start a new session) |
 | `Tab` | Switch between sidebar and table |
 
+In an investment account, `n` opens a transaction-type selector (Buy, Sell,
+Dividend, …) that also includes **Spin-Off…**. Choosing it launches the
+spin-off dialog with the **parent** pre-filled to the security on the selected
+register row — a convenience door onto the same engine as the Securities-view
+`o` shortcut, which remains available.
+
 #### Scheduled Transactions
 
 | Key | Action |

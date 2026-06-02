@@ -517,6 +517,9 @@ func (a *App) openInvestmentTypeSelector(editing bool) {
 		}
 	} else {
 		a.investmentEditTxnID = types.NilID
+		// Spin-Off is a corporate action, not a transaction type; offer it as a
+		// convenience entry on the New selector (handled by index on submit).
+		options = append(options, "Spin-Off…")
 	}
 
 	title := "New Transaction"
@@ -541,11 +544,24 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyPressMsg) (tea.Model, t
 
 	switch action {
 	case dialog.DialogActionSubmit:
-		// Get the selected type
 		fields := a.investmentTypeSelector.Fields()
-		selectedType := investmentTransactionTypeFromIndex(fields[0].SelectedIndex)
+		idx := fields[0].SelectedIndex
 		a.investmentTypeSelector.SetVisible(false)
 		a.investmentTypeSelector = nil
+
+		// "Spin-Off…" is appended after the transaction types on the New
+		// selector; it opens the (global) spin-off dialog with the selected
+		// holding pre-filled as the parent security.
+		if idx >= len(investmentTransactionTypeOptions()) {
+			a.spinOffDialogPreSelectedID = nil
+			if txn := a.selectedInvestmentTransaction(); txn != nil && txn.SecurityID.Valid {
+				secID := txn.SecurityID.ID
+				a.spinOffDialogPreSelectedID = &secID
+			}
+			return a, a.loadSpinOffDialogData()
+		}
+
+		selectedType := investmentTransactionTypeFromIndex(idx)
 
 		switch selectedType {
 		case investment.TransactionTypeBuy:
