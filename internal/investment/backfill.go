@@ -146,6 +146,49 @@ func (s *Service) ApplyLotBackfill(plan *BackfillPlan) error {
 	return nil
 }
 
+// BackfillBlocker identifies a security held in an account that has a recorded
+// corporate action, which prevents a naive lot backfill (the replay cannot
+// reconstruct lots across a split/merger/spin-off).
+type BackfillBlocker struct {
+	SecurityID types.ID
+	Actions    int // number of corporate actions on the security
+}
+
+// AccountBackfillBlockers returns the securities held in the account that have
+// recorded corporate actions. enable-lots refuses when this is non-empty. The
+// check is scoped per security held in the account (mirroring the realized-gain
+// scoping in total_return.go), NOT the global CountAll gate that
+// rebuild-positions uses — so a corporate action on a security the account never
+// held (e.g. an SCHB split in a different account) does not block this account.
+func (s *Service) AccountBackfillBlockers(accountID types.ID) ([]BackfillBlocker, error) {
+	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{})
+	if err != nil {
+		return nil, fmt.Errorf("AccountBackfillBlockers: %w", err)
+	}
+
+	seen := make(map[types.ID]bool)
+	secIDs := make([]types.ID, 0)
+	for _, t := range txns {
+		if t.SecurityID.Valid && !seen[t.SecurityID.ID] {
+			seen[t.SecurityID.ID] = true
+			secIDs = append(secIDs, t.SecurityID.ID)
+		}
+	}
+	sort.Slice(secIDs, func(i, j int) bool { return secIDs[i].String() < secIDs[j].String() })
+
+	var blockers []BackfillBlocker
+	for _, secID := range secIDs {
+		actions, err := s.corporateActionRepo.ListBySecurity(secID)
+		if err != nil {
+			return nil, fmt.Errorf("AccountBackfillBlockers: list actions for %s: %w", secID, err)
+		}
+		if len(actions) > 0 {
+			blockers = append(blockers, BackfillBlocker{SecurityID: secID, Actions: len(actions)})
+		}
+	}
+	return blockers, nil
+}
+
 // backfillLot is a mutable lot tracked during the replay.
 type backfillLot struct {
 	lot       *Lot

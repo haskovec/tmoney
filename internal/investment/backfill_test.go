@@ -255,6 +255,46 @@ func TestApplyLotBackfill(t *testing.T) {
 	}
 }
 
+func TestAccountBackfillBlockers(t *testing.T) {
+	env := createFullTestService(t)
+	brokerage := createInvAccount(t, env.accountRepo, "Brokerage")
+	ira := createInvAccount(t, env.accountRepo, "IRA")
+	schb := createSec(t, env.secRepo, "SCHB")
+	vti := createSec(t, env.secRepo, "VTI")
+
+	// Brokerage holds SCHB; IRA holds VTI.
+	pSchb := types.MustNewMoney("50.00")
+	mustBuy(t, env, brokerage.ID, schb.ID, types.NewDate(2022, time.January, 3), "47", &pSchb)
+	pVti := types.MustNewMoney("200.00")
+	mustBuy(t, env, ira.ID, vti.ID, types.NewDate(2022, time.January, 3), "100", &pVti)
+
+	// A 2-for-1 split on SCHB — held only in Brokerage.
+	ca := NewCorporateAction(ActionTypeSplit, schb.ID, types.NewDate(2022, time.March, 11), `{"numerator":2,"denominator":1}`)
+	if err := env.caRepo.Create(ca); err != nil {
+		t.Fatalf("create corporate action: %v", err)
+	}
+
+	// Brokerage is blocked by the SCHB split.
+	blockers, err := env.svc.AccountBackfillBlockers(brokerage.ID)
+	if err != nil {
+		t.Fatalf("AccountBackfillBlockers(brokerage): %v", err)
+	}
+	if len(blockers) != 1 || blockers[0].SecurityID != schb.ID {
+		t.Fatalf("brokerage blockers = %+v, want exactly SCHB", blockers)
+	}
+
+	// The IRA holds no corporate-action security, so it is NOT blocked even
+	// though a split exists elsewhere in the file (the SCHB-in-Brokerage vs
+	// clean-IRA scenario).
+	iraBlockers, err := env.svc.AccountBackfillBlockers(ira.ID)
+	if err != nil {
+		t.Fatalf("AccountBackfillBlockers(ira): %v", err)
+	}
+	if len(iraBlockers) != 0 {
+		t.Fatalf("ira blockers = %+v, want none", iraBlockers)
+	}
+}
+
 func mustBuy(t *testing.T, env *testServiceEnv, accountID, securityID types.ID, date types.Date, shares string, price *types.Money) {
 	t.Helper()
 	if _, err := env.svc.Buy(accountID, securityID, date, types.MustNewQuantity(shares), nil, price, types.ZeroMoney, ""); err != nil {
