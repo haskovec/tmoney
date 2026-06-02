@@ -277,6 +277,24 @@ security's price for the date.
 | `o` | Spin-off from selected security |
 | `a` | Open Corporate Actions view, pre-filtered to the selected security |
 
+#### Corporate Action History
+
+Reached via the Securities-view `a` shortcut or **Securities → Corporate Action History…** (`Alt+S`).
+
+| Key | Action |
+|-----|--------|
+| `Enter` | View details for the selected corporate action |
+| `d` | Delete / reverse the selected corporate action |
+| `/` | Filter by ticker or type |
+
+Splits, reverse splits, and **spin-offs** are reversible: `d` confirms, then
+unwinds the action — for a spin-off, it removes the spun-off child lots,
+positions, and generated transactions, restores the parent lots' cost basis,
+and deletes the seeded child price. If the spun-off shares have already been
+sold (or the parent traded on/after the action date), the reversal **refuses**
+and names the blocking transaction; nothing is cascade-deleted. Mergers are not
+yet reversible.
+
 #### Prices
 
 The Prices view (`5`) opens on a summary list — one row per security
