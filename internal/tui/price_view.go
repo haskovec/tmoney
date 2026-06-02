@@ -801,6 +801,7 @@ func buildAddPriceDialog(sec *security.Security) *dialog.Dialog {
 
 	d.SetButtons([]dialog.DialogButton{
 		{Label: "Save", Primary: true},
+		{Label: "Lookup", Action: dialog.DialogActionAlternate},
 		{Label: "Cancel"},
 	})
 
@@ -821,6 +822,7 @@ func buildEditPriceDialog(sec *security.Security, p *price.Price) *dialog.Dialog
 
 	d.SetButtons([]dialog.DialogButton{
 		{Label: "Save", Primary: true},
+		{Label: "Lookup", Action: dialog.DialogActionAlternate},
 		{Label: "Cancel"},
 	})
 
@@ -837,7 +839,76 @@ func (a *App) handlePriceDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case dialog.DialogActionSubmit:
 		return a.submitPriceDialog()
+	case dialog.DialogActionAlternate:
+		return a.startPriceLookup()
 	}
+	return a, nil
+}
+
+// priceLookupResultMsg carries the outcome of a Lookup-button provider fetch.
+type priceLookupResultMsg struct {
+	price    types.Money
+	date     types.Date
+	currency string
+	err      error
+}
+
+// startPriceLookup reads the dialog's current date + selected security and
+// kicks off an async provider fetch to fill the Price field.
+func (a *App) startPriceLookup() (tea.Model, tea.Cmd) {
+	if a.priceDialog == nil || a.priceView.selectedSecurity == nil {
+		return a, nil
+	}
+	fields := a.priceDialog.Fields()
+	if len(fields) < 2 {
+		return a, nil
+	}
+	a.priceDialog.SetErrorMsg("")
+	return a, a.lookupPriceCmd(a.priceView.selectedSecurity.Ticker, strings.TrimSpace(fields[0].Value))
+}
+
+// lookupPriceCmd fetches the provider's close on/before the given date for the
+// ticker and delivers it as a priceLookupResultMsg.
+func (a *App) lookupPriceCmd(ticker, dateStr string) tea.Cmd {
+	return func() tea.Msg {
+		date, err := types.ParseDate(dateStr)
+		if err != nil {
+			return priceLookupResultMsg{err: fmt.Errorf("enter a valid date first (YYYY-MM-DD)")}
+		}
+		if a.priceSvc == nil {
+			return priceLookupResultMsg{err: fmt.Errorf("price service not available")}
+		}
+		provider, err := a.priceSvc.ProviderRegistry().Get(defaultRefreshProviderName)
+		if err != nil {
+			return priceLookupResultMsg{err: err}
+		}
+		quote, err := provider.FetchQuoteOn(ticker, date)
+		if err != nil {
+			return priceLookupResultMsg{err: err}
+		}
+		return priceLookupResultMsg{price: quote.Price, date: quote.Date, currency: quote.Currency}
+	}
+}
+
+// handlePriceLookupResult fills the Price (and resolved Date) fields from a
+// completed lookup, or surfaces the error on the still-open dialog.
+func (a *App) handlePriceLookupResult(msg priceLookupResultMsg) (tea.Model, tea.Cmd) {
+	if a.priceDialog == nil {
+		return a, nil
+	}
+	if msg.err != nil {
+		a.priceDialog.SetErrorMsg("Lookup failed: " + msg.err.Error())
+		return a, nil
+	}
+	fields := a.priceDialog.Fields()
+	if len(fields) >= 2 {
+		fields[0].Value = msg.date.Time().Format("2006-01-02")
+		fields[1].Value = fmt.Sprintf("%.2f", msg.price.Float64())
+	}
+	a.statusbar.AddNotification(
+		fmt.Sprintf("Fetched %.2f %s on %s", msg.price.Float64(), msg.currency, msg.date.String()),
+		widget.NotificationInfo,
+	)
 	return a, nil
 }
 

@@ -396,6 +396,8 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		switch action {
 		case dialog.DialogActionSubmit:
 			return a.submitPriceDialog()
+		case dialog.DialogActionAlternate:
+			return a.startPriceLookup()
 		case dialog.DialogActionCancel:
 			a.priceDialog.SetVisible(false)
 			a.priceDialog = nil

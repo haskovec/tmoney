@@ -290,6 +290,11 @@ cursor automatically.
 | `u` | Update prices for all visible securities from the default provider |
 | `/` | Search |
 
+The New/Edit Price dialog has a **Lookup** button next to Save/Cancel: it
+fetches the provider's close on or before the dialog's Date from the default
+provider and fills the Price field (and snaps the Date to the resolved trading
+day). On a failed fetch the value is left for manual entry.
+
 #### Dialogs
 
 | Key | Action |

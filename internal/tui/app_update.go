@@ -735,6 +735,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.evictSelectedSecurityFromHistoryCache()
 		return a, a.reloadPriceViewKeepingMode()
 
+	case priceLookupResultMsg:
+		return a.handlePriceLookupResult(msg)
+
 	case priceImportedMsg:
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Imported %d prices (%d skipped)", msg.imported, msg.skipped),
