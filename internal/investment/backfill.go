@@ -146,6 +146,81 @@ func (s *Service) ApplyLotBackfill(plan *BackfillPlan) error {
 	return nil
 }
 
+// EnableLotsResult summarizes an enable-lots operation.
+type EnableLotsResult struct {
+	AccountID   types.ID
+	AccountName string
+	Method      LotMethod
+	Plan        *BackfillPlan // the (computed) backfill; nil only when blocked
+	Applied     bool          // true when lots were persisted and TrackLots set
+}
+
+// BackfillBlockedError is returned by EnableLots when the target account holds
+// one or more securities with recorded corporate actions, which a naive lot
+// backfill cannot reconstruct across.
+type BackfillBlockedError struct {
+	AccountName string
+	Blockers    []BackfillBlocker
+}
+
+func (e *BackfillBlockedError) Error() string {
+	return fmt.Sprintf("account %q holds %d security(ies) with corporate actions; a naive lot backfill cannot reconstruct lots across them",
+		e.AccountName, len(e.Blockers))
+}
+
+// EnableLots enables lot tracking on an existing investment/HSA account and
+// backfills its lots from transaction history. With confirm=false it returns
+// the computed plan and writes nothing (a preview). With confirm=true and no
+// blockers it persists the lots/junctions and flips the account's TrackLots
+// flag on (so the portfolio_holdings view begins summing lots).
+//
+// It returns a *BackfillBlockedError when the account holds a security with a
+// recorded corporate action, and a plain error when the account is not an
+// investment/HSA account or already has lots.
+func (s *Service) EnableLots(accountID types.ID, method LotMethod, confirm bool) (*EnableLotsResult, error) {
+	acct, err := s.getInvestmentAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+	res := &EnableLotsResult{AccountID: accountID, AccountName: acct.Name, Method: method}
+
+	existing, err := s.lotRepo.ListAllByAccount(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("EnableLots: %w", err)
+	}
+	if len(existing) > 0 {
+		return nil, fmt.Errorf("account %q already has %d lot(s); enable-lots would double-create them", acct.Name, len(existing))
+	}
+
+	blockers, err := s.AccountBackfillBlockers(accountID)
+	if err != nil {
+		return nil, err
+	}
+	if len(blockers) > 0 {
+		return res, &BackfillBlockedError{AccountName: acct.Name, Blockers: blockers}
+	}
+
+	plan, err := s.PlanLotBackfill(accountID, method)
+	if err != nil {
+		return nil, err
+	}
+	res.Plan = plan
+
+	if !confirm {
+		return res, nil
+	}
+
+	if err := s.ApplyLotBackfill(plan); err != nil {
+		return nil, err
+	}
+	acct.TrackLots = true
+	if err := s.accountRepo.Update(acct); err != nil {
+		return nil, fmt.Errorf("EnableLots: set track_lots: %w", err)
+	}
+	res.Applied = true
+	return res, nil
+}
+
 // BackfillBlocker identifies a security held in an account that has a recorded
 // corporate action, which prevents a naive lot backfill (the replay cannot
 // reconstruct lots across a split/merger/spin-off).

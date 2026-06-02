@@ -319,6 +319,33 @@ Record a cash dividend received for a security. Cash is credited; share count is
 tmoney investment dividend --account Brokerage --ticker AAPL --amount 125.50
 ```
 
+### `investment enable-lots`
+
+`Use: investment enable-lots` · `Args: NoArgs`
+
+Enable lot tracking on an existing investment (or HSA) account and backfill its lots from the transaction ledger. Buys, reinvested dividends, and inbound share transfers open lots; sells, liquidating fees, and outbound transfers consume open lots by the chosen method, writing the junction rows that realized-gain math reads. Once enabled, every security in the account routes through the lot path. This is a heavy, near-irreversible operation — run `db backup` first.
+
+By default the command prints the planned summary and makes no changes; pass `--confirm` to execute the backfill.
+
+**Optional flags:**
+- `--account string` — Limit to a single investment account by name
+- `--all` — Enable lots on every investment/HSA account that isn't already lot-tracked
+- `--method string` — Sell-allocation method: `fifo`, `lifo`, or `hifo` (default `fifo`)
+- `--confirm` — Execute the backfill (default is a planned-summary preview)
+
+Exactly one of `--account` or `--all` is required.
+
+The command refuses to run when the target account is not an investment/HSA account, or when it already has lots (lots are never double-created). It also refuses, per account, any account that holds a security with recorded corporate actions (splits, mergers, spin-offs), since the naive replay cannot reproduce those — a corporate action on a security held in an *unrelated* account does not block accounts that don't hold it. A sell that open lots can't fully cover is reported as a shortfall in the summary rather than aborting the run.
+
+```bash
+tmoney -f personal.tdb investment enable-lots --account "Wealthfront IRA"
+tmoney -f personal.tdb investment enable-lots --account "Wealthfront IRA" --confirm
+tmoney -f personal.tdb investment enable-lots --account Brokerage --method hifo --confirm
+tmoney -f personal.tdb investment enable-lots --all --confirm
+```
+
+The summary reports lots created per security, sells matched, any uncovered-share shortfalls, and a reminder that realized gain on past sells is now lot-exact for the chosen method.
+
 ### `investment fee`
 
 `Use: investment fee` · `Args: NoArgs`

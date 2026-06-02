@@ -1,6 +1,8 @@
 package investment
 
 import (
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -292,6 +294,99 @@ func TestAccountBackfillBlockers(t *testing.T) {
 	}
 	if len(iraBlockers) != 0 {
 		t.Fatalf("ira blockers = %+v, want none", iraBlockers)
+	}
+}
+
+func TestEnableLots_PreviewAndApply(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage") // non-lot
+	sec := createSec(t, env.secRepo, "VTI")
+	p1 := types.MustNewMoney("100.00")
+	p2 := types.MustNewMoney("120.00")
+	mustBuy(t, env, acct.ID, sec.ID, types.NewDate(2024, time.January, 2), "10", &p1)
+	mustBuy(t, env, acct.ID, sec.ID, types.NewDate(2024, time.February, 2), "5", &p2)
+	sp := types.MustNewMoney("130.00")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, types.NewDate(2024, time.March, 2), types.MustNewQuantity("4"), nil, &sp, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("Sell: %v", err)
+	}
+
+	// Preview: returns a plan, writes nothing.
+	preview, err := env.svc.EnableLots(acct.ID, LotMethodFIFO, false)
+	if err != nil {
+		t.Fatalf("EnableLots preview: %v", err)
+	}
+	if preview.Applied {
+		t.Error("preview should not be Applied")
+	}
+	if preview.Plan == nil || len(preview.Plan.Lots) != 2 {
+		t.Fatalf("preview plan should have 2 lots, got %v", preview.Plan)
+	}
+	gotLots, _ := env.lotRepo.ListAllByAccount(acct.ID)
+	if len(gotLots) != 0 {
+		t.Errorf("preview must not persist lots, got %d", len(gotLots))
+	}
+	reloaded, _ := env.accountRepo.GetByID(acct.ID)
+	if reloaded.TrackLots {
+		t.Error("preview must not flip TrackLots")
+	}
+
+	// Apply.
+	applied, err := env.svc.EnableLots(acct.ID, LotMethodFIFO, true)
+	if err != nil {
+		t.Fatalf("EnableLots apply: %v", err)
+	}
+	if !applied.Applied {
+		t.Error("apply should be Applied")
+	}
+	gotLots, _ = env.lotRepo.ListAllByAccount(acct.ID)
+	if len(gotLots) != 2 {
+		t.Errorf("apply should persist 2 lots, got %d", len(gotLots))
+	}
+	reloaded, _ = env.accountRepo.GetByID(acct.ID)
+	if !reloaded.TrackLots {
+		t.Error("apply must flip TrackLots on")
+	}
+}
+
+func TestEnableLots_RefusesExistingLots(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Lot Brokerage")
+	sec := createSec(t, env.secRepo, "QQQ")
+	p := types.MustNewMoney("100.00")
+	mustBuy(t, env, acct.ID, sec.ID, types.NewDate(2024, time.January, 2), "10", &p) // creates a lot
+
+	_, err := env.svc.EnableLots(acct.ID, LotMethodFIFO, true)
+	if err == nil {
+		t.Fatal("expected refusal when account already has lots")
+	}
+	if !strings.Contains(err.Error(), "already has") {
+		t.Errorf("expected 'already has' error, got: %v", err)
+	}
+}
+
+func TestEnableLots_BlockedByCorporateAction(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "SCHB")
+	p := types.MustNewMoney("50.00")
+	mustBuy(t, env, acct.ID, sec.ID, types.NewDate(2022, time.January, 3), "47", &p)
+	ca := NewCorporateAction(ActionTypeSplit, sec.ID, types.NewDate(2022, time.March, 11), `{"numerator":2,"denominator":1}`)
+	if err := env.caRepo.Create(ca); err != nil {
+		t.Fatalf("create corporate action: %v", err)
+	}
+
+	_, err := env.svc.EnableLots(acct.ID, LotMethodFIFO, true)
+	var blocked *BackfillBlockedError
+	if !errors.As(err, &blocked) {
+		t.Fatalf("expected *BackfillBlockedError, got %v", err)
+	}
+	if len(blocked.Blockers) != 1 || blocked.Blockers[0].SecurityID != sec.ID {
+		t.Errorf("expected SCHB blocker, got %+v", blocked.Blockers)
+	}
+	// Nothing should have been applied.
+	reloaded, _ := env.accountRepo.GetByID(acct.ID)
+	if reloaded.TrackLots {
+		t.Error("blocked enable-lots must not flip TrackLots")
 	}
 }
 

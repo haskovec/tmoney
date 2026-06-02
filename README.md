@@ -820,6 +820,46 @@ mutate positions and lots outside the ledger and a naive replay would
 corrupt cost basis.
 
 ```bash
+# Preview enabling lot tracking on an existing account (no changes made)
+tmoney -f personal.tdb investment enable-lots --account "Wealthfront IRA"
+
+# Execute the backfill once the previewed plan looks right
+tmoney -f personal.tdb investment enable-lots --account "Wealthfront IRA" --confirm
+
+# Enable lots on every investment/HSA account at once
+tmoney -f personal.tdb investment enable-lots --all --confirm
+
+# Choose which lots historical sells consume (default fifo)
+tmoney -f personal.tdb investment enable-lots --account "Wealthfront IRA" \
+  --method hifo --confirm
+```
+
+`investment enable-lots` turns on lot tracking for an **existing**
+investment or HSA account and backfills its lots by replaying the full
+transaction ledger in chronological order. Each `buy` and
+`reinvest_dividend` opens a lot; an inbound `transfer_shares` opens a lot
+from the cost basis carried on that row's `total_amount`; and each
+`sell`, `fee_liquidation`, and outbound `transfer_shares` consumes open
+lots. Cash-only types (`dividend`, `interest`, `fee`, `deposit`,
+`withdrawal`, `transfer_cash`) have no share effect and are skipped.
+`--method fifo|lifo|hifo` (default `fifo`) controls which open lots the
+historical sells draw down. Supply either `--account NAME` or `--all`
+(every investment/HSA account). By default the command prints the plan —
+the lots to create per security, the sells matched against them, and any
+insufficient-share shortfalls — and makes no changes; pass `--confirm` to
+execute. **Run `tmoney db backup` first**, since the backfill writes lots
+and lot junction records across the account's entire history.
+
+`investment enable-lots` refuses to run when the target account is not an
+`investment` or `hsa` account, when the account **already has lots**
+(re-running would double-create them), or when the account holds a
+security that already has a corporate action (split, merger, or
+spin-off). A naive ledger replay cannot reconstruct lots across a
+corporate action — those accounts need the future action-aware replay —
+so the command stops and names the blocking security rather than
+producing an incorrect cost basis.
+
+```bash
 # Show the portfolio for an investment account (today's valuation)
 tmoney -f personal.tdb investment portfolio --account Brokerage
 

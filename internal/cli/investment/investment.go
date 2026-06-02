@@ -39,5 +39,6 @@ func NewCmd() *cobra.Command {
 	cmd.AddCommand(newInvestmentSpinOffCmd())
 	cmd.AddCommand(newInvestmentPortfolioCmd())
 	cmd.AddCommand(newInvestmentRebuildPositionsCmd())
+	cmd.AddCommand(newInvestmentEnableLotsCmd())
 	return cmd
 }
