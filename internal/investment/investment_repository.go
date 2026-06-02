@@ -221,6 +221,36 @@ func (r *Repository) EarliestSinceDate(securityID types.ID, since types.Date) (*
 	return t, nil
 }
 
+// ListBySecurity returns every investment transaction for a security across all
+// accounts, oldest first. Used by corporate-action reversal to find and remove
+// the transactions an action created.
+func (r *Repository) ListBySecurity(securityID types.ID) ([]*Transaction, error) {
+	query := `
+		SELECT ` + investmentTransactionColumns + `
+		FROM investment_transactions
+		WHERE CAST(security_id AS VARCHAR) = ?
+		ORDER BY date ASC, created_at ASC
+	`
+	rows, err := r.db.Conn().Query(query, securityID.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list investment transactions by security: %w", err)
+	}
+	defer rows.Close()
+
+	transactions := make([]*Transaction, 0)
+	for rows.Next() {
+		t, err := scanTransaction(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan investment transaction: %w", err)
+		}
+		transactions = append(transactions, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating investment transactions: %w", err)
+	}
+	return transactions, nil
+}
+
 // Update updates an existing investment transaction in the database.
 func (r *Repository) Update(txn *Transaction) error {
 	txn.Touch()

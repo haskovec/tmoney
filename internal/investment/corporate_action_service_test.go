@@ -23,6 +23,7 @@ type testCAServiceEnv struct {
 	positionRepo *PositionRepository
 	lotRepo      *LotRepository
 	caRepo       *CorporateActionRepository
+	invRepo      *Repository
 }
 
 func createCATestEnv(t *testing.T) *testCAServiceEnv {
@@ -50,6 +51,7 @@ func createCATestEnv(t *testing.T) *testCAServiceEnv {
 		positionRepo: positionRepo,
 		lotRepo:      lotRepo,
 		caRepo:       caRepo,
+		invRepo:      invRepo,
 	}
 }
 
@@ -2009,7 +2011,7 @@ func TestCorporateActionService_DeleteAction_ReverseSplit(t *testing.T) {
 		}
 	})
 
-	t.Run("merger and spin-off are not yet reversible", func(t *testing.T) {
+	t.Run("merger is not yet reversible", func(t *testing.T) {
 		env := createCATestEnv(t)
 		sec := createSec(t, env.secRepo, "OLD")
 		target := createSec(t, env.secRepo, "NEW")

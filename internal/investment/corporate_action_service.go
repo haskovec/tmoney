@@ -5,6 +5,7 @@ import (
 
 	"github.com/alpacahq/alpacadecimal"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -513,17 +514,157 @@ func (s *CorporateActionService) DeleteAction(actionID types.ID) error {
 		return err
 	}
 
-	if err := s.checkNoDownstreamEvents(ca); err != nil {
-		return err
-	}
-
 	switch ca.ActionType {
 	case ActionTypeSplit, ActionTypeReverseSplit:
+		if err := s.checkNoDownstreamEvents(ca); err != nil {
+			return err
+		}
 		return s.reverseSplit(ca)
-	case ActionTypeMerger, ActionTypeSpinOff:
+	case ActionTypeSpinOff:
+		return s.reverseSpinOff(ca)
+	case ActionTypeMerger:
 		return &UnsupportedReversalError{ActionType: ca.ActionType}
 	}
 	return fmt.Errorf("unknown corporate action type: %s", ca.ActionType)
+}
+
+// reverseSpinOff undoes a spin-off: it removes the spun-off child lots,
+// positions, exchange/cash-in-lieu transactions, and the seeded child price,
+// and restores the parent's cost basis. It refuses (with a *DownstreamEventsError
+// naming the blocker) when the parent has any transaction on/after the spin date
+// or when the child has any transaction other than the spin-off's own same-date
+// exchange receipts — i.e. when the spun-off shares have been sold or otherwise
+// used, since those consume the lots this reversal would delete.
+func (s *CorporateActionService) reverseSpinOff(ca *CorporateAction) error {
+	params, err := ParseSpinOffParams(ca.Parameters)
+	if err != nil {
+		return fmt.Errorf("failed to parse spin-off params: %w", err)
+	}
+	if !ca.TargetSecurityID.Valid {
+		return fmt.Errorf("spin-off action %s has no target security", ca.ID)
+	}
+	parentID := ca.SecurityID
+	childID := ca.TargetSecurityID.ID
+	spinDate := ca.ActionDate
+
+	// Guard A: the parent must have no transactions on/after the spin date
+	// (the spin-off itself created none on the parent).
+	earliest, err := s.invRepo.EarliestSinceDate(parentID, spinDate)
+	if err != nil {
+		return fmt.Errorf("failed to check parent downstream events: %w", err)
+	}
+	if earliest != nil {
+		return s.downstreamError(parentID, spinDate, earliest.Date, string(earliest.Type))
+	}
+
+	// Guard B: the only child transactions may be the spin-off's own exchange
+	// receipts dated the spin date. A sale, later buy, or transfer of the child
+	// means the spun-off shares were used; refuse and name the blocker.
+	childTxns, err := s.invRepo.ListBySecurity(childID)
+	if err != nil {
+		return fmt.Errorf("failed to list child transactions: %w", err)
+	}
+	for _, t := range childTxns {
+		if t.Type != TransactionTypeExchange || !t.Date.Time().Equal(spinDate.Time()) {
+			return s.downstreamError(childID, spinDate, t.Date, string(t.Type))
+		}
+	}
+
+	// Restore parent cost basis (undo the × parentAllocPct scaling) and collect
+	// the touched accounts for cash-in-lieu cleanup.
+	parentAllocFrac := alpacadecimal.NewFromFloat(params.ParentAllocationPct).Div(alpacadecimal.NewFromInt(100))
+	inverse := alpacadecimal.NewFromInt(1).Div(parentAllocFrac)
+	touched := make(map[types.ID]bool)
+
+	parentLots, err := s.lotRepo.GetOpenLotsBySecurity(parentID)
+	if err != nil {
+		return err
+	}
+	for _, lot := range parentLots {
+		lot.CostPerShare = lot.CostPerShare.Mul(inverse)
+		if err := s.lotRepo.Update(lot); err != nil {
+			return fmt.Errorf("failed to restore parent lot %s: %w", lot.ID, err)
+		}
+		touched[lot.AccountID] = true
+	}
+	parentPositions, err := s.positionRepo.GetPositionsBySecurity(parentID)
+	if err != nil {
+		return err
+	}
+	for _, pos := range parentPositions {
+		pos.AverageCostPerShare = pos.AverageCostPerShare.Mul(inverse)
+		if err := s.positionRepo.CreateOrUpdate(pos); err != nil {
+			return fmt.Errorf("failed to restore parent position: %w", err)
+		}
+		touched[pos.AccountID] = true
+	}
+
+	// Delete child lots and the exchange transactions that created them.
+	for _, t := range childTxns {
+		touched[t.AccountID] = true
+		if lot, lerr := s.lotRepo.GetBySourceTransaction(t.ID); lerr == nil && lot != nil {
+			if err := s.lotRepo.Delete(lot.ID); err != nil {
+				return fmt.Errorf("failed to delete child lot %s: %w", lot.ID, err)
+			}
+		}
+		if err := s.invRepo.Delete(t.ID); err != nil {
+			return fmt.Errorf("failed to delete child exchange transaction %s: %w", t.ID, err)
+		}
+	}
+
+	// Delete child positions (non-lot accounts).
+	childPositions, err := s.positionRepo.GetPositionsBySecurity(childID)
+	if err != nil {
+		return err
+	}
+	for _, pos := range childPositions {
+		if err := s.positionRepo.Delete(pos.AccountID, childID); err != nil {
+			if _, ok := err.(*dberrors.NotFoundError); !ok {
+				return fmt.Errorf("failed to delete child position: %w", err)
+			}
+		}
+	}
+
+	// Delete cash-in-lieu deposits on the spin date in any touched account.
+	for acctID := range touched {
+		txns, err := s.invRepo.ListByAccount(acctID, TransactionFilter{})
+		if err != nil {
+			return fmt.Errorf("failed to list account transactions: %w", err)
+		}
+		for _, t := range txns {
+			if t.Type == TransactionTypeDeposit && t.Date.Time().Equal(spinDate.Time()) &&
+				t.Memo.Valid && t.Memo.String == "Spin-off cash-in-lieu for fractional shares" {
+				if err := s.invRepo.Delete(t.ID); err != nil {
+					return fmt.Errorf("failed to delete cash-in-lieu transaction %s: %w", t.ID, err)
+				}
+			}
+		}
+	}
+
+	// Delete the seeded child price record on the spin date (best effort).
+	if existing, perr := s.priceRepo.GetBySecurityAndDate(childID, spinDate); perr == nil && existing != nil {
+		_ = s.priceRepo.Delete(existing.ID)
+	}
+
+	// Delete the audit row.
+	if err := s.caRepo.Delete(ca.ID); err != nil {
+		return fmt.Errorf("failed to delete corporate action: %w", err)
+	}
+	return nil
+}
+
+// downstreamError builds a *DownstreamEventsError naming a blocking transaction.
+func (s *CorporateActionService) downstreamError(secID types.ID, actionDate, blockerDate types.Date, blockerType string) *DownstreamEventsError {
+	ticker := ""
+	if sec, err := s.secRepo.GetByID(secID); err == nil && sec != nil {
+		ticker = sec.Ticker
+	}
+	return &DownstreamEventsError{
+		ActionDate:     actionDate,
+		BlockerTicker:  ticker,
+		BlockerDate:    blockerDate,
+		BlockerTxnType: blockerType,
+	}
 }
 
 // checkNoDownstreamEvents returns a *DownstreamEventsError naming the
