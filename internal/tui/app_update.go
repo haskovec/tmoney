@@ -308,6 +308,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.statusbar.AddNotification("Spin-off executed", widget.NotificationInfo)
 		return a, a.refreshAfterCorporateAction()
 
+	case spinOffPriceLookupMsg:
+		return a.handleSpinOffPriceLookupResult(msg)
+
 	case corporateActionViewLoadedMsg:
 		a.corporateActionView = msg.data
 		a.buildCorporateActionViewTable()

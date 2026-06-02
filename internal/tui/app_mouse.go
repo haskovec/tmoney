@@ -494,6 +494,8 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		switch action {
 		case dialog.DialogActionSubmit:
 			return a.submitSpinOffDialog()
+		case dialog.DialogActionAlternate:
+			return a.startSpinOffPriceLookup()
 		case dialog.DialogActionCancel:
 			a.spinOffDialog.SetVisible(false)
 			a.spinOffDialog = nil

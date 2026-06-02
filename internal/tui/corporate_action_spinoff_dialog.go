@@ -9,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -65,6 +66,7 @@ func buildSpinOffDialog(securityOptions []string, securityIDs []types.ID, preSel
 
 	d.SetButtons([]dialog.DialogButton{
 		{Label: "Execute", Primary: true},
+		{Label: "Lookup", Action: dialog.DialogActionAlternate},
 		{Label: "Cancel"},
 	})
 
@@ -107,11 +109,83 @@ func (a *App) handleSpinOffDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitSpinOffDialog()
+	case dialog.DialogActionAlternate:
+		return a.startSpinOffPriceLookup()
 	case dialog.DialogActionCancel:
 		a.closeSpinOffDialog()
 		return a, nil
 	}
 
+	return a, nil
+}
+
+// spinOffPriceLookupMsg carries the outcome of the spin-off dialog's Lookup.
+type spinOffPriceLookupMsg struct {
+	price    types.Money
+	currency string
+	err      error
+}
+
+// startSpinOffPriceLookup fetches the spin-off (child) security's close on the
+// dialog's date and fills the Spin-Off Price field.
+func (a *App) startSpinOffPriceLookup() (tea.Model, tea.Cmd) {
+	if a.spinOffDialog == nil {
+		return a, nil
+	}
+	fields := a.spinOffDialog.Fields()
+	if len(fields) < 6 || len(a.spinOffDialogSecurityIDs) == 0 {
+		return a, nil
+	}
+	idx := fields[1].SelectedIndex // Spin-Off Security
+	if idx < 0 || idx >= len(a.spinOffDialogSecurityIDs) {
+		a.spinOffDialog.SetErrorMsg("Select a spin-off security first")
+		return a, nil
+	}
+	a.spinOffDialog.SetErrorMsg("")
+	return a, a.spinOffPriceLookupCmd(a.spinOffDialogSecurityIDs[idx], strings.TrimSpace(fields[2].Value))
+}
+
+// spinOffPriceLookupCmd resolves the child ticker and fetches its as-of close.
+func (a *App) spinOffPriceLookupCmd(childID types.ID, dateStr string) tea.Cmd {
+	return func() tea.Msg {
+		date, err := parseDateInput(dateStr)
+		if err != nil {
+			return spinOffPriceLookupMsg{err: fmt.Errorf("enter a valid date first (MM/DD/YYYY)")}
+		}
+		if a.securitySvc == nil || a.priceSvc == nil {
+			return spinOffPriceLookupMsg{err: fmt.Errorf("price/security service not available")}
+		}
+		sec, err := a.securitySvc.GetByID(childID)
+		if err != nil {
+			return spinOffPriceLookupMsg{err: err}
+		}
+		provider, err := a.priceSvc.ProviderRegistry().Get(defaultRefreshProviderName)
+		if err != nil {
+			return spinOffPriceLookupMsg{err: err}
+		}
+		quote, err := provider.FetchQuoteOn(sec.Ticker, date)
+		if err != nil {
+			return spinOffPriceLookupMsg{err: err}
+		}
+		return spinOffPriceLookupMsg{price: quote.Price, currency: quote.Currency}
+	}
+}
+
+// handleSpinOffPriceLookupResult fills the Spin-Off Price field from a completed
+// lookup, or surfaces the error on the still-open dialog.
+func (a *App) handleSpinOffPriceLookupResult(msg spinOffPriceLookupMsg) (tea.Model, tea.Cmd) {
+	if a.spinOffDialog == nil {
+		return a, nil
+	}
+	if msg.err != nil {
+		a.spinOffDialog.SetErrorMsg("Lookup failed: " + msg.err.Error())
+		return a, nil
+	}
+	fields := a.spinOffDialog.Fields()
+	if len(fields) >= 6 {
+		fields[5].Value = fmt.Sprintf("%.2f", msg.price.Float64())
+	}
+	a.statusbar.AddNotification(fmt.Sprintf("Fetched %.2f %s", msg.price.Float64(), msg.currency), widget.NotificationInfo)
 	return a, nil
 }
 
