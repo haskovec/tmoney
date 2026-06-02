@@ -51,6 +51,7 @@ const (
 	acctFieldNotes          = 7
 	acctFieldCreditLimit    = 8
 	acctFieldInterestRate   = 9
+	acctFieldTrackLots      = 10 // new-account dialog only
 )
 
 // buildAccountTypeOptions returns display names for all account types.
@@ -124,6 +125,12 @@ func updateAccountFieldVisibility(d *dialog.Dialog) {
 		fields[acctFieldInterestRate].Value = ""
 		fields[acctFieldInterestRate].Error = ""
 	}
+
+	// Track Lots checkbox exists only on the new-account dialog (index 10);
+	// show it only for investment/HSA account types.
+	if len(fields) > acctFieldTrackLots {
+		fields[acctFieldTrackLots].Hidden = !accountType.IsInvestmentType()
+	}
 }
 
 // buildNewAccountDialog creates a dialog.Dialog for creating a new account.
@@ -163,6 +170,11 @@ func buildNewAccountDialog() *dialog.Dialog {
 
 	// Interest rate (shown for most account types)
 	d.AddTextField("Interest Rate", "", "APR, e.g. 5.25", 8)
+
+	// Track lots (shown for investment/HSA; default on). New-account dialog
+	// only — existing accounts enable lot tracking via `investment enable-lots`
+	// so the historical lots get backfilled, not via a bare flag flip on edit.
+	d.AddCheckboxField("Track Lots", true)
 
 	updateAccountFieldVisibility(d)
 	d.SetVisible(true)
@@ -379,6 +391,12 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	// Track lots (new-account dialog only; default on for investment/HSA).
+	trackLots := false
+	if len(fields) > acctFieldTrackLots {
+		trackLots = fields[acctFieldTrackLots].Checked
+	}
+
 	mode := a.acctDialogData.mode
 	existingAccount := a.acctDialogData.account
 
@@ -400,6 +418,7 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 			acct.OpeningDate = openingDate
 		} else {
 			acct = account.NewAccount(name, accountType, currency, openingBalance, openingDate)
+			acct.TrackLots = accountType.IsInvestmentType() && trackLots
 		}
 
 		// Set optional fields

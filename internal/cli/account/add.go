@@ -24,6 +24,7 @@ type accountAddOptions struct {
 	notes         string
 	creditLimit   string
 	interestRate  string
+	trackLots     bool
 }
 
 // newAccountAddCmd registers `tmoney account add`. The database file
@@ -53,6 +54,7 @@ func newAccountAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.notes, "notes", "", "Free-form notes")
 	cmd.Flags().StringVar(&opts.creditLimit, "credit-limit", "", "Credit limit (credit_card accounts only)")
 	cmd.Flags().StringVar(&opts.interestRate, "interest-rate", "", "Interest rate / APR (loan accounts only)")
+	cmd.Flags().BoolVar(&opts.trackLots, "track-lots", true, "Track individual tax lots (investment/hsa only; default on for those types; pass --track-lots=false to opt out)")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("type")
 	return cmd
@@ -146,6 +148,10 @@ func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 		acct.SetInterestRate(interestRate)
 	}
 
+	// Lot tracking: default on for investment/HSA accounts, opt out with
+	// --track-lots=false. Ignored (always off) for non-investment types.
+	acct.TrackLots = acctType.IsInvestmentType() && opts.trackLots
+
 	// Save account
 	if err := svc.Account.Create(acct); err != nil {
 		return fmt.Errorf("failed to create account: %w", err)
@@ -172,6 +178,13 @@ func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 	}
 	if acct.Notes.Valid {
 		fmt.Fprintf(w, "  Notes:           %s\n", acct.Notes.String)
+	}
+	if acctType.IsInvestmentType() {
+		state := "off"
+		if acct.TrackLots {
+			state = "on"
+		}
+		fmt.Fprintf(w, "  Lot Tracking:    %s\n", state)
 	}
 
 	cmdutil.AutoBackupAfterModification(opts.file)

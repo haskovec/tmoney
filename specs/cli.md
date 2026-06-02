@@ -76,12 +76,14 @@ Create a new account. `--name` and `--type` are required; other fields take sens
 - `--notes string` — Free-form notes
 - `--credit-limit string` — Credit limit (credit-card accounts only)
 - `--interest-rate string` — Interest rate / APR (loan accounts only)
+- `--track-lots` — Track individual tax lots (`investment`/`hsa` accounts only; default on for those types). Pass `--track-lots=false` to opt out and use the average-cost path instead. To enable lots on an *existing* account (with a historical backfill), use `investment enable-lots`, not `account edit`.
 
 ```bash
 tmoney account add --name "Chase Checking" --type checking \
   --currency USD --opening-balance 1000.00 --opening-date 2024-01-15 \
   --institution "Chase Bank" --account-number 1234567890 \
   --notes "Primary checking account"
+tmoney account add --name "Wealthfront IRA" --type investment --track-lots=false
 ```
 
 ```

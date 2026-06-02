@@ -105,8 +105,8 @@ func TestBuildNewAccountDialog(t *testing.T) {
 	}
 
 	fields := d.Fields()
-	if len(fields) != 10 {
-		t.Fatalf("expected 10 fields, got %d", len(fields))
+	if len(fields) != 11 {
+		t.Fatalf("expected 11 fields, got %d", len(fields))
 	}
 
 	// Default type is Checking: credit limit hidden, interest rate visible
@@ -1314,5 +1314,51 @@ func TestDialog_Render_HidesBothForCash(t *testing.T) {
 	}
 	if strings.Contains(output, "Interest Rate") {
 		t.Error("Interest Rate field should not appear for Cash")
+	}
+}
+
+func TestBuildNewAccountDialog_HasTrackLotsCheckbox(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+	if len(fields) <= acctFieldTrackLots {
+		t.Fatalf("expected a Track Lots field at index %d, only %d fields", acctFieldTrackLots, len(fields))
+	}
+	f := fields[acctFieldTrackLots]
+	if f.Type != dialog.FieldCheckbox {
+		t.Errorf("Track Lots field type = %v, want FieldCheckbox", f.Type)
+	}
+	if !f.Checked {
+		t.Error("Track Lots should default to checked")
+	}
+}
+
+func TestUpdateAccountFieldVisibility_TrackLots(t *testing.T) {
+	d := buildNewAccountDialog()
+	fields := d.Fields()
+
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeInvestment)
+	updateAccountFieldVisibility(d)
+	if fields[acctFieldTrackLots].Hidden {
+		t.Error("Track Lots should be visible for investment accounts")
+	}
+
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeHSA)
+	updateAccountFieldVisibility(d)
+	if fields[acctFieldTrackLots].Hidden {
+		t.Error("Track Lots should be visible for HSA accounts")
+	}
+
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeChecking)
+	updateAccountFieldVisibility(d)
+	if !fields[acctFieldTrackLots].Hidden {
+		t.Error("Track Lots should be hidden for non-investment accounts")
+	}
+}
+
+func TestBuildEditAccountDialog_NoTrackLotsCheckbox(t *testing.T) {
+	acct := account.NewAccount("X", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	d := buildEditAccountDialog(acct)
+	if len(d.Fields()) > acctFieldTrackLots {
+		t.Errorf("edit dialog must not expose a Track Lots field (got %d fields)", len(d.Fields()))
 	}
 }

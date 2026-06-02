@@ -45,9 +45,14 @@ tmoney -f personal.tdb account balance
 - Per-account currency setting (USD, EUR, GBP)
 - Credit limit for credit card accounts
 - Interest rate (APR) for checking, savings, credit card, investment, HSA, and loan accounts
+- Investment and HSA accounts are lot-tracked by default (override with
+  `account add --track-lots=false`, or a "Track lots" checkbox on the New
+  Account dialog); existing accounts gain lot tracking via
+  `investment enable-lots`, which backfills lots from history
 - HSA (Health Savings Account) behaves like an investment account — supports
-  cash flows plus securities buy/sell/dividend operations with optional lot
-  tracking, since HSAs typically allow invested funds above a cash threshold
+  cash flows plus securities buy/sell/dividend operations with lot tracking
+  on by default, since HSAs typically allow invested funds above a cash
+  threshold
 - Dynamic account dialog that shows only relevant fields for the selected account type
 - Open/close account lifecycle
 
@@ -373,7 +378,24 @@ tmoney account add --name "Mortgage" --type loan --interest-rate 6.5
 tmoney account add --name "Savings" --type savings \
   --opening-balance 10000 --opening-date 2024-01-15 \
   --institution "First Bank" --currency USD
+
+# Create a lot-tracked investment account (the default for investment/HSA)
+tmoney account add --name "Brokerage" --type investment
+
+# Opt a new investment/HSA account out of lot tracking
+tmoney account add --name "401k" --type investment --track-lots=false
 ```
+
+New `investment` and `hsa` accounts are **lot-tracked by default** — each
+buy opens a lot and sells are allocated against open lots for exact
+cost-basis and realized-gain tracking. Pass `--track-lots=false` to
+`account add` to opt a new account out (it then uses the average-cost
+path); `--track-lots` (or `--track-lots=true`) is the explicit way to
+force it on. The flag is ignored for non-investment account types. To
+enable lot tracking on an **existing** investment/HSA account — which
+backfills lots from its transaction history — use
+[`investment enable-lots`](#investment) rather than `account edit`; the
+edit command does not flip this flag.
 
 Account types: `checking`, `savings`, `credit_card`, `investment`, `hsa`, `cash`, `loan`, `asset`
 
