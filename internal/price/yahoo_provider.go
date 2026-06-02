@@ -70,14 +70,51 @@ func (p *YahooProvider) Name() string {
 
 // FetchQuote returns the most recent closed-session quote for ticker.
 func (p *YahooProvider) FetchQuote(ticker string) (*Quote, error) {
+	q := url.Values{}
+	q.Set("interval", "1d")
+	q.Set("range", "5d")
+	result, err := p.fetchChart(ticker, q)
+	if err != nil {
+		return nil, err
+	}
+	loc := exchangeLocation(result)
+	bar, err := pickClosedBar(*result, p.now().In(loc), loc)
+	if err != nil {
+		return nil, fmt.Errorf("yahoo: %s: %w", ticker, err)
+	}
+	return quoteFromBar(ticker, bar, result)
+}
+
+// FetchQuoteOn returns the closing quote on or before the given date, resolving
+// a weekend/holiday date to the prior trading day. It requests a daily window
+// bracketing the date (period1/period2 instead of range) and selects the most
+// recent bar whose exchange-local date is on or before the requested date.
+func (p *YahooProvider) FetchQuoteOn(ticker string, date types.Date) (*Quote, error) {
+	target := date.Time()
+	q := url.Values{}
+	q.Set("interval", "1d")
+	q.Set("period1", strconv.FormatInt(target.AddDate(0, 0, -10).Unix(), 10))
+	q.Set("period2", strconv.FormatInt(target.AddDate(0, 0, 2).Unix(), 10))
+	result, err := p.fetchChart(ticker, q)
+	if err != nil {
+		return nil, err
+	}
+	loc := exchangeLocation(result)
+	bar, err := pickBarOnOrBefore(*result, date, loc)
+	if err != nil {
+		return nil, fmt.Errorf("yahoo: %s on %s: %w", ticker, date.String(), err)
+	}
+	return quoteFromBar(ticker, bar, result)
+}
+
+// fetchChart performs the chart request with the supplied query params and
+// returns the first result, mapping Yahoo's 404/error shapes to typed errors.
+func (p *YahooProvider) fetchChart(ticker string, q url.Values) (*yahooResult, error) {
 	endpoint := fmt.Sprintf("%s/v8/finance/chart/%s", p.baseURL, ticker)
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("yahoo: build request: %w", err)
 	}
-	q := url.Values{}
-	q.Set("interval", "1d")
-	q.Set("range", "5d")
 	req.URL.RawQuery = q.Encode()
 	req.Header.Set("User-Agent", yahooUserAgent)
 	req.Header.Set("Accept", "application/json")
@@ -107,35 +144,35 @@ func (p *YahooProvider) FetchQuote(ticker string) (*Quote, error) {
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("yahoo: parse response for %s: %w", ticker, err)
 	}
-
 	if parsed.Chart.Error != nil {
 		return nil, &UnsupportedTickerError{Ticker: ticker, Detail: parsed.Chart.Error.Description}
 	}
 	if len(parsed.Chart.Result) == 0 {
 		return nil, &UnsupportedTickerError{Ticker: ticker, Detail: "no result"}
 	}
-	result := parsed.Chart.Result[0]
+	return &parsed.Chart.Result[0], nil
+}
 
-	loc, err := time.LoadLocation(result.Meta.ExchangeTimezoneName)
+// exchangeLocation resolves the result's exchange timezone, falling back to UTC.
+func exchangeLocation(r *yahooResult) *time.Location {
+	loc, err := time.LoadLocation(r.Meta.ExchangeTimezoneName)
 	if err != nil || loc == nil {
-		loc = time.UTC
+		return time.UTC
 	}
+	return loc
+}
 
-	bar, err := pickClosedBar(result, p.now().In(loc), loc)
-	if err != nil {
-		return nil, fmt.Errorf("yahoo: %s: %w", ticker, err)
-	}
-
+// quoteFromBar converts a chosen bar into a Quote.
+func quoteFromBar(ticker string, bar closedBar, r *yahooResult) (*Quote, error) {
 	priceStr := strconv.FormatFloat(bar.close, 'f', -1, 64)
 	priceMoney, err := types.NewMoney(priceStr)
 	if err != nil {
 		return nil, fmt.Errorf("yahoo: %s: parse price %q: %w", ticker, priceStr, err)
 	}
-
 	return &Quote{
 		Date:     bar.date,
 		Price:    priceMoney,
-		Currency: result.Meta.Currency,
+		Currency: r.Meta.Currency,
 	}, nil
 }
 
@@ -187,6 +224,36 @@ func pickClosedBar(r yahooResult, nowInLoc time.Time, loc *time.Location) (close
 		}
 	}
 	return closedBar{}, fmt.Errorf("no closed session found in response")
+}
+
+// pickBarOnOrBefore walks the timestamp/close arrays from the end and returns
+// the most recent bar whose exchange-local date is on or before target. Bars
+// with a null/missing close are skipped. Used for historical (as-of) lookups,
+// so a weekend/holiday target resolves to the prior trading day.
+func pickBarOnOrBefore(r yahooResult, target types.Date, loc *time.Location) (closedBar, error) {
+	if len(r.Indicators.Quote) == 0 {
+		return closedBar{}, fmt.Errorf("no quote indicators")
+	}
+	closes := r.Indicators.Quote[0].Close
+	if len(r.Timestamp) == 0 {
+		return closedBar{}, fmt.Errorf("no timestamps")
+	}
+
+	ty, tm, td := target.Time().Date()
+	targetDay := time.Date(ty, tm, td, 0, 0, 0, 0, loc)
+
+	for i := len(r.Timestamp) - 1; i >= 0; i-- {
+		if i >= len(closes) || closes[i] == nil {
+			continue
+		}
+		ts := time.Unix(r.Timestamp[i], 0).In(loc)
+		by, bm, bd := ts.Date()
+		barDay := time.Date(by, bm, bd, 0, 0, 0, 0, loc)
+		if !barDay.After(targetDay) {
+			return closedBar{date: types.NewDate(by, bm, bd), close: *closes[i]}, nil
+		}
+	}
+	return closedBar{}, fmt.Errorf("no trading day on or before %s in response", target.String())
 }
 
 // parseYahooErrorDetail extracts the human-readable message from a Yahoo

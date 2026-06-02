@@ -2,6 +2,8 @@ package price
 
 import (
 	"testing"
+
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -109,6 +111,10 @@ type mockProvider struct {
 }
 
 func (m *mockProvider) FetchQuote(_ string) (*Quote, error) {
+	return m.quote, m.err
+}
+
+func (m *mockProvider) FetchQuoteOn(_ string, _ types.Date) (*Quote, error) {
 	return m.quote, m.err
 }
 

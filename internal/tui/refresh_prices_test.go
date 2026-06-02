@@ -31,6 +31,10 @@ func (f *fakeRefreshProvider) FetchQuote(ticker string) (*price.Quote, error) {
 	return nil, &price.UnsupportedTickerError{Ticker: ticker}
 }
 
+func (f *fakeRefreshProvider) FetchQuoteOn(ticker string, _ types.Date) (*price.Quote, error) {
+	return f.FetchQuote(ticker)
+}
+
 func (f *fakeRefreshProvider) Name() string { return defaultRefreshProviderName }
 
 // setupRefreshTUITest creates a temp DB seeded with the given tickers,

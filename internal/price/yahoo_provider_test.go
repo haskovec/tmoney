@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
@@ -334,6 +336,90 @@ func TestYahooProvider_FetchQuote(t *testing.T) {
 		}
 		if !contains(capturedQuery, "interval=1d") || !contains(capturedQuery, "range=5d") {
 			t.Errorf("query = %q, want interval=1d and range=5d", capturedQuery)
+		}
+	})
+}
+
+func TestYahooProvider_FetchQuoteOn(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+	// Trading bars Thu 4/16, Fri 4/17, Mon 4/20, Tue 4/21, Wed 4/22.
+	thu := time.Date(2026, 4, 16, 9, 30, 0, 0, loc).Unix()
+	fri := time.Date(2026, 4, 17, 9, 30, 0, 0, loc).Unix()
+	mon := time.Date(2026, 4, 20, 9, 30, 0, 0, loc).Unix()
+	tue := time.Date(2026, 4, 21, 9, 30, 0, 0, loc).Unix()
+	wed := time.Date(2026, 4, 22, 9, 30, 0, 0, loc).Unix()
+	body := fmt.Sprintf(`{
+		"chart": {
+			"result": [{
+				"meta": {"currency":"USD","symbol":"AAPL","exchangeTimezoneName":"America/New_York","gmtoffset":-14400,"currentTradingPeriod":{"regular":{"start":0,"end":0}}},
+				"timestamp": [%d,%d,%d,%d,%d],
+				"indicators": {"quote":[{"close":[265.10,267.45,269.80,273.43,271.06]}]}
+			}],
+			"error": null
+		}
+	}`, thu, fri, mon, tue, wed)
+
+	t.Run("exact trading date returns that day's close", func(t *testing.T) {
+		srv := newYahooTestServer(t, http.StatusOK, body)
+		defer srv.Close()
+		p := NewYahooProvider(WithHTTPClient(srv.Client()), WithBaseURL(srv.URL))
+		q, err := p.FetchQuoteOn("AAPL", types.NewDate(2026, time.April, 21))
+		if err != nil {
+			t.Fatalf("FetchQuoteOn: %v", err)
+		}
+		if q.Date.String() != "2026-04-21" {
+			t.Errorf("Date = %q, want 2026-04-21", q.Date.String())
+		}
+		if q.Price.String() != "273.43" {
+			t.Errorf("Price = %q, want 273.43", q.Price.String())
+		}
+	})
+
+	t.Run("weekend target resolves to prior trading day", func(t *testing.T) {
+		srv := newYahooTestServer(t, http.StatusOK, body)
+		defer srv.Close()
+		p := NewYahooProvider(WithHTTPClient(srv.Client()), WithBaseURL(srv.URL))
+		// Saturday 2026-04-18 → Friday 2026-04-17 (267.45).
+		q, err := p.FetchQuoteOn("AAPL", types.NewDate(2026, time.April, 18))
+		if err != nil {
+			t.Fatalf("FetchQuoteOn: %v", err)
+		}
+		if q.Date.String() != "2026-04-17" {
+			t.Errorf("Date = %q, want 2026-04-17", q.Date.String())
+		}
+		if q.Price.String() != "267.45" {
+			t.Errorf("Price = %q, want 267.45", q.Price.String())
+		}
+	})
+
+	t.Run("request uses period1/period2 not range", func(t *testing.T) {
+		var capturedQuery string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedQuery = r.URL.RawQuery
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"chart":{"result":[],"error":null}}`))
+		}))
+		defer srv.Close()
+		p := NewYahooProvider(WithHTTPClient(srv.Client()), WithBaseURL(srv.URL))
+		_, _ = p.FetchQuoteOn("AAPL", types.NewDate(2024, time.July, 31))
+		if !contains(capturedQuery, "interval=1d") || !contains(capturedQuery, "period1=") || !contains(capturedQuery, "period2=") {
+			t.Errorf("query = %q, want interval=1d, period1, period2", capturedQuery)
+		}
+		if contains(capturedQuery, "range=") {
+			t.Errorf("query = %q should not use range for an as-of lookup", capturedQuery)
+		}
+	})
+
+	t.Run("no bar on or before target returns error", func(t *testing.T) {
+		srv := newYahooTestServer(t, http.StatusOK, body)
+		defer srv.Close()
+		p := NewYahooProvider(WithHTTPClient(srv.Client()), WithBaseURL(srv.URL))
+		_, err := p.FetchQuoteOn("AAPL", types.NewDate(2026, time.April, 10))
+		if err == nil {
+			t.Fatal("expected error when no trading day is on or before the target")
 		}
 	})
 }

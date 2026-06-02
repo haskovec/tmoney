@@ -34,6 +34,10 @@ func (f *fakeProvider) FetchQuote(ticker string) (*Quote, error) {
 	return nil, &UnsupportedTickerError{Ticker: ticker}
 }
 
+func (f *fakeProvider) FetchQuoteOn(ticker string, _ types.Date) (*Quote, error) {
+	return f.FetchQuote(ticker)
+}
+
 func (f *fakeProvider) Name() string { return f.name }
 
 func newFakeProvider(name string) *fakeProvider {

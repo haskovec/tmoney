@@ -24,6 +24,10 @@ type Provider interface {
 	// one has not yet closed.
 	FetchQuote(ticker string) (*Quote, error)
 
+	// FetchQuoteOn returns the closing quote for ticker on or before the given
+	// date, resolving a weekend/holiday date to the prior trading day.
+	FetchQuoteOn(ticker string, date types.Date) (*Quote, error)
+
 	// Name returns the provider's identifier (e.g., "yahoo", "manual").
 	Name() string
 }
@@ -34,6 +38,11 @@ type ManualProvider struct{}
 
 // FetchQuote returns an error indicating manual entry is required.
 func (m *ManualProvider) FetchQuote(_ string) (*Quote, error) {
+	return nil, fmt.Errorf("manual entry required")
+}
+
+// FetchQuoteOn returns an error indicating manual entry is required.
+func (m *ManualProvider) FetchQuoteOn(_ string, _ types.Date) (*Quote, error) {
 	return nil, fmt.Errorf("manual entry required")
 }
 
