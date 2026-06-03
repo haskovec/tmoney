@@ -20,8 +20,9 @@ type mergerDialogDataMsg struct {
 	data *mergerDialogData
 }
 
-// mergerDialogSavedMsg is sent when a merger has been executed.
-type mergerDialogSavedMsg struct{}
+// mergerDialogSavedMsg is sent when a merger has been executed. savedDate
+// carries the executed date so the handler can update the session sticky date.
+type mergerDialogSavedMsg struct{ savedDate types.Date }
 
 // buildMergerDialog creates a dialog.Dialog for executing a merger/acquisition.
 // If preSelectedSourceID is non-nil, the source security selector is pre-selected.

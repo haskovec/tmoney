@@ -194,7 +194,7 @@ func (a *App) executeMerger() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to execute merger: %w", err)}
 		}
 
-		return mergerDialogSavedMsg{}
+		return mergerDialogSavedMsg{savedDate: mergerDate}
 	}
 }
 

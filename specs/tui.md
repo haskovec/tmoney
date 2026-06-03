@@ -133,8 +133,11 @@ Modal dialog for entering or editing transactions.
 
 The Date field is sticky within a session: the first open of the
 dialog seeds today's date; each subsequent open seeds the date of the
-last *saved* transaction (Cancel does not update the seed). The seed
-resets to today on app restart — there is no cross-launch persistence.
+last *saved* entry — shared across the transaction, investment
+(Buy/Sell/Dividend/Reinvest/Cash/Transfer) and corporate-action
+(Stock Split/Merger/Spin-Off) dialogs (Cancel does not update the
+seed). The seed resets to today on app restart — there is no
+cross-launch persistence.
 
 The Category field is a typeahead combo box (see [Category Combo
 Box](#category-combo-box) below): typing filters the list, and the

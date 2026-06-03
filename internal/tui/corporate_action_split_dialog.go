@@ -28,7 +28,9 @@ type stockSplitDialogDataMsg struct {
 }
 
 // stockSplitDialogSavedMsg is sent when a stock split has been executed.
-type stockSplitDialogSavedMsg struct{}
+// savedDate carries the executed date so the handler can update the session
+// sticky date.
+type stockSplitDialogSavedMsg struct{ savedDate types.Date }
 
 // buildStockSplitDialog creates a dialog.Dialog for executing a stock split.
 // If preSelectedSecurityID is non-nil, the security selector is pre-selected.
@@ -252,6 +254,6 @@ func (a *App) submitStockSplitDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to execute stock split: %w", err)}
 		}
 
-		return stockSplitDialogSavedMsg{}
+		return stockSplitDialogSavedMsg{savedDate: splitDate}
 	}
 }

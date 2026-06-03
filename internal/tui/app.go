@@ -130,9 +130,10 @@ type App struct {
 	txnDialogData        *transactionDialogData
 	txnDialogCategoryIDs []types.ID
 	// txnDialogLastSavedDate is the date of the last successfully-saved
-	// transaction in this process — covers the regular Transaction dialog
-	// and every investment dialog (Buy/Sell/Dividend/Reinvest/Cash ops/
-	// Transfer Cash/Transfer Shares). Each of those dialogs seeds its Date
+	// operation in this process — covers the regular Transaction dialog,
+	// every investment dialog (Buy/Sell/Dividend/Reinvest/Cash ops/
+	// Transfer Cash/Transfer Shares), and the corporate-action dialogs
+	// (Stock Split/Merger/Spin-Off). Each of those dialogs seeds its Date
 	// field from this on the next open in new mode. Cancel does not update
 	// it. Process-lifetime only — not persisted across restarts.
 	txnDialogLastSavedDate types.Date

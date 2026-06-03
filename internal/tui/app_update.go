@@ -273,10 +273,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
 		a.stockSplitDialogSecurityIDs = secIDs
 		a.stockSplitDialog = buildStockSplitDialog(secOptions, secIDs, msg.data.sharesMap, a.stockSplitDialogPreSelectedID)
+		a.stockSplitDialog.SeedDateField(a.txnDialogLastSavedDate)
 		a.stockSplitDialogPreSelectedID = nil
 		return a, nil
 
 	case stockSplitDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
 		a.statusbar.AddNotification("Stock split executed", widget.NotificationInfo)
 		return a, a.refreshAfterCorporateAction()
 
@@ -285,6 +289,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
 		a.mergerDialogSecurityIDs = secIDs
 		a.mergerDialog = buildMergerDialog(secOptions, secIDs, a.mergerDialogPreSelectedID)
+		a.mergerDialog.SeedDateField(a.txnDialogLastSavedDate)
 		a.mergerDialogPreSelectedID = nil
 		return a, nil
 
@@ -293,6 +298,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case mergerDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
 		a.statusbar.AddNotification("Merger executed", widget.NotificationInfo)
 		return a, a.refreshAfterCorporateAction()
 
@@ -301,10 +309,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
 		a.spinOffDialogSecurityIDs = secIDs
 		a.spinOffDialog = buildSpinOffDialog(secOptions, secIDs, a.spinOffDialogPreSelectedID)
+		a.spinOffDialog.SeedDateField(a.txnDialogLastSavedDate)
 		a.spinOffDialogPreSelectedID = nil
 		return a, nil
 
 	case spinOffDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
 		a.statusbar.AddNotification("Spin-off executed", widget.NotificationInfo)
 		return a, a.refreshAfterCorporateAction()
 

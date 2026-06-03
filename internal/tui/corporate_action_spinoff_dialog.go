@@ -23,8 +23,9 @@ type spinOffDialogDataMsg struct {
 	data *spinOffDialogData
 }
 
-// spinOffDialogSavedMsg is sent when a spin-off has been executed.
-type spinOffDialogSavedMsg struct{}
+// spinOffDialogSavedMsg is sent when a spin-off has been executed. savedDate
+// carries the executed date so the handler can update the session sticky date.
+type spinOffDialogSavedMsg struct{ savedDate types.Date }
 
 // buildSpinOffDialog creates a dialog.Dialog for executing a corporate spin-off.
 // If preSelectedParentID is non-nil, the parent security selector is pre-selected.
@@ -325,6 +326,6 @@ func (a *App) submitSpinOffDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to execute spin-off: %w", err)}
 		}
 
-		return spinOffDialogSavedMsg{}
+		return spinOffDialogSavedMsg{savedDate: spinOffDate}
 	}
 }
