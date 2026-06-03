@@ -4,6 +4,7 @@ import (
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // showConfirmDialog displays a confirmation dialog with the given title and message.
@@ -15,9 +16,13 @@ func (a *App) showConfirmDialog(title, message string, action func() tea.Msg) {
 		{Label: "No"},
 		{Label: "Yes", Primary: true},
 	})
-	// Use a text field with the message as a label (read-only visual)
-	// We'll render the message as the dialog error message area (repurposed for display)
-	d.SetErrorMsg(message)
+	// Render the prompt in the neutral message body (newline-separated),
+	// pre-wrapped to the content width, NOT the error area. The error area is
+	// counted as a single line by the layout/hit-test, so a multi-line prompt
+	// there misplaces the button row and breaks mouse clicks; the message body
+	// is line-counted correctly.
+	contentWidth := max(50-dialog.DialogHorizontalOverhead, 10)
+	d.SetMessage(lipgloss.NewStyle().Width(contentWidth).Render(message))
 	d.SetFocusIndex(len(d.Fields())) // Focus on first button (No)
 	d.SetVisible(true)
 	a.confirmDialog = d

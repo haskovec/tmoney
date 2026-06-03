@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -1068,10 +1069,10 @@ func TestApp_ShowVoidConfirmation_TransferMessage(t *testing.T) {
 	if app.confirmDialog == nil {
 		t.Fatal("confirmDialog should be set")
 	}
-	// The message should mention "transfer"
-	errorMsg := app.confirmDialog.ErrorMsg()
-	if !contains(errorMsg, "transfer") {
-		t.Errorf("dialog message = %q, should mention 'transfer'", errorMsg)
+	// The message should mention "transfer" (rendered in the wrapped body).
+	msg := strings.Join(strings.Fields(app.confirmDialog.Message()), " ")
+	if !contains(msg, "transfer") {
+		t.Errorf("dialog message = %q, should mention 'transfer'", msg)
 	}
 }
 
@@ -1327,12 +1328,14 @@ func TestApp_ShowDeleteConfirmation_TransferMessage(t *testing.T) {
 	if app.confirmDialog == nil {
 		t.Fatal("confirmDialog should be set")
 	}
-	errorMsg := app.confirmDialog.ErrorMsg()
-	if !contains(errorMsg, "transfer") {
-		t.Errorf("dialog message = %q, should mention 'transfer'", errorMsg)
+	// The prompt is rendered in the (wrapped) message body; normalize
+	// whitespace so word-wrap line breaks don't split the phrases.
+	msg := strings.Join(strings.Fields(app.confirmDialog.Message()), " ")
+	if !contains(msg, "transfer") {
+		t.Errorf("dialog message = %q, should mention 'transfer'", msg)
 	}
-	if !contains(errorMsg, "Both sides") {
-		t.Errorf("dialog message = %q, should mention 'Both sides'", errorMsg)
+	if !contains(msg, "Both sides") {
+		t.Errorf("dialog message = %q, should mention 'Both sides'", msg)
 	}
 }
 

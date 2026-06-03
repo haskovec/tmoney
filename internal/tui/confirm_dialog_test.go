@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -73,5 +74,38 @@ func TestApp_HandleConfirmDialogKey_Confirm(t *testing.T) {
 		if !called {
 			t.Error("confirm action should have been called")
 		}
+	}
+}
+
+// Regression: a long confirm prompt must render in the line-counted message
+// body (not the error area, which the layout treats as a single line and which
+// misplaced the button row so mouse clicks missed). The button row at its
+// layout position must hit-test to the Yes (primary) button.
+func TestApp_ShowConfirmDialog_WrappedPromptIsMouseClickable(t *testing.T) {
+	app := &App{statusbar: widget.NewStatusBar()}
+	long := "Reverse this Spin-Off on ETHE (2024-07-23) and delete the audit row? Lots, positions, and prices will be restored to their pre-action state."
+	app.showConfirmDialog("Reverse Corporate Action", long, func() tea.Msg { return nil })
+
+	d := app.confirmDialog
+	if d == nil {
+		t.Fatal("confirm dialog not set")
+	}
+	if !strings.Contains(d.Message(), "\n") {
+		t.Fatalf("long prompt should be wrapped into the multi-line message body, got %q", d.Message())
+	}
+
+	contentWidth := max(50-dialog.DialogHorizontalOverhead, 10)
+	msgRows := strings.Count(d.Message(), "\n") + 1 + 1 // wrapped lines + trailing blank
+	buttonRowY := 2 + msgRows + 1                       // title + separator + message + separator
+
+	foundSubmit := false
+	for x := range contentWidth {
+		if d.HandleMouseLocal(x, buttonRowY) == dialog.DialogActionSubmit {
+			foundSubmit = true
+			break
+		}
+	}
+	if !foundSubmit {
+		t.Errorf("Yes button not reachable by mouse at the button row (y=%d)", buttonRowY)
 	}
 }
