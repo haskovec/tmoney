@@ -315,6 +315,26 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Lot-tracked NEW sell with no per-lot fields shown: auto-allocate FIFO
+	// across the security's open lots, oldest first. The dialog only renders
+	// per-lot allocation fields when editing an existing sell; for a new sell
+	// we default to FIFO (matching the lot-backfill default) so the sale isn't
+	// blocked with "lot allocations required".
+	if !hasErrors && numLots == 0 && a.lotRepo != nil &&
+		a.investmentRegister != nil && a.investmentRegister.account != nil &&
+		a.investmentRegister.account.TrackLots {
+		openLots, lerr := a.lotRepo.ListByAccountAndSecurity(a.investmentRegister.account.ID, securityID, false)
+		if lerr != nil {
+			fields[2].Error = "Could not load lots for allocation"
+			hasErrors = true
+		} else if allocs, aerr := fifoAllocate(openLots, shares); aerr != nil {
+			fields[2].Error = aerr.Error()
+			hasErrors = true
+		} else {
+			lotAllocations = allocs
+		}
+	}
+
 	if hasErrors {
 		return a, nil
 	}
@@ -373,4 +393,29 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 
 		return sellDialogSavedMsg{savedDate: date, savedID: saved.ID}
 	}
+}
+
+// fifoAllocate consumes `shares` across the given open lots oldest-first (the
+// caller passes them in purchase-date order, which is FIFO) and returns the
+// per-lot sell allocations. It is used to auto-allocate a new sell on a
+// lot-tracked account, where the dialog renders no per-lot fields. It returns
+// an error if the open lots don't cover the requested shares.
+func fifoAllocate(openLots []*investment.Lot, shares types.Quantity) ([]investment.SellLotAllocation, error) {
+	var allocations []investment.SellLotAllocation
+	remaining := shares
+	for _, lot := range openLots {
+		if !remaining.IsPositive() {
+			break
+		}
+		take := lot.Shares
+		if take.Cmp(remaining) > 0 {
+			take = remaining
+		}
+		allocations = append(allocations, investment.SellLotAllocation{LotID: lot.ID, Shares: take})
+		remaining = remaining.Sub(take)
+	}
+	if remaining.IsPositive() {
+		return nil, fmt.Errorf("only %s shares available to sell", shares.Sub(remaining).String())
+	}
+	return allocations, nil
 }

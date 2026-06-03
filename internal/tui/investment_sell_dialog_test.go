@@ -970,3 +970,92 @@ func TestBuildLotLabel_SmallShares(t *testing.T) {
 		t.Errorf("lot label = %q, want %q", label, expected)
 	}
 }
+
+// fifoAllocate is the auto-allocation used for a new sell on a lot-tracked
+// account (no per-lot fields are rendered). It must consume the oldest lots
+// first, split the boundary lot, and error when the open lots fall short.
+func TestFifoAllocate_ConsumesOldestFirst(t *testing.T) {
+	lot1 := &investment.Lot{BaseModel: types.NewBaseModel(), Shares: types.MustNewQuantity("100")}
+	lot2 := &investment.Lot{BaseModel: types.NewBaseModel(), Shares: types.MustNewQuantity("50")}
+	// Caller passes lots in purchase-date order (oldest first = FIFO).
+	openLots := []*investment.Lot{lot1, lot2}
+
+	allocs, err := fifoAllocate(openLots, types.MustNewQuantity("120"))
+	if err != nil {
+		t.Fatalf("fifoAllocate: %v", err)
+	}
+	if len(allocs) != 2 {
+		t.Fatalf("allocations = %d, want 2", len(allocs))
+	}
+	if allocs[0].LotID != lot1.ID || allocs[0].Shares.String() != "100" {
+		t.Errorf("first allocation = %v %s, want lot1 100", allocs[0].LotID, allocs[0].Shares.String())
+	}
+	if allocs[1].LotID != lot2.ID || allocs[1].Shares.String() != "20" {
+		t.Errorf("second allocation = %v %s, want lot2 20", allocs[1].LotID, allocs[1].Shares.String())
+	}
+}
+
+func TestFifoAllocate_ExactSingleLot(t *testing.T) {
+	lot1 := &investment.Lot{BaseModel: types.NewBaseModel(), Shares: types.MustNewQuantity("138")}
+	allocs, err := fifoAllocate([]*investment.Lot{lot1}, types.MustNewQuantity("138"))
+	if err != nil {
+		t.Fatalf("fifoAllocate: %v", err)
+	}
+	if len(allocs) != 1 || allocs[0].Shares.String() != "138" {
+		t.Fatalf("allocations = %v, want one allocation of 138", allocs)
+	}
+}
+
+func TestFifoAllocate_Shortfall(t *testing.T) {
+	lot1 := &investment.Lot{BaseModel: types.NewBaseModel(), Shares: types.MustNewQuantity("100")}
+	_, err := fifoAllocate([]*investment.Lot{lot1}, types.MustNewQuantity("150"))
+	if err == nil {
+		t.Fatal("expected error when open lots don't cover requested shares")
+	}
+}
+
+// Regression: a NEW sell on a lot-tracked account renders no per-lot fields
+// (numLots == 0). submitSellDialog must not panic when no lot repo is wired —
+// the FIFO auto-allocation branch is guarded and skipped — and the sale still
+// submits. (The FIFO allocation math itself is covered by TestFifoAllocate_*.)
+func TestSubmitSellDialog_NewSell_LotTracked_NoRepo_DoesNotPanic(t *testing.T) {
+	secID := types.NewID()
+	acctID := types.NewID()
+
+	app := &App{
+		sellDialog: buildSellDialog(
+			[]string{"ETH - Ethereum"},
+			nil,
+			[]types.ID{secID},
+			nil, // new sell: no lots -> no per-lot fields
+		),
+		sellDialogData: &sellDialogData{
+			securities: []*security.Security{},
+		},
+		sellDialogSecurityIDs: []types.ID{secID},
+		investmentRegister: &investmentRegisterData{
+			account: &account.Account{
+				BaseModel: types.BaseModel{ID: acctID},
+				Name:      "Wealthfront IRA",
+				Type:      account.TypeInvestment,
+				TrackLots: true,
+			},
+		},
+		lotRepo: nil, // guarded: with no repo wired, the FIFO branch is skipped
+	}
+
+	fields := app.sellDialog.Fields()
+	fields[0].Value = "07/23/2024" // date
+	fields[2].Value = "138"        // shares
+	fields[4].Value = "2500.00"    // price per share (no per-lot fields, so price is index 4)
+
+	model, cmd := app.submitSellDialog()
+	updatedApp := model.(*App)
+
+	if updatedApp.sellDialog != nil {
+		t.Error("dialog should close on a valid new lot-tracked sell")
+	}
+	if cmd == nil {
+		t.Error("should return a command for async save")
+	}
+}
