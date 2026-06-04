@@ -16,13 +16,13 @@ help:
 	@echo "  coverage-func  - Show function-level coverage breakdown"
 	@echo "  clean          - Remove coverage files and built executable"
 
-# Run all tests
+# Run all tests (-p 8: packages run in parallel; each test isolates its own DB/config, so this is safe)
 test:
-	CGO_ENABLED=1 go test -p 1 ./...
+	CGO_ENABLED=1 go test -p 8 ./...
 
 # Run tests with coverage and display summary
 test-coverage:
-	CGO_ENABLED=1 go test -p 1 -coverprofile=coverage.out -covermode=atomic ./...
+	CGO_ENABLED=1 go test -p 8 -coverprofile=coverage.out -covermode=atomic ./...
 	@echo ""
 	@echo "Coverage summary:"
 	@go tool cover -func=coverage.out | tail -1
