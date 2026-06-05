@@ -2,13 +2,12 @@ package security_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	securitydom "github.com/haskovec/tmoney/internal/security"
 )
 
@@ -35,16 +34,11 @@ func TestSecurityHide_MissingTicker(t *testing.T) {
 }
 
 func TestSecurityHide_NotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"security", "hide", "FAKE", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"security", "hide", "FAKE", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("hiding non-existent security should return error")
 	}
@@ -79,12 +73,7 @@ func TestSecurityHide_Success(t *testing.T) {
 }
 
 func TestSecurityHide_AlreadyHidden(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	repo := securitydom.NewRepository(database)
 	sec := securitydom.NewSecurity("AAPL", "Apple Inc.", securitydom.TypeStock)
@@ -95,7 +84,7 @@ func TestSecurityHide_AlreadyHidden(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"security", "hide", "AAPL", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"security", "hide", "AAPL", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("hiding already-hidden security should return error")
 	}

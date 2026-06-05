@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -9,7 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -1617,12 +1616,7 @@ func TestScheduledDialog_SplitToggle_OpensMultiLineEditor(t *testing.T) {
 // an end-to-end Save.
 func createMultiLineScheduledTestApp(t *testing.T) (*App, *scheduled.Service, *account.Account, *category.Category, *category.Category) {
 	t.Helper()
-	tempDir := t.TempDir()
-	database, err := db.Create(filepath.Join(tempDir, "test.tdb"))
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	payeeRepo := payee.NewRepository(database)
@@ -2201,13 +2195,7 @@ func TestApp_SchedDialog_AddNew_CancelRestoresState(t *testing.T) {
 }
 
 func TestApp_SchedDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "cc003.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 	svc := category.NewService(repo, database)

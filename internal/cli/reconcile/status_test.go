@@ -2,13 +2,12 @@ package reconcile_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -40,13 +39,7 @@ func TestReconcileStatus_MissingAccount(t *testing.T) {
 }
 
 func TestReconcileStatus_NoSession(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -62,7 +55,7 @@ func TestReconcileStatus_NoSession(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "status",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -84,13 +77,7 @@ func TestReconcileStatus_NoSession(t *testing.T) {
 }
 
 func TestReconcileStatus_WithActiveSession(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -117,7 +104,7 @@ func TestReconcileStatus_WithActiveSession(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "status",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -142,17 +129,11 @@ func TestReconcileStatus_WithActiveSession(t *testing.T) {
 }
 
 func TestReconcileStatus_AccountNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "status",
 		"--file", dbPath,
 		"--account", "Nope",

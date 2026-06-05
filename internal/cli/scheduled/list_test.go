@@ -2,13 +2,12 @@ package scheduled_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	scheduleddom "github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/types"
@@ -26,17 +25,11 @@ func TestScheduledList_MissingFile(t *testing.T) {
 }
 
 func TestScheduledList_NoTransactions(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
@@ -51,13 +44,7 @@ func TestScheduledList_NoTransactions(t *testing.T) {
 }
 
 func TestScheduledList_WithTransactions(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -92,7 +79,7 @@ func TestScheduledList_WithTransactions(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
@@ -106,13 +93,7 @@ func TestScheduledList_WithTransactions(t *testing.T) {
 }
 
 func TestScheduledList_DueOnly(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -140,7 +121,7 @@ func TestScheduledList_DueOnly(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "list", "--due", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "list", "--due", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled list --due): %v\nstderr=%s", err, stderr)
 	}
@@ -155,13 +136,7 @@ func TestScheduledList_DueOnly(t *testing.T) {
 }
 
 func TestScheduledList_FilterByAccount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -186,7 +161,7 @@ func TestScheduledList_FilterByAccount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "list", "--account", "Checking", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "list", "--account", "Checking", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled list --account Checking): %v\nstderr=%s", err, stderr)
 	}
@@ -201,13 +176,7 @@ func TestScheduledList_FilterByAccount(t *testing.T) {
 }
 
 func TestScheduledList_VariableAmount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -224,7 +193,7 @@ func TestScheduledList_VariableAmount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
@@ -236,13 +205,7 @@ func TestScheduledList_VariableAmount(t *testing.T) {
 }
 
 func TestScheduledList_WithOccurrences(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -260,7 +223,7 @@ func TestScheduledList_WithOccurrences(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
@@ -272,13 +235,7 @@ func TestScheduledList_WithOccurrences(t *testing.T) {
 }
 
 func TestScheduledList_ShowsAutoPostIndicator(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -318,7 +275,7 @@ func TestScheduledList_ShowsAutoPostIndicator(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
@@ -333,13 +290,7 @@ func TestScheduledList_ShowsAutoPostIndicator(t *testing.T) {
 }
 
 func TestScheduledList_AutoPostZeroLeadDays(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -368,7 +319,7 @@ func TestScheduledList_AutoPostZeroLeadDays(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "list", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled list): %v\nstderr=%s", err, stderr)
 	}
@@ -380,16 +331,11 @@ func TestScheduledList_AutoPostZeroLeadDays(t *testing.T) {
 }
 
 func TestScheduledList_AccountNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "list", "--account", "Nope", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "list", "--account", "Nope", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(scheduled list) with unknown account should return error")
 	}

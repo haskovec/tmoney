@@ -2,13 +2,12 @@ package transaction_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	transactiondom "github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -37,13 +36,7 @@ func TestTransactionSearch_MissingTerm(t *testing.T) {
 }
 
 func TestTransactionSearch_ByPayee(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -78,7 +71,7 @@ func TestTransactionSearch_ByPayee(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "Amazon", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "Amazon", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
 	}
@@ -99,13 +92,7 @@ func TestTransactionSearch_ByPayee(t *testing.T) {
 }
 
 func TestTransactionSearch_ByMemo(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -129,7 +116,7 @@ func TestTransactionSearch_ByMemo(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "office", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "office", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
 	}
@@ -141,17 +128,11 @@ func TestTransactionSearch_ByMemo(t *testing.T) {
 }
 
 func TestTransactionSearch_NoResults(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "nonexistent", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "nonexistent", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
 	}
@@ -163,13 +144,7 @@ func TestTransactionSearch_NoResults(t *testing.T) {
 }
 
 func TestTransactionSearch_WithAccountFilter(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -203,7 +178,7 @@ func TestTransactionSearch_WithAccountFilter(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "Target", "--account", "Checking", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "Target", "--account", "Checking", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
 	}
@@ -218,17 +193,11 @@ func TestTransactionSearch_WithAccountFilter(t *testing.T) {
 }
 
 func TestTransactionSearch_AccountNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "anything", "--account", "Nonexistent", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "anything", "--account", "Nonexistent", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction search) with nonexistent account should error")
 	}
@@ -238,13 +207,7 @@ func TestTransactionSearch_AccountNotFound(t *testing.T) {
 }
 
 func TestTransactionSearch_WithMinMaxAmount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -271,7 +234,7 @@ func TestTransactionSearch_WithMinMaxAmount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "Store", "--min", "-100.00", "--max", "-50.00", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "Store", "--min", "-100.00", "--max", "-50.00", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction search) returned error: %v\nstderr=%s", err, stderr)
 	}
@@ -283,17 +246,11 @@ func TestTransactionSearch_WithMinMaxAmount(t *testing.T) {
 }
 
 func TestTransactionSearch_InvalidMinAmount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "test", "--min", "invalid", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "test", "--min", "invalid", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction search) with invalid --min should return error")
 	}
@@ -303,17 +260,11 @@ func TestTransactionSearch_InvalidMinAmount(t *testing.T) {
 }
 
 func TestTransactionSearch_InvalidMaxAmount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "test", "--max", "invalid", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "test", "--max", "invalid", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction search) with invalid --max should return error")
 	}
@@ -323,13 +274,7 @@ func TestTransactionSearch_InvalidMaxAmount(t *testing.T) {
 }
 
 func TestTransactionSearch_WithDateFilter(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -357,7 +302,7 @@ func TestTransactionSearch_WithDateFilter(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"transaction", "search", "Coffee",
 		"--from", "2024-02-01",
 		"--to", "2024-02-28",
@@ -377,17 +322,11 @@ func TestTransactionSearch_WithDateFilter(t *testing.T) {
 }
 
 func TestTransactionSearch_InvalidFromDate(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "anything", "--from", "not-a-date", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "anything", "--from", "not-a-date", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction search) with invalid --from should error")
 	}
@@ -397,17 +336,11 @@ func TestTransactionSearch_InvalidFromDate(t *testing.T) {
 }
 
 func TestTransactionSearch_InvalidToDate(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "anything", "--to", "not-a-date", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "anything", "--to", "not-a-date", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction search) with invalid --to should error")
 	}
@@ -417,13 +350,7 @@ func TestTransactionSearch_InvalidToDate(t *testing.T) {
 }
 
 func TestTransactionSearch_ShowIDs_AddsIDColumn(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -446,7 +373,7 @@ func TestTransactionSearch_ShowIDs_AddsIDColumn(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "Amazon", "--file", dbPath, "--show-ids"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "Amazon", "--file", dbPath, "--show-ids"}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction search --show-ids): %v\nstderr=%s", err, stderr)
 	}
@@ -458,13 +385,7 @@ func TestTransactionSearch_ShowIDs_AddsIDColumn(t *testing.T) {
 }
 
 func TestTransactionSearch_DefaultOmitsIDColumn(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -487,7 +408,7 @@ func TestTransactionSearch_DefaultOmitsIDColumn(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "search", "Amazon", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "search", "Amazon", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction search): %v\nstderr=%s", err, stderr)
 	}

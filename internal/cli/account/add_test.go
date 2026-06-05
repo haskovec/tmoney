@@ -2,13 +2,13 @@ package account_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	accountdom "github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -24,16 +24,11 @@ func TestAccountAdd_MissingFile(t *testing.T) {
 }
 
 func TestAccountAdd_MissingName(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--type", "checking"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--type", "checking"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(account add) without --name should return error")
 	}
@@ -43,16 +38,11 @@ func TestAccountAdd_MissingName(t *testing.T) {
 }
 
 func TestAccountAdd_MissingType(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(account add) without --type should return error")
 	}
@@ -62,16 +52,11 @@ func TestAccountAdd_MissingType(t *testing.T) {
 }
 
 func TestAccountAdd_InvalidType(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "invalid_type"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "invalid_type"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(account add) with invalid type should return error")
 	}
@@ -81,16 +66,11 @@ func TestAccountAdd_InvalidType(t *testing.T) {
 }
 
 func TestAccountAdd_InvalidOpeningBalance(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "checking", "--opening-balance", "invalid"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "checking", "--opening-balance", "invalid"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(account add) with invalid opening-balance should return error")
 	}
@@ -100,16 +80,11 @@ func TestAccountAdd_InvalidOpeningBalance(t *testing.T) {
 }
 
 func TestAccountAdd_InvalidOpeningDate(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "checking", "--opening-date", "invalid-date"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "checking", "--opening-date", "invalid-date"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(account add) with invalid opening-date should return error")
 	}
@@ -119,12 +94,7 @@ func TestAccountAdd_InvalidOpeningDate(t *testing.T) {
 }
 
 func TestAccountAdd_DuplicateName(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := accountdom.NewRepository(database)
 	acct := accountdom.NewAccount("Checking", accountdom.TypeChecking, "USD", types.MustNewMoney("0"), types.Today())
 	if err := acctRepo.Create(acct); err != nil {
@@ -133,7 +103,7 @@ func TestAccountAdd_DuplicateName(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "checking"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "checking"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(account add) with duplicate name should return error")
 	}
@@ -143,16 +113,11 @@ func TestAccountAdd_DuplicateName(t *testing.T) {
 }
 
 func TestAccountAdd_CreditLimitOnNonCreditCard(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "checking", "--credit-limit", "5000"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "checking", "--credit-limit", "5000"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(account add) with --credit-limit on non-credit-card should return error")
 	}
@@ -162,16 +127,11 @@ func TestAccountAdd_CreditLimitOnNonCreditCard(t *testing.T) {
 }
 
 func TestAccountAdd_InterestRateOnNonLoan(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "checking", "--interest-rate", "5.5"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "Checking", "--type", "checking", "--interest-rate", "5.5"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(account add) with --interest-rate on non-loan should return error")
 	}
@@ -181,16 +141,11 @@ func TestAccountAdd_InterestRateOnNonLoan(t *testing.T) {
 }
 
 func TestAccountAdd_Basic(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "My Checking", "--type", "checking"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "add", "--file", dbPath, "--name", "My Checking", "--type", "checking"}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(account add): %v\nstderr=%s", err, stderr)
 	}
@@ -228,16 +183,11 @@ func TestAccountAdd_Basic(t *testing.T) {
 }
 
 func TestAccountAdd_WithAllOptions(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"account", "add",
 		"--file", dbPath,
 		"--name", "Primary Checking",
@@ -288,16 +238,11 @@ func TestAccountAdd_WithAllOptions(t *testing.T) {
 }
 
 func TestAccountAdd_CreditCard(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"account", "add",
 		"--file", dbPath,
 		"--name", "Visa Card",
@@ -335,16 +280,11 @@ func TestAccountAdd_CreditCard(t *testing.T) {
 }
 
 func TestAccountAdd_Loan(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"account", "add",
 		"--file", dbPath,
 		"--name", "Car Loan",
@@ -383,12 +323,7 @@ func TestAccountAdd_Loan(t *testing.T) {
 }
 
 func TestAccountAdd_AllTypes(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	for _, acctType := range []string{"checking", "savings", "credit_card", "investment", "cash", "loan", "asset"} {

@@ -2,13 +2,13 @@ package transaction_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	transactiondom "github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -36,17 +36,11 @@ func TestTransactionVoid_MissingID(t *testing.T) {
 }
 
 func TestTransactionVoid_InvalidID(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "void", "not-a-valid-id", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "void", "not-a-valid-id", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction void) with invalid ID should return error")
 	}
@@ -56,13 +50,7 @@ func TestTransactionVoid_InvalidID(t *testing.T) {
 }
 
 func TestTransactionVoid_Voids(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -86,7 +74,7 @@ func TestTransactionVoid_Voids(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "void", txnID, "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "void", txnID, "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction void) returned error: %v\nstderr=%s", err, stderr)
 	}
@@ -118,13 +106,7 @@ func TestTransactionVoid_Voids(t *testing.T) {
 }
 
 func TestTransactionVoid_AlreadyVoid(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -151,7 +133,7 @@ func TestTransactionVoid_AlreadyVoid(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "void", txnID, "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "void", txnID, "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Error("voiding an already void transaction should return error")
 	}

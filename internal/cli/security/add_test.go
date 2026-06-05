@@ -2,13 +2,12 @@ package security_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 )
 
 func TestSecurityAdd_MissingFile(t *testing.T) {
@@ -76,16 +75,11 @@ func TestSecurityAdd_MissingType(t *testing.T) {
 }
 
 func TestSecurityAdd_InvalidType(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", dbPath,
 		"--ticker", "AAPL",
@@ -101,16 +95,11 @@ func TestSecurityAdd_InvalidType(t *testing.T) {
 }
 
 func TestSecurityAdd_Success(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", dbPath,
 		"--ticker", "AAPL",
@@ -147,16 +136,11 @@ func TestSecurityAdd_Success(t *testing.T) {
 }
 
 func TestSecurityAdd_DefaultValues(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", dbPath,
 		"--ticker", "GOOG",
@@ -177,16 +161,11 @@ func TestSecurityAdd_DefaultValues(t *testing.T) {
 }
 
 func TestSecurityAdd_InvalidAssetClass(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"security", "add",
 		"--file", dbPath,
 		"--ticker", "AAPL",

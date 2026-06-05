@@ -2,13 +2,13 @@ package transfer_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -18,12 +18,7 @@ import (
 // it. The returned tuple is (dbPath, checking, savings).
 func setupLinkScenario(t *testing.T, txns ...*transaction.Transaction) (string, *account.Account, *account.Account) {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("0.00"), types.Today())

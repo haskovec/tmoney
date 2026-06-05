@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -37,15 +37,11 @@ func TestExport_MissingPositionalFile(t *testing.T) {
 
 func TestExport_UnsupportedFormat(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"export", filepath.Join(tmpDir, "out.csv"),
 		"--file", dbPath,
 		"--format", "ofx",
@@ -60,16 +56,12 @@ func TestExport_UnsupportedFormat(t *testing.T) {
 
 func TestExport_UndetectableFormat(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 	database.Close()
 
 	exportPath := filepath.Join(tmpDir, "export.xyz")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 	}, stdout, stderr)
@@ -83,12 +75,7 @@ func TestExport_UndetectableFormat(t *testing.T) {
 
 func TestExport_CSV(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000"), types.Today())
@@ -109,7 +96,7 @@ func TestExport_CSV(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "export.csv")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 	}, stdout, stderr)
@@ -146,11 +133,7 @@ func TestExport_CSV(t *testing.T) {
 
 func TestExport_QIF(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000"), types.Today())
@@ -166,7 +149,7 @@ func TestExport_QIF(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "export.qif")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 	}, stdout, stderr)
@@ -193,11 +176,7 @@ func TestExport_QIF(t *testing.T) {
 
 func TestExport_WithAccountFilter(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000"), types.Today())
 	if err := acctRepo.Create(checking); err != nil {
@@ -218,7 +197,7 @@ func TestExport_WithAccountFilter(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "checking.csv")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -238,11 +217,7 @@ func TestExport_WithAccountFilter(t *testing.T) {
 
 func TestExport_WithDateRange(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000"), types.Today())
 	if err := acctRepo.Create(acct); err != nil {
@@ -265,7 +240,7 @@ func TestExport_WithDateRange(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "q1.csv")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 		"--from", "2024-01-01",
@@ -281,11 +256,7 @@ func TestExport_WithDateRange(t *testing.T) {
 
 func TestExport_FormatOverrideCSV(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000"), types.Today())
 	if err := acctRepo.Create(acct); err != nil {
@@ -299,7 +270,7 @@ func TestExport_FormatOverrideCSV(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "export.txt")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 		"--format", "csv",
@@ -314,16 +285,12 @@ func TestExport_FormatOverrideCSV(t *testing.T) {
 
 func TestExport_AccountNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 	database.Close()
 
 	exportPath := filepath.Join(tmpDir, "out.csv")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 		"--account", "Nonexistent",
@@ -338,11 +305,7 @@ func TestExport_AccountNotFound(t *testing.T) {
 
 func TestExport_NoTransactions(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Empty", account.TypeChecking, "USD", types.MustNewMoney("0"), types.Today())
 	if err := acctRepo.Create(acct); err != nil {
@@ -352,7 +315,7 @@ func TestExport_NoTransactions(t *testing.T) {
 
 	exportPath := filepath.Join(tmpDir, "out.csv")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"export", exportPath,
 		"--file", dbPath,
 		"--account", "Empty",

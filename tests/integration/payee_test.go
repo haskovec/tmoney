@@ -1,14 +1,13 @@
 package integration
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -18,25 +17,12 @@ import (
 func createPayeeTestService(t *testing.T) (*payee.Service, *db.DB, *payee.Repository, func()) {
 	t.Helper()
 
-	tempDir, err := os.MkdirTemp("", "tmoney-payee-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		os.RemoveAll(tempDir)
-		t.Fatalf("Failed to create database: %v", err)
-	}
+	database := dbtest.New(t)
 
 	repo := payee.NewRepository(database)
 	svc := payee.NewService(repo, database)
 
-	cleanup := func() {
-		database.Close()
-		os.RemoveAll(tempDir)
-	}
+	cleanup := func() {}
 
 	return svc, database, repo, cleanup
 }

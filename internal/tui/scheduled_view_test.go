@@ -1,13 +1,12 @@
 package tui
 
 import (
-	"path/filepath"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -549,12 +548,7 @@ func TestApp_FormatScheduledRow_AllFrequencies(t *testing.T) {
 //     posted and the schedule is not advanced — those happen at preview
 //     Save time (MS-020).
 func TestScheduledView_EnterOnDueItem_OpensPreview(t *testing.T) {
-	tempDir := t.TempDir()
-	database, err := db.Create(filepath.Join(tempDir, "test.tdb"))
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	payeeRepo := payee.NewRepository(database)

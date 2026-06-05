@@ -2,14 +2,13 @@ package transaction_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	transactiondom "github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -27,16 +26,11 @@ func TestTransactionList_MissingFile(t *testing.T) {
 }
 
 func TestTransactionList_MissingAccount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction list) without --account should return error")
 	}
@@ -46,16 +40,11 @@ func TestTransactionList_MissingAccount(t *testing.T) {
 }
 
 func TestTransactionList_AccountNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Nonexistent"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Nonexistent"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction list) with nonexistent account should return error")
 	}
@@ -65,12 +54,7 @@ func TestTransactionList_AccountNotFound(t *testing.T) {
 }
 
 func TestTransactionList_NoTransactions(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
 	if err := acctRepo.Create(acct); err != nil {
@@ -79,7 +63,7 @@ func TestTransactionList_NoTransactions(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction list): %v\nstderr=%s", err, stderr)
 	}
@@ -94,12 +78,7 @@ func TestTransactionList_NoTransactions(t *testing.T) {
 }
 
 func TestTransactionList_WithTransactions(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -136,7 +115,7 @@ func TestTransactionList_WithTransactions(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction list): %v\nstderr=%s", err, stderr)
 	}
@@ -153,12 +132,7 @@ func TestTransactionList_WithTransactions(t *testing.T) {
 }
 
 func TestTransactionList_WithLimit(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -176,7 +150,7 @@ func TestTransactionList_WithLimit(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--limit", "2"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--limit", "2"}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction list --limit): %v\nstderr=%s", err, stderr)
 	}
@@ -187,12 +161,7 @@ func TestTransactionList_WithLimit(t *testing.T) {
 }
 
 func TestTransactionList_WithDateFilter(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -213,7 +182,7 @@ func TestTransactionList_WithDateFilter(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"transaction", "list",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -234,12 +203,7 @@ func TestTransactionList_WithDateFilter(t *testing.T) {
 }
 
 func TestTransactionList_InvalidFromDate(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("0"), types.Today())
 	if err := acctRepo.Create(acct); err != nil {
@@ -248,7 +212,7 @@ func TestTransactionList_InvalidFromDate(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--from", "invalid-date"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--from", "invalid-date"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction list) with invalid --from should return error")
 	}
@@ -258,12 +222,7 @@ func TestTransactionList_InvalidFromDate(t *testing.T) {
 }
 
 func TestTransactionList_InvalidToDate(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("0"), types.Today())
 	if err := acctRepo.Create(acct); err != nil {
@@ -272,7 +231,7 @@ func TestTransactionList_InvalidToDate(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--to", "not-a-date"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--to", "not-a-date"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction list) with invalid --to should return error")
 	}
@@ -282,12 +241,7 @@ func TestTransactionList_InvalidToDate(t *testing.T) {
 }
 
 func TestTransactionList_StatusFilter(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -313,7 +267,7 @@ func TestTransactionList_StatusFilter(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--status", "cleared"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--status", "cleared"}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction list --status cleared): %v", err)
 	}
@@ -333,12 +287,7 @@ func TestTransactionList_StatusFilter(t *testing.T) {
 }
 
 func TestTransactionList_InvalidStatus(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("0"), types.Today())
 	if err := acctRepo.Create(acct); err != nil {
@@ -347,7 +296,7 @@ func TestTransactionList_InvalidStatus(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--status", "bogus"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--status", "bogus"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction list --status bogus) should error")
 	}
@@ -357,12 +306,7 @@ func TestTransactionList_InvalidStatus(t *testing.T) {
 }
 
 func TestTransactionList_NegativeLimit(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("0"), types.Today())
 	if err := acctRepo.Create(acct); err != nil {
@@ -371,7 +315,7 @@ func TestTransactionList_NegativeLimit(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--limit", "-1"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--limit", "-1"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(transaction list --limit -1) should error")
 	}
@@ -381,12 +325,7 @@ func TestTransactionList_NegativeLimit(t *testing.T) {
 }
 
 func TestTransactionList_ShowIDs_AddsIDColumn(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -402,7 +341,7 @@ func TestTransactionList_ShowIDs_AddsIDColumn(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--show-ids"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking", "--show-ids"}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction list --show-ids): %v\nstderr=%s", err, stderr)
 	}
@@ -417,12 +356,7 @@ func TestTransactionList_ShowIDs_AddsIDColumn(t *testing.T) {
 }
 
 func TestTransactionList_DefaultOmitsIDColumn(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -438,7 +372,7 @@ func TestTransactionList_DefaultOmitsIDColumn(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transaction", "list", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(transaction list): %v\nstderr=%s", err, stderr)
 	}

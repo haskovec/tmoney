@@ -1,13 +1,12 @@
 package tui
 
 import (
-	"path/filepath"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -701,12 +700,7 @@ func TestPaycheckWizard_BuildSplits_BalanceInvariant(t *testing.T) {
 // wizard end-to-end against a real DB and confirms the saved
 // schedule mirrors the user's input.
 func TestPaycheckWizard_Save_CreatesMultiLineSchedule(t *testing.T) {
-	tempDir := t.TempDir()
-	database, err := db.Create(filepath.Join(tempDir, "test.tdb"))
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
@@ -1437,13 +1431,7 @@ func TestApp_PaycheckWizard_AddNew_CancelRestoresState(t *testing.T) {
 // at the freshly-created category afterwards. The companion test below
 // pins the transfer-line index shift.
 func TestApp_PaycheckWizard_AddNew_AppliesToOriginatingLine(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "cc005.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 	svc := category.NewService(repo, database)
@@ -1535,13 +1523,7 @@ func TestApp_PaycheckWizard_AddNew_AppliesToOriginatingLine(t *testing.T) {
 // footgun: after the rebuild, transfer-mode lines' SelectedIndex must
 // shift by the category-count delta so the same account stays selected.
 func TestPaycheckWizard_AddNew_PreservesTransferLineSelections(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "cc005-transfers.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 	svc := category.NewService(repo, database)

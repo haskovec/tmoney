@@ -2,13 +2,12 @@ package security_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	securitydom "github.com/haskovec/tmoney/internal/security"
 )
 
@@ -35,16 +34,11 @@ func TestSecurityUnhide_MissingTicker(t *testing.T) {
 }
 
 func TestSecurityUnhide_NotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"security", "unhide", "FAKE", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"security", "unhide", "FAKE", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("unhiding non-existent security should return error")
 	}
@@ -54,12 +48,7 @@ func TestSecurityUnhide_NotFound(t *testing.T) {
 }
 
 func TestSecurityUnhide_Success(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := securitydom.NewRepository(database)
 	sec := securitydom.NewSecurity("AAPL", "Apple Inc.", securitydom.TypeStock)
 	sec.Hide()

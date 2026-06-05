@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -10,7 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -1231,13 +1230,7 @@ func TestApp_TxnDialog_AddNew_CancelRestoresState(t *testing.T) {
 }
 
 func TestApp_TxnDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "td008.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 	svc := category.NewService(repo, database)
@@ -1364,13 +1357,7 @@ func TestApp_TxnDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 }
 
 func TestApp_TxnDialog_AddNew_SubmitNewParentCreatesBoth(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "td008_newparent.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 	svc := category.NewService(repo, database)

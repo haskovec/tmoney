@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
@@ -680,13 +681,7 @@ func TestApp_HandleMenuAction_OpenFile_AlwaysStartsInDefaultDir(t *testing.T) {
 	}
 
 	// Open a real DB in some other location so a.db is non-nil and points elsewhere.
-	otherDir := t.TempDir()
-	dbPath := filepath.Join(otherDir, "current.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	app := &App{
 		db:          database,

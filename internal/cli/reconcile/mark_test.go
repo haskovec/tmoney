@@ -2,13 +2,12 @@ package reconcile_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -41,16 +40,11 @@ func TestReconcileMark_MissingIDs(t *testing.T) {
 }
 
 func TestReconcileMark_InvalidID(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "mark", "not-a-valid-id",
 		"--file", dbPath,
 	}, stdout, stderr)
@@ -63,16 +57,11 @@ func TestReconcileMark_InvalidID(t *testing.T) {
 }
 
 func TestReconcileMark_TransactionNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "mark", "00000000-0000-0000-0000-000000000000",
 		"--file", dbPath,
 	}, stdout, stderr)
@@ -85,13 +74,7 @@ func TestReconcileMark_TransactionNotFound(t *testing.T) {
 }
 
 func TestReconcileMark_NoActiveSession(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -115,7 +98,7 @@ func TestReconcileMark_NoActiveSession(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "mark", txnID,
 		"--file", dbPath,
 	}, stdout, stderr)
@@ -128,13 +111,7 @@ func TestReconcileMark_NoActiveSession(t *testing.T) {
 }
 
 func TestReconcileMark_Success(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -171,7 +148,7 @@ func TestReconcileMark_Success(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"reconcile", "mark", txn1.ID.String(), txn2.ID.String(),
 		"--file", dbPath,
 	}, stdout, stderr)

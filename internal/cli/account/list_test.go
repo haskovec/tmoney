@@ -2,13 +2,12 @@ package account_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	accountdom "github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -32,12 +31,7 @@ func TestAccountList_FileNotFound(t *testing.T) {
 }
 
 func TestAccountList_NoAccounts(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "empty.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "empty.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -51,12 +45,7 @@ func TestAccountList_NoAccounts(t *testing.T) {
 }
 
 func TestAccountList_WithAccounts(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := accountdom.NewRepository(database)
 	acct := accountdom.NewAccount("Test Checking", accountdom.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
 	if err := repo.Create(acct); err != nil {
@@ -78,12 +67,7 @@ func TestAccountList_WithAccounts(t *testing.T) {
 }
 
 func TestAccountList_ShortFileFlag(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -93,12 +77,7 @@ func TestAccountList_ShortFileFlag(t *testing.T) {
 }
 
 func TestAccountList_IncludeClosed(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := accountdom.NewRepository(database)
 
 	active := accountdom.NewAccount("Active Checking", accountdom.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())

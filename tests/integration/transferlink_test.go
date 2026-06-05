@@ -1,13 +1,12 @@
 package integration
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/types"
@@ -28,16 +27,7 @@ type linkFixture struct {
 func newLinkFixture(t *testing.T) (*linkFixture, func()) {
 	t.Helper()
 
-	tempDir, err := os.MkdirTemp("", "tmoney-link-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	dbPath := filepath.Join(tempDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		os.RemoveAll(tempDir)
-		t.Fatalf("Failed to create database: %v", err)
-	}
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
@@ -54,8 +44,6 @@ func newLinkFixture(t *testing.T) (*linkFixture, func()) {
 		types.MustNewMoney("0"), types.NewDate(2024, 1, 1))
 	for _, a := range []*account.Account{checking, savings, visa} {
 		if err := accountRepo.Create(a); err != nil {
-			database.Close()
-			os.RemoveAll(tempDir)
 			t.Fatalf("Failed to create account %s: %v", a.Name, err)
 		}
 	}
@@ -71,10 +59,7 @@ func newLinkFixture(t *testing.T) (*linkFixture, func()) {
 		savings:     savings,
 		visa:        visa,
 	}
-	cleanup := func() {
-		database.Close()
-		os.RemoveAll(tempDir)
-	}
+	cleanup := func() {}
 	return f, cleanup
 }
 

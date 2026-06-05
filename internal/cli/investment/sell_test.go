@@ -2,7 +2,6 @@ package investment_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,7 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -284,12 +283,7 @@ func TestInvestmentSell_InvalidDate(t *testing.T) {
 }
 
 func TestInvestmentSell_WithLotAllocation(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
@@ -320,7 +314,7 @@ func TestInvestmentSell_WithLotAllocation(t *testing.T) {
 	database.Close()
 
 	stdout := &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "sell",
 		"--file", dbPath,
 		"--account", "Brokerage",

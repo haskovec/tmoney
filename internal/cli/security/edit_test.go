@@ -2,13 +2,12 @@ package security_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 )
 
 func TestSecurityEdit_MissingFile(t *testing.T) {
@@ -34,16 +33,11 @@ func TestSecurityEdit_MissingTicker(t *testing.T) {
 }
 
 func TestSecurityEdit_NotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"security", "edit", "FAKE", "--file", dbPath, "--name", "X"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"security", "edit", "FAKE", "--file", dbPath, "--name", "X"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(security edit FAKE) should return error for non-existent security")
 	}

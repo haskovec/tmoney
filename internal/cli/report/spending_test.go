@@ -2,14 +2,13 @@ package report_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -26,16 +25,11 @@ func TestReportSpending_MissingFile(t *testing.T) {
 }
 
 func TestReportSpending_MissingPeriod(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"report", "spending", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"report", "spending", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(report spending) without period should return error")
 	}
@@ -45,12 +39,7 @@ func TestReportSpending_MissingPeriod(t *testing.T) {
 }
 
 func TestReportSpending_ByMonth(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -67,12 +56,7 @@ func TestReportSpending_ByMonth(t *testing.T) {
 }
 
 func TestReportSpending_ByYear(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -89,12 +73,7 @@ func TestReportSpending_ByYear(t *testing.T) {
 }
 
 func TestReportSpending_ByDateRange(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -111,12 +90,7 @@ func TestReportSpending_ByDateRange(t *testing.T) {
 }
 
 func TestReportSpending_WithData(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -158,16 +132,11 @@ func TestReportSpending_WithData(t *testing.T) {
 }
 
 func TestReportSpending_InvalidMonthFormat(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"report", "spending", "--month", "invalid", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"report", "spending", "--month", "invalid", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(report spending --month=invalid) should return error")
 	}
@@ -177,16 +146,11 @@ func TestReportSpending_InvalidMonthFormat(t *testing.T) {
 }
 
 func TestReportSpending_InvalidMonthValue(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"report", "spending", "--month", "2024-13", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"report", "spending", "--month", "2024-13", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(report spending --month=2024-13) should return error")
 	}
@@ -196,16 +160,11 @@ func TestReportSpending_InvalidMonthValue(t *testing.T) {
 }
 
 func TestReportSpending_InvalidFromDate(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"report", "spending", "--from", "not-a-date", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"report", "spending", "--from", "not-a-date", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(report spending --from=not-a-date) should return error")
 	}

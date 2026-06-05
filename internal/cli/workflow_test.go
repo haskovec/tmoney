@@ -2,13 +2,12 @@ package cli
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -16,13 +15,7 @@ import (
 // TestRun_FullReconciliationWorkflow exercises start → status → finish → status
 // across multiple verbs to confirm reconcile state survives between invocations.
 func TestRun_FullReconciliationWorkflow(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
@@ -50,7 +43,7 @@ func TestRun_FullReconciliationWorkflow(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"reconcile", "start",
 		"--file", dbPath,
 		"--account", "Checking",

@@ -1,14 +1,12 @@
 package integration
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -17,19 +15,7 @@ import (
 // TestTransactionLifecycle tests the complete transaction lifecycle:
 // create database -> create account -> create transaction -> list -> update -> delete -> cleanup
 func TestTransactionLifecycle(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-transaction-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
@@ -146,19 +132,7 @@ func TestTransactionLifecycle(t *testing.T) {
 
 // TestTransactionListByAccount tests listing transactions by account.
 func TestTransactionListByAccount(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-transaction-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
@@ -211,19 +185,7 @@ func TestTransactionListByAccount(t *testing.T) {
 
 // TestTransactionListByDateRange tests listing transactions by date range.
 func TestTransactionListByDateRange(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-transaction-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
@@ -276,24 +238,12 @@ func TestTransactionListByDateRange(t *testing.T) {
 
 // TestTransactionNotFound tests error handling for non-existent transactions.
 func TestTransactionNotFound(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-transaction-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	txnRepo := transaction.NewRepository(database)
 
 	// Try to get non-existent transaction
-	_, err = txnRepo.GetByID(types.NewID())
+	_, err := txnRepo.GetByID(types.NewID())
 	if err == nil {
 		t.Error("Expected error for non-existent transaction")
 	}
@@ -313,19 +263,7 @@ func TestTransactionNotFound(t *testing.T) {
 
 // TestTransactionRequiresValidAccount tests that transactions require a valid account.
 func TestTransactionRequiresValidAccount(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-transaction-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	txnRepo := transaction.NewRepository(database)
 
@@ -336,7 +274,7 @@ func TestTransactionRequiresValidAccount(t *testing.T) {
 		types.MustNewMoney("-50.00"),
 	)
 
-	err = txnRepo.Create(txn)
+	err := txnRepo.Create(txn)
 	if err == nil {
 		t.Error("Expected error when creating transaction with non-existent account")
 	}
@@ -347,19 +285,7 @@ func TestTransactionRequiresValidAccount(t *testing.T) {
 
 // TestTransactionCountByAccount tests the CountByAccount method.
 func TestTransactionCountByAccount(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-transaction-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
@@ -399,19 +325,7 @@ func TestTransactionCountByAccount(t *testing.T) {
 
 // TestTransactionWithAllFields tests creating a transaction with all optional fields.
 func TestTransactionWithAllFields(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-transaction-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
@@ -477,19 +391,7 @@ func TestTransactionWithAllFields(t *testing.T) {
 
 // TestAccountWithTransactionCannotBeDeleted tests that accounts with transactions cannot be deleted.
 func TestAccountWithTransactionCannotBeDeleted(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-transaction-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
@@ -507,7 +409,7 @@ func TestAccountWithTransactionCannotBeDeleted(t *testing.T) {
 	}
 
 	// Try to delete account
-	err = accountRepo.Delete(acct.ID)
+	err := accountRepo.Delete(acct.ID)
 	if err == nil {
 		t.Error("Expected error when deleting account with transactions")
 	}
@@ -518,19 +420,7 @@ func TestAccountWithTransactionCannotBeDeleted(t *testing.T) {
 
 // TestTransactionSearchByPayee tests searching transactions by payee name.
 func TestTransactionSearchByPayee(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-search-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
@@ -617,19 +507,7 @@ func TestTransactionSearchByPayee(t *testing.T) {
 
 // TestTransactionSearchByMemo tests searching transactions by memo.
 func TestTransactionSearchByMemo(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-search-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
@@ -689,19 +567,7 @@ func TestTransactionSearchByMemo(t *testing.T) {
 
 // TestTransactionSearchByCategory tests searching transactions by category name.
 func TestTransactionSearchByCategory(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-search-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
@@ -773,19 +639,7 @@ func TestTransactionSearchByCategory(t *testing.T) {
 
 // TestTransactionSearchCombinedCriteria tests searching with multiple criteria.
 func TestTransactionSearchCombinedCriteria(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-search-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)

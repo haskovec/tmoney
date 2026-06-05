@@ -1,12 +1,11 @@
 package integration
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -16,17 +15,7 @@ import (
 func createTransferTestService(t *testing.T) (*transaction.Service, *db.DB, func()) {
 	t.Helper()
 
-	tempDir, err := os.MkdirTemp("", "tmoney-transfer-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		os.RemoveAll(tempDir)
-		t.Fatalf("Failed to create database: %v", err)
-	}
+	database := dbtest.New(t)
 
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
@@ -35,10 +24,7 @@ func createTransferTestService(t *testing.T) (*transaction.Service, *db.DB, func
 	accountRepo := account.NewRepository(database)
 	svc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 
-	cleanup := func() {
-		database.Close()
-		os.RemoveAll(tempDir)
-	}
+	cleanup := func() {}
 
 	return svc, database, cleanup
 }

@@ -1,32 +1,18 @@
 package integration
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 // TestCategoryLifecycle tests the complete category lifecycle:
 // create database -> create category -> list categories -> update -> delete -> cleanup
 func TestCategoryLifecycle(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-category-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 
@@ -37,7 +23,7 @@ func TestCategoryLifecycle(t *testing.T) {
 		category := category.NewCategory("Groceries", category.TypeExpense)
 		categoryID = category.ID
 
-		err = repo.Create(category)
+		err := repo.Create(category)
 		if err != nil {
 			t.Fatalf("Failed to create category: %v", err)
 		}
@@ -115,7 +101,7 @@ func TestCategoryLifecycle(t *testing.T) {
 
 	// Step 5: Delete the category
 	t.Run("Delete category", func(t *testing.T) {
-		err = repo.Delete(categoryID)
+		err := repo.Delete(categoryID)
 		if err != nil {
 			t.Fatalf("Failed to delete category: %v", err)
 		}
@@ -132,19 +118,7 @@ func TestCategoryLifecycle(t *testing.T) {
 
 // TestCategoryHierarchy tests parent/child category relationships.
 func TestCategoryHierarchy(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-category-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 
@@ -247,19 +221,7 @@ func TestCategoryHierarchy(t *testing.T) {
 
 // TestCategoryByType tests listing categories by type.
 func TestCategoryByType(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-category-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 
@@ -309,19 +271,7 @@ func TestCategoryByType(t *testing.T) {
 
 // TestCategoryDuplicateNameValidation tests that duplicate names are rejected.
 func TestCategoryDuplicateNameValidation(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-category-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 
@@ -355,19 +305,7 @@ func TestCategoryDuplicateNameValidation(t *testing.T) {
 
 // TestCategorySubcategoryValidation tests subcategory creation rules.
 func TestCategorySubcategoryValidation(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-category-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 
@@ -414,19 +352,7 @@ func TestCategorySubcategoryValidation(t *testing.T) {
 
 // TestSystemCategory tests system category creation.
 func TestSystemCategory(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-category-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 
@@ -448,19 +374,7 @@ func TestSystemCategory(t *testing.T) {
 
 // TestCategoryNotFound tests error handling for non-existent categories.
 func TestCategoryNotFound(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-category-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 

@@ -2,13 +2,13 @@ package investment_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -22,28 +22,17 @@ func TestInvestmentEnableLots_MissingFile(t *testing.T) {
 }
 
 func TestInvestmentEnableLots_RequiresAccountOrAll(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("create db: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
-	err = cli.ExecuteWith([]string{"investment", "enable-lots", "--file", dbPath}, &bytes.Buffer{}, &bytes.Buffer{})
+	err := cli.ExecuteWith([]string{"investment", "enable-lots", "--file", dbPath}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "--account") {
 		t.Fatalf("expected error requiring --account or --all, got: %v", err)
 	}
 }
 
 func TestInvestmentEnableLots_PreviewThenConfirm(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("create db: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
 	if err := acctRepo.Create(acct); err != nil {

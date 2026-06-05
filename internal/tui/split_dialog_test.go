@@ -1,14 +1,13 @@
 package tui
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -1623,13 +1622,7 @@ func TestApp_SplitDialog_AddNew_CancelRestoresState(t *testing.T) {
 }
 
 func TestApp_SplitDialog_AddNew_AppliesToCurrentRow(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "cc004.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 	svc := category.NewService(repo, database)

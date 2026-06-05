@@ -2,13 +2,12 @@ package investment_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -24,12 +23,7 @@ func TestInvestmentRebuildPositions_MissingFile(t *testing.T) {
 }
 
 func TestInvestmentRebuildPositions_NoInvestmentAccounts(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 	if err := acctRepo.Create(acct); err != nil {
@@ -38,7 +32,7 @@ func TestInvestmentRebuildPositions_NoInvestmentAccounts(t *testing.T) {
 	database.Close()
 
 	stdout := &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"investment", "rebuild-positions", "--file", dbPath}, stdout, &bytes.Buffer{})
+	err := cli.ExecuteWith([]string{"investment", "rebuild-positions", "--file", dbPath}, stdout, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("rebuild-positions error = %v", err)
 	}
@@ -48,12 +42,7 @@ func TestInvestmentRebuildPositions_NoInvestmentAccounts(t *testing.T) {
 }
 
 func TestInvestmentRebuildPositions_AllAccountsBasic(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	inv := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
 	if err := acctRepo.Create(inv); err != nil {
@@ -62,7 +51,7 @@ func TestInvestmentRebuildPositions_AllAccountsBasic(t *testing.T) {
 	database.Close()
 
 	stdout := &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"investment", "rebuild-positions", "--file", dbPath}, stdout, &bytes.Buffer{})
+	err := cli.ExecuteWith([]string{"investment", "rebuild-positions", "--file", dbPath}, stdout, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("rebuild-positions error = %v", err)
 	}
@@ -72,15 +61,10 @@ func TestInvestmentRebuildPositions_AllAccountsBasic(t *testing.T) {
 }
 
 func TestInvestmentRebuildPositions_UnknownAccount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "rebuild-positions",
 		"--file", dbPath,
 		"--account", "Nope",

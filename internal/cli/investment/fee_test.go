@@ -2,14 +2,13 @@ package investment_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -149,12 +148,7 @@ func TestInvestmentFee_InvalidDate(t *testing.T) {
 }
 
 func TestInvestmentFee_AllowsNegativeCash(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
 	if err := acctRepo.Create(acct); err != nil {
@@ -162,7 +156,7 @@ func TestInvestmentFee_AllowsNegativeCash(t *testing.T) {
 	}
 	database.Close()
 
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"investment", "fee",
 		"--file", dbPath,
 		"--account", "Brokerage",

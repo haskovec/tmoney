@@ -6,13 +6,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	pricedom "github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -58,12 +58,7 @@ func withYahooAt(t *testing.T, baseURL string, now time.Time) func() {
 
 func setupUpdatePricesDB(t *testing.T, tickers ...string) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "prices.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "prices.tdb")
 	t.Cleanup(func() { database.Close() })
 
 	secRepo := security.NewRepository(database)

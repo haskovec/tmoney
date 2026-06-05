@@ -2,7 +2,6 @@ package investment_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
@@ -645,13 +644,7 @@ func TestInvestmentCmd_HelpListsPortfolio(t *testing.T) {
 // securities, prices, and buy transactions for portfolio testing.
 func createPortfolioCmdTestDB(t *testing.T, trackLots bool) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "portfolio.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "portfolio.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
@@ -701,13 +694,7 @@ func createPortfolioCmdTestDB(t *testing.T, trackLots bool) string {
 // `investment portfolio --include-closed` has something to surface.
 func createPortfolioCmdTestDBWithClosed(t *testing.T) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "portfolio_closed.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "portfolio_closed.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
@@ -759,13 +746,7 @@ func createPortfolioCmdTestDBWithClosed(t *testing.T) string {
 // and a cash dividend.
 func createPortfolioCmdTestDBWithTotalReturn(t *testing.T) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "portfolio_tr.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "portfolio_tr.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
@@ -807,13 +788,7 @@ func createPortfolioCmdTestDBWithTotalReturn(t *testing.T) string {
 // valuation service flags realized gain as unavailable.
 func createPortfolioCmdTestDBWithCorporateAction(t *testing.T) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "portfolio_ca.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "portfolio_ca.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())

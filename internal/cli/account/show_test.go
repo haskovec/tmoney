@@ -2,13 +2,12 @@ package account_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	accountdom "github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -35,16 +34,11 @@ func TestAccountShow_MissingNameArg(t *testing.T) {
 }
 
 func TestAccountShow_NotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"account", "show", "Nonexistent Account", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"account", "show", "Nonexistent Account", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(account show) with nonexistent account should return error")
 	}
@@ -54,12 +48,7 @@ func TestAccountShow_NotFound(t *testing.T) {
 }
 
 func TestAccountShow_ValidAccount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := accountdom.NewRepository(database)
 	acct := accountdom.NewAccount("Test Checking", accountdom.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
 	acct.SetInstitution("Chase Bank")
@@ -83,12 +72,7 @@ func TestAccountShow_ValidAccount(t *testing.T) {
 }
 
 func TestAccountShow_ShortFileFlag(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := accountdom.NewRepository(database)
 	acct := accountdom.NewAccount("Quick", accountdom.TypeChecking, "USD", types.MustNewMoney("0"), types.Today())
 	if err := repo.Create(acct); err != nil {

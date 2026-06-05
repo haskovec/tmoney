@@ -2,7 +2,6 @@ package transfer_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -27,16 +27,11 @@ func TestTransferAdd_MissingFile(t *testing.T) {
 }
 
 func TestTransferAdd_MissingFrom(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--to", "Savings", "--amount", "100"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--to", "Savings", "--amount", "100"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(transfer add) without --from should return error")
 	}
@@ -46,16 +41,11 @@ func TestTransferAdd_MissingFrom(t *testing.T) {
 }
 
 func TestTransferAdd_MissingTo(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--amount", "100"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--amount", "100"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(transfer add) without --to should return error")
 	}
@@ -65,16 +55,11 @@ func TestTransferAdd_MissingTo(t *testing.T) {
 }
 
 func TestTransferAdd_MissingAmount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--to", "Savings"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--to", "Savings"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(transfer add) without --amount should return error")
 	}
@@ -84,16 +69,11 @@ func TestTransferAdd_MissingAmount(t *testing.T) {
 }
 
 func TestTransferAdd_InvalidAmount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--to", "Savings", "--amount", "not-a-number"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--to", "Savings", "--amount", "not-a-number"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(transfer add) with invalid amount should return error")
 	}
@@ -103,16 +83,11 @@ func TestTransferAdd_InvalidAmount(t *testing.T) {
 }
 
 func TestTransferAdd_NegativeAmount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--to", "Savings", "--amount", "-100"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--to", "Savings", "--amount", "-100"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(transfer add) with negative amount should return error")
 	}
@@ -122,16 +97,11 @@ func TestTransferAdd_NegativeAmount(t *testing.T) {
 }
 
 func TestTransferAdd_SourceAccountNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Nonexistent", "--to", "Savings", "--amount", "100"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Nonexistent", "--to", "Savings", "--amount", "100"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(transfer add) with nonexistent source account should return error")
 	}
@@ -141,12 +111,7 @@ func TestTransferAdd_SourceAccountNotFound(t *testing.T) {
 }
 
 func TestTransferAdd_DestAccountNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := account.NewRepository(database)
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
 	if err := repo.Create(checking); err != nil {
@@ -155,7 +120,7 @@ func TestTransferAdd_DestAccountNotFound(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--to", "Nonexistent", "--amount", "100"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"transfer", "add", "--file", dbPath, "--from", "Checking", "--to", "Nonexistent", "--amount", "100"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("executeWith(transfer add) with nonexistent destination account should return error")
 	}

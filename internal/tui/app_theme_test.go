@@ -10,7 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/applog"
 	"github.com/haskovec/tmoney/internal/config"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -246,13 +246,7 @@ func TestApp_MenuSelect_LoadTheme(t *testing.T) {
 func TestNewApp_AppliesPersistedTheme(t *testing.T) {
 	t.Cleanup(func() { restoreDefaultTheme(t) })
 
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "newapp_theme.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
+	database := dbtest.New(t)
 
 	cfg := &config.Config{Theme: "turbo-vision"}
 	a := NewApp(database, cfg)
@@ -280,13 +274,7 @@ func TestNewApp_UnknownThemeFallsBackToDefault(t *testing.T) {
 	// so the test doesn't pollute the user's real config dir.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "newapp_unknown_theme.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
+	database := dbtest.New(t)
 
 	defaultStyles := widget.NewStyles()
 	wantHeaderFg := defaultStyles.Header.GetForeground()
@@ -489,12 +477,7 @@ negative = "not-a-color"
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	dbPath := filepath.Join(tmp, "newapp_persisted_issues.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
+	database := dbtest.New(t)
 
 	cfg := &config.Config{Theme: "broken-startup"}
 	a := NewApp(database, cfg)

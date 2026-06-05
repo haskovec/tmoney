@@ -2,13 +2,12 @@ package security_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	securitydom "github.com/haskovec/tmoney/internal/security"
 )
 
@@ -24,12 +23,7 @@ func TestSecurityList_MissingFile(t *testing.T) {
 }
 
 func TestSecurityList_Empty(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -58,12 +52,7 @@ func TestSecurityList_WithData(t *testing.T) {
 }
 
 func TestSecurityList_ExcludesHiddenByDefault(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := securitydom.NewRepository(database)
 	sec := securitydom.NewSecurity("MSFT", "Microsoft Corp.", securitydom.TypeStock)
 	sec.Hide()
@@ -96,12 +85,7 @@ func TestSecurityList_ExcludesHiddenByDefault(t *testing.T) {
 }
 
 func TestSecurityList_FilterByType(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := securitydom.NewRepository(database)
 	stock := securitydom.NewSecurity("AAPL", "Apple Inc.", securitydom.TypeStock)
 	if err := repo.Create(stock); err != nil {
@@ -127,16 +111,11 @@ func TestSecurityList_FilterByType(t *testing.T) {
 }
 
 func TestSecurityList_InvalidType(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"security", "list", "--file", dbPath, "--type", "bogus_type"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"security", "list", "--file", dbPath, "--type", "bogus_type"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(security list) with invalid --type should return error")
 	}
@@ -146,12 +125,7 @@ func TestSecurityList_InvalidType(t *testing.T) {
 }
 
 func TestSecurityList_FilterByAssetClass(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := securitydom.NewRepository(database)
 	stock := securitydom.NewSecurity("AAPL", "Apple Inc.", securitydom.TypeStock)
 	stock.AssetClass = securitydom.AssetClassLargeCapStock
@@ -179,16 +153,11 @@ func TestSecurityList_FilterByAssetClass(t *testing.T) {
 }
 
 func TestSecurityList_InvalidAssetClass(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"security", "list", "--file", dbPath, "--asset-class", "not_a_real_class"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"security", "list", "--file", dbPath, "--asset-class", "not_a_real_class"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(security list) with invalid --asset-class should return error")
 	}

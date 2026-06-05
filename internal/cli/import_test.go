@@ -9,6 +9,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -87,12 +88,7 @@ func TestImport_InvalidFormat(t *testing.T) {
 
 func TestImport_NonexistentFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 
 	repo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("0"), types.Today())
@@ -102,7 +98,7 @@ func TestImport_NonexistentFile(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"import", "/nonexistent/bank.csv",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -117,12 +113,7 @@ func TestImport_NonexistentFile(t *testing.T) {
 
 func TestImport_CSVDryRun(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 
 	repo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000"), types.Today())
@@ -138,7 +129,7 @@ func TestImport_CSVDryRun(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -164,12 +155,7 @@ func TestImport_CSVDryRun(t *testing.T) {
 
 func TestImport_CSVConfirm(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 
 	repo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000"), types.Today())
@@ -185,7 +171,7 @@ func TestImport_CSVConfirm(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -221,12 +207,7 @@ func TestImport_CSVConfirm(t *testing.T) {
 
 func TestImport_ClosedAccount(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 
 	repo := account.NewRepository(database)
 	acct := account.NewAccount("Closed Account", account.TypeChecking, "USD", types.MustNewMoney("0"), types.Today())
@@ -243,7 +224,7 @@ func TestImport_ClosedAccount(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Closed Account",
@@ -258,12 +239,7 @@ func TestImport_ClosedAccount(t *testing.T) {
 
 func TestImport_FormatOverride(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 
 	repo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("0"), types.Today())
@@ -279,7 +255,7 @@ func TestImport_FormatOverride(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -297,12 +273,7 @@ func TestImport_FormatOverride(t *testing.T) {
 
 func TestImport_SkipDuplicates(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 
 	accountRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000"), types.Today())
@@ -325,7 +296,7 @@ func TestImport_SkipDuplicates(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Checking",
@@ -343,12 +314,7 @@ func TestImport_SkipDuplicates(t *testing.T) {
 
 func TestImport_AccountNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 	database.Close()
 
 	csvPath := filepath.Join(tmpDir, "import.csv")
@@ -358,7 +324,7 @@ func TestImport_AccountNotFound(t *testing.T) {
 	}
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = ExecuteWith([]string{
+	err := ExecuteWith([]string{
 		"import", csvPath,
 		"--file", dbPath,
 		"--account", "Nonexistent",
@@ -377,12 +343,8 @@ func TestImport_AccountNotFound(t *testing.T) {
 func setupMultiAccountImportFixture(t *testing.T) (dbPath, csvPath string) {
 	t.Helper()
 	tmpDir := t.TempDir()
-	dbPath = filepath.Join(tmpDir, "test.tdb")
+	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create database: %v", err)
-	}
 	acctRepo := account.NewRepository(database)
 	for _, name := range []string{"Checking", "Savings"} {
 		acct := account.NewAccount(name, account.TypeChecking, "USD",

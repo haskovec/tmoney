@@ -2,13 +2,12 @@ package account_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	accountdom "github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -24,12 +23,7 @@ func TestAccountBalance_MissingFile(t *testing.T) {
 }
 
 func TestAccountBalance_NoAccounts(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "empty.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "empty.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -42,12 +36,7 @@ func TestAccountBalance_NoAccounts(t *testing.T) {
 }
 
 func TestAccountBalance_WithAccounts(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := accountdom.NewRepository(database)
 	for _, a := range []*accountdom.Account{
 		accountdom.NewAccount("Checking", accountdom.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today()),
@@ -74,12 +63,7 @@ func TestAccountBalance_WithAccounts(t *testing.T) {
 }
 
 func TestAccountBalance_ShortFileFlag(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := accountdom.NewRepository(database)
 	acct := accountdom.NewAccount("Quick", accountdom.TypeChecking, "USD", types.MustNewMoney("0"), types.Today())
 	if err := repo.Create(acct); err != nil {

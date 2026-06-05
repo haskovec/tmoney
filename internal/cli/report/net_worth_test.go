@@ -2,13 +2,12 @@ package report_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -25,12 +24,7 @@ func TestReportNetWorth_MissingFile(t *testing.T) {
 }
 
 func TestReportNetWorth_Empty(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "empty.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "empty.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -47,12 +41,7 @@ func TestReportNetWorth_Empty(t *testing.T) {
 }
 
 func TestReportNetWorth_WithAccounts(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD",
@@ -92,12 +81,7 @@ func TestReportNetWorth_WithAccounts(t *testing.T) {
 }
 
 func TestReportNetWorth_WithAsOf(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -110,16 +94,11 @@ func TestReportNetWorth_WithAsOf(t *testing.T) {
 }
 
 func TestReportNetWorth_InvalidAsOf(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"report", "net-worth", "--as-of", "not-a-date", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"report", "net-worth", "--as-of", "not-a-date", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(report net-worth --as-of=not-a-date) should return error")
 	}
@@ -129,12 +108,7 @@ func TestReportNetWorth_InvalidAsOf(t *testing.T) {
 }
 
 func TestReportNetWorth_IncludeClosed(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	open := account.NewAccount("OpenCheck", account.TypeChecking, "USD",

@@ -11,9 +11,11 @@
 // t.Parallel: the template build is guarded by sync.Once and each test writes to
 // its own t.TempDir.
 //
-//   - New    returns an open DB closed via t.Cleanup (services/repository tests).
-//   - NewFile returns the open DB and its path and does NOT auto-close, for
+//   - New       returns an open DB closed via t.Cleanup (services/repository tests).
+//   - NewFile   returns the open DB and its path and does NOT auto-close, for
 //     fixtures that seed, close, and hand the path to a command that reopens it.
+//   - NewFileIn is NewFile but writes into a caller-supplied dir, for tests that
+//     keep the DB beside other files (an export target, an import source).
 package dbtest
 
 import (
@@ -53,9 +55,16 @@ func buildTemplate() {
 	templatePath = path
 }
 
-// copyTemplate writes a private copy of the migrated template into the test's
-// temp dir under name and returns its path.
+// copyTemplate writes a private copy of the migrated template into a fresh
+// t.TempDir under name and returns its path.
 func copyTemplate(t *testing.T, name string) string {
+	t.Helper()
+	return copyTemplateInto(t, t.TempDir(), name)
+}
+
+// copyTemplateInto writes a private copy of the migrated template into dir under
+// name and returns its path.
+func copyTemplateInto(t *testing.T, dir, name string) string {
 	t.Helper()
 
 	templateOnce.Do(buildTemplate)
@@ -67,7 +76,7 @@ func copyTemplate(t *testing.T, name string) string {
 	if err != nil {
 		t.Fatalf("dbtest: read template: %v", err)
 	}
-	path := filepath.Join(t.TempDir(), name)
+	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("dbtest: write test db: %v", err)
 	}
@@ -94,8 +103,21 @@ func New(t *testing.T) *db.DB {
 // dir is cleaned.
 func NewFile(t *testing.T, name string) (*db.DB, string) {
 	t.Helper()
+	return openFile(t, copyTemplate(t, name))
+}
 
-	path := copyTemplate(t, name)
+// NewFileIn is like NewFile but writes the database copy into dir instead of a
+// fresh t.TempDir. Use it when a test reuses one directory for the DB and other
+// files — e.g. an export target or an import source — so the paths stay
+// colocated the way the original db.Create-based code expected. Pass t.TempDir()
+// as dir to keep automatic cleanup.
+func NewFileIn(t *testing.T, dir, name string) (*db.DB, string) {
+	t.Helper()
+	return openFile(t, copyTemplateInto(t, dir, name))
+}
+
+func openFile(t *testing.T, path string) (*db.DB, string) {
+	t.Helper()
 	database, err := db.Open(path)
 	if err != nil {
 		t.Fatalf("dbtest: open test db: %v", err)

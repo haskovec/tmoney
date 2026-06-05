@@ -2,13 +2,13 @@ package scheduled_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	scheduleddom "github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -27,17 +27,11 @@ func TestScheduledSkip_MissingFile(t *testing.T) {
 }
 
 func TestScheduledSkip_MissingID(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "skip", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "skip", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(scheduled skip) without ID arg should return error")
 	}
@@ -47,17 +41,11 @@ func TestScheduledSkip_MissingID(t *testing.T) {
 }
 
 func TestScheduledSkip_InvalidID(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "skip", "invalid-uuid", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "skip", "invalid-uuid", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(scheduled skip) with invalid ID should return error")
 	}
@@ -67,17 +55,11 @@ func TestScheduledSkip_InvalidID(t *testing.T) {
 }
 
 func TestScheduledSkip_NotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "skip", "00000000-0000-0000-0000-000000000000", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "skip", "00000000-0000-0000-0000-000000000000", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(scheduled skip) with nonexistent ID should return error")
 	}
@@ -87,13 +69,7 @@ func TestScheduledSkip_NotFound(t *testing.T) {
 }
 
 func TestScheduledSkip_Success(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -119,7 +95,7 @@ func TestScheduledSkip_Success(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "skip", stID, "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "skip", stID, "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled skip): %v\nstderr=%s", err, stderr)
 	}

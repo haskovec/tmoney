@@ -2,32 +2,19 @@ package integration
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 // TestAccountLifecycle tests the complete account lifecycle:
 // create database -> run migrations -> create account -> list accounts -> update -> delete -> cleanup
 func TestAccountLifecycle(t *testing.T) {
-	// Create a temporary directory for the test database
-	tempDir, err := os.MkdirTemp("", "tmoney-integration-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir) // Cleanup
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	// Step 1: Create a new database (this also runs migrations)
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	defer database.Close()
 
 	// Verify schema version is correct
@@ -175,19 +162,7 @@ func TestAccountLifecycle(t *testing.T) {
 
 // TestAlphanumericAccountNumber tests that account numbers with letters are stored and retrieved correctly.
 func TestAlphanumericAccountNumber(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-integration-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	repo := account.NewRepository(database)
 
@@ -232,20 +207,7 @@ func TestAlphanumericAccountNumber(t *testing.T) {
 
 // TestMultipleAccounts tests creating and listing multiple accounts.
 func TestMultipleAccounts(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-integration-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	// Create database
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	repo := account.NewRepository(database)
 
@@ -296,19 +258,7 @@ func TestMultipleAccounts(t *testing.T) {
 
 // TestAccountWithTransactionsCannotBeDeleted tests that an account with transactions cannot be deleted.
 func TestAccountActiveFilter(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-integration-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	repo := account.NewRepository(database)
 
@@ -348,24 +298,12 @@ func TestAccountActiveFilter(t *testing.T) {
 
 // TestAccountNotFound tests error handling for non-existent accounts.
 func TestAccountNotFound(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-integration-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	repo := account.NewRepository(database)
 
 	// Try to get non-existent account by ID
-	_, err = repo.GetByID(types.NewID())
+	_, err := repo.GetByID(types.NewID())
 	if err == nil {
 		t.Error("Expected error for non-existent account")
 	}
@@ -396,19 +334,7 @@ func TestAccountNotFound(t *testing.T) {
 // SM-037: existing accounts get track_lots=false; new investment account can set track_lots=true.
 // SM-038: Create, read, and update round-trip for track_lots field.
 func TestAccountTrackLots(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-tracklots-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	// Verify schema version includes the track_lots migration
 	version, err := database.SchemaVersion()
@@ -552,22 +478,10 @@ func TestAccountTrackLots(t *testing.T) {
 
 // TestAccountTrackLotsColumnExists verifies the track_lots column exists in the accounts table schema.
 func TestAccountTrackLotsColumnExists(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-tracklots-schema-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	var colName string
-	err = database.Conn().QueryRow(
+	err := database.Conn().QueryRow(
 		`SELECT column_name FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'track_lots'`,
 	).Scan(&colName)
 	if err != nil {
@@ -579,19 +493,7 @@ func TestAccountTrackLotsColumnExists(t *testing.T) {
 }
 
 func TestCheckSchema(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tmoney-schema-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create database: %v", err)
-	}
-	defer database.Close()
+	database := dbtest.New(t)
 
 	// Check if UNIQUE constraint exists
 	rows, err := database.Conn().Query(`SELECT constraint_type FROM information_schema.table_constraints WHERE table_name = 'accounts'`)

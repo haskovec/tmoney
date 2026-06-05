@@ -2,13 +2,12 @@ package scheduled_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -24,16 +23,11 @@ func TestScheduledAdd_MissingFile(t *testing.T) {
 }
 
 func TestScheduledAdd_MissingAccount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "add", "--file", dbPath, "--frequency", "monthly"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "add", "--file", dbPath, "--frequency", "monthly"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(scheduled add) without --account should return error")
 	}
@@ -43,16 +37,11 @@ func TestScheduledAdd_MissingAccount(t *testing.T) {
 }
 
 func TestScheduledAdd_MissingFrequency(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "add", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "add", "--file", dbPath, "--account", "Checking"}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(scheduled add) without --frequency should return error")
 	}
@@ -62,16 +51,11 @@ func TestScheduledAdd_MissingFrequency(t *testing.T) {
 }
 
 func TestScheduledAdd_InvalidFrequency(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"scheduled", "add",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -86,12 +70,7 @@ func TestScheduledAdd_InvalidFrequency(t *testing.T) {
 }
 
 func TestScheduledAdd_Success(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
 		"Checking",
@@ -106,7 +85,7 @@ func TestScheduledAdd_Success(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"scheduled", "add",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -136,12 +115,7 @@ func TestScheduledAdd_Success(t *testing.T) {
 }
 
 func TestScheduledAdd_WithAutoPost(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
 		"Checking",
@@ -156,7 +130,7 @@ func TestScheduledAdd_WithAutoPost(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"scheduled", "add",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -177,12 +151,7 @@ func TestScheduledAdd_WithAutoPost(t *testing.T) {
 }
 
 func TestScheduledAdd_LeadDaysWithoutAutoPost(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
 		"Checking",
@@ -197,7 +166,7 @@ func TestScheduledAdd_LeadDaysWithoutAutoPost(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"scheduled", "add",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -214,12 +183,7 @@ func TestScheduledAdd_LeadDaysWithoutAutoPost(t *testing.T) {
 }
 
 func TestScheduledAdd_InvalidLeadDays(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
 		"Checking",
@@ -234,7 +198,7 @@ func TestScheduledAdd_InvalidLeadDays(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"scheduled", "add",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -252,12 +216,7 @@ func TestScheduledAdd_InvalidLeadDays(t *testing.T) {
 }
 
 func TestScheduledAdd_WithOccurrences(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
 		"Checking",
@@ -272,7 +231,7 @@ func TestScheduledAdd_WithOccurrences(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"scheduled", "add",
 		"--file", dbPath,
 		"--account", "Checking",
@@ -291,12 +250,7 @@ func TestScheduledAdd_WithOccurrences(t *testing.T) {
 }
 
 func TestScheduledAdd_VariableAmount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount(
 		"Checking",
@@ -311,7 +265,7 @@ func TestScheduledAdd_VariableAmount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{
+	err := cli.ExecuteWith([]string{
 		"scheduled", "add",
 		"--file", dbPath,
 		"--account", "Checking",

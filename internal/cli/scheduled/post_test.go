@@ -2,13 +2,13 @@ package scheduled_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	scheduleddom "github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -27,17 +27,11 @@ func TestScheduledPost_MissingFile(t *testing.T) {
 }
 
 func TestScheduledPost_MissingID(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "post", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "post", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(scheduled post) without ID arg should return error")
 	}
@@ -47,17 +41,11 @@ func TestScheduledPost_MissingID(t *testing.T) {
 }
 
 func TestScheduledPost_InvalidID(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "post", "invalid-uuid", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "post", "invalid-uuid", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(scheduled post) with invalid ID should return error")
 	}
@@ -67,17 +55,11 @@ func TestScheduledPost_InvalidID(t *testing.T) {
 }
 
 func TestScheduledPost_NotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "post", "00000000-0000-0000-0000-000000000000", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "post", "00000000-0000-0000-0000-000000000000", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(scheduled post) with nonexistent ID should return error")
 	}
@@ -87,13 +69,7 @@ func TestScheduledPost_NotFound(t *testing.T) {
 }
 
 func TestScheduledPost_Success(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -118,7 +94,7 @@ func TestScheduledPost_Success(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "post", stID, "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "post", stID, "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled post): %v\nstderr=%s", err, stderr)
 	}
@@ -147,13 +123,7 @@ func TestScheduledPost_Success(t *testing.T) {
 }
 
 func TestScheduledPost_WithCustomAmount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -171,7 +141,7 @@ func TestScheduledPost_WithCustomAmount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "post", stID, "--amount", "-25.00", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "post", stID, "--amount", "-25.00", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled post --amount): %v\nstderr=%s", err, stderr)
 	}
@@ -183,13 +153,7 @@ func TestScheduledPost_WithCustomAmount(t *testing.T) {
 }
 
 func TestScheduledPost_WithCustomDate(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -207,7 +171,7 @@ func TestScheduledPost_WithCustomDate(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "post", stID, "--date", "2025-06-15", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "post", stID, "--date", "2025-06-15", "--file", dbPath}, stdout, stderr)
 	if err != nil {
 		t.Fatalf("cli.ExecuteWith(scheduled post --date): %v\nstderr=%s", err, stderr)
 	}
@@ -232,13 +196,7 @@ func TestScheduledPost_WithCustomDate(t *testing.T) {
 }
 
 func TestScheduledPost_InvalidDate(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -256,7 +214,7 @@ func TestScheduledPost_InvalidDate(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "post", stID, "--date", "not-a-date", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "post", stID, "--date", "not-a-date", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(scheduled post) with invalid date should return error")
 	}
@@ -266,13 +224,7 @@ func TestScheduledPost_InvalidDate(t *testing.T) {
 }
 
 func TestScheduledPost_InvalidAmount(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -290,7 +242,7 @@ func TestScheduledPost_InvalidAmount(t *testing.T) {
 	database.Close()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err = cli.ExecuteWith([]string{"scheduled", "post", stID, "--amount", "not-a-number", "--file", dbPath}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"scheduled", "post", stID, "--amount", "not-a-number", "--file", dbPath}, stdout, stderr)
 	if err == nil {
 		t.Fatal("cli.ExecuteWith(scheduled post) with invalid amount should return error")
 	}

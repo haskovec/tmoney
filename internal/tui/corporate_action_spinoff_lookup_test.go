@@ -1,11 +1,10 @@
 package tui
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -13,12 +12,7 @@ import (
 )
 
 func TestSpinOffDialog_PriceLookupFillsChildPrice(t *testing.T) {
-	tmpDir := t.TempDir()
-	database, err := db.Create(filepath.Join(tmpDir, "spinoff.tdb"))
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
+	database := dbtest.New(t)
 
 	secRepo := security.NewRepository(database)
 	priceSvc := price.NewService(price.NewRepository(database), secRepo, database)

@@ -2,14 +2,13 @@ package investment_test
 
 import (
 	"bytes"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -20,13 +19,7 @@ import (
 // dbPath. The database is closed after setup.
 func createInvestmentTransferTestDB(t *testing.T) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "transfer.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "transfer.tdb")
 
 	acctRepo := account.NewRepository(database)
 	src := account.NewAccount("Source IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())

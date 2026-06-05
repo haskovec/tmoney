@@ -1,12 +1,11 @@
 package tui
 
 import (
-	"path/filepath"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 )
 
@@ -16,12 +15,7 @@ import (
 // list so callers can resolve "Food" etc. without an extra List() call.
 func newCategorySvcForPersistTest(t *testing.T) (*category.Service, []*category.Category) {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "persistcategory.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("db.Create: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
+	database := dbtest.New(t)
 
 	repo := category.NewRepository(database)
 	svc := category.NewService(repo, database)
