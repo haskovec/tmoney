@@ -12,12 +12,11 @@
 package clitest
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
-	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -26,13 +25,7 @@ import (
 // CreateTestDBWithSecurity creates a test DB and inserts a security, returning the path.
 func CreateTestDBWithSecurity(t *testing.T) (string, *security.Security) {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	repo := security.NewRepository(database)
 	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
@@ -51,13 +44,7 @@ func CreateTestDBWithSecurity(t *testing.T) (string, *security.Security) {
 // CreateTestDBWithSecurityAndPrices creates a test DB with a security plus three sample prices.
 func CreateTestDBWithSecurityAndPrices(t *testing.T) (string, *security.Security) {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 
 	secRepo := security.NewRepository(database)
 	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
@@ -90,13 +77,7 @@ func CreateTestDBWithSecurityAndPrices(t *testing.T) (string, *security.Security
 // and a security. Returns the dbPath. The database is closed after setup.
 func CreateInvestmentTestDB(t *testing.T, trackLots bool) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "invest.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "invest.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
@@ -112,7 +93,7 @@ func CreateInvestmentTestDB(t *testing.T, trackLots bool) string {
 	}
 
 	svc := app.NewServices(database)
-	_, err = svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("50000"), "initial deposit")
+	_, err := svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("50000"), "initial deposit")
 	if err != nil {
 		t.Fatalf("failed to deposit cash: %v", err)
 	}
@@ -133,13 +114,7 @@ func PtrMoney(s string) *types.Money {
 // Returns the DB path. If withSecondSecurity is true, also creates a "GOOG" security.
 func CreateCorporateActionTestDB(t *testing.T, trackLots bool, withSecondSecurity bool) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "corp.tdb")
-
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("failed to create test database: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "corp.tdb")
 
 	acctRepo := account.NewRepository(database)
 	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
@@ -162,7 +137,7 @@ func CreateCorporateActionTestDB(t *testing.T, trackLots bool, withSecondSecurit
 	}
 
 	svc := app.NewServices(database)
-	_, err = svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("100000"), "initial deposit")
+	_, err := svc.Investment.Deposit(acct.ID, types.Today(), types.MustNewMoney("100000"), "initial deposit")
 	if err != nil {
 		t.Fatalf("failed to deposit cash: %v", err)
 	}

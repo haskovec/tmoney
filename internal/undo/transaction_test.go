@@ -1,12 +1,12 @@
 package undo_test
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -19,19 +19,7 @@ import (
 
 func createTestDB(t *testing.T) *db.DB {
 	t.Helper()
-	tempDir := t.TempDir()
-	path := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(path)
-	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
-	}
-
-	t.Cleanup(func() {
-		database.Close()
-	})
-
-	return database
+	return dbtest.New(t)
 }
 
 type testEnv struct {

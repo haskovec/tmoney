@@ -1,12 +1,12 @@
 package clitest
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -20,12 +20,7 @@ import (
 // why it lives in clitest rather than a single test file.
 func SetupTransferAccounts(t *testing.T) (string, *account.Account, *account.Account) {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := account.NewRepository(database)
 
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
@@ -48,12 +43,7 @@ func SetupTransferAccounts(t *testing.T) (string, *account.Account, *account.Acc
 // and returns the path plus the four account references.
 func SetupTransferDispatchAccounts(t *testing.T) (string, *account.Account, *account.Account, *account.Account, *account.Account) {
 	t.Helper()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.tdb")
-	database, err := db.Create(dbPath)
-	if err != nil {
-		t.Fatalf("setup: db.Create: %v", err)
-	}
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := account.NewRepository(database)
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("10000.00"), types.Today())
 	if err := repo.Create(checking); err != nil {

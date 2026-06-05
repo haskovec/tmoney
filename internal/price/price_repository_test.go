@@ -1,31 +1,19 @@
 package price
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 func createTestDB(t *testing.T) *db.DB {
 	t.Helper()
-	tempDir := t.TempDir()
-	path := filepath.Join(tempDir, "test.tdb")
-
-	database, err := db.Create(path)
-	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
-	}
-
-	t.Cleanup(func() {
-		database.Close()
-	})
-
-	return database
+	return dbtest.New(t)
 }
 
 // helper to create a security for price tests
