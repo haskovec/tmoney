@@ -383,3 +383,48 @@ func createRawDuckDB(path string) (*DB, error) {
 
 	return &DB{conn: conn, path: path}, nil
 }
+
+// TestMigration023_DropsBlockingPositionAndLotIndexes pins migration 023: the
+// secondary indexes on investment_positions and investment_lots are dropped,
+// because DuckDB's index delete (used internally for UPDATE and for the
+// position upsert's DELETE+INSERT) trips a "Failed to delete all rows from
+// index" fatal error when those ART indexes drift out of sync — which
+// invalidated the database on open once per-security healing began running on
+// corporate-action files.
+func TestMigration023_DropsBlockingPositionAndLotIndexes(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test.tdb")
+
+	db, err := Create(dbPath)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	defer db.Close()
+
+	version, err := db.SchemaVersion()
+	if err != nil {
+		t.Fatalf("SchemaVersion() error = %v", err)
+	}
+	if version < 23 {
+		t.Fatalf("schema version = %d, want >= 23 so migration 023 has run", version)
+	}
+
+	dropped := []string{
+		"idx_positions_account",
+		"idx_positions_security",
+		"idx_lots_account",
+		"idx_lots_security",
+		"idx_lots_closed",
+	}
+	for _, name := range dropped {
+		var count int
+		if err := db.conn.QueryRow(
+			`SELECT COUNT(*) FROM duckdb_indexes() WHERE index_name = ?`, name,
+		).Scan(&count); err != nil {
+			t.Fatalf("querying duckdb_indexes() for %s: %v", name, err)
+		}
+		if count != 0 {
+			t.Errorf("index %q should have been dropped by migration 023, but still exists", name)
+		}
+	}
+}
