@@ -251,8 +251,10 @@ func (a *App) renderInvestmentRegister() string {
 // renderInvestmentTotalReturnLines builds the two header lines that show the
 // total-return breakdown for the investment account: a components line
 // (Unrealized · Realized · Div · Int · Fees) and a summary line
-// (Total return $amount (pct%)). Returns ("", "") when no valuation is
-// loaded so the register still renders during the initial load.
+// (Total return $amount (pct%) · Value $total), where Value is the
+// account's total worth (cash + holdings market value). Returns ("", "")
+// when no valuation is loaded so the register still renders during the
+// initial load.
 //
 // FeesPaid is stored as a positive magnitude on the valuation per the
 // total-return spec; the line negates it before formatting so the leading
@@ -309,6 +311,11 @@ func (a *App) renderInvestmentTotalReturnLines() (string, string) {
 	if v.AnyRealizedUnavailable {
 		total += " " + a.styles.Muted.Render("(partial)")
 	}
+	// Account value (cash + holdings market value) is appended after the
+	// optional (partial) marker: total value is independent of the
+	// realized-gain partiality that marker qualifies, so it must sit
+	// outside the marker's scope.
+	total += " · " + a.styles.Muted.Render("Value") + " " + money(v.TotalValue)
 
 	return breakdown, total
 }

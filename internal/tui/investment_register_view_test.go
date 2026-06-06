@@ -1140,6 +1140,7 @@ func TestRenderInvestmentRegister_TotalReturnHeader(t *testing.T) {
 		"Fees", "-$15.00",
 		"Total return", "$5267.50",
 		"22.51%",
+		"Value $28200.00",
 	}
 	for _, want := range wants {
 		if !strings.Contains(output, want) {
