@@ -142,6 +142,21 @@ func (itt TransactionType) AffectsCash() bool {
 	return false
 }
 
+// CreatesAutoPrice reports whether posting this type auto-creates a
+// security_prices row (source=transaction) at the transaction's date. These
+// are exactly the share+price types whose service constructors call
+// autoCreatePrice (Buy, Sell, ReinvestDividend, FeeLiquidation). Moving one
+// off its date or deleting it must reconcile that price row — see
+// Service.cleanupAutoPrice — so the row is never orphaned.
+func (itt TransactionType) CreatesAutoPrice() bool {
+	switch itt {
+	case TransactionTypeBuy, TransactionTypeSell,
+		TransactionTypeReinvestDividend, TransactionTypeFeeLiquidation:
+		return true
+	}
+	return false
+}
+
 // ParseTransactionType parses a string into a TransactionType.
 func ParseTransactionType(s string) (TransactionType, error) {
 	itt := TransactionType(strings.ToLower(s))

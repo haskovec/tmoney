@@ -322,6 +322,11 @@ func (s *Service) UpdateBuy(
 		}
 		return nil, err
 	}
+	// Reconcile the auto-price at the old (security, date): drop it if this edit
+	// orphaned it, or re-point it to a surviving same-day transaction.
+	if old.SecurityID.Valid {
+		s.cleanupAutoPrice(old.SecurityID.ID, old.Date)
+	}
 	return newTxn, nil
 }
 
@@ -348,6 +353,9 @@ func (s *Service) UpdateSell(
 		}
 		return nil, err
 	}
+	if old.SecurityID.Valid {
+		s.cleanupAutoPrice(old.SecurityID.ID, old.Date)
+	}
 	return newTxn, nil
 }
 
@@ -371,6 +379,9 @@ func (s *Service) UpdateReinvestDividend(
 			return nil, fmt.Errorf("%w (and rollback failed: %v)", err, rerr)
 		}
 		return nil, err
+	}
+	if old.SecurityID.Valid {
+		s.cleanupAutoPrice(old.SecurityID.ID, old.Date)
 	}
 	return newTxn, nil
 }
