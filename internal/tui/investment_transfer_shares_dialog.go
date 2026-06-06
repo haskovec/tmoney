@@ -226,6 +226,9 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 	if err != nil {
 		fields[0].Error = "Invalid date (MM/DD/YYYY)"
 		hasErrors = true
+	} else if msg := a.investmentDialogOpeningDateError(date); msg != "" {
+		fields[0].Error = msg
+		hasErrors = true
 	}
 
 	// Security (index 1)

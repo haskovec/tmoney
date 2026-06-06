@@ -35,6 +35,29 @@ func accountTypeByID(accounts []*account.Account, id types.ID) account.Type {
 	return ""
 }
 
+// accountByID returns the account with the given ID from the loaded list, or nil.
+func accountByID(accounts []*account.Account, id types.ID) *account.Account {
+	for _, a := range accounts {
+		if a.ID == id {
+			return a
+		}
+	}
+	return nil
+}
+
+// transferOpeningDateError returns the inline date-field error when date is
+// before the opening date of any of the named accounts, or "".
+func transferOpeningDateError(accounts []*account.Account, date types.Date, ids ...types.ID) string {
+	for _, id := range ids {
+		if acct := accountByID(accounts, id); acct != nil {
+			if msg := openingDateFieldError(acct, date); msg != "" {
+				return msg
+			}
+		}
+	}
+	return ""
+}
+
 // transferDialogData holds the loaded data needed for the transfer dialog.
 type transferDialogData struct {
 	accounts   []*account.Account
@@ -459,6 +482,9 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	if err != nil {
 		fields[3].Error = "Invalid date (MM/DD/YYYY)"
 		hasErrors = true
+	} else if msg := transferOpeningDateError(a.transferDialogData.accounts, date, fromAccountID, toAccountID); msg != "" {
+		fields[3].Error = msg
+		hasErrors = true
 	}
 
 	if hasErrors {
@@ -573,6 +599,23 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 	if err != nil {
 		fields[1].Error = "Invalid date (MM/DD/YYYY)"
 		hasErrors = true
+	} else {
+		var ids []types.ID
+		switch {
+		case invEdit != nil:
+			ids = append(ids, invEdit.fromAccountID, invEdit.toAccountID)
+		case regularPair != nil:
+			if regularPair.FromTransaction != nil {
+				ids = append(ids, regularPair.FromTransaction.AccountID)
+			}
+			if regularPair.ToTransaction != nil {
+				ids = append(ids, regularPair.ToTransaction.AccountID)
+			}
+		}
+		if msg := transferOpeningDateError(a.transferDialogData.accounts, date, ids...); msg != "" {
+			fields[1].Error = msg
+			hasErrors = true
+		}
 	}
 
 	if hasErrors {

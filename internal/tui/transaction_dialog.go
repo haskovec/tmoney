@@ -63,6 +63,30 @@ func parseDateInput(input string) (types.Date, error) {
 	return types.NewDate(t.Year(), t.Month(), t.Day()), nil
 }
 
+// openingDateFieldError returns the inline date-field error to show when d
+// precedes acct's opening date, mirroring the service-layer guard so the user
+// can fix the date in the dialog rather than after a failed submit. Returns ""
+// when the date is acceptable (or acct is nil).
+func openingDateFieldError(acct *account.Account, d types.Date) string {
+	if acct == nil {
+		return ""
+	}
+	if err := acct.ValidateTransactionDate(d); err != nil {
+		return fmt.Sprintf("Before %s opened (%s)", acct.Name, acct.OpeningDate.Time().Format("01/02/2006"))
+	}
+	return ""
+}
+
+// investmentDialogOpeningDateError applies openingDateFieldError to the account
+// backing the active investment register (the account every investment entry
+// dialog operates on).
+func (a *App) investmentDialogOpeningDateError(d types.Date) string {
+	if a.investmentRegister == nil || a.investmentRegister.account == nil {
+		return ""
+	}
+	return openingDateFieldError(a.investmentRegister.account, d)
+}
+
 // parseAmountInput parses a money string, stripping "$" and handling negatives.
 func parseAmountInput(input string) (types.Money, error) {
 	s := strings.TrimSpace(input)
@@ -625,6 +649,11 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 	if err != nil {
 		fields[0].Error = "Invalid date (MM/DD/YYYY)"
 		hasErrors = true
+	} else if acct := a.sidebar.SelectedAccount(); acct != nil {
+		if msg := openingDateFieldError(acct, date); msg != "" {
+			fields[0].Error = msg
+			hasErrors = true
+		}
 	}
 
 	// Payee name

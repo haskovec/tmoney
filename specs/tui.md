@@ -456,6 +456,12 @@ All dialogs are modal and keyboard-navigable.
 - Required fields are marked with a red `*` next to the label
 - On submit, all fields are validated simultaneously and inline errors appear below each invalid field
 - Editing a field clears its error message
+- A date before the account's opening date is rejected inline on the Date
+  field (e.g. `Before Brokerage opened (01/01/2020)`) so the user can fix it
+  without losing the entry. This mirrors the service-layer guard (see
+  [`specs/transactions.md`](transactions.md) validation rule 7) and applies to
+  the New/Edit Transaction, Transfer, and every investment entry dialog
+  (Buy/Sell/Dividend/Reinvest/cash/Transfer Shares).
 - Cross-field errors (e.g., transfer from/to same account) appear as a dialog-level message above the buttons
 - Async/service errors after dialog close still use the full-screen error display
 

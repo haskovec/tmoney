@@ -243,6 +243,17 @@ for the full table.
 4. For splits: signed sum of split line amounts must equal parent transaction amount
 5. For transfers (whole-transaction or transfer-line): both sides must exist and balance
 6. A transfer-line's `transfer_account_id` must not equal the parent's `account_id` (no self-transfers)
+7. `date` must not be before the account's opening date (the opening date
+   itself is allowed). A transfer checks both accounts; investment buy/sell/
+   dividend/reinvest/cash/transfer operations check the investment account
+   (and the regular leg of a cash transfer checks that account too). This is
+   enforced at the service layer — so it also applies to imports and the CLI —
+   via `account.Account.ValidateTransactionDate`, which returns a
+   `DateBeforeOpeningError`. Corporate-action `exchange` rows are exempt (they
+   carry the action date and are written directly by the corporate-action
+   engine). The rule turns a mistyped year (e.g. `0018` for `2018`) into an
+   immediate rejection instead of a transaction — and auto-created price —
+   thousands of years in the past.
 
 ## Operations
 

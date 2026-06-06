@@ -211,6 +211,9 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 	if err != nil {
 		fields[0].Error = "Invalid date (MM/DD/YYYY)"
 		hasErrors = true
+	} else if msg := a.investmentDialogOpeningDateError(date); msg != "" {
+		fields[0].Error = msg
+		hasErrors = true
 	}
 
 	// Security (index 1)
@@ -294,6 +297,9 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 	date, err := parseDateInput(fields[0].Value)
 	if err != nil {
 		fields[0].Error = "Invalid date (MM/DD/YYYY)"
+		hasErrors = true
+	} else if msg := a.investmentDialogOpeningDateError(date); msg != "" {
+		fields[0].Error = msg
 		hasErrors = true
 	}
 

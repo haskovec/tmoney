@@ -493,6 +493,64 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 	}
 }
 
+func TestSubmitBuyDialog_RejectsDateBeforeAccountOpening(t *testing.T) {
+	secID := types.NewID()
+	app := &App{
+		buyDialog:            buildBuyDialog([]string{"AAPL - Apple Inc."}, nil, []types.ID{secID}),
+		buyDialogData:        &buyDialogData{securities: []*security.Security{}},
+		buyDialogSecurityIDs: []types.ID{secID},
+		investmentRegister: &investmentRegisterData{
+			account: &account.Account{
+				BaseModel:   types.NewBaseModel(),
+				Name:        "Brokerage",
+				Type:        account.TypeInvestment,
+				OpeningDate: types.NewDate(2020, time.January, 1),
+			},
+		},
+	}
+
+	fields := app.buyDialog.Fields()
+	fields[0].Value = "06/15/2019" // parses fine, but precedes the opening date
+	fields[2].Value = "10"
+	fields[4].Value = "150.00"
+
+	model, cmd := app.submitBuyDialog()
+	updatedApp := model.(*App)
+
+	if cmd != nil {
+		t.Error("submit must not proceed when the date precedes the account's opening date")
+	}
+	if updatedApp.buyDialog == nil {
+		t.Fatal("dialog should remain open so the user can fix the date")
+	}
+	got := updatedApp.buyDialog.Fields()[0].Error
+	if got == "" || got == "Invalid date (MM/DD/YYYY)" {
+		t.Errorf("date field should carry the opening-date error, got %q", got)
+	}
+	if !strings.Contains(got, "Brokerage") {
+		t.Errorf("opening-date error should name the account, got %q", got)
+	}
+}
+
+func TestOpeningDateFieldError(t *testing.T) {
+	acct := &account.Account{
+		Name:        "Brokerage",
+		OpeningDate: types.NewDate(2020, time.January, 1),
+	}
+	if msg := openingDateFieldError(acct, types.NewDate(2019, time.December, 31)); msg == "" {
+		t.Error("a date before opening should produce an error message")
+	}
+	if msg := openingDateFieldError(acct, types.NewDate(2020, time.January, 1)); msg != "" {
+		t.Errorf("the opening date itself should be allowed, got %q", msg)
+	}
+	if msg := openingDateFieldError(acct, types.NewDate(2021, time.June, 1)); msg != "" {
+		t.Errorf("a date after opening should be allowed, got %q", msg)
+	}
+	if msg := openingDateFieldError(nil, types.NewDate(2019, time.December, 31)); msg != "" {
+		t.Errorf("a nil account should produce no error, got %q", msg)
+	}
+}
+
 func TestSubmitBuyDialog_ValidWithPricePerShare(t *testing.T) {
 	secID := types.NewID()
 	acctID := types.NewID()
