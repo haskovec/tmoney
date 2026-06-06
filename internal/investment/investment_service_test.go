@@ -4002,6 +4002,223 @@ func TestService_DeleteTransaction_NonTransfer_DeletesSingleRow(t *testing.T) {
 }
 
 // =============================================================================
+// DeleteTransaction — reverses position/lot side-effects, not just the row.
+// Regression for the reported bug: deleting a (wrong-security) sell in an
+// investment account left the holding short by the sold quantity, because the
+// delete path removed the row + junctions but never reversed the forward
+// position/lot mutation. DeleteTransaction must mirror the Update* path's
+// reverse-then-delete contract.
+// =============================================================================
+
+func TestService_DeleteTransaction_LotTracked_SellRestoresLotShares(t *testing.T) {
+	// The exact reported scenario: a lot-tracked account, a sell entered against
+	// the wrong security, then deleted. The drained lot must be restored to its
+	// full original quantity and reopened.
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "VNQ")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buyTotal := types.MustNewMoney("2000.00")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("20"), &buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	lots, err := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+	if err != nil {
+		t.Fatalf("ListByAccountAndSecurity() error = %v", err)
+	}
+	if len(lots) != 1 {
+		t.Fatalf("expected 1 open lot after buy, got %d", len(lots))
+	}
+	lotID := lots[0].ID
+
+	sellPPS := types.MustNewMoney("58.16")
+	sell, err := env.svc.Sell(acct.ID, sec.ID, date, types.MustNewQuantity("11.08311"), nil, &sellPPS, types.ZeroMoney, "",
+		[]SellLotAllocation{{LotID: lotID, Shares: types.MustNewQuantity("11.08311")}})
+	if err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+
+	if err := env.svc.DeleteTransaction(sell.ID); err != nil {
+		t.Fatalf("DeleteTransaction() error = %v", err)
+	}
+
+	lot, err := env.lotRepo.GetByID(lotID)
+	if err != nil {
+		t.Fatalf("GetByID(lot) error = %v", err)
+	}
+	if lot.Shares.String() != "20" {
+		t.Errorf("lot shares after sell-delete = %q, want %q (sell effect not reversed)", lot.Shares.String(), "20")
+	}
+	if lot.Closed {
+		t.Error("lot should be reopened (closed=false) after its only sell was deleted")
+	}
+
+	total, err := env.svc.TotalSharesForSecurity(sec.ID)
+	if err != nil {
+		t.Fatalf("TotalSharesForSecurity() error = %v", err)
+	}
+	if total.String() != "20" {
+		t.Errorf("total shares after sell-delete = %q, want %q", total.String(), "20")
+	}
+}
+
+func TestService_DeleteTransaction_NonLot_SellRestoresPosition(t *testing.T) {
+	// Same bug on an average-cost (non-lot) account: deleting a sell must add
+	// the shares back to the aggregate position.
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "401k") // non-lot
+	sec := createSec(t, env.secRepo, "VWO")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buyTotal := types.MustNewMoney("2000.00")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("20"), &buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	sellPPS := types.MustNewMoney("58.16")
+	sell, err := env.svc.Sell(acct.ID, sec.ID, date, types.MustNewQuantity("5"), nil, &sellPPS, types.ZeroMoney, "", nil)
+	if err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+
+	if err := env.svc.DeleteTransaction(sell.ID); err != nil {
+		t.Fatalf("DeleteTransaction() error = %v", err)
+	}
+
+	pos, err := env.positionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("GetByAccountAndSecurity() error = %v", err)
+	}
+	if pos.Shares.String() != "20" {
+		t.Errorf("position shares after sell-delete = %q, want %q (sell effect not reversed)", pos.Shares.String(), "20")
+	}
+}
+
+func TestService_DeleteTransaction_LotTracked_BuyRemovesOrphanLot(t *testing.T) {
+	// Deleting a buy in a lot-tracked account must remove the lot it opened —
+	// otherwise the lot is orphaned (its source txn is gone) but still open and
+	// still counted in every open-lot sum.
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buyTotal := types.MustNewMoney("2000.00")
+	buy, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("20"), &buyTotal, nil, types.ZeroMoney, "")
+	if err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	if err := env.svc.DeleteTransaction(buy.ID); err != nil {
+		t.Fatalf("DeleteTransaction() error = %v", err)
+	}
+
+	if _, err := env.lotRepo.GetBySourceTransaction(buy.ID); err == nil {
+		t.Error("lot opened by the deleted buy should have been removed (orphan lot left behind)")
+	}
+	total, err := env.svc.TotalSharesForSecurity(sec.ID)
+	if err != nil {
+		t.Fatalf("TotalSharesForSecurity() error = %v", err)
+	}
+	if !total.IsZero() {
+		t.Errorf("total shares after buy-delete = %q, want 0 (orphan lot still counted)", total.String())
+	}
+}
+
+func TestService_DeleteTransaction_LotTracked_BuySoldAgainstRefused(t *testing.T) {
+	// Deleting a buy whose lot was later sold against must be refused: removing
+	// the lot would leave the surviving sell's junction pointing at a missing
+	// lot and corrupt cost basis. (Same guard the Update path applies.)
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buyTotal := types.MustNewMoney("2000.00")
+	buy, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("20"), &buyTotal, nil, types.ZeroMoney, "")
+	if err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	lots, err := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+	if err != nil {
+		t.Fatalf("ListByAccountAndSecurity() error = %v", err)
+	}
+	lotID := lots[0].ID
+	sellPPS := types.MustNewMoney("110.00")
+	if _, err := env.svc.Sell(acct.ID, sec.ID, date, types.MustNewQuantity("5"), nil, &sellPPS, types.ZeroMoney, "",
+		[]SellLotAllocation{{LotID: lotID, Shares: types.MustNewQuantity("5")}}); err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+
+	if err := env.svc.DeleteTransaction(buy.ID); err == nil {
+		t.Error("deleting a buy whose lot was sold against should be refused")
+	}
+	// The refused delete must be atomic: the buy and its lot still exist.
+	if _, err := env.svc.repo.GetByID(buy.ID); err != nil {
+		t.Errorf("buy txn should still exist after a refused delete: %v", err)
+	}
+	if _, err := env.lotRepo.GetBySourceTransaction(buy.ID); err != nil {
+		t.Errorf("buy lot should still exist after a refused delete: %v", err)
+	}
+}
+
+func TestService_DeleteTransaction_NonLot_ShareTransferRestoresBothPositions(t *testing.T) {
+	// A share transfer touches two accounts; deleting either leg must reverse
+	// both sides — restore the source position and remove the destination's.
+	env := createFullTestService(t)
+	src := createInvAccount(t, env.accountRepo, "Source Brokerage")
+	dst := createInvAccount(t, env.accountRepo, "Dest Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(src.ID, date, types.MustNewMoney("10000.00"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	buyTotal := types.MustNewMoney("5000.00")
+	if _, err := env.svc.Buy(src.ID, sec.ID, date, types.MustNewQuantity("50"), &buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+	xfer, err := env.svc.TransferShares(src.ID, dst.ID, sec.ID, date, types.MustNewQuantity("20"), "rollover", nil)
+	if err != nil {
+		t.Fatalf("TransferShares() error = %v", err)
+	}
+
+	if err := env.svc.DeleteTransaction(xfer.SourceTransaction.ID); err != nil {
+		t.Fatalf("DeleteTransaction() error = %v", err)
+	}
+
+	srcPos, err := env.positionRepo.GetByAccountAndSecurity(src.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("GetByAccountAndSecurity(src) error = %v", err)
+	}
+	if srcPos.Shares.String() != "50" {
+		t.Errorf("source shares after transfer-delete = %q, want %q (transfer not reversed)", srcPos.Shares.String(), "50")
+	}
+	dstPos, err := env.positionRepo.GetByAccountAndSecurity(dst.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("GetByAccountAndSecurity(dst) error = %v", err)
+	}
+	if !dstPos.Shares.IsZero() {
+		t.Errorf("dest shares after transfer-delete = %q, want 0 (received shares not removed)", dstPos.Shares.String())
+	}
+}
+
+// =============================================================================
 // SM-090: Share transfer between investment accounts (non-lot)
 // =============================================================================
 

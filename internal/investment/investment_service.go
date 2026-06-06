@@ -1422,6 +1422,25 @@ func (s *Service) DeleteTransaction(id types.ID) error {
 		return fmt.Errorf("failed to load transaction for delete: %w", err)
 	}
 
+	// Exchange rows are created and unwound exclusively by the corporate-action
+	// engine (mergers/spin-offs); deleting one directly would desync the
+	// action's lots/positions from cost basis. Refuse and point at the proper
+	// reversal path. (CA reversal deletes these via the raw repository, not here.)
+	if txn.Type == TransactionTypeExchange {
+		return fmt.Errorf("cannot delete a corporate-action exchange transaction directly; reverse the corporate action from the Corporate Action History view instead")
+	}
+
+	// Reverse this transaction's effect on positions and lots BEFORE deleting
+	// any rows: Repository.Delete cascades the junction rows that
+	// reverseShareRemoval reads, so the reversal must run first (see
+	// reverseTxnEffects' contract). This mirrors the reverse-then-apply the
+	// Update* methods use — it restores a deleted sell's consumed lots, removes
+	// the orphan lot a deleted buy/reinvest opened, and reverses non-lot
+	// positions. Cash-only types reverse to a no-op.
+	if err := s.reverseTxnEffects(txn); err != nil {
+		return fmt.Errorf("failed to reverse transaction effects before delete: %w", err)
+	}
+
 	if txn.TransferID.Valid {
 		switch txn.Type {
 		case TransactionTypeTransferCash:
@@ -1460,6 +1479,12 @@ func (s *Service) DeleteTransaction(id types.ID) error {
 			}
 			for _, o := range others {
 				if o.TransferID.Valid && o.TransferID.ID == txn.TransferID.ID && o.ID != txn.ID {
+					// Reverse the counterpart's share effect (restore source
+					// lots / remove the dest lot) before its row + junctions are
+					// cascaded away.
+					if err := s.reverseTxnEffects(o); err != nil {
+						return fmt.Errorf("failed to reverse paired share-transfer effects: %w", err)
+					}
 					if err := s.repo.Delete(o.ID); err != nil {
 						return fmt.Errorf("failed to delete paired share-transfer row: %w", err)
 					}
