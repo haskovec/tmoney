@@ -791,7 +791,7 @@ func createPortfolioCmdTestDBWithCorporateAction(t *testing.T) string {
 	database, dbPath := dbtest.NewFile(t, "portfolio_ca.tdb")
 
 	acctRepo := account.NewRepository(database)
-	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.NewDate(2000, time.January, 1))
 	if err := acctRepo.Create(acct); err != nil {
 		t.Fatalf("failed to create investment account: %v", err)
 	}

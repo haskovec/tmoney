@@ -2,6 +2,7 @@ package scheduled
 
 import (
 	"testing"
+	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
@@ -28,7 +29,7 @@ func createTestScheduledTransactionService(t *testing.T) (*Service, *account.Rep
 
 func createTestAccountForScheduled(t *testing.T, repo *account.Repository, name string) *account.Account {
 	t.Helper()
-	acct := account.NewAccount(name, account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	acct := account.NewAccount(name, account.TypeChecking, "USD", types.ZeroMoney, types.NewDate(2000, time.January, 1))
 	if err := repo.Create(acct); err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}

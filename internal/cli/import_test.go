@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
@@ -158,7 +159,7 @@ func TestImport_CSVConfirm(t *testing.T) {
 	database, dbPath := dbtest.NewFileIn(t, tmpDir, "test.tdb")
 
 	repo := account.NewRepository(database)
-	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000"), types.Today())
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000"), types.NewDate(2000, time.January, 1))
 	if err := repo.Create(acct); err != nil {
 		t.Fatalf("failed to create test account: %v", err)
 	}

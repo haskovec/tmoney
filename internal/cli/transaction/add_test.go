@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
@@ -277,7 +278,7 @@ func TestTransactionAdd_WithCategory(t *testing.T) {
 func TestTransactionAdd_WithDateAndMemo(t *testing.T) {
 	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
-	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.NewDate(2000, time.January, 1))
 	if err := acctRepo.Create(acct); err != nil {
 		t.Fatalf("setup: create account: %v", err)
 	}
@@ -321,7 +322,7 @@ func TestTransactionAdd_WithDateAndMemo(t *testing.T) {
 func TestTransactionAdd_FullExample(t *testing.T) {
 	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)
-	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.NewDate(2000, time.January, 1))
 	if err := acctRepo.Create(acct); err != nil {
 		t.Fatalf("setup: create account: %v", err)
 	}

@@ -13,6 +13,7 @@ package clitest
 
 import (
 	"testing"
+	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
@@ -80,7 +81,7 @@ func CreateInvestmentTestDB(t *testing.T, trackLots bool) string {
 	database, dbPath := dbtest.NewFile(t, "invest.tdb")
 
 	acctRepo := account.NewRepository(database)
-	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.NewDate(2000, time.January, 1))
 	acct.TrackLots = trackLots
 	if err := acctRepo.Create(acct); err != nil {
 		t.Fatalf("failed to create investment account: %v", err)
@@ -117,7 +118,7 @@ func CreateCorporateActionTestDB(t *testing.T, trackLots bool, withSecondSecurit
 	database, dbPath := dbtest.NewFile(t, "corp.tdb")
 
 	acctRepo := account.NewRepository(database)
-	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	acct := account.NewAccount("Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.NewDate(2000, time.January, 1))
 	acct.TrackLots = trackLots
 	if err := acctRepo.Create(acct); err != nil {
 		t.Fatalf("failed to create investment account: %v", err)

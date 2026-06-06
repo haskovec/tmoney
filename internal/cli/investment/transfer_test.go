@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
@@ -22,11 +23,11 @@ func createInvestmentTransferTestDB(t *testing.T) string {
 	database, dbPath := dbtest.NewFile(t, "transfer.tdb")
 
 	acctRepo := account.NewRepository(database)
-	src := account.NewAccount("Source IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	src := account.NewAccount("Source IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.NewDate(2000, time.January, 1))
 	if err := acctRepo.Create(src); err != nil {
 		t.Fatalf("failed to create source account: %v", err)
 	}
-	dst := account.NewAccount("Dest 401k", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	dst := account.NewAccount("Dest 401k", account.TypeInvestment, "USD", types.ZeroMoney, types.NewDate(2000, time.January, 1))
 	if err := acctRepo.Create(dst); err != nil {
 		t.Fatalf("failed to create dest account: %v", err)
 	}

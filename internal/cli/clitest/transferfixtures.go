@@ -2,6 +2,7 @@ package clitest
 
 import (
 	"testing"
+	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
@@ -23,11 +24,11 @@ func SetupTransferAccounts(t *testing.T) (string, *account.Account, *account.Acc
 	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := account.NewRepository(database)
 
-	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.NewDate(2000, time.January, 1))
 	if err := repo.Create(checking); err != nil {
 		t.Fatalf("setup: create checking: %v", err)
 	}
-	savings := account.NewAccount("Savings", account.TypeSavings, "USD", types.MustNewMoney("500.00"), types.Today())
+	savings := account.NewAccount("Savings", account.TypeSavings, "USD", types.MustNewMoney("500.00"), types.NewDate(2000, time.January, 1))
 	if err := repo.Create(savings); err != nil {
 		t.Fatalf("setup: create savings: %v", err)
 	}

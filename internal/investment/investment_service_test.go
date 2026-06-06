@@ -33,7 +33,7 @@ func createTestService(t *testing.T) (*Service, *account.Repository) {
 
 func createInvAccount(t *testing.T, repo *account.Repository, name string) *account.Account {
 	t.Helper()
-	acct := account.NewAccount(name, account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	acct := account.NewAccount(name, account.TypeInvestment, "USD", types.ZeroMoney, types.NewDate(2000, time.January, 1))
 	if err := repo.Create(acct); err != nil {
 		t.Fatalf("Failed to create investment account: %v", err)
 	}
@@ -42,7 +42,7 @@ func createInvAccount(t *testing.T, repo *account.Repository, name string) *acco
 
 func createCheckAccount(t *testing.T, repo *account.Repository, name string) *account.Account {
 	t.Helper()
-	acct := account.NewAccount(name, account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	acct := account.NewAccount(name, account.TypeChecking, "USD", types.ZeroMoney, types.NewDate(2000, time.January, 1))
 	if err := repo.Create(acct); err != nil {
 		t.Fatalf("Failed to create checking account: %v", err)
 	}
@@ -92,7 +92,7 @@ func createFullTestService(t *testing.T) *testServiceEnv {
 
 func createLotTrackingAccount(t *testing.T, repo *account.Repository, name string) *account.Account {
 	t.Helper()
-	acct := account.NewAccount(name, account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	acct := account.NewAccount(name, account.TypeInvestment, "USD", types.ZeroMoney, types.NewDate(2000, time.January, 1))
 	acct.TrackLots = true
 	if err := repo.Create(acct); err != nil {
 		t.Fatalf("Failed to create lot-tracking account: %v", err)

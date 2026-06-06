@@ -180,6 +180,31 @@ func NewAccount(name string, accountType Type, currency string, openingBalance t
 	}
 }
 
+// DateBeforeOpeningError is returned when a transaction's date precedes the
+// account's opening date. An account cannot have activity before it existed,
+// so this catches data-entry slips like a mistyped year (e.g. "0018" for
+// "2018") at the point of entry.
+type DateBeforeOpeningError struct {
+	AccountName string
+	OpeningDate types.Date
+	Date        types.Date
+}
+
+func (e *DateBeforeOpeningError) Error() string {
+	return fmt.Sprintf("date %s is before the %q account's opening date (%s)",
+		e.Date.Time().Format("01/02/2006"), e.AccountName, e.OpeningDate.Time().Format("01/02/2006"))
+}
+
+// ValidateTransactionDate returns a DateBeforeOpeningError when d falls before
+// the account's opening date. The opening date itself is allowed (the opening
+// balance is dated on it), so the comparison is strictly-before.
+func (a *Account) ValidateTransactionDate(d types.Date) error {
+	if d.Time().Before(a.OpeningDate.Time()) {
+		return &DateBeforeOpeningError{AccountName: a.Name, OpeningDate: a.OpeningDate, Date: d}
+	}
+	return nil
+}
+
 // Validate validates the account and returns any validation errors.
 func (a *Account) Validate() types.ValidationErrors {
 	v := types.NewValidator()

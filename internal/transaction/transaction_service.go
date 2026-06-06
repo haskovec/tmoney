@@ -835,6 +835,10 @@ func (s *Service) CreateTransfer(fromAccountID, toAccountID types.ID, date types
 		return nil, err
 	}
 
+	if err := s.guardTransferDate(fromAccountID, toAccountID, date); err != nil {
+		return nil, err
+	}
+
 	// Create the transfer pair
 	pair := NewTransferPair(fromAccountID, toAccountID, date, amount)
 
@@ -878,6 +882,10 @@ func (s *Service) UpdateTransfer(transferID types.ID, date types.Date, amount ty
 		return err
 	}
 	if err := s.rejectInvestmentAccount(pair.ToTransaction.AccountID); err != nil {
+		return err
+	}
+
+	if err := s.guardTransferDate(pair.FromTransaction.AccountID, pair.ToTransaction.AccountID, date); err != nil {
 		return err
 	}
 
@@ -934,7 +942,30 @@ func (s *Service) UpdateTransferDate(transferID types.ID, newDate types.Date) er
 		return err
 	}
 
+	pair, err := s.transferRepo.GetByTransferID(transferID)
+	if err != nil {
+		return err
+	}
+	if err := s.guardTransferDate(pair.FromTransaction.AccountID, pair.ToTransaction.AccountID, newDate); err != nil {
+		return err
+	}
+
 	return s.transferRepo.UpdateDate(transferID, newDate)
+}
+
+// guardTransferDate rejects a transfer whose date precedes the opening date of
+// either account it touches.
+func (s *Service) guardTransferDate(fromAccountID, toAccountID types.ID, date types.Date) error {
+	for _, id := range []types.ID{fromAccountID, toAccountID} {
+		acct, err := s.accountRepo.GetByID(id)
+		if err != nil {
+			return fmt.Errorf("failed to load account for date validation: %w", err)
+		}
+		if err := acct.ValidateTransactionDate(date); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // UpdateTransferStatus updates the status on both sides of a transfer.
@@ -1282,6 +1313,18 @@ func (s *Service) validateTransaction(transaction *Transaction) error {
 	errors := transaction.Validate()
 	if errors.HasErrors() {
 		return &types.ServiceValidationError{Errors: errors}
+	}
+	// Reject activity dated before the account opened (catches mistyped years
+	// such as "0018" for "2018"). Voided rows retain their original date and
+	// are not re-validated here.
+	if !transaction.IsVoid() {
+		acct, err := s.accountRepo.GetByID(transaction.AccountID)
+		if err != nil {
+			return fmt.Errorf("failed to load account for date validation: %w", err)
+		}
+		if err := acct.ValidateTransactionDate(transaction.Date); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -18,33 +18,38 @@ import (
 // tests pin the reconciliation: orphans are removed, but prices shared by a
 // surviving same-day transaction are kept (and re-pointed to a survivor), and
 // manual/import/api prices are never touched.
+//
+// The original "0018" typo can no longer be entered at all — Account opening-
+// date validation (account.Account.ValidateTransactionDate) now rejects a buy
+// dated before the account opened. This test therefore exercises the same
+// price-moves-with-the-date reconciliation across a legitimate date edit.
 // =============================================================================
 
 func TestAutoPriceCleanup_EditBuyDate_MovesPrice(t *testing.T) {
 	env := createFullTestService(t)
 	acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
 	sec := createSec(t, env.secRepo, "VTI")
-	wrongDate := types.NewDate(18, time.May, 3) // the "0018" typo
-	rightDate := types.NewDate(2018, time.May, 3)
+	origDate := types.NewDate(2018, time.May, 3)
+	editedDate := types.NewDate(2019, time.June, 15)
 	shares := types.MustNewQuantity("1")
 	buyPrice := types.MustNewMoney("135.05")
 
-	buy, err := env.svc.Buy(acct.ID, sec.ID, wrongDate, shares, nil, &buyPrice, types.ZeroMoney, "")
+	buy, err := env.svc.Buy(acct.ID, sec.ID, origDate, shares, nil, &buyPrice, types.ZeroMoney, "")
 	if err != nil {
 		t.Fatalf("Buy() error = %v", err)
 	}
-	if _, err := env.priceRepo.GetBySecurityAndDate(sec.ID, wrongDate); err != nil {
-		t.Fatalf("expected auto-price at wrong date after Buy: %v", err)
+	if _, err := env.priceRepo.GetBySecurityAndDate(sec.ID, origDate); err != nil {
+		t.Fatalf("expected auto-price at original date after Buy: %v", err)
 	}
 
-	if _, err := env.svc.UpdateBuy(buy.ID, acct.ID, sec.ID, rightDate, shares, nil, &buyPrice, types.ZeroMoney, ""); err != nil {
+	if _, err := env.svc.UpdateBuy(buy.ID, acct.ID, sec.ID, editedDate, shares, nil, &buyPrice, types.ZeroMoney, ""); err != nil {
 		t.Fatalf("UpdateBuy() error = %v", err)
 	}
 
-	if p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, wrongDate); err == nil {
-		t.Errorf("expected wrong-date auto-price removed, still present: %s", p.Price.String())
+	if p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, origDate); err == nil {
+		t.Errorf("expected original-date auto-price removed, still present: %s", p.Price.String())
 	}
-	got, err := env.priceRepo.GetBySecurityAndDate(sec.ID, rightDate)
+	got, err := env.priceRepo.GetBySecurityAndDate(sec.ID, editedDate)
 	if err != nil {
 		t.Fatalf("expected auto-price at corrected date: %v", err)
 	}

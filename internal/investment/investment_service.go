@@ -501,6 +501,19 @@ func (s *Service) validateTransaction(txn *Transaction) error {
 	if errors.HasErrors() {
 		return &types.ServiceValidationError{Errors: errors}
 	}
+	// Reject activity dated before the account opened (catches mistyped years
+	// such as "0018" for "2018"). Corporate-action Exchange rows carry the
+	// action date and are written via the repository, not this path, so they
+	// are never seen here; the type guard is belt-and-suspenders.
+	if txn.Type != TransactionTypeExchange {
+		acct, err := s.accountRepo.GetByID(txn.AccountID)
+		if err != nil {
+			return fmt.Errorf("failed to load account for date validation: %w", err)
+		}
+		if err := acct.ValidateTransactionDate(txn.Date); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -896,6 +909,12 @@ func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, d
 		return nil, fmt.Errorf("cannot transfer between the same account")
 	}
 
+	// The investment-side row is date-checked by validateTransaction; guard
+	// the regular-side account's opening date here (it goes through txnRepo).
+	if err := regularAcct.ValidateTransactionDate(date); err != nil {
+		return nil, err
+	}
+
 	// Cash balance is allowed to go negative — see Withdrawal for rationale.
 
 	transferID := types.NewID()
@@ -967,6 +986,12 @@ func (s *Service) DepositFromAccount(investmentAccountID, regularAccountID types
 	// Check that the two accounts are different
 	if investmentAccountID == regularAccountID {
 		return nil, fmt.Errorf("cannot transfer between the same account")
+	}
+
+	// The investment-side row is date-checked by validateTransaction; guard
+	// the regular-side account's opening date here (it goes through txnRepo).
+	if err := regularAcct.ValidateTransactionDate(date); err != nil {
+		return nil, err
 	}
 
 	transferID := types.NewID()
