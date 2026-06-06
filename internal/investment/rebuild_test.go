@@ -156,3 +156,183 @@ func TestRebuildPositions_LotTracking(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// Per-security corporate-action gate: healing skips only the securities that
+// actually participate in a corporate action, not the whole database. This is
+// what lets a clean security (e.g. VNQ) auto-heal on a database that also holds
+// securities with splits/mergers/spin-offs.
+// =============================================================================
+
+func TestSyncPositionAndLots_PerSecurityCorporateActionGate(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage") // non-lot
+	withCA := createSec(t, env.secRepo, "SCHB")
+	clean := createSec(t, env.secRepo, "VNQ")
+	date := types.NewDate(2024, time.March, 15)
+
+	_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+	price := types.MustNewMoney("50.00")
+	_, _ = env.svc.Buy(acct.ID, withCA.ID, date, types.MustNewQuantity("10"), nil, &price, types.ZeroMoney, "")
+	_, _ = env.svc.Buy(acct.ID, clean.ID, date, types.MustNewQuantity("20"), nil, &price, types.ZeroMoney, "")
+
+	// Record a corporate action on SCHB only.
+	if err := env.caRepo.Create(NewCorporateAction(ActionTypeSplit, withCA.ID, date, `{"numerator":2,"denominator":1}`)); err != nil {
+		t.Fatalf("caRepo.Create() error = %v", err)
+	}
+
+	// Desync both stored positions to zero.
+	zClean := NewPositionWithShares(acct.ID, clean.ID, types.ZeroQuantity, types.ZeroMoney)
+	if err := env.positionRepo.CreateOrUpdate(&zClean); err != nil {
+		t.Fatalf("CreateOrUpdate(clean) error = %v", err)
+	}
+	zCA := NewPositionWithShares(acct.ID, withCA.ID, types.ZeroQuantity, types.ZeroMoney)
+	if err := env.positionRepo.CreateOrUpdate(&zCA); err != nil {
+		t.Fatalf("CreateOrUpdate(withCA) error = %v", err)
+	}
+
+	// Syncing the clean security heals it even though a corporate action exists.
+	if err := env.svc.syncPositionAndLots(acct.ID, clean.ID); err != nil {
+		t.Fatalf("syncPositionAndLots(clean) error = %v", err)
+	}
+	posClean, err := env.positionRepo.GetByAccountAndSecurity(acct.ID, clean.ID)
+	if err != nil {
+		t.Fatalf("GetByAccountAndSecurity(clean) error = %v", err)
+	}
+	if posClean.Shares.String() != "20" {
+		t.Errorf("clean security should heal to 20, got %s", posClean.Shares.String())
+	}
+
+	// Syncing the CA-involved security is still a no-op (left desynced).
+	if err := env.svc.syncPositionAndLots(acct.ID, withCA.ID); err != nil {
+		t.Fatalf("syncPositionAndLots(withCA) error = %v", err)
+	}
+	posCA, err := env.positionRepo.GetByAccountAndSecurity(acct.ID, withCA.ID)
+	if err != nil {
+		t.Fatalf("GetByAccountAndSecurity(withCA) error = %v", err)
+	}
+	if !posCA.Shares.IsZero() {
+		t.Errorf("CA-involved security must be skipped, got shares %s", posCA.Shares.String())
+	}
+}
+
+func TestRebuildPositions_HealsNonCASecuritiesPerSecurity(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage") // non-lot
+	withCA := createSec(t, env.secRepo, "ETHE")
+	clean := createSec(t, env.secRepo, "VNQ")
+	date := types.NewDate(2024, time.March, 15)
+
+	_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+	price := types.MustNewMoney("50.00")
+	_, _ = env.svc.Buy(acct.ID, withCA.ID, date, types.MustNewQuantity("10"), nil, &price, types.ZeroMoney, "")
+	_, _ = env.svc.Buy(acct.ID, clean.ID, date, types.MustNewQuantity("20"), nil, &price, types.ZeroMoney, "")
+
+	if err := env.caRepo.Create(NewCorporateAction(ActionTypeSplit, withCA.ID, date, `{"numerator":2,"denominator":1}`)); err != nil {
+		t.Fatalf("caRepo.Create() error = %v", err)
+	}
+
+	// Desync both.
+	zClean := NewPositionWithShares(acct.ID, clean.ID, types.ZeroQuantity, types.ZeroMoney)
+	_ = env.positionRepo.CreateOrUpdate(&zClean)
+	zCA := NewPositionWithShares(acct.ID, withCA.ID, types.ZeroQuantity, types.ZeroMoney)
+	_ = env.positionRepo.CreateOrUpdate(&zCA)
+
+	res, err := env.svc.RebuildPositions(acct.ID)
+	if err != nil {
+		t.Fatalf("RebuildPositions() error = %v", err)
+	}
+	if res.SkippedSecurities != 1 {
+		t.Errorf("expected 1 skipped corporate-action security, got %d", res.SkippedSecurities)
+	}
+	if !res.HasCorporateActions {
+		t.Error("HasCorporateActions should be true when a security was skipped")
+	}
+
+	posClean, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, clean.ID)
+	if posClean.Shares.String() != "20" {
+		t.Errorf("clean security should be healed to 20, got %s", posClean.Shares.String())
+	}
+	posCA, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, withCA.ID)
+	if !posCA.Shares.IsZero() {
+		t.Errorf("CA-involved security must be left untouched, got shares %s", posCA.Shares.String())
+	}
+}
+
+func TestRebuildPositions_LotTracked_HealsCleanSecurityWithCAPresent(t *testing.T) {
+	// Mirrors the reported bug: a lot-tracked account where a clean security's
+	// lot was drained by a now-deleted sell (junction gone, lot left short),
+	// while another security carries a corporate action. The clean security's
+	// lot must be restored even though the database has corporate-action history.
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Wealthfront IRA")
+	withCA := createSec(t, env.secRepo, "GBTC")
+	vnq := createSec(t, env.secRepo, "VNQ")
+	date := types.NewDate(2024, time.March, 15)
+
+	_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("100000.00"), "")
+	caPrice := types.MustNewMoney("50.00")
+	_, _ = env.svc.Buy(acct.ID, withCA.ID, date, types.MustNewQuantity("10"), nil, &caPrice, types.ZeroMoney, "")
+	vnqPrice := types.MustNewMoney("90.00")
+	_, _ = env.svc.Buy(acct.ID, vnq.ID, date, types.MustNewQuantity("20"), nil, &vnqPrice, types.ZeroMoney, "")
+
+	if err := env.caRepo.Create(NewCorporateAction(ActionTypeSplit, withCA.ID, date, `{"numerator":2,"denominator":1}`)); err != nil {
+		t.Fatalf("caRepo.Create() error = %v", err)
+	}
+
+	// Simulate a deleted sell on VNQ: drain the lot's shares with no junction.
+	vnqLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, vnq.ID, false)
+	if len(vnqLots) != 1 {
+		t.Fatalf("expected 1 VNQ lot, got %d", len(vnqLots))
+	}
+	vnqLotID := vnqLots[0].ID
+	if err := env.lotRepo.UpdateSharesAndClosed(vnqLotID, types.MustNewQuantity("8.91689"), false); err != nil {
+		t.Fatalf("UpdateSharesAndClosed() error = %v", err)
+	}
+
+	if _, err := env.svc.RebuildPositions(acct.ID); err != nil {
+		t.Fatalf("RebuildPositions() error = %v", err)
+	}
+
+	// VNQ lot restored to its full original quantity (no surviving junction).
+	vnqLot, _ := env.lotRepo.GetByID(vnqLotID)
+	if vnqLot.Shares.String() != "20" {
+		t.Errorf("VNQ lot should be restored to 20, got %s", vnqLot.Shares.String())
+	}
+	// The CA security's lot must be left as the corporate action set it.
+	caLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, withCA.ID, false)
+	if len(caLots) != 1 || caLots[0].Shares.String() != "10" {
+		t.Errorf("CA security lot should be untouched at 10, got %v", caLots)
+	}
+}
+
+func TestHealAllAccounts_HealsCleanSecuritiesWhenCorporateActionsPresent(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	withCA := createSec(t, env.secRepo, "BTC")
+	clean := createSec(t, env.secRepo, "VOO")
+	date := types.NewDate(2024, time.March, 15)
+
+	_, _ = env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), "")
+	price := types.MustNewMoney("50.00")
+	_, _ = env.svc.Buy(acct.ID, withCA.ID, date, types.MustNewQuantity("10"), nil, &price, types.ZeroMoney, "")
+	_, _ = env.svc.Buy(acct.ID, clean.ID, date, types.MustNewQuantity("20"), nil, &price, types.ZeroMoney, "")
+
+	if err := env.caRepo.Create(NewCorporateAction(ActionTypeSplit, withCA.ID, date, `{"numerator":2,"denominator":1}`)); err != nil {
+		t.Fatalf("caRepo.Create() error = %v", err)
+	}
+	zClean := NewPositionWithShares(acct.ID, clean.ID, types.ZeroQuantity, types.ZeroMoney)
+	_ = env.positionRepo.CreateOrUpdate(&zClean)
+
+	healed, err := env.svc.HealAllAccounts()
+	if err != nil {
+		t.Fatalf("HealAllAccounts() error = %v", err)
+	}
+	if healed < 1 {
+		t.Errorf("expected the account to be counted as healed (clean security recomputed), got %d", healed)
+	}
+	posClean, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, clean.ID)
+	if posClean.Shares.String() != "20" {
+		t.Errorf("clean security should heal on launch to 20, got %s", posClean.Shares.String())
+	}
+}

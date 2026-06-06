@@ -896,10 +896,12 @@ junction records. **You normally don't need to run this** — the app
 automatically heals desynced positions when it opens a database and
 again whenever you save a buy, sell, reinvest, fee-liquidation, or
 share transfer. The command is provided as an explicit
-recovery/diagnostic tool. It refuses to run on databases that contain
-corporate-action records (splits, mergers, spin-offs), since those
-mutate positions and lots outside the ledger and a naive replay would
-corrupt cost basis.
+recovery/diagnostic tool. Securities that participate in a corporate
+action (split, merger, spin-off) are **skipped per-security**, since
+those mutate positions and lots outside the ledger and a naive replay
+would corrupt that security's cost basis; every other security is still
+rebuilt — so a clean holding heals even on a database that contains
+corporate-action history.
 
 ```bash
 # Preview enabling lot tracking on an existing account (no changes made)

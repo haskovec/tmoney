@@ -332,10 +332,14 @@ operation (Buy, Sell, ReinvestDividend, FeeLiquidation,
 TransferShares) calls `syncPositionAndLots` for the affected
 (account, security) before reading the stored row, and
 `Service.HealAllAccounts` runs once whenever `app.NewServices` builds
-a registry (i.e. on every CLI command and TUI launch). Both paths are
-silent no-ops on databases that contain corporate-action records.
-The `tmoney investment rebuild-positions` command remains available
-as an explicit recovery/diagnostic tool.
+a registry (i.e. on every CLI command and TUI launch). The
+corporate-action guard is **per-security**: only securities that
+participate in a corporate action (split/merger/spin-off) are skipped,
+since their cost basis was mutated outside the ledger; every other
+security heals normally even on a database that holds corporate-action
+history. The `tmoney investment rebuild-positions` command remains
+available as an explicit recovery/diagnostic tool and follows the same
+per-security rule.
 
 ## v1.5 Features (Not in v1)
 

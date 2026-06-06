@@ -15,7 +15,8 @@ type RebuildResult struct {
 	AccountName         string
 	PositionsRecomputed int
 	LotsRecomputed      int
-	HasCorporateActions bool // true → rebuild skipped because corporate actions exist
+	SkippedSecurities   int  // securities left untouched because they participate in a corporate action
+	HasCorporateActions bool // true → at least one security was skipped for the above reason
 }
 
 // RebuildPositions recomputes investment_positions and the shares/closed
@@ -32,17 +33,15 @@ func (s *Service) RebuildPositions(accountID types.ID) (*RebuildResult, error) {
 		return nil, err
 	}
 
+	// Securities that participate in a corporate action are skipped (their
+	// positions/lots were mutated outside the ledger and a naive replay would
+	// corrupt cost basis); every other security is replayed normally. This is
+	// per-security rather than all-or-nothing, so a clean security heals even on
+	// a database that holds corporate-action history.
 	caRepo := NewCorporateActionRepository(s.db)
-	caCount, err := caRepo.CountAll()
+	involved, err := caRepo.InvolvedSecurityIDs()
 	if err != nil {
 		return nil, fmt.Errorf("RebuildPositions: %w", err)
-	}
-	if caCount > 0 {
-		return &RebuildResult{
-			AccountID:           accountID,
-			AccountName:         acct.Name,
-			HasCorporateActions: true,
-		}, nil
 	}
 
 	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{})
@@ -73,6 +72,10 @@ func (s *Service) RebuildPositions(accountID types.ID) (*RebuildResult, error) {
 	// them. To keep things consistent we replay for both account types.
 	result := &RebuildResult{AccountID: accountID, AccountName: acct.Name}
 	for secID, list := range bySecurity {
+		if involved[secID] {
+			result.SkippedSecurities++
+			continue
+		}
 		pos, err := s.replayPosition(accountID, secID, list)
 		if err != nil {
 			return nil, fmt.Errorf("RebuildPositions: %w", err)
@@ -82,9 +85,12 @@ func (s *Service) RebuildPositions(accountID types.ID) (*RebuildResult, error) {
 		}
 		result.PositionsRecomputed++
 	}
+	result.HasCorporateActions = result.SkippedSecurities > 0
 
 	// Delete any stale position rows that no longer have any transactions.
-	if err := s.deleteOrphanPositions(accountID, bySecurity); err != nil {
+	// Corporate-action securities are never treated as orphans — their stored
+	// positions were set by the action, not the ledger.
+	if err := s.deleteOrphanPositions(accountID, bySecurity, involved); err != nil {
 		return nil, fmt.Errorf("RebuildPositions: %w", err)
 	}
 
@@ -109,6 +115,9 @@ func (s *Service) RebuildPositions(accountID types.ID) (*RebuildResult, error) {
 		return nil, fmt.Errorf("RebuildPositions: %w", err)
 	}
 	for _, lot := range lots {
+		if involved[lot.SecurityID] {
+			continue
+		}
 		used := consumed[lot.ID]
 		newShares := lot.OriginalShares.Sub(used)
 		if newShares.IsNegative() {
@@ -130,12 +139,15 @@ func (s *Service) RebuildPositions(accountID types.ID) (*RebuildResult, error) {
 // HealAllAccounts runs RebuildPositions for every investment account in the
 // database. It is intended to be invoked once when the app opens a database
 // so that desynced positions/lots — caused by older binaries or aborted
-// edits — are silently corrected before the user sees them. The function
-// is a no-op on databases that contain corporate-action records.
+// edits — are silently corrected before the user sees them. Healing is
+// per-security: securities that participate in a corporate action are left
+// untouched, but every other security in the account is recomputed even when
+// the database contains corporate-action history.
 //
 // Errors from individual accounts are not fatal: HealAllAccounts logs nothing
 // and continues so a single bad account can't keep the app from launching.
-// The total count of accounts healed is returned for telemetry/testing.
+// The count of accounts where something was actually recomputed is returned
+// for telemetry/testing.
 func (s *Service) HealAllAccounts() (int, error) {
 	accounts, err := s.accountRepo.List(false)
 	if err != nil {
@@ -151,30 +163,35 @@ func (s *Service) HealAllAccounts() (int, error) {
 			// Skip the account; don't break startup.
 			continue
 		}
-		if res.HasCorporateActions {
-			continue
+		if res.PositionsRecomputed > 0 || res.LotsRecomputed > 0 {
+			healed++
 		}
-		healed++
 	}
 	return healed, nil
 }
 
 // syncPositionAndLots recomputes the position for (accountID, securityID)
 // and any lots in the account whose shares disagree with their junction
-// totals. The function is a silent no-op when the database contains any
-// corporate-action records (splits/mergers/spin-offs mutate positions and
-// lots outside the ledger, so a naive replay would corrupt cost basis).
+// totals. The function is a silent no-op only when the given security itself
+// participates in a corporate action (splits/mergers/spin-offs mutate
+// positions and lots outside the ledger, so a naive replay would corrupt that
+// security's cost basis). Securities not touched by any corporate action heal
+// normally even on a database that contains corporate-action history.
 //
 // Called at the top of share-bearing service operations so that desynced
 // state (e.g. from an older binary or an aborted edit) auto-heals on the
 // next user action.
 func (s *Service) syncPositionAndLots(accountID, securityID types.ID) error {
+	// Skip only if THIS security participates in a corporate action: its
+	// positions/lots were mutated outside the ledger, so a naive replay would
+	// corrupt cost basis. Securities not involved in any corporate action heal
+	// normally even when other securities have actions.
 	caRepo := NewCorporateActionRepository(s.db)
-	caCount, err := caRepo.CountAll()
+	involved, err := caRepo.InvolvedSecurityIDs()
 	if err != nil {
 		return fmt.Errorf("syncPositionAndLots: %w", err)
 	}
-	if caCount > 0 {
+	if involved[securityID] {
 		return nil
 	}
 
@@ -307,14 +324,19 @@ func (s *Service) persistRebuiltPosition(accountID, securityID types.ID, pos *Po
 
 // deleteOrphanPositions removes stored positions that no longer have any
 // matching transactions. This cleans up the corruption case where positions
-// got desynced by an aborted edit.
-func (s *Service) deleteOrphanPositions(accountID types.ID, hasTxns map[types.ID][]*Transaction) error {
+// got desynced by an aborted edit. Securities listed in involved (those in a
+// corporate action) are never deleted — their positions were set by the action
+// and are intentionally not derivable from a naive ledger replay.
+func (s *Service) deleteOrphanPositions(accountID types.ID, hasTxns map[types.ID][]*Transaction, involved map[types.ID]bool) error {
 	existing, err := s.positionRepo.ListByAccount(accountID, false)
 	if err != nil {
 		return err
 	}
 	for _, p := range existing {
 		if _, ok := hasTxns[p.SecurityID]; ok {
+			continue
+		}
+		if involved[p.SecurityID] {
 			continue
 		}
 		if err := s.positionRepo.Delete(accountID, p.SecurityID); err != nil {

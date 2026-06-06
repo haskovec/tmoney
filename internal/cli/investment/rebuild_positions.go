@@ -29,7 +29,10 @@ func newInvestmentRebuildPositionsCmd() *cobra.Command {
 			"lot-tracking accounts) from the transaction ledger + lot " +
 			"junction records. Use this to recover from desynced state. " +
 			"If --account is omitted, every investment account is rebuilt. " +
-			"Refuses to run on databases with corporate-action history.",
+			"Securities that participate in a corporate action (split, merger, " +
+			"spin-off) are skipped per-security, since their cost basis cannot " +
+			"be reconstructed by a naive ledger replay; every other security is " +
+			"still rebuilt.",
 		Example: "  tmoney -f personal.tdb investment rebuild-positions\n" +
 			"  tmoney -f personal.tdb investment rebuild-positions --account Brokerage",
 		Args:         cobra.NoArgs,
@@ -95,10 +98,10 @@ func runInvestmentRebuildPositions(opts *investmentRebuildPositionsOptions, w io
 
 // printRebuildResult writes a human-readable summary for one account's rebuild.
 func printRebuildResult(w io.Writer, res *investmentdom.RebuildResult) {
-	if res.HasCorporateActions {
-		fmt.Fprintf(w, "%s: skipped (corporate-action history present; rebuild not safe)\n", res.AccountName)
-		return
-	}
-	fmt.Fprintf(w, "%s: %d position(s) recomputed, %d lot(s) recomputed\n",
+	fmt.Fprintf(w, "%s: %d position(s) recomputed, %d lot(s) recomputed",
 		res.AccountName, res.PositionsRecomputed, res.LotsRecomputed)
+	if res.SkippedSecurities > 0 {
+		fmt.Fprintf(w, ", %d corporate-action security(ies) skipped", res.SkippedSecurities)
+	}
+	fmt.Fprintln(w)
 }

@@ -83,6 +83,39 @@ func (r *CorporateActionRepository) CountAll() (int, error) {
 	return n, nil
 }
 
+// InvolvedSecurityIDs returns the set of security IDs that participate in any
+// corporate action, as either the affected security or the merger/spin-off
+// target. These are the securities whose positions and lots were mutated
+// outside the transaction ledger (splits/mergers/spin-offs), so a naive ledger
+// replay would corrupt their cost basis — heal/rebuild paths must skip them.
+// A security absent from this set can be safely replayed even when other
+// securities have corporate actions, which is what lets per-security healing
+// run on a database that contains corporate-action history.
+func (r *CorporateActionRepository) InvolvedSecurityIDs() (map[types.ID]bool, error) {
+	rows, err := r.db.Conn().Query(`
+		SELECT security_id FROM corporate_actions
+		UNION
+		SELECT target_security_id FROM corporate_actions WHERE target_security_id IS NOT NULL
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list corporate-action securities: %w", err)
+	}
+	defer rows.Close()
+
+	involved := make(map[types.ID]bool)
+	for rows.Next() {
+		var id types.ID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("failed to scan corporate-action security id: %w", err)
+		}
+		involved[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating corporate-action securities: %w", err)
+	}
+	return involved, nil
+}
+
 // ListAll retrieves every corporate action in the database, ordered by
 // action_date DESC (most recent first). Used by the global Corporate
 // Action register.
