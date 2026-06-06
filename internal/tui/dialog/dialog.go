@@ -48,6 +48,18 @@ type Dialog struct {
 	// the title separator and the fields (or buttons, when there are no
 	// fields). Used by info/about dialogs that have no form to fill in.
 	message string
+	// maxHeight bounds the dialog's total rendered height (border + padding
+	// included) so a form taller than the terminal scrolls its field region
+	// instead of overflowing past the status bar. Zero means unbounded —
+	// the legacy behavior, byte-for-byte unchanged. Set per-frame by the
+	// app from the terminal height.
+	maxHeight int
+	// fieldScroll is the current scroll offset, in field-block lines, of the
+	// scrollable field region. It is (re)clamped in Render to keep the
+	// focused field visible, mirroring the Table/Sidebar cursor-follow
+	// idiom; it is only meaningful when the dialog is height-bounded and
+	// overflowing.
+	fieldScroll int
 }
 
 // NewDialog creates a new Dialog with the given title and default Save/Cancel
@@ -92,6 +104,23 @@ func (d *Dialog) Width() int {
 // SetWidth sets the total dialog width.
 func (d *Dialog) SetWidth(w int) {
 	d.width = w
+}
+
+// MaxHeight returns the dialog's height bound (0 = unbounded).
+func (d *Dialog) MaxHeight() int {
+	return d.maxHeight
+}
+
+// SetMaxHeight bounds the dialog's total rendered height (border + padding
+// included). When the form's natural height exceeds this, the field region
+// scrolls to keep the focused field visible and a scrollbar is drawn, so the
+// dialog never overflows past the terminal/status bar. Pass 0 to disable the
+// bound (legacy behavior). Negative values are treated as 0.
+func (d *Dialog) SetMaxHeight(h int) {
+	if h < 0 {
+		h = 0
+	}
+	d.maxHeight = h
 }
 
 // Fields returns the dialog fields.

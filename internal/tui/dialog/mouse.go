@@ -32,10 +32,75 @@ type DialogHitResult struct {
 	ContentX int
 }
 
-// HitTestContent maps dialog-content-local coordinates to the element at that position.
-// x and y are 0-based coordinates relative to the first content line inside border+padding.
-// contentWidth is the usable content width (d.width - dialogHorizontalOverhead).
+// HitTestContent maps dialog-content-local coordinates to the element at that
+// position. x and y are 0-based coordinates relative to the first content line
+// inside border+padding. contentWidth is the usable content width
+// (d.width - DialogHorizontalOverhead).
+//
+// When the dialog is scrolling (height-bounded and overflowing), the field
+// region on screen is a window over the full field block: the title/message
+// stay pinned at the top and the error/buttons stay pinned at the bottom. This
+// translates the on-screen y back into the full (unwindowed) coordinate space
+// the row-walk in hitTestContentFull expects, using the same scroll offset and
+// viewport math as renderScrolled.
 func (d *Dialog) HitTestContent(x, y, contentWidth int) DialogHitResult {
+	if !d.isScrolling() {
+		return d.hitTestContentFull(x, y, contentWidth)
+	}
+
+	lenTop := scrollPinnedTopRows
+	lenBottom := d.bottomRowCount()
+	viewport := max(d.effectiveMaxContent()-lenTop-lenBottom, 1)
+
+	switch {
+	case y < lenTop:
+		// Pinned top rows (title + separator) render at the same y in both
+		// spaces.
+		return d.hitTestContentFull(x, y, contentWidth)
+	case y < lenTop+viewport:
+		// Clicks in the reserved scrollbar gutter (the last two content
+		// columns) are inert — they neither focus a field nor scroll.
+		if fieldWidth := max(contentWidth-2, 5); x >= fieldWidth {
+			return DialogHitResult{Zone: DialogHitNone, ListItemIndex: -1}
+		}
+		// Scrollable body window: shift by the current scroll offset back into
+		// the full-content coordinate space the row-walk expects.
+		return d.hitTestContentFull(x, y+d.fieldScroll, contentWidth)
+	default:
+		// Pinned bottom rows: hit-test directly so the mapping never depends
+		// on the full body height.
+		return d.hitTestBottom(x, y-(lenTop+viewport), contentWidth)
+	}
+}
+
+// hitTestBottom maps a click within the pinned bottom region (the dialog-level
+// error block and the separator + button row) to its element. by is 0-based
+// from the first bottom row.
+func (d *Dialog) hitTestBottom(x, by, contentWidth int) DialogHitResult {
+	none := DialogHitResult{Zone: DialogHitNone, ListItemIndex: -1}
+	row := 0
+	if d.errorMsg != "" {
+		if by == row || by == row+1 { // error line + blank
+			return none
+		}
+		row += 2
+	}
+	if len(d.buttons) > 0 {
+		if by == row { // separator
+			return none
+		}
+		row++
+		if by == row { // button row
+			return d.hitTestButtonRow(x, contentWidth)
+		}
+	}
+	return none
+}
+
+// hitTestContentFull maps coordinates against the full (unwindowed) dialog
+// content, walking each row in render order. Used directly when the dialog is
+// not scrolling, and via the translated coordinates above when it is.
+func (d *Dialog) hitTestContentFull(x, y, contentWidth int) DialogHitResult {
 	none := DialogHitResult{Zone: DialogHitNone, ListItemIndex: -1}
 
 	if y < 0 || x < 0 || x >= contentWidth {

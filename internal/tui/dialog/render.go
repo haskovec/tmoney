@@ -10,8 +10,23 @@ import (
 // DialogHorizontalOverhead is the horizontal space used by dialog border (2) and padding (4).
 const DialogHorizontalOverhead = 6
 
-// Render renders the dialog as a bordered, styled box.
+// Render renders the dialog as a bordered, styled box. When a height bound is
+// set (SetMaxHeight) and the form is taller than that bound, the field region
+// scrolls to keep the focused field visible and a scrollbar is drawn so the
+// dialog never overflows the terminal/status bar. Otherwise the full form is
+// rendered unchanged (the legacy path).
 func (d *Dialog) Render(styles widget.Styles) string {
+	if d.isScrolling() {
+		return d.renderScrolled(styles)
+	}
+	d.fieldScroll = 0
+	return d.renderUnscrolled(styles)
+}
+
+// renderUnscrolled renders the full form with no height clamping — the legacy
+// rendering path, used whenever the dialog fits within its bound or is
+// unbounded.
+func (d *Dialog) renderUnscrolled(styles widget.Styles) string {
 	contentWidth := max(d.width-DialogHorizontalOverhead, 10)
 
 	var lines []string
@@ -70,6 +85,218 @@ func (d *Dialog) Render(styles widget.Styles) string {
 	// terminal default.
 	content = widget.RepaintDialog(content)
 	return styles.Dialog.Width(d.width).Render(content)
+}
+
+// effectiveMaxContent returns the maximum number of content lines (excluding
+// border + padding) the dialog may occupy, or 0 when unbounded.
+func (d *Dialog) effectiveMaxContent() int {
+	if d.maxHeight <= 0 {
+		return 0
+	}
+	return max(d.maxHeight-dialogVerticalOverhead, 1)
+}
+
+// isScrolling reports whether the field region must scroll to fit the height
+// bound. False when unbounded or when the whole form already fits.
+func (d *Dialog) isScrolling() bool {
+	mc := d.effectiveMaxContent()
+	return mc > 0 && d.ContentHeight() > mc
+}
+
+// scrollPinnedTopRows is the number of content rows pinned above the scrollable
+// body when a dialog scrolls: the title and its separator. Everything else
+// (the message block and the fields) lives in the scrollable body so even a
+// message-heavy dialog is bounded.
+const scrollPinnedTopRows = 2
+
+// bottomRowCount returns the number of pinned content rows below the field
+// region (the dialog-level error block and the separator + button row).
+func (d *Dialog) bottomRowCount() int {
+	rows := 0
+	if d.errorMsg != "" {
+		rows += 2 // error line + blank
+	}
+	if len(d.buttons) > 0 {
+		rows += 2 // separator + button row
+	}
+	return rows
+}
+
+// renderScrolled renders a height-bounded dialog whose form is taller than the
+// bound: the title + separator stay pinned on top and the error/buttons stay
+// pinned on the bottom, while the body (message block + fields) is windowed to
+// keep the focused field visible, with a proportional scrollbar in the
+// reserved right column. Putting the message in the body — not the pinned top —
+// means a message-heavy dialog stays bounded too.
+func (d *Dialog) renderScrolled(styles widget.Styles) string {
+	contentWidth := max(d.width-DialogHorizontalOverhead, 10)
+	maxContent := d.effectiveMaxContent()
+
+	// Pinned top: title + separator (scrollPinnedTopRows).
+	top := []string{
+		d.renderTitle(styles, contentWidth),
+		strings.Repeat("─", contentWidth),
+	}
+
+	// Pinned bottom: dialog-level error, separator + button row.
+	var bottom []string
+	if d.errorMsg != "" {
+		bottom = append(bottom, styles.FieldError.Render(d.errorMsg))
+		bottom = append(bottom, "")
+	}
+	if len(d.buttons) > 0 {
+		bottom = append(bottom, strings.Repeat("─", contentWidth))
+		bottom = append(bottom, d.renderButtonRow(styles, contentWidth))
+	}
+
+	// Reserve two right columns (a gutter + the scrollbar) so the bar never
+	// collides with body content.
+	fieldWidth := max(contentWidth-2, 5)
+
+	// Scrollable body: the message block (matching renderUnscrolled's message +
+	// trailing blank) followed by the field block. Field line ranges shift by
+	// the message length.
+	var body []string
+	if d.message != "" {
+		for ln := range strings.SplitSeq(d.message, "\n") {
+			body = append(body, ln)
+		}
+		body = append(body, "")
+	}
+	msgLen := len(body)
+	block, fieldStart, fieldEnd := d.buildFieldBlock(styles, fieldWidth)
+	body = append(body, block...)
+
+	viewport := max(maxContent-len(top)-len(bottom), 1)
+
+	fStart, fEnd := d.focusedFieldRange(fieldStart, fieldEnd)
+	if fStart >= 0 {
+		fStart += msgLen
+		fEnd += msgLen
+	}
+	d.fieldScroll = clampFieldScroll(d.fieldScroll, viewport, len(body), fStart, fEnd)
+
+	endLine := min(d.fieldScroll+viewport, len(body))
+	visible := make([]string, 0, viewport)
+	if d.fieldScroll < len(body) {
+		visible = append(visible, body[d.fieldScroll:endLine]...)
+	}
+	for len(visible) < viewport {
+		visible = append(visible, "")
+	}
+	decorateScrollbar(styles, visible, len(body), viewport, d.fieldScroll, fieldWidth)
+
+	lines := make([]string, 0, len(top)+len(visible)+len(bottom))
+	lines = append(lines, top...)
+	lines = append(lines, visible...)
+	lines = append(lines, bottom...)
+
+	content := strings.Join(lines, "\n")
+	content = widget.RepaintDialog(content)
+	return styles.Dialog.Width(d.width).Render(content)
+}
+
+// buildFieldBlock renders the scrollable field region into a flat slice of
+// lines and records each field's [start,end) line range within it. The block
+// mirrors renderUnscrolled's field section: a blank line before each visible
+// field, the field's rendered line(s), and a trailing blank after the last
+// field. fieldStart[i]/fieldEnd[i] bracket field i's rendered lines (excluding
+// the leading blank); both stay -1 for hidden fields.
+func (d *Dialog) buildFieldBlock(styles widget.Styles, fieldWidth int) (lines []string, fieldStart, fieldEnd []int) {
+	labelWidth := d.maxLabelWidth()
+	fieldStart = make([]int, len(d.fields))
+	fieldEnd = make([]int, len(d.fields))
+	for i := range d.fields {
+		fieldStart[i], fieldEnd[i] = -1, -1
+	}
+	for i, field := range d.fields {
+		if field.Hidden {
+			continue
+		}
+		lines = append(lines, "") // blank line before the field
+		fieldStart[i] = len(lines)
+		rendered := d.renderField(styles, field, i == d.focusIndex, labelWidth, fieldWidth)
+		lines = append(lines, strings.Split(rendered, "\n")...)
+		fieldEnd[i] = len(lines)
+	}
+	if d.hasVisibleFields() {
+		lines = append(lines, "") // trailing blank after all fields
+	}
+	return lines, fieldStart, fieldEnd
+}
+
+// focusedFieldRange returns the [start,end) block-line range of the focused
+// field, or (-1,-1) when focus is on a button (buttons are pinned, so no
+// scroll adjustment is needed).
+func (d *Dialog) focusedFieldRange(fieldStart, fieldEnd []int) (int, int) {
+	if d.focusIndex < 0 || d.focusIndex >= len(d.fields) {
+		return -1, -1
+	}
+	return fieldStart[d.focusIndex], fieldEnd[d.focusIndex]
+}
+
+// clampFieldScroll keeps the focused field's [fStart,fEnd) line range visible
+// within a viewport-high window over `total` lines, mirroring the
+// Table/Sidebar cursor-follow idiom. The end check runs before the start check
+// so a field taller than the viewport is anchored to its top (its remaining
+// rows clip, e.g. a focused combo's own internally-scrolling panel).
+func clampFieldScroll(scroll, viewport, total, fStart, fEnd int) int {
+	if fStart >= 0 {
+		if fEnd > scroll+viewport {
+			scroll = fEnd - viewport
+		}
+		if fStart < scroll {
+			scroll = fStart
+		}
+	}
+	if maxOffset := max(total-viewport, 0); scroll > maxOffset {
+		scroll = maxOffset
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	return scroll
+}
+
+// decorateScrollbar pads each windowed field line to fieldWidth and appends a
+// gutter space plus the proportional scrollbar glyph (thumb █ / track │) for
+// that row.
+func decorateScrollbar(styles widget.Styles, visible []string, total, viewport, scroll, fieldWidth int) {
+	track := styles.Muted.Render("│")
+	thumb := styles.Bold.Render("█")
+	for p := range visible {
+		line := visible[p]
+		// Cap over-wide body lines (e.g. a pathologically long message line)
+		// so they can't soft-wrap inside the box and defeat the height clamp,
+		// and so the scrollbar column stays aligned. Field lines are already
+		// rendered within fieldWidth, so this only ever trims plain text.
+		if lipgloss.Width(line) > fieldWidth {
+			line = widget.TruncateRunes(line, fieldWidth)
+		}
+		glyph := track
+		if scrollbarThumbAt(p, viewport, total, scroll) {
+			glyph = thumb
+		}
+		visible[p] = widget.PadRight(line, fieldWidth) + " " + glyph
+	}
+}
+
+// scrollbarThumbAt reports whether viewport row p falls within the scrollbar
+// thumb when showing `viewport` rows out of `total`, scrolled by `scroll`.
+func scrollbarThumbAt(p, viewport, total, scroll int) bool {
+	if viewport <= 0 || total <= viewport {
+		return false
+	}
+	thumb := max(viewport*viewport/total, 1)
+	maxStart := viewport - thumb
+	start := 0
+	if denom := total - viewport; denom > 0 {
+		start = min(scroll*maxStart/denom, maxStart)
+	}
+	if start < 0 {
+		start = 0
+	}
+	return p >= start && p < start+thumb
 }
 
 func (d *Dialog) maxLabelWidth() int {
@@ -662,9 +889,23 @@ func (d *Dialog) isFieldFocused(field *Field) bool {
 	return d.fields[d.focusIndex] == field
 }
 
-// RenderedHeight returns the total rendered height of the dialog including border and padding.
+// RenderedHeight returns the total rendered height of the dialog including
+// border and padding. When a height bound is set and the form overflows it,
+// the dialog scrolls and is clamped to maxHeight, so the returned height
+// matches what is actually drawn (and what DialogBounds uses to center it).
 func (d *Dialog) RenderedHeight() int {
-	return d.ContentHeight() + dialogVerticalOverhead
+	natural := d.ContentHeight() + dialogVerticalOverhead
+	if d.maxHeight <= 0 || natural <= d.maxHeight {
+		return natural
+	}
+	// Scrolling: the box is pinned top + windowed body + pinned bottom +
+	// border/padding. Mirror renderScrolled's viewport formula so the reported
+	// height always equals what is actually drawn — keeping DialogBounds
+	// centering and mouse mapping consistent, even on a budget too small to
+	// fit the pinned rows (an absurdly short terminal), where the true height
+	// can exceed maxHeight rather than silently desyncing.
+	viewport := max(d.effectiveMaxContent()-scrollPinnedTopRows-d.bottomRowCount(), 1)
+	return scrollPinnedTopRows + viewport + d.bottomRowCount() + dialogVerticalOverhead
 }
 
 // DialogBounds returns the bounding box of the dialog in screen coordinates.

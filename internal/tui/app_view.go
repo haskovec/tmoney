@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -65,15 +66,13 @@ func (a *App) renderLayout() string {
 
 	// Overlay transaction dialog if visible
 	if a.txnDialog != nil && a.txnDialog.IsVisible() {
-		overlay := a.txnDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.txnDialog)
 	}
 
 	// Overlay create-category sub-dialog if visible (sits on top of the
 	// hidden transaction dialog).
 	if a.createCatDialog != nil && a.createCatDialog.IsVisible() {
-		overlay := a.createCatDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.createCatDialog)
 	}
 
 	// Overlay split dialog if visible
@@ -84,14 +83,12 @@ func (a *App) renderLayout() string {
 
 	// Overlay transfer dialog if visible
 	if a.transferDialog != nil && a.transferDialog.IsVisible() {
-		overlay := a.transferDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.transferDialog)
 	}
 
 	// Overlay scheduled dialog if visible
 	if a.schedDialog != nil && a.schedDialog.IsVisible() {
-		overlay := a.schedDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.schedDialog)
 	}
 
 	// Overlay scheduled-preview dialog if visible. For multi-line
@@ -116,92 +113,77 @@ func (a *App) renderLayout() string {
 
 	// Overlay account dialog if visible
 	if a.acctDialog != nil && a.acctDialog.IsVisible() {
-		overlay := a.acctDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.acctDialog)
 	}
 
 	// Overlay backup dialog if visible
 	if a.backupDialog != nil && a.backupDialog.dialog.IsVisible() {
-		overlay := a.backupDialog.dialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.backupDialog.dialog)
 	}
 
 	// Overlay file dialog if visible
 	if a.fileDialog != nil && a.fileDialog.IsVisible() {
-		overlay := a.fileDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.fileDialog)
 	}
 
 	// Overlay reconciliation start dialog if visible
 	if a.reconDialog != nil && a.reconDialog.IsVisible() {
-		overlay := a.reconDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.reconDialog)
 	}
 
 	// Overlay security dialog if visible
 	if a.securityDialog != nil && a.securityDialog.IsVisible() {
-		overlay := a.securityDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.securityDialog)
 	}
 
 	// Overlay price dialog if visible
 	if a.priceDialog != nil && a.priceDialog.IsVisible() {
-		overlay := a.priceDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.priceDialog)
 	}
 
 	// Overlay price import dialog if visible
 	if a.priceImportDialog != nil && a.priceImportDialog.IsVisible() {
-		overlay := a.priceImportDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.priceImportDialog)
 	}
 
 	// Overlay investment type selector dialog if visible
 	if a.investmentTypeSelector != nil && a.investmentTypeSelector.IsVisible() {
-		overlay := a.investmentTypeSelector.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.investmentTypeSelector)
 	}
 
 	// Overlay buy dialog if visible
 	if a.buyDialog != nil && a.buyDialog.IsVisible() {
-		overlay := a.buyDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.buyDialog)
 	}
 
 	// Overlay sell dialog if visible
 	if a.sellDialog != nil && a.sellDialog.IsVisible() {
-		overlay := a.sellDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.sellDialog)
 	}
 
 	// Overlay dividend dialog if visible
 	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
-		overlay := a.dividendDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.dividendDialog)
 	}
 
 	// Overlay cash operation dialog if visible
 	if a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible() {
-		overlay := a.cashOperationDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.cashOperationDialog)
 	}
 
 	// Overlay transfer shares dialog if visible
 	if a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible() {
-		overlay := a.transferSharesDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.transferSharesDialog)
 	}
 
 	// Overlay stock split dialog if visible
 	if a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible() {
-		overlay := a.stockSplitDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.stockSplitDialog)
 	}
 
 	// Overlay merger dialog if visible
 	if a.mergerDialog != nil && a.mergerDialog.IsVisible() {
-		overlay := a.mergerDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.mergerDialog)
 	}
 
 	// Overlay merger confirmation if visible
@@ -212,20 +194,17 @@ func (a *App) renderLayout() string {
 
 	// Overlay spin-off dialog if visible
 	if a.spinOffDialog != nil && a.spinOffDialog.IsVisible() {
-		overlay := a.spinOffDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.spinOffDialog)
 	}
 
 	// Overlay confirmation dialog if visible
 	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
-		overlay := a.confirmDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.confirmDialog)
 	}
 
 	// Overlay About dialog if visible
 	if a.aboutDialog != nil && a.aboutDialog.IsVisible() {
-		overlay := a.aboutDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+		layout = a.overlayDialog(layout, a.aboutDialog)
 	}
 
 	// Overlay help if visible
@@ -235,6 +214,23 @@ func (a *App) renderLayout() string {
 	}
 
 	return layout
+}
+
+// dialogMaxHeight is the height bound passed to base dialogs so a form taller
+// than the screen scrolls its field region instead of overflowing past the
+// status bar. It reserves the header row and the status-bar row, leaving the
+// dialog the full content area between them.
+func (a *App) dialogMaxHeight() int {
+	return max(a.height-2, 3)
+}
+
+// overlayDialog renders a base dialog bounded to dialogMaxHeight and overlays
+// it centered on the layout. Bounding makes a too-tall form (e.g. a Sell with
+// many lots) scroll within the screen rather than spilling over the status
+// bar; dialogs that already fit are unaffected.
+func (a *App) overlayDialog(layout string, d *dialog.Dialog) string {
+	d.SetMaxHeight(a.dialogMaxHeight())
+	return widget.OverlayCenter(layout, d.Render(a.styles), a.width, a.height)
 }
 
 // renderHeader renders the application header/menu bar.
