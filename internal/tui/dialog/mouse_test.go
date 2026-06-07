@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -466,3 +467,79 @@ func TestDialog_HandleMouse_MouseRelease_Ignored(t *testing.T) {
 }
 
 // FieldDate (TD-002) tests
+
+// TestDialog_HandleMouse_ClickCancel_WhenScrolling reproduces the stock-split
+// dialog symptom: a dialog whose content overflows its height bound scrolls,
+// pinning the button row to the bottom. Clicking Cancel must still close it.
+func TestDialog_HandleMouse_ClickCancel_WhenScrolling(t *testing.T) {
+	d := NewDialog("Stock Split")
+	d.SetMessage(strings.Repeat("preview line\n", 30)) // force overflow
+	d.AddTextField("Date", "06/18/2008", "", 0)
+	d.AddTextField("Ratio", "2:1", "", 0)
+	d.SetVisible(true)
+
+	screenW, screenH := 80, 24
+	d.SetMaxHeight(screenH - 2) // what the app applies via overlayDialog
+
+	if !d.isScrolling() {
+		t.Fatalf("expected the dialog to be scrolling with maxHeight=%d", screenH-2)
+	}
+
+	startCol, startRow, _, _ := d.DialogBounds(screenW, screenH)
+	contentWidth := d.width - DialogHorizontalOverhead
+	renderedContentRows := d.RenderedHeight() - dialogVerticalOverhead
+	buttonScreenY := startRow + 2 + (renderedContentRows - 1) // last content row = button row
+
+	got := DialogActionNone
+	for x := 0; x < contentWidth; x++ {
+		action := d.HandleMouse(tea.MouseClickMsg{
+			X:      startCol + 3 + x,
+			Y:      buttonScreenY,
+			Button: tea.MouseLeft,
+		}, screenW, screenH)
+		if action == DialogActionCancel {
+			got = DialogActionCancel
+			break
+		}
+	}
+	if got != DialogActionCancel {
+		t.Error("clicking Cancel on a scrolling dialog did not return DialogActionCancel")
+	}
+}
+
+// TestDialog_HandleMouse_ClickCancel_WithWrappingMessage covers the stock-split
+// dialog shape: a long message line that wraps to several rows. If the row-walk
+// hit-test counts the message differently from the renderer, the button row
+// shifts and clicks miss.
+func TestDialog_HandleMouse_ClickCancel_WithWrappingMessage(t *testing.T) {
+	d := NewDialog("Stock Split")
+	d.SetMessage("Ratio is N:M — N new shares for every M held. e.g. 2:1 = forward 2-for-1, 1:2 = halves shares.\n\nAfter split:\n  E*Trade Rollover IRA: 10 → 20 shares\n  Wealthfront IRA: 656.09894 → 1312.19788 shares")
+	d.AddTextField("Date", "06/18/2008", "", 0)
+	d.AddTextField("Ratio", "2:1", "", 0)
+	d.SetVisible(true)
+
+	screenW, screenH := 80, 40 // tall: should not scroll
+	if d.isScrolling() {
+		t.Fatalf("did not expect scrolling at height %d", screenH)
+	}
+
+	startCol, startRow, _, _ := d.DialogBounds(screenW, screenH)
+	contentWidth := d.width - DialogHorizontalOverhead
+	buttonRow := d.ContentHeight() - 1
+
+	got := DialogActionNone
+	for x := 0; x < contentWidth; x++ {
+		action := d.HandleMouse(tea.MouseClickMsg{
+			X:      startCol + 3 + x,
+			Y:      startRow + 2 + buttonRow,
+			Button: tea.MouseLeft,
+		}, screenW, screenH)
+		if action == DialogActionCancel {
+			got = DialogActionCancel
+			break
+		}
+	}
+	if got != DialogActionCancel {
+		t.Error("clicking Cancel with a wrapping message did not return DialogActionCancel")
+	}
+}

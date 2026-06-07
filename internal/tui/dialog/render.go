@@ -827,13 +827,23 @@ func (d *Dialog) ContentHeight() int {
 	return h
 }
 
-// messageLineCount returns the number of newline-separated lines in the
-// neutral body message. Returns 0 when the message is empty.
+// messageLineCount returns the number of rendered rows the neutral body message
+// occupies, counting soft-wrapping: a line longer than the content width wraps
+// to multiple rows when lipgloss renders it into the fixed-width dialog box.
+// Counting only newline-separated lines under-reports the height, which throws
+// off ContentHeight/RenderedHeight and therefore the mouse hit-test geometry
+// (clicks on the bottom button row would fall outside the computed bounds).
+// Returns 0 when the message is empty.
 func (d *Dialog) messageLineCount() int {
 	if d.message == "" {
 		return 0
 	}
-	return strings.Count(d.message, "\n") + 1
+	contentWidth := max(d.width-DialogHorizontalOverhead, 10)
+	rows := 0
+	for seg := range strings.SplitSeq(d.message, "\n") {
+		rows += lipgloss.Height(lipgloss.NewStyle().Width(contentWidth).Render(seg))
+	}
+	return rows
 }
 
 // hasVisibleFields returns true if any field is not hidden.

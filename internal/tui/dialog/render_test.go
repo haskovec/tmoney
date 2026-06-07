@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -431,5 +432,28 @@ func TestDialog_DialogBounds_LargeDialog(t *testing.T) {
 	}
 	if startRow < 0 {
 		t.Errorf("startRow = %d, should not be negative", startRow)
+	}
+}
+
+// TestDialog_RenderedHeight_MatchesActualRender_WrappingMessage guards the
+// mouse-geometry bug: a message line longer than the content width soft-wraps
+// when lipgloss renders the dialog box, so RenderedHeight() must count those
+// wrapped rows. If it under-counts, DialogBounds places the box's bottom above
+// the real button row and clicks there are rejected (the reported "mouse does
+// not work in the split dialog" symptom).
+func TestDialog_RenderedHeight_MatchesActualRender_WrappingMessage(t *testing.T) {
+	d := NewDialog("Stock Split")
+	// A long single line that must wrap, plus normal lines.
+	d.SetMessage("Ratio is N:M — N new shares for every M held. e.g. 2:1 = forward 2-for-1, 1:2 = halves shares.\n\nAfter split:\n  Wealthfront IRA: 656.09894 → 1312.19788 shares")
+	d.AddTextField("Date", "06/18/2008", "", 0)
+	d.AddTextField("Ratio", "2:1", "", 0)
+	d.SetVisible(true)
+
+	for _, maxH := range []int{0, 12, 18, 40} {
+		d.SetMaxHeight(maxH)
+		rendered := d.Render(widget.NewStyles())
+		if got, want := lipgloss.Height(rendered), d.RenderedHeight(); got != want {
+			t.Errorf("maxHeight=%d: actual rendered height %d != RenderedHeight() %d", maxH, got, want)
+		}
 	}
 }
