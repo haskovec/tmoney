@@ -286,11 +286,16 @@ Buy shares of a security in an investment account. Supply either `--amount` (tot
 
 **Required flags:** `--account`, `--ticker`, `--shares`
 
-**Optional flags:** `--amount`, `--price-per-share`, `--commission` (default 0), `--date` (default today), `--memo`
+**Optional flags:** `--amount`, `--price-per-share`, `--commission` (default 0), `--date` (default today), `--memo`, `--catch-up-splits`
+
+`--catch-up-splits` repairs a back-dated buy on a lot-tracked account: after recording the buy at its real (pre-split) shares and price, it applies any split / reverse-split dated on or after the buy to the new lot only — as if the buy had preceded those splits. No-op on a non-lot account or when no later split exists.
 
 ```bash
 tmoney investment buy --account Brokerage --ticker AAPL --shares 10 --amount 1500
 tmoney investment buy --account Brokerage --ticker AAPL --shares 10 --price-per-share 150
+# Repair a buy entered after a split was already recorded (enter raw pre-split shares):
+tmoney investment buy --account Brokerage --ticker AAPL --shares 25 --amount 2247.49 \
+  --commission 9.99 --date 2007-08-14 --catch-up-splits
 ```
 
 ### `investment deposit`
@@ -474,6 +479,18 @@ Apply a stock split (`4:1` forward) or reverse split (`1:10`) to a security. All
 ```bash
 tmoney investment split --ticker AAPL --ratio 4:1
 tmoney investment split --ticker AAPL --ratio 1:10 --date 2025-01-15
+```
+
+### `investment split-lot`
+
+`Use: investment split-lot` · `Args: NoArgs`
+
+Apply a split ratio to a **single** lot, identified by its lot ID — a repair for a lot entered after a security-wide `investment split` had already run (so the global split never scaled it). Scales that lot's `shares`, `original_shares`, and `cost_per_share`, recomputes the account's position from its lots, and records no corporate action. The lot must not have been sold against, and the security must already have a recorded split. Find lot IDs with `investment portfolio --account NAME --show-lots`. For the common back-dated-buy case, prefer `investment buy --catch-up-splits`.
+
+**Required flags:** `--lot`, `--ratio`
+
+```bash
+tmoney investment split-lot --lot 019e9fea-463f-75bc-9044-cd6f10bb53f0 --ratio 2:1
 ```
 
 ### `investment transfer`

@@ -425,7 +425,7 @@ Used for corporate actions where shares of one security are converted to shares 
 | `account_id` | UUID | Yes | Parent investment account |
 | `security_id` | UUID | Yes | Reference to security |
 | `shares` | decimal | Yes | Current number of shares in this lot |
-| `original_shares` | decimal | Yes | Shares when lot was created (for history) |
+| `original_shares` | decimal | Yes | Lot size at creation, scaled by any later stock split (so `remaining = original_shares − Σ consumed`); the consumed total comes from `investment_transaction_lots` |
 | `cost_per_share` | decimal | Yes | Original cost per share |
 | `purchase_date` | date | Yes | Date the lot was acquired |
 | `source_transaction_id` | UUID | Yes | Transaction that created this lot |
@@ -521,10 +521,28 @@ Adjusts share count and cost basis across all lots (or positions) for a security
 - Split ratio (e.g., 4:1 for a 4-for-1 split, 1:10 for a 1-for-10 reverse split)
 
 **Effect:**
-- For each lot (or position): `shares = shares × ratio`, `cost_per_share = cost_per_share / ratio`
-- `original_shares` on lots is NOT modified (preserves history)
+- For each lot (or position) held on or before the split date: `shares = shares × ratio`, `cost_per_share = cost_per_share / ratio`
+- `original_shares` on lots is scaled by the same ratio (`original_shares = original_shares × ratio`), in lock-step with `shares`. This keeps the `remaining = original_shares − consumed` invariant intact across a split and prevents the buy/reinvest edit guard (`shares != original_shares` ⇒ "already sold against") from mis-firing on a freshly split lot. Reversing the split (deleting the action) applies the inverse ratio and restores `original_shares` exactly.
 - A price adjustment is applied: all prices on or before the split date are divided by the ratio
 - A record of the split is stored for audit purposes
+
+#### Per-lot split repair
+
+A lot entered *after* a security-wide split has already been recorded is
+not scaled by that split (the split is a one-time mutation over the lots
+that existed when it ran). Two operations repair such a lot without
+re-running the global split or recording a new corporate action:
+
+- **`investment split-lot --lot <id> --ratio N:D`** — scale one lot's
+  `shares`, `original_shares`, and `cost_per_share` by the ratio and
+  recompute the account's position from its lots. Refuses if the lot has
+  been sold against, or if the security has no recorded split (a per-lot
+  scale is only durable for a security whose split makes position heal
+  skip it — see [Transactions](transactions.md#investment-transactions)).
+- **`investment buy --catch-up-splits`** — record a back-dated buy at its
+  real pre-split shares/price, then apply every split dated on or after
+  the buy to the new lot, exactly as if the buy had preceded those
+  splits. No-op on a non-lot account or when no later split exists.
 
 ### Merger / Acquisition (Exchange)
 

@@ -347,12 +347,18 @@ a registry (i.e. on every CLI command and TUI launch). The
 corporate-action guard is **per-security**, and splits are replayable:
 the position replay (`replayPosition`) and realized-gain replay
 (`replayRealizedGain`) interleave each split's dated ratio, so a non-lot
-account heals and reports realized gain across splits. Only securities
-with a **merger or spin-off** (cross-security transforms / cost-basis
-reallocation that a per-security replay can't reconstruct) are skipped,
-as is lot-tracked healing across a split (the lot's `original_shares`
-isn't split-scaled — not yet supported). Lot-tracked realized gain is
-computed from lot junctions and is unaffected. Every security untouched
+account heals and reports realized gain across splits. Securities with a
+**merger or spin-off** (cross-security transforms / cost-basis
+reallocation that a per-security replay can't reconstruct) are skipped.
+Lot-tracked split securities are also left untouched by heal — a
+deliberate choice, not a data limitation: a split now scales each lot's
+`original_shares` in lock-step with `shares` (so `remaining = original −
+consumed` holds and the buy/reinvest edit guard no longer mis-fires on a
+split lot), and skipping these securities during heal is exactly what lets
+a manual per-lot split repair (`investment split-lot`, `investment buy
+--catch-up-splits`) survive the next heal instead of being reverted to the
+ledger. Lot-tracked realized gain is computed from lot junctions and is
+unaffected. Every security untouched
 by an un-replayable action heals normally even on a database that holds
 corporate-action history. The `tmoney investment rebuild-positions`
 command follows the same rules.
