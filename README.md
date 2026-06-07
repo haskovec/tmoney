@@ -701,6 +701,16 @@ either `--amount` (total cost), `--price-per-share`, or both. Commission
 defaults to `0`; date defaults to today. If lot tracking is enabled on
 the account, a new lot is opened.
 
+Pass `--catch-up-splits` to repair a **back-dated** buy on a lot-tracked
+account: after recording the buy at its real (pre-split) shares and
+price, it applies any existing split / reverse-split corporate actions
+dated on or after the buy to the *new lot only*, exactly as if the buy
+had been entered before those splits. Use it when you enter a purchase
+that predates a split you've already recorded — enter the raw historical
+shares and let the flag scale the lot. It is a no-op on a non-lot
+account (those replay splits automatically) or when no later split
+exists.
+
 > **Cash balances may go negative.** Buys, fees, withdrawals, and cash
 > transfers never block on the running cash balance. This is by design:
 > historical data entry from a brokerage statement frequently lists the
@@ -839,6 +849,27 @@ written as `N:D` — `4:1` means four new shares for every one held
 (forward split); `1:10` means one new share for every ten held
 (reverse split). All open positions and (for lot-tracked accounts)
 lots are adjusted by the ratio. Date defaults to today.
+
+```bash
+# Repair a single lot that an existing split missed (e.g. a buy entered
+# after the split was already applied)
+tmoney -f personal.tdb investment split-lot \
+  --lot 019e9fea-463f-75bc-9044-cd6f10bb53f0 --ratio 2:1
+```
+
+`investment split-lot` applies a split ratio to one lot, identified by
+its lot ID (find IDs with `investment portfolio --account NAME
+--show-lots`). It is a **repair** for a lot entered *after* a
+security-wide `investment split` had already run — so the global split
+never scaled it. It scales that lot's shares, original shares, and
+per-share cost by the ratio and recomputes the account's position from
+its lots, recording **no** corporate-action history and leaving every
+other lot untouched. The lot must not have been sold against, and the
+security must already have a recorded split (the per-lot scale is only
+durable alongside one). For the common case — a back-dated buy you
+forgot to enter — prefer `investment buy --catch-up-splits`, which adds
+the raw buy and applies any existing later splits to the new lot in one
+step.
 
 ```bash
 # Apply a merger/acquisition: source becomes target at the given ratio

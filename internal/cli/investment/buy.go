@@ -20,6 +20,7 @@ type investmentBuyOptions struct {
 	commission    string
 	date          string
 	memo          string
+	catchUpSplits bool
 }
 
 // newInvestmentBuyCmd registers `tmoney investment buy`. The database
@@ -52,6 +53,9 @@ func newInvestmentBuyCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.commission, "commission", "", "Commission amount (default 0)")
 	cmd.Flags().StringVar(&opts.date, "date", "", "Transaction date YYYY-MM-DD (default today)")
 	cmd.Flags().StringVar(&opts.memo, "memo", "", "Free-form memo")
+	cmd.Flags().BoolVar(&opts.catchUpSplits, "catch-up-splits", false,
+		"After the buy, apply any existing splits dated on/after this buy to the "+
+			"new lot (repair for a back-dated buy on a lot-tracked account)")
 	_ = cmd.MarkFlagRequired("account")
 	_ = cmd.MarkFlagRequired("ticker")
 	_ = cmd.MarkFlagRequired("shares")
@@ -145,6 +149,21 @@ func runInvestmentBuy(opts *investmentBuyOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Commission: %s\n", cmdutil.FormatMoney(txn.Commission.Money, acct.Currency))
 	}
 	fmt.Fprintf(w, "  Total:    %s\n", cmdutil.FormatMoney(txn.TotalAmount.Neg(), acct.Currency))
+
+	if opts.catchUpSplits {
+		applied, err := svc.CorporateAction.CatchUpSplitsForTransaction(txn.ID)
+		if err != nil {
+			return fmt.Errorf("buy saved, but catching up splits failed: %w", err)
+		}
+		switch applied {
+		case 0:
+			fmt.Fprintln(w, "  Catch-up splits: none applied (no later splits, or non-lot account)")
+		case 1:
+			fmt.Fprintln(w, "  Catch-up splits: 1 split applied to the new lot")
+		default:
+			fmt.Fprintf(w, "  Catch-up splits: %d splits applied to the new lot\n", applied)
+		}
+	}
 
 	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil

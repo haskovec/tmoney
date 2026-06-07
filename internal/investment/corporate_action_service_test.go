@@ -94,7 +94,6 @@ func TestCorporateActionService_Split_AdjustLots(t *testing.T) {
 		if !lots[0].CostPerShare.Equal(types.MustNewMoney("100")) {
 			t.Errorf("pre-split cost_per_share = %s, want 100", lots[0].CostPerShare.String())
 		}
-		originalShares := lots[0].OriginalShares
 
 		// Apply 4:1 split
 		params := SplitParams{Numerator: 4, Denominator: 1}
@@ -118,9 +117,10 @@ func TestCorporateActionService_Split_AdjustLots(t *testing.T) {
 		if !lots[0].CostPerShare.Equal(types.MustNewMoney("25")) {
 			t.Errorf("post-split cost_per_share = %s, want 25", lots[0].CostPerShare.String())
 		}
-		// original_shares should NOT be modified
-		if !lots[0].OriginalShares.Equal(originalShares) {
-			t.Errorf("original_shares changed: got %s, want %s", lots[0].OriginalShares.String(), originalShares.String())
+		// original_shares is scaled in lock-step with shares (4:1 → 40), so the
+		// "remaining = original − consumed" invariant survives the split.
+		if !lots[0].OriginalShares.Equal(types.MustNewQuantity("40")) {
+			t.Errorf("post-split original_shares = %s, want 40 (scaled with shares)", lots[0].OriginalShares.String())
 		}
 	})
 

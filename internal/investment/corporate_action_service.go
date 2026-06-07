@@ -2,6 +2,7 @@ package investment
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/alpacahq/alpacadecimal"
 	"github.com/haskovec/tmoney/internal/db"
@@ -92,10 +93,18 @@ func (s *CorporateActionService) Split(securityID types.ID, splitDate types.Date
 }
 
 // adjustLots adjusts open lots that existed as of the split date by the split
-// multipliers. Shares are multiplied by shareMul; cost_per_share by costMul.
-// Lots whose purchase date is AFTER the split date are left untouched — they
-// were acquired post-split and are already at split-adjusted quantities.
-// original_shares is NOT modified.
+// multipliers. Shares and original_shares are multiplied by shareMul;
+// cost_per_share by costMul. Lots whose purchase date is AFTER the split date
+// are left untouched — they were acquired post-split and are already at
+// split-adjusted quantities.
+//
+// original_shares is scaled in lock-step with shares so the lot's
+// "remaining = original − consumed" invariant survives a split (consumed
+// junction shares are recorded post-split). reverseSplit passes the inverse
+// multipliers, so a forward-then-reverse round-trips original_shares exactly.
+// Keeping original_shares aligned also means the buy/reinvest edit guard
+// (shares != original_shares ⇒ "already sold against") no longer mis-fires on
+// a freshly-split lot, and lot-tracked heal can recompute shares correctly.
 func (s *CorporateActionService) adjustLots(securityID types.ID, splitDate types.Date, shareMul, costMul alpacadecimal.Decimal) error {
 	lots, err := s.lotRepo.GetOpenLotsBySecurity(securityID)
 	if err != nil {
@@ -107,6 +116,7 @@ func (s *CorporateActionService) adjustLots(securityID types.ID, splitDate types
 			continue // acquired after the split — already split-adjusted
 		}
 		lot.Shares = lot.Shares.Mul(shareMul)
+		lot.OriginalShares = lot.OriginalShares.Mul(shareMul)
 		lot.CostPerShare = lot.CostPerShare.Mul(costMul)
 		if err := s.lotRepo.Update(lot); err != nil {
 			return fmt.Errorf("failed to update lot %s: %w", lot.ID.String(), err)
@@ -206,6 +216,157 @@ func (s *CorporateActionService) adjustPrices(securityID types.ID, splitDate typ
 		}
 	}
 	return nil
+}
+
+// SplitLot applies a split ratio to a single open lot. It is a targeted repair
+// for a lot entered AFTER a global split had already run (so the global action
+// never scaled it): it brings just that lot into the post-split state the global
+// action would have produced. Shares, original_shares, and the per-share cost
+// are scaled by the ratio, then the (account, security) aggregate position is
+// recomputed from the account's open lots.
+//
+// Unlike Split, SplitLot creates NO corporate-action audit record — the global
+// action (if any) remains the record of the event; this only patches a lot that
+// was added too late to be caught by it. It refuses on a lot that has already
+// been sold against (shares != original_shares) or is closed, since scaling a
+// consumed lot without also scaling its junction records would corrupt realized
+// gain on the dependent sells.
+func (s *CorporateActionService) SplitLot(lotID types.ID, params SplitParams) (*Lot, error) {
+	if errs := params.Validate(); errs.HasErrors() {
+		return nil, fmt.Errorf("invalid split parameters: %s", errs.Error())
+	}
+	lot, err := s.lotRepo.GetByID(lotID)
+	if err != nil {
+		return nil, err
+	}
+	if lot.Closed || lot.Shares.Cmp(lot.OriginalShares) != 0 {
+		return nil, fmt.Errorf("cannot split lot %s: it has been sold against or is closed; split-lot only supports un-consumed lots", lotID)
+	}
+
+	// A per-lot scale is only durable when the security has a recorded split:
+	// position heal recomputes a split security's lots/position by skipping it
+	// (gated), so the manual scale survives. With no split action the heal would
+	// replay the ledger and revert the lot's position. Refuse rather than leave a
+	// scale that silently un-does itself on the next app launch.
+	hasSplit, err := s.securityHasSplitAction(lot.SecurityID)
+	if err != nil {
+		return nil, err
+	}
+	if !hasSplit {
+		return nil, fmt.Errorf("cannot split lot %s: security has no recorded split; a per-lot split is only durable alongside one — record it with `investment split` first, or enter the lot already split-adjusted", lotID)
+	}
+
+	ratio := alpacadecimal.NewFromFloat(params.Ratio())
+	inverseRatio := alpacadecimal.NewFromFloat(1.0 / params.Ratio())
+	lot.Shares = lot.Shares.Mul(ratio)
+	lot.OriginalShares = lot.OriginalShares.Mul(ratio)
+	lot.CostPerShare = lot.CostPerShare.Mul(inverseRatio)
+	if err := s.lotRepo.Update(lot); err != nil {
+		return nil, fmt.Errorf("failed to update lot %s: %w", lotID, err)
+	}
+
+	if err := s.rebuildPositionFromLots(lot.AccountID, lot.SecurityID); err != nil {
+		return nil, err
+	}
+	return lot, nil
+}
+
+// CatchUpSplitsForLot applies every split / reverse-split corporate action for
+// the lot's security whose effective date is on or after the lot's purchase
+// date, in chronological order, to that single lot. It is the engine behind
+// `investment buy --catch-up-splits`: a buy that is back-dated before an
+// existing split creates a raw (un-scaled) lot, and this brings it into line
+// with the splits that have already run — exactly as if the buy had been
+// entered before those splits.
+//
+// It is a no-op when the lot's security has no split actions on or after the
+// purchase date. Lots that have been sold against are rejected by SplitLot.
+// Returns the number of splits applied.
+func (s *CorporateActionService) CatchUpSplitsForLot(lotID types.ID) (int, error) {
+	lot, err := s.lotRepo.GetByID(lotID)
+	if err != nil {
+		return 0, err
+	}
+
+	actions, err := s.caRepo.ListBySecurity(lot.SecurityID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list corporate actions: %w", err)
+	}
+
+	// Chronological order so successive splits compose correctly.
+	sort.SliceStable(actions, func(i, j int) bool {
+		return actions[i].ActionDate.Time().Before(actions[j].ActionDate.Time())
+	})
+
+	applied := 0
+	for _, ca := range actions {
+		if ca.ActionType != ActionTypeSplit && ca.ActionType != ActionTypeReverseSplit {
+			continue
+		}
+		// adjustLots scales lots with purchase_date <= split_date, so a split
+		// applies to this lot iff its date is on or after the purchase date.
+		if ca.ActionDate.Time().Before(lot.PurchaseDate.Time()) {
+			continue
+		}
+		params, err := ParseSplitParams(ca.Parameters)
+		if err != nil {
+			return applied, fmt.Errorf("failed to parse split params for action %s: %w", ca.ID, err)
+		}
+		if _, err := s.SplitLot(lotID, *params); err != nil {
+			return applied, err
+		}
+		applied++
+	}
+	return applied, nil
+}
+
+// CatchUpSplitsForTransaction runs CatchUpSplitsForLot on the lot opened by the
+// given buy/reinvest transaction. It is the CLI entry point for
+// `investment buy --catch-up-splits`, which has the transaction but not the lot
+// ID. On a non-lot-tracking account (no lot exists for the transaction) it is a
+// silent no-op returning 0 — those accounts already replay splits during heal.
+func (s *CorporateActionService) CatchUpSplitsForTransaction(txnID types.ID) (int, error) {
+	lot, err := s.lotRepo.GetBySourceTransaction(txnID)
+	if err != nil {
+		if _, ok := err.(*dberrors.NotFoundError); ok {
+			return 0, nil // non-lot account, or no lot — nothing to catch up
+		}
+		return 0, err
+	}
+	return s.CatchUpSplitsForLot(lot.ID)
+}
+
+// securityHasSplitAction reports whether the security has any split or reverse
+// split corporate action on record.
+func (s *CorporateActionService) securityHasSplitAction(securityID types.ID) (bool, error) {
+	actions, err := s.caRepo.ListBySecurity(securityID)
+	if err != nil {
+		return false, err
+	}
+	for _, ca := range actions {
+		if ca.ActionType == ActionTypeSplit || ca.ActionType == ActionTypeReverseSplit {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// rebuildPositionFromLots recomputes the aggregate (account, security) position
+// from the account's open lots. Used by the per-lot repair paths, which mutate
+// a lot directly while the normal position heal is gated off for securities
+// that participate in a corporate action.
+func (s *CorporateActionService) rebuildPositionFromLots(accountID, securityID types.ID) error {
+	lots, err := s.lotRepo.ListByAccountAndSecurity(accountID, securityID, false)
+	if err != nil {
+		return err
+	}
+	pos := NewPosition(accountID, securityID)
+	for _, l := range lots {
+		if err := pos.AddShares(l.Shares, l.CostPerShare); err != nil {
+			return fmt.Errorf("rebuild position for account %s: %w", accountID, err)
+		}
+	}
+	return s.positionRepo.CreateOrUpdate(&pos)
 }
 
 // Merger applies a merger/acquisition that converts shares of a source security

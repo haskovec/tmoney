@@ -176,6 +176,64 @@ func TestCorporateActionService_Split_NonLot_SkipsSharesAcquiredAfterSplit(t *te
 	}
 }
 
+// A split must scale original_shares in lock-step with shares, and a reversal
+// must round-trip it back. Otherwise the "remaining = original − consumed"
+// invariant breaks (rebuild would clobber a split lot's shares) and the
+// buy/reinvest edit guard (shares != original_shares) mis-fires on a freshly
+// split lot.
+func TestCorporateActionService_Split_ScalesOriginalShares_RoundTrips(t *testing.T) {
+	env := createCATestEnv(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	preDate := types.NewDate(2020, time.January, 10)
+	splitDate := types.NewDate(2020, time.August, 31)
+
+	if _, err := env.invSvc.Deposit(acct.ID, preDate, types.MustNewMoney("100000.00"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	pre := types.MustNewMoney("1000.00") // 10 sh @ $100
+	if _, err := env.invSvc.Buy(acct.ID, sec.ID, preDate, types.MustNewQuantity("10"), &pre, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+
+	ca, err := env.caSvc.Split(sec.ID, splitDate, SplitParams{Numerator: 4, Denominator: 1})
+	if err != nil {
+		t.Fatalf("Split() error = %v", err)
+	}
+
+	lots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+	if len(lots) != 1 {
+		t.Fatalf("expected 1 lot, got %d", len(lots))
+	}
+	if !lots[0].OriginalShares.Equal(types.MustNewQuantity("40")) {
+		t.Errorf("original_shares after 4:1 split = %s, want 40 (scaled with shares)", lots[0].OriginalShares.String())
+	}
+	if !lots[0].Shares.Equal(types.MustNewQuantity("40")) {
+		t.Errorf("shares after split = %s, want 40", lots[0].Shares.String())
+	}
+	// Invariant the edit guard relies on: a freshly-split, unsold lot has
+	// shares == original_shares.
+	if lots[0].Shares.Cmp(lots[0].OriginalShares) != 0 {
+		t.Errorf("shares (%s) != original_shares (%s) on an unsold split lot",
+			lots[0].Shares.String(), lots[0].OriginalShares.String())
+	}
+
+	if err := env.caSvc.DeleteAction(ca.ID); err != nil {
+		t.Fatalf("DeleteAction() (reverse) error = %v", err)
+	}
+
+	lots, _ = env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+	if len(lots) != 1 {
+		t.Fatalf("expected 1 lot after reverse, got %d", len(lots))
+	}
+	if !lots[0].OriginalShares.Equal(types.MustNewQuantity("10")) {
+		t.Errorf("original_shares after reverse = %s, want 10 (round-tripped)", lots[0].OriginalShares.String())
+	}
+	if !lots[0].Shares.Equal(types.MustNewQuantity("10")) {
+		t.Errorf("shares after reverse = %s, want 10", lots[0].Shares.String())
+	}
+}
+
 // lotsByDate returns the open lots matching the two given purchase dates.
 func lotsByDate(t *testing.T, env *testCAServiceEnv, accountID, securityID types.ID, dateA, dateB types.Date) (a, b *Lot) {
 	t.Helper()
