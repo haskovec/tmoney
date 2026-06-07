@@ -5251,6 +5251,38 @@ func TestService_SharesBySecurity(t *testing.T) {
 		}
 	})
 
+	t.Run("does not double-count a lot-tracking account that also has a position row", func(t *testing.T) {
+		// In production heal maintains an aggregate position row alongside the
+		// lots for lot-tracking accounts. SharesBySecurity must report the lot
+		// sum once, not lots + position.
+		env := createFullTestService(t)
+		lotAcct := createLotTrackingAccount(t, env.accountRepo, "IRA Lots")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		_, _ = env.svc.Deposit(lotAcct.ID, date, types.MustNewMoney("10000.00"), "")
+		buy := types.MustNewMoney("1500.00")
+		if _, err := env.svc.Buy(lotAcct.ID, sec.ID, date, types.MustNewQuantity("10"), &buy, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+		// Simulate the heal-maintained aggregate position row.
+		pos := NewPositionWithShares(lotAcct.ID, sec.ID, types.MustNewQuantity("10"), types.MustNewMoney("150"))
+		if err := env.positionRepo.CreateOrUpdate(&pos); err != nil {
+			t.Fatalf("CreateOrUpdate(position) error = %v", err)
+		}
+
+		results, err := env.svc.SharesBySecurity(sec.ID)
+		if err != nil {
+			t.Fatalf("SharesBySecurity() error = %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 account, got %d", len(results))
+		}
+		if results[0].Shares.String() != "10" {
+			t.Errorf("shares = %q, want %q (lot sum, not lot+position)", results[0].Shares.String(), "10")
+		}
+	})
+
 	t.Run("returns empty slice when no accounts hold the security", func(t *testing.T) {
 		env := createFullTestService(t)
 		sec := createSec(t, env.secRepo, "NONE")

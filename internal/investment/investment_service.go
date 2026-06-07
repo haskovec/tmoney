@@ -1550,8 +1550,10 @@ func (s *Service) SharesBySecurity(securityID types.ID) ([]AccountShares, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load lots: %w", err)
 	}
+	lotAccounts := make(map[types.ID]bool)
 	for _, lot := range lots {
 		totals[lot.AccountID] = totals[lot.AccountID].Add(lot.Shares)
+		lotAccounts[lot.AccountID] = true
 	}
 
 	positions, err := s.positionRepo.GetPositionsBySecurity(securityID)
@@ -1559,6 +1561,13 @@ func (s *Service) SharesBySecurity(securityID types.ID) ([]AccountShares, error)
 		return nil, fmt.Errorf("failed to load positions: %w", err)
 	}
 	for _, pos := range positions {
+		// A lot-tracking account also carries an aggregate position row (a
+		// derived cache); its shares already came from the lots above, so adding
+		// the row too would double-count. Use the position only for non-lot
+		// accounts.
+		if lotAccounts[pos.AccountID] {
+			continue
+		}
 		totals[pos.AccountID] = totals[pos.AccountID].Add(pos.Shares)
 	}
 
