@@ -5283,6 +5283,42 @@ func TestService_SharesBySecurity(t *testing.T) {
 		}
 	})
 
+	t.Run("as-of date returns only shares held on or before that date", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "IRA")
+		sec := createSec(t, env.secRepo, "VTI")
+		early := types.NewDate(2018, time.January, 2)
+		late := types.NewDate(2020, time.January, 2)
+		cutoff := types.NewDate(2019, time.January, 1)
+		p := types.MustNewMoney("100.00")
+
+		_, _ = env.svc.Deposit(acct.ID, early, types.MustNewMoney("100000.00"), "")
+		if _, err := env.svc.Buy(acct.ID, sec.ID, early, types.MustNewQuantity("10"), nil, &p, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy(early) error = %v", err)
+		}
+		if _, err := env.svc.Buy(acct.ID, sec.ID, late, types.MustNewQuantity("5"), nil, &p, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy(late) error = %v", err)
+		}
+
+		// As of the cutoff, only the early lot (10) was held.
+		asOf, err := env.svc.SharesBySecurityAsOf(sec.ID, cutoff)
+		if err != nil {
+			t.Fatalf("SharesBySecurityAsOf() error = %v", err)
+		}
+		if len(asOf) != 1 || asOf[0].Shares.String() != "10" {
+			t.Errorf("as-of cutoff = %v, want one account with 10 shares", asOf)
+		}
+
+		// Before any purchase, nothing was held.
+		before, err := env.svc.SharesBySecurityAsOf(sec.ID, types.NewDate(2000, time.January, 1))
+		if err != nil {
+			t.Fatalf("SharesBySecurityAsOf(before) error = %v", err)
+		}
+		if len(before) != 0 {
+			t.Errorf("as-of 2000 = %v, want empty (nothing held yet)", before)
+		}
+	})
+
 	t.Run("returns empty slice when no accounts hold the security", func(t *testing.T) {
 		env := createFullTestService(t)
 		sec := createSec(t, env.secRepo, "NONE")

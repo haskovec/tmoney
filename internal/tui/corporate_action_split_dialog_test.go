@@ -615,21 +615,28 @@ func TestApp_Update_StockSplitDialogSavedMsg(t *testing.T) {
 func TestRenderSplitDialogMessage(t *testing.T) {
 	secID := types.NewID()
 	secIDs := []types.ID{secID}
+	brokAcct := types.NewID()
+	iraAcct := types.NewID()
 	shares := []investment.AccountShares{
-		{AccountName: "Brokerage", Shares: types.MustNewQuantity("5")},
-		{AccountName: "IRA", Shares: types.MustNewQuantity("10")},
+		{AccountID: brokAcct, AccountName: "Brokerage", Shares: types.MustNewQuantity("5")},
+		{AccountID: iraAcct, AccountName: "IRA", Shares: types.MustNewQuantity("10")},
 	}
 	sharesMap := map[types.ID][]investment.AccountShares{secID: shares}
+	// allAffected: every current share was held as of the split date → full split.
+	allAffected := map[types.ID]types.Quantity{
+		brokAcct: types.MustNewQuantity("5"),
+		iraAcct:  types.MustNewQuantity("10"),
+	}
 
 	t.Run("explainer always present", func(t *testing.T) {
-		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "")
+		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "", nil)
 		if !strings.Contains(got, "N:M") {
 			t.Errorf("missing convention explainer: %q", got)
 		}
 	})
 
 	t.Run("invalid ratio shows current positions only", func(t *testing.T) {
-		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "")
+		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "", nil)
 		if !strings.Contains(got, "Current positions:") {
 			t.Errorf("expected 'Current positions:' header, got: %q", got)
 		}
@@ -641,8 +648,8 @@ func TestRenderSplitDialogMessage(t *testing.T) {
 		}
 	})
 
-	t.Run("valid ratio projects shares per account", func(t *testing.T) {
-		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "2:1")
+	t.Run("valid ratio projects shares held as of the split date", func(t *testing.T) {
+		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "2:1", allAffected)
 		if !strings.Contains(got, "After split:") {
 			t.Errorf("expected 'After split:' header, got: %q", got)
 		}
@@ -654,9 +661,21 @@ func TestRenderSplitDialogMessage(t *testing.T) {
 		}
 	})
 
+	t.Run("shares acquired after the split date are not projected", func(t *testing.T) {
+		// The reported VTI case: holdings exist, but none were held as of the
+		// split date, so the split must show no change.
+		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "2:1", map[types.ID]types.Quantity{})
+		if !strings.Contains(got, "Brokerage: 5 → 5 shares") {
+			t.Errorf("expected no change when nothing was held as of the split date: %q", got)
+		}
+		if !strings.Contains(got, "IRA: 10 → 10 shares") {
+			t.Errorf("expected IRA unchanged: %q", got)
+		}
+	})
+
 	t.Run("reverse-split projection catches a backwards ratio", func(t *testing.T) {
 		// The original user error: typing 1:2 instead of 2:1 for a doubling split.
-		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "1:2")
+		got := renderSplitDialogMessage(secIDs, sharesMap, 0, "1:2", allAffected)
 		if !strings.Contains(got, "Brokerage: 5 → 2.5 shares") {
 			t.Errorf("expected 5 → 2.5 to surface the reversed ratio: %q", got)
 		}
@@ -664,7 +683,7 @@ func TestRenderSplitDialogMessage(t *testing.T) {
 
 	t.Run("no positions yields explanatory note", func(t *testing.T) {
 		emptyMap := map[types.ID][]investment.AccountShares{}
-		got := renderSplitDialogMessage(secIDs, emptyMap, 0, "2:1")
+		got := renderSplitDialogMessage(secIDs, emptyMap, 0, "2:1", nil)
 		if !strings.Contains(got, "No current positions") {
 			t.Errorf("expected no-positions note, got: %q", got)
 		}

@@ -63,7 +63,10 @@ func buildStockSplitDialog(securityOptions []string, securityIDs []types.ID, sha
 		{Label: "Cancel"},
 	})
 
-	d.SetMessage(renderSplitDialogMessage(securityIDs, sharesMap, selectedIdx, ""))
+	// No date entered yet at build time; the per-account "affected as of date"
+	// projection is filled in by refreshStockSplitDialogMessage once the dialog
+	// (and its seeded date) is live.
+	d.SetMessage(renderSplitDialogMessage(securityIDs, sharesMap, selectedIdx, "", nil))
 
 	d.SetVisible(true)
 	return d
@@ -72,7 +75,7 @@ func buildStockSplitDialog(securityOptions []string, securityIDs []types.ID, sha
 // renderSplitDialogMessage produces the dialog body message: a convention
 // explainer plus a per-account "before → after" preview when the
 // currently-entered ratio parses successfully.
-func renderSplitDialogMessage(secIDs []types.ID, sharesMap map[types.ID][]investment.AccountShares, secIdx int, ratioStr string) string {
+func renderSplitDialogMessage(secIDs []types.ID, sharesMap map[types.ID][]investment.AccountShares, secIdx int, ratioStr string, affected map[types.ID]types.Quantity) string {
 	lines := []string{splitConventionExplainer}
 
 	if secIdx < 0 || secIdx >= len(secIDs) {
@@ -97,9 +100,18 @@ func renderSplitDialogMessage(secIDs []types.ID, sharesMap map[types.ID][]invest
 
 	ratio := alpacadecimal.NewFromInt(int64(params.Numerator)).
 		Div(alpacadecimal.NewFromInt(int64(params.Denominator)))
+	one := alpacadecimal.NewFromInt(1)
 	lines = append(lines, "", "After split:")
 	for _, as := range shares {
-		projected := as.Shares.Mul(ratio)
+		// Only the shares held as of the split date are adjusted; shares acquired
+		// afterward keep their post-split quantity. projected = current +
+		// affected × (ratio − 1). With no affected entry (nothing held as of the
+		// date) the holding is unchanged.
+		aff, ok := affected[as.AccountID]
+		if !ok {
+			aff = types.ZeroQuantity
+		}
+		projected := as.Shares.Add(aff.Mul(ratio.Sub(one)))
 		lines = append(lines, fmt.Sprintf("  %s: %s → %s shares", as.AccountName, as.Shares.String(), projected.String()))
 	}
 	return strings.Join(lines, "\n")
@@ -116,12 +128,29 @@ func (a *App) refreshStockSplitDialogMessage() {
 		return
 	}
 	secIdx := fields[0].SelectedIndex
+	dateStr := fields[1].Value
 	ratioStr := fields[2].Value
+
+	// Compute the shares each account actually held as of the entered split
+	// date — the only shares the split will adjust — so the projection reflects
+	// the date-scoped engine instead of naively scaling every holding.
+	affected := map[types.ID]types.Quantity{}
+	if a.investmentSvc != nil && secIdx >= 0 && secIdx < len(a.stockSplitDialogSecurityIDs) {
+		if d, err := parseDateInput(dateStr); err == nil {
+			if asOf, err := a.investmentSvc.SharesBySecurityAsOf(a.stockSplitDialogSecurityIDs[secIdx], d); err == nil {
+				for _, as := range asOf {
+					affected[as.AccountID] = as.Shares
+				}
+			}
+		}
+	}
+
 	a.stockSplitDialog.SetMessage(renderSplitDialogMessage(
 		a.stockSplitDialogSecurityIDs,
 		a.stockSplitDialogData.sharesMap,
 		secIdx,
 		ratioStr,
+		affected,
 	))
 }
 

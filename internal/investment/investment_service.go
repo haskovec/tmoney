@@ -1593,6 +1593,91 @@ func (s *Service) SharesBySecurity(securityID types.ID) ([]AccountShares, error)
 	return results, nil
 }
 
+// SharesBySecurityAsOf returns, per account, the shares of a security that were
+// held on or before asOf — i.e. the shares a split dated asOf would actually
+// adjust. Lot-tracking accounts contribute open lots purchased on/before asOf;
+// non-lot accounts contribute their net ledger position as of asOf. Accounts
+// holding nothing as of that date are omitted. Used by the stock-split preview
+// so it reflects the date-scoped engine rather than naively scaling everything.
+func (s *Service) SharesBySecurityAsOf(securityID types.ID, asOf types.Date) ([]AccountShares, error) {
+	totals := make(map[types.ID]types.Quantity)
+	lotAccounts := make(map[types.ID]bool)
+
+	lots, err := s.lotRepo.GetOpenLotsBySecurity(securityID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load lots: %w", err)
+	}
+	for _, lot := range lots {
+		lotAccounts[lot.AccountID] = true
+		if lot.PurchaseDate.Time().After(asOf.Time()) {
+			continue // acquired after the date — not affected by a split then
+		}
+		totals[lot.AccountID] = totals[lot.AccountID].Add(lot.Shares)
+	}
+
+	positions, err := s.positionRepo.GetPositionsBySecurity(securityID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load positions: %w", err)
+	}
+	for _, pos := range positions {
+		if lotAccounts[pos.AccountID] {
+			continue // lot-tracking account, handled via lots above
+		}
+		held, err := netSharesHeldAsOf(s.repo, pos.AccountID, securityID, asOf)
+		if err != nil {
+			return nil, err
+		}
+		if !held.IsZero() && !held.IsNegative() {
+			totals[pos.AccountID] = held
+		}
+	}
+
+	results := make([]AccountShares, 0, len(totals))
+	for acctID, shares := range totals {
+		if shares.IsZero() {
+			continue
+		}
+		acct, err := s.accountRepo.GetByID(acctID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load account %s: %w", acctID.String(), err)
+		}
+		results = append(results, AccountShares{AccountID: acctID, AccountName: acct.Name, Shares: shares})
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].AccountName < results[j].AccountName
+	})
+	return results, nil
+}
+
+// netSharesHeldAsOf replays an account's ledger for a security and returns the
+// net share count held on or before asOf.
+func netSharesHeldAsOf(repo *Repository, accountID, securityID types.ID, asOf types.Date) (types.Quantity, error) {
+	filter := TransactionFilter{SecurityID: &securityID, ToDate: &asOf}
+	txns, err := repo.ListByAccount(accountID, filter)
+	if err != nil {
+		return types.ZeroQuantity, err
+	}
+	net := types.ZeroQuantity
+	for _, t := range txns {
+		if !t.Shares.Valid {
+			continue
+		}
+		switch t.Type {
+		case TransactionTypeBuy, TransactionTypeReinvestDividend:
+			net = net.Add(t.Shares.Quantity)
+		case TransactionTypeSell, TransactionTypeFeeLiquidation:
+			net = net.Sub(t.Shares.Quantity)
+		case TransactionTypeTransferShares:
+			if t.TotalAmount.IsNegative() {
+				net = net.Sub(t.Shares.Quantity)
+			} else {
+				net = net.Add(t.Shares.Quantity)
+			}
+		}
+	}
+	return net, nil
+}
+
 // InvalidTransferAmountError is returned when a transfer amount is invalid (not positive).
 type InvalidTransferAmountError struct {
 	Amount types.Money

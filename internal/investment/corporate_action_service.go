@@ -188,30 +188,7 @@ func (s *CorporateActionService) adjustPositions(securityID types.ID, splitDate 
 // or before the given date, replayed from the transaction ledger. Used to
 // scope a split to the shares that existed when it occurred.
 func (s *CorporateActionService) sharesHeldAsOf(accountID, securityID types.ID, asOfDate types.Date) (types.Quantity, error) {
-	filter := TransactionFilter{SecurityID: &securityID, ToDate: &asOfDate}
-	txns, err := s.invRepo.ListByAccount(accountID, filter)
-	if err != nil {
-		return types.ZeroQuantity, err
-	}
-	net := types.ZeroQuantity
-	for _, t := range txns {
-		if !t.Shares.Valid {
-			continue
-		}
-		switch t.Type {
-		case TransactionTypeBuy, TransactionTypeReinvestDividend:
-			net = net.Add(t.Shares.Quantity)
-		case TransactionTypeSell, TransactionTypeFeeLiquidation:
-			net = net.Sub(t.Shares.Quantity)
-		case TransactionTypeTransferShares:
-			if t.TotalAmount.IsNegative() {
-				net = net.Sub(t.Shares.Quantity)
-			} else {
-				net = net.Add(t.Shares.Quantity)
-			}
-		}
-	}
-	return net, nil
+	return netSharesHeldAsOf(s.invRepo, accountID, securityID, asOfDate)
 }
 
 // adjustPrices adjusts all prices on or before the split date by dividing by the ratio.
