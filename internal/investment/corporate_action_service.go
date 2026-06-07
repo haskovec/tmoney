@@ -55,13 +55,15 @@ func (s *CorporateActionService) Split(securityID types.ID, splitDate types.Date
 	ratio := alpacadecimal.NewFromFloat(params.Ratio())
 	inverseRatio := alpacadecimal.NewFromFloat(1.0 / params.Ratio())
 
-	// Adjust all open lots
-	if err := s.adjustLots(securityID, ratio, inverseRatio); err != nil {
+	// Adjust open lots purchased on or before the split date. Shares acquired
+	// after the split were already recorded at post-split quantities, so they
+	// must NOT be re-split.
+	if err := s.adjustLots(securityID, splitDate, ratio, inverseRatio); err != nil {
 		return nil, fmt.Errorf("failed to adjust lots: %w", err)
 	}
 
-	// Adjust all non-zero positions
-	if err := s.adjustPositions(securityID, ratio, inverseRatio); err != nil {
+	// Bring positions in line with the shares actually held as of the split date.
+	if err := s.adjustPositions(securityID, splitDate, ratio, false); err != nil {
 		return nil, fmt.Errorf("failed to adjust positions: %w", err)
 	}
 
@@ -89,18 +91,23 @@ func (s *CorporateActionService) Split(securityID types.ID, splitDate types.Date
 	return ca, nil
 }
 
-// adjustLots adjusts all open lots for a security by the split ratio.
-// Shares are multiplied by ratio; cost_per_share is divided by ratio (multiplied by inverse).
+// adjustLots adjusts open lots that existed as of the split date by the split
+// multipliers. Shares are multiplied by shareMul; cost_per_share by costMul.
+// Lots whose purchase date is AFTER the split date are left untouched — they
+// were acquired post-split and are already at split-adjusted quantities.
 // original_shares is NOT modified.
-func (s *CorporateActionService) adjustLots(securityID types.ID, ratio, inverseRatio alpacadecimal.Decimal) error {
+func (s *CorporateActionService) adjustLots(securityID types.ID, splitDate types.Date, shareMul, costMul alpacadecimal.Decimal) error {
 	lots, err := s.lotRepo.GetOpenLotsBySecurity(securityID)
 	if err != nil {
 		return err
 	}
 
 	for _, lot := range lots {
-		lot.Shares = lot.Shares.Mul(ratio)
-		lot.CostPerShare = lot.CostPerShare.Mul(inverseRatio)
+		if lot.PurchaseDate.Time().After(splitDate.Time()) {
+			continue // acquired after the split — already split-adjusted
+		}
+		lot.Shares = lot.Shares.Mul(shareMul)
+		lot.CostPerShare = lot.CostPerShare.Mul(costMul)
 		if err := s.lotRepo.Update(lot); err != nil {
 			return fmt.Errorf("failed to update lot %s: %w", lot.ID.String(), err)
 		}
@@ -108,22 +115,103 @@ func (s *CorporateActionService) adjustLots(securityID types.ID, ratio, inverseR
 	return nil
 }
 
-// adjustPositions adjusts all non-zero positions for a security by the split ratio.
-// Shares are multiplied by ratio; average_cost_per_share is divided by ratio.
-func (s *CorporateActionService) adjustPositions(securityID types.ID, ratio, inverseRatio alpacadecimal.Decimal) error {
-	positions, err := s.positionRepo.GetPositionsBySecurity(securityID)
+// adjustPositions brings each account's stored position in line with the split,
+// scoped to shares held as of the split date. For lot-tracking accounts the
+// position is recomputed from the (already date-adjusted) open lots, so it
+// stays consistent with them. For non-lot accounts the share count held as of
+// the split date is split; shares acquired afterward are left unchanged, and
+// total cost basis is preserved (a split never changes total invested). When
+// reverse is true the adjustment is inverted (used to undo a split).
+func (s *CorporateActionService) adjustPositions(securityID types.ID, splitDate types.Date, ratio alpacadecimal.Decimal, reverse bool) error {
+	lots, err := s.lotRepo.GetOpenLotsBySecurity(securityID)
 	if err != nil {
 		return err
 	}
 
+	// Lot-tracking accounts: rebuild the aggregate position from the (already
+	// date-adjusted) open lots so it stays consistent with them. This upserts
+	// the row even when one didn't exist yet (a lot-tracking account holds its
+	// shares in lots; the aggregate position is a derived cache).
+	lotsByAccount := make(map[types.ID][]*Lot)
+	for _, l := range lots {
+		lotsByAccount[l.AccountID] = append(lotsByAccount[l.AccountID], l)
+	}
+	for accountID, accountLots := range lotsByAccount {
+		rebuilt := NewPosition(accountID, securityID)
+		for _, l := range accountLots {
+			if err := rebuilt.AddShares(l.Shares, l.CostPerShare); err != nil {
+				return fmt.Errorf("failed to rebuild position for account %s: %w", accountID.String(), err)
+			}
+		}
+		if err := s.positionRepo.CreateOrUpdate(&rebuilt); err != nil {
+			return fmt.Errorf("failed to update position for account %s: %w", accountID.String(), err)
+		}
+	}
+
+	// Non-lot accounts: split only the shares held as of the split date; shares
+	// acquired afterward stay put. Total cost basis is preserved.
+	positions, err := s.positionRepo.GetPositionsBySecurity(securityID)
+	if err != nil {
+		return err
+	}
+	one := alpacadecimal.NewFromInt(1)
 	for _, pos := range positions {
-		pos.Shares = pos.Shares.Mul(ratio)
-		pos.AverageCostPerShare = pos.AverageCostPerShare.Mul(inverseRatio)
+		if _, ok := lotsByAccount[pos.AccountID]; ok {
+			continue // lot-tracking account, already rebuilt above
+		}
+		asOf, err := s.sharesHeldAsOf(pos.AccountID, securityID, splitDate)
+		if err != nil {
+			return err
+		}
+		if asOf.IsZero() || asOf.IsNegative() {
+			continue // held nothing at the split date — nothing to adjust
+		}
+		delta := asOf.Mul(ratio.Sub(one)) // asOf × (ratio − 1)
+		oldTotalCost := pos.AverageCostPerShare.Mul(pos.Shares.Decimal())
+		if reverse {
+			pos.Shares = pos.Shares.Sub(delta)
+		} else {
+			pos.Shares = pos.Shares.Add(delta)
+		}
+		if pos.Shares.IsZero() || pos.Shares.IsNegative() {
+			continue
+		}
+		pos.AverageCostPerShare = oldTotalCost.Mul(one.Div(pos.Shares.Decimal()))
 		if err := s.positionRepo.CreateOrUpdate(pos); err != nil {
 			return fmt.Errorf("failed to update position for account %s: %w", pos.AccountID.String(), err)
 		}
 	}
 	return nil
+}
+
+// sharesHeldAsOf returns the net share count an account held in a security on
+// or before the given date, replayed from the transaction ledger. Used to
+// scope a split to the shares that existed when it occurred.
+func (s *CorporateActionService) sharesHeldAsOf(accountID, securityID types.ID, asOfDate types.Date) (types.Quantity, error) {
+	filter := TransactionFilter{SecurityID: &securityID, ToDate: &asOfDate}
+	txns, err := s.invRepo.ListByAccount(accountID, filter)
+	if err != nil {
+		return types.ZeroQuantity, err
+	}
+	net := types.ZeroQuantity
+	for _, t := range txns {
+		if !t.Shares.Valid {
+			continue
+		}
+		switch t.Type {
+		case TransactionTypeBuy, TransactionTypeReinvestDividend:
+			net = net.Add(t.Shares.Quantity)
+		case TransactionTypeSell, TransactionTypeFeeLiquidation:
+			net = net.Sub(t.Shares.Quantity)
+		case TransactionTypeTransferShares:
+			if t.TotalAmount.IsNegative() {
+				net = net.Sub(t.Shares.Quantity)
+			} else {
+				net = net.Add(t.Shares.Quantity)
+			}
+		}
+	}
+	return net, nil
 }
 
 // adjustPrices adjusts all prices on or before the split date by dividing by the ratio.
@@ -745,10 +833,10 @@ func (s *CorporateActionService) reverseSplit(ca *CorporateAction) error {
 	origRatio := alpacadecimal.NewFromFloat(params.Ratio())
 	origInverse := alpacadecimal.NewFromFloat(1.0 / params.Ratio())
 
-	if err := s.adjustLots(ca.SecurityID, origInverse, origRatio); err != nil {
+	if err := s.adjustLots(ca.SecurityID, ca.ActionDate, origInverse, origRatio); err != nil {
 		return fmt.Errorf("failed to reverse lots: %w", err)
 	}
-	if err := s.adjustPositions(ca.SecurityID, origInverse, origRatio); err != nil {
+	if err := s.adjustPositions(ca.SecurityID, ca.ActionDate, origRatio, true); err != nil {
 		return fmt.Errorf("failed to reverse positions: %w", err)
 	}
 	if err := s.adjustPrices(ca.SecurityID, ca.ActionDate, origRatio); err != nil {
