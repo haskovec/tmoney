@@ -136,10 +136,15 @@ func (s *Service) realizedGainLotTracked(accountID, securityID types.ID) (types.
 // txns must be sorted by date ascending, then created_at ascending — the
 // same canonical order replayPosition expects. The TR-008 service wrapper
 // loads and sorts the slice before delegating here.
-func (s *Service) replayRealizedGain(accountID, securityID types.ID, txns []*Transaction) (types.Money, error) {
+func (s *Service) replayRealizedGain(accountID, securityID types.ID, txns []*Transaction, splits []splitEvent) (types.Money, error) {
 	pos := NewPosition(accountID, securityID)
 	total := types.ZeroMoney
+	si := 0
 	for _, t := range txns {
+		// A split before this transaction rescales the running basis (shares ×
+		// ratio, avg cost ÷ ratio), so a later sell measures gain against the
+		// post-split per-share cost.
+		si = applyDueSplits(&pos, splits, si, t.Date)
 		if !t.Shares.Valid || t.Shares.Quantity.IsZero() {
 			continue
 		}
@@ -197,6 +202,11 @@ func (s *Service) replayRealizedGain(accountID, securityID types.ID, txns []*Tra
 			}
 		}
 	}
+	// Splits dated after the last transaction rescale the (now closed-out or
+	// remaining) basis; they add no realized gain themselves.
+	for ; si < len(splits); si++ {
+		applySplitToPosition(&pos, splits[si].Ratio)
+	}
 	return total, nil
 }
 
@@ -219,11 +229,14 @@ func (s *Service) realizedGain(accountID, securityID types.ID, trackLots bool) (
 		gain, err := s.realizedGainLotTracked(accountID, securityID)
 		return gain, false, err
 	}
-	actions, err := s.corporateActionRepo.ListBySecurity(securityID)
+	// Splits are a dated ratio transform the non-lot replay can reconstruct;
+	// mergers and spin-offs (cross-security, cost-basis reallocation) still
+	// cannot, so they remain "unavailable".
+	hasNonSplit, err := s.securityHasNonSplitAction(securityID)
 	if err != nil {
-		return types.ZeroMoney, false, fmt.Errorf("failed to list corporate actions for security: %w", err)
+		return types.ZeroMoney, false, fmt.Errorf("failed to inspect corporate actions for security: %w", err)
 	}
-	if len(actions) > 0 {
+	if hasNonSplit {
 		return types.ZeroMoney, true, nil
 	}
 	gain, err := s.realizedGainNonLot(accountID, securityID)
@@ -246,7 +259,11 @@ func (s *Service) realizedGainNonLot(accountID, securityID types.ID) (types.Mone
 		}
 		return txns[i].Date.Time().Before(txns[j].Date.Time())
 	})
-	return s.replayRealizedGain(accountID, securityID, txns)
+	splits, err := s.splitEventsForSecurity(securityID)
+	if err != nil {
+		return types.ZeroMoney, err
+	}
+	return s.replayRealizedGain(accountID, securityID, txns, splits)
 }
 
 // totalCostDeployedForSecurity returns the total cash basis put into a

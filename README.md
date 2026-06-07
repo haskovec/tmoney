@@ -989,11 +989,15 @@ RETURN`, and `RET %` columns. The account totals block prints
 received`, `Interest received`, `Fees paid`, `Total return`, and
 `Total return %`.
 
-Realized gain in non-lot accounts cannot be replayed reliably when the
-ledger contains corporate actions (splits, mergers, spin-offs). For
-those accounts the realized column renders `unavailable`; the other
-components are still computed. Enable lot tracking on the account
-before the corporate action to get exact realized numbers.
+Realized gain in non-lot accounts is replayed from the ledger. Splits
+are reconstructed correctly — the replay applies each split's dated
+ratio, so realized gain stays available across a split. Mergers and
+spin-offs, which transform shares across securities and reallocate cost
+basis, still cannot be replayed per-security: for a non-lot security
+with a merger or spin-off the realized column renders `unavailable`
+(the other components are still computed). Lot-tracked accounts compute
+realized gain from lot junctions and are unaffected. Enable lot tracking
+before a merger/spin-off to get exact realized numbers.
 
 #### Closed positions
 

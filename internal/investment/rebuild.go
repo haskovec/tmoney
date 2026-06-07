@@ -72,11 +72,24 @@ func (s *Service) RebuildPositions(accountID types.ID) (*RebuildResult, error) {
 	// them. To keep things consistent we replay for both account types.
 	result := &RebuildResult{AccountID: accountID, AccountName: acct.Name}
 	for secID, list := range bySecurity {
+		var splits []splitEvent
 		if involved[secID] {
-			result.SkippedSecurities++
-			continue
+			// Splits are a dated ratio transform we can replay for a non-lot
+			// account; mergers/spin-offs and lot-tracked split healing stay gated.
+			hasNonSplit, err := s.securityHasNonSplitAction(secID)
+			if err != nil {
+				return nil, fmt.Errorf("RebuildPositions: %w", err)
+			}
+			if hasNonSplit || acct.TrackLots {
+				result.SkippedSecurities++
+				continue
+			}
+			splits, err = s.splitEventsForSecurity(secID)
+			if err != nil {
+				return nil, fmt.Errorf("RebuildPositions: %w", err)
+			}
 		}
-		pos, err := s.replayPosition(accountID, secID, list)
+		pos, err := s.replayPosition(accountID, secID, list, splits)
 		if err != nil {
 			return nil, fmt.Errorf("RebuildPositions: %w", err)
 		}
@@ -182,17 +195,35 @@ func (s *Service) HealAllAccounts() (int, error) {
 // state (e.g. from an older binary or an aborted edit) auto-heals on the
 // next user action.
 func (s *Service) syncPositionAndLots(accountID, securityID types.ID) error {
-	// Skip only if THIS security participates in a corporate action: its
-	// positions/lots were mutated outside the ledger, so a naive replay would
-	// corrupt cost basis. Securities not involved in any corporate action heal
-	// normally even when other securities have actions.
+	// A security that participates in a corporate action had its positions/lots
+	// mutated outside the ledger, so a naive replay would corrupt cost basis.
+	// Splits are the exception: they're a dated ratio transform we can replay.
+	// For a security whose only actions are splits we heal a non-lot account by
+	// replaying the ledger split-aware; mergers/spin-offs (cross-security, cost-
+	// basis reallocation) and lot-tracked split healing stay gated for now.
 	caRepo := NewCorporateActionRepository(s.db)
 	involved, err := caRepo.InvolvedSecurityIDs()
 	if err != nil {
 		return fmt.Errorf("syncPositionAndLots: %w", err)
 	}
+	acct, err := s.getInvestmentAccount(accountID)
+	if err != nil {
+		return fmt.Errorf("syncPositionAndLots: %w", err)
+	}
+
+	var splits []splitEvent
 	if involved[securityID] {
-		return nil
+		hasNonSplit, err := s.securityHasNonSplitAction(securityID)
+		if err != nil {
+			return fmt.Errorf("syncPositionAndLots: %w", err)
+		}
+		if hasNonSplit || acct.TrackLots {
+			return nil
+		}
+		splits, err = s.splitEventsForSecurity(securityID)
+		if err != nil {
+			return fmt.Errorf("syncPositionAndLots: %w", err)
+		}
 	}
 
 	// Recompute the aggregate position for this (account, security).
@@ -207,7 +238,7 @@ func (s *Service) syncPositionAndLots(accountID, securityID types.ID) error {
 		}
 		return txns[i].Date.Time().Before(txns[j].Date.Time())
 	})
-	pos, err := s.replayPosition(accountID, securityID, txns)
+	pos, err := s.replayPosition(accountID, securityID, txns, splits)
 	if err != nil {
 		return fmt.Errorf("syncPositionAndLots: %w", err)
 	}
@@ -215,12 +246,9 @@ func (s *Service) syncPositionAndLots(accountID, securityID types.ID) error {
 		return fmt.Errorf("syncPositionAndLots: %w", err)
 	}
 
-	// For lot-tracking accounts, also bring this security's lots in line
-	// with the junction records.
-	acct, err := s.getInvestmentAccount(accountID)
-	if err != nil {
-		return fmt.Errorf("syncPositionAndLots: %w", err)
-	}
+	// For lot-tracking accounts, also bring this security's lots in line with
+	// the junction records. (A lot-tracking account with a split returned early
+	// above, so `splits` is empty whenever we reach here for a lot account.)
 	if !acct.TrackLots {
 		return nil
 	}
@@ -257,9 +285,13 @@ func (s *Service) syncPositionAndLots(accountID, securityID types.ID) error {
 
 // replayPosition reconstructs an aggregate (account, security) position from
 // transactions, ordered oldest-first. Used by RebuildPositions.
-func (s *Service) replayPosition(accountID, securityID types.ID, txns []*Transaction) (*Position, error) {
+func (s *Service) replayPosition(accountID, securityID types.ID, txns []*Transaction, splits []splitEvent) (*Position, error) {
 	pos := NewPosition(accountID, securityID)
+	si := 0
 	for _, t := range txns {
+		// Apply any split that precedes this transaction so shares acquired
+		// before the split are scaled and shares acquired after are not.
+		si = applyDueSplits(&pos, splits, si, t.Date)
 		if !t.Shares.Valid || t.Shares.Quantity.IsZero() {
 			continue
 		}
@@ -304,6 +336,10 @@ func (s *Service) replayPosition(accountID, securityID types.ID, txns []*Transac
 		default:
 			// Dividend/Fee/Deposit/Withdrawal/Interest/TransferCash: no position effect.
 		}
+	}
+	// Apply any splits dated after the last transaction.
+	for ; si < len(splits); si++ {
+		applySplitToPosition(&pos, splits[si].Ratio)
 	}
 	return &pos, nil
 }

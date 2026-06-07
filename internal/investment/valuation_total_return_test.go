@@ -776,7 +776,7 @@ func TestReplayRealizedGain_HappyPath(t *testing.T) {
 	}
 
 	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
-	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns)
+	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
 	if err != nil {
 		t.Fatalf("replayRealizedGain() error = %v", err)
 	}
@@ -825,7 +825,7 @@ func TestReplayRealizedGain_LossThenGain(t *testing.T) {
 	}
 
 	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
-	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns)
+	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
 	if err != nil {
 		t.Fatalf("replayRealizedGain() error = %v", err)
 	}
@@ -870,7 +870,7 @@ func TestReplayRealizedGain_SameDateOrdering(t *testing.T) {
 	}
 
 	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
-	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns)
+	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
 	if err != nil {
 		t.Fatalf("replayRealizedGain() error = %v", err)
 	}
@@ -922,7 +922,7 @@ func TestReplayRealizedGain_ReinvestRaisesAvgCost(t *testing.T) {
 	}
 
 	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
-	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns)
+	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
 	if err != nil {
 		t.Fatalf("replayRealizedGain() error = %v", err)
 	}
@@ -981,18 +981,19 @@ func TestRealizedGainNonLot_DelegatesToReplay(t *testing.T) {
 	}
 }
 
-// TR-009: When the database contains any corporate-action record, the
-// non-lot realized-gain replay cannot produce a correct number (the
-// ledger reflects post-action share counts but `replayPosition`'s walk
-// is unaware of the split/merger). The realized-gain entry point detects
-// this case and returns (ZeroMoney, unavailable=true) instead. Dividends
-// and fees are unaffected.
+// TR-009: When a non-lot security has a corporate action that can't be
+// reconstructed by a per-security replay — a merger or spin-off, which
+// transform shares across securities or reallocate cost basis — the
+// realized-gain entry point returns (ZeroMoney, unavailable=true). (Splits are
+// a dated ratio transform and ARE replayed, so they no longer trip this gate;
+// see TestRealizedGain_SplitAware_*.) Dividends and fees are unaffected.
 func TestRealizedGain_NonLot_WithCorporateActions_Unavailable(t *testing.T) {
 	env := createFullTestService(t)
 	acct := createInvAccount(t, env.accountRepo, "Brokerage")
 	sec := createSec(t, env.secRepo, "AAPL")
+	spinco := createSec(t, env.secRepo, "SPIN")
 	d1 := types.NewDate(2024, time.March, 1)
-	dSplit := types.NewDate(2024, time.June, 1)
+	dSpin := types.NewDate(2024, time.June, 1)
 	d2 := types.NewDate(2024, time.July, 1)
 
 	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
@@ -1009,14 +1010,14 @@ func TestRealizedGain_NonLot_WithCorporateActions_Unavailable(t *testing.T) {
 		t.Fatalf("Dividend() error = %v", err)
 	}
 
-	// Apply a 4:1 split — position is mutated outside the ledger.
+	// Apply a spin-off — reallocates cost basis across securities, which a
+	// per-security replay can't reconstruct.
 	caSvc := NewCorporateActionService(env.caRepo, env.lotRepo, env.positionRepo, env.priceRepo, env.invRepo, env.secRepo, env.db)
-	if _, err := caSvc.Split(sec.ID, dSplit, SplitParams{Numerator: 4, Denominator: 1}); err != nil {
-		t.Fatalf("Split() error = %v", err)
+	if _, err := caSvc.SpinOff(sec.ID, spinco.ID, dSpin, SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}, types.MustNewMoney("25")); err != nil {
+		t.Fatalf("SpinOff() error = %v", err)
 	}
 
-	// Sell 5 (post-split) shares @ $30. The ledger has post-split share counts;
-	// replayRealizedGain would produce a wrong number.
+	// Sell 5 shares @ $30 after the spin-off. Realized gain is unavailable.
 	sellTotal := types.MustNewMoney("150")
 	if _, err := env.svc.Sell(acct.ID, sec.ID, d2, types.MustNewQuantity("5"),
 		&sellTotal, nil, types.ZeroMoney, "", nil); err != nil {
@@ -2311,10 +2312,11 @@ func TestGetAccountValuation_PartialRealized_WhenAnyHoldingUnavailable(t *testin
 	env := createFullTestService(t)
 	acct := createInvAccount(t, env.accountRepo, "Wealthfront IRA")
 	schf := createSec(t, env.secRepo, "SCHF") // no corp action — replays fine
-	aapl := createSec(t, env.secRepo, "AAPL") // gets a split — unavailable
+	aapl := createSec(t, env.secRepo, "AAPL") // gets a spin-off — unavailable
+	spinco := createSec(t, env.secRepo, "SPIN")
 	d1 := types.NewDate(2019, time.August, 8)
 	d2 := types.NewDate(2019, time.September, 3)
-	dSplit := types.NewDate(2020, time.August, 31)
+	dSpin := types.NewDate(2020, time.August, 31)
 	dSell := types.NewDate(2020, time.December, 1)
 	asOf := types.NewDate(2021, time.January, 1)
 
@@ -2332,19 +2334,20 @@ func TestGetAccountValuation_PartialRealized_WhenAnyHoldingUnavailable(t *testin
 		&sellSCHF, nil, types.ZeroMoney, "", nil); err != nil {
 		t.Fatalf("Sell(SCHF) error = %v", err)
 	}
-	// AAPL: buy 10 @ $100, then 4:1 split, then sell 20 @ $30. Replay
-	// is unreliable here so realized is reported as unavailable.
+	// AAPL: buy 10 @ $100, then a spin-off (reallocates cost basis across
+	// securities), then sell 5. A spin-off can't be reconstructed by a
+	// per-security replay, so AAPL's realized gain is reported as unavailable.
 	buyAAPL := types.MustNewMoney("1000")
 	if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("10"),
 		&buyAAPL, nil, types.ZeroMoney, ""); err != nil {
 		t.Fatalf("Buy(AAPL) error = %v", err)
 	}
 	caSvc := NewCorporateActionService(env.caRepo, env.lotRepo, env.positionRepo, env.priceRepo, env.invRepo, env.secRepo, env.db)
-	if _, err := caSvc.Split(aapl.ID, dSplit, SplitParams{Numerator: 4, Denominator: 1}); err != nil {
-		t.Fatalf("Split(AAPL) error = %v", err)
+	if _, err := caSvc.SpinOff(aapl.ID, spinco.ID, dSpin, SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}, types.MustNewMoney("25")); err != nil {
+		t.Fatalf("SpinOff(AAPL) error = %v", err)
 	}
-	sellAAPL := types.MustNewMoney("600")
-	if _, err := env.svc.Sell(acct.ID, aapl.ID, dSell, types.MustNewQuantity("20"),
+	sellAAPL := types.MustNewMoney("400")
+	if _, err := env.svc.Sell(acct.ID, aapl.ID, dSell, types.MustNewQuantity("5"),
 		&sellAAPL, nil, types.ZeroMoney, "", nil); err != nil {
 		t.Fatalf("Sell(AAPL) error = %v", err)
 	}

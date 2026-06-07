@@ -176,8 +176,10 @@ func TestSyncPositionAndLots_PerSecurityCorporateActionGate(t *testing.T) {
 	_, _ = env.svc.Buy(acct.ID, withCA.ID, date, types.MustNewQuantity("10"), nil, &price, types.ZeroMoney, "")
 	_, _ = env.svc.Buy(acct.ID, clean.ID, date, types.MustNewQuantity("20"), nil, &price, types.ZeroMoney, "")
 
-	// Record a corporate action on SCHB only.
-	if err := env.caRepo.Create(NewCorporateAction(ActionTypeSplit, withCA.ID, date, `{"numerator":2,"denominator":1}`)); err != nil {
+	// Record a spin-off on SCHB only. A spin-off (cross-security cost-basis
+	// reallocation) can't be reconstructed by a per-security replay, so it gates
+	// the heal — unlike a split, which is now replayed.
+	if err := env.caRepo.Create(NewCorporateAction(ActionTypeSpinOff, withCA.ID, date, `{"share_ratio":1,"parent_allocation_pct":90}`)); err != nil {
 		t.Fatalf("caRepo.Create() error = %v", err)
 	}
 
@@ -228,7 +230,9 @@ func TestRebuildPositions_HealsNonCASecuritiesPerSecurity(t *testing.T) {
 	_, _ = env.svc.Buy(acct.ID, withCA.ID, date, types.MustNewQuantity("10"), nil, &price, types.ZeroMoney, "")
 	_, _ = env.svc.Buy(acct.ID, clean.ID, date, types.MustNewQuantity("20"), nil, &price, types.ZeroMoney, "")
 
-	if err := env.caRepo.Create(NewCorporateAction(ActionTypeSplit, withCA.ID, date, `{"numerator":2,"denominator":1}`)); err != nil {
+	// A spin-off gates the heal (cross-security cost-basis reallocation can't be
+	// replayed per-security); a split would now be replayed instead.
+	if err := env.caRepo.Create(NewCorporateAction(ActionTypeSpinOff, withCA.ID, date, `{"share_ratio":1,"parent_allocation_pct":90}`)); err != nil {
 		t.Fatalf("caRepo.Create() error = %v", err)
 	}
 

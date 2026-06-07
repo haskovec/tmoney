@@ -344,13 +344,18 @@ TransferShares) calls `syncPositionAndLots` for the affected
 (account, security) before reading the stored row, and
 `Service.HealAllAccounts` runs once whenever `app.NewServices` builds
 a registry (i.e. on every CLI command and TUI launch). The
-corporate-action guard is **per-security**: only securities that
-participate in a corporate action (split/merger/spin-off) are skipped,
-since their cost basis was mutated outside the ledger; every other
-security heals normally even on a database that holds corporate-action
-history. The `tmoney investment rebuild-positions` command remains
-available as an explicit recovery/diagnostic tool and follows the same
-per-security rule.
+corporate-action guard is **per-security**, and splits are replayable:
+the position replay (`replayPosition`) and realized-gain replay
+(`replayRealizedGain`) interleave each split's dated ratio, so a non-lot
+account heals and reports realized gain across splits. Only securities
+with a **merger or spin-off** (cross-security transforms / cost-basis
+reallocation that a per-security replay can't reconstruct) are skipped,
+as is lot-tracked healing across a split (the lot's `original_shares`
+isn't split-scaled — not yet supported). Lot-tracked realized gain is
+computed from lot junctions and is unaffected. Every security untouched
+by an un-replayable action heals normally even on a database that holds
+corporate-action history. The `tmoney investment rebuild-positions`
+command follows the same rules.
 
 ## v1.5 Features (Not in v1)
 

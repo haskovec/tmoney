@@ -784,8 +784,10 @@ func createPortfolioCmdTestDBWithTotalReturn(t *testing.T) string {
 }
 
 // createPortfolioCmdTestDBWithCorporateAction builds a DB whose non-lot
-// account has a corporate action (4:1 split) on a held security, so the
-// valuation service flags realized gain as unavailable.
+// account has a corporate action that cannot be reconstructed by a per-security
+// replay (a spin-off, which reallocates cost basis across securities) on a held
+// security, so the valuation service flags realized gain as unavailable.
+// (Splits, by contrast, are now replayable and no longer trigger this gate.)
 func createPortfolioCmdTestDBWithCorporateAction(t *testing.T) string {
 	t.Helper()
 	database, dbPath := dbtest.NewFile(t, "portfolio_ca.tdb")
@@ -801,6 +803,10 @@ func createPortfolioCmdTestDBWithCorporateAction(t *testing.T) string {
 	if err := secRepo.Create(aapl); err != nil {
 		t.Fatalf("failed to create AAPL: %v", err)
 	}
+	spinco := security.NewSecurity("SPIN", "SpinCo", security.TypeStock)
+	if err := secRepo.Create(spinco); err != nil {
+		t.Fatalf("failed to create SPIN: %v", err)
+	}
 
 	priceRepo := price.NewRepository(database)
 	if err := priceRepo.Create(price.NewPrice(aapl.ID, types.Today(), types.MustNewMoney("30.00"), price.SourceManual)); err != nil {
@@ -810,7 +816,7 @@ func createPortfolioCmdTestDBWithCorporateAction(t *testing.T) string {
 	svc := app.NewServices(database)
 
 	d1 := types.NewDate(2024, time.March, 1)
-	dSplit := types.NewDate(2024, time.June, 1)
+	dSpin := types.NewDate(2024, time.June, 1)
 	d2 := types.NewDate(2024, time.July, 1)
 
 	if _, err := svc.Investment.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
@@ -822,8 +828,10 @@ func createPortfolioCmdTestDBWithCorporateAction(t *testing.T) string {
 	if _, err := svc.Investment.Dividend(acct.ID, aapl.ID, d1, types.MustNewMoney("50"), ""); err != nil {
 		t.Fatalf("failed to record AAPL dividend: %v", err)
 	}
-	if _, err := svc.CorporateAction.Split(aapl.ID, dSplit, investmentdom.SplitParams{Numerator: 4, Denominator: 1}); err != nil {
-		t.Fatalf("failed to split AAPL: %v", err)
+	// A spin-off reallocates cost basis across securities — not reconstructable
+	// by a per-security ledger replay, so realized gain stays unavailable.
+	if _, err := svc.CorporateAction.SpinOff(aapl.ID, spinco.ID, dSpin, investmentdom.SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}, types.MustNewMoney("25")); err != nil {
+		t.Fatalf("failed to spin off SPIN from AAPL: %v", err)
 	}
 	if _, err := svc.Investment.Sell(acct.ID, aapl.ID, d2, types.MustNewQuantity("5"), nil, clitest.PtrMoney("30"), types.ZeroMoney, "", nil); err != nil {
 		t.Fatalf("failed to sell AAPL: %v", err)
