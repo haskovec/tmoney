@@ -405,7 +405,7 @@ tmoney investment portfolio --account Brokerage --show-lots
 
 `Use: investment rebuild-positions` · `Args: NoArgs`
 
-Recompute the stored `investment_positions` rows (and, for lot-tracking accounts, each lot's `shares` / `closed` fields) from the transaction ledger and lot junction records. Use this to recover from a desynced state after an aborted edit. The command refuses to run on databases that contain corporate-action records (splits, mergers, spin-offs), since those mutate positions/lots outside the ledger.
+Recompute the stored `investment_positions` rows (and, for lot-tracking accounts, each lot's `shares` / `closed` fields) from the transaction ledger and lot junction records. Use this to recover from a desynced state after an aborted edit. Corporate actions are handled **per-security**, not all-or-nothing: a security touched only by stock splits is replayed normally (the split's dated ratio is interleaved into the replay), so a clean holding heals even on a database that contains corporate-action history. Only securities with a **merger or spin-off** (cross-security transforms a per-security replay can't reconstruct) are skipped, as are lot-tracked securities with a split (left to their lots so per-lot repairs survive). See [`transactions.md`](transactions.md#investment-transactions).
 
 **Required flags:** none
 

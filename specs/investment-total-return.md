@@ -289,28 +289,33 @@ which are always populated).
 
 ## Corporate actions
 
-`RebuildPositions` already refuses to run when corporate actions exist
-because splits/mergers/spin-offs mutate positions outside the ledger
-(`rebuild.go:41–47`). The same constraint applies to non-lot realized-gain
-replay.
+`RebuildPositions` and the non-lot realized-gain replay handle corporate
+actions **per-security**, not all-or-nothing. A security touched only by
+stock splits is replayed normally — each split's dated ratio is interleaved
+into the position replay (`replayPosition`) and the realized-gain replay
+(`replayRealizedGain`) — so a clean holding heals and reports realized gain
+across splits even on a database that contains corporate-action history.
+Only securities with a **merger or spin-off** (cross-security transforms /
+cost-basis reallocation a per-security replay can't reconstruct) are skipped.
 
-When the account contains corporate-action records:
+When a security contains corporate-action records:
 
-- **Lot-tracked accounts** — realized-gain calculation still works
-  unchanged. Lots are mutated in-place by the corporate-action service
-  with new `cost_per_share`, and `transaction_lots` rows reference those
-  lots. So the lot path is robust to splits/mergers; numbers come out
-  correct.
-- **Non-lot accounts** — `replayRealizedGain` would produce wrong numbers
-  for the same reason `RebuildPositions` would. The valuation service
-  detects this case (`CorporateActionRepository.CountAll() > 0`), sets
-  `RealizedGain = ZeroMoney`, and emits a warning marker:
-  `Holding.RealizedGainUnavailable = true`. The TUI/CLI render this as
-  `(unavailable)` and a footnote explaining why.
+- **Lot-tracked accounts** — realized-gain calculation works unchanged for
+  every action type. Lots are mutated in-place by the corporate-action
+  service (a split scales `shares` / `original_shares` / `cost_per_share`;
+  mergers and spin-offs reallocate cost basis), and `transaction_lots` rows
+  reference those lots. So the lot path is robust to splits, mergers, and
+  spin-offs; numbers come out correct.
+- **Non-lot accounts** — splits are reconstructed by the split-aware replay,
+  so realized gain stays available across a split. For a security with a
+  **merger or spin-off**, the replay can't reconstruct the cross-security
+  transform, so the valuation service sets `RealizedGain = ZeroMoney` and
+  emits a warning marker: `Holding.RealizedGainUnavailable = true`. The
+  TUI/CLI render this as `(unavailable)` and a footnote explaining why; the
+  other total-return components are still computed.
 
-If you want exact non-lot realized gain in the presence of corporate
-actions, enable lot tracking on the account before running the action
-(future work; out of scope here).
+For exact non-lot realized gain across a merger or spin-off, enable lot
+tracking on the account before running the action.
 
 ## CLI
 
