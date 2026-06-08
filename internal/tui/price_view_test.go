@@ -1670,8 +1670,13 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 	click := tea.MouseClickMsg{X: 5, Y: 6, Button: tea.MouseLeft}
 
 	_, cmd := app.Update(click)
-	if cmd != nil {
+	// The first click selects the row (and schedules a chart-panel fetch,
+	// mirroring keyboard navigation) but must not drill into detail mode.
+	if app.priceView.mode != pricesViewList {
 		t.Fatal("first click should not drill in")
+	}
+	if cmd == nil {
+		t.Fatal("first click should schedule a chart-panel fetch for the selected row")
 	}
 
 	now = now.Add(100 * time.Millisecond)
@@ -1681,6 +1686,129 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 	}
 	if app.priceView.mode != pricesViewDetail {
 		t.Errorf("mode = %v, want pricesViewDetail", app.priceView.mode)
+	}
+}
+
+// PC-013(f): a single left-click on a different prices-list row moves the
+// cursor and schedules a chart-panel fetch for the newly selected ticker,
+// exactly as arrow-key navigation does — without drilling into detail
+// mode. Regression guard for the bug where mouse selection changed the
+// highlighted row but left the chart showing the previously fetched ticker.
+func TestApp_MousePricesList_SingleClickSchedulesChartFetch(t *testing.T) {
+	withShortPriceChartDebounce(t, time.Millisecond)
+
+	secA := types.NewID()
+	secB := types.NewID()
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+
+	sa := &security.Security{Ticker: "AAPL", Name: "Apple Inc."}
+	sa.ID = secA
+	sb := &security.Security{Ticker: "MSFT", Name: "Microsoft"}
+	sb.ID = secB
+
+	app := &App{
+		currentView: ViewPrices,
+		width:       100,
+		height:      30,
+		keys:        defaultKeyMap(),
+		styles:      widget.NewStyles(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		priceView: &priceViewData{
+			mode:       pricesViewList,
+			securities: []*security.Security{sa, sb},
+			latestPrices: []*price.LatestPrice{
+				{SecurityID: secA, Ticker: "AAPL", Name: "Apple Inc.", Date: d, Price: m},
+				{SecurityID: secB, Ticker: "MSFT", Name: "Microsoft", Date: d, Price: m},
+			},
+			historyCache: newHistoryCache(),
+		},
+	}
+	app.styles.Resize(100, 30)
+	app.buildPriceListTable()
+
+	if app.priceListTable.Cursor() != 0 {
+		t.Fatalf("test premise: expected initial cursor 0, got %d", app.priceListTable.Cursor())
+	}
+
+	// Y layout: 0 menu bar, 1 top padding, 2 title, 3 title separator,
+	// 4 table header, 5 header border, 6 data row 0, 7 data row 1.
+	click := tea.MouseClickMsg{X: 5, Y: 7, Button: tea.MouseLeft}
+
+	model, cmd := app.Update(click)
+	app = model.(*App)
+
+	if app.priceView.mode != pricesViewList {
+		t.Fatalf("single click must not drill in; mode = %v", app.priceView.mode)
+	}
+	if app.priceListTable.Cursor() != 1 {
+		t.Fatalf("single click should move cursor to row 1, got %d", app.priceListTable.Cursor())
+	}
+	if cmd == nil {
+		t.Fatal("single click on a price-list row must schedule a chart fetch, got nil cmd")
+	}
+	tick := runDebounceTick(t, cmd)
+	if tick.secID != secB {
+		t.Errorf("scheduled chart fetch secID = %v, want %v (the clicked row's security)", tick.secID, secB)
+	}
+}
+
+// PC-013(g): wheel-scrolling the prices list moves the cursor and
+// schedules a chart-panel fetch for the row scrolled to, mirroring
+// keyboard navigation. Same root cause as the single-click case.
+func TestApp_MouseWheel_PricesList_SchedulesChartFetch(t *testing.T) {
+	withShortPriceChartDebounce(t, time.Millisecond)
+
+	secA := types.NewID()
+	secB := types.NewID()
+	d := types.NewDate(2025, time.March, 15)
+	m, _ := types.NewMoney("185.50")
+
+	sa := &security.Security{Ticker: "AAPL", Name: "Apple Inc."}
+	sa.ID = secA
+	sb := &security.Security{Ticker: "MSFT", Name: "Microsoft"}
+	sb.ID = secB
+
+	app := &App{
+		currentView: ViewPrices,
+		width:       100,
+		height:      30,
+		keys:        defaultKeyMap(),
+		styles:      widget.NewStyles(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		priceView: &priceViewData{
+			mode:       pricesViewList,
+			securities: []*security.Security{sa, sb},
+			latestPrices: []*price.LatestPrice{
+				{SecurityID: secA, Ticker: "AAPL", Name: "Apple Inc.", Date: d, Price: m},
+				{SecurityID: secB, Ticker: "MSFT", Name: "Microsoft", Date: d, Price: m},
+			},
+			historyCache: newHistoryCache(),
+		},
+	}
+	app.styles.Resize(100, 30)
+	app.buildPriceListTable()
+	// Prices is a full-screen view; matches switchView(ViewPrices) which
+	// unfocuses the sidebar so the wheel scrolls the table, not the sidebar.
+	app.sidebar.SetFocused(false)
+
+	wheel := tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelDown}
+	model, cmd := app.Update(wheel)
+	app = model.(*App)
+
+	if app.priceListTable.Cursor() != 1 {
+		t.Fatalf("wheel-down should move cursor to row 1, got %d", app.priceListTable.Cursor())
+	}
+	if cmd == nil {
+		t.Fatal("wheel scroll on the prices list must schedule a chart fetch, got nil cmd")
+	}
+	tick := runDebounceTick(t, cmd)
+	if tick.secID != secB {
+		t.Errorf("scheduled chart fetch secID = %v, want %v", tick.secID, secB)
 	}
 }
 

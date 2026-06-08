@@ -363,6 +363,36 @@ func TestApp_MouseWheel_ScrollsTable(t *testing.T) {
 	}
 }
 
+// TestApp_MouseWheel_NonPricesViewReturnsNoCmd pins the contract that the
+// prices-chart-fetch tail added to handleMouseWheel is a true no-op off the
+// Prices list: scrolling a register table moves the cursor but schedules no
+// command. Without this guard a future change to
+// schedulePriceListChartFetchIfActive's view guard could leak a stray cmd
+// onto other views unnoticed.
+func TestApp_MouseWheel_NonPricesViewReturnsNoCmd(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		table:       widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
+		register:    &registerData{},
+		width:       100,
+		height:      24,
+	}
+	app.styles.Resize(100, 24)
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+	app.table.SetRows([][]string{{"a"}, {"b"}, {"c"}})
+
+	msg := tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelDown}
+	_, cmd := app.Update(msg)
+	if cmd != nil {
+		t.Errorf("wheel scroll off the prices list must schedule no command, got %T", cmd())
+	}
+}
+
 func TestApp_MouseWheel_ScrollsSidebar(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,

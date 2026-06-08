@@ -512,6 +512,24 @@ func (a *App) schedulePriceChartFetch(secID types.ID) tea.Cmd {
 	})
 }
 
+// schedulePriceListChartFetchIfActive returns a debounced chart-fetch cmd
+// for the security under the prices-list cursor, or nil when the prices
+// landing list isn't the active surface. Mouse selection (single click,
+// wheel scroll) calls this so the chart panel tracks the cursor exactly
+// as keyboard navigation does (handlePriceListKeys). Without it the table
+// highlight moves but the chart keeps showing the previously fetched
+// ticker via the chartDisplayedID fallback in buildPriceListChartPanel.
+func (a *App) schedulePriceListChartFetchIfActive() tea.Cmd {
+	if a.currentView != ViewPrices || a.priceView == nil || a.priceView.mode != pricesViewList {
+		return nil
+	}
+	secID := a.listCursorSecurityID()
+	if secID.IsNil() {
+		return nil
+	}
+	return a.schedulePriceChartFetch(secID)
+}
+
 // fetchPriceChartHistory returns a tea.Cmd that synchronously calls the
 // price service for secID's full history and emits a
 // priceChartHistoryLoadedMsg. On error, it returns no message — the

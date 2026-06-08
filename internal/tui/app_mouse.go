@@ -130,7 +130,10 @@ func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd
 		return a.toggleReconciliationCheck()
 	}
 
-	// Prices landing list: double-click drills into a ticker's history.
+	// Prices landing list: a single click selects the row and refreshes the
+	// chart panel for the newly highlighted ticker (mirroring keyboard
+	// navigation); a second click on the same row within the threshold
+	// drills into that ticker's price history.
 	if a.currentView == ViewPrices && a.priceView != nil && a.priceView.mode == pricesViewList {
 		if a.priceListClicks == nil {
 			a.priceListClicks = widget.NewClickTracker(widget.DoubleClickThreshold)
@@ -138,6 +141,7 @@ func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd
 		if a.priceListClicks.Click(rowIdx) {
 			return a, a.drillIntoSelectedListRow()
 		}
+		return a, a.schedulePriceListChartFetchIfActive()
 	}
 
 	return a, nil
@@ -169,7 +173,10 @@ func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	return a, nil
+	// On the prices landing list, refresh the chart panel for the row the
+	// wheel scrolled to — same root cause as the single-click path above.
+	// Returns nil (no-op) on every other view.
+	return a, a.schedulePriceListChartFetchIfActive()
 }
 
 // handleDialogMouse routes mouse events to the currently visible dialog.
