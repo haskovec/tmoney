@@ -146,9 +146,18 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 		}
 
 	case widget.MenuActionCloseAccount:
+		a.menubar.Deactivate()
 		if a.sidebar.SelectedAccountID() != types.NilID {
-			return a, a.closeSelectedAccount()
+			a.showCloseAccountDialog()
 		}
+		return a, nil
+
+	case widget.MenuActionReopenAccount:
+		a.menubar.Deactivate()
+		if a.sidebar.SelectedAccountID() != types.NilID {
+			return a, a.reopenSelectedAccount()
+		}
+		return a, nil
 
 	case widget.MenuActionDeleteAccount:
 		if a.sidebar.SelectedAccountID() != types.NilID {
@@ -158,17 +167,29 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 	case widget.MenuActionReconcileAccount:
 		a.menubar.Deactivate()
 		if a.sidebar.SelectedAccountID() != types.NilID {
-			a.showStartReconciliationDialog()
+			if a.selectedAccountClosed() {
+				a.statusbar.AddNotification("Account is closed — reopen to reconcile", widget.NotificationAlert)
+			} else {
+				a.showStartReconciliationDialog()
+			}
 		}
 		return a, nil
 
 	case widget.MenuActionNewTransaction:
 		if a.currentView == ViewRegister {
+			if a.selectedAccountClosed() {
+				a.statusbar.AddNotification("Account is closed — reopen to add transactions", widget.NotificationAlert)
+				return a, nil
+			}
 			return a, a.loadTransactionDialogData()
 		}
 
 	case widget.MenuActionNewTransfer:
 		if a.currentView == ViewRegister {
+			if a.selectedAccountClosed() {
+				a.statusbar.AddNotification("Account is closed — reopen to add transfers", widget.NotificationAlert)
+				return a, nil
+			}
 			return a, a.loadTransferDialogData()
 		}
 

@@ -126,7 +126,9 @@ Net Worth:         $61,678.90
 List accounts. By default only active accounts are shown.
 
 **Optional flags:**
-- `--include-closed` — Include closed accounts in the listing
+- `--include-closed` — Include closed accounts in the listing. Closed rows are
+  annotated with their close date (e.g. `Old Savings (closed 2024-03-14)`, or
+  `(closed)` when the date is unknown).
 
 ```bash
 tmoney account list
@@ -136,11 +138,12 @@ tmoney account list --include-closed
 ```
 ACCOUNTS
 ========
-Name                Type          Balance      Currency
-Chase Checking      checking      $5,234.56    USD
-Savings             savings       $12,000.00   USD
-Visa Card           credit_card   -$1,234.56   USD
-Investment          investment    $45,678.90   USD
+Name                          Type          Balance      Currency
+Chase Checking                checking      $5,234.56    USD
+Savings                       savings       $12,000.00   USD
+Visa Card                     credit_card   -$1,234.56   USD
+Investment                    investment    $45,678.90   USD
+Old Savings (closed 2024-03-14)  savings    $0.00        USD
 ```
 
 ### `account show`
@@ -165,6 +168,48 @@ Opening Balance: $1,000.00
 Current Balance: $5,234.56
 Cleared Balance: $5,134.56
 Status:          Active
+```
+
+For a closed account the `Status` line shows the close date, e.g.
+`Status:          Closed (2024-03-14)`. An account closed before the close-date
+column existed shows `Status:          Closed (date unknown)`.
+
+---
+
+### `account close`
+
+`Use: account close <name>` · `Args: ExactArgs(1)`
+
+Close an account as of a date.
+
+**Flags**
+
+- `--date` — Close date `YYYY-MM-DD` (default today)
+
+```bash
+tmoney account close "Old Savings"
+tmoney account close "Old Savings" --date 2024-03-14
+```
+
+The account must have a **zero balance**, and the close date must fall on or
+after the account's opening date and its latest transaction, and not in the
+future. Violations are hard errors and abort with a non-zero exit. A closed
+account is **frozen** — no new transactions, edits, deletes, status toggles, or
+transfers (a transfer is blocked if either leg is closed) — and it no longer
+appears in account pickers or in the New Scheduled flows. If any scheduled
+transactions still reference the account, the command prints a warning and
+proceeds (those schedules are skipped on auto-post and refused on manual post
+until redirected or deleted).
+
+### `account reopen`
+
+`Use: account reopen <name>` · `Args: ExactArgs(1)`
+
+Reopen a closed account, clearing its close date and allowing transactions
+again.
+
+```bash
+tmoney account reopen "Old Savings"
 ```
 
 ---

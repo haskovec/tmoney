@@ -31,6 +31,7 @@ const (
 	MenuActionNewAccount
 	MenuActionEditAccount
 	MenuActionCloseAccount
+	MenuActionReopenAccount
 	MenuActionDeleteAccount
 	MenuActionReconcileAccount
 
@@ -154,6 +155,7 @@ func DefaultMenus() []Menu {
 				{Label: "New Account", Action: MenuActionNewAccount},
 				{Label: "Edit Account", Action: MenuActionEditAccount},
 				{Label: "Close Account", Action: MenuActionCloseAccount},
+				{Label: "Reopen Account", Action: MenuActionReopenAccount},
 				{Label: "Delete Account", Action: MenuActionDeleteAccount},
 				{Label: "Reconcile Account", Action: MenuActionReconcileAccount},
 			},

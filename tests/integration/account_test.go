@@ -265,13 +265,22 @@ func TestAccountActiveFilter(t *testing.T) {
 	// Create an active and closed account
 	activeAcc := account.NewAccount("Active Account", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 	closedAcc := account.NewAccount("Closed Account", account.TypeSavings, "USD", types.ZeroMoney, types.Today())
-	closedAcc.Close()
+	closedAcc.Close(types.Today())
 
 	if err := repo.Create(activeAcc); err != nil {
 		t.Fatalf("Failed to create active account: %v", err)
 	}
 	if err := repo.Create(closedAcc); err != nil {
 		t.Fatalf("Failed to create closed account: %v", err)
+	}
+
+	// The closed account's close date must round-trip through INSERT/SELECT.
+	gotClosed, err := repo.GetByID(closedAcc.ID)
+	if err != nil {
+		t.Fatalf("Failed to get closed account: %v", err)
+	}
+	if !gotClosed.ClosedDate.Valid || !gotClosed.ClosedDate.Date.Equal(closedAcc.ClosedDate.Date) {
+		t.Errorf("closed_date did not round-trip: valid=%v %s", gotClosed.ClosedDate.Valid, gotClosed.ClosedDate.Date)
 	}
 
 	// List all accounts

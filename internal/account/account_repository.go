@@ -36,8 +36,8 @@ func (r *Repository) Create(account *Account) error {
 		INSERT INTO accounts (
 			id, name, type, currency, institution, account_number,
 			opening_balance, opening_date, credit_limit, interest_rate,
-			notes, active, track_lots, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			notes, active, closed_date, track_lots, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = r.db.Conn().Exec(query,
@@ -53,6 +53,7 @@ func (r *Repository) Create(account *Account) error {
 		dbutil.NullMoney(account.InterestRate),
 		dbutil.NullString(account.Notes),
 		account.Active,
+		dbutil.NullDate(account.ClosedDate),
 		account.TrackLots,
 		account.CreatedAt,
 		account.UpdatedAt,
@@ -69,7 +70,7 @@ func (r *Repository) GetByID(id types.ID) (*Account, error) {
 	query := `
 		SELECT id, name, type, currency, institution, account_number,
 			opening_balance, opening_date, credit_limit, interest_rate,
-			notes, active, track_lots, created_at, updated_at
+			notes, active, closed_date, track_lots, created_at, updated_at
 		FROM accounts
 		WHERE CAST(id AS VARCHAR) = ?
 	`
@@ -88,6 +89,7 @@ func (r *Repository) GetByID(id types.ID) (*Account, error) {
 		&account.InterestRate,
 		&account.Notes,
 		&account.Active,
+		&account.ClosedDate,
 		&account.TrackLots,
 		&account.CreatedAt,
 		&account.UpdatedAt,
@@ -107,7 +109,7 @@ func (r *Repository) GetByName(name string) (*Account, error) {
 	query := `
 		SELECT id, name, type, currency, institution, account_number,
 			opening_balance, opening_date, credit_limit, interest_rate,
-			notes, active, track_lots, created_at, updated_at
+			notes, active, closed_date, track_lots, created_at, updated_at
 		FROM accounts
 		WHERE name = ?
 	`
@@ -126,6 +128,7 @@ func (r *Repository) GetByName(name string) (*Account, error) {
 		&account.InterestRate,
 		&account.Notes,
 		&account.Active,
+		&account.ClosedDate,
 		&account.TrackLots,
 		&account.CreatedAt,
 		&account.UpdatedAt,
@@ -145,7 +148,7 @@ func (r *Repository) List(activeOnly bool) ([]*Account, error) {
 	query := `
 		SELECT id, name, type, currency, institution, account_number,
 			opening_balance, opening_date, credit_limit, interest_rate,
-			notes, active, track_lots, created_at, updated_at
+			notes, active, closed_date, track_lots, created_at, updated_at
 		FROM accounts
 	`
 	if activeOnly {
@@ -175,6 +178,7 @@ func (r *Repository) List(activeOnly bool) ([]*Account, error) {
 			&account.InterestRate,
 			&account.Notes,
 			&account.Active,
+			&account.ClosedDate,
 			&account.TrackLots,
 			&account.CreatedAt,
 			&account.UpdatedAt,
@@ -212,7 +216,7 @@ func (r *Repository) Update(account *Account) error {
 		UPDATE accounts SET
 			name = ?, type = ?, currency = ?, institution = ?, account_number = ?,
 			opening_balance = ?, opening_date = ?, credit_limit = ?, interest_rate = ?,
-			notes = ?, active = ?, track_lots = ?, updated_at = ?
+			notes = ?, active = ?, closed_date = ?, track_lots = ?, updated_at = ?
 		WHERE CAST(id AS VARCHAR) = ?
 	`,
 		account.Name,
@@ -226,6 +230,7 @@ func (r *Repository) Update(account *Account) error {
 		dbutil.NullMoney(account.InterestRate),
 		dbutil.NullString(account.Notes),
 		account.Active,
+		dbutil.NullDate(account.ClosedDate),
 		account.TrackLots,
 		account.UpdatedAt.Time(),
 		account.ID.String(),

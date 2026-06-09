@@ -54,7 +54,11 @@ tmoney -f personal.tdb account balance
   on by default, since HSAs typically allow invested funds above a cash
   threshold
 - Dynamic account dialog that shows only relevant fields for the selected account type
-- Open/close account lifecycle
+- Open/close account lifecycle: closing records a (back-datable) close date and
+  **freezes** the account — no new transactions, edits, or transfers, and it
+  drops out of every account picker — while staying viewable. Closed accounts
+  collect in a dimmed section at the bottom of the sidebar; **Reopen** from the
+  Accounts menu (or `account reopen`) brings one back.
 
 ### Transactions
 - Standard transactions with payee, category, and memo
@@ -416,7 +420,25 @@ tmoney account add --name "Brokerage" --type investment
 
 # Opt a new investment/HSA account out of lot tracking
 tmoney account add --name "401k" --type investment --track-lots=false
+
+# Close an account (default today; back-date with --date). Requires a zero
+# balance; the date must be within [max(opening, last txn), today].
+tmoney account close "Old Savings"
+tmoney account close "Old Savings" --date 2024-03-14
+
+# Reopen a closed account (clears the close date)
+tmoney account reopen "Old Savings"
 ```
+
+Closing an account **freezes** it: no new transactions, edits, deletes, status
+toggles, or transfers (a transfer is refused if either leg is closed), and it no
+longer appears in any account picker or scheduled-transaction flow. The account
+stays viewable (read-only register/portfolio; `account balance` and
+`report net-worth --include-closed` still value it). Zero-balance and
+close-date-range violations are hard errors; if scheduled transactions still
+reference the account, `account close` prints a warning and proceeds (those
+schedules are skipped on auto-post and refused on manual post). `account reopen`
+clears the close date and unfreezes the account.
 
 New `investment` and `hsa` accounts are **lot-tracked by default** — each
 buy opens a lot and sells are allocated against open lots for exact

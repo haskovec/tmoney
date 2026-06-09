@@ -595,38 +595,55 @@ func TestAccountOptionalFields(t *testing.T) {
 }
 
 func TestAccountCloseReopen(t *testing.T) {
-	t.Run("Close marks account inactive", func(t *testing.T) {
+	closeDate := types.MustParseDate("2024-03-15")
+
+	t.Run("Close marks account inactive and records date", func(t *testing.T) {
 		acc := NewAccount("Test", TypeChecking, "USD", types.ZeroMoney, types.Today())
 		if !acc.Active {
 			t.Error("New account should be active")
 		}
-		acc.Close()
+		if acc.ClosedDate.Valid {
+			t.Error("New account should have no close date")
+		}
+		acc.Close(closeDate)
 		if acc.Active {
 			t.Error("Account should be inactive after Close")
+		}
+		if !acc.IsClosed() {
+			t.Error("IsClosed should be true after Close")
+		}
+		if !acc.ClosedDate.Valid || !acc.ClosedDate.Date.Equal(closeDate) {
+			t.Errorf("expected close date %s, got valid=%v %s", closeDate, acc.ClosedDate.Valid, acc.ClosedDate.Date)
 		}
 	})
 
 	t.Run("Close updates UpdatedAt", func(t *testing.T) {
 		acc := NewAccount("Test", TypeChecking, "USD", types.ZeroMoney, types.Today())
 		original := acc.UpdatedAt
-		acc.Close()
+		acc.Close(closeDate)
 		if !acc.UpdatedAt.After(original) && !acc.UpdatedAt.Time().Equal(original.Time()) {
 			t.Error("Close should update UpdatedAt")
 		}
 	})
 
-	t.Run("Reopen marks account active", func(t *testing.T) {
+	t.Run("Reopen marks account active and clears date", func(t *testing.T) {
 		acc := NewAccount("Test", TypeChecking, "USD", types.ZeroMoney, types.Today())
-		acc.Close()
+		acc.Close(closeDate)
 		acc.Reopen()
 		if !acc.Active {
 			t.Error("Account should be active after Reopen")
+		}
+		if acc.IsClosed() {
+			t.Error("IsClosed should be false after Reopen")
+		}
+		if acc.ClosedDate.Valid {
+			t.Error("Reopen should clear the close date")
 		}
 	})
 
 	t.Run("Reopen updates UpdatedAt", func(t *testing.T) {
 		acc := NewAccount("Test", TypeChecking, "USD", types.ZeroMoney, types.Today())
-		acc.Close()
+		acc.Close(closeDate)
 		original := acc.UpdatedAt
 		acc.Reopen()
 		if !acc.UpdatedAt.After(original) && !acc.UpdatedAt.Time().Equal(original.Time()) {

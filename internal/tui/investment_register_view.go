@@ -210,6 +210,17 @@ func (a *App) renderInvestmentRegister() string {
 	titleRow := a.styles.Title.Render(acctName) + strings.Repeat(" ", padding) + cashStyle.Render(cashStr)
 	sections = append(sections, titleRow)
 
+	// Closed-account banner: a closed account's register is read-only.
+	closedBanner := 0
+	if a.investmentRegister.account != nil && a.investmentRegister.account.IsClosed() {
+		closedBanner = 1
+		label := "Closed · read-only"
+		if a.investmentRegister.account.ClosedDate.Valid {
+			label = "Closed " + a.investmentRegister.account.ClosedDate.Date.String() + " · read-only"
+		}
+		sections = append(sections, a.styles.Muted.Render(label))
+	}
+
 	// Total-return breakdown (one line of components + one line for total).
 	totalReturnLines := 0
 	if breakdown, total := a.renderInvestmentTotalReturnLines(); breakdown != "" {
@@ -225,9 +236,9 @@ func (a *App) renderInvestmentRegister() string {
 	// widget.Table
 	headerHeight := 1
 	statusBarHeight := 1
-	titleHeight := 2 + totalReturnLines // title + separator (+ optional total-return breakdown)
-	paddingHeight := 2                  // top/bottom padding
-	scrollInfoHeight := 1               // reserve a row for the scroll info line so a long list doesn't overflow the status bar
+	titleHeight := 2 + totalReturnLines + closedBanner // title + separator (+ optional total-return breakdown, + closed banner)
+	paddingHeight := 2                                 // top/bottom padding
+	scrollInfoHeight := 1                              // reserve a row for the scroll info line so a long list doesn't overflow the status bar
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight-scrollInfoHeight, 1)
 
 	if a.investmentTable != nil && len(a.investmentRegister.transactions) > 0 {
@@ -363,6 +374,12 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-6, 1)
 		a.investmentTable.PageDown(tableHeight)
+	case a.investmentRegister.account != nil && a.investmentRegister.account.IsClosed() &&
+		(msg.String() == "c" || key.Matches(msg, a.keys.New) || key.Matches(msg, a.keys.Enter) || key.Matches(msg, a.keys.Delete)):
+		// A closed account is frozen: navigation and `p` (portfolio) still
+		// work, but mutating actions are a no-op with an explanatory toast.
+		a.statusbar.AddNotification("Account is closed — reopen to make changes", widget.NotificationAlert)
+		return a, nil
 	case key.Matches(msg, a.keys.New):
 		a.openInvestmentTypeSelector(false)
 	case key.Matches(msg, a.keys.Enter):
@@ -421,25 +438,22 @@ func (a *App) toggleInvestmentTransactionStatus() (tea.Model, tea.Cmd) {
 	currentStatus := txn.Status
 
 	return a, func() tea.Msg {
-		if a.investmentRepo == nil {
-			return errMsg{err: fmt.Errorf("investment repository not available")}
+		if a.investmentSvc == nil {
+			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
-		t, err := a.investmentRepo.GetByID(txnID)
-		if err != nil {
-			return errMsg{err: err}
-		}
-
+		var cleared bool
 		switch currentStatus {
 		case investment.TransactionStatusPending:
-			t.Clear()
+			cleared = true
 		case investment.TransactionStatusCleared:
-			t.MarkPending()
+			cleared = false
 		default:
 			return nil
 		}
 
-		if err := a.investmentRepo.Update(t); err != nil {
+		// Route through the service so the closed-account freeze gate applies.
+		if err := a.investmentSvc.SetClearedStatus(txnID, cleared); err != nil {
 			return errMsg{err: err}
 		}
 		return investmentTransactionClearedMsg{}

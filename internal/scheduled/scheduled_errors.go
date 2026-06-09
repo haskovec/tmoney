@@ -11,6 +11,17 @@ func (e *CompletedError) Error() string {
 	return fmt.Sprintf("scheduled transaction %s has completed all occurrences", e.ID)
 }
 
+// ClosedAccountError is returned when a schedule references a closed account —
+// either at creation or at post time. A schedule may not target a closed
+// account; reopen the account first.
+type ClosedAccountError struct {
+	ID string
+}
+
+func (e *ClosedAccountError) Error() string {
+	return fmt.Sprintf("scheduled transaction references closed account %s", e.ID)
+}
+
 // AmountRequiredError is returned when posting a variable-amount schedule without an amount.
 type AmountRequiredError struct {
 	ID string

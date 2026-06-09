@@ -373,7 +373,7 @@ func TestService_NetWorth_ClosedAccounts(t *testing.T) {
 		// Create closed account
 		closedBalance := types.ZeroMoney
 		closed := account.NewAccount("Closed Checking", account.TypeChecking, "USD", closedBalance, types.Today())
-		closed.Close()
+		closed.Close(types.Today())
 		if err := accountRepo.Create(closed); err != nil {
 			t.Fatalf("Failed to create closed account: %v", err)
 		}
@@ -401,7 +401,7 @@ func TestService_NetWorth_ClosedAccounts(t *testing.T) {
 		// Create closed account with balance
 		closedBalance, _ := types.NewMoney("1000.00")
 		closed := account.NewAccount("Closed Checking", account.TypeChecking, "USD", closedBalance, types.Today())
-		closed.Close()
+		closed.Close(types.Today())
 		if err := accountRepo.Create(closed); err != nil {
 			t.Fatalf("Failed to create closed account: %v", err)
 		}

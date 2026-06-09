@@ -100,6 +100,9 @@ func (s *Service) Create(transaction *Transaction) error {
 	if err := s.validateTransaction(transaction); err != nil {
 		return err
 	}
+	if err := s.ensureAccountOpen(transaction.AccountID); err != nil {
+		return err
+	}
 
 	// Auto-populate category from payee's default if not set
 	if !transaction.HasCategory() && transaction.HasPayee() {
@@ -149,6 +152,18 @@ func (s *Service) Update(transaction *Transaction) error {
 	// Check if this is a transfer - caller should use UpdateTransfer
 	if existing.IsTransfer() && !transaction.IsTransfer() {
 		return &IsTransferError{ID: transaction.ID.String()}
+	}
+
+	// A closed account is frozen — block edits (incl. the cleared toggle,
+	// which routes through here). Guard both the current account and, if the
+	// edit moves the transaction, the destination account.
+	if err := s.ensureAccountOpen(existing.AccountID); err != nil {
+		return err
+	}
+	if transaction.AccountID != existing.AccountID {
+		if err := s.ensureAccountOpen(transaction.AccountID); err != nil {
+			return err
+		}
 	}
 
 	// Reverse cascade: if this transaction is the paired side of a multi-
@@ -206,6 +221,11 @@ func (s *Service) Delete(id types.ID) error {
 		return &IsReconciledError{ID: id.String()}
 	}
 
+	// A closed account is frozen — block deletes.
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
+	}
+
 	// If this is a transfer, check both sides and delete
 	if txn.IsTransfer() {
 		// Reverse cascade: if this transaction is the paired side of a
@@ -231,6 +251,10 @@ func (s *Service) Delete(id types.ID) error {
 		}
 		if pair.ToTransaction.IsReconciled() {
 			return &IsReconciledError{ID: pair.ToTransaction.ID.String()}
+		}
+		// Block the delete if either leg lives on a closed account.
+		if err := s.ensureAccountOpen(pair.ToTransaction.AccountID); err != nil {
+			return err
 		}
 		return s.transferRepo.Delete(txn.TransferID.ID)
 	}
@@ -392,6 +416,9 @@ func (s *Service) CreateWithSplits(transaction *Transaction, splits []*Split) er
 	if err := s.validateSplits(transaction, splits); err != nil {
 		return err
 	}
+	if err := s.ensureAccountOpen(transaction.AccountID); err != nil {
+		return err
+	}
 
 	if transaction.HasCategory() && len(splits) > 0 {
 		return &HasSplitsError{ID: transaction.ID.String()}
@@ -459,6 +486,12 @@ func (s *Service) createTransferLineCounterpart(
 	targetAcctID := split.TransferAccountID.ID
 	counterAmount := split.Amount.Neg()
 	transferID := split.TransferID.ID
+
+	// Block a transfer-line whose target account is closed. This guards both
+	// CreateWithSplits and moveTransferLine (which re-targets a split).
+	if err := s.ensureAccountOpen(targetAcctID); err != nil {
+		return transferLinePair{}, err
+	}
 
 	isInv, err := s.targetIsInvestment(targetAcctID)
 	if err != nil {
@@ -555,6 +588,10 @@ func (s *Service) AddSplit(split *Split) error {
 		return &TransferCannotHaveSplitsError{ID: txn.ID.String()}
 	}
 
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
+	}
+
 	// Create the split
 	if err := s.splitRepo.Create(split); err != nil {
 		return err
@@ -609,6 +646,10 @@ func (s *Service) UpdateSplit(split *Split) error {
 
 	if txn.IsReconciled() {
 		return &IsReconciledError{ID: txn.ID.String()}
+	}
+
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
 	}
 
 	if split.TransferAccountID.Valid && split.TransferAccountID.ID == txn.AccountID {
@@ -740,6 +781,10 @@ func (s *Service) DeleteSplit(splitID types.ID) error {
 		return &IsReconciledError{ID: txn.ID.String()}
 	}
 
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
+	}
+
 	if split.TransferAccountID.Valid && split.TransferID.Valid {
 		if err := s.deletePairedCounterTransaction(split.TransferID.ID); err != nil {
 			return err
@@ -767,6 +812,10 @@ func (s *Service) ReplaceSplits(transactionID types.ID, splits []*Split) error {
 	// Prevent modifying reconciled transactions
 	if txn.IsReconciled() {
 		return &IsReconciledError{ID: txn.ID.String()}
+	}
+
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
 	}
 
 	// Validate splits sum to transaction amount
@@ -954,16 +1003,38 @@ func (s *Service) UpdateTransferDate(transferID types.ID, newDate types.Date) er
 }
 
 // guardTransferDate rejects a transfer whose date precedes the opening date of
-// either account it touches.
+// either account it touches, or whose either leg is a closed account.
 func (s *Service) guardTransferDate(fromAccountID, toAccountID types.ID, date types.Date) error {
 	for _, id := range []types.ID{fromAccountID, toAccountID} {
 		acct, err := s.accountRepo.GetByID(id)
 		if err != nil {
 			return fmt.Errorf("failed to load account for date validation: %w", err)
 		}
+		if acct.IsClosed() {
+			return &account.AccountClosedError{ID: id.String()}
+		}
 		if err := acct.ValidateTransactionDate(date); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// ensureAccountOpen returns an AccountClosedError when the account is closed.
+// A closed account is frozen: no new transactions, edits, deletes, or status
+// toggles. It is nil-tolerant for test fixtures constructed without an
+// accountRepo (matching targetIsInvestment / rejectInvestmentAccount); the
+// production wiring always passes a real repository.
+func (s *Service) ensureAccountOpen(id types.ID) error {
+	if s.accountRepo == nil {
+		return nil
+	}
+	acct, err := s.accountRepo.GetByID(id)
+	if err != nil {
+		return fmt.Errorf("failed to load account for closed check: %w", err)
+	}
+	if acct.IsClosed() {
+		return &account.AccountClosedError{ID: id.String()}
 	}
 	return nil
 }
@@ -1004,6 +1075,14 @@ func (s *Service) checkTransferEditable(transferID types.ID) error {
 		return &IsVoidError{ID: pair.ToTransaction.ID.String()}
 	}
 
+	// A transfer is frozen if either leg lives on a closed account.
+	if err := s.ensureAccountOpen(pair.FromTransaction.AccountID); err != nil {
+		return err
+	}
+	if err := s.ensureAccountOpen(pair.ToTransaction.AccountID); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -1032,6 +1111,10 @@ func (s *Service) ClearTransaction(id types.ID) error {
 		return &IsReconciledError{ID: id.String()}
 	}
 
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
+	}
+
 	txn.Clear()
 	return s.txnRepo.Update(txn)
 }
@@ -1046,6 +1129,10 @@ func (s *Service) ReconcileTransaction(id types.ID) error {
 
 	if txn.IsVoid() {
 		return &IsVoidError{ID: id.String()}
+	}
+
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
 	}
 
 	txn.Reconcile()
@@ -1069,6 +1156,10 @@ func (s *Service) MarkTransactionUncleared(id types.ID) error {
 		return &IsReconciledError{ID: id.String()}
 	}
 
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
+	}
+
 	txn.MarkUncleared()
 	return s.txnRepo.Update(txn)
 }
@@ -1083,6 +1174,10 @@ func (s *Service) UnReconcileTransaction(id types.ID) error {
 
 	if !txn.IsReconciled() {
 		return &NotReconciledError{ID: id.String()}
+	}
+
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
 	}
 
 	txn.Clear()
@@ -1111,6 +1206,11 @@ func (s *Service) VoidTransaction(id types.ID) error {
 	// Cannot void a reconciled transaction
 	if txn.IsReconciled() {
 		return &IsReconciledError{ID: id.String()}
+	}
+
+	// A closed account is frozen — block voids.
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
 	}
 
 	// If this is a transfer, void both sides
@@ -1151,6 +1251,14 @@ func (s *Service) voidTransfer(transferID types.ID) error {
 	}
 	if pair.ToTransaction.IsReconciled() {
 		return &IsReconciledError{ID: pair.ToTransaction.ID.String()}
+	}
+
+	// Block the void if either leg lives on a closed account.
+	if err := s.ensureAccountOpen(pair.FromTransaction.AccountID); err != nil {
+		return err
+	}
+	if err := s.ensureAccountOpen(pair.ToTransaction.AccountID); err != nil {
+		return err
 	}
 
 	// Void both sides

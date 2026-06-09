@@ -155,6 +155,13 @@ type Account struct {
 	OpeningBalance types.Money `json:"opening_balance"`
 	OpeningDate    types.Date  `json:"opening_date"`
 	Active         bool        `json:"active"`
+	// ClosedDate is the date the account was closed. It is a companion to
+	// Active set in lockstep — populated when the account is closed and
+	// cleared when reopened. Active remains the source of truth for whether
+	// an account is closed; a NULL ClosedDate on a closed account means the
+	// close date is unknown (e.g. an account closed before this column
+	// existed).
+	ClosedDate types.NullableDate `json:"closed_date"`
 
 	// Optional properties
 	Institution   types.NullableString `json:"institution"`
@@ -301,14 +308,23 @@ func (a *Account) ClearInterestRate() {
 	a.InterestRate = types.NullableMoney{Valid: false}
 }
 
-// Close marks the account as inactive (closed).
-func (a *Account) Close() {
+// Close marks the account as inactive (closed) and records the close date.
+// ClosedDate is set in lockstep with Active.
+func (a *Account) Close(closedDate types.Date) {
 	a.Active = false
+	a.ClosedDate = types.NullableDate{Date: closedDate, Valid: true}
 	a.Touch()
 }
 
-// Reopen marks the account as active again.
+// Reopen marks the account as active again and clears the close date.
 func (a *Account) Reopen() {
 	a.Active = true
+	a.ClosedDate = types.NullableDate{Valid: false}
 	a.Touch()
+}
+
+// IsClosed reports whether the account is closed (inactive). Active is the
+// source of truth; ClosedDate is a companion set/cleared in lockstep.
+func (a *Account) IsClosed() bool {
+	return !a.Active
 }

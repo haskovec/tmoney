@@ -1,8 +1,10 @@
 package scheduled
 
 import (
+	"errors"
 	"fmt"
 
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -10,10 +12,11 @@ import (
 
 // Service provides business logic for scheduled transaction operations.
 type Service struct {
-	repo    *Repository
-	txnRepo *transaction.Repository
-	txnSvc  *transaction.Service
-	db      *db.DB
+	repo        *Repository
+	txnRepo     *transaction.Repository
+	txnSvc      *transaction.Service
+	accountRepo *account.Repository
+	db          *db.DB
 }
 
 // NewService creates a new Service.
@@ -21,18 +24,78 @@ type Service struct {
 // txnSvc may be nil for legacy single-line use; posting a multi-line
 // scheduled transaction requires a non-nil txnSvc so the multi-line create
 // path (including paired transfer counterparts) can be delegated.
+//
+// accountRepo backs the closed-account freeze gate: a schedule may not be
+// created against, or posted into, a closed account.
 func NewService(
 	repo *Repository,
 	txnRepo *transaction.Repository,
 	txnSvc *transaction.Service,
 	database *db.DB,
+	accountRepo *account.Repository,
 ) *Service {
 	return &Service{
-		repo:    repo,
-		txnRepo: txnRepo,
-		txnSvc:  txnSvc,
-		db:      database,
+		repo:        repo,
+		txnRepo:     txnRepo,
+		txnSvc:      txnSvc,
+		accountRepo: accountRepo,
+		db:          database,
 	}
+}
+
+// referencedAccountIDs returns every account a schedule touches: its source
+// account, its single-line transfer destination, and every transfer-line
+// split target.
+func referencedAccountIDs(st *Transaction) []types.ID {
+	ids := []types.ID{st.AccountID}
+	if st.IsTransfer() {
+		ids = append(ids, st.TransferAccountID.ID)
+	}
+	for _, sp := range st.Splits {
+		if sp.TransferAccountID.Valid {
+			ids = append(ids, sp.TransferAccountID.ID)
+		}
+	}
+	return ids
+}
+
+// ensureNoClosedAccounts rejects a schedule that references any closed account
+// (source, transfer destination, or transfer-line split target). Nil-tolerant
+// for fixtures constructed without an accountRepo; production always wires one.
+func (s *Service) ensureNoClosedAccounts(st *Transaction) error {
+	if s.accountRepo == nil {
+		return nil
+	}
+	for _, id := range referencedAccountIDs(st) {
+		acct, err := s.accountRepo.GetByID(id)
+		if err != nil {
+			return fmt.Errorf("failed to load account for closed check: %w", err)
+		}
+		if acct.IsClosed() {
+			return &ClosedAccountError{ID: id.String()}
+		}
+	}
+	return nil
+}
+
+// ListReferencing returns every schedule that references the given account as
+// its source, single-line transfer destination, or a transfer-line split
+// target. It backs the soft warning shown when closing an account.
+func (s *Service) ListReferencing(accountID types.ID) ([]*Transaction, error) {
+	all, err := s.repo.List()
+	if err != nil {
+		return nil, err
+	}
+	var out []*Transaction
+	for _, st := range all {
+		for _, id := range referencedAccountIDs(st) {
+			if id == accountID {
+				out = append(out, st)
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 // =============================================================================
@@ -47,6 +110,9 @@ func (s *Service) Create(st *Transaction) error {
 		return err
 	}
 	if err := s.validateScheduledSplits(st); err != nil {
+		return err
+	}
+	if err := s.ensureNoClosedAccounts(st); err != nil {
 		return err
 	}
 	if err := s.repo.Create(st); err != nil {
@@ -186,8 +252,19 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 		beforeSchedule := *st
 		result.BeforeSchedule = &beforeSchedule
 
+		// Skip — don't error the batch — a schedule that references a closed
+		// account; it is left due and unadvanced (decision 8).
+		if cerr := s.ensureNoClosedAccounts(st); cerr != nil {
+			var closedErr *ClosedAccountError
+			if !errors.As(cerr, &closedErr) {
+				return nil, cerr
+			}
+			result.Skipped = true
+			result.SkipReason = "references a closed account"
+		}
+
 		// Post all overdue occurrences for this scheduled transaction
-		for !st.IsCompleted() && s.isAutoPostDue(st, today) {
+		for !result.Skipped && !st.IsCompleted() && s.isAutoPostDue(st, today) {
 			var txn *transaction.Transaction
 			if st.IsTransfer() {
 				// Single-line transfer: post template values exactly as a clean
@@ -344,6 +421,12 @@ func (s *Service) Post(id types.ID, amount *types.Money) (*transaction.Transacti
 		return nil, &CompletedError{ID: id.String()}
 	}
 
+	// A schedule may not post into a closed account (manual post refuses with a
+	// clear error and the schedule stays due).
+	if err := s.ensureNoClosedAccounts(st); err != nil {
+		return nil, err
+	}
+
 	if len(st.Splits) > 0 {
 		if amount != nil {
 			return nil, fmt.Errorf("amount override is not supported on multi-line scheduled transactions; use the preview dialog to edit per-instance amounts")
@@ -365,6 +448,12 @@ func (s *Service) PostWithDate(id types.ID, date types.Date, amount *types.Money
 	// Check if schedule is already completed
 	if st.IsCompleted() {
 		return nil, &CompletedError{ID: id.String()}
+	}
+
+	// A schedule may not post into a closed account (manual post refuses with a
+	// clear error and the schedule stays due).
+	if err := s.ensureNoClosedAccounts(st); err != nil {
+		return nil, err
 	}
 
 	if len(st.Splits) > 0 {
@@ -586,6 +675,12 @@ func (s *Service) PostWithEdits(id types.ID, txn *transaction.Transaction, split
 	}
 	if st.IsCompleted() {
 		return nil, &CompletedError{ID: id.String()}
+	}
+
+	// A schedule may not post into a closed account (manual post refuses with a
+	// clear error and the schedule stays due).
+	if err := s.ensureNoClosedAccounts(st); err != nil {
+		return nil, err
 	}
 
 	if len(splits) > 0 {

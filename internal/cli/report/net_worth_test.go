@@ -121,7 +121,7 @@ func TestReportNetWorth_IncludeClosed(t *testing.T) {
 	if err := acctRepo.Create(closed); err != nil {
 		t.Fatalf("setup: create closed: %v", err)
 	}
-	closed.Close()
+	closed.Close(types.Today())
 	if err := acctRepo.Update(closed); err != nil {
 		t.Fatalf("setup: close savings: %v", err)
 	}

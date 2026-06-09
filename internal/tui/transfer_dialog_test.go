@@ -421,6 +421,7 @@ func TestApp_HandleRegisterKeys_TransferKey(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions:  []*transaction.Transaction{},
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
@@ -912,6 +913,7 @@ func TestApp_RenderLayout_WithTransferDialog(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: types.NewID()},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions:  []*transaction.Transaction{},
 			balance:       &account.Balance{CurrentBalance: types.ZeroMoney},
@@ -1131,6 +1133,7 @@ func TestApp_HandleRegisterKeys_EnterOnTransfer_OpensTransferEdit(t *testing.T) 
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions: []*transaction.Transaction{
 				{

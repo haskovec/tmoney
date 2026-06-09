@@ -502,6 +502,38 @@ func TestMenuBar_TransactionsMenuItems(t *testing.T) {
 	}
 }
 
+func TestMenuBar_AccountsMenuItems(t *testing.T) {
+	m := NewMenuBar()
+
+	accountsMenu := m.menus[3]
+	if accountsMenu.Label != "Accounts" {
+		t.Fatalf("expected Accounts menu at index 3, got %q", accountsMenu.Label)
+	}
+
+	want := []struct {
+		label  string
+		action MenuAction
+	}{
+		{"New Account", MenuActionNewAccount},
+		{"Edit Account", MenuActionEditAccount},
+		{"Close Account", MenuActionCloseAccount},
+		{"Reopen Account", MenuActionReopenAccount},
+		{"Delete Account", MenuActionDeleteAccount},
+		{"Reconcile Account", MenuActionReconcileAccount},
+	}
+	if len(accountsMenu.Items) != len(want) {
+		t.Fatalf("Accounts menu: expected %d items, got %d", len(want), len(accountsMenu.Items))
+	}
+	for i, exp := range want {
+		if accountsMenu.Items[i].Label != exp.label {
+			t.Errorf("Accounts[%d].label = %q, want %q", i, accountsMenu.Items[i].Label, exp.label)
+		}
+		if accountsMenu.Items[i].Action != exp.action {
+			t.Errorf("Accounts[%d].action = %d, want %d", i, accountsMenu.Items[i].Action, exp.action)
+		}
+	}
+}
+
 func TestMenuBar_SecuritiesMenuItems(t *testing.T) {
 	m := NewMenuBar()
 

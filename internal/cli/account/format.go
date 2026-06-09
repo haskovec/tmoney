@@ -31,8 +31,19 @@ func printAccountsTable(w io.Writer, accounts []*accountdom.Account, balances ma
 			balance = cmdutil.FormatMoney(b.CurrentBalance, acct.Currency)
 		}
 
+		// Annotate closed rows (only shown with --include-closed) with the
+		// close date, tolerating a NULL date on a pre-existing closed account.
+		name := acct.Name
+		if !acct.Active {
+			if acct.ClosedDate.Valid {
+				name += " (closed " + acct.ClosedDate.Date.String() + ")"
+			} else {
+				name += " (closed)"
+			}
+		}
+
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-			acct.Name,
+			name,
 			acct.Type.DisplayName(),
 			balance,
 			acct.Currency,
@@ -70,7 +81,11 @@ func printAccountDetails(w io.Writer, acct *accountdom.Account, bal *accountdom.
 
 	status := "Active"
 	if !acct.Active {
-		status = "Closed"
+		if acct.ClosedDate.Valid {
+			status = "Closed (" + acct.ClosedDate.Date.String() + ")"
+		} else {
+			status = "Closed (date unknown)"
+		}
 	}
 	fmt.Fprintf(w, "Status:          %s\n", status)
 

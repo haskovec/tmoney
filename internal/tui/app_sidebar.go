@@ -20,7 +20,10 @@ func (a *App) loadSidebarData() tea.Cmd {
 		if a.accountSvc == nil {
 			return nil
 		}
-		accounts, err := a.accountSvc.List(true)
+		// Load all accounts (including closed) so the sidebar can show a
+		// dimmed "Closed Accounts" section at the bottom. Pickers elsewhere
+		// still use List(true) to exclude closed accounts.
+		accounts, err := a.accountSvc.List(false)
 		if err != nil {
 			return errMsg{err: err}
 		}

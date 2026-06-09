@@ -360,6 +360,7 @@ func TestApp_HandleRegisterKeys_NewKey(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions:  []*transaction.Transaction{},
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
@@ -1101,6 +1102,7 @@ func TestApp_RenderLayout_WithTransactionDialog(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: types.NewID()},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions:  []*transaction.Transaction{},
 			balance:       &account.Balance{CurrentBalance: types.ZeroMoney},
@@ -1755,6 +1757,7 @@ func TestApp_HandleRegisterKeys_EnterOpensEditFlow_ForPlainTransaction(t *testin
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions: []*transaction.Transaction{
 				{
@@ -1801,6 +1804,7 @@ func TestApp_HandleRegisterKeys_EnterOnVoidTransaction_NoOp(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions: []*transaction.Transaction{
 				{
@@ -1849,6 +1853,7 @@ func TestApp_HandleRegisterKeys_EnterOnReconciledTransaction_NoOp(t *testing.T) 
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions: []*transaction.Transaction{
 				{

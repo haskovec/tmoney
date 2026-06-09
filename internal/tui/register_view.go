@@ -138,6 +138,13 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-6, 1)
 		a.table.PageDown(tableHeight)
+	case a.register.account != nil && a.register.account.IsClosed() &&
+		(msg.String() == "c" || msg.String() == "v" || msg.String() == "t" || msg.String() == "r" ||
+			key.Matches(msg, a.keys.Delete) || key.Matches(msg, a.keys.New) || key.Matches(msg, a.keys.Enter)):
+		// A closed account is frozen: navigation still works, but every
+		// mutating action is a no-op with an explanatory toast.
+		a.statusbar.AddNotification("Account is closed — reopen to make changes", widget.NotificationAlert)
+		return a, nil
 	case msg.String() == "c":
 		return a.toggleTransactionStatus()
 	case msg.String() == "v":
@@ -491,6 +498,17 @@ func (a *App) renderRegister() string {
 	titleRow := a.styles.Title.Render(acctName) + strings.Repeat(" ", padding) + balStyle.Render(balStr)
 	sections = append(sections, titleRow)
 
+	// Closed-account banner: a closed account's register is read-only.
+	closedBanner := false
+	if a.register.account != nil && a.register.account.IsClosed() {
+		closedBanner = true
+		label := "Closed · read-only"
+		if a.register.account.ClosedDate.Valid {
+			label = "Closed " + a.register.account.ClosedDate.Date.String() + " · read-only"
+		}
+		sections = append(sections, a.styles.Muted.Render(label))
+	}
+
 	// Separator
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
@@ -498,7 +516,10 @@ func (a *App) renderRegister() string {
 	// widget.Table
 	headerHeight := 1
 	statusBarHeight := 1
-	titleHeight := 2      // title + separator
+	titleHeight := 2 // title + separator
+	if closedBanner {
+		titleHeight++ // account for the read-only banner line
+	}
 	paddingHeight := 2    // top/bottom padding
 	scrollInfoHeight := 1 // reserve a row for the scroll info line so a long list doesn't overflow the status bar
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight-scrollInfoHeight, 1)

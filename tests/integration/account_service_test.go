@@ -283,7 +283,7 @@ func TestAccountServiceClose(t *testing.T) {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		if err := svc.Close(acct.ID); err != nil {
+		if err := svc.Close(acct.ID, types.Today()); err != nil {
 			t.Fatalf("Failed to close account: %v", err)
 		}
 
@@ -308,7 +308,7 @@ func TestAccountServiceClose(t *testing.T) {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		err := svc.Close(acct.ID)
+		err := svc.Close(acct.ID, types.Today())
 		if err == nil {
 			t.Error("Expected error when closing account with balance")
 		}
@@ -338,11 +338,11 @@ func TestAccountServiceClose(t *testing.T) {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		if err := svc.Close(acct.ID); err != nil {
+		if err := svc.Close(acct.ID, types.Today()); err != nil {
 			t.Fatalf("Failed to close account: %v", err)
 		}
 
-		err := svc.Close(acct.ID)
+		err := svc.Close(acct.ID, types.Today())
 		if err == nil {
 			t.Error("Expected error when closing already closed account")
 		}
@@ -368,7 +368,7 @@ func TestAccountServiceReopen(t *testing.T) {
 			t.Fatalf("Failed to create account: %v", err)
 		}
 
-		if err := svc.Close(acct.ID); err != nil {
+		if err := svc.Close(acct.ID, types.Today()); err != nil {
 			t.Fatalf("Failed to close account: %v", err)
 		}
 
@@ -425,7 +425,7 @@ func TestAccountServiceList(t *testing.T) {
 		}
 
 		// Close one account
-		if err := svc.Close(accounts[2].ID); err != nil {
+		if err := svc.Close(accounts[2].ID, types.Today()); err != nil {
 			t.Fatalf("Failed to close account: %v", err)
 		}
 

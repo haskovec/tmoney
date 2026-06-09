@@ -131,6 +131,11 @@ func (a *App) renderLayout() string {
 		layout = a.overlayDialog(layout, a.reconDialog)
 	}
 
+	// Overlay close-account dialog if visible
+	if a.closeAcctDialog != nil && a.closeAcctDialog.IsVisible() {
+		layout = a.overlayDialog(layout, a.closeAcctDialog)
+	}
+
 	// Overlay security dialog if visible
 	if a.securityDialog != nil && a.securityDialog.IsVisible() {
 		layout = a.overlayDialog(layout, a.securityDialog)

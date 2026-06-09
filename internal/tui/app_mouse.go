@@ -386,6 +386,18 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	if a.closeAcctDialog != nil && a.closeAcctDialog.IsVisible() {
+		action := a.closeAcctDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case dialog.DialogActionSubmit:
+			return a.submitCloseAccountDialog()
+		case dialog.DialogActionCancel:
+			a.closeAcctDialog.SetVisible(false)
+			a.closeAcctDialog = nil
+		}
+		return a, nil
+	}
+
 	if a.securityDialog != nil && a.securityDialog.IsVisible() {
 		action := a.securityDialog.HandleMouse(msg, a.width, a.height)
 		switch action {

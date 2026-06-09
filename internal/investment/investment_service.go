@@ -186,6 +186,9 @@ func (s *Service) Buy(
 	if err != nil {
 		return nil, err
 	}
+	if acct.IsClosed() {
+		return nil, &account.AccountClosedError{ID: accountID.String()}
+	}
 
 	// Heal any stale stored position/lot state for this (account, security)
 	// before we read it (no-op when corporate actions are present).
@@ -271,6 +274,9 @@ func (s *Service) Sell(
 	acct, err := s.getInvestmentAccount(accountID)
 	if err != nil {
 		return nil, err
+	}
+	if acct.IsClosed() {
+		return nil, &account.AccountClosedError{ID: accountID.String()}
 	}
 
 	// Heal any stale stored position/lot state before validating.
@@ -472,10 +478,53 @@ func (s *Service) TotalSharesForSecurity(securityID types.ID) (types.Quantity, e
 	return total, nil
 }
 
-// requireInvestmentAccount verifies that the given account exists and is an investment account.
+// requireInvestmentAccount verifies that the given account exists, is an
+// investment account, and is not closed. It is a write-path guard — only
+// mutation methods call it, so the closed check belongs here (read and
+// maintenance paths use getInvestmentAccount directly and stay ungated).
 func (s *Service) requireInvestmentAccount(accountID types.ID) error {
-	_, err := s.getInvestmentAccount(accountID)
-	return err
+	acct, err := s.getInvestmentAccount(accountID)
+	if err != nil {
+		return err
+	}
+	if acct.IsClosed() {
+		return &account.AccountClosedError{ID: accountID.String()}
+	}
+	return nil
+}
+
+// ensureAccountOpen returns an AccountClosedError when the account is closed.
+// Used by mutation paths that hold only an account ID (e.g. DeleteTransaction);
+// it deliberately does NOT funnel through getInvestmentAccount so read and
+// maintenance paths remain ungated.
+func (s *Service) ensureAccountOpen(accountID types.ID) error {
+	acct, err := s.accountRepo.GetByID(accountID)
+	if err != nil {
+		return fmt.Errorf("failed to load account for closed check: %w", err)
+	}
+	if acct.IsClosed() {
+		return &account.AccountClosedError{ID: accountID.String()}
+	}
+	return nil
+}
+
+// SetClearedStatus marks an investment transaction cleared or pending. It is the
+// service-layer chokepoint for the register's cleared toggle, so the
+// closed-account freeze gate applies here (a closed account is frozen).
+func (s *Service) SetClearedStatus(txnID types.ID, cleared bool) error {
+	txn, err := s.repo.GetByID(txnID)
+	if err != nil {
+		return err
+	}
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
+	}
+	if cleared {
+		txn.Clear()
+	} else {
+		txn.MarkPending()
+	}
+	return s.repo.Update(txn)
 }
 
 // getInvestmentAccount retrieves and validates that the account is an investment account.
@@ -643,6 +692,9 @@ func (s *Service) ReinvestDividend(
 	if err != nil {
 		return nil, err
 	}
+	if acct.IsClosed() {
+		return nil, &account.AccountClosedError{ID: accountID.String()}
+	}
 
 	if err := s.syncPositionAndLots(accountID, securityID); err != nil {
 		return nil, err
@@ -713,6 +765,9 @@ func (s *Service) FeeLiquidation(
 	acct, err := s.getInvestmentAccount(accountID)
 	if err != nil {
 		return nil, err
+	}
+	if acct.IsClosed() {
+		return nil, &account.AccountClosedError{ID: accountID.String()}
 	}
 
 	if err := s.syncPositionAndLots(accountID, securityID); err != nil {
@@ -903,6 +958,10 @@ func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, d
 			Type:      string(regularAcct.Type),
 		}
 	}
+	// The regular leg of the transfer is frozen if its account is closed.
+	if regularAcct.IsClosed() {
+		return nil, &account.AccountClosedError{ID: regularAccountID.String()}
+	}
 
 	// Check that the two accounts are different
 	if investmentAccountID == regularAccountID {
@@ -981,6 +1040,10 @@ func (s *Service) DepositFromAccount(investmentAccountID, regularAccountID types
 			AccountID: regularAccountID.String(),
 			Type:      string(regularAcct.Type),
 		}
+	}
+	// The regular leg of the transfer is frozen if its account is closed.
+	if regularAcct.IsClosed() {
+		return nil, &account.AccountClosedError{ID: regularAccountID.String()}
 	}
 
 	// Check that the two accounts are different
@@ -1238,6 +1301,14 @@ func (s *Service) TransferShares(
 		return nil, err
 	}
 
+	// A share transfer is frozen if either leg is a closed account.
+	if srcAcct.IsClosed() {
+		return nil, &account.AccountClosedError{ID: sourceAccountID.String()}
+	}
+	if dstAcct.IsClosed() {
+		return nil, &account.AccountClosedError{ID: destAccountID.String()}
+	}
+
 	// Reject same account
 	if sourceAccountID == destAccountID {
 		return nil, fmt.Errorf("cannot transfer shares between the same account")
@@ -1453,6 +1524,17 @@ func (s *Service) DeleteTransaction(id types.ID) error {
 	// reversal path. (CA reversal deletes these via the raw repository, not here.)
 	if txn.Type == TransactionTypeExchange {
 		return fmt.Errorf("cannot delete a corporate-action exchange transaction directly; reverse the corporate action from the Corporate Action History view instead")
+	}
+
+	// A closed account is frozen — refuse the delete BEFORE any destructive
+	// reversal runs. For transfers, block if either leg is a closed account.
+	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
+		return err
+	}
+	if txn.TransferAccountID.Valid {
+		if err := s.ensureAccountOpen(txn.TransferAccountID.ID); err != nil {
+			return err
+		}
 	}
 
 	// Reverse this transaction's effect on positions and lots BEFORE deleting

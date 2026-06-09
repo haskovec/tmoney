@@ -47,12 +47,18 @@ type sidebarItem struct {
 	groupKey  string           // group label
 	account   *account.Account // non-nil for account items
 	accountID types.ID         // shortcut for account items
+	dimmed    bool             // true for the closed-accounts group (header + items)
 }
+
+// closedAccountsGroupLabel is the heading for the dimmed section of closed
+// accounts pinned to the bottom of the sidebar.
+const closedAccountsGroupLabel = "Closed Accounts"
 
 // accountGroup holds a named group of accounts for sidebar display.
 type accountGroup struct {
 	label    string
 	accounts []*account.Account
+	closed   bool // dimmed "Closed Accounts" group, rendered last
 }
 
 // Sidebar manages the account sidebar state and rendering.
@@ -156,11 +162,20 @@ func (s *Sidebar) Select() bool {
 	return false
 }
 
-// buildGroups organizes accounts into display groups.
+// buildGroups organizes accounts into display groups. Active accounts are
+// grouped by type in the configured order; closed accounts are collected into a
+// single flat "Closed Accounts" group appended at the very bottom (only when at
+// least one account is closed).
 func buildGroups(accounts []*account.Account) []accountGroup {
-	// Group accounts by their sidebar group label
+	// Partition active vs closed first, so a closed account never appears in its
+	// type-group and the "Closed Accounts" label can't collide with a type label.
 	byGroup := make(map[string][]*account.Account)
+	var closed []*account.Account
 	for _, a := range accounts {
+		if a.IsClosed() {
+			closed = append(closed, a)
+			continue
+		}
 		label := accountGroupLabels[a.Type]
 		if label == "" {
 			label = a.Type.DisplayName()
@@ -188,6 +203,15 @@ func buildGroups(accounts []*account.Account) []accountGroup {
 			})
 		}
 	}
+
+	// Closed accounts live in one flat, dimmed group at the bottom.
+	if len(closed) > 0 {
+		groups = append(groups, accountGroup{
+			label:    closedAccountsGroupLabel,
+			accounts: closed,
+			closed:   true,
+		})
+	}
 	return groups
 }
 
@@ -201,6 +225,7 @@ func (s *Sidebar) rebuildItems() {
 		items = append(items, sidebarItem{
 			kind:     sidebarItemGroup,
 			groupKey: g.label,
+			dimmed:   g.closed,
 		})
 
 		for _, a := range g.accounts {
@@ -209,6 +234,7 @@ func (s *Sidebar) rebuildItems() {
 				groupKey:  g.label,
 				account:   a,
 				accountID: a.ID,
+				dimmed:    g.closed,
 			})
 		}
 	}
@@ -372,6 +398,10 @@ func (s *Sidebar) renderGroupHeader(styles widget.Styles, item sidebarItem, isCu
 	if isCursor {
 		return styles.SelectedRow.Render(text)
 	}
+	// The closed-accounts group is dimmed.
+	if item.dimmed {
+		return styles.Muted.Render(text)
+	}
 	// Render without SidebarGroup style padding — we handle width ourselves
 	return styles.SidebarGroup.UnsetPaddingLeft().Render(text)
 }
@@ -405,6 +435,10 @@ func (s *Sidebar) renderAccountItem(styles widget.Styles, item sidebarItem, isCu
 
 	if isCursor {
 		return styles.SelectedRow.Render(text)
+	}
+	// Closed accounts are dimmed; cursor/selection styling above still wins.
+	if item.dimmed {
+		return styles.Muted.Render(text)
 	}
 	// Render without SidebarItem style padding — we handle width ourselves
 	return styles.SidebarItem.UnsetPaddingLeft().Render(text)

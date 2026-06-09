@@ -27,7 +27,7 @@ func newTransferTestEnv(t *testing.T) *transferTestEnv {
 	accountRepo := account.NewRepository(database)
 	payeeRepo := payee.NewRepository(database)
 	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
-	svc := NewService(stRepo, txnRepo, txnSvc, database)
+	svc := NewService(stRepo, txnRepo, txnSvc, database, accountRepo)
 	return &transferTestEnv{svc: svc, txnRepo: txnRepo, accountRepo: accountRepo}
 }
 

@@ -113,6 +113,53 @@ func TestSidebar_SetAccounts_MultipleGroups(t *testing.T) {
 	}
 }
 
+func TestSidebar_ClosedAccountsGroupedLast(t *testing.T) {
+	s := NewSidebar()
+	checking := testAccount("Checking", account.TypeChecking)
+	closedSavings := testAccount("Old Savings", account.TypeSavings)
+	closedSavings.Close(types.Today())
+	closedBrokerage := testAccount("Old Brokerage", account.TypeInvestment)
+	closedBrokerage.Close(types.Today())
+
+	s.SetAccounts([]*account.Account{checking, closedSavings, closedBrokerage}, nil)
+
+	var groupOrder []string
+	closedNames := map[string]bool{}
+	inClosedGroup := false
+	for _, item := range s.items {
+		if item.kind == sidebarItemGroup {
+			groupOrder = append(groupOrder, item.groupKey)
+			inClosedGroup = item.groupKey == closedAccountsGroupLabel
+			continue
+		}
+		if item.account.IsClosed() && !inClosedGroup {
+			t.Errorf("closed account %q appeared outside the Closed Accounts group", item.account.Name)
+		}
+		if inClosedGroup {
+			closedNames[item.account.Name] = true
+			if !item.dimmed {
+				t.Errorf("closed account %q should be dimmed", item.account.Name)
+			}
+		}
+	}
+	if len(groupOrder) == 0 || groupOrder[len(groupOrder)-1] != closedAccountsGroupLabel {
+		t.Errorf("Closed Accounts must be the last group, got order %v", groupOrder)
+	}
+	if !closedNames["Old Savings"] || !closedNames["Old Brokerage"] {
+		t.Errorf("both closed accounts should be in the Closed Accounts group, got %v", closedNames)
+	}
+}
+
+func TestSidebar_NoClosedGroupWhenAllActive(t *testing.T) {
+	s := NewSidebar()
+	s.SetAccounts([]*account.Account{testAccount("Checking", account.TypeChecking)}, nil)
+	for _, item := range s.items {
+		if item.kind == sidebarItemGroup && item.groupKey == closedAccountsGroupLabel {
+			t.Error("Closed Accounts group should be absent when no account is closed")
+		}
+	}
+}
+
 func TestSidebar_AllGroupsAlwaysExpanded(t *testing.T) {
 	s := NewSidebar()
 	accounts := []*account.Account{

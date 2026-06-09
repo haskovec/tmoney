@@ -119,22 +119,26 @@ func (c *DeleteAccountCommand) Description() string {
 // CloseAccountCommand
 // =============================================================================
 
-// CloseAccountCommand closes an account and can undo it by reopening.
+// CloseAccountCommand closes an account on a given date and can undo it by
+// reopening. Reopening restores the exact prior state (active, no close date),
+// so no snapshot is needed for the close direction.
 type CloseAccountCommand struct {
-	svc *account.Service
-	id  types.ID
+	svc  *account.Service
+	id   types.ID
+	date types.Date
 }
 
-// NewCloseAccountCommand creates a command that will close an account.
-func NewCloseAccountCommand(svc *account.Service, id types.ID) *CloseAccountCommand {
+// NewCloseAccountCommand creates a command that will close an account as of date.
+func NewCloseAccountCommand(svc *account.Service, id types.ID, date types.Date) *CloseAccountCommand {
 	return &CloseAccountCommand{
-		svc: svc,
-		id:  id,
+		svc:  svc,
+		id:   id,
+		date: date,
 	}
 }
 
 func (c *CloseAccountCommand) Execute() error {
-	return c.svc.Close(c.id)
+	return c.svc.Close(c.id, c.date)
 }
 
 func (c *CloseAccountCommand) Undo() error {
@@ -149,10 +153,14 @@ func (c *CloseAccountCommand) Description() string {
 // ReopenAccountCommand
 // =============================================================================
 
-// ReopenAccountCommand reopens a closed account and can undo it by closing.
+// ReopenAccountCommand reopens a closed account and can undo it by re-closing
+// to the EXACT prior close date (captured on Execute). The undo uses
+// RestoreClosed, which bypasses close-date/zero-balance validation, so a
+// back-dated or NULL (unknown) prior close date restores faithfully.
 type ReopenAccountCommand struct {
-	svc *account.Service
-	id  types.ID
+	svc    *account.Service
+	id     types.ID
+	before types.NullableDate // prior close date, captured on Execute
 }
 
 // NewReopenAccountCommand creates a command that will reopen a closed account.
@@ -164,11 +172,16 @@ func NewReopenAccountCommand(svc *account.Service, id types.ID) *ReopenAccountCo
 }
 
 func (c *ReopenAccountCommand) Execute() error {
+	acct, err := c.svc.GetByID(c.id)
+	if err != nil {
+		return err
+	}
+	c.before = acct.ClosedDate
 	return c.svc.Reopen(c.id)
 }
 
 func (c *ReopenAccountCommand) Undo() error {
-	return c.svc.Close(c.id)
+	return c.svc.RestoreClosed(c.id, c.before)
 }
 
 func (c *ReopenAccountCommand) Description() string {

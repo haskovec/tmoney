@@ -1206,6 +1206,7 @@ func TestApp_RenderLayout_WithSplitDialog(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: types.NewID()},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions:  []*transaction.Transaction{},
 			balance:       &account.Balance{CurrentBalance: types.ZeroMoney},
@@ -1329,6 +1330,7 @@ func TestApp_HandleRegisterKeys_EnterOnSplitTransaction_OpensEditFlow(t *testing
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions: []*transaction.Transaction{
 				{

@@ -1,0 +1,21 @@
+-- Migration 025: Account close date.
+--
+-- Adds closed_date to accounts so a closed account records WHEN it was closed,
+-- not just THAT it was closed. closed_date is a companion to the existing
+-- `active` boolean: it is set when an account is closed and cleared (NULL) when
+-- it is reopened, in lockstep. `active` remains the source of truth for whether
+-- an account is closed.
+--
+-- Backfill: accounts already closed before this column existed (active = FALSE)
+-- keep a NULL closed_date — the close date is genuinely unknown, and a guessed
+-- date (e.g. updated_at) would present a fabricated value as fact. Every display
+-- path tolerates a NULL closed_date on a closed account ("closed, date unknown").
+-- ADD COLUMN defaults to NULL, so no explicit backfill UPDATE is needed.
+--
+-- Deliberately a plain nullable column with NO foreign key and NO index, for the
+-- same reason as migration 022: an index here would let DuckDB rewrite the
+-- account-edit UPDATE as DELETE+INSERT and reintroduce the account-rename UPDATE
+-- failure that migrations 016/021/023 removed. The sidebar's closed-account
+-- section filters on `active` in Go, not via a closed_date index.
+
+ALTER TABLE accounts ADD COLUMN closed_date DATE;

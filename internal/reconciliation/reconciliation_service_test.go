@@ -110,7 +110,7 @@ func TestService_StartReconciliation(t *testing.T) {
 		acct := createTestCheckingAccount(t, accountRepo, "Checking", "0.00")
 
 		// Close the account
-		acct.Close()
+		acct.Close(types.Today())
 		if err := accountRepo.Update(acct); err != nil {
 			t.Fatalf("Failed to close account: %v", err)
 		}

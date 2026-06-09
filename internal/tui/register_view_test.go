@@ -45,6 +45,7 @@ func TestApp_RenderRegister_WithData(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions: []*transaction.Transaction{
 				{
@@ -115,6 +116,7 @@ func TestApp_RenderRegister_EmptyTransactions(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Savings",
+				Active:    true,
 			},
 			transactions:  []*transaction.Transaction{},
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
@@ -150,6 +152,7 @@ func TestApp_RenderRegister_NegativeBalance(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Credit Card",
+				Active:    true,
 			},
 			transactions:  []*transaction.Transaction{},
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("-1500.00")},
@@ -184,6 +187,7 @@ func TestApp_RenderRegister_TransferDisplay(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions: []*transaction.Transaction{
 				{
@@ -229,6 +233,7 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions: []*transaction.Transaction{
 				{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Date: types.Today(), Amount: types.MustNewMoney("-10"), Status: transaction.StatusUncleared},
@@ -286,6 +291,7 @@ func TestApp_HandleRegisterKeys_RKeyOpensReconciliation(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
@@ -322,6 +328,7 @@ func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions:  []*transaction.Transaction{},
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
@@ -372,6 +379,7 @@ func TestApp_Update_RegisterLoaded(t *testing.T) {
 		account: &account.Account{
 			BaseModel: types.BaseModel{ID: accountID},
 			Name:      "Checking",
+			Active:    true,
 		},
 		transactions: []*transaction.Transaction{
 			{
@@ -420,6 +428,7 @@ func TestApp_BuildRegisterTable_RowContent(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions: []*transaction.Transaction{
 				{
@@ -483,7 +492,7 @@ func TestApp_BuildRegisterTable_SelectsPendingByID(t *testing.T) {
 	app := &App{
 		styles: widget.NewStyles(),
 		register: &registerData{
-			account:       &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking"},
+			account:       &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true},
 			transactions:  txns,
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("0")},
 			payeeNames:    make(map[types.ID]string),
@@ -517,7 +526,7 @@ func TestApp_BuildRegisterTable_NoPendingLeavesCursor(t *testing.T) {
 	app := &App{
 		styles: widget.NewStyles(),
 		register: &registerData{
-			account:       &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking"},
+			account:       &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true},
 			transactions:  txns,
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("0")},
 			payeeNames:    make(map[types.ID]string),
@@ -578,7 +587,7 @@ func TestApp_BuildRegisterTable_StatusIndicators(t *testing.T) {
 			app := &App{
 				styles: widget.NewStyles(),
 				register: &registerData{
-					account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+					account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 					transactions: []*transaction.Transaction{
 						{
 							BaseModel: types.BaseModel{ID: types.NewID()},
@@ -619,6 +628,7 @@ func TestApp_RenderRegister_LongAccountName(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "My Super Duper Extremely Long Savings Account Name That Overflows",
+				Active:    true,
 			},
 			transactions:  []*transaction.Transaction{},
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("100.00")},
@@ -661,6 +671,7 @@ func TestApp_RenderRegister_EmptyShowsHint(t *testing.T) {
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
+				Active:    true,
 			},
 			transactions:  []*transaction.Transaction{},
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
@@ -686,7 +697,7 @@ func TestApp_BuildRegisterTable_VoidStatusIndicator(t *testing.T) {
 	app := &App{
 		styles: widget.NewStyles(),
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -716,7 +727,7 @@ func TestApp_BuildRegisterTable_VoidRowStyling(t *testing.T) {
 	app := &App{
 		styles: widget.NewStyles(),
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -782,7 +793,7 @@ func TestApp_BuildRegisterTable_AllFourStatusIndicators(t *testing.T) {
 			app := &App{
 				styles: widget.NewStyles(),
 				register: &registerData{
-					account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+					account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 					transactions: []*transaction.Transaction{
 						{
 							BaseModel: types.BaseModel{ID: types.NewID()},
@@ -818,7 +829,7 @@ func TestApp_ToggleTransactionStatus_VoidBlocked(t *testing.T) {
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -863,7 +874,7 @@ func TestApp_ToggleTransactionStatus_ReconciledBlocked(t *testing.T) {
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -906,7 +917,7 @@ func TestApp_ShowVoidConfirmation_AlreadyVoid(t *testing.T) {
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -955,7 +966,7 @@ func TestApp_ShowVoidConfirmation_ReconciledBlocked(t *testing.T) {
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -998,7 +1009,7 @@ func TestApp_ShowVoidConfirmation_ShowsDialog(t *testing.T) {
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -1044,7 +1055,7 @@ func TestApp_ShowVoidConfirmation_TransferMessage(t *testing.T) {
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel:         types.BaseModel{ID: types.NewID()},
@@ -1089,7 +1100,7 @@ func TestApp_VoidKey_InRegisterView(t *testing.T) {
 		sidebar:        sidebar,
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -1118,6 +1129,58 @@ func TestApp_VoidKey_InRegisterView(t *testing.T) {
 	}
 	if !app.confirmDialog.IsVisible() {
 		t.Error("confirmation dialog should be visible")
+	}
+}
+
+func TestApp_RegisterFrozenOnClosedAccount(t *testing.T) {
+	accountID := types.NewID()
+	app := &App{
+		currentView:    ViewRegister,
+		styles:         widget.NewStyles(),
+		keys:           defaultKeyMap(),
+		statusbar:      widget.NewStatusBar(),
+		sidebar:        NewSidebar(),
+		transactionSvc: &transaction.Service{},
+		register: &registerData{
+			account: &account.Account{
+				BaseModel:  types.BaseModel{ID: accountID},
+				Name:       "Old Checking",
+				Active:     false,
+				ClosedDate: types.NullableDate{Date: types.MustParseDate("2024-03-14"), Valid: true},
+			},
+			transactions: []*transaction.Transaction{
+				{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Date: types.Today(), Amount: types.MustNewMoney("-25"), Status: transaction.StatusUncleared},
+			},
+			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.ZeroMoney},
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		},
+	}
+	app.buildRegisterTable()
+	app.sidebar.SetFocused(false)
+	app.table.SetFocused(true)
+
+	// 'r' must not open the reconciliation dialog.
+	app.handleRegisterKeys(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	if app.reconDialog != nil {
+		t.Error("'r' should be a no-op on a closed account")
+	}
+	// 'v' / 'd' must not open a confirmation dialog.
+	app.handleRegisterKeys(tea.KeyPressMsg{Code: 'v', Text: "v"})
+	app.handleRegisterKeys(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	if app.confirmDialog != nil {
+		t.Error("'v'/'d' should be no-ops on a closed account")
+	}
+	// 'n' (new) must not return a load command.
+	if _, cmd := app.handleRegisterKeys(tea.KeyPressMsg{Code: 'n', Text: "n"}); cmd != nil {
+		t.Error("'n' should be a no-op on a closed account")
+	}
+
+	// The register shows a read-only banner with the close date.
+	out := app.renderRegister()
+	if !strings.Contains(out, "Closed 2024-03-14") || !strings.Contains(out, "read-only") {
+		t.Errorf("expected a closed read-only banner with the date, got:\n%s", out)
 	}
 }
 
@@ -1165,7 +1228,7 @@ func TestApp_ShowDeleteConfirmation_AlreadyVoid(t *testing.T) {
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -1211,7 +1274,7 @@ func TestApp_ShowDeleteConfirmation_ReconciledBlocked(t *testing.T) {
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -1257,7 +1320,7 @@ func TestApp_ShowDeleteConfirmation_ShowsDialog(t *testing.T) {
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -1303,7 +1366,7 @@ func TestApp_ShowDeleteConfirmation_TransferMessage(t *testing.T) {
 		sidebar:        NewSidebar(),
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel:         types.BaseModel{ID: types.NewID()},
@@ -1352,7 +1415,7 @@ func TestApp_DeleteKey_InRegisterView(t *testing.T) {
 		sidebar:        sidebar,
 		transactionSvc: &transaction.Service{},
 		register: &registerData{
-			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test"},
+			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},

@@ -85,7 +85,7 @@ func TestAccountList_IncludeClosed(t *testing.T) {
 		t.Fatalf("setup: create active: %v", err)
 	}
 	closed := accountdom.NewAccount("Closed Savings", accountdom.TypeSavings, "USD", types.MustNewMoney("0"), types.Today())
-	closed.Close()
+	closed.Close(types.Today())
 	if err := repo.Create(closed); err != nil {
 		t.Fatalf("setup: create closed: %v", err)
 	}
@@ -116,6 +116,9 @@ func TestAccountList_IncludeClosed(t *testing.T) {
 	}
 	if !strings.Contains(out, "Closed Savings") {
 		t.Errorf("expected closed account with --include-closed, got: %s", out)
+	}
+	if !strings.Contains(out, "(closed "+types.Today().String()+")") {
+		t.Errorf("expected closed row annotated with its close date, got: %s", out)
 	}
 }
 

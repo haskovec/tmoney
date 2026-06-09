@@ -288,6 +288,11 @@ func (s *Service) loadAndReverseForEdit(oldID types.ID) (*Transaction, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load transaction for edit: %w", err)
 	}
+	// Refuse to edit a transaction on a closed account BEFORE the destructive
+	// reverse/delete runs (a closed account is frozen).
+	if err := s.ensureAccountOpen(old.AccountID); err != nil {
+		return nil, err
+	}
 	if err := s.reverseTxnEffects(old); err != nil {
 		return nil, err
 	}
@@ -295,6 +300,18 @@ func (s *Service) loadAndReverseForEdit(oldID types.ID) (*Transaction, error) {
 		return nil, fmt.Errorf("failed to delete transaction for edit: %w", err)
 	}
 	return old, nil
+}
+
+// guardEditByOldID blocks an edit when the transaction being replaced lives on
+// a closed account, before any destructive delete runs. Used by the cash-type
+// edit methods that delete-then-recreate without going through
+// loadAndReverseForEdit.
+func (s *Service) guardEditByOldID(oldID types.ID) error {
+	old, err := s.repo.GetByID(oldID)
+	if err != nil {
+		return fmt.Errorf("failed to load transaction for closed check: %w", err)
+	}
+	return s.ensureAccountOpen(old.AccountID)
 }
 
 // UpdateBuy edits an existing buy transaction by reversing its
@@ -396,6 +413,9 @@ func (s *Service) UpdateDividend(
 	amount types.Money,
 	memo string,
 ) (*Transaction, error) {
+	if err := s.guardEditByOldID(oldID); err != nil {
+		return nil, err
+	}
 	if err := s.repo.Delete(oldID); err != nil {
 		return nil, fmt.Errorf("failed to delete transaction for edit: %w", err)
 	}
@@ -404,6 +424,9 @@ func (s *Service) UpdateDividend(
 
 // UpdateDeposit edits an existing deposit transaction.
 func (s *Service) UpdateDeposit(oldID types.ID, accountID types.ID, date types.Date, amount types.Money, memo string) (*Transaction, error) {
+	if err := s.guardEditByOldID(oldID); err != nil {
+		return nil, err
+	}
 	if err := s.repo.Delete(oldID); err != nil {
 		return nil, fmt.Errorf("failed to delete transaction for edit: %w", err)
 	}
@@ -412,6 +435,9 @@ func (s *Service) UpdateDeposit(oldID types.ID, accountID types.ID, date types.D
 
 // UpdateWithdrawal edits an existing withdrawal transaction.
 func (s *Service) UpdateWithdrawal(oldID types.ID, accountID types.ID, date types.Date, amount types.Money, memo string) (*Transaction, error) {
+	if err := s.guardEditByOldID(oldID); err != nil {
+		return nil, err
+	}
 	if err := s.repo.Delete(oldID); err != nil {
 		return nil, fmt.Errorf("failed to delete transaction for edit: %w", err)
 	}
@@ -420,6 +446,9 @@ func (s *Service) UpdateWithdrawal(oldID types.ID, accountID types.ID, date type
 
 // UpdateFee edits an existing fee transaction.
 func (s *Service) UpdateFee(oldID types.ID, accountID types.ID, date types.Date, amount types.Money, memo string) (*Transaction, error) {
+	if err := s.guardEditByOldID(oldID); err != nil {
+		return nil, err
+	}
 	if err := s.repo.Delete(oldID); err != nil {
 		return nil, fmt.Errorf("failed to delete transaction for edit: %w", err)
 	}
@@ -428,6 +457,9 @@ func (s *Service) UpdateFee(oldID types.ID, accountID types.ID, date types.Date,
 
 // UpdateInterest edits an existing interest transaction.
 func (s *Service) UpdateInterest(oldID types.ID, accountID types.ID, date types.Date, amount types.Money, memo string) (*Transaction, error) {
+	if err := s.guardEditByOldID(oldID); err != nil {
+		return nil, err
+	}
 	if err := s.repo.Delete(oldID); err != nil {
 		return nil, fmt.Errorf("failed to delete transaction for edit: %w", err)
 	}
@@ -469,6 +501,24 @@ func (s *Service) UpdateTransferCash(
 	old, err := s.repo.GetByID(oldInvestmentTxnID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load transfer for edit: %w", err)
+	}
+	// A closed account is frozen — refuse before any destructive delete. Guard
+	// BOTH legs of the EXISTING transfer (old.AccountID plus the old
+	// counterpart on old.TransferAccountID, e.g. an inv↔inv destination) and
+	// both NEW target accounts.
+	if err := s.ensureAccountOpen(old.AccountID); err != nil {
+		return nil, err
+	}
+	if old.TransferAccountID.Valid {
+		if err := s.ensureAccountOpen(old.TransferAccountID.ID); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.ensureAccountOpen(investmentAccountID); err != nil {
+		return nil, err
+	}
+	if err := s.ensureAccountOpen(regularAccountID); err != nil {
+		return nil, err
 	}
 	if old.TransferID.Valid {
 		// Regular-side counterpart (inv↔reg original).
@@ -608,6 +658,27 @@ func (s *Service) UpdateTransferShares(
 	}
 	if !srcOld.TransferID.Valid {
 		return nil, fmt.Errorf("UpdateTransferShares: txn %s is not a share transfer", oldSourceTxnID)
+	}
+	// A closed account is frozen — refuse before any destructive reverse/delete.
+	// Guard BOTH legs of the EXISTING transfer (old source + old destination,
+	// which lives on srcOld.TransferAccountID) as well as both NEW target
+	// accounts, mirroring the transaction package's checkTransferEditable. A
+	// share-only account can be closed (the balance check is cash-only), so the
+	// old destination must be checked or its leg would be silently
+	// reversed/deleted below.
+	if err := s.ensureAccountOpen(srcOld.AccountID); err != nil {
+		return nil, err
+	}
+	if srcOld.TransferAccountID.Valid {
+		if err := s.ensureAccountOpen(srcOld.TransferAccountID.ID); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.ensureAccountOpen(sourceAccountID); err != nil {
+		return nil, err
+	}
+	if err := s.ensureAccountOpen(destAccountID); err != nil {
+		return nil, err
 	}
 	// Find the destination side by transfer_id.
 	var dstOld *Transaction

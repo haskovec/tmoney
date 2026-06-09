@@ -208,6 +208,11 @@ type App struct {
 	// Cancel does not update it. Process-lifetime only — not persisted.
 	reconDialogLastStatementDate types.Date
 
+	// Close-account dialog state. closeAcctTargetID is captured at open time so
+	// a sidebar reselection while the dialog is up can't retarget the close.
+	closeAcctDialog   *dialog.Dialog
+	closeAcctTargetID types.ID
+
 	// Security view state
 	securityView         *securityViewData
 	securityTable        *widget.Table
@@ -546,6 +551,11 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// If reconciliation start dialog is visible, route all keys to it
 	if a.reconDialog != nil && a.reconDialog.IsVisible() {
 		return a.handleReconDialogKey(msg)
+	}
+
+	// If the close-account dialog is visible, route all keys to it
+	if a.closeAcctDialog != nil && a.closeAcctDialog.IsVisible() {
+		return a.handleCloseAcctDialogKey(msg)
 	}
 
 	// If security dialog is visible, route all keys to it

@@ -203,7 +203,7 @@ func TestSplitCounterpart_ScheduledPaycheckPosting_LandsInvestmentRow(t *testing
 	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, nil, txnRepo, caRepo, database)
 	txnSvc.SetInvestmentCounterpart(invSvc)
-	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database)
+	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database, accountRepo)
 
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 	_ = accountRepo.Create(checking)
@@ -294,7 +294,7 @@ func TestSplitCounterpart_FutureDatedPaycheckPosting_LandsInvestmentRows(t *test
 	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, nil, txnRepo, caRepo, database)
 	txnSvc.SetInvestmentCounterpart(invSvc)
-	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database)
+	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database, accountRepo)
 
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 	_ = accountRepo.Create(checking)

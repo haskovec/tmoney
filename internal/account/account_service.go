@@ -121,8 +121,9 @@ func (s *Service) GetAllBalances() (map[types.ID]*Balance, error) {
 }
 
 // Close closes an account after validating it can be closed.
-// An account can only be closed if it has a zero balance.
-func (s *Service) Close(id types.ID) error {
+// An account can only be closed if it has a zero balance, and closedDate must
+// fall within [max(opening_date, latest transaction date), today].
+func (s *Service) Close(id types.ID, closedDate types.Date) error {
 	account, err := s.repo.GetByID(id)
 	if err != nil {
 		return err
@@ -144,11 +145,53 @@ func (s *Service) Close(id types.ID) error {
 		}
 	}
 
-	account.Close()
+	if err := s.validateCloseDate(account, closedDate); err != nil {
+		return err
+	}
+
+	account.Close(closedDate)
 	return s.repo.Update(account)
 }
 
-// Reopen reopens a closed account.
+// validateCloseDate enforces max(opening_date, latest_txn_date) <= closedDate <= today.
+func (s *Service) validateCloseDate(account *Account, closedDate types.Date) error {
+	today := types.Today()
+	earliest := account.OpeningDate
+
+	latest, err := s.latestTransactionDate(account.ID)
+	if err != nil {
+		return err
+	}
+	if latest.Valid && latest.Date.After(earliest) {
+		earliest = latest.Date
+	}
+
+	if closedDate.Before(earliest) || closedDate.After(today) {
+		return &InvalidCloseDateError{
+			ID:       account.ID.String(),
+			Date:     closedDate,
+			Earliest: earliest,
+			Today:    today,
+		}
+	}
+	return nil
+}
+
+// latestTransactionDate returns the most recent transaction date for an account,
+// or an invalid NullableDate when the account has no transactions.
+func (s *Service) latestTransactionDate(id types.ID) (types.NullableDate, error) {
+	var d types.NullableDate
+	err := s.db.Conn().QueryRow(
+		`SELECT MAX(date) FROM transactions WHERE CAST(account_id AS VARCHAR) = ?`,
+		id.String(),
+	).Scan(&d)
+	if err != nil {
+		return types.NullableDate{}, fmt.Errorf("failed to get latest transaction date: %w", err)
+	}
+	return d, nil
+}
+
+// Reopen reopens a closed account, clearing its close date.
 func (s *Service) Reopen(id types.ID) error {
 	account, err := s.repo.GetByID(id)
 	if err != nil {
@@ -160,6 +203,21 @@ func (s *Service) Reopen(id types.ID) error {
 	}
 
 	account.Reopen()
+	return s.repo.Update(account)
+}
+
+// RestoreClosed re-closes an account to an exact prior state, bypassing the
+// zero-balance and close-date validation that Close enforces. It exists so undo
+// can faithfully restore a previously-closed account (including one whose close
+// date is NULL, e.g. a pre-existing closed account backfilled by migration 025)
+// without a backfilled-NULL date or a since-changed balance tripping validation.
+func (s *Service) RestoreClosed(id types.ID, closedDate types.NullableDate) error {
+	account, err := s.repo.GetByID(id)
+	if err != nil {
+		return err
+	}
+	account.Active = false
+	account.ClosedDate = closedDate
 	return s.repo.Update(account)
 }
 

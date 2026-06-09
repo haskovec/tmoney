@@ -71,6 +71,45 @@ func TestAccountShow_ValidAccount(t *testing.T) {
 	}
 }
 
+func TestAccountShow_ClosedAccountShowsDate(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	repo := accountdom.NewRepository(database)
+	acct := accountdom.NewAccount("Old Savings", accountdom.TypeSavings, "USD", types.MustNewMoney("0"), types.MustParseDate("2020-01-01"))
+	acct.Close(types.MustParseDate("2024-03-14"))
+	if err := repo.Create(acct); err != nil {
+		t.Fatalf("setup: create closed account: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := cli.ExecuteWith([]string{"account", "show", "Old Savings", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(account show): %v\nstderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout.String(), "Closed (2024-03-14)") {
+		t.Errorf("expected 'Closed (2024-03-14)' in output, got: %s", stdout.String())
+	}
+}
+
+func TestAccountShow_ClosedAccountUnknownDate(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	repo := accountdom.NewRepository(database)
+	// Simulate a pre-existing closed account backfilled with a NULL close date.
+	acct := accountdom.NewAccount("Legacy", accountdom.TypeChecking, "USD", types.MustNewMoney("0"), types.MustParseDate("2020-01-01"))
+	acct.Active = false
+	if err := repo.Create(acct); err != nil {
+		t.Fatalf("setup: create legacy closed account: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := cli.ExecuteWith([]string{"account", "show", "Legacy", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(account show): %v\nstderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout.String(), "Closed (date unknown)") {
+		t.Errorf("expected 'Closed (date unknown)' in output, got: %s", stdout.String())
+	}
+}
+
 func TestAccountShow_ShortFileFlag(t *testing.T) {
 	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := accountdom.NewRepository(database)

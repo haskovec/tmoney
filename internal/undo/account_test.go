@@ -250,9 +250,10 @@ func TestCloseAccountCommand_ExecuteAndUndo(t *testing.T) {
 			t.Fatalf("Create() error = %v", err)
 		}
 
-		cmd := undo.NewCloseAccountCommand(env.accountSvc, acct.ID)
+		closeDate := types.Today()
+		cmd := undo.NewCloseAccountCommand(env.accountSvc, acct.ID, closeDate)
 
-		// Execute: account should be closed
+		// Execute: account should be closed with the date recorded
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute() error = %v", err)
 		}
@@ -264,8 +265,12 @@ func TestCloseAccountCommand_ExecuteAndUndo(t *testing.T) {
 		if closed.Active {
 			t.Error("account should be inactive after close")
 		}
+		if !closed.ClosedDate.Valid || !closed.ClosedDate.Date.Equal(closeDate) {
+			t.Errorf("expected close date %s after close, got valid=%v %s",
+				closeDate, closed.ClosedDate.Valid, closed.ClosedDate.Date)
+		}
 
-		// Undo: account should be reopened
+		// Undo: account should be reopened and the close date cleared
 		if err := cmd.Undo(); err != nil {
 			t.Fatalf("Undo() error = %v", err)
 		}
@@ -277,11 +282,14 @@ func TestCloseAccountCommand_ExecuteAndUndo(t *testing.T) {
 		if !reopened.Active {
 			t.Error("account should be active after undo")
 		}
+		if reopened.ClosedDate.Valid {
+			t.Error("close date should be cleared after undo")
+		}
 	})
 }
 
 func TestCloseAccountCommand_Description(t *testing.T) {
-	cmd := undo.NewCloseAccountCommand(nil, types.NewID())
+	cmd := undo.NewCloseAccountCommand(nil, types.NewID(), types.Today())
 	if cmd.Description() != "Close account" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Close account")
 	}
@@ -292,21 +300,23 @@ func TestCloseAccountCommand_Description(t *testing.T) {
 // =============================================================================
 
 func TestReopenAccountCommand_ExecuteAndUndo(t *testing.T) {
-	t.Run("reopens and then closes account", func(t *testing.T) {
+	t.Run("undo re-closes to the exact original close date", func(t *testing.T) {
 		env := createAccountTestEnv(t)
 
-		acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+		// Account opened in the past so a back-dated close is a valid date.
+		acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.MustParseDate("2024-01-01"))
 		if err := env.accountSvc.Create(acct); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
-		// Close the account first
-		if err := env.accountSvc.Close(acct.ID); err != nil {
+		// Close the account on a specific back-dated date.
+		closeDate := types.MustParseDate("2024-06-15")
+		if err := env.accountSvc.Close(acct.ID, closeDate); err != nil {
 			t.Fatalf("Close() error = %v", err)
 		}
 
 		cmd := undo.NewReopenAccountCommand(env.accountSvc, acct.ID)
 
-		// Execute: account should be reopened
+		// Execute: account should be reopened and the close date cleared
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute() error = %v", err)
 		}
@@ -318,8 +328,11 @@ func TestReopenAccountCommand_ExecuteAndUndo(t *testing.T) {
 		if !reopened.Active {
 			t.Error("account should be active after reopen")
 		}
+		if reopened.ClosedDate.Valid {
+			t.Error("close date should be cleared after reopen")
+		}
 
-		// Undo: account should be closed again
+		// Undo: account should be closed again, restoring the ORIGINAL date.
 		if err := cmd.Undo(); err != nil {
 			t.Fatalf("Undo() error = %v", err)
 		}
@@ -330,6 +343,42 @@ func TestReopenAccountCommand_ExecuteAndUndo(t *testing.T) {
 		}
 		if closed.Active {
 			t.Error("account should be inactive after undo")
+		}
+		if !closed.ClosedDate.Valid || !closed.ClosedDate.Date.Equal(closeDate) {
+			t.Errorf("undo should restore the exact original close date %s, got valid=%v %s",
+				closeDate, closed.ClosedDate.Valid, closed.ClosedDate.Date)
+		}
+	})
+
+	t.Run("undo faithfully re-closes an account whose close date is unknown (NULL)", func(t *testing.T) {
+		env := createAccountTestEnv(t)
+
+		acct := account.NewAccount("Legacy", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+		if err := env.accountSvc.Create(acct); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		// Simulate a pre-existing closed account with an unknown (NULL) close date.
+		if err := env.accountSvc.RestoreClosed(acct.ID, types.NullableDate{Valid: false}); err != nil {
+			t.Fatalf("RestoreClosed() error = %v", err)
+		}
+
+		cmd := undo.NewReopenAccountCommand(env.accountSvc, acct.ID)
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+		if err := cmd.Undo(); err != nil {
+			t.Fatalf("Undo() error = %v", err)
+		}
+
+		closed, err := env.accountSvc.GetByID(acct.ID)
+		if err != nil {
+			t.Fatalf("GetByID() after Undo error = %v", err)
+		}
+		if closed.Active {
+			t.Error("account should be inactive after undo")
+		}
+		if closed.ClosedDate.Valid {
+			t.Error("undo should restore the unknown (NULL) close date, not invent one")
 		}
 	})
 }

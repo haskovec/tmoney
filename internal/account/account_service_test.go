@@ -328,7 +328,7 @@ func TestService_List(t *testing.T) {
 		}
 
 		// Close one account
-		if err := svc.Close(toClose.ID); err != nil {
+		if err := svc.Close(toClose.ID, types.Today()); err != nil {
 			t.Fatalf("Close() error = %v", err)
 		}
 
@@ -501,7 +501,8 @@ func TestService_Close(t *testing.T) {
 			t.Fatalf("Create() error = %v", err)
 		}
 
-		if err := svc.Close(account.ID); err != nil {
+		closeDate := types.Today()
+		if err := svc.Close(account.ID, closeDate); err != nil {
 			t.Fatalf("Close() error = %v", err)
 		}
 
@@ -511,6 +512,48 @@ func TestService_Close(t *testing.T) {
 		}
 		if retrieved.Active {
 			t.Error("Account should be inactive after close")
+		}
+		if !retrieved.ClosedDate.Valid || !retrieved.ClosedDate.Date.Equal(closeDate) {
+			t.Errorf("expected close date %s persisted, got valid=%v %s",
+				closeDate, retrieved.ClosedDate.Valid, retrieved.ClosedDate.Date)
+		}
+	})
+
+	t.Run("rejects close date before opening date", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database)
+
+		account := NewAccount("Future Open", TypeChecking, "USD", types.ZeroMoney, types.MustParseDate("2024-01-15"))
+		if err := svc.Create(account); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		err := svc.Close(account.ID, types.MustParseDate("2024-01-14"))
+		if err == nil {
+			t.Fatal("Close() expected error for close date before opening date")
+		}
+		if _, ok := err.(*InvalidCloseDateError); !ok {
+			t.Errorf("Expected InvalidCloseDateError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("rejects future close date", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database)
+
+		account := NewAccount("Future Close", TypeChecking, "USD", types.ZeroMoney, types.Today())
+		if err := svc.Create(account); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		err := svc.Close(account.ID, types.Today().AddDays(1))
+		if err == nil {
+			t.Fatal("Close() expected error for future close date")
+		}
+		if _, ok := err.(*InvalidCloseDateError); !ok {
+			t.Errorf("Expected InvalidCloseDateError, got %T: %v", err, err)
 		}
 	})
 
@@ -524,7 +567,7 @@ func TestService_Close(t *testing.T) {
 			t.Fatalf("Create() error = %v", err)
 		}
 
-		err := svc.Close(account.ID)
+		err := svc.Close(account.ID, types.Today())
 		if err == nil {
 			t.Error("Close() expected error for account with balance")
 		}
@@ -551,11 +594,11 @@ func TestService_Close(t *testing.T) {
 		if err := svc.Create(account); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
-		if err := svc.Close(account.ID); err != nil {
+		if err := svc.Close(account.ID, types.Today()); err != nil {
 			t.Fatalf("Close() error = %v", err)
 		}
 
-		err := svc.Close(account.ID)
+		err := svc.Close(account.ID, types.Today())
 		if err == nil {
 			t.Error("Close() expected error for already closed account")
 		}
@@ -569,7 +612,7 @@ func TestService_Close(t *testing.T) {
 		repo := NewRepository(database)
 		svc := NewService(repo, database)
 
-		err := svc.Close(types.NewID())
+		err := svc.Close(types.NewID(), types.Today())
 		if err == nil {
 			t.Error("Close() expected error for non-existent account")
 		}
@@ -586,7 +629,7 @@ func TestService_Reopen(t *testing.T) {
 		if err := svc.Create(account); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
-		if err := svc.Close(account.ID); err != nil {
+		if err := svc.Close(account.ID, types.Today()); err != nil {
 			t.Fatalf("Close() error = %v", err)
 		}
 
@@ -600,6 +643,9 @@ func TestService_Reopen(t *testing.T) {
 		}
 		if !retrieved.Active {
 			t.Error("Account should be active after reopen")
+		}
+		if retrieved.ClosedDate.Valid {
+			t.Error("Reopen should clear the persisted close date")
 		}
 	})
 

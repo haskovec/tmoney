@@ -196,13 +196,18 @@ func buildEditAccountDialog(acct *account.Account) *dialog.Dialog {
 	f = d.AddTextField("Currency", acct.Currency, "ISO 4217", 5)
 	f.Required = true
 
-	// Opening balance
-	f = d.AddTextField("Opening Balance", fmt.Sprintf("%.2f", acct.OpeningBalance.Float64()), "0.00", 12)
+	// Opening balance / date. These are locked while the account is closed
+	// (a label hint signals it); submitAccountDialog skips writing them.
+	balLabel, dateLabel := "Opening Balance", "Opening Date"
+	if acct.IsClosed() {
+		balLabel = "Opening Balance (locked while closed)"
+		dateLabel = "Opening Date (locked while closed)"
+	}
+	f = d.AddTextField(balLabel, fmt.Sprintf("%.2f", acct.OpeningBalance.Float64()), "0.00", 12)
 	f.Required = true
 
-	// Opening date
 	dateStr := acct.OpeningDate.Time().Format("01/02/2006")
-	f = d.AddDateField("Opening Date", dateStr)
+	f = d.AddDateField(dateLabel, dateStr)
 	f.Required = true
 
 	// Institution
@@ -414,8 +419,13 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 			acct.Name = name
 			acct.Type = accountType
 			acct.Currency = currency
-			acct.OpeningBalance = openingBalance
-			acct.OpeningDate = openingDate
+			// Opening balance/date are locked while an account is closed —
+			// editing them would silently move a frozen account's balance off
+			// zero. Metadata stays editable. Reopen to change these.
+			if !existingAccount.IsClosed() {
+				acct.OpeningBalance = openingBalance
+				acct.OpeningDate = openingDate
+			}
 		} else {
 			acct = account.NewAccount(name, accountType, currency, openingBalance, openingDate)
 			acct.TrackLots = accountType.IsInvestmentType() && trackLots
@@ -443,23 +453,6 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 		}
 
 		return accountDialogSavedMsg{}
-	}
-}
-
-// closeSelectedAccount closes the currently selected account.
-func (a *App) closeSelectedAccount() tea.Cmd {
-	accountID := a.sidebar.SelectedAccountID()
-	return func() tea.Msg {
-		if a.accountSvc == nil || a.undoManager == nil {
-			return errMsg{err: fmt.Errorf("account service not available")}
-		}
-
-		cmd := undo.NewCloseAccountCommand(a.accountSvc, accountID)
-		if err := a.undoManager.Execute(cmd); err != nil {
-			return errMsg{err: fmt.Errorf("failed to close account: %w", err)}
-		}
-
-		return accountClosedMsg{}
 	}
 }
 
