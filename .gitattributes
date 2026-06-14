@@ -1,0 +1,12 @@
+# Consistent line endings across macOS, Linux, and Windows checkouts.
+# Detect text files and check them out with LF everywhere — Go tooling,
+# Makefiles, and shell scripts all expect LF, and forcing it kills the
+# "LF will be replaced by CRLF" churn on Windows.
+* text=auto eol=lf
+
+# Binaries git must never normalize or line-ending-convert.
+*.exe   binary
+*.dll   binary
+*.so    binary
+*.dylib binary
+*.tdb   binary
