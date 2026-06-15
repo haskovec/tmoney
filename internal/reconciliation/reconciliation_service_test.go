@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -363,6 +364,82 @@ func TestService_FinishReconciliation(t *testing.T) {
 			t.Errorf("Expected IsVoidError, got %T: %v", err, err)
 		}
 	})
+}
+
+// TestService_FinishReconciliation_SplitTransaction is a regression test for
+// the production failure where finishing a reconciliation that includes a
+// split (multi-category) transaction — e.g. a split paycheck deposit — failed
+// with "failed to reconcile transaction <id>: failed to delete for update:
+// Constraint Error: Violates foreign key constraint". The transaction had
+// child transaction_splits rows whose inbound FK blocked the parent's status
+// update. Migration 026 (drop that FK) plus the in-place UPDATE in
+// transaction.Repository.Update fix it.
+func TestService_FinishReconciliation_SplitTransaction(t *testing.T) {
+	database := createTestDB(t)
+	reconRepo := NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	splitRepo := transaction.NewSplitRepository(database)
+	transferRepo := transaction.NewTransferRepository(database, txnRepo)
+	payeeRepo := payee.NewRepository(database)
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+
+	svc := NewService(reconRepo, txnRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+
+	acct := createTestCheckingAccount(t, accountRepo, "Wealthfront Checking", "1000.00")
+
+	cat1 := category.NewCategory("Salary", category.TypeIncome)
+	cat2 := category.NewCategory("Bonus", category.TypeIncome)
+	if err := categoryRepo.Create(cat1); err != nil {
+		t.Fatalf("create category: %v", err)
+	}
+	if err := categoryRepo.Create(cat2); err != nil {
+		t.Fatalf("create category: %v", err)
+	}
+
+	// A split deposit of +150 (100 + 50), like the paycheck that surfaced the bug.
+	txn := transaction.NewTransaction(acct.ID, types.NewDate(2024, 1, 10), types.MustNewMoney("150.00"))
+	splits := []*transaction.Split{
+		transaction.NewSplit(txn.ID, cat1.ID, types.MustNewMoney("100.00")),
+		transaction.NewSplit(txn.ID, cat2.ID, types.MustNewMoney("50.00")),
+	}
+	if err := txnSvc.CreateWithSplits(txn, splits); err != nil {
+		t.Fatalf("CreateWithSplits() error = %v", err)
+	}
+
+	// Statement balance = 1000 + 150 = 1150, so the difference is zero.
+	if _, err := svc.StartReconciliation(acct.ID, types.NewDate(2024, 1, 31), types.MustNewMoney("1150.00")); err != nil {
+		t.Fatalf("StartReconciliation() error = %v", err)
+	}
+
+	if err := svc.FinishReconciliation(acct.ID, []types.ID{txn.ID}, false); err != nil {
+		t.Fatalf("FinishReconciliation() must not fail on a split transaction: %v", err)
+	}
+
+	updated, err := txnSvc.GetByID(txn.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if !updated.IsReconciled() {
+		t.Error("split transaction should be reconciled after finish")
+	}
+
+	remaining, err := txnSvc.GetSplits(txn.ID)
+	if err != nil {
+		t.Fatalf("GetSplits() error = %v", err)
+	}
+	if len(remaining) != 2 {
+		t.Errorf("splits after reconcile = %d, want 2", len(remaining))
+	}
+
+	active, err := svc.GetActiveSession(acct.ID)
+	if err != nil {
+		t.Fatalf("GetActiveSession() error = %v", err)
+	}
+	if active != nil {
+		t.Error("no active session should remain after finish")
+	}
 }
 
 // =============================================================================

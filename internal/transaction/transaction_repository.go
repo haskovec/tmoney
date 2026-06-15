@@ -220,7 +220,8 @@ func (r *Repository) ListByAccountAndDateRange(accountID types.ID, startDate, en
 }
 
 // Update updates an existing transaction in the database.
-// Note: Uses DELETE + INSERT (non-transactional) due to DuckDB limitations.
+// Uses an in-place UPDATE (not DELETE+INSERT) so it is safe for transactions
+// that have child transaction_splits rows; see migration 026.
 func (r *Repository) Update(transaction *Transaction) error {
 	transaction.Touch()
 
@@ -295,25 +296,23 @@ func (r *Repository) Update(transaction *Transaction) error {
 		}
 	}
 
-	// Delete the existing record
-	_, err = r.db.Conn().Exec(
-		`DELETE FROM transactions WHERE CAST(id AS VARCHAR) = ?`,
-		transaction.ID.String(),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
-	}
-
-	// Insert the updated record
-	insertQuery := `
-		INSERT INTO transactions (
-			id, account_id, date, amount, payee_id, category_id,
-			memo, check_number, status, transfer_id, transfer_account_id,
-			bank_reference_id, created_at, updated_at
-		) VALUES (CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	_, err = r.db.Conn().Exec(insertQuery,
-		transaction.ID.String(),
+	// Persist with an in-place UPDATE rather than DELETE+INSERT. DuckDB
+	// rewrites an UPDATE that touches an indexed/FK-backed column as an
+	// internal delete+insert; combined with the explicit DELETE the old code
+	// used, that tripped the inbound transaction_splits.transaction_id FK on
+	// any transaction with splits (a multi-category transaction, e.g. a split
+	// paycheck deposit) — breaking reconcile-finish, the cleared-status toggle,
+	// and split-transaction header edits. Migration 026 drops that inbound FK
+	// (app-level code maintains split integrity), so the row can be rewritten
+	// safely; the in-place UPDATE also avoids needlessly rewriting created_at.
+	result, err := r.db.Conn().Exec(`
+		UPDATE transactions SET
+			account_id = CAST(? AS UUID), date = ?, amount = ?, payee_id = ?,
+			category_id = ?, memo = ?, check_number = ?, status = ?,
+			transfer_id = ?, transfer_account_id = ?, bank_reference_id = ?,
+			updated_at = ?
+		WHERE CAST(id AS VARCHAR) = ?
+	`,
 		transaction.AccountID.String(),
 		transaction.Date.Time(),
 		transaction.Amount.String(),
@@ -325,11 +324,18 @@ func (r *Repository) Update(transaction *Transaction) error {
 		dbutil.NullID(transaction.TransferID),
 		dbutil.NullID(transaction.TransferAccountID),
 		dbutil.NullString(transaction.BankReferenceID),
-		transaction.CreatedAt.Time(),
 		transaction.UpdatedAt.Time(),
+		transaction.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update transaction: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "transaction", ID: transaction.ID.String()}
 	}
 
 	return nil
