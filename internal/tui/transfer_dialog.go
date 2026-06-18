@@ -95,8 +95,16 @@ type transferDialogDataMsg struct {
 // transferDialogSavedMsg is sent when a transfer has been saved.
 // savedDate carries the transaction date so the App can use it as the
 // session's sticky-date seed for subsequent dialog opens.
+//
+// savedID is the ID of the transfer leg living in the register the user is
+// currently viewing (NilID if neither leg belongs to the current register),
+// so the register can move the cursor onto the just-saved row. savedIsInvestment
+// reports whether that leg is an investment transaction, which tells the handler
+// whether to select it in the investment register or the regular register.
 type transferDialogSavedMsg struct {
-	savedDate types.Date
+	savedDate         types.Date
+	savedID           types.ID
+	savedIsInvestment bool
 }
 
 // buildAccountOptions builds parallel display name and ID slices for account selectors.
@@ -501,6 +509,12 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	toType := accountTypeByID(a.transferDialogData.accounts, toAccountID)
 	kind := transaction.ChooseTransferDispatch(fromType, toType)
 
+	// The leg living in the register the user is currently viewing should be
+	// selected after the save, so a freshly entered transfer scrolls into view
+	// just like a plain transaction does. Capture the account synchronously here
+	// (the closure runs on a separate goroutine).
+	currentAcct := a.currentRegisterAccountID()
+
 	// Close dialog before async save for responsive UI
 	a.closeTransferDialog()
 
@@ -508,6 +522,9 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 		if a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
+
+		var savedID types.ID
+		var savedIsInvestment bool
 
 		switch kind {
 		case transaction.DispatchRegToReg:
@@ -521,14 +538,14 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			// Set memo if provided. CreateTransfer doesn't accept memo, so we
 			// apply it via UpdateTransfer after the create. Undo of the transfer
 			// deletes both sides, so the memo-set step needs no separate undo.
-			if memo != "" {
-				pair := cmd.Pair()
-				if pair != nil {
+			if pair := cmd.Pair(); pair != nil {
+				if memo != "" {
 					transferID := pair.FromTransaction.TransferID.ID
 					if err := a.transactionSvc.UpdateTransfer(transferID, date, amount, memo, transaction.StatusUncleared); err != nil {
 						return errMsg{err: fmt.Errorf("transfer created but failed to set memo: %w", err)}
 					}
 				}
+				savedID = transferLegForAccount(currentAcct, pair.FromTransaction, pair.ToTransaction)
 			}
 		case transaction.DispatchInvToReg:
 			if a.investmentSvc == nil {
@@ -538,6 +555,7 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 			}
+			savedID, savedIsInvestment = cashTransferLegForAccount(currentAcct, cmd.Result())
 		case transaction.DispatchRegToInv:
 			if a.investmentSvc == nil {
 				return errMsg{err: fmt.Errorf("investment service not available")}
@@ -548,6 +566,7 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 			}
+			savedID, savedIsInvestment = cashTransferLegForAccount(currentAcct, cmd.Result())
 		case transaction.DispatchInvToInv:
 			if a.investmentSvc == nil {
 				return errMsg{err: fmt.Errorf("investment service not available")}
@@ -556,10 +575,47 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 			}
+			if res := cmd.Result(); res != nil {
+				// Both legs are investment transactions.
+				if res.SourceTransaction != nil && res.SourceTransaction.AccountID == currentAcct {
+					savedID, savedIsInvestment = res.SourceTransaction.ID, true
+				} else if res.DestinationTransaction != nil && res.DestinationTransaction.AccountID == currentAcct {
+					savedID, savedIsInvestment = res.DestinationTransaction.ID, true
+				}
+			}
 		}
 
-		return transferDialogSavedMsg{savedDate: date}
+		return transferDialogSavedMsg{savedDate: date, savedID: savedID, savedIsInvestment: savedIsInvestment}
 	}
+}
+
+// transferLegForAccount returns the ID of whichever regular transfer leg belongs
+// to acct, or NilID if neither does (e.g. the transfer was entered from a view
+// that isn't one of its two accounts' registers).
+func transferLegForAccount(acct types.ID, from, to *transaction.Transaction) types.ID {
+	if from != nil && from.AccountID == acct {
+		return from.ID
+	}
+	if to != nil && to.AccountID == acct {
+		return to.ID
+	}
+	return types.NilID
+}
+
+// cashTransferLegForAccount returns the ID of whichever leg of an investment↔bank
+// cash transfer belongs to acct, plus whether that leg is the investment-side
+// transaction. Returns (NilID, false) when neither leg belongs to acct.
+func cashTransferLegForAccount(acct types.ID, res *investment.CashTransferResult) (types.ID, bool) {
+	if res == nil {
+		return types.NilID, false
+	}
+	if res.RegularTransaction != nil && res.RegularTransaction.AccountID == acct {
+		return res.RegularTransaction.ID, false
+	}
+	if res.InvestmentTransaction != nil && res.InvestmentTransaction.AccountID == acct {
+		return res.InvestmentTransaction.ID, true
+	}
+	return types.NilID, false
 }
 
 // submitEditTransferDialog validates the edit-mode transfer dialog and
@@ -636,6 +692,10 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 	}
 
 	transferID := regularPair.FromTransaction.TransferID.ID
+	// Keep the cursor on the edited row. An edit can change the date and so
+	// re-sort the leg; selecting by ID lands on it wherever it moves. The leg's
+	// ID is unchanged by an edit, so the existing pair already names it.
+	savedID := transferLegForAccount(a.currentRegisterAccountID(), regularPair.FromTransaction, regularPair.ToTransaction)
 	a.closeTransferDialog()
 	return a, func() tea.Msg {
 		if a.transactionSvc == nil || a.undoManager == nil {
@@ -645,7 +705,7 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to update transfer: %w", err)}
 		}
-		return transferDialogSavedMsg{}
+		return transferDialogSavedMsg{savedDate: date, savedID: savedID}
 	}
 }
 
@@ -668,6 +728,18 @@ func (a *App) dispatchInvestmentEditTransfer(edit *investmentTransferEdit, fromT
 	}
 
 	investmentTxnID := edit.investmentTxnID
+
+	// Keep the cursor on the edited row when viewing the investment side. The
+	// investment leg's ID is unchanged by the edit, so we can select it after
+	// the reload. Only do so when the investment account is the one on screen —
+	// the regular leg's ID isn't available on this path, so an edit viewed from
+	// the bank register simply leaves the cursor put rather than stashing an ID
+	// that would later jump the wrong register.
+	var savedID types.ID
+	if a.currentRegisterAccountID() == investmentAccountID {
+		savedID = investmentTxnID
+	}
+
 	return func() tea.Msg {
 		if a.investmentSvc == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
@@ -684,6 +756,6 @@ func (a *App) dispatchInvestmentEditTransfer(edit *investmentTransferEdit, fromT
 		); err != nil {
 			return errMsg{err: fmt.Errorf("failed to update transfer: %w", err)}
 		}
-		return transferDialogSavedMsg{savedDate: date}
+		return transferDialogSavedMsg{savedDate: date, savedID: savedID, savedIsInvestment: !savedID.IsNil()}
 	}
 }

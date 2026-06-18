@@ -74,6 +74,24 @@ func (a *App) activeTable() *widget.Table {
 	return nil
 }
 
+// currentRegisterAccountID returns the account ID of the register currently on
+// screen (regular or investment), or NilID when the current view is not a
+// register. Used after a transfer save to select the leg belonging to the
+// account the user is looking at.
+func (a *App) currentRegisterAccountID() types.ID {
+	switch a.currentView {
+	case ViewRegister:
+		if a.register != nil && a.register.account != nil {
+			return a.register.account.ID
+		}
+	case ViewInvestmentRegister:
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a.investmentRegister.account.ID
+		}
+	}
+	return types.NilID
+}
+
 // focusSidebar switches focus to the sidebar and unfocuses the active table.
 func (a *App) focusSidebar() {
 	a.sidebar.SetFocused(true)

@@ -58,8 +58,12 @@ type securityViewDataLoadedMsg struct {
 	data *securityViewData
 }
 
-// securityAddedMsg is sent when a security has been added.
-type securityAddedMsg struct{}
+// securityAddedMsg is sent when a security has been added. id carries the new
+// security's ID so the view can select it (and scroll it into view) after the
+// reload.
+type securityAddedMsg struct {
+	id types.ID
+}
 
 // securityUpdatedMsg is sent when a security has been updated.
 type securityUpdatedMsg struct{}
@@ -126,6 +130,25 @@ func (a *App) buildSecurityTable() {
 	}
 	a.securityTable.SetRows(rows)
 	a.securityTable.SetFocused(true)
+
+	// After adding a security, move the cursor onto the just-added row by
+	// matching its ID. Selecting by ID (not position) lands on the row even
+	// though the list is sorted by ticker, and the next render scrolls it into
+	// view. The pending ID is cleared only once a matching row is found: this
+	// table is also rebuilt synchronously by the 'f' hidden-filter toggle and by
+	// search keystrokes, which can fire against the still-stale list in the
+	// brief window before the post-add reload lands. Clearing only on a match
+	// lets such a stale rebuild pass without consuming the request, so the
+	// reload that actually contains the new security still selects it.
+	if !a.pendingSecuritySelectID.IsNil() {
+		for i, sec := range filtered {
+			if sec.ID == a.pendingSecuritySelectID {
+				a.securityTable.SetCursor(i)
+				a.pendingSecuritySelectID = types.NilID
+				break
+			}
+		}
+	}
 }
 
 // formatSecurityRow formats a security into a table row.
@@ -562,7 +585,7 @@ func (a *App) createSecurity(ticker, name string, secType security.Type, assetCl
 		if err := a.securitySvc.Create(sec); err != nil {
 			return errMsg{err: err}
 		}
-		return securityAddedMsg{}
+		return securityAddedMsg{id: sec.ID}
 	}
 }
 

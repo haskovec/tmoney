@@ -668,6 +668,143 @@ func TestApp_Update_TransferDialogSavedMsg(t *testing.T) {
 	}
 }
 
+// TestApp_Update_TransferDialogSavedMsg_SelectsRegularLeg verifies the saved
+// regular leg is queued for selection in the regular register.
+func TestApp_Update_TransferDialogSavedMsg_SelectsRegularLeg(t *testing.T) {
+	legID := types.NewID()
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	msg := transferDialogSavedMsg{savedID: legID, savedIsInvestment: false}
+	model, _ := app.Update(msg)
+	updated := model.(*App)
+
+	if updated.pendingRegisterSelectID != legID {
+		t.Errorf("pendingRegisterSelectID = %v, want %v", updated.pendingRegisterSelectID, legID)
+	}
+	if !updated.pendingInvestmentSelectID.IsNil() {
+		t.Error("pendingInvestmentSelectID should stay unset for a regular leg")
+	}
+}
+
+// TestApp_Update_TransferDialogSavedMsg_SelectsInvestmentLeg verifies an
+// investment-side leg routes to the investment register's pending selection.
+func TestApp_Update_TransferDialogSavedMsg_SelectsInvestmentLeg(t *testing.T) {
+	legID := types.NewID()
+	app := &App{
+		currentView: ViewInvestmentRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	msg := transferDialogSavedMsg{savedID: legID, savedIsInvestment: true}
+	model, _ := app.Update(msg)
+	updated := model.(*App)
+
+	if updated.pendingInvestmentSelectID != legID {
+		t.Errorf("pendingInvestmentSelectID = %v, want %v", updated.pendingInvestmentSelectID, legID)
+	}
+	if !updated.pendingRegisterSelectID.IsNil() {
+		t.Error("pendingRegisterSelectID should stay unset for an investment leg")
+	}
+}
+
+// TestApp_Update_TransferDialogSavedMsg_NilLegSelectsNothing verifies that a
+// transfer whose legs don't belong to the current register (NilID savedID)
+// leaves both pending selections untouched.
+func TestApp_Update_TransferDialogSavedMsg_NilLegSelectsNothing(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+	}
+
+	model, _ := app.Update(transferDialogSavedMsg{savedID: types.NilID})
+	updated := model.(*App)
+
+	if !updated.pendingRegisterSelectID.IsNil() || !updated.pendingInvestmentSelectID.IsNil() {
+		t.Error("a NilID savedID should leave both pending selections unset")
+	}
+}
+
+func TestTransferLegForAccount(t *testing.T) {
+	acctA, acctB := types.NewID(), types.NewID()
+	fromID, toID := types.NewID(), types.NewID()
+	from := &transaction.Transaction{BaseModel: types.BaseModel{ID: fromID}, AccountID: acctA}
+	to := &transaction.Transaction{BaseModel: types.BaseModel{ID: toID}, AccountID: acctB}
+
+	if got := transferLegForAccount(acctA, from, to); got != fromID {
+		t.Errorf("acctA leg = %v, want from leg %v", got, fromID)
+	}
+	if got := transferLegForAccount(acctB, from, to); got != toID {
+		t.Errorf("acctB leg = %v, want to leg %v", got, toID)
+	}
+	if got := transferLegForAccount(types.NewID(), from, to); !got.IsNil() {
+		t.Errorf("unrelated account leg = %v, want NilID", got)
+	}
+	// nil legs must not panic.
+	if got := transferLegForAccount(acctA, nil, nil); !got.IsNil() {
+		t.Errorf("nil legs = %v, want NilID", got)
+	}
+}
+
+func TestCashTransferLegForAccount(t *testing.T) {
+	regAcct, invAcct := types.NewID(), types.NewID()
+	regID, invID := types.NewID(), types.NewID()
+	res := &investment.CashTransferResult{
+		RegularTransaction:    &transaction.Transaction{BaseModel: types.BaseModel{ID: regID}, AccountID: regAcct},
+		InvestmentTransaction: &investment.Transaction{BaseModel: types.BaseModel{ID: invID}, AccountID: invAcct},
+	}
+
+	if id, isInv := cashTransferLegForAccount(regAcct, res); id != regID || isInv {
+		t.Errorf("regular account leg = (%v, %v), want (%v, false)", id, isInv, regID)
+	}
+	if id, isInv := cashTransferLegForAccount(invAcct, res); id != invID || !isInv {
+		t.Errorf("investment account leg = (%v, %v), want (%v, true)", id, isInv, invID)
+	}
+	if id, isInv := cashTransferLegForAccount(types.NewID(), res); !id.IsNil() || isInv {
+		t.Errorf("unrelated account = (%v, %v), want (NilID, false)", id, isInv)
+	}
+	if id, isInv := cashTransferLegForAccount(regAcct, nil); !id.IsNil() || isInv {
+		t.Errorf("nil result = (%v, %v), want (NilID, false)", id, isInv)
+	}
+}
+
+// TestCurrentRegisterAccountID verifies the helper reports the on-screen
+// register's account and NilID elsewhere.
+func TestCurrentRegisterAccountID(t *testing.T) {
+	regAcct := &account.Account{BaseModel: types.BaseModel{ID: types.NewID()}, Type: account.TypeChecking}
+	invAcct := &account.Account{BaseModel: types.BaseModel{ID: types.NewID()}, Type: account.TypeInvestment}
+
+	app := &App{
+		currentView:        ViewRegister,
+		register:           &registerData{account: regAcct},
+		investmentRegister: &investmentRegisterData{account: invAcct},
+	}
+	if got := app.currentRegisterAccountID(); got != regAcct.ID {
+		t.Errorf("ViewRegister account = %v, want %v", got, regAcct.ID)
+	}
+
+	app.currentView = ViewInvestmentRegister
+	if got := app.currentRegisterAccountID(); got != invAcct.ID {
+		t.Errorf("ViewInvestmentRegister account = %v, want %v", got, invAcct.ID)
+	}
+
+	app.currentView = ViewDashboard
+	if got := app.currentRegisterAccountID(); !got.IsNil() {
+		t.Errorf("non-register view = %v, want NilID", got)
+	}
+}
+
 func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
 	accountID := types.NewID()
 	app := &App{

@@ -221,6 +221,13 @@ type App struct {
 	securityDialogEditID types.ID
 	securitySvc          *security.Service
 
+	// After adding a security, the table build step moves the cursor onto the
+	// row whose security ID matches, so a freshly added ticker scrolls into
+	// view rather than leaving the cursor wherever it was. Selecting by ID
+	// (not position) lands on the row even though the list is sorted by ticker.
+	// NilID means "no pending selection"; the build step clears it after use.
+	pendingSecuritySelectID types.ID
+
 	// Price view state
 	priceView         *priceViewData
 	priceTable        *widget.Table // detail-mode: history for one security

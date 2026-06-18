@@ -444,6 +444,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.txnDialogLastSavedDate = msg.savedDate
 		}
 		a.investmentEditTxnID = types.NilID
+		// Select the saved leg in whichever register the user is viewing so the
+		// new transfer scrolls into view, mirroring plain transactions and splits.
+		if !msg.savedID.IsNil() {
+			if msg.savedIsInvestment {
+				a.pendingInvestmentSelectID = msg.savedID
+			} else {
+				a.pendingRegisterSelectID = msg.savedID
+			}
+		}
 		a.statusbar.AddNotification("Transfer saved", widget.NotificationInfo)
 		return a, tea.Batch(
 			a.reloadCurrentView(),
@@ -657,6 +666,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case securityAddedMsg:
 		a.statusbar.AddNotification("Security added", widget.NotificationInfo)
+		// Select the new security after the reload so it scrolls into view,
+		// even if it sorts off-screen in a long list.
+		a.pendingSecuritySelectID = msg.id
 		return a, a.loadSecurityViewData()
 
 	case securityUpdatedMsg:

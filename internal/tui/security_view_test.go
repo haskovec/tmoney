@@ -650,6 +650,111 @@ func TestSecurityViewUpdate_SecurityAddedMsg(t *testing.T) {
 	}
 }
 
+// TestSecurityAddedMsg_StashesPendingSelect verifies the added-message handler
+// records the new security's ID so the upcoming reload can land the cursor on
+// it.
+func TestSecurityAddedMsg_StashesPendingSelect(t *testing.T) {
+	newID := types.NewID()
+	app := &App{
+		currentView:  ViewSecurities,
+		keys:         defaultKeyMap(),
+		statusbar:    widget.NewStatusBar(),
+		securityView: &securityViewData{securities: []*security.Security{}},
+	}
+
+	model, _ := app.Update(securityAddedMsg{id: newID})
+	updatedApp := model.(*App)
+
+	if updatedApp.pendingSecuritySelectID != newID {
+		t.Errorf("pendingSecuritySelectID = %v, want %v", updatedApp.pendingSecuritySelectID, newID)
+	}
+}
+
+// TestBuildSecurityTable_PendingSelectMovesCursor verifies that a pending
+// select ID lands the cursor on the matching row (selected by ID, not
+// position) and is cleared afterward — the core of "jump to the new security".
+func TestBuildSecurityTable_PendingSelectMovesCursor(t *testing.T) {
+	targetID := types.NewID()
+	// Sorted by ticker the target "MMM" sits in the middle, so a cursor of 1
+	// proves selection is by ID rather than defaulting to the top.
+	sec1 := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	sec2 := &security.Security{
+		BaseModel:    types.BaseModel{ID: targetID},
+		Ticker:       "MMM",
+		Name:         "3M Company",
+		SecurityType: security.TypeStock,
+		AssetClass:   security.AssetClassUnclassified,
+		Currency:     "USD",
+	}
+	sec3 := security.NewSecurity("ZZZ", "Zeta Corp", security.TypeStock)
+
+	app := &App{
+		securityView: &securityViewData{
+			securities: []*security.Security{sec1, sec2, sec3},
+			showHidden: true,
+		},
+		pendingSecuritySelectID: targetID,
+	}
+	app.buildSecurityTable()
+
+	if got := app.securityTable.Cursor(); got != 1 {
+		t.Errorf("cursor = %d, want 1 (MMM after sort)", got)
+	}
+	if sel := app.selectedSecurity(); sel == nil || sel.Ticker != "MMM" {
+		t.Errorf("selectedSecurity() = %v, want MMM", sel)
+	}
+	if !app.pendingSecuritySelectID.IsNil() {
+		t.Error("pendingSecuritySelectID should be cleared after applying")
+	}
+}
+
+// TestBuildSecurityTable_PendingSelectNoMatch verifies a pending ID that is not
+// (yet) in the filtered list leaves the cursor put AND preserves the pending ID.
+// A rebuild can fire against the still-stale list (the 'f' toggle or a search
+// keystroke) in the window before the post-add reload lands; preserving the ID
+// there means the reload that finally contains the new security can still
+// select it, rather than a stale rebuild silently consuming the request.
+func TestBuildSecurityTable_PendingSelectNoMatch(t *testing.T) {
+	sec1 := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	sec2 := security.NewSecurity("MSFT", "Microsoft Corp", security.TypeStock)
+	pendingID := types.NewID() // not present in the list yet
+
+	app := &App{
+		securityView: &securityViewData{
+			securities: []*security.Security{sec1, sec2},
+			showHidden: true,
+		},
+		pendingSecuritySelectID: pendingID,
+	}
+	app.buildSecurityTable()
+
+	if got := app.securityTable.Cursor(); got != 0 {
+		t.Errorf("cursor = %d, want 0 (unchanged on no match)", got)
+	}
+	if app.pendingSecuritySelectID != pendingID {
+		t.Error("pendingSecuritySelectID should be preserved when no row matches yet, so a later reload can still select it")
+	}
+
+	// When the security later appears (the real post-add reload), the still-set
+	// pending ID selects it and is then cleared.
+	app.securityView.securities = append(app.securityView.securities, &security.Security{
+		BaseModel:    types.BaseModel{ID: pendingID},
+		Ticker:       "NVDA",
+		Name:         "NVIDIA Corp",
+		SecurityType: security.TypeStock,
+		AssetClass:   security.AssetClassUnclassified,
+		Currency:     "USD",
+	})
+	app.buildSecurityTable()
+
+	if sel := app.selectedSecurity(); sel == nil || sel.Ticker != "NVDA" {
+		t.Errorf("selectedSecurity() = %v, want NVDA after it appears in the reload", sel)
+	}
+	if !app.pendingSecuritySelectID.IsNil() {
+		t.Error("pendingSecuritySelectID should be cleared once the row is matched")
+	}
+}
+
 func TestSecurityViewUpdate_SecurityUpdatedMsg(t *testing.T) {
 	app := &App{
 		currentView:  ViewSecurities,
