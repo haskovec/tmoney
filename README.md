@@ -68,6 +68,13 @@ tmoney -f personal.tdb account balance
   in the TUI handles every combination — bank↔bank, bank↔investment,
   and investment↔investment — with explicit From / To pickers
 - Cleared/pending status tracking
+- **Running-balance column** in the register (after Amount), showing the
+  account balance after each transaction — Quicken-style — so the newest
+  row always matches the account balance in the title bar. Void rows carry
+  the balance forward unchanged. Investment-account registers show a running
+  **cash** balance after Total (cash-affecting rows only; share-only rows like
+  Reinvest Dividend and Transfer Shares carry forward). The column appears when
+  the terminal is wide enough and hides automatically when space is tight.
 - Full-text search with date, amount, and category filters
 - Sticky last-used date across every new-transaction dialog (within a
   session) — batch entry in the regular register and any investment

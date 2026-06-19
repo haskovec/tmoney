@@ -21,6 +21,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.height = msg.Height
 		a.styles.Resize(msg.Width, msg.Height)
 		a.ready = true
+		// The register tables decide whether to show the running-balance column
+		// from the available width, which is fixed at build time. Rebuild a
+		// loaded register only when that decision actually flips, so the column
+		// appears/disappears live on resize without resetting scroll/cursor
+		// state (SetRows resets scroll) on every no-op resize tick.
+		if a.register != nil && tableHasBalanceColumn(a.table) != a.shouldShowRegisterBalance() {
+			a.buildRegisterTable()
+		}
+		if a.investmentRegister != nil && tableHasBalanceColumn(a.investmentTable) != a.shouldShowInvestmentBalance() {
+			a.buildInvestmentRegisterTable()
+		}
 		return a, nil
 
 	case tea.KeyPressMsg:

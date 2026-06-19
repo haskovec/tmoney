@@ -83,13 +83,12 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 	}
 }
 
-// buildInvestmentRegisterTable creates and populates the table for the investment register view.
-func (a *App) buildInvestmentRegisterTable() {
-	if a.investmentRegister == nil {
-		return
-	}
-
-	columns := []widget.Column{
+// investmentRegisterColumns returns the investment register's column set; when
+// withBalance is true it appends the trailing running cash-balance column.
+// Single source of truth shared by buildInvestmentRegisterTable and the
+// resize-time fit check.
+func investmentRegisterColumns(withBalance bool) []widget.Column {
+	cols := []widget.Column{
 		{Header: "Date", Width: 10, Align: widget.AlignLeft},
 		{Header: "S", Width: 1, Align: widget.AlignCenter},
 		{Header: "Type", Width: 19, Align: widget.AlignLeft},
@@ -97,6 +96,34 @@ func (a *App) buildInvestmentRegisterTable() {
 		{Header: "Shares", Width: 12, Align: widget.AlignRight},
 		{Header: "Price", Width: 12, Align: widget.AlignRight},
 		{Header: "Total", Width: 12, Align: widget.AlignRight},
+	}
+	if withBalance {
+		cols = append(cols, widget.Column{Header: "Balance", Width: balanceColWidth, Align: widget.AlignRight})
+	}
+	return cols
+}
+
+// shouldShowInvestmentBalance reports whether the investment register is wide
+// enough to include the running cash-balance column. The investment register
+// has seven fixed columns, so Balance only fits on a fairly wide terminal
+// (table width ≈ 98). The width must match renderInvestmentRegister's.
+func (a *App) shouldShowInvestmentBalance() bool {
+	tableWidth := max(a.styles.ContentWidth()-4, 1)
+	return columnsFitWidth(investmentRegisterColumns(true), tableWidth, registerFlexMargin)
+}
+
+// buildInvestmentRegisterTable creates and populates the table for the investment register view.
+func (a *App) buildInvestmentRegisterTable() {
+	if a.investmentRegister == nil {
+		return
+	}
+
+	showBalance := a.shouldShowInvestmentBalance()
+	columns := investmentRegisterColumns(showBalance)
+
+	var cash []types.Money
+	if showBalance {
+		cash = runningCash(a.investmentRegister.transactions)
 	}
 
 	if a.investmentTable == nil {
@@ -107,22 +134,28 @@ func (a *App) buildInvestmentRegisterTable() {
 
 	rows := make([][]string, len(a.investmentRegister.transactions))
 	for i, txn := range a.investmentRegister.transactions {
-		rows[i] = a.formatInvestmentRegisterRow(txn)
+		row := a.formatInvestmentRegisterRow(txn)
+		if showBalance {
+			row = append(row, formatDashboardMoney(cash[i]))
+		}
+		rows[i] = row
 	}
 	a.investmentTable.SetRows(rows)
 
 	// After a save, move the cursor onto the just-saved row by matching its
 	// transaction ID. Selecting by ID (not position) keeps the cursor on the
 	// row even when it sorts into the middle of the list, e.g. a back-dated
-	// entry. Cleared after applying so unrelated reloads don't move the cursor.
+	// entry. The pending ID is cleared only once a matching row is found, so a
+	// rebuild against a stale ledger (e.g. a resize landing in the async
+	// save→reload window) preserves the pending selection for the real reload.
 	if !a.pendingInvestmentSelectID.IsNil() {
 		for i, txn := range a.investmentRegister.transactions {
 			if txn.ID == a.pendingInvestmentSelectID {
 				a.investmentTable.SetCursor(i)
+				a.pendingInvestmentSelectID = types.NilID
 				break
 			}
 		}
-		a.pendingInvestmentSelectID = types.NilID
 	}
 }
 

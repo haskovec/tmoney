@@ -372,18 +372,49 @@ func (a *App) showDeleteConfirmation() (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+// registerColumns returns the regular register's column set; when withBalance
+// is true it appends the trailing running-balance column. Single source of
+// truth shared by buildRegisterTable and the resize-time fit check.
+func registerColumns(withBalance bool) []widget.Column {
+	cols := []widget.Column{
+		{Header: "Date", Width: 10, Align: widget.AlignLeft},
+		{Header: "S", Width: 1, Align: widget.AlignCenter},
+		{Header: "Payee", MinWidth: 12, Align: widget.AlignLeft},
+		{Header: "Category", MinWidth: 10, Align: widget.AlignLeft},
+		{Header: "Amount", Width: 12, Align: widget.AlignRight},
+	}
+	if withBalance {
+		cols = append(cols, widget.Column{Header: "Balance", Width: balanceColWidth, Align: widget.AlignRight})
+	}
+	return cols
+}
+
+// shouldShowRegisterBalance reports whether the register is currently wide
+// enough to include the running-balance column. The table width here must
+// match renderRegister's (ContentWidth - 4).
+func (a *App) shouldShowRegisterBalance() bool {
+	tableWidth := max(a.styles.ContentWidth()-4, 1)
+	return columnsFitWidth(registerColumns(true), tableWidth, registerFlexMargin)
+}
+
 // buildRegisterTable creates and populates the table for the register view.
 func (a *App) buildRegisterTable() {
 	if a.register == nil {
 		return
 	}
 
-	columns := []widget.Column{
-		{Header: "Date", Width: 10, Align: widget.AlignLeft},
-		{Header: "S", Width: 1, Align: widget.AlignCenter},
-		{Header: "Payee", MinWidth: 12, Align: widget.AlignLeft},
-		{Header: "Category", MinWidth: 10, Align: widget.AlignLeft},
-		{Header: "Amount", Width: 12, Align: widget.AlignRight},
+	// Running-balance column — shown only when the register is wide enough to
+	// fit it without squeezing Payee/Category below a readable width.
+	showBalance := a.shouldShowRegisterBalance()
+	columns := registerColumns(showBalance)
+
+	var balances []types.Money
+	if showBalance {
+		opening := types.ZeroMoney
+		if a.register.account != nil {
+			opening = a.register.account.OpeningBalance
+		}
+		balances = runningBalances(a.register.transactions, opening)
 	}
 
 	if a.table == nil {
@@ -394,22 +425,28 @@ func (a *App) buildRegisterTable() {
 
 	rows := make([][]string, len(a.register.transactions))
 	for i, txn := range a.register.transactions {
-		rows[i] = a.formatRegisterRow(txn)
+		row := a.formatRegisterRow(txn)
+		if showBalance {
+			row = append(row, formatDashboardMoney(balances[i]))
+		}
+		rows[i] = row
 	}
 	a.table.SetRows(rows)
 
 	// After a save, move the cursor onto the just-saved row by matching its
 	// transaction ID. Selecting by ID (not position) keeps the cursor on the
 	// row even when it sorts into the middle of the list, e.g. a back-dated
-	// entry. Cleared after applying so unrelated reloads don't move the cursor.
+	// entry. The pending ID is cleared only once a matching row is found, so a
+	// rebuild against a stale ledger (e.g. a resize landing in the async
+	// save→reload window) preserves the pending selection for the real reload.
 	if !a.pendingRegisterSelectID.IsNil() {
 		for i, txn := range a.register.transactions {
 			if txn.ID == a.pendingRegisterSelectID {
 				a.table.SetCursor(i)
+				a.pendingRegisterSelectID = types.NilID
 				break
 			}
 		}
-		a.pendingRegisterSelectID = types.NilID
 	}
 
 	// Apply void row styling
