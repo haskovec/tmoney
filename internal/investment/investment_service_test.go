@@ -2845,7 +2845,7 @@ func TestService_FeeLiquidation_LotTracking(t *testing.T) {
 		}
 	})
 
-	t.Run("fee liquidation requires lot allocations for lot-tracking", func(t *testing.T) {
+	t.Run("fee liquidation auto-allocates FIFO when no lot allocation given", func(t *testing.T) {
 		env := createFullTestService(t)
 		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
 		sec := createSec(t, env.secRepo, "AAPL")
@@ -2855,13 +2855,35 @@ func TestService_FeeLiquidation_LotTracking(t *testing.T) {
 		buyTotal := types.MustNewMoney("1000.00")
 		buyShares := types.MustNewQuantity("10")
 		_, _ = env.svc.Buy(acct.ID, sec.ID, date, buyShares, &buyTotal, nil, types.ZeroMoney, "")
+		openLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		lotID := openLots[0].ID
 
 		feeDate := types.NewDate(2024, time.June, 15)
 		feeTotal := types.MustNewMoney("110.00")
 		feeShares := types.MustNewQuantity("1")
-		_, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, types.ZeroMoney, "", nil)
-		if err == nil {
-			t.Fatal("Expected error for missing lot allocations, got nil")
+		// No explicit allocation: the service draws FIFO from the oldest lot.
+		if _, err := env.svc.FeeLiquidation(acct.ID, sec.ID, feeDate, feeShares, &feeTotal, nil, types.ZeroMoney, "", nil); err != nil {
+			t.Fatalf("FeeLiquidation auto-FIFO error = %v", err)
+		}
+		updatedLot, _ := env.lotRepo.GetByID(lotID)
+		if updatedLot.Shares.String() != "9" {
+			t.Errorf("expected lot reduced to 9 shares via FIFO, got %s", updatedLot.Shares.String())
+		}
+	})
+
+	t.Run("fee liquidation auto-FIFO rejects shares exceeding open lots", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Tax Brokerage")
+		sec := createSec(t, env.secRepo, "AAPL")
+		date := types.NewDate(2024, time.March, 15)
+
+		buyTotal := types.MustNewMoney("1000.00")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"), &buyTotal, nil, types.ZeroMoney, "")
+
+		feeTotal := types.MustNewMoney("110.00")
+		_, err := env.svc.FeeLiquidation(acct.ID, sec.ID, date, types.MustNewQuantity("20"), &feeTotal, nil, types.ZeroMoney, "", nil)
+		if _, ok := err.(*InsufficientSharesError); !ok {
+			t.Errorf("expected *InsufficientSharesError for over-allocation, got %T: %v", err, err)
 		}
 	})
 

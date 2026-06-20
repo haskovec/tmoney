@@ -273,6 +273,11 @@ type App struct {
 	sellDialogSecurityIDs []types.ID
 	sellDialogLots        []*investment.Lot
 
+	// Fee via Liquidation dialog state
+	feeLiquidationDialog            *dialog.Dialog
+	feeLiquidationDialogData        *feeLiquidationDialogData
+	feeLiquidationDialogSecurityIDs []types.ID
+
 	// Dividend dialog state
 	dividendDialog            *dialog.Dialog
 	dividendDialogData        *dividendDialogData
@@ -588,6 +593,11 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// If sell dialog is visible, route all keys to it
 	if a.sellDialog != nil && a.sellDialog.IsVisible() {
 		return a.handleSellDialogKey(msg)
+	}
+
+	// If fee-liquidation dialog is visible, route all keys to it
+	if a.feeLiquidationDialog != nil && a.feeLiquidationDialog.IsVisible() {
+		return a.handleFeeLiquidationDialogKey(msg)
 	}
 
 	// If dividend dialog is visible, route all keys to it

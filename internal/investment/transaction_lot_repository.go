@@ -91,6 +91,43 @@ func (r *TransactionLotRepository) SumSharesByLot(lotIDs []types.ID) (map[types.
 	return result, nil
 }
 
+// CountByAccount returns the number of junction rows whose lot belongs to the
+// given account. Junctions store only lot_id, so it joins through
+// investment_lots. Used by disable-lots to report how many junctions a teardown
+// would remove before --confirm.
+func (r *TransactionLotRepository) CountByAccount(accountID types.ID) (int, error) {
+	var count int
+	err := r.db.Conn().QueryRow(`
+		SELECT COUNT(*) FROM investment_transaction_lots
+		WHERE CAST(lot_id AS VARCHAR) IN (
+			SELECT CAST(id AS VARCHAR) FROM investment_lots WHERE CAST(account_id AS VARCHAR) = ?
+		)`, accountID.String()).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count junctions for account: %w", err)
+	}
+	return count, nil
+}
+
+// DeleteByAccount removes every junction row whose lot belongs to the given
+// account and returns the number of rows deleted. Because junctions carry only
+// lot_id, it deletes via a subquery against investment_lots, so it MUST run
+// while the account's lots still exist (before LotRepository.DeleteByAccount).
+func (r *TransactionLotRepository) DeleteByAccount(accountID types.ID) (int, error) {
+	res, err := r.db.Conn().Exec(`
+		DELETE FROM investment_transaction_lots
+		WHERE CAST(lot_id AS VARCHAR) IN (
+			SELECT CAST(id AS VARCHAR) FROM investment_lots WHERE CAST(account_id AS VARCHAR) = ?
+		)`, accountID.String())
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete junctions for account: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	return int(n), nil
+}
+
 // GetByTransaction retrieves all lot allocations for a given transaction.
 func (r *TransactionLotRepository) GetByTransaction(transactionID types.ID) ([]*TransactionLot, error) {
 	query := `

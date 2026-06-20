@@ -390,6 +390,191 @@ func TestEnableLots_BlockedByCorporateAction(t *testing.T) {
 	}
 }
 
+func TestDisableLots_PreviewAndApply(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Lot Brokerage")
+	sec := createSec(t, env.secRepo, "VTI")
+	p1 := types.MustNewMoney("100.00")
+	p2 := types.MustNewMoney("120.00")
+	mustBuy(t, env, acct.ID, sec.ID, types.NewDate(2024, time.January, 2), "10", &p1)
+	mustBuy(t, env, acct.ID, sec.ID, types.NewDate(2024, time.February, 2), "5", &p2)
+
+	// Sell 4 against the first (oldest) lot to create a junction row.
+	openLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+	if len(openLots) != 2 {
+		t.Fatalf("expected 2 open lots, got %d", len(openLots))
+	}
+	sp := types.MustNewMoney("130.00")
+	alloc := []SellLotAllocation{{LotID: openLots[0].ID, Shares: types.MustNewQuantity("4")}}
+	if _, err := env.svc.Sell(acct.ID, sec.ID, types.NewDate(2024, time.March, 2), types.MustNewQuantity("4"), nil, &sp, types.ZeroMoney, "", alloc); err != nil {
+		t.Fatalf("Sell: %v", err)
+	}
+
+	// Preview: counts what would be removed, writes nothing.
+	preview, err := env.svc.DisableLots(acct.ID, false)
+	if err != nil {
+		t.Fatalf("DisableLots preview: %v", err)
+	}
+	if preview.Applied {
+		t.Error("preview should not be Applied")
+	}
+	if preview.LotsDeleted != 2 {
+		t.Errorf("preview LotsDeleted = %d, want 2", preview.LotsDeleted)
+	}
+	if preview.Securities != 1 {
+		t.Errorf("preview Securities = %d, want 1", preview.Securities)
+	}
+	if preview.JunctionsDeleted != 1 {
+		t.Errorf("preview JunctionsDeleted = %d, want 1", preview.JunctionsDeleted)
+	}
+	if gotLots, _ := env.lotRepo.ListAllByAccount(acct.ID); len(gotLots) != 2 {
+		t.Errorf("preview must not delete lots, got %d", len(gotLots))
+	}
+	if reloaded, _ := env.accountRepo.GetByID(acct.ID); !reloaded.TrackLots {
+		t.Error("preview must not flip TrackLots")
+	}
+
+	// Apply.
+	applied, err := env.svc.DisableLots(acct.ID, true)
+	if err != nil {
+		t.Fatalf("DisableLots apply: %v", err)
+	}
+	if !applied.Applied {
+		t.Error("apply should be Applied")
+	}
+	if applied.LotsDeleted != 2 {
+		t.Errorf("apply LotsDeleted = %d, want 2", applied.LotsDeleted)
+	}
+	if applied.JunctionsDeleted != 1 {
+		t.Errorf("apply JunctionsDeleted = %d, want 1", applied.JunctionsDeleted)
+	}
+	if applied.PositionsRecomputed != 1 {
+		t.Errorf("apply PositionsRecomputed = %d, want 1", applied.PositionsRecomputed)
+	}
+	if gotLots, _ := env.lotRepo.ListAllByAccount(acct.ID); len(gotLots) != 0 {
+		t.Errorf("apply should delete all lots, got %d", len(gotLots))
+	}
+	if jc, _ := env.transactionLotRepo.CountByAccount(acct.ID); jc != 0 {
+		t.Errorf("apply should delete all junctions, got %d", jc)
+	}
+	if reloaded, _ := env.accountRepo.GetByID(acct.ID); reloaded.TrackLots {
+		t.Error("apply must flip TrackLots off")
+	}
+	// Average-cost position is recomputed from the ledger: 10 + 5 - 4 = 11 shares.
+	pos, err := env.positionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+	if err != nil {
+		t.Fatalf("GetByAccountAndSecurity: %v", err)
+	}
+	if pos.Shares.String() != "11" {
+		t.Errorf("recomputed position shares = %s, want 11", pos.Shares.String())
+	}
+}
+
+func TestDisableLots_RefusesNonLotAccount(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage") // non-lot
+
+	_, err := env.svc.DisableLots(acct.ID, true)
+	if err == nil {
+		t.Fatal("expected refusal when account is not lot-tracked")
+	}
+	if !strings.Contains(err.Error(), "not lot-tracked") {
+		t.Errorf("expected 'not lot-tracked' error, got: %v", err)
+	}
+}
+
+func TestDisableLots_WarnsOnCorporateActionButProceeds(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Lot Brokerage")
+	sec := createSec(t, env.secRepo, "SCHB")
+	p := types.MustNewMoney("50.00")
+	mustBuy(t, env, acct.ID, sec.ID, types.NewDate(2022, time.January, 3), "47", &p)
+	ca := NewCorporateAction(ActionTypeSplit, sec.ID, types.NewDate(2022, time.March, 11), `{"numerator":2,"denominator":1}`)
+	if err := env.caRepo.Create(ca); err != nil {
+		t.Fatalf("create corporate action: %v", err)
+	}
+
+	// Warn-and-proceed: no error, but the corporate-action holding is surfaced.
+	res, err := env.svc.DisableLots(acct.ID, true)
+	if err != nil {
+		t.Fatalf("DisableLots should warn-and-proceed, got error: %v", err)
+	}
+	if !res.HasCorporateActions() {
+		t.Error("expected HasCorporateActions() to be true")
+	}
+	if len(res.Blockers) != 1 || res.Blockers[0].SecurityID != sec.ID {
+		t.Errorf("expected SCHB blocker, got %+v", res.Blockers)
+	}
+	if !res.Applied {
+		t.Error("disable-lots must proceed despite the corporate action")
+	}
+	if gotLots, _ := env.lotRepo.ListAllByAccount(acct.ID); len(gotLots) != 0 {
+		t.Errorf("lots should be deleted, got %d", len(gotLots))
+	}
+	if reloaded, _ := env.accountRepo.GetByID(acct.ID); reloaded.TrackLots {
+		t.Error("TrackLots must be flipped off")
+	}
+}
+
+func TestDisableLots_RefusesMergerSpinoff(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createLotTrackingAccount(t, env.accountRepo, "Lot Brokerage")
+	sec := createSec(t, env.secRepo, "GOOG")
+	p := types.MustNewMoney("100.00")
+	mustBuy(t, env, acct.ID, sec.ID, types.NewDate(2022, time.January, 3), "10", &p)
+	// A spin-off (non-split) holding lives only in lots on a lot-tracked account;
+	// deleting them would destroy the holding, so disable-lots must refuse.
+	ca := NewCorporateAction(ActionTypeSpinOff, sec.ID, types.NewDate(2022, time.March, 11), `{"share_ratio":0.5,"parent_allocation":80}`)
+	if err := env.caRepo.Create(ca); err != nil {
+		t.Fatalf("create corporate action: %v", err)
+	}
+
+	_, err := env.svc.DisableLots(acct.ID, true)
+	var blocked *DisableLotsBlockedError
+	if !errors.As(err, &blocked) {
+		t.Fatalf("expected *DisableLotsBlockedError, got %v", err)
+	}
+	if len(blocked.Blockers) != 1 || blocked.Blockers[0].SecurityID != sec.ID {
+		t.Errorf("expected GOOG blocker, got %+v", blocked.Blockers)
+	}
+	// Nothing destructive must have happened: lots remain and the account is
+	// still lot-tracked.
+	if gotLots, _ := env.lotRepo.ListAllByAccount(acct.ID); len(gotLots) != 1 {
+		t.Errorf("blocked disable-lots must not delete lots, got %d", len(gotLots))
+	}
+	if reloaded, _ := env.accountRepo.GetByID(acct.ID); !reloaded.TrackLots {
+		t.Error("blocked disable-lots must not flip TrackLots")
+	}
+}
+
+func TestDisableLots_LeavesOtherAccountsUntouched(t *testing.T) {
+	env := createFullTestService(t)
+	acctA := createLotTrackingAccount(t, env.accountRepo, "Account A")
+	acctB := createLotTrackingAccount(t, env.accountRepo, "Account B")
+	sec := createSec(t, env.secRepo, "VTI")
+	p := types.MustNewMoney("100.00")
+	mustBuy(t, env, acctA.ID, sec.ID, types.NewDate(2024, time.January, 2), "10", &p)
+	mustBuy(t, env, acctB.ID, sec.ID, types.NewDate(2024, time.January, 2), "20", &p)
+
+	if _, err := env.svc.DisableLots(acctA.ID, true); err != nil {
+		t.Fatalf("DisableLots(A): %v", err)
+	}
+
+	// Account A is converted; Account B is completely untouched. B is still
+	// lot-tracked, so its holding lives in its lots — assert those survive
+	// intact (the account-scoped deletes must not bleed across accounts).
+	if gotLots, _ := env.lotRepo.ListAllByAccount(acctA.ID); len(gotLots) != 0 {
+		t.Errorf("Account A lots should be deleted, got %d", len(gotLots))
+	}
+	bLots, _ := env.lotRepo.ListAllByAccount(acctB.ID)
+	if len(bLots) != 1 || bLots[0].Shares.String() != "20" {
+		t.Errorf("Account B lot must survive unchanged at 20 shares, got %+v", bLots)
+	}
+	if rb, _ := env.accountRepo.GetByID(acctB.ID); !rb.TrackLots {
+		t.Error("Account B must stay lot-tracked")
+	}
+}
+
 func TestTotalSharesForSecurity(t *testing.T) {
 	env := createFullTestService(t)
 	nonLot := createInvAccount(t, env.accountRepo, "Brokerage")

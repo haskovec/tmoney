@@ -510,6 +510,7 @@ func investmentTransactionTypeOptions() []string {
 		investment.TransactionTypeWithdrawal.DisplayName(),
 		investment.TransactionTypeInterest.DisplayName(),
 		investment.TransactionTypeFee.DisplayName(),
+		investment.TransactionTypeFeeLiquidation.DisplayName(),
 		investment.TransactionTypeTransferCash.DisplayName(),
 		investment.TransactionTypeTransferShares.DisplayName(),
 	}
@@ -526,6 +527,7 @@ func investmentTransactionTypeFromIndex(idx int) investment.TransactionType {
 		investment.TransactionTypeWithdrawal,
 		investment.TransactionTypeInterest,
 		investment.TransactionTypeFee,
+		investment.TransactionTypeFeeLiquidation,
 		investment.TransactionTypeTransferCash,
 		investment.TransactionTypeTransferShares,
 	}
@@ -546,6 +548,7 @@ func investmentTransactionTypeIndex(txnType investment.TransactionType) int {
 		investment.TransactionTypeWithdrawal,
 		investment.TransactionTypeInterest,
 		investment.TransactionTypeFee,
+		investment.TransactionTypeFeeLiquidation,
 		investment.TransactionTypeTransferCash,
 		investment.TransactionTypeTransferShares,
 	}
@@ -628,6 +631,8 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyPressMsg) (tea.Model, t
 		case investment.TransactionTypeReinvestDividend:
 			a.dividendDialogReinvest = true
 			return a, a.loadDividendDialogData()
+		case investment.TransactionTypeFeeLiquidation:
+			return a, a.loadFeeLiquidationDialogData()
 		case investment.TransactionTypeDeposit,
 			investment.TransactionTypeWithdrawal,
 			investment.TransactionTypeFee,

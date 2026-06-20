@@ -794,6 +794,24 @@ func (s *Service) FeeLiquidation(
 		return nil, err
 	}
 
+	// On a lot-tracked account with no explicit allocation, auto-allocate FIFO
+	// across the security's open lots. This is computed here (not in the caller)
+	// so that UpdateFeeLiquidation — which reverses the old transaction's lot
+	// effect *before* calling this method — allocates against the restored,
+	// post-reverse lot state rather than a stale pre-reverse snapshot. Recurring
+	// fee liquidations don't warrant per-lot tax selection, so FIFO (oldest
+	// first) is the sensible default; pass explicit allocations to override.
+	if acct.TrackLots && len(lotAllocations) == 0 {
+		openLots, err := s.lotRepo.ListByAccountAndSecurity(accountID, securityID, false)
+		if err != nil {
+			return nil, fmt.Errorf("FeeLiquidation: load open lots for FIFO allocation: %w", err)
+		}
+		lotAllocations, err = fifoLotAllocations(securityID, openLots, shares)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if acct.TrackLots {
 		if err := s.feeLiquidationWithLots(txn, accountID, securityID, shares, lotAllocations); err != nil {
 			return nil, err
@@ -915,6 +933,35 @@ func (s *Service) feeLiquidationWithLots(txn *Transaction, accountID, securityID
 	}
 
 	return nil
+}
+
+// fifoLotAllocations consumes `shares` across the given open lots oldest-first
+// (the caller passes them in purchase-date order, which is FIFO) and returns
+// the per-lot allocations. It is used to auto-allocate a fee liquidation on a
+// lot-tracked account when the caller supplies no explicit allocation. It
+// returns an *InsufficientSharesError when the open lots don't cover `shares`.
+func fifoLotAllocations(securityID types.ID, openLots []*Lot, shares types.Quantity) ([]SellLotAllocation, error) {
+	var allocations []SellLotAllocation
+	remaining := shares
+	for _, lot := range openLots {
+		if !remaining.IsPositive() {
+			break
+		}
+		take := lot.Shares
+		if take.Cmp(remaining) > 0 {
+			take = remaining
+		}
+		allocations = append(allocations, SellLotAllocation{LotID: lot.ID, Shares: take})
+		remaining = remaining.Sub(take)
+	}
+	if remaining.IsPositive() {
+		return nil, &InsufficientSharesError{
+			SecurityID: securityID.String(),
+			Available:  shares.Sub(remaining),
+			Requested:  shares,
+		}
+	}
+	return allocations, nil
 }
 
 // CashTransferResult contains both sides of a cash transfer between

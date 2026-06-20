@@ -190,6 +190,23 @@ func (r *LotRepository) Delete(id types.ID) error {
 	return nil
 }
 
+// DeleteByAccount removes every lot for an account (open and closed) in a
+// single statement and returns the number of rows deleted. Like Delete, it does
+// NOT touch the junction rows — the caller (disable-lots) removes those first.
+// Unlike Delete it does not error when the account has no lots; it returns 0.
+func (r *LotRepository) DeleteByAccount(accountID types.ID) (int, error) {
+	res, err := r.db.Conn().Exec(
+		`DELETE FROM investment_lots WHERE CAST(account_id AS VARCHAR) = ?`, accountID.String())
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete lots for account: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	return int(n), nil
+}
+
 // ListAllByAccount retrieves every lot for an account (open and closed) for
 // every security. Used by the rebuild-positions tool to recompute lot
 // shares/closed from junction records.

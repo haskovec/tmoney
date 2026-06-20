@@ -815,6 +815,29 @@ tmoney -f personal.tdb investment fee --account Brokerage --amount 25 \
 from the account; share counts are unchanged. Date defaults to today.
 
 ```bash
+# Pay a fee by liquidating shares (no cash effect; share count drops)
+tmoney -f personal.tdb investment fee-liquidation --account "Fidelity 401k" \
+  --ticker FXAIX --shares 0.123 --amount 5.00
+
+# Specify the price per share instead of the fee total
+tmoney -f personal.tdb investment fee-liquidation --account "Fidelity 401k" \
+  --ticker FXAIX --shares 0.123 --price-per-share 40.65 \
+  --memo "Q2 recordkeeping fee"
+```
+
+`investment fee-liquidation` records a fee paid by **selling shares of a
+security** rather than debiting cash — the model some retirement plans
+(e.g. a Fidelity 401k) use when there's no cash balance to charge. The
+share count drops and the dollar amount is booked as a fee, with **no net
+cash effect**. It requires `--account`, `--ticker`, and `--shares`, plus
+either `--amount` (the fee total) or `--price-per-share` (the third value
+is derived). Commission defaults to `0`; date defaults to today. On a
+lot-tracked account the shares are drawn FIFO (oldest lot first) by
+default; pass `--lot <id>` to allocate against a specific open lot
+instead. In the TUI, choose **Fee via Liquidation** from the investment
+register's `n` transaction-type selector.
+
+```bash
 # Deposit cash into an investment account (cash credited; share count unchanged)
 tmoney -f personal.tdb investment deposit --account Brokerage --amount 5000 \
   --memo "Initial funding"
@@ -1002,6 +1025,33 @@ spin-off). A naive ledger replay cannot reconstruct lots across a
 corporate action — those accounts need the future action-aware replay —
 so the command stops and names the blocking security rather than
 producing an incorrect cost basis.
+
+```bash
+# Preview disabling lot tracking on an account (no changes made)
+tmoney -f personal.tdb investment disable-lots --account "Fidelity 401k"
+
+# Execute: revert the account to average cost
+tmoney -f personal.tdb investment disable-lots --account "Fidelity 401k" --confirm
+
+# Disable lots on every lot-tracked investment/HSA account at once
+tmoney -f personal.tdb investment disable-lots --all --confirm
+```
+
+`investment disable-lots` is the inverse of `enable-lots`: it turns lot
+tracking **off** on a lot-tracked investment/HSA account and reverts it to
+average cost. It deletes the account's lots and lot-junction rows, clears
+`track_lots`, and recomputes `investment_positions` from the ledger — so
+total return, unrealized/realized gain, dividends, and fees all keep
+working on the average-cost path (you lose only the per-lot drill-down and
+specific-lot realized gain, which carry no value in a tax-deferred
+account). By default it prints the plan and makes no changes; pass
+`--confirm` to execute, and supply either `--account NAME` or `--all`.
+**Run `tmoney db backup` first.** It refuses when the account is not
+lot-tracked. A held security with a **stock split** is fine — the split
+replays cleanly into average cost — but a held **merger or spin-off** is
+**refused**: those holdings exist only as lots on a lot-tracked account
+and their average cost cannot be rebuilt from the ledger, so disabling
+lots would destroy the holding.
 
 ```bash
 # Show the portfolio for an investment account (today's valuation)

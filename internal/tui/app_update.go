@@ -190,6 +190,33 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case feeLiquidationDialogDataMsg:
+		a.feeLiquidationDialogData = msg.data
+		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
+		a.feeLiquidationDialogSecurityIDs = secIDs
+		editTxn, ok := a.loadInvestmentEditTxn()
+		if !ok {
+			return a, nil
+		}
+		a.feeLiquidationDialog = buildFeeLiquidationDialog(secOptions, editTxn, secIDs)
+		if editTxn == nil {
+			a.feeLiquidationDialog.SeedDateField(a.txnDialogLastSavedDate)
+		}
+		return a, nil
+
+	case feeLiquidationDialogSavedMsg:
+		if !msg.savedDate.IsZero() {
+			a.txnDialogLastSavedDate = msg.savedDate
+		}
+		a.investmentEditTxnID = types.NilID
+		a.pendingInvestmentSelectID = msg.savedID
+		a.invalidatePriceHistoryCache()
+		a.statusbar.AddNotification("Fee via liquidation saved", widget.NotificationInfo)
+		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		}
+		return a, nil
+
 	case dividendDialogDataMsg:
 		a.dividendDialogData = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)

@@ -329,3 +329,131 @@ func TestUpdateFee_AllowsNegativeBalance(t *testing.T) {
 		}
 	})
 }
+
+func TestUpdateFeeLiquidation_NonLotTracking(t *testing.T) {
+	t.Run("edit fee-liquidation to fewer shares restores correct position", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "VTI")
+		date := types.NewDate(2024, time.March, 15)
+
+		// fee_liquidation has no cash effect, so no deposit is needed.
+		shares := types.MustNewQuantity("10")
+		buyPrice := types.MustNewMoney("100.00")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, shares, nil, &buyPrice, types.ZeroMoney, "")
+
+		flShares := types.MustNewQuantity("5")
+		flPrice := types.MustNewMoney("110.00")
+		flTxn, err := env.svc.FeeLiquidation(acct.ID, sec.ID, date, flShares, nil, &flPrice, types.ZeroMoney, "", nil)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+
+		newShares := types.MustNewQuantity("3")
+		_, err = env.svc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, newShares, nil, &flPrice, types.ZeroMoney, "", nil)
+		if err != nil {
+			t.Fatalf("UpdateFeeLiquidation() error = %v", err)
+		}
+
+		// Position: 10 bought, 3 liquidated → 7 shares
+		pos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+		if pos.Shares.String() != "7" {
+			t.Errorf("Expected 7 shares after edit, got %s", pos.Shares.String())
+		}
+	})
+
+	t.Run("edit fee-liquidation rejects shares exceeding holdings", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "MSFT")
+		date := types.NewDate(2024, time.March, 15)
+
+		buyPrice := types.MustNewMoney("100.00")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("3"), nil, &buyPrice, types.ZeroMoney, "")
+		flPrice := types.MustNewMoney("110.00")
+		flTxn, _ := env.svc.FeeLiquidation(acct.ID, sec.ID, date, types.MustNewQuantity("1"), nil, &flPrice, types.ZeroMoney, "", nil)
+
+		_, err := env.svc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, types.MustNewQuantity("10"), nil, &flPrice, types.ZeroMoney, "", nil)
+		if err == nil {
+			t.Fatal("UpdateFeeLiquidation() expected error for shares exceeding holdings")
+		}
+		if _, ok := err.(*InsufficientSharesError); !ok {
+			t.Errorf("Expected *InsufficientSharesError, got %T: %v", err, err)
+		}
+	})
+}
+
+func TestUpdateFeeLiquidation_LotTracking(t *testing.T) {
+	t.Run("edit lot-tracked fee-liquidation restores lot then reduces correctly", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Lot Brokerage")
+		sec := createSec(t, env.secRepo, "VOO")
+		date := types.NewDate(2024, time.March, 15)
+
+		buyPrice := types.MustNewMoney("100.00")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("5"), nil, &buyPrice, types.ZeroMoney, "")
+		openLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		if len(openLots) != 1 {
+			t.Fatalf("expected 1 open lot, got %d", len(openLots))
+		}
+		lotID := openLots[0].ID
+
+		flShares := types.MustNewQuantity("2")
+		flPrice := types.MustNewMoney("110.00")
+		alloc := []SellLotAllocation{{LotID: lotID, Shares: flShares}}
+		flTxn, err := env.svc.FeeLiquidation(acct.ID, sec.ID, date, flShares, nil, &flPrice, types.ZeroMoney, "", alloc)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+
+		newPrice := types.MustNewMoney("115.00")
+		_, err = env.svc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, flShares, nil, &newPrice, types.ZeroMoney, "", alloc)
+		if err != nil {
+			t.Fatalf("UpdateFeeLiquidation() error = %v", err)
+		}
+
+		// Lot restored to 5 on reverse, reduced by 2 on reapply → 3 open shares.
+		updatedLot, err := env.lotRepo.GetByID(lotID)
+		if err != nil {
+			t.Fatalf("GetByID(lot) error = %v", err)
+		}
+		if updatedLot.Shares.String() != "3" {
+			t.Errorf("Expected lot shares 3, got %s", updatedLot.Shares.String())
+		}
+		if updatedLot.Closed {
+			t.Error("Expected lot to remain open")
+		}
+	})
+
+	t.Run("edit auto-FIFO increases shares beyond pre-reverse remaining", func(t *testing.T) {
+		// Regression: the FIFO allocation must be computed AFTER the edit reverses
+		// the old fee-liquidation (restoring the lot), not from the pre-reverse
+		// snapshot — otherwise growing the share count is wrongly rejected.
+		env := createFullTestService(t)
+		acct := createLotTrackingAccount(t, env.accountRepo, "Lot Brokerage")
+		sec := createSec(t, env.secRepo, "VOO")
+		date := types.NewDate(2024, time.March, 15)
+
+		buyPrice := types.MustNewMoney("100.00")
+		_, _ = env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"), nil, &buyPrice, types.ZeroMoney, "")
+		openLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		lotID := openLots[0].ID
+
+		// Original fee-liquidation of 3 (auto-FIFO → lot down to 7).
+		flPrice := types.MustNewMoney("110.00")
+		flTxn, err := env.svc.FeeLiquidation(acct.ID, sec.ID, date, types.MustNewQuantity("3"), nil, &flPrice, types.ZeroMoney, "", nil)
+		if err != nil {
+			t.Fatalf("FeeLiquidation() error = %v", err)
+		}
+
+		// Edit UP to 9 shares. 9 > the 7 remaining pre-reverse, but the reverse
+		// restores the lot to 10 first, so 9 is valid and must succeed.
+		if _, err := env.svc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, types.MustNewQuantity("9"), nil, &flPrice, types.ZeroMoney, "", nil); err != nil {
+			t.Fatalf("UpdateFeeLiquidation() grow-shares error = %v", err)
+		}
+		updatedLot, _ := env.lotRepo.GetByID(lotID)
+		if updatedLot.Shares.String() != "1" {
+			t.Errorf("Expected lot shares 1 (10 - 9), got %s", updatedLot.Shares.String())
+		}
+	})
+}

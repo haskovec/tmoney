@@ -221,6 +221,146 @@ func (s *Service) EnableLots(accountID types.ID, method LotMethod, confirm bool)
 	return res, nil
 }
 
+// DisableLotsResult summarizes a disable-lots operation. It is the structural
+// inverse of EnableLotsResult.
+type DisableLotsResult struct {
+	AccountID           types.ID
+	AccountName         string
+	LotsDeleted         int               // lots removed (preview: lots that would be removed)
+	JunctionsDeleted    int               // junction rows removed (preview: would be removed)
+	Securities          int               // distinct securities that had lots
+	PositionsRecomputed int               // positions rebuilt to average cost (apply only)
+	SkippedSecurities   int               // securities the rebuild left untouched (corporate action)
+	Blockers            []BackfillBlocker // held securities with corporate actions (warning, not refusal)
+	Applied             bool              // true when lots were removed and TrackLots cleared
+}
+
+// HasCorporateActions reports whether any held security has a recorded **split**
+// (the only corporate-action type disable-lots proceeds through). Splits replay
+// cleanly into average cost, so disable-lots warns and proceeds; mergers and
+// spin-offs are refused up front via DisableLotsBlockedError, so they never
+// appear here.
+func (r *DisableLotsResult) HasCorporateActions() bool { return len(r.Blockers) > 0 }
+
+// DisableLotsBlockedError is returned by DisableLots when the account holds a
+// security with a merger or spin-off. On a lot-tracked account those holdings
+// live only in their lots (no average-cost position row), and the ledger's
+// exchange rows cannot reconstruct cost basis — so deleting the lots would
+// destroy the holding. The account is left untouched (still lot-tracked).
+// Splits are exempt: they replay cleanly into average cost.
+type DisableLotsBlockedError struct {
+	AccountName string
+	Blockers    []BackfillBlocker
+}
+
+func (e *DisableLotsBlockedError) Error() string {
+	return fmt.Sprintf("account %q holds %d security(ies) with a merger or spin-off; their cost basis cannot be reconstructed as average cost, so disable-lots would destroy the holding — the account stays lot-tracked",
+		e.AccountName, len(e.Blockers))
+}
+
+// DisableLots turns lot tracking OFF on an existing lot-tracked investment/HSA
+// account and reverts it to average cost. With confirm=false it returns a
+// preview (counts of what would be removed) and writes nothing. With
+// confirm=true it clears the account's TrackLots flag, deletes its lots and
+// junction rows, and recomputes investment_positions to average cost from the
+// transaction ledger via RebuildPositions.
+//
+// Corporate-action handling is split by type. A held security with only
+// **splits** is a warning (warn-and-proceed): RebuildPositions replays the split
+// ratios into average cost. A held security with a **merger or spin-off** is a
+// refusal (*DisableLotsBlockedError): on a lot-tracked account those holdings
+// exist only as lots, and the ledger cannot reconstruct their average cost, so
+// deleting the lots would destroy the holding. It also returns a plain error
+// when the account is not an investment/HSA account or is not lot-tracked.
+func (s *Service) DisableLots(accountID types.ID, confirm bool) (*DisableLotsResult, error) {
+	acct, err := s.getInvestmentAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+	res := &DisableLotsResult{AccountID: accountID, AccountName: acct.Name}
+
+	if !acct.TrackLots {
+		return nil, fmt.Errorf("account %q is not lot-tracked; nothing to disable", acct.Name)
+	}
+
+	// Partition corporate-action holdings: splits replay into average cost
+	// (warn-and-proceed); mergers/spin-offs cannot be reconstructed from the
+	// ledger once their lots are deleted, so refuse rather than destroy data.
+	blockers, err := s.AccountBackfillBlockers(accountID)
+	if err != nil {
+		return nil, err
+	}
+	var splitBlockers, unreconstructable []BackfillBlocker
+	for _, b := range blockers {
+		hasNonSplit, err := s.securityHasNonSplitAction(b.SecurityID)
+		if err != nil {
+			return nil, fmt.Errorf("DisableLots: %w", err)
+		}
+		if hasNonSplit {
+			unreconstructable = append(unreconstructable, b)
+		} else {
+			splitBlockers = append(splitBlockers, b)
+		}
+	}
+	if len(unreconstructable) > 0 {
+		return res, &DisableLotsBlockedError{AccountName: acct.Name, Blockers: unreconstructable}
+	}
+	res.Blockers = splitBlockers
+
+	lots, err := s.lotRepo.ListAllByAccount(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("DisableLots: %w", err)
+	}
+	secSet := make(map[types.ID]bool, len(lots))
+	for _, l := range lots {
+		secSet[l.SecurityID] = true
+	}
+	res.LotsDeleted = len(lots)
+	res.Securities = len(secSet)
+
+	jc, err := s.transactionLotRepo.CountByAccount(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("DisableLots: %w", err)
+	}
+	res.JunctionsDeleted = jc
+
+	if !confirm {
+		return res, nil
+	}
+
+	// Apply, flag-first. EnableLots proves a parent-row UPDATE works with child
+	// lots still present (it sets TrackLots after creating lots), so flipping
+	// first is safe — and it closes the window in which the flag would say
+	// "lot-tracked" while the lots are already gone (which read/write paths key
+	// off of). Then delete junctions (the subquery needs the lots to still
+	// exist), delete lots, and recompute average-cost positions from the ledger.
+	acct.TrackLots = false
+	if err := s.accountRepo.Update(acct); err != nil {
+		return nil, fmt.Errorf("DisableLots: clear track_lots: %w", err)
+	}
+
+	njDeleted, err := s.transactionLotRepo.DeleteByAccount(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("DisableLots: delete junctions: %w", err)
+	}
+	res.JunctionsDeleted = njDeleted
+
+	nlDeleted, err := s.lotRepo.DeleteByAccount(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("DisableLots: delete lots: %w", err)
+	}
+	res.LotsDeleted = nlDeleted
+
+	rb, err := s.RebuildPositions(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("DisableLots: rebuild positions: %w", err)
+	}
+	res.PositionsRecomputed = rb.PositionsRecomputed
+	res.SkippedSecurities = rb.SkippedSecurities
+	res.Applied = true
+	return res, nil
+}
+
 // BackfillBlocker identifies a security held in an account that has a recorded
 // corporate action, which prevents a naive lot backfill (the replay cannot
 // reconstruct lots across a split/merger/spin-off).

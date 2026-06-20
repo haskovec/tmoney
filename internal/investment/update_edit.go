@@ -376,6 +376,41 @@ func (s *Service) UpdateSell(
 	return newTxn, nil
 }
 
+// UpdateFeeLiquidation edits an existing fee-via-liquidation transaction by
+// reversing its share/lot effect, deleting the old record, and re-creating it
+// with the supplied parameters. fee_liquidation has no net cash effect (the
+// whole total_amount is the fee), so only share counts/lots are reversed —
+// reverseTxnEffects/reapplyTxnEffects already route fee_liquidation through the
+// same share-removal arms as sell, so this mirrors UpdateSell exactly. On create
+// failure a best-effort rollback recreates the old record.
+func (s *Service) UpdateFeeLiquidation(
+	oldID types.ID,
+	accountID, securityID types.ID,
+	date types.Date,
+	shares types.Quantity,
+	totalAmount *types.Money,
+	pricePerShare *types.Money,
+	commission types.Money,
+	memo string,
+	lotAllocations []SellLotAllocation,
+) (*Transaction, error) {
+	old, err := s.loadAndReverseForEdit(oldID)
+	if err != nil {
+		return nil, err
+	}
+	newTxn, err := s.FeeLiquidation(accountID, securityID, date, shares, totalAmount, pricePerShare, commission, memo, lotAllocations)
+	if err != nil {
+		if rerr := s.reapplyTxnEffects(old); rerr != nil {
+			return nil, fmt.Errorf("%w (and rollback failed: %v)", err, rerr)
+		}
+		return nil, err
+	}
+	if old.SecurityID.Valid {
+		s.cleanupAutoPrice(old.SecurityID.ID, old.Date)
+	}
+	return newTxn, nil
+}
+
 // UpdateReinvestDividend edits an existing reinvest-dividend transaction.
 func (s *Service) UpdateReinvestDividend(
 	oldID types.ID,
