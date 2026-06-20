@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -267,6 +269,33 @@ func TestCloseFeeLiquidationDialog(t *testing.T) {
 	app.closeFeeLiquidationDialog()
 	if app.feeLiquidationDialog != nil || app.feeLiquidationDialogData != nil || app.feeLiquidationDialogSecurityIDs != nil {
 		t.Error("all fee-liquidation dialog state should be nil after close")
+	}
+}
+
+func TestFeeLiquidationDialog_RendersInView(t *testing.T) {
+	// Regression: the dialog must be wired into the View overlay (app_view.go)
+	// and the modal-visibility check (app_helpers.go), not just the key router —
+	// otherwise selecting "Fee via Liquidation" builds the dialog in state but
+	// nothing ever appears on screen.
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		statusbar:   widget.NewStatusBar(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		styles:      widget.NewStyles(),
+		width:       120,
+		height:      40,
+		ready:       true,
+	}
+	app.feeLiquidationDialog = buildFeeLiquidationDialog([]string{"FXAIX - Fidelity 500 Index"}, nil, []types.ID{types.NewID()})
+
+	if !app.isDialogVisible() {
+		t.Error("isDialogVisible() must report the fee-liquidation dialog as open")
+	}
+	view := app.View()
+	if !strings.Contains(view.Content, "Fee via Liquidation") {
+		t.Errorf("rendered view should overlay the fee-liquidation dialog (title 'Fee via Liquidation'); got:\n%s", view.Content)
 	}
 }
 

@@ -129,6 +129,7 @@ func (a *App) isDialogVisible() bool {
 		(a.priceImportDialog != nil && a.priceImportDialog.IsVisible()) ||
 		(a.buyDialog != nil && a.buyDialog.IsVisible()) ||
 		(a.sellDialog != nil && a.sellDialog.IsVisible()) ||
+		(a.feeLiquidationDialog != nil && a.feeLiquidationDialog.IsVisible()) ||
 		(a.dividendDialog != nil && a.dividendDialog.IsVisible()) ||
 		(a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible()) ||
 		(a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible()) ||

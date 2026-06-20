@@ -460,6 +460,17 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	if a.feeLiquidationDialog != nil && a.feeLiquidationDialog.IsVisible() {
+		action := a.feeLiquidationDialog.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case dialog.DialogActionSubmit:
+			return a.submitFeeLiquidationDialog()
+		case dialog.DialogActionCancel:
+			a.closeFeeLiquidationDialog()
+		}
+		return a, nil
+	}
+
 	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
 		action := a.dividendDialog.HandleMouse(msg, a.width, a.height)
 		switch action {

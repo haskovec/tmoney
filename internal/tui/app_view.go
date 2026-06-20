@@ -166,6 +166,11 @@ func (a *App) renderLayout() string {
 		layout = a.overlayDialog(layout, a.sellDialog)
 	}
 
+	// Overlay fee-liquidation dialog if visible
+	if a.feeLiquidationDialog != nil && a.feeLiquidationDialog.IsVisible() {
+		layout = a.overlayDialog(layout, a.feeLiquidationDialog)
+	}
+
 	// Overlay dividend dialog if visible
 	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
 		layout = a.overlayDialog(layout, a.dividendDialog)
