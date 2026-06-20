@@ -8,14 +8,19 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// sumDividendsForSecurity returns the total cash dividends received for
-// the given (account, security) pair. Only `dividend` transactions are
-// summed; `reinvest_dividend` transactions are excluded — the spec treats
-// them as new share acquisitions with their own cost basis.
+// sumDividendsForSecurity returns the total dividends received for the given
+// (account, security) pair. Both cash `dividend` and `reinvest_dividend`
+// transactions count: a reinvested dividend is income the fund paid you (you
+// chose to plow it back into shares), so it belongs in total return. The shares
+// it bought carry their own cost basis, so those shares' appreciation is
+// captured separately in unrealized gain; counting the dividend here adds only
+// its principal once — with no double-count, since a later sale realizes gain
+// against that same basis (proceeds = realized + the dividend already booked).
+// Reinvested dividends are NOT counted as capital deployed (see
+// totalCostDeployedForSecurity), so the total-return percent measures earnings
+// against your own contributions.
 func (s *Service) sumDividendsForSecurity(accountID, securityID types.ID) (types.Money, error) {
-	divType := TransactionTypeDividend
 	filter := TransactionFilter{
-		Type:       &divType,
 		SecurityID: &securityID,
 	}
 
@@ -26,7 +31,10 @@ func (s *Service) sumDividendsForSecurity(accountID, securityID types.ID) (types
 
 	total := types.ZeroMoney
 	for _, txn := range txns {
-		total = total.Add(txn.TotalAmount)
+		switch txn.Type {
+		case TransactionTypeDividend, TransactionTypeReinvestDividend:
+			total = total.Add(txn.TotalAmount)
+		}
 	}
 	return total, nil
 }
@@ -266,13 +274,16 @@ func (s *Service) realizedGainNonLot(accountID, securityID types.ID) (types.Mone
 	return s.replayRealizedGain(accountID, securityID, txns, splits)
 }
 
-// totalCostDeployedForSecurity returns the total cash basis put into a
+// totalCostDeployedForSecurity returns the capital YOU put into a
 // (account, security) pair — the denominator for total-return percent.
-// Per the spec, only `buy` and `reinvest_dividend` transactions contribute:
-// shares received via `transfer_shares` carry cost basis with them but are
-// not new capital deployed in this account. The result is a positive
-// magnitude; buy transactions store `total_amount` as a negative cash
-// debit, so the magnitude is taken via Abs().
+// Only `buy` transactions count: that is your own money. Shares received via
+// `transfer_shares` carry their basis with them (not new capital here), and
+// `reinvest_dividend` is income the fund paid you (counted in the numerator as
+// a dividend), so neither contributes to deployed capital. The result is a
+// positive magnitude; buy transactions store `total_amount` as a negative cash
+// debit, so the magnitude is taken via Abs(). A position built without any buy
+// (e.g. transfer-in only, or reinvested-dividends only) returns zero, which the
+// caller renders as "—" for the percent.
 func (s *Service) totalCostDeployedForSecurity(accountID, securityID types.ID) (types.Money, error) {
 	filter := TransactionFilter{
 		SecurityID: &securityID,
@@ -285,18 +296,19 @@ func (s *Service) totalCostDeployedForSecurity(accountID, securityID types.ID) (
 	total := types.ZeroMoney
 	for _, txn := range txns {
 		switch txn.Type {
-		case TransactionTypeBuy, TransactionTypeReinvestDividend:
+		case TransactionTypeBuy:
 			total = total.Add(txn.TotalAmount.Abs())
 		}
 	}
 	return total, nil
 }
 
-// totalCostDeployedForAccount returns the total cash basis put into the
-// account across every security — the account-level denominator for
-// total-return percent. Only `buy` and `reinvest_dividend` transactions
-// contribute; shares received via `transfer_shares` carry their basis
-// with them and are excluded. The result is a positive magnitude.
+// totalCostDeployedForAccount returns the capital YOU put into the account
+// across every security — the account-level denominator for total-return
+// percent. Only `buy` transactions count (your own money); `transfer_shares`
+// carry their basis with them and `reinvest_dividend` is income (counted in the
+// numerator as a dividend), so both are excluded. The result is a positive
+// magnitude.
 func (s *Service) totalCostDeployedForAccount(accountID types.ID) (types.Money, error) {
 	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{})
 	if err != nil {
@@ -306,7 +318,7 @@ func (s *Service) totalCostDeployedForAccount(accountID types.ID) (types.Money, 
 	total := types.ZeroMoney
 	for _, txn := range txns {
 		switch txn.Type {
-		case TransactionTypeBuy, TransactionTypeReinvestDividend:
+		case TransactionTypeBuy:
 			total = total.Add(txn.TotalAmount.Abs())
 		}
 	}

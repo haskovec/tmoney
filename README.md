@@ -1082,16 +1082,25 @@ cash-flow components on top of unrealized gain:
 ```
 total_return = unrealized_gain
              + realized_gain          (from sells and fee_liquidation)
-             + dividends_received     (cash dividends; reinvested DRIPs excluded)
+             + dividends_received     (cash dividends AND reinvested dividends)
              + interest_received      (account-level cash sweep)
              − fees_paid              (commissions + fee transactions)
 ```
 
+A **reinvested dividend** is income the fund paid you that you plowed back
+into shares, so it counts toward `dividends_received` (and therefore total
+return) just like a cash dividend. The shares it bought carry their own
+cost basis, so their appreciation shows up in `unrealized_gain`; the
+dividend principal is counted once, here — no double-count, and a later
+sale of those shares realizes gain against that basis.
+
 `total_return_pct` divides total return by **total cost deployed**
-(`Σ buy.total_amount + Σ reinvest_dividend.total_amount`) so a
-fully-closed position still has a meaningful denominator. Positions
-that were received only via `transfer_shares` have no deployed cost and
-render `—` for the percent.
+(`Σ buy.total_amount` — *your* contributions only). Reinvested dividends
+are income, not deployed capital, so they are excluded from the
+denominator; this makes total return equal `market value − your buys`.
+Positions received only via `transfer_shares`, or built only from
+reinvested dividends, have no deployed cost and render `—` for the
+percent.
 
 The per-holding table gains `UNREAL`, `DIV`, `REAL`, `FEES`, `TOTAL
 RETURN`, and `RET %` columns. The account totals block prints

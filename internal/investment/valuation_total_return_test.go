@@ -213,7 +213,7 @@ func TestSumDividendsForSecurity_HappyPath(t *testing.T) {
 	}
 }
 
-func TestSumDividendsForSecurity_IgnoresReinvest(t *testing.T) {
+func TestSumDividendsForSecurity_IncludesReinvest(t *testing.T) {
 	env := createFullTestService(t)
 	acct := createInvAccount(t, env.accountRepo, "Brokerage")
 	sec := createSec(t, env.secRepo, "AAPL")
@@ -234,12 +234,15 @@ func TestSumDividendsForSecurity_IgnoresReinvest(t *testing.T) {
 		t.Fatalf("ReinvestDividend() error = %v", err)
 	}
 
+	// A reinvested dividend is income (the fund paid it; you plowed it back),
+	// so it counts toward dividends received alongside the cash dividend:
+	// 50 cash + 110 reinvest = 160.
 	got, err := env.svc.sumDividendsForSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("sumDividendsForSecurity() error = %v", err)
 	}
-	if got.String() != "50" {
-		t.Errorf("Expected only cash dividend '50' (reinvest excluded), got %q", got.String())
+	if got.String() != "160" {
+		t.Errorf("Expected cash dividend + reinvest '160', got %q", got.String())
 	}
 }
 
@@ -1146,7 +1149,7 @@ func TestTotalCostDeployed_BuyOnly(t *testing.T) {
 	}
 }
 
-func TestTotalCostDeployed_BuyPlusReinvest(t *testing.T) {
+func TestTotalCostDeployed_ExcludesReinvest(t *testing.T) {
 	env := createFullTestService(t)
 	acct := createInvAccount(t, env.accountRepo, "Brokerage")
 	sec := createSec(t, env.secRepo, "AAPL")
@@ -1167,12 +1170,14 @@ func TestTotalCostDeployed_BuyPlusReinvest(t *testing.T) {
 		t.Fatalf("ReinvestDividend() error = %v", err)
 	}
 
+	// A reinvested dividend is income, not capital you deployed, so it is
+	// excluded from the percent denominator: only the 1000 buy counts.
 	got, err := env.svc.totalCostDeployedForSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("totalCostDeployedForSecurity() error = %v", err)
 	}
-	if got.String() != "1050" {
-		t.Errorf("Expected total cost deployed '1050' (1000 buy + 50 reinvest), got %q", got.String())
+	if got.String() != "1000" {
+		t.Errorf("Expected total cost deployed '1000' (buy only; reinvest excluded), got %q", got.String())
 	}
 }
 
@@ -1210,9 +1215,9 @@ func TestTotalCostDeployed_TransferOnly_Zero(t *testing.T) {
 }
 
 // TR-011: totalCostDeployedForAccount sums totalCostDeployedForSecurity
-// across every security held in the account. Only `buy` and
-// `reinvest_dividend` transactions contribute; transfers in carry cost
-// basis with them and are excluded.
+// across every security held in the account. Only `buy` transactions
+// contribute; transfers in carry cost basis with them, and reinvested
+// dividends are income (not capital deployed), so both are excluded.
 
 func TestTotalCostDeployedForAccount_SumsAcrossSecurities(t *testing.T) {
 	env := createFullTestService(t)
@@ -1227,7 +1232,7 @@ func TestTotalCostDeployedForAccount_SumsAcrossSecurities(t *testing.T) {
 		t.Fatalf("Deposit() error = %v", err)
 	}
 
-	// AAPL: 500 + 1000 buys, plus a 50 reinvest = 1550
+	// AAPL: 500 + 1000 buys = 1500; the 50 reinvest is income, not deployed.
 	buyA1 := types.MustNewMoney("500")
 	if _, err := env.svc.Buy(acct.ID, aapl.ID, d1, types.MustNewQuantity("5"),
 		&buyA1, nil, types.ZeroMoney, ""); err != nil {
@@ -1255,8 +1260,8 @@ func TestTotalCostDeployedForAccount_SumsAcrossSecurities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("totalCostDeployedForAccount() error = %v", err)
 	}
-	if got.String() != "3550" {
-		t.Errorf("Expected total cost deployed '3550' (1500 AAPL buys + 50 reinvest + 2000 MSFT), got %q", got.String())
+	if got.String() != "3500" {
+		t.Errorf("Expected total cost deployed '3500' (1500 AAPL buys + 2000 MSFT; reinvest excluded), got %q", got.String())
 	}
 }
 
@@ -1369,6 +1374,112 @@ func TestGetHoldings_PopulatesTotalReturn(t *testing.T) {
 	expectedPct := 540.0 / 2210.0 * 100.0
 	if math.Abs(*h.TotalReturnPct-expectedPct) > 0.001 {
 		t.Errorf("Expected TotalReturnPct ≈ %f, got %f", expectedPct, *h.TotalReturnPct)
+	}
+}
+
+// TestGetHoldings_ReinvestDividendCountsAsIncome pins the fix for reinvested
+// dividends: a DRIP is income (it appears in DividendsReceived and adds to
+// TotalReturn), and it is NOT counted as deployed capital, so the percent is
+// measured against your own buys only. End-to-end through GetHoldings.
+func TestGetHoldings_ReinvestDividendCountsAsIncome(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	d1 := types.NewDate(2024, time.March, 1)
+	d2 := types.NewDate(2024, time.April, 1)
+	asOf := types.NewDate(2024, time.June, 1)
+
+	if _, err := env.svc.Deposit(acct.ID, d1, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// Your own capital: buy 10 shares @ $100 = $1000.
+	buy := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, d1, types.MustNewQuantity("10"),
+		&buy, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+	// A $100 dividend reinvested into 1 share @ $100.
+	reinvest := types.MustNewMoney("100")
+	if _, err := env.svc.ReinvestDividend(acct.ID, sec.ID, d2,
+		types.MustNewQuantity("1"), &reinvest, nil, ""); err != nil {
+		t.Fatalf("ReinvestDividend() error = %v", err)
+	}
+	p := price.NewPrice(sec.ID, asOf, types.MustNewMoney("120"), price.SourceManual)
+	if err := env.priceRepo.Create(p); err != nil {
+		t.Fatalf("Create price error = %v", err)
+	}
+
+	holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetHoldings() error = %v", err)
+	}
+	if len(holdings) != 1 {
+		t.Fatalf("Expected 1 holding, got %d", len(holdings))
+	}
+	h := holdings[0]
+
+	// 11 shares (10 bought + 1 reinvested), cost basis $1100, value 11 × 120.
+	if h.MarketValue.String() != "1320" {
+		t.Errorf("Expected MarketValue '1320', got %q", h.MarketValue.String())
+	}
+	if h.GainLoss.String() != "220" {
+		t.Errorf("Expected unrealized GainLoss '220' (1320 − 1100), got %q", h.GainLoss.String())
+	}
+	// The reinvested dividend is income now.
+	if h.DividendsReceived.String() != "100" {
+		t.Errorf("Expected DividendsReceived '100' (reinvest counts), got %q", h.DividendsReceived.String())
+	}
+	// Deployed capital excludes the reinvest: only the $1000 buy.
+	if h.TotalCostDeployed.String() != "1000" {
+		t.Errorf("Expected TotalCostDeployed '1000' (buy only), got %q", h.TotalCostDeployed.String())
+	}
+	// Total return = unrealized 220 + dividend 100 = 320 = value − your buys.
+	if h.TotalReturn.String() != "320" {
+		t.Errorf("Expected TotalReturn '320' (1320 − 1000 buys), got %q", h.TotalReturn.String())
+	}
+	if h.TotalReturnPct == nil {
+		t.Fatalf("Expected TotalReturnPct non-nil")
+	}
+	expectedPct := 320.0 / 1000.0 * 100.0 // 32%
+	if math.Abs(*h.TotalReturnPct-expectedPct) > 0.001 {
+		t.Errorf("Expected TotalReturnPct ≈ %f (320/1000), got %f", expectedPct, *h.TotalReturnPct)
+	}
+}
+
+// TestGetHoldings_ReinvestOnlyPositionPercentUndefined pins that a holding built
+// only from reinvested dividends (no buys) has zero deployed capital, so the
+// percent is nil ("—") — the same treatment as a transfer-in-only position.
+func TestGetHoldings_ReinvestOnlyPositionPercentUndefined(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	d1 := types.NewDate(2024, time.March, 1)
+	asOf := types.NewDate(2024, time.June, 1)
+
+	// No buy — the only share-adding event is a reinvested dividend.
+	reinvest := types.MustNewMoney("100")
+	if _, err := env.svc.ReinvestDividend(acct.ID, sec.ID, d1,
+		types.MustNewQuantity("1"), &reinvest, nil, ""); err != nil {
+		t.Fatalf("ReinvestDividend() error = %v", err)
+	}
+	p := price.NewPrice(sec.ID, asOf, types.MustNewMoney("120"), price.SourceManual)
+	if err := env.priceRepo.Create(p); err != nil {
+		t.Fatalf("Create price error = %v", err)
+	}
+
+	holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetHoldings() error = %v", err)
+	}
+	if len(holdings) != 1 {
+		t.Fatalf("Expected 1 holding, got %d", len(holdings))
+	}
+	h := holdings[0]
+	if !h.TotalCostDeployed.IsZero() {
+		t.Errorf("Expected zero deployed capital for a reinvest-only position, got %q", h.TotalCostDeployed.String())
+	}
+	if h.TotalReturnPct != nil {
+		t.Errorf("Expected nil TotalReturnPct (renders —) for reinvest-only position, got %f", *h.TotalReturnPct)
 	}
 }
 

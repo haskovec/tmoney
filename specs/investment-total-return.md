@@ -66,8 +66,7 @@ denominator:
 
 ```
 total_cost_deployed_for_security
-    = Σ (buy.total_amount)                    -- includes commission paid on entry
-    + Σ (reinvest_dividend.total_amount)      -- shares acquired via DRIP
+    = Σ (buy.total_amount)                    -- YOUR capital; includes commission paid on entry
     − Σ (return_of_capital.amount)            -- not yet a TMoney action; future-proofing
 
 total_return_pct = total_return / total_cost_deployed × 100
@@ -75,19 +74,23 @@ total_return_pct = total_return / total_cost_deployed × 100
 
 Same formula at the account level, summed across securities. If
 `total_cost_deployed` is zero (no buys ever — e.g., shares received only via
-transfer-in), `total_return_pct` is `nil` and the UI displays `—`.
+transfer-in, or a position built only from reinvested dividends),
+`total_return_pct` is `nil` and the UI displays `—`.
 
-Reinvested dividends *are* included in the denominator. They represent
-capital deployed inside the account even though no external cash was added.
+Reinvested dividends are **excluded** from the denominator: they are income
+the fund paid you (counted in `dividends_received`), not capital you
+deployed. Excluding them makes `total_return = market value − your buys`, so
+the percent measures earnings against your own contributions.
 
 ### Sign conventions
 
 All components are signed:
 
 - `realized_gain` can be negative (sold at a loss)
-- `dividends_received` is positive for cash dividends; reinvested dividends
-  do **not** appear here (they show up only as new shares with their own
-  cost basis)
+- `dividends_received` is positive and includes both cash dividends and
+  reinvested dividends (a reinvested dividend is income; the shares it bought
+  carry their own cost basis, so their appreciation is captured separately in
+  `unrealized_gain` — the dividend principal is counted once, here)
 - `fees_paid` is stored as a **positive** number representing the magnitude;
   it is subtracted in the total
 - `interest_received` is positive
@@ -135,18 +138,25 @@ TMoney. `transfer_shares` moves cost basis with the shares (no taxable
 event modeled). Corporate actions adjust cost basis externally to the
 ledger; see "Corporate actions" below.
 
-### 3. Cash dividends received
+### 3. Dividends received
 
-Sum of `dividend` transactions, grouped by `security_id`:
+Sum of `dividend` **and** `reinvest_dividend` transactions, grouped by
+`security_id`:
 
 ```
 dividends_received[secID] = Σ txn.total_amount
-    where txn.type = 'dividend' and txn.security_id = secID
+    where txn.type IN ('dividend', 'reinvest_dividend') and txn.security_id = secID
 ```
 
-`reinvest_dividend` transactions are deliberately excluded — they have
-already increased the position's shares and cost basis, so counting them
-again here would double-count.
+A reinvested dividend is income (the fund paid it; you reinvested it), so it
+belongs in `dividends_received` and therefore in total return. No
+double-count occurs: the shares it bought carry their own cost basis, so
+their appreciation flows through `unrealized_gain` while the dividend
+principal is counted once here — and because reinvested dividends are
+excluded from `total_cost_deployed` (they are not capital *you* deployed),
+total return resolves to `market value − your buys`. A later sale of those
+shares realizes gain against the same basis (proceeds = realized + the
+dividend already booked), so it still doesn't double-count.
 
 ### 4. Interest received
 
@@ -398,7 +408,7 @@ return $ and %. No new keystrokes.
 | Closed position that paid dividends after sale (rare; e.g., last record date before sale clears) | Dividend included in `dividends_received`. Position still considered closed (`Shares == 0`). |
 | `fee_liquidation` reduces shares to zero | The position closes. The fee_liquidation contributes to `fees_paid` but produces no realized gain. |
 | Non-lot account with corporate actions | `RealizedGain` shown as `unavailable`; other components still computed. |
-| Reinvest after position has been fully sold (data-entry error) | Treated as a re-open: new lot/position is created, fresh cost basis. Total cost deployed accumulates. |
+| Reinvest after position has been fully sold (data-entry error) | Treated as a re-open: new lot/position is created, fresh cost basis. The reinvest counts as income (`dividends_received`), not as deployed capital. |
 | Account with `cash` type or `loan` type | Out of scope; total return is investment-account-only. |
 | `asOf` date in the past | Realized gain, dividends, interest, fees are summed only for transactions on or before `asOf`. Unrealized uses the price as of that date. |
 
@@ -408,8 +418,9 @@ Unit tests in `internal/investment/valuation_service_test.go`:
 
 - Holding with only buys → total return = unrealized
 - Holding with buys + cash dividends → total return = unrealized + dividends
-- Holding with buys + reinvested dividends → reinvest does NOT add to
-  dividends_received; the reinvest cost basis flows through unrealized
+- Holding with buys + reinvested dividends → reinvest DOES add to
+  dividends_received (income), is excluded from total_cost_deployed, and its
+  share appreciation flows through unrealized; total return = value − buys
 - Lot-tracked sell at gain → realized gain = (sell_price − lot_cost) × shares
 - Lot-tracked sell at loss → realized gain negative
 - Non-lot sell at gain → replayRealizedGain produces same number as
@@ -447,10 +458,13 @@ CLI tests in `internal/cli/investment_test.go`:
 
 ## Resolved design decisions
 
-1. **Denominator for `total_return_pct`** — sum of `buy.total_amount` +
-   `reinvest_dividend.total_amount`. Matches a brokerage's "total
-   deployed" intuition; reinvested dividends count as deployed capital
-   even though no external cash entered.
+1. **Denominator for `total_return_pct`** — sum of `buy.total_amount` only
+   (your own contributions). Reinvested dividends are treated as income
+   (counted in `dividends_received`), not deployed capital, so total return
+   measures earnings against the money you actually put in
+   (`total_return = market value − your buys`). *(Revised: reinvested
+   dividends were originally counted as deployed capital and excluded from
+   dividends, which understated total return by the reinvested amount.)*
 2. **`fee` transactions (no `security_id`)** — recorded at the account
    level only. They contribute to `AccountValuation.FeesPaid` but never
    to any per-security `Holding.FeesPaid`.
