@@ -14,6 +14,8 @@ type investmentDividendOptions struct {
 	file    string
 	account string
 	ticker  string
+	isin    string
+	name    string
 	amount  string
 	date    string
 	memo    string
@@ -40,12 +42,12 @@ func newInvestmentDividendCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.account, "account", "", "Investment account name (required)")
-	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Security ticker (required)")
+	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Security ticker (or use --isin / --name)")
 	cmd.Flags().StringVar(&opts.amount, "amount", "", "Dividend amount (required)")
 	cmd.Flags().StringVar(&opts.date, "date", "", "Transaction date YYYY-MM-DD (default today)")
 	cmd.Flags().StringVar(&opts.memo, "memo", "", "Free-form memo")
+	cmdutil.AddSecuritySelectorFlags(cmd, &opts.isin, &opts.name)
 	_ = cmd.MarkFlagRequired("account")
-	_ = cmd.MarkFlagRequired("ticker")
 	_ = cmd.MarkFlagRequired("amount")
 	return cmd
 }
@@ -83,12 +85,12 @@ func runInvestmentDividend(opts *investmentDividendOptions, w io.Writer) error {
 		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	sec, err := svc.Security.GetByTicker(opts.ticker, "")
+	sec, err := svc.Security.Resolve(opts.ticker, opts.isin, opts.name)
 	if err != nil {
-		return fmt.Errorf("security %q not found", opts.ticker)
+		return err
 	}
 	if sec.Hidden {
-		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.ticker)
+		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", cmdutil.SecurityRef(sec.Ticker, sec.Name))
 	}
 
 	if _, err := svc.Investment.Dividend(acct.ID, sec.ID, date, amount, opts.memo); err != nil {
@@ -97,7 +99,7 @@ func runInvestmentDividend(opts *investmentDividendOptions, w io.Writer) error {
 
 	fmt.Fprintln(w, "Dividend transaction created successfully!")
 	fmt.Fprintf(w, "  Account:  %s\n", acct.Name)
-	fmt.Fprintf(w, "  Security: %s (%s)\n", sec.Ticker, sec.Name)
+	fmt.Fprintf(w, "  Security: %s\n", cmdutil.SecurityDisplay(sec.Ticker, sec.Name))
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
 	fmt.Fprintf(w, "  Amount:   %s\n", cmdutil.FormatMoney(amount, acct.Currency))
 

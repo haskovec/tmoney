@@ -407,24 +407,27 @@ func TestBuildAddSecurityDialog(t *testing.T) {
 	}
 
 	fields := d.Fields()
-	if len(fields) != 6 {
-		t.Fatalf("expected 6 fields, got %d", len(fields))
+	if len(fields) != 7 {
+		t.Fatalf("expected 7 fields, got %d", len(fields))
 	}
 
 	// Verify field labels
-	expectedLabels := []string{"Ticker", "Name", "Type", "Asset Class", "Currency", "Exchange"}
+	expectedLabels := []string{"Ticker", "Name", "ISIN", "Type", "Asset Class", "Currency", "Exchange"}
 	for i, label := range expectedLabels {
 		if fields[i].Label != label {
 			t.Errorf("field[%d].Label = %q, want %q", i, fields[i].Label, label)
 		}
 	}
 
-	// Ticker and Name should be required
-	if !fields[0].Required {
-		t.Error("Ticker field should be required")
+	// Ticker is now OPTIONAL (a security may have a name but no ticker); Name is required.
+	if fields[0].Required {
+		t.Error("Ticker field should no longer be required")
 	}
 	if !fields[1].Required {
 		t.Error("Name field should be required")
+	}
+	if fields[2].Required {
+		t.Error("ISIN field should be optional")
 	}
 }
 
@@ -433,6 +436,7 @@ func TestBuildEditSecurityDialog(t *testing.T) {
 	sec.AssetClass = security.AssetClassLargeCapStock
 	sec.Currency = "USD"
 	sec.SetExchange("NASDAQ")
+	sec.SetISIN("US0378331005")
 
 	d := buildEditSecurityDialog(sec)
 
@@ -441,8 +445,8 @@ func TestBuildEditSecurityDialog(t *testing.T) {
 	}
 
 	fields := d.Fields()
-	if len(fields) != 6 {
-		t.Fatalf("expected 6 fields, got %d", len(fields))
+	if len(fields) != 7 {
+		t.Fatalf("expected 7 fields, got %d", len(fields))
 	}
 
 	// Verify pre-filled values
@@ -452,9 +456,12 @@ func TestBuildEditSecurityDialog(t *testing.T) {
 	if fields[1].Value != "Apple Inc." {
 		t.Errorf("name value = %q, want %q", fields[1].Value, "Apple Inc.")
 	}
-	// Exchange field should be pre-filled
-	if fields[5].Value != "NASDAQ" {
-		t.Errorf("exchange value = %q, want %q", fields[5].Value, "NASDAQ")
+	if fields[2].Value != "US0378331005" {
+		t.Errorf("isin value = %q, want %q", fields[2].Value, "US0378331005")
+	}
+	// Exchange field should be pre-filled (now at index 6)
+	if fields[6].Value != "NASDAQ" {
+		t.Errorf("exchange value = %q, want %q", fields[6].Value, "NASDAQ")
 	}
 }
 
@@ -464,9 +471,10 @@ func TestBuildEditSecurityDialog_TypeSelection(t *testing.T) {
 	d := buildEditSecurityDialog(sec)
 	fields := d.Fields()
 
-	// Type field should have ETF selected (index 1 since order is Stock, ETF, Mutual Fund, Other)
-	if fields[2].SelectedIndex != 1 {
-		t.Errorf("type selected index = %d, want 1 (ETF)", fields[2].SelectedIndex)
+	// Type field should have ETF selected (index 1 since order is Stock, ETF, Mutual Fund, Other).
+	// Type is now field index 3 (after Ticker, Name, ISIN).
+	if fields[3].SelectedIndex != 1 {
+		t.Errorf("type selected index = %d, want 1 (ETF)", fields[3].SelectedIndex)
 	}
 }
 
@@ -487,8 +495,9 @@ func TestBuildEditSecurityDialog_AssetClassSelection(t *testing.T) {
 		}
 	}
 
-	if fields[3].SelectedIndex != expectedIdx {
-		t.Errorf("asset class selected index = %d, want %d (Commodity)", fields[3].SelectedIndex, expectedIdx)
+	// Asset Class is now field index 4 (after Ticker, Name, ISIN, Type).
+	if fields[4].SelectedIndex != expectedIdx {
+		t.Errorf("asset class selected index = %d, want %d (Commodity)", fields[4].SelectedIndex, expectedIdx)
 	}
 }
 

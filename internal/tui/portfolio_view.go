@@ -19,7 +19,7 @@ import (
 type portfolioViewData struct {
 	account       *account.Account
 	valuation     *investment.AccountValuation
-	securityNames map[types.ID]string // SecurityID -> Ticker
+	securityNames map[types.ID]string // SecurityID -> ticker, or name when tickerless
 	lotDetails    []investment.LotDetail
 	lotSecurityID types.ID // which security's lots are showing
 }
@@ -74,7 +74,7 @@ func (a *App) loadPortfolioData(accountID types.ID) tea.Cmd {
 			securities, err := a.securitySvc.List(security.Filter{})
 			if err == nil {
 				for _, sec := range securities {
-					data.securityNames[sec.ID] = sec.Ticker
+					data.securityNames[sec.ID] = securityLabel(sec)
 				}
 			}
 		}
@@ -107,7 +107,7 @@ func (a *App) buildPortfolioHoldingsTable() {
 	}
 
 	columns := []widget.Column{
-		{Header: "Ticker", Width: 8, Align: widget.AlignLeft},
+		{Header: "Security", Width: 8, Align: widget.AlignLeft},
 		{Header: "Shares", Width: 9, Align: widget.AlignRight},
 		{Header: "Avg Cost", Width: 10, Align: widget.AlignRight},
 		{Header: "Price", Width: 10, Align: widget.AlignRight},

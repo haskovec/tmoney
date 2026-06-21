@@ -44,8 +44,12 @@ func buildSecurityOptions(securities []*security.Security) ([]string, []types.ID
 		if sec.Hidden {
 			continue
 		}
+		display := sec.Name
+		if sec.Ticker != "" {
+			display = fmt.Sprintf("%s - %s", sec.Ticker, sec.Name)
+		}
 		entries = append(entries, secEntry{
-			display: fmt.Sprintf("%s - %s", sec.Ticker, sec.Name),
+			display: display,
 			id:      sec.ID,
 		})
 	}

@@ -44,13 +44,33 @@ func printSecuritiesTable(w io.Writer, securities []*securitydom.Security) {
 	fmt.Fprintf(w, "\nShowing %d security(ies)\n", len(securities))
 }
 
+// securityLabel returns a human-friendly identifier for a security: its ticker
+// (with the name in parentheses) when present, otherwise just the name. Used
+// for confirmation messages where a tickerless security would otherwise print
+// a blank symbol.
+func securityLabel(sec *securitydom.Security) string {
+	if sec.Ticker != "" {
+		return fmt.Sprintf("%s (%s)", sec.Ticker, sec.Name)
+	}
+	return sec.Name
+}
+
 // printSecurityDetails prints detailed information for a single security.
 func printSecurityDetails(w io.Writer, sec *securitydom.Security) {
-	fmt.Fprintf(w, "SECURITY: %s\n", sec.Ticker)
-	fmt.Fprintln(w, strings.Repeat("=", len("SECURITY: ")+len(sec.Ticker)))
+	title := sec.Ticker
+	if title == "" {
+		title = sec.Name
+	}
+	fmt.Fprintf(w, "SECURITY: %s\n", title)
+	fmt.Fprintln(w, strings.Repeat("=", len("SECURITY: ")+len(title)))
 
-	fmt.Fprintf(w, "Ticker:      %s\n", sec.Ticker)
+	if sec.Ticker != "" {
+		fmt.Fprintf(w, "Ticker:      %s\n", sec.Ticker)
+	}
 	fmt.Fprintf(w, "Name:        %s\n", sec.Name)
+	if sec.ISIN != "" {
+		fmt.Fprintf(w, "ISIN:        %s\n", sec.ISIN)
+	}
 	fmt.Fprintf(w, "Type:        %s\n", sec.SecurityType.DisplayName())
 	fmt.Fprintf(w, "Asset Class: %s\n", sec.AssetClass.DisplayName())
 	fmt.Fprintf(w, "Currency:    %s\n", sec.Currency)

@@ -62,6 +62,7 @@ func WithPositionChecker(checker OpenPositionChecker) ServiceOption {
 
 // Create validates and creates a new security.
 func (s *Service) Create(security *Security) error {
+	security.ISIN = NormalizeISIN(security.ISIN)
 	if err := s.validateSecurity(security); err != nil {
 		return err
 	}
@@ -78,8 +79,74 @@ func (s *Service) GetByTicker(ticker string, currency string) (*Security, error)
 	return s.repo.GetByTicker(ticker, currency)
 }
 
+// GetByISIN retrieves a security by its ISIN (case-insensitive).
+func (s *Service) GetByISIN(isin string) (*Security, error) {
+	return s.repo.GetByISIN(isin)
+}
+
+// FindByName retrieves every security whose name matches exactly
+// (case-insensitive, trimmed).
+func (s *Service) FindByName(name string) ([]*Security, error) {
+	return s.repo.FindByName(name)
+}
+
+// Resolve looks up a single security by exactly one of the supplied selectors:
+// ticker, ISIN, or exact name. It requires that exactly one selector is
+// non-empty and returns an error if none or more than one is given, if nothing
+// matches, or (for --name) if the name is ambiguous across multiple securities.
+//
+// This is the lookup path for CLI commands that need to reference a security
+// that may have no ticker.
+func (s *Service) Resolve(ticker, isin, name string) (*Security, error) {
+	ticker = strings.TrimSpace(ticker)
+	isin = strings.TrimSpace(isin)
+	name = strings.TrimSpace(name)
+
+	provided := 0
+	for _, v := range []string{ticker, isin, name} {
+		if v != "" {
+			provided++
+		}
+	}
+	switch {
+	case provided == 0:
+		return nil, fmt.Errorf("specify a security with one of --ticker, --isin, or --name")
+	case provided > 1:
+		return nil, fmt.Errorf("specify only one of --ticker, --isin, or --name")
+	}
+
+	switch {
+	case ticker != "":
+		sec, err := s.repo.GetByTicker(ticker, "")
+		if err != nil {
+			return nil, fmt.Errorf("security with ticker %q not found", ticker)
+		}
+		return sec, nil
+	case isin != "":
+		sec, err := s.repo.GetByISIN(isin)
+		if err != nil {
+			return nil, fmt.Errorf("security with ISIN %q not found", isin)
+		}
+		return sec, nil
+	default:
+		matches, err := s.repo.FindByName(name)
+		if err != nil {
+			return nil, err
+		}
+		switch len(matches) {
+		case 0:
+			return nil, fmt.Errorf("security with name %q not found", name)
+		case 1:
+			return matches[0], nil
+		default:
+			return nil, fmt.Errorf("name %q is ambiguous: %d securities match; use --ticker or --isin instead", name, len(matches))
+		}
+	}
+}
+
 // Update validates and updates an existing security.
 func (s *Service) Update(security *Security) error {
+	security.ISIN = NormalizeISIN(security.ISIN)
 	if err := s.validateSecurity(security); err != nil {
 		return err
 	}
@@ -180,46 +247,20 @@ func (s *Service) Search(query string) ([]*Security, error) {
 	pattern := "%" + strings.ToLower(strings.TrimSpace(query)) + "%"
 
 	sqlQuery := `
-		SELECT id, ticker, name, security_type, asset_class, currency,
-			exchange, hidden, created_at, updated_at
+		SELECT ` + securityColumns + `
 		FROM securities
-		WHERE (LOWER(ticker) LIKE ? OR LOWER(name) LIKE ?)
+		WHERE (LOWER(ticker) LIKE ? OR LOWER(name) LIKE ? OR (COALESCE(isin, '') != '' AND LOWER(isin) LIKE ?))
 			AND hidden = FALSE
 		ORDER BY ticker
 	`
 
-	rows, err := s.db.Conn().Query(sqlQuery, pattern, pattern)
+	rows, err := s.db.Conn().Query(sqlQuery, pattern, pattern, pattern)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search securities: %w", err)
 	}
 	defer rows.Close()
 
-	securities := make([]*Security, 0)
-	for rows.Next() {
-		sec := &Security{}
-		err := rows.Scan(
-			&sec.ID,
-			&sec.Ticker,
-			&sec.Name,
-			&sec.SecurityType,
-			&sec.AssetClass,
-			&sec.Currency,
-			&sec.Exchange,
-			&sec.Hidden,
-			&sec.CreatedAt,
-			&sec.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan security: %w", err)
-		}
-		securities = append(securities, sec)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating securities: %w", err)
-	}
-
-	return securities, nil
+	return scanSecurityRows(rows)
 }
 
 // =============================================================================

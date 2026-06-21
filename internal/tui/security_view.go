@@ -429,11 +429,12 @@ func buildAddSecurityDialog() *dialog.Dialog {
 	d := dialog.NewDialog("Add Security")
 	d.SetWidth(76)
 
-	f := d.AddTextField("Ticker", "", "e.g. AAPL", 20)
+	d.AddTextField("Ticker", "", "e.g. AAPL (optional)", 20)
+
+	f := d.AddTextField("Name", "", "e.g. Apple Inc.", 50)
 	f.Required = true
 
-	f = d.AddTextField("Name", "", "e.g. Apple Inc.", 50)
-	f.Required = true
+	d.AddTextField("ISIN", "", "e.g. US0378331005 (optional)", 12)
 
 	typeOptions := make([]string, len(security.AllTypes()))
 	for i, t := range security.AllTypes() {
@@ -465,11 +466,12 @@ func buildEditSecurityDialog(sec *security.Security) *dialog.Dialog {
 	d := dialog.NewDialog("Edit Security")
 	d.SetWidth(76)
 
-	f := d.AddTextField("Ticker", sec.Ticker, "e.g. AAPL", 20)
+	d.AddTextField("Ticker", sec.Ticker, "e.g. AAPL (optional)", 20)
+
+	f := d.AddTextField("Name", sec.Name, "e.g. Apple Inc.", 50)
 	f.Required = true
 
-	f = d.AddTextField("Name", sec.Name, "e.g. Apple Inc.", 50)
-	f.Required = true
+	d.AddTextField("ISIN", sec.ISIN, "e.g. US0378331005 (optional)", 12)
 
 	// Type selection
 	allTypes := security.AllTypes()
@@ -540,38 +542,39 @@ func (a *App) submitSecurityDialog() (tea.Model, tea.Cmd) {
 
 	ticker := strings.TrimSpace(fields[0].Value)
 	name := strings.TrimSpace(fields[1].Value)
+	isin := strings.TrimSpace(fields[2].Value)
 
-	if ticker == "" {
-		a.securityDialog.SetErrorMsg("Ticker is required.")
-		return a, nil
-	}
 	if name == "" {
 		a.securityDialog.SetErrorMsg("Name is required.")
 		return a, nil
 	}
+	if isin != "" && !security.IsValidISIN(isin) {
+		a.securityDialog.SetErrorMsg("ISIN is not a valid ISO 6166 identifier.")
+		return a, nil
+	}
 
 	allTypes := security.AllTypes()
-	secType := allTypes[fields[2].SelectedIndex]
+	secType := allTypes[fields[3].SelectedIndex]
 
 	allClasses := security.AllAssetClasses()
-	assetClass := allClasses[fields[3].SelectedIndex]
+	assetClass := allClasses[fields[4].SelectedIndex]
 
 	currencyOptions := []string{"USD", "EUR", "GBP", "CAD", "JPY", "CHF", "AUD"}
-	currency := currencyOptions[fields[4].SelectedIndex]
+	currency := currencyOptions[fields[5].SelectedIndex]
 
-	exchange := strings.TrimSpace(fields[5].Value)
+	exchange := strings.TrimSpace(fields[6].Value)
 
 	a.securityDialog.SetVisible(false)
 	a.securityDialog = nil
 
 	if a.securityDialogMode == securityDialogModeAdd {
-		return a, a.createSecurity(ticker, name, secType, assetClass, currency, exchange)
+		return a, a.createSecurity(ticker, name, isin, secType, assetClass, currency, exchange)
 	}
-	return a, a.updateSecurity(a.securityDialogEditID, ticker, name, secType, assetClass, currency, exchange)
+	return a, a.updateSecurity(a.securityDialogEditID, ticker, name, isin, secType, assetClass, currency, exchange)
 }
 
 // createSecurity creates a new security via the service.
-func (a *App) createSecurity(ticker, name string, secType security.Type, assetClass security.AssetClass, currency, exchange string) tea.Cmd {
+func (a *App) createSecurity(ticker, name, isin string, secType security.Type, assetClass security.AssetClass, currency, exchange string) tea.Cmd {
 	return func() tea.Msg {
 		if a.securitySvc == nil {
 			return errMsg{err: fmt.Errorf("security service not available")}
@@ -581,6 +584,7 @@ func (a *App) createSecurity(ticker, name string, secType security.Type, assetCl
 		sec.AssetClass = assetClass
 		sec.Currency = currency
 		sec.SetExchange(exchange)
+		sec.SetISIN(isin)
 
 		if err := a.securitySvc.Create(sec); err != nil {
 			return errMsg{err: err}
@@ -590,7 +594,7 @@ func (a *App) createSecurity(ticker, name string, secType security.Type, assetCl
 }
 
 // updateSecurity updates an existing security via the service.
-func (a *App) updateSecurity(id types.ID, ticker, name string, secType security.Type, assetClass security.AssetClass, currency, exchange string) tea.Cmd {
+func (a *App) updateSecurity(id types.ID, ticker, name, isin string, secType security.Type, assetClass security.AssetClass, currency, exchange string) tea.Cmd {
 	return func() tea.Msg {
 		if a.securitySvc == nil {
 			return errMsg{err: fmt.Errorf("security service not available")}
@@ -607,6 +611,7 @@ func (a *App) updateSecurity(id types.ID, ticker, name string, secType security.
 		sec.AssetClass = assetClass
 		sec.Currency = currency
 		sec.SetExchange(exchange)
+		sec.SetISIN(isin)
 
 		if err := a.securitySvc.Update(sec); err != nil {
 			return errMsg{err: err}

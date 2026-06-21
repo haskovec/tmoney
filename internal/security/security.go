@@ -213,6 +213,7 @@ type Security struct {
 
 	Ticker       string               `json:"ticker"`
 	Name         string               `json:"name"`
+	ISIN         string               `json:"isin"`
 	SecurityType Type                 `json:"security_type"`
 	AssetClass   AssetClass           `json:"asset_class"`
 	Currency     string               `json:"currency"`
@@ -234,14 +235,23 @@ func NewSecurity(ticker, name string, securityType Type) *Security {
 }
 
 // Validate validates the Security and returns any validation errors.
+//
+// Ticker is optional: a security may have a name but no ticker (e.g. a
+// collective investment trust held in a 401k that no price provider quotes).
+// When a ticker is present it is still capped at 20 characters. An ISIN, when
+// present, must be a structurally valid ISO 6166 identifier with a correct
+// check digit; an empty ISIN means "none recorded".
 func (s *Security) Validate() types.ValidationErrors {
 	v := types.NewValidator()
 
-	v.RequiredString("ticker", s.Ticker)
 	v.MaxLength("ticker", s.Ticker, 20)
 	v.RequiredString("name", s.Name)
 	v.RequiredString("currency", s.Currency)
 	v.Currency("currency", s.Currency)
+
+	if NormalizeISIN(s.ISIN) != "" && !IsValidISIN(s.ISIN) {
+		v.AddError("isin", "must be a valid ISIN (ISO 6166)")
+	}
 
 	if !s.SecurityType.IsValid() {
 		v.AddError("security_type", "must be a valid security type")
@@ -257,6 +267,12 @@ func (s *Security) Validate() types.ValidationErrors {
 // IsValid returns true if the Security passes all validation rules.
 func (s *Security) IsValid() bool {
 	return !s.Validate().HasErrors()
+}
+
+// SetISIN sets the ISIN field, normalizing it (trim + upper-case). An empty
+// or whitespace-only value clears it.
+func (s *Security) SetISIN(isin string) {
+	s.ISIN = NormalizeISIN(isin)
 }
 
 // SetExchange sets the exchange field, clearing it if the value is empty.

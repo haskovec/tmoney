@@ -11,8 +11,9 @@ The Security Master is a centralized registry of financial instruments (stocks, 
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
 | `id` | UUID | Yes | Unique identifier |
-| `ticker` | string | Yes | Trading symbol (e.g., "GDX", "AAPL") |
+| `ticker` | string | No | Trading symbol (e.g., "GDX", "AAPL"). Optional: a security may have a name but no ticker (e.g. a collective investment trust held in a 401k that no price provider quotes). Such securities are priced only from transaction data and are skipped by the online price refresh. |
 | `name` | string | Yes | Full security name (e.g., "Market Vectors Gold Miners ETF") |
+| `isin` | string | No | ISIN (ISO 6166) identifier. Optional; when present it is validated (correct check digit), stored upper-cased, and unique across all securities. Serves as a stable handle for a tickerless security; it does **not** enable provider pricing. |
 | `security_type` | enum | Yes | Type of security (see below) |
 | `asset_class` | enum | Yes | Asset classification (see below) |
 | `currency` | string | Yes | ISO 4217 currency code (default: "USD") |
@@ -49,21 +50,31 @@ The Security Master is a centralized registry of financial instruments (stocks, 
 
 ### Security Validation Rules
 
-1. `ticker` must be unique within a given `currency` (same company can be listed in different currencies with different tickers, e.g., "RY" in USD and "RY.TO" in CAD)
-2. `ticker` cannot be empty, max 20 characters
+1. `ticker`, **when present**, must be unique within a given `currency` (same company can be listed in different currencies with different tickers, e.g., "RY" in USD and "RY.TO" in CAD). The ticker+currency uniqueness check is skipped for an empty ticker, so any number of tickerless securities may coexist.
+2. `ticker` is **optional**; when present it is at most 20 characters
 3. `name` cannot be empty
-4. `currency` must be a valid ISO 4217 code
-5. A security can only be marked `hidden` if it has no open positions (zero shares held across all accounts)
-6. Hidden securities retain all pricing history and historical transaction data
-7. Hidden securities are excluded from new transaction security lookups
-8. Hidden securities are excluded from price update operations (manual or API)
+4. Among **tickerless** securities, `name`+`currency` must be unique (a guard rail against entering the same un-tickered fund twice; tickered securities may still share a name)
+5. `isin`, when present, must be a structurally valid ISO 6166 identifier with a correct check digit, and is unique (case-insensitive) across all securities
+6. `currency` must be a valid ISO 4217 code
+7. A security can only be marked `hidden` if it has no open positions (zero shares held across all accounts)
+8. Hidden securities retain all pricing history and historical transaction data
+9. Hidden securities are excluded from new transaction security lookups
+10. Hidden securities are excluded from price update operations (manual or API)
+11. Securities with an empty ticker are excluded from price update operations (no provider can quote them)
 
 ### Security Operations
 
 #### Create Security
 
-Required: ticker, name, security_type
+Required: name, security_type (ticker is optional)
+Optional: ticker, isin
 Defaults: asset_class = "unclassified", currency = "USD", hidden = false
+
+A security may be created with a name but no ticker. Identify such a
+security on the CLI by `--isin` or exact `--name` in place of `--ticker`
+(the `security <verb>`, `price`, and `investment` commands all accept
+these selectors); in the TUI, the security type-ahead matches on name as
+well as ticker.
 
 #### Edit Security
 
@@ -808,8 +819,9 @@ tmoney --spin-off --parent PARENT_TICKER --spinoff NEW_TICKER \
 ```sql
 CREATE TABLE securities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    ticker TEXT NOT NULL,
+    ticker TEXT NOT NULL,                  -- may be the empty string (tickerless security)
     name TEXT NOT NULL,
+    isin TEXT,                             -- added by migration 027; nullable (DuckDB cannot ADD a NOT NULL column). Read as COALESCE(isin, '').
     security_type TEXT NOT NULL CHECK (security_type IN (
         'stock', 'etf', 'mutual_fund', 'other'
     )),

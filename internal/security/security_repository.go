@@ -3,6 +3,7 @@ package security
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
@@ -27,32 +28,54 @@ func NewRepository(database *db.DB) *Repository {
 	return &Repository{db: database}
 }
 
+// securityColumns is the shared SELECT column list (and its Scan order) for a
+// full security row. Keep it in lock-step with scanSecurity. isin is read via
+// COALESCE because migration 027 adds it as a plain nullable column (DuckDB
+// cannot ADD a NOT NULL column), so legacy rows hold NULL — the model always
+// sees a plain string.
+const securityColumns = `id, ticker, name, COALESCE(isin, '') AS isin, security_type, asset_class, currency,
+	exchange, hidden, created_at, updated_at`
+
+// scanSecurity scans a full security row in securityColumns order.
+func scanSecurity(scan func(dest ...any) error) (*Security, error) {
+	sec := &Security{}
+	err := scan(
+		&sec.ID,
+		&sec.Ticker,
+		&sec.Name,
+		&sec.ISIN,
+		&sec.SecurityType,
+		&sec.AssetClass,
+		&sec.Currency,
+		&sec.Exchange,
+		&sec.Hidden,
+		&sec.CreatedAt,
+		&sec.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return sec, nil
+}
+
 // Create inserts a new security into the database.
 func (r *Repository) Create(security *Security) error {
-	// Check for duplicate ticker+currency
-	var exists bool
-	err := r.db.Conn().QueryRow(
-		`SELECT EXISTS(SELECT 1 FROM securities WHERE ticker = ? AND currency = ?)`,
-		security.Ticker, security.Currency,
-	).Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("failed to check security uniqueness: %w", err)
-	}
-	if exists {
-		return &dberrors.DuplicateError{Entity: "security", Field: "ticker+currency", Value: security.Ticker + "+" + security.Currency}
+	if err := r.ensureUnique(security); err != nil {
+		return err
 	}
 
 	query := `
 		INSERT INTO securities (
-			id, ticker, name, security_type, asset_class, currency,
+			id, ticker, name, isin, security_type, asset_class, currency,
 			exchange, hidden, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err = r.db.Conn().Exec(query,
+	_, err := r.db.Conn().Exec(query,
 		security.ID,
 		security.Ticker,
 		security.Name,
+		security.ISIN,
 		security.SecurityType,
 		security.AssetClass,
 		security.Currency,
@@ -68,28 +91,64 @@ func (r *Repository) Create(security *Security) error {
 	return nil
 }
 
+// ensureUnique enforces the security uniqueness rules, excluding the row with
+// the candidate's own ID (so it is safe for both Create and Update):
+//
+//   - ticker+currency must be unique, but ONLY when a ticker is present. An
+//     empty ticker means "no ticker", and many tickerless securities may
+//     coexist.
+//   - among tickerless securities, name+currency must be unique (a guard rail
+//     against entering the same un-tickered fund twice).
+//   - isin must be globally unique (case-insensitive) when present.
+func (r *Repository) ensureUnique(s *Security) error {
+	conn := r.db.Conn()
+	id := s.ID.String()
+
+	if s.Ticker != "" {
+		var exists bool
+		if err := conn.QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM securities WHERE ticker = ? AND currency = ? AND CAST(id AS VARCHAR) != ?)`,
+			s.Ticker, s.Currency, id,
+		).Scan(&exists); err != nil {
+			return fmt.Errorf("failed to check ticker uniqueness: %w", err)
+		}
+		if exists {
+			return &dberrors.DuplicateError{Entity: "security", Field: "ticker+currency", Value: s.Ticker + "+" + s.Currency}
+		}
+	} else {
+		var exists bool
+		if err := conn.QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM securities WHERE ticker = '' AND LOWER(name) = LOWER(?) AND currency = ? AND CAST(id AS VARCHAR) != ?)`,
+			s.Name, s.Currency, id,
+		).Scan(&exists); err != nil {
+			return fmt.Errorf("failed to check name uniqueness: %w", err)
+		}
+		if exists {
+			return &dberrors.DuplicateError{Entity: "security", Field: "name+currency", Value: s.Name + "+" + s.Currency}
+		}
+	}
+
+	if s.ISIN != "" {
+		var exists bool
+		if err := conn.QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM securities WHERE COALESCE(isin, '') != '' AND UPPER(isin) = UPPER(?) AND CAST(id AS VARCHAR) != ?)`,
+			s.ISIN, id,
+		).Scan(&exists); err != nil {
+			return fmt.Errorf("failed to check ISIN uniqueness: %w", err)
+		}
+		if exists {
+			return &dberrors.DuplicateError{Entity: "security", Field: "isin", Value: s.ISIN}
+		}
+	}
+
+	return nil
+}
+
 // GetByID retrieves a security by its ID.
 func (r *Repository) GetByID(id types.ID) (*Security, error) {
-	query := `
-		SELECT id, ticker, name, security_type, asset_class, currency,
-			exchange, hidden, created_at, updated_at
-		FROM securities
-		WHERE CAST(id AS VARCHAR) = ?
-	`
+	query := `SELECT ` + securityColumns + ` FROM securities WHERE CAST(id AS VARCHAR) = ?`
 
-	sec := &Security{}
-	err := r.db.Conn().QueryRow(query, id.String()).Scan(
-		&sec.ID,
-		&sec.Ticker,
-		&sec.Name,
-		&sec.SecurityType,
-		&sec.AssetClass,
-		&sec.Currency,
-		&sec.Exchange,
-		&sec.Hidden,
-		&sec.CreatedAt,
-		&sec.UpdatedAt,
-	)
+	sec, err := scanSecurity(r.db.Conn().QueryRow(query, id.String()).Scan)
 	if err == sql.ErrNoRows {
 		return nil, &dberrors.NotFoundError{Entity: "security", ID: id.String()}
 	}
@@ -104,40 +163,14 @@ func (r *Repository) GetByID(id types.ID) (*Security, error) {
 // If currency is empty, returns the first match. If currency is specified,
 // filters by both ticker and currency.
 func (r *Repository) GetByTicker(ticker string, currency string) (*Security, error) {
-	var query string
-	var args []any
-
-	if currency == "" {
-		query = `
-			SELECT id, ticker, name, security_type, asset_class, currency,
-				exchange, hidden, created_at, updated_at
-			FROM securities
-			WHERE ticker = ?
-		`
-		args = []any{ticker}
-	} else {
-		query = `
-			SELECT id, ticker, name, security_type, asset_class, currency,
-				exchange, hidden, created_at, updated_at
-			FROM securities
-			WHERE ticker = ? AND currency = ?
-		`
-		args = []any{ticker, currency}
+	query := `SELECT ` + securityColumns + ` FROM securities WHERE ticker = ?`
+	args := []any{ticker}
+	if currency != "" {
+		query += ` AND currency = ?`
+		args = append(args, currency)
 	}
 
-	sec := &Security{}
-	err := r.db.Conn().QueryRow(query, args...).Scan(
-		&sec.ID,
-		&sec.Ticker,
-		&sec.Name,
-		&sec.SecurityType,
-		&sec.AssetClass,
-		&sec.Currency,
-		&sec.Exchange,
-		&sec.Hidden,
-		&sec.CreatedAt,
-		&sec.UpdatedAt,
-	)
+	sec, err := scanSecurity(r.db.Conn().QueryRow(query, args...).Scan)
 	if err == sql.ErrNoRows {
 		return nil, &dberrors.NotFoundError{Entity: "security", ID: ticker}
 	}
@@ -148,14 +181,46 @@ func (r *Repository) GetByTicker(ticker string, currency string) (*Security, err
 	return sec, nil
 }
 
+// GetByISIN retrieves a security by its ISIN (case-insensitive). An empty ISIN
+// never matches. Returns a NotFoundError when no security has the given ISIN.
+func (r *Repository) GetByISIN(isin string) (*Security, error) {
+	norm := NormalizeISIN(isin)
+	if norm == "" {
+		return nil, &dberrors.NotFoundError{Entity: "security", ID: isin}
+	}
+
+	query := `SELECT ` + securityColumns + ` FROM securities WHERE COALESCE(isin, '') != '' AND UPPER(isin) = ?`
+
+	sec, err := scanSecurity(r.db.Conn().QueryRow(query, norm).Scan)
+	if err == sql.ErrNoRows {
+		return nil, &dberrors.NotFoundError{Entity: "security", ID: isin}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get security by ISIN: %w", err)
+	}
+
+	return sec, nil
+}
+
+// FindByName retrieves every security whose name matches exactly
+// (case-insensitive, trimmed). Names are not unique among tickered securities,
+// so this returns a slice; callers resolve ambiguity.
+func (r *Repository) FindByName(name string) ([]*Security, error) {
+	trimmed := strings.TrimSpace(name)
+	query := `SELECT ` + securityColumns + ` FROM securities WHERE LOWER(name) = LOWER(?) ORDER BY ticker, isin`
+
+	rows, err := r.db.Conn().Query(query, trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find securities by name: %w", err)
+	}
+	defer rows.Close()
+
+	return scanSecurityRows(rows)
+}
+
 // List retrieves securities with optional filters.
 func (r *Repository) List(filter Filter) ([]*Security, error) {
-	query := `
-		SELECT id, ticker, name, security_type, asset_class, currency,
-			exchange, hidden, created_at, updated_at
-		FROM securities
-		WHERE 1=1
-	`
+	query := `SELECT ` + securityColumns + ` FROM securities WHERE 1=1`
 	var args []any
 
 	if filter.SecurityType != nil {
@@ -178,31 +243,22 @@ func (r *Repository) List(filter Filter) ([]*Security, error) {
 	}
 	defer rows.Close()
 
+	return scanSecurityRows(rows)
+}
+
+// scanSecurityRows scans every row of a securities query in securityColumns order.
+func scanSecurityRows(rows *sql.Rows) ([]*Security, error) {
 	securities := make([]*Security, 0)
 	for rows.Next() {
-		sec := &Security{}
-		err := rows.Scan(
-			&sec.ID,
-			&sec.Ticker,
-			&sec.Name,
-			&sec.SecurityType,
-			&sec.AssetClass,
-			&sec.Currency,
-			&sec.Exchange,
-			&sec.Hidden,
-			&sec.CreatedAt,
-			&sec.UpdatedAt,
-		)
+		sec, err := scanSecurity(rows.Scan)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan security: %w", err)
 		}
 		securities = append(securities, sec)
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating securities: %w", err)
 	}
-
 	return securities, nil
 }
 
@@ -210,22 +266,15 @@ func (r *Repository) List(filter Filter) ([]*Security, error) {
 func (r *Repository) Update(security *Security) error {
 	security.Touch()
 
-	var exists bool
-	err := r.db.Conn().QueryRow(
-		`SELECT EXISTS(SELECT 1 FROM securities WHERE ticker = ? AND currency = ? AND CAST(id AS VARCHAR) != ?)`,
-		security.Ticker, security.Currency, security.ID.String(),
-	).Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("failed to check security uniqueness: %w", err)
-	}
-	if exists {
-		return &dberrors.DuplicateError{Entity: "security", Field: "ticker+currency", Value: security.Ticker + "+" + security.Currency}
+	if err := r.ensureUnique(security); err != nil {
+		return err
 	}
 
 	result, err := r.db.Conn().Exec(`
 		UPDATE securities SET
 			ticker = ?,
 			name = ?,
+			isin = ?,
 			security_type = ?,
 			asset_class = ?,
 			currency = ?,
@@ -236,6 +285,7 @@ func (r *Repository) Update(security *Security) error {
 	`,
 		security.Ticker,
 		security.Name,
+		security.ISIN,
 		security.SecurityType.String(),
 		security.AssetClass.String(),
 		security.Currency,

@@ -572,6 +572,17 @@ tmoney -f personal.tdb security add --ticker AAPL --name "Apple Inc." --type sto
 tmoney -f personal.tdb security add --ticker VTI --name "Vanguard Total Stock Market" \
   --type etf --asset-class large_cap_stock --exchange NYSE
 
+# Add a security that has NO ticker (e.g. a collective trust held in a 401k).
+# The ticker is optional; record an ISIN as a stable identifier if you have one.
+tmoney -f personal.tdb security add --name "MFS Mid Cap Value CT" --type other \
+  --isin US0378331005
+
+# Reference a tickerless security on any security/price/investment command by
+# --isin or exact --name instead of --ticker
+tmoney -f personal.tdb security show --isin US0378331005
+tmoney -f personal.tdb investment buy --account "Fidelity 401k" \
+  --name "MFS Mid Cap Value CT" --shares 12.34 --price-per-share 25.10
+
 # List securities
 tmoney -f personal.tdb security list
 tmoney -f personal.tdb security list --include-hidden
@@ -596,9 +607,20 @@ tmoney -f personal.tdb security unhide AAPL
 tmoney -f personal.tdb security delete AAPL
 ```
 
-Security types: `stock`, `etf`, `mutual_fund`, `other`. `--ticker`,
-`--name`, and `--type` are required for `security add`. `--currency`
-defaults to `USD` and `--asset-class` defaults to `unclassified`.
+Security types: `stock`, `etf`, `mutual_fund`, `other`. `--name` and
+`--type` are required for `security add`; `--ticker` is **optional** —
+a security may have a name but no ticker (e.g. a collective investment
+trust held in a 401k that no price provider quotes). Such securities are
+priced only from transaction data and are skipped by the online price
+refresh. Record an optional `--isin` (ISO 6166, validated) as a stable,
+unique identifier. `--currency` defaults to `USD` and `--asset-class`
+defaults to `unclassified`. To reference a tickerless security on the
+`security show/hide/unhide/delete`, `price add/list/current`, and
+`investment` commands, pass `--isin <ISIN>` or `--name "<exact name>"`
+in place of the ticker (exactly one selector; an ambiguous name is
+rejected). `security edit` is identified by its positional ticker and
+gains an `--isin` flag to set or change the ISIN; edit a tickerless
+security from the TUI Securities view.
 `security list` excludes hidden securities by default; pass
 `--include-hidden` to show them, and filter the list with `--type` or
 `--asset-class`. `security show <ticker>` prints the full record for a

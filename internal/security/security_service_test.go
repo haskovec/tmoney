@@ -68,18 +68,39 @@ func TestService_Create(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects empty ticker", func(t *testing.T) {
+	t.Run("accepts tickerless security with a name", func(t *testing.T) {
 		database := createTestDB(t)
 		repo := NewRepository(database)
 		svc := NewService(repo, database)
 
-		sec := NewSecurity("", "Apple Inc.", TypeStock)
-		err := svc.Create(sec)
-		if err == nil {
-			t.Error("Create() expected error for empty ticker")
+		sec := NewSecurity("", "MFS Mid Cap Value CT", TypeOther)
+		if err := svc.Create(sec); err != nil {
+			t.Fatalf("Create() unexpected error for tickerless security: %v", err)
 		}
-		if _, ok := err.(*types.ServiceValidationError); !ok {
-			t.Errorf("Expected ServiceValidationError, got %T", err)
+
+		retrieved, err := svc.GetByID(sec.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if retrieved.Ticker != "" {
+			t.Errorf("Expected empty ticker, got %q", retrieved.Ticker)
+		}
+		if retrieved.Name != "MFS Mid Cap Value CT" {
+			t.Errorf("Expected name preserved, got %q", retrieved.Name)
+		}
+	})
+
+	t.Run("rejects a second tickerless security with the same name+currency", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database)
+
+		if err := svc.Create(NewSecurity("", "MFS Mid Cap Value CT", TypeOther)); err != nil {
+			t.Fatalf("Create() first error = %v", err)
+		}
+		err := svc.Create(NewSecurity("", "MFS Mid Cap Value CT", TypeOther))
+		if err == nil {
+			t.Error("Create() expected duplicate error for second tickerless name+currency")
 		}
 	})
 
@@ -221,10 +242,10 @@ func TestService_Update(t *testing.T) {
 			t.Fatalf("Create() error = %v", err)
 		}
 
-		sec.Ticker = "" // Invalid
+		sec.ISIN = "US0378331004" // Invalid: wrong check digit
 		err := svc.Update(sec)
 		if err == nil {
-			t.Error("Update() expected error for empty ticker")
+			t.Error("Update() expected error for invalid ISIN")
 		}
 		if _, ok := err.(*types.ServiceValidationError); !ok {
 			t.Errorf("Expected ServiceValidationError, got %T", err)

@@ -8,6 +8,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
@@ -62,18 +63,20 @@ func TestInvestmentSplit_MissingFile(t *testing.T) {
 	}
 }
 
-func TestInvestmentSplit_MissingTicker(t *testing.T) {
+func TestInvestmentSplit_NoSelector(t *testing.T) {
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
+
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	err := cli.ExecuteWith([]string{
 		"investment", "split",
-		"--file", "/fake.tdb",
-		"--ratio", "4:1",
+		"--file", dbPath,
+		"--ratio", "2:1",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("cli.ExecuteWith(investment split) without --ticker should return error")
+		t.Fatal("cli.ExecuteWith(investment split) without a security selector should return error")
 	}
-	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "ticker") {
-		t.Errorf("expected Cobra required-flag error mentioning ticker, got: %v", err)
+	if !strings.Contains(err.Error(), "ticker") {
+		t.Errorf("expected error to mention ticker selector, got: %v", err)
 	}
 }
 

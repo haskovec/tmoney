@@ -15,6 +15,8 @@ type securityEditOptions struct {
 	lookup     string // positional ticker (the security to edit)
 	newTicker  string // --ticker (rename)
 	name       string
+	isin       string
+	isinSet    bool // whether --isin was supplied (so "" can clear it)
 	secType    string
 	assetClass string
 	currency   string
@@ -33,20 +35,24 @@ func newSecurityEditCmd() *cobra.Command {
 		Short: "Edit fields of an existing security",
 		Long: "Edit fields on an existing security identified by ticker. " +
 			"Only flags that are supplied take effect; other fields are left as-is. " +
-			"Pass `--ticker` to rename the security to a new symbol.",
+			"Pass `--ticker` to rename the security to a new symbol, or `--isin` to set " +
+			"or change its ISIN (pass an empty value to clear it). To edit a security " +
+			"that has no ticker, use the TUI (Securities view), which can identify it by name.",
 		Example: "  tmoney security edit AAPL --name \"Apple Corporation\"\n" +
 			"  tmoney security edit AAPL --ticker AAPL2\n" +
-			"  tmoney security edit VTI --asset-class total_market",
+			"  tmoney security edit AAPL --isin US0378331005",
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.file, _ = cmd.Flags().GetString("file")
 			opts.lookup = args[0]
+			opts.isinSet = cmd.Flags().Changed("isin")
 			return runSecurityEdit(opts, cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&opts.newTicker, "ticker", "", "New ticker symbol (rename)")
 	cmd.Flags().StringVar(&opts.name, "name", "", "New security name")
+	cmd.Flags().StringVar(&opts.isin, "isin", "", "Set or change the ISIN (empty clears it)")
 	cmd.Flags().StringVar(&opts.secType, "type", "", "New security type: stock, etf, mutual_fund, other")
 	cmd.Flags().StringVar(&opts.assetClass, "asset-class", "", "New asset class")
 	cmd.Flags().StringVar(&opts.currency, "currency", "", "New currency code")
@@ -77,6 +83,9 @@ func runSecurityEdit(opts *securityEditOptions, w io.Writer) error {
 	if opts.name != "" {
 		sec.Name = opts.name
 	}
+	if opts.isinSet {
+		sec.SetISIN(opts.isin)
+	}
 	if opts.secType != "" {
 		secType, err := securitydom.ParseType(opts.secType)
 		if err != nil {
@@ -103,8 +112,13 @@ func runSecurityEdit(opts *securityEditOptions, w io.Writer) error {
 	}
 
 	fmt.Fprintln(w, "Security updated successfully!")
-	fmt.Fprintf(w, "  Ticker:      %s\n", sec.Ticker)
+	if sec.Ticker != "" {
+		fmt.Fprintf(w, "  Ticker:      %s\n", sec.Ticker)
+	}
 	fmt.Fprintf(w, "  Name:        %s\n", sec.Name)
+	if sec.ISIN != "" {
+		fmt.Fprintf(w, "  ISIN:        %s\n", sec.ISIN)
+	}
 	fmt.Fprintf(w, "  Type:        %s\n", sec.SecurityType.DisplayName())
 	fmt.Fprintf(w, "  Asset Class: %s\n", sec.AssetClass.DisplayName())
 	fmt.Fprintf(w, "  Currency:    %s\n", sec.Currency)

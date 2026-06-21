@@ -16,6 +16,8 @@ type investmentFeeLiquidationOptions struct {
 	file          string
 	account       string
 	ticker        string
+	isin          string
+	name          string
 	shares        string
 	amount        string
 	pricePerShare string
@@ -51,7 +53,7 @@ func newInvestmentFeeLiquidationCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.account, "account", "", "Investment account name (required)")
-	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Security ticker to liquidate (required)")
+	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Security ticker to liquidate (or use --isin / --name)")
 	cmd.Flags().StringVar(&opts.shares, "shares", "", "Number of shares to liquidate (required)")
 	cmd.Flags().StringVar(&opts.amount, "amount", "", "Fee total (alternative or in addition to --price-per-share)")
 	cmd.Flags().StringVar(&opts.pricePerShare, "price-per-share", "", "Price per share")
@@ -59,8 +61,8 @@ func newInvestmentFeeLiquidationCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.date, "date", "", "Transaction date YYYY-MM-DD (default today)")
 	cmd.Flags().StringVar(&opts.memo, "memo", "", "Free-form memo")
 	cmd.Flags().StringVar(&opts.lot, "lot", "", "Lot ID to allocate against (lot-tracked accounts)")
+	cmdutil.AddSecuritySelectorFlags(cmd, &opts.isin, &opts.name)
 	_ = cmd.MarkFlagRequired("account")
-	_ = cmd.MarkFlagRequired("ticker")
 	_ = cmd.MarkFlagRequired("shares")
 	return cmd
 }
@@ -127,12 +129,12 @@ func runInvestmentFeeLiquidation(opts *investmentFeeLiquidationOptions, w io.Wri
 		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	sec, err := svc.Security.GetByTicker(opts.ticker, "")
+	sec, err := svc.Security.Resolve(opts.ticker, opts.isin, opts.name)
 	if err != nil {
-		return fmt.Errorf("security %q not found", opts.ticker)
+		return err
 	}
 	if sec.Hidden {
-		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", opts.ticker)
+		return fmt.Errorf("security %q is hidden; unhide it first to create transactions", cmdutil.SecurityRef(sec.Ticker, sec.Name))
 	}
 
 	// Non-lot accounts: leave allocations nil (feeLiquidationWithPosition ignores
@@ -156,7 +158,7 @@ func runInvestmentFeeLiquidation(opts *investmentFeeLiquidationOptions, w io.Wri
 
 	fmt.Fprintln(w, "Fee-liquidation transaction created successfully!")
 	fmt.Fprintf(w, "  Account:  %s\n", acct.Name)
-	fmt.Fprintf(w, "  Security: %s (%s)\n", sec.Ticker, sec.Name)
+	fmt.Fprintf(w, "  Security: %s\n", cmdutil.SecurityDisplay(sec.Ticker, sec.Name))
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
 	fmt.Fprintf(w, "  Shares:   %s\n", shares.String())
 	if txn.PricePerShare.Valid {

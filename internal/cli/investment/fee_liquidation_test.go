@@ -34,13 +34,15 @@ func TestInvestmentFeeLiquidation_MissingAccount(t *testing.T) {
 	}
 }
 
-func TestInvestmentFeeLiquidation_MissingTicker(t *testing.T) {
+func TestInvestmentFeeLiquidation_NoSelector(t *testing.T) {
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
+
 	err := cli.ExecuteWith([]string{
 		"investment", "fee-liquidation",
-		"--file", "/fake.tdb", "--account", "Brokerage", "--shares", "0.5", "--amount", "80",
+		"--file", dbPath, "--account", "Brokerage", "--shares", "0.1", "--amount", "5",
 	}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "ticker") {
-		t.Errorf("expected required-flag error mentioning ticker, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "ticker") {
+		t.Errorf("expected error mentioning ticker selector, got: %v", err)
 	}
 }
 

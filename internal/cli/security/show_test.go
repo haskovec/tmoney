@@ -21,14 +21,16 @@ func TestSecurityShow_MissingFile(t *testing.T) {
 	}
 }
 
-func TestSecurityShow_MissingTicker(t *testing.T) {
+func TestSecurityShow_NoSelector(t *testing.T) {
+	dbPath, _ := clitest.CreateTestDBWithSecurity(t)
+
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	err := cli.ExecuteWith([]string{"security", "show"}, stdout, stderr)
+	err := cli.ExecuteWith([]string{"security", "show", "--file", dbPath}, stdout, stderr)
 	if err == nil {
-		t.Fatal("cli.ExecuteWith(security show) without ticker should return error")
+		t.Fatal("cli.ExecuteWith(security show) without a security selector should return error")
 	}
-	if !strings.Contains(err.Error(), "arg") {
-		t.Errorf("expected Cobra arg-count error, got: %v", err)
+	if !strings.Contains(err.Error(), "ticker") {
+		t.Errorf("expected error to mention ticker selector, got: %v", err)
 	}
 }
 

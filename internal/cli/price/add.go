@@ -15,6 +15,8 @@ import (
 type priceAddOptions struct {
 	file     string
 	ticker   string
+	isin     string
+	name     string
 	date     string
 	value    string
 	fetch    bool
@@ -41,12 +43,12 @@ func newPriceAddCmd() *cobra.Command {
 			return runPriceAdd(opts, cmd.OutOrStdout())
 		},
 	}
-	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Ticker symbol (required)")
+	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Ticker symbol (or use --isin / --name)")
 	cmd.Flags().StringVar(&opts.date, "date", "", "Price date YYYY-MM-DD (required)")
 	cmd.Flags().StringVar(&opts.value, "price", "", "Price value (omit when using --fetch)")
 	cmd.Flags().BoolVar(&opts.fetch, "fetch", false, "Fetch the price for --date from a provider instead of passing --price")
 	cmd.Flags().StringVar(&opts.provider, "provider", "", "Price provider name when using --fetch (default: yahoo)")
-	_ = cmd.MarkFlagRequired("ticker")
+	cmdutil.AddSecuritySelectorFlags(cmd, &opts.isin, &opts.name)
 	_ = cmd.MarkFlagRequired("date")
 	return cmd
 }
@@ -85,14 +87,17 @@ func runPriceAdd(opts *priceAddOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	sec, err := svc.Security.GetByTicker(opts.ticker, "")
+	sec, err := svc.Security.Resolve(opts.ticker, opts.isin, opts.name)
 	if err != nil {
-		return fmt.Errorf("security %q not found", opts.ticker)
+		return err
 	}
 
 	priceAmount := manualAmount
 	source := pricedom.SourceManual
 	if opts.fetch {
+		if sec.Ticker == "" {
+			return fmt.Errorf("cannot --fetch a price for a security with no ticker; enter --price manually")
+		}
 		providerName := opts.provider
 		if providerName == "" {
 			providerName = "yahoo"
@@ -102,9 +107,9 @@ func runPriceAdd(opts *priceAddOptions, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		quote, err := provider.FetchQuoteOn(opts.ticker, priceDate)
+		quote, err := provider.FetchQuoteOn(sec.Ticker, priceDate)
 		if err != nil {
-			return fmt.Errorf("fetch failed for %s: %w", opts.ticker, err)
+			return fmt.Errorf("fetch failed for %s: %w", sec.Ticker, err)
 		}
 		if quote.Currency != "" && !strings.EqualFold(quote.Currency, sec.Currency) {
 			return fmt.Errorf("provider currency %s does not match %s currency %s", quote.Currency, sec.Ticker, sec.Currency)
@@ -118,7 +123,7 @@ func runPriceAdd(opts *priceAddOptions, w io.Writer) error {
 		return fmt.Errorf("failed to add price: %w", err)
 	}
 
-	fmt.Fprintf(w, "Price added for %s on %s: %s (source %s)\n", sec.Ticker, priceDate.String(), cmdutil.FormatMoney(priceAmount, sec.Currency), source)
+	fmt.Fprintf(w, "Price added for %s on %s: %s (source %s)\n", cmdutil.SecurityRef(sec.Ticker, sec.Name), priceDate.String(), cmdutil.FormatMoney(priceAmount, sec.Currency), source)
 
 	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil

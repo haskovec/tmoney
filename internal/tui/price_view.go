@@ -556,8 +556,12 @@ func (a *App) renderPriceDetail() string {
 
 	titleText := "PRICES"
 	var secInfo string
-	if a.priceView.selectedSecurity != nil {
-		secInfo = fmt.Sprintf("%s (%s)", a.priceView.selectedSecurity.Ticker, a.priceView.selectedSecurity.Name)
+	if sec := a.priceView.selectedSecurity; sec != nil {
+		if sec.Ticker != "" {
+			secInfo = fmt.Sprintf("%s (%s)", sec.Ticker, sec.Name)
+		} else {
+			secInfo = sec.Name
+		}
 	}
 	if a.priceView.searchQuery != "" {
 		secInfo += "  Search: " + a.priceView.searchQuery
@@ -808,7 +812,7 @@ const (
 
 // buildAddPriceDialog builds the dialog for adding a new price.
 func buildAddPriceDialog(sec *security.Security) *dialog.Dialog {
-	d := dialog.NewDialog(fmt.Sprintf("Add Price — %s", sec.Ticker))
+	d := dialog.NewDialog(fmt.Sprintf("Add Price — %s", securityLabel(sec)))
 
 	today := time.Now().Format("2006-01-02")
 	f := d.AddDateFieldISO("Date", today)
@@ -817,18 +821,26 @@ func buildAddPriceDialog(sec *security.Security) *dialog.Dialog {
 	f = d.AddTextField("Price", "", "e.g. 185.50", 15)
 	f.Required = true
 
-	d.SetButtons([]dialog.DialogButton{
-		{Label: "Save", Primary: true},
-		{Label: "Lookup", Action: dialog.DialogActionAlternate},
-		{Label: "Cancel"},
-	})
+	d.SetButtons(priceDialogButtons(sec))
 
 	return d
 }
 
+// priceDialogButtons returns the price dialog's buttons. The provider Lookup
+// button is offered only when the security has a ticker — a tickerless
+// security (e.g. a collective trust) cannot be fetched from a price provider,
+// so its price comes from manual entry or transactions.
+func priceDialogButtons(sec *security.Security) []dialog.DialogButton {
+	buttons := []dialog.DialogButton{{Label: "Save", Primary: true}}
+	if sec.Ticker != "" {
+		buttons = append(buttons, dialog.DialogButton{Label: "Lookup", Action: dialog.DialogActionAlternate})
+	}
+	return append(buttons, dialog.DialogButton{Label: "Cancel"})
+}
+
 // buildEditPriceDialog builds the dialog for editing an existing price.
 func buildEditPriceDialog(sec *security.Security, p *price.Price) *dialog.Dialog {
-	d := dialog.NewDialog(fmt.Sprintf("Edit Price — %s", sec.Ticker))
+	d := dialog.NewDialog(fmt.Sprintf("Edit Price — %s", securityLabel(sec)))
 
 	dateStr := p.Date.Time().Format("2006-01-02")
 	f := d.AddDateFieldISO("Date", dateStr)
@@ -838,11 +850,7 @@ func buildEditPriceDialog(sec *security.Security, p *price.Price) *dialog.Dialog
 	f = d.AddTextField("Price", priceStr, "e.g. 185.50", 15)
 	f.Required = true
 
-	d.SetButtons([]dialog.DialogButton{
-		{Label: "Save", Primary: true},
-		{Label: "Lookup", Action: dialog.DialogActionAlternate},
-		{Label: "Cancel"},
-	})
+	d.SetButtons(priceDialogButtons(sec))
 
 	return d
 }

@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
 

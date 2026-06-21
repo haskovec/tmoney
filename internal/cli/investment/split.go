@@ -14,6 +14,8 @@ import (
 type investmentSplitOptions struct {
 	file   string
 	ticker string
+	isin   string
+	name   string
 	ratio  string
 	date   string
 }
@@ -39,10 +41,10 @@ func newInvestmentSplitCmd() *cobra.Command {
 			return runInvestmentSplit(opts, cmd.OutOrStdout())
 		},
 	}
-	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Security ticker (required)")
+	cmd.Flags().StringVar(&opts.ticker, "ticker", "", "Security ticker (or use --isin / --name)")
 	cmd.Flags().StringVar(&opts.ratio, "ratio", "", "Split ratio N:D, e.g. 4:1 forward or 1:10 reverse (required)")
 	cmd.Flags().StringVar(&opts.date, "date", "", "Effective date YYYY-MM-DD (default today)")
-	_ = cmd.MarkFlagRequired("ticker")
+	cmdutil.AddSecuritySelectorFlags(cmd, &opts.isin, &opts.name)
 	_ = cmd.MarkFlagRequired("ratio")
 	return cmd
 }
@@ -75,12 +77,12 @@ func runInvestmentSplit(opts *investmentSplitOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	sec, err := svc.Security.GetByTicker(opts.ticker, "")
+	sec, err := svc.Security.Resolve(opts.ticker, opts.isin, opts.name)
 	if err != nil {
-		return fmt.Errorf("security %q not found", opts.ticker)
+		return err
 	}
 	if sec.Hidden {
-		return fmt.Errorf("security %q is hidden; unhide it first to apply corporate actions", opts.ticker)
+		return fmt.Errorf("security %q is hidden; unhide it first to apply corporate actions", cmdutil.SecurityRef(sec.Ticker, sec.Name))
 	}
 
 	action, err := svc.CorporateAction.Split(sec.ID, date, *params)
@@ -89,7 +91,7 @@ func runInvestmentSplit(opts *investmentSplitOptions, w io.Writer) error {
 	}
 
 	fmt.Fprintln(w, "Stock split applied successfully!")
-	fmt.Fprintf(w, "  Security: %s (%s)\n", sec.Ticker, sec.Name)
+	fmt.Fprintf(w, "  Security: %s\n", cmdutil.SecurityDisplay(sec.Ticker, sec.Name))
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
 	fmt.Fprintf(w, "  Ratio:    %s\n", params.RatioString())
 	fmt.Fprintf(w, "  Action ID: %s\n", action.ID.String())

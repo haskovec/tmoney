@@ -26,19 +26,30 @@ func TestSecurityAdd_MissingFile(t *testing.T) {
 	}
 }
 
-func TestSecurityAdd_MissingTicker(t *testing.T) {
+func TestSecurityAdd_NoTickerSucceeds(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	database.Close()
+
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	err := cli.ExecuteWith([]string{
 		"security", "add",
-		"--file", "/fake.tdb",
-		"--name", "Apple",
-		"--type", "stock",
+		"--file", dbPath,
+		"--name", "MFS Mid Cap Value CT",
+		"--type", "other",
+		"--isin", "US0378331005",
 	}, stdout, stderr)
-	if err == nil {
-		t.Fatal("cli.ExecuteWith(security add) without --ticker should return error")
+	if err != nil {
+		t.Fatalf("cli.ExecuteWith(security add) without --ticker should succeed: %v\nstderr=%s", err, stderr)
 	}
-	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "ticker") {
-		t.Errorf("expected Cobra required-flag error mentioning ticker, got: %v", err)
+
+	output := stdout.String()
+	for _, want := range []string{
+		"Security created successfully",
+		"US0378331005",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, output)
+		}
 	}
 }
 

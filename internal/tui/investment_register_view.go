@@ -74,7 +74,7 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 			securities, err := a.securitySvc.List(security.Filter{})
 			if err == nil {
 				for _, sec := range securities {
-					data.securityNames[sec.ID] = sec.Ticker
+					data.securityNames[sec.ID] = securityLabel(sec)
 				}
 			}
 		}

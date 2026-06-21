@@ -334,21 +334,14 @@ func TestSecurityValidation(t *testing.T) {
 		}
 	})
 
-	t.Run("Empty ticker fails validation", func(t *testing.T) {
+	t.Run("Empty ticker passes validation (tickerless allowed)", func(t *testing.T) {
+		// A security may have a name but no ticker (e.g. a collective trust
+		// held in a 401k). The ticker is no longer required.
 		sec := validSecurity()
 		sec.Ticker = ""
 		errs := sec.Validate()
-		if !errs.HasErrors() {
-			t.Error("Empty ticker should fail validation")
-		}
-	})
-
-	t.Run("Whitespace-only ticker fails validation", func(t *testing.T) {
-		sec := validSecurity()
-		sec.Ticker = "   "
-		errs := sec.Validate()
-		if !errs.HasErrors() {
-			t.Error("Whitespace-only ticker should fail validation")
+		if errs.HasErrors() {
+			t.Errorf("Empty ticker should pass validation now: %v", errs)
 		}
 	})
 
@@ -406,6 +399,33 @@ func TestSecurityValidation(t *testing.T) {
 		}
 	})
 
+	t.Run("Valid ISIN passes validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.ISIN = "US0378331005"
+		errs := sec.Validate()
+		if errs.HasErrors() {
+			t.Errorf("Valid ISIN should pass: %v", errs)
+		}
+	})
+
+	t.Run("Invalid ISIN fails validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.ISIN = "US0378331004" // wrong check digit
+		errs := sec.Validate()
+		if !errs.HasErrors() {
+			t.Error("Invalid ISIN should fail validation")
+		}
+	})
+
+	t.Run("Empty ISIN passes validation", func(t *testing.T) {
+		sec := validSecurity()
+		sec.ISIN = ""
+		errs := sec.Validate()
+		if errs.HasErrors() {
+			t.Errorf("Empty ISIN should pass (none recorded): %v", errs)
+		}
+	})
+
 	t.Run("Valid non-USD currency passes validation", func(t *testing.T) {
 		sec := validSecurity()
 		sec.Currency = "CAD"
@@ -417,8 +437,8 @@ func TestSecurityValidation(t *testing.T) {
 
 	t.Run("Multiple validation errors collected", func(t *testing.T) {
 		sec := validSecurity()
-		sec.Ticker = ""
 		sec.Name = ""
+		sec.ISIN = "BADISIN00000"
 		sec.SecurityType = Type("invalid")
 		sec.Currency = "INVALID"
 		errs := sec.Validate()
@@ -433,7 +453,7 @@ func TestSecurityValidation(t *testing.T) {
 			t.Error("Valid security should return true from IsValid")
 		}
 
-		sec.Ticker = ""
+		sec.Name = ""
 		if sec.IsValid() {
 			t.Error("Invalid security should return false from IsValid")
 		}

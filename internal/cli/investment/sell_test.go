@@ -48,20 +48,22 @@ func TestInvestmentSell_MissingAccount(t *testing.T) {
 	}
 }
 
-func TestInvestmentSell_MissingTicker(t *testing.T) {
+func TestInvestmentSell_NoSelector(t *testing.T) {
+	dbPath := clitest.CreateInvestmentTestDB(t, false)
+
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	err := cli.ExecuteWith([]string{
 		"investment", "sell",
-		"--file", "/fake.tdb",
+		"--file", dbPath,
 		"--account", "Brokerage",
 		"--shares", "5",
-		"--amount", "800",
+		"--price-per-share", "160",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("cli.ExecuteWith(investment sell) without --ticker should return error")
+		t.Fatal("cli.ExecuteWith(investment sell) without a security selector should return error")
 	}
-	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "ticker") {
-		t.Errorf("expected Cobra required-flag error mentioning ticker, got: %v", err)
+	if !strings.Contains(err.Error(), "ticker") {
+		t.Errorf("expected error to mention ticker selector, got: %v", err)
 	}
 }
 

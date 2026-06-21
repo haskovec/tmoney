@@ -1,0 +1,26 @@
+-- Migration 027: Securities ISIN.
+--
+-- Adds an optional ISIN (International Securities Identification Number) to
+-- securities. The motivating case is instruments that have NO public ticker —
+-- e.g. a collective investment trust held inside a 401k ("MFS Mid Cap Value
+-- CT") — which can still carry a stable, globally-unique ISIN even though no
+-- price provider quotes them. ISIN is a human-friendly handle and a uniqueness
+-- key; it does NOT enable provider pricing (those securities are still priced
+-- from transaction data, and the price-refresh path skips empty tickers).
+--
+-- The column is plain nullable: DuckDB does not support ADD COLUMN with a
+-- constraint ("Adding columns with constraints not yet supported"), so a
+-- NOT NULL DEFAULT '' is not possible. Existing rows therefore start NULL. The
+-- repository reads the column as COALESCE(isin, '') so the model always sees a
+-- plain string ("" means "no ISIN recorded"); new rows are written as '' or a
+-- value, never NULL.
+--
+-- Deliberately NO index, for the same reason as migrations 021/023/025: an
+-- index on a securities column lets DuckDB rewrite the security-edit UPDATE as
+-- DELETE+INSERT and reintroduce the UPDATE failures those migrations removed.
+-- ISIN uniqueness (and the relaxed ticker/name uniqueness once a ticker may be
+-- empty) is enforced in the service/repository layer, exactly like the existing
+-- ticker+currency rule. The securities table is small, so the uniqueness and
+-- GetByISIN scans are cheap.
+
+ALTER TABLE securities ADD COLUMN isin TEXT;

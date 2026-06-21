@@ -25,19 +25,21 @@ func TestPriceAdd_MissingFile(t *testing.T) {
 	}
 }
 
-func TestPriceAdd_MissingTicker(t *testing.T) {
+func TestPriceAdd_NoSelector(t *testing.T) {
+	dbPath, _ := clitest.CreateTestDBWithSecurity(t)
+
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	err := cli.ExecuteWith([]string{
 		"price", "add",
-		"--file", "/fake.tdb",
+		"--file", dbPath,
 		"--date", "2024-01-15",
-		"--price", "150.00",
+		"--price", "150",
 	}, stdout, stderr)
 	if err == nil {
-		t.Fatal("cli.ExecuteWith(price add) without --ticker should return error")
+		t.Fatal("cli.ExecuteWith(price add) without a security selector should return error")
 	}
-	if !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "ticker") {
-		t.Errorf("expected Cobra required-flag error mentioning ticker, got: %v", err)
+	if !strings.Contains(err.Error(), "ticker") {
+		t.Errorf("expected error to mention ticker selector, got: %v", err)
 	}
 }
 
