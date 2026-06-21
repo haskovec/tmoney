@@ -133,13 +133,17 @@ func (s *Service) realizedGainLotTracked(accountID, securityID types.ID) (types.
 // replayRealizedGain reconstructs the realized gain for a non-lot-tracking
 // (account, security) pair by replaying its transaction ledger. It mirrors
 // replayPosition's chronological walk, capturing the running average cost
-// per share immediately before each sell and accumulating
-// (sell.price_per_share − avg_cost_at_sell) × sell.shares.
+// per share immediately before each disposition and accumulating
+// (price_per_share − avg_cost_at_disposition) × shares.
 //
-// Per the spec, fee_liquidation is not treated as a realized event (the
-// whole transaction is a fee paid in shares); transfer_shares carries cost
-// basis with the shares and is likewise not realized. Both still adjust
-// the running share count so subsequent sells observe the correct basis.
+// Both sell and fee_liquidation are dispositions: shares leave the position
+// at their market price, so both realize gain against the running average
+// cost — matching realizedGainLotTracked, which walks both types. (A
+// fee_liquidation's dollar amount is also booked as a fee by
+// sumFeesForSecurity; realized gain and the fee are independent total-return
+// terms, so there is no double-count.) transfer_shares is NOT a disposition —
+// it carries cost basis with the shares — so it adjusts only the running
+// share count, never realized gain.
 //
 // txns must be sorted by date ascending, then created_at ascending — the
 // same canonical order replayPosition expects. The TR-008 service wrapper
@@ -181,6 +185,19 @@ func (s *Service) replayRealizedGain(accountID, securityID types.ID, txns []*Tra
 				return types.ZeroMoney, fmt.Errorf("replayRealizedGain Sell %s: %w", t.ID, err)
 			}
 		case TransactionTypeFeeLiquidation:
+			// A fee_liquidation disposes of shares at their market price to pay
+			// a fee, so it realizes gain against the running average cost
+			// exactly like a sell (and like realizedGainLotTracked, which walks
+			// both types). The dollar amount is booked separately as a fee by
+			// sumFeesForSecurity, so the two are independent terms — no
+			// double-count.
+			avgCost := pos.AverageCostPerShare
+			price := types.ZeroMoney
+			if t.PricePerShare.Valid {
+				price = t.PricePerShare.Money
+			}
+			perShareGain := price.Sub(avgCost)
+			total = total.Add(perShareGain.Mul(t.Shares.Quantity.Decimal()))
 			if pos.Shares.Cmp(t.Shares.Quantity) < 0 {
 				return types.ZeroMoney, fmt.Errorf("replayRealizedGain FeeLiquidation %s: have %s shares, fee %s",
 					t.ID, pos.Shares.String(), t.Shares.Quantity.String())

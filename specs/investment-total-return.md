@@ -122,11 +122,13 @@ gain a second time — see Component 5.
 
 **Non-lot-tracking accounts** — replayed from the ledger using the existing
 `replayPosition` machinery (`internal/investment/rebuild.go:77`). The
-replay tracks running average cost per share. On each sell:
+replay tracks running average cost per share. On each disposition — a `sell`
+**or** a `fee_liquidation` (both move shares out of the position at their
+market price) — exactly as the lot-tracked path walks both types:
 
 ```
-avg_cost_at_sell = position.average_cost_per_share (immediately before sell)
-realized_gain   += (sell.price_per_share − avg_cost_at_sell) × sell.shares
+avg_cost_at_disposition = position.average_cost_per_share (immediately before)
+realized_gain += (txn.price_per_share − avg_cost_at_disposition) × txn.shares
 ```
 
 A new helper `replayRealizedGain(accountID, secID, txns)` performs the
@@ -187,9 +189,16 @@ outlay (`total_amount`) but not in `cost_per_share`. Subtracting it as a
 fee here closes that gap so total return reflects every dollar that left
 the trade.
 
-`fee_liquidation` (a fee paid by selling shares) is treated as the entire
-transaction being a fee, not as a realized event. The shares it consumes
-do reduce the position; their cost basis becomes a fee.
+`fee_liquidation` (a fee paid by selling shares) has two independent
+effects on total return. Its full `total_amount` is counted as a fee here
+(Component 5). Separately, it is a **disposition**: the shares leave the
+position at their market price, so it realizes gain against cost basis
+just like a sell — see Component 2. These are different dollars (the fee
+is what you spent; the realized gain is the appreciation on the shares
+sold to pay it), so counting both is not a double-count. Both the
+lot-tracked path (`realizedGainLotTracked`) and the non-lot replay
+(`replayRealizedGain`) treat `fee_liquidation` as realized, so the two
+paths agree.
 
 ## Data model
 
@@ -406,7 +415,7 @@ return $ and %. No new keystrokes.
 |---|---|
 | Position with no buys (received only via `transfer_shares`) | `TotalCostDeployed = 0`; `TotalReturnPct = nil`; displayed as `—`. Unrealized + realized + dividends still summed. |
 | Closed position that paid dividends after sale (rare; e.g., last record date before sale clears) | Dividend included in `dividends_received`. Position still considered closed (`Shares == 0`). |
-| `fee_liquidation` reduces shares to zero | The position closes. The fee_liquidation contributes to `fees_paid` but produces no realized gain. |
+| `fee_liquidation` reduces shares to zero | The position closes. The fee_liquidation contributes its full `total_amount` to `fees_paid` **and** realizes gain on the disposed shares (`(price − avg_cost) × shares`), the same as a sell. |
 | Non-lot account with corporate actions | `RealizedGain` shown as `unavailable`; other components still computed. |
 | Reinvest after position has been fully sold (data-entry error) | Treated as a re-open: new lot/position is created, fresh cost basis. The reinvest counts as income (`dividends_received`), not as deployed capital. |
 | Account with `cash` type or `loan` type | Out of scope; total return is investment-account-only. |
@@ -425,7 +434,9 @@ Unit tests in `internal/investment/valuation_service_test.go`:
 - Lot-tracked sell at loss → realized gain negative
 - Non-lot sell at gain → replayRealizedGain produces same number as
   lot-tracked equivalent
-- `fee_liquidation` → contributes to fees, not realized
+- `fee_liquidation` → contributes its full amount to fees **and** realizes
+  gain on the disposed shares; non-lot replay agrees with the lot-tracked
+  path for identical economics (e.g. 0.1 sh @ $200 from $100 basis → $10)
 - Buy commission → counted in fees, not in cost basis
 - Closed position with `IncludeClosed = false` → not in holdings
 - Closed position with `IncludeClosed = true` → present with

@@ -934,6 +934,47 @@ func TestReplayRealizedGain_ReinvestRaisesAvgCost(t *testing.T) {
 	}
 }
 
+// A fee_liquidation is a disposition: shares leave the position at their
+// market price, so it realizes gain against the running average cost exactly
+// like a sell. This mirrors TestRealizedGainLotTracked_FeeLiquidation on a
+// non-lot account so the two realized-gain paths agree for identical
+// economics — buy 10 @ $100, fee-liquidate 0.1 @ $200 → realized = (200−100)
+// × 0.1 = $10. The dollar amount is also booked separately as a fee
+// (sumFeesForSecurity), so realized gain and the fee are independent terms.
+func TestReplayRealizedGain_FeeLiquidation(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	sec := createSec(t, env.secRepo, "AAPL")
+	date := types.NewDate(2024, time.March, 15)
+
+	if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("10000"), ""); err != nil {
+		t.Fatalf("Deposit() error = %v", err)
+	}
+	// Buy 10 @ $100 → avg cost $100.
+	buyTotal := types.MustNewMoney("1000")
+	if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("10"),
+		&buyTotal, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("Buy() error = %v", err)
+	}
+	// fee_liquidation: 0.1 shares at $200 (fee total $20). Non-lot account, so
+	// no lot allocations are supplied.
+	feeTotal := types.MustNewMoney("20")
+	if _, err := env.svc.FeeLiquidation(acct.ID, sec.ID, date, types.MustNewQuantity("0.1"),
+		&feeTotal, nil, types.ZeroMoney, "", nil); err != nil {
+		t.Fatalf("FeeLiquidation() error = %v", err)
+	}
+
+	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
+	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
+	if err != nil {
+		t.Fatalf("replayRealizedGain() error = %v", err)
+	}
+	// (200 − 100) × 0.1 = 10 — matches the lot-tracked path's assertion.
+	if got.String() != "10" {
+		t.Errorf("Expected realized gain '10', got %q", got.String())
+	}
+}
+
 // TR-008: realizedGainNonLot is the service wrapper that loads transactions
 // for the (account, security) pair, sorts them in canonical order, and
 // delegates to replayRealizedGain. The fixture mirrors TR-007's happy path
