@@ -23,8 +23,8 @@ type investmentDividendOptions struct {
 
 // newInvestmentDividendCmd registers `tmoney investment dividend`. The
 // database file is taken from the persistent `--file` / `-f` flag inherited
-// from the root command. `--account`, `--ticker`, and `--amount` are
-// required.
+// from the root command. `--account` and `--amount` are required; identify
+// the security with `--ticker`, `--isin`, or `--name`.
 func newInvestmentDividendCmd() *cobra.Command {
 	opts := &investmentDividendOptions{}
 	cmd := &cobra.Command{

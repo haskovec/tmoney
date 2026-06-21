@@ -29,8 +29,9 @@ type investmentFeeLiquidationOptions struct {
 
 // newInvestmentFeeLiquidationCmd registers `tmoney investment fee-liquidation`.
 // The database file is taken from the persistent `--file` / `-f` flag inherited
-// from the root command. `--account`, `--ticker`, and `--shares` are required;
-// at least one of `--amount` or `--price-per-share` must be supplied.
+// from the root command. `--account` and `--shares` are required; identify the
+// security with `--ticker`, `--isin`, or `--name`; at least one of `--amount`
+// or `--price-per-share` must be supplied.
 func newInvestmentFeeLiquidationCmd() *cobra.Command {
 	opts := &investmentFeeLiquidationOptions{}
 	cmd := &cobra.Command{

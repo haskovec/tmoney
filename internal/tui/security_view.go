@@ -309,9 +309,13 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		sec := a.selectedSecurity()
 		if sec != nil {
 			secID := sec.ID
+			label := sec.Name
+			if sec.Ticker != "" {
+				label = fmt.Sprintf("%s (%s)", sec.Ticker, sec.Name)
+			}
 			a.showConfirmDialog(
 				"Delete Security",
-				fmt.Sprintf("Delete %s (%s)?", sec.Ticker, sec.Name),
+				fmt.Sprintf("Delete %s?", label),
 				func() tea.Msg {
 					if a.securitySvc == nil {
 						return errMsg{err: fmt.Errorf("security service not available")}

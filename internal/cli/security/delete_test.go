@@ -100,6 +100,38 @@ func TestSecurityDelete_WithPricesSuggestsHide(t *testing.T) {
 	}
 }
 
+func TestSecurityDelete_TickerlessDependentsHintUsesName(t *testing.T) {
+	// A tickerless security with NO ISIN that has dependents must produce a
+	// usable `security hide` hint — not "--isin " with an empty value.
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+
+	repo := securitydom.NewRepository(database)
+	sec := securitydom.NewSecurity("", "MFS Mid Cap Value CT", securitydom.TypeOther)
+	if err := repo.Create(sec); err != nil {
+		t.Fatalf("setup: create tickerless security: %v", err)
+	}
+	if _, err := database.Conn().Exec(
+		`INSERT INTO security_prices (id, security_id, date, price, source, created_at)
+		 VALUES (?, ?, '2024-01-01', 25.10, 'transaction', CURRENT_TIMESTAMP)`,
+		types.NewID().String(), sec.ID.String(),
+	); err != nil {
+		t.Fatalf("setup: insert price: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := cli.ExecuteWith([]string{"security", "delete", "--name", "MFS Mid Cap Value CT", "--file", dbPath}, stdout, stderr)
+	if err == nil {
+		t.Fatal("deleting tickerless security with prices should return error")
+	}
+	if !strings.Contains(err.Error(), `--name "MFS Mid Cap Value CT"`) {
+		t.Errorf("hint should fall back to --name with the security name, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "--isin ") {
+		t.Errorf("hint should not contain an empty --isin, got: %v", err)
+	}
+}
+
 func TestSecurityDelete_RejectsExtraArgs(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	err := cli.ExecuteWith([]string{"security", "delete", "AAPL", "EXTRA", "--file", "x.tdb"}, stdout, stderr)

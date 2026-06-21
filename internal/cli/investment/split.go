@@ -22,8 +22,8 @@ type investmentSplitOptions struct {
 
 // newInvestmentSplitCmd registers `tmoney investment split`. The
 // database file is taken from the persistent `--file` / `-f` flag
-// inherited from the root command. `--ticker` and `--ratio` are
-// required.
+// inherited from the root command. `--ratio` is required; identify the
+// security with `--ticker`, `--isin`, or `--name`.
 func newInvestmentSplitCmd() *cobra.Command {
 	opts := &investmentSplitOptions{}
 	cmd := &cobra.Command{

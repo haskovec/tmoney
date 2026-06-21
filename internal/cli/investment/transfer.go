@@ -26,8 +26,8 @@ type investmentTransferOptions struct {
 
 // newInvestmentTransferCmd registers `tmoney investment transfer`. The
 // database file is taken from the persistent `--file` / `-f` flag
-// inherited from the root command. `--from`, `--to`, `--ticker`, and
-// `--shares` are required.
+// inherited from the root command. `--from`, `--to`, and `--shares` are
+// required; identify the security with `--ticker`, `--isin`, or `--name`.
 func newInvestmentTransferCmd() *cobra.Command {
 	opts := &investmentTransferOptions{}
 	cmd := &cobra.Command{

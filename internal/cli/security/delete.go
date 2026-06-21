@@ -66,8 +66,11 @@ func runSecurityDelete(opts *securityDeleteOptions, w io.Writer) error {
 		var depErr *securitydom.HasDependentsError
 		if errors.As(err, &depErr) {
 			hint := sec.Ticker
-			if hint == "" {
+			if hint == "" && sec.ISIN != "" {
 				hint = "--isin " + sec.ISIN
+			}
+			if hint == "" {
+				hint = fmt.Sprintf("--name %q", sec.Name)
 			}
 			return fmt.Errorf("%s\nUse tmoney security hide %s instead", depErr.Error(), hint)
 		}

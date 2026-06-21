@@ -25,7 +25,8 @@ type priceAddOptions struct {
 
 // newPriceAddCmd registers `tmoney price add`. The database file is
 // taken from the persistent `--file` / `-f` flag inherited from the
-// root command. `--ticker`, `--date`, and `--price` are required.
+// root command. `--date` is required, plus either `--price` or `--fetch`;
+// identify the security with `--ticker`, `--isin`, or `--name`.
 func newPriceAddCmd() *cobra.Command {
 	opts := &priceAddOptions{}
 	cmd := &cobra.Command{
