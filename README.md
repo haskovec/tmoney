@@ -658,6 +658,9 @@ tmoney report spending --from 2024-01-01 --to 2024-06-30
 # Manually record a price for a security on a specific date
 tmoney -f personal.tdb price add --ticker AAPL --date 2024-01-15 --price 150.00
 
+# Delete the price for a security on a specific date
+tmoney -f personal.tdb price delete --ticker AAPL --date 2024-01-15
+
 # List recorded prices for a security
 tmoney -f personal.tdb price list AAPL
 tmoney -f personal.tdb price list AAPL --from 2024-01-01 --to 2024-06-30
@@ -680,6 +683,12 @@ tmoney -f personal.tdb price add --ticker AAPL --date 2024-01-15 --fetch
 `price add` requires `--ticker` and `--date`, plus either `--price` or
 `--fetch`. With `--price` the value is stored with `source = manual`.
 Re-adding a price for a date that already has one returns an error.
+
+`price delete --ticker X --date YYYY-MM-DD` removes the recorded price for
+a security on that exact date — the CLI counterpart to deleting a price in
+the TUI prices view (both go through the same service). Identify the
+security with `--ticker`, `--isin`, or `--name`; it errors if no price
+exists on that date.
 
 `price add --fetch` fetches the closing price for `--date` from the
 provider (Yahoo by default; override with `--provider`) instead of

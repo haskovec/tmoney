@@ -20,6 +20,7 @@ func NewCmd() *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newPriceAddCmd())
+	cmd.AddCommand(newPriceDeleteCmd())
 	cmd.AddCommand(newPriceListCmd())
 	cmd.AddCommand(newPriceCurrentCmd())
 	cmd.AddCommand(newPriceImportCmd())

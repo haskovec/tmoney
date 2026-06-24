@@ -94,6 +94,13 @@ func (s *Service) GetCurrentPrice(securityID types.ID, asOf types.Date) (*Price,
 	return s.repo.GetCurrentPrice(securityID, asOf)
 }
 
+// GetBySecurityAndDate returns the price for a security on an exact date, or a
+// dberrors.NotFoundError if none exists. `price delete` uses it to resolve the
+// row a (security, date) pair names.
+func (s *Service) GetBySecurityAndDate(securityID types.ID, date types.Date) (*Price, error) {
+	return s.repo.GetBySecurityAndDate(securityID, date)
+}
+
 // GetPriceHistory returns prices for a security within an optional date range.
 func (s *Service) GetPriceHistory(securityID types.ID, from *types.Date, to *types.Date) ([]*Price, error) {
 	return s.repo.GetPriceHistory(securityID, from, to)

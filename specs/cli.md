@@ -602,6 +602,19 @@ Show the most recent price recorded for the security.
 tmoney price current AAPL
 ```
 
+### `price delete`
+
+`Use: price delete` · `Args: NoArgs`
+
+Remove the recorded price for a security on a specific date — the CLI counterpart to deleting a price in the TUI prices view (both call `price.Service.DeletePrice`). Identify the security with `--ticker`, `--isin`, or `--name`. Errors if no price exists for that date.
+
+**Required flags:** `--date`, plus a security selector (`--ticker`, `--isin`, or `--name`)
+
+```bash
+tmoney price delete --ticker AAPL --date 2024-01-15
+tmoney price delete --name "MFS Mid Cap Value CT" --date 2024-01-15
+```
+
 ### `price import`
 
 `Use: price import <file>` · `Args: ExactArgs(1)`
