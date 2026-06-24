@@ -592,6 +592,24 @@ tmoney price add --ticker AAPL --date 2024-01-15 --price 150.00
 tmoney price add --ticker AAPL --date 2024-01-15 --fetch
 ```
 
+### `price cleanup`
+
+`Use: price cleanup` · `Args: NoArgs`
+
+Remove transaction-sourced prices justified only by a reinvested dividend or fee liquidation (no buy or sell on that date) — the rows the buy/sell-only auto-price policy no longer creates. Prints a dry-run plan by default; pass `--confirm` to apply. With `--refetch`, tickered securities are replaced by the provider's close for that date instead of deleted (tickerless securities and fetch failures are left in place). Run `tmoney db backup` first.
+
+**Optional flags:**
+- `--confirm` — Apply the cleanup (default: dry-run preview only)
+- `--refetch` — Replace tickered prices with the provider's close for that date instead of deleting
+- `--provider string` — Price provider for `--refetch` (default `yahoo`)
+- `--ticker` / `--isin` / `--name` — Limit to one security (default: all securities)
+
+```bash
+tmoney price cleanup
+tmoney price cleanup --confirm
+tmoney price cleanup --refetch --confirm
+```
+
 ### `price current`
 
 `Use: price current <ticker>` · `Args: ExactArgs(1)`

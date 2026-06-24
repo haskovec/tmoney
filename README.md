@@ -678,6 +678,10 @@ tmoney -f personal.tdb price lookup --ticker AAPL --date 2024-01-15 --provider y
 
 # Record a price by fetching it from the provider instead of passing --price
 tmoney -f personal.tdb price add --ticker AAPL --date 2024-01-15 --fetch
+
+# Remove legacy reinvest/fee-liquidation prices (dry-run; add --confirm to apply)
+tmoney -f personal.tdb price cleanup
+tmoney -f personal.tdb price cleanup --refetch --confirm
 ```
 
 `price add` requires `--ticker` and `--date`, plus either `--price` or
@@ -689,6 +693,15 @@ a security on that exact date — the CLI counterpart to deleting a price in
 the TUI prices view (both go through the same service). Identify the
 security with `--ticker`, `--isin`, or `--name`; it errors if no price
 exists on that date.
+
+`price cleanup` removes legacy transaction-sourced prices that are justified
+only by a reinvested dividend or fee liquidation (no buy or sell on that
+date) — the rows the buy/sell-only auto-price policy no longer creates. It
+prints a dry-run plan by default; pass `--confirm` to apply. With `--refetch`,
+tickered securities are replaced by the provider's close for that date instead
+of deleted (tickerless securities and fetch failures are left in place). Limit
+to one security with `--ticker` / `--isin` / `--name`. Run `tmoney db backup`
+first.
 
 `price add --fetch` fetches the closing price for `--date` from the
 provider (Yahoo by default; override with `--provider`) instead of
