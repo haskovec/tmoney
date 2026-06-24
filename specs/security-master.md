@@ -145,7 +145,8 @@ Prices are automatically created from transactions in the following cases:
 |------------------|---------------|
 | Buy | price_per_share on transaction date |
 | Sell | price_per_share on transaction date |
-| Reinvest Dividend | reinvestment price on transaction date |
+
+Only `buy` and `sell` auto-create prices — they are real executions at the market price, so the derived per-share value is trustworthy. `reinvest_dividend` and `fee_liquidation` deliberately do **not**: their per-share value is `total_amount ÷ shares` against statement-rounded share counts, which for a tiny income event yields a wildly wrong price (e.g. `$0.16 ÷ 0.002 sh = $80`) that would corrupt the whole position's valuation (valuation takes the latest price on-or-before a date regardless of source). Those securities are priced from buys/sells and the online refresh instead; the `price cleanup` command repairs any legacy reinvest/fee-liq prices.
 
 Auto-created prices use `source = 'transaction'`. If a price already exists for that security+date from a manual or import source, the transaction-derived price does **not** overwrite it (manual/import data is considered more authoritative).
 

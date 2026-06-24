@@ -740,9 +740,9 @@ func (s *Service) ReinvestDividend(
 		}
 	}
 
-	// Auto-create price record from transaction
-	s.autoCreatePrice(securityID, date, computed.PricePerShare)
-
+	// Reinvested dividends do NOT auto-create a price (see CreatesAutoPrice):
+	// their per-share value is total_amount÷rounded-shares, unreliable for tiny
+	// income events. The security is priced from buys/sells instead.
 	return txn, nil
 }
 
@@ -822,9 +822,9 @@ func (s *Service) FeeLiquidation(
 		}
 	}
 
-	// Auto-create price record from transaction
-	s.autoCreatePrice(securityID, date, computed.PricePerShare)
-
+	// Fee liquidations do NOT auto-create a price (see CreatesAutoPrice): the
+	// per-share value is total_amount÷rounded-shares, unreliable for tiny fees.
+	// The security is priced from buys/sells instead.
 	return txn, nil
 }
 

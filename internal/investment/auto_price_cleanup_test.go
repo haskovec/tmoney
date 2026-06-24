@@ -11,8 +11,9 @@ import (
 // =============================================================================
 // Auto-price cleanup on edit/delete
 //
-// A buy/sell/reinvest/fee-liquidation auto-creates a security_prices row
-// (source=transaction) at its date. Editing the transaction's date or deleting
+// A buy/sell auto-creates a security_prices row (source=transaction) at its
+// date (reinvest/fee-liquidation deliberately do not — see CreatesAutoPrice).
+// Editing the transaction's date or deleting
 // it used to leave that row behind — the orphan that stretched the VTI chart
 // across ~2000 years after a buy's year was fixed from 0018 to 2018. These
 // tests pin the reconciliation: orphans are removed, but prices shared by a

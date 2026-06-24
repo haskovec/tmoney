@@ -119,7 +119,7 @@ func (itt TransactionType) RequiresShares() bool {
 }
 
 // mutatesPositionOrPrice reports whether posting this type would create a
-// future-dated price row (buy/sell/reinvest auto-create one) or a future
+// future-dated price row (only buy/sell auto-create one) or a future
 // share/lot change — the only reason an investment transaction is restricted
 // to non-future dates. Pure cash operations (deposit, withdrawal, fee,
 // interest, transfer_cash, and dividend — a payment linked to a security but
@@ -143,15 +143,21 @@ func (itt TransactionType) AffectsCash() bool {
 }
 
 // CreatesAutoPrice reports whether posting this type auto-creates a
-// security_prices row (source=transaction) at the transaction's date. These
-// are exactly the share+price types whose service constructors call
-// autoCreatePrice (Buy, Sell, ReinvestDividend, FeeLiquidation). Moving one
-// off its date or deleting it must reconcile that price row — see
+// security_prices row (source=transaction) at the transaction's date. Only
+// Buy and Sell qualify: they are real executions at the market price, so the
+// derived per-share price is trustworthy. ReinvestDividend and FeeLiquidation
+// deliberately do NOT auto-create a price — their per-share value is
+// total_amount÷shares against statement-rounded share counts, which for a
+// tiny income event yields a wildly wrong price (e.g. $0.16 ÷ 0.002 sh ⇒ $80)
+// that would corrupt the whole position's valuation, since GetCurrentPrice
+// takes the latest price on-or-before a date regardless of source. Those
+// securities are priced from buys/sells and the online refresh instead, and
+// `price cleanup` repairs any legacy reinvest/fee-liq prices. Moving a
+// Buy/Sell off its date or deleting it must reconcile that price row — see
 // Service.cleanupAutoPrice — so the row is never orphaned.
 func (itt TransactionType) CreatesAutoPrice() bool {
 	switch itt {
-	case TransactionTypeBuy, TransactionTypeSell,
-		TransactionTypeReinvestDividend, TransactionTypeFeeLiquidation:
+	case TransactionTypeBuy, TransactionTypeSell:
 		return true
 	}
 	return false

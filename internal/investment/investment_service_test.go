@@ -2376,8 +2376,10 @@ func TestService_ReinvestDividend_LotTracking(t *testing.T) {
 // SM-083: Auto-create price on reinvest dividend
 // =============================================================================
 
-func TestService_ReinvestDividend_AutoCreatesPrice(t *testing.T) {
-	t.Run("reinvest creates price record", func(t *testing.T) {
+func TestService_ReinvestDividend_DoesNotCreatePrice(t *testing.T) {
+	t.Run("reinvest does NOT create a price record", func(t *testing.T) {
+		// A reinvested dividend's per-share value is total_amount÷rounded-shares,
+		// unreliable for tiny income events, so it must not seed the price series.
 		env := createFullTestService(t)
 		acct := createInvAccount(t, env.accountRepo, "Brokerage")
 		sec := createSec(t, env.secRepo, "AAPL")
@@ -2396,17 +2398,9 @@ func TestService_ReinvestDividend_AutoCreatesPrice(t *testing.T) {
 			t.Fatalf("ReinvestDividend() error = %v", err)
 		}
 
-		// Price should be auto-created for reinvest date
-		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, reinvestDate)
-		if err != nil {
-			t.Fatalf("GetBySecurityAndDate() error = %v, expected price to be auto-created", err)
-		}
-		// 400/2 = 200
-		if p.Price.String() != "200" {
-			t.Errorf("Expected price '200', got %q", p.Price.String())
-		}
-		if p.Source != price.SourceTransaction {
-			t.Errorf("Expected source 'transaction', got %q", p.Source.String())
+		// No price should be created for the reinvest date.
+		if p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, reinvestDate); err == nil {
+			t.Errorf("expected no auto-price for reinvest, got %s", p.Price.String())
 		}
 	})
 
@@ -2645,7 +2639,9 @@ func TestService_FeeLiquidation_NonLotTracking(t *testing.T) {
 		}
 	})
 
-	t.Run("fee liquidation auto-creates price record", func(t *testing.T) {
+	t.Run("fee liquidation does NOT create a price record", func(t *testing.T) {
+		// A fee liquidation's per-share value is total_amount÷rounded-shares,
+		// unreliable for tiny fees, so it must not seed the price series.
 		env := createFullTestService(t)
 		acct := createInvAccount(t, env.accountRepo, "Brokerage")
 		sec := createSec(t, env.secRepo, "AAPL")
@@ -2664,15 +2660,8 @@ func TestService_FeeLiquidation_NonLotTracking(t *testing.T) {
 			t.Fatalf("FeeLiquidation() error = %v", err)
 		}
 
-		p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, feeDate)
-		if err != nil {
-			t.Fatalf("GetBySecurityAndDate() error = %v", err)
-		}
-		if p.Price.String() != "120" {
-			t.Errorf("Expected auto-created price '120', got %q", p.Price.String())
-		}
-		if p.Source != price.SourceTransaction {
-			t.Errorf("Expected source 'transaction', got %q", p.Source.String())
+		if p, err := env.priceRepo.GetBySecurityAndDate(sec.ID, feeDate); err == nil {
+			t.Errorf("expected no auto-price for fee liquidation, got %s", p.Price.String())
 		}
 	})
 }
