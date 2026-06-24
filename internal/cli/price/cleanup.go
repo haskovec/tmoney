@@ -222,12 +222,13 @@ func refetchOne(svc *app.Services, provider pricedom.Provider, c cleanupCandidat
 	if quote.Currency != "" && !strings.EqualFold(quote.Currency, c.sec.Currency) {
 		return "kept", fmt.Sprintf("currency mismatch (%s vs %s)", quote.Currency, c.sec.Currency), nil
 	}
-	if delErr := svc.Price.DeletePrice(c.item.Price.ID); delErr != nil {
-		return "", "", fmt.Errorf("delete %s @ %s: %w", c.sec.Ticker, c.item.Price.Date.String(), delErr)
-	}
-	np := pricedom.NewPrice(c.sec.ID, c.item.Price.Date, quote.Price, pricedom.SourceAPI)
-	if addErr := svc.Price.AddPrice(np); addErr != nil {
-		return "", "", fmt.Errorf("add refetched %s @ %s: %w", c.sec.Ticker, c.item.Price.Date.String(), addErr)
+	// Update the existing row in place (price + source) rather than delete+add.
+	// UpdatePrice upserts by (security, date), so it is atomic, keeps the row,
+	// and avoids DuckDB's "Failed to delete all rows from index" error, which
+	// can strike an individual row on a DELETE.
+	updated := pricedom.NewPrice(c.sec.ID, c.item.Price.Date, quote.Price, pricedom.SourceAPI)
+	if upErr := svc.Price.UpdatePrice(updated); upErr != nil {
+		return "", "", fmt.Errorf("update %s @ %s: %w", c.sec.Ticker, c.item.Price.Date.String(), upErr)
 	}
 	return "refetched", cmdutil.FormatMoney(quote.Price, c.sec.Currency), nil
 }
