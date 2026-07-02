@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -109,6 +110,22 @@ const (
 	schedFieldLeadDays   = 12
 	schedFieldSplit      = 13
 )
+
+// accountIsAssetByID reports whether the account with the given ID in
+// accounts is of type asset specifically (Type == TypeAsset, not the
+// broader IsAssetType). Used to decide whether the Value Adjustment
+// category is offered in a scheduled-transaction category picker.
+func accountIsAssetByID(accounts []*account.Account, id types.ID) bool {
+	if id.IsNil() {
+		return false
+	}
+	for _, acc := range accounts {
+		if acc != nil && acc.ID == id {
+			return acc.Type == account.TypeAsset
+		}
+	}
+	return false
+}
 
 // buildFrequencyOptions returns display names for all frequencies.
 func buildFrequencyOptions() []string {
@@ -453,7 +470,81 @@ func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 		return a.openCreateCategorySubDialogFromSched()
 	}
 
+	// The account picker is editable in this dialog; if the user just
+	// switched it to (or away from) an asset account, refresh the
+	// category options so Value Adjustment appears/disappears. No-op
+	// unless the asset-ness actually changed. Skipped for the transfer
+	// dialog, which has no category field.
+	if a.schedDialogData != nil && !a.schedDialogData.isTransfer {
+		a.refreshSchedCategoryOptionsForAccount()
+	}
+
 	return a, nil
+}
+
+// schedDialogIncludeValueAdjustment reports whether the scheduled
+// dialog's currently selected account is an asset account, and thus
+// whether the Value Adjustment category should be offered in its
+// category picker.
+func (a *App) schedDialogIncludeValueAdjustment() bool {
+	if a.schedDialog == nil || a.schedDialogData == nil {
+		return false
+	}
+	fields := a.schedDialog.Fields()
+	if len(fields) <= schedFieldAccount {
+		return false
+	}
+	acctIdx := fields[schedFieldAccount].SelectedIndex
+	if acctIdx < 0 || acctIdx >= len(a.schedDialogAccountIDs) {
+		return false
+	}
+	return accountIsAssetByID(a.schedDialogData.accounts, a.schedDialogAccountIDs[acctIdx])
+}
+
+// refreshSchedCategoryOptionsForAccount rebuilds the scheduled dialog's
+// category combo when the selected account's asset-ness has changed
+// since the options were last built — surfacing or hiding the Value
+// Adjustment category accordingly. It preserves the current category
+// selection by ID and is a no-op when nothing changed (so it is cheap
+// to call on every keypress).
+func (a *App) refreshSchedCategoryOptionsForAccount() {
+	if a.schedDialog == nil || a.categorySvc == nil {
+		return
+	}
+	fields := a.schedDialog.Fields()
+	if len(fields) <= schedFieldCategory {
+		return
+	}
+
+	includeVA := a.schedDialogIncludeValueAdjustment()
+	hasVA := slices.Contains(a.schedDialogCategoryOptions, category.ValueAdjustmentCategoryName)
+	if hasVA == includeVA {
+		return
+	}
+
+	catField := fields[schedFieldCategory]
+	selectedID := types.NilID
+	if catField.SelectedIndex >= 0 && catField.SelectedIndex < len(a.schedDialogCategoryIDs) {
+		selectedID = a.schedDialogCategoryIDs[catField.SelectedIndex]
+	}
+
+	cats, err := a.categorySvc.List()
+	if err != nil {
+		return
+	}
+	options, ids := buildCategoryOptionsFor(cats, includeVA)
+	a.schedDialogCategoryOptions = options
+	a.schedDialogCategoryIDs = ids
+	catField.Options = options
+
+	newIdx := 0
+	for i, id := range ids {
+		if id == selectedID {
+			newIdx = i
+			break
+		}
+	}
+	catField.SelectedIndex = newIdx
 }
 
 // openCreateCategorySubDialogFromSched hides the scheduled dialog and opens
@@ -499,7 +590,7 @@ func (a *App) applyCreatedCategoryToSched(newCat *category.Category, cats []*cat
 		a.createCatDialog = nil
 		return
 	}
-	options, ids := buildCategoryOptions(cats)
+	options, ids := buildCategoryOptionsFor(cats, a.schedDialogIncludeValueAdjustment())
 	a.schedDialogCategoryIDs = ids
 	a.schedDialogCategoryOptions = options
 

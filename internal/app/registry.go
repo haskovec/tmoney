@@ -49,6 +49,12 @@ type Services struct {
 	PositionRepo        *investment.PositionRepository
 	TransactionLotRepo  *investment.TransactionLotRepository
 	CorporateActionRepo *investment.CorporateActionRepository
+
+	// ValueAdjustmentUserCollision is true when a *user* (non-system)
+	// category named "Value Adjustment" already exists, so the system
+	// category could not be seeded on open. The TUI surfaces a one-time
+	// notice; the CLI ignores it.
+	ValueAdjustmentUserCollision bool
 }
 
 // NewServices creates all repositories and services with proper dependency wiring.
@@ -80,6 +86,10 @@ func NewServices(database *db.DB) *Services {
 	// databases gain them automatically; best-effort, matches the
 	// HealAllAccounts precedent below.
 	_ = categorySvc.EnsurePaycheckCategories()
+	// Seed the system Value Adjustment category on every open (same
+	// best-effort rationale). A collision with a pre-existing user
+	// category is surfaced to the TUI as a one-time notice.
+	valueAdjustmentCollision, _ := categorySvc.EnsureValueAdjustmentCategory()
 	payeeSvc := payee.NewService(payeeRepo, database)
 	securitySvc := security.NewService(securityRepo, database,
 		security.WithLotChecker(lotRepo),
@@ -138,6 +148,8 @@ func NewServices(database *db.DB) *Services {
 		PositionRepo:        positionRepo,
 		TransactionLotRepo:  transactionLotRepo,
 		CorporateActionRepo: corporateActionRepo,
+
+		ValueAdjustmentUserCollision: valueAdjustmentCollision,
 	}
 }
 

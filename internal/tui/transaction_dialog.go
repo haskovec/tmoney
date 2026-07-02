@@ -151,6 +151,24 @@ func buildSplitTransferAccountOptions(accounts []*account.Account) ([]string, []
 // First entry is "(None)" with a nil ID. Subcategories are formatted as "Parent > Child".
 // System categories are excluded. Results are sorted alphabetically.
 func buildCategoryOptions(categories []*category.Category) ([]string, []types.ID) {
+	return buildCategoryOptionsFor(categories, false)
+}
+
+// buildCategoryOptionsForAccount is buildCategoryOptions with the Value
+// Adjustment system category surfaced when acct is of type asset
+// specifically (Type == TypeAsset, not the broader IsAssetType). A nil
+// account behaves like buildCategoryOptions (all system categories
+// hidden).
+func buildCategoryOptionsForAccount(categories []*category.Category, acct *account.Account) ([]string, []types.ID) {
+	return buildCategoryOptionsFor(categories, acct != nil && acct.Type == account.TypeAsset)
+}
+
+// buildCategoryOptionsFor is buildCategoryOptions with an escape hatch:
+// when includeValueAdjustment is true the system Value Adjustment
+// category is surfaced (for asset-account pickers). Every other system
+// category — Transfer in particular — stays hidden regardless, because
+// the exception is scoped to that one name.
+func buildCategoryOptionsFor(categories []*category.Category, includeValueAdjustment bool) ([]string, []types.ID) {
 	options := []string{"(None)"}
 	ids := []types.ID{types.NilID}
 
@@ -169,7 +187,10 @@ func buildCategoryOptions(categories []*category.Category) ([]string, []types.ID
 	var entries []catEntry
 
 	for _, c := range categories {
-		if c.IsSystem {
+		// System categories are hidden, with one exception: the Value
+		// Adjustment category is surfaced for asset-account pickers.
+		valueAdjustmentException := includeValueAdjustment && c.Name == category.ValueAdjustmentCategoryName
+		if c.IsSystem && !valueAdjustmentException {
 			continue
 		}
 		var displayName string
@@ -609,7 +630,7 @@ func (a *App) applyCreatedCategoryToTxn(newCat *category.Category, cats []*categ
 	if a.txnDialogData != nil {
 		a.txnDialogData.categories = cats
 	}
-	options, ids := buildCategoryOptions(cats)
+	options, ids := buildCategoryOptionsForAccount(cats, a.sidebar.SelectedAccount())
 	a.txnDialogCategoryIDs = ids
 
 	if a.txnDialog != nil && len(a.txnDialog.Fields()) >= 3 {

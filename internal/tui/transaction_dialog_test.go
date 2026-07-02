@@ -171,6 +171,108 @@ func TestBuildCategoryOptions(t *testing.T) {
 	}
 }
 
+func TestBuildCategoryOptionsFor_ValueAdjustment(t *testing.T) {
+	categories := []*category.Category{
+		{
+			BaseModel: types.BaseModel{ID: types.NewID()},
+			Name:      "Food",
+			Type:      category.TypeExpense,
+		},
+		{
+			BaseModel: types.BaseModel{ID: types.NewID()},
+			Name:      category.TransferCategoryName,
+			Type:      category.TypeExpense,
+			IsSystem:  true,
+		},
+		{
+			BaseModel: types.BaseModel{ID: types.NewID()},
+			Name:      category.ValueAdjustmentCategoryName,
+			Type:      category.TypeExpense,
+			IsSystem:  true,
+		},
+	}
+
+	t.Run("excludes Value Adjustment by default", func(t *testing.T) {
+		options, _ := buildCategoryOptionsFor(categories, false)
+		if slices.Contains(options, category.ValueAdjustmentCategoryName) {
+			t.Error("Value Adjustment should be excluded when includeValueAdjustment is false")
+		}
+		if slices.Contains(options, category.TransferCategoryName) {
+			t.Error("Transfer should always be excluded")
+		}
+	})
+
+	t.Run("includes Value Adjustment when requested but never Transfer", func(t *testing.T) {
+		options, ids := buildCategoryOptionsFor(categories, true)
+		if !slices.Contains(options, category.ValueAdjustmentCategoryName) {
+			t.Errorf("Value Adjustment should be included; got %v", options)
+		}
+		if slices.Contains(options, category.TransferCategoryName) {
+			t.Error("Transfer must stay excluded even when Value Adjustment is surfaced")
+		}
+		// Options and IDs stay parallel.
+		if len(options) != len(ids) {
+			t.Fatalf("options/ids length mismatch: %d vs %d", len(options), len(ids))
+		}
+	})
+}
+
+func TestBuildCategoryOptionsForAccount(t *testing.T) {
+	categories := []*category.Category{
+		{
+			BaseModel: types.BaseModel{ID: types.NewID()},
+			Name:      category.ValueAdjustmentCategoryName,
+			Type:      category.TypeExpense,
+			IsSystem:  true,
+		},
+	}
+
+	tests := []struct {
+		name   string
+		acct   *account.Account
+		wantVA bool
+	}{
+		{"asset account offers Value Adjustment", &account.Account{Type: account.TypeAsset}, true},
+		{"checking account does not", &account.Account{Type: account.TypeChecking}, false},
+		{"investment account does not (IsAssetType but not TypeAsset)", &account.Account{Type: account.TypeInvestment}, false},
+		{"loan account does not", &account.Account{Type: account.TypeLoan}, false},
+		{"nil account does not", nil, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			options, _ := buildCategoryOptionsForAccount(categories, tc.acct)
+			got := slices.Contains(options, category.ValueAdjustmentCategoryName)
+			if got != tc.wantVA {
+				t.Errorf("Value Adjustment present = %v, want %v (options=%v)", got, tc.wantVA, options)
+			}
+		})
+	}
+}
+
+func TestAccountIsAssetByID(t *testing.T) {
+	asset := &account.Account{BaseModel: types.BaseModel{ID: types.NewID()}, Type: account.TypeAsset}
+	checking := &account.Account{BaseModel: types.BaseModel{ID: types.NewID()}, Type: account.TypeChecking}
+	investment := &account.Account{BaseModel: types.BaseModel{ID: types.NewID()}, Type: account.TypeInvestment}
+	accounts := []*account.Account{asset, checking, investment}
+
+	if !accountIsAssetByID(accounts, asset.ID) {
+		t.Error("asset account should be recognized as TypeAsset")
+	}
+	if accountIsAssetByID(accounts, checking.ID) {
+		t.Error("checking account should not be TypeAsset")
+	}
+	if accountIsAssetByID(accounts, investment.ID) {
+		t.Error("investment account should not be TypeAsset (IsAssetType is broader)")
+	}
+	if accountIsAssetByID(accounts, types.NewID()) {
+		t.Error("unknown account ID should return false")
+	}
+	if accountIsAssetByID(accounts, types.NilID) {
+		t.Error("nil account ID should return false")
+	}
+}
+
 func TestBuildCategoryOptions_Empty(t *testing.T) {
 	options, ids := buildCategoryOptions(nil)
 

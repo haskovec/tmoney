@@ -275,6 +275,60 @@ func TestTransactionAdd_WithCategory(t *testing.T) {
 	}
 }
 
+// TestTransactionAdd_ValueAdjustmentCategory verifies that the system
+// Value Adjustment category — seeded on open by OpenServices — resolves
+// on the CLI. Unlike the TUI picker (which hides system categories
+// except for asset accounts), the CLI resolves any category by name, so
+// a value-adjustment row can be scripted on an asset account.
+func TestTransactionAdd_ValueAdjustmentCategory(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("House", account.TypeAsset, "USD", types.MustNewMoney("450000.00"), types.Today())
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("setup: create asset account: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	// No pre-seeding: OpenServices seeds the system category on open.
+	err := cli.ExecuteWith([]string{"transaction", "add", "--file", dbPath, "--account", "House", "--amount", "-5000.00", "--category", category.ValueAdjustmentCategoryName}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("cli.ExecuteWith(transaction add --category Value Adjustment): %v\nstderr=%s", err, stderr)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, category.ValueAdjustmentCategoryName) {
+		t.Errorf("expected Value Adjustment in output, got: %s", out)
+	}
+
+	database, err = db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("post: db.Open: %v", err)
+	}
+	defer database.Close()
+	txnRepo := transactiondom.NewRepository(database)
+	transactions, err := txnRepo.ListByAccount(acct.ID)
+	if err != nil {
+		t.Fatalf("list transactions: %v", err)
+	}
+	if len(transactions) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(transactions))
+	}
+	if !transactions[0].CategoryID.Valid {
+		t.Error("transaction should have the Value Adjustment category set")
+	}
+
+	// The resolved category must be the system one.
+	catSvc := category.NewService(category.NewRepository(database), database)
+	va, err := catSvc.GetValueAdjustmentCategory()
+	if err != nil {
+		t.Fatalf("GetValueAdjustmentCategory: %v", err)
+	}
+	if transactions[0].CategoryID.ID != va.ID {
+		t.Error("transaction should reference the system Value Adjustment category")
+	}
+}
+
 func TestTransactionAdd_WithDateAndMemo(t *testing.T) {
 	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	acctRepo := account.NewRepository(database)

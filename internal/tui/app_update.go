@@ -402,7 +402,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case transactionDialogDataMsg:
 		a.txnDialogData = msg.data
-		categoryOptions, categoryIDs := buildCategoryOptions(msg.data.categories)
+		categoryOptions, categoryIDs := buildCategoryOptionsForAccount(msg.data.categories, a.sidebar.SelectedAccount())
 		a.txnDialogCategoryIDs = categoryIDs
 		a.txnDialog = buildTransactionDialog(msg.data, categoryOptions, categoryIDs, a.txnDialogLastSavedDate)
 		return a, nil
@@ -522,7 +522,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				categories = cats
 			}
 		}
-		categoryOptions, categoryIDs := buildCategoryOptions(categories)
+		// Surface the Value Adjustment category when the initially
+		// selected account is an asset account (edit: the schedule's
+		// account; new: the first account, which the picker defaults
+		// to). The picker tracks later account changes via
+		// refreshSchedCategoryOptionsForAccount.
+		initialAcctID := types.NilID
+		if msg.data.mode == scheduledDialogModeEdit && msg.data.scheduled != nil {
+			initialAcctID = msg.data.scheduled.AccountID
+		} else if len(accountIDs) > 0 {
+			initialAcctID = accountIDs[0]
+		}
+		includeVA := accountIsAssetByID(msg.data.accounts, initialAcctID)
+		categoryOptions, categoryIDs := buildCategoryOptionsFor(categories, includeVA)
 		a.schedDialogCategoryIDs = categoryIDs
 		a.schedDialogCategoryOptions = categoryOptions
 

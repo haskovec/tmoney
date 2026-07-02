@@ -90,6 +90,21 @@ tmoney -f personal.tdb account balance
 - Two-level hierarchy (parent/subcategory, e.g. "Food:Groceries")
 - Income vs expense classification
 - Default categories provided on new file creation
+- **Value Adjustment** — a system category (like `Transfer`) for asset
+  revaluations. It is created automatically on file open, excluded from
+  spending reports, and protected from rename/delete/merge. Unlike
+  `Transfer`, it is offered in the category picker — but only for
+  **asset**-type accounts. Use it to record changes in what an asset is
+  worth:
+  - **Home value update**: add a transaction in the asset account's
+    register for the delta (e.g. `+15,000` when the estimate rises),
+    category `Value Adjustment`.
+  - **Straight-line depreciation** (e.g. a car): a plain monthly
+    scheduled transaction on the asset account for a fixed negative
+    amount, category `Value Adjustment`.
+
+  Because it is a system category, these revaluations never distort your
+  spending-by-category report.
 
 ### Payees
 - Auto-creation on first use

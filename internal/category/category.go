@@ -82,6 +82,22 @@ func (ct *Type) Scan(value any) error {
 	return nil
 }
 
+// System category names. These are stable identifiers for the
+// engine-managed categories; code that special-cases a system category
+// (seeding, picker visibility, transfer assignment) keys off these
+// rather than repeating the literal.
+const (
+	// TransferCategoryName is the system category assigned to the
+	// engine-managed side of a linked transfer.
+	TransferCategoryName = "Transfer"
+	// ValueAdjustmentCategoryName is the system category used for asset
+	// revaluations (home value updates, straight-line depreciation).
+	// Like Transfer it is excluded from spending reports; unlike
+	// Transfer it is offered in the category picker, but only for
+	// asset-type accounts.
+	ValueAdjustmentCategoryName = "Value Adjustment"
+)
+
 // Category represents a transaction category.
 type Category struct {
 	types.BaseModel

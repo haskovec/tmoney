@@ -36,6 +36,14 @@ type Config struct {
 	// default of false (closed positions hidden).
 	ShowClosedPositions bool `json:"show_closed_positions,omitempty"`
 
+	// ValueAdjustmentNoticeShown records that the user has already been
+	// warned that their pre-existing user category named "Value
+	// Adjustment" collides with the system category and will not be
+	// excluded from spending reports. Gates that notice to fire once
+	// (across sessions) rather than on every launch. Old config files
+	// without this key default to false (notice not yet shown).
+	ValueAdjustmentNoticeShown bool `json:"value_adjustment_notice_shown,omitempty"`
+
 	// path is the file path where this config is stored (not serialized).
 	path string `json:"-"`
 }

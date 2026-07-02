@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
@@ -65,6 +66,18 @@ func (r *categoryRepo) createCategory(t *testing.T, name string, catType string)
 	_, err := r.db.Conn().Exec(query, id, name, catType, now.Time(), now.Time())
 	if err != nil {
 		t.Fatalf("Failed to create category: %v", err)
+	}
+	return id
+}
+
+func (r *categoryRepo) createSystemCategory(t *testing.T, name string, catType string) types.ID {
+	t.Helper()
+	id := types.NewID()
+	now := types.Now()
+	query := `INSERT INTO categories (id, name, type, system_category, created_at, updated_at) VALUES (?, ?, ?, true, ?, ?)`
+	_, err := r.db.Conn().Exec(query, id, name, catType, now.Time(), now.Time())
+	if err != nil {
+		t.Fatalf("Failed to create system category: %v", err)
 	}
 	return id
 }
@@ -1036,6 +1049,46 @@ func TestService_SpendingByCategoryMonth_DirectTransactions(t *testing.T) {
 			t.Errorf("Expected 100%% percentage, got %.1f%%", cat.Percentage)
 		}
 	})
+}
+
+func TestService_SpendingByCategory_ExcludesValueAdjustment(t *testing.T) {
+	database := createTestDB(t)
+	accountRepo := account.NewRepository(database)
+	txnRepo := &transactionRepo{db: database}
+	catRepo := &categoryRepo{db: database}
+	svc := NewService(accountRepo, database)
+
+	// Asset account — where value-adjustment (revaluation) rows live.
+	balance, _ := types.NewMoney("450000.00")
+	house := account.NewAccount("123 Main St", account.TypeAsset, "USD", balance, types.Today())
+	if err := accountRepo.Create(house); err != nil {
+		t.Fatalf("Failed to create asset account: %v", err)
+	}
+
+	groceriesID := catRepo.createCategory(t, "Groceries", "expense")
+	valueAdjID := catRepo.createSystemCategory(t, category.ValueAdjustmentCategoryName, "expense")
+
+	txnDate := types.NewDate(2024, 1, 15)
+	spend, _ := types.NewMoney("-100.00")
+	txnRepo.createTransactionWithCategory(t, house.ID, txnDate, spend, groceriesID)
+	// A large negative revaluation must NOT show up as spending.
+	reval, _ := types.NewMoney("-5000.00")
+	txnRepo.createTransactionWithCategory(t, house.ID, txnDate, reval, valueAdjID)
+
+	report, err := svc.SpendingByCategoryMonth(2024, 1)
+	if err != nil {
+		t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+	}
+
+	for _, c := range report.Categories {
+		if c.Name == category.ValueAdjustmentCategoryName {
+			t.Errorf("system Value Adjustment category should be excluded from spending; got categories %v", report.Categories)
+		}
+	}
+	expected, _ := types.NewMoney("100.00")
+	if !report.TotalSpending.Equal(expected) {
+		t.Errorf("total spending = %s, want %s (Value Adjustment must not count)", report.TotalSpending.String(), expected.String())
+	}
 }
 
 func TestService_SpendingByCategoryYear(t *testing.T) {

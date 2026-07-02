@@ -23,6 +23,42 @@ func TestDefaultCategories(t *testing.T) {
 		}
 	})
 
+	t.Run("contains Value Adjustment system category", func(t *testing.T) {
+		found := false
+		for _, dc := range DefaultCategories {
+			if dc.Name == ValueAdjustmentCategoryName && dc.IsSystem {
+				if dc.Type != TypeExpense {
+					t.Errorf("Value Adjustment should be expense-typed, got %q", dc.Type)
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("DefaultCategories should contain Value Adjustment system category")
+		}
+	})
+
+	t.Run("contains Loan:Interest as a non-system category", func(t *testing.T) {
+		found := false
+		for _, dc := range DefaultCategories {
+			if dc.Name != "Loan" {
+				continue
+			}
+			if dc.IsSystem {
+				t.Error("Loan category should not be a system category")
+			}
+			if !slices.Contains(dc.Children, "Interest") {
+				t.Errorf("Loan category should have an Interest child, got %v", dc.Children)
+			}
+			found = true
+			break
+		}
+		if !found {
+			t.Error("DefaultCategories should contain a Loan parent category")
+		}
+	})
+
 	t.Run("contains income categories", func(t *testing.T) {
 		incomeCount := 0
 		for _, dc := range DefaultCategories {
@@ -927,6 +963,143 @@ func TestService_MergeCategories(t *testing.T) {
 		}
 		if !updatedChild.ParentID.Valid || updatedChild.ParentID.ID != target.ID {
 			t.Error("Child should be reassigned to target")
+		}
+	})
+}
+
+func TestService_EnsureValueAdjustmentCategory(t *testing.T) {
+	t.Run("seeds the system category on a fresh database", func(t *testing.T) {
+		database := createTestDB(t)
+		svc := NewService(NewRepository(database), database)
+
+		collision, err := svc.EnsureValueAdjustmentCategory()
+		if err != nil {
+			t.Fatalf("EnsureValueAdjustmentCategory() error = %v", err)
+		}
+		if collision {
+			t.Error("expected no user collision on a fresh database")
+		}
+
+		cat, err := svc.GetByName(ValueAdjustmentCategoryName, nil)
+		if err != nil {
+			t.Fatalf("GetByName(%q) error = %v", ValueAdjustmentCategoryName, err)
+		}
+		if !cat.IsSystem {
+			t.Error("Value Adjustment should be created as a system category")
+		}
+		if cat.Type != TypeExpense {
+			t.Errorf("Value Adjustment type = %q, want expense", cat.Type)
+		}
+	})
+
+	t.Run("is idempotent and does not duplicate", func(t *testing.T) {
+		database := createTestDB(t)
+		svc := NewService(NewRepository(database), database)
+
+		for i := range 3 {
+			collision, err := svc.EnsureValueAdjustmentCategory()
+			if err != nil {
+				t.Fatalf("EnsureValueAdjustmentCategory() call %d error = %v", i, err)
+			}
+			if collision {
+				t.Errorf("call %d: unexpected user collision", i)
+			}
+		}
+
+		all, err := svc.List()
+		if err != nil {
+			t.Fatalf("List() error = %v", err)
+		}
+		count := 0
+		for _, c := range all {
+			if c.Name == ValueAdjustmentCategoryName {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("expected exactly 1 Value Adjustment category, got %d", count)
+		}
+	})
+
+	t.Run("reports a collision and preserves a pre-existing user category", func(t *testing.T) {
+		database := createTestDB(t)
+		svc := NewService(NewRepository(database), database)
+
+		// A user creates their own (non-system) category with the same name.
+		userCat := NewCategory(ValueAdjustmentCategoryName, TypeExpense)
+		if err := svc.Create(userCat); err != nil {
+			t.Fatalf("Create user category error = %v", err)
+		}
+
+		collision, err := svc.EnsureValueAdjustmentCategory()
+		if err != nil {
+			t.Fatalf("EnsureValueAdjustmentCategory() error = %v", err)
+		}
+		if !collision {
+			t.Error("expected a user collision to be reported")
+		}
+
+		// The user's category must be left untouched (still non-system),
+		// and no second one created.
+		got, err := svc.GetByName(ValueAdjustmentCategoryName, nil)
+		if err != nil {
+			t.Fatalf("GetByName error = %v", err)
+		}
+		if got.ID != userCat.ID {
+			t.Error("the pre-existing user category should be preserved")
+		}
+		if got.IsSystem {
+			t.Error("the user category should not have been converted to a system category")
+		}
+	})
+}
+
+func TestService_GetValueAdjustmentCategory(t *testing.T) {
+	t.Run("returns not found before seeding", func(t *testing.T) {
+		database := createTestDB(t)
+		svc := NewService(NewRepository(database), database)
+
+		if _, err := svc.GetValueAdjustmentCategory(); err == nil {
+			t.Error("expected a not-found error before seeding")
+		}
+	})
+
+	t.Run("returns the system category after seeding", func(t *testing.T) {
+		database := createTestDB(t)
+		svc := NewService(NewRepository(database), database)
+
+		if _, err := svc.EnsureValueAdjustmentCategory(); err != nil {
+			t.Fatalf("EnsureValueAdjustmentCategory() error = %v", err)
+		}
+		cat, err := svc.GetValueAdjustmentCategory()
+		if err != nil {
+			t.Fatalf("GetValueAdjustmentCategory() error = %v", err)
+		}
+		if !cat.IsSystem || cat.Name != ValueAdjustmentCategoryName {
+			t.Errorf("got %+v, want the system Value Adjustment category", cat)
+		}
+	})
+
+	t.Run("does not confuse Transfer and Value Adjustment", func(t *testing.T) {
+		database := createTestDB(t)
+		svc := NewService(NewRepository(database), database)
+
+		if err := svc.SeedDefaultCategories(); err != nil {
+			t.Fatalf("SeedDefaultCategories() error = %v", err)
+		}
+		va, err := svc.GetValueAdjustmentCategory()
+		if err != nil {
+			t.Fatalf("GetValueAdjustmentCategory() error = %v", err)
+		}
+		transfer, err := svc.GetTransferCategory()
+		if err != nil {
+			t.Fatalf("GetTransferCategory() error = %v", err)
+		}
+		if va.ID == transfer.ID {
+			t.Error("Value Adjustment and Transfer must be distinct categories")
+		}
+		if va.Name != ValueAdjustmentCategoryName || transfer.Name != TransferCategoryName {
+			t.Error("accessors returned mismatched categories")
 		}
 	})
 }

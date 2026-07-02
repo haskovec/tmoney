@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -422,7 +423,11 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 			categories = cs
 		}
 
-		categoryOptions, categoryIDs := buildCategoryOptions(categories)
+		// Offer Value Adjustment when the schedule posts to an asset
+		// account, so a value-adjustment line (e.g. depreciation)
+		// survives an edit-at-post rather than reverting to (None).
+		includeVA := accountIsAssetByID(accounts, template.AccountID)
+		categoryOptions, categoryIDs := buildCategoryOptionsFor(categories, includeVA)
 		return schedulePreviewDataMsg{
 			template:        template,
 			accounts:        accounts,
@@ -601,7 +606,13 @@ func (a *App) applyCreatedCategoryToSchedPreview(newCat *category.Category, cats
 		a.createCatDialog = nil
 		return
 	}
-	options, ids := buildCategoryOptions(cats)
+	// Preserve the build-time decision to surface Value Adjustment
+	// (asset-account previews) across the inline category-create rebuild.
+	includeVA := false
+	if len(header.Fields()) > previewSingleFieldCat {
+		includeVA = slices.Contains(header.Fields()[previewSingleFieldCat].Options, category.ValueAdjustmentCategoryName)
+	}
+	options, ids := buildCategoryOptionsFor(cats, includeVA)
 	a.schedPreviewDialog.categoryIDs = ids
 
 	if len(header.Fields()) > previewSingleFieldCat {

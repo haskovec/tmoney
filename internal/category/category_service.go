@@ -21,7 +21,16 @@ type DefaultCategory struct {
 var DefaultCategories = []DefaultCategory{
 	// System category for transfers between accounts
 	{
-		Name:     "Transfer",
+		Name:     TransferCategoryName,
+		Type:     TypeExpense,
+		IsSystem: true,
+	},
+
+	// System category for asset revaluations (home value updates,
+	// straight-line depreciation). Excluded from spending reports like
+	// Transfer; the TUI picker surfaces it for asset accounts only.
+	{
+		Name:     ValueAdjustmentCategoryName,
 		Type:     TypeExpense,
 		IsSystem: true,
 	},
@@ -128,6 +137,17 @@ var DefaultCategories = []DefaultCategory{
 			"Bank Fees",
 			"Late Fees",
 			"Interest Paid",
+		},
+	},
+	// Loan payment interest expense. The loan wizard books the interest
+	// portion of a payment here (default; overridable). Non-system so
+	// users can rename/merge it; the child is get-or-created at
+	// loan-creation time for existing files.
+	{
+		Name: "Loan",
+		Type: TypeExpense,
+		Children: []string{
+			"Interest",
 		},
 	},
 	{
@@ -241,12 +261,12 @@ func (s *Service) GetTransferCategory() (*Category, error) {
 	}
 
 	for _, cat := range categories {
-		if cat.IsSystem && cat.Name == "Transfer" {
+		if cat.IsSystem && cat.Name == TransferCategoryName {
 			return cat, nil
 		}
 	}
 
-	return nil, &dberrors.NotFoundError{Entity: "category", ID: "Transfer"}
+	return nil, &dberrors.NotFoundError{Entity: "category", ID: TransferCategoryName}
 }
 
 // EnsurePaycheckCategories creates any missing (parent, child) pairs
@@ -276,6 +296,60 @@ func (s *Service) EnsurePaycheckCategories() error {
 		}
 	}
 	return nil
+}
+
+// GetValueAdjustmentCategory returns the system Value Adjustment
+// category used for asset revaluations. Returns a NotFoundError when it
+// has not been seeded (call EnsureValueAdjustmentCategory first).
+func (s *Service) GetValueAdjustmentCategory() (*Category, error) {
+	categories, err := s.repo.List()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, cat := range categories {
+		if cat.IsSystem && cat.Name == ValueAdjustmentCategoryName {
+			return cat, nil
+		}
+	}
+
+	return nil, &dberrors.NotFoundError{Entity: "category", ID: ValueAdjustmentCategoryName}
+}
+
+// EnsureValueAdjustmentCategory creates the system Value Adjustment
+// category when no top-level category of that name exists yet. It is
+// idempotent and safe to call on every database open (the
+// EnsurePaycheckCategories precedent) so existing files gain the
+// category without a migration.
+//
+// Unlike EnsurePaycheckCategories, which only creates non-system
+// categories, this seeds a *system* category so the spending report and
+// TUI mutation guards treat it like Transfer.
+//
+// The boolean return reports a name collision with a pre-existing
+// *user* (non-system) category: in that case the system category is NOT
+// created (a top-level name is unique), the user's category is left
+// untouched, and callers should surface a one-time notice that
+// spending-report exclusion will not apply to it. A false return means
+// the category was created, already existed as the system category, or
+// the lookup failed (see err).
+func (s *Service) EnsureValueAdjustmentCategory() (userCollision bool, err error) {
+	existing, err := s.repo.GetByName(ValueAdjustmentCategoryName, nil)
+	if err == nil {
+		// A category with this name already exists at the top level.
+		// If it is the system one we seeded, there is nothing to do;
+		// otherwise it is a user category we must not touch.
+		return !existing.IsSystem, nil
+	}
+	if _, ok := err.(*dberrors.NotFoundError); !ok {
+		return false, fmt.Errorf("lookup %q: %w", ValueAdjustmentCategoryName, err)
+	}
+
+	cat := NewSystemCategory(ValueAdjustmentCategoryName, TypeExpense)
+	if err := s.repo.Create(cat); err != nil {
+		return false, fmt.Errorf("create %q: %w", ValueAdjustmentCategoryName, err)
+	}
+	return false, nil
 }
 
 // HasDefaultCategories checks if default categories have been seeded.

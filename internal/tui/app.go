@@ -451,6 +451,13 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		}
 	}
 
+	// If a pre-existing user category blocked seeding the system Value
+	// Adjustment category, warn the user once (log + toast). The toast's
+	// auto-clear is scheduled in Init alongside the theme toast's.
+	if svc.ValueAdjustmentUserCollision {
+		a.surfaceValueAdjustmentCollision()
+	}
+
 	return a
 }
 

@@ -63,37 +63,64 @@ The one behavior-change phase; everything else is additive.
 - [x] README note + release-note blurb: users who entered loan balances
       positive must flip the opening-balance sign once.
 
-## Phase 2: `Value Adjustment` System Category — [ ]
+## Phase 2: `Value Adjustment` System Category — [x]
 
-- [ ] New seed helper (the `EnsurePaycheckCategories` pattern creates
-      *non-system* categories and cannot be reused verbatim): on open,
-      create system category `Value Adjustment` (expense-classified,
-      like system `Transfer`) **iff no category with that name exists**.
-      If a user category with that name exists, leave it untouched and
-      surface a one-time notice (log + status-bar toast) that
-      spending-report exclusion will not apply.
-- [ ] Picker plumbing: extend `buildCategoryOptions`
-      (`internal/tui/transaction_dialog.go:152`) so dialogs whose
-      account is of type **`asset` specifically** (`Type == TypeAsset`,
-      *not* `IsAssetType()`, which includes checking/savings/cash)
-      additionally offer the `Value Adjustment` system category — the
-      system `Transfer` category stays hidden everywhere. Wire through
-      the transaction dialog and scheduled dialog loaders. Without this
-      the category is unusable in the TUI (system categories are
-      excluded from every picker today).
-- [ ] Idempotent on every open; created for existing databases too.
-- [ ] Add `Loan` parent + `Interest` child to `DefaultCategories`
-      (regular, non-system) so **new** files carry the loan-interest
-      default from day one; existing files get it via the wizard/CLI
-      get-or-create at save time (Phases 7/9) — no on-open seed needed
-      for it.
-- [ ] Tests: seeded on new + existing files; collision leaves user
-      category untouched + notices; spending report excludes it; asset
-      register picker offers it, checking register picker does not;
-      CLI `transaction add --category "Value Adjustment"` works.
-- [ ] Docs: README blurb — asset revaluation / straight-line car
-      depreciation recipe (manual entry or plain scheduled transaction
-      on the asset account, category Value Adjustment).
+- [x] New seed helper (the `EnsurePaycheckCategories` pattern creates
+      *non-system* categories and cannot be reused verbatim):
+      `Service.EnsureValueAdjustmentCategory()`
+      (`internal/category/category_service.go`) creates system category
+      `Value Adjustment` (expense-classified, like system `Transfer`)
+      **iff no top-level category with that name exists**. Returns a
+      `userCollision bool`: if a *user* category with that name exists,
+      it is left untouched and the boolean is set so the TUI surfaces a
+      one-time notice (log + status-bar toast,
+      `internal/tui/value_adjustment_notice.go`) that spending-report
+      exclusion will not apply. The notice is gated on a new
+      `config.ValueAdjustmentNoticeShown` flag so it fires once across
+      sessions. A `GetValueAdjustmentCategory()` accessor mirrors
+      `GetTransferCategory`. Name constants (`TransferCategoryName`,
+      `ValueAdjustmentCategoryName`) added in `internal/category`.
+- [x] Picker plumbing: `buildCategoryOptions` refactored into a wrapper
+      over `buildCategoryOptionsFor(cats, includeValueAdjustment)` plus
+      `buildCategoryOptionsForAccount(cats, *account.Account)`
+      (`internal/tui/transaction_dialog.go`). The exception is
+      **name-scoped** to `Value Adjustment` and gated on
+      **`Type == TypeAsset` specifically** (*not* `IsAssetType()`), so
+      `Transfer` stays hidden everywhere. Wired through the transaction
+      dialog (fixed sidebar account), the scheduled dialog (account is
+      user-mutable → `refreshSchedCategoryOptionsForAccount` rebuilds
+      the combo on account change, preserving selection), and the
+      post-time preview dialog (keyed on the template's account, so a
+      value-adjustment line survives an edit-at-post rather than
+      reverting to `(None)`). Split rows and the paycheck wizard keep
+      the default (VA hidden).
+- [x] Idempotent on every open; created for existing databases too —
+      wired best-effort in `internal/app/registry.go` right after
+      `EnsurePaycheckCategories` (runs for both TUI and CLI). The
+      collision bool is carried on `Services.ValueAdjustmentUserCollision`.
+- [x] Add `Loan` parent + `Interest` child to `DefaultCategories`
+      (regular, non-system). **Note:** `SeedDefaultCategories` has *no*
+      production caller today (only `EnsurePaycheckCategories` runs on
+      open), so this entry does not by itself seed new files — the real
+      provisioning is the wizard/CLI get-or-create at save time
+      (Phases 7/9). The `DefaultCategories` entry keeps a single source
+      of truth and feeds the seed-based tests. (Fixing the dormant
+      `SeedDefaultCategories` wiring is out of scope for this phase.)
+- [x] Tests: `EnsureValueAdjustmentCategory` seeded on fresh DB +
+      idempotent + collision-preserves-user-category
+      (`category_service_test.go`); `GetValueAdjustmentCategory` +
+      Transfer/VA-not-confused; `DefaultCategories` contains VA (system)
+      and `Loan:Interest`; spending report excludes VA
+      (`report_service_test.go`); `buildCategoryOptionsFor` /
+      `buildCategoryOptionsForAccount` — asset offers VA, checking /
+      investment / loan / nil do not, Transfer always hidden; collision
+      notice surfaced once via `NewApp` + suppressed when already shown
+      (`value_adjustment_notice_test.go`); `accountIsAssetByID`; CLI
+      `transaction add --category "Value Adjustment"` resolves the
+      on-open-seeded system category (`cli/transaction/add_test.go`).
+- [x] Docs: README Categories blurb — asset revaluation / straight-line
+      car depreciation recipe (manual entry or plain scheduled
+      transaction on the asset account, category Value Adjustment).
 
 ## Phase 3: Loan Math Engine (`internal/loan`) — [ ]
 
