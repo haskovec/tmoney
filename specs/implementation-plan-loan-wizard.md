@@ -176,22 +176,30 @@ split math.
       clamping, exact half-cent interest ties round up, paid-off / empty
       projections. `MonthlyRate` precision and `powInt` pinned.
 
-## Phase 4: `loan_section` Schema + Model Plumbing — [ ]
+## Phase 4: `loan_section` Schema + Model Plumbing — [x]
 
-- [ ] Migration `0NN_loan_section.sql`: add nullable `loan_section TEXT`
+- [x] Migration `028_loan_section.sql`: adds nullable `loan_section TEXT`
       to **`scheduled_split_items` only** (posted transactions carry no
       tag — the never-populated `transaction_splits.paycheck_section`
       column is a cautionary precedent, not one to copy), with CHECKs
       (`IN ('interest','principal','escrow')`;
-      `paycheck_section IS NULL OR loan_section IS NULL`). Use the
+      `paycheck_section IS NULL OR loan_section IS NULL`). Uses the
       DuckDB **table-recreate pattern** from
-      `020_paycheck_section.sql` / `026_drop_transaction_splits_fk.sql`.
-- [ ] Model field: `LoanSection types.NullableString` on
+      `020_paycheck_section.sql` / `026_drop_transaction_splits_fk.sql`
+      (INSERT…SELECT carries existing `paycheck_section` values through,
+      defaults `loan_section` to NULL; index recreated).
+      `CurrentSchemaVersion` bumped 27 → 28.
+- [x] Model field: `LoanSection types.NullableString` on
       `scheduled.Split`; read/write in
-      `internal/scheduled/split_repository.go`.
-- [ ] Migration tests (`internal/db/migration_test.go` pattern) +
+      `internal/scheduled/split_repository.go` (wired through
+      `splitColumns`, `Create`, `Update`, `scanSplits` — parent
+      `loadSplits` inherits it via the shared scan path).
+- [x] Migration tests (`internal/db/migration_test.go` pattern) +
       round-trip repo tests + CHECK violation tests (bad enum value;
-      both sections set).
+      both sections set; `transaction_splits` gains no such column).
+      Round-trip repo tests are mutation-based across `Update` (re-tag
+      and clear-to-NULL) so a dropped `Update` write is actually
+      caught — verified by an adversarial mutation probe.
 
 ## Phase 5: Loan-Shaped Schedules in the Scheduled Service — [ ]
 

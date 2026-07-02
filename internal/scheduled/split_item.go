@@ -32,6 +32,15 @@ type Split struct {
 	// save.
 	PaycheckSection types.NullableString `json:"paycheck_section"`
 
+	// LoanSection tags this split's role in the loan wizard
+	// (interest | principal | escrow). NULL when the schedule line was not
+	// produced by the loan wizard. A schedule is loan-shaped — and gets
+	// recompute-at-post — only when every line carries a non-NULL
+	// LoanSection. A split belongs to at most one wizard family, so
+	// PaycheckSection and LoanSection are mutually exclusive (DB CHECK,
+	// migration 028).
+	LoanSection types.NullableString `json:"loan_section"`
+
 	// Optional properties
 	Memo types.NullableString `json:"memo"`
 }

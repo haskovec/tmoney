@@ -587,3 +587,174 @@ func TestSplitItemRepo_NullPaycheckSection_RoundTrip(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// LoanSection Round-Trip (loan-wizard phase 4)
+// =============================================================================
+
+func TestSplitItemRepo_LoanSection_RoundTrip(t *testing.T) {
+	t.Run("interest tag round-trips through Create + GetByID", func(t *testing.T) {
+		_, _, cat, st, splitRepo := scheduledSplitFixtures(t)
+
+		split := NewCategorizedSplit(st.ID, cat.ID, types.MustNewMoney("-1200.00"))
+		split.LoanSection = types.NullableString{String: "interest", Valid: true}
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		got, err := splitRepo.GetByID(split.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if !got.LoanSection.Valid || got.LoanSection.String != "interest" {
+			t.Errorf("LoanSection = %+v, want valid 'interest'", got.LoanSection)
+		}
+	})
+
+	t.Run("principal transfer-line tag round-trips through List", func(t *testing.T) {
+		_, dstAcct, _, st, splitRepo := scheduledSplitFixtures(t)
+
+		split := NewTransferSplit(st.ID, dstAcct.ID, types.MustNewMoney("-800.00"))
+		split.LoanSection = types.NullableString{String: "principal", Valid: true}
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		list, err := splitRepo.ListByScheduledTransaction(st.ID)
+		if err != nil {
+			t.Fatalf("ListByScheduledTransaction: %v", err)
+		}
+		if len(list) != 1 {
+			t.Fatalf("list length = %d, want 1", len(list))
+		}
+		if !list[0].LoanSection.Valid || list[0].LoanSection.String != "principal" {
+			t.Errorf("ListByScheduledTransaction LoanSection = %+v, want valid 'principal'",
+				list[0].LoanSection)
+		}
+	})
+
+	t.Run("re-tagging round-trips through Update", func(t *testing.T) {
+		_, _, cat, st, splitRepo := scheduledSplitFixtures(t)
+
+		// Create tagged 'interest', then re-tag to 'escrow' via Update. The
+		// mutation matters: if Update failed to write loan_section, the column
+		// would remain 'interest' and this assertion would catch it (a test
+		// that kept the tag constant across Update would pass even with the
+		// write dropped).
+		split := NewCategorizedSplit(st.ID, cat.ID, types.MustNewMoney("-650.00"))
+		split.LoanSection = types.NullableString{String: "interest", Valid: true}
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		split.LoanSection = types.NullableString{String: "escrow", Valid: true}
+		split.Amount = types.MustNewMoney("-700.00")
+		if err := splitRepo.Update(split); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+
+		got, err := splitRepo.GetByID(split.ID)
+		if err != nil {
+			t.Fatalf("GetByID after update: %v", err)
+		}
+		if !got.LoanSection.Valid || got.LoanSection.String != "escrow" {
+			t.Errorf("LoanSection after Update = %+v, want valid 'escrow'",
+				got.LoanSection)
+		}
+	})
+
+	t.Run("parent loader (GetByID) returns tagged splits", func(t *testing.T) {
+		_, _, cat, st, splitRepo := scheduledSplitFixtures(t)
+		stRepo := NewRepository(splitRepo.db)
+
+		split := NewCategorizedSplit(st.ID, cat.ID, types.MustNewMoney("-1200.00"))
+		split.LoanSection = types.NullableString{String: "interest", Valid: true}
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		got, err := stRepo.GetByID(st.ID)
+		if err != nil {
+			t.Fatalf("GetByID parent: %v", err)
+		}
+		if len(got.Splits) != 1 {
+			t.Fatalf("Splits length = %d, want 1", len(got.Splits))
+		}
+		if !got.Splits[0].LoanSection.Valid ||
+			got.Splits[0].LoanSection.String != "interest" {
+			t.Errorf("parent-loaded LoanSection = %+v, want valid 'interest'",
+				got.Splits[0].LoanSection)
+		}
+	})
+}
+
+func TestSplitItemRepo_NullLoanSection_RoundTrip(t *testing.T) {
+	t.Run("unset tag stays NULL through Create + GetByID", func(t *testing.T) {
+		_, _, cat, st, splitRepo := scheduledSplitFixtures(t)
+
+		// Generic multi-line dialog path: LoanSection left at zero value.
+		split := NewCategorizedSplit(st.ID, cat.ID, types.MustNewMoney("5000.00"))
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		got, err := splitRepo.GetByID(split.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if got.LoanSection.Valid {
+			t.Errorf("LoanSection should be NULL, got %+v", got.LoanSection)
+		}
+	})
+
+	t.Run("clearing the tag to NULL round-trips through Update", func(t *testing.T) {
+		_, _, cat, st, splitRepo := scheduledSplitFixtures(t)
+
+		// Create tagged 'escrow', then clear the tag via Update. The mutation
+		// matters: if Update failed to write loan_section, the column would
+		// remain 'escrow' and this assertion would catch it.
+		split := NewCategorizedSplit(st.ID, cat.ID, types.MustNewMoney("5000.00"))
+		split.LoanSection = types.NullableString{String: "escrow", Valid: true}
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		split.LoanSection = types.NullableString{Valid: false}
+		split.Amount = types.MustNewMoney("4500.00")
+		if err := splitRepo.Update(split); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+
+		got, err := splitRepo.GetByID(split.ID)
+		if err != nil {
+			t.Fatalf("GetByID after update: %v", err)
+		}
+		if got.LoanSection.Valid {
+			t.Errorf("LoanSection should be NULL after clearing via Update, got %+v",
+				got.LoanSection)
+		}
+	})
+
+	t.Run("a paycheck-tagged split leaves LoanSection NULL and round-trips", func(t *testing.T) {
+		_, _, cat, st, splitRepo := scheduledSplitFixtures(t)
+
+		// A wizard family is mutually exclusive: setting PaycheckSection must
+		// not disturb LoanSection (and vice versa), and both must round-trip.
+		split := NewCategorizedSplit(st.ID, cat.ID, types.MustNewMoney("5000.00"))
+		split.PaycheckSection = types.NullableString{String: "earnings", Valid: true}
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		got, err := splitRepo.GetByID(split.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if !got.PaycheckSection.Valid || got.PaycheckSection.String != "earnings" {
+			t.Errorf("PaycheckSection = %+v, want valid 'earnings'", got.PaycheckSection)
+		}
+		if got.LoanSection.Valid {
+			t.Errorf("LoanSection should be NULL for a paycheck split, got %+v", got.LoanSection)
+		}
+	})
+}
