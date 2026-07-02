@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -101,6 +102,35 @@ type SchedulePreviewDialog struct {
 	// editor's first focus transitions back to the header. Always false
 	// on single-line previews.
 	splitFocus bool
+
+	// loanShaped is true when the previewed schedule is loan-shaped: its
+	// interest/principal split was seeded from the loan's live balance
+	// (ComputeLoanSplits) rather than copied verbatim from the template, and
+	// it gets the reseed-on-date rule and payoff toast. Always multi-line.
+	loanShaped bool
+
+	// loanSeedDate is the occurrence date the current loan seed was computed
+	// for. A Date-field edit to a different date reseeds the split (until
+	// loanSeedFrozen is set); see the reseed rule in specs/loan-wizard.md.
+	loanSeedDate types.Date
+
+	// loanSeedFrozen becomes true once the user edits any line amount in a
+	// loan-shaped preview. After that, user values win and Date edits no
+	// longer reseed the computed split.
+	loanSeedFrozen bool
+
+	// loanSeededRows snapshots a signature of each split row (category /
+	// transfer target / amount / memo) right after each loan (re)seed, so any
+	// subsequent line edit — not just an amount change — is detected and
+	// freezes reseeding (a category/memo edit is user intent the reseed would
+	// otherwise silently discard when it rebuilds the editor).
+	loanSeededRows []string
+
+	// accounts / categoryOptions are stashed at construction so a
+	// date-change reseed can rebuild the embedded split editor exactly as
+	// the constructor did (transfer targets + category resolution).
+	accounts        []*account.Account
+	categoryOptions []string
 }
 
 // NewSchedulePreviewDialog builds the preview dialog for one due
@@ -118,20 +148,31 @@ type SchedulePreviewDialog struct {
 //
 // payees / categoryOptions / categoryIDs / accounts are passed in by
 // the caller to keep this function pure (it never touches services).
+//
+// loanSplits is non-nil only for loan-shaped schedules: the caller
+// (loadSchedulePreviewData) recomputes the month's interest/principal split
+// from the loan's live balance and passes it in so the embedded split editor
+// is seeded with the computed values instead of the stored template. When it
+// is non-nil the preview is marked loan-shaped and gets the reseed-on-date
+// rule and the payoff toast.
 func NewSchedulePreviewDialog(
 	template *scheduled.Transaction,
 	accounts []*account.Account,
 	payees []*payee.Payee,
 	categoryOptions []string,
 	categoryIDs []types.ID,
+	loanSplits *scheduled.LoanSplits,
 ) *SchedulePreviewDialog {
 	if template == nil {
 		return nil
 	}
 
 	p := &SchedulePreviewDialog{
-		template: template,
-		payees:   payees,
+		template:        template,
+		payees:          payees,
+		accounts:        accounts,
+		categoryOptions: categoryOptions,
+		categoryIDs:     categoryIDs,
 	}
 
 	payeeName := ""
@@ -168,14 +209,29 @@ func NewSchedulePreviewDialog(
 	if len(template.Splits) > 0 {
 		p.headerDialog = buildPreviewHeaderMulti(dateStr, payeeName, memo)
 
+		// A loan-shaped schedule seeds its interest/principal split from the
+		// live-balance recompute the caller supplied, not the stored template
+		// (which is only a month-one snapshot). Everything else — a paycheck
+		// or a hand-built multi-line schedule — posts its template lines.
 		parentAmount := template.Amount.Money
 		seedSplits := transactionSplitsFromScheduled(template)
+		if loanSplits != nil {
+			p.loanShaped = true
+			p.loanSeedDate = template.NextDate
+			parentAmount = loanSplits.ParentAmount
+			seedSplits = loanSplits.Splits
+		}
+
 		p.splitDialog = NewSplitDialogFromExisting(parentAmount, categoryOptions, categoryIDs, seedSplits)
 		// Match the header dialog's width so the two stacked panels line up.
 		p.splitDialog.width = 62
 
 		accountOptions, accountIDs := buildSplitTransferAccountOptions(accounts)
 		p.splitDialog.SetTransferTargets(accountOptions, accountIDs, template.AccountID)
+
+		if p.loanShaped {
+			p.loanSeededRows = p.currentLineSignatures()
+		}
 		return p
 	}
 
@@ -362,6 +418,62 @@ func (p *SchedulePreviewDialog) FocusOnSplits() bool {
 	return p.splitFocus
 }
 
+// IsLoanShaped reports whether this preview is for a loan-shaped schedule —
+// one whose interest/principal split is recomputed from the loan's live
+// balance rather than copied from the template.
+func (p *SchedulePreviewDialog) IsLoanShaped() bool {
+	return p.loanShaped
+}
+
+// currentLineSignatures snapshots a signature of each split-editor row —
+// category selection, transfer mode/target, amount, and memo. Used to detect
+// any user line edit (not just an amount change), which permanently freezes
+// loan reseeding (the reseed rebuilds the whole editor and would otherwise
+// discard a category/memo edit). See the reseed rule in specs/loan-wizard.md.
+func (p *SchedulePreviewDialog) currentLineSignatures() []string {
+	if p.splitDialog == nil {
+		return nil
+	}
+	out := make([]string, len(p.splitDialog.rows))
+	for i := range p.splitDialog.rows {
+		r := &p.splitDialog.rows[i]
+		out[i] = fmt.Sprintf("%d|%t|%d|%s|%s",
+			r.categoryIndex, r.transferMode, r.accountIndex,
+			r.amountField.Value, r.memoField.Value)
+	}
+	return out
+}
+
+// userEditedLines reports whether any split-editor row differs from the last
+// loan seed — a line amount, category, transfer target, or memo edit, or an
+// added/removed row. Any such edit freezes reseeding (user values win).
+func (p *SchedulePreviewDialog) userEditedLines() bool {
+	cur := p.currentLineSignatures()
+	if len(cur) != len(p.loanSeededRows) {
+		return true
+	}
+	for i := range cur {
+		if cur[i] != p.loanSeededRows[i] {
+			return true
+		}
+	}
+	return false
+}
+
+// reseedLoanSplits rebuilds the embedded split editor from a freshly computed
+// LoanSplits (a date-change reseed). Only called for loan-shaped previews the
+// user has not yet edited. It rebuilds exactly as the constructor did so the
+// transfer targets and category resolution stay correct, and updates the
+// split editor's total so the imbalance check tracks the new parent amount.
+func (p *SchedulePreviewDialog) reseedLoanSplits(ls *scheduled.LoanSplits, date types.Date) {
+	p.splitDialog = NewSplitDialogFromExisting(ls.ParentAmount, p.categoryOptions, p.categoryIDs, ls.Splits)
+	p.splitDialog.width = 62
+	accountOptions, accountIDs := buildSplitTransferAccountOptions(p.accounts)
+	p.splitDialog.SetTransferTargets(accountOptions, accountIDs, p.template.AccountID)
+	p.loanSeedDate = date
+	p.loanSeededRows = p.currentLineSignatures()
+}
+
 // schedulePreviewDataMsg carries the dependencies needed to construct a
 // SchedulePreviewDialog (template + lookups for payees/accounts/categories).
 // It is dispatched asynchronously by loadSchedulePreviewData so the data
@@ -372,6 +484,22 @@ type schedulePreviewDataMsg struct {
 	payees          []*payee.Payee
 	categoryOptions []string
 	categoryIDs     []types.ID
+	// loanSplits is non-nil only for a loan-shaped schedule whose live-balance
+	// recompute succeeded — the preview seeds its lines from it.
+	loanSplits *scheduled.LoanSplits
+}
+
+// schedulePreviewLoanBlockedMsg is emitted instead of schedulePreviewDataMsg
+// when a loan-shaped schedule cannot be previewed because its live-balance
+// recompute failed. paidOff is set for an already-paid-off loan (owed ≤ 0):
+// opening the preview is a manual post attempt, so the loader has already
+// refused-and-completed the schedule (mirroring the CLI post path) and the
+// handler shows the payoff toast. Otherwise err carries the typed reason
+// (missing interest line, missing APR, negative amortization) surfaced as an
+// alert toast; the preview does not open with stale template values.
+type schedulePreviewLoanBlockedMsg struct {
+	paidOff bool
+	err     error
 }
 
 // loadSchedulePreviewData loads accounts/payees/categories for the
@@ -428,12 +556,45 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 		// survives an edit-at-post rather than reverting to (None).
 		includeVA := accountIsAssetByID(accounts, template.AccountID)
 		categoryOptions, categoryIDs := buildCategoryOptionsFor(categories, includeVA)
+
+		// Loan-shaped schedules seed the preview from a live-balance recompute
+		// (interest/principal split as of the next payment date) instead of the
+		// stored month-one snapshot. A recompute failure means the payment
+		// cannot be previewed with correct numbers, so the loader blocks the
+		// open with a reason rather than seeding stale template values.
+		var loanSplits *scheduled.LoanSplits
+		if a.scheduledTxnSvc != nil && a.scheduledTxnSvc.IsLoanShaped(template) {
+			ls, err := a.scheduledTxnSvc.ComputeLoanSplits(template, template.NextDate)
+			switch {
+			case err == nil:
+				loanSplits = ls
+			case errors.Is(err, scheduled.ErrLoanPaidOff):
+				// Opening the preview is the TUI's only manual-post door; a
+				// paid-off loan is a terminal state, so refuse and complete
+				// the schedule on the spot (Post refuses + marks completed via
+				// the same path the CLI uses) rather than stranding a
+				// never-postable due schedule. Post returns ErrLoanPaidOff on
+				// the successful refuse-and-complete; a *different* error (e.g.
+				// a closed funding account tripping the pre-check) means the
+				// schedule was NOT completed, so surface that instead of a
+				// misleading "paid off" toast.
+				if _, perr := a.scheduledTxnSvc.Post(template.ID, nil); perr != nil &&
+					!errors.Is(perr, scheduled.ErrLoanPaidOff) {
+					return schedulePreviewLoanBlockedMsg{err: perr}
+				}
+				return schedulePreviewLoanBlockedMsg{paidOff: true}
+			default:
+				return schedulePreviewLoanBlockedMsg{err: err}
+			}
+		}
+
 		return schedulePreviewDataMsg{
 			template:        template,
 			accounts:        accounts,
 			payees:          payees,
 			categoryOptions: categoryOptions,
 			categoryIDs:     categoryIDs,
+			loanSplits:      loanSplits,
 		}
 	}
 }
@@ -509,6 +670,8 @@ func (a *App) handleSchedulePreviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 		a.closeSchedulePreviewDialog()
 		return a, nil
 	}
+	// A mouse-added split row counts as a user edit — freeze loan reseeding.
+	a.freezeLoanSeedIfEdited()
 	p.splitFocus = true
 	return a, nil
 }
@@ -662,6 +825,9 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 			return a, nil
 		}
 		action := header.HandleKey(msg)
+		// A Date edit reseeds a loan-shaped preview's split from the balance
+		// as of the new date, until the user edits a line amount.
+		a.maybeReseedLoanPreview()
 		switch action {
 		case dialog.DialogActionCancel:
 			a.closeSchedulePreviewDialog()
@@ -681,6 +847,8 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 	}
 
 	action := splits.HandleKey(msg)
+	// A line-amount edit freezes loan reseeding (user values win).
+	a.freezeLoanSeedIfEdited()
 	switch action {
 	case dialog.DialogActionCancel:
 		a.closeSchedulePreviewDialog()
@@ -689,6 +857,52 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 		return a.submitSchedulePreviewDialog()
 	}
 	return a, nil
+}
+
+// maybeReseedLoanPreview recomputes a loan-shaped preview's interest/principal
+// split when the Date field has been edited to a new occurrence date — until
+// the user edits a line amount, after which user values win and Date edits no
+// longer reseed (the reseed rule in specs/loan-wizard.md). A recompute failure
+// (e.g. the loan is already paid off at the new date) leaves the current seed
+// in place.
+func (a *App) maybeReseedLoanPreview() {
+	p := a.schedPreviewDialog
+	if p == nil || !p.loanShaped || p.loanSeedFrozen || a.scheduledTxnSvc == nil {
+		return
+	}
+	if p.userEditedLines() {
+		p.loanSeedFrozen = true
+		return
+	}
+	header := p.HeaderDialog()
+	if header == nil {
+		return
+	}
+	fields := header.Fields()
+	if len(fields) <= previewFieldDate {
+		return
+	}
+	newDate, err := parseDateInput(fields[previewFieldDate].Value)
+	if err != nil || newDate.Equal(p.loanSeedDate) {
+		return
+	}
+	ls, err := a.scheduledTxnSvc.ComputeLoanSplits(p.template, newDate)
+	if err != nil {
+		return
+	}
+	p.reseedLoanSplits(ls, newDate)
+}
+
+// freezeLoanSeedIfEdited permanently freezes loan reseeding once the user has
+// edited any line amount (or added/removed a row) in a loan-shaped preview.
+func (a *App) freezeLoanSeedIfEdited() {
+	p := a.schedPreviewDialog
+	if p == nil || !p.loanShaped || p.loanSeedFrozen {
+		return
+	}
+	if p.userEditedLines() {
+		p.loanSeedFrozen = true
+	}
 }
 
 // submitSchedulePreviewDialog parses the preview dialog fields, builds
@@ -741,20 +955,41 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 		memo = strings.TrimSpace(fields[previewMultiFieldMemo].Value)
 		statusIdx = fields[previewMultiFieldStatus].SelectedIndex
 
-		// MS-020: the embedded split editor is read-only at this stage —
-		// its rows were seeded from the template and the keystroke
-		// routing into it lands in MS-021. Build splits from the seeded
-		// rows so the parent transaction carries the template's lines.
 		sd := a.schedPreviewDialog.SplitDialog()
-		if sd != nil {
-			built, err := sd.buildSplits()
-			if err != nil {
-				header.SetErrorMsg(err.Error())
+
+		switch {
+		case a.schedPreviewDialog.loanShaped && !a.schedPreviewDialog.loanSeedFrozen &&
+			!hasErrors && a.scheduledTxnSvc != nil:
+			// A loan-shaped preview the user has not hand-edited is recomputed
+			// authoritatively at the posting date here, not trusted from the
+			// (possibly stale or reseed-refused) split editor. This closes the
+			// date/seed desync: posting a date at which the loan is paid off (or
+			// otherwise fails to compute) is refused with a clear error instead
+			// of silently posting the old date's interest/principal.
+			ls, cerr := a.scheduledTxnSvc.ComputeLoanSplits(template, date)
+			if cerr != nil {
+				header.SetErrorMsg("Cannot post this loan payment: " + cerr.Error())
 				return a, nil
 			}
-			multiSplits = built
+			multiSplits = ls.Splits
+			amount = ls.ParentAmount
+		default:
+			// Generic multi-line, or a loan preview the user edited (frozen):
+			// post the split editor's rows verbatim (user values win). The
+			// lines are validated to sum to the editor total.
+			if sd != nil {
+				built, err := sd.buildSplits()
+				if err != nil {
+					header.SetErrorMsg(err.Error())
+					return a, nil
+				}
+				multiSplits = built
+			}
+			amount = template.Amount.Money
+			if a.schedPreviewDialog.loanShaped && sd != nil {
+				amount = sd.totalAmount
+			}
 		}
-		amount = template.Amount.Money
 	} else {
 		catIdx := fields[previewSingleFieldCat].SelectedIndex
 		ids := a.schedPreviewDialog.categoryIDs
@@ -805,6 +1040,7 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 	}
 
 	templateID := template.ID
+	loanShaped := a.schedPreviewDialog.loanShaped
 	a.closeSchedulePreviewDialog()
 
 	return a, func() tea.Msg {
@@ -834,6 +1070,18 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to post scheduled transaction: %w", err)}
 		}
-		return scheduledPostedMsg{}
+
+		// PostWithEdits runs finalizeLoanPayoff, which marks a loan-shaped
+		// schedule completed once the loan balance reaches ≥ 0 (a normal
+		// final payment, or a penny-tweaked edit that overshoots). Re-read
+		// the schedule to surface that as a payoff toast; the handler runs
+		// on the main loop, so it does the SetToast (never this closure).
+		paidOff := false
+		if loanShaped && a.scheduledTxnSvc != nil {
+			if st, gerr := a.scheduledTxnSvc.GetByID(templateID); gerr == nil && st != nil {
+				paidOff = st.IsCompleted()
+			}
+		}
+		return scheduledPostedMsg{loanPaidOff: paidOff}
 	}
 }

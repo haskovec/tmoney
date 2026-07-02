@@ -35,7 +35,11 @@ type scheduledViewDataLoadedMsg struct {
 }
 
 // scheduledPostedMsg is sent when a scheduled transaction has been posted.
-type scheduledPostedMsg struct{}
+// loanPaidOff is set when the post completed a loan-shaped schedule (the loan
+// balance reached ≥ 0), so the handler can show the payoff toast.
+type scheduledPostedMsg struct {
+	loanPaidOff bool
+}
 
 // scheduledSkippedMsg is sent when a scheduled transaction has been skipped.
 type scheduledSkippedMsg struct{}

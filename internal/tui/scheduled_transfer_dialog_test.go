@@ -135,7 +135,7 @@ func TestSchedulePreviewDialog_TransferShape(t *testing.T) {
 	st := scheduled.NewTransactionWithAmount(checking.ID, scheduled.FrequencyMonthly, types.Today(), types.MustNewMoney("-200.00"))
 	st.SetTransfer(visa.ID)
 
-	p := NewSchedulePreviewDialog(st, accts, nil, nil, nil)
+	p := NewSchedulePreviewDialog(st, accts, nil, nil, nil, nil)
 	if p == nil {
 		t.Fatal("preview should not be nil")
 	}

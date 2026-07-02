@@ -382,11 +382,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case scheduledPostedMsg:
-		return a, tea.Batch(
+		cmds := []tea.Cmd{
 			a.loadScheduledViewData(),
 			a.loadSidebarData(),
 			a.loadScheduledDueCount(),
-		)
+		}
+		if msg.loanPaidOff && a.statusbar != nil {
+			a.statusbar.SetToast(
+				"Loan paid off — close the account from the Accounts menu when ready.",
+				widget.NotificationInfo,
+			)
+			cmds = append(cmds, widget.ClearToastCmd())
+		}
+		return a, tea.Batch(cmds...)
 
 	case scheduledSkippedMsg:
 		return a, tea.Batch(
@@ -564,8 +572,34 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.payees,
 			msg.categoryOptions,
 			msg.categoryIDs,
+			msg.loanSplits,
 		)
 		return a, nil
+
+	case schedulePreviewLoanBlockedMsg:
+		// A loan-shaped schedule that cannot be previewed with correct
+		// numbers: paid off (already refused-and-completed by the loader) or
+		// misconfigured. Surface a toast and refresh the due list instead of
+		// opening the preview with stale template values.
+		if a.statusbar != nil {
+			if msg.paidOff {
+				a.statusbar.SetToast(
+					"Loan paid off — close the account from the Accounts menu when ready.",
+					widget.NotificationInfo,
+				)
+			} else {
+				a.statusbar.SetToast(
+					fmt.Sprintf("Cannot post loan payment: %v", msg.err),
+					widget.NotificationAlert,
+				)
+			}
+		}
+		return a, tea.Batch(
+			a.loadScheduledViewData(),
+			a.loadSidebarData(),
+			a.loadScheduledDueCount(),
+			widget.ClearToastCmd(),
+		)
 
 	case paycheckWizardDataMsg:
 		a.paycheckWizard = NewPaycheckWizard(

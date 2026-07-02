@@ -46,7 +46,7 @@ func TestSchedulePreviewDialog_OpensWithTemplateValues(t *testing.T) {
 			{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 		}
 
-		preview := NewSchedulePreviewDialog(template, accounts, payees, categoryOptions, categoryIDs)
+		preview := NewSchedulePreviewDialog(template, accounts, payees, categoryOptions, categoryIDs, nil)
 		if preview == nil {
 			t.Fatal("NewSchedulePreviewDialog returned nil for a valid template")
 		}
@@ -135,7 +135,7 @@ func TestSchedulePreviewDialog_OpensWithTemplateValues(t *testing.T) {
 			{BaseModel: types.BaseModel{ID: retirementAccountID}, Name: "401k", Active: true, Type: account.TypeInvestment},
 		}
 
-		preview := NewSchedulePreviewDialog(template, accounts, payees, categoryOptions, categoryIDs)
+		preview := NewSchedulePreviewDialog(template, accounts, payees, categoryOptions, categoryIDs, nil)
 		if preview == nil {
 			t.Fatal("NewSchedulePreviewDialog returned nil for a multi-line template")
 		}
@@ -232,7 +232,7 @@ func TestSchedulePreviewDialog_OpensWithTemplateValues(t *testing.T) {
 	})
 
 	t.Run("nil template yields nil preview", func(t *testing.T) {
-		if got := NewSchedulePreviewDialog(nil, nil, nil, nil, nil); got != nil {
+		if got := NewSchedulePreviewDialog(nil, nil, nil, nil, nil, nil); got != nil {
 			t.Errorf("NewSchedulePreviewDialog(nil, …) = %v, want nil", got)
 		}
 	})
@@ -344,6 +344,7 @@ func newSchedulePreviewTestEnv(t *testing.T) *schedulePreviewTestEnv {
 		[]*payee.Payee{landlord},
 		categoryOptions,
 		categoryIDs,
+		nil,
 	)
 	if app.schedPreviewDialog == nil {
 		t.Fatal("NewSchedulePreviewDialog returned nil")
@@ -693,6 +694,7 @@ func newSchedulePreviewMultiLineEnv(t *testing.T) *schedulePreviewMultiLineEnv {
 		[]*payee.Payee{employer},
 		categoryOptions,
 		categoryIDs,
+		nil,
 	)
 	if app.schedPreviewDialog == nil {
 		t.Fatal("NewSchedulePreviewDialog returned nil")

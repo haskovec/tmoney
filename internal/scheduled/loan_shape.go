@@ -62,6 +62,16 @@ func (s *Service) isLoanShaped(st *Transaction) bool {
 	return IsLoanShaped(st, s.loanAccountLookup())
 }
 
+// IsLoanShaped is the exported form of isLoanShaped: it reports whether st is a
+// strictly loan-shaped schedule, resolving the principal transfer target through
+// the service's account repository. TUI/CLI callers (the post-time preview, the
+// amortization view, and the Edit-as-loan affordance) use it to gate loan
+// behavior without hand-building an AccountLookup. Nil-safe: a service with no
+// account repository treats every schedule as non-loan.
+func (s *Service) IsLoanShaped(st *Transaction) bool {
+	return s.isLoanShaped(st)
+}
+
 // IsLoanShaped reports whether st is a strictly loan-shaped schedule — and so
 // gets recompute-at-post, the final-payment clamp, payoff completion, and the
 // loan affordances. All of the following must hold:

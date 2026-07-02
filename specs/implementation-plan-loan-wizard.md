@@ -270,25 +270,55 @@ The recompute engine. All posting paths converge here.
       interest line + negative-am typed errors, redo determinism, and
       generic multi-line schedules unaffected.
 
-## Phase 6: Post-Time Preview Integration (TUI) — [ ]
+## Phase 6: Post-Time Preview Integration (TUI) — [x]
 
-- [ ] Preview seeding: for loan-shaped schedules, seed the preview's
+- [x] Preview seeding: for loan-shaped schedules, seed the preview's
       lines from `ComputeLoanSplits` (at the schedule's `NextDate`)
-      instead of the raw template
-      (`internal/tui/scheduled_preview_dialog.go` /
-      `transactionSplitsFromScheduled` seam,
-      `internal/tui/scheduled_dialog.go:45`).
-- [ ] **Reseed rule** (per spec): editing the preview's Date recomputes
-      the seed for the new date *until* any line amount is edited;
-      after that, user values win and date changes stop reseeding.
-- [ ] User edits win: submission continues through `PostWithEdits`
-      unchanged — no recompute after the user touches lines.
-- [ ] Payoff toast after a completing post (including penny-tweaked
-      edits that overshoot): "Loan paid off — close the account from
-      the Accounts menu when ready."
-- [ ] Tests: seeded values match engine output; date-edit reseeds; line
-      edit freezes reseeding; edited values post verbatim; toast on
-      payoff via the preview path.
+      instead of the raw template. Implemented by computing `*LoanSplits`
+      in the async loader (`loadSchedulePreviewData`) — gated on a new
+      exported `(*scheduled.Service).IsLoanShaped` wrapper — and threading
+      it through `schedulePreviewDataMsg` into the (still pure)
+      `NewSchedulePreviewDialog`, which seeds the embedded `SplitDialog`
+      from `ls.Splits` with `totalAmount = ls.ParentAmount`. The generic
+      `transactionSplitsFromScheduled` seam is left unchanged (branch at
+      the call site, per the review guidance).
+- [x] **Reseed rule** (per spec): editing the preview's Date recomputes
+      the seed for the new date (`maybeReseedLoanPreview` →
+      `reseedLoanSplits`) *until* any line edit; after that,
+      `loanSeedFrozen` sticks and Date edits stop reseeding.
+      **Freeze broadened (adversarial-review fix):** the freeze snapshot
+      is a per-row *signature* (category / transfer target / amount /
+      memo), not amount-only — a category/memo edit also freezes, so a
+      later reseed can't silently discard it (the reseed rebuilds the
+      whole editor).
+- [x] User edits win: a frozen (hand-edited) preview posts the split
+      editor's rows verbatim through `PostWithEdits`.
+      **Submit made authoritative (adversarial-review fix):** a
+      *non-frozen* loan preview recomputes `ComputeLoanSplits` at the
+      posting date inside `submitSchedulePreviewDialog` rather than
+      trusting the on-screen seed — closing the reseed-refusal desync
+      where a Date edit to a paid-off date left stale splits that Save
+      would post (and bypassed the paid-off guard). A posting date at
+      which the loan is paid off / won't compute is refused with a header
+      error, not posted.
+- [x] Payoff toast after a completing post (including penny-tweaked
+      edits that overshoot): the submit closure re-reads the schedule's
+      `IsCompleted()` (gated on loan-shaped) and carries `loanPaidOff` on
+      `scheduledPostedMsg`; the synchronous handler shows
+      "Loan paid off — close the account from the Accounts menu when
+      ready." + `ClearToastCmd`. Also: opening the preview on an
+      already-paid-off loan refuses-and-completes (TUI realization of
+      "manual post of a paid-off loan") via `schedulePreviewLoanBlockedMsg`
+      (checks `Post`'s error so a closed-funding-account failure surfaces
+      the real reason, not a false "paid off").
+- [x] Tests (`internal/tui/loan_preview_test.go`, 10): seeded values
+      match `ComputeLoanSplits` (≠ stale template); date-edit reseeds;
+      line-amount edit freezes (direct + via key); memo edit freezes
+      (reseed doesn't discard it); clamped final payment posts the
+      shrunk parent + completes + payoff toast; paid-off-at-open
+      refuses+completes+toast; submit refuses a paid-off posting date;
+      submit recomputes at the posting date despite a stale display;
+      generic multi-line unaffected (no loanSplits, not loan-shaped).
 
 ## Phase 7: Loan Wizard (TUI) + Round-Trip — [ ]
 
