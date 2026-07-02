@@ -222,7 +222,14 @@ func (r *Repository) ListByAccount(accountID types.ID) ([]*Transaction, error) {
 	return r.queryTransactionsWithArgs(query, accountID.String())
 }
 
-// ListDue retrieves all scheduled transactions that are due (next_date <= today).
+// ListDue retrieves all scheduled transactions that are due (next_date <=
+// today) and not yet completed. The completion predicate mirrors
+// Transaction.IsCompleted: a schedule is complete when occurrences_remaining
+// has hit zero, or its next_date has passed its end_date. Excluding completed
+// schedules here fixes a long-standing zombie bug — previously a completed
+// schedule whose next_date was in the past surfaced as due forever (in the TUI
+// due section, the due-count badge, and `scheduled list --due`) while Post and
+// Skip refused it with CompletedError, leaving the user no way to clear it.
 func (r *Repository) ListDue() ([]*Transaction, error) {
 	query := `
 		SELECT id, account_id, payee_id, category_id, transfer_account_id, amount, memo,
@@ -232,6 +239,8 @@ func (r *Repository) ListDue() ([]*Transaction, error) {
 			created_at, updated_at
 		FROM scheduled_transactions
 		WHERE next_date <= CURRENT_DATE
+		  AND (occurrences_remaining IS NULL OR occurrences_remaining > 0)
+		  AND (end_date IS NULL OR next_date <= end_date)
 		ORDER BY next_date ASC, created_at ASC
 	`
 

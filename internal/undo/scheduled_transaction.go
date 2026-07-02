@@ -127,13 +127,23 @@ func (c *DeleteScheduledTransactionCommand) Description() string {
 // PostScheduledTransactionCommand posts a scheduled transaction (creates a
 // real transaction and advances the schedule). Undo deletes the created
 // transaction and restores the schedule to its previous state.
+//
+// Redo determinism: the undo manager implements redo by calling Execute a
+// second time. A loan-shaped multi-line schedule recomputes its
+// interest/principal split from the loan's live balance, which may have
+// changed between the original post and the redo — so re-running Post on redo
+// would produce different rows. To keep redo deterministic, a multi-line post
+// captures the created parent + splits on first Execute and replays them
+// verbatim (via PostWithEdits) on redo. Single-line posts copy the template
+// verbatim, so re-running Post already reproduces them and no capture is kept.
 type PostScheduledTransactionCommand struct {
-	svc        *scheduled.Service
-	txnSvc     *transaction.Service
-	id         types.ID
-	amount     *types.Money             // optional override amount
-	beforeST   *scheduled.Transaction   // schedule state before posting
-	createdTxn *transaction.Transaction // transaction created by Post
+	svc           *scheduled.Service
+	txnSvc        *transaction.Service
+	id            types.ID
+	amount        *types.Money             // optional override amount
+	beforeST      *scheduled.Transaction   // schedule state before posting
+	createdTxn    *transaction.Transaction // transaction created by Post
+	createdSplits []*transaction.Split     // non-nil for multi-line: replayed verbatim on redo
 }
 
 // NewPostScheduledTransactionCommand creates a command that will post a
@@ -160,12 +170,22 @@ func (c *PostScheduledTransactionCommand) Execute() error {
 	}
 	c.beforeST = before
 
-	// Post creates the transaction and advances the schedule
-	txn, err := c.svc.Post(c.id, c.amount)
+	// Redo of a captured multi-line post: replay the exact rows created the
+	// first time rather than recomputing (a loan-shaped schedule would
+	// otherwise recompute against a since-changed balance).
+	if c.createdTxn != nil && c.createdSplits != nil {
+		_, err := c.svc.PostWithEdits(c.id, c.createdTxn, c.createdSplits)
+		return err
+	}
+
+	// First post (or a single-line redo, which is deterministic): create the
+	// transaction, advance the schedule, and capture any child splits.
+	txn, splits, err := c.svc.PostReturningSplits(c.id, c.amount)
 	if err != nil {
 		return err
 	}
 	c.createdTxn = txn
+	c.createdSplits = splits // nil for single-line; drives verbatim redo for multi-line
 
 	return nil
 }

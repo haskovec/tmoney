@@ -368,6 +368,83 @@ func TestPostScheduledTransactionCommand_ExecuteAndUndo(t *testing.T) {
 	})
 }
 
+// TestPostScheduledTransactionCommand_LoanRedoIsDeterministic verifies that
+// redo of a posted loan-shaped schedule replays the originally-created rows
+// verbatim rather than recomputing interest/principal from a since-changed
+// balance. Between undo and redo the loan balance is altered by an extra
+// principal payment; a recompute would book a smaller interest and larger
+// principal, so a verbatim redo is detectable from the resulting loan balance.
+func TestPostScheduledTransactionCommand_LoanRedoIsDeterministic(t *testing.T) {
+	env := createScheduledTestEnv(t)
+	early := types.NewDate(2020, time.January, 1)
+
+	funding := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, early)
+	if err := env.accountRepo.Create(funding); err != nil {
+		t.Fatalf("create funding: %v", err)
+	}
+	loanAcct := account.NewAccount("Mortgage", account.TypeLoan, "USD", types.MustNewMoney("-250000.00"), early)
+	loanAcct.SetInterestRate(types.MustNewMoney("6.5"))
+	if err := env.accountRepo.Create(loanAcct); err != nil {
+		t.Fatalf("create loan: %v", err)
+	}
+	interestCat := createScheduledTestCategory(t, env.categoryRepo, "Loan Interest")
+
+	// Month-one snapshot for 250000 @ 6.5%: interest 1354.17, principal 1047.69.
+	occ := types.NewDate(2024, time.January, 1)
+	st := scheduled.NewTransactionWithAmount(funding.ID, scheduled.FrequencyMonthly, occ, types.MustNewMoney("-2401.86"))
+	st.SetDayOfMonth(1)
+	interestSplit := scheduled.NewCategorizedSplit(st.ID, interestCat.ID, types.MustNewMoney("-1354.17"))
+	interestSplit.LoanSection = types.NullableString{String: scheduled.LoanSectionInterest, Valid: true}
+	principalSplit := scheduled.NewTransferSplit(st.ID, loanAcct.ID, types.MustNewMoney("-1047.69"))
+	principalSplit.LoanSection = types.NullableString{String: scheduled.LoanSectionPrincipal, Valid: true}
+	st.Splits = scheduled.SplitCollection{interestSplit, principalSplit}
+	if err := env.scheduledSvc.Create(st); err != nil {
+		t.Fatalf("create loan schedule: %v", err)
+	}
+
+	cmd := undo.NewPostScheduledTransactionCommand(env.scheduledSvc, env.txnSvc, st.ID, nil)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute (first post): %v", err)
+	}
+	originalTxnID := cmd.CreatedTransaction().ID
+
+	if err := cmd.Undo(); err != nil {
+		t.Fatalf("Undo: %v", err)
+	}
+
+	// Change the world: an extra $100k principal payment dated on the occurrence
+	// date. A recompute on redo would see a $150k balance and book only ~812.50
+	// interest / ~1589.36 principal.
+	extra := transaction.NewTransaction(loanAcct.ID, occ, types.MustNewMoney("100000.00"))
+	if err := env.txnSvc.Create(extra); err != nil {
+		t.Fatalf("create extra principal: %v", err)
+	}
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute (redo): %v", err)
+	}
+
+	// The replayed transaction keeps its original ID (a fresh Post would mint a
+	// new one).
+	if cmd.CreatedTransaction().ID != originalTxnID {
+		t.Errorf("redo minted a new transaction ID %s, want the original %s (not verbatim)",
+			cmd.CreatedTransaction().ID, originalTxnID)
+	}
+	if _, err := env.txnSvc.GetByID(originalTxnID); err != nil {
+		t.Fatalf("original transaction should be re-created verbatim on redo: %v", err)
+	}
+
+	// Loan balance = -250000 + 100000 (extra) + 1047.69 (verbatim principal).
+	// A recompute would instead add ~1589.36, leaving -148410.64.
+	bal, err := env.accountRepo.Balance(loanAcct.ID)
+	if err != nil {
+		t.Fatalf("loan balance: %v", err)
+	}
+	if !bal.Equal(types.MustNewMoney("-148952.31")) {
+		t.Errorf("loan balance after redo = %s, want -148952.31 (verbatim replay, not recompute)", bal.String())
+	}
+}
+
 func TestPostScheduledTransactionCommand_WithOverrideAmount(t *testing.T) {
 	t.Run("posts with override amount", func(t *testing.T) {
 		env := createScheduledTestEnv(t)

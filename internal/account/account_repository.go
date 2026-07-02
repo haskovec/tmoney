@@ -143,6 +143,65 @@ func (r *Repository) GetByName(name string) (*Account, error) {
 	return account, nil
 }
 
+// BalanceAsOf returns the account's signed balance as of the given date:
+// opening_balance + Σ of the non-void transaction amounts dated on or before
+// asOf. It is the single-account form of the net-worth report's as-of query
+// (report_service.go netWorthAsOf); liability accounts (loan, credit card)
+// return a negative balance when money is owed, matching the standardized
+// sign convention. Only parent transaction amounts are summed — a
+// transaction's split lines always net to its parent amount, so the parent
+// already carries the full account impact (the split table is never summed
+// into an account balance). Void rows keep their date/amount but contribute
+// nothing. The loan recompute engine uses this to read a loan's outstanding
+// balance as of the occurrence date being posted.
+func (r *Repository) BalanceAsOf(id types.ID, asOf types.Date) (types.Money, error) {
+	query := `
+		SELECT a.opening_balance + COALESCE(
+			(SELECT SUM(t.amount)
+			 FROM transactions t
+			 WHERE t.account_id = a.id
+			   AND t.date <= ?
+			   AND t.status != 'void'), 0)
+		FROM accounts a
+		WHERE CAST(a.id AS VARCHAR) = ?
+	`
+	var balance types.Money
+	err := r.db.Conn().QueryRow(query, asOf.Time(), id.String()).Scan(&balance)
+	if err == sql.ErrNoRows {
+		return types.ZeroMoney, &dberrors.NotFoundError{Entity: "account", ID: id.String()}
+	}
+	if err != nil {
+		return types.ZeroMoney, fmt.Errorf("failed to compute account balance as of date: %w", err)
+	}
+	return balance, nil
+}
+
+// Balance returns the account's full signed balance across all dates:
+// opening_balance + Σ of every non-void transaction amount. It mirrors
+// BalanceAsOf without the date bound and backs the loan payoff check (has the
+// outstanding balance reached zero after a payment?), which must count a
+// just-posted principal counterpart even when it is future-dated.
+func (r *Repository) Balance(id types.ID) (types.Money, error) {
+	query := `
+		SELECT a.opening_balance + COALESCE(
+			(SELECT SUM(t.amount)
+			 FROM transactions t
+			 WHERE t.account_id = a.id
+			   AND t.status != 'void'), 0)
+		FROM accounts a
+		WHERE CAST(a.id AS VARCHAR) = ?
+	`
+	var balance types.Money
+	err := r.db.Conn().QueryRow(query, id.String()).Scan(&balance)
+	if err == sql.ErrNoRows {
+		return types.ZeroMoney, &dberrors.NotFoundError{Entity: "account", ID: id.String()}
+	}
+	if err != nil {
+		return types.ZeroMoney, fmt.Errorf("failed to compute account balance: %w", err)
+	}
+	return balance, nil
+}
+
 // List retrieves all accounts, optionally filtered by active status.
 func (r *Repository) List(activeOnly bool) ([]*Account, error) {
 	query := `

@@ -398,6 +398,26 @@ func (st *Transaction) IsCompleted() bool {
 	return false
 }
 
+// MarkCompleted forces the schedule into the terminal "completed" state that a
+// naturally-exhausted fixed-duration schedule reaches: occurrences_remaining =
+// 0, with occurrences backfilled to a positive value so validation
+// (occurrences > 0; remaining ≤ occurrences) still holds on an otherwise
+// indefinite schedule. Any end_date is cleared so it cannot collide with the
+// occurrence limit (they are mutually exclusive in validation). This is the
+// mechanism the loan-payoff completion uses — deliberately not the end_date
+// trick, which strands NextDate == EndDate and can violate the
+// end_date > start_date rule on a first-occurrence payoff.
+func (st *Transaction) MarkCompleted() {
+	occurrences := int64(1)
+	if st.Occurrences.Valid && st.Occurrences.Int64 > occurrences {
+		occurrences = st.Occurrences.Int64
+	}
+	st.Occurrences = types.NullableInt{Int64: occurrences, Valid: true}
+	st.OccurrencesRemaining = types.NullableInt{Int64: 0, Valid: true}
+	st.EndDate = types.NullableDate{Valid: false}
+	st.Touch()
+}
+
 // CalculateNextDate calculates the next occurrence date after the current next_date.
 func (st *Transaction) CalculateNextDate() types.Date {
 	return calculateNextDate(st.NextDate, st.Frequency, st.Interval, st.DayOfMonth, st.SecondaryDayOfMonth)

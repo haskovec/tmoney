@@ -201,75 +201,74 @@ split math.
       and clear-to-NULL) so a dropped `Update` write is actually
       caught — verified by an adversarial mutation probe.
 
-## Phase 5: Loan-Shaped Schedules in the Scheduled Service — [ ]
+## Phase 5: Loan-Shaped Schedules in the Scheduled Service — [x]
 
 The recompute engine. All posting paths converge here.
 
-- [ ] **Due-list repair (pre-existing zombie bug, ships first in this
-      phase)**: `ListDue` filters only on `next_date`
-      (`internal/scheduled/scheduled_repository.go:226`), so completed
-      schedules surface as *due* forever in the TUI due section,
-      due-count badge, and `scheduled list --due`, while Post and Skip
-      refuse with `CompletedError`. Exclude completed schedules from
-      the due queries/consumers. Regression test with a naturally
-      exhausted fixed-occurrence schedule.
-- [ ] `scheduled.IsLoanShaped(st, accountLookup)` per the spec's strict
-      detection (monthly with **interval 1 and no semi-monthly
-      secondary day**; every split tagged; exactly one principal
-      transfer→active-loan; **at most one** interest; parent fixed) and
-      `IsLoanAdoptable` (loose shape, same cadence rule) for the TUI
-      affordance.
-- [ ] As-of balance helper: loan balance as of a date
-      (`opening_balance + Σ non-void txns ≤ date`) — reuse/extract the
-      report service's as-of query rather than duplicating SQL.
-- [ ] `Service.ComputeLoanSplits(st, occurrenceDate)` → adjusted parent
-      amount + splits. P&I payment **derived** as parent magnitude −
-      Σ escrow-tagged lines (never stored separately). Wraps
-      `internal/loan.SplitPayment` with APR lookup from the loan
-      account. Typed errors: paid off (`owed ≤ 0`), negative-am,
-      **NULL APR** ("no interest rate set" — never silent 0%),
-      **missing interest line while computed interest > $0.00** ("open
-      Edit as loan to add one" — the guard must NOT fire when computed
-      interest rounds to zero, or a nearly-paid loan becomes
-      unpostable). $0.00 computed lines omitted from output.
-- [ ] Wire into `buildMultiLineTransaction` (used by `Post`,
-      `PostWithDate`, **and** `AutoPost`): loan-shaped → computed splits
-      and computed parent amount (clamped final payment shrinks the
-      posted total; the template is untouched).
-- [ ] **Auto-post isolation**: loan-computation errors skip that
-      schedule with a reason (the existing closed-account
-      skip-with-reason mechanism) — they must never abort the rest of
-      the auto-post batch.
-- [ ] Payoff completion — on **every** posting path including
-      `PostWithEdits`: after writing the post, if loan balance **≥ 0**,
-      mark the schedule completed. The paid-off **refusal** (manual)
-      and **skip** (auto-post) also mark it completed — `owed ≤ 0` is
-      terminal, and there is no other user-facing complete-schedule
-      affordance after an ad-hoc payoff transfer. Mechanism: set
-      `occurrences_remaining = 0`, backfilling `occurrences = 1` on an
-      indefinite schedule (validation requires a positive value ≥
-      remaining) — explicitly **not** the `end_date` trick
-      (AdvanceSchedule-ordering trap; first-occurrence payoff violates
-      `end_date > start_date` validation and bricks editing).
-- [ ] **Undo/redo determinism**: redo re-creates stored rows verbatim,
-      never recomputes from the live balance. Binding sites: the
-      preview-path command (`PostScheduledTransactionWithEditsCommand`)
-      already stores and replays; convert the plain
-      `PostScheduledTransactionCommand` (whose redo currently
-      re-executes `svc.Post`) to store-and-replay. `AutoPostCommand`'s
-      redo is already a no-op — pre-existing quirk, out of scope.
-- [ ] Tests: computed splits across several months (balance drops ⇒
-      interest drops), extra-principal transfer mid-stream changes next
-      split, multi-overdue auto-post posts sequentially compounding
-      correctly, clamp+complete on final payment, completion via
-      PostWithEdits with penny-overshoot (balance slightly positive),
-      paid-off refusal (manual) and skip-with-reason (auto-post batch
-      continues) both mark the schedule completed, 0%-loan posting (no
-      interest line), nearly-paid loan whose computed interest rounds
-      to $0.00 posts successfully without an interest line, APR raised
-      on a 0% schedule → typed error, NULL-APR typed error, negative-am
-      refusal, redo determinism, generic multi-line schedules
-      completely unaffected.
+- [x] **Due-list repair (pre-existing zombie bug, ships first in this
+      phase)**: `ListDue`
+      (`internal/scheduled/scheduled_repository.go`) now excludes
+      completed schedules — `occurrences_remaining IS NULL OR > 0` and
+      `end_date IS NULL OR next_date <= end_date`, mirroring
+      `Transaction.IsCompleted`. Previously a completed schedule with a
+      past `next_date` surfaced as *due* forever (TUI due section,
+      due-count badge, `scheduled list --due`) while Post/Skip refused
+      it with `CompletedError`. Regression tests: naturally-exhausted
+      fixed-occurrence schedule and a past-end_date schedule
+      (`list_due_test.go`).
+- [x] `scheduled.IsLoanShaped(st, AccountLookup)` and `IsLoanAdoptable`
+      (`internal/scheduled/loan_shape.go`) per the spec's strict/loose
+      detection (monthly, interval 1, no secondary day; every split
+      tagged; exactly one principal transfer→active loan account; at
+      most one interest; fixed parent). Resolve-failure ⇒ not
+      loan-shaped (total function). `LoanSection` constants added.
+      Tests: `loan_shape_test.go`.
+- [x] As-of balance helpers `account.Repository.BalanceAsOf(id, date)`
+      and `Balance(id)` extract the net-worth as-of formula
+      (`opening_balance + Σ non-void txns`, signed, parent amounts
+      only) as reusable single-account queries. Tests:
+      `balance_asof_test.go`.
+- [x] `Service.ComputeLoanSplits(st, occurrenceDate)` → `*LoanSplits`
+      (parent amount + splits) in `loan_posting.go`. P&I derived as
+      parent magnitude − Σ escrow magnitudes; wraps
+      `internal/loan.SplitPayment` with APR from the loan account.
+      Typed errors `ErrLoanPaidOff`, `ErrLoanNoInterestRate`,
+      `ErrLoanMissingInterestLine` (guard skipped when computed interest
+      rounds to $0.00), plus propagated `ErrNegativeAmortization`.
+      $0.00 interest line omitted. Tests: `loan_posting_test.go`.
+- [x] Wired into `buildMultiLineTransaction` via `buildLoanTransaction`
+      (covers `Post`, `PostWithDate`, and `AutoPost`): loan-shaped →
+      computed splits + computed parent (clamped final shrinks the
+      draft; template untouched).
+- [x] **Auto-post isolation**: `isLoanComputationError` →
+      skip-with-reason (`loanSkipReason`); loan-computation errors never
+      abort the batch. Persistence adjusted so a paid-off skip that
+      marks the schedule completed is saved.
+- [x] Payoff completion on **every** posting path incl. `PostWithEdits`:
+      `finalizeLoanPayoff` marks the schedule completed when the loan's
+      full balance reaches ≥ 0. The manual paid-off refusal
+      (`postMultiLine`) and auto-post skip also complete. Mechanism:
+      `Transaction.MarkCompleted` sets `occurrences_remaining = 0`,
+      backfills `occurrences = 1`, clears any `end_date` — not the
+      `end_date` trick. Tests in `loan_wiring_test.go`.
+- [x] **Undo/redo determinism**: added
+      `Service.PostReturningSplits`; converted
+      `PostScheduledTransactionCommand` to store-and-replay for
+      multi-line (replays the captured parent + splits via
+      `PostWithEdits` on redo, so a loan schedule never recomputes
+      against a since-changed balance); single-line stays re-execute
+      (deterministic). `AutoPostCommand` no-op redo left as-is
+      (out of scope). Test:
+      `TestPostScheduledTransactionCommand_LoanRedoIsDeterministic`.
+- [x] Tests: computed splits across months (interest falls / principal
+      rises), extra-principal mid-stream lowers next interest,
+      multi-overdue auto-post compounds, clamp+complete on final
+      payment, PostWithEdits payoff completion, paid-off refusal
+      (manual) + skip-with-reason (auto-post batch continues) both
+      complete the schedule, zero-rate posting (no interest line),
+      nearly-paid loan omits a $0.00 interest line, NULL-APR + missing
+      interest line + negative-am typed errors, redo determinism, and
+      generic multi-line schedules unaffected.
 
 ## Phase 6: Post-Time Preview Integration (TUI) — [ ]
 

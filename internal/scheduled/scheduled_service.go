@@ -289,6 +289,19 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 				}
 				built, err := s.buildMultiLineTransaction(st, st.NextDate)
 				if err != nil {
+					// A loan-recompute failure (paid off, negative-am, missing
+					// APR, missing interest line) skips this schedule with a
+					// reason — it must never abort the rest of the batch.
+					if isLoanComputationError(err) {
+						result.Skipped = true
+						result.SkipReason = loanSkipReason(err)
+						// A paid-off loan is terminal: mark it completed so it
+						// stops surfacing as due.
+						if errors.Is(err, ErrLoanPaidOff) {
+							st.MarkCompleted()
+						}
+						break
+					}
 					return nil, fmt.Errorf("failed to build multi-line auto-post transaction: %w", err)
 				}
 				if err := s.txnSvc.CreateWithSplits(built.parent, built.splits); err != nil {
@@ -335,14 +348,21 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 
 			// Advance the schedule
 			st.AdvanceSchedule()
+			// Payoff completion: a loan-shaped schedule whose balance reached
+			// zero (e.g. a clamped final payment) is marked completed, which
+			// also stops the loop.
+			if err := s.finalizeLoanPayoff(st); err != nil {
+				return nil, fmt.Errorf("auto-post created transaction but failed to finalize loan payoff: %w", err)
+			}
 		}
 
-		// Update the scheduled transaction to persist any schedule advancement
-		if len(result.Transactions) > 0 || result.Skipped {
-			if len(result.Transactions) > 0 {
-				if err := s.repo.Update(st); err != nil {
-					return nil, fmt.Errorf("failed to update schedule after auto-post: %w", err)
-				}
+		// Persist schedule mutations. A posted occurrence advanced the schedule;
+		// a paid-off skip marked it completed. Other skips (closed account,
+		// no-estimate, non-terminal loan errors) leave the schedule untouched
+		// and due, so they are not persisted.
+		if len(result.Transactions) > 0 || (result.Skipped && st.IsCompleted()) {
+			if err := s.repo.Update(st); err != nil {
+				return nil, fmt.Errorf("failed to update schedule after auto-post: %w", err)
 			}
 		}
 
@@ -409,30 +429,43 @@ func (s *Service) estimateAmountForSchedule(st *Transaction) (*types.Money, erro
 // not supported — per-instance amount edits go through the post-time preview dialog.
 // Returns the created transaction.
 func (s *Service) Post(id types.ID, amount *types.Money) (*transaction.Transaction, error) {
+	txn, _, err := s.PostReturningSplits(id, amount)
+	return txn, err
+}
+
+// PostReturningSplits behaves exactly like Post but also returns the child
+// splits it persisted (nil for single-line schedules). The undo command for a
+// plain post uses it to capture and replay the exact posted rows on redo:
+// loan-shaped schedules recompute interest/principal from the loan's live
+// balance, which can change between the original post and a later redo, so a
+// redo that re-ran Post would produce different rows. Store-and-replay keeps
+// redo deterministic.
+func (s *Service) PostReturningSplits(id types.ID, amount *types.Money) (*transaction.Transaction, []*transaction.Split, error) {
 	st, err := s.repo.GetByID(id)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Check if schedule is already completed
 	if st.IsCompleted() {
-		return nil, &CompletedError{ID: id.String()}
+		return nil, nil, &CompletedError{ID: id.String()}
 	}
 
 	// A schedule may not post into a closed account (manual post refuses with a
 	// clear error and the schedule stays due).
 	if err := s.ensureNoClosedAccounts(st); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if len(st.Splits) > 0 {
 		if amount != nil {
-			return nil, fmt.Errorf("amount override is not supported on multi-line scheduled transactions; use the preview dialog to edit per-instance amounts")
+			return nil, nil, fmt.Errorf("amount override is not supported on multi-line scheduled transactions; use the preview dialog to edit per-instance amounts")
 		}
 		return s.postMultiLine(st, st.NextDate)
 	}
 
-	return s.postSingleLine(st, st.NextDate, amount)
+	txn, err := s.postSingleLine(st, st.NextDate, amount)
+	return txn, nil, err
 }
 
 // PostWithDate creates a transaction from a scheduled transaction with a specific date.
@@ -458,7 +491,8 @@ func (s *Service) PostWithDate(id types.ID, date types.Date, amount *types.Money
 		if amount != nil {
 			return nil, fmt.Errorf("amount override is not supported on multi-line scheduled transactions; use the preview dialog to edit per-instance amounts")
 		}
-		return s.postMultiLine(st, date)
+		txn, _, err := s.postMultiLine(st, date)
+		return txn, err
 	}
 
 	return s.postSingleLine(st, date, amount)
@@ -573,25 +607,35 @@ func (s *Service) postSingleLineTransfer(st *Transaction, date types.Date, amoun
 // (which mints fresh TransferIDs and creates paired counterparts for any
 // transfer-line splits). The template's children are left in place and the
 // schedule advances by one cadence.
-func (s *Service) postMultiLine(st *Transaction, date types.Date) (*transaction.Transaction, error) {
+func (s *Service) postMultiLine(st *Transaction, date types.Date) (*transaction.Transaction, []*transaction.Split, error) {
 	if s.txnSvc == nil {
-		return nil, fmt.Errorf("multi-line scheduled posting requires a transaction service; scheduled.NewService was called with txnSvc=nil")
+		return nil, nil, fmt.Errorf("multi-line scheduled posting requires a transaction service; scheduled.NewService was called with txnSvc=nil")
 	}
 
 	built, err := s.buildMultiLineTransaction(st, date)
 	if err != nil {
-		return nil, err
+		// A loan already paid off at post time is a terminal state: refuse the
+		// post and mark the schedule completed on the spot, so an ad-hoc payoff
+		// transfer cannot strand a never-postable due schedule.
+		if errors.Is(err, ErrLoanPaidOff) {
+			st.MarkCompleted()
+			_ = s.repo.Update(st)
+		}
+		return nil, nil, err
 	}
 
 	if err := s.txnSvc.CreateWithSplits(built.parent, built.splits); err != nil {
-		return nil, fmt.Errorf("failed to create multi-line transaction: %w", err)
+		return nil, nil, fmt.Errorf("failed to create multi-line transaction: %w", err)
 	}
 
 	st.AdvanceSchedule()
-	if err := s.repo.Update(st); err != nil {
-		return built.parent, fmt.Errorf("transaction created but failed to update schedule: %w", err)
+	if err := s.finalizeLoanPayoff(st); err != nil {
+		return built.parent, built.splits, fmt.Errorf("transaction created but failed to finalize loan payoff: %w", err)
 	}
-	return built.parent, nil
+	if err := s.repo.Update(st); err != nil {
+		return built.parent, built.splits, fmt.Errorf("transaction created but failed to update schedule: %w", err)
+	}
+	return built.parent, built.splits, nil
 }
 
 // builtMultiLineTransaction holds the parent transaction and child splits
@@ -608,6 +652,12 @@ type builtMultiLineTransaction struct {
 // Transfer-line template entries become transfer-line splits with no
 // TransferID; the transaction service mints one per call when persisting.
 func (s *Service) buildMultiLineTransaction(st *Transaction, date types.Date) (*builtMultiLineTransaction, error) {
+	// Loan-shaped schedules recompute their interest/principal split from the
+	// loan's live balance at posting time; the stored template is never trusted.
+	if s.isLoanShaped(st) {
+		return s.buildLoanTransaction(st, date)
+	}
+
 	parent := transaction.NewTransaction(st.AccountID, date, st.Amount.Money)
 	if st.HasPayee() {
 		parent.SetPayee(st.PayeeID.ID)
@@ -702,6 +752,12 @@ func (s *Service) PostWithEdits(id types.ID, txn *transaction.Transaction, split
 	}
 
 	st.AdvanceSchedule()
+	// Payoff completion applies on every posting path, including this flagship
+	// manual-preview flow: a penny-tweaked edit that brings the loan to (or
+	// past) zero marks the schedule completed.
+	if err := s.finalizeLoanPayoff(st); err != nil {
+		return txn, fmt.Errorf("transaction created but failed to finalize loan payoff: %w", err)
+	}
 	if err := s.repo.Update(st); err != nil {
 		return txn, fmt.Errorf("transaction created but failed to update schedule: %w", err)
 	}
