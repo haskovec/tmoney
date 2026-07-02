@@ -1,6 +1,6 @@
 study README.md
-study specs/cli-package-split.md
-study specs/implementation-plan-cli-package-split.md and pick the most important thing to do
+study specs/loan-wizard.md
+study specs/implementation-plan-loan-wizard.md and pick the most important thing to do
 
 IMPORTANT:
 - author property based tests or unit tests (whichever is best)
@@ -11,4 +11,4 @@ IMPORTANT:
 - always run go fmt before committing files
 - lint the code with golangci-lint
 - when tests pass commit the changes and push
-- update the specs/implementation-plan-cli-package-split.md file marking the task as done
+- update the specs/implementation-plan-loan-wizard.md file marking the task as done
