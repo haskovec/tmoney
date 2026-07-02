@@ -3,6 +3,8 @@ package types
 import (
 	"testing"
 	"time"
+
+	"github.com/alpacahq/alpacadecimal"
 )
 
 func TestID(t *testing.T) {
@@ -286,6 +288,20 @@ func TestMoney(t *testing.T) {
 		}
 		if val.(string) != "123.45" {
 			t.Error("Value should return string representation")
+		}
+	})
+
+	t.Run("Decimal/NewMoneyFromDecimal round-trip preserves full precision", func(t *testing.T) {
+		// A repeating quotient exercises precision beyond two decimal places.
+		rate := alpacadecimal.NewFromInt(1).Div(alpacadecimal.NewFromInt(3))
+		back := NewMoneyFromDecimal(rate)
+		if back.Decimal().Cmp(rate) != 0 {
+			t.Errorf("round-trip lost precision: got %s want %s", back.Decimal(), rate)
+		}
+
+		m := MustNewMoney("123.45")
+		if m.Decimal().String() != "123.45" {
+			t.Errorf("Decimal() should expose the underlying value, got %s", m.Decimal())
 		}
 	})
 }

@@ -122,41 +122,59 @@ The one behavior-change phase; everything else is additive.
       car depreciation recipe (manual entry or plain scheduled
       transaction on the asset account, category Value Adjustment).
 
-## Phase 3: Loan Math Engine (`internal/loan`) — [ ]
+## Phase 3: Loan Math Engine (`internal/loan`) — [x]
 
-Pure functions on `alpacadecimal.Decimal` (the established pattern —
+Pure functions over `types.Money` / `types.Date` (doing the intermediate
+arithmetic on `alpacadecimal.Decimal`), the established pattern —
 cf. `internal/investment/computation.go`; `Decimal.Round` provides
 half-away-from-zero, which equals round-half-up for these non-negative
-magnitudes). No DB, no UI. Pin the rounding behavior with tests.
+magnitudes. No DB, no UI. Rounding behavior pinned by tests.
 
 Terminology per spec: `piPayment` is P&I only; escrow never enters the
 split math.
 
-- [ ] `MonthlyRate(apr)` → APR/100/12 at full precision (never
-      pre-rounded; only final interest figures are rounded).
-- [ ] `Payment(principal, apr, termMonths)` → amortization formula
-      rounded half-up to cents; `r = 0` branch → `ceil_to_cent(P/n)`.
-- [ ] `SplitPayment(owed, apr, piPayment)` →
+- [x] Added `Money.Decimal()` accessor and `NewMoneyFromDecimal`
+      constructor to `internal/types` (mirroring `Quantity.Decimal()`) so
+      the engine can multiply/divide a Money by a non-integer factor and
+      round-trip back; used by the engine and every later phase.
+- [x] `MonthlyRate(apr)` → APR/100/12 at the library's division precision.
+      Backs the `Payment` closed form; the **authoritative** interest
+      split does **not** route through this pre-rounded factor (see below).
+- [x] `Payment(principal, apr, termMonths)` → amortization formula rounded
+      half-up to cents; `r = 0` branch → `ceil_to_cent(P/n)` (`RoundCeil`);
+      integer power via exact exponentiation-by-squaring (`powInt`), not
+      the approximate `Decimal.Pow`.
+- [x] `SplitPayment(owed, apr, piPayment)` →
       `(interest, principal, final bool, err)`:
-      - interest = round_half_up(owed × r, 2)
+      - interest = round_half_up(owed × APR / 1200, 2) — **multiply before
+        dividing** so the rate is never pre-rounded, per the spec's
+        Interest Convention (a pre-rounded rate scaled by the balance
+        understated exact half-cent ties by a cent; caught in review).
       - principal = piPayment − interest
       - clamp: principal > owed → principal = owed, final = true
-      - err on principal ≤ 0 with owed > 0 (negative amortization)
-- [ ] `Projection(owed, apr, piPayment, escrowTotal, nextDate, dayOfMonth)`
-      → rows `{n, date, totalDraft, interest, principal, escrow, balanceAfter}`
-      until balance = 0, capped at **1,200 rows with an explicit
-      `Truncated bool`** (the negative-am guard admits $1/month
-      principal, so the cap is reachable); reuse the scheduled engine's
-      month-end day-of-month semantics (31st → shorter months).
-- [ ] `RemainingStats(projection)` → payments left, payoff date, total
+      - `ErrNegativeAmortization` (sentinel) on principal ≤ 0 with owed > 0
+- [x] `Project(owed, apr, piPayment, escrowTotal, nextDate, dayOfMonth)`
+      → `Projection{Rows []Row, Truncated bool}`, `Row{N, Date, TotalDraft,
+      Interest, Principal, Escrow, BalanceAfter, Final}` until balance = 0,
+      capped at **1,200 rows with `Truncated bool`** (the negative-am guard
+      admits $1/month principal, so the cap is reachable); replicates the
+      scheduled engine's month-end day-of-month clamping (31st → shorter
+      months). Callers must pass the schedule's explicit day-of-month (the
+      wizard always stores one); the legacy roll-forward for a *missing*
+      day-of-month is intentionally not reproduced (documented).
+- [x] `RemainingStats(projection)` → payments left, payoff date, total
       interest remaining; when `Truncated`, payoff date and interest
-      remaining are flagged unknown (rendered `100y+` by callers).
-- [ ] Table-driven tests: known amortization fixtures (verify 380k @
-      6.5% / 360mo against an independently computed value), 0% loans
-      (ceil prefill; no n+1st penny payment), one-payment-left clamp,
-      penny rounding accumulation across a full projection ends at
-      exactly zero, negative-am error, truncation flag, escrow
-      pass-through (never double-subtracted).
+      remaining are left unknown (Truncated propagated; callers render
+      `100y+`).
+- [x] Table-driven tests: amortization fixtures verified against
+      independently computed values (380k @ 6.5% / 360mo → 2401.86, 360
+      rows, 484,667.97 interest; 312450.22 @ 6.5%; 32k @ 5.9% / 60mo →
+      617.16 needing a 61st clamped payment), 0% loans (ceil prefill; no
+      n+1st penny payment), one-payment-left clamp, penny accumulation ends
+      at exactly zero, negative-am error, truncation flag + stats, escrow
+      pass-through (never double-subtracted), month-end / leap-year date
+      clamping, exact half-cent interest ties round up, paid-off / empty
+      projections. `MonthlyRate` precision and `powInt` pinned.
 
 ## Phase 4: `loan_section` Schema + Model Plumbing — [ ]
 

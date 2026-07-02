@@ -138,6 +138,14 @@ func NewMoneyFromFloat(f float64) Money {
 	return Money{value: alpacadecimal.NewFromFloat(f)}
 }
 
+// NewMoneyFromDecimal creates a Money value from a raw decimal, preserving its
+// full precision. It is the inverse of Money.Decimal and lets callers that do
+// intermediate decimal arithmetic (e.g. the loan amortization engine) round-trip
+// back into a Money.
+func NewMoneyFromDecimal(d alpacadecimal.Decimal) Money {
+	return Money{value: d}
+}
+
 // String returns the string representation of the Money value.
 func (m Money) String() string {
 	return m.value.String()
@@ -147,6 +155,14 @@ func (m Money) String() string {
 func (m Money) Float64() float64 {
 	f, _ := m.value.Float64()
 	return f
+}
+
+// Decimal returns the underlying decimal value at full precision. Use it when a
+// calculation needs to multiply/divide a Money by a non-integer factor (Money's
+// own arithmetic only exposes integer division); pair it with NewMoneyFromDecimal
+// to return to a Money.
+func (m Money) Decimal() alpacadecimal.Decimal {
+	return m.value
 }
 
 // IsZero returns true if the Money value is zero.
