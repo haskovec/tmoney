@@ -491,7 +491,7 @@ func TestDialog_HandleMouse_ClickCancel_WhenScrolling(t *testing.T) {
 	buttonScreenY := startRow + 2 + (renderedContentRows - 1) // last content row = button row
 
 	got := DialogActionNone
-	for x := 0; x < contentWidth; x++ {
+	for x := range contentWidth {
 		action := d.HandleMouse(tea.MouseClickMsg{
 			X:      startCol + 3 + x,
 			Y:      buttonScreenY,
@@ -528,7 +528,7 @@ func TestDialog_HandleMouse_ClickCancel_WithWrappingMessage(t *testing.T) {
 	buttonRow := d.ContentHeight() - 1
 
 	got := DialogActionNone
-	for x := 0; x < contentWidth; x++ {
+	for x := range contentWidth {
 		action := d.HandleMouse(tea.MouseClickMsg{
 			X:      startCol + 3 + x,
 			Y:      startRow + 2 + buttonRow,

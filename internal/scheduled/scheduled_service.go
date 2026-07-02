@@ -3,6 +3,7 @@ package scheduled
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
@@ -88,11 +89,8 @@ func (s *Service) ListReferencing(accountID types.ID) ([]*Transaction, error) {
 	}
 	var out []*Transaction
 	for _, st := range all {
-		for _, id := range referencedAccountIDs(st) {
-			if id == accountID {
-				out = append(out, st)
-				break
-			}
+		if slices.Contains(referencedAccountIDs(st), accountID) {
+			out = append(out, st)
 		}
 	}
 	return out, nil

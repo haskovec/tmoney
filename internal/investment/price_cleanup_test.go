@@ -17,10 +17,10 @@ func TestListIncomeOnlyTransactionPrices(t *testing.T) {
 	acct := createInvAccount(t, env.accountRepo, "Brokerage")
 	sec := createSec(t, env.secRepo, "AAPL")
 
-	d1 := types.NewDate(2023, time.May, 1)     // buy → justified transaction price (the fallback)
-	d2 := types.NewDate(2023, time.June, 1)    // reinvest + legacy transaction price → CANDIDATE
-	d3 := types.NewDate(2023, time.July, 1)    // reinvest + buy same day → execution justifies, not a candidate
-	d4 := types.NewDate(2023, time.August, 1)  // reinvest + manual price → not transaction-sourced
+	d1 := types.NewDate(2023, time.May, 1)    // buy → justified transaction price (the fallback)
+	d2 := types.NewDate(2023, time.June, 1)   // reinvest + legacy transaction price → CANDIDATE
+	d3 := types.NewDate(2023, time.July, 1)   // reinvest + buy same day → execution justifies, not a candidate
+	d4 := types.NewDate(2023, time.August, 1) // reinvest + manual price → not transaction-sourced
 
 	p100 := types.MustNewMoney("100.00")
 	if _, err := env.svc.Buy(acct.ID, sec.ID, d1, types.MustNewQuantity("10"), nil, &p100, types.ZeroMoney, ""); err != nil {
