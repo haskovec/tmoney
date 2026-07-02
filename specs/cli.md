@@ -738,6 +738,15 @@ tmoney -f personal.tdb reconcile start --account Checking \
   --statement-date 2024-01-31 --statement-balance 850.00
 ```
 
+For liability accounts (credit card, loan), enter the statement balance
+**negated** — servicer statements print a positive amount owed, but
+liability balances are stored negative (see `specs/accounts.md`):
+
+```bash
+tmoney -f personal.tdb reconcile start --account Visa \
+  --statement-date 2024-01-31 --statement-balance -850.00
+```
+
 ### `reconcile status`
 
 `Use: reconcile status` · `Args: NoArgs`

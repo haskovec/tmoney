@@ -103,7 +103,8 @@ func (at Type) IsInvestmentType() bool {
 	return false
 }
 
-// IsLiabilityType returns true if the account type represents a liability (positive balance = money you owe).
+// IsLiabilityType returns true if the account type represents a liability
+// (negative balance = money you owe; positive = overpayment/credit).
 func (at Type) IsLiabilityType() bool {
 	switch at {
 	case TypeCreditCard, TypeLoan:

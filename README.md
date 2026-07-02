@@ -130,7 +130,16 @@ tmoney -f personal.tdb account balance
   for the full feature spec.
 
 ### Reports
-- Net worth calculation (assets vs liabilities)
+- Net worth calculation over signed balances (assets + liabilities).
+  Liability accounts (credit card, loan) store what you owe as a
+  **negative** balance — a $250,000 mortgage sits at −250,000 — and the
+  dashboard/report LIABILITIES sections display the negated (positive)
+  amount owed. **Upgrade note:** if you previously entered a loan's
+  opening balance as a positive number, flip its sign once (edit the
+  account's opening balance); credit cards built from purchase
+  transactions are already negative and need no change. Net worth for
+  files with credit-card debt is now *corrected* — the old
+  assets-minus-liabilities math overstated it.
 - Spending by category with monthly/yearly aggregation and visual bars
 
 ### Prices
@@ -556,7 +565,10 @@ tmoney -f personal.tdb reconcile status --account "Checking"
 
 `reconcile start` records the statement date and balance and reports
 the count of unreconciled transactions on or before the statement
-date. `reconcile mark` marks transactions against the active session
+date. For liability accounts (credit card, loan), enter the statement
+balance **negated**: servicer statements print a positive amount owed,
+but liability balances are stored negative — a card statement showing
+$850.00 owed is entered as `--statement-balance -850.00`. `reconcile mark` marks transactions against the active session
 and reports the running difference between the cleared total and the
 statement balance. `reconcile finish` marks every candidate
 transaction reconciled and closes the session — it refuses to finish

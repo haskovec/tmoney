@@ -78,6 +78,19 @@ func TestReportNetWorth_WithAccounts(t *testing.T) {
 			t.Errorf("expected %q in output, got:\n%s", want, out)
 		}
 	}
+
+	// The -500 purchase leaves the card at -500 (owed); under the
+	// LIABILITIES heading it renders negated, and net worth is
+	// 15000 + (-500) = 14500 (the old subtract path overstated it as 15500).
+	if !strings.Contains(out, "$500.00") {
+		t.Errorf("expected liability displayed negated as $500.00, got:\n%s", out)
+	}
+	if strings.Contains(out, "-$500.00") {
+		t.Errorf("liability should not display as -$500.00 under LIABILITIES, got:\n%s", out)
+	}
+	if !strings.Contains(out, "$14500.00") {
+		t.Errorf("expected net worth $14500.00, got:\n%s", out)
+	}
 }
 
 func TestReportNetWorth_WithAsOf(t *testing.T) {

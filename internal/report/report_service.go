@@ -138,7 +138,8 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 			totalAssets = totalAssets.Add(balance)
 		} else if accountType.IsLiabilityType() {
 			liabilities = append(liabilities, accountBalance)
-			// For liabilities, the balance represents what is owed
+			// Liability balances are stored signed (negative = owed), so the
+			// total stays signed too; presentation layers negate for display.
 			totalLiabilities = totalLiabilities.Add(balance)
 		}
 	}
@@ -147,8 +148,9 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 		return nil, fmt.Errorf("error iterating account balances: %w", err)
 	}
 
-	// Net worth = Total Assets - Total Liabilities
-	netWorth := totalAssets.Sub(totalLiabilities)
+	// Net worth = assets + liabilities over signed balances (liabilities ≤ 0
+	// when owed), per the standardized liability sign convention.
+	netWorth := totalAssets.Add(totalLiabilities)
 
 	return &NetWorth{
 		AsOfDate:         asOf,

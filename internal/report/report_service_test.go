@@ -179,15 +179,15 @@ func TestService_NetWorth_LiabilityAccounts(t *testing.T) {
 	t.Run("calculates liabilities from credit card and loan accounts", func(t *testing.T) {
 		svc, accountRepo, _ := createTestReportService(t)
 
-		// Create credit card with balance (owed)
-		ccBalance, _ := types.NewMoney("500.00")
+		// Create credit card with balance (negative = owed)
+		ccBalance, _ := types.NewMoney("-500.00")
 		creditCard := account.NewAccount("Visa", account.TypeCreditCard, "USD", ccBalance, types.Today())
 		if err := accountRepo.Create(creditCard); err != nil {
 			t.Fatalf("Failed to create credit card: %v", err)
 		}
 
-		// Create loan with balance (owed)
-		loanBalance, _ := types.NewMoney("10000.00")
+		// Create loan with balance (negative = owed)
+		loanBalance, _ := types.NewMoney("-10000.00")
 		loan := account.NewAccount("Car Loan", account.TypeLoan, "USD", loanBalance, types.Today())
 		if err := accountRepo.Create(loan); err != nil {
 			t.Fatalf("Failed to create loan: %v", err)
@@ -202,13 +202,48 @@ func TestService_NetWorth_LiabilityAccounts(t *testing.T) {
 			t.Errorf("Expected 2 liabilities, got %d", len(report.Liabilities))
 		}
 
-		expectedLiabilities, _ := types.NewMoney("10500.00")
+		// Totals stay signed (liabilities ≤ 0); display layers negate.
+		expectedLiabilities, _ := types.NewMoney("-10500.00")
 		if !report.TotalLiabilities.Equal(expectedLiabilities) {
 			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), report.TotalLiabilities.String())
 		}
 
 		// Net worth should be negative when only liabilities exist
 		expectedNetWorth, _ := types.NewMoney("-10500.00")
+		if !report.NetWorth.Equal(expectedNetWorth) {
+			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), report.NetWorth.String())
+		}
+	})
+
+	t.Run("mixed-sign liabilities: credit-balance card offsets debt", func(t *testing.T) {
+		svc, accountRepo, _ := createTestReportService(t)
+
+		// Loan owed (negative)
+		loanBalance, _ := types.NewMoney("-10000.00")
+		loan := account.NewAccount("Car Loan", account.TypeLoan, "USD", loanBalance, types.Today())
+		if err := accountRepo.Create(loan); err != nil {
+			t.Fatalf("Failed to create loan: %v", err)
+		}
+
+		// Overpaid credit card carrying a credit (positive balance)
+		ccBalance, _ := types.NewMoney("50.00")
+		creditCard := account.NewAccount("Visa", account.TypeCreditCard, "USD", ccBalance, types.Today())
+		if err := accountRepo.Create(creditCard); err != nil {
+			t.Fatalf("Failed to create credit card: %v", err)
+		}
+
+		report, err := svc.NetWorthReport()
+		if err != nil {
+			t.Fatalf("NetWorthReport() error = %v", err)
+		}
+
+		// The credit offsets the debt: -10000 + 50 = -9950
+		expectedLiabilities, _ := types.NewMoney("-9950.00")
+		if !report.TotalLiabilities.Equal(expectedLiabilities) {
+			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), report.TotalLiabilities.String())
+		}
+
+		expectedNetWorth, _ := types.NewMoney("-9950.00")
 		if !report.NetWorth.Equal(expectedNetWorth) {
 			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), report.NetWorth.String())
 		}
@@ -232,8 +267,8 @@ func TestService_NetWorth_MixedAccounts(t *testing.T) {
 			t.Fatalf("Failed to create savings: %v", err)
 		}
 
-		// Liabilities
-		ccBalance, _ := types.NewMoney("2000.00")
+		// Liabilities (negative = owed)
+		ccBalance, _ := types.NewMoney("-2000.00")
 		creditCard := account.NewAccount("Visa", account.TypeCreditCard, "USD", ccBalance, types.Today())
 		if err := accountRepo.Create(creditCard); err != nil {
 			t.Fatalf("Failed to create credit card: %v", err)
@@ -250,14 +285,46 @@ func TestService_NetWorth_MixedAccounts(t *testing.T) {
 			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), report.TotalAssets.String())
 		}
 
-		// Total liabilities: 2000
-		expectedLiabilities, _ := types.NewMoney("2000.00")
+		// Total liabilities: -2000 (signed)
+		expectedLiabilities, _ := types.NewMoney("-2000.00")
 		if !report.TotalLiabilities.Equal(expectedLiabilities) {
 			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), report.TotalLiabilities.String())
 		}
 
-		// Net worth: 15000 - 2000 = 13000
+		// Net worth: 15000 + (-2000) = 13000
 		expectedNetWorth, _ := types.NewMoney("13000.00")
+		if !report.NetWorth.Equal(expectedNetWorth) {
+			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), report.NetWorth.String())
+		}
+	})
+
+	t.Run("credit card purchases lower net worth", func(t *testing.T) {
+		svc, accountRepo, txnRepo := createTestReportService(t)
+
+		checkingBalance, _ := types.NewMoney("5000.00")
+		checking := account.NewAccount("Checking", account.TypeChecking, "USD", checkingBalance, types.Today())
+		if err := accountRepo.Create(checking); err != nil {
+			t.Fatalf("Failed to create checking: %v", err)
+		}
+
+		// Fresh credit card; purchases post as negative transactions.
+		ccBalance, _ := types.NewMoney("0")
+		creditCard := account.NewAccount("Visa", account.TypeCreditCard, "USD", ccBalance, types.Today())
+		if err := accountRepo.Create(creditCard); err != nil {
+			t.Fatalf("Failed to create credit card: %v", err)
+		}
+
+		purchase, _ := types.NewMoney("-500.00")
+		txnRepo.createTransaction(t, creditCard.ID, types.Today(), purchase)
+
+		report, err := svc.NetWorthReport()
+		if err != nil {
+			t.Fatalf("NetWorthReport() error = %v", err)
+		}
+
+		// Regression: the old subtract path computed 5000 - (-500) = 5500,
+		// overstating net worth. Correct: 5000 + (-500) = 4500.
+		expectedNetWorth, _ := types.NewMoney("4500.00")
 		if !report.NetWorth.Equal(expectedNetWorth) {
 			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), report.NetWorth.String())
 		}
@@ -614,8 +681,8 @@ func TestService_NetWorth_InvestmentAccountValuation(t *testing.T) {
 			t.Fatalf("Failed to create investment account: %v", err)
 		}
 
-		// Credit card liability
-		ccBalance, _ := types.NewMoney("3000.00")
+		// Credit card liability (negative = owed)
+		ccBalance, _ := types.NewMoney("-3000.00")
 		cc := account.NewAccount("Visa", account.TypeCreditCard, "USD", ccBalance, types.Today())
 		if err := accountRepo.Create(cc); err != nil {
 			t.Fatalf("Failed to create credit card: %v", err)
@@ -641,12 +708,12 @@ func TestService_NetWorth_InvestmentAccountValuation(t *testing.T) {
 			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), report.TotalAssets.String())
 		}
 
-		expectedLiabilities, _ := types.NewMoney("3000.00")
+		expectedLiabilities, _ := types.NewMoney("-3000.00")
 		if !report.TotalLiabilities.Equal(expectedLiabilities) {
 			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), report.TotalLiabilities.String())
 		}
 
-		// Net worth: 25000 - 3000 = 22000
+		// Net worth: 25000 + (-3000) = 22000
 		expectedNetWorth, _ := types.NewMoney("22000.00")
 		if !report.NetWorth.Equal(expectedNetWorth) {
 			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), report.NetWorth.String())

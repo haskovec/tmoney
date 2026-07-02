@@ -37,7 +37,12 @@ Transactions represent the movement of money into, out of, or between accounts. 
 | Transfer Out | Negative | -500.00 (to savings) |
 | Transfer In | Positive | +500.00 (from checking) |
 
-For credit cards and loans (liability accounts), the signs are inverted for display but stored consistently.
+Credit cards and loans (liability accounts) use the same storage signs:
+a charge is negative, a payment (transfer in) is positive, so the
+account balance is negative while money is owed (see the sign table in
+`specs/accounts.md`). Registers show the stored signed amounts; only
+the net-worth views negate liability balances for display under their
+LIABILITIES headings.
 
 ## Transaction Status
 

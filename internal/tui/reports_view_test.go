@@ -44,10 +44,10 @@ func TestApp_RenderNetWorthReport(t *testing.T) {
 					{Name: "Savings", Balance: types.MustNewMoney("10000.00")},
 				},
 				Liabilities: []report.AccountBalance{
-					{Name: "Visa", Balance: types.MustNewMoney("1500.00")},
+					{Name: "Visa", Balance: types.MustNewMoney("-1500.00")},
 				},
 				TotalAssets:      types.MustNewMoney("15000.00"),
-				TotalLiabilities: types.MustNewMoney("1500.00"),
+				TotalLiabilities: types.MustNewMoney("-1500.00"),
 				NetWorth:         types.MustNewMoney("13500.00"),
 			},
 		},
@@ -76,6 +76,14 @@ func TestApp_RenderNetWorthReport(t *testing.T) {
 	if !contains(view, "Visa") {
 		t.Error("renderNetWorthReport() should contain 'Visa'")
 	}
+	// Liabilities render negated under the LIABILITIES heading: the -1500
+	// stored balance displays as positive 1500 owed.
+	if !contains(view, "$1500.00") {
+		t.Error("renderNetWorthReport() should display the liability negated as '$1500.00'")
+	}
+	if contains(view, "-$1500.00") {
+		t.Error("renderNetWorthReport() should not display the stored negative liability balance '-$1500.00'")
+	}
 }
 
 func TestApp_RenderNetWorthReport_NegativeNetWorth(t *testing.T) {
@@ -92,9 +100,9 @@ func TestApp_RenderNetWorthReport_NegativeNetWorth(t *testing.T) {
 			netWorth: &report.NetWorth{
 				AsOfDate:         types.Today().Time(),
 				Assets:           nil,
-				Liabilities:      []report.AccountBalance{{Name: "Loan", Balance: types.MustNewMoney("5000.00")}},
+				Liabilities:      []report.AccountBalance{{Name: "Loan", Balance: types.MustNewMoney("-5000.00")}},
 				TotalAssets:      types.MustNewMoney("0"),
-				TotalLiabilities: types.MustNewMoney("5000.00"),
+				TotalLiabilities: types.MustNewMoney("-5000.00"),
 				NetWorth:         types.MustNewMoney("-5000.00"),
 			},
 		},

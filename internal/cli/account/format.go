@@ -132,9 +132,9 @@ func printBalancesTable(w io.Writer, accounts []*accountdom.Account, balances ma
 
 	fmt.Fprintln(w, "------------------------")
 
-	// Net worth = assets - liabilities
-	// For liabilities (credit cards, loans), the balance is typically negative
-	// (representing what you owe), so we add them to get net worth
+	// Net worth = assets + liabilities over signed balances: the standardized
+	// convention stores liability balances negative when owed (see
+	// specs/accounts.md), so adding them yields net worth.
 	netWorth := totalAssets.Add(totalLiabilities)
 	fmt.Fprintf(w, "%-20s %s\n", "Net Worth:", cmdutil.FormatMoney(netWorth, "USD"))
 }

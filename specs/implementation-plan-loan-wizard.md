@@ -22,39 +22,45 @@ unit tests early. Schema (`loan_section`) precedes the service work that
 reads it; the wizard precedes the views that assume wizard-created
 schedules exist; CLI comes last since it reuses everything.
 
-## Phase 1: Liability Sign Standardization — [ ]
+## Phase 1: Liability Sign Standardization — [x]
 
 The one behavior-change phase; everything else is additive.
 
-- [ ] `internal/report/report_service.go`: `netWorthAsOf` — net worth =
+- [x] `internal/report/report_service.go`: `netWorthAsOf` — net worth =
       `totalAssets + totalLiabilities` over **signed** balances
       (liabilities ≤ 0). Decision (locked): the report struct carries
       signed values; every presentation layer applies the **negation**
       display rule from the spec.
-- [ ] TUI dashboard (`internal/tui/dashboard_view.go`,
+- [x] TUI dashboard (`internal/tui/dashboard_view.go`,
       `renderAssetLiabilityColumns`): render liability rows and the
       liabilities total **negated** under the LIABILITIES heading
       (credit balances therefore display negative — correct).
-- [ ] TUI Reports → Net Worth view (`internal/tui/reports_view.go`):
+- [x] TUI Reports → Net Worth view (`internal/tui/reports_view.go`):
       same negation rule — this view renders the same NetWorth struct
-      and is easy to miss.
-- [ ] CLI `report net-worth` (`internal/cli/report/format.go`): same
+      and is easy to miss. (Verified: it delegates to the shared
+      `renderAssetLiabilityColumns`, so the dashboard fix covers it;
+      fixture tests added for both views.)
+- [x] CLI `report net-worth` (`internal/cli/report/format.go`): same
       negation rendering in the LIABILITIES section; `~` estimated
       markers for investment values unchanged.
-- [ ] CLI `account balance` (`internal/cli/account/format.go`): math
+- [x] CLI `account balance` (`internal/cli/account/format.go`): math
       already correct (`Add`); leave the flat per-account list signed.
       Reword the net-worth comment to reference the standardized
-      convention.
-- [ ] `specs/accounts.md`: fix the sign table (loan, credit card:
+      convention. (Also fixed the stale `IsLiabilityType` doc comment
+      in `internal/account/account.go`, which stated positive = owed.)
+- [x] `specs/accounts.md`: fix the sign table (loan, credit card:
       negative = owed, positive = overpayment/credit); note the
       convention is load-bearing for transfers-as-principal-payments.
-- [ ] `specs/reconciliation.md`: add a liability example (statement
+      (Also updated `specs/reports.md` — formula, classification table,
+      calc block, display note — `specs/transactions.md` liability-sign
+      paragraph, and `specs/cli.md` reconcile-start liability example.)
+- [x] `specs/reconciliation.md`: add a liability example (statement
       shows positive owed → enter negated).
-- [ ] Tests: net worth with mixed asset/liability accounts (signed
+- [x] Tests: net worth with mixed asset/liability accounts (signed
       inputs → correct total; negated display; mixed-sign liabilities
       with one credit-balance card); regression test that a credit card
       with purchases lowers net worth; `--include-closed` still valued.
-- [ ] README note + release-note blurb: users who entered loan balances
+- [x] README note + release-note blurb: users who entered loan balances
       positive must flip the opening-balance sign once.
 
 ## Phase 2: `Value Adjustment` System Category — [ ]

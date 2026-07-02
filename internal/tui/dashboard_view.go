@@ -242,14 +242,16 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	totalAmt := formatDashboardMoney(report.TotalAssets)
 	assetsLines = append(assetsLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalAmt)-4, totalLabel, a.styles.Positive.Bold(true).Render(totalAmt)))
 
-	// Build liabilities column
+	// Build liabilities column. Liability balances are stored signed
+	// (negative = owed); under the LIABILITIES heading they render negated —
+	// not abs — so a credit-balance card correctly displays negative.
 	liabLines := []string{a.styles.SectionHead.Render(widget.PadRight("LIABILITIES", colWidth))}
 	if len(report.Liabilities) == 0 {
 		liabLines = append(liabLines, a.styles.Muted.Render("  (none)"))
 	} else {
 		for _, acct := range report.Liabilities {
 			name := widget.Truncate(acct.Name, colWidth-14)
-			amount := formatDashboardMoney(acct.Balance)
+			amount := formatDashboardMoney(acct.Balance.Neg())
 			if acct.EstimatedValue {
 				amount = "~" + amount
 			}
@@ -258,7 +260,7 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 		}
 	}
 	liabLines = append(liabLines, a.styles.Muted.Render("  "+strings.Repeat("─", colWidth-4)))
-	totalLiabAmt := formatDashboardMoney(report.TotalLiabilities)
+	totalLiabAmt := formatDashboardMoney(report.TotalLiabilities.Neg())
 	liabLines = append(liabLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalLiabAmt)-4, totalLabel, a.styles.Negative.Bold(true).Render(totalLiabAmt)))
 
 	// Ensure both columns have the same height

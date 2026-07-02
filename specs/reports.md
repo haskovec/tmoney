@@ -8,12 +8,12 @@ Reports provide insights into financial data through summaries, charts, and anal
 
 ### Purpose
 
-Shows total assets minus total liabilities to calculate net worth.
+Shows total assets plus (negative) total liabilities to calculate net worth.
 
 ### Data Structure
 
 ```
-Net Worth = Total Assets - Total Liabilities
+Net Worth = Total Assets + Total Liabilities   (signed balances)
 
 Assets:
   - checking accounts (positive balance)
@@ -22,9 +22,9 @@ Assets:
   - cash accounts
   - asset accounts
 
-Liabilities:
-  - credit card accounts (balance owed)
-  - loan accounts (balance owed)
+Liabilities (stored negative when owed — see specs/accounts.md):
+  - credit card accounts (negative balance = owed)
+  - loan accounts (negative balance = owed)
 ```
 
 ### Account Type Classification
@@ -36,8 +36,8 @@ Liabilities:
 | investment | Asset | Always asset (value) |
 | cash | Asset | Positive = asset |
 | asset | Asset | Always asset |
-| credit_card | Liability | Balance = owed |
-| loan | Liability | Balance = owed |
+| credit_card | Liability | Negative = owed |
+| loan | Liability | Negative = owed |
 
 ### Display Format (TUI)
 
@@ -63,6 +63,11 @@ LIABILITIES
 ──────────────────────────────────────
 NET WORTH                    $61,678.90
 ```
+
+Amounts under the LIABILITIES heading are the **negated** stored
+balances: the Visa's stored balance is −$1,234.56, displayed as
+$1,234.56 owed. An overpaid account (positive stored balance) displays
+negative, which correctly reads as a credit.
 
 ### Display Format (CLI)
 
@@ -98,13 +103,17 @@ For investment accounts:
   current_value = sum(lots.quantity * current_price)
   Note: In v1, current_price = purchase_price (no price updates)
 
-Total Assets = sum of positive account balances
+Total Assets = sum of asset account balances
                (checking, savings, investment, cash, asset)
 
-Total Liabilities = sum of balances owed
+Total Liabilities = sum of signed liability balances, ≤ 0 when owed
                     (credit_card, loan)
 
-Net Worth = Total Assets - Total Liabilities
+Net Worth = Total Assets + Total Liabilities
+
+Display: liability rows and the liabilities total render negated under
+the LIABILITIES heading (negation, not abs). The report struct carries
+signed values; presentation layers transform.
 ```
 
 ### Options

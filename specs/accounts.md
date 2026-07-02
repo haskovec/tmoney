@@ -82,8 +82,20 @@ For different account types, positive/negative balances mean:
 | Type | Positive Balance | Negative Balance |
 |------|------------------|------------------|
 | checking, savings, cash, investment, asset | Money you have | Overdrawn |
-| credit_card | You owe money | Credit/overpayment |
-| loan | You owe money | Overpayment |
+| credit_card | Credit/overpayment | You owe money |
+| loan | Overpayment/credit | You owe money |
+
+**Liability balances are stored negative when money is owed.** A $250,000
+mortgage sits at −250,000. This convention is load-bearing: a principal
+payment is an ordinary linked transfer (from-leg negative on the funding
+account, to-leg positive on the loan), and only a negative-owed balance
+lets that positive leg move the debt toward zero. Net worth is computed
+as `assets + liabilities` over signed balances. Views that list
+liabilities under an explicit LIABILITIES heading (dashboard, net-worth
+report) display the **negated** balance — so a −$249,500 mortgage shows
+as `249,500.00` owed, and an overpaid account correctly displays
+negative (a credit). Registers and the flat `account balance` list keep
+true signed values.
 
 ## Validation Rules
 

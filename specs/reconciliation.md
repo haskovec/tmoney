@@ -16,6 +16,22 @@ Reconciliation allows users to match their account register against a bank state
    - **Statement ending balance**: the final balance shown on the statement
 3. TMoney opens the dedicated reconciliation view
 
+**Liability accounts (credit card, loan): enter the statement balance
+negated.** Servicer statements show what you owe as a positive number,
+but liability balances are stored negative (see `specs/accounts.md`).
+A credit-card statement showing a $1,234.56 balance owed is entered as
+`-1234.56`; a loan statement showing $249,500.00 outstanding is entered
+as `-249500.00`. The difference math (`statement balance − cleared
+total`) then works unchanged.
+
+Example: reconciling a credit card against a statement with a New
+Balance of $850.00 —
+
+```
+tmoney -f personal.tdb reconcile start --account "Visa" \
+  --statement-date 2024-01-31 --statement-balance -850.00
+```
+
 ### Reconciliation View (TUI)
 
 A **dedicated full-screen view** with a single-column transaction list and sticky footer.
