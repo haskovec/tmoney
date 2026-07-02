@@ -121,6 +121,7 @@ func (a *App) isDialogVisible() bool {
 		(a.schedDialog != nil && a.schedDialog.IsVisible()) ||
 		(a.schedPreviewDialog != nil && a.schedPreviewDialog.IsVisible()) ||
 		(a.paycheckWizard != nil && a.paycheckWizard.IsVisible()) ||
+		(a.loanWizard != nil && a.loanWizard.IsVisible()) ||
 		(a.acctDialog != nil && a.acctDialog.IsVisible()) ||
 		(a.reconDialog != nil && a.reconDialog.IsVisible()) ||
 		(a.closeAcctDialog != nil && a.closeAcctDialog.IsVisible()) ||

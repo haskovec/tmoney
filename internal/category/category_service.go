@@ -298,6 +298,38 @@ func (s *Service) EnsurePaycheckCategories() error {
 	return nil
 }
 
+// GetOrCreateLoanInterestCategory returns the default loan-interest expense
+// category (Loan:Interest), creating the parent Loan and/or the Interest child
+// when either is missing. It is the loan wizard's and `loan add`'s save-time
+// resolution of the default interest category, so the default is always
+// available even on files where it was never seeded or was deleted. Idempotent:
+// an existing parent/child is reused untouched. The categories are ordinary
+// (non-system) so the user can later rename or merge them.
+func (s *Service) GetOrCreateLoanInterestCategory() (*Category, error) {
+	parent, err := s.repo.GetByName(LoanCategoryName, nil)
+	if err != nil {
+		if _, ok := err.(*dberrors.NotFoundError); !ok {
+			return nil, fmt.Errorf("lookup parent %q: %w", LoanCategoryName, err)
+		}
+		parent = NewCategory(LoanCategoryName, TypeExpense)
+		if err := s.repo.Create(parent); err != nil {
+			return nil, fmt.Errorf("create parent %q: %w", LoanCategoryName, err)
+		}
+	}
+	child, err := s.repo.GetByName(LoanInterestChildName, &parent.ID)
+	if err == nil {
+		return child, nil
+	}
+	if _, ok := err.(*dberrors.NotFoundError); !ok {
+		return nil, fmt.Errorf("lookup child %q under %q: %w", LoanInterestChildName, LoanCategoryName, err)
+	}
+	child = NewSubcategory(LoanInterestChildName, parent.ID, TypeExpense)
+	if err := s.repo.Create(child); err != nil {
+		return nil, fmt.Errorf("create child %q under %q: %w", LoanInterestChildName, LoanCategoryName, err)
+	}
+	return child, nil
+}
+
 // GetValueAdjustmentCategory returns the system Value Adjustment
 // category used for asset revaluations. Returns a NotFoundError when it
 // has not been seeded (call EnsureValueAdjustmentCategory first).

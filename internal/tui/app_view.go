@@ -111,6 +111,11 @@ func (a *App) renderLayout() string {
 		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
+	// Overlay loan wizard if visible
+	if a.loanWizard != nil && a.loanWizard.IsVisible() {
+		layout = a.overlayDialog(layout, a.loanWizard)
+	}
+
 	// Overlay account dialog if visible
 	if a.acctDialog != nil && a.acctDialog.IsVisible() {
 		layout = a.overlayDialog(layout, a.acctDialog)

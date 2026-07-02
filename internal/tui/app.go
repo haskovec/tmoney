@@ -190,6 +190,13 @@ type App struct {
 	// from the wizard's fields lands in MS-027/MS-028.
 	paycheckWizard *PaycheckWizard
 
+	// Loan wizard state. Opens from Accounts → New Loan…. Built on the
+	// generic dialog.Dialog form widget (see loan_wizard.go); creates a loan
+	// account, an optional asset account, and a monthly loan-shaped schedule
+	// as one atomic, single-undo operation.
+	loanWizard      *dialog.Dialog
+	loanWizardState *loanWizardData
+
 	// Scheduled view state
 	scheduled      *scheduledViewData
 	scheduledTable *widget.Table
@@ -560,6 +567,11 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// If paycheck wizard is visible, route all keys to it
 	if a.paycheckWizard != nil && a.paycheckWizard.IsVisible() {
 		return a.handlePaycheckWizardKey(msg)
+	}
+
+	// If loan wizard is visible, route all keys to it
+	if a.loanWizard != nil && a.loanWizard.IsVisible() {
+		return a.handleLoanWizardKey(msg)
 	}
 
 	// If account dialog is visible, route all keys to it

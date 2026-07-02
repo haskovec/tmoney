@@ -362,6 +362,19 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	if a.loanWizard != nil && a.loanWizard.IsVisible() {
+		action := a.loanWizard.HandleMouse(msg, a.width, a.height)
+		switch action {
+		case dialog.DialogActionSubmit:
+			return a.submitLoanWizard()
+		case dialog.DialogActionCancel:
+			a.closeLoanWizard()
+		default:
+			a.refreshLoanWizardDerived()
+		}
+		return a, nil
+	}
+
 	if a.acctDialog != nil && a.acctDialog.IsVisible() {
 		action := a.acctDialog.HandleMouse(msg, a.width, a.height)
 		switch action {

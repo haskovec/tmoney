@@ -34,6 +34,7 @@ const (
 	MenuActionReopenAccount
 	MenuActionDeleteAccount
 	MenuActionReconcileAccount
+	MenuActionNewLoan
 
 	// Transactions menu actions
 	MenuActionNewTransaction
@@ -153,6 +154,7 @@ func DefaultMenus() []Menu {
 			ShortcutKey: 'A',
 			Items: []MenuItem{
 				{Label: "New Account", Action: MenuActionNewAccount},
+				{Label: "New Loan...", Action: MenuActionNewLoan},
 				{Label: "Edit Account", Action: MenuActionEditAccount},
 				{Label: "Close Account", Action: MenuActionCloseAccount},
 				{Label: "Reopen Account", Action: MenuActionReopenAccount},

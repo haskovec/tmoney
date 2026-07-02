@@ -515,6 +515,7 @@ func TestMenuBar_AccountsMenuItems(t *testing.T) {
 		action MenuAction
 	}{
 		{"New Account", MenuActionNewAccount},
+		{"New Loan...", MenuActionNewLoan},
 		{"Edit Account", MenuActionEditAccount},
 		{"Close Account", MenuActionCloseAccount},
 		{"Reopen Account", MenuActionReopenAccount},

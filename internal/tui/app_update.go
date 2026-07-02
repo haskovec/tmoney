@@ -609,6 +609,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 		return a, nil
 
+	case loanWizardDataMsg:
+		a.loanWizard, a.loanWizardState = buildNewLoanWizard(msg.accounts, msg.categories)
+		return a, nil
+
+	case loanWizardSavedMsg:
+		if a.statusbar != nil {
+			a.statusbar.SetToast("Loan created.", widget.NotificationInfo)
+		}
+		return a, tea.Batch(
+			a.loadSidebarData(),
+			a.loadDashboardData(),
+			a.loadScheduledViewData(),
+			a.loadScheduledDueCount(),
+			widget.ClearToastCmd(),
+		)
+
 	case autoPostCompletedMsg:
 		if msg.summary != nil && msg.summary.PostedCount > 0 {
 			text := fmt.Sprintf("Auto-posted %d scheduled transaction(s)", msg.summary.PostedCount)

@@ -98,6 +98,19 @@ const (
 	ValueAdjustmentCategoryName = "Value Adjustment"
 )
 
+// Default loan-category names. Unlike the system categories above these are
+// ordinary user categories (renamable/mergeable), but their names are stable
+// identifiers the loan wizard and `loan add` get-or-create at save time so the
+// default interest category is always available. See
+// GetOrCreateLoanInterestCategory.
+const (
+	// LoanCategoryName is the parent of the default loan-interest category.
+	LoanCategoryName = "Loan"
+	// LoanInterestChildName is the child (under LoanCategoryName) that a loan
+	// payment's interest portion is booked to by default.
+	LoanInterestChildName = "Interest"
+)
+
 // Category represents a transaction category.
 type Category struct {
 	types.BaseModel
