@@ -62,7 +62,7 @@ spending today) and lands the toggle end-to-end.
   with Phase 3's migration; the splits-arm guard is a provable no-op until
   then, since `transaction_splits`' XOR CHECK forbids a both-set row.)
 
-## Phase 2: `ReplaceSplits` Transfer-Awareness (pre-existing corruption fix) — [ ]
+## Phase 2: `ReplaceSplits` Transfer-Awareness (pre-existing corruption fix) — [x]
 
 Confirmed by runtime probe (2026-07-03): `ReplaceSplits`
 (`internal/transaction/transaction_service.go:800-840`) — the path behind
@@ -78,23 +78,42 @@ preserved transfer_id an amount edit silently desyncs the legs while a
 dropped line silently orphans its counterpart. Independent of the feature;
 fixable against today's schema.
 
-- [ ] `internal/transaction/transaction_service.go:800-840`: make
-  `ReplaceSplits` diff old-vs-new transfer lines — mint `TransferID` for
-  added transfer rows (as `CreateWithSplits` does at :429-433), delete
-  counterparts for removed lines (`deletePairedCounterTransaction`, :327),
-  create counterparts for added lines (`createTransferLineCounterpart`,
-  :481), update counterpart amounts for retained lines (reconciled
-  paired-side blocking as in `updatePairedAmount`, :727-753).
-- [ ] Handle the TUI calling convention: `buildSplits`
-  (`internal/tui/split_dialog.go:452-462`) emits transfer rows with
-  `TransferID` unset even for retained lines — match to existing lines by
-  target account (re-mint + re-create the counterpart when unmatchable).
-- [ ] Tests: pin the probe scenarios as regressions — TUI-shaped replace
-  (TransferID unset) no longer errors, strips linkage, or orphans; amount
-  edit cascades to the counterpart; dropped transfer line deletes its
-  counterpart; added transfer line mints one; void-undo restores a
-  transfer-line split set intact; reconciled counterpart blocks the
-  replace.
+- [x] `internal/transaction/transaction_service.go`: `ReplaceSplits` now
+  diffs old-vs-new transfer lines (`planSplitReplacement`) — mints
+  `TransferID` for added rows, deletes counterparts for removed lines
+  (`deletePairedCounterTransaction`), creates counterparts for added lines
+  (`createTransferLineCounterpart`), and mirrors amount edits onto retained
+  lines' counterparts (`updatePairedAmount`). A `preflightSplitReplacement`
+  pass runs every fallible counterpart op (reconciled check via new
+  `ensureCounterpartNotReconciled`; routability via extracted
+  `ensureTransferTargetRoutable`) **before** any mutation, so a reconciled
+  or unroutable counterpart fails cleanly with no partial write. Rollback of
+  added counterparts shares the new `rollbackTransferLinePairs` helper.
+- [x] Handle the TUI calling convention: `buildSplits` emits transfer rows
+  with `TransferID` unset even for retained lines — matched to existing
+  lines first by `transfer_id` (void-undo replay), then by target account
+  (TUI edit); unmatched new → added (mint + create), unmatched old →
+  removed (delete). `buildSplits` itself needs no change.
+- [x] **Collapsed the now-vestigial clear-first dance** in
+  `EditTransactionWithSplitsCommand` (`internal/undo/transaction.go`,
+  Execute + Undo). The "clear splits before updating the parent" step existed
+  only for a pre-026 DuckDB FK-on-rewrite error; migration 026 dropped
+  `transaction_splits`' inbound FK (runtime-verified 2026-07-03), so the
+  parent updates fine with children present. Removing the intermediate
+  `ReplaceSplits(id, nil)` is what lets `ReplaceSplits` see the old rows and
+  **preserve** each retained transfer line's counterpart identity (and its
+  cleared/reconciled status) instead of churning it — and makes reconciled
+  blocking fire only when the transfer line is actually mutated, not on any
+  edit of the parent.
+- [x] Tests: probe scenarios pinned as regressions —
+  `internal/transaction/replace_splits_transfer_test.go` (TUI-shaped replace
+  no longer errors/orphans; amount edit cascades; dropped deletes
+  counterpart; added mints one; target-change moves it; investment-target
+  variants via the adapter; reconciled bank/investment counterpart blocks,
+  and an unrelated edit is *allowed* when the transfer line is untouched) and
+  `internal/undo/transaction_replace_splits_test.go` (edit + undo preserves
+  counterpart identity; void + undo restores a transfer-line split set
+  intact).
 
 ## Phase 3: Migration 029 + Validation Relaxation — [ ]
 

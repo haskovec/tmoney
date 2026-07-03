@@ -484,13 +484,12 @@ func (c *EditTransactionWithSplitsCommand) Execute() error {
 	}
 	c.beforeSplits = beforeSplits
 
-	// DuckDB refuses to UPDATE a parent row that still has FK children, so
-	// clear any existing splits before updating the parent transaction.
-	if len(beforeSplits) > 0 {
-		if err := c.svc.ReplaceSplits(c.after.ID, nil); err != nil {
-			return err
-		}
-	}
+	// Update the parent first, then let ReplaceSplits reconcile the splits
+	// against the current set. Migration 026 dropped transaction_splits'
+	// inbound FK, so updating a parent that still has split children no longer
+	// trips DuckDB's FK-on-rewrite error — and keeping the old rows in place
+	// lets ReplaceSplits preserve each retained transfer line's counterpart
+	// instead of churning it through a clear-then-recreate cycle.
 	if err := c.svc.Update(c.after); err != nil {
 		return err
 	}
@@ -501,13 +500,9 @@ func (c *EditTransactionWithSplitsCommand) Undo() error {
 	if c.before == nil {
 		return fmt.Errorf("EditTransactionWithSplitsCommand: cannot undo before Execute")
 	}
-	// Mirror the Execute ordering: clear current splits, then restore the
-	// parent, then restore the original splits.
-	if len(c.afterSplits) > 0 {
-		if err := c.svc.ReplaceSplits(c.before.ID, nil); err != nil {
-			return err
-		}
-	}
+	// Mirror the Execute ordering: restore the parent, then let ReplaceSplits
+	// reconcile the current (after) split set back to the original one,
+	// re-linking each restored transfer line to its counterpart.
 	if err := c.svc.Update(c.before); err != nil {
 		return err
 	}

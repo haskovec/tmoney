@@ -487,24 +487,15 @@ func (s *Service) createTransferLineCounterpart(
 	counterAmount := split.Amount.Neg()
 	transferID := split.TransferID.ID
 
-	// Block a transfer-line whose target account is closed. This guards both
-	// CreateWithSplits and moveTransferLine (which re-targets a split).
-	if err := s.ensureAccountOpen(targetAcctID); err != nil {
-		return transferLinePair{}, err
-	}
-
-	isInv, err := s.targetIsInvestment(targetAcctID)
+	// Guard the target account: it must be open, and an investment target
+	// requires the counterpart adapter. Guards CreateWithSplits,
+	// moveTransferLine (which re-targets a split), and ReplaceSplits.
+	isInv, err := s.ensureTransferTargetRoutable(targetAcctID)
 	if err != nil {
 		return transferLinePair{}, err
 	}
 
 	if isInv {
-		if s.investmentCounterpart == nil {
-			return transferLinePair{}, fmt.Errorf(
-				"transfer-line split targets investment account %s but no investment-counterpart adapter is wired on transaction.Service",
-				targetAcctID.String(),
-			)
-		}
 		rowID, err := s.investmentCounterpart.CreateTransferCashCounterpart(
 			targetAcctID, parentAcctID, parentDate, counterAmount, "", transferID,
 		)
@@ -536,11 +527,44 @@ func (s *Service) targetIsInvestment(acctID types.ID) (bool, error) {
 	return acct.Type.IsInvestmentType(), nil
 }
 
+// ensureTransferTargetRoutable verifies a transfer-line's target account can
+// receive a paired counter-transaction: it must be open, and an investment
+// target requires the investment-counterpart adapter to be wired. It returns
+// whether the target is an investment account so the caller can route the
+// counterpart to the right table without re-loading it. Reused by
+// createTransferLineCounterpart and ReplaceSplits' pre-flight so a rewrite of
+// the split rows can't strand a would-be counterpart.
+func (s *Service) ensureTransferTargetRoutable(targetAcctID types.ID) (bool, error) {
+	if err := s.ensureAccountOpen(targetAcctID); err != nil {
+		return false, err
+	}
+	isInv, err := s.targetIsInvestment(targetAcctID)
+	if err != nil {
+		return false, err
+	}
+	if isInv && s.investmentCounterpart == nil {
+		return false, fmt.Errorf(
+			"transfer-line split targets investment account %s but no investment-counterpart adapter is wired on transaction.Service",
+			targetAcctID.String(),
+		)
+	}
+	return isInv, nil
+}
+
 // rollbackCreateWithSplits best-effort removes paired counter-transactions
 // and the parent transaction (which cascades its splits) after a partial
 // CreateWithSplits failure. Investment-side counterparts are routed
 // through the adapter so they don't leak.
 func (s *Service) rollbackCreateWithSplits(parentID types.ID, pairs []transferLinePair) {
+	s.rollbackTransferLinePairs(pairs)
+	_, _ = s.splitRepo.DeleteByTransaction(parentID)
+	_ = s.txnRepo.Delete(parentID)
+}
+
+// rollbackTransferLinePairs best-effort removes the given counter-transactions,
+// routing each to the repository that created it. Used to unwind counterparts
+// minted partway through CreateWithSplits or ReplaceSplits before an error.
+func (s *Service) rollbackTransferLinePairs(pairs []transferLinePair) {
 	for _, p := range pairs {
 		if p.isInvestment {
 			if s.investmentCounterpart != nil {
@@ -550,8 +574,6 @@ func (s *Service) rollbackCreateWithSplits(parentID types.ID, pairs []transferLi
 		}
 		_ = s.txnRepo.Delete(p.rowID)
 	}
-	_, _ = s.splitRepo.DeleteByTransaction(parentID)
-	_ = s.txnRepo.Delete(parentID)
 }
 
 // GetSplits returns all splits for a transaction.
@@ -797,6 +819,23 @@ func (s *Service) DeleteSplit(splitID types.ID) error {
 // ReplaceSplits replaces all splits for a transaction with new ones.
 // The new splits must sum to the transaction amount.
 // Void and reconciled transactions cannot have splits replaced.
+//
+// Transfer-line splits carry a paired single-line counter-transaction in
+// their target account (regular or investment table). ReplaceSplits keeps
+// those counterparts consistent by diffing the new transfer lines against
+// the current ones rather than blindly dropping and recreating every row:
+//
+//   - a retained transfer line (matched by transfer_id, else by target
+//     account) keeps its counterpart; an amount change mirrors onto it;
+//   - a removed transfer line's counterpart is deleted;
+//   - an added transfer line mints a transfer_id and creates a counterpart.
+//
+// Callers may omit transfer_id on retained lines (the TUI split dialog does),
+// so matching falls back to the target account. A reconciled counterpart that
+// would be deleted or amount-changed blocks the whole operation before any
+// mutation. Without this, a rewrite of a split set containing a transfer line
+// trips the transfer_id/transfer_account_id pairing CHECK mid-flight and
+// orphans the counterpart.
 func (s *Service) ReplaceSplits(transactionID types.ID, splits []*Split) error {
 	// Get the transaction
 	txn, err := s.txnRepo.GetByID(transactionID)
@@ -823,12 +862,40 @@ func (s *Service) ReplaceSplits(transactionID types.ID, splits []*Split) error {
 		return err
 	}
 
-	// Delete existing splits
+	// Diff the new transfer lines against the current split set so retained
+	// counterparts survive the rewrite. Assigns transfer_ids onto the new
+	// splits in place (retained → existing id, added → fresh id).
+	oldSplits, err := s.splitRepo.ListByTransaction(transactionID)
+	if err != nil {
+		return fmt.Errorf("failed to list existing splits: %w", err)
+	}
+	plan := planSplitReplacement(oldSplits, splits)
+
+	// Pre-flight every fallible counterpart operation before mutating anything,
+	// so a reconciled or unroutable counterpart fails cleanly with no partial
+	// write.
+	if err := s.preflightSplitReplacement(plan); err != nil {
+		return err
+	}
+
+	// Reconcile counterparts of removed and retained-changed transfer lines.
+	for _, transferID := range plan.removedTransferIDs {
+		if err := s.deletePairedCounterTransaction(transferID); err != nil {
+			return err
+		}
+	}
+	for _, change := range plan.retainedAmountChanged {
+		if err := s.updatePairedAmount(change.transferID, change.newAmount.Neg()); err != nil {
+			return err
+		}
+	}
+
+	// Rebuild the split rows. Retained transfer lines already carry their
+	// original transfer_id (linking them to the still-live counterpart), so a
+	// plain drop-and-recreate is safe.
 	if _, err := s.splitRepo.DeleteByTransaction(transactionID); err != nil {
 		return fmt.Errorf("failed to delete existing splits: %w", err)
 	}
-
-	// Create new splits
 	for _, split := range splits {
 		split.TransactionID = transactionID
 		if err := s.splitRepo.Create(split); err != nil {
@@ -836,6 +903,159 @@ func (s *Service) ReplaceSplits(transactionID types.ID, splits []*Split) error {
 		}
 	}
 
+	// Mint counterparts for the added transfer lines.
+	createdPairs := make([]transferLinePair, 0, len(plan.addedSplits))
+	for _, split := range plan.addedSplits {
+		pair, err := s.createTransferLineCounterpart(txn.AccountID, txn.Date, split)
+		if err != nil {
+			s.rollbackTransferLinePairs(createdPairs)
+			return err
+		}
+		createdPairs = append(createdPairs, pair)
+	}
+
+	return nil
+}
+
+// retainedTransferChange records a transfer line kept across a ReplaceSplits
+// whose amount changed, so its counterpart amount can be mirrored.
+type retainedTransferChange struct {
+	transferID types.ID
+	newAmount  types.Money
+}
+
+// splitReplacementPlan captures the transfer-line diff computed by
+// planSplitReplacement for ReplaceSplits.
+type splitReplacementPlan struct {
+	// Counterparts to delete (old transfer lines with no match in the new set).
+	removedTransferIDs []types.ID
+	// Retained transfer lines whose amount changed (mirror onto counterpart).
+	retainedAmountChanged []retainedTransferChange
+	// New transfer lines with no match in the old set. Each already has a
+	// transfer_id assigned; a counterpart must be minted for it.
+	addedSplits []*Split
+}
+
+// planSplitReplacement diffs the desired transfer lines against the current
+// ones and assigns transfer_ids onto the new splits in place: a retained line
+// (matched first by transfer_id, then by target account) inherits its match's
+// transfer_id; an added line keeps a caller-supplied transfer_id or is minted
+// a fresh one. Categorized lines are ignored (they carry no counterpart and
+// are recreated wholesale by ReplaceSplits).
+func planSplitReplacement(oldSplits, newSplits []*Split) splitReplacementPlan {
+	type oldTransfer struct {
+		split    *Split
+		consumed bool
+	}
+	olds := make([]*oldTransfer, 0, len(oldSplits))
+	for _, os := range oldSplits {
+		if os.TransferAccountID.Valid {
+			olds = append(olds, &oldTransfer{split: os})
+		}
+	}
+
+	matchByTransferID := func(id types.NullableID) *oldTransfer {
+		if !id.Valid {
+			return nil
+		}
+		for _, o := range olds {
+			if !o.consumed && o.split.TransferID.Valid && o.split.TransferID.ID == id.ID {
+				return o
+			}
+		}
+		return nil
+	}
+	matchByTarget := func(acctID types.ID) *oldTransfer {
+		for _, o := range olds {
+			if !o.consumed && o.split.TransferAccountID.ID == acctID {
+				return o
+			}
+		}
+		return nil
+	}
+
+	var plan splitReplacementPlan
+	for _, ns := range newSplits {
+		if !ns.TransferAccountID.Valid {
+			continue
+		}
+		match := matchByTransferID(ns.TransferID)
+		if match == nil {
+			match = matchByTarget(ns.TransferAccountID.ID)
+		}
+		if match != nil {
+			match.consumed = true
+			// Retained: adopt the existing counterpart's transfer_id.
+			ns.TransferID = match.split.TransferID
+			if !ns.Amount.Equal(match.split.Amount) {
+				plan.retainedAmountChanged = append(plan.retainedAmountChanged,
+					retainedTransferChange{transferID: match.split.TransferID.ID, newAmount: ns.Amount})
+			}
+			continue
+		}
+		// Added: mint a transfer_id unless the caller replayed one (e.g. the
+		// void-undo restore path carries the captured lines' original ids).
+		if !ns.TransferID.Valid {
+			ns.TransferID = types.NullableID{ID: types.NewID(), Valid: true}
+		}
+		plan.addedSplits = append(plan.addedSplits, ns)
+	}
+
+	for _, o := range olds {
+		if !o.consumed && o.split.TransferID.Valid {
+			plan.removedTransferIDs = append(plan.removedTransferIDs, o.split.TransferID.ID)
+		}
+	}
+	return plan
+}
+
+// preflightSplitReplacement verifies every counterpart mutation the plan
+// implies can succeed, so ReplaceSplits fails before it deletes any split row.
+// Counterparts that will be deleted or amount-changed must not be reconciled;
+// added transfer lines must target a routable account.
+func (s *Service) preflightSplitReplacement(plan splitReplacementPlan) error {
+	for _, transferID := range plan.removedTransferIDs {
+		if err := s.ensureCounterpartNotReconciled(transferID); err != nil {
+			return err
+		}
+	}
+	for _, change := range plan.retainedAmountChanged {
+		if err := s.ensureCounterpartNotReconciled(change.transferID); err != nil {
+			return err
+		}
+	}
+	for _, split := range plan.addedSplits {
+		if _, err := s.ensureTransferTargetRoutable(split.TransferAccountID.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureCounterpartNotReconciled returns IsReconciledError if the counter-
+// transaction linked to transferID (regular or investment table) is
+// reconciled, and nil if it is unreconciled or absent.
+func (s *Service) ensureCounterpartNotReconciled(transferID types.ID) error {
+	paired, err := s.findPairedByTransferID(transferID)
+	if err != nil {
+		return err
+	}
+	if paired != nil {
+		if paired.IsReconciled() {
+			return &IsReconciledError{ID: paired.ID.String()}
+		}
+		return nil
+	}
+	if s.investmentCounterpart == nil {
+		return nil
+	}
+	rowID, reconciled, found, err := s.investmentCounterpart.FindTransferCashCounterpart(transferID)
+	if err != nil {
+		return err
+	}
+	if found && reconciled {
+		return &IsReconciledError{ID: rowID.String()}
+	}
 	return nil
 }
 
