@@ -134,6 +134,7 @@ func reportsShortcuts() shortcutSection {
 			{"s", "Spending report"},
 			{"y", "Yearly view"},
 			{"m", "Monthly view"},
+			{"t", "Toggle categorized transfers (spending)"},
 		},
 	}
 }

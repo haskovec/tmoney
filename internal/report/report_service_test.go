@@ -984,7 +984,7 @@ func TestService_SpendingByCategoryMonth_EmptyDatabase(t *testing.T) {
 	t.Run("returns zero spending with no transactions", func(t *testing.T) {
 		svc, _, _ := createTestReportService(t)
 
-		report, err := svc.SpendingByCategoryMonth(2024, 1)
+		report, err := svc.SpendingByCategoryMonth(2024, 1, false)
 		if err != nil {
 			t.Fatalf("SpendingByCategoryMonth() error = %v", err)
 		}
@@ -1024,7 +1024,7 @@ func TestService_SpendingByCategoryMonth_DirectTransactions(t *testing.T) {
 		amount, _ := types.NewMoney("-100.00")
 		txnRepo.createTransactionWithCategory(t, checking.ID, txnDate, amount, groceriesID)
 
-		report, err := svc.SpendingByCategoryMonth(2024, 1)
+		report, err := svc.SpendingByCategoryMonth(2024, 1, false)
 		if err != nil {
 			t.Fatalf("SpendingByCategoryMonth() error = %v", err)
 		}
@@ -1075,7 +1075,7 @@ func TestService_SpendingByCategory_ExcludesValueAdjustment(t *testing.T) {
 	reval, _ := types.NewMoney("-5000.00")
 	txnRepo.createTransactionWithCategory(t, house.ID, txnDate, reval, valueAdjID)
 
-	report, err := svc.SpendingByCategoryMonth(2024, 1)
+	report, err := svc.SpendingByCategoryMonth(2024, 1, false)
 	if err != nil {
 		t.Fatalf("SpendingByCategoryMonth() error = %v", err)
 	}
@@ -1117,7 +1117,7 @@ func TestService_SpendingByCategoryYear(t *testing.T) {
 			txnRepo.createTransactionWithCategory(t, checking.ID, txnDate, amount, groceriesID)
 		}
 
-		report, err := svc.SpendingByCategoryYear(2024)
+		report, err := svc.SpendingByCategoryYear(2024, false)
 		if err != nil {
 			t.Fatalf("SpendingByCategoryYear() error = %v", err)
 		}
@@ -1129,6 +1129,138 @@ func TestService_SpendingByCategoryYear(t *testing.T) {
 		expectedTotal, _ := types.NewMoney("500.00")
 		if !report.TotalSpending.Equal(expectedTotal) {
 			t.Errorf("Expected total spending %s, got %s", expectedTotal.String(), report.TotalSpending.String())
+		}
+	})
+}
+
+// createCategorizedTransfer inserts a two-leg transfer pair sharing a
+// transfer_id, with the same category on both legs — the shape a legacy
+// `transfer link` produced by joining two categorized imported rows (see
+// specs/transfer-categories.md). The outflow leg (the negative amount) lives
+// in fromAcct; the inflow leg (its negation) lives in toAcct.
+func (r *transactionRepo) createCategorizedTransfer(t *testing.T, fromAcct, toAcct types.ID, date types.Date, outflow types.Money, categoryID types.ID) {
+	t.Helper()
+	transferID := types.NewID()
+	now := types.Now()
+	const q = `INSERT INTO transactions
+		(id, account_id, date, amount, category_id, transfer_id, transfer_account_id, status, created_at, updated_at)
+		VALUES (?, CAST(? AS UUID), ?, ?, CAST(? AS UUID), CAST(? AS UUID), CAST(? AS UUID), 'uncleared', ?, ?)`
+	// Outflow leg (negative) in fromAcct, pointing at toAcct.
+	if _, err := r.db.Conn().Exec(q, types.NewID().String(), fromAcct.String(), date.Time(), outflow.String(),
+		categoryID.String(), transferID.String(), toAcct.String(), now.Time(), now.Time()); err != nil {
+		t.Fatalf("failed to create transfer outflow leg: %v", err)
+	}
+	// Inflow leg (positive) in toAcct, pointing back at fromAcct.
+	if _, err := r.db.Conn().Exec(q, types.NewID().String(), toAcct.String(), date.Time(), outflow.Neg().String(),
+		categoryID.String(), transferID.String(), fromAcct.String(), now.Time(), now.Time()); err != nil {
+		t.Fatalf("failed to create transfer inflow leg: %v", err)
+	}
+}
+
+// findCategory returns the top-level category with the given name, or nil.
+func findCategory(sp *Spending, name string) *CategorySpending {
+	for i := range sp.Categories {
+		if sp.Categories[i].Name == name {
+			return &sp.Categories[i]
+		}
+	}
+	return nil
+}
+
+// TestService_SpendingByCategory_TransferGuards pins the report's transfer
+// behavior: a categorized transfer is excluded by default (fixing the latent
+// `transfer link` spending leak) and folded in exactly once — outflow leg
+// only — when includeTransfers is true. See specs/transfer-categories.md.
+func TestService_SpendingByCategory_TransferGuards(t *testing.T) {
+	// setup builds a service with a Checking/Savings pair, a normal $100
+	// groceries expense, and a categorized $500 Checking→Savings transfer
+	// tagged with a category of catType.
+	setup := func(t *testing.T, catType string) (*Service, string) {
+		t.Helper()
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+		txnRepo := &transactionRepo{db: database}
+		catRepo := &categoryRepo{db: database}
+		svc := NewService(accountRepo, database)
+
+		bal, _ := types.NewMoney("5000.00")
+		checking := account.NewAccount("Checking", account.TypeChecking, "USD", bal, types.Today())
+		if err := accountRepo.Create(checking); err != nil {
+			t.Fatalf("create checking: %v", err)
+		}
+		savings := account.NewAccount("Savings", account.TypeSavings, "USD", types.ZeroMoney, types.Today())
+		if err := accountRepo.Create(savings); err != nil {
+			t.Fatalf("create savings: %v", err)
+		}
+
+		groceriesID := catRepo.createCategory(t, "Groceries", "expense")
+		cardPayName := "Card Payment"
+		cardPayID := catRepo.createCategory(t, cardPayName, catType)
+
+		txnDate := types.NewDate(2024, 1, 15)
+		spend, _ := types.NewMoney("-100.00")
+		txnRepo.createTransactionWithCategory(t, checking.ID, txnDate, spend, groceriesID)
+
+		outflow, _ := types.NewMoney("-500.00")
+		txnRepo.createCategorizedTransfer(t, checking.ID, savings.ID, txnDate, outflow, cardPayID)
+
+		return svc, cardPayName
+	}
+
+	t.Run("excludes categorized transfers by default", func(t *testing.T) {
+		svc, cardPayName := setup(t, "expense")
+
+		report, err := svc.SpendingByCategoryMonth(2024, 1, false)
+		if err != nil {
+			t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+		}
+
+		if c := findCategory(report, cardPayName); c != nil {
+			t.Errorf("categorized transfer must not count as spending by default; found %q = %s", cardPayName, c.Amount.String())
+		}
+		want, _ := types.NewMoney("100.00")
+		if !report.TotalSpending.Equal(want) {
+			t.Errorf("total spending = %s, want %s (only the groceries expense)", report.TotalSpending.String(), want.String())
+		}
+	})
+
+	t.Run("includes categorized transfers once when requested", func(t *testing.T) {
+		svc, cardPayName := setup(t, "expense")
+
+		report, err := svc.SpendingByCategoryMonth(2024, 1, true)
+		if err != nil {
+			t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+		}
+
+		c := findCategory(report, cardPayName)
+		if c == nil {
+			t.Fatalf("categorized transfer should appear with --include-transfers; categories = %v", report.Categories)
+		}
+		// Only the outflow (negative) leg counts — never both legs of the pair.
+		wantCard, _ := types.NewMoney("500.00")
+		if !c.Amount.Equal(wantCard) {
+			t.Errorf("%q = %s, want %s (outflow leg only, counted once)", cardPayName, c.Amount.String(), wantCard.String())
+		}
+		wantTotal, _ := types.NewMoney("600.00")
+		if !report.TotalSpending.Equal(wantTotal) {
+			t.Errorf("total spending = %s, want %s (100 groceries + 500 transfer)", report.TotalSpending.String(), wantTotal.String())
+		}
+	})
+
+	t.Run("income-typed transfer category never appears even when included", func(t *testing.T) {
+		svc, cardPayName := setup(t, "income")
+
+		report, err := svc.SpendingByCategoryMonth(2024, 1, true)
+		if err != nil {
+			t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+		}
+
+		if c := findCategory(report, cardPayName); c != nil {
+			t.Errorf("income-typed transfer category must never enter the spending report; found %q = %s", cardPayName, c.Amount.String())
+		}
+		want, _ := types.NewMoney("100.00")
+		if !report.TotalSpending.Equal(want) {
+			t.Errorf("total spending = %s, want %s (only the groceries expense)", report.TotalSpending.String(), want.String())
 		}
 	})
 }
@@ -1171,7 +1303,7 @@ func TestService_SpendingByCategoryDateRange(t *testing.T) {
 		startDate := time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)
 		endDate := time.Date(2024, 3, 31, 23, 59, 59, 999999999, time.UTC)
 
-		report, err := svc.SpendingByCategoryDateRange(startDate, endDate)
+		report, err := svc.SpendingByCategoryDateRange(startDate, endDate, false)
 		if err != nil {
 			t.Fatalf("SpendingByCategoryDateRange() error = %v", err)
 		}

@@ -720,3 +720,155 @@ func TestApp_RenderSpendingReport_ImprovedNoData(t *testing.T) {
 		t.Error("renderSpendingReport() should show helpful message when nil")
 	}
 }
+
+func TestApp_HandleReportsKeys_TransferToggle(t *testing.T) {
+	app := &App{
+		currentView: ViewReports,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		reports: &reportsViewData{
+			rtype: reportTypeSpending,
+			year:  2024,
+			month: 6,
+		},
+	}
+
+	tKey := tea.KeyPressMsg{Code: 't', Text: "t"}
+
+	// Pressing 't' on the spending report returns a reload command.
+	_, cmd := app.Update(tKey)
+	if cmd == nil {
+		t.Fatal("pressing 't' on the spending report should return a reload command")
+	}
+	// Running the command flips includeTransfers on, even with no report
+	// service wired up (the flag is set before the service is consulted).
+	model, _ := app.Update(cmd())
+	updated := model.(*App)
+	if !updated.reports.includeTransfers {
+		t.Errorf("running the reload command should set includeTransfers=true")
+	}
+
+	// Pressing 't' again flips it back off.
+	_, cmd = updated.Update(tKey)
+	if cmd == nil {
+		t.Fatal("pressing 't' again should return a reload command")
+	}
+	model, _ = updated.Update(cmd())
+	if model.(*App).reports.includeTransfers {
+		t.Errorf("pressing 't' again should clear includeTransfers")
+	}
+
+	// On the net worth report, 't' is ignored.
+	app.reports = &reportsViewData{rtype: reportTypeNetWorth, year: 2024, month: 6}
+	if _, cmd = app.Update(tKey); cmd != nil {
+		t.Error("pressing 't' on the net worth report should be ignored")
+	}
+}
+
+func TestApp_RenderSpendingReport_IncludeTransfersSuffix(t *testing.T) {
+	styles := widget.NewStyles()
+	styles.Resize(120, 30)
+
+	app := &App{
+		currentView: ViewReports,
+		width:       120,
+		height:      30,
+		styles:      styles,
+		reports: &reportsViewData{
+			rtype:            reportTypeSpending,
+			year:             2024,
+			month:            1,
+			includeTransfers: true,
+			spending: &report.Spending{
+				Period:        "January 2024",
+				TotalSpending: types.MustNewMoney("500.00"),
+				Categories: []report.CategorySpending{
+					{Name: "Card Payment", Amount: types.MustNewMoney("500.00"), Percentage: 100.0},
+				},
+			},
+		},
+	}
+
+	view := app.renderSpendingReport()
+	if !contains(view, "(incl. transfers)") {
+		t.Errorf("renderSpendingReport() with includeTransfers should show the '(incl. transfers)' suffix; got:\n%s", view)
+	}
+	if !contains(view, "t transfers") {
+		t.Errorf("renderSpendingReport() footer should hint the 't transfers' toggle; got:\n%s", view)
+	}
+
+	// Without the flag the suffix disappears (the footer hint stays).
+	app.reports.includeTransfers = false
+	view = app.renderSpendingReport()
+	if contains(view, "(incl. transfers)") {
+		t.Errorf("renderSpendingReport() without includeTransfers must not show the suffix; got:\n%s", view)
+	}
+	if !contains(view, "t transfers") {
+		t.Errorf("renderSpendingReport() footer should always hint the 't transfers' toggle; got:\n%s", view)
+	}
+}
+
+func TestApp_ReportsView_IncludeTransfersSessionState(t *testing.T) {
+	// newApp returns a spending-report app with includeTransfers already on.
+	// No report service is wired up, so only the threaded flag matters — the
+	// reload command still returns a reportsViewDataLoadedMsg carrying it.
+	newApp := func() *App {
+		return &App{
+			currentView: ViewReports,
+			keys:        defaultKeyMap(),
+			menubar:     widget.NewMenuBar(),
+			statusbar:   widget.NewStatusBar(),
+			sidebar:     NewSidebar(),
+			reports: &reportsViewData{
+				rtype:            reportTypeSpending,
+				year:             2024,
+				month:            6,
+				includeTransfers: true,
+			},
+		}
+	}
+
+	// applyKey presses a key and applies the resulting reload command,
+	// returning the reports state after the reload.
+	applyKey := func(t *testing.T, app *App, key tea.KeyPressMsg) *reportsViewData {
+		t.Helper()
+		_, cmd := app.Update(key)
+		if cmd == nil {
+			t.Fatalf("key %v should return a reload command", key)
+		}
+		model, _ := app.Update(cmd())
+		return model.(*App).reports
+	}
+
+	t.Run("preserved across report-type and period navigation", func(t *testing.T) {
+		cases := []struct {
+			name string
+			key  tea.KeyPressMsg
+		}{
+			{"s (spending)", tea.KeyPressMsg{Code: 's', Text: "s"}},
+			{"y (yearly)", tea.KeyPressMsg{Code: 'y', Text: "y"}},
+			{"n (net worth)", tea.KeyPressMsg{Code: 'n', Text: "n"}},
+			{"left (prev period)", tea.KeyPressMsg{Code: tea.KeyLeft}},
+			{"right (next period)", tea.KeyPressMsg{Code: tea.KeyRight}},
+		}
+		for _, tc := range cases {
+			if r := applyKey(t, newApp(), tc.key); !r.includeTransfers {
+				t.Errorf("pressing %s must preserve includeTransfers", tc.name)
+			}
+		}
+	})
+
+	t.Run("reset to false on a fresh entry via the Spending menu", func(t *testing.T) {
+		app := newApp() // includeTransfers currently true
+		_, cmd := app.handleMenuAction(widget.MenuActionSpendingByCategory, "")
+		if cmd == nil {
+			t.Fatal("MenuActionSpendingByCategory should return a reload command")
+		}
+		model, _ := app.Update(cmd())
+		if model.(*App).reports.includeTransfers {
+			t.Error("a fresh entry via the Spending menu must reset includeTransfers to false")
+		}
+	})
+}

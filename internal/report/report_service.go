@@ -163,36 +163,52 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 }
 
 // SpendingByCategoryMonth generates a spending by category report for a specific month.
-func (s *Service) SpendingByCategoryMonth(year int, month int) (*Spending, error) {
+// When includeTransfers is false, categorized transfers are excluded (today's
+// default); when true, they are folded into the totals.
+func (s *Service) SpendingByCategoryMonth(year int, month int, includeTransfers bool) (*Spending, error) {
 	startDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	endDate := startDate.AddDate(0, 1, 0).Add(-time.Nanosecond) // Last moment of the month
 
 	period := startDate.Format("January 2006")
-	return s.spendingByCategory(period, startDate, endDate)
+	return s.spendingByCategory(period, startDate, endDate, includeTransfers)
 }
 
 // SpendingByCategoryYear generates a spending by category report for a specific year.
-func (s *Service) SpendingByCategoryYear(year int) (*Spending, error) {
+// See SpendingByCategoryMonth for the includeTransfers semantics.
+func (s *Service) SpendingByCategoryYear(year int, includeTransfers bool) (*Spending, error) {
 	startDate := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(year+1, 1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond) // Last moment of year
 
 	period := fmt.Sprintf("%d", year)
-	return s.spendingByCategory(period, startDate, endDate)
+	return s.spendingByCategory(period, startDate, endDate, includeTransfers)
 }
 
 // SpendingByCategoryDateRange generates a spending by category report for a custom date range.
-func (s *Service) SpendingByCategoryDateRange(startDate, endDate time.Time) (*Spending, error) {
+// See SpendingByCategoryMonth for the includeTransfers semantics.
+func (s *Service) SpendingByCategoryDateRange(startDate, endDate time.Time, includeTransfers bool) (*Spending, error) {
 	period := fmt.Sprintf("%s to %s", startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
-	return s.spendingByCategory(period, startDate, endDate)
+	return s.spendingByCategory(period, startDate, endDate, includeTransfers)
 }
 
 // spendingByCategory generates a spending by category report for the given period.
-func (s *Service) spendingByCategory(period string, startDate, endDate time.Time) (*Spending, error) {
+func (s *Service) spendingByCategory(period string, startDate, endDate time.Time, includeTransfers bool) (*Spending, error) {
 	// Query to get spending by category, including both direct transactions and splits.
 	// We need to aggregate:
 	// 1. Direct transactions (non-split) with expense categories
 	// 2. Split transaction amounts with expense categories
-	// Exclude transfers (system categories) and only count negative amounts (spending).
+	// Only count negative amounts (spending) and skip void rows.
+	//
+	// Transfers are excluded by explicit guards, not by the NULL-category
+	// join accident: a categorized transfer (e.g. a linked credit-card
+	// payment) must not count as spending. When includeTransfers is true the
+	// guards drop, folding categorized transfers in; each mirrored pair still
+	// counts at most once because only negative-amount (outflow) rows sum.
+	txnTransferGuard := "AND t.transfer_id IS NULL"
+	splitTransferGuard := "AND ts.transfer_account_id IS NULL"
+	if includeTransfers {
+		txnTransferGuard = ""
+		splitTransferGuard = ""
+	}
 	query := `
 		WITH category_spending AS (
 			-- Direct transactions (non-split, with category)
@@ -211,6 +227,7 @@ func (s *Service) spendingByCategory(period string, startDate, endDate time.Time
 			  AND t.date <= ?
 			  AND t.amount < 0
 			  AND t.status != 'void'
+			  ` + txnTransferGuard + `
 			  AND NOT EXISTS (
 				  SELECT 1 FROM transaction_splits ts
 				  WHERE CAST(ts.transaction_id AS VARCHAR) = CAST(t.id AS VARCHAR)
@@ -235,6 +252,7 @@ func (s *Service) spendingByCategory(period string, startDate, endDate time.Time
 			  AND t.date <= ?
 			  AND ts.amount < 0
 			  AND t.status != 'void'
+			  ` + splitTransferGuard + `
 		)
 		SELECT
 			category_id,

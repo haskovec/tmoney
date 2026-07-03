@@ -15,11 +15,12 @@ import (
 
 // reportSpendingOptions are the inputs to `tmoney report spending`.
 type reportSpendingOptions struct {
-	file     string
-	month    string
-	year     int
-	fromDate string
-	toDate   string
+	file             string
+	month            string
+	year             int
+	fromDate         string
+	toDate           string
+	includeTransfers bool
 }
 
 // newReportSpendingCmd registers `tmoney report spending`. The
@@ -36,7 +37,8 @@ func newReportSpendingCmd() *cobra.Command {
 			"`--year YYYY`, or a `--from`/`--to` date range.",
 		Example: "  tmoney report spending --month 2024-03\n" +
 			"  tmoney report spending --year 2024\n" +
-			"  tmoney report spending --from 2024-01-01 --to 2024-06-30",
+			"  tmoney report spending --from 2024-01-01 --to 2024-06-30\n" +
+			"  tmoney report spending --month 2024-03 --include-transfers",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -48,6 +50,7 @@ func newReportSpendingCmd() *cobra.Command {
 	cmd.Flags().IntVar(&opts.year, "year", 0, "Period as YYYY (e.g. 2024)")
 	cmd.Flags().StringVar(&opts.fromDate, "from", "", "Start of custom date range (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&opts.toDate, "to", "", "End of custom date range (YYYY-MM-DD); defaults to today")
+	cmd.Flags().BoolVar(&opts.includeTransfers, "include-transfers", false, "Fold categorized transfers into the spending totals (excluded by default)")
 	return cmd
 }
 
@@ -73,12 +76,12 @@ func runReportSpending(opts *reportSpendingOptions, w io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("invalid --month format: %w", err)
 		}
-		rpt, err = svc.Report.SpendingByCategoryMonth(year, month)
+		rpt, err = svc.Report.SpendingByCategoryMonth(year, month, opts.includeTransfers)
 		if err != nil {
 			return fmt.Errorf("failed to generate spending report: %w", err)
 		}
 	case opts.year != 0:
-		rpt, err = svc.Report.SpendingByCategoryYear(opts.year)
+		rpt, err = svc.Report.SpendingByCategoryYear(opts.year, opts.includeTransfers)
 		if err != nil {
 			return fmt.Errorf("failed to generate spending report: %w", err)
 		}
@@ -98,7 +101,7 @@ func runReportSpending(opts *reportSpendingOptions, w io.Writer) error {
 			endDate = types.Today()
 		}
 
-		rpt, err = svc.Report.SpendingByCategoryDateRange(time.Time(startDate), time.Time(endDate))
+		rpt, err = svc.Report.SpendingByCategoryDateRange(time.Time(startDate), time.Time(endDate), opts.includeTransfers)
 		if err != nil {
 			return fmt.Errorf("failed to generate spending report: %w", err)
 		}

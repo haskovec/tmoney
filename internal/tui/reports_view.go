@@ -28,6 +28,9 @@ type reportsViewData struct {
 	spending *report.Spending
 	year     int
 	month    int // 1-12 for monthly, 0 for yearly
+	// includeTransfers folds categorized transfers into the spending report.
+	// Session-only state (like the period), reset on a fresh entry to the view.
+	includeTransfers bool
 }
 
 // reportsViewDataLoadedMsg is sent when reports data has been loaded.
@@ -36,12 +39,13 @@ type reportsViewDataLoadedMsg struct {
 }
 
 // loadReportsViewData returns a command that loads report data for the reports view.
-func (a *App) loadReportsViewData(rt reportType, year, month int) tea.Cmd {
+func (a *App) loadReportsViewData(rt reportType, year, month int, includeTransfers bool) tea.Cmd {
 	return func() tea.Msg {
 		data := &reportsViewData{
-			rtype: rt,
-			year:  year,
-			month: month,
+			rtype:            rt,
+			year:             year,
+			month:            month,
+			includeTransfers: includeTransfers,
 		}
 
 		switch rt {
@@ -58,9 +62,9 @@ func (a *App) loadReportsViewData(rt reportType, year, month int) tea.Cmd {
 				var report *report.Spending
 				var err error
 				if month > 0 {
-					report, err = a.reportSvc.SpendingByCategoryMonth(year, month)
+					report, err = a.reportSvc.SpendingByCategoryMonth(year, month, includeTransfers)
 				} else {
-					report, err = a.reportSvc.SpendingByCategoryYear(year)
+					report, err = a.reportSvc.SpendingByCategoryYear(year, includeTransfers)
 				}
 				if err != nil {
 					return errMsg{err: err}
@@ -91,7 +95,7 @@ func (a *App) handleReportsKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "n":
 		// Switch to net worth report
 		now := time.Now()
-		return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()))
+		return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()), a.reports.includeTransfers)
 
 	case msg.String() == "s":
 		// Switch to spending report
@@ -100,18 +104,24 @@ func (a *App) handleReportsKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if month == 0 {
 			month = int(time.Now().Month())
 		}
-		return a, a.loadReportsViewData(reportTypeSpending, year, month)
+		return a, a.loadReportsViewData(reportTypeSpending, year, month, a.reports.includeTransfers)
 
 	case msg.String() == "y":
 		// Toggle to yearly spending view (only for spending)
 		if a.reports.rtype == reportTypeSpending {
-			return a, a.loadReportsViewData(reportTypeSpending, a.reports.year, 0)
+			return a, a.loadReportsViewData(reportTypeSpending, a.reports.year, 0, a.reports.includeTransfers)
 		}
 
 	case msg.String() == "m":
 		// Toggle to monthly spending view (only for spending)
 		if a.reports.rtype == reportTypeSpending && a.reports.month == 0 {
-			return a, a.loadReportsViewData(reportTypeSpending, a.reports.year, int(time.Now().Month()))
+			return a, a.loadReportsViewData(reportTypeSpending, a.reports.year, int(time.Now().Month()), a.reports.includeTransfers)
+		}
+
+	case msg.String() == "t":
+		// Toggle folding categorized transfers into the spending report
+		if a.reports.rtype == reportTypeSpending {
+			return a, a.loadReportsViewData(reportTypeSpending, a.reports.year, a.reports.month, !a.reports.includeTransfers)
 		}
 	}
 
@@ -139,7 +149,7 @@ func (a *App) reportsPreviousPeriod() (tea.Model, tea.Cmd) {
 		year--
 	}
 
-	return a, a.loadReportsViewData(reportTypeSpending, year, month)
+	return a, a.loadReportsViewData(reportTypeSpending, year, month, a.reports.includeTransfers)
 }
 
 // reportsNextPeriod navigates to the next time period for reports.
@@ -163,7 +173,7 @@ func (a *App) reportsNextPeriod() (tea.Model, tea.Cmd) {
 		year++
 	}
 
-	return a, a.loadReportsViewData(reportTypeSpending, year, month)
+	return a, a.loadReportsViewData(reportTypeSpending, year, month, a.reports.includeTransfers)
 }
 
 // renderReports renders the reports view.
@@ -248,6 +258,9 @@ func (a *App) renderSpendingReport() string {
 
 	// Title row
 	titleText := "SPENDING BY CATEGORY"
+	if a.reports.includeTransfers {
+		titleText += "  (incl. transfers)"
+	}
 	periodText := sr.Period
 	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(periodText)-4, 1)
 	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Bold.Render(periodText)
@@ -320,7 +333,7 @@ func (a *App) renderSpendingReport() string {
 	if a.reports.month > 0 {
 		modeHint = "y yearly"
 	}
-	sections = append(sections, a.styles.Muted.Render(fmt.Sprintf("  <-> period  %s  n net worth  s spending  esc back", modeHint)))
+	sections = append(sections, a.styles.Muted.Render(fmt.Sprintf("  <-> period  %s  t transfers  n net worth  s spending  esc back", modeHint)))
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).

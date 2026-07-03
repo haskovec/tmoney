@@ -215,7 +215,7 @@ func (a *App) reloadCurrentView() tea.Cmd {
 	case ViewReports:
 		if a.reports != nil {
 			cmds = append(cmds, a.loadReportsViewData(
-				a.reports.rtype, a.reports.year, a.reports.month,
+				a.reports.rtype, a.reports.year, a.reports.month, a.reports.includeTransfers,
 			))
 		}
 	case ViewSecurities:

@@ -756,7 +756,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.switchView(ViewReports)
 		if a.reports == nil {
 			now := time.Now()
-			return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()))
+			return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()), false)
 		}
 		return a, nil
 

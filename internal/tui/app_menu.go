@@ -105,12 +105,12 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 	case widget.MenuActionNetWorth:
 		a.switchView(ViewReports)
 		now := time.Now()
-		return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()))
+		return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()), false)
 
 	case widget.MenuActionSpendingByCategory:
 		a.switchView(ViewReports)
 		now := time.Now()
-		return a, a.loadReportsViewData(reportTypeSpending, now.Year(), int(now.Month()))
+		return a, a.loadReportsViewData(reportTypeSpending, now.Year(), int(now.Month()), false)
 
 	case widget.MenuActionSecurities:
 		a.switchView(ViewSecurities)

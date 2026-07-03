@@ -131,6 +131,80 @@ func TestReportSpending_WithData(t *testing.T) {
 	}
 }
 
+func TestReportSpending_IncludeTransfersFlag(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+
+	acctRepo := account.NewRepository(database)
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD",
+		types.MustNewMoney("5000.00"), types.MustParseDate("2024-01-01"))
+	if err := acctRepo.Create(checking); err != nil {
+		t.Fatalf("setup: create checking: %v", err)
+	}
+	savings := account.NewAccount("Savings", account.TypeSavings, "USD",
+		types.MustNewMoney("0.00"), types.MustParseDate("2024-01-01"))
+	if err := acctRepo.Create(savings); err != nil {
+		t.Fatalf("setup: create savings: %v", err)
+	}
+
+	catRepo := category.NewRepository(database)
+	groceries := category.NewCategory("Groceries", category.TypeExpense)
+	if err := catRepo.Create(groceries); err != nil {
+		t.Fatalf("setup: create groceries: %v", err)
+	}
+	cardPay := category.NewCategory("Card Payment", category.TypeExpense)
+	if err := catRepo.Create(cardPay); err != nil {
+		t.Fatalf("setup: create card payment: %v", err)
+	}
+
+	txnRepo := transaction.NewRepository(database)
+	// A normal expense.
+	grocTxn := transaction.NewTransaction(checking.ID, types.MustParseDate("2024-01-15"), types.MustNewMoney("-150.00"))
+	grocTxn.SetCategory(groceries.ID)
+	if err := txnRepo.Create(grocTxn); err != nil {
+		t.Fatalf("setup: create groceries txn: %v", err)
+	}
+	// A categorized transfer pair (the legacy `transfer link` shape).
+	transferID := types.NewID()
+	out := transaction.NewTransaction(checking.ID, types.MustParseDate("2024-01-20"), types.MustNewMoney("-500.00"))
+	out.SetCategory(cardPay.ID)
+	out.SetTransfer(transferID, savings.ID)
+	if err := txnRepo.Create(out); err != nil {
+		t.Fatalf("setup: create transfer outflow: %v", err)
+	}
+	in := transaction.NewTransaction(savings.ID, types.MustParseDate("2024-01-20"), types.MustNewMoney("500.00"))
+	in.SetCategory(cardPay.ID)
+	in.SetTransfer(transferID, checking.ID)
+	if err := txnRepo.Create(in); err != nil {
+		t.Fatalf("setup: create transfer inflow: %v", err)
+	}
+	database.Close()
+
+	// Default: transfer excluded, only groceries counts.
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := cli.ExecuteWith([]string{"report", "spending", "--month", "2024-01", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(report spending): %v\nstderr=%s", err, stderr)
+	}
+	out1 := stdout.String()
+	if !strings.Contains(out1, "Groceries") {
+		t.Errorf("default report should list Groceries; got:\n%s", out1)
+	}
+	if strings.Contains(out1, "Card Payment") {
+		t.Errorf("default report must exclude the categorized transfer; got:\n%s", out1)
+	}
+
+	// With --include-transfers: the transfer folds in (outflow leg only).
+	stdout, stderr = &bytes.Buffer{}, &bytes.Buffer{}
+	if err := cli.ExecuteWith([]string{"report", "spending", "--month", "2024-01", "--include-transfers", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(report spending --include-transfers): %v\nstderr=%s", err, stderr)
+	}
+	out2 := stdout.String()
+	for _, want := range []string{"Groceries", "Card Payment", "$500.00"} {
+		if !strings.Contains(out2, want) {
+			t.Errorf("expected %q in --include-transfers output, got:\n%s", want, out2)
+		}
+	}
+}
+
 func TestReportSpending_InvalidMonthFormat(t *testing.T) {
 	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	database.Close()
@@ -205,7 +279,7 @@ func TestReportSpending_Help(t *testing.T) {
 		t.Fatalf("cli.ExecuteWith(report spending --help): %v", err)
 	}
 	out := stdout.String()
-	for _, want := range []string{"spending", "--month", "--year", "--from", "--to"} {
+	for _, want := range []string{"spending", "--month", "--year", "--from", "--to", "--include-transfers"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected `report spending --help` to contain %q; got:\n%s", want, out)
 		}

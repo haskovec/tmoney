@@ -29,34 +29,38 @@ mirroring precedes the scheduled multi-line and loan phases that post
 through it. The loan wizard composes everything and lands second-to-last.
 Docs + e2e close, per house convention.
 
-## Phase 1: Spending-Report Guards + Opt-In Toggle — [ ]
+## Phase 1: Spending-Report Guards + Opt-In Toggle — [x]
 
 Fixes the pre-existing leak (categorized `transfer link` pairs count as
 spending today) and lands the toggle end-to-end.
 
-- [ ] `internal/report/report_service.go`: add `includeTransfers bool` to
+- [x] `internal/report/report_service.go`: add `includeTransfers bool` to
   `SpendingByCategoryMonth` (:166), `SpendingByCategoryYear` (:175),
   `SpendingByCategoryDateRange` (:184), and `spendingByCategory` (:190).
   When false, append `AND t.transfer_id IS NULL` to the transactions arm
   (after :213) and `AND ts.transfer_account_id IS NULL` to the splits arm
   (after :237); when true, keep today's query text.
-- [ ] `internal/cli/report/spending.go`: `--include-transfers` bool flag
+- [x] `internal/cli/report/spending.go`: `--include-transfers` bool flag
   (:47-50 block), threaded to the three service calls (:76, :81, :101).
-- [ ] `internal/tui/reports_view.go`: `includeTransfers` field on
+- [x] `internal/tui/reports_view.go`: `includeTransfers` field on
   `reportsViewData` (:25-31, session-only); `t` key in `handleReportsKeys`
   (:77-119) flips it and reloads spending via `loadReportsViewData`;
   spending title gains an `(incl. transfers)` suffix and the spending
   footer (:319-323) gains the `t` hint.
-- [ ] `internal/tui/help_overlay.go`: add `t` to `reportsShortcuts()`
+- [x] `internal/tui/help_overlay.go`: add `t` to `reportsShortcuts()`
   (:127-139).
-- [ ] Tests: report-service tests seeding a categorized whole-transfer
+- [x] Tests: report-service tests seeding a categorized whole-transfer
   pair (built via `SetTransfer`+`SetCategory` to simulate legacy linked
   data) — excluded with the flag false (leak regression), included exactly
   once (outflow leg only) with it true; income-typed transfer category
   never appears; CLI flag test through `runReportSpending`; TUI toggle
-  test flipping state and asserting the reload + title suffix. (The
-  splits-arm inclusion test needs a categorized transfer split-line, a row
-  shape the current CHECK rejects — it lands with Phase 3's migration.)
+  test flipping state and asserting the reload + title suffix; TUI
+  session-state test pinning includeTransfers carry-forward across
+  s/y/n/left/right and reset-to-false on a fresh menu entry
+  (mutation-verified). (The splits-arm inclusion test needs a categorized
+  transfer split-line, a row shape the current CHECK rejects — it lands
+  with Phase 3's migration; the splits-arm guard is a provable no-op until
+  then, since `transaction_splits`' XOR CHECK forbids a both-set row.)
 
 ## Phase 2: `ReplaceSplits` Transfer-Awareness (pre-existing corruption fix) — [ ]
 
