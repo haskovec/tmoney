@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -483,5 +484,265 @@ func TestLoanWizard_AtomicRollbackOnAssetCollision(t *testing.T) {
 	}
 	if env.app.undoManager.UndoLen() != 0 {
 		t.Errorf("failed atomic op should push no undo step, got %d", env.app.undoManager.UndoLen())
+	}
+}
+
+// --- Edit-as-loan + demotion guard (Phase 7, part 2) ---
+
+// seedLoanAccount creates an active loan account with the given owed balance
+// (stored negated) and APR.
+func (env *loanWizardEnv) seedLoanAccount(t *testing.T, name, owed, apr string) *account.Account {
+	t.Helper()
+	acct := account.NewAccount(name, account.TypeLoan, "USD", types.MustNewMoney(owed).Neg(), types.NewDate(2020, time.January, 1))
+	acct.SetInterestRate(types.MustNewMoney(apr))
+	if err := env.accountSvc.Create(acct); err != nil {
+		t.Fatalf("seed loan account: %v", err)
+	}
+	return acct
+}
+
+// seedLoanShapedSchedule creates a strictly loan-shaped monthly schedule using
+// BuildLoanSnapshot (tagged splits) — bypassing the undo manager.
+func (env *loanWizardEnv) seedLoanShapedSchedule(t *testing.T, loanAcct *account.Account, owed, apr, pi string, interestCatID types.ID, next types.Date) *scheduled.Transaction {
+	t.Helper()
+	parent, splits, _, err := scheduled.BuildLoanSnapshot(scheduled.LoanSnapshotInput{
+		LoanAccountID: loanAcct.ID,
+		APR:           types.MustNewMoney(apr),
+		Owed:          types.MustNewMoney(owed),
+		PIPayment:     types.MustNewMoney(pi),
+		InterestCatID: interestCatID,
+	})
+	if err != nil {
+		t.Fatalf("BuildLoanSnapshot: %v", err)
+	}
+	st := scheduled.NewTransactionWithAmount(env.funding.ID, scheduled.FrequencyMonthly, next, parent)
+	st.SetDayOfMonth(next.Time().Day())
+	st.Splits = scheduled.SplitCollection(splits)
+	if err := env.schedSvc.Create(st); err != nil {
+		t.Fatalf("create loan-shaped schedule: %v", err)
+	}
+	return st
+}
+
+func hasEditAsLoanButton(d *dialog.Dialog) bool {
+	for _, b := range d.Buttons() {
+		if b.Label == "Edit as loan →" {
+			return true
+		}
+	}
+	return false
+}
+
+func loanScheduleSplit(st *scheduled.Transaction, section string) *scheduled.Split {
+	for _, sp := range st.Splits {
+		if sp.LoanSection.Valid && sp.LoanSection.String == section {
+			return sp
+		}
+	}
+	return nil
+}
+
+func TestLoanWizard_EditRoundTrip(t *testing.T) {
+	env := newLoanWizardEnv(t)
+
+	// Create a loan via the wizard (round-trip starts from a real created loan).
+	env.set(loanFieldName, "Mortgage")
+	env.set(loanFieldCurrentBalance, "380000")
+	env.set(loanFieldAPR, "6.5")
+	env.set(loanFieldPayment, "2401.86")
+	env.set(loanFieldNextPaymentDate, "08/01/2026")
+	env.selectOption(t, loanFieldFromAccount, "Checking")
+	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
+		t.Fatal("create failed")
+	}
+
+	st := env.findLoanSchedule(t)
+	loanAcct, err := env.accountSvc.GetByName("Mortgage")
+	if err != nil {
+		t.Fatalf("loan account: %v", err)
+	}
+	owed, _ := env.accountSvc.BalanceAsOf(loanAcct.ID, st.NextDate)
+
+	accounts, _ := env.accountSvc.List(true)
+	cats, _ := env.categorySvc.List()
+	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+
+	// Prefill: name / APR / P&I; balance and next-date hidden in edit mode.
+	f := env.app.loanWizard.Fields()
+	if f[loanFieldName].Value != "Mortgage" {
+		t.Errorf("name prefill = %q", f[loanFieldName].Value)
+	}
+	if f[loanFieldAPR].Value != "6.5" {
+		t.Errorf("APR prefill = %q", f[loanFieldAPR].Value)
+	}
+	if f[loanFieldPayment].Value != "2401.86" {
+		t.Errorf("P&I prefill = %q", f[loanFieldPayment].Value)
+	}
+	if !f[loanFieldCurrentBalance].Hidden || !f[loanFieldNextPaymentDate].Hidden {
+		t.Error("current balance and next-payment-date should be hidden in edit mode")
+	}
+
+	// Change APR and P&I, then save.
+	f[loanFieldAPR].Value = "7"
+	f[loanFieldPayment].Value = "2500"
+	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
+		t.Fatal("edit save failed")
+	}
+
+	// Account APR updated.
+	loanAcct2, _ := env.accountSvc.GetByName("Mortgage")
+	if !loanAcct2.InterestRate.Money.Equal(types.MustNewMoney("7")) {
+		t.Errorf("APR after edit = %v, want 7", loanAcct2.InterestRate)
+	}
+
+	// Schedule still loan-shaped, interest recomputed at the new APR:
+	// round(380000 * 7 / 1200) = 2216.67.
+	st2 := env.findLoanSchedule(t)
+	if !env.schedSvc.IsLoanShaped(st2) {
+		t.Error("schedule should still be loan-shaped after edit")
+	}
+	interest := loanScheduleSplit(st2, scheduled.LoanSectionInterest)
+	if interest == nil || !interest.Amount.Equal(types.MustNewMoney("-2216.67")) {
+		t.Errorf("recomputed interest = %v, want -2216.67", interest)
+	}
+
+	// Single undo step for the edit restores the account (and schedule) together.
+	if env.app.undoManager.UndoLen() != 2 {
+		t.Fatalf("undo len = %d, want 2 (create + edit)", env.app.undoManager.UndoLen())
+	}
+	if _, err := env.app.undoManager.Undo(); err != nil {
+		t.Fatalf("undo: %v", err)
+	}
+	loanAcct3, _ := env.accountSvc.GetByName("Mortgage")
+	if !loanAcct3.InterestRate.Money.Equal(types.MustNewMoney("6.5")) {
+		t.Errorf("undo did not restore APR: %v, want 6.5", loanAcct3.InterestRate)
+	}
+}
+
+func TestLoanWizard_EditAdoptionTagsUntaggedSchedule(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	loanAcct := env.seedLoanAccount(t, "Mortgage", "380000", "6.5")
+	interestCat, err := env.categorySvc.GetOrCreateLoanInterestCategory()
+	if err != nil {
+		t.Fatalf("interest cat: %v", err)
+	}
+
+	// Hand-built, UNtagged loan schedule (interest categorized to Loan:Interest,
+	// principal transfer to the loan) — loan-adoptable, not loan-shaped.
+	interest := scheduled.NewCategorizedSplit(types.NilID, interestCat.ID, types.MustNewMoney("-2058.33"))
+	principal := scheduled.NewTransferSplit(types.NilID, loanAcct.ID, types.MustNewMoney("-343.53"))
+	st := scheduled.NewTransactionWithAmount(env.funding.ID, scheduled.FrequencyMonthly, types.NewDate(2026, time.August, 1), types.MustNewMoney("-2401.86"))
+	st.SetDayOfMonth(1)
+	st.Splits = scheduled.SplitCollection{interest, principal}
+	if err := env.schedSvc.Create(st); err != nil {
+		t.Fatalf("create untagged schedule: %v", err)
+	}
+
+	if env.schedSvc.IsLoanShaped(st) {
+		t.Fatal("untagged schedule should not be loan-shaped")
+	}
+	if !env.schedSvc.IsLoanAdoptable(st) {
+		t.Fatal("untagged schedule should be loan-adoptable")
+	}
+
+	accounts, _ := env.accountSvc.List(true)
+	cats, _ := env.categorySvc.List()
+	owed, _ := env.accountSvc.BalanceAsOf(loanAcct.ID, st.NextDate)
+	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+
+	// P&I prefill = |principal| + |interest| = 343.53 + 2058.33 = 2401.86.
+	if got := env.app.loanWizard.Fields()[loanFieldPayment].Value; got != "2401.86" {
+		t.Errorf("P&I prefill = %q, want 2401.86", got)
+	}
+
+	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
+		t.Fatal("adoption save failed")
+	}
+
+	st2 := env.findLoanSchedule(t)
+	if !env.schedSvc.IsLoanShaped(st2) {
+		t.Error("schedule should be loan-shaped (adopted) after save")
+	}
+	for _, sp := range st2.Splits {
+		if !sp.LoanSection.Valid {
+			t.Errorf("adopted split missing loan_section tag: %+v", sp)
+		}
+	}
+}
+
+func TestLoanWizard_EditAsLoanButtonAndDispatch(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	loanAcct := env.seedLoanAccount(t, "Mortgage", "380000", "6.5")
+	interestCat, _ := env.categorySvc.GetOrCreateLoanInterestCategory()
+	st := env.seedLoanShapedSchedule(t, loanAcct, "380000", "6.5", "2401.86", interestCat.ID, types.NewDate(2026, time.August, 1))
+
+	if !env.app.scheduleWantsLoanEdit(st) {
+		t.Error("loan-shaped schedule should want a loan edit")
+	}
+
+	env.app.schedDialog = dialog.NewDialog("Edit Scheduled Transaction")
+	env.app.maybeAddEditAsLoanButton(st)
+	if !hasEditAsLoanButton(env.app.schedDialog) {
+		t.Error("Edit as loan → button was not added for a loan-shaped schedule")
+	}
+
+	// A plain single-line schedule neither wants a loan edit nor gets the button.
+	plain := scheduled.NewTransactionWithAmount(env.funding.ID, scheduled.FrequencyMonthly, types.NewDate(2026, time.August, 1), types.MustNewMoney("-100"))
+	plain.SetCategory(interestCat.ID)
+	if err := env.schedSvc.Create(plain); err != nil {
+		t.Fatalf("create plain schedule: %v", err)
+	}
+	if env.app.scheduleWantsLoanEdit(plain) {
+		t.Error("plain schedule should not want a loan edit")
+	}
+}
+
+func TestLoanWizard_DemotionGuardOnGenericSplitEdit(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	loanAcct := env.seedLoanAccount(t, "Mortgage", "380000", "6.5")
+	interestCat, _ := env.categorySvc.GetOrCreateLoanInterestCategory()
+	st := env.seedLoanShapedSchedule(t, loanAcct, "380000", "6.5", "2401.86", interestCat.ID, types.NewDate(2026, time.August, 1))
+
+	accounts, _ := env.accountSvc.List(true)
+	cats, _ := env.categorySvc.List()
+	catOptions, catIDs := buildCategoryOptions(cats)
+	accountOptions, accountIDs := buildSplitTransferAccountOptions(accounts)
+
+	// Simulate the generic split editor open on this loan-shaped schedule.
+	env.app.pendingSplitScheduled = &pendingSplitScheduled{
+		mode:      scheduledDialogModeEdit,
+		existing:  st,
+		accountID: env.funding.ID,
+		amount:    st.Amount.Money,
+		frequency: scheduled.FrequencyMonthly,
+		interval:  1,
+		startDate: st.StartDate,
+	}
+	env.app.splitDialog = NewSplitDialogFromExisting(st.Amount.Money, catOptions, catIDs, transactionSplitsFromScheduled(st))
+	env.app.splitDialog.SetTransferTargets(accountOptions, accountIDs, env.funding.ID)
+
+	// Save through the generic editor → the demotion guard fires; nothing saved.
+	_, cmd := env.app.submitScheduledSplitDialog()
+	if env.app.confirmDialog == nil {
+		t.Fatal("demotion guard did not fire (no confirm dialog)")
+	}
+	if cmd != nil {
+		t.Error("save should be deferred behind the confirm dialog")
+	}
+	if reloaded, _ := env.schedSvc.GetByID(st.ID); !env.schedSvc.IsLoanShaped(reloaded) {
+		t.Error("schedule must stay loan-shaped until the user confirms")
+	}
+
+	// Confirm → the deferred save runs and demotes the schedule.
+	fn := env.app.confirmAction
+	if fn == nil {
+		t.Fatal("no confirm action captured")
+	}
+	if _, ok := fn().(scheduledDialogSavedMsg); !ok {
+		t.Fatal("deferred demoting save did not succeed")
+	}
+	reloaded, _ := env.schedSvc.GetByID(st.ID)
+	if env.schedSvc.IsLoanShaped(reloaded) {
+		t.Error("schedule should be demoted (loan_section tags stripped) after confirm")
 	}
 }

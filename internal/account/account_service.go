@@ -64,6 +64,15 @@ func (s *Service) List(activeOnly bool) ([]*Account, error) {
 	return s.repo.List(activeOnly)
 }
 
+// BalanceAsOf returns the account's signed balance as of the given date
+// (opening balance + non-void transactions dated on or before asOf, parent
+// amounts only). Liabilities are negative. It is the single-account form of the
+// net-worth as-of formula; the loan wizard's Edit-as-loan flow uses it to read
+// the loan's live balance when it rebuilds the month-one snapshot.
+func (s *Service) BalanceAsOf(id types.ID, asOf types.Date) (types.Money, error) {
+	return s.repo.BalanceAsOf(id, asOf)
+}
+
 // GetBalance calculates and returns the balance information for an account.
 func (s *Service) GetBalance(id types.ID) (*Balance, error) {
 	// Use the account_balances view to get calculated balances

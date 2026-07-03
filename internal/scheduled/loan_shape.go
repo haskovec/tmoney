@@ -72,6 +72,16 @@ func (s *Service) IsLoanShaped(st *Transaction) bool {
 	return s.isLoanShaped(st)
 }
 
+// IsLoanAdoptable is the exported service-method form: it reports whether st is
+// loan-adoptable — the loose shape the Edit-as-loan affordance also offers so a
+// hand-built or accidentally-demoted loan schedule can be (re)promoted by saving
+// through the wizard. Resolves the transfer target through the service's account
+// repository. Nil-safe: a service with no account repository treats every
+// schedule as non-adoptable.
+func (s *Service) IsLoanAdoptable(st *Transaction) bool {
+	return IsLoanAdoptable(st, s.loanAccountLookup())
+}
+
 // IsLoanShaped reports whether st is a strictly loan-shaped schedule — and so
 // gets recompute-at-post, the final-payment clamp, payoff completion, and the
 // loan affordances. All of the following must hold:

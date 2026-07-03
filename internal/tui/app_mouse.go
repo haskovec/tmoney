@@ -342,7 +342,7 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			a.schedDialog.SetVisible(false)
 			a.schedDialog = nil
 		case dialog.DialogActionAlternate:
-			return a.relaunchAsPaycheckWizard()
+			return a.relaunchScheduledAlternate()
 		}
 		return a, nil
 	}

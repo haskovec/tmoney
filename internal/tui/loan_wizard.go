@@ -66,6 +66,12 @@ const (
 func loanEscrowCatIndex(k int) int { return loanFieldEscrowStart + 2*k }
 func loanEscrowAmtIndex(k int) int { return loanFieldEscrowStart + 2*k + 1 }
 
+// loanDemotionWarning is shown before saving a loan-shaped schedule through the
+// generic Edit Series editor (which strips the loan_section tags). Demoting is
+// behavioral, not cosmetic — a demoted schedule silently books the stale
+// template interest every month — so the guard confirms before proceeding.
+const loanDemotionWarning = "This converts the loan schedule to a generic schedule — payments will no longer compute interest automatically. Continue?"
+
 // loanInterestDefaultDisplay is the picker label for the default interest
 // category (Loan > Interest). Selecting it resolves via
 // category.Service.GetOrCreateLoanInterestCategory at save time, so the default
@@ -100,6 +106,15 @@ type loanWizardData struct {
 	// prefill keeps updating as principal/APR/term change; once the user types
 	// something else the field is considered touched and prefill stops.
 	lastComputedPayment string
+
+	// Edit-mode state (Edit as loan →). existingSchedule is the schedule being
+	// re-promoted; loanAccount is its principal transfer target; owed is that
+	// account's live balance as of the schedule's next payment date (loaded
+	// once, so the negative-amortization guard and the rebuilt month-one
+	// snapshot both use the real balance). Nil / zero in new mode.
+	existingSchedule *scheduled.Transaction
+	loanAccount      *account.Account
+	owed             types.Money
 }
 
 // buildLoanFromAccountOptions returns parallel display-name and ID slices for
@@ -140,14 +155,25 @@ func buildLoanInterestOptions(catOptions []string, catIDs []types.ID) (opts []st
 }
 
 // buildNewLoanWizard constructs the loan wizard dialog and its companion state
-// from the loaded accounts and categories.
+// for creating a new loan.
 func buildNewLoanWizard(accounts []*account.Account, categories []*category.Category) (*dialog.Dialog, *loanWizardData) {
+	d, state := buildLoanWizardFields("New Loan", accounts, categories)
+	state.mode = loanWizardModeNew
+	updateLoanWizardVisibility(d)
+	d.SetVisible(true)
+	return d, state
+}
+
+// buildLoanWizardFields lays out the shared loan-wizard field list and the
+// companion state (option/ID lookups). Both the new and the Edit-as-loan paths
+// build from this; the caller sets the mode, applies any prefill, and toggles
+// visibility.
+func buildLoanWizardFields(title string, accounts []*account.Account, categories []*category.Category) (*dialog.Dialog, *loanWizardData) {
 	catOptions, catIDs := buildCategoryOptions(categories)
 	fromOptions, fromIDs := buildLoanFromAccountOptions(accounts)
 	interestOptions, interestIDs, interestDefault := buildLoanInterestOptions(catOptions, catIDs)
 
 	state := &loanWizardData{
-		mode:            loanWizardModeNew,
 		accounts:        accounts,
 		accountIDs:      fromIDs,
 		categoryIDs:     catIDs,
@@ -155,7 +181,7 @@ func buildNewLoanWizard(accounts []*account.Account, categories []*category.Cate
 		interestIDs:     interestIDs,
 	}
 
-	d := dialog.NewDialog("New Loan")
+	d := dialog.NewDialog(title)
 	d.SetWidth(64)
 
 	// --- Loan section ---
@@ -191,9 +217,150 @@ func buildNewLoanWizard(accounts []*account.Account, categories []*category.Cate
 	d.AddTextField("Asset Name", "", "e.g. 123 Main St", 0)
 	d.AddTextField("Asset Value", "", "current value", 14)
 
+	return d, state
+}
+
+// loanEditHiddenFields are the fields not editable in Edit-as-loan mode: the
+// current balance (derived from the account), the prefill-only origination
+// inputs, the schedule's fixed cadence/routing (next date, from account, payee
+// — preserved as-is), and the asset section (there is no loan↔asset link to
+// edit). Interest category and escrow rows stay visible via the normal
+// visibility rules.
+var loanEditHiddenFields = []int{
+	loanFieldCurrentBalance,
+	loanFieldOrigPrincipal,
+	loanFieldOpenDate,
+	loanFieldTermMonths,
+	loanFieldNextPaymentDate,
+	loanFieldFromAccount,
+	loanFieldPayee,
+	loanFieldTrackAsset,
+	loanFieldAssetName,
+	loanFieldAssetValue,
+}
+
+// buildEditLoanWizard constructs the loan wizard prefilled from a loan-shaped or
+// loan-adoptable schedule and its loan account, for the Edit-as-loan flow. Only
+// the editable fields are shown (loan-account name/institution/APR, P&I payment,
+// interest category, escrow rows, auto-post); the rest are hidden and preserved.
+// owed is the loan's live balance as of the schedule's next payment date, used
+// at save to rebuild the month-one snapshot.
+func buildEditLoanWizard(accounts []*account.Account, categories []*category.Category, st *scheduled.Transaction, owed types.Money) (*dialog.Dialog, *loanWizardData) {
+	d, state := buildLoanWizardFields("Edit Loan", accounts, categories)
+	state.mode = loanWizardModeEdit
+	state.existingSchedule = st
+	state.owed = owed
+	fields := d.Fields()
+
+	// Resolve the loan account (the principal transfer target).
+	for _, sp := range st.Splits {
+		if !sp.TransferAccountID.Valid {
+			continue
+		}
+		for _, acc := range accounts {
+			if acc != nil && acc.ID == sp.TransferAccountID.ID && acc.Type == account.TypeLoan {
+				state.loanAccount = acc
+			}
+		}
+	}
+	if state.loanAccount != nil {
+		fields[loanFieldName].Value = state.loanAccount.Name
+		if state.loanAccount.Institution.Valid {
+			fields[loanFieldInstitution].Value = state.loanAccount.Institution.String
+		}
+		if state.loanAccount.InterestRate.Valid {
+			fields[loanFieldAPR].Value = state.loanAccount.InterestRate.Money.String()
+		}
+	}
+
+	prefillLoanPaymentFields(fields, state, st, findLoanInterestCategoryID(categories))
+	fields[loanFieldAutoPost].Checked = st.AutoPost
+
+	for _, idx := range loanEditHiddenFields {
+		fields[idx].Hidden = true
+		fields[idx].Required = false
+	}
+
 	updateLoanWizardVisibility(d)
 	d.SetVisible(true)
 	return d, state
+}
+
+// prefillLoanPaymentFields seeds the Payment (P&I), interest-category, and
+// escrow fields from an existing schedule. It handles both a strictly
+// loan-shaped template (lines carry loan_section tags) and a loose,
+// loan-adoptable one (untagged): the principal is the transfer line, the
+// interest line is the tagged interest split or — untagged — a categorized line
+// matching the default Loan:Interest category, and every other categorized line
+// is escrow. P&I is reconstructed as |principal| + |interest| (which equals the
+// parent-magnitude minus escrow), so a 0% loan prefills the full payment as
+// principal.
+func prefillLoanPaymentFields(fields []*dialog.Field, state *loanWizardData, st *scheduled.Transaction, loanInterestCatID types.ID) {
+	var principalAmt, interestAmt types.Money
+	interestCatID := types.NilID
+	escrowIdx := 0
+	for _, sp := range st.Splits {
+		if sp == nil {
+			continue
+		}
+		if sp.TransferAccountID.Valid {
+			principalAmt = sp.Amount.Abs()
+			continue
+		}
+		tagged := sp.LoanSection.Valid
+		isInterest := (tagged && sp.LoanSection.String == scheduled.LoanSectionInterest) ||
+			(!tagged && !loanInterestCatID.IsNil() && sp.CategoryID.Valid && sp.CategoryID.ID == loanInterestCatID)
+		if isInterest && interestAmt.IsZero() {
+			interestAmt = sp.Amount.Abs()
+			if sp.CategoryID.Valid {
+				interestCatID = sp.CategoryID.ID
+			}
+			continue
+		}
+		// Escrow line.
+		if escrowIdx < loanMaxEscrowLines && sp.CategoryID.Valid {
+			setSelectByID(fields[loanEscrowCatIndex(escrowIdx)], state.categoryIDs, sp.CategoryID.ID)
+			fields[loanEscrowAmtIndex(escrowIdx)].Value = sp.Amount.Abs().String()
+			escrowIdx++
+		}
+	}
+	fields[loanFieldPayment].Value = principalAmt.Add(interestAmt).String()
+	if !interestCatID.IsNil() {
+		setSelectByID(fields[loanFieldInterestCategory], state.interestIDs, interestCatID)
+	}
+}
+
+// setSelectByID points a select field at the option whose parallel ID matches
+// target. No-op when target is not found.
+func setSelectByID(f *dialog.Field, ids []types.ID, target types.ID) {
+	for i, id := range ids {
+		if id == target {
+			f.SelectedIndex = i
+			return
+		}
+	}
+}
+
+// findLoanInterestCategoryID returns the ID of the default Loan:Interest
+// category if it exists, else NilID. Used to identify the interest line when
+// adopting an untagged loan schedule.
+func findLoanInterestCategoryID(categories []*category.Category) types.ID {
+	loanParent := types.NilID
+	for _, c := range categories {
+		if c != nil && c.IsTopLevel() && c.Name == category.LoanCategoryName {
+			loanParent = c.ID
+			break
+		}
+	}
+	if loanParent.IsNil() {
+		return types.NilID
+	}
+	for _, c := range categories {
+		if c != nil && c.IsSubcategory() && c.ParentID.ID == loanParent && c.Name == category.LoanInterestChildName {
+			return c.ID
+		}
+	}
+	return types.NilID
 }
 
 // loadLoanWizardData fetches accounts + categories off the UI loop and emits a
@@ -221,9 +388,107 @@ func (a *App) loadLoanWizardData() tea.Cmd {
 }
 
 // loanWizardDataMsg carries the dependencies needed to construct the wizard.
+// editSchedule is non-nil for the Edit-as-loan flow, in which case editOwed
+// carries the loan's live balance as of the schedule's next payment date.
 type loanWizardDataMsg struct {
-	accounts   []*account.Account
-	categories []*category.Category
+	accounts     []*account.Account
+	categories   []*category.Category
+	editSchedule *scheduled.Transaction
+	editOwed     types.Money
+}
+
+// loadLoanWizardEditData fetches accounts + categories and computes the loan's
+// live balance for the Edit-as-loan flow, emitting a loanWizardDataMsg carrying
+// the schedule so the app-update handler builds the wizard in edit mode.
+func (a *App) loadLoanWizardEditData(st *scheduled.Transaction) tea.Cmd {
+	return func() tea.Msg {
+		var accounts []*account.Account
+		if a.accountSvc != nil {
+			acs, err := a.accountSvc.List(true)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			accounts = acs
+		}
+		var categories []*category.Category
+		if a.categorySvc != nil {
+			cs, err := a.categorySvc.List()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			categories = cs
+		}
+		// The loan's live balance as of the next payment date → owed magnitude.
+		owed := types.ZeroMoney
+		if a.accountSvc != nil {
+			for _, sp := range st.Splits {
+				if !sp.TransferAccountID.Valid {
+					continue
+				}
+				bal, err := a.accountSvc.BalanceAsOf(sp.TransferAccountID.ID, st.NextDate)
+				if err == nil {
+					owed = bal.Neg()
+				}
+				break
+			}
+		}
+		return loanWizardDataMsg{accounts: accounts, categories: categories, editSchedule: st, editOwed: owed}
+	}
+}
+
+// scheduleWantsLoanEdit reports whether the Edit Series dialog should offer
+// "Edit as loan →" for st (and route the alternate action to the loan wizard):
+// loan-shaped, or loan-adoptable and not paycheck-shaped. Loan-shaped takes
+// precedence; loan-shaped and paycheck-shaped are mutually exclusive (their
+// split tags cannot coexist), so this only guards the rare untagged-adoptable
+// schedule that also passes the paycheck heuristic.
+func (a *App) scheduleWantsLoanEdit(st *scheduled.Transaction) bool {
+	if a.scheduledTxnSvc == nil || st == nil {
+		return false
+	}
+	if a.scheduledTxnSvc.IsLoanShaped(st) {
+		return true
+	}
+	return a.scheduledTxnSvc.IsLoanAdoptable(st) && !looksLikePaycheck(st)
+}
+
+// maybeAddEditAsLoanButton replaces the Edit Series dialog's buttons with an
+// "Edit as loan →" affordance (mirroring "Edit as paycheck →") when st wants a
+// loan edit. Called after buildEditScheduledDialog, so it overrides that
+// function's default Save/Cancel set.
+func (a *App) maybeAddEditAsLoanButton(st *scheduled.Transaction) {
+	if a.schedDialog == nil || !a.scheduleWantsLoanEdit(st) {
+		return
+	}
+	a.schedDialog.SetButtons([]dialog.DialogButton{
+		{Label: "Save", Primary: true},
+		{Label: "Cancel"},
+		{Label: "Edit as loan →", Action: dialog.DialogActionAlternate},
+	})
+}
+
+// relaunchScheduledAlternate dispatches the Edit Series dialog's alternate
+// action to the loan wizard for a loan-shaped / loan-adoptable schedule, else
+// to the paycheck wizard (its original owner).
+func (a *App) relaunchScheduledAlternate() (tea.Model, tea.Cmd) {
+	if a.schedDialogData != nil && a.scheduleWantsLoanEdit(a.schedDialogData.scheduled) {
+		return a.relaunchAsLoanWizard()
+	}
+	return a.relaunchAsPaycheckWizard()
+}
+
+// relaunchAsLoanWizard closes the scheduled-edit dialog and opens the loan
+// wizard prefilled from the in-flight loan-shaped / loan-adoptable schedule.
+func (a *App) relaunchAsLoanWizard() (tea.Model, tea.Cmd) {
+	if a.schedDialog == nil || a.schedDialogData == nil {
+		return a, nil
+	}
+	if a.schedDialogData.mode != scheduledDialogModeEdit || a.schedDialogData.scheduled == nil {
+		return a, nil
+	}
+	st := a.schedDialogData.scheduled
+	a.closeScheduledDialog()
+	return a, a.loadLoanWizardEditData(st)
 }
 
 // loanWizardSavedMsg is emitted after a successful save so the app reloads the
@@ -377,11 +642,19 @@ func loanAPRPositive(value string) bool {
 	return apr.IsPositive()
 }
 
-// submitLoanWizard validates the wizard's fields and, on success, persists the
-// loan account, optional asset account, and monthly loan-shaped schedule as one
-// atomic, single-undo operation. Validation errors leave the wizard open with
-// per-field errors set.
+// submitLoanWizard dispatches to the new-loan or Edit-as-loan save path.
 func (a *App) submitLoanWizard() (tea.Model, tea.Cmd) {
+	if a.loanWizardState != nil && a.loanWizardState.mode == loanWizardModeEdit {
+		return a.submitEditLoanWizard()
+	}
+	return a.submitNewLoanWizard()
+}
+
+// submitNewLoanWizard validates the wizard's fields and, on success, persists
+// the loan account, optional asset account, and monthly loan-shaped schedule as
+// one atomic, single-undo operation. Validation errors leave the wizard open
+// with per-field errors set.
+func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
 	d, st := a.loanWizard, a.loanWizardState
 	if d == nil || st == nil {
 		return a, nil
@@ -586,6 +859,155 @@ func (a *App) submitLoanWizard() (tea.Model, tea.Cmd) {
 		compound := undo.NewCompoundCommand("Create loan", cmds...)
 		if err := a.undoManager.Execute(compound); err != nil {
 			return errMsg{err: fmt.Errorf("failed to create loan: %w", err)}
+		}
+		return loanWizardSavedMsg{}
+	}
+}
+
+// submitEditLoanWizard validates the Edit-as-loan form and, on success, applies
+// the loan-account edits (name / institution / APR) and rewrites the schedule's
+// month-one template snapshot (rebalanced, freshly tagged — this also (re)tags a
+// loan-adoptable schedule, promoting it to strictly loan-shaped) as one atomic,
+// single-undo operation. owed is the loan's live balance loaded when the wizard
+// opened, so the rebuilt snapshot matches what the next post would compute.
+func (a *App) submitEditLoanWizard() (tea.Model, tea.Cmd) {
+	d, st := a.loanWizard, a.loanWizardState
+	if d == nil || st == nil || st.existingSchedule == nil || st.loanAccount == nil {
+		return a, nil
+	}
+	fields := d.Fields()
+	if len(fields) < loanFieldFieldsCount {
+		return a, nil
+	}
+	d.ClearErrors()
+	hasErr := false
+	setErr := func(idx int, msg string) {
+		fields[idx].Error = msg
+		hasErr = true
+	}
+
+	name := strings.TrimSpace(fields[loanFieldName].Value)
+	if name == "" {
+		setErr(loanFieldName, "Loan name is required")
+	}
+
+	apr, err := parseAmountInput(fields[loanFieldAPR].Value)
+	if err != nil {
+		setErr(loanFieldAPR, "Invalid APR")
+	} else if apr.Float64() < 0 || apr.Float64() >= 100 {
+		setErr(loanFieldAPR, "APR must be between 0 and 100")
+	}
+
+	pi, err := parseAmountInput(fields[loanFieldPayment].Value)
+	if err != nil || !pi.IsPositive() {
+		setErr(loanFieldPayment, "Enter the monthly P&I payment")
+	}
+
+	owed := st.owed
+	if !owed.IsPositive() {
+		d.SetErrorMsg("This loan appears to be paid off — nothing to edit.")
+		hasErr = true
+	}
+
+	if !hasErr {
+		if _, _, _, sErr := loan.SplitPayment(owed, apr, pi); sErr != nil {
+			setErr(loanFieldPayment, "Payment does not cover the first month's interest")
+		}
+	}
+
+	var escrow []scheduled.LoanEscrowLine
+	for k := range loanMaxEscrowLines {
+		catField := fields[loanEscrowCatIndex(k)]
+		if catField.SelectedIndex <= 0 {
+			continue
+		}
+		catID := st.categoryIDs[catField.SelectedIndex]
+		amtIdx := loanEscrowAmtIndex(k)
+		amt, aErr := parseAmountInput(fields[amtIdx].Value)
+		if aErr != nil || !amt.IsPositive() {
+			setErr(amtIdx, "Enter a positive escrow amount")
+			continue
+		}
+		escrow = append(escrow, scheduled.LoanEscrowLine{CategoryID: catID, Amount: amt})
+	}
+
+	if hasErr {
+		return a, nil
+	}
+
+	institution := strings.TrimSpace(fields[loanFieldInstitution].Value)
+	autoPost := fields[loanFieldAutoPost].Checked
+
+	aprPositive := apr.IsPositive()
+	interestField := fields[loanFieldInterestCategory]
+	interestDefault := false
+	interestPickedID := types.NilID
+	if aprPositive {
+		idx := interestField.SelectedIndex
+		if idx >= 0 && idx < len(st.interestOptions) {
+			if st.interestOptions[idx] == loanInterestDefaultDisplay {
+				interestDefault = true
+			} else {
+				interestPickedID = st.interestIDs[idx]
+			}
+		} else {
+			interestDefault = true
+		}
+	}
+
+	schedule := st.existingSchedule
+	loanAcct := st.loanAccount
+
+	a.closeLoanWizard()
+
+	return a, func() tea.Msg {
+		if a.accountSvc == nil || a.scheduledTxnSvc == nil || a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("services not available")}
+		}
+
+		interestCatID := interestPickedID
+		if aprPositive && interestDefault {
+			if a.categorySvc == nil {
+				return errMsg{err: fmt.Errorf("category service not available")}
+			}
+			cat, cErr := a.categorySvc.GetOrCreateLoanInterestCategory()
+			if cErr != nil {
+				return errMsg{err: fmt.Errorf("failed to resolve interest category: %w", cErr)}
+			}
+			interestCatID = cat.ID
+		}
+
+		parent, splits, _, bErr := scheduled.BuildLoanSnapshot(scheduled.LoanSnapshotInput{
+			LoanAccountID: loanAcct.ID,
+			APR:           apr,
+			Owed:          owed,
+			PIPayment:     pi,
+			InterestCatID: interestCatID,
+			Escrow:        escrow,
+		})
+		if bErr != nil {
+			return errMsg{err: fmt.Errorf("failed to rebuild loan schedule: %w", bErr)}
+		}
+
+		// Apply loan-account edits.
+		loanAcct.Name = name
+		loanAcct.SetInterestRate(apr)
+		loanAcct.SetInstitution(institution)
+
+		// Rewrite the template snapshot with fresh tags; preserve cadence,
+		// routing (account/next date), payee, memo, and duration.
+		schedule.SetAmount(parent)
+		schedule.ClearCategory()
+		schedule.SetAutoPost(autoPost)
+		schedule.Splits = scheduled.SplitCollection(splits)
+
+		// One atomic, single-undo operation: account edit + template rewrite.
+		compound := undo.NewCompoundCommand("Edit loan",
+			undo.NewEditAccountCommand(a.accountSvc, loanAcct),
+			undo.NewEditScheduledTransactionCommand(a.scheduledTxnSvc, schedule),
+		)
+		if err := a.undoManager.Execute(compound); err != nil {
+			return errMsg{err: fmt.Errorf("failed to save loan edit: %w", err)}
 		}
 		return loanWizardSavedMsg{}
 	}

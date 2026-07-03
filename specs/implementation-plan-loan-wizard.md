@@ -328,19 +328,20 @@ mouse, async data load, submit; its touch points outside the wizard file
 are ~10 small edits across menubar/app_menu/app/app_update/app_view/
 app_mouse/app_helpers).
 
-**Progress note (2026-07-02):** the creation flow shipped as its own
-commit. Built on the generic `dialog.Dialog` form widget (like the
-account dialog) rather than a paycheck-style custom renderer — far less
-code, and it reuses the widget's focus/scroll/mouse/hidden-field
-machinery. The month-one snapshot is produced by a new shared, pure
-`scheduled.BuildLoanSnapshot` (the creation-time mirror of
-`ComputeLoanSplits`; Phase 9's CLI reuses it) rather than calling
-`ComputeLoanSplits`, which can't run before the loan account exists.
-Two deviations, tracked below: escrow uses progressive-reveal rows (an
-empty row appears once the prior one has a category) instead of explicit
-+/− buttons, and the pickers are plain selects — inline category
-creation is deferred (the interest default is still get-or-created at
-save).
+**Progress note (2026-07-02):** shipped in two commits — (1) the creation
+flow, (2) Edit-as-loan + the demotion guard. Built on the generic
+`dialog.Dialog` form widget (like the account dialog) rather than a
+paycheck-style custom renderer — far less code, and it reuses the
+widget's focus/scroll/mouse/hidden-field machinery. The month-one
+snapshot is produced by a new shared, pure `scheduled.BuildLoanSnapshot`
+(the creation-time mirror of `ComputeLoanSplits`; Phase 9's CLI reuses
+it) rather than calling `ComputeLoanSplits`, which can't run before the
+loan account exists. **Only remaining deferral:** escrow uses
+progressive-reveal rows (an empty row appears once the prior one has a
+category) instead of explicit +/− buttons, and the category pickers are
+plain selects — inline category creation is not wired (the default
+interest category is still get-or-created at save, so it is always
+available). Everything else in this phase is complete and tested.
 
 - [~] `internal/tui/loan_wizard.go`: three-section form per the spec
       (Loan / Payment / Asset). Prefill-only fields (original
@@ -367,27 +368,38 @@ save).
       `undo.CompoundCommand` (DuckDB exposes no cross-service SQL
       transaction), which rolls back already-created records if a later
       step fails — so a failure never strands an orphaned loan account.
-- [ ] **Edit as loan →** in the Edit Series dialog for loan-shaped
-      *and loan-adoptable* schedules (parity with `Edit as paycheck →`,
-      `internal/tui/scheduled_dialog.go:335`): edit-mode form omits the
-      prefill-only fields; prompts for interest category when adding a
-      missing interest line (APR raised from 0); save rewrites the
-      template snapshot + account edits as one atomic, single-undo
-      operation; adoption path (re)writes tags on untagged schedules.
-- [ ] **Demotion guard**: saving a loan-shaped schedule through the
-      generic split editor warns ("converts to a generic schedule —
-      payments will no longer compute interest automatically.
-      Continue?") before stripping tags.
-- [~] Tests: form → created records (accounts, schedule, tags, signs),
+- [x] **Edit as loan →** in the Edit Series dialog for loan-shaped
+      *and loan-adoptable* schedules (parity with `Edit as paycheck →`).
+      The alternate button + action dispatch (`maybeAddEditAsLoanButton`,
+      `relaunchScheduledAlternate`, `scheduleWantsLoanEdit`) route to the
+      loan wizard vs the paycheck wizard by shape. Edit-mode form
+      (`buildEditLoanWizard`) omits the prefill-only fields, the current
+      balance, and the schedule's fixed cadence/routing (preserved as-is),
+      showing only name/institution/APR + P&I/interest/escrow/auto-post;
+      `owed` is the loan's live balance as of the next payment date
+      (`account.Service.BalanceAsOf`). Save (`submitEditLoanWizard`)
+      rewrites the template snapshot + applies account edits as one
+      atomic, single-undo `CompoundCommand` (`EditAccount` +
+      `EditScheduledTransaction`); the adoption path re-tags an untagged
+      loan-adoptable schedule, promoting it to strictly loan-shaped.
+      *Simplification:* a missing interest line (APR raised from 0)
+      defaults to `Loan:Interest` via the visible, editable interest
+      picker instead of a separate modal prompt.
+- [x] **Demotion guard**: saving a loan-shaped schedule through the
+      generic split editor — or unchecking Split on it — shows the exact
+      spec warning ("…payments will no longer compute interest
+      automatically. Continue?") via the confirm dialog before the tags
+      are stripped; declining leaves the schedule untouched.
+- [x] Tests: form → created records (accounts, schedule, tags, signs),
       atomic rollback on induced failure, single undo restores
       everything, mid-life vs new-loan opening-date rule, prefill math
       + optionality, 0% APR (no interest line; category field hidden),
-      validation errors — **all done** (`loan_wizard_test.go`, plus
-      `scheduled/loan_build_test.go` for the clamped one-payment-left
-      snapshot and `category/loan_interest_category_test.go`).
-      Round-trip open/edit/save, adoption of a hand-built untagged loan
-      schedule, demotion warning flow, and undo-of-Edit-as-loan tests
-      land with the Edit-as-loan / demotion-guard commit.
+      validation errors (`loan_wizard_test.go`); the clamped
+      one-payment-left snapshot (`scheduled/loan_build_test.go`) and
+      `category/loan_interest_category_test.go`; **round-trip
+      open/edit/save + undo-restores-both, adoption of a hand-built
+      untagged schedule, Edit-as-loan button/dispatch, and the demotion
+      warning flow** (`loan_wizard_test.go`).
 
 ## Phase 8: Amortization View (TUI) — [ ]
 

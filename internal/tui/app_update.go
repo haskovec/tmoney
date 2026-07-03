@@ -553,6 +553,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				payeeNames[p.ID] = p.Name
 			}
 			a.schedDialog = buildEditScheduledDialog(msg.data.scheduled, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
+			a.maybeAddEditAsLoanButton(msg.data.scheduled)
 		} else {
 			a.schedDialog = buildNewScheduledDialog(accountOptions, categoryOptions)
 		}
@@ -610,7 +611,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case loanWizardDataMsg:
-		a.loanWizard, a.loanWizardState = buildNewLoanWizard(msg.accounts, msg.categories)
+		if msg.editSchedule != nil {
+			a.loanWizard, a.loanWizardState = buildEditLoanWizard(msg.accounts, msg.categories, msg.editSchedule, msg.editOwed)
+		} else {
+			a.loanWizard, a.loanWizardState = buildNewLoanWizard(msg.accounts, msg.categories)
+		}
 		return a, nil
 
 	case loanWizardSavedMsg:

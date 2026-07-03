@@ -465,7 +465,7 @@ func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 		a.closeScheduledDialog()
 		return a, nil
 	case dialog.DialogActionAlternate:
-		return a.relaunchAsPaycheckWizard()
+		return a.relaunchScheduledAlternate()
 	case dialog.DialogActionAddNew:
 		return a.openCreateCategorySubDialogFromSched()
 	}
@@ -779,10 +779,16 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	// Demotion guard: unchecking Split on a loan-shaped schedule clears its
+	// child splits (and their loan_section tags), demoting it to a generic
+	// single-line schedule. Warn first.
+	demotesLoan := mode == scheduledDialogModeEdit && existingSched != nil &&
+		a.scheduledTxnSvc != nil && a.scheduledTxnSvc.IsLoanShaped(existingSched)
+
 	// Close dialog before async save for responsive UI
 	a.closeScheduledDialog()
 
-	return a, func() tea.Msg {
+	save := func() tea.Msg {
 		// Resolve or create payee
 		var payeeID types.ID
 		if payeeName != "" && a.payeeSvc != nil {
@@ -891,6 +897,12 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 
 		return scheduledDialogSavedMsg{}
 	}
+
+	if demotesLoan {
+		a.showConfirmDialog("Convert loan schedule?", loanDemotionWarning, save)
+		return a, nil
+	}
+	return a, save
 }
 
 // submitScheduledSplitDialog finalizes a multi-line scheduled transaction
@@ -910,9 +922,14 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 	}
 
 	pending := a.pendingSplitScheduled
+	// Demotion guard: saving a loan-shaped schedule through the generic split
+	// editor strips its loan_section tags, silently converting it to a generic
+	// schedule that books stale template interest. Warn first.
+	demotesLoan := pending.mode == scheduledDialogModeEdit && pending.existing != nil &&
+		a.scheduledTxnSvc != nil && a.scheduledTxnSvc.IsLoanShaped(pending.existing)
 	a.closeSplitDialog()
 
-	return a, func() tea.Msg {
+	save := func() tea.Msg {
 		var payeeID types.ID
 		if pending.payeeName != "" && a.payeeSvc != nil {
 			py, _, err := a.payeeSvc.GetOrCreate(pending.payeeName)
@@ -988,4 +1005,10 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 
 		return scheduledDialogSavedMsg{}
 	}
+
+	if demotesLoan {
+		a.showConfirmDialog("Convert loan schedule?", loanDemotionWarning, save)
+		return a, nil
+	}
+	return a, save
 }
