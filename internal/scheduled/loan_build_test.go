@@ -19,6 +19,89 @@ func findLoanSection(splits []*Split, section string) *Split {
 	return nil
 }
 
+func TestBuildLoanSchedule_AssemblesMonthlyLoanShape(t *testing.T) {
+	loanID := types.NewID()
+	fundingID := types.NewID()
+	payeeID := types.NewID()
+	interestCat := types.NewID()
+	nextDate := types.NewDate(2026, 8, 15)
+
+	// 380,000 @ 6.5% / 360mo → payment 2401.86; interest 2058.33, principal 343.53.
+	st, final, err := BuildLoanSchedule(fundingID, nextDate, payeeID, true, LoanSnapshotInput{
+		LoanAccountID: loanID,
+		APR:           types.MustNewMoney("6.5"),
+		Owed:          types.MustNewMoney("380000"),
+		PIPayment:     types.MustNewMoney("2401.86"),
+		InterestCatID: interestCat,
+	})
+	if err != nil {
+		t.Fatalf("BuildLoanSchedule: %v", err)
+	}
+	if final {
+		t.Errorf("final = true, want false for a full-term loan")
+	}
+
+	if st.AccountID != fundingID {
+		t.Errorf("schedule AccountID = %v, want funding account %v", st.AccountID, fundingID)
+	}
+	if st.Frequency != FrequencyMonthly {
+		t.Errorf("frequency = %v, want monthly", st.Frequency)
+	}
+	if !st.DayOfMonth.Valid || st.DayOfMonth.Int64 != 15 {
+		t.Errorf("day-of-month = %v, want 15", st.DayOfMonth)
+	}
+	if !st.NextDate.Equal(nextDate) {
+		t.Errorf("next date = %s, want %s", st.NextDate, nextDate)
+	}
+	if !st.HasPayee() || st.PayeeID.ID != payeeID {
+		t.Errorf("payee = %v, want %v", st.PayeeID, payeeID)
+	}
+	if !st.IsAutoPost() {
+		t.Error("auto-post = false, want true")
+	}
+	if st.HasCategory() {
+		t.Error("parent category should be cleared on a multi-line loan schedule")
+	}
+
+	// Parent amount is the negative funding-account draft; lines sum to it.
+	if want := types.MustNewMoney("-2401.86"); !st.Amount.Money.Equal(want) {
+		t.Errorf("parent amount = %s, want %s", st.Amount.Money, want)
+	}
+	sum := types.ZeroMoney
+	for _, sp := range st.Splits {
+		sum = sum.Add(sp.Amount)
+		if !sp.LoanSection.Valid {
+			t.Errorf("split %v is missing a loan_section tag", sp.Amount)
+		}
+	}
+	if !sum.Equal(st.Amount.Money) {
+		t.Errorf("split sum %s != parent %s", sum, st.Amount.Money)
+	}
+
+	if findLoanSection([]*Split(st.Splits), LoanSectionInterest) == nil {
+		t.Error("no interest line in assembled schedule")
+	}
+	if p := findLoanSection([]*Split(st.Splits), LoanSectionPrincipal); p == nil {
+		t.Error("no principal line in assembled schedule")
+	} else if !p.TransferAccountID.Valid || p.TransferAccountID.ID != loanID {
+		t.Errorf("principal transfer target = %v, want loan %v", p.TransferAccountID, loanID)
+	}
+}
+
+func TestBuildLoanSchedule_PropagatesSnapshotError(t *testing.T) {
+	// P&I payment below the first month's interest → negative amortization.
+	_, _, err := BuildLoanSchedule(types.NewID(), types.NewDate(2026, 8, 1), types.NilID, false, LoanSnapshotInput{
+		LoanAccountID: types.NewID(),
+		APR:           types.MustNewMoney("6.5"),
+		Owed:          types.MustNewMoney("380000"),
+		PIPayment:     types.MustNewMoney("100"),
+		InterestCatID: types.NewID(),
+	})
+	if !errors.Is(err, loan.ErrNegativeAmortization) {
+		t.Fatalf("err = %v, want ErrNegativeAmortization", err)
+	}
+}
+
 func TestBuildLoanSnapshot_Standard(t *testing.T) {
 	loanID := types.NewID()
 	interestCat := types.NewID()

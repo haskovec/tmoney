@@ -1222,6 +1222,58 @@ include fully-sold securities. The toggle persists across restarts via
 displays a `TR` row with total return $ and %, and the dashboard
 per-account card adds a `TR` line below `Total`.
 
+### Loans
+
+```bash
+# One-shot setup: loan account + monthly payment schedule (+ optional asset).
+# Mid-life loan: give what you owe today and the P&I payment.
+tmoney -f personal.tdb loan add --name "Mortgage" \
+  --current-balance 312450.22 --rate 6.5 --payment 2401.86 \
+  --next-payment-date 2026-08-01 --from-account "Checking" \
+  --escrow "Housing:Property Tax=650" --escrow "Housing:Home Insurance=120" \
+  --payee "Wells Fargo" --asset-name "123 Main St" --asset-value 450000
+
+# New loan at origination: give the original terms and let the payment compute.
+tmoney -f personal.tdb loan add --name "Car Loan" \
+  --principal 32000 --rate 5.9 --term-months 60 --open-date 2026-07-01 \
+  --next-payment-date 2026-08-01 --from-account "Checking"
+
+# List loans: balance owed, rate, payment, next date, payoff, interest left.
+tmoney -f personal.tdb loan list
+
+# Details + amortization projection (--limit N, default 12; --all for everything).
+tmoney -f personal.tdb loan show "Mortgage"
+tmoney -f personal.tdb loan show "Mortgage" --limit 24
+tmoney -f personal.tdb loan show "Mortgage" --all
+```
+
+`loan add` creates a **loan account** (a liability, stored as a negative
+balance = −current balance), an optional linked **asset account**, and a
+**monthly loan-shaped schedule** — all in one atomic operation, reusing the same
+shared record assembly as the TUI loan wizard (Accounts → New Loan…). The
+schedule's interest/principal split is **recomputed from the live balance every
+time it posts** (through the ordinary `scheduled post` / auto-post path), so
+extra principal payments and APR edits automatically reshape every subsequent
+payment. Provide the monthly **P&I payment** with `--payment` (escrow-exclusive),
+or omit it and pass `--principal` and `--term-months` to have it computed from
+the amortization formula and printed for comparison against your statement. APR
+is required (`--rate`, 0–100); a payment that fails to cover the first month's
+interest is refused, and a 0% loan books the whole payment as principal with no
+interest line.
+
+`--interest-category` (default `Loan:Interest`) and `--escrow "Category=Amount"`
+take `Parent` or `Parent:Subcategory` paths and **create the category if it
+doesn't exist** (there is no `category add` on the CLI). The funding account
+(`--from-account`) must be an active, non-investment account.
+
+`loan list` shows every loan's balance owed (the liability rendered as a
+positive magnitude), APR, P&I payment, next date, payoff date, and interest
+remaining — `—` when no loan-shaped schedule targets the account, `100y+` when
+the loan never pays off within 100 years. `loan show <name>` adds the
+remaining-payment amortization table (`# · Date · Payment · Interest · Principal
+· Escrow · Balance`), capped at `--limit` rows (default 12) unless `--all` is
+given.
+
 ### Import Transactions
 
 ```bash

@@ -822,9 +822,11 @@ func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
 			loanAcct.SetInstitution(institution)
 		}
 
-		// Month-one snapshot (mirrors ComputeLoanSplits; clamped final + zero-
-		// interest omission handled inside BuildLoanSnapshot).
-		parent, splits, _, bErr := scheduled.BuildLoanSnapshot(scheduled.LoanSnapshotInput{
+		// Month-one snapshot + schedule assembly (mirrors ComputeLoanSplits;
+		// clamped final + zero-interest omission handled inside the shared
+		// BuildLoanSchedule, which the CLI `loan add` also uses so both create an
+		// identical loan-shaped schedule).
+		schedule, _, bErr := scheduled.BuildLoanSchedule(fromID, nextDate, payeeID, autoPost, scheduled.LoanSnapshotInput{
 			LoanAccountID: loanAcct.ID,
 			APR:           apr,
 			Owed:          owed,
@@ -835,16 +837,6 @@ func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
 		if bErr != nil {
 			return errMsg{err: fmt.Errorf("failed to build loan schedule: %w", bErr)}
 		}
-
-		schedule := scheduled.NewTransaction(fromID, scheduled.FrequencyMonthly, nextDate)
-		schedule.SetDayOfMonth(nextDate.Time().Day())
-		schedule.SetAmount(parent)
-		schedule.ClearCategory()
-		if !payeeID.IsNil() {
-			schedule.SetPayee(payeeID)
-		}
-		schedule.SetAutoPost(autoPost)
-		schedule.Splits = scheduled.SplitCollection(splits)
 
 		// Assemble the atomic, single-undo compound: loan account → optional
 		// asset account → schedule. CompoundCommand rolls back earlier steps if

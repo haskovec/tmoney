@@ -99,3 +99,37 @@ func BuildLoanSnapshot(in LoanSnapshotInput) (parent types.Money, splits []*Spli
 
 	return total, splits, final, nil
 }
+
+// BuildLoanSchedule assembles the complete indefinite monthly loan-shaped
+// scheduled transaction — parent amount, day-of-month anchor, and the tagged
+// interest/principal/escrow splits — from a month-one snapshot. Both the TUI
+// loan wizard and the CLI `loan add` command call it, so a loan created either
+// way stores a byte-identical schedule (same loan_section tags, funding-account
+// signs, monthly cadence with interval 1, and day-of-month), keeping
+// IsLoanShaped detection and recompute-at-post consistent across the two entry
+// points.
+//
+// It is DB-free (the returned transaction has an ID but is not persisted): the
+// caller wraps it in a CreateScheduledTransactionCommand alongside the loan and
+// optional asset accounts so the whole set is created atomically. final is true
+// when the month-one snapshot is the clamped final payment (a loan created with
+// one payment left). It wraps BuildLoanSnapshot and propagates its errors
+// (loan.ErrNegativeAmortization, a missing interest category when interest
+// accrues, and malformed escrow lines).
+func BuildLoanSchedule(fundingAccountID types.ID, nextDate types.Date, payeeID types.ID, autoPost bool, in LoanSnapshotInput) (*Transaction, bool, error) {
+	parent, splits, final, err := BuildLoanSnapshot(in)
+	if err != nil {
+		return nil, false, err
+	}
+
+	st := NewTransaction(fundingAccountID, FrequencyMonthly, nextDate)
+	st.SetDayOfMonth(nextDate.Time().Day())
+	st.SetAmount(parent)
+	st.ClearCategory()
+	if !payeeID.IsNil() {
+		st.SetPayee(payeeID)
+	}
+	st.SetAutoPost(autoPost)
+	st.Splits = SplitCollection(splits)
+	return st, final, nil
+}

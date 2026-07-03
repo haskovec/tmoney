@@ -440,27 +440,54 @@ day-of-month for `internal/loan.Project`.
       strict-match/skip-generic/absent, LoanScheduleInputs derivation +
       no-escrow + NextDate day-of-month fallback).
 
-## Phase 9: CLI `loan` Group — [ ]
+## Phase 9: CLI `loan` Group — [x]
 
-- [ ] `internal/cli/loan/`: `add.go`, `list.go`, `show.go` following
-      the Cobra noun-verb layout (`specs/cli-package-split.md`).
-- [ ] `loan add`: flags/requiredness per spec (`--payment` required
+**Progress note (2026-07-02):** shipped. The shared record assembly the
+spec calls for was completed by extracting a pure `scheduled.BuildLoanSchedule`
+(the creation-time mirror of the wizard's month-one snapshot + schedule
+construction, wrapping the existing `BuildLoanSnapshot`); the TUI
+`submitNewLoanWizard` was refactored onto it so the CLI and wizard now emit
+byte-identical loan-shaped schedules. Atomic creation reuses
+`undo.CompoundCommand.Execute()` directly (the CLI has no undo manager; the
+compound still rolls back earlier steps on a later failure). **One decision
+worth recording:** because there is *no* `category add` CLI, `--escrow` and an
+explicit `--interest-category` **get-or-create** their category by path
+(expense-classified) rather than resolve-or-error — otherwise those flags would
+be unusable from a pure-CLI setup. This is consistent with the `Loan:Interest`
+default and the wizard's inline creation.
+
+- [x] `internal/cli/loan/`: `loan.go` (parent), `add.go`, `list.go`,
+      `show.go`, `format.go`, `projection.go` following the Cobra
+      noun-verb layout (`specs/cli-package-split.md`); domain imports
+      aliased `accountdom`/`scheduleddom`/`loandom`/`categorydom` per R1.
+      Wired into `root.go`.
+- [x] `loan add`: flags/requiredness per spec (`--payment` required
       unless `--principal` + `--term-months` given, then computed and
       printed; `--interest-category` optional, defaulting to
       `Loan:Interest` get-or-created like the wizard);
-      `--escrow Category=Amount` repeatable; atomic creation through
-      the same shared service code as the TUI wizard (no logic in the
-      CLI layer).
-- [ ] `loan list`: loans with balance (negated display), APR, P&I
+      `--escrow Category=Amount` repeatable (categories get-or-created by
+      path); atomic creation through the shared `BuildLoanSchedule` +
+      `undo.CompoundCommand` (no loan math in the CLI layer). Funding
+      account validated active + non-investment; negative amortization
+      refused before the DB is opened; opening-date origination rule
+      mirrored; optional linked asset account.
+- [x] `loan list`: loans with balance (negated display), APR, P&I
       payment, next date, payoff date, interest remaining (`—` when no
-      loan-shaped schedule exists; `100y+` when truncated).
-- [ ] `loan show <name>`: account details + projection table
-      (`--limit` default 12, `--all`).
-- [ ] Tests: golden-output tests per existing CLI test conventions;
-      `scheduled post` on a wizard-created schedule computes splits
-      (integration); 0% loan add; error cases (missing payment inputs,
-      missing interest category).
-- [ ] `specs/cli.md` + README CLI reference sections.
+      loan-shaped schedule exists; `100y+` when truncated). Shared
+      `resolveLoanInfo` mirrors the amortization view's derivation.
+- [x] `loan show <name>`: account details + projection table
+      (`--limit` default 12, `--all`); rejects non-loan accounts; graceful
+      no-schedule / missing-APR / negative-am / paid-off partial states.
+- [x] Tests: `add_test.go` / `list_test.go` / `show_test.go` (25 CLI
+      tests) via the external-`_test` + `cli.ExecuteWith` + `clitest`
+      convention; `scheduled post` on a CLI-created schedule recomputes
+      splits (integration: balance moves by the computed principal); 0%
+      loan add (no interest line, no interest category); error cases
+      (missing balance, missing payment inputs, negative amortization,
+      funding not-found/closed/investment, duplicate name);
+      opening-date origination vs mid-life; `scheduled.BuildLoanSchedule`
+      unit tests (`loan_build_test.go`).
+- [x] `specs/cli.md` + README CLI reference sections.
 
 ## Phase 10: Docs + End-to-End Verification — [ ]
 

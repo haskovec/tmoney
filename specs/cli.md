@@ -571,6 +571,97 @@ tmoney investment withdraw --account Brokerage --amount 500 --memo "Quarterly dr
 
 ---
 
+## `loan`
+
+Set up and inspect amortized loans. `loan add` creates the loan account, an
+optional linked asset account, and a monthly loan-shaped payment schedule in one
+atomic operation — reusing the same shared record assembly as the TUI loan
+wizard, so a loan created from the CLI is identical to one created in the TUI.
+The schedule's interest/principal split is recomputed from the live balance
+every time it posts (via the shared `scheduled post` path); no new posting
+command is needed.
+
+### `loan add`
+
+`Use: loan add` · `Args: NoArgs`
+
+Create a loan: a loan account (a liability, stored as a negative balance), an
+optional asset account, and a monthly payment schedule. Provide the monthly P&I
+payment with `--payment` (escrow-exclusive), or omit it and pass `--principal`
+and `--term-months` to have the payment computed from the amortization formula
+and printed for comparison against your statement. A payment that fails to cover
+the first month's interest (negative amortization) is refused. A 0% loan books
+the whole payment as principal and creates no interest line.
+
+**Required flags:** `--name`, `--rate` (APR, 0–100), `--from-account` (an active,
+non-investment account), `--next-payment-date`, and a balance — `--current-balance`
+(what you owe today), or `--principal` when only that is given (new loan at
+origination).
+
+**Optional flags:**
+- `--payment` — Monthly P&I payment, escrow-exclusive. Required unless
+  `--principal` and `--term-months` are both given (then it is computed).
+- `--principal`, `--term-months`, `--open-date` — Prefill-only origination
+  inputs. They are not stored; `--open-date` is recorded as the loan account's
+  opening date only for a new loan at origination (balance equals the principal).
+- `--interest-category` — Interest category path (`Parent` or
+  `Parent:Subcategory`); defaults to `Loan:Interest`. Created if it doesn't exist
+  (there is no `category add` CLI). Ignored for a 0% loan.
+- `--escrow "Category=Amount"` — Repeatable fixed escrow pass-through line
+  (property tax, insurance, PMI). Categories are created if they don't exist.
+- `--payee` — Servicer name (auto-created).
+- `--institution` — Lender name.
+- `--asset-name`, `--asset-value` — Create a linked asset account (the house or
+  car). `--asset-value` is required when `--asset-name` is given.
+- `--auto-post` (default off), `--lead-days` (0, 3, or 7; requires `--auto-post`).
+
+```bash
+tmoney loan add --name "Mortgage" \
+  --current-balance 312450.22 --rate 6.5 --payment 2401.86 \
+  --next-payment-date 2026-08-01 --from-account "Checking" \
+  --escrow "Housing:Property Tax=650" --escrow "Housing:Home Insurance=120" \
+  --payee "Wells Fargo" --asset-name "123 Main St" --asset-value 450000
+
+tmoney loan add --name "Car Loan" \
+  --principal 32000 --rate 5.9 --term-months 60 --open-date 2026-07-01 \
+  --next-payment-date 2026-08-01 --from-account "Checking"
+```
+
+### `loan list`
+
+`Use: loan list` · `Args: NoArgs`
+
+List every loan account with its balance owed (the liability shown as a positive
+magnitude), APR, monthly P&I payment, next payment date, payoff date, and
+interest remaining. A loan with no loan-shaped payment schedule shows `—` for the
+schedule-derived columns; a loan that never pays off within 100 years shows
+`100y+`.
+
+```bash
+tmoney loan list
+```
+
+### `loan show`
+
+`Use: loan show <name>` · `Args: ExactArgs(1)`
+
+Show a loan's details (balance, APR, P&I payment, escrow, payments left, payoff
+date, interest remaining) followed by its remaining-payment amortization table
+(`# · Date · Payment · Interest · Principal · Escrow · Balance`). Errors if the
+named account is not a loan. Graceful partial states are shown when there is no
+loan-shaped schedule, no APR set, negative amortization, or the loan is paid off.
+
+**Optional flags:** `--limit N` (projection rows, default 12), `--all` (show every
+remaining payment)
+
+```bash
+tmoney loan show "Mortgage"
+tmoney loan show "Mortgage" --limit 24
+tmoney loan show "Mortgage" --all
+```
+
+---
+
 ## `price`
 
 Manage and refresh security prices.
