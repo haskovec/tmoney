@@ -97,6 +97,12 @@ as `249,500.00` owed, and an overpaid account correctly displays
 negative (a credit). Registers and the flat `account balance` list keep
 true signed values.
 
+An amortized `loan` account is typically set up (with its optional linked
+asset account and a monthly payment schedule) through the **loan wizard** —
+see [`specs/loan-wizard.md`](loan-wizard.md) — which relies on this negative
+sign convention so each principal payment moves the debt toward zero, and
+recomputes the interest/principal split from the live balance at post time.
+
 ## Validation Rules
 
 1. `name` must be unique within the file

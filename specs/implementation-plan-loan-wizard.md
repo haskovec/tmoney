@@ -489,26 +489,46 @@ default and the wizard's inline creation.
       unit tests (`loan_build_test.go`).
 - [x] `specs/cli.md` + README CLI reference sections.
 
-## Phase 10: Docs + End-to-End Verification — [ ]
+## Phase 10: Docs + End-to-End Verification — [x]
 
-- [ ] README: Features section (Loans), TUI keybindings, menu tables,
-      CLI examples.
-- [ ] `specs/multiline-splits-and-paycheck.md`: update **all three**
-      invalidated claims — the "mortgage wizard out of scope" note (it
-      now exists), "multi-line scheduled transactions are TUI-only"
-      (`loan add` creates one from the CLI), and "`scheduled post`
-      uses template values verbatim" (loan-shaped schedules recompute).
-- [ ] Cross-link `specs/loan-wizard.md` from `specs/accounts.md` and
-      `specs/scheduled-transactions.md`.
-- [ ] End-to-end smoke on a scratch `.tdb`: wizard-create a mid-life
-      mortgage with escrow + asset → `loan show` → post two months via
-      preview (tweak a penny) → extra-principal transfer → verify next
-      split shrinks interest → `report net-worth` sanity (asset − loan,
-      negated display) → drive a small fixture loan to payoff → clamp +
-      completion + due-list clean + close account → 0% car loan
-      round-trip.
-- [ ] Purge any stray `zz_`/`probe_` files before the final commit
-      (`git status` sweep — never `git add -A`).
+**Completed 2026-07-02.** Feature docs and cross-links updated; a scripted
+end-to-end smoke on scratch `.tdb`s exercised the whole feature via the CLI
+(22/22 assertions green).
+
+- [x] README: **Features → Loans** blurb (wizard, recompute-at-post, the
+      amortization view, payoff handling, CLI parity), the
+      Accounts-menu note gains **New Loan…**, and the CLI reference gains a
+      **Loans** section (shipped with Phase 9). The register `a`
+      amortization keybinding + view description were already documented in
+      Phase 8.
+- [x] `specs/multiline-splits-and-paycheck.md`: all three invalidated
+      claims annotated with the loan-wizard exception (header deferred-list
+      note, the Non-Goals TUI-only bullet, the CLI-Surface
+      TUI-only + `scheduled post` verbatim paragraph, and the two Out-of-Scope
+      bullets) — the mortgage wizard now exists, `loan add` creates a
+      multi-line schedule from the CLI, and loan-shaped schedules recompute
+      at post.
+- [x] Cross-linked `specs/loan-wizard.md` from `specs/accounts.md` (after
+      the liability-sign paragraph) and `specs/scheduled-transactions.md`
+      (Multi-Line Schedules section).
+- [x] End-to-end smoke on scratch `.tdb`s (scripted, 22 assertions):
+      **(A)** mid-life mortgage w/ escrow + asset → `loan show` (balance,
+      escrow 770, month-1 interest 1692.44, payoff) → post two months via
+      `scheduled post` (drafts + balances −311740.80, −311027.54) →
+      $10k extra-principal transfer → next-payment interest shrinks
+      (1684.73 → 1630.57) → `report net-worth` (asset listed, mortgage
+      negated as-of today, LIABILITIES heading). **(B)** origination
+      TinyLoan (4000 @ 2%, payment 2010) driven to payoff → final payment
+      clamps to 2000.00 → schedule completed → balance 0 → **absent from
+      `scheduled list --due`** (zombie-bug fix) → `account close` succeeds.
+      **(C)** 0% car loan (1200 / 12mo) → computed payment 100.00 → 12
+      payments, **no interest line / no `Loan` category** → post → balance
+      −1100.00. *(The TUI preview penny-tweak is a TUI-only affordance,
+      covered by `internal/tui/loan_preview_test.go`; the CLI smoke exercises
+      the equivalent recompute path via `scheduled post`.)*
+- [x] `git status` sweep before the final commit; no stray `zz_`/`probe_`
+      files (scratch `.tdb`s were written under the session scratchpad, not
+      the repo); staged explicit paths, never `git add -A`.
 
 ## Out of Scope (tracked for later)
 

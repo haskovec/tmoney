@@ -158,6 +158,8 @@ The data model adds a `scheduled_split_items` table (one row per line, with mutu
 
 See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md) for the full data model, cascade rules, and validation. A guided **paycheck wizard** sits on top of this primitive as UI sugar — see the same spec.
 
+A **loan payment schedule** is another consumer of this primitive: one categorized interest line, one transfer line into the loan account (principal), and zero or more fixed escrow lines, tagged with a `loan_section` column. Unlike every other schedule, a **loan-shaped** schedule is **recomputed at post time** — its interest/principal split is derived from the loan's live balance on each posting path (manual, preview, and auto-post) rather than posted verbatim — so extra principal payments and APR changes reshape subsequent payments automatically. It is created by the **loan wizard** (TUI Accounts → New Loan…, or `tmoney loan add`). See [`specs/loan-wizard.md`](loan-wizard.md) for the loan math, shape detection, and recompute-at-post behavior.
+
 ## Post-Time Preview Dialog
 
 Pressing Enter on a due scheduled transaction (in the Scheduled view or from the dashboard's "Due" panel) opens a preview dialog rather than immediately posting. The dialog is pre-filled with the schedule's template values and lets the user adjust **this one occurrence** before saving.

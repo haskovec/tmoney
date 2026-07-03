@@ -29,6 +29,16 @@
 > summary report; wizard for non-paycheck complex schedules (e.g.
 > mortgage principal/interest/escrow). See `Out of Scope` at the
 > bottom of this spec for the canonical list.
+>
+> **Update (2026-07-02):** the mortgage-style wizard is no longer out of
+> scope — it shipped as the **loan wizard**
+> ([`specs/loan-wizard.md`](loan-wizard.md)), which builds on this
+> multi-line primitive. It also adds a **CLI** surface (`tmoney loan add`)
+> that creates a multi-line loan schedule, and makes `scheduled post`
+> **recompute** loan-shaped schedules from the live balance rather than
+> posting template values verbatim. The affected claims below are annotated
+> with this exception; the paycheck wizard and generic multi-line
+> creation/edit remain TUI-only.
 
 ## Overview
 
@@ -52,7 +62,7 @@ Related specs:
 - Tax-aware reports (W-2 Box 1 reconciliation, pre-tax vs post-tax separation in spending reports). Lines carry no `pre_tax` flag; if such reports are added later, the metadata belongs on categories.
 - Bulk-edit operations on scheduled transactions.
 - Migration of existing (legacy) transfers and same-sign splits into the new shape. They remain in their current shape; the new primitive applies to new transactions/schedules only.
-- CLI surface for multi-line schedule creation. TUI-only for v1.
+- CLI surface for multi-line schedule creation. TUI-only for v1. *(Update: the loan wizard's `tmoney loan add` later added a CLI path that creates a multi-line **loan-shaped** schedule — see [`specs/loan-wizard.md`](loan-wizard.md); generic and paycheck multi-line creation remain TUI-only.)*
 - Per-line variable amounts with estimation. Multi-line schedules store fixed line amounts; reality differences are handled at post-time preview.
 
 ## Data Model
@@ -384,9 +394,9 @@ This is the correct accounting behavior — tax withholdings are real expenses, 
 
 ## CLI Surface
 
-For v1, multi-line scheduled transactions and the paycheck wizard are TUI-only. The CLI keeps its existing single-line `scheduled add` behavior.
+For v1, multi-line scheduled transactions and the paycheck wizard are TUI-only. The CLI keeps its existing single-line `scheduled add` behavior. **(Update, 2026-07-02:** the loan wizard added `tmoney loan add`, which creates a multi-line **loan-shaped** scheduled transaction from the CLI — the one exception to the TUI-only rule. See [`specs/loan-wizard.md`](loan-wizard.md). Generic and paycheck multi-line creation remain TUI-only.)
 
-`tmoney scheduled post <id>` works on multi-line schedules: it uses template values verbatim (no per-line overrides) and prints the multi-line breakdown in its output. Users who want per-instance overrides post via the TUI preview dialog.
+`tmoney scheduled post <id>` works on multi-line schedules: it uses template values verbatim (no per-line overrides) and prints the multi-line breakdown in its output. Users who want per-instance overrides post via the TUI preview dialog. **Exception — loan-shaped schedules:** `scheduled post` (and auto-post) **recompute** a loan-shaped schedule's interest/principal split from the loan's live balance at the occurrence date, rather than posting the template amounts verbatim; see [`specs/loan-wizard.md`](loan-wizard.md).
 
 `tmoney transaction add` and `tmoney transfer add` remain single-line; multi-line transaction creation from the CLI is deferred.
 
@@ -444,10 +454,10 @@ The template is unchanged — next paycheck preview opens with FICA back at −3
 
 The following are explicitly deferred:
 
-- **CLI surface for multi-line schedules and the paycheck wizard.** Multi-line creation/edit remains TUI-only. If real automation needs emerge, a spec-file approach is the recommended path.
+- **CLI surface for multi-line schedules and the paycheck wizard.** Multi-line creation/edit remains TUI-only. If real automation needs emerge, a spec-file approach is the recommended path. *(Partially delivered: `tmoney loan add` creates a multi-line **loan-shaped** schedule from the CLI — see [`specs/loan-wizard.md`](loan-wizard.md). Generic and paycheck multi-line creation/edit are still TUI-only.)*
 - **Tax-aware reports.** Pre-tax vs post-tax distinction in reports (e.g., W-2 Box 1 reconciliation) requires a `tax_treatment` field on the category master, not on individual lines.
 - **Migration tool to convert legacy paired-transfers into transfer-lines.** Legacy data remains valid as-is.
 - **Per-line variable amounts with estimation.** Multi-line schedules use fixed template amounts; preview-time edits handle variation.
 - **Bulk operations on scheduled transactions** (post-all-due, skip-all, etc.).
 - **Year-end tax summary report** based on paycheck data.
-- **Wizard for non-paycheck complex schedules** (e.g., mortgage payment with principal/interest/escrow). Such schedules can be created via the generic multi-line scheduled dialog.
+- **Wizard for non-paycheck complex schedules** (e.g., mortgage payment with principal/interest/escrow). Such schedules can be created via the generic multi-line scheduled dialog. *(Now implemented: the **loan wizard** — [`specs/loan-wizard.md`](loan-wizard.md) — covers mortgage/car-loan principal/interest/escrow in the TUI (Accounts → New Loan…) and via `tmoney loan add`, with interest/principal recomputed from the live balance at every post.)*

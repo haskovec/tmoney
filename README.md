@@ -144,6 +144,35 @@ tmoney -f personal.tdb account balance
   [`specs/multiline-splits-and-paycheck.md`](specs/multiline-splits-and-paycheck.md)
   for the full feature spec.
 
+### Loans
+- **Loan wizard** (Accounts → New Loan…, or `tmoney loan add`): a guided,
+  one-step setup for an amortized loan — it creates the **loan account**
+  (a liability, stored as a negative balance), an optional linked **asset
+  account** (the house or car), and a **monthly payment schedule**, all in
+  one atomic operation. Works both at origination (give the original
+  principal + term and let the payment compute) and mid-life (give what you
+  owe today and the P&I payment).
+- **Recompute-at-post**: a loan payment's interest/principal split is
+  **recomputed from the live balance every time it posts** — on manual post,
+  the post-time preview, and auto-post — so extra principal payments and APR
+  edits automatically reshape every subsequent payment without regenerating
+  anything. The split is one categorized **interest** line (default
+  `Loan:Interest`), one **principal** transfer line into the loan account
+  (moving its negative balance toward zero), and zero or more fixed **escrow**
+  lines (property tax, insurance, PMI). 0% loans book the whole payment as
+  principal.
+- **Amortization view** (`a` on a loan account's register): a live,
+  recomputed projection of the remaining payments — balance owed, APR, P&I
+  payment, payments left, payoff date, and total interest remaining, over a
+  full `# · Date · Payment · Interest · Principal · Escrow · Balance` table.
+- **Payoff handling**: when the balance reaches zero the schedule is marked
+  completed (and drops out of the due list); a toast suggests closing the
+  account. Edit the P&I payment or adopt a hand-built schedule via **Edit as
+  loan →** in the Edit Series dialog.
+- **CLI**: `tmoney loan add`, `tmoney loan list`, and `tmoney loan show`
+  provide full parity (see the CLI Reference below). Full feature spec:
+  [`specs/loan-wizard.md`](specs/loan-wizard.md).
+
 ### Reports
 - Net worth calculation over signed balances (assets + liabilities).
   Liability accounts (credit card, loan) store what you owe as a
@@ -226,7 +255,7 @@ Press `?` at any time to show the help overlay.
 | `Alt+F` | File menu (also has Import Transactions…) |
 | `Alt+E` | Edit menu |
 | `Alt+V` | View menu (Theme switcher, Show closed positions toggle) |
-| `Alt+A` | Accounts menu |
+| `Alt+A` | Accounts menu (also has New Loan…) |
 | `Alt+T` | Transactions menu (also has Link Transfers… and New Paycheck Schedule…) |
 | `Alt+S` | Securities menu (also has Stock Split…, Merger…, Spin-Off…, Corporate Action History…) |
 | `Alt+R` | Reports menu |
