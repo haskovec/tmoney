@@ -164,6 +164,12 @@ type App struct {
 	// to point the originating line at the freshly-created category after the
 	// sub-dialog returns. nil when no paycheck-sourced sub-dialog is in flight.
 	createCatPaycheckLine *PaycheckLine
+	// createCatLoanField is the loan-wizard dialog field index (interest or an
+	// escrow category combo) that activated [+ Add new category…]. Used by
+	// applyCreatedCategoryToLoan to point that field at the freshly-created
+	// category after the sub-dialog returns. -1 when no loan-sourced sub-dialog
+	// is in flight.
+	createCatLoanField int
 
 	// Split dialog state
 	splitDialog           *SplitDialog
@@ -432,6 +438,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		positionRepo:              svc.PositionRepo,
 		corporateActionSvc:        svc.CorporateAction,
 		createCatSplitRow:         -1,
+		createCatLoanField:        -1,
 	}
 
 	a.menubar.SetMenuItemsBuilder(widget.ViewMenuIndex, func() []widget.MenuItem {

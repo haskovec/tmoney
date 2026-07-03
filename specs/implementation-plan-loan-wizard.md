@@ -320,7 +320,7 @@ The recompute engine. All posting paths converge here.
       submit recomputes at the posting date despite a stale display;
       generic multi-line unaffected (no loanSplits, not loan-shaped).
 
-## Phase 7: Loan Wizard (TUI) + Round-Trip — [~]
+## Phase 7: Loan Wizard (TUI) + Round-Trip — [x]
 
 The big UI phase; follow the paycheck wizard integration pattern
 (`internal/tui/paycheck_wizard.go` — app-level overlay, key routing,
@@ -336,23 +336,30 @@ widget's focus/scroll/mouse/hidden-field machinery. The month-one
 snapshot is produced by a new shared, pure `scheduled.BuildLoanSnapshot`
 (the creation-time mirror of `ComputeLoanSplits`; Phase 9's CLI reuses
 it) rather than calling `ComputeLoanSplits`, which can't run before the
-loan account exists. **Only remaining deferral:** escrow uses
-progressive-reveal rows (an empty row appears once the prior one has a
-category) instead of explicit +/− buttons, and the category pickers are
-plain selects — inline category creation is not wired (the default
-interest category is still get-or-created at save, so it is always
-available). Everything else in this phase is complete and tested.
+loan account exists.
 
-- [~] `internal/tui/loan_wizard.go`: three-section form per the spec
+**Update (2026-07-03):** the last deferral — inline category creation in
+the wizard's category pickers — is now shipped. The Interest Category and
+the six Escrow pickers are `FieldCombo`s with the `[+ Add new category…]`
+action row; activating it diverts into the shared create-category
+sub-dialog (`createCatSourceLoanWizard` + `createCatLoanField`) and
+`applyCreatedCategoryToLoan` re-selects the new category, preserving every
+*other* combo's selection **by ID** across the index-shifting options
+rebuild (the loan wizard is the only surface with multiple category combos,
+so a positional re-map would silently move a filled escrow row). The
+remaining escrow **progressive-reveal** layout (a new empty row appears once
+the prior one has a category, rather than explicit +/− buttons) is an
+accepted design choice, not a deferral. This phase is complete and tested.
+
+- [x] `internal/tui/loan_wizard.go`: three-section form per the spec
       (Loan / Payment / Asset). Prefill-only fields (original
       principal, open date, term) optional and never stored;
       payment-amount prefill from `internal/loan.Payment` (recomputed
       while the field is untouched); interest-category field required
       iff APR > 0, defaulting to `Loan:Interest` (get-or-created at
       save time — parent `Loan`, child `Interest`); validation per spec.
-      **Done** except: escrow is progressive-reveal rows (not explicit
-      add/remove buttons) and pickers have **no** inline category
-      creation yet (deferred; plain selects).
+      Interest + escrow pickers are combos with inline category creation
+      (`[+ Add new category…]` → shared create-category sub-dialog).
 - [x] Menu: **Accounts → New Loan…** (`MenuActionNewLoan` in
       `internal/tui/widget/menubar.go`, dispatch in
       `internal/tui/app_menu.go`).
@@ -399,7 +406,13 @@ available). Everything else in this phase is complete and tested.
       `category/loan_interest_category_test.go`; **round-trip
       open/edit/save + undo-restores-both, adoption of a hand-built
       untagged schedule, Edit-as-loan button/dispatch, and the demotion
-      warning flow** (`loan_wizard_test.go`).
+      warning flow** (`loan_wizard_test.go`). Inline category creation
+      (2026-07-03): combos carry the add-new row; open-divert seeds the
+      sub-dialog + hides the wizard; cancel restores it; apply-back selects
+      the new category and reveals the next escrow row; **selections on
+      other combos survive the index-shifting insert (preserved by ID)**;
+      a new interest category flows through to the saved schedule
+      (`loan_wizard_test.go`).
 
 ## Phase 8: Amortization View (TUI) — [x]
 

@@ -83,8 +83,8 @@ tmoney -f personal.tdb account balance
   saved transaction
 - Inline category creation from the Category field — pick
   `[+ Add new category…]` to create a new category (with optional
-  new parent) without leaving the transaction, split, scheduled, or
-  paycheck flow
+  new parent) without leaving the transaction, split, scheduled,
+  paycheck, or loan flow
 
 ### Categories
 - Two-level hierarchy (parent/subcategory, e.g. "Food:Groceries")

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
@@ -745,4 +746,287 @@ func TestLoanWizard_DemotionGuardOnGenericSplitEdit(t *testing.T) {
 	if env.schedSvc.IsLoanShaped(reloaded) {
 		t.Error("schedule should be demoted (loan_section tags stripped) after confirm")
 	}
+}
+
+// --- Inline category creation (Phase 7 deferral) ---
+
+// selectedLabel returns the currently-selected option label of a combo field.
+func (env *loanWizardEnv) selectedLabel(idx int) string {
+	f := env.app.loanWizard.Fields()[idx]
+	if f.SelectedIndex < 0 || f.SelectedIndex >= len(f.Options) {
+		return ""
+	}
+	return f.Options[f.SelectedIndex]
+}
+
+// openAddNewFromLoan focuses fieldIdx, seeds its combo query, and diverts into
+// the create-category sub-dialog exactly as the DialogActionAddNew path does.
+func (env *loanWizardEnv) openAddNewFromLoan(t *testing.T, fieldIdx int, query string) {
+	t.Helper()
+	env.app.loanWizard.Fields()[fieldIdx].Query = query
+	env.app.loanWizard.SetFocusIndex(fieldIdx)
+	env.app.openCreateCategorySubDialogFromLoan()
+	if env.app.createCatDialog == nil {
+		t.Fatal("create-category sub-dialog was not opened")
+	}
+}
+
+func TestLoanWizard_CategoryFieldsAreCombosWithAddNew(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	fields := env.app.loanWizard.Fields()
+
+	for _, idx := range []int{loanFieldInterestCategory, loanEscrowCatIndex(0), loanEscrowCatIndex(loanMaxEscrowLines - 1)} {
+		f := fields[idx]
+		if f.Type != dialog.FieldCombo {
+			t.Errorf("field %d type = %v, want FieldCombo", idx, f.Type)
+		}
+		if f.AddNewLabel != loanAddNewCategoryLabel {
+			t.Errorf("field %d AddNewLabel = %q, want %q", idx, f.AddNewLabel, loanAddNewCategoryLabel)
+		}
+	}
+}
+
+func TestLoanWizard_OpenAddNewSeedsSubDialogAndHidesWizard(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	env.openAddNewFromLoan(t, loanEscrowCatIndex(0), "Housing:PMI")
+
+	if env.app.createCatSource != createCatSourceLoanWizard {
+		t.Errorf("createCatSource = %v, want loan wizard", env.app.createCatSource)
+	}
+	if env.app.createCatLoanField != loanEscrowCatIndex(0) {
+		t.Errorf("createCatLoanField = %d, want %d", env.app.createCatLoanField, loanEscrowCatIndex(0))
+	}
+	if env.app.loanWizard.IsVisible() {
+		t.Error("loan wizard should be hidden while the sub-dialog is open")
+	}
+	// The sub-dialog is seeded from the typed "Parent:Name" query.
+	sub := env.app.createCatDialog.Fields()
+	if sub[0].Value != "PMI" {
+		t.Errorf("sub-dialog Name = %q, want PMI", sub[0].Value)
+	}
+	// The originating combo's stale query was consumed.
+	if q := env.app.loanWizard.Fields()[loanEscrowCatIndex(0)].Query; q != "" {
+		t.Errorf("originating combo Query = %q, want cleared", q)
+	}
+}
+
+func TestLoanWizard_CancelAddNewRestoresWizard(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	env.openAddNewFromLoan(t, loanFieldInterestCategory, "")
+	env.app.cancelCreateCatDialog()
+
+	if env.app.createCatDialog != nil {
+		t.Error("sub-dialog should be cleared on cancel")
+	}
+	if !env.app.loanWizard.IsVisible() {
+		t.Error("loan wizard should be re-shown on cancel")
+	}
+	if env.app.createCatLoanField != -1 {
+		t.Errorf("createCatLoanField = %d, want -1 after cancel", env.app.createCatLoanField)
+	}
+}
+
+func TestLoanWizard_CreateCategoryFromEscrowSelectsAndReveals(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	env.openAddNewFromLoan(t, loanEscrowCatIndex(0), "PMI")
+
+	if err := env.app.applyCreatedCategory(createCategoryRequest{
+		Name: "PMI", Type: category.TypeExpense,
+	}); err != nil {
+		t.Fatalf("applyCreatedCategory: %v", err)
+	}
+
+	// Wizard re-shown, sub-dialog cleared, source reset.
+	if !env.app.loanWizard.IsVisible() {
+		t.Error("wizard should be re-shown after create")
+	}
+	if env.app.createCatDialog != nil || env.app.createCatLoanField != -1 {
+		t.Error("create-category scratch state should be reset")
+	}
+	// The escrow row now selects the freshly-created category.
+	if got := env.selectedLabel(loanEscrowCatIndex(0)); got != "PMI" {
+		t.Errorf("escrow row 0 selection = %q, want PMI", got)
+	}
+	// The category was persisted.
+	if _, err := env.categorySvc.GetByName("PMI", nil); err != nil {
+		t.Errorf("PMI category not persisted: %v", err)
+	}
+	// Selecting a category on escrow row 0 reveals row 1.
+	if env.app.loanWizard.Fields()[loanEscrowCatIndex(1)].Hidden {
+		t.Error("escrow row 1 should be revealed after row 0 has a category")
+	}
+}
+
+// TestLoanWizard_CreateCategoryPreservesOtherSelectionsByID is the key
+// correctness test: inserting a new category shifts the sorted option indices,
+// so a previously-filled escrow row (and the interest field) must be re-resolved
+// by ID, not by their stale positional index.
+func TestLoanWizard_CreateCategoryPreservesOtherSelectionsByID(t *testing.T) {
+	env := newLoanWizardEnv(t)
+
+	// Pre-select an interest category and escrow row 0 = Housing > Property Tax.
+	env.selectOption(t, loanFieldInterestCategory, "Housing > Home Insurance")
+	env.selectOption(t, loanEscrowCatIndex(0), "Housing > Property Tax")
+
+	// Create a new top-level category that sorts BEFORE the Housing entries
+	// ("AAA …" < "Housing …"), from escrow row 1 — this shifts every later index.
+	env.openAddNewFromLoan(t, loanEscrowCatIndex(1), "AAA Flood Insurance")
+	if err := env.app.applyCreatedCategory(createCategoryRequest{
+		Name: "AAA Flood Insurance", Type: category.TypeExpense,
+	}); err != nil {
+		t.Fatalf("applyCreatedCategory: %v", err)
+	}
+
+	// The triggering row selects the new category.
+	if got := env.selectedLabel(loanEscrowCatIndex(1)); got != "AAA Flood Insurance" {
+		t.Errorf("escrow row 1 selection = %q, want AAA Flood Insurance", got)
+	}
+	// Escrow row 0's selection survived the index shift (by ID, not position).
+	if got := env.selectedLabel(loanEscrowCatIndex(0)); got != "Housing > Property Tax" {
+		t.Errorf("escrow row 0 selection = %q, want Housing > Property Tax (preserved by ID)", got)
+	}
+	// The interest field's selection likewise survived.
+	if got := env.selectedLabel(loanFieldInterestCategory); got != "Housing > Home Insurance" {
+		t.Errorf("interest selection = %q, want Housing > Home Insurance (preserved by ID)", got)
+	}
+}
+
+func TestLoanWizard_CreateInterestCategoryFromInterestCombo(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	env.set(loanFieldAPR, "6.5") // interest field visible
+	env.app.refreshLoanWizardDerived()
+
+	env.openAddNewFromLoan(t, loanFieldInterestCategory, "Mortgage Interest")
+	if err := env.app.applyCreatedCategory(createCategoryRequest{
+		Name: "Mortgage Interest", Type: category.TypeExpense,
+	}); err != nil {
+		t.Fatalf("applyCreatedCategory: %v", err)
+	}
+	if got := env.selectedLabel(loanFieldInterestCategory); got != "Mortgage Interest" {
+		t.Errorf("interest selection = %q, want Mortgage Interest", got)
+	}
+
+	// The new interest category flows through to a saved schedule.
+	env.set(loanFieldName, "Mortgage")
+	env.set(loanFieldCurrentBalance, "300000")
+	env.set(loanFieldPayment, "2000")
+	env.set(loanFieldNextPaymentDate, "08/01/2026")
+	env.selectOption(t, loanFieldFromAccount, "Checking")
+	if msg := env.submit(t); msg == nil {
+		t.Fatal("submit failed after inline interest-category creation")
+	}
+	st := env.findLoanSchedule(t)
+	interestCat, err := env.categorySvc.GetByName("Mortgage Interest", nil)
+	if err != nil {
+		t.Fatalf("interest category not found: %v", err)
+	}
+	var found bool
+	for _, sp := range st.Splits {
+		if sp.LoanSection.Valid && sp.LoanSection.String == scheduled.LoanSectionInterest {
+			found = true
+			if !sp.CategoryID.Valid || sp.CategoryID.ID != interestCat.ID {
+				t.Errorf("interest line category = %v, want %v", sp.CategoryID, interestCat.ID)
+			}
+		}
+	}
+	if !found {
+		t.Error("no interest line in the saved schedule")
+	}
+}
+
+// TestLoanWizard_EditPrefilledComboSurvivesTab is the regression guard for the
+// combo-prefill bug: converting the pickers to combos meant a prefilled
+// selection (Edit-as-loan) whose ComboHighlight still pointed at row 0 was
+// silently reset to "(None)"/first-category the first time the user tabbed over
+// it — silent data loss on save. setSelectByID now syncs ComboHighlight.
+func TestLoanWizard_EditPrefilledComboSurvivesTab(t *testing.T) {
+	env := newLoanWizardEnv(t)
+
+	// Create a loan; its interest defaults to the get-or-created Loan:Interest.
+	env.set(loanFieldName, "Mortgage")
+	env.set(loanFieldCurrentBalance, "380000")
+	env.set(loanFieldAPR, "6.5")
+	env.set(loanFieldPayment, "2401.86")
+	env.set(loanFieldNextPaymentDate, "08/01/2026")
+	env.selectOption(t, loanFieldFromAccount, "Checking")
+	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
+		t.Fatal("create failed")
+	}
+
+	// Reopen in Edit-as-loan mode: the interest combo is prefilled to the real
+	// Loan > Interest category (not at index 0 of the options).
+	st := env.findLoanSchedule(t)
+	loanAcct, _ := env.accountSvc.GetByName("Mortgage")
+	owed, _ := env.accountSvc.BalanceAsOf(loanAcct.ID, st.NextDate)
+	accounts, _ := env.accountSvc.List(true)
+	cats, _ := env.categorySvc.List()
+	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+
+	interest := env.app.loanWizard.Fields()[loanFieldInterestCategory]
+	if env.selectedLabel(loanFieldInterestCategory) != loanInterestDefaultDisplay {
+		t.Fatalf("interest prefill = %q, want %q", env.selectedLabel(loanFieldInterestCategory), loanInterestDefaultDisplay)
+	}
+	if interest.ComboHighlight != interest.SelectedIndex {
+		t.Errorf("ComboHighlight=%d != SelectedIndex=%d after prefill (a Tab would reset the selection)",
+			interest.ComboHighlight, interest.SelectedIndex)
+	}
+
+	// Tabbing over the prefilled combo must not reset it.
+	env.app.loanWizard.SetFocusIndex(loanFieldInterestCategory)
+	env.app.loanWizard.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if got := env.selectedLabel(loanFieldInterestCategory); got != loanInterestDefaultDisplay {
+		t.Errorf("interest selection after Tab = %q, want %q (regression: prefilled combo reset)", got, loanInterestDefaultDisplay)
+	}
+}
+
+// TestLoanWizard_CreateLoanInterestFromEscrowKeepsDefault guards the
+// synthetic-default edge case: when the interest combo sits on the synthetic
+// "Loan > Interest" (NilID) default and the user creates the *real*
+// Loan:Interest category from a different (escrow) field, the rebuild drops the
+// synthetic NilID row — so the interest field must fall back to the rebuilt
+// default index, not to the first-alphabetical category.
+func TestLoanWizard_CreateLoanInterestFromEscrowKeepsDefault(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	env.set(loanFieldAPR, "6.5") // interest field visible
+	env.app.refreshLoanWizardDerived()
+
+	if env.selectedLabel(loanFieldInterestCategory) != loanInterestDefaultDisplay {
+		t.Fatalf("interest should start on the synthetic default, got %q", env.selectedLabel(loanFieldInterestCategory))
+	}
+
+	// Create the real Loan:Interest category from an escrow field.
+	env.openAddNewFromLoan(t, loanEscrowCatIndex(0), "Loan:Interest")
+	if err := env.app.applyCreatedCategory(createCategoryRequest{
+		Name: "Interest", ParentName: "Loan", NewParent: true, Type: category.TypeExpense,
+	}); err != nil {
+		t.Fatalf("applyCreatedCategory: %v", err)
+	}
+
+	// The interest field still resolves to Loan > Interest — not the first
+	// alphabetical category it would fall through to without the default fallback.
+	if got := env.selectedLabel(loanFieldInterestCategory); got != loanInterestDefaultDisplay {
+		t.Errorf("interest selection = %q, want %q (default preserved across synthetic-row collapse)", got, loanInterestDefaultDisplay)
+	}
+	// The state ID list stays consistent with the field index (the save logic
+	// trusts state.interestIDs[SelectedIndex]).
+	idx := env.app.loanWizard.Fields()[loanFieldInterestCategory].SelectedIndex
+	st := env.app.loanWizardState
+	if idx < 0 || idx >= len(st.interestIDs) {
+		t.Fatalf("interest SelectedIndex %d out of range for interestIDs (len %d)", idx, len(st.interestIDs))
+	}
+	realCat, _ := env.categorySvc.GetByName("Interest", ptrParentID(t, env, "Loan"))
+	if st.interestIDs[idx] != realCat.ID {
+		t.Errorf("interest resolves to ID %v, want the real Loan:Interest %v", st.interestIDs[idx], realCat.ID)
+	}
+}
+
+// ptrParentID looks up a top-level parent category by name and returns a pointer
+// to its ID, for resolving a child via categorySvc.GetByName.
+func ptrParentID(t *testing.T, env *loanWizardEnv, parent string) *types.ID {
+	t.Helper()
+	p, err := env.categorySvc.GetByName(parent, nil)
+	if err != nil {
+		t.Fatalf("parent %q not found: %v", parent, err)
+	}
+	return &p.ID
 }

@@ -24,6 +24,7 @@ const (
 	createCatSourceSchedPreview
 	createCatSourceSplitDialog
 	createCatSourcePaycheckWizard
+	createCatSourceLoanWizard
 )
 
 // createCategoryRequest captures the user's intent to create a new category.
@@ -287,6 +288,8 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 		a.applyCreatedCategoryToSplit(newCat, cats)
 	case createCatSourcePaycheckWizard:
 		a.applyCreatedCategoryToPaycheck(newCat, cats)
+	case createCatSourceLoanWizard:
+		a.applyCreatedCategoryToLoan(newCat, cats)
 	default:
 		// No source recorded — surface plumbing not wired (or the source
 		// enum was reset before the router fired). Close the sub-dialog

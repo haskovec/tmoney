@@ -578,6 +578,11 @@ func (a *App) cancelCreateCatDialog() {
 			a.paycheckWizard.SetVisible(true)
 		}
 		a.createCatPaycheckLine = nil
+	case createCatSourceLoanWizard:
+		if a.loanWizard != nil {
+			a.loanWizard.SetVisible(true)
+		}
+		a.createCatLoanField = -1
 	}
 	a.createCatSource = createCatSourceNone
 }

@@ -78,6 +78,12 @@ const loanDemotionWarning = "This converts the loan schedule to a generic schedu
 // is always available even on files where it was never seeded or was deleted.
 var loanInterestDefaultDisplay = category.LoanCategoryName + " > " + category.LoanInterestChildName
 
+// loanAddNewCategoryLabel is the [+ Add new category…] action-row label on the
+// wizard's interest and escrow category combos. Activating it diverts into the
+// shared inline create-category sub-dialog (mirrors the transaction/scheduled
+// dialogs).
+const loanAddNewCategoryLabel = "[+ Add new category…]"
+
 // loanWizardMode distinguishes creating a new loan from editing an existing
 // loan-shaped schedule (Edit as loan →). Only the new path is wired today.
 type loanWizardMode int
@@ -202,11 +208,14 @@ func buildLoanWizardFields(title string, accounts []*account.Account, categories
 	d.AddDateField("Next Payment Date", "")
 	d.AddSelectField("From Account", fromOptions, 0)
 	d.AddTextField("Payee", "", "Servicer (optional)", 0)
-	d.AddSelectField("Interest Category", interestOptions, interestDefault)
+	interestField := d.AddComboField("Interest Category", interestOptions, interestDefault)
+	interestField.AddNewLabel = loanAddNewCategoryLabel
 
-	// Escrow pool (category + amount pairs), progressively revealed.
+	// Escrow pool (category + amount pairs), progressively revealed. Each
+	// category picker is a combo with an inline [+ Add new category…] row.
 	for k := range loanMaxEscrowLines {
-		d.AddSelectField(fmt.Sprintf("Escrow %d", k+1), catOptions, 0)
+		escrowField := d.AddComboField(fmt.Sprintf("Escrow %d", k+1), catOptions, 0)
+		escrowField.AddNewLabel = loanAddNewCategoryLabel
 		d.AddTextField(fmt.Sprintf("Escrow %d Amount", k+1), "", "monthly amount", 12)
 	}
 
@@ -330,12 +339,17 @@ func prefillLoanPaymentFields(fields []*dialog.Field, state *loanWizardData, st 
 	}
 }
 
-// setSelectByID points a select field at the option whose parallel ID matches
-// target. No-op when target is not found.
+// setSelectByID points a combo/select field at the option whose parallel ID
+// matches target. No-op when target is not found. ComboHighlight is synced to
+// the selection: the interest and escrow pickers are combos, and a plain
+// Tab/Enter over a combo commits its highlighted row — so a prefilled selection
+// (Edit-as-loan) whose highlight still pointed at row 0 would otherwise be
+// silently reset the first time the user tabbed through it.
 func setSelectByID(f *dialog.Field, ids []types.ID, target types.ID) {
 	for i, id := range ids {
 		if id == target {
 			f.SelectedIndex = i
+			f.ComboHighlight = i
 			return
 		}
 	}
@@ -515,9 +529,127 @@ func (a *App) handleLoanWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case dialog.DialogActionCancel:
 		a.closeLoanWizard()
 		return a, nil
+	case dialog.DialogActionAddNew:
+		return a.openCreateCategorySubDialogFromLoan()
 	}
 	a.refreshLoanWizardDerived()
 	return a, nil
+}
+
+// openCreateCategorySubDialogFromLoan hides the loan wizard and opens the shared
+// inline create-category sub-dialog, seeded from the typed query on whichever
+// category combo (interest or an escrow row) activated [+ Add new category…].
+// The focused field is the trigger; its index is recorded so the applier can
+// point it at the new category. The wizard's field state is preserved by
+// keeping the dialog alive (just hidden); cancelCreateCatDialog and
+// applyCreatedCategoryToLoan restore it.
+func (a *App) openCreateCategorySubDialogFromLoan() (tea.Model, tea.Cmd) {
+	if a.loanWizard == nil {
+		return a, nil
+	}
+	fields := a.loanWizard.Fields()
+	fieldIdx := a.loanWizard.FocusIndex()
+	if fieldIdx < 0 || fieldIdx >= len(fields) {
+		return a, nil
+	}
+	catField := fields[fieldIdx]
+	query := catField.Query
+	// Consume the trigger and clear the typed query — the sub-dialog owns it now.
+	catField.AddNewTriggered = false
+	catField.Query = ""
+
+	a.createCatLoanField = fieldIdx
+	// Set the source before parentsForCreateCatDialog so it resolves the right
+	// parents (falls back to a live category list for the loan wizard).
+	a.createCatSource = createCatSourceLoanWizard
+	parents := a.parentsForCreateCatDialog()
+	parent, name := splitCategoryQuery(query)
+	// Loan interest and escrow lines are always expenses.
+	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
+	a.loanWizard.SetVisible(false)
+	return a, nil
+}
+
+// applyCreatedCategoryToLoan is the per-surface applier for the loan wizard. It
+// rebuilds every category combo's options to include newCat, then points the
+// originating field (a.createCatLoanField) at it. Because inserting a category
+// into the sorted list shifts option indices, each *other* combo's existing
+// selection is re-resolved by ID rather than by its stale index — otherwise a
+// filled escrow row would silently jump to a different category.
+func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*category.Category) {
+	d, st := a.loanWizard, a.loanWizardState
+	if d == nil || st == nil || len(d.Fields()) < loanFieldFieldsCount {
+		a.createCatDialog = nil
+		a.createCatLoanField = -1
+		return
+	}
+	fields := d.Fields()
+
+	// Capture each category combo's currently-selected ID against the OLD id
+	// lists, before the rebuild shifts indices.
+	idAt := func(ids []types.ID, idx int) types.ID {
+		if idx >= 0 && idx < len(ids) {
+			return ids[idx]
+		}
+		return types.NilID
+	}
+	selectedInterestID := idAt(st.interestIDs, fields[loanFieldInterestCategory].SelectedIndex)
+	selectedEscrowIDs := make([]types.ID, loanMaxEscrowLines)
+	for k := range loanMaxEscrowLines {
+		selectedEscrowIDs[k] = idAt(st.categoryIDs, fields[loanEscrowCatIndex(k)].SelectedIndex)
+	}
+
+	// Rebuild the option/ID lists including the new category.
+	catOptions, catIDs := buildCategoryOptions(cats)
+	interestOptions, interestIDs, interestDefaultIdx := buildLoanInterestOptions(catOptions, catIDs)
+	st.categoryIDs = catIDs
+	st.interestOptions = interestOptions
+	st.interestIDs = interestIDs
+
+	indexOf := func(ids []types.ID, id types.ID) int {
+		for i, x := range ids {
+			if x == id {
+				return i
+			}
+		}
+		return 0 // fall back to the leading "(None)"/default row
+	}
+	setCombo := func(f *dialog.Field, opts []string, idx int) {
+		f.Options = opts
+		f.SelectedIndex = idx
+		f.ComboHighlight = idx
+		f.Query = ""
+	}
+
+	// Re-point every combo, preserving selections by ID. A NilID interest
+	// selection means "on the synthetic default row"; keep it on the default
+	// even when creating the real Loan:Interest category collapses that synthetic
+	// row away (buildLoanInterestOptions then returns no NilID entry, and a plain
+	// indexOf would fall through to the first-alphabetical category).
+	interestIdx := indexOf(interestIDs, selectedInterestID)
+	if selectedInterestID == types.NilID {
+		interestIdx = interestDefaultIdx
+	}
+	setCombo(fields[loanFieldInterestCategory], interestOptions, interestIdx)
+	for k := range loanMaxEscrowLines {
+		setCombo(fields[loanEscrowCatIndex(k)], catOptions, indexOf(catIDs, selectedEscrowIDs[k]))
+	}
+
+	// Point the originating field at the freshly-created category and focus it.
+	if fld := a.createCatLoanField; fld >= 0 && fld < len(fields) {
+		if fld == loanFieldInterestCategory {
+			fields[fld].SelectedIndex = indexOf(interestIDs, newCat.ID)
+		} else {
+			fields[fld].SelectedIndex = indexOf(catIDs, newCat.ID)
+		}
+		fields[fld].ComboHighlight = fields[fld].SelectedIndex
+		d.SetFocusIndex(fld)
+	}
+
+	updateLoanWizardVisibility(d)
+	d.SetVisible(true)
+	a.createCatDialog = nil
+	a.createCatLoanField = -1
 }
 
 // refreshLoanWizardDerived recomputes conditional field visibility and the

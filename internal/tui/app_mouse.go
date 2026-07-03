@@ -370,6 +370,8 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return a.submitLoanWizard()
 		case dialog.DialogActionCancel:
 			a.closeLoanWizard()
+		case dialog.DialogActionAddNew:
+			return a.openCreateCategorySubDialogFromLoan()
 		default:
 			a.refreshLoanWizardDerived()
 		}
