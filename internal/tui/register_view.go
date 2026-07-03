@@ -138,6 +138,14 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-6, 1)
 		a.table.PageDown(tableHeight)
+	case msg.String() == "a":
+		// Amortization drill-in — loan accounts only (read-only, so it works
+		// on a closed loan too). A no-op on non-loan accounts.
+		if a.register.account != nil && a.register.account.Type == account.TypeLoan {
+			a.switchView(ViewAmortization)
+			return a, a.loadAmortizationData(a.register.account.ID)
+		}
+		return a, nil
 	case a.register.account != nil && a.register.account.IsClosed() &&
 		(msg.String() == "c" || msg.String() == "v" || msg.String() == "t" || msg.String() == "r" ||
 			key.Matches(msg, a.keys.Delete) || key.Matches(msg, a.keys.New) || key.Matches(msg, a.keys.Enter)):

@@ -263,7 +263,20 @@ Press `?` at any time to show the help overlay.
 | `c` | Toggle cleared status |
 | `t` | New transfer |
 | `r` | Reconcile account (start a new session) |
+| `a` | Amortization schedule (loan accounts only) |
 | `Tab` | Switch between sidebar and table |
+
+On a **loan** account, `a` drills into a read-only **amortization view**: a
+header of live loan stats (balance owed, APR, P&I payment, payments left,
+payoff date, total interest remaining) over a full remaining-payment table
+(`# · Date · Payment · Interest · Principal · Escrow · Balance`). Every figure
+is recomputed from the loan's current balance, the account's APR, and the
+loan-shaped schedule's derived P&I payment — nothing is stored — so extra
+principal payments and rate edits show up immediately. Very long projections
+(a tiny principal that never pays off within 100 years) report payoff date and
+interest remaining as `100y+`. If no loan-shaped schedule targets the account,
+the view shows the balance and APR it can compute plus a hint to run the loan
+wizard or adopt an existing schedule. `Esc` returns to the register.
 
 In an investment account, `n` opens a transaction-type selector (Buy, Sell,
 Dividend, …) that also includes **Spin-Off…**. Choosing it launches the

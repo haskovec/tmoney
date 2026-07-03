@@ -277,12 +277,15 @@ func (a *App) renderContent(height int) string {
 		viewContent = a.renderPortfolioView()
 	case ViewCorporateActions:
 		viewContent = a.renderCorporateActionView()
+	case ViewAmortization:
+		viewContent = a.renderAmortizationView()
 	default:
 		viewContent = "Unknown view"
 	}
 
-	// Reconciliation, Securities, and Prices views are full-screen (no sidebar)
-	if a.currentView == ViewReconciliation || a.currentView == ViewSecurities || a.currentView == ViewPrices || a.currentView == ViewCorporateActions {
+	// Reconciliation, Securities, Prices, Corporate Actions, and Amortization
+	// views are full-screen (no sidebar)
+	if a.currentView == ViewReconciliation || a.currentView == ViewSecurities || a.currentView == ViewPrices || a.currentView == ViewCorporateActions || a.currentView == ViewAmortization {
 		return a.styles.RenderViewContent(viewContent, a.width, height)
 	}
 
@@ -332,6 +335,8 @@ func (a *App) getKeyHints() string {
 		return "↑↓ navigate  enter lot detail  r register  esc back  " + common
 	case ViewCorporateActions:
 		return "↑↓ navigate  / filter  enter details  d delete  esc back  " + common
+	case ViewAmortization:
+		return "↑↓ navigate  g/G first/last  esc back  " + common
 	default:
 		return common
 	}

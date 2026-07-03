@@ -108,6 +108,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.buildPortfolioHoldingsTable()
 		return a, nil
 
+	case amortizationLoadedMsg:
+		a.amortizationData = msg.data
+		a.buildAmortizationTable()
+		return a, nil
+
 	case portfolioLotDetailMsg:
 		if a.portfolioData != nil {
 			a.portfolioData.lotDetails = msg.lots

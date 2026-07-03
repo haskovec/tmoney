@@ -87,7 +87,8 @@ func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	// Full-screen views (no sidebar)
 	if sidebarWidth == 0 || a.currentView == ViewReconciliation ||
-		a.currentView == ViewSecurities || a.currentView == ViewPrices {
+		a.currentView == ViewSecurities || a.currentView == ViewPrices ||
+		a.currentView == ViewAmortization {
 		return a.handleMouseTable(msg, contentY)
 	}
 

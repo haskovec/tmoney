@@ -44,6 +44,20 @@ func (a *App) tableContentRowOffset() int {
 			offset++ // "Lots for <ticker>" sub-header
 		}
 		return offset
+	case ViewAmortization:
+		// The amortization view inserts a stats block (2 lines with a full
+		// projection, else 1) plus the "Esc: back" hint between the title and
+		// the separator that baseOffset already covers.
+		offset := baseOffset
+		if a.amortizationData != nil {
+			statsLines := 1
+			d := a.amortizationData
+			if d.hasSchedule && d.aprValid && d.projErr == nil {
+				statsLines = 2
+			}
+			offset += statsLines + 1
+		}
+		return offset
 	}
 	return baseOffset
 }
@@ -70,6 +84,8 @@ func (a *App) activeTable() *widget.Table {
 			return a.priceListTable
 		}
 		return a.priceTable
+	case ViewAmortization:
+		return a.amortizationTable
 	}
 	return nil
 }
@@ -206,6 +222,10 @@ func (a *App) reloadCurrentView() tea.Cmd {
 		cmds = append(cmds, a.loadSecurityViewData())
 	case ViewPrices:
 		cmds = append(cmds, a.loadPriceViewData())
+	case ViewAmortization:
+		if a.amortizationData != nil && a.amortizationData.account != nil {
+			cmds = append(cmds, a.loadAmortizationData(a.amortizationData.account.ID))
+		}
 	}
 	return tea.Batch(cmds...)
 }

@@ -344,6 +344,10 @@ func (a *App) switchView(v View) {
 				if a.priceTable != nil {
 					a.priceTable.SetFocused(true)
 				}
+			case ViewAmortization:
+				// Amortization is full-screen, no sidebar. The table is built
+				// once its data loads (buildAmortizationTable focuses it then).
+				a.sidebar.SetFocused(false)
 			case ViewInvestmentRegister:
 				// Start with investment table focused
 				a.sidebar.SetFocused(false)

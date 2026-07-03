@@ -401,20 +401,44 @@ available). Everything else in this phase is complete and tested.
       untagged schedule, Edit-as-loan button/dispatch, and the demotion
       warning flow** (`loan_wizard_test.go`).
 
-## Phase 8: Amortization View (TUI) — [ ]
+## Phase 8: Amortization View (TUI) — [x]
 
-- [ ] `internal/tui/amortization_view.go`: drill-in from a loan
-      account's register on **`a`** (verified free; do *not* fall back
-      to `v`, which is taken by void), Esc returns. Header stats +
-      remaining-payments table per spec, computed live via
-      `internal/loan.Projection`.
-- [ ] Truncated projections render `100y+` for payoff date / interest
-      remaining (never the cap row as payoff).
-- [ ] Graceful no-schedule state (stats it can compute + wizard/adopt
-      hint).
-- [ ] Help overlay + README keybinding table entries.
-- [ ] Tests: render snapshot with fixture loan; clamp row; truncated
-      state; no-schedule state.
+Implemented as a full-screen drill-in view (`ViewAmortization`) launched
+from a loan account's register on **`a`**; Esc returns via the global
+handler (`previousView` → register + `reloadCurrentView`). The loan-shape
+lookup/derivation lives in the scheduled package (shared with the future
+CLI): `Service.FindLoanSchedule(loanAcctID)` locates the schedule by its
+principal transfer target via `ListReferencing` + `IsLoanShaped`, and
+`LoanScheduleInputs(st)` derives the P&I payment / escrow total /
+day-of-month for `internal/loan.Project`.
+
+- [x] `internal/tui/amortization_view.go`: drill-in from a loan
+      account's register on **`a`** (verified free; `v` is void), Esc
+      returns. Header stats block + remaining-payments table
+      (`# · Date · Payment · Interest · Principal · Escrow · Balance`),
+      computed live via `internal/loan.Project` / `RemainingStats`. owed
+      is the balance as of the schedule's next payment date (matches what
+      posting computes against). Full-screen view (no sidebar); wired
+      through renderContent/getKeyHints/activeTable/switchView-focus/
+      tableContentRowOffset/mouse full-screen set and the
+      `amortizationLoadedMsg` handler.
+- [x] Truncated projections render `100y+` for payoff date / interest
+      remaining (and `<n>+` for payments left); never the cap row as
+      payoff.
+- [x] Graceful states: no loan-shaped schedule (balance + APR + wizard/
+      adopt hint), missing APR ("set an APR" hint), negative-amortization
+      (`projErr` surfaced), and paid-off (0 remaining payments).
+- [x] Help overlay (`registerShortcuts` gains `a`; new
+      `amortizationShortcuts`) + README Register keybinding table + a
+      description blurb.
+- [x] Tests (`internal/tui/amortization_view_test.go`): 380k@6.5%/360mo
+      projection (row-0 split, payments left, total interest, payoff
+      date, render), no-schedule state, clamped final payment, truncated
+      state + `100y+`, missing-APR state, and register-`a`
+      opens-for-loan / no-op-for-non-loan. Scheduled helpers covered by
+      `internal/scheduled/loan_projection_test.go` (FindLoanSchedule
+      strict-match/skip-generic/absent, LoanScheduleInputs derivation +
+      no-escrow + NextDate day-of-month fallback).
 
 ## Phase 9: CLI `loan` Group — [ ]
 

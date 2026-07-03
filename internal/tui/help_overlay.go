@@ -103,6 +103,7 @@ func registerShortcuts() shortcutSection {
 			{"v", "Void transaction"},
 			{"t", "New transfer"},
 			{"r", "Reconcile account"},
+			{"a", "Amortization schedule (loan accounts)"},
 			{"Tab", "Switch sidebar/table focus"},
 		},
 	}
@@ -245,6 +246,8 @@ func viewShortcutSections(view View) []shortcutSection {
 		sections = append(sections, investmentRegisterShortcuts())
 	case ViewPortfolio:
 		sections = append(sections, portfolioShortcuts())
+	case ViewAmortization:
+		sections = append(sections, amortizationShortcuts())
 	}
 
 	sections = append(sections, dialogShortcuts())

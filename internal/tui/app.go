@@ -51,6 +51,8 @@ const (
 	ViewPortfolio
 	// ViewCorporateActions shows the global corporate-action register.
 	ViewCorporateActions
+	// ViewAmortization shows a loan account's live amortization projection.
+	ViewAmortization
 )
 
 // String returns the display name of the view.
@@ -76,6 +78,8 @@ func (v View) String() string {
 		return "Portfolio"
 	case ViewCorporateActions:
 		return "Corporate Actions"
+	case ViewAmortization:
+		return "Amortization"
 	default:
 		return "Unknown"
 	}
@@ -124,6 +128,10 @@ type App struct {
 	// Register data (loaded when account is selected)
 	register *registerData
 	table    *widget.Table
+
+	// Amortization view data (loan-account drill-in via 'a')
+	amortizationData  *amortizationViewData
+	amortizationTable *widget.Table
 
 	// Transaction dialog state
 	txnDialog            *dialog.Dialog
@@ -791,6 +799,8 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.handlePortfolioKeys(msg)
 	case ViewCorporateActions:
 		return a.handleCorporateActionViewKeys(msg)
+	case ViewAmortization:
+		return a.handleAmortizationKeys(msg)
 	}
 
 	return a, nil
