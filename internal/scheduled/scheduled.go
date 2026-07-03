@@ -131,8 +131,9 @@ type Transaction struct {
 
 	// TransferAccountID, when set, marks this as a single-line transfer
 	// schedule: account_id is the source ("From") and TransferAccountID is
-	// the destination ("To"). Mutually exclusive with CategoryID and with
-	// multi-line Splits. Posting creates a clean linked transfer pair.
+	// the destination ("To"). May coexist with an optional CategoryID (a
+	// label for the transfer), but not with multi-line Splits. Posting
+	// creates a clean linked transfer pair.
 	TransferAccountID types.NullableID `json:"transfer_account_id"`
 
 	// Variable amount estimation
@@ -224,10 +225,10 @@ func (st *Transaction) HasCategory() bool {
 
 // SetTransfer marks this as a single-line transfer schedule whose destination
 // ("To") is transferAccountID. The source ("From") is the schedule's own
-// AccountID. Clears any category, since the two shapes are mutually exclusive.
+// AccountID. Any existing CategoryID is preserved — a transfer schedule may
+// carry an optional (non-system) category as a label for the transfer.
 func (st *Transaction) SetTransfer(transferAccountID types.ID) {
 	st.TransferAccountID = types.NullableID{ID: transferAccountID, Valid: true}
-	st.CategoryID = types.NullableID{Valid: false}
 	st.Touch()
 }
 
@@ -708,10 +709,9 @@ func (st *Transaction) Validate() types.ValidationErrors {
 
 	// Single-line transfer invariants.
 	if st.TransferAccountID.Valid {
-		// Mutually exclusive with a scalar category and with multi-line splits.
-		if st.CategoryID.Valid {
-			v.AddError("transfer_account_id", "a transfer schedule cannot also set a category")
-		}
+		// An optional CategoryID may coexist as a label; multi-line splits
+		// may not. Non-system enforcement of the category lives at the
+		// service layer.
 		if len(st.Splits) > 0 {
 			v.AddError("transfer_account_id", "a transfer schedule cannot also have split lines")
 		}

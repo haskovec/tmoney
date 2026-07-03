@@ -27,8 +27,9 @@ const splitColumns = `id, scheduled_transaction_id, category_id, transfer_accoun
 // verifyReferences confirms that the FK targets named on the split exist.
 // Every split must point at an existing scheduled_transaction. Transfer-lines
 // additionally must point at an existing account; categorized lines must
-// point at an existing category. The exclusive shape is enforced by the
-// CHECK constraint in migration 015.
+// point at an existing category. A categorized transfer (both set — migration
+// 029) is verified against both, no longer short-circuiting past the category
+// check.
 func (r *SplitRepository) verifyReferences(split *Split) error {
 	var exists bool
 	err := r.db.Conn().QueryRow(
@@ -59,7 +60,8 @@ func (r *SplitRepository) verifyReferences(split *Split) error {
 				ID:     split.TransferAccountID.ID.String(),
 			}
 		}
-		return nil
+		// Fall through: a transfer-line may also carry a category, verified
+		// below when present.
 	}
 
 	if split.CategoryID.Valid {

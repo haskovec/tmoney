@@ -2715,7 +2715,7 @@ func TestMigration014SplitItemsTransfer(t *testing.T) {
 		}
 	})
 
-	t.Run("split with both category and transfer is rejected", func(t *testing.T) {
+	t.Run("split with both category and transfer is accepted (categorized transfer)", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		dbPath := filepath.Join(tmpDir, "test.tdb")
 
@@ -2765,8 +2765,8 @@ func TestMigration014SplitItemsTransfer(t *testing.T) {
 				-50.00
 			)
 		`)
-		if err == nil {
-			t.Error("expected check constraint to reject row with both category_id and transfer_account_id")
+		if err != nil {
+			t.Errorf("categorized transfer split (both category_id and transfer_account_id) should be accepted post-029: %v", err)
 		}
 	})
 
@@ -3075,7 +3075,7 @@ func TestMigration015ScheduledSplitItems(t *testing.T) {
 		}
 	})
 
-	t.Run("scheduled split with both category and transfer is rejected", func(t *testing.T) {
+	t.Run("scheduled split with both category and transfer is accepted (categorized transfer)", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		dbPath := filepath.Join(tmpDir, "test.tdb")
 
@@ -3126,8 +3126,8 @@ func TestMigration015ScheduledSplitItems(t *testing.T) {
 				-500.00
 			)
 		`)
-		if err == nil {
-			t.Error("expected check constraint to reject row with both category_id and transfer_account_id")
+		if err != nil {
+			t.Errorf("categorized transfer scheduled split (both category_id and transfer_account_id) should be accepted post-029: %v", err)
 		}
 	})
 
@@ -3658,6 +3658,94 @@ func TestMigration028LoanSection(t *testing.T) {
 		`)
 		if err == nil {
 			t.Error("expected CHECK constraint to reject a split tagged with both paycheck_section and loan_section")
+		}
+	})
+}
+
+func TestMigration029TransferCategories(t *testing.T) {
+	// countCategorySpendingRows returns how many category_spending rows for the
+	// given category have a non-NULL total — i.e. how many actually contribute
+	// spending after the view's transfer guard.
+	countCategorySpendingRows := func(t *testing.T, db *DB, categoryID string) int {
+		t.Helper()
+		var n int
+		err := db.Conn().QueryRow(`
+			SELECT COUNT(*) FROM category_spending
+			WHERE CAST(id AS VARCHAR) = ? AND total IS NOT NULL
+		`, categoryID).Scan(&n)
+		if err != nil {
+			t.Fatalf("query category_spending: %v", err)
+		}
+		return n
+	}
+
+	// seedTransferAndSpend inserts a normal categorized expense plus a
+	// categorized whole-transaction transfer pair (both legs tagged with the
+	// same category, sharing a transfer_id — the legacy `transfer link` shape).
+	seedTransferAndSpend := func(t *testing.T, db *DB) {
+		t.Helper()
+		_, err := db.Conn().Exec(`
+			INSERT INTO accounts (id, name, type, opening_date) VALUES
+				('11111111-1111-1111-1111-111111111111', 'Checking', 'checking', '2024-01-01'),
+				('22222222-2222-2222-2222-222222222222', 'Savings',  'savings',  '2024-01-01')
+		`)
+		if err != nil {
+			t.Fatalf("insert accounts: %v", err)
+		}
+		_, err = db.Conn().Exec(`
+			INSERT INTO categories (id, name, type) VALUES
+				('66666666-6666-6666-6666-666666666666', 'Card Payment', 'expense'),
+				('77777777-7777-7777-7777-777777777777', 'Groceries',    'expense')
+		`)
+		if err != nil {
+			t.Fatalf("insert categories: %v", err)
+		}
+		// Normal categorized expense (no transfer) — must appear in the view.
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (id, account_id, date, amount, category_id, status) VALUES (
+				'88888888-8888-8888-8888-888888888888',
+				'11111111-1111-1111-1111-111111111111',
+				'2024-01-15', -30.00,
+				'77777777-7777-7777-7777-777777777777', 'uncleared'
+			)
+		`)
+		if err != nil {
+			t.Fatalf("insert groceries transaction: %v", err)
+		}
+		// Categorized transfer pair — must NOT appear in the view.
+		_, err = db.Conn().Exec(`
+			INSERT INTO transactions (id, account_id, date, amount, category_id, transfer_id, transfer_account_id, status) VALUES
+				('99999999-9999-9999-9999-999999999999',
+					'11111111-1111-1111-1111-111111111111', '2024-01-15', -50.00,
+					'66666666-6666-6666-6666-666666666666',
+					'55555555-5555-5555-5555-555555555555',
+					'22222222-2222-2222-2222-222222222222', 'uncleared'),
+				('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+					'22222222-2222-2222-2222-222222222222', '2024-01-15', 50.00,
+					'66666666-6666-6666-6666-666666666666',
+					'55555555-5555-5555-5555-555555555555',
+					'11111111-1111-1111-1111-111111111111', 'uncleared')
+		`)
+		if err != nil {
+			t.Fatalf("insert categorized transfer pair: %v", err)
+		}
+	}
+
+	t.Run("category_spending view excludes categorized transfer rows", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		db, err := Create(filepath.Join(tmpDir, "test.tdb"))
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		defer db.Close()
+
+		seedTransferAndSpend(t, db)
+
+		if n := countCategorySpendingRows(t, db, "66666666-6666-6666-6666-666666666666"); n != 0 {
+			t.Errorf("categorized transfer must not contribute to category_spending (transfer_id guard); got %d contributing rows", n)
+		}
+		if n := countCategorySpendingRows(t, db, "77777777-7777-7777-7777-777777777777"); n != 1 {
+			t.Errorf("a normal categorized expense should contribute to category_spending; got %d contributing rows", n)
 		}
 	})
 }

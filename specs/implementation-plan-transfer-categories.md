@@ -115,43 +115,48 @@ fixable against today's schema.
   counterpart identity; void + undo restores a transfer-line split set
   intact).
 
-## Phase 3: Migration 029 + Validation Relaxation — [ ]
+## Phase 3: Migration 029 + Validation Relaxation — [x]
 
-- [ ] `internal/db/migrations/029_transfer_categories.sql`: backup-drop-
+- [x] `internal/db/migrations/029_transfer_categories.sql`: backup-drop-
   recreate (026 recipe) for **transaction_splits** — relaxed
   `CHECK (category_id IS NOT NULL OR transfer_account_id IS NOT NULL)`,
   pairing CHECK kept, FK/index decisions copied verbatim from 026:27-55 —
   and for **scheduled_split_items** against the 028 definition (28:33-49;
   keep the section enum CHECKs, the at-most-one-section CHECK, categories
-  FK, parent index; no transfer_id column exists there). Recreate the
-  `category_spending` view (019:278-288) with `AND t.transfer_id IS NULL`.
-- [ ] `internal/db/migration.go:16`: `CurrentSchemaVersion` 28 → 29.
-- [ ] `internal/transaction/transaction.go:429-430`: `Split.Validate` —
-  remove the both-set error; keep neither-set, pairing, amount, memo
-  rules. Update the struct/shape doc comments (:353-358, :414-420).
-- [ ] `internal/scheduled/split_item.go:101-107`: same relaxation; update
-  the header comment (:11-16).
-- [ ] `internal/scheduled/scheduled.go:712-714`: drop the transfer+category
-  error; `:228-232`: `SetTransfer` stops clearing `CategoryID`; update doc
-  comment (:132-135).
-- [ ] `internal/transaction/split_repository.go:39-53` and
-  `internal/scheduled/split_repository.go:48-63`: `verifyReferences`
-  transfer branch also verifies the category when set (no more
-  short-circuit past the category check).
-- [ ] New shared guard where transfer categories are assigned: category
-  exists and `!IsSystem` (service-level helper in `internal/transaction`,
-  reused by scheduled/loan validation).
-- [ ] Tests (`internal/db/migration_test.go`, 014/028 subtest pattern):
-  accepted shapes now include category+transfer on both tables;
-  neither-set still rejected; transfer_account_id-without-transfer_id
-  still rejected on transaction_splits; **invert both legacy both-set-
-  rejection subtests** — the 014-era transaction_splits one
-  (migration_test.go:2718-2771) and the 015-era scheduled_split_items one
-  (:3078-3132); existing rows survive reopen; `TestCurrentSchemaVersion`.
-  Model tests for each relaxed `Validate` + `SetTransfer` non-clobber +
-  system-category rejection. Report-service splits-arm test deferred from
-  Phase 1: a categorized transfer split-line is excluded by default and
-  included exactly once with the toggle.
+  FK, parent index; no transfer_id column exists there — loan_section is
+  copied through, not NULLed). Recreate the `category_spending` view
+  (019:278-288) with `AND t.transfer_id IS NULL` in the LEFT JOIN.
+- [x] `internal/db/migration.go:16`: `CurrentSchemaVersion` 28 → 29.
+- [x] `internal/transaction/transaction.go`: `Split.Validate` —
+  removed the both-set error; kept neither-set, pairing, amount, memo
+  rules. Updated the struct/shape doc comments.
+- [x] `internal/scheduled/split_item.go`: same relaxation; updated
+  the header comment.
+- [x] `internal/scheduled/scheduled.go`: dropped the transfer+category
+  error in `Transaction.Validate`; `SetTransfer` no longer clears
+  `CategoryID`; updated the field/method doc comments.
+- [x] `internal/transaction/split_repository.go` and
+  `internal/scheduled/split_repository.go`: `verifyReferences`
+  transfer branch now falls through to verify the category when set (no
+  more short-circuit past the category check).
+- [x] New shared guard where transfer categories are assigned:
+  `ValidateTransferCategory` + `SystemCategoryTransferError` in
+  `internal/transaction/transfer_category.go` (non-system rule on a
+  resolved `*category.Category`; existence enforced by the FK +
+  `verifyReferences`). Reusable by scheduled/loan/CLI (all can import
+  `internal/transaction`); consumed in Phase 4+.
+- [x] Tests (`internal/db/migration_test.go`, 014/028 subtest pattern):
+  accepted shapes now include category+transfer on both tables (inverted
+  the 014-era transaction_splits and 015-era scheduled_split_items
+  both-set-rejection subtests to acceptance); neither-set still rejected;
+  transfer_account_id-without-transfer_id still rejected;
+  `TestCurrentSchemaVersion` passes at 29; new `TestMigration029Transfer
+  Categories` pins the `category_spending` view transfer guard. Model
+  tests for each relaxed `Validate` + `SetTransfer` non-clobber +
+  `ValidateTransferCategory` system-category rejection. Report-service
+  splits-arm test (deferred from Phase 1): a categorized transfer
+  split-line is excluded by default and included exactly once with the
+  toggle.
 
 ## Phase 4: Transfer Service Core + Link Adoption — [ ]
 

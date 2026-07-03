@@ -8,12 +8,14 @@ import (
 
 // Split represents one line of a multi-line scheduled transaction template.
 //
-// A line is either categorized (CategoryID set, TransferAccountID zero) or
-// a transfer-line that targets another account (TransferAccountID set,
-// CategoryID = NilID). The two shapes are mutually exclusive and enforced
-// at the database via a CHECK constraint (see migration 015). Templates do
-// not carry a transfer_id — the paired transaction (and its transfer_id)
-// is minted at post time by the transaction service.
+// A line carries a category, a transfer target, or both. A categorized line
+// has CategoryID set and TransferAccountID zero; a transfer-line targets
+// another account (TransferAccountID set) and MAY additionally carry a
+// category — a "categorized transfer" (e.g. a loan template's principal line
+// labeled Loan:Principal). At least one of the two must be present; the DB
+// enforces the at-least-one rule via a CHECK constraint (see migrations 015
+// and 029). Templates do not carry a transfer_id — the paired transaction
+// (and its transfer_id) is minted at post time by the transaction service.
 type Split struct {
 	types.BaseModel
 
@@ -21,7 +23,8 @@ type Split struct {
 	ScheduledTransactionID types.ID    `json:"scheduled_transaction_id"`
 	Amount                 types.Money `json:"amount"`
 
-	// Exactly one of CategoryID / TransferAccountID is set per row.
+	// At least one of CategoryID / TransferAccountID is set per row; both may
+	// be set (a categorized transfer — see the struct doc above).
 	CategoryID        types.NullableID `json:"category_id"`
 	TransferAccountID types.NullableID `json:"transfer_account_id"`
 
@@ -98,12 +101,11 @@ func (s *Split) Validate() types.ValidationErrors {
 
 	v.RequiredID("scheduled_transaction_id", s.ScheduledTransactionID)
 
-	// Exactly one of category_id / transfer_account_id must be set.
-	switch {
-	case s.CategoryID.Valid && s.TransferAccountID.Valid:
-		v.AddError("split", "cannot set both category_id and transfer_account_id")
-	case !s.CategoryID.Valid && !s.TransferAccountID.Valid:
-		v.AddError("split", "must set exactly one of category_id or transfer_account_id")
+	// At least one of category_id / transfer_account_id must be set; both may
+	// be set (a categorized transfer). Non-system enforcement of an assigned
+	// category lives at the service layer.
+	if !s.CategoryID.Valid && !s.TransferAccountID.Valid {
+		v.AddError("split", "must set category_id, transfer_account_id, or both")
 	}
 
 	if s.Amount.IsZero() {

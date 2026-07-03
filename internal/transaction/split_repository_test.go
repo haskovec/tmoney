@@ -157,6 +157,88 @@ func TestSplitRepository_Create(t *testing.T) {
 			t.Errorf("Expected NotFoundError, got %T: %v", err, err)
 		}
 	})
+
+	t.Run("creates a categorized transfer split (both category and transfer set)", func(t *testing.T) {
+		database := createTestDB(t)
+		splitRepo := NewSplitRepository(database)
+		accountRepo := account.NewRepository(database)
+		txnRepo := NewRepository(database)
+		categoryRepo := category.NewRepository(database)
+
+		now := time.Now()
+		today := types.NewDate(now.Year(), now.Month(), now.Day())
+		acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, today)
+		if err := accountRepo.Create(acct); err != nil {
+			t.Fatalf("Create account error = %v", err)
+		}
+		target := account.NewAccount("Savings", account.TypeSavings, "USD", types.ZeroMoney, today)
+		if err := accountRepo.Create(target); err != nil {
+			t.Fatalf("Create target account error = %v", err)
+		}
+		cat := category.NewCategory("Loan Principal", category.TypeExpense)
+		if err := categoryRepo.Create(cat); err != nil {
+			t.Fatalf("Create category error = %v", err)
+		}
+		txn := NewTransaction(acct.ID, today, types.MustNewMoney("-100.00"))
+		if err := txnRepo.Create(txn); err != nil {
+			t.Fatalf("Create transaction error = %v", err)
+		}
+
+		split := NewSplit(txn.ID, cat.ID, types.MustNewMoney("-100.00"))
+		split.TransferAccountID = types.NullableID{ID: target.ID, Valid: true}
+		split.TransferID = types.NullableID{ID: types.NewID(), Valid: true}
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create() categorized transfer split error = %v", err)
+		}
+
+		retrieved, err := splitRepo.GetByID(split.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if retrieved.CategoryID != cat.ID {
+			t.Errorf("Expected category ID %v, got %v", cat.ID, retrieved.CategoryID)
+		}
+		if !retrieved.TransferAccountID.Valid || retrieved.TransferAccountID.ID != target.ID {
+			t.Errorf("Expected transfer account %v, got %+v", target.ID, retrieved.TransferAccountID)
+		}
+	})
+
+	t.Run("rejects a categorized transfer split whose category does not exist", func(t *testing.T) {
+		// Pins the migration-029 verifyReferences fall-through: with the
+		// transfer account set, the category check must still run (the old
+		// code short-circuited past it, letting a bad category_id reach the DB
+		// FK as a raw error instead of a clean NotFoundError).
+		database := createTestDB(t)
+		splitRepo := NewSplitRepository(database)
+		accountRepo := account.NewRepository(database)
+		txnRepo := NewRepository(database)
+
+		now := time.Now()
+		today := types.NewDate(now.Year(), now.Month(), now.Day())
+		acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, today)
+		if err := accountRepo.Create(acct); err != nil {
+			t.Fatalf("Create account error = %v", err)
+		}
+		target := account.NewAccount("Savings", account.TypeSavings, "USD", types.ZeroMoney, today)
+		if err := accountRepo.Create(target); err != nil {
+			t.Fatalf("Create target account error = %v", err)
+		}
+		txn := NewTransaction(acct.ID, today, types.MustNewMoney("-100.00"))
+		if err := txnRepo.Create(txn); err != nil {
+			t.Fatalf("Create transaction error = %v", err)
+		}
+
+		split := NewSplit(txn.ID, types.NewID(), types.MustNewMoney("-100.00"))
+		split.TransferAccountID = types.NullableID{ID: target.ID, Valid: true}
+		split.TransferID = types.NullableID{ID: types.NewID(), Valid: true}
+		err := splitRepo.Create(split)
+		if err == nil {
+			t.Fatal("Create() expected error for categorized transfer with non-existent category")
+		}
+		if _, ok := err.(*dberrors.NotFoundError); !ok {
+			t.Errorf("Expected NotFoundError (category), got %T: %v", err, err)
+		}
+	})
 }
 
 func TestSplitRepository_GetByID(t *testing.T) {

@@ -287,6 +287,44 @@ func TestScheduledSplitItemRepo_RoundTrip(t *testing.T) {
 		}
 	})
 
+	t.Run("create accepts a categorized transfer (both category and transfer)", func(t *testing.T) {
+		_, dstAcct, cat, st, splitRepo := scheduledSplitFixtures(t)
+
+		split := NewTransferSplit(st.ID, dstAcct.ID, types.MustNewMoney("-100.00"))
+		split.CategoryID = types.NullableID{ID: cat.ID, Valid: true}
+		if err := splitRepo.Create(split); err != nil {
+			t.Fatalf("Create categorized transfer scheduled split: %v", err)
+		}
+
+		got, err := splitRepo.GetByID(split.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if !got.CategoryID.Valid || got.CategoryID.ID != cat.ID {
+			t.Errorf("CategoryID = %+v, want valid %v", got.CategoryID, cat.ID)
+		}
+		if !got.TransferAccountID.Valid || got.TransferAccountID.ID != dstAcct.ID {
+			t.Errorf("TransferAccountID = %+v, want valid %v", got.TransferAccountID, dstAcct.ID)
+		}
+	})
+
+	t.Run("create rejects a categorized transfer whose category does not exist", func(t *testing.T) {
+		// Pins the migration-029 verifyReferences fall-through: with the
+		// transfer account set, the category check must still run (the old
+		// code short-circuited past it).
+		_, dstAcct, _, st, splitRepo := scheduledSplitFixtures(t)
+
+		split := NewTransferSplit(st.ID, dstAcct.ID, types.MustNewMoney("-100.00"))
+		split.CategoryID = types.NullableID{ID: types.NewID(), Valid: true}
+		err := splitRepo.Create(split)
+		if err == nil {
+			t.Fatal("expected error for categorized transfer with non-existent category, got nil")
+		}
+		if _, ok := err.(*dberrors.NotFoundError); !ok {
+			t.Errorf("expected NotFoundError (category), got %T: %v", err, err)
+		}
+	})
+
 	t.Run("count by scheduled transaction", func(t *testing.T) {
 		_, dstAcct, cat, st, splitRepo := scheduledSplitFixtures(t)
 

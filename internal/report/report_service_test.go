@@ -1157,6 +1157,33 @@ func (r *transactionRepo) createCategorizedTransfer(t *testing.T, fromAcct, toAc
 	}
 }
 
+// createCategorizedTransferSplit inserts a split-parent transaction in fromAcct
+// plus a single transaction_splits row that is BOTH categorized and a transfer
+// to toAcct — the categorized-transfer split shape migration 029 enables (e.g.
+// a loan payment's principal line labeled Loan:Principal). The parent carries
+// no category, so only the split row can enter the report.
+func (r *transactionRepo) createCategorizedTransferSplit(t *testing.T, fromAcct, toAcct types.ID, date types.Date, amount types.Money, categoryID types.ID) {
+	t.Helper()
+	now := types.Now()
+	parentID := types.NewID()
+	if _, err := r.db.Conn().Exec(
+		`INSERT INTO transactions (id, account_id, date, amount, status, created_at, updated_at)
+		 VALUES (?, CAST(? AS UUID), ?, ?, 'uncleared', ?, ?)`,
+		parentID.String(), fromAcct.String(), date.Time(), amount.String(), now.Time(), now.Time(),
+	); err != nil {
+		t.Fatalf("failed to create split parent: %v", err)
+	}
+	if _, err := r.db.Conn().Exec(
+		`INSERT INTO transaction_splits
+		 (id, transaction_id, category_id, transfer_account_id, transfer_id, amount, created_at)
+		 VALUES (?, CAST(? AS UUID), CAST(? AS UUID), CAST(? AS UUID), CAST(? AS UUID), ?, ?)`,
+		types.NewID().String(), parentID.String(), categoryID.String(), toAcct.String(),
+		types.NewID().String(), amount.String(), now.Time(),
+	); err != nil {
+		t.Fatalf("failed to create categorized transfer split: %v", err)
+	}
+}
+
 // findCategory returns the top-level category with the given name, or nil.
 func findCategory(sp *Spending, name string) *CategorySpending {
 	for i := range sp.Categories {
@@ -1257,6 +1284,103 @@ func TestService_SpendingByCategory_TransferGuards(t *testing.T) {
 
 		if c := findCategory(report, cardPayName); c != nil {
 			t.Errorf("income-typed transfer category must never enter the spending report; found %q = %s", cardPayName, c.Amount.String())
+		}
+		want, _ := types.NewMoney("100.00")
+		if !report.TotalSpending.Equal(want) {
+			t.Errorf("total spending = %s, want %s (only the groceries expense)", report.TotalSpending.String(), want.String())
+		}
+	})
+}
+
+// TestService_SpendingByCategory_TransferGuards_SplitLine mirrors the
+// whole-transaction transfer-guard test for a categorized transfer *split
+// line* (a transaction_splits row with both category_id and transfer_account_id
+// — the shape migration 029 enables). It is excluded from the spending report
+// by default (the ts.transfer_account_id IS NULL guard) and folded in exactly
+// once when includeTransfers is true. This is the splits-arm test deferred from
+// Phase 1, which could not seed a both-set split row under the old XOR CHECK.
+func TestService_SpendingByCategory_TransferGuards_SplitLine(t *testing.T) {
+	setup := func(t *testing.T, catType string) (*Service, string) {
+		t.Helper()
+		database := createTestDB(t)
+		accountRepo := account.NewRepository(database)
+		txnRepo := &transactionRepo{db: database}
+		catRepo := &categoryRepo{db: database}
+		svc := NewService(accountRepo, database)
+
+		bal, _ := types.NewMoney("5000.00")
+		checking := account.NewAccount("Checking", account.TypeChecking, "USD", bal, types.Today())
+		if err := accountRepo.Create(checking); err != nil {
+			t.Fatalf("create checking: %v", err)
+		}
+		savings := account.NewAccount("Savings", account.TypeSavings, "USD", types.ZeroMoney, types.Today())
+		if err := accountRepo.Create(savings); err != nil {
+			t.Fatalf("create savings: %v", err)
+		}
+
+		groceriesID := catRepo.createCategory(t, "Groceries", "expense")
+		principalName := "Loan Principal"
+		principalID := catRepo.createCategory(t, principalName, catType)
+
+		txnDate := types.NewDate(2024, 1, 15)
+		spend, _ := types.NewMoney("-100.00")
+		txnRepo.createTransactionWithCategory(t, checking.ID, txnDate, spend, groceriesID)
+
+		outflow, _ := types.NewMoney("-500.00")
+		txnRepo.createCategorizedTransferSplit(t, checking.ID, savings.ID, txnDate, outflow, principalID)
+
+		return svc, principalName
+	}
+
+	t.Run("excludes categorized transfer split-lines by default", func(t *testing.T) {
+		svc, principalName := setup(t, "expense")
+
+		report, err := svc.SpendingByCategoryMonth(2024, 1, false)
+		if err != nil {
+			t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+		}
+
+		if c := findCategory(report, principalName); c != nil {
+			t.Errorf("categorized transfer split-line must not count as spending by default; found %q = %s", principalName, c.Amount.String())
+		}
+		want, _ := types.NewMoney("100.00")
+		if !report.TotalSpending.Equal(want) {
+			t.Errorf("total spending = %s, want %s (only the groceries expense)", report.TotalSpending.String(), want.String())
+		}
+	})
+
+	t.Run("includes categorized transfer split-lines once when requested", func(t *testing.T) {
+		svc, principalName := setup(t, "expense")
+
+		report, err := svc.SpendingByCategoryMonth(2024, 1, true)
+		if err != nil {
+			t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+		}
+
+		c := findCategory(report, principalName)
+		if c == nil {
+			t.Fatalf("categorized transfer split-line should appear with --include-transfers; categories = %v", report.Categories)
+		}
+		wantLine, _ := types.NewMoney("500.00")
+		if !c.Amount.Equal(wantLine) {
+			t.Errorf("%q = %s, want %s (split line, counted once)", principalName, c.Amount.String(), wantLine.String())
+		}
+		wantTotal, _ := types.NewMoney("600.00")
+		if !report.TotalSpending.Equal(wantTotal) {
+			t.Errorf("total spending = %s, want %s (100 groceries + 500 transfer split)", report.TotalSpending.String(), wantTotal.String())
+		}
+	})
+
+	t.Run("income-typed transfer split category never appears even when included", func(t *testing.T) {
+		svc, principalName := setup(t, "income")
+
+		report, err := svc.SpendingByCategoryMonth(2024, 1, true)
+		if err != nil {
+			t.Fatalf("SpendingByCategoryMonth() error = %v", err)
+		}
+
+		if c := findCategory(report, principalName); c != nil {
+			t.Errorf("income-typed transfer split category must never enter the spending report; found %q = %s", principalName, c.Amount.String())
 		}
 		want, _ := types.NewMoney("100.00")
 		if !report.TotalSpending.Equal(want) {

@@ -891,6 +891,27 @@ func TestSplitValidation(t *testing.T) {
 		}
 	})
 
+	t.Run("Transfer-line without category passes validation", func(t *testing.T) {
+		split := validSplit()
+		split.CategoryID = types.NilID
+		split.TransferAccountID = types.NullableID{ID: types.NewID(), Valid: true}
+		split.TransferID = types.NullableID{ID: types.NewID(), Valid: true}
+		errs := split.Validate()
+		if errs.HasErrors() {
+			t.Errorf("a transfer-line split should pass validation: %v", errs)
+		}
+	})
+
+	t.Run("Categorized transfer (both category and transfer set) passes validation", func(t *testing.T) {
+		split := validSplit() // CategoryID already set
+		split.TransferAccountID = types.NullableID{ID: types.NewID(), Valid: true}
+		split.TransferID = types.NullableID{ID: types.NewID(), Valid: true}
+		errs := split.Validate()
+		if errs.HasErrors() {
+			t.Errorf("a categorized transfer split should pass validation post-029: %v", errs)
+		}
+	})
+
 	t.Run("Zero amount fails validation", func(t *testing.T) {
 		split := validSplit()
 		split.Amount = types.ZeroMoney

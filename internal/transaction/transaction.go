@@ -350,12 +350,14 @@ func (t *Transaction) IsValid() bool {
 
 // Split represents one line of a split transaction.
 //
-// A line is either categorized (CategoryID set, transfer fields zero) or a
-// transfer-line that moves cash to another account (TransferAccountID +
-// TransferID set, CategoryID = NilID). The two shapes are mutually
-// exclusive and enforced at the database via CHECK constraints (see
-// migration 014). Service-layer validation of the new shape lives in later
-// tasks; this struct just exposes the fields.
+// A line carries a category, a transfer target, or both. A categorized line
+// has CategoryID set and the transfer fields zero; a transfer-line moves cash
+// to another account (TransferAccountID + TransferID set) and MAY additionally
+// carry a category — a "categorized transfer" (e.g. a loan payment's principal
+// line labeled Loan:Principal). At least one of the two must be present; the
+// DB enforces the at-least-one rule via CHECK constraints (see migrations 014
+// and 029). A transfer category is always optional and must be non-system (see
+// ValidateTransferCategory).
 type Split struct {
 	types.BaseModel
 
@@ -413,22 +415,21 @@ func (s *Split) ClearMemo() {
 	s.Touch()
 }
 
-// Validate validates the split and returns any validation errors. A split is
-// either categorized (CategoryID set, transfer fields zero) or a transfer-
-// line (TransferAccountID set, CategoryID zero). The two shapes are mutually
-// exclusive; a transfer-line's TransferID may be zero at construction time —
-// the service mints it when the parent transaction is created.
+// Validate validates the split and returns any validation errors. A split
+// must carry a category, a transfer target, or both: a categorized line
+// (CategoryID set), a transfer-line (TransferAccountID set), or a categorized
+// transfer (both set). A transfer-line's TransferID may be zero at
+// construction time — the service mints it when the parent transaction is
+// created.
 func (s *Split) Validate() types.ValidationErrors {
 	v := types.NewValidator()
 
 	v.RequiredID("transaction_id", s.TransactionID)
 
-	hasCategory := !s.CategoryID.IsNil()
-	hasTransfer := s.TransferAccountID.Valid
-	switch {
-	case hasCategory && hasTransfer:
-		v.AddError("split", "cannot have both category_id and transfer_account_id")
-	case !hasCategory && !hasTransfer:
+	// A split must carry at least one of category_id / transfer_account_id;
+	// both may be set (a categorized transfer). Non-system enforcement of an
+	// assigned category lives at the service layer (ValidateTransferCategory).
+	if s.CategoryID.IsNil() && !s.TransferAccountID.Valid {
 		v.AddError("split", "must have either category_id or transfer_account_id")
 	}
 

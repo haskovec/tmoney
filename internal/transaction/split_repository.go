@@ -34,8 +34,9 @@ func categoryArg(split *Split) any {
 }
 
 // verifyReferences confirms that the FK targets named on the split exist.
-// Transfer-lines must point at an existing account; categorized lines must
-// point at an existing category.
+// Transfer-lines must point at an existing account and categorized lines at an
+// existing category; a categorized transfer (both set — migration 029) is
+// verified against both, no longer short-circuiting past the category check.
 func (r *SplitRepository) verifyReferences(split *Split) error {
 	if split.TransferAccountID.Valid {
 		var exists bool
@@ -49,6 +50,11 @@ func (r *SplitRepository) verifyReferences(split *Split) error {
 		if !exists {
 			return &dberrors.NotFoundError{Entity: "account", ID: split.TransferAccountID.ID.String()}
 		}
+		// Fall through: a transfer-line may also carry a category, verified
+		// below when present.
+	}
+
+	if split.CategoryID.IsNil() {
 		return nil
 	}
 

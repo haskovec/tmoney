@@ -70,12 +70,12 @@ func TestTransferSchedule_Validate(t *testing.T) {
 		}
 	})
 
-	t.Run("transfer with category rejected", func(t *testing.T) {
+	t.Run("transfer with category is accepted (categorized transfer)", func(t *testing.T) {
 		st := newTransferSchedule(from, to, "200.00")
 		st.AccountID = from
 		st.CategoryID = types.NullableID{ID: types.NewID(), Valid: true}
-		if errs := st.Validate(); !errs.HasErrors() {
-			t.Fatal("expected error when both transfer and category set")
+		if errs := st.Validate(); errs.HasErrors() {
+			t.Fatalf("a categorized transfer schedule should validate, got %v", errs)
 		}
 	})
 
@@ -110,8 +110,10 @@ func TestTransferSchedule_PredicatesAndExclusivity(t *testing.T) {
 	if !st.IsTransfer() {
 		t.Fatal("expected IsTransfer after SetTransfer")
 	}
-	if st.HasCategory() {
-		t.Error("SetTransfer should clear the category (mutually exclusive)")
+	// SetTransfer no longer clears an existing category: a transfer may carry
+	// an optional category as a label — a categorized transfer (migration 029).
+	if !st.HasCategory() {
+		t.Error("SetTransfer should preserve an existing category (categorized transfer)")
 	}
 
 	st.ClearTransfer()
