@@ -157,6 +157,42 @@ func TestApp_RenderDashboard_CreditBalanceLiability(t *testing.T) {
 	}
 }
 
+// TestApp_AmountStyleBySign pins the sign-aware coloring shared by the ASSETS
+// and LIABILITIES columns: a negative amount (a debt, or an overdrawn asset)
+// uses the Negative/red style; a non-negative amount (a healthy asset, or a
+// credit / paid-ahead liability) uses the Positive/green style. Compared by
+// foreground color so the result is independent of the color profile active
+// during the test.
+func TestApp_AmountStyleBySign(t *testing.T) {
+	styles := widget.NewStyles()
+	app := &App{styles: styles}
+
+	// If the two styles share a foreground, the assertions below prove nothing.
+	if styles.Negative.GetForeground() == styles.Positive.GetForeground() {
+		t.Skip("Negative and Positive styles share a foreground; cannot distinguish")
+	}
+
+	cases := []struct {
+		name    string
+		amount  string
+		wantNeg bool
+	}{
+		{"debt / overdrawn", "-500.00", true},
+		{"credit / healthy asset", "625.21", false},
+		{"zero", "0", false},
+	}
+	for _, tc := range cases {
+		got := app.amountStyleBySign(types.MustNewMoney(tc.amount)).GetForeground()
+		want := styles.Positive.GetForeground()
+		if tc.wantNeg {
+			want = styles.Negative.GetForeground()
+		}
+		if got != want {
+			t.Errorf("%s: amountStyleBySign(%s) foreground = %v, want %v", tc.name, tc.amount, got, want)
+		}
+	}
+}
+
 func TestApp_RenderDashboard_WithScheduled(t *testing.T) {
 	payeeID := types.NewID()
 	styles := widget.NewStyles()

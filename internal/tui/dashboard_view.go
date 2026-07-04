@@ -219,7 +219,7 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 				}
 			}
 
-			line := fmt.Sprintf("%s%-*s %s", prefix, colWidth-len(amount)-lipgloss.Width(prefix)-2, name, a.styles.Positive.Render(amount))
+			line := fmt.Sprintf("%s%-*s %s", prefix, colWidth-len(amount)-lipgloss.Width(prefix)-2, name, a.amountStyleBySign(acct.Balance).Render(amount))
 			assetsLines = append(assetsLines, line)
 
 			// TR (total return) row for investment accounts — always shown
@@ -240,7 +240,7 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	assetsLines = append(assetsLines, a.styles.Muted.Render("  "+strings.Repeat("─", colWidth-4)))
 	totalLabel := "Total"
 	totalAmt := formatDashboardMoney(report.TotalAssets)
-	assetsLines = append(assetsLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalAmt)-4, totalLabel, a.styles.Positive.Bold(true).Render(totalAmt)))
+	assetsLines = append(assetsLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalAmt)-4, totalLabel, a.amountStyleBySign(report.TotalAssets).Bold(true).Render(totalAmt)))
 
 	// Build liabilities column. Liability balances are stored signed
 	// (negative = owed); under the LIABILITIES heading they render the raw
@@ -257,13 +257,13 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 			if acct.EstimatedValue {
 				amount = "~" + amount
 			}
-			line := fmt.Sprintf("  %-*s %s", colWidth-len(amount)-4, name, a.liabilityAmountStyle(acct.Balance).Render(amount))
+			line := fmt.Sprintf("  %-*s %s", colWidth-len(amount)-4, name, a.amountStyleBySign(acct.Balance).Render(amount))
 			liabLines = append(liabLines, line)
 		}
 	}
 	liabLines = append(liabLines, a.styles.Muted.Render("  "+strings.Repeat("─", colWidth-4)))
 	totalLiabAmt := formatDashboardMoney(report.TotalLiabilities)
-	liabLines = append(liabLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalLiabAmt)-4, totalLabel, a.liabilityAmountStyle(report.TotalLiabilities).Bold(true).Render(totalLiabAmt)))
+	liabLines = append(liabLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalLiabAmt)-4, totalLabel, a.amountStyleBySign(report.TotalLiabilities).Bold(true).Render(totalLiabAmt)))
 
 	// Ensure both columns have the same height
 	for len(assetsLines) < len(liabLines) {
@@ -284,11 +284,13 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	return strings.Join(rows, "\n")
 }
 
-// liabilityAmountStyle colors a liability amount by sign, now that the
-// LIABILITIES section shows the raw signed balance: a negative balance is a
-// debt (Negative/red) and a non-negative balance is a credit or paid-ahead
-// account (Positive/green), so an overpaid card does not read as a debt.
-func (a *App) liabilityAmountStyle(balance types.Money) lipgloss.Style {
+// amountStyleBySign colors a net-worth amount by its sign, shared by both the
+// ASSETS and LIABILITIES columns so signs read consistently: a negative amount
+// (a debt, or an overdrawn asset) uses the Negative/red style, and a
+// non-negative amount (a healthy asset, or a credit / paid-ahead liability)
+// uses the Positive/green style. This keeps an overpaid card from reading as a
+// debt and an overdrawn account from reading as healthy.
+func (a *App) amountStyleBySign(balance types.Money) lipgloss.Style {
 	if balance.IsNegative() {
 		return a.styles.Negative
 	}
