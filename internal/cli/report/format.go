@@ -36,8 +36,8 @@ func printNetWorthReport(w io.Writer, rpt *reportdom.NetWorth) {
 	fmt.Fprintf(w, "\nTotal Assets:\t\t%s\n\n", cmdutil.FormatMoney(rpt.TotalAssets, "USD"))
 
 	// Liabilities section. Liability balances are stored signed (negative =
-	// owed); under the LIABILITIES heading they render negated — not abs —
-	// so a credit-balance card correctly displays negative.
+	// owed); under the LIABILITIES heading they render the raw signed balance,
+	// so a debt shows negative and a credit / paid-ahead card shows positive.
 	fmt.Fprintln(w, "LIABILITIES")
 	fmt.Fprintln(w, "-----------")
 	if len(rpt.Liabilities) == 0 {
@@ -45,7 +45,7 @@ func printNetWorthReport(w io.Writer, rpt *reportdom.NetWorth) {
 	} else {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		for _, ab := range rpt.Liabilities {
-			balStr := cmdutil.FormatMoney(ab.Balance.Neg(), "USD")
+			balStr := cmdutil.FormatMoney(ab.Balance, "USD")
 			if ab.EstimatedValue {
 				balStr = "~" + balStr
 			}
@@ -53,7 +53,7 @@ func printNetWorthReport(w io.Writer, rpt *reportdom.NetWorth) {
 		}
 		tw.Flush()
 	}
-	fmt.Fprintf(w, "\nTotal Liabilities:\t%s\n\n", cmdutil.FormatMoney(rpt.TotalLiabilities.Neg(), "USD"))
+	fmt.Fprintf(w, "\nTotal Liabilities:\t%s\n\n", cmdutil.FormatMoney(rpt.TotalLiabilities, "USD"))
 
 	// Net worth
 	fmt.Fprintln(w, "========================")

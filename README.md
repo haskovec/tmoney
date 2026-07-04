@@ -187,8 +187,10 @@ tmoney -f personal.tdb account balance
 - Net worth calculation over signed balances (assets + liabilities).
   Liability accounts (credit card, loan) store what you owe as a
   **negative** balance — a $250,000 mortgage sits at −250,000 — and the
-  dashboard/report LIABILITIES sections display the negated (positive)
-  amount owed. **Upgrade note:** if you previously entered a loan's
+  dashboard/report LIABILITIES sections display the raw **signed**
+  balance: a debt shows negative (in red), while an overpaid or
+  paid-ahead account (positive balance) shows positive — a credit — so
+  it no longer reads as a debt. **Upgrade note:** if you previously entered a loan's
   opening balance as a positive number, flip its sign once (edit the
   account's opening balance); credit cards built from purchase
   transactions are already negative and need no change. Net worth for

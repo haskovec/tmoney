@@ -80,16 +80,49 @@ func TestReportNetWorth_WithAccounts(t *testing.T) {
 	}
 
 	// The -500 purchase leaves the card at -500 (owed); under the
-	// LIABILITIES heading it renders negated, and net worth is
-	// 15000 + (-500) = 14500 (the old subtract path overstated it as 15500).
-	if !strings.Contains(out, "$500.00") {
-		t.Errorf("expected liability displayed negated as $500.00, got:\n%s", out)
-	}
-	if strings.Contains(out, "-$500.00") {
-		t.Errorf("liability should not display as -$500.00 under LIABILITIES, got:\n%s", out)
+	// LIABILITIES heading it renders its raw signed balance (-$500.00, a
+	// debt), and net worth is 15000 + (-500) = 14500 (the old subtract path
+	// overstated it as 15500).
+	if !strings.Contains(out, "-$500.00") {
+		t.Errorf("expected liability displayed signed as -$500.00, got:\n%s", out)
 	}
 	if !strings.Contains(out, "$14500.00") {
 		t.Errorf("expected net worth $14500.00, got:\n%s", out)
+	}
+}
+
+// TestReportNetWorth_CreditBalanceLiability pins the fix for an overpaid /
+// paid-ahead credit card: its positive (credit) balance renders as a positive
+// credit under LIABILITIES, not as a negative that reads like a debt.
+func TestReportNetWorth_CreditBalanceLiability(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+
+	acctRepo := account.NewRepository(database)
+	creditCard := account.NewAccount("Apple Card", account.TypeCreditCard, "USD",
+		types.MustNewMoney("0"), types.Today())
+	if err := acctRepo.Create(creditCard); err != nil {
+		t.Fatalf("setup: create credit card: %v", err)
+	}
+
+	// A payment with nothing charged leaves the card in credit (+625.21).
+	txnRepo := transaction.NewRepository(database)
+	txn := transaction.NewTransaction(creditCard.ID, types.Today(), types.MustNewMoney("625.21"))
+	if err := txnRepo.Create(txn); err != nil {
+		t.Fatalf("setup: create transaction: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := cli.ExecuteWith([]string{"report", "net-worth", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(report net-worth): %v\nstderr=%s", err, stderr)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "$625.21") {
+		t.Errorf("expected credit-balance card shown as $625.21, got:\n%s", out)
+	}
+	if strings.Contains(out, "-$625.21") {
+		t.Errorf("a positive credit-card balance must not display as -$625.21, got:\n%s", out)
 	}
 }
 

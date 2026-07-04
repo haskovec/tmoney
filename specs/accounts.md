@@ -92,10 +92,11 @@ account, to-leg positive on the loan), and only a negative-owed balance
 lets that positive leg move the debt toward zero. Net worth is computed
 as `assets + liabilities` over signed balances. Views that list
 liabilities under an explicit LIABILITIES heading (dashboard, net-worth
-report) display the **negated** balance — so a −$249,500 mortgage shows
-as `249,500.00` owed, and an overpaid account correctly displays
-negative (a credit). Registers and the flat `account balance` list keep
-true signed values.
+report) display the raw **signed** balance — so a −$249,500 mortgage
+shows as `-249,500.00` (a debt, in red), and an overpaid or paid-ahead
+account (positive balance) shows positive, correctly reading as a
+credit (in green). Registers and the flat `account balance` list keep
+these same signed values.
 
 An amortized `loan` account is typically set up (with its optional linked
 asset account and a monthly payment schedule) through the **loan wizard** —

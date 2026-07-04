@@ -243,25 +243,27 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	assetsLines = append(assetsLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalAmt)-4, totalLabel, a.styles.Positive.Bold(true).Render(totalAmt)))
 
 	// Build liabilities column. Liability balances are stored signed
-	// (negative = owed); under the LIABILITIES heading they render negated —
-	// not abs — so a credit-balance card correctly displays negative.
+	// (negative = owed); under the LIABILITIES heading they render the raw
+	// signed balance — a debt shows negative (in red), while a credit /
+	// paid-ahead card shows positive (in green), so an overpaid card no
+	// longer reads as a debt.
 	liabLines := []string{a.styles.SectionHead.Render(widget.PadRight("LIABILITIES", colWidth))}
 	if len(report.Liabilities) == 0 {
 		liabLines = append(liabLines, a.styles.Muted.Render("  (none)"))
 	} else {
 		for _, acct := range report.Liabilities {
 			name := widget.Truncate(acct.Name, colWidth-14)
-			amount := formatDashboardMoney(acct.Balance.Neg())
+			amount := formatDashboardMoney(acct.Balance)
 			if acct.EstimatedValue {
 				amount = "~" + amount
 			}
-			line := fmt.Sprintf("  %-*s %s", colWidth-len(amount)-4, name, a.styles.Negative.Render(amount))
+			line := fmt.Sprintf("  %-*s %s", colWidth-len(amount)-4, name, a.liabilityAmountStyle(acct.Balance).Render(amount))
 			liabLines = append(liabLines, line)
 		}
 	}
 	liabLines = append(liabLines, a.styles.Muted.Render("  "+strings.Repeat("─", colWidth-4)))
-	totalLiabAmt := formatDashboardMoney(report.TotalLiabilities.Neg())
-	liabLines = append(liabLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalLiabAmt)-4, totalLabel, a.styles.Negative.Bold(true).Render(totalLiabAmt)))
+	totalLiabAmt := formatDashboardMoney(report.TotalLiabilities)
+	liabLines = append(liabLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalLiabAmt)-4, totalLabel, a.liabilityAmountStyle(report.TotalLiabilities).Bold(true).Render(totalLiabAmt)))
 
 	// Ensure both columns have the same height
 	for len(assetsLines) < len(liabLines) {
@@ -280,6 +282,17 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	}
 
 	return strings.Join(rows, "\n")
+}
+
+// liabilityAmountStyle colors a liability amount by sign, now that the
+// LIABILITIES section shows the raw signed balance: a negative balance is a
+// debt (Negative/red) and a non-negative balance is a credit or paid-ahead
+// account (Positive/green), so an overpaid card does not read as a debt.
+func (a *App) liabilityAmountStyle(balance types.Money) lipgloss.Style {
+	if balance.IsNegative() {
+		return a.styles.Negative
+	}
+	return a.styles.Positive
 }
 
 // renderDashboardTRLine renders the total-return row for an investment

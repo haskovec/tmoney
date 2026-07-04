@@ -81,13 +81,10 @@ func TestApp_RenderDashboard_WithData(t *testing.T) {
 	if !contains(view, "Visa") {
 		t.Error("renderDashboard() should contain 'Visa'")
 	}
-	// Liabilities render negated under the LIABILITIES heading: the -1500
-	// stored balance displays as positive 1500 owed.
-	if !contains(view, "$1500.00") {
-		t.Error("renderDashboard() should display the liability negated as '$1500.00'")
-	}
-	if contains(view, "-$1500.00") {
-		t.Error("renderDashboard() should not display the stored negative liability balance '-$1500.00'")
+	// Liabilities render their raw signed balance under the LIABILITIES
+	// heading: the -1500 stored balance (a debt) displays as '-$1500.00'.
+	if !contains(view, "-$1500.00") {
+		t.Error("renderDashboard() should display the signed liability balance '-$1500.00'")
 	}
 	if !contains(view, "SCHEDULED") {
 		t.Error("renderDashboard() should contain 'SCHEDULED'")
@@ -122,6 +119,41 @@ func TestApp_RenderDashboard_NegativeNetWorth(t *testing.T) {
 	}
 	if !contains(view, "(none)") {
 		t.Error("renderDashboard() should show '(none)' for empty assets")
+	}
+}
+
+// TestApp_RenderDashboard_CreditBalanceLiability pins the fix for a
+// credit card that has been overpaid / paid ahead: it carries a positive
+// (credit) stored balance and must display as a positive credit under
+// LIABILITIES, not as a red negative that reads like a debt.
+func TestApp_RenderDashboard_CreditBalanceLiability(t *testing.T) {
+	styles := widget.NewStyles()
+	styles.Resize(100, 30)
+	app := &App{
+		currentView: ViewDashboard,
+		width:       100,
+		height:      30,
+		styles:      styles,
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets:           []report.AccountBalance{{Name: "Checking", Balance: types.MustNewMoney("1000.00")}},
+				Liabilities:      []report.AccountBalance{{Name: "Apple Card", Type: "credit_card", Balance: types.MustNewMoney("625.21")}},
+				TotalAssets:      types.MustNewMoney("1000.00"),
+				TotalLiabilities: types.MustNewMoney("625.21"),
+				NetWorth:         types.MustNewMoney("1625.21"),
+			},
+			payeeNames:   make(map[types.ID]string),
+			accountNames: make(map[types.ID]string),
+		},
+	}
+
+	view := app.renderDashboard()
+
+	if !contains(view, "$625.21") {
+		t.Errorf("renderDashboard() should show the credit-balance card, got:\n%s", view)
+	}
+	if contains(view, "-$625.21") {
+		t.Error("renderDashboard() should NOT display a positive credit-card balance as a negative liability '-$625.21'")
 	}
 }
 

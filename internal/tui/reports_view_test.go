@@ -76,13 +76,10 @@ func TestApp_RenderNetWorthReport(t *testing.T) {
 	if !contains(view, "Visa") {
 		t.Error("renderNetWorthReport() should contain 'Visa'")
 	}
-	// Liabilities render negated under the LIABILITIES heading: the -1500
-	// stored balance displays as positive 1500 owed.
-	if !contains(view, "$1500.00") {
-		t.Error("renderNetWorthReport() should display the liability negated as '$1500.00'")
-	}
-	if contains(view, "-$1500.00") {
-		t.Error("renderNetWorthReport() should not display the stored negative liability balance '-$1500.00'")
+	// Liabilities render their raw signed balance under the LIABILITIES
+	// heading: the -1500 stored balance (a debt) displays as '-$1500.00'.
+	if !contains(view, "-$1500.00") {
+		t.Error("renderNetWorthReport() should display the signed liability balance '-$1500.00'")
 	}
 }
 

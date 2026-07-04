@@ -56,18 +56,18 @@ ASSETS
 
 LIABILITIES
 ──────────────────────────────────────
-  Visa Credit Card            $1,234.56
+  Visa Credit Card           -$1,234.56
   ────────────────────────────────────
-  Total Liabilities           $1,234.56
+  Total Liabilities          -$1,234.56
 
 ──────────────────────────────────────
 NET WORTH                    $61,678.90
 ```
 
-Amounts under the LIABILITIES heading are the **negated** stored
-balances: the Visa's stored balance is −$1,234.56, displayed as
-$1,234.56 owed. An overpaid account (positive stored balance) displays
-negative, which correctly reads as a credit.
+Amounts under the LIABILITIES heading are the **raw signed** stored
+balances: the Visa's stored balance is −$1,234.56 and displays as
+−$1,234.56 (a debt, in red). An overpaid account (positive stored
+balance) displays positive, correctly reading as a credit.
 
 ### Display Format (CLI)
 
@@ -86,9 +86,9 @@ Total Assets:      $62,913.46
 
 LIABILITIES
 -----------
-Visa Card:          $1,234.56
+Visa Card:         -$1,234.56
 ------------------------
-Total Liabilities:  $1,234.56
+Total Liabilities: -$1,234.56
 
 NET WORTH:         $61,678.90
 ```
@@ -111,9 +111,11 @@ Total Liabilities = sum of signed liability balances, ≤ 0 when owed
 
 Net Worth = Total Assets + Total Liabilities
 
-Display: liability rows and the liabilities total render negated under
-the LIABILITIES heading (negation, not abs). The report struct carries
-signed values; presentation layers transform.
+Display: liability rows and the liabilities total render their raw
+signed balance under the LIABILITIES heading — a debt shows negative
+(in red), an overpaid/credit-balance account shows positive (a credit,
+in green). The report struct carries signed values; presentation layers
+show them directly.
 ```
 
 ### Options

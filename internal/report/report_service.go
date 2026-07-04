@@ -139,7 +139,8 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 		} else if accountType.IsLiabilityType() {
 			liabilities = append(liabilities, accountBalance)
 			// Liability balances are stored signed (negative = owed), so the
-			// total stays signed too; presentation layers negate for display.
+			// total stays signed too; presentation layers show the signed
+			// balance directly (a debt negative, a credit positive).
 			totalLiabilities = totalLiabilities.Add(balance)
 		}
 	}

@@ -11,9 +11,9 @@ import (
 // All balances are signed: liability balances are stored negative when money
 // is owed (a $250,000 mortgage sits at -250,000), so
 // NetWorth = TotalAssets + TotalLiabilities. Presentation layers that list
-// liabilities under an explicit LIABILITIES heading render the negated
-// balance (negation, not abs — an overpaid loan or credit-balance card
-// displays negative, which correctly reads as a credit).
+// liabilities under an explicit LIABILITIES heading render the raw signed
+// balance — a debt shows negative and an overpaid loan or credit-balance
+// card shows positive (a credit) — rather than negating it.
 type NetWorth struct {
 	AsOfDate         time.Time
 	Assets           []AccountBalance
