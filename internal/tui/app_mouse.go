@@ -327,6 +327,8 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		case dialog.DialogActionCancel:
 			a.transferDialog.SetVisible(false)
 			a.transferDialog = nil
+		case dialog.DialogActionAddNew:
+			return a.openCreateCategorySubDialogForTransfer()
 		}
 		return a, nil
 	}

@@ -583,6 +583,10 @@ func (a *App) cancelCreateCatDialog() {
 			a.loanWizard.SetVisible(true)
 		}
 		a.createCatLoanField = -1
+	case createCatSourceTransferDialog:
+		if a.transferDialog != nil {
+			a.transferDialog.SetVisible(true)
+		}
 	}
 	a.createCatSource = createCatSourceNone
 }
@@ -614,6 +618,10 @@ func (a *App) parentsForCreateCatDialog() []string {
 	case createCatSourceTxnDialog:
 		if a.txnDialogData != nil {
 			return topLevelParentNames(a.txnDialogData.categories)
+		}
+	case createCatSourceTransferDialog:
+		if a.transferDialogData != nil {
+			return topLevelParentNames(a.transferDialogData.categories)
 		}
 	}
 	if a.categorySvc != nil {

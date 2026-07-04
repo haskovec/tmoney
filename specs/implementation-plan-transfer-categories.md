@@ -205,29 +205,42 @@ fixable against today's schema.
   `TransferCashBetweenInvestments` takes no category param; it is a Phase 5
   dialog-validation concern.)
 
-## Phase 5: TUI Transfer Dialogs — [ ]
+## Phase 5: TUI Transfer Dialogs — [x]
 
-- [ ] `internal/tui/transfer_dialog.go`: Category combo (+`AddNewLabel`) in
-  create mode after Memo — From/To/Amount/Date/Memo/Category (hard-coded
-  submit indices :442-503 and `len` guards updated); edit mode
-  Amount/Date/Memo/Category/Status, omitted for inv→inv; seed edit from the
-  outflow leg; `investmentTransferEdit` payload (:80-88) + the direct
-  `UpdateTransferCash` call (:743-760) gain category.
-- [ ] Category options loading in `loadTransferDialogData` (:181-198) and
-  **both** edit loaders — `loadEditTransferDialogData` (:209-291, the
-  bank↔bank path) and `loadEditInvestmentTransferDialogData` (:302-355).
-- [ ] Inline-creation plumbing: new `createCategorySource` entry
-  (`internal/tui/create_category_dialog.go:20-28`), applier
-  (:280-298) + cancel-restore cases, `DialogActionAddNew` handling in
-  `handleTransferDialogKey` (transfer_dialog.go:420-427) **and** the
-  transfer dialog's mouse path (`internal/tui/app_mouse.go:322-332`).
-- [ ] inv→inv submit with a category selected → validation message naming
-  the limitation.
-- [ ] Tests: dialog-build field lists per combo; submit threads category
-  through `CreateTransferCommand`/`EditTransferCommand`/
-  `UpdateTransferCash`; inline creation from the transfer dialog; editing
-  a `transfer_cash` row from the investment register shows and saves the
-  bank-leg category; inv→inv rejection.
+- [x] `internal/tui/transfer_dialog.go`: Category combo (+`AddNewLabel`) in
+  create mode after Memo — From/To/Amount/Date/Memo/Category (create submit
+  reads category at index 5, guarded so a legacy 5-field dialog degrades to
+  no category); edit mode Amount/Date/Memo/Category/Status via a shared
+  `editTransferIncludesCategory` predicate (index-aware submit), **omitted for
+  inv→inv**; seed edit from the outflow/regular-side leg; `investmentTransferEdit`
+  gains `categoryID`, and the direct `UpdateTransferCash` call threads it.
+  New helpers: `editTransferIncludesCategory`, `categoryComboIndex`,
+  `transferCategoryFieldIndex`.
+- [x] Category options loading in `loadTransferDialogData` and **both** edit
+  loaders — `loadEditTransferDialogData` (bank↔bank + the counterpart-is-
+  investment branch, seeding `categoryID` from the bank leg `txn`) and
+  `loadEditInvestmentTransferDialogData` (inv↔reg seeds the regular leg's
+  category via the new `transaction.Service.ListByTransferID`; inv↔inv leaves
+  it zero). `app_update.go` `transferDialogDataMsg` handler computes the
+  combo options + parallel `transferDialogCategoryIDs` and resolves the edit
+  seed index.
+- [x] Inline-creation plumbing: new `createCatSourceTransferDialog` enum entry,
+  router case in `applyCreatedCategory` → `applyCreatedCategoryToTransfer`,
+  cancel-restore case in `cancelCreateCatDialog`, `parentsForCreateCatDialog`
+  case, and `DialogActionAddNew` handling in `handleTransferDialogKey`
+  **and** the transfer dialog's mouse path (`app_mouse.go`). The
+  create-category sub-dialog defaults to Expense (transfers carry no
+  income/expense signal in their always-positive amount).
+- [x] inv→inv submit with a category selected → validation message naming
+  the limitation (dialog stays open, inline error on the Category field).
+- [x] Tests (`transfer_dialog_category_test.go` + updated
+  `transfer_dialog_test.go`): dialog-build field lists per combo (create 6
+  fields; bank↔bank/inv↔reg edit 5; inv↔inv edit 4); `editTransferIncludesCategory`
+  / `categoryComboIndex` / `transferCategoryFieldIndex` unit tests; DB-backed
+  end-to-end create threads category to both legs; DB-backed edit sets then
+  clears the category on both legs (mirror + seed round-trip); inv→inv
+  rejection (and the no-category variant still submits); inline creation
+  open/cancel/apply from the transfer dialog.
 
 ## Phase 6: CLI Surface + Output/Export Fixes — [ ]
 

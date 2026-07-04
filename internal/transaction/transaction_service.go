@@ -1155,6 +1155,17 @@ func (s *Service) GetTransferCounterpart(transactionID types.ID) (*Transaction, 
 	return s.transferRepo.GetOtherSide(transactionID)
 }
 
+// ListByTransferID returns every regular-side transaction sharing the given
+// transfer_id. For a bank↔bank transfer that is both legs; for an inv↔reg
+// transfer only the single regular leg lives in the transactions table (the
+// investment leg is in investment_transactions), which is exactly the leg
+// that can carry a transfer category. The TUI uses this to seed the Edit
+// Transfer dialog's category when an inv↔reg transfer is opened from the
+// investment register (where the on-screen row has no category of its own).
+func (s *Service) ListByTransferID(transferID types.ID) ([]*Transaction, error) {
+	return s.txnRepo.ListByTransferID(transferID)
+}
+
 // UpdateTransfer updates both sides of a transfer.
 // Only amount, date, memo, status, and category can be updated.
 // Reconciled transfers cannot be edited.

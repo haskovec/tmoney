@@ -268,8 +268,9 @@ func TestBuildAccountOptions_Empty(t *testing.T) {
 
 func TestBuildTransferDialog(t *testing.T) {
 	options := []string{"Checking", "Savings", "Credit Card"}
+	catOptions := []string{"(None)", "Food", "Bills"}
 
-	d := buildTransferDialog(options, 0)
+	d := buildTransferDialog(options, catOptions, 0)
 
 	if d.Title() != "New Transfer" {
 		t.Errorf("title = %q, want %q", d.Title(), "New Transfer")
@@ -280,15 +281,16 @@ func TestBuildTransferDialog(t *testing.T) {
 	}
 
 	fields := d.Fields()
-	if len(fields) != 5 {
-		t.Fatalf("expected 5 fields, got %d", len(fields))
+	if len(fields) != 6 {
+		t.Fatalf("expected 6 fields, got %d", len(fields))
 	}
 }
 
 func TestBuildTransferDialog_FieldTypes(t *testing.T) {
 	options := []string{"Checking", "Savings"}
+	catOptions := []string{"(None)", "Food"}
 
-	d := buildTransferDialog(options, 0)
+	d := buildTransferDialog(options, catOptions, 0)
 	fields := d.Fields()
 
 	expected := []struct {
@@ -300,6 +302,11 @@ func TestBuildTransferDialog_FieldTypes(t *testing.T) {
 		{"Amount", dialog.FieldText},
 		{"Date", dialog.FieldDate},
 		{"Memo", dialog.FieldText},
+		{"Category", dialog.FieldCombo},
+	}
+
+	if len(fields) != len(expected) {
+		t.Fatalf("expected %d fields, got %d", len(expected), len(fields))
 	}
 
 	for i, exp := range expected {
@@ -310,12 +317,17 @@ func TestBuildTransferDialog_FieldTypes(t *testing.T) {
 			t.Errorf("field[%d] type = %v, want %v", i, fields[i].Type, exp.fieldType)
 		}
 	}
+
+	// The Category combo exposes the inline create-category action row.
+	if fields[5].AddNewLabel == "" {
+		t.Error("Category combo should set AddNewLabel for inline creation")
+	}
 }
 
 func TestBuildTransferDialog_DefaultFromIndex(t *testing.T) {
 	options := []string{"Checking", "Savings", "Credit Card"}
 
-	d := buildTransferDialog(options, 1)
+	d := buildTransferDialog(options, nil, 1)
 	fields := d.Fields()
 
 	// From should default to index 1 (Savings)
@@ -332,7 +344,7 @@ func TestBuildTransferDialog_DefaultFromIndex(t *testing.T) {
 func TestBuildTransferDialog_DefaultFromZero(t *testing.T) {
 	options := []string{"Checking", "Savings"}
 
-	d := buildTransferDialog(options, 0)
+	d := buildTransferDialog(options, nil, 0)
 	fields := d.Fields()
 
 	// From should default to index 0 (Checking)
@@ -349,7 +361,7 @@ func TestBuildTransferDialog_DefaultFromZero(t *testing.T) {
 func TestBuildTransferDialog_DateDefault(t *testing.T) {
 	options := []string{"Checking", "Savings"}
 
-	d := buildTransferDialog(options, 0)
+	d := buildTransferDialog(options, nil, 0)
 	fields := d.Fields()
 
 	today := time.Now().Format("01/02/2006")
@@ -365,7 +377,7 @@ func TestBuildTransferDialog_DateDefault(t *testing.T) {
 func TestBuildTransferDialog_DateFieldOverwriteSemantics(t *testing.T) {
 	options := []string{"Checking", "Savings"}
 
-	d := buildTransferDialog(options, 0)
+	d := buildTransferDialog(options, nil, 0)
 	d.SetFocusIndex(3) // Date field
 
 	// Pre-load a known value so the assertion is deterministic.
@@ -388,7 +400,7 @@ func TestBuildTransferDialog_DateFieldOverwriteSemantics(t *testing.T) {
 func TestBuildTransferDialog_SingleAccount(t *testing.T) {
 	options := []string{"Checking"}
 
-	d := buildTransferDialog(options, 0)
+	d := buildTransferDialog(options, nil, 0)
 	fields := d.Fields()
 
 	// From should be 0
@@ -1203,7 +1215,8 @@ func TestBuildEditTransferDialog_Prefill(t *testing.T) {
 	date := pair.FromTransaction.Date
 	memo := pair.FromTransaction.Memo.String
 	status := pair.FromTransaction.Status
-	d := buildEditTransferDialog("Checking", "Savings", amount, date, memo, status)
+	catOptions := []string{"(None)", "Bills"}
+	d := buildEditTransferDialog("Checking", "Savings", amount, date, memo, status, true, catOptions, 1)
 
 	if d.Title() != "Edit Transfer" {
 		t.Errorf("title = %q, want %q", d.Title(), "Edit Transfer")
@@ -1213,8 +1226,8 @@ func TestBuildEditTransferDialog_Prefill(t *testing.T) {
 	}
 
 	fields := d.Fields()
-	if len(fields) != 4 {
-		t.Fatalf("expected 4 editable fields (Amount, Date, Memo, Status), got %d", len(fields))
+	if len(fields) != 5 {
+		t.Fatalf("expected 5 editable fields (Amount, Date, Memo, Category, Status), got %d", len(fields))
 	}
 
 	expected := []struct {
@@ -1224,6 +1237,7 @@ func TestBuildEditTransferDialog_Prefill(t *testing.T) {
 		{"Amount", dialog.FieldText},
 		{"Date", dialog.FieldDate},
 		{"Memo", dialog.FieldText},
+		{"Category", dialog.FieldCombo},
 		{"Status", dialog.FieldRadio},
 	}
 	for i, exp := range expected {
@@ -1245,7 +1259,30 @@ func TestBuildEditTransferDialog_Prefill(t *testing.T) {
 		t.Errorf("Memo = %q, want %q", fields[2].Value, "rent split")
 	}
 	if fields[3].SelectedIndex != 1 {
-		t.Errorf("Status SelectedIndex = %d, want 1 (Cleared)", fields[3].SelectedIndex)
+		t.Errorf("Category SelectedIndex = %d, want 1 (seeded)", fields[3].SelectedIndex)
+	}
+	if fields[4].SelectedIndex != 1 {
+		t.Errorf("Status SelectedIndex = %d, want 1 (Cleared)", fields[4].SelectedIndex)
+	}
+}
+
+// TestBuildEditTransferDialog_InvToInvOmitsCategory pins that the inv↔inv edit
+// layout keeps the pre-category shape (Amount, Date, Memo, Status) since
+// neither leg can store a category.
+func TestBuildEditTransferDialog_InvToInvOmitsCategory(t *testing.T) {
+	d := buildEditTransferDialog("IRA A", "IRA B", types.MustNewMoney("1000"), types.NewDate(2024, 3, 15), "rollover", transaction.StatusUncleared, false, nil, 0)
+
+	fields := d.Fields()
+	if len(fields) != 4 {
+		t.Fatalf("expected 4 fields (no Category), got %d", len(fields))
+	}
+	for _, f := range fields {
+		if f.Label == "Category" {
+			t.Error("inv↔inv edit dialog must not include a Category field")
+		}
+	}
+	if fields[3].Label != "Status" {
+		t.Errorf("field[3] label = %q, want Status", fields[3].Label)
 	}
 }
 
@@ -1364,14 +1401,18 @@ func TestApp_Update_TransferDialogDataMsg_EditMode(t *testing.T) {
 	}
 
 	fields := updatedApp.transferDialog.Fields()
-	if len(fields) != 4 {
-		t.Fatalf("expected 4 fields, got %d", len(fields))
+	// bank↔bank edit carries a Category combo: Amount, Date, Memo, Category, Status.
+	if len(fields) != 5 {
+		t.Fatalf("expected 5 fields, got %d", len(fields))
 	}
 	if fields[0].Value != "300" {
 		t.Errorf("Amount = %q, want %q", fields[0].Value, "300")
 	}
 	if fields[1].Value != "04/01/2024" {
 		t.Errorf("Date = %q, want %q", fields[1].Value, "04/01/2024")
+	}
+	if fields[3].Label != "Category" {
+		t.Errorf("field[3] label = %q, want Category", fields[3].Label)
 	}
 }
 

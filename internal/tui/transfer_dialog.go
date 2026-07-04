@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -62,6 +63,7 @@ func transferOpeningDateError(accounts []*account.Account, date types.Date, ids 
 type transferDialogData struct {
 	accounts   []*account.Account
 	accountIDs []types.ID // parallel to account dropdown options
+	categories []*category.Category
 
 	// Edit-mode-only fields. Zero in new mode. Exactly one of existing /
 	// existingInvestment is set in edit mode: existing for bank↔bank
@@ -84,7 +86,8 @@ type investmentTransferEdit struct {
 	date            types.Date
 	memo            string
 	status          transaction.Status
-	investmentTxnID types.ID // ID of the investment-side row, fed to UpdateTransferCash
+	categoryID      types.NullableID // regular-side leg's category (inv↔reg); zero for inv↔inv
+	investmentTxnID types.ID         // ID of the investment-side row, fed to UpdateTransferCash
 }
 
 // transferDialogDataMsg is sent when transfer dialog data has been loaded.
@@ -121,8 +124,12 @@ func buildAccountOptions(accounts []*account.Account) ([]string, []types.ID) {
 }
 
 // buildTransferDialog creates a dialog.Dialog for entering a new transfer.
-// defaultFromIndex is the index of the currently selected account to pre-select as "From".
-func buildTransferDialog(accountOptions []string, defaultFromIndex int) *dialog.Dialog {
+// defaultFromIndex is the index of the currently selected account to
+// pre-select as "From". categoryOptions is the "(None)"-led combo list
+// produced by buildCategoryOptions; the parallel ID slice is held on the App
+// as transferDialogCategoryIDs. Field order is
+// From, To, Amount, Date, Memo, Category.
+func buildTransferDialog(accountOptions, categoryOptions []string, defaultFromIndex int) *dialog.Dialog {
 	d := dialog.NewDialog("New Transfer")
 
 	// From account
@@ -146,6 +153,11 @@ func buildTransferDialog(accountOptions []string, defaultFromIndex int) *dialog.
 	// Memo
 	d.AddTextField("Memo", "", "Optional memo", 0)
 
+	// Category — optional label for the transfer, with inline creation. Not
+	// applicable to inv→inv transfers (validated at submit).
+	catField := d.AddComboField("Category", categoryOptions, 0)
+	catField.AddNewLabel = "[+ Add new category…]"
+
 	d.SetVisible(true)
 	return d
 }
@@ -153,9 +165,17 @@ func buildTransferDialog(accountOptions []string, defaultFromIndex int) *dialog.
 // buildEditTransferDialog builds the edit-mode transfer dialog. Title is
 // "Edit Transfer"; the From/To accounts are rendered as a read-only body
 // message ("Checking → Savings") since UpdateTransfer cannot move a
-// transfer between accounts. Editable fields are Amount (positive),
-// Date, Memo, and Status — all pre-filled from the supplied values.
-func buildEditTransferDialog(fromName, toName string, amount types.Money, date types.Date, memo string, status transaction.Status) *dialog.Dialog {
+// transfer between accounts. Editable fields are Amount (positive), Date,
+// Memo, an optional Category, and Status — all pre-filled from the supplied
+// values.
+//
+// The Category combo appears when includeCategory is true — i.e. for every
+// transfer with a regular-side leg that can store a category (bank↔bank and
+// inv↔reg). It is omitted for inv→inv transfers, where neither leg can hold
+// one; there the layout stays Amount, Date, Memo, Status as before.
+// categoryIdx pre-selects the combo from the seeding leg's category (0 =
+// "(None)").
+func buildEditTransferDialog(fromName, toName string, amount types.Money, date types.Date, memo string, status transaction.Status, includeCategory bool, categoryOptions []string, categoryIdx int) *dialog.Dialog {
 	d := dialog.NewDialog("Edit Transfer")
 	d.SetMessage(fromName + " → " + toName)
 
@@ -167,6 +187,11 @@ func buildEditTransferDialog(fromName, toName string, amount types.Money, date t
 
 	d.AddTextField("Memo", memo, "Optional memo", 0)
 
+	if includeCategory {
+		catField := d.AddComboField("Category", categoryOptions, categoryIdx)
+		catField.AddNewLabel = "[+ Add new category…]"
+	}
+
 	statusIdx := 0
 	if status == transaction.StatusCleared {
 		statusIdx = 1
@@ -175,6 +200,62 @@ func buildEditTransferDialog(fromName, toName string, amount types.Money, date t
 
 	d.SetVisible(true)
 	return d
+}
+
+// editTransferIncludesCategory reports whether the edit-mode Transfer dialog
+// for the given loaded data should show a Category combo. Every transfer with
+// a regular-side leg (bank↔bank via data.existing, or inv↔reg via
+// data.existingInvestment where exactly one leg is investment-typed) can carry
+// a category; an inv↔inv transfer (both legs investment) cannot, so the field
+// is omitted there. Both the dialog builder and the submit handler consult
+// this so field indices agree.
+func editTransferIncludesCategory(data *transferDialogData) bool {
+	if data == nil {
+		return false
+	}
+	switch {
+	case data.existing != nil:
+		return true
+	case data.existingInvestment != nil:
+		e := data.existingInvestment
+		fromInv := accountTypeByID(data.accounts, e.fromAccountID).IsInvestmentType()
+		toInv := accountTypeByID(data.accounts, e.toAccountID).IsInvestmentType()
+		// inv↔inv (both legs investment) has no regular-side leg to store a
+		// category; any other inv-involving shape (inv↔reg) has exactly one.
+		return !fromInv || !toInv
+	}
+	return false
+}
+
+// categoryComboIndex resolves the combo SelectedIndex for catID against the
+// parallel category ID slice (index 0 is the "(None)" sentinel). Returns 0
+// when catID is unset or not found.
+func categoryComboIndex(ids []types.ID, catID types.NullableID) int {
+	if !catID.Valid {
+		return 0
+	}
+	for i, id := range ids {
+		if id == catID.ID {
+			return i
+		}
+	}
+	return 0
+}
+
+// transferCategoryFieldIndex returns the dialog-field index of the Category
+// combo for the currently open transfer dialog, or -1 when the dialog has no
+// Category field. Create mode lays out From, To, Amount, Date, Memo, Category
+// (index 5); the edit modes that carry a category lay out
+// Amount, Date, Memo, Category, Status (index 3); an inv↔inv edit omits the
+// combo entirely, so it reports -1 rather than pointing at the Status radio.
+func (a *App) transferCategoryFieldIndex() int {
+	if a.transferDialogData != nil && a.transferDialogData.mode == transferDialogModeEdit {
+		if !editTransferIncludesCategory(a.transferDialogData) {
+			return -1
+		}
+		return 3
+	}
+	return 5
 }
 
 // loadTransferDialogData returns a command that loads accounts for the transfer dialog.
@@ -188,6 +269,14 @@ func (a *App) loadTransferDialogData() tea.Cmd {
 				return errMsg{err: err}
 			}
 			data.accounts = accounts
+		}
+
+		if a.categorySvc != nil {
+			categories, err := a.categorySvc.List()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.categories = categories
 		}
 
 		_, ids := buildAccountOptions(data.accounts)
@@ -218,6 +307,13 @@ func (a *App) loadEditTransferDialogData(transactionID types.ID) tea.Cmd {
 				return errMsg{err: err}
 			}
 			data.accounts = accounts
+		}
+		if a.categorySvc != nil {
+			categories, err := a.categorySvc.List()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.categories = categories
 		}
 		_, ids := buildAccountOptions(data.accounts)
 		data.accountIDs = ids
@@ -270,12 +366,16 @@ func (a *App) loadEditTransferDialogData(transactionID types.ID) tea.Cmd {
 				memo = txn.Memo.String
 			}
 			data.existingInvestment = &investmentTransferEdit{
-				fromAccountID:   fromAccountID,
-				toAccountID:     toAccountID,
-				amount:          amount,
-				date:            txn.Date,
-				memo:            memo,
-				status:          txn.Status,
+				fromAccountID: fromAccountID,
+				toAccountID:   toAccountID,
+				amount:        amount,
+				date:          txn.Date,
+				memo:          memo,
+				status:        txn.Status,
+				// txn is the regular-side (bank) leg the user opened, so its
+				// category is the transfer's category (the investment leg
+				// cannot store one).
+				categoryID:      txn.CategoryID,
 				investmentTxnID: invLeg.ID,
 			}
 			return transferDialogDataMsg{data: data}
@@ -310,6 +410,13 @@ func (a *App) loadEditInvestmentTransferDialogData(invTxnID types.ID) tea.Cmd {
 			}
 			data.accounts = accounts
 		}
+		if a.categorySvc != nil {
+			categories, err := a.categorySvc.List()
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.categories = categories
+		}
 		_, ids := buildAccountOptions(data.accounts)
 		data.accountIDs = ids
 
@@ -340,6 +447,25 @@ func (a *App) loadEditInvestmentTransferDialogData(invTxnID types.ID) tea.Cmd {
 			memo = invTxn.Memo.String
 		}
 
+		// For an inv↔reg transfer the category lives on the regular-side
+		// counterpart leg (the investment row on screen has none). Resolve it
+		// so the dialog seeds — and preserves — the existing label; without
+		// this an edit would recreate the regular leg categoryless. inv↔inv
+		// transfers have no regular leg, so the category stays zero (and the
+		// dialog omits the field entirely).
+		var categoryID types.NullableID
+		if a.transactionSvc != nil &&
+			!accountTypeByID(data.accounts, invTxn.TransferAccountID.ID).IsInvestmentType() {
+			if legs, lerr := a.transactionSvc.ListByTransferID(invTxn.TransferID.ID); lerr == nil {
+				for _, l := range legs {
+					if l.CategoryID.Valid {
+						categoryID = l.CategoryID
+						break
+					}
+				}
+			}
+		}
+
 		data.existingInvestment = &investmentTransferEdit{
 			fromAccountID:   fromAccountID,
 			toAccountID:     toAccountID,
@@ -347,6 +473,7 @@ func (a *App) loadEditInvestmentTransferDialogData(invTxnID types.ID) tea.Cmd {
 			date:            invTxn.Date,
 			memo:            memo,
 			status:          statusToRegular(invTxn.Status),
+			categoryID:      categoryID,
 			investmentTxnID: invTxnID,
 		}
 
@@ -409,6 +536,7 @@ func (a *App) closeTransferDialog() {
 	a.transferDialog = nil
 	a.transferDialogData = nil
 	a.transferDialogAccountIDs = nil
+	a.transferDialogCategoryIDs = nil
 }
 
 // handleTransferDialogKey routes key events to the transfer dialog.
@@ -424,9 +552,74 @@ func (a *App) handleTransferDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	case dialog.DialogActionCancel:
 		a.closeTransferDialog()
 		return a, nil
+	case dialog.DialogActionAddNew:
+		return a.openCreateCategorySubDialogForTransfer()
 	}
 
 	return a, nil
+}
+
+// openCreateCategorySubDialogForTransfer hides the transfer dialog and opens
+// the inline create-category sub-dialog seeded with the Category combo's
+// typed query. The transfer dialog is kept alive (hidden) so its field state
+// survives the divert; applyCreatedCategoryToTransfer re-shows it with the new
+// category selected. Transfers are labeled for spending tracking (credit-card
+// payments, loan principal), so the sub-dialog defaults to an Expense type —
+// unlike the amount-bearing surfaces, a transfer's amount is always a positive
+// magnitude and carries no income/expense signal.
+func (a *App) openCreateCategorySubDialogForTransfer() (tea.Model, tea.Cmd) {
+	if a.transferDialog == nil {
+		return a, nil
+	}
+	fields := a.transferDialog.Fields()
+	idx := a.transferCategoryFieldIndex()
+	if idx < 0 || idx >= len(fields) {
+		return a, nil
+	}
+	catField := fields[idx]
+	query := catField.Query
+	catField.AddNewTriggered = false
+	catField.Query = ""
+
+	var parents []string
+	if a.transferDialogData != nil {
+		parents = topLevelParentNames(a.transferDialogData.categories)
+	}
+	parent, name := splitCategoryQuery(query)
+	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
+	a.createCatSource = createCatSourceTransferDialog
+	a.transferDialog.SetVisible(false)
+	return a, nil
+}
+
+// applyCreatedCategoryToTransfer is the per-surface applier for the
+// create-category router when the originating surface was the Transfer dialog.
+// It reloads the dialog's category options with newCat pre-selected on the
+// Category combo and re-shows the transfer dialog. Persistence already happened
+// in persistCategory; the router passes the fresh category in.
+func (a *App) applyCreatedCategoryToTransfer(newCat *category.Category, cats []*category.Category) {
+	if a.transferDialogData != nil {
+		a.transferDialogData.categories = cats
+	}
+	options, ids := buildCategoryOptions(cats)
+	a.transferDialogCategoryIDs = ids
+
+	idx := a.transferCategoryFieldIndex()
+	if a.transferDialog != nil && idx >= 0 && idx < len(a.transferDialog.Fields()) {
+		catField := a.transferDialog.Fields()[idx]
+		catField.Options = options
+		newIdx := 0
+		for i, id := range ids {
+			if id == newCat.ID {
+				newIdx = i
+				break
+			}
+		}
+		catField.SelectedIndex = newIdx
+		catField.ComboHighlight = newIdx
+		a.transferDialog.SetVisible(true)
+	}
+	a.createCatDialog = nil
 }
 
 // submitTransferDialog parses dialog fields, validates, and saves the transfer.
@@ -502,12 +695,32 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	// Memo
 	memo := strings.TrimSpace(fields[4].Value)
 
+	// Category (optional). Field index 5 (From, To, Amount, Date, Memo,
+	// Category); guarded so a legacy 5-field dialog degrades to no category.
+	var categoryID types.NullableID
+	const catFieldIdx = 5
+	if len(fields) > catFieldIdx {
+		if idx := fields[catFieldIdx].SelectedIndex; idx > 0 && idx < len(a.transferDialogCategoryIDs) {
+			categoryID = types.NullableID{ID: a.transferDialogCategoryIDs[idx], Valid: true}
+		}
+	}
+
 	// Dispatch on the (From, To) account types so each combination posts via
 	// the right service. Account types come from the loaded accounts list,
 	// which the dialog data populates from accountSvc.List(true).
 	fromType := accountTypeByID(a.transferDialogData.accounts, fromAccountID)
 	toType := accountTypeByID(a.transferDialogData.accounts, toAccountID)
 	kind := transaction.ChooseTransferDispatch(fromType, toType)
+
+	// inv→inv transfers store neither leg in the transactions table, so there
+	// is nowhere to hold a category (v1 non-goal). Refuse a set category here
+	// rather than silently dropping it.
+	if kind == transaction.DispatchInvToInv && categoryID.Valid {
+		if len(fields) > catFieldIdx {
+			fields[catFieldIdx].Error = "Categories aren't supported on investment-to-investment transfers"
+		}
+		return a, nil
+	}
 
 	// The leg living in the register the user is currently viewing should be
 	// selected after the save, so a freshly entered transfer scrolls into view
@@ -531,10 +744,10 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			if a.transactionSvc == nil {
 				return errMsg{err: fmt.Errorf("transaction service not available")}
 			}
-			// CreateTransfer stamps memo (and category, once the dialog exposes
-			// a picker in a later phase) on both legs at construction. Category
-			// is not yet user-settable here, so an empty NullableID is passed.
-			cmd := undo.NewCreateTransferCommand(a.transactionSvc, fromAccountID, toAccountID, date, amount, memo, types.NullableID{})
+			// CreateTransfer stamps memo and category on both legs at
+			// construction. categoryID is the dialog's Category combo selection
+			// (unset NullableID when "(None)").
+			cmd := undo.NewCreateTransferCommand(a.transactionSvc, fromAccountID, toAccountID, date, amount, memo, categoryID)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 			}
@@ -545,7 +758,8 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			if a.investmentSvc == nil {
 				return errMsg{err: fmt.Errorf("investment service not available")}
 			}
-			cmd := undo.NewCreateInvestmentTransferCashCommand(a.investmentSvc, fromAccountID, toAccountID, date, amount, memo, types.NullableID{})
+			// The category lands on the regular-side (bank) leg only.
+			cmd := undo.NewCreateInvestmentTransferCashCommand(a.investmentSvc, fromAccountID, toAccountID, date, amount, memo, categoryID)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 			}
@@ -555,8 +769,9 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 				return errMsg{err: fmt.Errorf("investment service not available")}
 			}
 			// DepositFromAccount expects (investmentAccountID, regularAccountID);
-			// here the investment account is the destination.
-			cmd := undo.NewCreateInvestmentDepositCommand(a.investmentSvc, toAccountID, fromAccountID, date, amount, memo, types.NullableID{})
+			// here the investment account is the destination. The category lands
+			// on the regular-side (bank) leg only.
+			cmd := undo.NewCreateInvestmentDepositCommand(a.investmentSvc, toAccountID, fromAccountID, date, amount, memo, categoryID)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 			}
@@ -628,8 +843,23 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	// Field layout depends on whether a Category combo is present. It is for
+	// every transfer with a regular-side leg (bank↔bank, inv↔reg):
+	//   Amount(0), Date(1), Memo(2), Category(3), Status(4)
+	// inv↔inv omits it:
+	//   Amount(0), Date(1), Memo(2), Status(3)
+	includeCategory := editTransferIncludesCategory(a.transferDialogData)
+	minFields := 4
+	statusIdx := 3
+	catIdx := -1
+	if includeCategory {
+		minFields = 5
+		catIdx = 3
+		statusIdx = 4
+	}
+
 	fields := a.transferDialog.Fields()
-	if len(fields) < 4 {
+	if len(fields) < minFields {
 		return a, nil
 	}
 
@@ -674,15 +904,25 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 
 	memo := strings.TrimSpace(fields[2].Value)
 
+	// Category selection (only when the combo is present). An unset selection
+	// ("(None)") produces an invalid NullableID, which clears the category on
+	// both legs.
+	var categoryID types.NullableID
+	if catIdx >= 0 {
+		if idx := fields[catIdx].SelectedIndex; idx > 0 && idx < len(a.transferDialogCategoryIDs) {
+			categoryID = types.NullableID{ID: a.transferDialogCategoryIDs[idx], Valid: true}
+		}
+	}
+
 	status := transaction.StatusUncleared
-	if fields[3].SelectedIndex == 1 {
+	if fields[statusIdx].SelectedIndex == 1 {
 		status = transaction.StatusCleared
 	}
 
 	if invEdit != nil {
 		fromType := accountTypeByID(a.transferDialogData.accounts, invEdit.fromAccountID)
 		a.closeTransferDialog()
-		return a, a.dispatchInvestmentEditTransfer(invEdit, fromType, date, amount, memo, status)
+		return a, a.dispatchInvestmentEditTransfer(invEdit, fromType, date, amount, memo, categoryID, status)
 	}
 
 	transferID := regularPair.FromTransaction.TransferID.ID
@@ -695,11 +935,10 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 		if a.transactionSvc == nil || a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("transaction service not available")}
 		}
-		// Preserve the existing category (from the canonical outflow leg). The
-		// edit dialog gains a category picker in a later phase; until then an
-		// edit must not clobber a category applied by other means (e.g. a
-		// legacy transfer-link pair).
-		cmd := undo.NewEditTransferCommand(a.transactionSvc, transferID, date, amount, memo, status, regularPair.FromTransaction.CategoryID)
+		// UpdateTransfer mirrors the category to both legs (and clears both when
+		// categoryID is unset), which doubles as the healing path for a legacy
+		// divergent transfer-link pair.
+		cmd := undo.NewEditTransferCommand(a.transactionSvc, transferID, date, amount, memo, status, categoryID)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to update transfer: %w", err)}
 		}
@@ -712,7 +951,7 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 // dialog's From/To orientation. Direction is "out" when From is the
 // investment account, "in" when To is — matching UpdateTransferCash's
 // "in" = cash arrives at investmentAccountID convention.
-func (a *App) dispatchInvestmentEditTransfer(edit *investmentTransferEdit, fromType account.Type, date types.Date, amount types.Money, memo string, status transaction.Status) tea.Cmd {
+func (a *App) dispatchInvestmentEditTransfer(edit *investmentTransferEdit, fromType account.Type, date types.Date, amount types.Money, memo string, categoryID types.NullableID, status transaction.Status) tea.Cmd {
 	var investmentAccountID, otherAccountID types.ID
 	var direction string
 	if fromType.IsInvestmentType() {
@@ -749,7 +988,7 @@ func (a *App) dispatchInvestmentEditTransfer(edit *investmentTransferEdit, fromT
 			date,
 			amount,
 			memo,
-			types.NullableID{}, // category picker on this path arrives in a later phase
+			categoryID, // applies to the regular-side leg (inv↔reg); ignored for inv↔inv
 			direction,
 			status,
 		); err != nil {

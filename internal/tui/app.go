@@ -177,9 +177,10 @@ type App struct {
 	pendingSplitScheduled *pendingSplitScheduled
 
 	// Transfer dialog state
-	transferDialog           *dialog.Dialog
-	transferDialogData       *transferDialogData
-	transferDialogAccountIDs []types.ID
+	transferDialog            *dialog.Dialog
+	transferDialogData        *transferDialogData
+	transferDialogAccountIDs  []types.ID
+	transferDialogCategoryIDs []types.ID // parallel to the Category combo options
 
 	// Account dialog state
 	acctDialog     *dialog.Dialog

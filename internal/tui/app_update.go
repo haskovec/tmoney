@@ -449,13 +449,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.transferDialogData = msg.data
 		accountOptions, accountIDs := buildAccountOptions(msg.data.accounts)
 		a.transferDialogAccountIDs = accountIDs
+		// Category combo options are the "(None)"-led, system-excluded list;
+		// the parallel ID slice is stashed for the submit handler.
+		categoryOptions, categoryIDs := buildCategoryOptions(msg.data.categories)
+		a.transferDialogCategoryIDs = categoryIDs
 
 		if msg.data.mode == transferDialogModeEdit {
 			fromName, toName := transferAccountNames(msg.data)
+			includeCategory := editTransferIncludesCategory(msg.data)
 			switch {
 			case msg.data.existingInvestment != nil:
 				e := msg.data.existingInvestment
-				a.transferDialog = buildEditTransferDialog(fromName, toName, e.amount, e.date, e.memo, e.status)
+				catIdx := categoryComboIndex(categoryIDs, e.categoryID)
+				a.transferDialog = buildEditTransferDialog(fromName, toName, e.amount, e.date, e.memo, e.status, includeCategory, categoryOptions, catIdx)
 			case msg.data.existing != nil:
 				pair := msg.data.existing
 				amount := types.MustNewMoney("0")
@@ -465,14 +471,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				date := types.Today()
 				memo := ""
 				status := transaction.StatusUncleared
+				var seedCat types.NullableID
 				if pair.FromTransaction != nil {
 					date = pair.FromTransaction.Date
 					if pair.FromTransaction.Memo.Valid {
 						memo = pair.FromTransaction.Memo.String
 					}
 					status = pair.FromTransaction.Status
+					// The From (outflow) leg is canonical for a mirrored pair
+					// and holds the display category for a legacy divergent one.
+					seedCat = pair.FromTransaction.CategoryID
 				}
-				a.transferDialog = buildEditTransferDialog(fromName, toName, amount, date, memo, status)
+				catIdx := categoryComboIndex(categoryIDs, seedCat)
+				a.transferDialog = buildEditTransferDialog(fromName, toName, amount, date, memo, status, includeCategory, categoryOptions, catIdx)
 			}
 			return a, nil
 		}
@@ -486,7 +497,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		a.transferDialog = buildTransferDialog(accountOptions, defaultFromIndex)
+		a.transferDialog = buildTransferDialog(accountOptions, categoryOptions, defaultFromIndex)
 		a.transferDialog.SeedDateField(a.txnDialogLastSavedDate)
 		return a, nil
 
