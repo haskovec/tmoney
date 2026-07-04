@@ -20,24 +20,25 @@ import (
 
 // loanAddOptions are the inputs to `tmoney loan add`.
 type loanAddOptions struct {
-	file             string
-	name             string
-	currentBalance   string
-	principal        string
-	rate             string
-	payment          string
-	termMonths       int
-	openDate         string
-	nextPaymentDate  string
-	fromAccount      string
-	payee            string
-	interestCategory string
-	escrow           []string
-	assetName        string
-	assetValue       string
-	institution      string
-	autoPost         bool
-	leadDays         int
+	file              string
+	name              string
+	currentBalance    string
+	principal         string
+	rate              string
+	payment           string
+	termMonths        int
+	openDate          string
+	nextPaymentDate   string
+	fromAccount       string
+	payee             string
+	interestCategory  string
+	principalCategory string
+	escrow            []string
+	assetName         string
+	assetValue        string
+	institution       string
+	autoPost          bool
+	leadDays          int
 }
 
 // newLoanAddCmd registers `tmoney loan add`. The database file is taken from the
@@ -59,7 +60,9 @@ func newLoanAddCmd() *cobra.Command {
 			"against your statement). --escrow lines and --interest-category use " +
 			"Parent or Parent:Subcategory paths and are created if they don't exist " +
 			"(there is no `category add` CLI); the interest category defaults to " +
-			"Loan:Interest when --rate is above 0.",
+			"Loan:Interest when --rate is above 0. The principal transfer line is " +
+			"labeled Loan:Principal by default (--principal-category to override, " +
+			"--principal-category=\"\" to leave it unlabeled).",
 		Example: "  tmoney loan add --name Mortgage --current-balance 312450.22 --rate 6.5 \\\n" +
 			"    --payment 2401.86 --next-payment-date 2026-08-01 --from-account Checking \\\n" +
 			"    --escrow \"Housing:Property Tax=650\" --escrow \"Housing:Home Insurance=120\" \\\n" +
@@ -85,6 +88,7 @@ func newLoanAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.fromAccount, "from-account", "", "Funding account name; active, non-investment (required)")
 	cmd.Flags().StringVar(&opts.payee, "payee", "", "Payee / servicer name (auto-created if it doesn't exist)")
 	cmd.Flags().StringVar(&opts.interestCategory, "interest-category", "", "Interest category path (default Loan:Interest); created if it doesn't exist")
+	cmd.Flags().StringVar(&opts.principalCategory, "principal-category", "", "Principal-line category path (default Loan:Principal); created if it doesn't exist; pass \"\" to leave the principal line unlabeled")
 	cmd.Flags().StringArrayVar(&opts.escrow, "escrow", nil, "Escrow line Category=Amount (repeatable), e.g. \"Housing:Property Tax=650\"; categories are created if needed")
 	cmd.Flags().StringVar(&opts.assetName, "asset-name", "", "Name of a linked asset account to create (e.g. the house or car)")
 	cmd.Flags().StringVar(&opts.assetValue, "asset-value", "", "Current value of the linked asset (required with --asset-name)")
@@ -248,6 +252,25 @@ func runLoanAdd(cmd *cobra.Command, opts *loanAddOptions, w io.Writer) error {
 		}
 	}
 
+	// Principal category: omitted → default Loan:Principal (get-or-created);
+	// explicit path → resolved/created; explicit "" → left unlabeled. Applies at
+	// any APR (a 0% loan still labels its principal line).
+	principalCatID := types.NilID
+	if cmd.Flags().Changed("principal-category") {
+		if strings.TrimSpace(opts.principalCategory) != "" {
+			principalCatID, err = getOrCreateCategoryPath(svc, opts.principalCategory)
+			if err != nil {
+				return fmt.Errorf("--principal-category: %w", err)
+			}
+		}
+	} else {
+		cat, cErr := svc.Category.GetOrCreateLoanPrincipalCategory()
+		if cErr != nil {
+			return fmt.Errorf("failed to resolve default principal category: %w", cErr)
+		}
+		principalCatID = cat.ID
+	}
+
 	escrow, err := parseEscrowLines(svc, opts.escrow)
 	if err != nil {
 		return err
@@ -278,12 +301,13 @@ func runLoanAdd(cmd *cobra.Command, opts *loanAddOptions, w io.Writer) error {
 	}
 
 	schedule, _, bErr := scheduleddom.BuildLoanSchedule(fundingAcct.ID, nextDate, payeeID, opts.autoPost, scheduleddom.LoanSnapshotInput{
-		LoanAccountID: loanAcct.ID,
-		APR:           apr,
-		Owed:          owed,
-		PIPayment:     payment,
-		InterestCatID: interestCatID,
-		Escrow:        escrow,
+		LoanAccountID:  loanAcct.ID,
+		APR:            apr,
+		Owed:           owed,
+		PIPayment:      payment,
+		InterestCatID:  interestCatID,
+		PrincipalCatID: principalCatID,
+		Escrow:         escrow,
 	})
 	if bErr != nil {
 		return fmt.Errorf("failed to build loan schedule: %w", bErr)

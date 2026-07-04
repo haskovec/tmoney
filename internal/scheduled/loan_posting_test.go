@@ -257,4 +257,70 @@ func TestComputeLoanSplits(t *testing.T) {
 			t.Errorf("expected ErrNegativeAmortization, got %v", err)
 		}
 	})
+
+	t.Run("principal category carried from template to posted line", func(t *testing.T) {
+		f := newLoanShapeFixture(t)
+		loanAcct := makeLoanAccount(t, f.accountRepo, "Mtg", "250000.00", "6.5")
+		principalCat := category.NewCategory("Principal", category.TypeExpense)
+		st := buildTaggedLoanSchedule(t, f.funding, loanAcct, f.interest, f.escrow, "2401.86", "650.00")
+		// Label the template's principal transfer line (a categorized transfer).
+		tmplP := findLoanSection([]*Split(st.Splits), LoanSectionPrincipal)
+		tmplP.CategoryID = types.NullableID{ID: principalCat.ID, Valid: true}
+
+		ls, err := f.svc.ComputeLoanSplits(st, aug1)
+		if err != nil {
+			t.Fatalf("ComputeLoanSplits: %v", err)
+		}
+		var found bool
+		for _, sp := range ls.Splits {
+			if sp.TransferAccountID.Valid {
+				found = true
+				if sp.CategoryID != principalCat.ID {
+					t.Errorf("posted principal category = %v, want %v", sp.CategoryID, principalCat.ID)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("no principal transfer line in posted splits")
+		}
+	})
+
+	t.Run("uncategorized template principal posts a bare transfer line", func(t *testing.T) {
+		f := newLoanShapeFixture(t)
+		loanAcct := makeLoanAccount(t, f.accountRepo, "Mtg", "250000.00", "6.5")
+		st := buildTaggedLoanSchedule(t, f.funding, loanAcct, f.interest, nil, "2401.86", "0")
+
+		ls, err := f.svc.ComputeLoanSplits(st, aug1)
+		if err != nil {
+			t.Fatalf("ComputeLoanSplits: %v", err)
+		}
+		for _, sp := range ls.Splits {
+			if sp.TransferAccountID.Valid && !sp.CategoryID.IsNil() {
+				t.Errorf("posted principal category = %v, want unset", sp.CategoryID)
+			}
+		}
+	})
+
+	t.Run("zero-rate loan labels principal and omits interest", func(t *testing.T) {
+		f := newLoanShapeFixture(t)
+		loanAcct := makeLoanAccount(t, f.accountRepo, "Car", "500.00", "0")
+		principalCat := category.NewCategory("Principal", category.TypeExpense)
+		st := buildTaggedLoanSchedule(t, f.funding, loanAcct, nil, nil, "100.00", "0")
+		tmplP := findLoanSection([]*Split(st.Splits), LoanSectionPrincipal)
+		tmplP.CategoryID = types.NullableID{ID: principalCat.ID, Valid: true}
+
+		ls, err := f.svc.ComputeLoanSplits(st, aug1)
+		if err != nil {
+			t.Fatalf("ComputeLoanSplits: %v", err)
+		}
+		if !ls.Interest.IsZero() {
+			t.Errorf("0%% loan interest = %s, want 0", ls.Interest.String())
+		}
+		if len(ls.Splits) != 1 {
+			t.Fatalf("splits = %d, want 1 (principal only)", len(ls.Splits))
+		}
+		if ls.Splits[0].CategoryID != principalCat.ID {
+			t.Errorf("0%% principal category = %v, want %v", ls.Splits[0].CategoryID, principalCat.ID)
+		}
+	})
 }

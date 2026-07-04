@@ -109,6 +109,64 @@ func TestLoanPost_RecomputesFromLiveBalance(t *testing.T) {
 	}
 }
 
+func TestLoanPost_PrincipalCategoryFlowsToBothLegs(t *testing.T) {
+	f := newLoanShapeFixture(t)
+	loanAcct := makeLoanAccount(t, f.accountRepo, "Mtg", "250000.00", "6.5")
+	// Any persisted non-system category stands in for Loan:Principal here.
+	principalCatID := f.escrow.ID
+
+	interest, principal, _, err := loan.SplitPayment(
+		types.MustNewMoney("250000.00"), types.MustNewMoney("6.5"), types.MustNewMoney("2401.86"))
+	if err != nil {
+		t.Fatalf("SplitPayment: %v", err)
+	}
+	is := NewCategorizedSplit(types.NewID(), f.interest.ID, interest.Neg())
+	is.LoanSection = types.NullableString{String: LoanSectionInterest, Valid: true}
+	ps := NewTransferSplit(types.NewID(), loanAcct.ID, principal.Neg())
+	ps.LoanSection = types.NullableString{String: LoanSectionPrincipal, Valid: true}
+	ps.CategoryID = types.NullableID{ID: principalCatID, Valid: true} // categorized transfer
+	st := NewTransactionWithAmount(f.funding.ID, FrequencyMonthly,
+		types.NewDate(2026, time.August, 1), interest.Neg().Add(principal.Neg()))
+	st.SetDayOfMonth(1)
+	is.ScheduledTransactionID = st.ID
+	ps.ScheduledTransactionID = st.ID
+	st.Splits = SplitCollection{is, ps}
+	if err := f.svc.Create(st); err != nil {
+		t.Fatalf("create categorized-principal loan schedule: %v", err)
+	}
+
+	txn, err := f.svc.Post(st.ID, nil)
+	if err != nil {
+		t.Fatalf("Post: %v", err)
+	}
+
+	// The posted principal split (the funding-account transfer line) carries the
+	// category — recompute-at-post copied it from the template.
+	var splitCat string
+	if err := f.svc.db.Conn().QueryRow(
+		`SELECT CAST(category_id AS VARCHAR) FROM transaction_splits
+		 WHERE CAST(transaction_id AS VARCHAR) = ? AND transfer_account_id IS NOT NULL`,
+		txn.ID.String()).Scan(&splitCat); err != nil {
+		t.Fatalf("query posted principal split: %v", err)
+	}
+	if splitCat != principalCatID.String() {
+		t.Errorf("posted principal split category = %s, want %s", splitCat, principalCatID.String())
+	}
+
+	// The minted loan-account counterpart carries the same category (Phase 7
+	// counterpart mirroring), so the payment's both legs are labeled.
+	var count int
+	if err := f.svc.db.Conn().QueryRow(
+		`SELECT COUNT(*) FROM transactions
+		 WHERE CAST(account_id AS VARCHAR) = ? AND CAST(category_id AS VARCHAR) = ?`,
+		loanAcct.ID.String(), principalCatID.String()).Scan(&count); err != nil {
+		t.Fatalf("query loan-account counterpart: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("loan-account counterpart rows carrying the category = %d, want 1", count)
+	}
+}
+
 func TestLoanPost_MultiMonthInterestFalls(t *testing.T) {
 	f := newLoanShapeFixture(t)
 	loanAcct := makeLoanAccount(t, f.accountRepo, "Mtg", "250000.00", "6.5")

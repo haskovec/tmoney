@@ -775,7 +775,7 @@ func TestLoanWizard_CategoryFieldsAreCombosWithAddNew(t *testing.T) {
 	env := newLoanWizardEnv(t)
 	fields := env.app.loanWizard.Fields()
 
-	for _, idx := range []int{loanFieldInterestCategory, loanEscrowCatIndex(0), loanEscrowCatIndex(loanMaxEscrowLines - 1)} {
+	for _, idx := range []int{loanFieldInterestCategory, loanFieldPrincipalCategory, loanEscrowCatIndex(0), loanEscrowCatIndex(loanMaxEscrowLines - 1)} {
 		f := fields[idx]
 		if f.Type != dialog.FieldCombo {
 			t.Errorf("field %d type = %v, want FieldCombo", idx, f.Type)
@@ -1029,4 +1029,170 @@ func ptrParentID(t *testing.T, env *loanWizardEnv, parent string) *types.ID {
 		t.Fatalf("parent %q not found: %v", parent, err)
 	}
 	return &p.ID
+}
+
+// --- Principal category (Phase 9) ---
+
+func TestLoanWizard_DefaultPrincipalCategoryOnCreate(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	env.set(loanFieldName, "Mortgage")
+	env.set(loanFieldCurrentBalance, "380000")
+	env.set(loanFieldAPR, "6.5")
+	env.set(loanFieldPayment, "2401.86")
+	env.set(loanFieldNextPaymentDate, "08/01/2026")
+	env.selectOption(t, loanFieldFromAccount, "Checking")
+
+	// The principal combo defaults to the synthetic Loan > Principal row.
+	if got := env.selectedLabel(loanFieldPrincipalCategory); got != loanPrincipalDefaultDisplay {
+		t.Fatalf("principal default = %q, want %q", got, loanPrincipalDefaultDisplay)
+	}
+
+	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
+		t.Fatal("create failed")
+	}
+
+	// Loan:Principal was get-or-created and the principal transfer line carries it.
+	loanParent, err := env.categorySvc.GetByName("Loan", nil)
+	if err != nil {
+		t.Fatalf("Loan parent not created: %v", err)
+	}
+	principalCat, err := env.categorySvc.GetByName("Principal", &loanParent.ID)
+	if err != nil {
+		t.Fatalf("Loan:Principal not created: %v", err)
+	}
+	st := env.findLoanSchedule(t)
+	p := loanScheduleSplit(st, scheduled.LoanSectionPrincipal)
+	if p == nil || !p.CategoryID.Valid || p.CategoryID.ID != principalCat.ID {
+		t.Errorf("principal line category = %+v, want Loan:Principal %v", p, principalCat.ID)
+	}
+}
+
+func TestLoanWizard_PrincipalCategoryClearable(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	env.set(loanFieldName, "Mortgage")
+	env.set(loanFieldCurrentBalance, "380000")
+	env.set(loanFieldAPR, "6.5")
+	env.set(loanFieldPayment, "2401.86")
+	env.set(loanFieldNextPaymentDate, "08/01/2026")
+	env.selectOption(t, loanFieldFromAccount, "Checking")
+	env.selectOption(t, loanFieldPrincipalCategory, "(None)") // clear the default
+
+	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
+		t.Fatal("create failed")
+	}
+	st := env.findLoanSchedule(t)
+	p := loanScheduleSplit(st, scheduled.LoanSectionPrincipal)
+	if p == nil || p.CategoryID.Valid {
+		t.Errorf("principal line category = %+v, want unset ((None) selected)", p)
+	}
+	// The Loan parent exists (interest default) but has no Principal child.
+	if loanParent, err := env.categorySvc.GetByName("Loan", nil); err == nil {
+		if _, err := env.categorySvc.GetByName("Principal", &loanParent.ID); err == nil {
+			t.Error("Loan:Principal should not be created when principal is set to (None)")
+		}
+	}
+}
+
+func TestLoanWizard_EditRoundTripsPrincipalCategory(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	env.set(loanFieldName, "Mortgage")
+	env.set(loanFieldCurrentBalance, "380000")
+	env.set(loanFieldAPR, "6.5")
+	env.set(loanFieldPayment, "2401.86")
+	env.set(loanFieldNextPaymentDate, "08/01/2026")
+	env.selectOption(t, loanFieldFromAccount, "Checking")
+	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
+		t.Fatal("create failed")
+	}
+
+	st := env.findLoanSchedule(t)
+	loanAcct, _ := env.accountSvc.GetByName("Mortgage")
+	owed, _ := env.accountSvc.BalanceAsOf(loanAcct.ID, st.NextDate)
+	accounts, _ := env.accountSvc.List(true)
+	cats, _ := env.categorySvc.List()
+	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+
+	// The principal combo prefills to the real Loan > Principal category.
+	if got := env.selectedLabel(loanFieldPrincipalCategory); got != loanPrincipalDefaultDisplay {
+		t.Errorf("principal prefill = %q, want %q", got, loanPrincipalDefaultDisplay)
+	}
+
+	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
+		t.Fatal("edit save failed")
+	}
+	st2 := env.findLoanSchedule(t)
+	loanParent, _ := env.categorySvc.GetByName("Loan", nil)
+	principalCat, _ := env.categorySvc.GetByName("Principal", &loanParent.ID)
+	p := loanScheduleSplit(st2, scheduled.LoanSectionPrincipal)
+	if p == nil || !p.CategoryID.Valid || p.CategoryID.ID != principalCat.ID {
+		t.Errorf("principal line category after edit = %+v, want %v (round-tripped)", p, principalCat.ID)
+	}
+}
+
+// TestLoanWizard_EditUncategorizedPrincipalStaysUnlabeled pins the round-trip
+// for an old-shape loan: a principal line with no category must prefill to
+// "(None)" (not silently pick up the Loan:Principal default) and stay unlabeled
+// on save.
+func TestLoanWizard_EditUncategorizedPrincipalStaysUnlabeled(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	loanAcct := env.seedLoanAccount(t, "Mortgage", "380000", "6.5")
+	interestCat, _ := env.categorySvc.GetOrCreateLoanInterestCategory()
+	// seedLoanShapedSchedule passes no PrincipalCatID → a bare principal line.
+	st := env.seedLoanShapedSchedule(t, loanAcct, "380000", "6.5", "2401.86", interestCat.ID, types.NewDate(2026, time.August, 1))
+
+	accounts, _ := env.accountSvc.List(true)
+	cats, _ := env.categorySvc.List()
+	owed, _ := env.accountSvc.BalanceAsOf(loanAcct.ID, st.NextDate)
+	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+
+	if got := env.selectedLabel(loanFieldPrincipalCategory); got != "(None)" {
+		t.Errorf("principal prefill = %q, want (None) for an old-shape loan", got)
+	}
+
+	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
+		t.Fatal("edit save failed")
+	}
+	st2 := env.findLoanSchedule(t)
+	p := loanScheduleSplit(st2, scheduled.LoanSectionPrincipal)
+	if p == nil || p.CategoryID.Valid {
+		t.Errorf("principal line category after edit = %+v, want still unset", p)
+	}
+}
+
+func TestLoanWizard_CreatePrincipalCategoryFromPrincipalCombo(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	env.openAddNewFromLoan(t, loanFieldPrincipalCategory, "Debt:Principal")
+	if err := env.app.applyCreatedCategory(createCategoryRequest{
+		Name: "Principal", ParentName: "Debt", NewParent: true, Type: category.TypeExpense,
+	}); err != nil {
+		t.Fatalf("applyCreatedCategory: %v", err)
+	}
+	// The principal combo now selects the freshly-created category.
+	if got := env.selectedLabel(loanFieldPrincipalCategory); got != "Debt > Principal" {
+		t.Errorf("principal selection = %q, want Debt > Principal", got)
+	}
+
+	// It flows through to the saved principal line.
+	env.set(loanFieldName, "Mortgage")
+	env.set(loanFieldCurrentBalance, "300000")
+	env.set(loanFieldAPR, "6.5")
+	env.set(loanFieldPayment, "2000")
+	env.set(loanFieldNextPaymentDate, "08/01/2026")
+	env.selectOption(t, loanFieldFromAccount, "Checking")
+	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
+		t.Fatal("submit failed after inline principal-category creation")
+	}
+	st := env.findLoanSchedule(t)
+	debtParent, err := env.categorySvc.GetByName("Debt", nil)
+	if err != nil {
+		t.Fatalf("Debt parent not found: %v", err)
+	}
+	principalCat, err := env.categorySvc.GetByName("Principal", &debtParent.ID)
+	if err != nil {
+		t.Fatalf("Debt:Principal not found: %v", err)
+	}
+	p := loanScheduleSplit(st, scheduled.LoanSectionPrincipal)
+	if p == nil || !p.CategoryID.Valid || p.CategoryID.ID != principalCat.ID {
+		t.Errorf("principal line category = %+v, want Debt:Principal %v", p, principalCat.ID)
+	}
 }

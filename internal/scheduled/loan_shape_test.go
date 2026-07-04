@@ -92,6 +92,18 @@ func TestIsLoanShaped(t *testing.T) {
 		}
 	})
 
+	t.Run("categorized principal line stays loan-shaped", func(t *testing.T) {
+		// A principal transfer line labeled Loan:Principal (a categorized
+		// transfer) must not affect detection — IsLoanShaped reads the line's
+		// transfer target and section, never its category.
+		st := f.buildLoanSchedule(t)
+		p := findLoanSection([]*Split(st.Splits), LoanSectionPrincipal)
+		p.CategoryID = types.NullableID{ID: f.escrow.ID, Valid: true}
+		if !IsLoanShaped(st, lookup) {
+			t.Error("a categorized principal transfer line must remain loan-shaped")
+		}
+	})
+
 	t.Run("untagged split disqualifies", func(t *testing.T) {
 		st := f.buildLoanSchedule(t)
 		st.Splits[0].LoanSection = types.NullableString{Valid: false}
@@ -194,6 +206,15 @@ func TestIsLoanAdoptable(t *testing.T) {
 		st := f.buildLoanSchedule(t)
 		if !IsLoanAdoptable(st, lookup) {
 			t.Error("a tagged loan schedule should be adoptable")
+		}
+	})
+
+	t.Run("categorized principal line stays adoptable", func(t *testing.T) {
+		st := f.buildLoanSchedule(t)
+		p := findLoanSection([]*Split(st.Splits), LoanSectionPrincipal)
+		p.CategoryID = types.NullableID{ID: f.escrow.ID, Valid: true}
+		if !IsLoanAdoptable(st, lookup) {
+			t.Error("a categorized principal transfer line must remain adoptable")
 		}
 	})
 

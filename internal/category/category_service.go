@@ -330,6 +330,40 @@ func (s *Service) GetOrCreateLoanInterestCategory() (*Category, error) {
 	return child, nil
 }
 
+// GetOrCreateLoanPrincipalCategory returns the default loan-principal expense
+// category (Loan:Principal), creating the parent Loan and/or the Principal
+// child when either is missing. It is the loan wizard's and `loan add`'s
+// save-time resolution of the default principal category, so the default is
+// always available even on files where it was never seeded. It is the twin of
+// GetOrCreateLoanInterestCategory: idempotent, reuses an existing parent/child,
+// and the categories are ordinary (non-system) so the user can later rename or
+// merge them. Unlike interest, the principal label is optional — a loan built
+// without it stores a bare (uncategorized) transfer line.
+func (s *Service) GetOrCreateLoanPrincipalCategory() (*Category, error) {
+	parent, err := s.repo.GetByName(LoanCategoryName, nil)
+	if err != nil {
+		if _, ok := err.(*dberrors.NotFoundError); !ok {
+			return nil, fmt.Errorf("lookup parent %q: %w", LoanCategoryName, err)
+		}
+		parent = NewCategory(LoanCategoryName, TypeExpense)
+		if err := s.repo.Create(parent); err != nil {
+			return nil, fmt.Errorf("create parent %q: %w", LoanCategoryName, err)
+		}
+	}
+	child, err := s.repo.GetByName(LoanPrincipalChildName, &parent.ID)
+	if err == nil {
+		return child, nil
+	}
+	if _, ok := err.(*dberrors.NotFoundError); !ok {
+		return nil, fmt.Errorf("lookup child %q under %q: %w", LoanPrincipalChildName, LoanCategoryName, err)
+	}
+	child = NewSubcategory(LoanPrincipalChildName, parent.ID, TypeExpense)
+	if err := s.repo.Create(child); err != nil {
+		return nil, fmt.Errorf("create child %q under %q: %w", LoanPrincipalChildName, LoanCategoryName, err)
+	}
+	return child, nil
+}
+
 // GetValueAdjustmentCategory returns the system Value Adjustment
 // category used for asset revaluations. Returns a NotFoundError when it
 // has not been seeded (call EnsureValueAdjustmentCategory first).

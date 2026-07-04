@@ -109,6 +109,12 @@ const (
 	// LoanInterestChildName is the child (under LoanCategoryName) that a loan
 	// payment's interest portion is booked to by default.
 	LoanInterestChildName = "Interest"
+	// LoanPrincipalChildName is the child (under LoanCategoryName) that a loan
+	// payment's principal transfer line is labeled with by default. Unlike
+	// interest the label is optional (the principal line is a transfer, valid
+	// with or without a category), but the loan wizard and `loan add` default
+	// to it. See GetOrCreateLoanPrincipalCategory.
+	LoanPrincipalChildName = "Principal"
 )
 
 // Category represents a transaction category.

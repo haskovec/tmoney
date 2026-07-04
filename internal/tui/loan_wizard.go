@@ -40,19 +40,20 @@ const loanMaxEscrowLines = 6
 // pool occupies a contiguous block of (category, amount) pairs; the trailing
 // scalar fields are offset past it.
 const (
-	loanFieldName             = 0 // Loan section
-	loanFieldInstitution      = 1
-	loanFieldCurrentBalance   = 2
-	loanFieldAPR              = 3
-	loanFieldOrigPrincipal    = 4 // prefill-only
-	loanFieldOpenDate         = 5 // prefill-only (optional)
-	loanFieldTermMonths       = 6 // prefill-only
-	loanFieldPayment          = 7 // Payment section
-	loanFieldNextPaymentDate  = 8
-	loanFieldFromAccount      = 9
-	loanFieldPayee            = 10
-	loanFieldInterestCategory = 11
-	loanFieldEscrowStart      = 12
+	loanFieldName              = 0 // Loan section
+	loanFieldInstitution       = 1
+	loanFieldCurrentBalance    = 2
+	loanFieldAPR               = 3
+	loanFieldOrigPrincipal     = 4 // prefill-only
+	loanFieldOpenDate          = 5 // prefill-only (optional)
+	loanFieldTermMonths        = 6 // prefill-only
+	loanFieldPayment           = 7 // Payment section
+	loanFieldNextPaymentDate   = 8
+	loanFieldFromAccount       = 9
+	loanFieldPayee             = 10
+	loanFieldInterestCategory  = 11
+	loanFieldPrincipalCategory = 12
+	loanFieldEscrowStart       = 13
 
 	loanFieldAutoPost    = loanFieldEscrowStart + 2*loanMaxEscrowLines
 	loanFieldTrackAsset  = loanFieldAutoPost + 1 // Asset section
@@ -77,6 +78,13 @@ const loanDemotionWarning = "This converts the loan schedule to a generic schedu
 // category.Service.GetOrCreateLoanInterestCategory at save time, so the default
 // is always available even on files where it was never seeded or was deleted.
 var loanInterestDefaultDisplay = category.LoanCategoryName + " > " + category.LoanInterestChildName
+
+// loanPrincipalDefaultDisplay is the picker label for the default principal
+// category (Loan > Principal). Unlike interest the principal label is optional
+// (the combo keeps "(None)"), but it defaults to this row; selecting it while
+// it is the synthetic entry resolves via
+// category.Service.GetOrCreateLoanPrincipalCategory at save time.
+var loanPrincipalDefaultDisplay = category.LoanCategoryName + " > " + category.LoanPrincipalChildName
 
 // loanAddNewCategoryLabel is the [+ Add new category…] action-row label on the
 // wizard's interest and escrow category combos. Activating it diverts into the
@@ -106,6 +114,9 @@ type loanWizardData struct {
 
 	interestOptions []string   // interest-category picker labels (no "(None)")
 	interestIDs     []types.ID // parallel; NilID marks the get-or-create default
+
+	principalOptions []string   // principal-category picker labels ("(None)" at 0)
+	principalIDs     []types.ID // parallel; NilID at the synthetic default row marks get-or-create
 
 	// lastComputedPayment is the most recent amortization prefill written into
 	// the Payment field. While the field still equals it (or is empty) the
@@ -160,6 +171,33 @@ func buildLoanInterestOptions(catOptions []string, catIDs []types.ID) (opts []st
 	return opts, ids, 0
 }
 
+// buildLoanPrincipalOptions returns the principal-category combo's labels and
+// IDs plus the index to default to. Unlike interest the principal label is
+// optional, so the leading "(None)" row is kept (clearable). The default
+// Loan > Principal entry is guaranteed present: if a real Loan:Principal
+// category already exists it defaults to that row (its real ID); otherwise a
+// synthetic row (NilID, distinct from "(None)" by its label) is inserted right
+// after "(None)" and resolved via get-or-create at save time.
+func buildLoanPrincipalOptions(catOptions []string, catIDs []types.ID) (opts []string, ids []types.ID, defaultIdx int) {
+	opts = append(opts, catOptions...)
+	ids = append(ids, catIDs...)
+	for i, name := range opts {
+		if name == loanPrincipalDefaultDisplay {
+			return opts, ids, i
+		}
+	}
+	// No real Loan:Principal category — insert a synthetic default after
+	// "(None)" (index 0). Its NilID collides with "(None)"'s NilID, so callers
+	// that re-resolve by ID must disambiguate the synthetic default by label.
+	withDefault := make([]string, 0, len(opts)+1)
+	withDefault = append(withDefault, opts[0], loanPrincipalDefaultDisplay)
+	withDefault = append(withDefault, opts[1:]...)
+	idsWithDefault := make([]types.ID, 0, len(ids)+1)
+	idsWithDefault = append(idsWithDefault, ids[0], types.NilID)
+	idsWithDefault = append(idsWithDefault, ids[1:]...)
+	return withDefault, idsWithDefault, 1
+}
+
 // buildNewLoanWizard constructs the loan wizard dialog and its companion state
 // for creating a new loan.
 func buildNewLoanWizard(accounts []*account.Account, categories []*category.Category) (*dialog.Dialog, *loanWizardData) {
@@ -178,13 +216,16 @@ func buildLoanWizardFields(title string, accounts []*account.Account, categories
 	catOptions, catIDs := buildCategoryOptions(categories)
 	fromOptions, fromIDs := buildLoanFromAccountOptions(accounts)
 	interestOptions, interestIDs, interestDefault := buildLoanInterestOptions(catOptions, catIDs)
+	principalOptions, principalIDs, principalDefault := buildLoanPrincipalOptions(catOptions, catIDs)
 
 	state := &loanWizardData{
-		accounts:        accounts,
-		accountIDs:      fromIDs,
-		categoryIDs:     catIDs,
-		interestOptions: interestOptions,
-		interestIDs:     interestIDs,
+		accounts:         accounts,
+		accountIDs:       fromIDs,
+		categoryIDs:      catIDs,
+		interestOptions:  interestOptions,
+		interestIDs:      interestIDs,
+		principalOptions: principalOptions,
+		principalIDs:     principalIDs,
 	}
 
 	d := dialog.NewDialog(title)
@@ -210,6 +251,8 @@ func buildLoanWizardFields(title string, accounts []*account.Account, categories
 	d.AddTextField("Payee", "", "Servicer (optional)", 0)
 	interestField := d.AddComboField("Interest Category", interestOptions, interestDefault)
 	interestField.AddNewLabel = loanAddNewCategoryLabel
+	principalField := d.AddComboField("Principal Category", principalOptions, principalDefault)
+	principalField.AddNewLabel = loanAddNewCategoryLabel
 
 	// Escrow pool (category + amount pairs), progressively revealed. Each
 	// category picker is a combo with an inline [+ Add new category…] row.
@@ -307,6 +350,7 @@ func buildEditLoanWizard(accounts []*account.Account, categories []*category.Cat
 func prefillLoanPaymentFields(fields []*dialog.Field, state *loanWizardData, st *scheduled.Transaction, loanInterestCatID types.ID) {
 	var principalAmt, interestAmt types.Money
 	interestCatID := types.NilID
+	principalCatID := types.NilID
 	escrowIdx := 0
 	for _, sp := range st.Splits {
 		if sp == nil {
@@ -314,6 +358,9 @@ func prefillLoanPaymentFields(fields []*dialog.Field, state *loanWizardData, st 
 		}
 		if sp.TransferAccountID.Valid {
 			principalAmt = sp.Amount.Abs()
+			if sp.CategoryID.Valid {
+				principalCatID = sp.CategoryID.ID
+			}
 			continue
 		}
 		tagged := sp.LoanSection.Valid
@@ -336,6 +383,15 @@ func prefillLoanPaymentFields(fields []*dialog.Field, state *loanWizardData, st 
 	fields[loanFieldPayment].Value = principalAmt.Add(interestAmt).String()
 	if !interestCatID.IsNil() {
 		setSelectByID(fields[loanFieldInterestCategory], state.interestIDs, interestCatID)
+	}
+	// Principal category: round-trip the existing line's label, or "(None)" when
+	// the principal line is uncategorized (an old-shape loan) — otherwise the
+	// build-time Loan:Principal default would silently *add* a label on edit.
+	if !principalCatID.IsNil() {
+		setSelectByID(fields[loanFieldPrincipalCategory], state.principalIDs, principalCatID)
+	} else {
+		fields[loanFieldPrincipalCategory].SelectedIndex = 0
+		fields[loanFieldPrincipalCategory].ComboHighlight = 0
 	}
 }
 
@@ -594,6 +650,12 @@ func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*cate
 		return types.NilID
 	}
 	selectedInterestID := idAt(st.interestIDs, fields[loanFieldInterestCategory].SelectedIndex)
+	principalSel := fields[loanFieldPrincipalCategory].SelectedIndex
+	selectedPrincipalID := idAt(st.principalIDs, principalSel)
+	// The synthetic Loan > Principal default row shares NilID with "(None)"; a
+	// plain indexOf(NilID) would collapse it onto "(None)", so remember it here.
+	principalWasDefault := principalSel > 0 && principalSel < len(st.principalOptions) &&
+		st.principalOptions[principalSel] == loanPrincipalDefaultDisplay && selectedPrincipalID.IsNil()
 	selectedEscrowIDs := make([]types.ID, loanMaxEscrowLines)
 	for k := range loanMaxEscrowLines {
 		selectedEscrowIDs[k] = idAt(st.categoryIDs, fields[loanEscrowCatIndex(k)].SelectedIndex)
@@ -602,9 +664,12 @@ func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*cate
 	// Rebuild the option/ID lists including the new category.
 	catOptions, catIDs := buildCategoryOptions(cats)
 	interestOptions, interestIDs, interestDefaultIdx := buildLoanInterestOptions(catOptions, catIDs)
+	principalOptions, principalIDs, principalDefaultIdx := buildLoanPrincipalOptions(catOptions, catIDs)
 	st.categoryIDs = catIDs
 	st.interestOptions = interestOptions
 	st.interestIDs = interestIDs
+	st.principalOptions = principalOptions
+	st.principalIDs = principalIDs
 
 	indexOf := func(ids []types.ID, id types.ID) int {
 		for i, x := range ids {
@@ -631,15 +696,25 @@ func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*cate
 		interestIdx = interestDefaultIdx
 	}
 	setCombo(fields[loanFieldInterestCategory], interestOptions, interestIdx)
+	// Principal: "(None)" (NilID at idx 0) round-trips via indexOf; the synthetic
+	// default (also NilID) is disambiguated by the captured flag.
+	principalIdx := indexOf(principalIDs, selectedPrincipalID)
+	if principalWasDefault {
+		principalIdx = principalDefaultIdx
+	}
+	setCombo(fields[loanFieldPrincipalCategory], principalOptions, principalIdx)
 	for k := range loanMaxEscrowLines {
 		setCombo(fields[loanEscrowCatIndex(k)], catOptions, indexOf(catIDs, selectedEscrowIDs[k]))
 	}
 
 	// Point the originating field at the freshly-created category and focus it.
 	if fld := a.createCatLoanField; fld >= 0 && fld < len(fields) {
-		if fld == loanFieldInterestCategory {
+		switch fld {
+		case loanFieldInterestCategory:
 			fields[fld].SelectedIndex = indexOf(interestIDs, newCat.ID)
-		} else {
+		case loanFieldPrincipalCategory:
+			fields[fld].SelectedIndex = indexOf(principalIDs, newCat.ID)
+		default:
 			fields[fld].SelectedIndex = indexOf(catIDs, newCat.ID)
 		}
 		fields[fld].ComboHighlight = fields[fld].SelectedIndex
@@ -772,6 +847,23 @@ func loanAPRPositive(value string) bool {
 		return false
 	}
 	return apr.IsPositive()
+}
+
+// resolveLoanPrincipalSelection reads the Principal Category combo into a
+// save-time decision. useDefault=true means the synthetic Loan > Principal row
+// is selected — resolve via GetOrCreateLoanPrincipalCategory at save. Otherwise
+// pickedID is the chosen category, or NilID for "(None)" (an unlabeled
+// principal line). A real Loan:Principal category selects normally (its own ID,
+// no get-or-create needed).
+func resolveLoanPrincipalSelection(st *loanWizardData, f *dialog.Field) (useDefault bool, pickedID types.ID) {
+	idx := f.SelectedIndex
+	if idx <= 0 || idx >= len(st.principalOptions) {
+		return false, types.NilID // "(None)" or out of range → unlabeled
+	}
+	if st.principalOptions[idx] == loanPrincipalDefaultDisplay && st.principalIDs[idx].IsNil() {
+		return true, types.NilID
+	}
+	return false, st.principalIDs[idx]
 }
 
 // submitLoanWizard dispatches to the new-loan or Edit-as-loan save path.
@@ -916,6 +1008,9 @@ func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Principal category (independent of APR; the principal line always exists).
+	principalDefault, principalPickedID := resolveLoanPrincipalSelection(st, fields[loanFieldPrincipalCategory])
+
 	a.closeLoanWizard()
 
 	return a, func() tea.Msg {
@@ -947,6 +1042,19 @@ func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
 			interestCatID = cat.ID
 		}
 
+		// Principal category (also get-or-create outside the atomic unit).
+		principalCatID := principalPickedID
+		if principalDefault {
+			if a.categorySvc == nil {
+				return errMsg{err: fmt.Errorf("category service not available")}
+			}
+			cat, cErr := a.categorySvc.GetOrCreateLoanPrincipalCategory()
+			if cErr != nil {
+				return errMsg{err: fmt.Errorf("failed to resolve principal category: %w", cErr)}
+			}
+			principalCatID = cat.ID
+		}
+
 		// Loan account: liabilities are stored negative.
 		loanAcct := account.NewAccount(name, account.TypeLoan, currency, owed.Neg(), openingDate)
 		loanAcct.SetInterestRate(apr)
@@ -959,12 +1067,13 @@ func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
 		// BuildLoanSchedule, which the CLI `loan add` also uses so both create an
 		// identical loan-shaped schedule).
 		schedule, _, bErr := scheduled.BuildLoanSchedule(fromID, nextDate, payeeID, autoPost, scheduled.LoanSnapshotInput{
-			LoanAccountID: loanAcct.ID,
-			APR:           apr,
-			Owed:          owed,
-			PIPayment:     pi,
-			InterestCatID: interestCatID,
-			Escrow:        escrow,
+			LoanAccountID:  loanAcct.ID,
+			APR:            apr,
+			Owed:           owed,
+			PIPayment:      pi,
+			InterestCatID:  interestCatID,
+			PrincipalCatID: principalCatID,
+			Escrow:         escrow,
 		})
 		if bErr != nil {
 			return errMsg{err: fmt.Errorf("failed to build loan schedule: %w", bErr)}
@@ -1079,6 +1188,9 @@ func (a *App) submitEditLoanWizard() (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Principal category (independent of APR; the principal line always exists).
+	principalDefault, principalPickedID := resolveLoanPrincipalSelection(st, fields[loanFieldPrincipalCategory])
+
 	schedule := st.existingSchedule
 	loanAcct := st.loanAccount
 
@@ -1101,13 +1213,26 @@ func (a *App) submitEditLoanWizard() (tea.Model, tea.Cmd) {
 			interestCatID = cat.ID
 		}
 
+		principalCatID := principalPickedID
+		if principalDefault {
+			if a.categorySvc == nil {
+				return errMsg{err: fmt.Errorf("category service not available")}
+			}
+			cat, cErr := a.categorySvc.GetOrCreateLoanPrincipalCategory()
+			if cErr != nil {
+				return errMsg{err: fmt.Errorf("failed to resolve principal category: %w", cErr)}
+			}
+			principalCatID = cat.ID
+		}
+
 		parent, splits, _, bErr := scheduled.BuildLoanSnapshot(scheduled.LoanSnapshotInput{
-			LoanAccountID: loanAcct.ID,
-			APR:           apr,
-			Owed:          owed,
-			PIPayment:     pi,
-			InterestCatID: interestCatID,
-			Escrow:        escrow,
+			LoanAccountID:  loanAcct.ID,
+			APR:            apr,
+			Owed:           owed,
+			PIPayment:      pi,
+			InterestCatID:  interestCatID,
+			PrincipalCatID: principalCatID,
+			Escrow:         escrow,
 		})
 		if bErr != nil {
 			return errMsg{err: fmt.Errorf("failed to rebuild loan schedule: %w", bErr)}

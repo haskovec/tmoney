@@ -20,14 +20,17 @@ type LoanEscrowLine struct {
 // collect to build a loan-shaped schedule's month-one template. Owed and
 // PIPayment are positive magnitudes; APR is a percentage (6.5 = 6.5%).
 // InterestCatID is required only when the computed month-one interest is
-// greater than $0.00.
+// greater than $0.00. PrincipalCatID is optional — when non-nil the principal
+// transfer line is labeled with it (a categorized transfer, e.g.
+// Loan:Principal); nil leaves the principal line a bare transfer.
 type LoanSnapshotInput struct {
-	LoanAccountID types.ID
-	APR           types.Money
-	Owed          types.Money
-	PIPayment     types.Money
-	InterestCatID types.ID
-	Escrow        []LoanEscrowLine
+	LoanAccountID  types.ID
+	APR            types.Money
+	Owed           types.Money
+	PIPayment      types.Money
+	InterestCatID  types.ID
+	PrincipalCatID types.ID
+	Escrow         []LoanEscrowLine
 }
 
 // BuildLoanSnapshot computes the month-one interest/principal split for a new
@@ -72,9 +75,14 @@ func BuildLoanSnapshot(in LoanSnapshotInput) (parent types.Money, splits []*Spli
 	}
 
 	// Principal line — a transfer into the loan account, moving its negative
-	// balance toward zero.
+	// balance toward zero. Optionally labeled (a categorized transfer, e.g.
+	// Loan:Principal) — this rides through recompute-at-post via
+	// ComputeLoanSplits, which copies the template principal line's category.
 	pLine := NewTransferSplit(types.NilID, in.LoanAccountID, principal.Neg())
 	pLine.LoanSection = types.NullableString{String: LoanSectionPrincipal, Valid: true}
+	if !in.PrincipalCatID.IsNil() {
+		pLine.CategoryID = types.NullableID{ID: in.PrincipalCatID, Valid: true}
+	}
 	splits = append(splits, pLine)
 	total = total.Add(pLine.Amount)
 

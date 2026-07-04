@@ -179,6 +179,110 @@ func TestLoanAdd_CreatesLoanScheduleAndAsset(t *testing.T) {
 	}
 }
 
+// principalSplit returns the loan schedule's principal transfer line.
+func principalSplit(t *testing.T, st *scheduled.Transaction) *scheduled.Split {
+	t.Helper()
+	for _, sp := range st.Splits {
+		if sp.LoanSection.Valid && sp.LoanSection.String == scheduled.LoanSectionPrincipal {
+			return sp
+		}
+	}
+	t.Fatal("no principal split in schedule")
+	return nil
+}
+
+func TestLoanAdd_DefaultPrincipalCategory(t *testing.T) {
+	dbPath := setupLoanDB(t)
+	if _, err := runLoan(t, "loan", "add", "--file", dbPath,
+		"--name", "Mortgage", "--current-balance", "312450.22", "--rate", "6.5",
+		"--payment", "2401.86", "--next-payment-date", "2026-08-01",
+		"--from-account", "Checking"); err != nil {
+		t.Fatalf("loan add: %v", err)
+	}
+	svc := clitest.OpenSvc(t, dbPath)
+
+	// Default Loan:Principal category get-or-created.
+	loanParent, err := svc.CategoryRepo.GetByName("Loan", nil)
+	if err != nil {
+		t.Fatalf("Loan parent not created: %v", err)
+	}
+	principalCat, err := svc.CategoryRepo.GetByName("Principal", &loanParent.ID)
+	if err != nil {
+		t.Fatalf("Loan:Principal child not created: %v", err)
+	}
+
+	// Principal transfer line labeled with it.
+	checking, _ := svc.Account.GetByName("Checking")
+	scheds, _ := svc.Scheduled.ListByAccount(checking.ID)
+	if len(scheds) != 1 {
+		t.Fatalf("got %d schedules, want 1", len(scheds))
+	}
+	p := principalSplit(t, scheds[0])
+	if !p.CategoryID.Valid || p.CategoryID.ID != principalCat.ID {
+		t.Errorf("principal category = %v, want Loan:Principal %v", p.CategoryID, principalCat.ID)
+	}
+}
+
+func TestLoanAdd_ExplicitPrincipalCategory(t *testing.T) {
+	dbPath := setupLoanDB(t)
+	if _, err := runLoan(t, "loan", "add", "--file", dbPath,
+		"--name", "Mortgage", "--current-balance", "312450.22", "--rate", "6.5",
+		"--payment", "2401.86", "--next-payment-date", "2026-08-01",
+		"--from-account", "Checking", "--principal-category", "Housing:Principal"); err != nil {
+		t.Fatalf("loan add: %v", err)
+	}
+	svc := clitest.OpenSvc(t, dbPath)
+
+	// The explicit path is created…
+	housing, err := svc.CategoryRepo.GetByName("Housing", nil)
+	if err != nil {
+		t.Fatalf("Housing parent not created: %v", err)
+	}
+	principalCat, err := svc.CategoryRepo.GetByName("Principal", &housing.ID)
+	if err != nil {
+		t.Fatalf("Housing:Principal not created: %v", err)
+	}
+	checking, _ := svc.Account.GetByName("Checking")
+	scheds, _ := svc.Scheduled.ListByAccount(checking.ID)
+	p := principalSplit(t, scheds[0])
+	if !p.CategoryID.Valid || p.CategoryID.ID != principalCat.ID {
+		t.Errorf("principal category = %v, want Housing:Principal %v", p.CategoryID, principalCat.ID)
+	}
+
+	// …and the default Loan:Principal is NOT created (the Loan parent still
+	// exists from the interest default, but has no Principal child).
+	if loanParent, err := svc.CategoryRepo.GetByName("Loan", nil); err == nil {
+		if _, err := svc.CategoryRepo.GetByName("Principal", &loanParent.ID); err == nil {
+			t.Error("Loan:Principal should not be created when --principal-category is explicit")
+		}
+	}
+}
+
+func TestLoanAdd_EmptyPrincipalCategoryUnlabeled(t *testing.T) {
+	dbPath := setupLoanDB(t)
+	if _, err := runLoan(t, "loan", "add", "--file", dbPath,
+		"--name", "Mortgage", "--current-balance", "312450.22", "--rate", "6.5",
+		"--payment", "2401.86", "--next-payment-date", "2026-08-01",
+		"--from-account", "Checking", "--principal-category", ""); err != nil {
+		t.Fatalf("loan add: %v", err)
+	}
+	svc := clitest.OpenSvc(t, dbPath)
+
+	checking, _ := svc.Account.GetByName("Checking")
+	scheds, _ := svc.Scheduled.ListByAccount(checking.ID)
+	p := principalSplit(t, scheds[0])
+	if p.CategoryID.Valid {
+		t.Errorf(`principal category = %v, want unset (--principal-category "")`, p.CategoryID)
+	}
+
+	// No Loan:Principal was created.
+	if loanParent, err := svc.CategoryRepo.GetByName("Loan", nil); err == nil {
+		if _, err := svc.CategoryRepo.GetByName("Principal", &loanParent.ID); err == nil {
+			t.Error(`Loan:Principal should not be created for --principal-category ""`)
+		}
+	}
+}
+
 func TestLoanAdd_ComputedPayment(t *testing.T) {
 	dbPath := setupLoanDB(t)
 	// 32000 @ 5.9% / 60mo → 617.16 (Phase 3 fixture).
@@ -234,9 +338,19 @@ func TestLoanAdd_ZeroRateOmitsInterestLine(t *testing.T) {
 			t.Error("0% loan should have no interest line")
 		}
 	}
-	// No interest category created for a 0% loan.
-	if _, err := svc.CategoryRepo.GetByName("Loan", nil); err == nil {
-		t.Error("0% loan should not create the Loan interest category")
+	// A 0% loan books no interest, so no Loan:Interest category is created — but
+	// the principal line is still labeled Loan:Principal by default, so the Loan
+	// parent + Principal child do exist (spec: "0% loans, principal still
+	// labeled").
+	loanParent, err := svc.CategoryRepo.GetByName("Loan", nil)
+	if err != nil {
+		t.Fatalf("Loan parent should exist for the default Loan:Principal: %v", err)
+	}
+	if _, err := svc.CategoryRepo.GetByName("Interest", &loanParent.ID); err == nil {
+		t.Error("0% loan should not create the Loan:Interest category")
+	}
+	if _, err := svc.CategoryRepo.GetByName("Principal", &loanParent.ID); err != nil {
+		t.Errorf("0%% loan should label its principal line Loan:Principal: %v", err)
 	}
 }
 

@@ -102,6 +102,86 @@ func TestBuildLoanSchedule_PropagatesSnapshotError(t *testing.T) {
 	}
 }
 
+func TestBuildLoanSnapshot_PrincipalCategory(t *testing.T) {
+	loanID := types.NewID()
+	interestCat := types.NewID()
+	principalCat := types.NewID()
+
+	_, splits, _, err := BuildLoanSnapshot(LoanSnapshotInput{
+		LoanAccountID:  loanID,
+		APR:            types.MustNewMoney("6.5"),
+		Owed:           types.MustNewMoney("380000"),
+		PIPayment:      types.MustNewMoney("2401.86"),
+		InterestCatID:  interestCat,
+		PrincipalCatID: principalCat,
+	})
+	if err != nil {
+		t.Fatalf("BuildLoanSnapshot: %v", err)
+	}
+	p := findLoanSection(splits, LoanSectionPrincipal)
+	if p == nil {
+		t.Fatal("no principal line")
+	}
+	// The principal line is a categorized transfer: transfer target AND category.
+	if !p.TransferAccountID.Valid || p.TransferAccountID.ID != loanID {
+		t.Errorf("principal transfer target = %v, want %v", p.TransferAccountID, loanID)
+	}
+	if !p.CategoryID.Valid || p.CategoryID.ID != principalCat {
+		t.Errorf("principal category = %v, want %v", p.CategoryID, principalCat)
+	}
+	// A categorized transfer satisfies the relaxed split rule (at least one of
+	// category / transfer). LoanSection tag is preserved.
+	if !p.LoanSection.Valid || p.LoanSection.String != LoanSectionPrincipal {
+		t.Errorf("principal loan_section = %v, want %q", p.LoanSection, LoanSectionPrincipal)
+	}
+}
+
+func TestBuildLoanSnapshot_PrincipalCategoryOmittedWhenNil(t *testing.T) {
+	// PrincipalCatID left nil → a bare (uncategorized) transfer line, the
+	// old shape. Interest category is unaffected.
+	_, splits, _, err := BuildLoanSnapshot(LoanSnapshotInput{
+		LoanAccountID: types.NewID(),
+		APR:           types.MustNewMoney("6.5"),
+		Owed:          types.MustNewMoney("380000"),
+		PIPayment:     types.MustNewMoney("2401.86"),
+		InterestCatID: types.NewID(),
+	})
+	if err != nil {
+		t.Fatalf("BuildLoanSnapshot: %v", err)
+	}
+	p := findLoanSection(splits, LoanSectionPrincipal)
+	if p == nil {
+		t.Fatal("no principal line")
+	}
+	if p.CategoryID.Valid {
+		t.Errorf("principal category = %v, want unset (bare transfer)", p.CategoryID)
+	}
+}
+
+// TestBuildLoanSnapshot_ZeroRatePrincipalStillLabeled pins that a 0% loan (no
+// interest line) still carries the principal category — the spec's "0% loans:
+// no interest line, principal line still labeled".
+func TestBuildLoanSnapshot_ZeroRatePrincipalStillLabeled(t *testing.T) {
+	principalCat := types.NewID()
+	_, splits, _, err := BuildLoanSnapshot(LoanSnapshotInput{
+		LoanAccountID:  types.NewID(),
+		APR:            types.ZeroMoney,
+		Owed:           types.MustNewMoney("32000"),
+		PIPayment:      types.MustNewMoney("533.34"),
+		PrincipalCatID: principalCat,
+	})
+	if err != nil {
+		t.Fatalf("BuildLoanSnapshot: %v", err)
+	}
+	if findLoanSection(splits, LoanSectionInterest) != nil {
+		t.Error("0% loan should have no interest line")
+	}
+	p := findLoanSection(splits, LoanSectionPrincipal)
+	if p == nil || !p.CategoryID.Valid || p.CategoryID.ID != principalCat {
+		t.Errorf("0%% loan principal category = %v, want %v", p, principalCat)
+	}
+}
+
 func TestBuildLoanSnapshot_Standard(t *testing.T) {
 	loanID := types.NewID()
 	interestCat := types.NewID()

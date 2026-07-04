@@ -361,33 +361,52 @@ fixable against today's schema.
   it; inline-creation divert open/apply; preview seeds from template; preview
   one-off relabel posts the new category while the template keeps its original).
 
-## Phase 9: Loan Wizard Integration — [ ]
+## Phase 9: Loan Wizard Integration — [x]
 
-- [ ] `internal/category/category.go:106-112` +
-  `category_service.go:308-331`: `LoanPrincipalChildName = "Principal"` and
-  `GetOrCreateLoanPrincipalCategory()` beside the Interest twin.
-- [ ] `internal/scheduled/loan_build.go`: `PrincipalCatID` on
-  `LoanSnapshotInput` (:24-31), set on the principal line (:76-78).
-- [ ] `internal/scheduled/loan_posting.go:124-128`: posted principal line
-  copies the template principal line's category (as :122 does for
-  interest).
-- [ ] `internal/cli/loan/add.go`: `--principal-category` — omitted →
-  `GetOrCreateLoanPrincipalCategory`; explicit path →
-  `getOrCreateCategoryPath` (:322-342); explicit `""` → none (detect via
-  `Flags().Changed`); resolution block beside :235-249.
-- [ ] `internal/tui/loan_wizard.go`: *Principal category* field (prefilled
-  `Loan:Principal`, clearable, inline creation) on create; edit wizard
-  prefills from the existing principal line (`prefillLoanPaymentFields`
-  :307-340 currently skips the transfer line's category) so **Edit as
-  loan →** round-trips it through `submitEditLoanWizard`'s wholesale
-  rebuild (:1104-1126).
-- [ ] Regression tests: categorized principal line keeps `IsLoanShaped` /
-  `IsLoanAdoptable` / `FindLoanSchedule` / demotion guard behavior
-  identical (loan_shape.go:118-121 never reads it); amortization view and
-  `loan list/show` unaffected; recompute-at-post preserves the label
-  across an extra-principal payment and an APR edit; 0% loan books
-  principal with label and no interest line; `--principal-category ""`
-  and cleared wizard field produce a bare transfer line (old shape).
+- [x] `internal/category/category.go` + `category_service.go`:
+  `LoanPrincipalChildName = "Principal"` and `GetOrCreateLoanPrincipalCategory()`
+  beside the Interest twin (idempotent, reuses/shares the single `Loan` parent,
+  non-system).
+- [x] `internal/scheduled/loan_build.go`: `PrincipalCatID` on
+  `LoanSnapshotInput`, set on the principal transfer line (a categorized
+  transfer) when non-nil; nil → a bare transfer (old shape).
+- [x] `internal/scheduled/loan_posting.go`: `ComputeLoanSplits` copies the
+  template principal line's `CategoryID.ID` onto the posted principal
+  `transaction.Split` (exactly as the interest line copies its template
+  category), so a label survives recompute-at-post; Phase 7
+  counterpart-mirroring then labels the loan-account paired row.
+- [x] `internal/cli/loan/add.go`: `--principal-category` — omitted →
+  `GetOrCreateLoanPrincipalCategory`; explicit path → `getOrCreateCategoryPath`;
+  explicit `""` → none (via `Flags().Changed`); applies at any APR (0% loans
+  label principal too); threaded into `LoanSnapshotInput.PrincipalCatID`; Long
+  help updated.
+- [x] `internal/tui/loan_wizard.go`: *Principal Category* combo after Interest
+  (new `loanFieldPrincipalCategory`, escrow block shifted +1) — **clearable**
+  ("(None)" kept) and defaulting to a synthetic `Loan > Principal` row via new
+  `buildLoanPrincipalOptions`. `resolveLoanPrincipalSelection` maps the combo to
+  a save-time decision (default get-or-create / picked ID / "(None)"). The
+  synthetic default's NilID collides with "(None)"'s NilID, so
+  `applyCreatedCategoryToLoan` disambiguates by a captured
+  `principalWasDefault` flag when re-resolving selections across an inline
+  category insert (principalOptions/principalIDs kept in sync). Inline creation
+  from the principal combo rides the existing loan-wizard plumbing
+  (`createCatSourceLoanWizard` + the field-index switch in the applier).
+  `prefillLoanPaymentFields` round-trips the existing principal line's
+  category — categorized → that category, uncategorized → "(None)" (never
+  silently adds a label) — so **Edit as loan →** round-trips through
+  `submitEditLoanWizard`'s rebuild. Both submit paths thread `PrincipalCatID`.
+- [x] Tests: `internal/category/loan_principal_category_test.go` (fresh/
+  idempotent/reuses-parent/shares-parent-with-interest);
+  `loan_build_test.go` (snapshot labels/omits principal, 0% still labeled);
+  `loan_posting_test.go` (recompute carries/omits the label, 0% labeled);
+  `loan_wiring_test.go` (full `Post` → posted split **and** minted loan-account
+  counterpart both carry the label, plus a second post after an extra-principal
+  payment); `loan_shape_test.go` (a categorized principal line stays
+  `IsLoanShaped`/`IsLoanAdoptable`); `internal/cli/loan/add_test.go`
+  (default/explicit/empty `--principal-category`; 0%-loan test updated to expect
+  the labeled principal + no interest child); `internal/tui/loan_wizard_test.go`
+  (default on create, clearable to "(None)", edit round-trip, old-shape
+  uncategorized stays "(None)", inline create from the principal combo).
 
 ## Phase 10: Docs + End-to-End Verification — [ ]
 

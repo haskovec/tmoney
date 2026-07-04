@@ -121,9 +121,14 @@ func (s *Service) ComputeLoanSplits(st *Transaction, occurrenceDate types.Date) 
 			}
 			line = transaction.NewSplit(types.ID{}, tmpl.CategoryID.ID, interest.Neg())
 		case LoanSectionPrincipal:
+			// Copy the template principal line's category (NilID = uncategorized),
+			// exactly as the interest line above copies its template category, so a
+			// wizard-labeled Loan:Principal survives recompute-at-post. Counterpart
+			// mirroring then carries the label onto the loan-account paired row.
 			line = &transaction.Split{
 				BaseModel:         types.NewBaseModel(),
 				Amount:            principal.Neg(),
+				CategoryID:        tmpl.CategoryID.ID,
 				TransferAccountID: types.NullableID{ID: tmpl.TransferAccountID.ID, Valid: true},
 			}
 		case LoanSectionEscrow:
