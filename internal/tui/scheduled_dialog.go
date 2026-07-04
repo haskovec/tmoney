@@ -67,6 +67,36 @@ func transactionSplitsFromScheduled(st *scheduled.Transaction) []*transaction.Sp
 	return rows
 }
 
+// scheduledSplitsFromTransaction converts the transaction.Split rows the split
+// editor produces back into scheduled.Split children for a multi-line template.
+// It is the inverse of transactionSplitsFromScheduled. A transfer line carries
+// its category through (carry-through) so an already-categorized template
+// transfer line survives an Edit Series round-trip; the split editor offers no
+// picker for it (v1 non-goal).
+func scheduledSplitsFromTransaction(splits []*transaction.Split) scheduled.SplitCollection {
+	children := scheduled.SplitCollection{}
+	for _, ts := range splits {
+		child := &scheduled.Split{
+			BaseModel: types.NewBaseModel(),
+			Amount:    ts.Amount,
+		}
+		switch {
+		case ts.TransferAccountID.Valid:
+			child.TransferAccountID = ts.TransferAccountID
+			if !ts.CategoryID.IsNil() {
+				child.CategoryID = types.NullableID{ID: ts.CategoryID, Valid: true}
+			}
+		default:
+			child.CategoryID = types.NullableID{ID: ts.CategoryID, Valid: true}
+		}
+		if ts.Memo.Valid {
+			child.SetMemo(ts.Memo.String)
+		}
+		children = append(children, child)
+	}
+	return children
+}
+
 // scheduledDialogMode indicates whether the dialog is creating or editing.
 type scheduledDialogMode int
 
@@ -943,23 +973,7 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 
-		children := scheduled.SplitCollection{}
-		for _, ts := range splits {
-			child := &scheduled.Split{
-				BaseModel: types.NewBaseModel(),
-				Amount:    ts.Amount,
-			}
-			switch {
-			case ts.TransferAccountID.Valid:
-				child.TransferAccountID = ts.TransferAccountID
-			default:
-				child.CategoryID = types.NullableID{ID: ts.CategoryID, Valid: true}
-			}
-			if ts.Memo.Valid {
-				child.SetMemo(ts.Memo.String)
-			}
-			children = append(children, child)
-		}
+		children := scheduledSplitsFromTransaction(splits)
 
 		applyScalars := func(st *scheduled.Transaction) {
 			st.AccountID = pending.accountID

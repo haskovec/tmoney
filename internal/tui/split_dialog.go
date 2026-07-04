@@ -67,6 +67,13 @@ type splitRow struct {
 	// before SetTransferTargets has supplied the account list.
 	// SetTransferTargets resolves it to accountIndex and clears it.
 	seedTransferAccountID types.NullableID
+
+	// seedTransferCategoryID carries the category of a seeded transfer-line
+	// (a "categorized transfer", e.g. a loan payment's principal line) through
+	// the dialog unchanged. The dialog offers no picker for it (v1 non-goal),
+	// so buildSplits re-emits it as-is; freshly-created transfer rows leave it
+	// NilID (no category).
+	seedTransferCategoryID types.ID
 }
 
 // pendingSplitTransaction holds the transaction data while the split editor is open.
@@ -165,16 +172,17 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 			Placeholder: "Memo",
 		}
 
-		// A transfer-split (TransferAccountID set, no category) seeds a
-		// transfer-mode row. The account list isn't known until
-		// SetTransferTargets, so stash the destination ID for it to
-		// resolve into an accountIndex.
+		// A transfer-split (TransferAccountID set) seeds a transfer-mode row.
+		// The account list isn't known until SetTransferTargets, so stash the
+		// destination ID for it to resolve into an accountIndex. An existing
+		// category (a categorized transfer) is carried through unchanged.
 		if s.TransferAccountID.Valid {
 			sd.rows = append(sd.rows, splitRow{
-				transferMode:          true,
-				seedTransferAccountID: s.TransferAccountID,
-				amountField:           amountField,
-				memoField:             memoField,
+				transferMode:           true,
+				seedTransferAccountID:  s.TransferAccountID,
+				seedTransferCategoryID: s.CategoryID,
+				amountField:            amountField,
+				memoField:              memoField,
 			})
 			continue
 		}
@@ -434,10 +442,12 @@ func (sd *SplitDialog) validate() error {
 
 // buildSplits produces Split structs from the current rows.
 //
-// Transfer-line rows produce a Split with CategoryID=NilID and
-// TransferAccountID set to the picked account; TransferID is left
-// empty because the service layer mints it when the parent transaction
-// is created (see MS-006).
+// Transfer-line rows produce a Split with TransferAccountID set to the picked
+// account; TransferID is left empty because the service layer mints it when
+// the parent transaction is created (see MS-006). A seeded transfer line's
+// category is carried through (row.seedTransferCategoryID) so an existing
+// categorized transfer survives an edit round-trip; a freshly-created transfer
+// row has no category (NilID).
 func (sd *SplitDialog) buildSplits() ([]*transaction.Split, error) {
 	if err := sd.validate(); err != nil {
 		return nil, err
@@ -453,7 +463,7 @@ func (sd *SplitDialog) buildSplits() ([]*transaction.Split, error) {
 			split = &transaction.Split{
 				BaseModel:     types.NewBaseModel(),
 				TransactionID: types.NilID,
-				CategoryID:    types.NilID,
+				CategoryID:    row.seedTransferCategoryID,
 				Amount:        amount,
 				TransferAccountID: types.NullableID{
 					ID:    sd.transferAccountIDs[row.accountIndex],

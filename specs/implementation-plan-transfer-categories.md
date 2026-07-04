@@ -280,35 +280,43 @@ fixable against today's schema.
   shows a categorized transfer's category (list + search) and hides it when
   absent; `transaction search --category` matches a categorized transfer.
 
-## Phase 7: Transfer-Line Mirroring + Split-Dialog Carry-Through — [ ]
+## Phase 7: Transfer-Line Mirroring + Split-Dialog Carry-Through — [x]
 
-- [ ] `internal/transaction/transaction_service.go:481-523`
-  (`createTransferLineCounterpart`): copy the split's category onto the
-  bank-side paired row (investment adapter path unchanged — split line
-  holds it alone).
-- [ ] `UpdateSplit` (:628-684): category change on a transfer line mirrors
-  to the bank-side counterpart (alongside the existing amount cascade);
-  `moveTransferLine` (:691-707) carries category onto the re-minted
-  counterpart; `ReplaceSplits` (fixed in Phase 2) mirrors category through
-  its counterpart create/update reconciliation.
-- [ ] `internal/transaction/transaction_service.go:1379-1410`: extend the
-  `Duplicate` guard to reject split parents containing transfer lines
-  (error mirroring `CannotDuplicateTransferError`). Today the split-copy
-  loop drops transfer linkage and fails loudly on `verifyReferences`;
-  after Phase 3's relaxation a *categorized* transfer line would duplicate
-  silently into a plain categorized split with no counterpart.
-- [ ] `internal/tui/split_dialog.go`: `splitRow` stores a seeded transfer
-  row's category; `buildSplits` (:452-465) re-emits it instead of
-  hardcoding `NilID`; optional compact render marker in the
-  `Transfer → <account>` cell (:739-743) when space allows. No picker (v1
-  non-goal).
-- [ ] `internal/tui/scheduled_dialog.go:946-962`: Edit Series split editor
-  re-emits template transfer-line categories (same carry-through).
-- [ ] Tests: counterpart carries category at create/edit/move and through
-  a `ReplaceSplits` round-trip; delete/void cascades unaffected; a
-  categorized transfer line survives a split-dialog round-trip and an
-  Edit Series round-trip unchanged; duplicating a split parent with a
-  transfer line errors.
+- [x] `internal/transaction/transaction_service.go`
+  (`createTransferLineCounterpart`): copies the split's category onto the
+  bank-side paired row (`paired.SetCategory` when `!split.CategoryID.IsNil()`);
+  investment adapter path unchanged — the split line holds it alone.
+- [x] `UpdateSplit` retained same-target branch now mirrors an amount **or**
+  category change onto the counterpart via the generalized
+  `mirrorToPairedCounterpart` (renamed from `updatePairedAmount`; sets amount
+  always + category on a regular-side counterpart, reconciled blocks).
+  `moveTransferLine` carries the category onto the re-minted counterpart for
+  free through `createTransferLineCounterpart`. `ReplaceSplits`: the diff
+  (`planSplitReplacement`) now records `retainedChanged` on amount **or**
+  category change (was `retainedAmountChanged`); `preflightSplitReplacement`
+  and the re-sync loop use `mirrorToPairedCounterpart`; added lines mint a
+  categorized counterpart. New `splitCategoryNullable` helper converts a
+  split's plain `CategoryID` to a `NullableID`.
+- [x] `Duplicate` refuses a split parent containing any transfer line up front
+  (splits loaded before creating the duplicate) with a new
+  `CannotDuplicateSplitTransferError`; plain split parents still duplicate.
+- [x] `internal/tui/split_dialog.go`: `splitRow.seedTransferCategoryID` stores a
+  seeded transfer row's category; `NewSplitDialogFromExisting` seeds it and
+  `buildSplits` re-emits it instead of hardcoding `NilID`; a fresh transfer
+  row carries no category. Render marker deferred (v1 non-goal; the cell is
+  width-constrained with mouse hit-testing and there is no picker).
+- [x] `internal/tui/scheduled_dialog.go`: extracted
+  `scheduledSplitsFromTransaction` (inverse of `transactionSplitsFromScheduled`)
+  which carries a template transfer line's category through the Edit Series
+  round-trip; `submitScheduledSplitDialog` now calls it.
+- [x] Tests: `internal/transaction/transfer_line_category_test.go` (counterpart
+  carries category at create/edit/move, ReplaceSplits retained/category-only/
+  added round-trips, reconciled blocks a category-only change, delete cascade,
+  investment-target line holds category with no regular counterpart, Duplicate
+  refusal + plain-split still-works); `internal/undo/transaction_replace_splits_test.go`
+  (void+undo preserves the categorized transfer line and its counterpart);
+  `internal/tui/split_dialog_transfer_category_test.go` (split-dialog carry-through,
+  fresh row no category, `scheduledSplitsFromTransaction` round-trip).
 
 ## Phase 8: Scheduled Transfers End-to-End — [ ]
 

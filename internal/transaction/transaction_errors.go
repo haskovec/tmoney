@@ -63,6 +63,19 @@ func (e *CannotDuplicateTransferError) Error() string {
 	return fmt.Sprintf("cannot duplicate transfer transaction %s; use CreateTransfer instead", e.ID)
 }
 
+// CannotDuplicateSplitTransferError is returned when trying to duplicate a
+// split transaction that contains a transfer line. The split-copy path can't
+// reconstruct the paired counter-transaction, so duplication is refused rather
+// than silently producing an orphaned (and, after migration 029, categorized)
+// split with no counterpart.
+type CannotDuplicateSplitTransferError struct {
+	ID string
+}
+
+func (e *CannotDuplicateSplitTransferError) Error() string {
+	return fmt.Sprintf("cannot duplicate transaction %s: it contains a transfer line", e.ID)
+}
+
 // IsVoidError is returned when trying to edit or void a void transaction.
 type IsVoidError struct {
 	ID string

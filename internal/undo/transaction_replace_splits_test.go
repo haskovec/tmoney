@@ -38,6 +38,12 @@ func transferLineSplit(parentID, targetAcctID types.ID, amount types.Money) *tra
 	}
 }
 
+func categorizedTransferLineSplit(parentID, targetAcctID, categoryID types.ID, amount types.Money) *transaction.Split {
+	s := transferLineSplit(parentID, targetAcctID, amount)
+	s.CategoryID = categoryID
+	return s
+}
+
 func TestEditTransactionWithSplitsCommand_TransferLineCounterpart(t *testing.T) {
 	env := createTestEnv(t)
 	checking := createTestAccount(t, env.accountRepo, "Checking")
@@ -152,5 +158,51 @@ func TestVoidTransactionCommand_TransferLineSplitRoundTrip(t *testing.T) {
 	}
 	if line == nil || line.TransferID.ID != cp.TransferID.ID {
 		t.Errorf("restored transfer line not linked to its counterpart: line=%+v", line)
+	}
+}
+
+// TestVoidTransactionCommand_CategorizedTransferLineRoundTrip proves a Phase-7
+// categorized transfer line (and the category mirrored onto its counterpart)
+// survives a void + undo intact.
+func TestVoidTransactionCommand_CategorizedTransferLineRoundTrip(t *testing.T) {
+	env := createTestEnv(t)
+	checking := createTestAccount(t, env.accountRepo, "Checking")
+	savings := createTestAccount(t, env.accountRepo, "Savings")
+	food := createTestCategory(t, env.categoryRepo, "Food")
+	bills := createTestCategory(t, env.categoryRepo, "Bills")
+
+	parent := transaction.NewTransaction(checking.ID, types.Today(), types.MustNewMoney("-100.00"))
+	catLine := transaction.NewSplit(parent.ID, food.ID, types.MustNewMoney("-60.00"))
+	xfer := categorizedTransferLineSplit(parent.ID, savings.ID, bills.ID, types.MustNewMoney("-40.00"))
+	if err := env.txnSvc.CreateWithSplits(parent, []*transaction.Split{catLine, xfer}); err != nil {
+		t.Fatalf("CreateWithSplits: %v", err)
+	}
+	if cp := singleSavingsCounterpart(t, env.txnSvc, savings.ID); !cp.HasCategory() || cp.CategoryID.ID != bills.ID {
+		t.Fatalf("counterpart category = %v, want Bills at create", cp.CategoryID)
+	}
+
+	cmd := undo.NewVoidTransactionCommand(env.txnSvc, parent.ID)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if err := cmd.Undo(); err != nil {
+		t.Fatalf("Undo: %v", err)
+	}
+
+	// Restored counterpart carries the category again.
+	cp := singleSavingsCounterpart(t, env.txnSvc, savings.ID)
+	if !cp.HasCategory() || cp.CategoryID.ID != bills.ID {
+		t.Errorf("restored counterpart category = %v, want Bills", cp.CategoryID)
+	}
+	// Restored split line keeps its category.
+	splits, _ := env.txnSvc.GetSplits(parent.ID)
+	var line *transaction.Split
+	for _, s := range splits {
+		if s.TransferAccountID.Valid {
+			line = s
+		}
+	}
+	if line == nil || line.CategoryID != bills.ID {
+		t.Errorf("restored transfer line lost its category: %+v", line)
 	}
 }

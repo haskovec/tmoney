@@ -479,6 +479,11 @@ type transferLinePair struct {
 // InvestmentCashCounterpartAdapter; otherwise a regular transaction is
 // created on the transactions table.
 //
+// A category on the split (a "categorized transfer", e.g. a loan payment's
+// principal line labeled Loan:Principal) is mirrored onto a regular-side
+// counterpart. The investment adapter row has no category column, so an
+// investment-side counterpart carries none — the split line holds it alone.
+//
 // The split must already carry a valid TransferID (CreateWithSplits and
 // moveTransferLine mint it before calling here).
 func (s *Service) createTransferLineCounterpart(
@@ -510,6 +515,9 @@ func (s *Service) createTransferLineCounterpart(
 
 	paired := NewTransaction(targetAcctID, parentDate, counterAmount)
 	paired.SetTransfer(transferID, parentAcctID)
+	if !split.CategoryID.IsNil() {
+		paired.SetCategory(split.CategoryID)
+	}
 	if err := s.txnRepo.Create(paired); err != nil {
 		return transferLinePair{}, fmt.Errorf("failed to create paired transfer transaction: %w", err)
 	}
@@ -696,11 +704,24 @@ func (s *Service) UpdateSplit(split *Split) error {
 		if !split.TransferID.Valid && existing.TransferID.Valid {
 			split.TransferID = existing.TransferID
 		}
+		// Mirror an amount or category change onto the paired counterpart. A
+		// category edit alone still cascades so the counterpart's label stays in
+		// sync with the canonical split line. Pre-flight the counterpart before
+		// persisting the split row so a reconciled counterpart fails cleanly with
+		// no partial write.
+		amountChanged := !existing.Amount.Equal(split.Amount)
+		categoryChanged := existing.CategoryID != split.CategoryID
+		cascade := existing.TransferID.Valid && (amountChanged || categoryChanged)
+		if cascade {
+			if err := s.ensureRetainedCounterpartMutable(existing.TransferID.ID, amountChanged); err != nil {
+				return err
+			}
+		}
 		if err := s.splitRepo.Update(split); err != nil {
 			return err
 		}
-		if existing.TransferID.Valid && !existing.Amount.Equal(split.Amount) {
-			return s.updatePairedAmount(existing.TransferID.ID, split.Amount.Neg())
+		if cascade {
+			return s.mirrorToPairedCounterpart(existing.TransferID.ID, split.Amount.Neg(), splitCategoryNullable(split), amountChanged)
 		}
 		return nil
 	}
@@ -712,7 +733,8 @@ func (s *Service) UpdateSplit(split *Split) error {
 // paired counter-transaction, mint a fresh transfer_id on the split-line,
 // persist the split, and create a new paired counterpart in the new target.
 // The new counterpart is routed to the investment table when the new
-// target is an investment account.
+// target is an investment account, and carries the split's category onto a
+// regular-side counterpart (via createTransferLineCounterpart).
 func (s *Service) moveTransferLine(parent *Transaction, existing, split *Split) error {
 	if existing.TransferID.Valid {
 		if err := s.deletePairedCounterTransaction(existing.TransferID.ID); err != nil {
@@ -746,10 +768,18 @@ func (s *Service) findPairedByTransferID(transferID types.ID) (*Transaction, err
 	return matches[0], nil
 }
 
-// updatePairedAmount sets the paired counter-transaction's amount to mirror a
-// transfer-line amount edit. A reconciled paired side blocks the cascade.
-// Handles both regular-side and investment-side counterparts.
-func (s *Service) updatePairedAmount(transferID types.ID, newAmount types.Money) error {
+// mirrorToPairedCounterpart syncs the paired counter-transaction of a retained
+// transfer line to the line's current amount and category. A regular-side
+// counterpart mirrors both amount and category. An investment-side counterpart
+// has no category column, so only its amount is mirrored — and only when the
+// amount actually changed: a category-only change is a no-op there and must not
+// touch (or be blocked by) the investment row. A reconciled counterpart that
+// would be written blocks the sync with IsReconciledError.
+//
+// newAmount is the counterpart's amount (already negated relative to the split
+// line); categoryID is the split line's category (Valid:false clears it);
+// amountChanged reports whether the amount actually changed.
+func (s *Service) mirrorToPairedCounterpart(transferID types.ID, newAmount types.Money, categoryID types.NullableID, amountChanged bool) error {
 	paired, err := s.findPairedByTransferID(transferID)
 	if err != nil {
 		return err
@@ -759,9 +789,12 @@ func (s *Service) updatePairedAmount(transferID types.ID, newAmount types.Money)
 			return &IsReconciledError{ID: paired.ID.String()}
 		}
 		paired.Amount = newAmount
+		paired.CategoryID = categoryID
 		return s.txnRepo.Update(paired)
 	}
-	if s.investmentCounterpart == nil {
+	// Investment-side counterpart: no category column, so a category-only change
+	// leaves it untouched.
+	if !amountChanged || s.investmentCounterpart == nil {
 		return nil
 	}
 	rowID, reconciled, found, err := s.investmentCounterpart.FindTransferCashCounterpart(transferID)
@@ -775,6 +808,48 @@ func (s *Service) updatePairedAmount(transferID types.ID, newAmount types.Money)
 		return &IsReconciledError{ID: rowID.String()}
 	}
 	return s.investmentCounterpart.UpdateTransferCashCounterpartAmount(rowID, newAmount)
+}
+
+// ensureRetainedCounterpartMutable verifies a retained transfer line's
+// counterpart can be re-synced, mirroring mirrorToPairedCounterpart's own
+// blocking rule so ReplaceSplits/UpdateSplit fail cleanly before any write. A
+// regular-side counterpart mirrors both fields, so a reconciled one always
+// blocks; an investment-side counterpart is written only when the amount
+// changed, so a reconciled one blocks only then (a category-only change never
+// touches it).
+func (s *Service) ensureRetainedCounterpartMutable(transferID types.ID, amountChanged bool) error {
+	paired, err := s.findPairedByTransferID(transferID)
+	if err != nil {
+		return err
+	}
+	if paired != nil {
+		if paired.IsReconciled() {
+			return &IsReconciledError{ID: paired.ID.String()}
+		}
+		return nil
+	}
+	if !amountChanged || s.investmentCounterpart == nil {
+		return nil
+	}
+	rowID, reconciled, found, err := s.investmentCounterpart.FindTransferCashCounterpart(transferID)
+	if err != nil {
+		return err
+	}
+	if found && reconciled {
+		return &IsReconciledError{ID: rowID.String()}
+	}
+	return nil
+}
+
+// splitCategoryNullable converts a split's plain CategoryID into a NullableID
+// for mirroring onto a counter-transaction (whose category column is nullable).
+// A nil category becomes an unset NullableID (which clears the counterpart's
+// category).
+func splitCategoryNullable(split *Split) types.NullableID {
+	if split.CategoryID.IsNil() {
+		return types.NullableID{Valid: false}
+	}
+	return types.NullableID{ID: split.CategoryID, Valid: true}
 }
 
 // DeleteSplit removes a split from a transaction.
@@ -829,9 +904,11 @@ func (s *Service) DeleteSplit(splitID types.ID) error {
 // the current ones rather than blindly dropping and recreating every row:
 //
 //   - a retained transfer line (matched by transfer_id, else by target
-//     account) keeps its counterpart; an amount change mirrors onto it;
+//     account) keeps its counterpart; an amount or category change mirrors
+//     onto it;
 //   - a removed transfer line's counterpart is deleted;
-//   - an added transfer line mints a transfer_id and creates a counterpart.
+//   - an added transfer line mints a transfer_id and creates a counterpart
+//     (carrying the line's category onto a regular-side counterpart).
 //
 // Callers may omit transfer_id on retained lines (the TUI split dialog does),
 // so matching falls back to the target account. A reconciled counterpart that
@@ -887,8 +964,8 @@ func (s *Service) ReplaceSplits(transactionID types.ID, splits []*Split) error {
 			return err
 		}
 	}
-	for _, change := range plan.retainedAmountChanged {
-		if err := s.updatePairedAmount(change.transferID, change.newAmount.Neg()); err != nil {
+	for _, change := range plan.retainedChanged {
+		if err := s.mirrorToPairedCounterpart(change.transferID, change.newAmount.Neg(), change.newCategory, change.amountChanged); err != nil {
 			return err
 		}
 	}
@@ -921,10 +998,14 @@ func (s *Service) ReplaceSplits(transactionID types.ID, splits []*Split) error {
 }
 
 // retainedTransferChange records a transfer line kept across a ReplaceSplits
-// whose amount changed, so its counterpart amount can be mirrored.
+// whose amount or category changed, so its counterpart can be re-synced.
+// amountChanged distinguishes a category-only change (which never touches an
+// investment-side counterpart) from an amount change.
 type retainedTransferChange struct {
-	transferID types.ID
-	newAmount  types.Money
+	transferID    types.ID
+	newAmount     types.Money
+	newCategory   types.NullableID
+	amountChanged bool
 }
 
 // splitReplacementPlan captures the transfer-line diff computed by
@@ -932,8 +1013,9 @@ type retainedTransferChange struct {
 type splitReplacementPlan struct {
 	// Counterparts to delete (old transfer lines with no match in the new set).
 	removedTransferIDs []types.ID
-	// Retained transfer lines whose amount changed (mirror onto counterpart).
-	retainedAmountChanged []retainedTransferChange
+	// Retained transfer lines whose amount or category changed (re-synced onto
+	// the counterpart).
+	retainedChanged []retainedTransferChange
 	// New transfer lines with no match in the old set. Each already has a
 	// transfer_id assigned; a counterpart must be minted for it.
 	addedSplits []*Split
@@ -943,8 +1025,10 @@ type splitReplacementPlan struct {
 // ones and assigns transfer_ids onto the new splits in place: a retained line
 // (matched first by transfer_id, then by target account) inherits its match's
 // transfer_id; an added line keeps a caller-supplied transfer_id or is minted
-// a fresh one. Categorized lines are ignored (they carry no counterpart and
-// are recreated wholesale by ReplaceSplits).
+// a fresh one. A retained line whose amount or category changed is recorded so
+// its counterpart is re-synced. Plain categorized (non-transfer) lines are
+// ignored (they carry no counterpart and are recreated wholesale by
+// ReplaceSplits).
 func planSplitReplacement(oldSplits, newSplits []*Split) splitReplacementPlan {
 	type oldTransfer struct {
 		split    *Split
@@ -990,9 +1074,15 @@ func planSplitReplacement(oldSplits, newSplits []*Split) splitReplacementPlan {
 			match.consumed = true
 			// Retained: adopt the existing counterpart's transfer_id.
 			ns.TransferID = match.split.TransferID
-			if !ns.Amount.Equal(match.split.Amount) {
-				plan.retainedAmountChanged = append(plan.retainedAmountChanged,
-					retainedTransferChange{transferID: match.split.TransferID.ID, newAmount: ns.Amount})
+			amountChanged := !ns.Amount.Equal(match.split.Amount)
+			categoryChanged := ns.CategoryID != match.split.CategoryID
+			if amountChanged || categoryChanged {
+				plan.retainedChanged = append(plan.retainedChanged, retainedTransferChange{
+					transferID:    match.split.TransferID.ID,
+					newAmount:     ns.Amount,
+					newCategory:   splitCategoryNullable(ns),
+					amountChanged: amountChanged,
+				})
 			}
 			continue
 		}
@@ -1014,16 +1104,16 @@ func planSplitReplacement(oldSplits, newSplits []*Split) splitReplacementPlan {
 
 // preflightSplitReplacement verifies every counterpart mutation the plan
 // implies can succeed, so ReplaceSplits fails before it deletes any split row.
-// Counterparts that will be deleted or amount-changed must not be reconciled;
-// added transfer lines must target a routable account.
+// Counterparts that will be deleted or re-synced (amount or category change)
+// must not be reconciled; added transfer lines must target a routable account.
 func (s *Service) preflightSplitReplacement(plan splitReplacementPlan) error {
 	for _, transferID := range plan.removedTransferIDs {
 		if err := s.ensureCounterpartNotReconciled(transferID); err != nil {
 			return err
 		}
 	}
-	for _, change := range plan.retainedAmountChanged {
-		if err := s.ensureCounterpartNotReconciled(change.transferID); err != nil {
+	for _, change := range plan.retainedChanged {
+		if err := s.ensureRetainedCounterpartMutable(change.transferID, change.amountChanged); err != nil {
 			return err
 		}
 	}
@@ -1677,6 +1767,21 @@ func (s *Service) Duplicate(transactionID types.ID) (*Transaction, error) {
 		return nil, &CannotDuplicateTransferError{ID: transactionID.String()}
 	}
 
+	// A split parent containing a transfer line can't be duplicated: the
+	// split-copy loop below drops transfer linkage, and after migration 029
+	// relaxed the transaction_splits CHECK a categorized transfer line would
+	// degrade silently into a plain categorized split with no counterpart.
+	// Refuse up front, before creating anything.
+	splits, err := s.splitRepo.ListByTransaction(transactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get splits: %w", err)
+	}
+	for _, split := range splits {
+		if split.TransferAccountID.Valid {
+			return nil, &CannotDuplicateSplitTransferError{ID: transactionID.String()}
+		}
+	}
+
 	// Create a new transaction with same properties
 	duplicate := NewTransaction(original.AccountID, types.Today(), original.Amount)
 	duplicate.PayeeID = original.PayeeID
@@ -1689,12 +1794,7 @@ func (s *Service) Duplicate(transactionID types.ID) (*Transaction, error) {
 		return nil, err
 	}
 
-	// Duplicate splits if any
-	splits, err := s.splitRepo.ListByTransaction(transactionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get splits: %w", err)
-	}
-
+	// Duplicate splits if any (guaranteed transfer-free by the guard above).
 	for _, split := range splits {
 		newSplit := NewSplit(duplicate.ID, split.CategoryID, split.Amount)
 		newSplit.Memo = split.Memo
