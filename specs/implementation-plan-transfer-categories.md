@@ -408,34 +408,44 @@ fixable against today's schema.
   (default on create, clearable to "(None)", edit round-trip, old-shape
   uncategorized stays "(None)", inline create from the principal combo).
 
-## Phase 10: Docs + End-to-End Verification — [ ]
+## Phase 10: Docs + End-to-End Verification — [x]
 
-- [ ] `README.md`: Transactions transfer bullet (:66-69) + inline-creation
-  surface list (:84-88); Scheduled transfers bullet (:118-124); Loans
-  split description (:159-162, `Loan:Principal`); Reports (:187, toggle);
-  CLI Reference — `transfer add/edit` (:550-563), `report spending`
-  (:714-721), `loan add` (:1279-1296).
-- [ ] Cross-edit invalidated claims: `specs/transactions.md:76,129-133,
-  139,145`; `specs/multiline-splits-and-paycheck.md:85-87,103,141,
-  196-198,409-410`; `specs/scheduled-transactions.md:18-19,126-128,
-  143-144`; `specs/loan-wizard.md:24-29` + forward-compat note :620-627
-  (now points here); `specs/categories.md` Transfer-category section;
-  `specs/reports.md:154,236,249-261`; `specs/import-export.md:271` (QIF L
-  lossiness note); `specs/tui.md:557`; `specs/cli.md` (`transfer add`
-  :1269-1273, `report spending` :903-907, `loan` :576-582). Note
-  `specs/database.md:192-199` is already stale (pre-014) — annotate or
-  refresh the split-table DDL while touching it.
-- [ ] Cross-link this spec from `specs/transactions.md` and
-  `specs/scheduled-transactions.md` "related specs" lists.
-- [ ] Scripted CLI smoke on a scratch `.tdb`: create accounts → categorized
-  `transfer add` → `transaction list` shows the label → `report spending`
-  excludes → `--include-transfers` includes once → `transfer edit
-  --category ""` clears both legs → `loan add` (default principal
-  category) → post one payment → loan register shows `Loan:Principal` →
-  amortization view unaffected → CSV export carries the columns → QIF
-  emits `L[Account]`.
-- [ ] `git status` sweep before staging; purge any `zz_`/`probe_` files;
-  never `git add -A`.
+- [x] `README.md`: Transactions transfer bullet + inline-creation surface
+  list (now names the Transfer/Edit Transfer/Scheduled Transfer dialogs, the
+  single-line transfer preview, and the loan wizard Principal category
+  field); Scheduled transfers bullet (optional category); Loans split
+  description (`Loan:Principal` default, preserved by recompute-at-post);
+  Reports (default excludes transfers, `--include-transfers` / TUI `t`
+  toggle); CLI Reference — `transfer add/edit --category` (add: existing
+  non-system only; edit: `--category ""` clears both legs), `report spending
+  --include-transfers`, `loan add --principal-category`.
+- [x] Cross-edit invalidated claims: `specs/transactions.md` (split-item
+  validation "at least one", whole-transaction transfer optional category,
+  unified TUI dialog Category field on create/edit, CLI `transfer edit`
+  set); `specs/multiline-splits-and-paycheck.md` (categorized transfer
+  split lines, cascade rules, Reports-Impact transfer exclusion, paycheck
+  Edit-as-paycheck caveat); `specs/scheduled-transactions.md`;
+  `specs/loan-wizard.md` (principal label + forward-compat note now points
+  here); `specs/categories.md` (transfer-label subsection); `specs/reports.md`
+  (explicit transfer guards + opt-in toggle); `specs/import-export.md` (CSV
+  columns + QIF L lossiness); `specs/tui.md` (Category combo surfaces,
+  inv↔inv handling); `specs/cli.md` (`transfer add/edit`, `report spending`,
+  `loan add`); `specs/database.md:192-199` annotated stale + `category_spending`
+  view migration-029 guard noted.
+- [x] Cross-link this spec from `specs/transactions.md` and
+  `specs/scheduled-transactions.md` (relative links added in the transfer
+  and overview sections respectively).
+- [x] Scripted CLI smoke on a scratch `.tdb` — all steps verified
+  (2026-07-04): categorized `transfer add` → `transaction list` shows the
+  label → `report spending` excludes → `--include-transfers` includes once
+  (outflow leg) → `transfer edit --category ""` clears both legs → `loan add`
+  (default `Loan:Principal`) → post one payment → loan register + counterpart
+  show `Loan:Principal` (both `category_id` + `transfer_account_id` set on the
+  split) → amortization view unaffected → CSV export carries Category +
+  Transfer Account → QIF emits `L[Account]`.
+- [x] `git status` sweep before staging; removed a stray `smoke.tdb`/`.wal`
+  a verify agent left in the repo root; staged only the touched docs, no
+  `git add -A`.
 
 ## Out of Scope (tracked for later)
 

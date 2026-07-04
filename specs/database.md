@@ -201,6 +201,17 @@ CREATE TABLE transaction_splits (
 CREATE INDEX idx_splits_transaction ON transaction_splits(transaction_id);
 ```
 
+> **Note — stale DDL (pre-`014`).** The definition above predates the
+> transfer-line and category changes; the live schema has since added
+> `transfer_account_id` / `transfer_id` columns and evolved the constraints.
+> As of migration `029` the table carries a *relaxed* check —
+> `CHECK (category_id IS NOT NULL OR transfer_account_id IS NOT NULL)` plus the
+> pairing check `CHECK ((transfer_account_id IS NULL) = (transfer_id IS NULL))`
+> — which permits a "categorized transfer" split row with both `category_id`
+> and `transfer_account_id` set. See the numbered migration files (through
+> `029_transfer_categories.sql`) for the authoritative current shape, and
+> [`specs/transfer-categories.md`](transfer-categories.md) for the rationale.
+
 ### investment_lots
 
 ```sql
@@ -305,6 +316,14 @@ FROM categories c
 LEFT JOIN transactions t ON t.category_id = c.id
 GROUP BY c.id, c.name, c.parent_id, c.type, DATE_TRUNC('month', t.date);
 ```
+
+> **Note — migration `029` recreates this view.** The join above is the
+> original, unguarded shape. Migration `029_transfer_categories.sql`
+> recreates `category_spending` with `AND t.status != 'void' AND
+> t.transfer_id IS NULL` in the `LEFT JOIN`, so voided rows and
+> categorized transfers stay out of its totals — matching the explicit
+> transfer guard the spending report gained. See
+> [`specs/transfer-categories.md`](transfer-categories.md).
 
 ## Backup and Recovery
 

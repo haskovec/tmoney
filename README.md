@@ -66,7 +66,11 @@ tmoney -f personal.tdb account balance
 - Linked transfers between accounts, including between two investment
   accounts (e.g., IRA-to-IRA cash rollovers). A single Transfer dialog
   in the TUI handles every combination — bank↔bank, bank↔investment,
-  and investment↔investment — with explicit From / To pickers
+  and investment↔investment — with explicit From / To pickers. A transfer
+  can carry an **optional category** — a label for *why* money moved (e.g. a
+  credit-card payment tagged `Bills:Credit Card`); it is never required and
+  never changes balance math. Investment↔investment transfers cannot carry
+  one (neither leg has a place to store it)
 - Cleared/pending status tracking
 - **Running-balance column** in the register (after Amount), showing the
   account balance after each transaction — Quicken-style — so the newest
@@ -84,7 +88,9 @@ tmoney -f personal.tdb account balance
 - Inline category creation from the Category field — pick
   `[+ Add new category…]` to create a new category (with optional
   new parent) without leaving the transaction, split, scheduled,
-  paycheck, or loan flow
+  paycheck, or loan flow — and on the Transfer and Edit Transfer
+  dialogs, the Scheduled Transfer dialog, the single-line transfer
+  post-time preview, and the loan wizard's Principal category field
 
 ### Categories
 - Two-level hierarchy (parent/subcategory, e.g. "Food:Groceries")
@@ -120,8 +126,10 @@ tmoney -f personal.tdb account balance
   Checking, or a savings sweep. Stored as a single-line transfer (From → To);
   posting creates a clean linked transfer pair, identical to an ad-hoc
   transfer. Put an estimate on the schedule and edit the real amount in the
-  post-time preview. Investment-account destinations (401k/HSA) use the
-  paycheck/multi-line flow instead.
+  post-time preview. The recurring transfer can carry an **optional
+  category**, which flows onto both legs of every posted pair.
+  Investment-account destinations (401k/HSA) use the paycheck/multi-line
+  flow instead.
 - Post or skip workflow
 - **Multi-line templates** for compound events (paychecks, etc.):
   a single scheduled transaction can carry multiple categorized and/or
@@ -158,9 +166,11 @@ tmoney -f personal.tdb account balance
   edits automatically reshape every subsequent payment without regenerating
   anything. The split is one categorized **interest** line (default
   `Loan:Interest`), one **principal** transfer line into the loan account
-  (moving its negative balance toward zero), and zero or more fixed **escrow**
-  lines (property tax, insurance, PMI). 0% loans book the whole payment as
-  principal.
+  (moving its negative balance toward zero, labeled `Loan:Principal` by
+  default — overridable, or suppressible with an empty value), and zero or
+  more fixed **escrow** lines (property tax, insurance, PMI). The principal
+  label is preserved on every recompute-at-post. 0% loans book the whole
+  payment as principal (and still label the principal line).
 - **Amortization view** (`a` on a loan account's register): a live,
   recomputed projection of the remaining payments — balance owed, APR, P&I
   payment, payments left, payoff date, and total interest remaining, over a
@@ -184,7 +194,12 @@ tmoney -f personal.tdb account balance
   transactions are already negative and need no change. Net worth for
   files with credit-card debt is now *corrected* — the old
   assets-minus-liabilities math overstated it.
-- Spending by category with monthly/yearly aggregation and visual bars
+- Spending by category with monthly/yearly aggregation and visual bars. By
+  default the spending report **excludes transfers** (an explicit guard).
+  Fold categorized transfers in on demand with `report spending
+  --include-transfers` on the CLI, or `t` on the TUI Reports view — only the
+  outflow leg of a pair counts (no double-count), only expense-typed
+  categories appear, and the TUI toggle is session-only
 
 ### Prices
 - Manual entry, CSV import, and history per security
@@ -334,6 +349,7 @@ security's price for the date.
 | `Left/Right` | Change period |
 | `n` | Net worth report |
 | `s` | Spending report |
+| `t` | Toggle including categorized transfers (spending report; session-only) |
 | `y` | Yearly view |
 | `m` | Monthly view |
 
@@ -556,10 +572,18 @@ tmoney transfer add --from Checking --to Savings --amount 500.00 \
 tmoney transfer add --from Checking --to Brokerage --amount 1000.00
 tmoney transfer add --from "Old IRA" --to "Rollover IRA" --amount 5000.00
 
+# Optionally label a transfer with an existing (non-system) category.
+# Unlike `loan add`, this does NOT create the category.
+tmoney transfer add --from Checking --to Visa --amount 500.00 \
+  --category "Bills:Credit Card"
+
 # Edit or delete a transfer by either leg's UUID (find IDs with
 # `transaction list --show-ids`). Both work for every account-type
 # combination. Only supplied flags take effect on edit.
 tmoney transfer edit --txn-id <id> --amount 600.00 --status cleared
+# Set, change, or clear the category (an explicit "" clears both legs)
+tmoney transfer edit --txn-id <id> --category "Bills:Credit Card"
+tmoney transfer edit --txn-id <id> --category ""
 tmoney transfer delete --txn-id <id>
 
 # Search transactions
@@ -719,6 +743,10 @@ tmoney report spending --year 2024
 
 # Spending by category - custom date range
 tmoney report spending --from 2024-01-01 --to 2024-06-30
+
+# Fold categorized transfers into the spending report (works with
+# --month, --year, or --from/--to)
+tmoney report spending --month 2026-07 --include-transfers
 ```
 
 ### Prices
@@ -1260,6 +1288,7 @@ tmoney -f personal.tdb loan add --name "Mortgage" \
   --current-balance 312450.22 --rate 6.5 --payment 2401.86 \
   --next-payment-date 2026-08-01 --from-account "Checking" \
   --escrow "Housing:Property Tax=650" --escrow "Housing:Home Insurance=120" \
+  --principal-category "Housing:Principal" \
   --payee "Wells Fargo" --asset-name "123 Main St" --asset-value 450000
 
 # New loan at origination: give the original terms and let the payment compute.
@@ -1290,10 +1319,12 @@ is required (`--rate`, 0–100); a payment that fails to cover the first month's
 interest is refused, and a 0% loan books the whole payment as principal with no
 interest line.
 
-`--interest-category` (default `Loan:Interest`) and `--escrow "Category=Amount"`
-take `Parent` or `Parent:Subcategory` paths and **create the category if it
-doesn't exist** (there is no `category add` on the CLI). The funding account
-(`--from-account`) must be an active, non-investment account.
+`--interest-category` (default `Loan:Interest`), `--principal-category`
+(default `Loan:Principal`; pass `""` to leave the principal line unlabeled),
+and `--escrow "Category=Amount"` take `Parent` or `Parent:Subcategory` paths
+and **create the category if it doesn't exist** (there is no `category add`
+on the CLI). The funding account (`--from-account`) must be an active,
+non-investment account.
 
 `loan list` shows every loan's balance owed (the liability rendered as a
 positive magnitude), APR, P&I payment, next date, payoff date, and interest

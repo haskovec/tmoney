@@ -528,10 +528,16 @@ The Category field is a typeahead combo box on:
 - The New Transaction and Edit Transaction dialogs.
 - The New Scheduled Transaction and Edit Scheduled Transaction dialogs.
 - The Scheduled Transaction Preview dialog (single-line schedules).
+- The Transfer, Edit Transfer, and Scheduled Transfer dialogs.
+- The single-line transfer post-time preview.
 
 On those surfaces, typing filters the option list inline; arrow keys
 navigate the filtered subset; Enter or Tab commits the highlighted
-match.
+match. A transfer's category is always optional; investment↔investment
+transfers cannot carry one (the Edit Transfer dialog omits the field,
+and the Transfer dialog rejects a selected category on submit), since
+there is nowhere to store it — see
+[`specs/transfer-categories.md`](transfer-categories.md).
 
 The Split Transaction dialog and the Paycheck Schedule Wizard use a
 simpler index-navigated picker (no typeahead) — Up/Down cycles through

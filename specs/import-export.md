@@ -227,6 +227,15 @@ tmoney --export checking_jan.csv --account "Checking" --from 2024-01-01 --to 202
 | `Status` | Transaction status | `C` |
 | `Transfer Account` | Counterpart account for transfers | `Savings` |
 
+### Categorized Transfers
+
+A transfer can carry an optional category (see
+[`specs/transfer-categories.md`](transfer-categories.md)). The `Category` and
+`Transfer Account` columns are independent, so CSV export round-trips both for a
+categorized transfer. Import is unchanged: no import path creates transfers, so a
+`Transfer Account` value on an imported row is parsed but never used to build a
+transfer.
+
 ### Split Transactions in CSV
 
 Split transactions are exported as multiple rows:
@@ -273,6 +282,11 @@ N1234
 | `C` | Cleared status (`X` = cleared, `*` = reconciled) |
 | `N` | Check number |
 | `^` | End of record |
+
+Because `L` is a single field, a **categorized transfer** is lossy in QIF: `L`
+holds *either* the category *or* the `[Account]` transfer marker, and the
+transfer marker wins — the category is dropped on export. This is expected, not a
+bug; use CSV to preserve both.
 
 ### Split Transactions in QIF
 

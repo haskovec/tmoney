@@ -21,12 +21,16 @@ A monthly loan payment decomposes into:
 - **Interest** — an expense, categorized (default `Loan:Interest`,
   auto-created), paid from the funding account.
 - **Principal** — not an expense: a transfer from the funding account into
-  the loan account, moving its negative balance toward zero. Principal
-  deliberately has **no category** (there is no `Loan:Principal`): a
-  split line is either categorized or a transfer (DB CHECK — exactly one
-  of `category_id`/`transfer_account_id`), and only the transfer form
-  actually reduces the loan balance. A categorized principal would leave
-  the debt untouched and double-count against net worth.
+  the loan account, moving its negative balance toward zero. The
+  principal transfer line is labeled **`Loan:Principal`** by default —
+  overridable via `loan add --principal-category` or the wizard's
+  *Principal category* field, and suppressible to none. The category is
+  purely a cash-flow label: the line stays a real transfer that reduces
+  the loan balance and never double-counts against net worth (the
+  category and the transfer target now coexist on one split — relaxed
+  CHECK, migration 029). Recompute-at-post preserves the label on every
+  post. See [`specs/transfer-categories.md`](transfer-categories.md) for
+  the categorized-transfer mechanics.
 - **Escrow / other** (optional) — fixed categorized lines (property tax,
   insurance, PMI) so the schedule total matches the real bank draft.
 
@@ -195,7 +199,9 @@ Guards:
 A 0% loan's template **omits the interest line entirely** (a $0.00 line
 would be rejected by template validation). Loan-shape detection
 therefore requires *at most* one interest line, not exactly one. While
-the APR is 0, every post books the full P&I payment as principal.
+the APR is 0, every post books the full P&I payment as principal. The
+principal transfer line is still labeled `Loan:Principal` — 0% loans
+omit only the interest line.
 
 The missing-interest-line guard fires only when **computed interest is
 greater than $0.00** and the schedule has no interest line — the typed
@@ -388,6 +394,7 @@ their payment can skip all three.
 | From account | Picker: active non-investment accounts |
 | Payee | Optional (e.g. the servicer); auto-created |
 | Interest category | Required when APR > 0; hidden when APR = 0. Defaults to `Loan:Interest`, which is **get-or-created at save time** (parent `Loan`, child `Interest`) — the default is always available even on files where it was deleted. Picker with inline category creation for choosing something else. |
+| Principal category | Optional; defaults to `Loan:Principal` (get-or-created at save time). Clearable to none; picker with inline category creation. Labels the principal transfer line for cash-flow reporting and never affects balance math. |
 | Escrow lines | Repeatable rows: category + fixed amount; add/remove |
 | Auto-post | Checkbox, default **off** |
 
@@ -439,9 +446,11 @@ the projection derives everything else from the live balance.
 
 Edit mode shows: loan-account fields (name, institution, APR — editing
 these edits the account), payment fields (P&I amount, interest
-category, escrow lines, auto-post), and — when the schedule lacks an
-interest line and APR > 0 — prompts for the interest category to add
-one. Saving rewrites the template snapshot (rebalanced month-one
+category, principal category, escrow lines, auto-post), and — when the
+schedule lacks an interest line and APR > 0 — prompts for the interest
+category to add one. The principal category prefills from the existing
+principal line, so **Edit as loan →** round-trips the `Loan:Principal`
+label instead of dropping it. Saving rewrites the template snapshot (rebalanced month-one
 values, fresh tags) and applies account edits, as **one atomic,
 single-undo operation** (an undo must never leave a new-APR/old-payment
 hybrid).
@@ -514,6 +523,9 @@ tmoney -f personal.tdb loan show "Mortgage" --all
 - `--interest-category`: optional; defaults to `Loan:Interest`,
   get-or-created at save time exactly like the wizard. Pass the flag to
   book interest elsewhere.
+- `--principal-category`: optional; defaults to `Loan:Principal`,
+  get-or-created at save time; an explicit empty string
+  (`--principal-category ""`) disables the label.
 - `--escrow` repeatable, `Category=Amount` (parent:sub category paths as
   elsewhere in the CLI).
 - `--auto-post` opt-in, default off; `--lead-days` as on `scheduled add`.
@@ -617,11 +629,13 @@ daily interest accrual / mid-cycle proration · CLI account editing
 (pre-existing gap) · balloon-payment modeling · "Update value…"
 affordance (v2).
 
-**Forward compatibility note**: a future feature may allow *optional*
-categories on transfer lines (e.g. labeling the principal transfer
-`Loan:Principal` for cash-flow reporting). Nothing in this design blocks
-it — loan-shape detection keys on the principal split's transfer target,
-not on the absence of a category — and existing loan schedules could be
-backfilled with the label cosmetically. That feature owns its own
-decisions (per-leg vs shared category, whether categorized transfers
-enter spending reports, the relaxed split CHECK, QIF lossiness).
+**Forward compatibility — now delivered**: transfer lines may carry an
+*optional* category, and the loan wizard labels the principal transfer
+line `Loan:Principal` by default (see the *Principal* bullet above). As
+promised, loan-shape detection was unaffected — it keys on the principal
+split's transfer target, not on the absence of a category — and existing
+schedules adopt the label via **Edit as loan →** rather than a data
+backfill. The delivered feature made its own decisions (one shared
+category mirrored across legs, opt-in `--include-transfers` spending,
+the relaxed split CHECK in migration 029, QIF lossiness): see
+[`specs/transfer-categories.md`](transfer-categories.md).

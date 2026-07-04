@@ -58,7 +58,7 @@ A transaction can be split across multiple lines. When split:
 
 - The parent transaction has the total amount
 - Split items define how the amount is allocated
-- Each line is either **categorized** or a **transfer** to another account
+- Each line is **categorized**, a **transfer** to another account, or both (a **categorized transfer** — e.g. a loan payment's principal line)
 - Signed sum of split amounts equals the parent amount (mixed signs allowed)
 
 ### Split Item Properties
@@ -73,7 +73,7 @@ A transaction can be split across multiple lines. When split:
 | `amount` | decimal | Yes | Signed amount for this line |
 | `memo` | string | No | Note for this line |
 
-Validation: exactly one of `category_id` or `transfer_account_id` is set per row; `transfer_id` is set iff `transfer_account_id` is set.
+Validation: at least one of `category_id` or `transfer_account_id` is set per row — a transfer line may **also** carry an optional category (a *categorized transfer*; see [`specs/transfer-categories.md`](transfer-categories.md)); `transfer_id` is set iff `transfer_account_id` is set.
 
 ### Split Transaction Example (same-sign, categorized)
 
@@ -127,9 +127,13 @@ There are two shapes of transfer in TMoney, and they coexist:
 
 Both shapes use the same `transfer_id` field to link the two sides, so
 balance calculations and the existing transfer detection logic treat
-them uniformly. Neither shape sets a `category_id` on the involved
-transactions — transfer status is encoded by the `transfer_id` /
-`transfer_account_id` pair, not by a "Transfer" category — and the
+them uniformly. Transfer status is encoded by the `transfer_id` /
+`transfer_account_id` pair, not by a "Transfer" category; a transfer
+may **optionally** carry a shared non-system category, mirrored across
+both legs (on the regular-side leg only when one leg is an investment
+account; inv↔inv transfers have nowhere to store one). The category is
+a tracking label that never affects balance math or transfer linkage —
+see [`specs/transfer-categories.md`](transfer-categories.md). The
 register renders the other account's name from `transfer_account_id`.
 
 ### Whole-Transaction Transfer Example: $500 from Checking to Savings
@@ -145,6 +149,10 @@ register renders the other account's name from `transfer_account_id`.
 - category_id: NULL
 - transfer_id: <shared-uuid>
 - transfer_account_id: <checking-account-id>
+
+Both legs show `category_id: NULL` because this transfer is unlabeled; a
+labeled transfer stores the same shared category on both legs (see
+[`specs/transfer-categories.md`](transfer-categories.md)).
 
 ### Whole-Transaction Transfer Rules
 
@@ -184,11 +192,15 @@ silently create a regular `transaction.Transaction` row in an
 investment account's ledger.
 
 **Unified TUI dialog**: a single Transfer dialog handles all four
-combinations. Field order is `From`, `To`, `Amount`, `Date`, `Memo`.
+combinations. Field order is `From`, `To`, `Amount`, `Date`, `Memo`,
+`Category` (the category is optional, offers inline creation, and is
+omitted for investment↔investment transfers — see
+[`specs/transfer-categories.md`](transfer-categories.md)).
 On Edit, `From → To` renders as a read-only body message (the
 accounts cannot be changed on an existing pair; delete and recreate
 to move a transfer); editable fields are `Amount`, `Date`, `Memo`,
-and `Status` (Cleared/Uncleared, applied to both legs). The dialog
+`Category` (present for combos with a regular leg; omitted for
+inv↔inv), and `Status` (Cleared/Uncleared, applied to both legs). The dialog
 reads and writes `txnDialogLastSavedDate` (sticky-date) on open and
 save for all dispatch paths.
 
@@ -275,8 +287,9 @@ All properties except `id` and `created_at` can be modified.
 
 For transfers, editing amount updates both sides. On the CLI, `tmoney
 transfer edit --txn-id <leg-uuid>` is the non-TUI entry point; it
-mirrors the TUI's editable-field set (amount, date, memo, status —
-not from/to).
+mirrors the TUI's editable-field set (amount, date, memo, category,
+status — not from/to). Only supplied flags take effect; `--category ""`
+clears the category on both legs, and inv↔inv edits reject `--category`.
 
 ### Delete Transaction
 

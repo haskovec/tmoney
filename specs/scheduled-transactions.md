@@ -4,7 +4,7 @@
 
 Scheduled transactions represent recurring or future transactions that repeat on a defined schedule. They generate reminders for the user to enter the actual transaction.
 
-A scheduled transaction may be **single-line** (one account, one payee, one category or transfer, one amount — described throughout this spec) or **multi-line** (a template with multiple categorized and/or transfer lines, used for paychecks and other compound events). The multi-line model, post-time preview dialog, and paycheck wizard are specified in [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md); the relevant cross-references are summarized in the **Multi-Line Schedules** and **Post-Time Preview Dialog** sections below.
+A scheduled transaction may be **single-line** (one account, one payee, one category or transfer, one amount — described throughout this spec) or **multi-line** (a template with multiple categorized and/or transfer lines, used for paychecks and other compound events). The multi-line model, post-time preview dialog, and paycheck wizard are specified in [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md); the relevant cross-references are summarized in the **Multi-Line Schedules** and **Post-Time Preview Dialog** sections below. Transfers (single-line schedules and multi-line transfer lines) may also carry an optional category — see [`specs/transfer-categories.md`](transfer-categories.md).
 
 ## Scheduled Transaction Properties
 
@@ -15,8 +15,8 @@ A scheduled transaction may be **single-line** (one account, one payee, one cate
 | `id` | UUID | Yes | Unique identifier |
 | `account_id` | UUID | Yes | Account for the transaction (the "From" account on a transfer schedule) |
 | `payee_id` | UUID | No | Payee reference |
-| `category_id` | UUID | No | Default category (NULL on transfer and multi-line schedules) |
-| `transfer_account_id` | UUID | No | Destination ("To") account when this is a single-line transfer schedule. Mutually exclusive with `category_id` and with split children. |
+| `category_id` | UUID | No | Default category (NULL on multi-line schedules; optional on single-line transfer schedules, where it is mirrored onto both posted legs) |
+| `transfer_account_id` | UUID | No | Destination ("To") account when this is a single-line transfer schedule. Mutually exclusive with split children; may coexist with an optional `category_id` (a categorized transfer). |
 | `amount` | decimal | No | Scheduled amount (null if variable) |
 | `memo` | string | No | Transaction memo |
 | `created_at` | timestamp | Yes | When record was created |
@@ -124,8 +124,8 @@ Auto-post bypasses the preview entirely and creates the transaction(s) using tem
 ## Single-Line Transfers
 
 A scheduled transaction may be a **single-line transfer**: `transfer_account_id`
-is set (the destination), `account_id` is the source, `category_id` is NULL, and
-there are no split children. This models a recurring transfer between two
+is set (the destination), `account_id` is the source, `category_id` is optional
+(see below), and there are no split children. This models a recurring transfer between two
 **regular** accounts — a monthly credit-card payment from Checking, a savings
 sweep, a loan payment.
 
@@ -140,6 +140,10 @@ sweep, a loan payment.
 - Posting (preview Enter, or auto-post) creates a **clean linked transfer pair**
   via the transaction service's transfer path — identical to an ad-hoc
   transfer, not a one-line split. For bank↔bank both legs are regular rows.
+- **Optional category.** A transfer schedule may carry an optional category
+  (`category_id` on the `scheduled_transactions` row); on posting it flows to
+  both posted legs. It never affects balances, linkage, or shape detection. See
+  [`specs/transfer-categories.md`](transfer-categories.md).
 - A schedule is exactly one of three shapes: categorized single-line, transfer
   single-line, or multi-line — enforced by validation.
 - **Investment-account destinations** (401k/HSA) are out of scope here; fund
@@ -154,7 +158,7 @@ category-only); this is a TUI-only feature in v1.
 
 A scheduled transaction may store a multi-line template — multiple categorized and/or transfer lines that together represent a single compound event (e.g., a paycheck). Posting a multi-line schedule creates a real transaction whose split items mirror the template structure; any transfer-line in the template creates a paired single-line counterpart in the target account.
 
-The data model adds a `scheduled_split_items` table (one row per line, with mutually exclusive `category_id` / `transfer_account_id`); the parent `scheduled_transactions` row keeps its scalar `amount` (representing the net effect on the parent account) and has `category_id` NULL when multi-line. A scheduled transaction is either single-line or multi-line — both shapes cannot coexist on one record.
+The data model adds a `scheduled_split_items` table (one row per line, requiring at least one of `category_id` / `transfer_account_id` — a transfer line may carry both, and its category flows onto the posted split); the parent `scheduled_transactions` row keeps its scalar `amount` (representing the net effect on the parent account) and has `category_id` NULL when multi-line. A scheduled transaction is either single-line or multi-line — both shapes cannot coexist on one record.
 
 See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md) for the full data model, cascade rules, and validation. A guided **paycheck wizard** sits on top of this primitive as UI sugar — see the same spec.
 

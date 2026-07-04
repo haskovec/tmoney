@@ -67,6 +67,26 @@ The "Transfer" category is system-managed:
 - Cannot be deleted or renamed by user
 - Excluded from income/expense reports
 
+### Labeling a Transfer with a Category
+
+Separately from the system "Transfer" category above, a transfer may
+optionally be **labeled** with any regular (non-system) category — income-
+or expense-typed — to record *why* money moved (e.g. a credit-card payment
+transfer labeled `Bills:Credit Card`). This label is:
+
+- **Never required** — uncategorized transfers behave exactly as before.
+- **One shared category per transfer**, mirrored across every leg that can
+  store it; it never changes balance math, transfer linkage, or loan-shape
+  detection.
+- **Distinct from the system "Transfer" category** — that category remains
+  system-managed and is not what labels a transfer. System categories
+  (`Transfer`, `Value Adjustment`) are rejected as transfer labels.
+- **Opt-in for reporting** — the spending report excludes labeled transfers
+  by default and folds them in only when asked.
+
+See [`specs/transfer-categories.md`](transfer-categories.md) for the full
+design.
+
 ## Default Categories
 
 The application ships with default categories. Users can modify these.

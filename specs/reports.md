@@ -151,7 +151,10 @@ Categories (expense type only):
 1. Transactions with categories of type `expense`
 2. Negative amounts (money going out)
 3. Refunds/credits reduce the category total (not added as income)
-4. Transfers are excluded
+4. Transfers are excluded by default — explicit guards
+   (`t.transfer_id IS NULL` on transactions, `ts.transfer_account_id IS NULL`
+   on splits) keep them out; the opt-in `--include-transfers` folds
+   categorized transfers in (see *Including transfers (opt-in)*)
 
 ### Display Format (TUI)
 
@@ -234,6 +237,7 @@ JOIN categories c ON t.category_id = c.id
 LEFT JOIN categories parent ON c.parent_id = parent.id
 WHERE c.type = 'expense'
   AND c.system_category = FALSE  -- Exclude Transfer
+  AND t.transfer_id IS NULL  -- Exclude transfers (dropped by --include-transfers)
   AND t.date >= '2024-01-01'
   AND t.date < '2024-02-01'
   AND t.amount < 0  -- Only outflows
@@ -255,11 +259,33 @@ FROM transaction_splits ts
 JOIN categories c ON ts.category_id = c.id
 JOIN transactions t ON ts.transaction_id = t.id
 WHERE c.type = 'expense'
+  AND ts.transfer_account_id IS NULL  -- Exclude transfer lines (dropped by --include-transfers)
   AND t.date >= '2024-01-01'
   AND t.date < '2024-02-01'
   AND ts.amount < 0
 GROUP BY c.id, c.name;
 ```
+
+### Including transfers (opt-in)
+
+By default the report excludes every transfer, categorized or not, via the
+explicit guards above (`t.transfer_id IS NULL` / `ts.transfer_account_id IS
+NULL`). These replaced an earlier implicit NULL-join that let categorized
+transfer pairs — e.g. ones produced by `transfer link` — leak in as
+spending. The opt-in toggle drops both guards and folds **categorized**
+transfers into the totals:
+
+- **CLI**: `tmoney --report spending --month 2024-01 --include-transfers`
+  (also works with `--year` and `--from/--to`).
+- **TUI**: `t` on the Reports view toggles it for the current spending
+  report. The toggle is session-only and is not persisted.
+
+Even with the toggle on, only the **outflow** leg of a transfer counts (the
+`amount < 0` filter prevents double-counting within a mirrored pair), and
+only **expense-typed** categories appear. Uncategorized transfers stay
+invisible regardless of the toggle — the category join still drops them. The
+Net Worth report is category-blind and is unaffected. See
+[`specs/transfer-categories.md`](transfer-categories.md) for the full feature.
 
 ### Options
 
@@ -332,6 +358,9 @@ tmoney --report net-worth --as-of 2024-01-01
 tmoney --report spending --month 2024-01
 tmoney --report spending --year 2024
 tmoney --report spending --from 2024-01-01 --to 2024-06-30
+
+# Fold categorized transfers into the spending report (default: excluded)
+tmoney --report spending --month 2024-01 --include-transfers
 ```
 
 ## v1.5 Features (Not in v1)

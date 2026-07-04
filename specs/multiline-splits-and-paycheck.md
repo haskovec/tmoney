@@ -83,7 +83,7 @@ The existing `split_items` table gains three nullable columns:
 | `paycheck_section` | enum NULL | **(v2)** Wizard-layout hint: `earnings`, `pre_tax`, `tax`, `post_tax`, or `net_pay_destination`. NULL for non-paycheck transactions. See [Paycheck Wizard → Section tagging](#section-tagging--paycheck_section). |
 
 **Constraints:**
-1. Exactly one of `category_id` or `transfer_account_id` must be set per row.
+1. At least one of `category_id` or `transfer_account_id` must be set per row — a row may set **both** (a *categorized transfer* line; see [`specs/transfer-categories.md`](transfer-categories.md)). *(Originally exactly-one; relaxed by migration 029.)*
 2. `transfer_id` is set if and only if `transfer_account_id` is set.
 
 ### New `scheduled_split_items`
@@ -100,7 +100,7 @@ A new table mirrors `split_items` for scheduled transactions (no `transfer_id`, 
 | `memo` | string NULL | Optional per-line memo |
 | `paycheck_section` | enum NULL | **(v2)** Wizard-layout hint: `earnings`, `pre_tax`, `tax`, `post_tax`, or `net_pay_destination`. NULL for non-paycheck schedules. See [Paycheck Wizard → Section tagging](#section-tagging--paycheck_section). |
 
-**Constraint:** exactly one of `category_id` or `transfer_account_id` per row.
+**Constraint:** at least one of `category_id` or `transfer_account_id` per row — both may be set (a categorized transfer line; see [`specs/transfer-categories.md`](transfer-categories.md)). *(Originally exactly-one; relaxed by migration 029.)*
 
 A scheduled transaction is **multi-line** when it has one or more `scheduled_split_items` children; otherwise it is single-line and uses the existing scalar `amount` / `category_id` on `scheduled_transactions`. The two shapes cannot coexist on the same record.
 
@@ -138,7 +138,7 @@ A split line may be a **transfer** instead of a categorized line.
 
 ### Storage
 
-`transfer_account_id` is set, `category_id` is NULL, and `transfer_id` carries a fresh UUID shared with the paired counter-transaction. The display label is derived from the linked account's name.
+`transfer_account_id` is set and `transfer_id` carries a fresh UUID shared with the paired counter-transaction. `category_id` is typically NULL, but a transfer line **may also carry a category** (a *categorized transfer* line — e.g. a loan payment's `Loan:Principal` line), in which case both `category_id` and `transfer_account_id` are set; see [`specs/transfer-categories.md`](transfer-categories.md). The display label is derived from the linked account's name.
 
 ### Paired counterpart
 
@@ -187,13 +187,15 @@ The cascades below apply uniformly to bank-side and investment-side counterparts
 
 A reconciled paired counterpart (on either table) blocks every cascade with `IsReconciledError`. The user must un-reconcile the counterpart before editing or deleting the parent.
 
+**Category cascades (categorized transfer lines).** When a transfer line also carries a category (see [`specs/transfer-categories.md`](transfer-categories.md)), the category mirrors alongside the amount cascades above: editing the split line's category mirrors it onto the bank-side counterpart; moving the target account carries the category onto the re-minted counterpart; and amount edits leave the category untouched on both sides. Investment-side counterparts can't store a category, so in that case the split line keeps it alone. `ReplaceSplits` — the path behind every TUI split edit — is **transfer-aware**: it diffs old-vs-new transfer lines (minting `transfer_id`s for added lines, deleting counterparts for removed ones, updating retained ones), so a categorized transfer line survives an edit round-trip intact.
+
 ### Self-transfer prohibited
 
 A transfer-line's `transfer_account_id` must not equal the parent transaction's `account_id`. Validation rejects self-transfers.
 
 ### Display
 
-In a category combo box on a split line, a `Transfer →` sentinel appears as a special option (alongside `[+ Add new category…]`). Selecting it swaps the field for an account picker. On save, the line is stored with `transfer_account_id` set and `category_id` NULL — there is no synthetic "Transfer:<account>" category row in the database for new transfer-lines.
+In a category combo box on a split line, a `Transfer →` sentinel appears as a special option (alongside `[+ Add new category…]`). Selecting it swaps the field for an account picker. On save, a newly created transfer line is stored with `transfer_account_id` set and `category_id` NULL — there is no synthetic "Transfer:<account>" category row in the database for new transfer-lines. The split dialog offers no in-dialog category picker for transfer lines in v1, but it **carries through** an existing transfer-line category (e.g. a loan payment's `Loan:Principal` line) unchanged on save rather than stripping it; see [`specs/transfer-categories.md`](transfer-categories.md).
 
 Legacy (pre-feature) transfers continue to use the existing `Transfer:<account>` category convention and paired-row `transfer_id` on the transactions table. Both shapes are valid; new transfer-lines just live on the split-item.
 
@@ -382,12 +384,15 @@ When opened via Edit-as-paycheck, the wizard groups lines by their `paycheck_sec
 
 If any line lacks a tag (e.g., the schedule was edited in the generic dialog and a new line was added), the affordance is hidden. Re-saving the schedule through the wizard re-tags every line and the affordance returns. The v1 paycheck schedules already in the wild (NULL tags everywhere) take the same path: they open in the generic dialog until re-saved through the v2 wizard.
 
+Net-pay destination lines stay categoryless when built by the wizard, though the underlying records support a category. Caveat: because **Edit as paycheck →** rebuilds every line from the wizard's fields, a category added to a net-pay destination line by other means is dropped on re-save — documented and accepted; see [`specs/transfer-categories.md`](transfer-categories.md).
+
 ## Reports Impact
 
 Mixed-sign splits change how a single transaction contributes to category reports:
 
 - Each line independently contributes its signed amount to its category total.
 - A paycheck with `+5000` on `Income:Salary` and `−800` on `Tax:Federal` contributes `+5000` to salary income and `−800` to federal tax expense in the spending-by-category report.
+- A **transfer** split line stays out of the spending report by default (the report excludes transfers explicitly); a *categorized* transfer line — e.g. a loan payment's `Loan:Principal` line — is folded in only under `report spending --include-transfers` (CLI) or the `t` toggle on the TUI Reports view. See [`specs/transfer-categories.md`](transfer-categories.md).
 - The net-worth report is unaffected: it sees the parent transaction's effect on each account (parent amount = signed sum of lines).
 
 This is the correct accounting behavior — tax withholdings are real expenses, paid by the employer on the user's behalf, and should appear in spending reports even though the money never enters the user's checking account.
@@ -406,7 +411,7 @@ If real automation needs emerge later, a spec-file approach (`tmoney scheduled p
 
 In addition to existing validation rules:
 
-1. A split line must have exactly one of `category_id` or `transfer_account_id` set.
+1. A split line must have at least one of `category_id` or `transfer_account_id` set; a row may set **both** (a categorized transfer line — see [`specs/transfer-categories.md`](transfer-categories.md)). *(Originally exactly-one; relaxed by migration 029.)*
 2. A split line with `transfer_account_id` set must also have a `transfer_id`; one without `transfer_account_id` must have `transfer_id` NULL.
 3. For multi-line transactions, `parent.amount == signed_sum(line.amounts)`. The sign of each line is unconstrained.
 4. A transfer-line's `transfer_account_id` must not equal the parent transaction's `account_id` (no self-transfers).

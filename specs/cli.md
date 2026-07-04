@@ -607,6 +607,12 @@ origination).
 - `--interest-category` — Interest category path (`Parent` or
   `Parent:Subcategory`); defaults to `Loan:Interest`. Created if it doesn't exist
   (there is no `category add` CLI). Ignored for a 0% loan.
+- `--principal-category` — Principal category path (`Parent` or
+  `Parent:Subcategory`) labeling the principal transfer line; defaults to
+  `Loan:Principal`. Created if it doesn't exist (like `--interest-category`).
+  Explicit `--principal-category ""` disables the label. Still applied to a 0%
+  loan (which has only a principal line). See
+  [`transfer-categories.md`](transfer-categories.md).
 - `--escrow "Category=Amount"` — Repeatable fixed escrow pass-through line
   (property tax, insurance, PMI). Categories are created if they don't exist.
 - `--payee` — Servicer name (auto-created).
@@ -905,6 +911,11 @@ Generate a spending-by-category report for a given period. Specify the period wi
 - `--year int` — Period as `YYYY` (e.g. `2024`)
 - `--from string` — Start of custom date range (`YYYY-MM-DD`)
 - `--to string` — End of custom date range (`YYYY-MM-DD`); defaults to today
+- `--include-transfers` — Fold categorized transfers into the report (default off,
+  preserving the report's transfer-free semantics). Only the outflow leg of a
+  categorized transfer counts (no double-count within a pair) and only
+  expense-typed categories appear. Works with `--month`, `--year`, or
+  `--from`/`--to`. See [`transfer-categories.md`](transfer-categories.md).
 
 ```bash
 tmoney report spending --month 2024-03
@@ -1202,6 +1213,10 @@ Date        Payee              Category            Amount      Balance
 2024-01-12  Amazon             Shopping:General    -$45.99     $2,859.99
 ```
 
+A transfer leg shows `[Transfer]` in the Payee column; when the transfer carries a
+category (see [`transfer-categories.md`](transfer-categories.md)), that category is
+also shown in the Category column rather than being discarded.
+
 ### `transaction search`
 
 `Use: transaction search <term>` · `Args: ExactArgs(1)`
@@ -1232,6 +1247,9 @@ Chase Checking   2024-01-12  Amazon   Shopping:General  -$45.99
 Chase Checking   2024-01-05  Amazon   Shopping:General  -$23.45
 Visa Card        2023-12-28  Amazon   Shopping:General  -$156.78
 ```
+
+As in `transaction list`, a categorized transfer keeps `[Transfer]` in the Payee
+column while its category is shown in the Category column.
 
 ### `transaction void`
 
@@ -1271,6 +1289,11 @@ leg.
 **Optional flags:**
 - `--date string` — Transfer date `YYYY-MM-DD` (default today)
 - `--memo string` — Free-form memo
+- `--category string` — Optional category label (`Parent` or `Parent:Subcategory`).
+  Must resolve to an **existing** non-system category — unlike `loan add`, it does
+  not auto-create the category. Not supported for `investment → investment`
+  transfers (neither leg can store a category). See
+  [`transfer-categories.md`](transfer-categories.md).
 
 ```bash
 # Bank → bank
@@ -1310,6 +1333,9 @@ account type the same way `transfer add` does, so every combination
 - `--amount string` — New transfer amount (must be positive)
 - `--date string` — New transfer date `YYYY-MM-DD`
 - `--memo string` — New memo
+- `--category string` — New category (`Parent` or `Parent:Subcategory`, existing
+  non-system only), mirrored onto both legs; explicit `--category ""` clears the
+  category from both legs. Rejected for `investment → investment` transfers.
 - `--status string` — New status: `cleared` or `uncleared`
 
 `--status reconciled` is rejected — reconciling is owned by `tmoney
