@@ -483,7 +483,21 @@ tmoney -f ~/Documents/TMoney/finances.tdb db restore /path/to/backup.tdb
 
 # List backups for the database file
 tmoney -f ~/Documents/TMoney/finances.tdb db list-backups
+
+# Rebuild the database indexes (repairs a desynced index)
+tmoney -f ~/Documents/TMoney/finances.tdb db reindex
 ```
+
+`db reindex` drops and recreates every secondary index in the file, rebuilding
+each from the table data. Use it when a reconcile, edit, or void fails with
+**`FATAL Error: Invalid Input Error: Failed to delete all rows from index. Only
+deleted 0 out of 1 rows`** — a DuckDB storage bug that can leave an index out of
+sync with its table on disk. Any UPDATE that rewrites the affected row (DuckDB
+turns an UPDATE that touches an indexed or FK-backed column into an internal
+DELETE+INSERT) then aborts. Reindexing repairs it; it changes no financial data.
+Run `tmoney db backup` first. (Status-only changes — reconcile, clear/unclear —
+already sidestep the bug with a narrow in-place update, so reconciling never
+needs a reindex; header/amount/transfer edits and voids do.)
 
 ### Accounts
 

@@ -1501,8 +1501,10 @@ func (s *Service) ClearTransaction(id types.ID) error {
 		return err
 	}
 
-	txn.Clear()
-	return s.txnRepo.Update(txn)
+	// Status-only change: use the narrow in-place UpdateStatus so DuckDB does
+	// not rewrite the row (and cannot trip a desynced ART index on another
+	// column). See transaction.Repository.UpdateStatus / migration 030.
+	return s.txnRepo.UpdateStatus(id, StatusCleared)
 }
 
 // ReconcileTransaction marks a transaction as reconciled.
@@ -1521,8 +1523,8 @@ func (s *Service) ReconcileTransaction(id types.ID) error {
 		return err
 	}
 
-	txn.Reconcile()
-	return s.txnRepo.Update(txn)
+	// Status-only change: narrow in-place update (see ClearTransaction).
+	return s.txnRepo.UpdateStatus(id, StatusReconciled)
 }
 
 // MarkTransactionUncleared marks a transaction as uncleared.
@@ -1546,8 +1548,8 @@ func (s *Service) MarkTransactionUncleared(id types.ID) error {
 		return err
 	}
 
-	txn.MarkUncleared()
-	return s.txnRepo.Update(txn)
+	// Status-only change: narrow in-place update (see ClearTransaction).
+	return s.txnRepo.UpdateStatus(id, StatusUncleared)
 }
 
 // UnReconcileTransaction moves a reconciled transaction back to cleared status.
@@ -1566,8 +1568,8 @@ func (s *Service) UnReconcileTransaction(id types.ID) error {
 		return err
 	}
 
-	txn.Clear()
-	return s.txnRepo.Update(txn)
+	// Status-only change: narrow in-place update (see ClearTransaction).
+	return s.txnRepo.UpdateStatus(id, StatusCleared)
 }
 
 // VoidTransaction voids a transaction by setting its amount to 0, memo to **VOID**,

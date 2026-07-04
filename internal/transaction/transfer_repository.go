@@ -220,16 +220,26 @@ func (r *TransferRepository) UpdateMemo(transferID types.ID, memo string) error 
 }
 
 // UpdateStatus updates the status on both sides of a transfer.
+//
+// Each leg is updated with the narrow in-place txnRepo.UpdateStatus rather than
+// a full-row rewrite: a transfer's transfer_id is indexed, so a full-row Update
+// (DuckDB rewrites it as DELETE+INSERT) aborts if that ART index is desynced on
+// disk — the storage bug that broke reconcile-finish. A status-only update
+// touches no index and sidesteps it. See transaction.Repository.UpdateStatus.
 func (r *TransferRepository) UpdateStatus(transferID types.ID, status Status) error {
 	pair, err := r.GetByTransferID(transferID)
 	if err != nil {
 		return err
 	}
 
-	pair.FromTransaction.SetStatus(status)
-	pair.ToTransaction.SetStatus(status)
+	if err := r.txnRepo.UpdateStatus(pair.FromTransaction.ID, status); err != nil {
+		return fmt.Errorf("failed to update from transaction status: %w", err)
+	}
+	if err := r.txnRepo.UpdateStatus(pair.ToTransaction.ID, status); err != nil {
+		return fmt.Errorf("failed to update to transaction status: %w", err)
+	}
 
-	return r.Update(pair)
+	return nil
 }
 
 // Delete removes both sides of a transfer from the database.

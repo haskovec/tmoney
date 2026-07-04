@@ -195,7 +195,14 @@ func (r *Repository) ListByAccountID(accountID types.ID) ([]*Session, error) {
 	return sessions, nil
 }
 
-// Update updates an existing reconciliation session in the database.
+// Update rewrites an entire reconciliation-session row.
+//
+// For a status change (completing or reopening a session) call UpdateStatus
+// instead: this full-row UPDATE rewrites indexed columns (account_id, status),
+// so DuckDB runs it as an internal DELETE+INSERT that aborts if a secondary ART
+// index for the row is desynced on disk — the storage bug that broke
+// reconcile-finish. Update remains for a hypothetical full-field edit; no
+// production path uses it today.
 func (r *Repository) Update(session *Session) error {
 	session.Touch()
 
@@ -229,6 +236,39 @@ func (r *Repository) Update(session *Session) error {
 		return &dberrors.NotFoundError{Entity: "reconciliation session", ID: session.ID.String()}
 	}
 
+	return nil
+}
+
+// UpdateStatus updates only the status, completed_at, and updated_at of a
+// session, in place. It is the safe path for completing and reopening a session.
+//
+// Like transaction.Repository.UpdateStatus, it avoids the full-row rewrite that
+// DuckDB turns into an internal DELETE+INSERT (account_id and status are
+// indexed), which aborts if a secondary ART index for the row is desynced on
+// disk — the DuckDB storage bug that broke reconcile-finish. Migration 030
+// dropped the status index and account_id is left out of the SET, so this
+// narrow UPDATE touches no index: it is a genuine in-place update, immune to a
+// desynced index on any column.
+func (r *Repository) UpdateStatus(id types.ID, status SessionStatus, completedAt types.NullableTimestamp) error {
+	result, err := r.db.Conn().Exec(`
+		UPDATE reconciliation_sessions SET status = ?, completed_at = ?, updated_at = ?
+		WHERE CAST(id AS VARCHAR) = ?
+	`,
+		status.String(),
+		dbutil.NullTimestamp(completedAt),
+		types.Now().Time(),
+		id.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update reconciliation session status: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "reconciliation session", ID: id.String()}
+	}
 	return nil
 }
 

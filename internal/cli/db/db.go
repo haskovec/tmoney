@@ -24,5 +24,6 @@ func NewCmd() *cobra.Command {
 	cmd.AddCommand(newDBBackupCmd())
 	cmd.AddCommand(newDBRestoreCmd())
 	cmd.AddCommand(newDBListBackupsCmd())
+	cmd.AddCommand(newDBReindexCmd())
 	return cmd
 }

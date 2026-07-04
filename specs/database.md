@@ -339,6 +339,35 @@ GROUP BY c.id, c.name, c.parent_id, c.type, DATE_TRUNC('month', t.date);
 2. Import from SQL dump
 3. DuckDB has built-in crash recovery
 
+### Index Repair (`db reindex`)
+
+DuckDB can leave a secondary ART index desynced from its table on disk — a row
+is present in the table but its key is missing from the index. Because DuckDB
+turns an UPDATE that touches an indexed or FK-backed column into an internal
+DELETE+INSERT, the next UPDATE that rewrites the affected row aborts with:
+
+```
+FATAL Error: Invalid Input Error: Failed to delete all rows from index.
+Only deleted 0 out of 1 rows.
+```
+
+`tmoney db reindex` repairs this. It reads every secondary index from
+`duckdb_indexes()` and, for each, runs `DROP INDEX` followed by the stored
+`CREATE INDEX`, rebuilding the ART from the table data. It changes no financial
+data. Primary-key and FK-enforcement indexes (which have no stored `CREATE`
+statement) are skipped. Each statement runs in **autocommit** — DuckDB aborts a
+`CREATE INDEX` issued inside an explicit transaction — so this cannot be a
+migration (migrations run inside a transaction); it lives in `db.Reindex()` and
+reconnects afterward.
+
+Status-only writes avoid the bug without a reindex: migration 030 drops the
+low-value indexes on `transactions(status)` and `reconciliation_sessions(status)`
+so reconcile-finish, the cleared/uncleared toggle, and un-reconcile update
+`status` (and `updated_at`/`completed_at`) **in place** — no rewrite, no index
+maintenance — via `transaction.Repository.UpdateStatus` and
+`reconciliation.Repository.UpdateStatus`. Header/amount/transfer edits and voids
+still rewrite the row, so those are what need `db reindex` after a desync.
+
 ## Performance Considerations
 
 1. Indexes on frequently queried columns

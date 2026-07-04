@@ -341,6 +341,38 @@ func (r *Repository) Update(transaction *Transaction) error {
 	return nil
 }
 
+// UpdateStatus updates only the status (and updated_at) of a transaction, in
+// place. It is the safe path for status-only changes — reconcile, clear,
+// unclear, un-reconcile — and does NOT rewrite the rest of the row.
+//
+// DuckDB rewrites an UPDATE as an internal DELETE+INSERT whenever the SET clause
+// touches an indexed or FK-backed column, and it can leave a secondary ART index
+// desynced from the table on disk (a storage bug). When that happens the rewrite
+// aborts with "Failed to delete all rows from index. Only deleted 0 out of 1
+// rows" — the failure that broke reconcile-finish on a transfer whose
+// transfer_id index entry could no longer be deleted. Migration 030 dropped the
+// index on status, and updated_at is neither indexed nor an FK, so this narrow
+// UPDATE touches no index at all: DuckDB performs a genuine in-place update, so
+// it never rewrites the row and is immune to a desynced index on any other
+// column. (The full-row Update stays for header/amount/transfer edits.)
+func (r *Repository) UpdateStatus(id types.ID, status Status) error {
+	result, err := r.db.Conn().Exec(`
+		UPDATE transactions SET status = ?, updated_at = ?
+		WHERE CAST(id AS VARCHAR) = ?
+	`, status.String(), types.Now().Time(), id.String())
+	if err != nil {
+		return fmt.Errorf("failed to update transaction status: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "transaction", ID: id.String()}
+	}
+	return nil
+}
+
 // Delete removes a transaction from the database.
 // This will fail if the transaction has any splits.
 func (r *Repository) Delete(id types.ID) error {

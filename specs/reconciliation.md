@@ -98,6 +98,17 @@ When the user presses Enter to finish:
    - **Warning only**: "Statement balance does not match. Difference: $X.XX. Reconciliation cannot be completed until the difference is $0.00."
    - User remains in the reconciliation view to continue checking or correcting
 
+**Persistence.** Marking a transaction `reconciled` and completing the session are
+**status-only, in-place updates** (`transaction.Repository.UpdateStatus` /
+`reconciliation.Repository.UpdateStatus`) — they set only `status` (plus
+`updated_at`/`completed_at`), never rewriting the row. This deliberately avoids
+DuckDB's UPDATE→DELETE+INSERT rewrite (migration 030 drops the `status` indexes so
+these columns are unindexed), which can abort on a desynced ART index with
+`Failed to delete all rows from index. Only deleted 0 out of 1 rows`. If a
+**full-row** edit or void of a transaction ever fails with that error, run
+[`tmoney db reindex`](cli.md#db-reindex) to rebuild the indexes; reconcile itself
+never needs it.
+
 ### Cancelling Reconciliation
 
 Pressing Esc cancels without saving. No transactions are changed.

@@ -252,6 +252,20 @@ List every backup found alongside the database, newest first, with timestamp, si
 tmoney -f personal.tdb db list-backups
 ```
 
+### `db reindex`
+
+`Use: db reindex` · `Args: NoArgs`
+
+Drop and recreate every secondary index in the database, rebuilding each from the table data. Use it when a reconcile, edit, or void fails with `FATAL Error: Invalid Input Error: Failed to delete all rows from index. Only deleted 0 out of 1 rows` — a DuckDB storage bug that can leave an index out of sync with its table on disk, so the next UPDATE that rewrites the affected row aborts. Reindexing repairs it and changes no financial data. Prints the number of indexes rebuilt. Run `tmoney db backup` first. (Status-only changes — reconcile, clear/unclear — already sidestep the bug with a narrow in-place update, so reconciling never needs a reindex; header/amount/transfer edits and voids do.)
+
+```bash
+tmoney -f personal.tdb db reindex
+```
+
+```
+Rebuilt 36 database indexes.
+```
+
 ### `db restore`
 
 `Use: db restore <backup-path>` · `Args: ExactArgs(1)`

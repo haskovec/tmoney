@@ -230,15 +230,23 @@ func (s *Service) FinishReconciliation(accountID types.ID, transactionIDs []type
 			return &transaction.IsVoidError{ID: txnID.String()}
 		}
 
-		txn.Reconcile()
-		if err := s.txnRepo.Update(txn); err != nil {
+		// Status-only change: use the narrow in-place UpdateStatus so DuckDB
+		// does not rewrite the row. The full-row Update turns into an internal
+		// DELETE+INSERT (an indexed/FK column is in the SET) which aborts if any
+		// secondary ART index for the row is desynced on disk — the DuckDB
+		// storage bug that broke reconcile-finish on a transfer whose transfer_id
+		// index entry could not be deleted. See transaction.Repository.UpdateStatus
+		// and migration 030.
+		if err := s.txnRepo.UpdateStatus(txnID, transaction.StatusReconciled); err != nil {
 			return fmt.Errorf("failed to reconcile transaction %s: %w", txnID.String(), err)
 		}
 	}
 
-	// Complete the session
-	session.Complete()
-	if err := s.reconRepo.Update(session); err != nil {
+	// Complete the session with a narrow in-place status update (see the
+	// UpdateStatus calls above) so the session row is not rewritten either —
+	// reconciliation_sessions carries the same desync-prone indexes.
+	completedAt := types.NullableTimestamp{Timestamp: types.Now(), Valid: true}
+	if err := s.reconRepo.UpdateStatus(session.ID, SessionStatusCompleted, completedAt); err != nil {
 		return fmt.Errorf("failed to complete reconciliation session: %w", err)
 	}
 
@@ -314,11 +322,10 @@ func (s *Service) ReopenSession(sessionID types.ID) error {
 		return fmt.Errorf("session %s is not completed; cannot reopen", sessionID.String())
 	}
 
-	session.Status = SessionStatusInProgress
-	session.CompletedAt = types.NullableTimestamp{}
-	session.Touch()
-
-	return s.reconRepo.Update(session)
+	// Narrow in-place status update (see FinishReconciliation): clears the
+	// completed_at and moves the session back to in_progress without rewriting
+	// the row.
+	return s.reconRepo.UpdateStatus(sessionID, SessionStatusInProgress, types.NullableTimestamp{})
 }
 
 // RestoreTransactionStatuses restores transactions to their previous statuses.
@@ -335,8 +342,8 @@ func (s *Service) RestoreTransactionStatuses(statuses map[types.ID]transaction.S
 			continue
 		}
 
-		txn.SetStatus(prevStatus)
-		if err := s.txnRepo.Update(txn); err != nil {
+		// Status-only change: narrow in-place update (see FinishReconciliation).
+		if err := s.txnRepo.UpdateStatus(txnID, prevStatus); err != nil {
 			return fmt.Errorf("failed to restore transaction %s status: %w", txnID.String(), err)
 		}
 	}
