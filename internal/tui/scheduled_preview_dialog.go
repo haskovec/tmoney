@@ -41,11 +41,14 @@ const (
 	previewStatusUnclearedIdx = 0
 
 	// Transfer preview fields. From/To render as a read-only body message
-	// ("Checking → Visa"); only Date / Amount / Memo / Status are editable.
-	previewXferFieldDate   = 0
-	previewXferFieldAmount = 1
-	previewXferFieldMemo   = 2
-	previewXferFieldStatus = 3
+	// ("Checking → Visa"); Date / Amount / Category / Memo / Status are
+	// editable. The Category combo enables a one-off relabel of this
+	// occurrence without touching the template.
+	previewXferFieldDate     = 0
+	previewXferFieldAmount   = 1
+	previewXferFieldCategory = 2
+	previewXferFieldMemo     = 3
+	previewXferFieldStatus   = 4
 )
 
 // SchedulePreviewDialog is the Quicken-style "post one occurrence" dialog
@@ -202,7 +205,17 @@ func NewSchedulePreviewDialog(
 		if template.HasAmount() {
 			amountStr = template.Amount.Money.Abs().String()
 		}
-		p.headerDialog = buildPreviewHeaderTransfer(fromName, toName, dateStr, amountStr, memo)
+		catIdx := 0
+		if template.HasCategory() {
+			for i, id := range categoryIDs {
+				if id == template.CategoryID.ID {
+					catIdx = i
+					break
+				}
+			}
+		}
+		p.categoryIDs = categoryIDs
+		p.headerDialog = buildPreviewHeaderTransfer(fromName, toName, dateStr, amountStr, memo, categoryOptions, catIdx)
 		return p
 	}
 
@@ -328,6 +341,14 @@ func (a *App) submitSchedulePreviewTransfer(template *scheduled.Transaction, hea
 	memo := strings.TrimSpace(fields[previewXferFieldMemo].Value)
 	cleared := fields[previewXferFieldStatus].SelectedIndex == 1
 
+	// One-off category for this occurrence. Index 0 is the "(None)" sentinel,
+	// which clears the label on both posted legs without touching the template.
+	categoryID := types.NullableID{}
+	catIdx := fields[previewXferFieldCategory].SelectedIndex
+	if catIdx > 0 && catIdx < len(a.schedPreviewDialog.categoryIDs) {
+		categoryID = types.NullableID{ID: a.schedPreviewDialog.categoryIDs[catIdx], Valid: true}
+	}
+
 	if hasErrors {
 		return a, nil
 	}
@@ -347,7 +368,7 @@ func (a *App) submitSchedulePreviewTransfer(template *scheduled.Transaction, hea
 			magnitude,
 			memo,
 			cleared,
-			types.NullableID{}, // one-off category on the transfer preview arrives in a later phase
+			categoryID,
 		)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to post scheduled transfer: %w", err)}
@@ -358,8 +379,11 @@ func (a *App) submitSchedulePreviewTransfer(template *scheduled.Transaction, hea
 
 // buildPreviewHeaderTransfer builds the header for a single-line transfer
 // preview. From/To are read-only (re-orienting a transfer is an Edit-Series
-// action); Date / Amount / Memo / Status are editable for this one occurrence.
-func buildPreviewHeaderTransfer(fromName, toName, dateStr, amountStr, memo string) *dialog.Dialog {
+// action); Date / Amount / Category / Memo / Status are editable for this one
+// occurrence. The Category combo is seeded from the template's category
+// (catIdx, 0 = "(None)") and supports inline creation, so the label can be set,
+// changed, or cleared for this occurrence alone.
+func buildPreviewHeaderTransfer(fromName, toName, dateStr, amountStr, memo string, categoryOptions []string, catIdx int) *dialog.Dialog {
 	d := dialog.NewDialog("Post Scheduled Transfer")
 	d.SetWidth(62)
 	d.SetMessage(fromName + " → " + toName)
@@ -369,6 +393,9 @@ func buildPreviewHeaderTransfer(fromName, toName, dateStr, amountStr, memo strin
 
 	af := d.AddTextField("Amount", amountStr, "100.00", 12)
 	af.Required = true
+
+	catField := d.AddComboField("Category", categoryOptions, catIdx)
+	catField.AddNewLabel = "[+ Add new category…]"
 
 	d.AddTextField("Memo", memo, "Optional memo", 0)
 	d.AddRadioField("Status", []string{"Uncleared", "Cleared"}, previewStatusUnclearedIdx)
@@ -381,6 +408,25 @@ func buildPreviewHeaderTransfer(fromName, toName, dateStr, amountStr, memo strin
 // schedule.
 func (p *SchedulePreviewDialog) IsTransfer() bool {
 	return p.template != nil && p.template.IsTransfer()
+}
+
+// categoryFieldIndex returns the header field index of the Category combo for
+// this preview shape, or -1 when the preview has no scalar category field
+// (multi-line, whose lines own their categories). A transfer preview and a
+// single-line preview both carry a Category combo but at layout-specific
+// indices, so the inline create-category divert resolves the field through
+// this helper rather than a hardcoded constant.
+func (p *SchedulePreviewDialog) categoryFieldIndex() int {
+	switch {
+	case p == nil:
+		return -1
+	case p.IsTransfer():
+		return previewXferFieldCategory
+	case p.IsMultiLine():
+		return -1
+	default:
+		return previewSingleFieldCat
+	}
 }
 
 // Template returns the underlying scheduled transaction this preview
@@ -554,8 +600,11 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 
 		// Offer Value Adjustment when the schedule posts to an asset
 		// account, so a value-adjustment line (e.g. depreciation)
-		// survives an edit-at-post rather than reverting to (None).
-		includeVA := accountIsAssetByID(accounts, template.AccountID)
+		// survives an edit-at-post rather than reverting to (None). A
+		// transfer schedule never gets it: Value Adjustment is a system
+		// category and a transfer may be labeled with non-system categories
+		// only.
+		includeVA := accountIsAssetByID(accounts, template.AccountID) && !template.IsTransfer()
 		categoryOptions, categoryIDs := buildCategoryOptionsFor(categories, includeVA)
 
 		// Loan-shaped schedules seed the preview from a live-balance recompute
@@ -728,10 +777,11 @@ func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd)
 		return a, nil
 	}
 	fields := header.Fields()
-	if len(fields) <= previewSingleFieldCat {
+	catIdx := a.schedPreviewDialog.categoryFieldIndex()
+	if catIdx < 0 || catIdx >= len(fields) {
 		return a, nil
 	}
-	catField := fields[previewSingleFieldCat]
+	catField := fields[catIdx]
 	query := catField.Query
 	// Consume the trigger and clear the typed query — the create-category
 	// dialog now owns it. This way, when we restore the preview, its
@@ -744,8 +794,11 @@ func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd)
 	a.createCatSource = createCatSourceSchedPreview
 	parents := a.parentsForCreateCatDialog()
 	parent, name := splitCategoryQuery(query)
+	// A transfer's always-positive amount carries no income/expense signal, so
+	// its create-category divert defaults to Expense; the single-line preview
+	// infers the type from the typed amount.
 	defaultType := category.TypeExpense
-	if len(fields) > previewSingleFieldAmount {
+	if !a.schedPreviewDialog.IsTransfer() && len(fields) > previewSingleFieldAmount {
 		defaultType = inferCategoryTypeFromAmount(fields[previewSingleFieldAmount].Value)
 	}
 	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, defaultType)
@@ -770,30 +823,38 @@ func (a *App) applyCreatedCategoryToSchedPreview(newCat *category.Category, cats
 		a.createCatDialog = nil
 		return
 	}
-	// Preserve the build-time decision to surface Value Adjustment
-	// (asset-account previews) across the inline category-create rebuild.
-	includeVA := false
-	if len(header.Fields()) > previewSingleFieldCat {
-		includeVA = slices.Contains(header.Fields()[previewSingleFieldCat].Options, category.ValueAdjustmentCategoryName)
+	catIdx := a.schedPreviewDialog.categoryFieldIndex()
+	if catIdx < 0 || catIdx >= len(header.Fields()) {
+		a.createCatDialog = nil
+		return
 	}
-	options, ids := buildCategoryOptionsFor(cats, includeVA)
+
+	// A transfer preview offers only non-system categories; a single-line
+	// preview may additionally surface Value Adjustment (asset-account
+	// previews), so preserve that build-time decision across the rebuild.
+	var options []string
+	var ids []types.ID
+	if a.schedPreviewDialog.IsTransfer() {
+		options, ids = buildCategoryOptions(cats)
+	} else {
+		includeVA := slices.Contains(header.Fields()[catIdx].Options, category.ValueAdjustmentCategoryName)
+		options, ids = buildCategoryOptionsFor(cats, includeVA)
+	}
 	a.schedPreviewDialog.categoryIDs = ids
 
-	if len(header.Fields()) > previewSingleFieldCat {
-		catField := header.Fields()[previewSingleFieldCat]
-		catField.Options = options
-		newIdx := 0
-		for i, id := range ids {
-			if id == newCat.ID {
-				newIdx = i
-				break
-			}
+	catField := header.Fields()[catIdx]
+	catField.Options = options
+	newIdx := 0
+	for i, id := range ids {
+		if id == newCat.ID {
+			newIdx = i
+			break
 		}
-		catField.SelectedIndex = newIdx
-		// Focus advances to Amount so the user can keep typing.
-		header.SetFocusIndex(previewSingleFieldAmount)
-		header.SetVisible(true)
 	}
+	catField.SelectedIndex = newIdx
+	// Focus advances to the field after Category so the user can keep typing.
+	header.SetFocusIndex(catIdx + 1)
+	header.SetVisible(true)
 	a.createCatDialog = nil
 }
 

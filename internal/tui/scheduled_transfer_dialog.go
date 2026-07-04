@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
@@ -15,22 +16,26 @@ import (
 )
 
 // Scheduled-transfer dialog field indices. The dialog mirrors the register's
-// New Transfer dialog (From / To / Amount / Memo) and appends the recurrence
-// fields shared with the regular scheduled dialog.
+// New Transfer dialog (From / To / Amount / Category / Memo) and appends the
+// recurrence fields shared with the regular scheduled dialog. The optional
+// Category combo labels the transfer for spending tracking (a monthly
+// credit-card payment as Bills:Credit Card, etc.); it flows onto both posted
+// legs.
 const (
 	schedXferFieldFrom       = 0
 	schedXferFieldTo         = 1
 	schedXferFieldAmount     = 2
-	schedXferFieldMemo       = 3
-	schedXferFieldFrequency  = 4
-	schedXferFieldInterval   = 5
-	schedXferFieldStartDate  = 6
-	schedXferFieldDuration   = 7
-	schedXferFieldEndDate    = 8
-	schedXferFieldOccurrence = 9
-	schedXferFieldAutoPost   = 10
-	schedXferFieldLeadDays   = 11
-	schedXferFieldCount      = 12
+	schedXferFieldCategory   = 3
+	schedXferFieldMemo       = 4
+	schedXferFieldFrequency  = 5
+	schedXferFieldInterval   = 6
+	schedXferFieldStartDate  = 7
+	schedXferFieldDuration   = 8
+	schedXferFieldEndDate    = 9
+	schedXferFieldOccurrence = 10
+	schedXferFieldAutoPost   = 11
+	schedXferFieldLeadDays   = 12
+	schedXferFieldCount      = 13
 )
 
 // buildNonInvestmentAccountOptions builds parallel name/ID slices for the
@@ -90,7 +95,10 @@ func addScheduleRecurrenceFields(d *dialog.Dialog, st *scheduled.Transaction) {
 }
 
 // buildNewScheduledTransferDialog creates the New Scheduled Transfer dialog.
-func buildNewScheduledTransferDialog(accountOptions []string) *dialog.Dialog {
+// categoryOptions is the "(None)"-led combo list produced by
+// buildCategoryOptions; the parallel ID slice is held on the App as
+// schedDialogCategoryIDs.
+func buildNewScheduledTransferDialog(accountOptions, categoryOptions []string) *dialog.Dialog {
 	d := dialog.NewDialog("New Scheduled Transfer")
 	d.SetWidth(62)
 
@@ -103,6 +111,11 @@ func buildNewScheduledTransferDialog(accountOptions []string) *dialog.Dialog {
 
 	f := d.AddTextField("Amount", "", "100.00", 12)
 	f.Required = true
+
+	// Category — optional label for the transfer, with inline creation.
+	catField := d.AddComboField("Category", categoryOptions, 0)
+	catField.AddNewLabel = "[+ Add new category…]"
+
 	d.AddTextField("Memo", "", "Optional memo", 0)
 
 	addScheduleRecurrenceFields(d, nil)
@@ -114,7 +127,7 @@ func buildNewScheduledTransferDialog(accountOptions []string) *dialog.Dialog {
 // buildEditScheduledTransferDialog creates the edit-mode transfer dialog,
 // pre-filled from an existing transfer schedule. From/To are editable here —
 // editing the series may re-orient the transfer.
-func buildEditScheduledTransferDialog(st *scheduled.Transaction, accountOptions []string, accountIDs []types.ID) *dialog.Dialog {
+func buildEditScheduledTransferDialog(st *scheduled.Transaction, accountOptions, categoryOptions []string, accountIDs, categoryIDs []types.ID) *dialog.Dialog {
 	d := dialog.NewDialog("Edit Scheduled Transfer")
 	d.SetWidth(62)
 
@@ -132,6 +145,14 @@ func buildEditScheduledTransferDialog(st *scheduled.Transaction, accountOptions 
 	}
 	f := d.AddTextField("Amount", amountStr, "100.00", 12)
 	f.Required = true
+
+	// Category — seeded from the schedule's existing category (0 = "(None)").
+	catIdx := 0
+	if st.HasCategory() {
+		catIdx = indexOfID(categoryIDs, st.CategoryID.ID)
+	}
+	catField := d.AddComboField("Category", categoryOptions, catIdx)
+	catField.AddNewLabel = "[+ Add new category…]"
 
 	memo := ""
 	if st.Memo.Valid {
@@ -235,6 +256,13 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 		magnitude = m.Abs()
 	}
 
+	// Category is optional; index 0 is the "(None)" sentinel (NilID).
+	categoryID := types.NilID
+	catIdx := fields[schedXferFieldCategory].SelectedIndex
+	if catIdx > 0 && catIdx < len(a.schedDialogCategoryIDs) {
+		categoryID = a.schedDialogCategoryIDs[catIdx]
+	}
+
 	memo := strings.TrimSpace(fields[schedXferFieldMemo].Value)
 	frequency := frequencyFromIndex(fields[schedXferFieldFrequency].SelectedIndex)
 
@@ -303,7 +331,6 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 		if mode == scheduledDialogModeEdit && existing != nil {
 			st := existing
 			st.Splits = nil
-			st.ClearCategory()
 			st.ClearPayee()
 			st.AccountID = fromID
 			st.Frequency = frequency
@@ -312,6 +339,11 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 			st.SetTransfer(toID)
 			st.SetAmount(signedAmount)
 			st.SetMemo(memo)
+			if categoryID.IsNil() {
+				st.ClearCategory()
+			} else {
+				st.SetCategory(categoryID)
+			}
 			st.ClearEndDate()
 			st.ClearOccurrences()
 			if endDate.Valid {
@@ -334,6 +366,9 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 		st.SetTransfer(toID)
 		st.SetAmount(signedAmount)
 		st.SetMemo(memo)
+		if !categoryID.IsNil() {
+			st.SetCategory(categoryID)
+		}
 		if endDate.Valid {
 			st.SetEndDate(endDate.Date)
 		} else if occurrences.Valid {
@@ -348,4 +383,66 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 		}
 		return scheduledDialogSavedMsg{}
 	}
+}
+
+// openCreateCategorySubDialogFromSchedTransfer hides the scheduled transfer
+// dialog and opens the inline create-category sub-dialog seeded from the
+// Category combo's typed query. The dialog is kept alive (hidden) so its field
+// state survives the divert; applyCreatedCategoryToSchedTransfer re-shows it
+// with the new category selected. Transfers are labeled for spending tracking
+// and their always-positive amount carries no income/expense signal, so the
+// sub-dialog defaults to an Expense type (matching the register Transfer
+// dialog).
+func (a *App) openCreateCategorySubDialogFromSchedTransfer() (tea.Model, tea.Cmd) {
+	if a.schedDialog == nil {
+		return a, nil
+	}
+	fields := a.schedDialog.Fields()
+	if len(fields) <= schedXferFieldCategory {
+		return a, nil
+	}
+	catField := fields[schedXferFieldCategory]
+	query := catField.Query
+	catField.AddNewTriggered = false
+	catField.Query = ""
+
+	// createCatSource must be set before parentsForCreateCatDialog so the
+	// helper picks the right parents source.
+	a.createCatSource = createCatSourceSchedTransferDialog
+	parents := a.parentsForCreateCatDialog()
+	parent, name := splitCategoryQuery(query)
+	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
+	a.schedDialog.SetVisible(false)
+	return a, nil
+}
+
+// applyCreatedCategoryToSchedTransfer is the per-surface applier called by the
+// createCategoryRequestMsg router when the originating surface was the scheduled
+// transfer dialog. It reloads the Category combo with newCat pre-selected,
+// advances focus to Memo, re-shows the dialog, and clears the sub-dialog.
+func (a *App) applyCreatedCategoryToSchedTransfer(newCat *category.Category, cats []*category.Category) {
+	if a.schedDialog == nil {
+		a.createCatDialog = nil
+		return
+	}
+	options, ids := buildCategoryOptions(cats)
+	a.schedDialogCategoryIDs = ids
+	a.schedDialogCategoryOptions = options
+
+	if len(a.schedDialog.Fields()) > schedXferFieldCategory {
+		catField := a.schedDialog.Fields()[schedXferFieldCategory]
+		catField.Options = options
+		newIdx := 0
+		for i, id := range ids {
+			if id == newCat.ID {
+				newIdx = i
+				break
+			}
+		}
+		catField.SelectedIndex = newIdx
+		// Focus advances to Memo so the user can keep typing.
+		a.schedDialog.SetFocusIndex(schedXferFieldMemo)
+		a.schedDialog.SetVisible(true)
+	}
+	a.createCatDialog = nil
 }

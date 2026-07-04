@@ -318,31 +318,48 @@ fixable against today's schema.
   `internal/tui/split_dialog_transfer_category_test.go` (split-dialog carry-through,
   fresh row no category, `scheduledSplitsFromTransaction` round-trip).
 
-## Phase 8: Scheduled Transfers End-to-End — [ ]
+## Phase 8: Scheduled Transfers End-to-End — [x]
 
-- [ ] `internal/tui/scheduled_transfer_dialog.go`: Category combo after
-  Amount (renumber the `schedXferField*` constants :20-34); loader
-  (:172-187) fetches categories; edit mode seeds from the schedule; submit
-  stops calling `st.ClearCategory()` (:306) and sets/clears from the
-  field; inline-creation plumbing (source entry + key **and mouse**
-  AddNew handling — the scheduled-dialog mouse path currently lacks it,
-  `app_mouse.go:334-348`).
-- [ ] `internal/scheduled/scheduled_service.go`: `postSingleLineTransfer`
-  (:567-603) and the AutoPost inline transfer branch (:267-283) pass
-  `st.CategoryID` to `CreateTransfer`.
-- [ ] `internal/tui/scheduled_preview_dialog.go`: single-line transfer
-  preview header (`buildPreviewHeaderTransfer` :361-377) gains a Category
-  combo (renumber `previewXferField*` :45-48) — one-off relabel at post
-  time, template untouched; `submitSchedulePreviewTransfer` (:309-356) and
-  `PostScheduledTransferCommand` thread it.
-- [ ] `internal/scheduled/scheduled_service.go:672-679`
-  (`buildMultiLineTransaction`): copy a template transfer line's category
-  onto the posted split (counterpart mirroring from Phase 7 takes over).
-- [ ] Tests: schedule create/edit round-trips category; all three posting
-  paths (manual, auto-post, preview incl. one-off override) produce a
-  mirrored pair; multi-line template with a categorized transfer line
-  posts through to split + counterpart; preview embedded editor preserves
-  it.
+- [x] `internal/tui/scheduled_transfer_dialog.go`: Category combo after
+  Amount (renumbered the `schedXferField*` constants — Category=3, Memo→4 …
+  Count→13); edit mode seeds from `st.CategoryID`; `submitScheduledTransferDialog`
+  drops the unconditional `st.ClearCategory()` and instead sets/clears from
+  the field on both create and edit paths (index 0 "(None)" = clear). Category
+  options are loaded (non-system only, via `buildCategoryOptions`) in the
+  `scheduledDialogDataMsg` transfer branch of `app_update.go` — matching how the
+  regular scheduled dialog loads them — and stashed on
+  `schedDialogCategoryIDs`/`schedDialogCategoryOptions`. Inline-creation plumbing:
+  new `createCatSourceSchedTransferDialog` source, `openCreateCategorySubDialogFromSchedTransfer`
+  / `applyCreatedCategoryToSchedTransfer` (Expense default — a transfer's
+  positive magnitude carries no income/expense signal), cancel-restore case
+  grouped with `createCatSourceSchedDialog`, router dispatch, and **key + mouse**
+  AddNew handling (added the previously-absent `DialogActionAddNew` case to the
+  `app_mouse.go` scheduled-dialog branch, gated on `isTransfer`).
+- [x] `internal/scheduled/scheduled_service.go`: `postSingleLineTransfer`
+  and the AutoPost inline transfer branch pass `st.CategoryID` to
+  `CreateTransfer`, so both posted legs inherit the schedule's label.
+- [x] `internal/tui/scheduled_preview_dialog.go`: single-line transfer
+  preview header (`buildPreviewHeaderTransfer`) gains a Category combo
+  (renumbered `previewXferField*` — Category=2, Memo→3, Status→4), seeded
+  from the template's category; `submitSchedulePreviewTransfer` threads the
+  one-off category into `PostScheduledTransferCommand` (which applies it via
+  `UpdateTransfer` after `PostWithDate`, so the template is untouched and
+  "(None)" clears both legs). New `categoryFieldIndex` helper makes the
+  preview's inline-creation divert (`openCreateCategorySubDialogFromSchedPreview`
+  / `applyCreatedCategoryToSchedPreview`) shape-aware (transfer vs single-line);
+  `loadSchedulePreviewData` suppresses Value Adjustment for transfer previews.
+- [x] `internal/scheduled/scheduled_service.go` (`buildMultiLineTransaction`):
+  copies a template transfer line's category onto the posted transfer-line
+  split; counterpart mirroring from Phase 7 (`createTransferLineCounterpart`)
+  carries it to the bank-side paired row.
+- [x] Tests: `internal/scheduled/scheduled_transfer_category_test.go`
+  (manual-post + auto-post mirror the category onto both legs; uncategorized
+  transfer stays category-free; `buildMultiLineTransaction` unit + full-post
+  end-to-end carries a categorized transfer line to the split **and** the
+  minted counterpart) and `internal/tui/scheduled_transfer_dialog_category_test.go`
+  (data-msg builds the Category combo; create threads the category; edit clears
+  it; inline-creation divert open/apply; preview seeds from template; preview
+  one-off relabel posts the new category while the template keeps its original).
 
 ## Phase 9: Loan Wizard Integration — [ ]
 

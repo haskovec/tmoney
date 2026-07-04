@@ -346,6 +346,11 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			a.schedDialog = nil
 		case dialog.DialogActionAlternate:
 			return a.relaunchScheduledAlternate()
+		case dialog.DialogActionAddNew:
+			if a.schedDialogData != nil && a.schedDialogData.isTransfer {
+				return a.openCreateCategorySubDialogFromSchedTransfer()
+			}
+			return a.openCreateCategorySubDialogFromSched()
 		}
 		return a, nil
 	}

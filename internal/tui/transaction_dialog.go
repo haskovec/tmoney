@@ -558,7 +558,7 @@ func (a *App) cancelCreateCatDialog() {
 		if a.txnDialog != nil {
 			a.txnDialog.SetVisible(true)
 		}
-	case createCatSourceSchedDialog:
+	case createCatSourceSchedDialog, createCatSourceSchedTransferDialog:
 		if a.schedDialog != nil {
 			a.schedDialog.SetVisible(true)
 		}

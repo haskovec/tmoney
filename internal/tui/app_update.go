@@ -524,14 +524,28 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.schedDialogData = msg.data
 
 		// Single-line transfer schedules use a distinct dialog whose From/To
-		// pickers exclude investment accounts (regular↔regular only).
+		// pickers exclude investment accounts (regular↔regular only). The
+		// optional Category combo excludes every system category (Transfer,
+		// Value Adjustment) — a transfer may be labeled with any non-system
+		// category.
 		if msg.data.isTransfer {
 			accountOptions, accountIDs := buildNonInvestmentAccountOptions(msg.data.accounts)
 			a.schedDialogAccountIDs = accountIDs
+
+			var transferCats []*category.Category
+			if a.categorySvc != nil {
+				if cats, err := a.categorySvc.List(); err == nil {
+					transferCats = cats
+				}
+			}
+			categoryOptions, categoryIDs := buildCategoryOptions(transferCats)
+			a.schedDialogCategoryIDs = categoryIDs
+			a.schedDialogCategoryOptions = categoryOptions
+
 			if msg.data.mode == scheduledDialogModeEdit && msg.data.scheduled != nil {
-				a.schedDialog = buildEditScheduledTransferDialog(msg.data.scheduled, accountOptions, accountIDs)
+				a.schedDialog = buildEditScheduledTransferDialog(msg.data.scheduled, accountOptions, categoryOptions, accountIDs, categoryIDs)
 			} else {
-				a.schedDialog = buildNewScheduledTransferDialog(accountOptions)
+				a.schedDialog = buildNewScheduledTransferDialog(accountOptions, categoryOptions)
 			}
 			return a, nil
 		}

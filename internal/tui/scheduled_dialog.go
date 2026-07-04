@@ -497,6 +497,9 @@ func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	case dialog.DialogActionAlternate:
 		return a.relaunchScheduledAlternate()
 	case dialog.DialogActionAddNew:
+		if a.schedDialogData != nil && a.schedDialogData.isTransfer {
+			return a.openCreateCategorySubDialogFromSchedTransfer()
+		}
 		return a.openCreateCategorySubDialogFromSched()
 	}
 

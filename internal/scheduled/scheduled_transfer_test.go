@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -12,9 +13,11 @@ import (
 // transferTestEnv wires a scheduled service plus the transaction repo so tests
 // can inspect both legs of a posted transfer pair.
 type transferTestEnv struct {
-	svc         *Service
-	txnRepo     *transaction.Repository
-	accountRepo *account.Repository
+	svc          *Service
+	txnRepo      *transaction.Repository
+	splitRepo    *transaction.SplitRepository
+	accountRepo  *account.Repository
+	categoryRepo *category.Repository
 }
 
 func newTransferTestEnv(t *testing.T) *transferTestEnv {
@@ -26,9 +29,27 @@ func newTransferTestEnv(t *testing.T) *transferTestEnv {
 	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	accountRepo := account.NewRepository(database)
 	payeeRepo := payee.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
 	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	svc := NewService(stRepo, txnRepo, txnSvc, database, accountRepo)
-	return &transferTestEnv{svc: svc, txnRepo: txnRepo, accountRepo: accountRepo}
+	return &transferTestEnv{
+		svc:          svc,
+		txnRepo:      txnRepo,
+		splitRepo:    splitRepo,
+		accountRepo:  accountRepo,
+		categoryRepo: categoryRepo,
+	}
+}
+
+// category creates and persists an expense category, returning it so tests can
+// label a transfer schedule and later assert the posted legs carry its ID.
+func (e *transferTestEnv) category(t *testing.T, name string) *category.Category {
+	t.Helper()
+	cat := category.NewCategory(name, category.TypeExpense)
+	if err := e.categoryRepo.Create(cat); err != nil {
+		t.Fatalf("create category %q: %v", name, err)
+	}
+	return cat
 }
 
 func (e *transferTestEnv) account(t *testing.T, name string, typ account.Type) *account.Account {

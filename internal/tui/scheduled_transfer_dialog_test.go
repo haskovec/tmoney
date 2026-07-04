@@ -31,7 +31,7 @@ func TestBuildNonInvestmentAccountOptions_ExcludesInvestment(t *testing.T) {
 }
 
 func TestBuildNewScheduledTransferDialog_FieldLayout(t *testing.T) {
-	d := buildNewScheduledTransferDialog([]string{"Checking", "Visa"})
+	d := buildNewScheduledTransferDialog([]string{"Checking", "Visa"}, []string{"(None)", "Bills"})
 	fields := d.Fields()
 	if len(fields) != schedXferFieldCount {
 		t.Fatalf("expected %d fields, got %d", schedXferFieldCount, len(fields))
@@ -45,6 +45,15 @@ func TestBuildNewScheduledTransferDialog_FieldLayout(t *testing.T) {
 	if !fields[schedXferFieldAmount].Required {
 		t.Error("Amount should be required")
 	}
+	if fields[schedXferFieldCategory].Label != "Category" {
+		t.Errorf("category field label = %q, want Category", fields[schedXferFieldCategory].Label)
+	}
+	if fields[schedXferFieldCategory].AddNewLabel == "" {
+		t.Error("Category combo should support inline creation ([+ Add new category…])")
+	}
+	if fields[schedXferFieldMemo].Label != "Memo" {
+		t.Errorf("memo field label = %q, want Memo", fields[schedXferFieldMemo].Label)
+	}
 	// To should default to a different index than From.
 	if fields[schedXferFieldTo].SelectedIndex == fields[schedXferFieldFrom].SelectedIndex {
 		t.Error("To should default to a different account than From")
@@ -54,13 +63,17 @@ func TestBuildNewScheduledTransferDialog_FieldLayout(t *testing.T) {
 func TestBuildEditScheduledTransferDialog_Prefills(t *testing.T) {
 	from := types.NewID()
 	to := types.NewID()
+	catID := types.NewID()
 	accountIDs := []types.ID{from, to}
 	options := []string{"Checking", "Visa"}
+	categoryOptions := []string{"(None)", "Bills"}
+	categoryIDs := []types.ID{types.NilID, catID}
 
 	st := scheduled.NewTransactionWithAmount(from, scheduled.FrequencyMonthly, types.Today(), types.MustNewMoney("-200.00"))
 	st.SetTransfer(to)
+	st.SetCategory(catID)
 
-	d := buildEditScheduledTransferDialog(st, options, accountIDs)
+	d := buildEditScheduledTransferDialog(st, options, categoryOptions, accountIDs, categoryIDs)
 	fields := d.Fields()
 	if fields[schedXferFieldFrom].SelectedIndex != 0 {
 		t.Errorf("From index = %d, want 0", fields[schedXferFieldFrom].SelectedIndex)
@@ -71,6 +84,10 @@ func TestBuildEditScheduledTransferDialog_Prefills(t *testing.T) {
 	// Amount renders as a positive magnitude (Money.String drops trailing zeros).
 	if got := fields[schedXferFieldAmount].Value; got != "200" {
 		t.Errorf("Amount = %q, want 200", got)
+	}
+	// Category combo seeds from the schedule's existing category.
+	if got := fields[schedXferFieldCategory].SelectedIndex; got != 1 {
+		t.Errorf("Category index = %d, want 1 (Bills)", got)
 	}
 }
 
@@ -83,7 +100,7 @@ func TestSubmitScheduledTransferDialog_SelfTransfer(t *testing.T) {
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		schedDialog: func() *dialog.Dialog {
-			d := buildNewScheduledTransferDialog([]string{"Checking", "Visa"})
+			d := buildNewScheduledTransferDialog([]string{"Checking", "Visa"}, []string{"(None)"})
 			d.Fields()[schedXferFieldFrom].SelectedIndex = 0
 			d.Fields()[schedXferFieldTo].SelectedIndex = 0 // same as From
 			d.Fields()[schedXferFieldAmount].Value = "200.00"
@@ -110,7 +127,7 @@ func TestSubmitScheduledTransferDialog_MissingAmount(t *testing.T) {
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		schedDialog: func() *dialog.Dialog {
-			d := buildNewScheduledTransferDialog([]string{"Checking", "Visa"})
+			d := buildNewScheduledTransferDialog([]string{"Checking", "Visa"}, []string{"(None)"})
 			d.Fields()[schedXferFieldAmount].Value = ""
 			return d
 		}(),

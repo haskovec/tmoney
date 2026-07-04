@@ -21,6 +21,7 @@ const (
 	createCatSourceNone createCategorySource = iota
 	createCatSourceTxnDialog
 	createCatSourceSchedDialog
+	createCatSourceSchedTransferDialog
 	createCatSourceSchedPreview
 	createCatSourceSplitDialog
 	createCatSourcePaycheckWizard
@@ -283,6 +284,8 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 		a.applyCreatedCategoryToTxn(newCat, cats)
 	case createCatSourceSchedDialog:
 		a.applyCreatedCategoryToSched(newCat, cats)
+	case createCatSourceSchedTransferDialog:
+		a.applyCreatedCategoryToSchedTransfer(newCat, cats)
 	case createCatSourceSchedPreview:
 		a.applyCreatedCategoryToSchedPreview(newCat, cats)
 	case createCatSourceSplitDialog:

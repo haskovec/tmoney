@@ -271,14 +271,13 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 					return nil, fmt.Errorf("transfer auto-post requires a transaction service; scheduled.NewService was called with txnSvc=nil")
 				}
 				magnitude := st.Amount.Money.Abs()
-				// CreateTransfer stamps the schedule's memo on both legs
-				// directly. Wiring the schedule's category through here is a
-				// later phase; pass no category for now.
+				// CreateTransfer stamps the schedule's memo and optional
+				// category onto both legs directly.
 				memo := ""
 				if st.Memo.Valid {
 					memo = st.Memo.String
 				}
-				pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, st.NextDate, magnitude, memo, types.NullableID{})
+				pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, st.NextDate, magnitude, memo, st.CategoryID)
 				if err != nil {
 					return nil, fmt.Errorf("failed to create transfer auto-post transaction: %w", err)
 				}
@@ -581,14 +580,16 @@ func (s *Service) postSingleLineTransfer(st *Transaction, date types.Date, amoun
 		return nil, &AmountRequiredError{ID: st.ID.String()}
 	}
 
-	// CreateTransfer stamps the schedule's memo onto both legs directly (the
-	// returned in-memory pair already reflects it). Wiring the schedule's
-	// category through here is a later phase; pass no category for now.
+	// CreateTransfer stamps the schedule's memo and optional category onto both
+	// legs directly (the returned in-memory pair already reflects them). A
+	// post-time preview edit to the category is applied afterward by the
+	// command layer via UpdateTransfer, so the template's category is the
+	// default for this occurrence.
 	memo := ""
 	if st.Memo.Valid {
 		memo = st.Memo.String
 	}
-	pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, date, magnitude, memo, types.NullableID{})
+	pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, date, magnitude, memo, st.CategoryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scheduled transfer: %w", err)
 	}
@@ -669,12 +670,18 @@ func (s *Service) buildMultiLineTransaction(st *Transaction, date types.Date) (*
 	for _, tmpl := range st.Splits {
 		var ts *transaction.Split
 		if tmpl.TransferAccountID.Valid {
-			// Transfer-line: leave CategoryID zero; service mints TransferID.
+			// Transfer-line: the service mints TransferID. Carry the template's
+			// optional category onto the posted split; counterpart mirroring
+			// (createTransferLineCounterpart) copies it to the bank-side paired
+			// row when the target is a regular account.
 			ts = &transaction.Split{
 				BaseModel:         types.NewBaseModel(),
 				TransactionID:     parent.ID,
 				Amount:            tmpl.Amount,
 				TransferAccountID: types.NullableID{ID: tmpl.TransferAccountID.ID, Valid: true},
+			}
+			if tmpl.CategoryID.Valid {
+				ts.CategoryID = tmpl.CategoryID.ID
 			}
 		} else {
 			ts = transaction.NewSplit(parent.ID, tmpl.CategoryID.ID, tmpl.Amount)
