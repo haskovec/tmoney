@@ -242,25 +242,43 @@ fixable against today's schema.
   rejection (and the no-category variant still submits); inline creation
   open/cancel/apply from the transfer dialog.
 
-## Phase 6: CLI Surface + Output/Export Fixes — [ ]
+## Phase 6: CLI Surface + Output/Export Fixes — [x]
 
-- [ ] `internal/cli/transfer/add.go`: `--category <path>` — resolves an
-  existing non-system category (no auto-create), passed to
-  `CreateTransfer`.
-- [ ] `internal/cli/transfer/edit.go`: `--category <path>` with
-  only-supplied-flags semantics; explicit `--category ""` clears
-  (use `Flags().Changed`).
-- [ ] `internal/cli/transaction/format.go:52-55,125-128`: transfer override
-  keeps `[Transfer]` in the payee column but shows the resolved category
-  when present instead of forcing `-`.
-- [ ] Export regression tests (no code change expected):
-  `internal/imexport` — CSV emits Category + Transfer Account for a
-  categorized header transfer and Category for a categorized split
-  transfer-line; QIF emits `L[Account]` (transfer wins, category dropped)
-  — pins the documented lossiness (qif.go:334-343).
-- [ ] Tests: add/edit/clear via CLI against a real file; unknown and
-  system categories rejected with clear errors; list/search output shows
-  the category; search `--category` matches a categorized transfer.
+- [x] `internal/cli/transfer/category.go` (new): shared `resolveTransferCategory`
+  helper — parses a `Parent`/`Parent:Subcategory` path, looks up an **existing**
+  category only (no auto-create, unlike loan add's `getOrCreateCategoryPath`),
+  and rejects system categories via `transaction.ValidateTransferCategory`; an
+  empty/whitespace path resolves to a cleared `NullableID`.
+- [x] `internal/cli/transfer/add.go`: `--category <path>` threaded through
+  `dispatchTransferAdd` to all three category-bearing legs (reg↔reg
+  `CreateTransfer`, reg→inv `DepositFromAccount`, inv→reg `TransferCash`);
+  inv→inv is rejected up front in `runTransferAdd` (and defensively in
+  dispatch). Prints a `Category:` line on success.
+- [x] `internal/cli/transfer/edit.go`: `--category <path>` with
+  only-supplied-flags semantics (`Flags().Changed`); explicit `--category ""`
+  clears both legs; unset preserves the existing category. **inv→inv edit now
+  rejects `--category`** (a review-found gap: the old path silently dropped it
+  in `UpdateTransferCash`'s inv↔inv branch and falsely printed success).
+- [x] `internal/cli/transfer/resolve.go`: **review-found HIGH fix** —
+  `resolveFromInvestmentLeg` now reads the regular-side counterpart's category
+  (new `findRegularLeg`) so editing an inv↔reg transfer via its *investment*-leg
+  id no longer silently wipes the category on an unrelated edit.
+- [x] `internal/cli/transaction/format.go:51-55,124-128`: the transfer override
+  keeps `[Transfer]` in the payee column but no longer forces the category cell
+  to `-` — a categorized transfer shows its category in `transaction list` /
+  `transaction search`.
+- [x] Export regression tests (no code change needed):
+  `internal/imexport/export_service_test.go` — CSV emits Category + Transfer
+  Account for a categorized header transfer and Category for a categorized split
+  transfer-line; QIF emits `L[Account]` (transfer wins, category dropped) —
+  pins the documented lossiness (qif.go:334-343).
+- [x] Tests: white-box `resolveTransferCategory` unit tests (empty/parent/
+  subcategory/unknown/unknown-subcategory/system-rejected); end-to-end CLI
+  add/edit/clear against a real file (reg↔reg **and** reg→inv/inv→reg bank-leg
+  threading); unknown + system categories rejected; inv→inv add & edit
+  rejection; category preserved on an investment-leg edit; `format` output
+  shows a categorized transfer's category (list + search) and hides it when
+  absent; `transaction search --category` matches a categorized transfer.
 
 ## Phase 7: Transfer-Line Mirroring + Split-Dialog Carry-Through — [ ]
 

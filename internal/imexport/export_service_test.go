@@ -371,6 +371,134 @@ func TestExportService_Export_CSV_Transfer(t *testing.T) {
 	}
 }
 
+func TestExportService_Export_CSV_CategorizedTransfer(t *testing.T) {
+	checking := makeAccount("Checking", account.TypeChecking)
+	savings := makeAccount("Savings", account.TypeSavings)
+	catID := types.NewID()
+
+	cat := category.NewCategory("Bills", category.TypeExpense)
+	cat.ID = catID
+
+	transferID := types.NewID()
+	txn := transaction.NewTransaction(checking.ID, makeDate("2024-01-15"), makeMoney("-500.00"))
+	txn.SetTransfer(transferID, savings.ID)
+	txn.SetCategory(catID)
+
+	transactions := map[string][]*transaction.Transaction{
+		checking.ID.String(): {txn},
+	}
+	categories := map[string]*category.Category{catID.String(): cat}
+
+	svc := makeExportService([]*account.Account{checking, savings}, transactions, nil, nil, categories)
+
+	var buf bytes.Buffer
+	if _, err := svc.Export(&buf, ExportOptions{Format: FormatCSV, AccountID: &checking.ID}); err != nil {
+		t.Fatalf("Export() error = %v", err)
+	}
+
+	reader := csv.NewReader(&buf)
+	records, err := reader.ReadAll()
+	if err != nil {
+		t.Fatalf("reading CSV: %v", err)
+	}
+
+	// A categorized transfer emits BOTH the Category (index 3) and the
+	// Transfer Account (index 8) columns — the two are independent.
+	if records[1][3] != "Bills" {
+		t.Errorf("category = %q, want %q", records[1][3], "Bills")
+	}
+	if records[1][8] != "Savings" {
+		t.Errorf("transfer account = %q, want %q", records[1][8], "Savings")
+	}
+}
+
+func TestExportService_Export_CSV_CategorizedTransferLine(t *testing.T) {
+	checking := makeAccount("Checking", account.TypeChecking)
+	savings := makeAccount("Savings", account.TypeSavings)
+	catID := types.NewID()
+
+	cat := category.NewCategory("Loan", category.TypeExpense)
+	cat.ID = catID
+
+	txn := transaction.NewTransaction(checking.ID, makeDate("2024-01-15"), makeMoney("-500.00"))
+
+	// A transfer-line split: carries a transfer target AND a category (e.g. a
+	// loan payment's principal line labeled Loan:Principal).
+	split := transaction.NewSplit(txn.ID, catID, makeMoney("-500.00"))
+	split.TransferAccountID = types.NullableID{ID: savings.ID, Valid: true}
+	split.TransferID = types.NullableID{ID: types.NewID(), Valid: true}
+
+	transactions := map[string][]*transaction.Transaction{
+		checking.ID.String(): {txn},
+	}
+	splits := map[string][]*transaction.Split{
+		txn.ID.String(): {split},
+	}
+	categories := map[string]*category.Category{catID.String(): cat}
+
+	svc := makeExportService([]*account.Account{checking, savings}, transactions, splits, nil, categories)
+
+	var buf bytes.Buffer
+	if _, err := svc.Export(&buf, ExportOptions{Format: FormatCSV, AccountID: &checking.ID}); err != nil {
+		t.Fatalf("Export() error = %v", err)
+	}
+
+	reader := csv.NewReader(&buf)
+	records, err := reader.ReadAll()
+	if err != nil {
+		t.Fatalf("reading CSV: %v", err)
+	}
+
+	// Header + parent (empty category) + split row.
+	if len(records) != 3 {
+		t.Fatalf("CSV rows = %d, want 3", len(records))
+	}
+	if records[1][3] != "" {
+		t.Errorf("parent category = %q, want empty", records[1][3])
+	}
+	// The categorized transfer-line keeps its category in the split row.
+	if records[2][3] != "Loan" {
+		t.Errorf("split category = %q, want %q", records[2][3], "Loan")
+	}
+}
+
+func TestExportService_Export_QIF_CategorizedTransfer_DropsCategory(t *testing.T) {
+	checking := makeAccount("Checking", account.TypeChecking)
+	savings := makeAccount("Savings", account.TypeSavings)
+	catID := types.NewID()
+
+	cat := category.NewCategory("Bills", category.TypeExpense)
+	cat.ID = catID
+
+	transferID := types.NewID()
+	txn := transaction.NewTransaction(checking.ID, makeDate("2024-01-15"), makeMoney("-500.00"))
+	txn.SetTransfer(transferID, savings.ID)
+	txn.SetCategory(catID)
+
+	transactions := map[string][]*transaction.Transaction{
+		checking.ID.String(): {txn},
+	}
+	categories := map[string]*category.Category{catID.String(): cat}
+
+	svc := makeExportService([]*account.Account{checking, savings}, transactions, nil, nil, categories)
+
+	var buf bytes.Buffer
+	if _, err := svc.Export(&buf, ExportOptions{Format: FormatQIF, AccountID: &checking.ID}); err != nil {
+		t.Fatalf("Export() error = %v", err)
+	}
+
+	output := buf.String()
+	// QIF's single L field holds either a category or the [Account] transfer
+	// marker, and the transfer wins — the category is dropped (documented
+	// lossiness, qif.go).
+	if !strings.Contains(output, "L[Savings]") {
+		t.Errorf("QIF should carry the transfer in L, got:\n%s", output)
+	}
+	if strings.Contains(output, "LBills") {
+		t.Errorf("QIF must not carry the category (transfer wins the L field), got:\n%s", output)
+	}
+}
+
 func TestExportService_Export_CSV_AccountFilter(t *testing.T) {
 	checking := makeAccount("Checking", account.TypeChecking)
 	savings := makeAccount("Savings", account.TypeSavings)

@@ -48,10 +48,10 @@ func printTransactionsTable(w io.Writer, acct *account.Account, transactions []*
 			}
 		}
 
-		// For transfers, show the transfer account
+		// For transfers, mark the payee column; the category column keeps any
+		// label resolved above (a categorized transfer shows its category).
 		if txn.IsTransfer() {
 			py = "[Transfer]"
-			cat = "-"
 		}
 
 		if showIDs {
@@ -121,10 +121,10 @@ func printSearchResults(w io.Writer, searchTerm string, transactions []*transact
 			}
 		}
 
-		// For transfers, show transfer indicator
+		// For transfers, mark the payee column; the category column keeps any
+		// label resolved above (a categorized transfer shows its category).
 		if txn.IsTransfer() {
 			py = "[Transfer]"
-			cat = "-"
 		}
 
 		if showIDs {

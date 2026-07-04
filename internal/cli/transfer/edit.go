@@ -14,19 +14,21 @@ import (
 
 // transferEditOptions are the inputs to `tmoney transfer edit`.
 type transferEditOptions struct {
-	file   string
-	txnID  string
-	amount string
-	date   string
-	memo   string
-	status string
+	file     string
+	txnID    string
+	amount   string
+	date     string
+	memo     string
+	status   string
+	category string
 
 	// changed flags track which editable fields the user actually supplied,
 	// so only those override the existing values (matches `security edit`).
-	amountChanged bool
-	dateChanged   bool
-	memoChanged   bool
-	statusChanged bool
+	amountChanged   bool
+	dateChanged     bool
+	memoChanged     bool
+	statusChanged   bool
+	categoryChanged bool
 }
 
 // newTransferEditCmd registers `tmoney transfer edit`. The database file is
@@ -39,9 +41,11 @@ func newTransferEditCmd() *cobra.Command {
 		Short: "Edit a transfer's amount, date, memo, or status",
 		Long: "Edit a whole-transaction transfer, identified by the UUID of either leg " +
 			"(`--txn-id`). Only supplied flags take effect; at least one of `--amount`, " +
-			"`--date`, `--memo`, or `--status` is required. From/To accounts are not " +
-			"editable (delete and re-add to move accounts). `--status` accepts " +
+			"`--date`, `--memo`, `--status`, or `--category` is required. From/To accounts " +
+			"are not editable (delete and re-add to move accounts). `--status` accepts " +
 			"`cleared` or `uncleared`; reconciling is owned by `tmoney reconcile`. " +
+			"`--category` labels the transfer with an existing non-system category (both " +
+			"legs); pass `--category \"\"` to clear it. " +
 			"Works for every account-type combination.",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
@@ -51,6 +55,7 @@ func newTransferEditCmd() *cobra.Command {
 			opts.dateChanged = cmd.Flags().Changed("date")
 			opts.memoChanged = cmd.Flags().Changed("memo")
 			opts.statusChanged = cmd.Flags().Changed("status")
+			opts.categoryChanged = cmd.Flags().Changed("category")
 			return runTransferEdit(opts, cmd.OutOrStdout())
 		},
 	}
@@ -59,6 +64,7 @@ func newTransferEditCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.date, "date", "", "New transfer date YYYY-MM-DD")
 	cmd.Flags().StringVar(&opts.memo, "memo", "", "New memo")
 	cmd.Flags().StringVar(&opts.status, "status", "", "New status: cleared or uncleared")
+	cmd.Flags().StringVar(&opts.category, "category", "", "New category label (existing non-system category); \"\" clears it")
 	_ = cmd.MarkFlagRequired("txn-id")
 	return cmd
 }
@@ -70,8 +76,8 @@ func runTransferEdit(opts *transferEditOptions, w io.Writer) error {
 		return err
 	}
 
-	if !opts.amountChanged && !opts.dateChanged && !opts.memoChanged && !opts.statusChanged {
-		return fmt.Errorf("specify at least one of --amount, --date, --memo, --status")
+	if !opts.amountChanged && !opts.dateChanged && !opts.memoChanged && !opts.statusChanged && !opts.categoryChanged {
+		return fmt.Errorf("specify at least one of --amount, --date, --memo, --status, --category")
 	}
 
 	legID, err := types.ParseID(opts.txnID)
@@ -92,6 +98,14 @@ func runTransferEdit(opts *transferEditOptions, w io.Writer) error {
 
 	if res.status == transaction.StatusReconciled {
 		return fmt.Errorf("transfer is reconciled and cannot be edited; unreconcile it first")
+	}
+
+	// A category label is unsupported for investment→investment transfers
+	// (neither leg lives in the transactions table). Reject a supplied one up
+	// front — matching `transfer add` — rather than silently dropping it in
+	// UpdateTransferCash's inv↔inv branch and falsely reporting success.
+	if strings.TrimSpace(opts.category) != "" && res.kind == transaction.DispatchInvToInv {
+		return fmt.Errorf("--category is not supported for investment-to-investment transfers")
 	}
 
 	// Compute the post-edit values: existing values, overridden by supplied flags.
@@ -127,7 +141,18 @@ func runTransferEdit(opts *transferEditOptions, w io.Writer) error {
 		}
 	}
 
-	if err := dispatchTransferEdit(svc, res, date, amount, memo, status); err != nil {
+	// Category defaults to the existing label; a supplied --category sets it
+	// (empty string clears both legs). Resolution rejects unknown and system
+	// categories.
+	categoryID := res.categoryID
+	if opts.categoryChanged {
+		categoryID, err = resolveTransferCategory(svc, opts.category)
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := dispatchTransferEdit(svc, res, date, amount, memo, status, categoryID); err != nil {
 		return fmt.Errorf("failed to update transfer: %w", err)
 	}
 
@@ -139,6 +164,13 @@ func runTransferEdit(opts *transferEditOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Status:   %s\n", status)
 	if memo != "" {
 		fmt.Fprintf(w, "  Memo:     %s\n", memo)
+	}
+	if opts.categoryChanged {
+		if categoryID.Valid {
+			fmt.Fprintf(w, "  Category: %s\n", strings.TrimSpace(opts.category))
+		} else {
+			fmt.Fprintln(w, "  Category: (cleared)")
+		}
 	}
 
 	cmdutil.AutoBackupAfterModification(opts.file)
@@ -161,12 +193,12 @@ func parseEditStatus(s string) (transaction.Status, error) {
 }
 
 // dispatchTransferEdit applies the update through the right service method for
-// the resolved transfer's dispatch kind.
-func dispatchTransferEdit(svc *app.Services, res *resolvedTransfer, date types.Date, amount types.Money, memo string, status transaction.Status) error {
+// the resolved transfer's dispatch kind. categoryID is the post-edit transfer
+// label (the existing one when --category was not supplied); it is mirrored to
+// both legs for reg↔reg and applied to the regular-side leg for inv↔reg.
+func dispatchTransferEdit(svc *app.Services, res *resolvedTransfer, date types.Date, amount types.Money, memo string, status transaction.Status, categoryID types.NullableID) error {
 	if res.kind == transaction.DispatchRegToReg {
-		// res.categoryID preserves the existing category; `transfer edit` gains a
-		// --category flag in a later phase to change or clear it.
-		return svc.Transaction.UpdateTransfer(res.transferID, date, amount, memo, status, res.categoryID)
+		return svc.Transaction.UpdateTransfer(res.transferID, date, amount, memo, status, categoryID)
 	}
 
 	// Inv-involving: UpdateTransferCash takes the investment-side leg plus the
@@ -191,7 +223,7 @@ func dispatchTransferEdit(svc *app.Services, res *resolvedTransfer, date types.D
 		date,
 		amount,
 		memo,
-		res.categoryID,
+		categoryID,
 		direction,
 		status,
 	)

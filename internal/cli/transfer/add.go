@@ -3,6 +3,7 @@ package transfer
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
@@ -20,6 +21,7 @@ type transferAddOptions struct {
 	amount      string
 	date        string
 	memo        string
+	category    string
 }
 
 // newTransferAddCmd registers `tmoney transfer add`. The database file
@@ -46,6 +48,7 @@ func newTransferAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.amount, "amount", "", "Transfer amount; must be positive (required)")
 	cmd.Flags().StringVar(&opts.date, "date", "", "Transfer date YYYY-MM-DD (default today)")
 	cmd.Flags().StringVar(&opts.memo, "memo", "", "Free-form memo")
+	cmd.Flags().StringVar(&opts.category, "category", "", "Optional existing non-system category to label the transfer (e.g. \"Bills:Credit Card\"); not supported for investment-to-investment transfers")
 	_ = cmd.MarkFlagRequired("from")
 	_ = cmd.MarkFlagRequired("to")
 	_ = cmd.MarkFlagRequired("amount")
@@ -102,7 +105,21 @@ func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 		return fmt.Errorf("destination account %q not found", opts.toAccount)
 	}
 
-	result, err := dispatchTransferAdd(svc, fromAcct, toAcct, date, amount, opts.memo)
+	// A category label is unsupported for investment→investment transfers
+	// (neither leg lives in the transactions table, so there is nowhere to
+	// store it). Reject it up front, before resolving the path, so the error
+	// names the real limitation rather than an incidental "category not found".
+	if strings.TrimSpace(opts.category) != "" &&
+		transaction.ChooseTransferDispatch(fromAcct.Type, toAcct.Type) == transaction.DispatchInvToInv {
+		return fmt.Errorf("--category is not supported for investment-to-investment transfers")
+	}
+
+	categoryID, err := resolveTransferCategory(svc, opts.category)
+	if err != nil {
+		return err
+	}
+
+	result, err := dispatchTransferAdd(svc, fromAcct, toAcct, date, amount, opts.memo, categoryID)
 	if err != nil {
 		return fmt.Errorf("failed to create transfer: %w", err)
 	}
@@ -118,6 +135,9 @@ func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 	if opts.memo != "" {
 		fmt.Fprintf(w, "  Memo:                  %s\n", opts.memo)
 	}
+	if categoryID.Valid {
+		fmt.Fprintf(w, "  Category:              %s\n", strings.TrimSpace(opts.category))
+	}
 
 	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
@@ -125,14 +145,14 @@ func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 
 // dispatchTransferAdd picks the right service method for the
 // (from.Type, to.Type) combination and returns the leg IDs in
-// caller-supplied (from, to) order.
-func dispatchTransferAdd(svc *app.Services, from, to *account.Account, date types.Date, amount types.Money, memo string) (*transferAddResult, error) {
+// caller-supplied (from, to) order. categoryID is the optional transfer label;
+// for reg→inv / inv→reg it is applied to the regular-side leg only.
+func dispatchTransferAdd(svc *app.Services, from, to *account.Account, date types.Date, amount types.Money, memo string, categoryID types.NullableID) (*transferAddResult, error) {
 	switch transaction.ChooseTransferDispatch(from.Type, to.Type) {
 	case transaction.DispatchRegToReg:
-		// CreateTransfer stamps the memo on both legs directly. A category is
-		// not settable from `transfer add` yet (arrives in a later phase); an
-		// empty NullableID means no category.
-		pair, err := svc.Transaction.CreateTransfer(from.ID, to.ID, date, amount, memo, types.NullableID{})
+		// CreateTransfer stamps the memo and category onto both legs directly;
+		// an empty categoryID means no category.
+		pair, err := svc.Transaction.CreateTransfer(from.ID, to.ID, date, amount, memo, categoryID)
 		if err != nil {
 			return nil, err
 		}
@@ -143,8 +163,9 @@ func dispatchTransferAdd(svc *app.Services, from, to *account.Account, date type
 		}, nil
 	case transaction.DispatchRegToInv:
 		// DepositFromAccount signature: (investmentID, regularID, date, amount, memo, categoryID).
-		// "From" is the regular account; "To" is the investment account.
-		res, err := svc.Investment.DepositFromAccount(to.ID, from.ID, date, amount, memo, types.NullableID{})
+		// "From" is the regular account; "To" is the investment account. The
+		// category labels the regular-side leg only.
+		res, err := svc.Investment.DepositFromAccount(to.ID, from.ID, date, amount, memo, categoryID)
 		if err != nil {
 			return nil, err
 		}
@@ -155,8 +176,9 @@ func dispatchTransferAdd(svc *app.Services, from, to *account.Account, date type
 		}, nil
 	case transaction.DispatchInvToReg:
 		// TransferCash signature: (investmentID, regularID, date, amount, memo, categoryID).
-		// "From" is the investment account; "To" is the regular account.
-		res, err := svc.Investment.TransferCash(from.ID, to.ID, date, amount, memo, types.NullableID{})
+		// "From" is the investment account; "To" is the regular account. The
+		// category labels the regular-side leg only.
+		res, err := svc.Investment.TransferCash(from.ID, to.ID, date, amount, memo, categoryID)
 		if err != nil {
 			return nil, err
 		}
@@ -166,6 +188,12 @@ func dispatchTransferAdd(svc *app.Services, from, to *account.Account, date type
 			ToTxnID:    res.RegularTransaction.ID,
 		}, nil
 	case transaction.DispatchInvToInv:
+		// TransferCashBetweenInvestments stores neither leg in the transactions
+		// table, so it cannot carry a category. runTransferAdd rejects a
+		// supplied --category before we get here; this guards other callers.
+		if categoryID.Valid {
+			return nil, fmt.Errorf("--category is not supported for investment-to-investment transfers")
+		}
 		res, err := svc.Investment.TransferCashBetweenInvestments(from.ID, to.ID, date, amount, memo)
 		if err != nil {
 			return nil, err

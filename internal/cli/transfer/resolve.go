@@ -177,7 +177,7 @@ func resolveFromInvestmentLeg(svc *app.Services, invTxn *investment.Transaction)
 		memo = invTxn.Memo.String
 	}
 
-	return &resolvedTransfer{
+	res := &resolvedTransfer{
 		kind:            transaction.ChooseTransferDispatch(fromAcct.Type, toAcct.Type),
 		transferID:      transferID,
 		fromAccount:     fromAcct,
@@ -187,7 +187,36 @@ func resolveFromInvestmentLeg(svc *app.Services, invTxn *investment.Transaction)
 		memo:            memo,
 		status:          investmentStatusToRegular(invTxn.Status),
 		investmentTxnID: invTxn.ID,
-	}, nil
+	}
+
+	// For an inv↔reg transfer the category lives on the regular-side leg, which
+	// is in a different table than the investment leg we loaded. Read it so an
+	// edit that does not touch --category preserves the label instead of
+	// wiping it on the delete+recreate UpdateTransferCash does. An inv↔inv
+	// transfer has no regular leg and no category, so leave categoryID empty.
+	if res.kind != transaction.DispatchInvToInv {
+		regLeg, err := findRegularLeg(svc, transferID)
+		if err != nil {
+			return nil, err
+		}
+		res.categoryID = regLeg.CategoryID
+	}
+
+	return res, nil
+}
+
+// findRegularLeg returns the regular-table (transactions) leg of an inv↔reg
+// transfer identified by its shared transfer_id. Exactly one regular leg
+// exists for such a transfer; it carries the transfer's category.
+func findRegularLeg(svc *app.Services, transferID types.ID) (*transaction.Transaction, error) {
+	legs, err := svc.TransactionRepo.ListByTransferID(transferID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load regular-side transfer leg: %w", err)
+	}
+	if len(legs) == 0 {
+		return nil, fmt.Errorf("regular-side leg for transfer %s not found", transferID.String())
+	}
+	return legs[0], nil
 }
 
 // findInvestmentLeg returns the investment-table leg of a transfer identified
