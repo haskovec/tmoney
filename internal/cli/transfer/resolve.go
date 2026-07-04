@@ -25,6 +25,13 @@ type resolvedTransfer struct {
 	memo        string
 	status      transaction.Status
 
+	// categoryID is the transfer's category, read from the loaded leg. For a
+	// mirrored pair either leg carries it; for an inv-involving transfer it
+	// lives on the regular-side leg (so it is empty when the investment leg was
+	// the one loaded). Threaded back through the edit so an edit that does not
+	// touch the category preserves it.
+	categoryID types.NullableID
+
 	// investmentTxnID is the ID of an investment-side leg of the transfer,
 	// suitable for passing to investment.Service.UpdateTransferCash /
 	// DeleteTransaction. Set for every dispatch kind except DispatchRegToReg.
@@ -118,6 +125,7 @@ func resolveFromRegularLeg(svc *app.Services, txn *transaction.Transaction) (*re
 		date:        txn.Date,
 		memo:        memo,
 		status:      txn.Status,
+		categoryID:  txn.CategoryID,
 	}
 
 	// For inv-involving kinds, the investment-side leg lives in a different

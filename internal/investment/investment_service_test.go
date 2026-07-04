@@ -2923,7 +2923,7 @@ func TestService_TransferCash(t *testing.T) {
 		}
 
 		// Transfer cash out of investment into checking
-		result, err := svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1000.00"), "Transfer to checking")
+		result, err := svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1000.00"), "Transfer to checking", types.NullableID{})
 		if err != nil {
 			t.Fatalf("TransferCash() error = %v", err)
 		}
@@ -2996,7 +2996,7 @@ func TestService_TransferCash(t *testing.T) {
 		_, _ = svc.Deposit(invAcct.ID, date, types.MustNewMoney("500.00"), "")
 
 		// Transfer 1000 — cash goes negative; no error
-		_, err := svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1000.00"), "")
+		_, err := svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1000.00"), "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("TransferCash() unexpected error: %v", err)
 		}
@@ -3016,12 +3016,12 @@ func TestService_TransferCash(t *testing.T) {
 		checkAcct := createCheckAccount(t, accountRepo, "Checking")
 		date := types.NewDate(2024, time.March, 15)
 
-		_, err := svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("0.00"), "")
+		_, err := svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("0.00"), "", types.NullableID{})
 		if err == nil {
 			t.Fatal("Expected error for zero amount")
 		}
 
-		_, err = svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("-100.00"), "")
+		_, err = svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("-100.00"), "", types.NullableID{})
 		if err == nil {
 			t.Fatal("Expected error for negative amount")
 		}
@@ -3033,7 +3033,7 @@ func TestService_TransferCash(t *testing.T) {
 		checkAcct2 := createCheckAccount(t, accountRepo, "Checking2")
 		date := types.NewDate(2024, time.March, 15)
 
-		_, err := svc.TransferCash(checkAcct1.ID, checkAcct2.ID, date, types.MustNewMoney("100.00"), "")
+		_, err := svc.TransferCash(checkAcct1.ID, checkAcct2.ID, date, types.MustNewMoney("100.00"), "", types.NullableID{})
 		if err == nil {
 			t.Fatal("Expected error for non-investment account")
 		}
@@ -3047,7 +3047,7 @@ func TestService_TransferCash(t *testing.T) {
 
 		_, _ = svc.Deposit(invAcct1.ID, date, types.MustNewMoney("5000.00"), "")
 
-		_, err := svc.TransferCash(invAcct1.ID, invAcct2.ID, date, types.MustNewMoney("1000.00"), "")
+		_, err := svc.TransferCash(invAcct1.ID, invAcct2.ID, date, types.MustNewMoney("1000.00"), "", types.NullableID{})
 		if err == nil {
 			t.Fatal("Expected error for investment-to-investment transfer")
 		}
@@ -3064,7 +3064,7 @@ func TestService_TransferCash(t *testing.T) {
 		_, _ = svc.Deposit(invAcct.ID, date, types.MustNewMoney("5000.00"), "")
 
 		// This should fail because investment account can't be the regular account
-		_, err := svc.TransferCash(invAcct.ID, invAcct.ID, date, types.MustNewMoney("100.00"), "")
+		_, err := svc.TransferCash(invAcct.ID, invAcct.ID, date, types.MustNewMoney("100.00"), "", types.NullableID{})
 		if err == nil {
 			t.Fatal("Expected error for same account transfer")
 		}
@@ -3078,7 +3078,7 @@ func TestService_DepositFromAccount(t *testing.T) {
 		checkAcct := createCheckAccount(t, accountRepo, "Checking")
 		date := types.NewDate(2024, time.March, 15)
 
-		result, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("2000.00"), "Fund account")
+		result, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("2000.00"), "Fund account", types.NullableID{})
 		if err != nil {
 			t.Fatalf("DepositFromAccount() error = %v", err)
 		}
@@ -3129,7 +3129,7 @@ func TestService_DepositFromAccount(t *testing.T) {
 		checkAcct := createCheckAccount(t, accountRepo, "Checking")
 		date := types.NewDate(2024, time.March, 15)
 
-		result, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("500.00"), "Monthly contribution")
+		result, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("500.00"), "Monthly contribution", types.NullableID{})
 		if err != nil {
 			t.Fatalf("DepositFromAccount() error = %v", err)
 		}
@@ -3148,12 +3148,12 @@ func TestService_DepositFromAccount(t *testing.T) {
 		checkAcct := createCheckAccount(t, accountRepo, "Checking")
 		date := types.NewDate(2024, time.March, 15)
 
-		_, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("0.00"), "")
+		_, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("0.00"), "", types.NullableID{})
 		if err == nil {
 			t.Fatal("Expected error for zero amount")
 		}
 
-		_, err = svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("-100.00"), "")
+		_, err = svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("-100.00"), "", types.NullableID{})
 		if err == nil {
 			t.Fatal("Expected error for negative amount")
 		}
@@ -3165,7 +3165,7 @@ func TestService_DepositFromAccount(t *testing.T) {
 		checkAcct2 := createCheckAccount(t, accountRepo, "Checking2")
 		date := types.NewDate(2024, time.March, 15)
 
-		_, err := svc.DepositFromAccount(checkAcct1.ID, checkAcct2.ID, date, types.MustNewMoney("100.00"), "")
+		_, err := svc.DepositFromAccount(checkAcct1.ID, checkAcct2.ID, date, types.MustNewMoney("100.00"), "", types.NullableID{})
 		if err == nil {
 			t.Fatal("Expected error for non-investment account")
 		}
@@ -3177,7 +3177,7 @@ func TestService_DepositFromAccount(t *testing.T) {
 		invAcct2 := createInvAccount(t, accountRepo, "Brokerage2")
 		date := types.NewDate(2024, time.March, 15)
 
-		_, err := svc.DepositFromAccount(invAcct1.ID, invAcct2.ID, date, types.MustNewMoney("100.00"), "")
+		_, err := svc.DepositFromAccount(invAcct1.ID, invAcct2.ID, date, types.MustNewMoney("100.00"), "", types.NullableID{})
 		if err == nil {
 			t.Fatal("Expected error for investment-to-investment transfer")
 		}
@@ -3193,7 +3193,7 @@ func TestService_DepositFromAccount(t *testing.T) {
 		date := types.NewDate(2024, time.March, 15)
 
 		// Deposit from checking into investment
-		_, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("3000.00"), "")
+		_, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("3000.00"), "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("DepositFromAccount() error = %v", err)
 		}
@@ -3204,7 +3204,7 @@ func TestService_DepositFromAccount(t *testing.T) {
 		}
 
 		// Transfer cash back from investment to checking
-		_, err = svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1000.00"), "")
+		_, err = svc.TransferCash(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1000.00"), "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("TransferCash() error = %v", err)
 		}
@@ -3221,7 +3221,7 @@ func TestService_DepositFromAccount(t *testing.T) {
 		checkAcct := createCheckAccount(t, accountRepo, "Checking")
 		date := types.NewDate(2024, time.March, 15)
 
-		result, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1500.00"), "Deposit")
+		result, err := svc.DepositFromAccount(invAcct.ID, checkAcct.ID, date, types.MustNewMoney("1500.00"), "Deposit", types.NullableID{})
 		if err != nil {
 			t.Fatalf("DepositFromAccount() error = %v", err)
 		}
@@ -3450,7 +3450,7 @@ func TestService_UpdateTransferCash(t *testing.T) {
 		date := types.NewDate(2024, time.March, 15)
 
 		// Original wrong-direction transfer: cash flows savings → brokerage.
-		orig, err := svc.DepositFromAccount(invAcct.ID, savings.ID, date, types.MustNewMoney("1170.33"), "to savings")
+		orig, err := svc.DepositFromAccount(invAcct.ID, savings.ID, date, types.MustNewMoney("1170.33"), "to savings", types.NullableID{})
 		if err != nil {
 			t.Fatalf("DepositFromAccount() error = %v", err)
 		}
@@ -3467,6 +3467,7 @@ func TestService_UpdateTransferCash(t *testing.T) {
 			invAcct.ID, savings.ID, date,
 			types.MustNewMoney("1170.33"),
 			"to savings",
+			types.NullableID{},
 			"out",
 			transaction.StatusUncleared,
 		)
@@ -3512,7 +3513,7 @@ func TestService_UpdateTransferCash(t *testing.T) {
 		date := types.NewDate(2024, time.March, 15)
 
 		// Real withdrawal: brokerage → savings.
-		orig, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("500.00"), "initial")
+		orig, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("500.00"), "initial", types.NullableID{})
 		if err != nil {
 			t.Fatalf("TransferCash() error = %v", err)
 		}
@@ -3523,6 +3524,7 @@ func TestService_UpdateTransferCash(t *testing.T) {
 			invAcct.ID, savings.ID, date,
 			types.MustNewMoney("750.00"),
 			"updated",
+			types.NullableID{},
 			"out",
 			transaction.StatusUncleared,
 		)
@@ -3562,7 +3564,7 @@ func TestService_UpdateTransferCash(t *testing.T) {
 		savings := createCheckAccount(t, accountRepo, "Savings")
 		date := types.NewDate(2024, time.March, 15)
 
-		orig, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("100.00"), "")
+		orig, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("100.00"), "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("TransferCash() error = %v", err)
 		}
@@ -3572,6 +3574,7 @@ func TestService_UpdateTransferCash(t *testing.T) {
 			invAcct.ID, savings.ID, date,
 			types.MustNewMoney("100.00"),
 			"",
+			types.NullableID{},
 			"sideways",
 			transaction.StatusUncleared,
 		)
@@ -3610,6 +3613,7 @@ func TestUpdateTransferCash_InvToInv_HappyPath(t *testing.T) {
 		src.ID, dst.ID, date,
 		types.MustNewMoney("750.00"),
 		"rollover (updated)",
+		types.NullableID{},
 		"out",
 		transaction.StatusUncleared,
 	)
@@ -3705,6 +3709,7 @@ func TestUpdateTransferCash_InvToInv_FlipDirection(t *testing.T) {
 		a.ID, b.ID, date,
 		types.MustNewMoney("400.00"),
 		"",
+		types.NullableID{},
 		"in",
 		transaction.StatusUncleared,
 	)
@@ -3752,7 +3757,7 @@ func TestUpdateTransferCash_InvToReg_AppliesStatusToBothLegs(t *testing.T) {
 	savings := createCheckAccount(t, accountRepo, "Savings")
 	date := types.NewDate(2024, time.March, 15)
 
-	orig, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("500.00"), "")
+	orig, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("500.00"), "", types.NullableID{})
 	if err != nil {
 		t.Fatalf("TransferCash() error = %v", err)
 	}
@@ -3763,6 +3768,7 @@ func TestUpdateTransferCash_InvToReg_AppliesStatusToBothLegs(t *testing.T) {
 		invAcct.ID, savings.ID, date,
 		types.MustNewMoney("500.00"),
 		"",
+		types.NullableID{},
 		"out",
 		transaction.StatusCleared,
 	)
@@ -3808,7 +3814,7 @@ func TestUpdateTransferCash_RegToInv_AppliesStatusToBothLegs(t *testing.T) {
 	savings := createCheckAccount(t, accountRepo, "Savings")
 	date := types.NewDate(2024, time.March, 15)
 
-	orig, err := svc.DepositFromAccount(invAcct.ID, savings.ID, date, types.MustNewMoney("600.00"), "")
+	orig, err := svc.DepositFromAccount(invAcct.ID, savings.ID, date, types.MustNewMoney("600.00"), "", types.NullableID{})
 	if err != nil {
 		t.Fatalf("DepositFromAccount() error = %v", err)
 	}
@@ -3818,6 +3824,7 @@ func TestUpdateTransferCash_RegToInv_AppliesStatusToBothLegs(t *testing.T) {
 		invAcct.ID, savings.ID, date,
 		types.MustNewMoney("600.00"),
 		"",
+		types.NullableID{},
 		"in",
 		transaction.StatusCleared,
 	)
@@ -3857,6 +3864,7 @@ func TestUpdateTransferCash_InvToInv_AppliesStatusToBothLegs(t *testing.T) {
 		src.ID, dst.ID, date,
 		types.MustNewMoney("500.00"),
 		"rollover",
+		types.NullableID{},
 		"out",
 		transaction.StatusCleared,
 	)
@@ -3908,7 +3916,7 @@ func TestService_DeleteTransaction_CashTransferCascadesToRegularSide(t *testing.
 	savings := createCheckAccount(t, accountRepo, "Savings")
 	date := types.NewDate(2024, time.March, 15)
 
-	result, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("1170.33"), "to savings")
+	result, err := svc.TransferCash(invAcct.ID, savings.ID, date, types.MustNewMoney("1170.33"), "to savings", types.NullableID{})
 	if err != nil {
 		t.Fatalf("TransferCash() error = %v", err)
 	}

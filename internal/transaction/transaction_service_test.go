@@ -1313,7 +1313,7 @@ func TestTransactionService_CreateTransfer(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -1353,7 +1353,7 @@ func TestTransactionService_CreateTransfer(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("-500.00")
-		_, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		_, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err == nil {
 			t.Error("CreateTransfer() expected error for negative amount")
 		}
@@ -1367,7 +1367,7 @@ func TestTransactionService_CreateTransfer(t *testing.T) {
 		checking := createTestAccount(t, accountRepo, "Checking")
 
 		amount, _ := types.NewMoney("500.00")
-		_, err := svc.CreateTransfer(checking.ID, checking.ID, types.Today(), amount)
+		_, err := svc.CreateTransfer(checking.ID, checking.ID, types.Today(), amount, "", types.NullableID{})
 		if err == nil {
 			t.Error("CreateTransfer() expected error for same account")
 		}
@@ -1381,7 +1381,7 @@ func TestTransactionService_DeleteTransfer(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -1408,7 +1408,7 @@ func TestTransactionService_DeleteTransfer(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -1437,7 +1437,7 @@ func TestTransactionService_UpdateTransfer(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -1445,7 +1445,7 @@ func TestTransactionService_UpdateTransfer(t *testing.T) {
 		// Update the transfer
 		newAmount, _ := types.NewMoney("750.00")
 		newDate, _ := types.ParseDate("2024-06-15")
-		err = svc.UpdateTransfer(pair.FromTransaction.TransferID.ID, newDate, newAmount, "Savings transfer", StatusCleared)
+		err = svc.UpdateTransfer(pair.FromTransaction.TransferID.ID, newDate, newAmount, "Savings transfer", StatusCleared, types.NullableID{})
 		if err != nil {
 			t.Fatalf("UpdateTransfer() error = %v", err)
 		}
@@ -1474,7 +1474,7 @@ func TestTransactionService_GetTransferCounterpart(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -1506,7 +1506,7 @@ func TestTransactionService_IsTransfer(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -1696,7 +1696,7 @@ func TestTransactionService_Duplicate(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -1740,7 +1740,7 @@ func TestTransactionService_GetBalanceImpact(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -1791,7 +1791,7 @@ func TestTransactionService_AddSplit_TransferError(t *testing.T) {
 		}
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -2518,7 +2518,7 @@ func TestTransactionService_UpdateTransferAmount(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -2548,7 +2548,7 @@ func TestTransactionService_UpdateTransferAmount(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -2569,7 +2569,7 @@ func TestTransactionService_UpdateTransferAmount(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -2588,7 +2588,7 @@ func TestTransactionService_UpdateTransferDate(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -2619,7 +2619,7 @@ func TestTransactionService_UpdateTransferStatus(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -2647,7 +2647,7 @@ func TestTransactionService_UpdateTransferStatus(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -2841,7 +2841,7 @@ func TestTransactionService_VoidTransaction(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -2887,7 +2887,7 @@ func TestTransactionService_VoidTransaction(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("300.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -2915,7 +2915,7 @@ func TestTransactionService_VoidTransaction(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -3052,7 +3052,7 @@ func TestTransactionService_Delete_ReconciledGuard(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -3488,7 +3488,7 @@ func TestTransactionService_TransferOperations_ReconciledGuard(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -3499,7 +3499,7 @@ func TestTransactionService_TransferOperations_ReconciledGuard(t *testing.T) {
 
 		newAmount, _ := types.NewMoney("750.00")
 		newDate, _ := types.ParseDate("2024-06-15")
-		err = svc.UpdateTransfer(pair.FromTransaction.TransferID.ID, newDate, newAmount, "Updated", StatusCleared)
+		err = svc.UpdateTransfer(pair.FromTransaction.TransferID.ID, newDate, newAmount, "Updated", StatusCleared, types.NullableID{})
 		if err == nil {
 			t.Error("UpdateTransfer() expected error for reconciled transfer")
 		}
@@ -3514,7 +3514,7 @@ func TestTransactionService_TransferOperations_ReconciledGuard(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -3539,7 +3539,7 @@ func TestTransactionService_TransferOperations_ReconciledGuard(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -3564,7 +3564,7 @@ func TestTransactionService_TransferOperations_ReconciledGuard(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -3588,7 +3588,7 @@ func TestTransactionService_TransferOperations_ReconciledGuard(t *testing.T) {
 		savings := createTestAccount(t, accountRepo, "Savings")
 
 		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount)
+		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -3611,7 +3611,7 @@ func TestCreateTransfer_RejectsInvestmentSource(t *testing.T) {
 	checking := createTestAccountOfType(t, accountRepo, "Checking", account.TypeChecking)
 
 	amount, _ := types.NewMoney("500.00")
-	_, err := svc.CreateTransfer(ira.ID, checking.ID, types.Today(), amount)
+	_, err := svc.CreateTransfer(ira.ID, checking.ID, types.Today(), amount, "", types.NullableID{})
 	if err == nil {
 		t.Fatal("CreateTransfer() expected error when source is an investment account")
 	}
@@ -3626,7 +3626,7 @@ func TestCreateTransfer_RejectsInvestmentDest(t *testing.T) {
 	hsa := createTestAccountOfType(t, accountRepo, "HSA", account.TypeHSA)
 
 	amount, _ := types.NewMoney("500.00")
-	_, err := svc.CreateTransfer(checking.ID, hsa.ID, types.Today(), amount)
+	_, err := svc.CreateTransfer(checking.ID, hsa.ID, types.Today(), amount, "", types.NullableID{})
 	if err == nil {
 		t.Fatal("CreateTransfer() expected error when destination is an investment account")
 	}
@@ -3650,7 +3650,7 @@ func TestUpdateTransfer_RejectsInvestmentAccounts(t *testing.T) {
 	}
 
 	newAmount, _ := types.NewMoney("750.00")
-	err := svc.UpdateTransfer(pair.FromTransaction.TransferID.ID, types.Today(), newAmount, "memo", StatusUncleared)
+	err := svc.UpdateTransfer(pair.FromTransaction.TransferID.ID, types.Today(), newAmount, "memo", StatusUncleared, types.NullableID{})
 	if err == nil {
 		t.Fatal("UpdateTransfer() expected error when a leg is an investment account")
 	}

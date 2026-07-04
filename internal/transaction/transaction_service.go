@@ -1,9 +1,12 @@
 package transaction
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/payee"
@@ -1088,10 +1091,15 @@ func (s *Service) rejectInvestmentAccount(accountID types.ID) error {
 // CreateTransfer creates a linked transfer between two accounts.
 // This creates two transactions: one debit in the from account, one credit in the to account.
 //
+// memo and categoryID are optional labels stamped on both legs at construction.
+// A transfer is never required to carry a category; an assigned one must exist
+// and be non-system (Transfer / Value Adjustment are rejected). The category is
+// mirrored onto both legs so either side reads the same value.
+//
 // Investment-type accounts are rejected on either leg: linked cash transfers
 // involving an investment account must go through investment.Service so the
 // investment-side row is created as an investment.Transaction.
-func (s *Service) CreateTransfer(fromAccountID, toAccountID types.ID, date types.Date, amount types.Money) (*TransferPair, error) {
+func (s *Service) CreateTransfer(fromAccountID, toAccountID types.ID, date types.Date, amount types.Money, memo string, categoryID types.NullableID) (*TransferPair, error) {
 	// Validate amount is positive
 	if !amount.IsPositive() {
 		return nil, &InvalidTransferAmountError{Amount: amount}
@@ -1108,8 +1116,21 @@ func (s *Service) CreateTransfer(fromAccountID, toAccountID types.ID, date types
 		return nil, err
 	}
 
-	// Create the transfer pair
+	if err := s.validateTransferCategory(categoryID); err != nil {
+		return nil, err
+	}
+
+	// Create the transfer pair, stamping the optional memo and category onto
+	// both legs before validation/persistence.
 	pair := NewTransferPair(fromAccountID, toAccountID, date, amount)
+	if memo != "" {
+		pair.FromTransaction.SetMemo(memo)
+		pair.ToTransaction.SetMemo(memo)
+	}
+	if categoryID.Valid {
+		pair.FromTransaction.SetCategory(categoryID.ID)
+		pair.ToTransaction.SetCategory(categoryID.ID)
+	}
 
 	// Validate the pair
 	if errors := pair.Validate(); errors.HasErrors() {
@@ -1135,13 +1156,18 @@ func (s *Service) GetTransferCounterpart(transactionID types.ID) (*Transaction, 
 }
 
 // UpdateTransfer updates both sides of a transfer.
-// Only amount, date, memo, and status can be updated.
+// Only amount, date, memo, status, and category can be updated.
 // Reconciled transfers cannot be edited.
+//
+// categoryID is mirrored onto both legs; an invalid (unset) categoryID clears
+// the category on both legs. An assigned category must exist and be non-system.
+// This is also the healing path for legacy divergent pairs (pre-feature
+// transfer link output): both legs are rewritten to the single supplied value.
 //
 // Investment-type accounts are rejected on either leg: linked cash transfers
 // involving an investment account must go through investment.Service so the
 // investment-side row is updated as an investment.Transaction.
-func (s *Service) UpdateTransfer(transferID types.ID, date types.Date, amount types.Money, memo string, status Status) error {
+func (s *Service) UpdateTransfer(transferID types.ID, date types.Date, amount types.Money, memo string, status Status, categoryID types.NullableID) error {
 	pair, err := s.transferRepo.GetByTransferID(transferID)
 	if err != nil {
 		return err
@@ -1155,6 +1181,10 @@ func (s *Service) UpdateTransfer(transferID types.ID, date types.Date, amount ty
 	}
 
 	if err := s.guardTransferDate(pair.FromTransaction.AccountID, pair.ToTransaction.AccountID, date); err != nil {
+		return err
+	}
+
+	if err := s.validateTransferCategory(categoryID); err != nil {
 		return err
 	}
 
@@ -1187,7 +1217,42 @@ func (s *Service) UpdateTransfer(transferID types.ID, date types.Date, amount ty
 	pair.FromTransaction.SetStatus(status)
 	pair.ToTransaction.SetStatus(status)
 
+	// Mirror the category onto both legs; an invalid categoryID clears both.
+	if categoryID.Valid {
+		pair.FromTransaction.SetCategory(categoryID.ID)
+		pair.ToTransaction.SetCategory(categoryID.ID)
+	} else {
+		pair.FromTransaction.ClearCategory()
+		pair.ToTransaction.ClearCategory()
+	}
+
 	return s.transferRepo.Update(pair)
+}
+
+// validateTransferCategory checks that a category assigned to a transfer exists
+// and is non-system. An invalid (unset) categoryID is a no-op — a transfer is
+// never required to carry a category. It follows the split repository's
+// verifyReferences pattern (a raw lookup against the categories table via the
+// service's db handle) rather than taking a category-service dependency, and
+// delegates the non-system rule to the shared ValidateTransferCategory guard so
+// there is a single source of truth for it.
+func (s *Service) validateTransferCategory(categoryID types.NullableID) error {
+	if !categoryID.Valid {
+		return nil
+	}
+	var name string
+	var isSystem bool
+	err := s.db.Conn().QueryRow(
+		`SELECT name, system_category FROM categories WHERE CAST(id AS VARCHAR) = ?`,
+		categoryID.ID.String(),
+	).Scan(&name, &isSystem)
+	if errors.Is(err, sql.ErrNoRows) {
+		return &dberrors.NotFoundError{Entity: "category", ID: categoryID.ID.String()}
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check transfer category: %w", err)
+	}
+	return ValidateTransferCategory(&category.Category{Name: name, IsSystem: isSystem})
 }
 
 // UpdateTransferAmount updates the amount on both sides of a transfer.

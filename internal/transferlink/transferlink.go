@@ -201,12 +201,32 @@ func (s *Service) linkOne(c *Candidate) error {
 	c.From.SetTransfer(transferID, c.To.AccountID)
 	c.To.SetTransfer(transferID, c.From.AccountID)
 
+	// A transfer carries at most one shared category. Normalize the two legs to
+	// a single value before writing them back:
+	//   - exactly one leg categorized → mirror it onto the other;
+	//   - both categorized and different → the outflow (From) leg wins;
+	//   - both the same or both empty → leave them untouched.
+	// Capture the originals so the error rollback can restore them alongside the
+	// transfer fields (importing separately may have left the rows categorized).
+	origFromCat := c.From.CategoryID
+	origToCat := c.To.CategoryID
+	switch {
+	case c.From.HasCategory() && !c.To.HasCategory():
+		c.To.SetCategory(c.From.CategoryID.ID)
+	case !c.From.HasCategory() && c.To.HasCategory():
+		c.From.SetCategory(c.To.CategoryID.ID)
+	case c.From.HasCategory() && c.To.HasCategory() && c.From.CategoryID.ID != c.To.CategoryID.ID:
+		c.To.SetCategory(c.From.CategoryID.ID)
+	}
+
 	pair := &transaction.TransferPair{FromTransaction: c.From, ToTransaction: c.To}
 	if err := s.transferRepo.Update(pair); err != nil {
-		// Roll back the in-memory link so a partial failure doesn't leave
-		// the caller's structs in an invalid state if they retry.
+		// Roll back the in-memory link and categories so a partial failure
+		// doesn't leave the caller's structs in an invalid state if they retry.
 		c.From.ClearTransfer()
 		c.To.ClearTransfer()
+		c.From.CategoryID = origFromCat
+		c.To.CategoryID = origToCat
 		return err
 	}
 	return nil

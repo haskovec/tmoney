@@ -19,7 +19,7 @@ func TestTransferEdit_NoFieldsProvided_Errors(t *testing.T) {
 	var legID types.ID
 	func() {
 		svc := clitest.OpenSvc(t, dbPath)
-		pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"))
+		pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"), "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer: %v", err)
 		}
@@ -42,7 +42,7 @@ func TestTransferEdit_StatusReconciled_Errors(t *testing.T) {
 	var legID types.ID
 	func() {
 		svc := clitest.OpenSvc(t, dbPath)
-		pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"))
+		pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"), "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer: %v", err)
 		}
@@ -65,7 +65,7 @@ func TestTransferEdit_DispatchRegToReg(t *testing.T) {
 	var legID, transferID types.ID
 	func() {
 		svc := clitest.OpenSvc(t, dbPath)
-		pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"))
+		pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"), "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer: %v", err)
 		}
@@ -109,7 +109,7 @@ func TestTransferEdit_DispatchRegToInv(t *testing.T) {
 	var legID types.ID
 	func() {
 		svc := clitest.OpenSvc(t, dbPath)
-		res, err := svc.Investment.DepositFromAccount(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("500.00"), "fund")
+		res, err := svc.Investment.DepositFromAccount(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("500.00"), "fund", types.NullableID{})
 		if err != nil {
 			t.Fatalf("DepositFromAccount: %v", err)
 		}
@@ -131,7 +131,7 @@ func TestTransferEdit_DispatchInvToReg(t *testing.T) {
 	var legID types.ID
 	func() {
 		svc := clitest.OpenSvc(t, dbPath)
-		res, err := svc.Investment.TransferCash(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("250.00"), "draw")
+		res, err := svc.Investment.TransferCash(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("250.00"), "draw", types.NullableID{})
 		if err != nil {
 			t.Fatalf("TransferCash: %v", err)
 		}

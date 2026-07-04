@@ -980,7 +980,7 @@ type CashTransferResult struct {
 // When direction is "in" (deposit to investment), the regular account is debited and the investment account is credited.
 // When direction is "out" (withdrawal from investment), the investment account is debited and the regular account is credited.
 // Both transactions are linked by a shared transfer_id.
-func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string) (*CashTransferResult, error) {
+func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string, categoryID types.NullableID) (*CashTransferResult, error) {
 	if s.txnRepo == nil {
 		return nil, fmt.Errorf("transaction repository not configured")
 	}
@@ -1041,11 +1041,17 @@ func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, d
 		return nil, fmt.Errorf("failed to create investment transfer transaction: %w", err)
 	}
 
-	// Create regular transaction (deposit — positive amount)
+	// Create regular transaction (deposit — positive amount). An optional
+	// category labels the regular-side leg only (investment_transactions has no
+	// category column); the caller is responsible for rejecting system
+	// categories before calling.
 	regTxn := transaction.NewTransaction(regularAccountID, date, amount)
 	regTxn.SetTransfer(transferID, investmentAccountID)
 	if memo != "" {
 		regTxn.SetMemo(memo)
+	}
+	if categoryID.Valid {
+		regTxn.SetCategory(categoryID.ID)
 	}
 
 	if err := s.txnRepo.Create(regTxn); err != nil {
@@ -1063,7 +1069,7 @@ func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, d
 
 // DepositFromAccount transfers cash from a regular account into an investment account.
 // This creates a deposit in the investment account and a withdrawal in the regular account.
-func (s *Service) DepositFromAccount(investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string) (*CashTransferResult, error) {
+func (s *Service) DepositFromAccount(investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string, categoryID types.NullableID) (*CashTransferResult, error) {
 	if s.txnRepo == nil {
 		return nil, fmt.Errorf("transaction repository not configured")
 	}
@@ -1121,12 +1127,18 @@ func (s *Service) DepositFromAccount(investmentAccountID, regularAccountID types
 		return nil, fmt.Errorf("failed to create investment transfer transaction: %w", err)
 	}
 
-	// Create regular transaction (withdrawal — negative amount)
+	// Create regular transaction (withdrawal — negative amount). An optional
+	// category labels the regular-side leg only (investment_transactions has no
+	// category column); the caller is responsible for rejecting system
+	// categories before calling.
 	negAmount := amount.Neg()
 	regTxn := transaction.NewTransaction(regularAccountID, date, negAmount)
 	regTxn.SetTransfer(transferID, investmentAccountID)
 	if memo != "" {
 		regTxn.SetMemo(memo)
+	}
+	if categoryID.Valid {
+		regTxn.SetCategory(categoryID.ID)
 	}
 
 	if err := s.txnRepo.Create(regTxn); err != nil {

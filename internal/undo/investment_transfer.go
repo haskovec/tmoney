@@ -21,13 +21,15 @@ type CreateInvestmentTransferCashCommand struct {
 	date                types.Date
 	amount              types.Money
 	memo                string
+	categoryID          types.NullableID
 	result              *investment.CashTransferResult
 }
 
 // NewCreateInvestmentTransferCashCommand constructs the command. Amount must
 // be positive — the underlying service enforces it. The cash leaves
-// investmentAccountID and lands in regularAccountID.
-func NewCreateInvestmentTransferCashCommand(svc *investment.Service, investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string) *CreateInvestmentTransferCashCommand {
+// investmentAccountID and lands in regularAccountID. categoryID optionally
+// labels the regular-side leg.
+func NewCreateInvestmentTransferCashCommand(svc *investment.Service, investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string, categoryID types.NullableID) *CreateInvestmentTransferCashCommand {
 	return &CreateInvestmentTransferCashCommand{
 		svc:                 svc,
 		investmentAccountID: investmentAccountID,
@@ -35,11 +37,12 @@ func NewCreateInvestmentTransferCashCommand(svc *investment.Service, investmentA
 		date:                date,
 		amount:              amount,
 		memo:                memo,
+		categoryID:          categoryID,
 	}
 }
 
 func (c *CreateInvestmentTransferCashCommand) Execute() error {
-	result, err := c.svc.TransferCash(c.investmentAccountID, c.regularAccountID, c.date, c.amount, c.memo)
+	result, err := c.svc.TransferCash(c.investmentAccountID, c.regularAccountID, c.date, c.amount, c.memo, c.categoryID)
 	if err != nil {
 		return err
 	}
@@ -78,12 +81,14 @@ type CreateInvestmentDepositCommand struct {
 	date                types.Date
 	amount              types.Money
 	memo                string
+	categoryID          types.NullableID
 	result              *investment.CashTransferResult
 }
 
 // NewCreateInvestmentDepositCommand constructs the command. Cash leaves
-// regularAccountID and lands in investmentAccountID.
-func NewCreateInvestmentDepositCommand(svc *investment.Service, investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string) *CreateInvestmentDepositCommand {
+// regularAccountID and lands in investmentAccountID. categoryID optionally
+// labels the regular-side leg.
+func NewCreateInvestmentDepositCommand(svc *investment.Service, investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string, categoryID types.NullableID) *CreateInvestmentDepositCommand {
 	return &CreateInvestmentDepositCommand{
 		svc:                 svc,
 		investmentAccountID: investmentAccountID,
@@ -91,11 +96,12 @@ func NewCreateInvestmentDepositCommand(svc *investment.Service, investmentAccoun
 		date:                date,
 		amount:              amount,
 		memo:                memo,
+		categoryID:          categoryID,
 	}
 }
 
 func (c *CreateInvestmentDepositCommand) Execute() error {
-	result, err := c.svc.DepositFromAccount(c.investmentAccountID, c.regularAccountID, c.date, c.amount, c.memo)
+	result, err := c.svc.DepositFromAccount(c.investmentAccountID, c.regularAccountID, c.date, c.amount, c.memo, c.categoryID)
 	if err != nil {
 		return err
 	}

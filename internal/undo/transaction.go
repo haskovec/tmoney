@@ -218,22 +218,28 @@ type CreateTransferCommand struct {
 	toAccountID   types.ID
 	date          types.Date
 	amount        types.Money
+	memo          string
+	categoryID    types.NullableID
 	pair          *transaction.TransferPair // populated after Execute
 }
 
 // NewCreateTransferCommand creates a command that will create a transfer.
-func NewCreateTransferCommand(svc *transaction.Service, fromAccountID, toAccountID types.ID, date types.Date, amount types.Money) *CreateTransferCommand {
+// memo and categoryID are optional labels stamped on both legs; an invalid
+// categoryID means no category.
+func NewCreateTransferCommand(svc *transaction.Service, fromAccountID, toAccountID types.ID, date types.Date, amount types.Money, memo string, categoryID types.NullableID) *CreateTransferCommand {
 	return &CreateTransferCommand{
 		svc:           svc,
 		fromAccountID: fromAccountID,
 		toAccountID:   toAccountID,
 		date:          date,
 		amount:        amount,
+		memo:          memo,
+		categoryID:    categoryID,
 	}
 }
 
 func (c *CreateTransferCommand) Execute() error {
-	pair, err := c.svc.CreateTransfer(c.fromAccountID, c.toAccountID, c.date, c.amount)
+	pair, err := c.svc.CreateTransfer(c.fromAccountID, c.toAccountID, c.date, c.amount, c.memo, c.categoryID)
 	if err != nil {
 		return err
 	}
@@ -394,18 +400,21 @@ type EditTransferCommand struct {
 	amount     types.Money
 	memo       string
 	status     transaction.Status
+	categoryID types.NullableID
 
-	beforeDate   types.Date
-	beforeAmount types.Money
-	beforeMemo   string
-	beforeStatus transaction.Status
-	captured     bool
+	beforeDate     types.Date
+	beforeAmount   types.Money
+	beforeMemo     string
+	beforeStatus   transaction.Status
+	beforeCategory types.NullableID
+	captured       bool
 }
 
 // NewEditTransferCommand creates a command that updates the editable common
 // fields of both sides of a transfer. amount must be positive; the from-side
-// gets the negated value, the to-side gets the positive value.
-func NewEditTransferCommand(svc *transaction.Service, transferID types.ID, date types.Date, amount types.Money, memo string, status transaction.Status) *EditTransferCommand {
+// gets the negated value, the to-side gets the positive value. categoryID is
+// mirrored onto both legs (an invalid categoryID clears it).
+func NewEditTransferCommand(svc *transaction.Service, transferID types.ID, date types.Date, amount types.Money, memo string, status transaction.Status, categoryID types.NullableID) *EditTransferCommand {
 	return &EditTransferCommand{
 		svc:        svc,
 		transferID: transferID,
@@ -413,6 +422,7 @@ func NewEditTransferCommand(svc *transaction.Service, transferID types.ID, date 
 		amount:     amount,
 		memo:       memo,
 		status:     status,
+		categoryID: categoryID,
 	}
 }
 
@@ -428,16 +438,19 @@ func (c *EditTransferCommand) Execute() error {
 		c.beforeMemo = pair.FromTransaction.Memo.String
 	}
 	c.beforeStatus = pair.FromTransaction.Status
+	// The outflow (From) leg's category is canonical for display; capture it so
+	// undo restores the prior category on both legs.
+	c.beforeCategory = pair.FromTransaction.CategoryID
 	c.captured = true
 
-	return c.svc.UpdateTransfer(c.transferID, c.date, c.amount, c.memo, c.status)
+	return c.svc.UpdateTransfer(c.transferID, c.date, c.amount, c.memo, c.status, c.categoryID)
 }
 
 func (c *EditTransferCommand) Undo() error {
 	if !c.captured {
 		return fmt.Errorf("EditTransferCommand: cannot undo before Execute")
 	}
-	return c.svc.UpdateTransfer(c.transferID, c.beforeDate, c.beforeAmount, c.beforeMemo, c.beforeStatus)
+	return c.svc.UpdateTransfer(c.transferID, c.beforeDate, c.beforeAmount, c.beforeMemo, c.beforeStatus, c.beforeCategory)
 }
 
 func (c *EditTransferCommand) Description() string {

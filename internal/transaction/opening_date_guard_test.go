@@ -54,7 +54,7 @@ func TestTransactionService_CreateTransfer_RejectsDateBeforeOpening(t *testing.T
 	from := createTestAccount(t, accountRepo, "Checking")
 	to := createTestAccount(t, accountRepo, "Savings")
 
-	_, err := svc.CreateTransfer(from.ID, to.ID, types.NewDate(1999, time.December, 31), types.MustNewMoney("100.00"))
+	_, err := svc.CreateTransfer(from.ID, to.ID, types.NewDate(1999, time.December, 31), types.MustNewMoney("100.00"), "", types.NullableID{})
 	if err == nil {
 		t.Fatal("expected CreateTransfer to reject a date before an account's opening date")
 	}

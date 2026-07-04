@@ -158,47 +158,52 @@ fixable against today's schema.
   split-line is excluded by default and included exactly once with the
   toggle.
 
-## Phase 4: Transfer Service Core + Link Adoption — [ ]
+## Phase 4: Transfer Service Core + Link Adoption — [x]
 
-- [ ] `internal/transaction/transaction_service.go:874-905`:
+- [x] `internal/transaction/transaction_service.go`:
   `CreateTransfer(from, to, date, amount, memo string, categoryID
-  types.NullableID)` — memo + category set on both legs at construction
-  (via `NewTransferPair` or immediately after). Reject system categories.
-- [ ] `internal/transaction/transaction_service.go:924-971`:
+  types.NullableID)` — memo + category set on both legs after
+  construction; rejects system + nonexistent categories via a new
+  `validateTransferCategory` helper (raw `system_category` lookup on
+  `s.db`, delegating the non-system rule to `ValidateTransferCategory`).
+- [x] `internal/transaction/transaction_service.go`:
   `UpdateTransfer(transferID, date, amount, memo, status, categoryID
-  types.NullableID)` — mirror category to both legs (`Valid:false`
-  clears both).
-- [ ] Retire the create-then-update-memo workaround at its four sites:
-  `internal/tui/transfer_dialog.go:538-547`,
-  `internal/cli/transfer/add.go:132-138`,
-  `internal/scheduled/scheduled_service.go:274-283` (auto-post) and
-  `:582-595` (`postSingleLineTransfer`) — all pass memo (and, this phase,
-  a not-yet-user-settable empty category) directly.
-- [ ] `internal/investment/investment_service.go`: optional category on the
-  regular-side leg for `DepositFromAccount` (:1124-1130) and
-  `TransferCash` (:1044-1049); thread it through `UpdateTransferCash`
-  (`internal/investment/update_edit.go:527-639`, including its delegating
-  calls to TransferCash/DepositFromAccount at :623/:625) for edits.
-  `TransferCashBetweenInvestments` untouched.
-- [ ] `internal/undo/transaction.go`: thread category through
-  `CreateTransferCommand` (:215-256) and `EditTransferCommand`
-  (:390-445, + `beforeCategory` capture at :424-430);
-  `internal/undo/scheduled_transaction.go:223-305`
-  (`PostScheduledTransferCommand`) and
-  `internal/undo/investment_transfer.go` reg↔inv create commands gain the
-  parameter. `DeleteTransferCommand`/`VoidTransferCommand`: no change
-  (verified in spec).
-- [ ] `internal/transferlink/transferlink.go:189-213`: adoption rule in
+  types.NullableID)` — mirrors category to both legs (`Valid:false`
+  clears both); doubles as the legacy-divergent-pair healing path.
+- [x] Retired the create-then-update-memo workaround at its four sites:
+  `internal/tui/transfer_dialog.go` (create path),
+  `internal/cli/transfer/add.go` (`dispatchTransferAdd` reg↔reg),
+  `internal/scheduled/scheduled_service.go` (auto-post inline transfer)
+  and `postSingleLineTransfer` — all pass memo (and, this phase, an empty
+  category) directly to `CreateTransfer`.
+- [x] `internal/investment/investment_service.go`: optional category on the
+  regular-side leg for `DepositFromAccount` and `TransferCash`; threaded
+  through `UpdateTransferCash` (`internal/investment/update_edit.go`, its
+  delegating TransferCash/DepositFromAccount calls) for the inv↔reg
+  branch. `TransferCashBetweenInvestments` untouched.
+- [x] `internal/undo/transaction.go`: threaded category through
+  `CreateTransferCommand` (+ memo) and `EditTransferCommand`
+  (+ `beforeCategory` capture from the outflow leg);
+  `internal/undo/scheduled_transaction.go` (`PostScheduledTransferCommand`)
+  and `internal/undo/investment_transfer.go` reg↔inv create commands gained
+  the parameter. `DeleteTransferCommand`/`VoidTransferCommand`: no change.
+- [x] `internal/transferlink/transferlink.go`: adoption rule in
   `linkOne` — one-leg → mirror; both-differ → outflow (`c.From`) wins;
-  extend the error rollback (:206-210) to restore both legs' original
-  categories.
-- [ ] Tests: pair create/edit/clear mirroring (both legs equal after every
-  write); undo/redo round-trips category (create, edit incl.
-  before-category, delete-recreate, void-restore untouched); reg→inv and
-  inv→reg carry category on the bank leg only; inv→inv rejects a
-  category; link adoption — one-leg, both-differ (outflow wins),
-  both-same, rollback restores; legacy divergent pair healed by
-  `UpdateTransfer`.
+  both-same/empty → unchanged; the error rollback restores both legs'
+  original categories alongside `ClearTransfer`.
+- [x] CLI/TUI edit paths preserve an existing category (they gain no
+  category picker until later phases): `resolvedTransfer.categoryID` is
+  read from the loaded leg and threaded back through `dispatchTransferEdit`;
+  the TUI edit passes `regularPair.FromTransaction.CategoryID`.
+- [x] Tests: pair create/edit/clear mirroring (transaction);
+  system + nonexistent category rejection; legacy divergent pair healed by
+  `UpdateTransfer`; undo round-trips category (create + delete-undo, edit +
+  before-category restore-on-undo); reg→inv and inv→reg carry the category
+  on the bank leg only (investment); link adoption — one-leg (both
+  directions), both-differ (outflow wins), both-same, both-empty, rollback
+  restores. (inv→inv rejection has no Phase 4 service code path —
+  `TransferCashBetweenInvestments` takes no category param; it is a Phase 5
+  dialog-validation concern.)
 
 ## Phase 5: TUI Transfer Dialogs — [ ]
 

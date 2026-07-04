@@ -129,15 +129,12 @@ func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 func dispatchTransferAdd(svc *app.Services, from, to *account.Account, date types.Date, amount types.Money, memo string) (*transferAddResult, error) {
 	switch transaction.ChooseTransferDispatch(from.Type, to.Type) {
 	case transaction.DispatchRegToReg:
-		pair, err := svc.Transaction.CreateTransfer(from.ID, to.ID, date, amount)
+		// CreateTransfer stamps the memo on both legs directly. A category is
+		// not settable from `transfer add` yet (arrives in a later phase); an
+		// empty NullableID means no category.
+		pair, err := svc.Transaction.CreateTransfer(from.ID, to.ID, date, amount, memo, types.NullableID{})
 		if err != nil {
 			return nil, err
-		}
-		// CreateTransfer doesn't accept memo; set it via UpdateTransfer.
-		if memo != "" {
-			if err := svc.Transaction.UpdateTransfer(pair.FromTransaction.TransferID.ID, date, amount, memo, transaction.StatusUncleared); err != nil {
-				return nil, fmt.Errorf("transfer created but failed to set memo: %w", err)
-			}
 		}
 		return &transferAddResult{
 			TransferID: pair.FromTransaction.TransferID.ID,
@@ -145,9 +142,9 @@ func dispatchTransferAdd(svc *app.Services, from, to *account.Account, date type
 			ToTxnID:    pair.ToTransaction.ID,
 		}, nil
 	case transaction.DispatchRegToInv:
-		// DepositFromAccount signature: (investmentID, regularID, date, amount, memo).
+		// DepositFromAccount signature: (investmentID, regularID, date, amount, memo, categoryID).
 		// "From" is the regular account; "To" is the investment account.
-		res, err := svc.Investment.DepositFromAccount(to.ID, from.ID, date, amount, memo)
+		res, err := svc.Investment.DepositFromAccount(to.ID, from.ID, date, amount, memo, types.NullableID{})
 		if err != nil {
 			return nil, err
 		}
@@ -157,9 +154,9 @@ func dispatchTransferAdd(svc *app.Services, from, to *account.Account, date type
 			ToTxnID:    res.InvestmentTransaction.ID,
 		}, nil
 	case transaction.DispatchInvToReg:
-		// TransferCash signature: (investmentID, regularID, date, amount, memo).
+		// TransferCash signature: (investmentID, regularID, date, amount, memo, categoryID).
 		// "From" is the investment account; "To" is the regular account.
-		res, err := svc.Investment.TransferCash(from.ID, to.ID, date, amount, memo)
+		res, err := svc.Investment.TransferCash(from.ID, to.ID, date, amount, memo, types.NullableID{})
 		if err != nil {
 			return nil, err
 		}

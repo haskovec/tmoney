@@ -530,6 +530,7 @@ func (s *Service) UpdateTransferCash(
 	date types.Date,
 	amount types.Money,
 	memo string,
+	categoryID types.NullableID, // optional label for the regular-side leg (inv↔reg only)
 	direction string, // "in" = cash arrives at investmentAccountID, "out" = cash leaves it
 	status transaction.Status,
 ) (*CashTransferResult, error) {
@@ -620,9 +621,9 @@ func (s *Service) UpdateTransferCash(
 	var result *CashTransferResult
 	switch direction {
 	case "out":
-		result, err = s.TransferCash(investmentAccountID, regularAccountID, date, amount, memo)
+		result, err = s.TransferCash(investmentAccountID, regularAccountID, date, amount, memo, categoryID)
 	case "in":
-		result, err = s.DepositFromAccount(investmentAccountID, regularAccountID, date, amount, memo)
+		result, err = s.DepositFromAccount(investmentAccountID, regularAccountID, date, amount, memo, categoryID)
 	default:
 		// Unreachable: direction was validated above.
 		return nil, fmt.Errorf("UpdateTransferCash: invalid direction %q (want 'in' or 'out')", direction)

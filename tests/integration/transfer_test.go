@@ -61,6 +61,7 @@ func TestTransferCreate(t *testing.T) {
 			checking.ID, savings.ID,
 			types.NewDate(2024, 1, 15),
 			types.MustNewMoney("500.00"),
+			"", types.NullableID{},
 		)
 		if err != nil {
 			t.Fatalf("Failed to create transfer: %v", err)
@@ -101,6 +102,7 @@ func TestTransferCreate(t *testing.T) {
 			checking.ID, savings.ID,
 			types.NewDate(2024, 1, 15),
 			types.MustNewMoney("-100.00"),
+			"", types.NullableID{},
 		)
 		if err == nil {
 			t.Error("Expected error for negative transfer amount")
@@ -115,6 +117,7 @@ func TestTransferCreate(t *testing.T) {
 			checking.ID, savings.ID,
 			types.NewDate(2024, 1, 15),
 			types.ZeroMoney,
+			"", types.NullableID{},
 		)
 		if err == nil {
 			t.Error("Expected error for zero transfer amount")
@@ -132,6 +135,7 @@ func TestTransferGetPair(t *testing.T) {
 		checking.ID, savings.ID,
 		types.NewDate(2024, 2, 1),
 		types.MustNewMoney("250.00"),
+		"", types.NullableID{},
 	)
 	if err != nil {
 		t.Fatalf("Failed to create transfer: %v", err)
@@ -170,6 +174,7 @@ func TestTransferGetCounterpart(t *testing.T) {
 		checking.ID, savings.ID,
 		types.NewDate(2024, 2, 1),
 		types.MustNewMoney("300.00"),
+		"", types.NullableID{},
 	)
 	if err != nil {
 		t.Fatalf("Failed to create transfer: %v", err)
@@ -212,6 +217,7 @@ func TestTransferUpdate(t *testing.T) {
 		checking.ID, savings.ID,
 		types.NewDate(2024, 3, 1),
 		types.MustNewMoney("200.00"),
+		"", types.NullableID{},
 	)
 	if err != nil {
 		t.Fatalf("Failed to create transfer: %v", err)
@@ -284,6 +290,7 @@ func TestTransferUpdate(t *testing.T) {
 			types.MustNewMoney("999.00"),
 			"Monthly transfer",
 			transaction.StatusReconciled,
+			types.NullableID{},
 		)
 		if err != nil {
 			t.Fatalf("Failed to update transfer: %v", err)
@@ -323,6 +330,7 @@ func TestTransferDelete(t *testing.T) {
 			checking.ID, savings.ID,
 			types.NewDate(2024, 5, 1),
 			types.MustNewMoney("100.00"),
+			"", types.NullableID{},
 		)
 		if err != nil {
 			t.Fatalf("Failed to create transfer: %v", err)
@@ -354,6 +362,7 @@ func TestTransferDelete(t *testing.T) {
 			checking.ID, savings.ID,
 			types.NewDate(2024, 5, 15),
 			types.MustNewMoney("75.00"),
+			"", types.NullableID{},
 		)
 		if err != nil {
 			t.Fatalf("Failed to create transfer: %v", err)
@@ -392,6 +401,7 @@ func TestTransferIsTransfer(t *testing.T) {
 		checking.ID, savings.ID,
 		types.NewDate(2024, 6, 1),
 		types.MustNewMoney("50.00"),
+		"", types.NullableID{},
 	)
 	if err != nil {
 		t.Fatalf("Failed to create transfer: %v", err)

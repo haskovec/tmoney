@@ -228,12 +228,15 @@ type PostScheduledTransferCommand struct {
 	amount     types.Money
 	memo       string
 	cleared    bool
+	category   types.NullableID
 	beforeST   *scheduled.Transaction
 	createdTxn *transaction.Transaction
 }
 
 // NewPostScheduledTransferCommand creates a command that posts a transfer
 // schedule occurrence on the given date for the given (positive) amount.
+// category is the one-off category applied to both posted legs (an invalid
+// categoryID leaves the posted transfer uncategorized).
 func NewPostScheduledTransferCommand(
 	svc *scheduled.Service,
 	txnSvc *transaction.Service,
@@ -242,15 +245,17 @@ func NewPostScheduledTransferCommand(
 	amount types.Money,
 	memo string,
 	cleared bool,
+	category types.NullableID,
 ) *PostScheduledTransferCommand {
 	return &PostScheduledTransferCommand{
-		svc:     svc,
-		txnSvc:  txnSvc,
-		id:      id,
-		date:    date,
-		amount:  amount,
-		memo:    memo,
-		cleared: cleared,
+		svc:      svc,
+		txnSvc:   txnSvc,
+		id:       id,
+		date:     date,
+		amount:   amount,
+		memo:     memo,
+		cleared:  cleared,
+		category: category,
 	}
 }
 
@@ -276,7 +281,7 @@ func (c *PostScheduledTransferCommand) Execute() error {
 		status = transaction.StatusCleared
 	}
 	if txn.TransferID.Valid {
-		if err := c.txnSvc.UpdateTransfer(txn.TransferID.ID, c.date, c.amount, c.memo, status); err != nil {
+		if err := c.txnSvc.UpdateTransfer(txn.TransferID.ID, c.date, c.amount, c.memo, status, c.category); err != nil {
 			return err
 		}
 	}

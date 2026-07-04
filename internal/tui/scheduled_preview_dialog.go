@@ -347,6 +347,7 @@ func (a *App) submitSchedulePreviewTransfer(template *scheduled.Transaction, hea
 			magnitude,
 			memo,
 			cleared,
+			types.NullableID{}, // one-off category on the transfer preview arrives in a later phase
 		)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to post scheduled transfer: %w", err)}

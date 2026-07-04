@@ -55,7 +55,7 @@ func TestOpenSvcAndFindInvestmentLeg(t *testing.T) {
 
 	// Create an investment-side transfer leg (inv→reg cash transfer) so the
 	// account has exactly one investment transaction to find.
-	res, err := svc.Investment.TransferCash(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("250.00"), "draw")
+	res, err := svc.Investment.TransferCash(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("250.00"), "draw", types.NullableID{})
 	if err != nil {
 		t.Fatalf("TransferCash: %v", err)
 	}

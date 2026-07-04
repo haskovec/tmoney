@@ -165,7 +165,7 @@ func TestBalanceCalculation_VoidTransferExcludesBothSides(t *testing.T) {
 
 		// Create a $500 transfer from checking to savings
 		pair, err := txnSvc.CreateTransfer(checking.ID, savings.ID, types.Today(),
-			types.MustNewMoney("500.00"))
+			types.MustNewMoney("500.00"), "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}

@@ -535,7 +535,7 @@ func TestCreateTransferCommand_ExecuteAndUndo(t *testing.T) {
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
 		amount := types.MustNewMoney("500.00")
-		cmd := undo.NewCreateTransferCommand(env.txnSvc, from.ID, to.ID, types.Today(), amount)
+		cmd := undo.NewCreateTransferCommand(env.txnSvc, from.ID, to.ID, types.Today(), amount, "", types.NullableID{})
 
 		// Execute: transfer should exist
 		if err := cmd.Execute(); err != nil {
@@ -580,14 +580,14 @@ func TestCreateTransferCommand_ExecuteAndUndo(t *testing.T) {
 }
 
 func TestCreateTransferCommand_Description(t *testing.T) {
-	cmd := undo.NewCreateTransferCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney)
+	cmd := undo.NewCreateTransferCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney, "", types.NullableID{})
 	if cmd.Description() != "Create transfer" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Create transfer")
 	}
 }
 
 func TestCreateTransferCommand_PairNilBeforeExecute(t *testing.T) {
-	cmd := undo.NewCreateTransferCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney)
+	cmd := undo.NewCreateTransferCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney, "", types.NullableID{})
 	if cmd.Pair() != nil {
 		t.Error("Pair() should be nil before Execute")
 	}
@@ -604,7 +604,7 @@ func TestDeleteTransferCommand_ExecuteAndUndo(t *testing.T) {
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
 		amount := types.MustNewMoney("200.00")
-		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount)
+		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -667,7 +667,7 @@ func TestVoidTransferCommand_ExecuteAndUndo(t *testing.T) {
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
 		amount := types.MustNewMoney("300.00")
-		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount)
+		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -764,7 +764,7 @@ func TestCompoundCommand_VoidTransferWithManager(t *testing.T) {
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
 		amount := types.MustNewMoney("150.00")
-		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount)
+		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -824,7 +824,7 @@ func TestEditTransferCommand_ExecuteAndUndo(t *testing.T) {
 
 		origAmount := types.MustNewMoney("100.00")
 		origDate := types.NewDate(2024, 1, 15)
-		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, origDate, origAmount)
+		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, origDate, origAmount, "", types.NullableID{})
 		if err != nil {
 			t.Fatalf("CreateTransfer() error = %v", err)
 		}
@@ -835,7 +835,7 @@ func TestEditTransferCommand_ExecuteAndUndo(t *testing.T) {
 		newMemo := "rent split"
 		newStatus := transaction.StatusCleared
 
-		cmd := undo.NewEditTransferCommand(env.txnSvc, transferID, newDate, newAmount, newMemo, newStatus)
+		cmd := undo.NewEditTransferCommand(env.txnSvc, transferID, newDate, newAmount, newMemo, newStatus, types.NullableID{})
 
 		// Execute: both sides updated
 		if err := cmd.Execute(); err != nil {
@@ -896,7 +896,7 @@ func TestEditTransferCommand_ExecuteAndUndo(t *testing.T) {
 }
 
 func TestEditTransferCommand_Description(t *testing.T) {
-	cmd := undo.NewEditTransferCommand(nil, types.NewID(), types.Today(), types.ZeroMoney, "", transaction.StatusUncleared)
+	cmd := undo.NewEditTransferCommand(nil, types.NewID(), types.Today(), types.ZeroMoney, "", transaction.StatusUncleared, types.NullableID{})
 	if cmd.Description() != "Edit transfer" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Edit transfer")
 	}

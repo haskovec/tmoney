@@ -46,7 +46,7 @@ func TestResolveTransferPair_RegToReg(t *testing.T) {
 	dbPath, checking, savings := clitest.SetupTransferAccounts(t)
 	svc := clitest.OpenSvc(t, dbPath)
 
-	pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"))
+	pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"), "", types.NullableID{})
 	if err != nil {
 		t.Fatalf("CreateTransfer: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestResolveTransferPair_RegToInv(t *testing.T) {
 	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
 	svc := clitest.OpenSvc(t, dbPath)
 
-	res, err := svc.Investment.DepositFromAccount(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("500.00"), "fund")
+	res, err := svc.Investment.DepositFromAccount(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("500.00"), "fund", types.NullableID{})
 	if err != nil {
 		t.Fatalf("DepositFromAccount: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestResolveTransferPair_InvToReg(t *testing.T) {
 	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
 	svc := clitest.OpenSvc(t, dbPath)
 
-	res, err := svc.Investment.TransferCash(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("250.00"), "draw")
+	res, err := svc.Investment.TransferCash(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("250.00"), "draw", types.NullableID{})
 	if err != nil {
 		t.Fatalf("TransferCash: %v", err)
 	}

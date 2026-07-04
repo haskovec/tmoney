@@ -271,14 +271,16 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 					return nil, fmt.Errorf("transfer auto-post requires a transaction service; scheduled.NewService was called with txnSvc=nil")
 				}
 				magnitude := st.Amount.Money.Abs()
-				pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, st.NextDate, magnitude)
+				// CreateTransfer stamps the schedule's memo on both legs
+				// directly. Wiring the schedule's category through here is a
+				// later phase; pass no category for now.
+				memo := ""
+				if st.Memo.Valid {
+					memo = st.Memo.String
+				}
+				pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, st.NextDate, magnitude, memo, types.NullableID{})
 				if err != nil {
 					return nil, fmt.Errorf("failed to create transfer auto-post transaction: %w", err)
-				}
-				if st.Memo.Valid && st.Memo.String != "" {
-					if err := s.txnSvc.UpdateTransfer(pair.FromTransaction.TransferID.ID, st.NextDate, magnitude, st.Memo.String, transaction.StatusUncleared); err != nil {
-						return nil, fmt.Errorf("transfer auto-post created but failed to set memo: %w", err)
-					}
 				}
 				txn = pair.FromTransaction
 			} else if len(st.Splits) > 0 {
@@ -579,19 +581,16 @@ func (s *Service) postSingleLineTransfer(st *Transaction, date types.Date, amoun
 		return nil, &AmountRequiredError{ID: st.ID.String()}
 	}
 
-	pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, date, magnitude)
+	// CreateTransfer stamps the schedule's memo onto both legs directly (the
+	// returned in-memory pair already reflects it). Wiring the schedule's
+	// category through here is a later phase; pass no category for now.
+	memo := ""
+	if st.Memo.Valid {
+		memo = st.Memo.String
+	}
+	pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, date, magnitude, memo, types.NullableID{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scheduled transfer: %w", err)
-	}
-
-	// Carry the schedule's memo onto both legs (CreateTransfer takes no memo).
-	if st.Memo.Valid && st.Memo.String != "" {
-		transferID := pair.FromTransaction.TransferID.ID
-		if err := s.txnSvc.UpdateTransfer(transferID, date, magnitude, st.Memo.String, transaction.StatusUncleared); err != nil {
-			return pair.FromTransaction, fmt.Errorf("transfer created but failed to set memo: %w", err)
-		}
-		// Reflect the persisted memo on the returned (in-memory) From leg.
-		pair.FromTransaction.SetMemo(st.Memo.String)
 	}
 
 	st.AdvanceSchedule()

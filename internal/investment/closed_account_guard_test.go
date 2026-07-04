@@ -94,15 +94,15 @@ func TestInvestmentService_Transfers_RejectedWhenLegClosed(t *testing.T) {
 	closeInvAccount(t, accountRepo, closedInv)
 
 	t.Run("TransferCash regular leg closed", func(t *testing.T) {
-		_, err := svc.TransferCash(inv.ID, closedReg.ID, date, amount, "")
+		_, err := svc.TransferCash(inv.ID, closedReg.ID, date, amount, "", types.NullableID{})
 		assertInvClosed(t, err)
 	})
 	t.Run("DepositFromAccount regular leg closed", func(t *testing.T) {
-		_, err := svc.DepositFromAccount(inv.ID, closedReg.ID, date, amount, "")
+		_, err := svc.DepositFromAccount(inv.ID, closedReg.ID, date, amount, "", types.NullableID{})
 		assertInvClosed(t, err)
 	})
 	t.Run("TransferCash investment leg closed", func(t *testing.T) {
-		_, err := svc.TransferCash(closedInv.ID, reg.ID, date, amount, "")
+		_, err := svc.TransferCash(closedInv.ID, reg.ID, date, amount, "", types.NullableID{})
 		assertInvClosed(t, err)
 	})
 	t.Run("TransferCashBetweenInvestments dest closed", func(t *testing.T) {

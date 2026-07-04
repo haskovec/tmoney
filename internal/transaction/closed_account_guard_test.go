@@ -100,18 +100,18 @@ func TestTransactionService_Transfer_RejectedWhenEitherLegClosed(t *testing.T) {
 	date := types.NewDate(2000, time.March, 1)
 
 	t.Run("CreateTransfer to closed leg", func(t *testing.T) {
-		_, err := svc.CreateTransfer(open.ID, closed.ID, date, types.MustNewMoney("100.00"))
+		_, err := svc.CreateTransfer(open.ID, closed.ID, date, types.MustNewMoney("100.00"), "", types.NullableID{})
 		assertAccountClosed(t, err)
 	})
 	t.Run("CreateTransfer from closed leg", func(t *testing.T) {
-		_, err := svc.CreateTransfer(closed.ID, open.ID, date, types.MustNewMoney("100.00"))
+		_, err := svc.CreateTransfer(closed.ID, open.ID, date, types.MustNewMoney("100.00"), "", types.NullableID{})
 		assertAccountClosed(t, err)
 	})
 
 	// Build a real transfer between two open accounts, then close one leg and
 	// confirm edit/delete of the existing transfer is refused.
 	other := createTestAccount(t, accountRepo, "Savings2")
-	pair, err := svc.CreateTransfer(open.ID, other.ID, date, types.MustNewMoney("100.00"))
+	pair, err := svc.CreateTransfer(open.ID, other.ID, date, types.MustNewMoney("100.00"), "", types.NullableID{})
 	if err != nil {
 		t.Fatalf("CreateTransfer (open) error = %v", err)
 	}

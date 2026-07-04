@@ -164,7 +164,9 @@ func parseEditStatus(s string) (transaction.Status, error) {
 // the resolved transfer's dispatch kind.
 func dispatchTransferEdit(svc *app.Services, res *resolvedTransfer, date types.Date, amount types.Money, memo string, status transaction.Status) error {
 	if res.kind == transaction.DispatchRegToReg {
-		return svc.Transaction.UpdateTransfer(res.transferID, date, amount, memo, status)
+		// res.categoryID preserves the existing category; `transfer edit` gains a
+		// --category flag in a later phase to change or clear it.
+		return svc.Transaction.UpdateTransfer(res.transferID, date, amount, memo, status, res.categoryID)
 	}
 
 	// Inv-involving: UpdateTransferCash takes the investment-side leg plus the
@@ -189,6 +191,7 @@ func dispatchTransferEdit(svc *app.Services, res *resolvedTransfer, date types.D
 		date,
 		amount,
 		memo,
+		res.categoryID,
 		direction,
 		status,
 	)

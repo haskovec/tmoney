@@ -84,7 +84,7 @@ func TestCreateInvestmentTransferCashCommand_Roundtrip(t *testing.T) {
 	amount := types.MustNewMoney("250.00")
 	date := types.Today()
 
-	cmd := undo.NewCreateInvestmentTransferCashCommand(env.invSvc, inv.ID, checking.ID, date, amount, "draw")
+	cmd := undo.NewCreateInvestmentTransferCashCommand(env.invSvc, inv.ID, checking.ID, date, amount, "draw", types.NullableID{})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -125,7 +125,7 @@ func TestCreateInvestmentTransferCashCommand_Roundtrip(t *testing.T) {
 }
 
 func TestCreateInvestmentTransferCashCommand_Description(t *testing.T) {
-	cmd := undo.NewCreateInvestmentTransferCashCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney, "")
+	cmd := undo.NewCreateInvestmentTransferCashCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney, "", types.NullableID{})
 	if cmd.Description() != "Create transfer" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Create transfer")
 	}
@@ -142,7 +142,7 @@ func TestCreateInvestmentDepositCommand_Roundtrip(t *testing.T) {
 	amount := types.MustNewMoney("750.00")
 	date := types.Today()
 
-	cmd := undo.NewCreateInvestmentDepositCommand(env.invSvc, inv.ID, checking.ID, date, amount, "fund")
+	cmd := undo.NewCreateInvestmentDepositCommand(env.invSvc, inv.ID, checking.ID, date, amount, "fund", types.NullableID{})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -170,7 +170,7 @@ func TestCreateInvestmentDepositCommand_Roundtrip(t *testing.T) {
 }
 
 func TestCreateInvestmentDepositCommand_Description(t *testing.T) {
-	cmd := undo.NewCreateInvestmentDepositCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney, "")
+	cmd := undo.NewCreateInvestmentDepositCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney, "", types.NullableID{})
 	if cmd.Description() != "Create transfer" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Create transfer")
 	}

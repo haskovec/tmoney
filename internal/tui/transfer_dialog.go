@@ -531,27 +531,21 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			if a.transactionSvc == nil {
 				return errMsg{err: fmt.Errorf("transaction service not available")}
 			}
-			cmd := undo.NewCreateTransferCommand(a.transactionSvc, fromAccountID, toAccountID, date, amount)
+			// CreateTransfer stamps memo (and category, once the dialog exposes
+			// a picker in a later phase) on both legs at construction. Category
+			// is not yet user-settable here, so an empty NullableID is passed.
+			cmd := undo.NewCreateTransferCommand(a.transactionSvc, fromAccountID, toAccountID, date, amount, memo, types.NullableID{})
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 			}
-			// Set memo if provided. CreateTransfer doesn't accept memo, so we
-			// apply it via UpdateTransfer after the create. Undo of the transfer
-			// deletes both sides, so the memo-set step needs no separate undo.
 			if pair := cmd.Pair(); pair != nil {
-				if memo != "" {
-					transferID := pair.FromTransaction.TransferID.ID
-					if err := a.transactionSvc.UpdateTransfer(transferID, date, amount, memo, transaction.StatusUncleared); err != nil {
-						return errMsg{err: fmt.Errorf("transfer created but failed to set memo: %w", err)}
-					}
-				}
 				savedID = transferLegForAccount(currentAcct, pair.FromTransaction, pair.ToTransaction)
 			}
 		case transaction.DispatchInvToReg:
 			if a.investmentSvc == nil {
 				return errMsg{err: fmt.Errorf("investment service not available")}
 			}
-			cmd := undo.NewCreateInvestmentTransferCashCommand(a.investmentSvc, fromAccountID, toAccountID, date, amount, memo)
+			cmd := undo.NewCreateInvestmentTransferCashCommand(a.investmentSvc, fromAccountID, toAccountID, date, amount, memo, types.NullableID{})
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 			}
@@ -562,7 +556,7 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			}
 			// DepositFromAccount expects (investmentAccountID, regularAccountID);
 			// here the investment account is the destination.
-			cmd := undo.NewCreateInvestmentDepositCommand(a.investmentSvc, toAccountID, fromAccountID, date, amount, memo)
+			cmd := undo.NewCreateInvestmentDepositCommand(a.investmentSvc, toAccountID, fromAccountID, date, amount, memo, types.NullableID{})
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 			}
@@ -701,7 +695,11 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 		if a.transactionSvc == nil || a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("transaction service not available")}
 		}
-		cmd := undo.NewEditTransferCommand(a.transactionSvc, transferID, date, amount, memo, status)
+		// Preserve the existing category (from the canonical outflow leg). The
+		// edit dialog gains a category picker in a later phase; until then an
+		// edit must not clobber a category applied by other means (e.g. a
+		// legacy transfer-link pair).
+		cmd := undo.NewEditTransferCommand(a.transactionSvc, transferID, date, amount, memo, status, regularPair.FromTransaction.CategoryID)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to update transfer: %w", err)}
 		}
@@ -751,6 +749,7 @@ func (a *App) dispatchInvestmentEditTransfer(edit *investmentTransferEdit, fromT
 			date,
 			amount,
 			memo,
+			types.NullableID{}, // category picker on this path arrives in a later phase
 			direction,
 			status,
 		); err != nil {
