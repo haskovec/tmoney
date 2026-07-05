@@ -284,6 +284,51 @@ func TestBuildBuyDialog_SecurityTypeaheadCaseInsensitive(t *testing.T) {
 	}
 }
 
+// TestBuildBuyDialog_SecurityCombo_MouseClickCommits reproduces the reported
+// bug end-to-end on the real Buy Securities dialog: after typing a filter,
+// clicking a matching security row with the mouse commits that selection
+// (previously the click was ignored and only Enter/Tab worked).
+func TestBuildBuyDialog_SecurityCombo_MouseClickCommits(t *testing.T) {
+	options := []string{
+		"VSGAX - Vanguard Small Cap Growth Index Adm",
+		"VSIAX - Vanguard Small Cap Value Index Adm",
+		"AAPL - Apple Inc.",
+	}
+	ids := []types.ID{types.NewID(), types.NewID(), types.NewID()}
+
+	d := buildBuyDialog(options, nil, ids)
+	d.SetFocusIndex(1) // focus the Security combo (Date is field 0)
+
+	// Type the filter from the screenshot; leaves VSGAX (line 0) and VSIAX
+	// (line 1), AAPL filtered out.
+	for _, r := range "vanguard sm" {
+		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	if got := d.Fields()[1].FilteredIndices(); len(got) != 2 {
+		t.Fatalf("expected 2 filtered matches, got %v", got)
+	}
+
+	// Dialog content rows: 0 title, 1 separator, 2 blank, 3 Date, 4 blank,
+	// 5 combo header, 6 = first panel row (VSGAX), 7 = second panel row
+	// (VSIAX). Click VSIAX with the mouse.
+	action := d.HandleMouseLocal(10, 7)
+	if action != dialog.DialogActionNone {
+		t.Errorf("action = %v, want DialogActionNone", action)
+	}
+	if got := d.Fields()[1].SelectedIndex; got != 1 {
+		t.Errorf("SelectedIndex = %d, want 1 (VSIAX)", got)
+	}
+	if ids[d.Fields()[1].SelectedIndex] != ids[1] {
+		t.Error("resolved security ID does not match VSIAX")
+	}
+	if d.Fields()[1].Query != "" {
+		t.Errorf("Query = %q, want cleared after commit", d.Fields()[1].Query)
+	}
+	if d.FocusIndex() != 2 {
+		t.Errorf("FocusIndex = %d, want 2 (advanced to Shares, like Enter)", d.FocusIndex())
+	}
+}
+
 func TestBuildBuyDialog_EditTransaction(t *testing.T) {
 	secID := types.NewID()
 	acctID := types.NewID()

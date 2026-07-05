@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -541,5 +542,275 @@ func TestDialog_HandleMouse_ClickCancel_WithWrappingMessage(t *testing.T) {
 	}
 	if got != DialogActionCancel {
 		t.Error("clicking Cancel with a wrapping message did not return DialogActionCancel")
+	}
+}
+
+// FieldCombo mouse tests — mouse support for the typeahead combo dropdown
+// (e.g. the Security picker on the Buy/Sell/Dividend dialogs).
+
+// TestDialog_HitTestContent_ComboPanel_MapsRows verifies that, while a combo
+// is focused, clicks below the header line map to the dropdown-panel line
+// index and the header line itself maps to no panel row.
+func TestDialog_HitTestContent_ComboPanel_MapsRows(t *testing.T) {
+	d := NewDialog("Buy Securities")
+	d.AddComboField("Security", []string{"VSGAX", "VSIAX", "AAPL"}, 0)
+	d.AddTextField("Shares", "", "", 10)
+	contentWidth := d.Width() - DialogHorizontalOverhead
+
+	// Combo is focused by default (field 0). Row 2 = blank before field,
+	// row 3 = combo header (input line), rows 4/5/6 = the three panel rows.
+	if hit := d.HitTestContent(5, 3, contentWidth); hit.Zone != DialogHitField || hit.FieldIndex != 0 || hit.ListItemIndex != -1 {
+		t.Errorf("header row: got Zone=%d Field=%d Item=%d, want field 0 item -1", hit.Zone, hit.FieldIndex, hit.ListItemIndex)
+	}
+	for _, tt := range []struct{ y, want int }{{4, 0}, {5, 1}, {6, 2}} {
+		hit := d.HitTestContent(5, tt.y, contentWidth)
+		if hit.Zone != DialogHitField || hit.FieldIndex != 0 {
+			t.Errorf("row %d: got Zone=%d Field=%d, want field 0", tt.y, hit.Zone, hit.FieldIndex)
+		}
+		if hit.ListItemIndex != tt.want {
+			t.Errorf("row %d: ListItemIndex = %d, want %d", tt.y, hit.ListItemIndex, tt.want)
+		}
+	}
+}
+
+// TestDialog_HitTestContent_ComboPanel_NotExposedWhenUnfocused verifies the
+// panel rows only exist while the combo is focused: an unfocused combo
+// occupies a single header row, so a click one row below lands on the next
+// element's blank spacer, not a phantom panel row.
+func TestDialog_HitTestContent_ComboPanel_NotExposedWhenUnfocused(t *testing.T) {
+	d := NewDialog("Buy Securities")
+	d.AddComboField("Security", []string{"VSGAX", "VSIAX", "AAPL"}, 0)
+	d.AddTextField("Shares", "", "", 10)
+	d.SetFocusIndex(1) // focus the text field, not the combo
+	contentWidth := d.Width() - DialogHorizontalOverhead
+
+	// Row 3 = combo header (only row it occupies unfocused).
+	if hit := d.HitTestContent(5, 3, contentWidth); hit.FieldIndex != 0 || hit.ListItemIndex != -1 {
+		t.Errorf("header row: got Field=%d Item=%d, want field 0 item -1", hit.FieldIndex, hit.ListItemIndex)
+	}
+	// Row 4 = blank spacer before the text field — must not resolve to a
+	// combo panel row.
+	if hit := d.HitTestContent(5, 4, contentWidth); hit.Zone != DialogHitNone {
+		t.Errorf("row below unfocused combo: got Zone=%d Field=%d Item=%d, want DialogHitNone", hit.Zone, hit.FieldIndex, hit.ListItemIndex)
+	}
+}
+
+// TestDialog_ComboMouseClick_CommitsSelection reproduces the reported bug:
+// after typing a filter, clicking a matching security row commits that
+// selection (like Enter) rather than being ignored.
+func TestDialog_ComboMouseClick_CommitsSelection(t *testing.T) {
+	d := NewDialog("Buy Securities")
+	f := d.AddComboField("Security", []string{
+		"VSGAX - Vanguard Small Cap Growth Index Adm",
+		"VSIAX - Vanguard Small Cap Value Index Adm",
+		"AAPL - Apple Inc",
+	}, 0)
+	d.AddTextField("Shares", "", "", 10)
+
+	// Type the filter shown in the screenshot; leaves VSGAX (line 0) and
+	// VSIAX (line 1), AAPL filtered out.
+	for _, r := range "vanguard sm" {
+		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	if got := f.FilteredIndices(); len(got) != 2 {
+		t.Fatalf("filtered = %v, want 2 matches", got)
+	}
+
+	// Click the first match row (VSGAX): header = row 3, first panel = row 4.
+	action := d.HandleMouseLocal(5, 4)
+	if action != DialogActionNone {
+		t.Errorf("action = %v, want DialogActionNone", action)
+	}
+	if f.SelectedIndex != 0 {
+		t.Errorf("SelectedIndex = %d, want 0 (VSGAX)", f.SelectedIndex)
+	}
+	if f.Query != "" {
+		t.Errorf("Query = %q, want cleared after commit", f.Query)
+	}
+	if d.FocusIndex() != 1 {
+		t.Errorf("FocusIndex = %d, want 1 (advanced past the combo, like Enter)", d.FocusIndex())
+	}
+}
+
+// TestDialog_ComboMouseClick_SecondFilteredRow confirms the row-to-option
+// mapping is correct when the clicked row is not the highlighted one.
+func TestDialog_ComboMouseClick_SecondFilteredRow(t *testing.T) {
+	d := NewDialog("Buy Securities")
+	f := d.AddComboField("Security", []string{
+		"VSGAX - Vanguard Small Cap Growth Index Adm",
+		"VSIAX - Vanguard Small Cap Value Index Adm",
+		"AAPL - Apple Inc",
+	}, 0)
+	d.AddTextField("Shares", "", "", 10)
+
+	for _, r := range "vanguard sm" {
+		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	// Click the second match row (VSIAX) at row 5.
+	d.HandleMouseLocal(5, 5)
+	if f.SelectedIndex != 1 {
+		t.Errorf("SelectedIndex = %d, want 1 (VSIAX)", f.SelectedIndex)
+	}
+}
+
+// TestDialog_ComboMouseClick_AddNewRow verifies a click on the AddNew action
+// row returns DialogActionAddNew and sets AddNewTriggered without advancing
+// focus, mirroring Enter on that row.
+func TestDialog_ComboMouseClick_AddNewRow(t *testing.T) {
+	d := NewDialog("New Transaction")
+	f := d.AddComboField("Category", []string{"Food", "Auto"}, 0)
+	f.AddNewLabel = "[+ Add new category…]"
+	d.AddTextField("Amount", "", "", 10)
+
+	// Empty query: header = row 3, row 4 = Food, row 5 = Auto, row 6 = action.
+	action := d.HandleMouseLocal(5, 6)
+	if action != DialogActionAddNew {
+		t.Errorf("action = %v, want DialogActionAddNew", action)
+	}
+	if !f.AddNewTriggered {
+		t.Error("AddNewTriggered = false, want true")
+	}
+	if d.FocusIndex() != 0 {
+		t.Errorf("FocusIndex = %d, want 0 (stays on the combo)", d.FocusIndex())
+	}
+}
+
+// TestDialog_ComboMouseClick_NoMatchesInert verifies clicking the
+// "(no matches)" placeholder does nothing.
+func TestDialog_ComboMouseClick_NoMatchesInert(t *testing.T) {
+	d := NewDialog("Buy Securities")
+	f := d.AddComboField("Security", []string{"VSGAX", "VSIAX"}, 0)
+	d.AddTextField("Shares", "", "", 10)
+
+	for _, r := range "zzz" {
+		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	// header = row 3, row 4 = "(no matches)" placeholder.
+	action := d.HandleMouseLocal(5, 4)
+	if action != DialogActionNone {
+		t.Errorf("action = %v, want DialogActionNone", action)
+	}
+	if f.Query != "zzz" {
+		t.Errorf("Query = %q, want unchanged", f.Query)
+	}
+	if d.FocusIndex() != 0 {
+		t.Errorf("FocusIndex = %d, want 0 (unchanged)", d.FocusIndex())
+	}
+}
+
+// TestDialog_ComboMouseClick_WithScrollOffset verifies the click mapping
+// tracks the dropdown's scroll window: after the highlight scrolls the panel,
+// the visible rows map to the scrolled-into options, not the top of the list.
+func TestDialog_ComboMouseClick_WithScrollOffset(t *testing.T) {
+	opts := make([]string, 20)
+	for i := range opts {
+		opts[i] = fmt.Sprintf("SEC%02d", i)
+	}
+	d := NewDialog("Buy Securities")
+	f := d.AddComboField("Security", opts, 0)
+	f.VisibleCount = 5
+	d.AddTextField("Shares", "", "", 10)
+	contentWidth := d.Width() - DialogHorizontalOverhead
+
+	// Move the highlight to index 10; with visible=5 the window scrolls to
+	// show lines 6..10 (scrollOffset = 10-5+1 = 6).
+	for range 10 {
+		d.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	}
+	// First visible panel row (row 4) is line 6; last (row 8) is line 10.
+	if hit := d.HitTestContent(5, 4, contentWidth); hit.ListItemIndex != 6 {
+		t.Errorf("first visible row: ListItemIndex = %d, want 6", hit.ListItemIndex)
+	}
+	if hit := d.HitTestContent(5, 8, contentWidth); hit.ListItemIndex != 10 {
+		t.Errorf("last visible row: ListItemIndex = %d, want 10", hit.ListItemIndex)
+	}
+
+	// Commit the first visible row → SEC06 (option index 6), not SEC00.
+	d.HandleMouseLocal(5, 4)
+	if f.SelectedIndex != 6 {
+		t.Errorf("SelectedIndex = %d, want 6 (SEC06, first visible after scroll)", f.SelectedIndex)
+	}
+}
+
+// TestDialog_ComboMouseClick_WithFieldError verifies the panel-row mapping
+// stays aligned when the focused combo carries an inline validation error.
+// The error renders after the panel (not between header and panel), so a
+// click still commits the option drawn under the cursor — not its neighbor —
+// and clicking the error line itself is inert.
+func TestDialog_ComboMouseClick_WithFieldError(t *testing.T) {
+	d := NewDialog("Buy Securities")
+	f := d.AddComboField("Security", []string{"VSGAX", "VSIAX", "AAPL"}, 0)
+	d.AddTextField("Shares", "", "", 10)
+	f.Error = "Select a security" // as a failed submit would set
+
+	contentWidth := d.Width() - DialogHorizontalOverhead
+	// Row 2 = blank, row 3 = header, rows 4/5/6 = panel (VSGAX/VSIAX/AAPL),
+	// row 7 = the trailing error line.
+	for _, tt := range []struct{ y, want int }{{4, 0}, {5, 1}, {6, 2}, {7, -1}} {
+		if hit := d.HitTestContent(5, tt.y, contentWidth); hit.ListItemIndex != tt.want {
+			t.Errorf("row %d: ListItemIndex = %d, want %d", tt.y, hit.ListItemIndex, tt.want)
+		}
+	}
+
+	// Click the first option (row 4) → commits VSGAX (index 0), not VSIAX.
+	d.HandleMouseLocal(5, 4)
+	if f.SelectedIndex != 0 {
+		t.Errorf("SelectedIndex = %d, want 0 (VSGAX, the row clicked)", f.SelectedIndex)
+	}
+}
+
+// TestDialog_ComboMouseClick_WithFieldError_LastOptionClickable guards the
+// old failure mode where the bottom visible option was hit-tested as the
+// error row and became dead.
+func TestDialog_ComboMouseClick_WithFieldError_LastOptionClickable(t *testing.T) {
+	d := NewDialog("Buy Securities")
+	f := d.AddComboField("Security", []string{"VSGAX", "VSIAX", "AAPL"}, 0)
+	d.AddTextField("Shares", "", "", 10)
+	f.Error = "Select a security"
+
+	// Row 6 = AAPL (last option). Clicking it must commit index 2.
+	d.HandleMouseLocal(5, 6)
+	if f.SelectedIndex != 2 {
+		t.Errorf("SelectedIndex = %d, want 2 (AAPL, last option)", f.SelectedIndex)
+	}
+}
+
+// TestDialog_ComboMouseClick_ErrorLineInert verifies clicking the trailing
+// error text focuses the combo without committing any option.
+func TestDialog_ComboMouseClick_ErrorLineInert(t *testing.T) {
+	d := NewDialog("Buy Securities")
+	d.AddTextField("Shares", "", "", 10)
+	f := d.AddComboField("Security", []string{"VSGAX", "VSIAX", "AAPL"}, 1)
+	d.SetFocusIndex(1) // focus the combo (field index 1)
+	f.Error = "Select a security"
+
+	// Field layout: row 2 blank, row 3 Shares(text), row 4 blank,
+	// row 5 combo header, rows 6/7/8 panel, row 9 error line.
+	action := d.HandleMouseLocal(5, 9)
+	if action != DialogActionNone {
+		t.Errorf("action = %v, want DialogActionNone (error line inert)", action)
+	}
+	if f.SelectedIndex != 1 {
+		t.Errorf("SelectedIndex = %d, want 1 (unchanged)", f.SelectedIndex)
+	}
+}
+
+// TestDialog_HandleMouse_WheelOnCombo verifies the scroll wheel moves the
+// dropdown highlight while a combo is focused.
+func TestDialog_HandleMouse_WheelOnCombo(t *testing.T) {
+	d := NewDialog("Buy Securities")
+	f := d.AddComboField("Security", []string{"VSGAX", "VSIAX", "AAPL"}, 0)
+	d.SetFocusIndex(0)
+	d.SetVisible(true)
+	screenW, screenH := 80, 24
+
+	startCol, startRow, _, _ := d.DialogBounds(screenW, screenH)
+	d.HandleMouse(tea.MouseWheelMsg{X: startCol + 10, Y: startRow + 5, Button: tea.MouseWheelDown}, screenW, screenH)
+	if f.ComboHighlight != 1 {
+		t.Errorf("ComboHighlight after wheel down = %d, want 1", f.ComboHighlight)
+	}
+	d.HandleMouse(tea.MouseWheelMsg{X: startCol + 10, Y: startRow + 5, Button: tea.MouseWheelUp}, screenW, screenH)
+	if f.ComboHighlight != 0 {
+		t.Errorf("ComboHighlight after wheel up = %d, want 0", f.ComboHighlight)
 	}
 }

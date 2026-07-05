@@ -26,7 +26,10 @@ type DialogHitResult struct {
 	FieldIndex int
 	// ButtonIndex is the index of the button hit (valid when Zone == DialogHitButton).
 	ButtonIndex int
-	// ListItemIndex is the absolute item index for FieldList clicks (-1 if not applicable).
+	// ListItemIndex is the row hit within a multi-row field, or -1 if not
+	// applicable. For FieldList it is the absolute option index. For a
+	// focused FieldCombo it is the dropdown-panel line index — an index into
+	// the filtered option list, or len(filtered) for the AddNew action row.
 	ListItemIndex int
 	// ContentX is the x offset within the hit element (for text cursor positioning).
 	ContentX int
@@ -163,6 +166,14 @@ func (d *Dialog) hitTestContentFull(x, y, contentWidth int) DialogHitResult {
 					result.ListItemIndex = absIdx
 				}
 			}
+			if field.Type == FieldCombo && d.isFieldFocused(field) && y > row {
+				// y == row is the combo header (input) line; y > row is a
+				// dropdown-panel row. renderComboPanel only draws the panel
+				// while the combo is focused, so the extra content rows only
+				// exist then. Map to the panel line index (into the filtered
+				// list, or len(filtered) for the AddNew action row).
+				result.ListItemIndex = field.comboPanelLineAt(y - row - 1)
+			}
 			return result
 		}
 		row += contentRows
@@ -269,11 +280,20 @@ func (d *Dialog) HandleMouse(msg tea.MouseMsg, screenWidth, screenHeight int) Di
 		// Only scroll if wheel is within dialog bounds
 		if m.X >= startCol && m.X < endCol && m.Y >= startRow && m.Y < endRow {
 			field := d.FocusedField()
-			if field != nil && field.Type == FieldList {
+			switch {
+			case field == nil:
+			case field.Type == FieldList:
 				if m.Button == tea.MouseWheelUp {
 					field.SelectPrev()
 				} else {
 					field.SelectNext()
+				}
+			case field.Type == FieldCombo:
+				// Wheel moves the dropdown highlight, same as Up/Down.
+				if m.Button == tea.MouseWheelUp {
+					field.comboHighlightUp()
+				} else {
+					field.comboHighlightDown()
 				}
 			}
 		}
@@ -326,6 +346,14 @@ func (d *Dialog) HandleMouseLocal(localX, localY int) DialogAction {
 				case FieldList:
 					if hit.ListItemIndex >= 0 && hit.ListItemIndex < len(field.Options) {
 						field.SelectedIndex = hit.ListItemIndex
+					}
+				case FieldCombo:
+					// A click on a dropdown-panel row commits that match (or
+					// triggers AddNew), mirroring Enter; a click on the header
+					// line (ListItemIndex < 0) just focuses the combo, opening
+					// its dropdown.
+					if hit.ListItemIndex >= 0 {
+						return d.handleComboClick(field, hit.ListItemIndex)
 					}
 				case FieldText:
 					// Position cursor based on click position within text field

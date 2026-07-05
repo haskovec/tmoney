@@ -364,27 +364,36 @@ func (d *Dialog) renderField(styles widget.Styles, field *Field, focused bool, l
 	case FieldSelect:
 		fieldContent = d.renderSelectFieldContent(styles, field, focused, available)
 	case FieldList:
-		// FieldList renders vertically below the label line
+		// FieldList renders vertically below the label line. The inline error
+		// (if any) renders AFTER the list rows so the field block is
+		// [label, items…, error] — the same [content-rows, trailing error]
+		// shape ContentHeight and the mouse hit-test assume for every field.
 		listContent := d.renderListFieldContent(field, focused, available)
-		line := paddedLabel
+		line := paddedLabel + "\n" + listContent
 		if field.Error != "" {
 			errorIndent := strings.Repeat(" ", labelWidth+1+gap)
 			line += "\n" + errorIndent + styles.FieldError.Render(field.Error)
 		}
-		return line + "\n" + listContent
+		return line
 	case FieldCombo:
 		header := d.renderComboHeader(field, focused, available)
 		if !focused {
 			fieldContent = header
 			break
 		}
+		// The dropdown panel renders below the header; the inline error (if
+		// any) renders AFTER the panel so the field block is
+		// [header, panel…, error]. Keeping the error last (rather than
+		// between the header and the panel) matches fieldContentRows + the
+		// trailing error row ContentHeight and hitTestContentFull expect, so
+		// a click maps to the option actually drawn under the cursor.
 		panel := d.renderComboPanel(field, available)
-		line := paddedLabel + "  " + header
+		line := paddedLabel + "  " + header + "\n" + panel
 		if field.Error != "" {
 			errorIndent := strings.Repeat(" ", labelWidth+1+gap)
 			line += "\n" + errorIndent + styles.FieldError.Render(field.Error)
 		}
-		return line + "\n" + panel
+		return line
 	case FieldRadio:
 		fieldContent = d.renderRadioFieldContent(styles, field, focused, available)
 	default:
@@ -593,31 +602,9 @@ func (d *Dialog) renderComboPanel(field *Field, contentWidth int) string {
 	indices := field.FilteredIndices()
 	hasAction := field.AddNewLabel != ""
 
-	totalRows := len(indices)
-	if hasAction {
-		totalRows++
-	}
+	scrollOffset, visible, totalRows := field.comboPanelWindow()
 	if totalRows == 0 {
 		return "      (no matches)"
-	}
-
-	visible := field.VisibleCount
-	if visible <= 0 {
-		visible = 8
-	}
-	if visible > totalRows {
-		visible = totalRows
-	}
-
-	scrollOffset := 0
-	if field.ComboHighlight >= visible {
-		scrollOffset = field.ComboHighlight - visible + 1
-	}
-	if scrollOffset+visible > totalRows {
-		scrollOffset = totalRows - visible
-	}
-	if scrollOffset < 0 {
-		scrollOffset = 0
 	}
 
 	end := min(scrollOffset+visible, totalRows)

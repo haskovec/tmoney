@@ -43,6 +43,86 @@ func (d *Dialog) handleComboNavigationKey(field *Field, keyStr string) (handled 
 	return false, DialogActionNone
 }
 
+// handleComboClick commits a left-click on the combo's dropdown panel at the
+// given panel line index (as produced by comboPanelLineAt). A click on a real
+// match commits it and advances focus, mirroring Enter on a highlighted match
+// in handleComboNavigationKey; a click on the AddNew action row sets
+// AddNewTriggered and returns DialogActionAddNew, mirroring Enter on that row
+// (the parent dialog reads Query and diverts into the create sub-dialog). An
+// out-of-range index (e.g. the header line or a "(no matches)" row) is a
+// no-op that leaves the combo focused with its dropdown open.
+func (d *Dialog) handleComboClick(field *Field, line int) DialogAction {
+	if field.Type != FieldCombo || line < 0 {
+		return DialogActionNone
+	}
+	indices := field.FilteredIndices()
+	if field.AddNewLabel != "" && line == len(indices) {
+		field.ComboHighlight = line
+		field.AddNewTriggered = true
+		return DialogActionAddNew
+	}
+	if line < len(indices) {
+		field.ComboHighlight = line
+		field.commitComboHighlight()
+		d.FocusNext()
+	}
+	return DialogActionNone
+}
+
+// comboPanelWindow returns the scroll offset, visible-row count, and total
+// row count (filtered matches plus the optional AddNew action row) for the
+// combo's dropdown panel. renderComboPanel draws the panel from these values
+// and the mouse hit-test maps clicks back through them, so keeping the math
+// in one place ensures the rendered rows and the clickable rows never
+// diverge. Returns zeros when there is nothing to show.
+func (f *Field) comboPanelWindow() (scrollOffset, visible, totalRows int) {
+	if f.Type != FieldCombo {
+		return 0, 0, 0
+	}
+	totalRows = len(rankComboMatches(f.Options, f.Query))
+	if f.AddNewLabel != "" {
+		totalRows++
+	}
+	if totalRows == 0 {
+		return 0, 0, 0
+	}
+	visible = f.VisibleCount
+	if visible <= 0 {
+		visible = 8
+	}
+	if visible > totalRows {
+		visible = totalRows
+	}
+	if f.ComboHighlight >= visible {
+		scrollOffset = f.ComboHighlight - visible + 1
+	}
+	if scrollOffset+visible > totalRows {
+		scrollOffset = totalRows - visible
+	}
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+	return scrollOffset, visible, totalRows
+}
+
+// comboPanelLineAt maps a 0-based visible-row offset within the rendered
+// dropdown panel to a panel line index: an index into FilteredIndices for a
+// real option, or len(FilteredIndices) for the AddNew action row. Returns -1
+// when the offset falls outside the rendered window or when there are no rows
+// (the "(no matches)" placeholder is inert). Uses comboPanelWindow so the
+// mapping tracks renderComboPanel exactly.
+func (f *Field) comboPanelLineAt(visibleRow int) int {
+	scrollOffset, visible, totalRows := f.comboPanelWindow()
+	if totalRows == 0 || visibleRow < 0 || visibleRow >= visible {
+		return -1
+	}
+	line := scrollOffset + visibleRow
+	if line >= totalRows {
+		return -1
+	}
+	return line
+}
+
 // AddComboField adds a typeahead combo box and returns it. Typing filters
 // the option list with leaf-prefix-first ranking; Up/Down navigate the
 // filtered subset; Enter/Tab commit the highlighted match.
