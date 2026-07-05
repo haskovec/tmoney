@@ -594,6 +594,53 @@ values preserved, the new category auto-selected, and focus advanced
 to Amount. Cancel returns to the originating dialog with the previous
 selection intact.
 
+## Mouse Support
+
+Mouse interaction is supported for common operations. The guiding rule is
+**single click selects, double click opens**: a single click on a list or
+table row moves the cursor there, and a double-click on the same row within
+the double-click threshold drills in (opens the account register, a
+ticker's price history, etc.). Buttons, menu items, dialog fields, and other
+affordances activate on a single click.
+
+| Action | Effect |
+|--------|--------|
+| Click menu label | Open / close that menu's dropdown |
+| Click dropdown item | Execute the menu action |
+| Click account in sidebar | Select the account |
+| Double-click account in sidebar | Open the account register |
+| Click group header in sidebar | Select the group heading |
+| Click a list / table row | Select that row |
+| Double-click a prices-list row | View that ticker's price history |
+| Click sidebar / table area | Move focus between panes |
+| Scroll wheel | Navigate the focused list or table |
+| Click a dialog field | Focus it (a text field also positions the cursor at the click) |
+| Click a dialog checkbox | Toggle it |
+| Click a dialog list item | Select it |
+| Click a combo-box dropdown row | Commit that row (see below) |
+| Scroll wheel over a focused combo / list field | Move the highlight |
+| Click a dialog button | Activate it (Save, Cancel, Lookup, …) |
+| Click a dialog `[x]` | Close the dialog |
+
+### Combo box mouse behavior
+
+The [Category Combo Box](#category-combo-box) and the investment Security
+pickers (Buy / Sell / Dividend / Reinvest / Fee via Liquidation / Transfer
+Shares, and the Merger / Spin-Off security fields) render a dropdown panel
+below the input line while the field is focused. Mouse interaction mirrors
+the keyboard:
+
+- **Click a match row** — commits that option (like `Enter` / `Tab`),
+  clears the typed filter query, and advances focus to the next field.
+- **Click the `[+ Add new category…]` action row** — opens the
+  create-category sub-dialog for the originating field (like `Enter` on that
+  row), leaving focus on the combo and preserving the typed query.
+- **Scroll wheel** over a focused combo — moves the dropdown highlight up /
+  down, the same as the arrow keys.
+- **Click the input (header) line** — focuses the combo and opens its
+  dropdown. A combo shows only its header line while unfocused, so a first
+  click opens the list and a second click on a now-visible row commits it.
+
 ## Status Bar
 
 The status bar shows:
@@ -634,7 +681,6 @@ The layout adapts to terminal size:
 
 ## v1.5 Features (Not in v1)
 
-- Mouse support
 - Command palette (`:` key)
 - Customizable keybindings
 - Theme support
