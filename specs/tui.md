@@ -332,26 +332,49 @@ Each menu label has its shortcut letter underlined to indicate the `Alt+key` sho
 ### File Menu
 - New File
 - Open File
-- Open Recent →
+- Open Recent
+- Import Transactions…
+- Create Backup
+- Restore from Backup
 - Close File
 - Exit
 
+### Edit Menu
+- Undo
+- Redo
+
+### View Menu
+- Show closed positions — a toggle (a `✓` marks it on)
+- Theme entries — one row per available theme (the built-ins `default`,
+  `light`, and `turbo-vision`, plus any user-installed theme from the theme
+  directory), the active one marked `✓`. Selecting one applies it live and
+  persists it. See [Theming](#theming).
+
 ### Accounts Menu
 - New Account
+- New Loan…
 - Edit Account
 - Close Account
+- Reopen Account
 - Delete Account
+- Reconcile Account
 
 ### Transactions Menu
 - New Transaction
 - New Transfer
 - Edit Transaction
 - Delete Transaction
-- Search...
+- Search…
+- Link Transfers…
+- New Paycheck Schedule…
 
 ### Securities Menu
-- Securities Master
+- Security Master
 - Prices
+- Stock Split…
+- Merger…
+- Spin-Off…
+- Corporate Action History…
 
 ### Reports Menu
 - Dashboard
@@ -664,6 +687,20 @@ Modern, minimal color palette:
 | Borders | Subtle/dim |
 | Alerts | Yellow/orange |
 
+### Theming
+
+The palette above describes the built-in **default** theme. TMoney ships
+three built-in themes — `default`, `light`, and `turbo-vision` — and also
+loads any theme (a TOML file) found in the user theme directory
+(`$XDG_CONFIG_HOME/tmoney/themes/`). Switch themes live from **View →
+Theme** (the active theme is marked `✓`); the choice is persisted to the
+config file's `theme` key and restored on the next launch. A theme with an
+unreadable or invalid file falls back to the default palette rather than
+failing to open. On the CLI, `tmoney theme list` shows the available themes
+and `tmoney theme generate-from-wal` writes a theme derived from the current
+pywal cache into the user theme directory (where it then appears under View
+→ Theme).
+
 ## Responsive Design
 
 The layout adapts to terminal size:
@@ -681,7 +718,10 @@ The layout adapts to terminal size:
 
 ## v1.5 Features (Not in v1)
 
+Mouse support, theming, and vim-style navigation keys (`h`/`j`/`k`/`l`)
+have since shipped — see [Mouse Support](#mouse-support),
+[Theming](#theming), and [Navigation Keys](#navigation-keys). Vim keys are
+always on, so no enable/disable toggle is planned. Still deferred:
+
 - Command palette (`:` key)
-- Customizable keybindings
-- Theme support
-- Vim-style keybindings toggle
+- Customizable (user-remappable) keybindings
