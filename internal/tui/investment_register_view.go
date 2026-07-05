@@ -19,9 +19,14 @@ import (
 type investmentRegisterData struct {
 	account       *account.Account
 	transactions  []*investment.Transaction
-	securityNames map[types.ID]string // SecurityID -> Ticker
-	cashBalance   types.Money
-	valuation     *investment.AccountValuation
+	securityNames map[types.ID]string // SecurityID -> Ticker (or name when tickerless)
+	// securityFullNames maps SecurityID -> the security's full name. Kept
+	// alongside securityNames so the security filter can match on both the
+	// ticker and the name, and so the active-filter line can show
+	// "TICKER — Full Name" (degrading to name-only for tickerless holdings).
+	securityFullNames map[types.ID]string
+	cashBalance       types.Money
+	valuation         *investment.AccountValuation
 }
 
 // investmentRegisterLoadedMsg is sent when investment register data has been loaded.
@@ -33,7 +38,8 @@ type investmentRegisterLoadedMsg struct {
 func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 	return func() tea.Msg {
 		data := &investmentRegisterData{
-			securityNames: make(map[types.ID]string),
+			securityNames:     make(map[types.ID]string),
+			securityFullNames: make(map[types.ID]string),
 		}
 
 		// Load account
@@ -75,11 +81,143 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 			if err == nil {
 				for _, sec := range securities {
 					data.securityNames[sec.ID] = securityLabel(sec)
+					data.securityFullNames[sec.ID] = sec.Name
 				}
 			}
 		}
 
 		return investmentRegisterLoadedMsg{data: data}
+	}
+}
+
+// investmentRegisterFilterActive reports whether the security filter is
+// affecting the register — either the user is typing a query or a security is
+// locked. While active, the running-balance column and total-return header are
+// suppressed (they are account-wide and can't be meaningfully sliced).
+func (a *App) investmentRegisterFilterActive() bool {
+	return a.investmentFilterSearching || !a.investmentFilterLockedSec.IsNil()
+}
+
+// resetInvestmentRegisterFilter clears all filter state, returning the register
+// to its full unfiltered view.
+func (a *App) resetInvestmentRegisterFilter() {
+	a.investmentFilterSearching = false
+	a.investmentFilterQuery = ""
+	a.investmentFilterLockedSec = types.NilID
+}
+
+// visibleInvestmentTransactions returns the transactions the register should
+// display given the current filter. With a security locked, only that
+// security's rows show; while typing a non-empty query, rows whose security
+// ticker or name contains the query show (rows with no security are excluded);
+// otherwise the full ledger is returned.
+func (a *App) visibleInvestmentTransactions() []*investment.Transaction {
+	if a.investmentRegister == nil {
+		return nil
+	}
+	all := a.investmentRegister.transactions
+
+	if !a.investmentFilterLockedSec.IsNil() {
+		out := make([]*investment.Transaction, 0, len(all))
+		for _, txn := range all {
+			if txn.SecurityID.Valid && txn.SecurityID.ID == a.investmentFilterLockedSec {
+				out = append(out, txn)
+			}
+		}
+		return out
+	}
+
+	if a.investmentFilterSearching {
+		q := strings.ToLower(strings.TrimSpace(a.investmentFilterQuery))
+		if q == "" {
+			return all
+		}
+		out := make([]*investment.Transaction, 0, len(all))
+		for _, txn := range all {
+			if a.txnSecurityMatchesQuery(txn, q) {
+				out = append(out, txn)
+			}
+		}
+		return out
+	}
+
+	return all
+}
+
+// txnSecurityMatchesQuery reports whether a transaction's security matches the
+// (already lower-cased) query by ticker/label or full name. Cash rows (no
+// security) never match.
+func (a *App) txnSecurityMatchesQuery(txn *investment.Transaction, lowerQuery string) bool {
+	if !txn.SecurityID.Valid {
+		return false
+	}
+	id := txn.SecurityID.ID
+	if strings.Contains(strings.ToLower(a.investmentRegister.securityNames[id]), lowerQuery) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(a.investmentRegister.securityFullNames[id]), lowerQuery)
+}
+
+// investmentFilterMatchedSecurities returns the distinct securities among the
+// currently visible rows, in first-seen order. Used to decide whether a typed
+// query resolves to exactly one security (Enter locks) and to render the
+// status line.
+func (a *App) investmentFilterMatchedSecurities() []types.ID {
+	seen := make(map[types.ID]bool)
+	var out []types.ID
+	for _, txn := range a.visibleInvestmentTransactions() {
+		if txn.SecurityID.Valid && !seen[txn.SecurityID.ID] {
+			seen[txn.SecurityID.ID] = true
+			out = append(out, txn.SecurityID.ID)
+		}
+	}
+	return out
+}
+
+// securityDisplayName renders a security as "TICKER — Full Name", degrading to
+// just the name for a tickerless holding (where the label already equals the
+// name).
+func (a *App) securityDisplayName(id types.ID) string {
+	if a.investmentRegister == nil {
+		return ""
+	}
+	label := a.investmentRegister.securityNames[id]
+	full := a.investmentRegister.securityFullNames[id]
+	switch {
+	case label != "" && full != "" && label != full:
+		return label + " — " + full
+	case full != "":
+		return full
+	default:
+		return label
+	}
+}
+
+// investmentFilterStatusLine builds the one-line filter indicator shown under
+// the register title while a filter is active.
+func (a *App) investmentFilterStatusLine() string {
+	if a.investmentRegister == nil {
+		return ""
+	}
+	total := len(a.investmentRegister.transactions)
+	n := len(a.visibleInvestmentTransactions())
+
+	if !a.investmentFilterLockedSec.IsNil() {
+		return fmt.Sprintf("Filter: %s  (%d of %d)", a.securityDisplayName(a.investmentFilterLockedSec), n, total)
+	}
+
+	q := strings.TrimSpace(a.investmentFilterQuery)
+	if q == "" {
+		return "Filter: (type a ticker or name — Enter locks · Esc clears)"
+	}
+	matched := a.investmentFilterMatchedSecurities()
+	switch len(matched) {
+	case 0:
+		return fmt.Sprintf("Filter: %s  →  no matches", q)
+	case 1:
+		return fmt.Sprintf("Filter: %s  →  %s (%d rows)", q, a.securityDisplayName(matched[0]), n)
+	default:
+		return fmt.Sprintf("Filter: %s  →  %d securities, %d rows", q, len(matched), n)
 	}
 }
 
@@ -118,12 +256,16 @@ func (a *App) buildInvestmentRegisterTable() {
 		return
 	}
 
-	showBalance := a.shouldShowInvestmentBalance()
+	// The running-balance column is account-wide and can't be sliced per
+	// security, so it is suppressed whenever the filter is active.
+	showBalance := a.shouldShowInvestmentBalance() && !a.investmentRegisterFilterActive()
 	columns := investmentRegisterColumns(showBalance)
+
+	txns := a.visibleInvestmentTransactions()
 
 	var cash []types.Money
 	if showBalance {
-		cash = runningCash(a.investmentRegister.transactions)
+		cash = runningCash(txns)
 	}
 
 	if a.investmentTable == nil {
@@ -132,8 +274,8 @@ func (a *App) buildInvestmentRegisterTable() {
 		a.investmentTable.SetColumns(columns)
 	}
 
-	rows := make([][]string, len(a.investmentRegister.transactions))
-	for i, txn := range a.investmentRegister.transactions {
+	rows := make([][]string, len(txns))
+	for i, txn := range txns {
 		row := a.formatInvestmentRegisterRow(txn)
 		if showBalance {
 			row = append(row, formatDashboardMoney(cash[i]))
@@ -149,7 +291,7 @@ func (a *App) buildInvestmentRegisterTable() {
 	// rebuild against a stale ledger (e.g. a resize landing in the async
 	// save→reload window) preserves the pending selection for the real reload.
 	if !a.pendingInvestmentSelectID.IsNil() {
-		for i, txn := range a.investmentRegister.transactions {
+		for i, txn := range txns {
 			if txn.ID == a.pendingInvestmentSelectID {
 				a.investmentTable.SetCursor(i)
 				a.pendingInvestmentSelectID = types.NilID
@@ -209,11 +351,12 @@ func (a *App) selectedInvestmentTransaction() *investment.Transaction {
 		return nil
 	}
 
+	txns := a.visibleInvestmentTransactions()
 	cursor := a.investmentTable.Cursor()
-	if cursor < 0 || cursor >= len(a.investmentRegister.transactions) {
+	if cursor < 0 || cursor >= len(txns) {
 		return nil
 	}
-	return a.investmentRegister.transactions[cursor]
+	return txns[cursor]
 }
 
 // renderInvestmentRegister renders the investment account register view.
@@ -254,12 +397,26 @@ func (a *App) renderInvestmentRegister() string {
 		sections = append(sections, a.styles.Muted.Render(label))
 	}
 
+	filterActive := a.investmentRegisterFilterActive()
+
 	// Total-return breakdown (one line of components + one line for total).
+	// Suppressed while filtering — it is an account-wide summary and would be
+	// misleading next to a single-security row set. Hiding it also frees two
+	// rows of vertical space for scanning the filtered list.
 	totalReturnLines := 0
-	if breakdown, total := a.renderInvestmentTotalReturnLines(); breakdown != "" {
-		sections = append(sections, breakdown)
-		sections = append(sections, total)
-		totalReturnLines = 2
+	if !filterActive {
+		if breakdown, total := a.renderInvestmentTotalReturnLines(); breakdown != "" {
+			sections = append(sections, breakdown)
+			sections = append(sections, total)
+			totalReturnLines = 2
+		}
+	}
+
+	// Active-filter line (ticker + full security name, and the match count).
+	filterLine := 0
+	if filterActive {
+		filterLine = 1
+		sections = append(sections, a.styles.Bold.Render(a.investmentFilterStatusLine()))
 	}
 
 	// Separator
@@ -269,18 +426,23 @@ func (a *App) renderInvestmentRegister() string {
 	// widget.Table
 	headerHeight := 1
 	statusBarHeight := 1
-	titleHeight := 2 + totalReturnLines + closedBanner // title + separator (+ optional total-return breakdown, + closed banner)
-	paddingHeight := 2                                 // top/bottom padding
-	scrollInfoHeight := 1                              // reserve a row for the scroll info line so a long list doesn't overflow the status bar
+	titleHeight := 2 + totalReturnLines + closedBanner + filterLine // title + separator (+ optional total-return breakdown, filter line, closed banner)
+	paddingHeight := 2                                              // top/bottom padding
+	scrollInfoHeight := 1                                           // reserve a row for the scroll info line so a long list doesn't overflow the status bar
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight-scrollInfoHeight, 1)
 
-	if a.investmentTable != nil && len(a.investmentRegister.transactions) > 0 {
+	visibleCount := len(a.visibleInvestmentTransactions())
+	if a.investmentTable != nil && visibleCount > 0 {
 		tableWidth := max(contentWidth-4, 1)
 		sections = append(sections, a.investmentTable.Render(a.styles, tableWidth, tableHeight))
 		if info := a.investmentTable.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
-	} else if len(a.investmentRegister.transactions) == 0 {
+	} else if filterActive {
+		// Filtered down to nothing — the status line already names the query.
+		sections = append(sections, "")
+		sections = append(sections, a.styles.Muted.Render("  No matching transactions"))
+	} else {
 		sections = append(sections, "")
 		sections = append(sections, a.styles.Muted.Render("  No investment transactions"))
 		sections = append(sections, "")
@@ -366,6 +528,23 @@ func (a *App) renderInvestmentTotalReturnLines() (string, string) {
 
 // handleInvestmentRegisterKeys handles key presses in the investment register view.
 func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// While typing a security filter query, every key drives the filter
+	// (see handleInvestmentRegisterSearchKey). handleKeyPress routes here
+	// with an early guard so global bindings don't steal keystrokes.
+	if a.investmentFilterSearching {
+		return a.handleInvestmentRegisterSearchKey(msg)
+	}
+
+	// Esc clears a locked filter regardless of which pane has focus. This must
+	// precede the sidebar delegation below, otherwise a locked filter with the
+	// sidebar focused would swallow Esc (handleSidebarKeys has no Esc branch)
+	// instead of clearing. Reached via the global Esc exception in handleKeyPress.
+	if key.Matches(msg, a.keys.Escape) && a.investmentRegisterFilterActive() {
+		a.resetInvestmentRegisterFilter()
+		a.buildInvestmentRegisterTable()
+		return a, nil
+	}
+
 	// Handle Tab to switch focus between sidebar and table
 	if key.Matches(msg, a.keys.Tab) || key.Matches(msg, a.keys.ShiftTab) {
 		if a.sidebar.IsFocused() {
@@ -407,6 +586,16 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-6, 1)
 		a.investmentTable.PageDown(tableHeight)
+	case key.Matches(msg, a.keys.Search):
+		// Enter the security filter. Starting a new query drops any locked
+		// security so the user types fresh.
+		a.investmentFilterSearching = true
+		a.investmentFilterQuery = ""
+		a.investmentFilterLockedSec = types.NilID
+		a.buildInvestmentRegisterTable()
+		if a.investmentTable != nil {
+			a.investmentTable.SetCursor(0)
+		}
 	case a.investmentRegister.account != nil && a.investmentRegister.account.IsClosed() &&
 		(msg.String() == "c" || key.Matches(msg, a.keys.New) || key.Matches(msg, a.keys.Enter) || key.Matches(msg, a.keys.Delete)):
 		// A closed account is frozen: navigation and `p` (portfolio) still
@@ -458,6 +647,80 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 	}
 
 	return a, nil
+}
+
+// handleInvestmentRegisterSearchKey drives the security filter while the user
+// is typing a query. Text/Backspace edit the query and re-narrow the list;
+// the arrow / page / home / end keys still navigate so the user can
+// preview-scroll matches; Enter locks the filter when the query resolves to
+// exactly one security; Esc clears the filter entirely.
+func (a *App) handleInvestmentRegisterSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if a.investmentTable == nil {
+		return a, nil
+	}
+
+	rebuildTop := func() {
+		a.buildInvestmentRegisterTable()
+		a.investmentTable.SetCursor(0)
+	}
+
+	switch {
+	case key.Matches(msg, a.keys.Escape):
+		a.resetInvestmentRegisterFilter()
+		a.buildInvestmentRegisterTable()
+	case key.Matches(msg, a.keys.Enter):
+		// Lock only when the query resolves to a single security; an ambiguous
+		// or empty match keeps the user in typing mode.
+		if matched := a.investmentFilterMatchedSecurities(); len(matched) == 1 {
+			a.investmentFilterLockedSec = matched[0]
+			a.investmentFilterSearching = false
+			a.investmentFilterQuery = ""
+			rebuildTop()
+		}
+	// Navigation is matched on the physical arrow keys via msg.Code — NOT via
+	// a.keys.Up/Down, whose vim aliases ("k"/"j") would otherwise swallow those
+	// letters instead of appending them to the query. Page/Home/End match on
+	// msg.String() (no letter alias, so they are safe for typing).
+	case msg.Code == tea.KeyUp:
+		a.investmentTable.MoveUp()
+	case msg.Code == tea.KeyDown:
+		a.investmentTable.MoveDown()
+	case msg.String() == "pgup":
+		a.investmentTable.PageUp(max(a.height-6, 1))
+	case msg.String() == "pgdown":
+		a.investmentTable.PageDown(max(a.height-6, 1))
+	case msg.String() == "home":
+		a.investmentTable.MoveToTop()
+	case msg.String() == "end":
+		a.investmentTable.MoveToBottom()
+	case msg.Code == tea.KeyBackspace:
+		if r := []rune(a.investmentFilterQuery); len(r) > 0 {
+			a.investmentFilterQuery = string(r[:len(r)-1])
+			rebuildTop()
+		}
+	case msg.Text != "":
+		a.investmentFilterQuery += msg.Text
+		rebuildTop()
+	}
+	return a, nil
+}
+
+// preselectSecurityCombo sets a freshly-built investment dialog's "Security"
+// combo to the given security, used so a NEW transaction opened while the
+// register is filtered to a security defaults to it. It is a no-op when secID
+// is nil or is not among the dialog's options.
+func preselectSecurityCombo(d *dialog.Dialog, secIDs []types.ID, secID types.ID) {
+	if d == nil || secID.IsNil() {
+		return
+	}
+	for i, id := range secIDs {
+		if id == secID {
+			if f := d.FieldByLabel("Security"); f != nil {
+				f.SelectedIndex = i
+			}
+			return
+		}
+	}
 }
 
 // toggleInvestmentTransactionStatus toggles the cleared status of the selected investment transaction.
@@ -572,8 +835,13 @@ func (a *App) openInvestmentTypeSelector(editing bool) {
 			a.investmentEditTxnID = txn.ID
 			selectedIdx = investmentTransactionTypeIndex(txn.Type)
 		}
+		// Editing selects the security from the edited row, not the filter.
+		a.investmentNewTxnSecurityID = types.NilID
 	} else {
 		a.investmentEditTxnID = types.NilID
+		// A new transaction opened while the register is locked to a security
+		// pre-selects that security in the security-bearing dialogs.
+		a.investmentNewTxnSecurityID = a.investmentFilterLockedSec
 		// Spin-Off is a corporate action, not a transaction type; offer it as a
 		// convenience entry on the New selector (handled by index on submit).
 		options = append(options, "Spin-Off…")
@@ -674,6 +942,7 @@ func investmentRegisterShortcuts() shortcutSection {
 			{Key: "Enter", Description: "Edit transaction"},
 			{Key: "c", Description: "Toggle cleared"},
 			{Key: "d", Description: "Delete transaction"},
+			{Key: "/", Description: "Filter by security"},
 			{Key: "p", Description: "Portfolio view"},
 			{Key: "Tab", Description: "Switch sidebar/table"},
 			{Key: "Esc", Description: "Go back"},

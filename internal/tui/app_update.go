@@ -29,7 +29,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.register != nil && tableHasBalanceColumn(a.table) != a.shouldShowRegisterBalance() {
 			a.buildRegisterTable()
 		}
-		if a.investmentRegister != nil && tableHasBalanceColumn(a.investmentTable) != a.shouldShowInvestmentBalance() {
+		// The effective decision also suppresses the balance column while a
+		// security filter is active, so mirror that here to avoid a needless
+		// rebuild (and scroll/cursor reset) on every resize tick while filtered.
+		if a.investmentRegister != nil &&
+			tableHasBalanceColumn(a.investmentTable) != (a.shouldShowInvestmentBalance() && !a.investmentRegisterFilterActive()) {
 			a.buildInvestmentRegisterTable()
 		}
 		return a, nil
@@ -151,7 +155,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.buyDialog = buildBuyDialog(secOptions, editTxn, secIDs)
 		if editTxn == nil {
 			a.buyDialog.SeedDateField(a.txnDialogLastSavedDate)
+			preselectSecurityCombo(a.buyDialog, secIDs, a.investmentNewTxnSecurityID)
 		}
+		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
 
 	case buyDialogSavedMsg:
@@ -179,7 +185,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.sellDialog = buildSellDialog(secOptions, editTxn, secIDs, msg.data.lots)
 		if editTxn == nil {
 			a.sellDialog.SeedDateField(a.txnDialogLastSavedDate)
+			preselectSecurityCombo(a.sellDialog, secIDs, a.investmentNewTxnSecurityID)
 		}
+		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
 
 	case sellDialogSavedMsg:
@@ -206,7 +214,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.feeLiquidationDialog = buildFeeLiquidationDialog(secOptions, editTxn, secIDs)
 		if editTxn == nil {
 			a.feeLiquidationDialog.SeedDateField(a.txnDialogLastSavedDate)
+			preselectSecurityCombo(a.feeLiquidationDialog, secIDs, a.investmentNewTxnSecurityID)
 		}
+		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
 
 	case feeLiquidationDialogSavedMsg:
@@ -237,7 +247,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if editTxn == nil {
 			a.dividendDialog.SeedDateField(a.txnDialogLastSavedDate)
+			preselectSecurityCombo(a.dividendDialog, secIDs, a.investmentNewTxnSecurityID)
 		}
+		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
 
 	case dividendDialogSavedMsg:
@@ -296,7 +308,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.transferSharesDialog = buildTransferSharesDialog(acctOptions, secOptions, editTxn, acctIDs, secIDs, msg.data.lots)
 		if editTxn == nil {
 			a.transferSharesDialog.SeedDateField(a.txnDialogLastSavedDate)
+			preselectSecurityCombo(a.transferSharesDialog, secIDs, a.investmentNewTxnSecurityID)
 		}
+		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
 
 	case transferSharesDialogSavedMsg:

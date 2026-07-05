@@ -256,6 +256,7 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	a.priceTable = nil
 	a.investmentRegister = nil
 	a.investmentTable = nil
+	a.resetInvestmentRegisterFilter()
 	a.portfolioData = nil
 	a.portfolioHoldingsTable = nil
 	a.portfolioLotsTable = nil

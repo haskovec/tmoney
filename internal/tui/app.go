@@ -276,6 +276,21 @@ type App struct {
 	investmentTypeSelector *dialog.Dialog
 	investmentEditTxnID    types.ID // set when editing an existing transaction
 
+	// Investment register security filter (the `/` key). While searching is
+	// true the user is typing a substring query that live-narrows the register
+	// by security ticker/name; pressing Enter on a query matching exactly one
+	// security locks the filter (searching=false, query cleared) to
+	// investmentFilterLockedSec. NilID means no security is locked; the filter
+	// is active when either searching or a security is locked. Cleared when the
+	// user leaves the register (see switchView) or presses Esc.
+	investmentFilterSearching bool
+	investmentFilterQuery     string
+	investmentFilterLockedSec types.ID
+	// One-shot: the security to pre-select in the next NEW security-bearing
+	// investment dialog, seeded from the locked filter when `n` is pressed and
+	// consumed (then reset) as each dialog is built. NilID means no preselect.
+	investmentNewTxnSecurityID types.ID
+
 	// After a save+reload, the register/investment-register build step moves
 	// the cursor onto the row whose transaction ID matches. Selecting by ID
 	// (rather than position) keeps the cursor on the saved row even when it
@@ -675,6 +690,13 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.handleInvestmentTypeSelectorKey(msg)
 	}
 
+	// While typing the investment register's security filter, capture every
+	// key so global bindings (view-switch digits, Esc, Alt+menu) don't steal
+	// keystrokes from the query.
+	if a.currentView == ViewInvestmentRegister && a.investmentFilterSearching {
+		return a.handleInvestmentRegisterKeys(msg)
+	}
+
 	// Undo/redo key bindings (handled before menus since they should
 	// work from any non-dialog context)
 	switch {
@@ -774,6 +796,12 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// view; let the view-specific handler claim the key.
 		if a.currentView == ViewPrices && a.priceView != nil && a.priceView.mode == pricesViewDetail {
 			return a.handlePriceViewKeys(msg)
+		}
+		// With the investment register filter active, Esc clears the filter
+		// rather than navigating away; let the view handler claim it. (A
+		// still-typing filter is already captured by the early guard above.)
+		if a.currentView == ViewInvestmentRegister && a.investmentRegisterFilterActive() {
+			return a.handleInvestmentRegisterKeys(msg)
 		}
 		// Go back to previous view or dashboard, and refresh that view's
 		// data so changes made in the view we're leaving (e.g. a new

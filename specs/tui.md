@@ -103,6 +103,31 @@ investment register (buy, sell, dividend, reinvest, cash operations, and share
 transfers). Reloads that aren't saves — toggling cleared status, deleting —
 leave the cursor where it was.
 
+#### Investment register: filter by security
+
+In an investment account's register, `/` opens a **security filter** for
+drilling into a single holding (e.g. to audit a position or track down a
+data-entry error). Typing narrows the list live to rows whose security matches
+the query as a case-insensitive substring on **either the ticker or the full
+name** — so tickerless holdings (a collective trust carried by name) are
+reachable too. Cash rows (deposit, withdrawal, fee, interest, cash transfer)
+carry no security and drop out of a non-empty query.
+
+An active-filter line renders under the title showing the matched security's
+`TICKER — Full Name` (degrading to name-only for a tickerless holding) and the
+match count, or an `N securities` count while the query still matches more than
+one. Pressing `Enter` when the query resolves to **exactly one** security
+**locks** the filter to it (clearing the typed text); an ambiguous or empty
+match keeps the user typing. `Esc` clears the filter (typed or locked) and
+restores the full register. While a filter is active, the running cash-balance
+column and the account-wide total-return header are hidden (both are
+account-wide and can't be sliced per security), and while typing, the arrow /
+page / Home / End keys still navigate the narrowed list. Pressing `n` while a
+security is locked pre-selects that security in the security-bearing
+new-transaction dialogs (Buy, Sell, Dividend, Reinvest, Fee via Liquidation,
+Transfer Shares). The filter is transient — it clears when the register is left
+(a different account, another view) and does not persist across launches.
+
 ### Transaction Entry/Edit Dialog
 
 Modal dialog for entering or editing transactions.
@@ -447,7 +472,7 @@ Each menu label has its shortcut letter underlined to indicate the `Alt+key` sho
 | `c` | Toggle cleared status |
 | `t` | New transfer |
 | `r` | Reconcile account |
-| `/` | Search transactions |
+| `/` | Search transactions (investment register: filter by security — see [Investment register: filter by security](#investment-register-filter-by-security)) |
 
 ### Scheduled Transaction Keys
 

@@ -295,6 +295,11 @@ func (a *App) toggleMenu(index int) {
 // switchView changes the current view and stores the previous view.
 func (a *App) switchView(v View) {
 	if a.currentView != v {
+		// Leaving the investment register drops its (transient) security
+		// filter, so reopening the account later shows the full register.
+		if a.currentView == ViewInvestmentRegister {
+			a.resetInvestmentRegisterFilter()
+		}
 		a.previousView = a.currentView
 		a.currentView = v
 		a.updateStatusBar()

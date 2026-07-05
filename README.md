@@ -310,6 +310,7 @@ Press `?` at any time to show the help overlay.
 | `t` | New transfer |
 | `r` | Reconcile account (start a new session) |
 | `a` | Amortization schedule (loan accounts only) |
+| `/` | Filter by security (investment accounts only) |
 | `Tab` | Switch between sidebar and table |
 
 On a **loan** account, `a` drills into a read-only **amortization view**: a
@@ -332,6 +333,18 @@ register row — a convenience door onto the same engine as the Securities-view
 count** from your statement (the engine's share ratio is derived from your
 parent holding) and offers a **Lookup** button that fetches the spin-off
 security's price for the date.
+
+In an investment account, `/` opens a **security filter** for drilling into one
+holding — handy for auditing a position or hunting down a data-entry error.
+Type a ticker or name substring and the register narrows live (matching on both
+ticker and full name, so tickerless holdings like collective trusts work too);
+the filter line shows the matched security's ticker and full name, or a
+`N securities` count while the query is still ambiguous. Press `Enter` when the
+query resolves to a single security to **lock** the filter to it, `Esc` to clear
+and return to the full register. While filtered the running-balance column and
+the total-return header are hidden, and pressing `n` pre-selects the locked
+security in the new-transaction dialog. The filter clears when you leave the
+register.
 
 #### Scheduled Transactions
 
