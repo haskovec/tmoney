@@ -57,9 +57,20 @@ The default view showing financial overview.
 │                  │  • Rent - $1,500 due today                       │
 │                  │  • Electric - ~$120 due in 3 days                │
 │──────────────────┴──────────────────────────────────────────────────│
-│ ↑↓ navigate  Enter select  n new transaction  ? help               │
+│ ↑↓ navigate  ←→ collapse/expand  Enter select  ? help              │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+An investment account on the dashboard shows a headline balance and total-return
+row, and — when it holds securities — an expandable list of its top holdings
+marked with a `▸`/`▾` affordance. Such accounts start **expanded** on load.
+`Left`/`Right` (or `h`/`l`) collapse/expand the holdings of the account under the
+sidebar cursor; a collapse is remembered for the session (a dashboard reload —
+e.g. after posting a transaction — will not re-expand an account the user
+collapsed). Collapsing is the way to shrink a tall dashboard so the ASSETS/
+LIABILITIES totals and the SCHEDULED section stay on screen: the content pane is
+clipped to the available height (it never overwrites the status bar), so content
+that overflows the bottom is otherwise unreachable from this view.
 
 ### Account Register View
 

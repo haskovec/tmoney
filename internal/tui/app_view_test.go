@@ -8,6 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -337,5 +339,98 @@ func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
 	// Log the first few lines for debugging
 	for i := 0; i < min(5, len(regLines)); i++ {
 		t.Logf("Line %d (width=%d): %q", i, lipgloss.Width(regLines[i]), widget.StripAnsi(regLines[i]))
+	}
+}
+
+// TestApp_View_TallDashboardKeepsStatusBar pins the fix for the dashboard
+// (landing) view overflowing the content area: with many investment
+// accounts expanded the composed dashboard is far taller than the screen,
+// and lipgloss Height() only pads short content — it does not clip tall
+// content. Before the RenderViewContent MaxHeight clamp, the overflow
+// pushed the status bar off the bottom of the altscreen. The full layout
+// must always be exactly a.height lines, and the last line must be the
+// status bar.
+func TestApp_View_TallDashboardKeepsStatusBar(t *testing.T) {
+	const termWidth, termHeight = 120, 24
+
+	// Build a net-worth report with enough expanded investment accounts
+	// (each contributing a name row, a TR row, and up to 5 holding rows)
+	// to blow well past 24 lines of content.
+	var assets []report.AccountBalance
+	holdings := map[types.ID]*investment.AccountValuation{}
+	tickers := map[types.ID]string{}
+	expanded := map[types.ID]bool{}
+	for i := range 8 {
+		acctID := types.NewID()
+		assets = append(assets, report.AccountBalance{
+			AccountID: acctID,
+			Name:      fmt.Sprintf("Investment %d", i),
+			Type:      "investment",
+			Balance:   types.MustNewMoney("25000.00"),
+		})
+		var hs []investment.Holding
+		for j := range 6 {
+			secID := types.NewID()
+			hs = append(hs, investment.Holding{
+				SecurityID:  secID,
+				MarketValue: types.MustNewMoney(fmt.Sprintf("%d.00", (6-j)*1000)),
+				HasPricing:  true,
+			})
+			tickers[secID] = fmt.Sprintf("A%dS%d", i, j)
+		}
+		holdings[acctID] = &investment.AccountValuation{AccountID: acctID, Holdings: hs}
+		expanded[acctID] = true
+	}
+
+	styles := widget.NewStyles()
+	styles.Resize(termWidth, termHeight)
+	app := &App{
+		currentView:               ViewDashboard,
+		keys:                      defaultKeyMap(),
+		menubar:                   widget.NewMenuBar(),
+		sidebar:                   NewSidebar(),
+		statusbar:                 widget.NewStatusBar(),
+		width:                     termWidth,
+		height:                    termHeight,
+		ready:                     true,
+		styles:                    styles,
+		dashboardExpandedAccounts: expanded,
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets:           assets,
+				TotalAssets:      types.MustNewMoney("200000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("200000.00"),
+			},
+			investmentHoldings: holdings,
+			securityTickers:    tickers,
+			payeeNames:         make(map[types.ID]string),
+			accountNames:       make(map[types.ID]string),
+		},
+	}
+	app.statusbar.SetContext("Dashboard")
+	app.statusbar.SetKeyHints(app.getKeyHints())
+
+	// Sanity: the raw dashboard content really is taller than the screen,
+	// otherwise this test isn't exercising the clamp.
+	if h := lipgloss.Height(app.renderDashboard()); h <= termHeight {
+		t.Fatalf("test precondition failed: dashboard content is only %d lines, expected > %d", h, termHeight)
+	}
+
+	view := app.View()
+	lines := strings.Split(view.Content, "\n")
+	if len(lines) != termHeight {
+		t.Errorf("View() has %d lines, want exactly %d (status bar pushed off screen?)", len(lines), termHeight)
+	}
+
+	// The last visible line must be the status bar, not clipped dashboard
+	// content.
+	lastLine := strings.TrimRight(widget.StripAnsi(lines[len(lines)-1]), " ")
+	statusBar := strings.TrimRight(widget.StripAnsi(app.renderStatusBar()), " ")
+	if lastLine != statusBar {
+		t.Errorf("last layout line = %q, want status bar %q", lastLine, statusBar)
+	}
+	if !strings.Contains(lastLine, "Dashboard") {
+		t.Errorf("status bar should still show the 'Dashboard' context, got %q", lastLine)
 	}
 }

@@ -87,7 +87,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.data != nil && msg.data.investmentHoldings != nil {
 			for accountID, val := range msg.data.investmentHoldings {
 				if len(val.Holdings) > 0 {
-					// Only set if not already explicitly toggled by user
+					// Default holdings to expanded, but only when the user
+					// hasn't already set a preference for this account with
+					// the ←/→ collapse/expand toggle (setDashboardAccountExpanded).
+					// A recorded value — including an explicit collapse (false) —
+					// is left untouched so it survives dashboard reloads.
 					if _, exists := a.dashboardExpandedAccounts[accountID]; !exists {
 						a.dashboardExpandedAccounts[accountID] = true
 					}

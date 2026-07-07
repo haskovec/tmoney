@@ -599,10 +599,18 @@ func repaintDesktop(s string) string {
 // styled chunks and raw-text gaps don't punch holes through the fill.
 // Use this in place of `s.Content.Width(...).Height(...).Render(...)`
 // for any string that holds the main content area for a view.
+//
+// MaxHeight clamps content taller than the budget: lipgloss Height only
+// pads short content, so without the clamp a view that overflows (e.g. a
+// dashboard with many investment accounts expanded) would render past the
+// content area and push the status bar off the bottom of the screen. This
+// mirrors the sidebar's line-clipping and the register/scheduled views'
+// per-table height budgets — the content pane never exceeds its allotment.
 func (s *Styles) RenderViewContent(viewContent string, width, height int) string {
 	return s.Content.
 		Width(width).
 		Height(height).
+		MaxHeight(height).
 		Render(repaintDesktop(viewContent))
 }
 

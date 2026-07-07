@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
@@ -131,9 +132,55 @@ func (a *App) loadDashboardData() tea.Cmd {
 	}
 }
 
-// handleDashboardKeys handles key presses in the dashboard view.
+// handleDashboardKeys handles key presses in the dashboard view. Left/Right
+// (h/l) collapse/expand the selected investment account's holdings on the
+// dashboard; every other key is delegated to the shared sidebar handler.
 func (a *App) handleDashboardKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if a.sidebar.IsFocused() {
+		switch {
+		case key.Matches(msg, a.keys.Left):
+			a.setDashboardAccountExpanded(false)
+			return a, nil
+		case key.Matches(msg, a.keys.Right):
+			a.setDashboardAccountExpanded(true)
+			return a, nil
+		}
+	}
 	return a.handleSidebarKeys(msg)
+}
+
+// setDashboardAccountExpanded sets the expand/collapse state of the account
+// under the sidebar cursor (the highlighted row — not SelectedAccount, which
+// only commits on drill-in). Only investment accounts that render the ▸/▾
+// affordance (see renderAssetLiabilityColumns) are expandable, so the toggle
+// is a no-op for any other cursor position. Recording an explicit value also
+// pins the account against the auto-expand-on-load pass (see the
+// dashboardLoadedMsg handler in app_update.go), so an account the user
+// collapses stays collapsed across dashboard reloads within the session.
+func (a *App) setDashboardAccountExpanded(expanded bool) {
+	item := a.sidebar.CursorItem()
+	if item == nil || item.kind != sidebarItemAccount || item.account == nil {
+		return
+	}
+	acct := item.account
+	if !acct.Type.IsInvestmentType() {
+		return
+	}
+	if a.dashboard == nil || a.dashboard.investmentHoldings == nil {
+		return
+	}
+	// An investment account is expandable exactly when it renders the ▸/▾
+	// affordance, which (matching renderAssetLiabilityColumns) means it has a
+	// loaded valuation entry — cash-only accounts included (they expand to a
+	// single "cash only" line). An account whose valuation failed to load has
+	// no entry and no affordance, so the toggle is a no-op.
+	if _, ok := a.dashboard.investmentHoldings[acct.ID]; !ok {
+		return
+	}
+	if a.dashboardExpandedAccounts == nil {
+		a.dashboardExpandedAccounts = make(map[types.ID]bool)
+	}
+	a.dashboardExpandedAccounts[acct.ID] = expanded
 }
 
 // renderDashboard renders the dashboard view.

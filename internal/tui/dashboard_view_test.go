@@ -937,3 +937,173 @@ func TestApp_DashboardNonInvestmentAccountOpensRegisterView(t *testing.T) {
 		t.Error("expected a command to load register data")
 	}
 }
+
+// dashboardToggleApp builds a dashboard App whose sidebar cursor sits on the
+// given account, with dashboard data carrying the supplied holdings for it. It
+// is the fixture for the ←/→ collapse/expand toggle tests.
+func dashboardToggleApp(t *testing.T, acct *account.Account, holdings []investment.Holding, expanded map[types.ID]bool) *App {
+	t.Helper()
+	sidebar := NewSidebar()
+	sidebar.SetAccounts([]*account.Account{acct}, nil)
+	sidebar.cursor = 1 // index 0 = group header, 1 = the account row
+
+	tickers := map[types.ID]string{}
+	for i := range holdings {
+		if holdings[i].SecurityID.IsNil() {
+			holdings[i].SecurityID = types.NewID()
+		}
+		tickers[holdings[i].SecurityID] = fmt.Sprintf("TKR%d", i)
+	}
+
+	styles := widget.NewStyles()
+	styles.Resize(120, 40)
+	return &App{
+		currentView:               ViewDashboard,
+		keys:                      defaultKeyMap(),
+		sidebar:                   sidebar,
+		menubar:                   widget.NewMenuBar(),
+		statusbar:                 widget.NewStatusBar(),
+		styles:                    styles,
+		width:                     120,
+		height:                    40,
+		dashboardExpandedAccounts: expanded,
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: acct.ID, Name: acct.Name, Type: string(acct.Type), Balance: types.MustNewMoney("25000.00")},
+				},
+				TotalAssets:      types.MustNewMoney("25000.00"),
+				TotalLiabilities: types.ZeroMoney,
+				NetWorth:         types.MustNewMoney("25000.00"),
+			},
+			investmentHoldings: map[types.ID]*investment.AccountValuation{
+				acct.ID: {AccountID: acct.ID, Holdings: holdings},
+			},
+			securityTickers: tickers,
+			payeeNames:      make(map[types.ID]string),
+			accountNames:    make(map[types.ID]string),
+		},
+	}
+}
+
+func TestApp_Dashboard_RightExpandsLeftCollapses(t *testing.T) {
+	acctID := types.NewID()
+	acct := &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Brokerage", Type: account.TypeInvestment}
+	holdings := []investment.Holding{
+		{MarketValue: types.MustNewMoney("12000.00"), HasPricing: true},
+		{MarketValue: types.MustNewMoney("8000.00"), HasPricing: true},
+	}
+
+	// Start collapsed.
+	app := dashboardToggleApp(t, acct, holdings, map[types.ID]bool{acctID: false})
+
+	// Right expands.
+	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyRight})
+	if !app.dashboardExpandedAccounts[acctID] {
+		t.Fatal("Right should expand the selected investment account")
+	}
+	if !contains(widget.StripAnsi(app.renderDashboard()), "TKR0") {
+		t.Error("expanded account should render its holdings")
+	}
+
+	// Left collapses.
+	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if app.dashboardExpandedAccounts[acctID] {
+		t.Fatal("Left should collapse the selected investment account")
+	}
+	if contains(widget.StripAnsi(app.renderDashboard()), "TKR0") {
+		t.Error("collapsed account should NOT render its holdings")
+	}
+}
+
+func TestApp_Dashboard_ToggleVimKeys(t *testing.T) {
+	acctID := types.NewID()
+	acct := &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Brokerage", Type: account.TypeInvestment}
+	holdings := []investment.Holding{{MarketValue: types.MustNewMoney("12000.00"), HasPricing: true}}
+
+	app := dashboardToggleApp(t, acct, holdings, map[types.ID]bool{acctID: false})
+
+	// 'l' expands, 'h' collapses (vim bindings mirror →/←).
+	app.handleDashboardKeys(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	if !app.dashboardExpandedAccounts[acctID] {
+		t.Fatal("'l' should expand the selected investment account")
+	}
+	app.handleDashboardKeys(tea.KeyPressMsg{Code: 'h', Text: "h"})
+	if app.dashboardExpandedAccounts[acctID] {
+		t.Fatal("'h' should collapse the selected investment account")
+	}
+}
+
+func TestApp_Dashboard_ToggleNoOpForNonInvestment(t *testing.T) {
+	acctID := types.NewID()
+	acct := &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Checking", Type: account.TypeChecking}
+	app := dashboardToggleApp(t, acct, nil, map[types.ID]bool{})
+	// Overwrite the auto-built holdings entry: a checking account carries none.
+	app.dashboard.investmentHoldings = map[types.ID]*investment.AccountValuation{}
+
+	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyRight})
+	if _, exists := app.dashboardExpandedAccounts[acctID]; exists {
+		t.Error("toggle should be a no-op for a non-investment account (no map entry created)")
+	}
+}
+
+func TestApp_Dashboard_ToggleWorksForCashOnlyAccount(t *testing.T) {
+	acctID := types.NewID()
+	acct := &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Cash IRA", Type: account.TypeInvestment}
+	// Investment account with a valuation entry but no holdings (cash only)
+	// still renders the ▸/▾ affordance, so the toggle must work on it.
+	app := dashboardToggleApp(t, acct, nil, map[types.ID]bool{acctID: false})
+
+	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyRight})
+	if !app.dashboardExpandedAccounts[acctID] {
+		t.Fatal("toggle should expand a cash-only investment account (it shows the ▸/▾ affordance)")
+	}
+	if !contains(widget.StripAnsi(app.renderDashboard()), "cash only") {
+		t.Error("expanded cash-only account should render its 'cash only' line")
+	}
+}
+
+func TestApp_Dashboard_ToggleNoOpWhenValuationMissing(t *testing.T) {
+	acctID := types.NewID()
+	acct := &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Unvalued IRA", Type: account.TypeInvestment}
+	app := dashboardToggleApp(t, acct, nil, map[types.ID]bool{})
+	// No valuation entry loaded for this account → no affordance, no toggle.
+	app.dashboard.investmentHoldings = map[types.ID]*investment.AccountValuation{}
+
+	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyRight})
+	if _, exists := app.dashboardExpandedAccounts[acctID]; exists {
+		t.Error("toggle should be a no-op for an investment account with no loaded valuation")
+	}
+}
+
+func TestApp_Dashboard_CollapseSurvivesReload(t *testing.T) {
+	acctID := types.NewID()
+	acct := &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Brokerage", Type: account.TypeInvestment}
+	holdings := []investment.Holding{{MarketValue: types.MustNewMoney("12000.00"), HasPricing: true}}
+
+	app := dashboardToggleApp(t, acct, holdings, map[types.ID]bool{})
+
+	// User collapses the (auto-expanded) account.
+	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if app.dashboardExpandedAccounts[acctID] {
+		t.Fatal("precondition: account should be collapsed after Left")
+	}
+
+	// A dashboard reload (e.g. after posting a transaction) must NOT
+	// re-expand an account the user explicitly collapsed.
+	reload := dashboardLoadedMsg{data: &dashboardData{
+		netWorth: app.dashboard.netWorth,
+		investmentHoldings: map[types.ID]*investment.AccountValuation{
+			acctID: {AccountID: acctID, Holdings: holdings},
+		},
+		securityTickers: map[types.ID]string{},
+		payeeNames:      make(map[types.ID]string),
+		accountNames:    make(map[types.ID]string),
+	}}
+	model, _ := app.Update(reload)
+	app = model.(*App)
+
+	if app.dashboardExpandedAccounts[acctID] {
+		t.Error("auto-expand-on-load must respect a user's explicit collapse (false)")
+	}
+}
