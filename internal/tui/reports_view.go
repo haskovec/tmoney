@@ -231,8 +231,9 @@ func (a *App) renderNetWorthReport() string {
 	sections = append(sections, a.styles.Bold.Render(nwLabel)+nwStyle.Bold(true).Render(nwValue))
 	sections = append(sections, "")
 
-	// Assets and liabilities columns
-	sections = append(sections, a.renderAssetLiabilityColumns(nw, contentWidth))
+	// Assets and liabilities columns. nil: the Net Worth report has no
+	// expand/collapse affordance, so no mouse hit-test rows are recorded.
+	sections = append(sections, a.renderAssetLiabilityColumns(nw, contentWidth, nil))
 
 	// Navigation hints
 	sections = append(sections, "")

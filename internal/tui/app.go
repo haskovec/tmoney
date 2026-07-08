@@ -124,6 +124,11 @@ type App struct {
 	// Dashboard data (loaded asynchronously)
 	dashboard                 *dashboardData
 	dashboardExpandedAccounts map[types.ID]bool // tracks expanded investment accounts on dashboard
+	// dashboardAccountRows maps a content-pane row (0-based, as seen by a
+	// mouse click's contentY) to the investment account whose expandable
+	// ▸/▾ header renders on that row. Rebuilt every renderDashboard; used by
+	// handleMouseDashboard to toggle expand/collapse on click.
+	dashboardAccountRows map[int]types.ID
 
 	// Register data (loaded when account is selected)
 	register *registerData

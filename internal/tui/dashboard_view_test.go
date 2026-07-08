@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"maps"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -1073,6 +1075,182 @@ func TestApp_Dashboard_ToggleNoOpWhenValuationMissing(t *testing.T) {
 	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyRight})
 	if _, exists := app.dashboardExpandedAccounts[acctID]; exists {
 		t.Error("toggle should be a no-op for an investment account with no loaded valuation")
+	}
+}
+
+// dashboardMouseApp builds a dashboard App with a checking account, two
+// investment accounts (A expanded, B collapsed), and a liability, plus a
+// sidebar populated with all of them. It returns the app and an id→name map
+// for the two expandable investment accounts.
+func dashboardMouseApp(t *testing.T) (*App, map[types.ID]string) {
+	t.Helper()
+	invA, invB := types.NewID(), types.NewID()
+	chk, visa := types.NewID(), types.NewID()
+	secA, secB := types.NewID(), types.NewID()
+
+	accounts := []*account.Account{
+		{BaseModel: types.BaseModel{ID: chk}, Name: "Checking", Type: account.TypeChecking},
+		{BaseModel: types.BaseModel{ID: invA}, Name: "Brokerage A", Type: account.TypeInvestment},
+		{BaseModel: types.BaseModel{ID: invB}, Name: "Brokerage B", Type: account.TypeInvestment},
+		{BaseModel: types.BaseModel{ID: visa}, Name: "Visa", Type: account.TypeCreditCard},
+	}
+	sidebar := NewSidebar()
+	sidebar.SetAccounts(accounts, nil)
+
+	styles := widget.NewStyles()
+	styles.Resize(120, 40)
+	app := &App{
+		currentView:               ViewDashboard,
+		keys:                      defaultKeyMap(),
+		sidebar:                   sidebar,
+		menubar:                   widget.NewMenuBar(),
+		statusbar:                 widget.NewStatusBar(),
+		styles:                    styles,
+		width:                     120,
+		height:                    40,
+		ready:                     true,
+		dashboardExpandedAccounts: map[types.ID]bool{invA: true, invB: false},
+		dashboard: &dashboardData{
+			netWorth: &report.NetWorth{
+				Assets: []report.AccountBalance{
+					{AccountID: chk, Name: "Checking", Type: "checking", Balance: types.MustNewMoney("5000.00")},
+					{AccountID: invA, Name: "Brokerage A", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+					{AccountID: invB, Name: "Brokerage B", Type: "investment", Balance: types.MustNewMoney("15000.00")},
+				},
+				Liabilities: []report.AccountBalance{
+					{AccountID: visa, Name: "Visa", Type: "credit_card", Balance: types.MustNewMoney("-1200.00")},
+				},
+				TotalAssets:      types.MustNewMoney("45000.00"),
+				TotalLiabilities: types.MustNewMoney("-1200.00"),
+				NetWorth:         types.MustNewMoney("43800.00"),
+			},
+			investmentHoldings: map[types.ID]*investment.AccountValuation{
+				invA: {AccountID: invA, Holdings: []investment.Holding{{SecurityID: secA, MarketValue: types.MustNewMoney("12000.00"), HasPricing: true}}},
+				invB: {AccountID: invB, Holdings: []investment.Holding{{SecurityID: secB, MarketValue: types.MustNewMoney("15000.00"), HasPricing: true}}},
+			},
+			securityTickers: map[types.ID]string{secA: "AAA", secB: "BBB"},
+			payeeNames:      make(map[types.ID]string),
+			accountNames:    make(map[types.ID]string),
+		},
+	}
+	return app, map[types.ID]string{invA: "Brokerage A", invB: "Brokerage B"}
+}
+
+// TestApp_Dashboard_MouseRowMapMatchesAffordance validates the render-time
+// row bookkeeping: every recorded hit-test row must land on the ▸/▾ header
+// line of the account it maps to.
+func TestApp_Dashboard_MouseRowMapMatchesAffordance(t *testing.T) {
+	app, names := dashboardMouseApp(t)
+
+	lines := strings.Split(widget.StripAnsi(app.renderDashboard()), "\n")
+	if len(app.dashboardAccountRows) != 2 {
+		t.Fatalf("expected 2 expandable-account rows recorded, got %d", len(app.dashboardAccountRows))
+	}
+	for row, id := range app.dashboardAccountRows {
+		if row < 0 || row >= len(lines) {
+			t.Fatalf("recorded row %d out of range [0,%d)", row, len(lines))
+		}
+		if !strings.Contains(lines[row], "▸") && !strings.Contains(lines[row], "▾") {
+			t.Errorf("row %d (acct %s) is not a ▸/▾ affordance line: %q", row, id, lines[row])
+		}
+		if !strings.Contains(lines[row], names[id]) {
+			t.Errorf("row %d should carry account name %q, got: %q", row, names[id], lines[row])
+		}
+	}
+}
+
+// TestApp_Dashboard_MouseClickTogglesHolding drives a real MouseClickMsg
+// through App.Update and confirms a click on the ▸ header expands the account,
+// moves the sidebar cursor onto it, and a second click collapses it.
+func TestApp_Dashboard_MouseClickTogglesHolding(t *testing.T) {
+	app, _ := dashboardMouseApp(t)
+	app.renderDashboard() // populate dashboardAccountRows
+
+	// Find the collapsed account's header row.
+	var targetRow int
+	var targetID types.ID
+	found := false
+	for row, id := range app.dashboardAccountRows {
+		if !app.dashboardExpandedAccounts[id] {
+			targetRow, targetID, found = row, id, true
+		}
+	}
+	if !found {
+		t.Fatal("expected a collapsed expandable account in the fixture")
+	}
+
+	contentStartX := app.styles.SidebarWidth() + 1
+	// content-x 2 is the ▸ glyph column.
+	click := tea.MouseClickMsg{X: contentStartX + 2, Y: targetRow + 1, Button: tea.MouseLeft}
+	model, _ := app.Update(click)
+	app = model.(*App)
+
+	if !app.dashboardExpandedAccounts[targetID] {
+		t.Fatal("clicking the ▸ header should expand the account")
+	}
+	if item := app.sidebar.CursorItem(); item == nil || item.accountID != targetID {
+		t.Error("clicking an account's header should move the sidebar cursor onto it")
+	}
+
+	// Re-render to refresh the row map (layout changed), then click again to collapse.
+	app.renderDashboard()
+	for row, id := range app.dashboardAccountRows {
+		if id == targetID {
+			targetRow = row
+		}
+	}
+	click2 := tea.MouseClickMsg{X: contentStartX + 2, Y: targetRow + 1, Button: tea.MouseLeft}
+	model, _ = app.Update(click2)
+	app = model.(*App)
+	if app.dashboardExpandedAccounts[targetID] {
+		t.Error("clicking the ▾ header again should collapse the account")
+	}
+}
+
+// TestApp_Dashboard_MouseClickLiabilitiesColumnIgnored pins the X gate: a
+// click on the LIABILITIES side of an expandable header row must not toggle
+// the asset account on the left.
+func TestApp_Dashboard_MouseClickLiabilitiesColumnIgnored(t *testing.T) {
+	app, _ := dashboardMouseApp(t)
+	app.renderDashboard()
+
+	var row int
+	var id types.ID
+	for r, i := range app.dashboardAccountRows {
+		row, id = r, i
+		break
+	}
+	before := app.dashboardExpandedAccounts[id]
+
+	contentStartX := app.styles.SidebarWidth() + 1
+	colWidth := max((app.styles.ContentWidth()-6)/2, 20)
+	// Well past the ASSETS column, into the LIABILITIES column.
+	click := tea.MouseClickMsg{X: contentStartX + 2 + colWidth + 3, Y: row + 1, Button: tea.MouseLeft}
+	model, _ := app.Update(click)
+	app = model.(*App)
+
+	if app.dashboardExpandedAccounts[id] != before {
+		t.Error("a click in the LIABILITIES column must not toggle an asset account")
+	}
+}
+
+// TestApp_Dashboard_MouseClickNonHeaderRowIgnored confirms a click on a row
+// with no expandable account (the top padding row) is a harmless no-op.
+func TestApp_Dashboard_MouseClickNonHeaderRowIgnored(t *testing.T) {
+	app, _ := dashboardMouseApp(t)
+	app.renderDashboard()
+	snapshot := maps.Clone(app.dashboardExpandedAccounts)
+
+	contentStartX := app.styles.SidebarWidth() + 1
+	// contentY 0 is the top padding line — not an account header.
+	click := tea.MouseClickMsg{X: contentStartX + 2, Y: 1, Button: tea.MouseLeft}
+	model, _ := app.Update(click)
+	app = model.(*App)
+
+	for id, v := range snapshot {
+		if app.dashboardExpandedAccounts[id] != v {
+			t.Errorf("clicking a non-header row must not change expand state for %s", id)
+		}
 	}
 }
 

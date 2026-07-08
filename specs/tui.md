@@ -65,7 +65,9 @@ An investment account on the dashboard shows a headline balance and total-return
 row, and — when it holds securities — an expandable list of its top holdings
 marked with a `▸`/`▾` affordance. Such accounts start **expanded** on load.
 `Left`/`Right` (or `h`/`l`) collapse/expand the holdings of the account under the
-sidebar cursor; a collapse is remembered for the session (a dashboard reload —
+sidebar cursor — or a mouse click on that account's `▸`/`▾` header line (in the
+ASSETS column) toggles it and moves the sidebar cursor onto it. A collapse is
+remembered for the session (a dashboard reload —
 e.g. after posting a transaction — will not re-expand an account the user
 collapsed). Collapsing is the way to shrink a tall dashboard so the ASSETS/
 LIABILITIES totals and the SCHEDULED section stay on screen: the content pane is
@@ -669,6 +671,7 @@ affordances activate on a single click.
 | Click account in sidebar | Select the account |
 | Double-click account in sidebar | Open the account register |
 | Click group header in sidebar | Select the group heading |
+| Click a dashboard investment account's `▸`/`▾` header | Collapse / expand its holdings |
 | Click a list / table row | Select that row |
 | Double-click a prices-list row | View that ticker's price history |
 | Click sidebar / table area | Move focus between panes |

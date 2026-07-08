@@ -89,6 +89,11 @@ func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if sidebarWidth == 0 || a.currentView == ViewReconciliation ||
 		a.currentView == ViewSecurities || a.currentView == ViewPrices ||
 		a.currentView == ViewAmortization {
+		// The dashboard has no sidebar in the small layout but still renders
+		// its clickable ▸/▾ account headers (content starts at column 0).
+		if a.currentView == ViewDashboard {
+			return a.handleMouseDashboard(m, contentY, 0)
+		}
 		return a.handleMouseTable(msg, contentY)
 	}
 
@@ -102,9 +107,48 @@ func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	// Content zone (right of sidebar)
+	// Content zone (right of sidebar). On the dashboard, clicking an
+	// investment account's ▸/▾ header toggles its holdings (content begins
+	// one column past the sidebar border).
+	if a.currentView == ViewDashboard {
+		return a.handleMouseDashboard(m, contentY, sidebarWidth+1)
+	}
 	a.focusContent()
 	return a.handleMouseTable(msg, contentY)
+}
+
+// handleMouseDashboard toggles expand/collapse when a click lands on an
+// investment account's ▸/▾ header row in the dashboard's ASSETS column.
+// contentStartX is the absolute column where the content pane begins (0 in the
+// sidebar-less small layout, sidebarWidth+1 otherwise). A click on any other
+// row, or in the LIABILITIES column of a header row, is ignored.
+func (a *App) handleMouseDashboard(m tea.Mouse, contentY, contentStartX int) (tea.Model, tea.Cmd) {
+	acctID, ok := a.dashboardAccountRows[contentY]
+	if !ok {
+		return a, nil
+	}
+
+	// Restrict to the ASSETS (left) column so a click on a LIABILITIES row
+	// that happens to share this row can't toggle an unrelated asset. relX is
+	// measured from contentStartX (the content-zone origin this router uses,
+	// one column past the sidebar border); the ASSETS column spans 2 cols of
+	// left padding + colWidth, with colWidth reusing renderAssetLiabilityColumns'
+	// formula. The bound is generous but stays a column short of LIABILITIES
+	// (which begins after a 2-col gutter), so the two never overlap.
+	colWidth := max((a.styles.ContentWidth()-6)/2, 20)
+	relX := m.X - contentStartX
+	if relX < 0 || relX >= 2+colWidth {
+		return a, nil
+	}
+
+	if a.dashboardExpandedAccounts == nil {
+		a.dashboardExpandedAccounts = make(map[types.ID]bool)
+	}
+	a.dashboardExpandedAccounts[acctID] = !a.dashboardExpandedAccounts[acctID]
+	// Keep the sidebar cursor on the clicked account so a follow-up keyboard
+	// ←/→ operates on the same one.
+	a.sidebar.SetCursorToAccount(acctID)
+	return a, nil
 }
 
 // handleMouseTable handles mouse clicks in the table/content area.

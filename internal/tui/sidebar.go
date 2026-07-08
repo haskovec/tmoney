@@ -126,6 +126,20 @@ func (s *Sidebar) SelectedAccount() *account.Account {
 	return nil
 }
 
+// SetCursorToAccount moves the cursor onto the item for the given account,
+// returning true if a matching account item was found. Used to keep the
+// sidebar cursor in sync when the dashboard is driven by mouse (so a
+// subsequent keyboard ←/→ acts on the same account).
+func (s *Sidebar) SetCursorToAccount(id types.ID) bool {
+	for i, item := range s.items {
+		if item.kind == sidebarItemAccount && item.accountID == id {
+			s.cursor = i
+			return true
+		}
+	}
+	return false
+}
+
 // CursorItem returns the item at the current cursor position, or nil.
 func (s *Sidebar) CursorItem() *sidebarItem {
 	if s.cursor < 0 || s.cursor >= len(s.items) {

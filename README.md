@@ -301,9 +301,9 @@ Press `?` at any time to show the help overlay.
 | `Left/Right` (`h`/`l`) | Collapse / expand the selected investment account's holdings |
 
 Investment accounts with holdings start expanded on the dashboard; use
-`Left`/`Right` (or `h`/`l`) on the selected account to collapse or expand its
-holdings — handy for shrinking a long dashboard so the totals and scheduled
-sections stay in view.
+`Left`/`Right` (or `h`/`l`) on the selected account — or click the account's
+`▸`/`▾` header with the mouse — to collapse or expand its holdings — handy for
+shrinking a long dashboard so the totals and scheduled sections stay in view.
 
 #### Register (Account Transactions)
 
@@ -463,6 +463,7 @@ click as you'd expect.
 | Click account in sidebar | Select account |
 | Double-click account in sidebar | Open account register |
 | Click group header in sidebar | Select group heading |
+| Click a dashboard investment account's `▸`/`▾` header | Collapse/expand its holdings |
 | Click row in prices list | Select ticker |
 | Double-click row in prices list | View that ticker's price history |
 | Click transaction row | Select transaction |

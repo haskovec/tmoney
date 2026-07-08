@@ -185,6 +185,10 @@ func (a *App) setDashboardAccountExpanded(expanded bool) {
 
 // renderDashboard renders the dashboard view.
 func (a *App) renderDashboard() string {
+	// Discard any hit-test rows recorded on a previous render; they are
+	// rebuilt below for the current data/expand state.
+	a.dashboardAccountRows = nil
+
 	if a.dashboard == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
@@ -218,8 +222,20 @@ func (a *App) renderDashboard() string {
 		sections = append(sections, a.styles.Bold.Render(nwLabel)+nwStyle.Bold(true).Render(nwValue))
 		sections = append(sections, "")
 
-		// Assets and Liabilities columns
-		sections = append(sections, a.renderAssetLiabilityColumns(nw, contentWidth))
+		// Assets and Liabilities columns. renderAssetLiabilityColumns fills
+		// expandableRows with block-relative rows for the ▸/▾ account
+		// headers; translate those to absolute content-pane rows (the outer
+		// Padding(1,2) adds one leading blank line, hence the +1) so a mouse
+		// click can map a row back to its account.
+		expandableRows := map[int]types.ID{}
+		blockStart := dashboardLineCount(sections)
+		sections = append(sections, a.renderAssetLiabilityColumns(nw, contentWidth, expandableRows))
+		if len(expandableRows) > 0 {
+			a.dashboardAccountRows = make(map[int]types.ID, len(expandableRows))
+			for relRow, id := range expandableRows {
+				a.dashboardAccountRows[blockStart+relRow+1] = id
+			}
+		}
 	} else {
 		sections = append(sections, "")
 		sections = append(sections, a.styles.Muted.Render("  No account data available"))
@@ -236,11 +252,34 @@ func (a *App) renderDashboard() string {
 // maxDashboardHoldings is the maximum number of top holdings to display per investment account.
 const maxDashboardHoldings = 5
 
+// dashboardLineCount returns the number of terminal lines the given sections
+// occupy once joined with "\n" — the sum of each section's own line count.
+// Used to locate the starting row of a section for mouse hit-testing.
+func dashboardLineCount(sections []string) int {
+	n := 0
+	for _, s := range sections {
+		n += strings.Count(s, "\n") + 1
+	}
+	return n
+}
+
 // renderAssetLiabilityColumns renders the assets and liabilities side by side.
-func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth int) string {
+// When expandableRows is non-nil, it is filled with block-relative row index →
+// account ID for each investment account that renders a ▸/▾ expand affordance,
+// so the dashboard can hit-test mouse clicks on those rows. Callers that don't
+// need hit-testing (the Net Worth report) pass nil.
+func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth int, expandableRows map[int]types.ID) string {
 	colWidth := max(
 		// Leave gap between columns
 		(totalWidth-6)/2, 20)
+
+	// headerIdxToID maps an assetsLines slice index (built below) to the
+	// account whose ▸/▾ header sits there. It is translated to block-relative
+	// output rows during the join loop, because a single slice entry can span
+	// several terminal lines (the SectionHead cells carry a bottom border).
+	// Left nil (never allocated) when the caller doesn't want hit-test rows —
+	// e.g. the Net Worth report, which passes expandableRows == nil.
+	var headerIdxToID map[int]types.ID
 
 	// Build assets column
 	assetsLines := []string{a.styles.SectionHead.Render(widget.PadRight("ASSETS", colWidth))}
@@ -256,8 +295,10 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 
 			// Investment accounts get an expand/collapse indicator
 			prefix := "  "
+			expandable := false
 			if account.Type(acct.Type).IsInvestmentType() && a.dashboard != nil && a.dashboard.investmentHoldings != nil {
 				if _, hasHoldings := a.dashboard.investmentHoldings[acct.AccountID]; hasHoldings {
+					expandable = true
 					if a.dashboardExpandedAccounts[acct.AccountID] {
 						prefix = "▾ "
 					} else {
@@ -267,6 +308,12 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 			}
 
 			line := fmt.Sprintf("%s%-*s %s", prefix, colWidth-len(amount)-lipgloss.Width(prefix)-2, name, a.amountStyleBySign(acct.Balance).Render(amount))
+			if expandable && expandableRows != nil {
+				if headerIdxToID == nil {
+					headerIdxToID = map[int]types.ID{}
+				}
+				headerIdxToID[len(assetsLines)] = acct.AccountID
+			}
 			assetsLines = append(assetsLines, line)
 
 			// TR (total return) row for investment accounts — always shown
@@ -320,12 +367,21 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 		liabLines = append(liabLines, "")
 	}
 
-	// Join columns side by side
+	// Join columns side by side, tracking the cumulative output-line index so
+	// expandable-account headers map to the terminal row they actually occupy
+	// (a joined row may be multiple lines — the header row is, thanks to the
+	// SectionHead bottom border).
 	var rows []string
+	outLine := 0
 	for i := range assetsLines {
 		left := widget.PadRight(assetsLines[i], colWidth)
 		right := liabLines[i]
-		rows = append(rows, left+"  "+right)
+		row := left + "  " + right
+		if id, ok := headerIdxToID[i]; ok && expandableRows != nil {
+			expandableRows[outLine] = id
+		}
+		rows = append(rows, row)
+		outLine += strings.Count(row, "\n") + 1
 	}
 
 	return strings.Join(rows, "\n")
