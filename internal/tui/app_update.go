@@ -80,24 +80,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dashboardLoadedMsg:
 		a.dashboard = msg.data
-		// Auto-expand investment accounts that have holdings
-		if a.dashboardExpandedAccounts == nil {
-			a.dashboardExpandedAccounts = make(map[types.ID]bool)
-		}
-		if msg.data != nil && msg.data.investmentHoldings != nil {
-			for accountID, val := range msg.data.investmentHoldings {
-				if len(val.Holdings) > 0 {
-					// Default holdings to expanded, but only when the user
-					// hasn't already set a preference for this account with
-					// the ←/→ collapse/expand toggle (setDashboardAccountExpanded).
-					// A recorded value — including an explicit collapse (false) —
-					// is left untouched so it survives dashboard reloads.
-					if _, exists := a.dashboardExpandedAccounts[accountID]; !exists {
-						a.dashboardExpandedAccounts[accountID] = true
-					}
-				}
-			}
-		}
+		// Investment accounts start collapsed on the dashboard; the user
+		// expands the ones they care about with the ←/→ toggle or a mouse
+		// click (setDashboardAccountExpanded / handleMouseDashboard). Those
+		// choices live in a.dashboardExpandedAccounts and are deliberately
+		// left untouched here, so an expand/collapse survives a dashboard
+		// reload (e.g. after posting a transaction) within the session.
 		return a, nil
 
 	case registerLoadedMsg:

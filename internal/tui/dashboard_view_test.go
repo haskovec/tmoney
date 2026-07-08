@@ -1254,21 +1254,68 @@ func TestApp_Dashboard_MouseClickNonHeaderRowIgnored(t *testing.T) {
 	}
 }
 
-func TestApp_Dashboard_CollapseSurvivesReload(t *testing.T) {
+func TestApp_Dashboard_HoldingsStartCollapsed(t *testing.T) {
+	acctID := types.NewID()
+	secID := types.NewID()
+	styles := widget.NewStyles()
+	styles.Resize(120, 40)
+	app := &App{
+		currentView:               ViewDashboard,
+		keys:                      defaultKeyMap(),
+		menubar:                   widget.NewMenuBar(),
+		statusbar:                 widget.NewStatusBar(),
+		styles:                    styles,
+		width:                     120,
+		height:                    40,
+		dashboardExpandedAccounts: map[types.ID]bool{},
+	}
+
+	data := &dashboardData{
+		netWorth: &report.NetWorth{
+			Assets: []report.AccountBalance{
+				{AccountID: acctID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+			},
+			TotalAssets:      types.MustNewMoney("25000.00"),
+			TotalLiabilities: types.ZeroMoney,
+			NetWorth:         types.MustNewMoney("25000.00"),
+		},
+		investmentHoldings: map[types.ID]*investment.AccountValuation{
+			acctID: {AccountID: acctID, Holdings: []investment.Holding{{SecurityID: secID, MarketValue: types.MustNewMoney("12000.00"), HasPricing: true}}},
+		},
+		securityTickers: map[types.ID]string{secID: "AAA"},
+		payeeNames:      make(map[types.ID]string),
+		accountNames:    make(map[types.ID]string),
+	}
+	model, _ := app.Update(dashboardLoadedMsg{data: data})
+	app = model.(*App)
+
+	// Loading data must NOT auto-expand — accounts start collapsed.
+	if app.dashboardExpandedAccounts[acctID] {
+		t.Error("investment accounts should start collapsed on load, not auto-expanded")
+	}
+	view := widget.StripAnsi(app.renderDashboard())
+	if !strings.Contains(view, "▸") {
+		t.Error("a collapsed investment account should render the ▸ affordance")
+	}
+	if strings.Contains(view, "AAA") {
+		t.Error("a collapsed account should not render its holdings")
+	}
+}
+
+func TestApp_Dashboard_ExpansionSurvivesReload(t *testing.T) {
 	acctID := types.NewID()
 	acct := &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Brokerage", Type: account.TypeInvestment}
 	holdings := []investment.Holding{{MarketValue: types.MustNewMoney("12000.00"), HasPricing: true}}
 
+	// Starts collapsed (empty preference map); user expands it.
 	app := dashboardToggleApp(t, acct, holdings, map[types.ID]bool{})
-
-	// User collapses the (auto-expanded) account.
-	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyLeft})
-	if app.dashboardExpandedAccounts[acctID] {
-		t.Fatal("precondition: account should be collapsed after Left")
+	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyRight})
+	if !app.dashboardExpandedAccounts[acctID] {
+		t.Fatal("precondition: account should be expanded after Right")
 	}
 
-	// A dashboard reload (e.g. after posting a transaction) must NOT
-	// re-expand an account the user explicitly collapsed.
+	// A dashboard reload (e.g. after posting a transaction) must NOT reset
+	// the user's expansion back to the collapsed default.
 	reload := dashboardLoadedMsg{data: &dashboardData{
 		netWorth: app.dashboard.netWorth,
 		investmentHoldings: map[types.ID]*investment.AccountValuation{
@@ -1281,7 +1328,7 @@ func TestApp_Dashboard_CollapseSurvivesReload(t *testing.T) {
 	model, _ := app.Update(reload)
 	app = model.(*App)
 
-	if app.dashboardExpandedAccounts[acctID] {
-		t.Error("auto-expand-on-load must respect a user's explicit collapse (false)")
+	if !app.dashboardExpandedAccounts[acctID] {
+		t.Error("a user's expansion must survive a dashboard reload")
 	}
 }

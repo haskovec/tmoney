@@ -63,13 +63,13 @@ The default view showing financial overview.
 
 An investment account on the dashboard shows a headline balance and total-return
 row, and — when it holds securities — an expandable list of its top holdings
-marked with a `▸`/`▾` affordance. Such accounts start **expanded** on load.
+marked with a `▸`/`▾` affordance. Such accounts start **collapsed** on load.
 `Left`/`Right` (or `h`/`l`) collapse/expand the holdings of the account under the
 sidebar cursor — or a mouse click on that account's `▸`/`▾` header line (in the
-ASSETS column) toggles it and moves the sidebar cursor onto it. A collapse is
-remembered for the session (a dashboard reload —
-e.g. after posting a transaction — will not re-expand an account the user
-collapsed). Collapsing is the way to shrink a tall dashboard so the ASSETS/
+ASSETS column) toggles it and moves the sidebar cursor onto it. The choice is
+remembered for the session (a dashboard reload — e.g. after posting a
+transaction — preserves each account's expand/collapse state). Expanding only
+the accounts you care about keeps a tall dashboard short so the ASSETS/
 LIABILITIES totals and the SCHEDULED section stay on screen: the content pane is
 clipped to the available height (it never overwrites the status bar), so content
 that overflows the bottom is otherwise unreachable from this view.

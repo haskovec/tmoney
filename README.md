@@ -300,10 +300,11 @@ Press `?` at any time to show the help overlay.
 | `Up/Down` | Navigate accounts |
 | `Left/Right` (`h`/`l`) | Collapse / expand the selected investment account's holdings |
 
-Investment accounts with holdings start expanded on the dashboard; use
+Investment accounts with holdings start collapsed on the dashboard; use
 `Left`/`Right` (or `h`/`l`) on the selected account — or click the account's
-`▸`/`▾` header with the mouse — to collapse or expand its holdings — handy for
-shrinking a long dashboard so the totals and scheduled sections stay in view.
+`▸`/`▾` header with the mouse — to expand or collapse its holdings. Expanding
+only the accounts you care about keeps the dashboard short so the totals and
+scheduled sections stay in view. Your choices persist for the session.
 
 #### Register (Account Transactions)
 
