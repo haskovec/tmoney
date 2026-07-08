@@ -85,10 +85,12 @@ func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	sidebarWidth := a.styles.SidebarWidth()
 
-	// Full-screen views (no sidebar)
+	// Full-screen views (no sidebar). Must match the full-screen list in
+	// renderContent (app_view.go) so left-region clicks reach the table
+	// instead of the hidden sidebar.
 	if sidebarWidth == 0 || a.currentView == ViewReconciliation ||
 		a.currentView == ViewSecurities || a.currentView == ViewPrices ||
-		a.currentView == ViewAmortization {
+		a.currentView == ViewCorporateActions || a.currentView == ViewAmortization {
 		// The dashboard has no sidebar in the small layout but still renders
 		// its clickable ▸/▾ account headers (content starts at column 0).
 		if a.currentView == ViewDashboard {

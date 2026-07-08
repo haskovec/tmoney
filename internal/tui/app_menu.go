@@ -343,6 +343,13 @@ func (a *App) switchView(v View) {
 				if a.securityTable != nil {
 					a.securityTable.SetFocused(true)
 				}
+			case ViewCorporateActions:
+				// Corporate Actions is full-screen, no sidebar (the table is
+				// (re)built and focused by buildCorporateActionTable).
+				a.sidebar.SetFocused(false)
+				if a.corporateActionViewTable != nil {
+					a.corporateActionViewTable.SetFocused(true)
+				}
 			case ViewPrices:
 				// Prices is full-screen, no sidebar
 				a.sidebar.SetFocused(false)

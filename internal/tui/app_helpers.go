@@ -86,6 +86,8 @@ func (a *App) activeTable() *widget.Table {
 		return a.priceTable
 	case ViewAmortization:
 		return a.amortizationTable
+	case ViewCorporateActions:
+		return a.corporateActionViewTable
 	}
 	return nil
 }

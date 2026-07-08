@@ -8,6 +8,7 @@ import (
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 func TestApp_MouseClick_MenuBar_OpensDropdown(t *testing.T) {
@@ -32,6 +33,77 @@ func TestApp_MouseClick_MenuBar_OpensDropdown(t *testing.T) {
 	}
 	if updatedApp.menubar.Cursor() != 0 {
 		t.Errorf("cursor = %d, want 0 (File)", updatedApp.menubar.Cursor())
+	}
+}
+
+// TestApp_MouseClick_CorporateActions_RoutesToTable is a regression test:
+// ViewCorporateActions is full-screen (no sidebar), but handleMouseContent
+// used to omit it from the full-screen list, so a click drove the hidden
+// sidebar instead of the corporate-action table.
+func TestApp_MouseClick_CorporateActions_RoutesToTable(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetAccounts([]*account.Account{
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Checking", Type: account.TypeChecking},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Brokerage", Type: account.TypeInvestment},
+	}, nil)
+	sidebar.SetFocused(false)
+	sidebar.cursor = 0
+
+	tbl := widget.NewTable([]widget.Column{{Header: "Ticker", Width: 10}})
+	tbl.SetRows([][]string{{"AAA"}, {"BBB"}, {"CCC"}})
+	tbl.SetFocused(true)
+	tbl.SetCursor(2)
+
+	app := &App{
+		currentView:              ViewCorporateActions,
+		keys:                     defaultKeyMap(),
+		menubar:                  widget.NewMenuBar(),
+		sidebar:                  sidebar,
+		statusbar:                widget.NewStatusBar(),
+		corporateActionViewTable: tbl,
+		width:                    120,
+		height:                   40,
+	}
+	app.styles = widget.NewStyles()
+	app.styles.Resize(120, 40)
+
+	if app.activeTable() != tbl {
+		t.Fatal("activeTable() should return the corporate-action table in ViewCorporateActions")
+	}
+
+	// A click in the far-left region (the old bug sent this to the sidebar),
+	// at a Y that maps to data row 0 (base offset 3 + header/border 2 → m.Y 6).
+	click := tea.MouseClickMsg{X: 3, Y: 6, Button: tea.MouseLeft}
+	model, _ := app.Update(click)
+	app = model.(*App)
+
+	if got := app.corporateActionViewTable.Cursor(); got != 0 {
+		t.Errorf("click should move the corporate-action table cursor to row 0, got %d", got)
+	}
+	if app.sidebar.IsFocused() {
+		t.Error("a click in the Corporate Actions view must not focus the sidebar")
+	}
+	if app.sidebar.cursor != 0 {
+		t.Errorf("sidebar cursor must be unchanged (0), got %d", app.sidebar.cursor)
+	}
+}
+
+// TestApp_SwitchView_CorporateActions_UnfocusesSidebar confirms entering the
+// full-screen Corporate Actions view clears sidebar focus, so the scroll wheel
+// drives the table rather than the hidden sidebar.
+func TestApp_SwitchView_CorporateActions_UnfocusesSidebar(t *testing.T) {
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+	}
+	app.sidebar.SetFocused(true) // dashboard focuses the sidebar
+
+	app.switchView(ViewCorporateActions)
+
+	if app.sidebar.IsFocused() {
+		t.Error("entering Corporate Actions should unfocus the sidebar (full-screen view)")
 	}
 }
 
