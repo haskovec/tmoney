@@ -684,6 +684,16 @@ affordances activate on a single click.
 | Click a dialog button | Activate it (Save, Cancel, Lookup, …) |
 | Click a dialog `[x]` | Close the dialog |
 
+Clicking a dialog button is exactly equivalent to the keyboard action
+(`Enter` on Save, `Esc` on Cancel): both input paths route through the
+same submit/cancel handler. This matters for dialogs where one App slot
+serves multiple variants — the Cash Dividend / Reinvest Dividend pair
+dispatches through a single helper that picks the submit path from the
+open variant, and the investment type selector's keyboard and mouse
+handlers share one dispatch covering every entry (including Fee via
+Liquidation and Spin-Off…), so a mouse click can never save a different
+transaction type than the keyboard would.
+
 ### Combo box mouse behavior
 
 The [Category Combo Box](#category-combo-box) and the investment Security

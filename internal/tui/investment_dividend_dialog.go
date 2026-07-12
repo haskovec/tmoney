@@ -180,16 +180,24 @@ func (a *App) handleDividendDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	action := a.dividendDialog.HandleKey(msg)
 	switch action {
 	case dialog.DialogActionSubmit:
-		if a.dividendDialogReinvest {
-			return a.submitReinvestDividendDialog()
-		}
-		return a.submitDividendDialog()
+		return a.submitActiveDividendDialog()
 	case dialog.DialogActionCancel:
 		a.closeDividendDialog()
 		return a, nil
 	}
 
 	return a, nil
+}
+
+// submitActiveDividendDialog dispatches Save to the reinvest or cash dividend
+// submit path based on which variant of the shared dialog is open. Both the
+// keyboard and mouse handlers must route through this so the two input paths
+// cannot disagree on the transaction type being saved.
+func (a *App) submitActiveDividendDialog() (tea.Model, tea.Cmd) {
+	if a.dividendDialogReinvest {
+		return a.submitReinvestDividendDialog()
+	}
+	return a.submitDividendDialog()
 }
 
 // submitDividendDialog parses dialog fields, validates, and saves a cash dividend transaction.

@@ -2,7 +2,6 @@ package tui
 
 import (
 	tea "charm.land/bubbletea/v2"
-	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
@@ -544,10 +543,9 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		action := a.dividendDialog.HandleMouse(msg, a.width, a.height)
 		switch action {
 		case dialog.DialogActionSubmit:
-			return a.submitDividendDialog()
+			return a.submitActiveDividendDialog()
 		case dialog.DialogActionCancel:
-			a.dividendDialog.SetVisible(false)
-			a.dividendDialog = nil
+			a.closeDividendDialog()
 		}
 		return a, nil
 	}
@@ -619,42 +617,10 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		switch action {
 		case dialog.DialogActionSubmit:
 			fields := a.investmentTypeSelector.Fields()
-			selectedType := investmentTransactionTypeFromIndex(fields[0].SelectedIndex)
+			idx := fields[0].SelectedIndex
 			a.investmentTypeSelector.SetVisible(false)
 			a.investmentTypeSelector = nil
-			switch selectedType {
-			case investment.TransactionTypeBuy:
-				return a, a.loadBuyDialogData()
-			case investment.TransactionTypeSell:
-				return a, a.loadSellDialogData()
-			case investment.TransactionTypeDividend:
-				a.dividendDialogReinvest = false
-				return a, a.loadDividendDialogData()
-			case investment.TransactionTypeReinvestDividend:
-				a.dividendDialogReinvest = true
-				return a, a.loadDividendDialogData()
-			case investment.TransactionTypeDeposit,
-				investment.TransactionTypeWithdrawal,
-				investment.TransactionTypeFee,
-				investment.TransactionTypeInterest:
-				a.cashOperationType = selectedType
-				editTxn, ok := a.loadInvestmentEditTxn()
-				if !ok {
-					return a, nil
-				}
-				a.cashOperationDialog = buildCashOperationDialog(selectedType.DisplayName(), editTxn)
-				if editTxn == nil {
-					a.cashOperationDialog.SeedDateField(a.txnDialogLastSavedDate)
-				}
-				return a, nil
-			case investment.TransactionTypeTransferCash:
-				if a.investmentEditTxnID != types.NilID {
-					return a, a.loadEditInvestmentTransferDialogData(a.investmentEditTxnID)
-				}
-				return a, a.loadTransferDialogData()
-			case investment.TransactionTypeTransferShares:
-				return a, a.loadTransferSharesDialogData()
-			}
+			return a.dispatchInvestmentTypeSelection(idx)
 		case dialog.DialogActionCancel:
 			a.investmentTypeSelector.SetVisible(false)
 			a.investmentTypeSelector = nil

@@ -873,61 +873,69 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyPressMsg) (tea.Model, t
 		idx := fields[0].SelectedIndex
 		a.investmentTypeSelector.SetVisible(false)
 		a.investmentTypeSelector = nil
-
-		// "Spin-Off…" is appended after the transaction types on the New
-		// selector; it opens the (global) spin-off dialog with the selected
-		// holding pre-filled as the parent security.
-		if idx >= len(investmentTransactionTypeOptions()) {
-			a.spinOffDialogPreSelectedID = nil
-			if txn := a.selectedInvestmentTransaction(); txn != nil && txn.SecurityID.Valid {
-				secID := txn.SecurityID.ID
-				a.spinOffDialogPreSelectedID = &secID
-			}
-			return a, a.loadSpinOffDialogData()
-		}
-
-		selectedType := investmentTransactionTypeFromIndex(idx)
-
-		switch selectedType {
-		case investment.TransactionTypeBuy:
-			return a, a.loadBuyDialogData()
-		case investment.TransactionTypeSell:
-			return a, a.loadSellDialogData()
-		case investment.TransactionTypeDividend:
-			a.dividendDialogReinvest = false
-			return a, a.loadDividendDialogData()
-		case investment.TransactionTypeReinvestDividend:
-			a.dividendDialogReinvest = true
-			return a, a.loadDividendDialogData()
-		case investment.TransactionTypeFeeLiquidation:
-			return a, a.loadFeeLiquidationDialogData()
-		case investment.TransactionTypeDeposit,
-			investment.TransactionTypeWithdrawal,
-			investment.TransactionTypeFee,
-			investment.TransactionTypeInterest:
-			a.cashOperationType = selectedType
-			editTxn, ok := a.loadInvestmentEditTxn()
-			if !ok {
-				return a, nil
-			}
-			a.cashOperationDialog = buildCashOperationDialog(selectedType.DisplayName(), editTxn)
-			if editTxn == nil {
-				a.cashOperationDialog.SeedDateField(a.txnDialogLastSavedDate)
-			}
-			return a, nil
-		case investment.TransactionTypeTransferCash:
-			if a.investmentEditTxnID != types.NilID {
-				return a, a.loadEditInvestmentTransferDialogData(a.investmentEditTxnID)
-			}
-			return a, a.loadTransferDialogData()
-		case investment.TransactionTypeTransferShares:
-			return a, a.loadTransferSharesDialogData()
-		}
+		return a.dispatchInvestmentTypeSelection(idx)
 
 	case dialog.DialogActionCancel:
 		a.investmentTypeSelector.SetVisible(false)
 		a.investmentTypeSelector = nil
 		return a, nil
+	}
+
+	return a, nil
+}
+
+// dispatchInvestmentTypeSelection opens the dialog for the transaction type
+// chosen in the investment type selector. Shared by the keyboard and mouse
+// selector handlers so the two paths cannot drift apart.
+func (a *App) dispatchInvestmentTypeSelection(idx int) (tea.Model, tea.Cmd) {
+	// "Spin-Off…" is appended after the transaction types on the New
+	// selector; it opens the (global) spin-off dialog with the selected
+	// holding pre-filled as the parent security.
+	if idx >= len(investmentTransactionTypeOptions()) {
+		a.spinOffDialogPreSelectedID = nil
+		if txn := a.selectedInvestmentTransaction(); txn != nil && txn.SecurityID.Valid {
+			secID := txn.SecurityID.ID
+			a.spinOffDialogPreSelectedID = &secID
+		}
+		return a, a.loadSpinOffDialogData()
+	}
+
+	selectedType := investmentTransactionTypeFromIndex(idx)
+
+	switch selectedType {
+	case investment.TransactionTypeBuy:
+		return a, a.loadBuyDialogData()
+	case investment.TransactionTypeSell:
+		return a, a.loadSellDialogData()
+	case investment.TransactionTypeDividend:
+		a.dividendDialogReinvest = false
+		return a, a.loadDividendDialogData()
+	case investment.TransactionTypeReinvestDividend:
+		a.dividendDialogReinvest = true
+		return a, a.loadDividendDialogData()
+	case investment.TransactionTypeFeeLiquidation:
+		return a, a.loadFeeLiquidationDialogData()
+	case investment.TransactionTypeDeposit,
+		investment.TransactionTypeWithdrawal,
+		investment.TransactionTypeFee,
+		investment.TransactionTypeInterest:
+		a.cashOperationType = selectedType
+		editTxn, ok := a.loadInvestmentEditTxn()
+		if !ok {
+			return a, nil
+		}
+		a.cashOperationDialog = buildCashOperationDialog(selectedType.DisplayName(), editTxn)
+		if editTxn == nil {
+			a.cashOperationDialog.SeedDateField(a.txnDialogLastSavedDate)
+		}
+		return a, nil
+	case investment.TransactionTypeTransferCash:
+		if a.investmentEditTxnID != types.NilID {
+			return a, a.loadEditInvestmentTransferDialogData(a.investmentEditTxnID)
+		}
+		return a, a.loadTransferDialogData()
+	case investment.TransactionTypeTransferShares:
+		return a, a.loadTransferSharesDialogData()
 	}
 
 	return a, nil

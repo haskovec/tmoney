@@ -839,3 +839,143 @@ func TestSubmitDividendDialog_DollarSignInAmount(t *testing.T) {
 		t.Error("should return command")
 	}
 }
+
+// dividendDialogButtonClick returns a left-click message aimed at the given
+// button (0 = Save, 1 = Cancel) of d when rendered on a screenW×screenH screen.
+func dividendDialogButtonClick(t *testing.T, d *dialog.Dialog, buttonIndex, screenW, screenH int) tea.MouseClickMsg {
+	t.Helper()
+	startCol, startRow, _, _ := d.DialogBounds(screenW, screenH)
+	contentWidth := d.Width() - dialog.DialogHorizontalOverhead
+	buttonRow := d.ContentHeight() - 1
+	for x := range contentWidth {
+		hit := d.HitTestContent(x, buttonRow, contentWidth)
+		if hit.Zone == dialog.DialogHitButton && hit.ButtonIndex == buttonIndex {
+			return tea.MouseClickMsg{
+				X:      startCol + 3 + x,
+				Y:      startRow + 2 + buttonRow,
+				Button: tea.MouseLeft,
+			}
+		}
+	}
+	t.Fatalf("button %d not found in dialog", buttonIndex)
+	return tea.MouseClickMsg{}
+}
+
+// Regression test: clicking Save with the mouse on the Reinvest Dividend
+// dialog must route to the reinvest submit path, not the cash dividend path.
+// The setup is only valid for the cash path (shares present, but no total or
+// price), so the buggy routing would close the dialog and save a cash
+// dividend, while correct routing keeps it open with validation errors.
+func TestDividendDialogMouse_SaveRoutesToReinvestSubmit(t *testing.T) {
+	secID := types.NewID()
+
+	app := &App{
+		width:  100,
+		height: 40,
+		dividendDialog: buildReinvestDividendDialog(
+			[]string{"AAPL - Apple Inc."},
+			nil,
+			[]types.ID{secID},
+		),
+		dividendDialogData:        &dividendDialogData{},
+		dividendDialogSecurityIDs: []types.ID{secID},
+		dividendDialogReinvest:    true,
+		investmentRegister: &investmentRegisterData{
+			account: &account.Account{
+				BaseModel: types.NewBaseModel(),
+				Type:      account.TypeInvestment,
+			},
+		},
+	}
+
+	fields := app.dividendDialog.Fields()
+	fields[0].Value = "05/14/2024" // date
+	fields[2].Value = "0.006"      // shares — the cash path would read this as Amount
+	fields[3].Value = ""           // no total
+	fields[4].Value = ""           // no price
+
+	click := dividendDialogButtonClick(t, app.dividendDialog, 0, app.width, app.height)
+	model, cmd := app.handleDialogMouse(click)
+	updatedApp := model.(*App)
+
+	if updatedApp.dividendDialog == nil {
+		t.Fatal("dialog should stay open: reinvest validation requires price or total")
+	}
+	if cmd != nil {
+		t.Error("no save command should be issued on validation errors")
+	}
+	fields = updatedApp.dividendDialog.Fields()
+	if fields[3].Error == "" || fields[4].Error == "" {
+		t.Error("total and price fields should carry 'Enter price or total' errors")
+	}
+}
+
+func TestDividendDialogMouse_SaveValidReinvest(t *testing.T) {
+	secID := types.NewID()
+
+	app := &App{
+		width:  100,
+		height: 40,
+		dividendDialog: buildReinvestDividendDialog(
+			[]string{"AAPL - Apple Inc."},
+			nil,
+			[]types.ID{secID},
+		),
+		dividendDialogData:        &dividendDialogData{},
+		dividendDialogSecurityIDs: []types.ID{secID},
+		dividendDialogReinvest:    true,
+		investmentRegister: &investmentRegisterData{
+			account: &account.Account{
+				BaseModel: types.NewBaseModel(),
+				Type:      account.TypeInvestment,
+			},
+		},
+	}
+
+	fields := app.dividendDialog.Fields()
+	fields[0].Value = "05/14/2024" // date
+	fields[2].Value = "0.006"      // shares
+	fields[3].Value = "0.23"       // total
+
+	click := dividendDialogButtonClick(t, app.dividendDialog, 0, app.width, app.height)
+	model, cmd := app.handleDialogMouse(click)
+	updatedApp := model.(*App)
+
+	if updatedApp.dividendDialog != nil {
+		t.Error("dialog should close after a valid mouse Save")
+	}
+	if cmd == nil {
+		t.Error("should return a command for async save")
+	}
+}
+
+func TestDividendDialogMouse_CancelResetsState(t *testing.T) {
+	secID := types.NewID()
+
+	app := &App{
+		width:  100,
+		height: 40,
+		dividendDialog: buildReinvestDividendDialog(
+			[]string{"AAPL - Apple Inc."},
+			nil,
+			[]types.ID{secID},
+		),
+		dividendDialogData:        &dividendDialogData{},
+		dividendDialogSecurityIDs: []types.ID{secID},
+		dividendDialogReinvest:    true,
+	}
+
+	click := dividendDialogButtonClick(t, app.dividendDialog, 1, app.width, app.height)
+	model, _ := app.handleDialogMouse(click)
+	updatedApp := model.(*App)
+
+	if updatedApp.dividendDialog != nil {
+		t.Error("dialog should be closed on mouse Cancel")
+	}
+	if updatedApp.dividendDialogReinvest {
+		t.Error("reinvest flag should be reset on mouse Cancel")
+	}
+	if updatedApp.dividendDialogData != nil || updatedApp.dividendDialogSecurityIDs != nil {
+		t.Error("dialog data should be cleared on mouse Cancel")
+	}
+}
