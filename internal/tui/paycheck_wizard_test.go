@@ -1605,3 +1605,35 @@ func TestPaycheckWizard_AddNew_PreservesTransferLineSelections(t *testing.T) {
 		}
 	}
 }
+
+// TestPaycheckFrequencyOptions_IncludesYearly asserts the picker
+// offers a Yearly cadence (annual bonuses) and that a yearly schedule
+// round-trips through Edit-as-paycheck back to that picker entry.
+func TestPaycheckFrequencyOptions_IncludesYearly(t *testing.T) {
+	yearlyIdx := -1
+	for i, opt := range paycheckFrequencyOptions {
+		if opt.frequency == scheduled.FrequencyYearly {
+			yearlyIdx = i
+		}
+	}
+	if yearlyIdx == -1 {
+		t.Fatal("paycheckFrequencyOptions should include a Yearly entry")
+	}
+	opt := paycheckFrequencyForIndex(yearlyIdx)
+	if opt.dayOfMonth != 0 || opt.secondaryDayOfMonth != 0 {
+		t.Errorf("Yearly option should not set day-of-month fields, got %d/%d",
+			opt.dayOfMonth, opt.secondaryDayOfMonth)
+	}
+
+	// Fortnightly must stay the default (index stability for existing users).
+	if paycheckFrequencyOptions[defaultPaycheckFrequencyIndex].frequency != scheduled.FrequencyFortnightly {
+		t.Errorf("default picker entry should remain Fortnightly")
+	}
+
+	// Round-trip: Edit-as-paycheck on a yearly schedule selects Yearly.
+	fx := newPaycheckWizardFixture()
+	st := scheduled.NewTransaction(fx.checkingID, scheduled.FrequencyYearly, types.Today())
+	if got := paycheckFrequencyIndexFor(st); got != yearlyIdx {
+		t.Errorf("paycheckFrequencyIndexFor(yearly) = %d, want %d", got, yearlyIdx)
+	}
+}

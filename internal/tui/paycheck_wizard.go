@@ -280,14 +280,16 @@ type paycheckFrequencyOption struct {
 }
 
 // paycheckFrequencyOptions is the wizard's frequency picker. Only
-// paycheck-realistic cadences appear (no Daily / Quarterly / Yearly).
-// Semi-monthly fans out into the two common day-pair variants.
+// paycheck-realistic cadences appear (no Daily / Quarterly).
+// Semi-monthly fans out into the two common day-pair variants;
+// Yearly covers annual bonuses.
 var paycheckFrequencyOptions = []paycheckFrequencyOption{
 	{label: "Weekly", frequency: scheduled.FrequencyWeekly},
 	{label: "Fortnightly (every 2 weeks)", frequency: scheduled.FrequencyFortnightly},
 	{label: "Semi-Monthly (1st & 15th)", frequency: scheduled.FrequencySemiMonthly, dayOfMonth: 1, secondaryDayOfMonth: 15},
 	{label: "Semi-Monthly (15th & last day)", frequency: scheduled.FrequencySemiMonthly, dayOfMonth: 15, secondaryDayOfMonth: -1},
 	{label: "Monthly", frequency: scheduled.FrequencyMonthly},
+	{label: "Yearly", frequency: scheduled.FrequencyYearly},
 }
 
 const defaultPaycheckFrequencyIndex = 1
