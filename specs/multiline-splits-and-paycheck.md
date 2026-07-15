@@ -267,7 +267,7 @@ The wizard is organized into five sections that mirror US pay-stub structure (ea
 PAYCHECK SCHEDULE                                              [×]
 
 Employer (payee):  [_______________________]
-Pay frequency:     [Biweekly ▼]    Next payday: [MM/DD/YYYY]
+Pay frequency:     [Fortnightly (every 2 weeks) ▼]    Next payday: [MM/DD/YYYY]
 
 EARNINGS
   $[__________]   [Income:Salary ▼]
@@ -428,7 +428,7 @@ scheduled_transactions:
   payee_id: <employer-payee-id>
   amount: +3067.50         -- net deposit
   category_id: NULL        -- multi-line; category lives in split items
-  frequency: biweekly
+  frequency: fortnightly
   day_of_week: 5           -- Friday
   start_date: 2026-01-09
   next_date: 2026-01-23
@@ -451,7 +451,7 @@ When Enter is pressed on the due item, the preview opens with the above values p
 - One real `transactions` row in checking, `amount: +3067.50`, with 7 `split_items` rows mirroring the template (with the FICA and Federal edits applied)
 - One paired real transaction in the 401k account, `amount: +500.00`, with `transfer_id` matching the corresponding split-item's `transfer_id`
 - One paired real transaction in the HSA account, `amount: +100.00`, similarly linked
-- The schedule's `next_date` advances from 2026-01-23 to 2026-02-06 (biweekly cadence based on template's original next_date)
+- The schedule's `next_date` advances from 2026-01-23 to 2026-02-06 (fortnightly cadence based on template's original next_date)
 
 The template is unchanged — next paycheck preview opens with FICA back at −310.00.
 

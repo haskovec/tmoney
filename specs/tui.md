@@ -272,7 +272,7 @@ The wizard is organized into five sections that mirror US pay-stub structure (ea
 ├──────────────────────────────────────────────────────────────┤
 │                                                              │
 │  Employer (payee):  [_______________________]                │
-│  Pay frequency:     [Biweekly ▼]    Next payday: [MM/DD/YYYY]│
+│  Pay frequency:   [Fortnightly ▼]   Next payday: [MM/DD/YYYY]│
 │                                                              │
 │  EARNINGS                                                    │
 │    $[__________]   [Income:Salary ▼]                         │

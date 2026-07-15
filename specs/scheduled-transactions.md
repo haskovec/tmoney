@@ -42,7 +42,8 @@ A scheduled transaction may be **single-line** (one account, one payee, one cate
 |-----------|-------------|------|
 | `daily` | Every N days | interval |
 | `weekly` | Every N weeks | interval, day_of_week |
-| `biweekly` | Every 2 weeks | day_of_week |
+| `fortnightly` | Every 2 weeks | — |
+| `semimonthly` | Twice a month on two pay days | day_of_month, secondary_day_of_month |
 | `monthly` | Every N months | interval, day_of_month |
 | `quarterly` | Every 3 months | day_of_month |
 | `yearly` | Every N years | interval, day_of_month, month |
@@ -216,7 +217,8 @@ Given: current next_date, frequency, interval
 
 daily:     next_date + (interval days)
 weekly:    next_date + (interval * 7 days)
-biweekly:  next_date + 14 days
+fortnightly: next_date + 14 days
+semimonthly: next of the two pay days (day_of_month / secondary_day_of_month)
 monthly:   next_date + (interval months), adjusted for day_of_month
 quarterly: next_date + 3 months, adjusted for day_of_month
 yearly:    next_date + (interval years)
@@ -270,10 +272,10 @@ payee: "Electric Company"
 category: "Housing:Utilities"
 ```
 
-### Biweekly Paycheck
+### Fortnightly Paycheck
 
 ```
-frequency: biweekly
+frequency: fortnightly
 day_of_week: 5  # Friday
 start_date: 2024-01-05
 amount: 2500.00

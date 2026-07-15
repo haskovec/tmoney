@@ -622,7 +622,7 @@ the delta) is a possible v2 on top of the same category.
 
 ## Out of Scope Summary
 
-Biweekly/other frequencies · historical backfill · negative
+Fortnightly/other frequencies · historical backfill · negative
 amortization support · automatic ARM schedules · escrow analysis ·
 deferral/forbearance · depreciation curves · loan↔asset link column ·
 daily interest accrual / mid-cycle proration · CLI account editing

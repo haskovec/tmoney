@@ -118,7 +118,7 @@ tmoney -f personal.tdb account balance
 - Alias/pattern matching for imports
 
 ### Scheduled Transactions
-- Multiple frequencies: daily, weekly, biweekly, monthly, quarterly, yearly
+- Multiple frequencies: daily, weekly, fortnightly, semimonthly, monthly, quarterly, yearly
 - Fixed or indefinite duration
 - Variable amount estimation (single-line schedules only)
 - **Scheduled transfers** (`t` on the Scheduled view): a recurring transfer
@@ -660,7 +660,7 @@ tmoney scheduled post <id> --date 2024-03-20  # Override date
 tmoney scheduled skip <id>
 ```
 
-Frequencies: `daily`, `weekly`, `biweekly`, `monthly`, `quarterly`, `yearly`. `--day` accepts `1-31` or `-1` for the last day of month. Use `--occurrences <n>` or `--end-date <YYYY-MM-DD>` for fixed-duration schedules; omit both for indefinite. `--lead-days` accepts `0`, `3`, or `7` and requires `--auto-post`.
+Frequencies: `daily`, `weekly`, `fortnightly`, `semimonthly`, `monthly`, `quarterly`, `yearly`. `--day` accepts `1-31` or `-1` for the last day of month. Use `--occurrences <n>` or `--end-date <YYYY-MM-DD>` for fixed-duration schedules; omit both for indefinite. `--lead-days` accepts `0`, `3`, or `7` and requires `--auto-post`.
 
 ### Reconciliation
 

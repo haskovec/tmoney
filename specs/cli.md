@@ -965,7 +965,7 @@ Scheduled (recurring) transactions.
 
 `Use: scheduled add` · `Args: NoArgs`
 
-Create a new scheduled transaction. Frequencies: `daily`, `weekly`, `biweekly`, `monthly`, `quarterly`, `yearly`. Omit `--amount` for a variable-amount schedule.
+Create a new scheduled transaction. Frequencies: `daily`, `weekly`, `fortnightly`, `semimonthly`, `monthly`, `quarterly`, `yearly`. Omit `--amount` for a variable-amount schedule.
 
 **Required flags:** `--account`, `--frequency`
 

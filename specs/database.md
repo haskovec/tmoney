@@ -241,8 +241,8 @@ CREATE TABLE scheduled_transactions (
     amount DECIMAL(19, 4),
     memo TEXT,
     frequency TEXT NOT NULL CHECK (frequency IN (
-        'daily', 'weekly', 'biweekly', 'monthly',
-        'quarterly', 'yearly'
+        'daily', 'weekly', 'fortnightly', 'semimonthly',
+        'monthly', 'quarterly', 'yearly'
     )),
     interval INTEGER NOT NULL DEFAULT 1,
     start_date DATE NOT NULL,
