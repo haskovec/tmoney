@@ -310,7 +310,7 @@ func (s *Service) MergePayees(sourceID, targetID types.ID) error {
 		CREATE TEMPORARY TABLE _merge_st AS
 		SELECT id, account_id, CAST(? AS UUID) AS payee_id, category_id,
 			amount, memo, frequency, interval, start_date, end_date,
-			occurrences, day_of_month, secondary_day_of_month, day_of_week, next_date,
+			occurrences, day_of_month, secondary_day_of_month, next_date,
 			occurrences_remaining, amount_estimate_count,
 			auto_post, post_lead_days,
 			created_at, CURRENT_TIMESTAMP AS updated_at,

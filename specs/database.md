@@ -249,12 +249,15 @@ CREATE TABLE scheduled_transactions (
     end_date DATE,
     occurrences INTEGER,
     day_of_month INTEGER CHECK (day_of_month BETWEEN -1 AND 31),
-    day_of_week INTEGER CHECK (day_of_week BETWEEN 0 AND 6),
+    secondary_day_of_month INTEGER CHECK (secondary_day_of_month BETWEEN -1 AND 31),
     next_date DATE NOT NULL,
     occurrences_remaining INTEGER,
     amount_estimate_count INTEGER,
+    auto_post BOOLEAN NOT NULL DEFAULT FALSE,
+    post_lead_days INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    transfer_account_id UUID  -- no FK/index by design (see migration 022)
 );
 
 CREATE INDEX idx_scheduled_account ON scheduled_transactions(account_id);

@@ -429,8 +429,7 @@ scheduled_transactions:
   amount: +3067.50         -- net deposit
   category_id: NULL        -- multi-line; category lives in split items
   frequency: fortnightly
-  day_of_week: 5           -- Friday
-  start_date: 2026-01-09
+  start_date: 2026-01-09   -- a Friday; the cadence recurs on next_date's weekday
   next_date: 2026-01-23
 
 scheduled_split_items (children of <st-id>):

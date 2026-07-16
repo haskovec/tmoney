@@ -32,7 +32,7 @@ A scheduled transaction may be **single-line** (one account, one payee, one cate
 | `end_date` | date | No | When schedule ends (null = indefinite) |
 | `occurrences` | integer | No | Number of times to repeat (null = indefinite) |
 | `day_of_month` | integer | No | Specific day (1-31, or -1 for last day) |
-| `day_of_week` | integer | No | Day of week (0=Sunday, 6=Saturday) |
+| `secondary_day_of_month` | integer | No | Second pay day for semimonthly (1-31, or -1 for last day) |
 | `next_date` | date | Yes | Next occurrence date |
 | `occurrences_remaining` | integer | No | Countdown for fixed occurrences |
 
@@ -41,12 +41,12 @@ A scheduled transaction may be **single-line** (one account, one payee, one cate
 | Frequency | Description | Uses |
 |-----------|-------------|------|
 | `daily` | Every N days | interval |
-| `weekly` | Every N weeks | interval, day_of_week |
+| `weekly` | Every N weeks | interval |
 | `fortnightly` | Every 2 weeks | — |
 | `semimonthly` | Twice a month on two pay days | day_of_month, secondary_day_of_month |
 | `monthly` | Every N months | interval, day_of_month |
 | `quarterly` | Every 3 months | day_of_month |
-| `yearly` | Every N years | interval, day_of_month, month |
+| `yearly` | Every N years | interval |
 
 ### Special Day Handling
 
@@ -182,8 +182,7 @@ Key semantics (full detail in [`specs/multiline-splits-and-paycheck.md`](multili
 2. `end_date` must be after `start_date` (if set)
 3. `occurrences` must be positive (if set)
 4. `day_of_month` must be 1-31 or -1
-5. `day_of_week` must be 0-6
-6. Cannot have both `end_date` and `occurrences`
+5. Cannot have both `end_date` and `occurrences`
 
 ## Operations
 
@@ -276,8 +275,7 @@ category: "Housing:Utilities"
 
 ```
 frequency: fortnightly
-day_of_week: 5  # Friday
-start_date: 2024-01-05
+start_date: 2024-01-05  # a Friday; the cadence recurs on next_date's weekday
 amount: 2500.00
 payee: "Employer"
 category: "Income:Salary"

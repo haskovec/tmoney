@@ -121,7 +121,6 @@ type Transaction struct {
 	OccurrencesRemaining types.NullableInt  `json:"occurrences_remaining"`  // Countdown for fixed occurrences
 	DayOfMonth           types.NullableInt  `json:"day_of_month"`           // Specific day (1-31, or -1 for last day)
 	SecondaryDayOfMonth  types.NullableInt  `json:"secondary_day_of_month"` // Second day for semi-monthly cadence (1-31, or -1 for last day)
-	DayOfWeek            types.NullableInt  `json:"day_of_week"`            // Day of week (0=Sunday, 6=Saturday)
 
 	// Transaction template properties
 	PayeeID    types.NullableID     `json:"payee_id"`
@@ -322,19 +321,6 @@ func (st *Transaction) SetDayOfMonth(day int) {
 // ClearDayOfMonth removes the specific day of month.
 func (st *Transaction) ClearDayOfMonth() {
 	st.DayOfMonth = types.NullableInt{Valid: false}
-	st.Touch()
-}
-
-// SetDayOfWeek sets the specific day of week for weekly schedules.
-// 0 = Sunday, 6 = Saturday.
-func (st *Transaction) SetDayOfWeek(day int) {
-	st.DayOfWeek = types.NullableInt{Int64: int64(day), Valid: true}
-	st.Touch()
-}
-
-// ClearDayOfWeek removes the specific day of week.
-func (st *Transaction) ClearDayOfWeek() {
-	st.DayOfWeek = types.NullableInt{Valid: false}
 	st.Touch()
 }
 
@@ -674,14 +660,6 @@ func (st *Transaction) Validate() types.ValidationErrors {
 		dom := st.DayOfMonth.Int64
 		if dom < -1 || dom == 0 || dom > 31 {
 			v.AddError("day_of_month", "must be 1-31 or -1 for last day of month")
-		}
-	}
-
-	// day_of_week validation: 0-6
-	if st.DayOfWeek.Valid {
-		dow := st.DayOfWeek.Int64
-		if dow < 0 || dow > 6 {
-			v.AddError("day_of_week", "must be 0-6 (Sunday=0, Saturday=6)")
 		}
 	}
 

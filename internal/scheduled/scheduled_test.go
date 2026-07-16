@@ -549,27 +549,6 @@ func TestTransactionDaySettings(t *testing.T) {
 			t.Error("DayOfMonth should not be valid after clearing")
 		}
 	})
-
-	t.Run("SetDayOfWeek sets day of week", func(t *testing.T) {
-		st := NewTransaction(types.NewID(), FrequencyWeekly, types.Today())
-
-		st.SetDayOfWeek(5) // Friday
-
-		if !st.DayOfWeek.Valid || st.DayOfWeek.Int64 != 5 {
-			t.Errorf("Expected day_of_week 5, got %d", st.DayOfWeek.Int64)
-		}
-	})
-
-	t.Run("ClearDayOfWeek removes day of week", func(t *testing.T) {
-		st := NewTransaction(types.NewID(), FrequencyWeekly, types.Today())
-		st.SetDayOfWeek(5)
-
-		st.ClearDayOfWeek()
-
-		if st.DayOfWeek.Valid {
-			t.Error("DayOfWeek should not be valid after clearing")
-		}
-	})
 }
 
 func TestTransactionAmountEstimate(t *testing.T) {
@@ -1185,28 +1164,6 @@ func TestTransactionValidation(t *testing.T) {
 		}
 	})
 
-	t.Run("Invalid day_of_week fails validation", func(t *testing.T) {
-		testCases := []int64{-1, 7, 10}
-		for _, dow := range testCases {
-			st := validTransaction()
-			st.DayOfWeek = types.NullableInt{Int64: dow, Valid: true}
-			errs := st.Validate()
-			if !errs.HasErrors() {
-				t.Errorf("day_of_week %d should fail validation", dow)
-			}
-		}
-	})
-
-	t.Run("Valid day_of_week passes validation", func(t *testing.T) {
-		for dow := int64(0); dow <= 6; dow++ {
-			st := validTransaction()
-			st.DayOfWeek = types.NullableInt{Int64: dow, Valid: true}
-			errs := st.Validate()
-			if errs.HasErrors() {
-				t.Errorf("day_of_week %d should pass validation: %v", dow, errs)
-			}
-		}
-	})
 
 	t.Run("Zero amount_estimate_count fails validation", func(t *testing.T) {
 		st := validTransaction()
