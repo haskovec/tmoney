@@ -18,7 +18,7 @@ require (
 require (
 	github.com/apache/arrow-go/v18 v18.6.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260703014108-f5a850f9c2b7 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260713092251-4bee1914c0cf // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
@@ -46,7 +46,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
-	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 )
