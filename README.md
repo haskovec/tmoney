@@ -979,18 +979,24 @@ tmoney -f personal.tdb investment edit --txn-id <uuid> --shares 1.587
 # Move a buy to the right date and annotate it
 tmoney -f personal.tdb investment edit --txn-id <uuid> --date 2024-01-16 \
   --memo "fixed date"
+
+# Mark a transaction cleared (the register `c` key, scriptable)
+tmoney -f personal.tdb investment edit --txn-id <uuid> --status cleared
 ```
 
 `investment edit` requires `--txn-id` (find it with `investment list
 --show-ids`) plus at least one editable flag: `--date`, `--shares`,
-`--amount`, `--price-per-share`, `--commission`, or `--memo`. Only the
-supplied flags take effect; the account and security are not editable.
+`--amount`, `--price-per-share`, `--commission`, `--memo`, or
+`--status`. Only the supplied flags take effect; the account and
+security are not editable.
 It routes through the same update paths as the TUI's edit dialogs, so
 positions and lots are reversed and re-applied — the re-created row gets
-a new UUID. Cleared status carries over; reconciled transactions and
-transfer legs are refused (use `tmoney reconcile` / `transfer edit`).
-For lot-tracked accounts, pass `--lot <id>` when editing a sell or
-fee-liquidation.
+a new UUID. Cleared status carries over by default; `--status
+cleared|pending` sets it explicitly via a narrow status-only update (a
+status-only edit keeps the UUID), and `--status reconciled` is rejected.
+Reconciled transactions and transfer legs are refused (use `tmoney
+reconcile` / `transfer edit`). For lot-tracked accounts, pass
+`--lot <id>` when editing a sell or fee-liquidation.
 
 ```bash
 # Record a cash dividend (cash credited to the account, share count unchanged)

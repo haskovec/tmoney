@@ -76,20 +76,25 @@ delete to `Service.Delete` (`:211`).
       `specs/transaction-status.md` note about the new `--status` flag
       (replaces the "no CLI toggle" caveat added in `c8666c9`).
 
-## Phase 2: Cleared-status toggle everywhere — [ ]
+## Phase 2: Cleared-status toggle everywhere — [x]
 
 Phase 1's `transaction edit --status` covers the regular register. This
 phase finishes the investment side so both registers' `c`-key behavior
 is scriptable.
 
-- [ ] `internal/cli/investment/edit.go`: add `--status`
+- [x] `internal/cli/investment/edit.go`: add `--status`
       (`cleared`/`pending`; `reconciled` rejected) routed through
       `investment.Service.SetClearedStatus`. Replaces the current
       implicit carry-over-only behavior; carry-over remains the default
       when the flag is absent.
-- [ ] Tests: set cleared, set back to pending, reconciled rejected,
+      Implementation note: a status-only edit skips the Update* dispatch
+      entirely — SetClearedStatus is a narrow status-only update, so the
+      row is not recreated and the UUID is unchanged (mirroring the
+      migration-030 rule from Phase 1); an explicit `--status` combined
+      with field edits overrides the cleared carry-over.
+- [x] Tests: set cleared, set back to pending, reconciled rejected,
       default carry-over still works.
-- [ ] Docs: `specs/cli.md` `investment edit` editable-flags list, README.
+- [x] Docs: `specs/cli.md` `investment edit` editable-flags list, README.
 
 ## Phase 3: `scheduled edit` + `scheduled delete` + scheduled transfers — [ ]
 
@@ -230,3 +235,6 @@ statement.
 - Phase 1: `transaction edit` + `transaction delete` — shipped 2026-07-21
   (code + tests + docs in one commit; see the commit introducing
   `internal/cli/transaction/edit.go`).
+- Phase 2: `investment edit --status` — shipped 2026-07-21 (code +
+  tests + docs in one commit; see the commit adding `--status` to
+  `internal/cli/investment/edit.go`).

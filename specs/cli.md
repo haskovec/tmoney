@@ -433,9 +433,14 @@ types (buy, sell, reinvest, fee-liquidation) reverse the old
 position/lot effect, delete the record, and re-create it with the
 merged values; cash types (dividend, deposit, withdrawal, fee,
 interest) are a simple delete + re-create. The re-created row gets a
-**new UUID** (printed on success). A cleared status is carried over;
-a reconciled transaction is refused (unreconcile first — reconciling
-is owned by `tmoney reconcile`). Transfer legs are refused with a
+**new UUID** (printed on success). A cleared status is carried over
+by default; pass `--status cleared|pending` — the scriptable register
+`c` key — to set it explicitly instead. A status change routes
+through the narrow `SetClearedStatus` status-only update, so a
+status-only edit does **not** re-create the row (the UUID is
+unchanged). `--status reconciled` is rejected, and a reconciled
+transaction is refused entirely (unreconcile first — reconciling is
+owned by `tmoney reconcile`). Transfer legs are refused with a
 pointer to [`transfer edit`](#transfer-edit) (cash) or the TUI (share
 transfers); `exchange` rows come from corporate actions and are not
 editable.
@@ -454,6 +459,8 @@ keeps the total and re-derives the price; supplying only
 - `--price-per-share string` — New price per share (share-bearing types only)
 - `--commission string` — New commission (buy, sell, fee-liquidation only)
 - `--memo string` — New memo (explicit `--memo ""` clears it)
+- `--status string` — `cleared` or `pending`; `reconciled` is rejected
+  (reconciling is owned by `tmoney reconcile`)
 
 **Optional flags:**
 - `--lot string` — Lot ID to allocate a sell/fee-liquidation against; required
@@ -468,6 +475,9 @@ tmoney -f personal.tdb investment edit --txn-id <uuid> --date 2024-01-16 --memo 
 
 # Reprice a sell on a lot-tracked account
 tmoney -f personal.tdb investment edit --txn-id <uuid> --price-per-share 160 --lot <lot-uuid>
+
+# Mark a transaction cleared (the register `c` key, scriptable)
+tmoney -f personal.tdb investment edit --txn-id <uuid> --status cleared
 ```
 
 ### `investment enable-lots`

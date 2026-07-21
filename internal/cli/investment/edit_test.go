@@ -360,6 +360,153 @@ func TestInvestmentEdit_PreservesClearedStatus(t *testing.T) {
 	}
 }
 
+func TestInvestmentEdit_StatusOnly_SetCleared(t *testing.T) {
+	dbPath := seedEditFixture(t)
+	buy := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := cli.ExecuteWith([]string{
+		"investment", "edit",
+		"--file", dbPath,
+		"--txn-id", buy.ID.String(),
+		"--status", "cleared",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("cli.ExecuteWith(investment edit --status cleared) failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Cleared") {
+		t.Errorf("expected summary to show Cleared status, got:\n%s", stdout.String())
+	}
+
+	after := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
+	if after.Status != investmentdom.TransactionStatusCleared {
+		t.Errorf("expected status cleared, got %s", after.Status)
+	}
+	// A status-only edit is a narrow update — the row is not recreated.
+	if after.ID != buy.ID {
+		t.Errorf("expected transaction ID unchanged on status-only edit, got %s (was %s)", after.ID, buy.ID)
+	}
+	if !after.Shares.Quantity.Equal(types.MustNewQuantity("10")) {
+		t.Errorf("expected shares unchanged at 10, got %s", after.Shares.Quantity)
+	}
+}
+
+func TestInvestmentEdit_StatusOnly_BackToPending(t *testing.T) {
+	dbPath := seedEditFixture(t)
+	buy := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
+
+	svc := clitest.OpenSvc(t, dbPath)
+	if err := svc.Investment.SetClearedStatus(buy.ID, true); err != nil {
+		t.Fatalf("mark cleared: %v", err)
+	}
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := cli.ExecuteWith([]string{
+		"investment", "edit",
+		"--file", dbPath,
+		"--txn-id", buy.ID.String(),
+		"--status", "pending",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("cli.ExecuteWith(investment edit --status pending) failed: %v\nstderr: %s", err, stderr.String())
+	}
+
+	after := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
+	if after.Status != investmentdom.TransactionStatusPending {
+		t.Errorf("expected status pending, got %s", after.Status)
+	}
+}
+
+func TestInvestmentEdit_StatusReconciledRejected(t *testing.T) {
+	dbPath := seedEditFixture(t)
+	buy := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := cli.ExecuteWith([]string{
+		"investment", "edit",
+		"--file", dbPath,
+		"--txn-id", buy.ID.String(),
+		"--status", "reconciled",
+	}, stdout, stderr)
+	if err == nil {
+		t.Fatal("cli.ExecuteWith(investment edit --status reconciled) should return error")
+	}
+	if !strings.Contains(err.Error(), "tmoney reconcile") {
+		t.Errorf("expected error to point at `tmoney reconcile`, got: %v", err)
+	}
+}
+
+func TestInvestmentEdit_StatusInvalidRejected(t *testing.T) {
+	dbPath := seedEditFixture(t)
+	buy := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := cli.ExecuteWith([]string{
+		"investment", "edit",
+		"--file", dbPath,
+		"--txn-id", buy.ID.String(),
+		"--status", "bogus",
+	}, stdout, stderr)
+	if err == nil {
+		t.Fatal("cli.ExecuteWith(investment edit --status bogus) should return error")
+	}
+	if !strings.Contains(err.Error(), "invalid --status") {
+		t.Errorf("expected invalid --status error, got: %v", err)
+	}
+}
+
+func TestInvestmentEdit_StatusWithFieldEdit(t *testing.T) {
+	dbPath := seedEditFixture(t)
+	buy := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := cli.ExecuteWith([]string{
+		"investment", "edit",
+		"--file", dbPath,
+		"--txn-id", buy.ID.String(),
+		"--shares", "11",
+		"--status", "cleared",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("cli.ExecuteWith(investment edit --shares --status) failed: %v\nstderr: %s", err, stderr.String())
+	}
+
+	after := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
+	if !after.Shares.Quantity.Equal(types.MustNewQuantity("11")) {
+		t.Errorf("expected shares 11, got %s", after.Shares.Quantity)
+	}
+	if after.Status != investmentdom.TransactionStatusCleared {
+		t.Errorf("expected status cleared, got %s", after.Status)
+	}
+}
+
+func TestInvestmentEdit_StatusOverridesCarryOver(t *testing.T) {
+	dbPath := seedEditFixture(t)
+	buy := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
+
+	svc := clitest.OpenSvc(t, dbPath)
+	if err := svc.Investment.SetClearedStatus(buy.ID, true); err != nil {
+		t.Fatalf("mark cleared: %v", err)
+	}
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := cli.ExecuteWith([]string{
+		"investment", "edit",
+		"--file", dbPath,
+		"--txn-id", buy.ID.String(),
+		"--shares", "11",
+		"--status", "pending",
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("cli.ExecuteWith(investment edit --shares --status pending) failed: %v\nstderr: %s", err, stderr.String())
+	}
+
+	after := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
+	if after.Status != investmentdom.TransactionStatusPending {
+		t.Errorf("expected explicit --status pending to override cleared carry-over, got %s", after.Status)
+	}
+}
+
 func TestInvestmentEdit_LotTrackedSellRepointsLots(t *testing.T) {
 	dbPath := clitest.CreateInvestmentTestDB(t, true)
 

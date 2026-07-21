@@ -22,6 +22,7 @@ type investmentEditOptions struct {
 	pricePerShare string
 	commission    string
 	memo          string
+	status        string
 	lot           string
 
 	dateChanged       bool
@@ -30,6 +31,7 @@ type investmentEditOptions struct {
 	priceChanged      bool
 	commissionChanged bool
 	memoChanged       bool
+	statusChanged     bool
 }
 
 // newInvestmentEditCmd registers `tmoney investment edit`. The database
@@ -46,10 +48,13 @@ func newInvestmentEditCmd() *cobra.Command {
 			"with `tmoney investment list --show-ids`). Only the supplied flags " +
 			"take effect. Editing a buy/sell/reinvest/fee-liquidation reverses " +
 			"the old position/lot effect and re-applies the new values — the " +
-			"same path the TUI edit dialog uses. Transfer legs are edited with " +
+			"same path the TUI edit dialog uses. `--status cleared|pending` is " +
+			"the scriptable register `c` key and goes through a narrow " +
+			"status-only update. Transfer legs are edited with " +
 			"`tmoney transfer edit`; reconciled transactions are refused.",
 		Example: "  tmoney investment edit --txn-id <uuid> --shares 1.587\n" +
-			"  tmoney investment edit --txn-id <uuid> --date 2024-01-16 --memo \"fixed date\"",
+			"  tmoney investment edit --txn-id <uuid> --date 2024-01-16 --memo \"fixed date\"\n" +
+			"  tmoney investment edit --txn-id <uuid> --status cleared",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -60,6 +65,7 @@ func newInvestmentEditCmd() *cobra.Command {
 			opts.priceChanged = cmd.Flags().Changed("price-per-share")
 			opts.commissionChanged = cmd.Flags().Changed("commission")
 			opts.memoChanged = cmd.Flags().Changed("memo")
+			opts.statusChanged = cmd.Flags().Changed("status")
 			return runInvestmentEdit(opts, cmd.OutOrStdout())
 		},
 	}
@@ -70,6 +76,7 @@ func newInvestmentEditCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.pricePerShare, "price-per-share", "", "New price per share")
 	cmd.Flags().StringVar(&opts.commission, "commission", "", "New commission amount")
 	cmd.Flags().StringVar(&opts.memo, "memo", "", "New memo (pass an empty string to clear)")
+	cmd.Flags().StringVar(&opts.status, "status", "", "New status: cleared or pending (reconciling is done with `tmoney reconcile`)")
 	cmd.Flags().StringVar(&opts.lot, "lot", "", "Lot ID to allocate a sell/fee-liquidation against (required to edit those on lot-tracked accounts)")
 	_ = cmd.MarkFlagRequired("txn-id")
 	return cmd
@@ -88,20 +95,28 @@ type editedValues struct {
 	lotAllocations []investmentdom.SellLotAllocation
 }
 
-// runInvestmentEdit executes `tmoney investment edit`: dispatch on the
-// stored transaction type to the matching Service.Update* method.
+// runInvestmentEdit executes `tmoney investment edit`: field edits
+// dispatch on the stored transaction type to the matching
+// Service.Update* method; a status change goes through the narrow
+// SetClearedStatus path so a status-only edit does not rewrite the row.
 func runInvestmentEdit(opts *investmentEditOptions, w io.Writer) error {
 	if err := cmdutil.RequireFile(opts.file); err != nil {
 		return err
 	}
-	if !opts.dateChanged && !opts.sharesChanged && !opts.amountChanged &&
-		!opts.priceChanged && !opts.commissionChanged && !opts.memoChanged {
-		return fmt.Errorf("at least one editable flag is required (--date, --shares, --amount, --price-per-share, --commission, --memo)")
+	fieldEdit := opts.dateChanged || opts.sharesChanged || opts.amountChanged ||
+		opts.priceChanged || opts.commissionChanged || opts.memoChanged
+	if !fieldEdit && !opts.statusChanged {
+		return fmt.Errorf("at least one editable flag is required (--date, --shares, --amount, --price-per-share, --commission, --memo, --status)")
 	}
 
 	txnID, err := types.ParseID(opts.txnID)
 	if err != nil {
 		return fmt.Errorf("invalid --txn-id: %w", err)
+	}
+
+	newStatus, err := parseEditStatus(opts)
+	if err != nil {
+		return err
 	}
 
 	database, svc, err := cmdutil.OpenServices(opts.file)
@@ -119,32 +134,43 @@ func runInvestmentEdit(opts *investmentEditOptions, w io.Writer) error {
 		return err
 	}
 
-	vals, err := mergeEditValues(old, opts)
-	if err != nil {
-		return err
-	}
-
-	if opts.lot != "" {
-		lotID, err := types.ParseID(opts.lot)
+	newTxn := old
+	if fieldEdit {
+		vals, err := mergeEditValues(old, opts)
 		if err != nil {
-			return fmt.Errorf("invalid --lot: %w", err)
+			return err
 		}
-		vals.lotAllocations = []investmentdom.SellLotAllocation{
-			{LotID: lotID, Shares: vals.shares},
+
+		if opts.lot != "" {
+			lotID, err := types.ParseID(opts.lot)
+			if err != nil {
+				return fmt.Errorf("invalid --lot: %w", err)
+			}
+			vals.lotAllocations = []investmentdom.SellLotAllocation{
+				{LotID: lotID, Shares: vals.shares},
+			}
+		}
+
+		newTxn, err = dispatchUpdate(svc.Investment, old, vals)
+		if err != nil {
+			return fmt.Errorf("failed to update %s transaction: %w", old.Type.DisplayName(), err)
 		}
 	}
 
-	newTxn, err := dispatchUpdate(svc.Investment, old, vals)
-	if err != nil {
-		return fmt.Errorf("failed to update %s transaction: %w", old.Type.DisplayName(), err)
-	}
-
-	// The update recreates the row (new ID, default pending); carry a
-	// cleared status over so the edit doesn't silently unclear the entry.
-	if old.Status == investmentdom.TransactionStatusCleared {
+	finalStatus := newTxn.Status
+	switch {
+	case opts.statusChanged:
+		if err := svc.Investment.SetClearedStatus(newTxn.ID, newStatus == investmentdom.TransactionStatusCleared); err != nil {
+			return fmt.Errorf("failed to update transaction status: %w", err)
+		}
+		finalStatus = newStatus
+	case fieldEdit && old.Status == investmentdom.TransactionStatusCleared:
+		// The update recreates the row (new ID, default pending); carry a
+		// cleared status over so the edit doesn't silently unclear the entry.
 		if err := svc.Investment.SetClearedStatus(newTxn.ID, true); err != nil {
 			return fmt.Errorf("transaction updated but restoring cleared status failed: %w", err)
 		}
+		finalStatus = investmentdom.TransactionStatusCleared
 	}
 
 	acct, err := svc.Account.GetByID(old.AccountID)
@@ -163,10 +189,30 @@ func runInvestmentEdit(opts *investmentEditOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Price:    %s\n", cmdutil.FormatMoney(newTxn.PricePerShare.Money, currency))
 	}
 	fmt.Fprintf(w, "  Total:    %s\n", cmdutil.FormatMoney(newTxn.TotalAmount, currency))
-	fmt.Fprintf(w, "  New ID:   %s\n", newTxn.ID.String())
+	fmt.Fprintf(w, "  Status:   %s\n", finalStatus.DisplayName())
+	if fieldEdit {
+		fmt.Fprintf(w, "  New ID:   %s\n", newTxn.ID.String())
+	}
 
 	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
+}
+
+// parseEditStatus validates the --status flag value. Only the
+// cleared/pending toggle is scriptable here; reconciled state belongs
+// to `tmoney reconcile`.
+func parseEditStatus(opts *investmentEditOptions) (investmentdom.TransactionStatus, error) {
+	if !opts.statusChanged {
+		return "", nil
+	}
+	status, err := investmentdom.ParseTransactionStatus(opts.status)
+	if err != nil {
+		return "", fmt.Errorf("invalid --status: %w (use cleared or pending)", err)
+	}
+	if status == investmentdom.TransactionStatusReconciled {
+		return "", fmt.Errorf("--status reconciled is not allowed; reconciling is done with `tmoney reconcile`")
+	}
+	return status, nil
 }
 
 // guardEditable rejects transactions this command must not touch and
