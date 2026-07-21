@@ -597,6 +597,17 @@ tmoney transaction add --account Checking --amount -120.00 \
 tmoney transaction add --account Checking --amount 3500.00 \
   --payee "Employer Inc" --category "Income:Salary"
 
+# Edit a transaction by UUID (find IDs with `transaction list --show-ids`).
+# Only supplied flags take effect; "" clears --payee/--category/--memo.
+# --status cleared|uncleared is the scriptable register `c` key.
+# Transfer legs route to `transfer edit`; splits are edited in the TUI.
+tmoney transaction edit --txn-id <id> --amount -45.50 --status cleared
+tmoney transaction edit --txn-id <id> --category "Food:Groceries" --memo ""
+
+# Permanently delete a transaction by ID (splits/transfer legs/reconciled
+# rows are refused — prefer `void` to keep an auditable record)
+tmoney transaction delete <id>
+
 # Void a transaction by ID (transfer counterparts are voided too)
 tmoney transaction void <id>
 

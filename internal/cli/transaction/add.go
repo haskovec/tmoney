@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	transactiondom "github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -104,25 +103,9 @@ func runTransactionAdd(opts *transactionAddOptions, w io.Writer) error {
 	var categoryID types.NullableID
 	var categoryName string
 	if opts.category != "" {
-		// First try top-level category, then search all categories
-		cat, err := svc.CategoryRepo.GetByName(opts.category, nil)
+		cat, err := resolveCategoryByName(svc, opts.category)
 		if err != nil {
-			// Try finding it as a subcategory (search all categories)
-			categories, listErr := svc.CategoryRepo.List()
-			if listErr != nil {
-				return fmt.Errorf("category %q not found", opts.category)
-			}
-			var found *category.Category
-			for _, c := range categories {
-				if c.Name == opts.category {
-					found = c
-					break
-				}
-			}
-			if found == nil {
-				return fmt.Errorf("category %q not found", opts.category)
-			}
-			cat = found
+			return err
 		}
 		categoryID = types.NullableID{Valid: true, ID: cat.ID}
 		categoryName = cat.Name

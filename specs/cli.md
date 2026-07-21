@@ -1350,6 +1350,61 @@ tmoney transaction add --account Checking --amount -120.00 \
   --date 2024-03-15 --memo "March electric bill"
 ```
 
+### `transaction delete`
+
+`Use: transaction delete <id>` · `Args: ExactArgs(1)`
+
+Permanently delete a transaction by its UUID (find it with
+`transaction list --show-ids`). Prints what was deleted. To keep an
+auditable record instead, prefer [`transaction void`](#transaction-void).
+
+Refused with a pointer to the right surface:
+
+- a transfer leg → `tmoney transfer delete`
+- a split (multi-line) transaction → the TUI
+- a void or reconciled row → `transaction void` rows stay as the audit
+  record; reconciled rows belong to `tmoney reconcile` (unreconcile first)
+
+```bash
+tmoney transaction delete 0d9f7c2a-3f6e-4b1a-9c2d-8e5f6a7b8c9d
+```
+
+### `transaction edit`
+
+`Use: transaction edit` · `Args: NoArgs`
+
+Edit a transaction identified by `--txn-id` (find it with
+`transaction list --show-ids`). Delta semantics: only the supplied flags
+take effect; at least one editable flag is required. Edits dispatch to
+the same `transaction.Service.Update` path the TUI edit dialog uses; a
+status change uses the narrow status-only update (see
+[`transaction-status.md`](transaction-status.md)).
+
+**Required flags:** `--txn-id`
+
+**Optional (editable) flags:**
+- `--amount string` — New amount; negative for expenses
+- `--date string` — New transaction date `YYYY-MM-DD`
+- `--payee string` — New payee name, auto-created if it doesn't exist
+  (pass an empty string to clear)
+- `--category string` — New category (`Parent` or `Parent:Subcategory`;
+  must exist; pass an empty string to clear)
+- `--memo string` — New memo (pass an empty string to clear)
+- `--status string` — `cleared` or `uncleared` — the scriptable
+  equivalent of the register's `c` key. `reconciled` is rejected with a
+  pointer to `tmoney reconcile`; `void` with a pointer to
+  `transaction void`.
+
+Refused with a pointer to the right surface: transfer legs
+(→ `tmoney transfer edit`), split (multi-line) transactions (→ the TUI),
+and void or reconciled rows.
+
+```bash
+tmoney transaction edit --txn-id <uuid> --amount -45.50
+tmoney transaction edit --txn-id <uuid> --category "Food:Groceries" --status cleared
+tmoney transaction edit --txn-id <uuid> --memo ""   # clears the memo
+```
+
 ### `transaction list`
 
 `Use: transaction list` · `Args: NoArgs`
@@ -1363,7 +1418,7 @@ List transactions for an account.
 - `--from string` — Earliest date (`YYYY-MM-DD`)
 - `--to string` — Latest date (`YYYY-MM-DD`)
 - `--status string` — Filter by status: `uncleared`, `cleared`, `reconciled`, `void`
-- `--show-ids` — Prefix each row with the transaction's UUID (off by default). Useful for scripting `transfer edit` / `transfer delete` against discovered transaction IDs.
+- `--show-ids` — Prefix each row with the transaction's UUID (off by default). Useful for scripting `transaction edit` / `transaction delete` / `transfer edit` / `transfer delete` against discovered transaction IDs.
 
 ```bash
 tmoney transaction list --account Checking
@@ -1398,7 +1453,7 @@ Search transactions whose payee or memo contains `<term>`.
 - `--to string` — Latest date (`YYYY-MM-DD`)
 - `--min string` — Minimum amount
 - `--max string` — Maximum amount
-- `--show-ids` — Prefix each row with the transaction's UUID (off by default). Useful for scripting `transfer edit` / `transfer delete` against discovered transaction IDs.
+- `--show-ids` — Prefix each row with the transaction's UUID (off by default). Useful for scripting `transaction edit` / `transaction delete` / `transfer edit` / `transfer delete` against discovered transaction IDs.
 
 ```bash
 tmoney transaction search "grocery"

@@ -113,9 +113,12 @@ cleared_balance = opening_balance + sum(transactions WHERE status IN ('cleared',
 - `transaction list --status` filters by: `uncleared`, `cleared`, `reconciled`, `void`
 - `transaction void <txn-id>` — void a transaction (and its transfer counterpart if applicable)
 - Transaction list output shows the new status codes
+- `transaction edit --status cleared|uncleared` — the scriptable equivalent of
+  the TUI register's `c` key. `reconciled` is rejected (that state belongs to
+  `tmoney reconcile`) and `void` is rejected (use `transaction void`). Status
+  changes use the narrow in-place status update, not a full-row rewrite.
 - Note: `transaction add` intentionally has no `--status` flag — new transactions
-  always start `uncleared`; there is currently no CLI command to toggle an
-  existing transaction's cleared status (the TUI register's `c` key does this)
+  always start `uncleared`; toggle afterwards with `transaction edit --status`
 
 ## TUI Changes
 

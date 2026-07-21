@@ -43,13 +43,13 @@ conventions are settled; account edit/delete and the corporate-action
 listing are small and independent; the by-design exclusions close the
 plan as a docs-only phase.
 
-## Phase 1: `transaction edit` + `transaction delete` — [ ]
+## Phase 1: `transaction edit` + `transaction delete` — [x]
 
 The regular-register analog of `investment edit`. Edits dispatch to
 `transaction.Service.Update` (`internal/transaction/transaction_service.go:134`);
 delete to `Service.Delete` (`:211`).
 
-- [ ] `internal/cli/transaction/edit.go`: `transaction edit --txn-id <uuid>`
+- [x] `internal/cli/transaction/edit.go`: `transaction edit --txn-id <uuid>`
       with delta flags `--amount`, `--date`, `--payee`, `--category`,
       `--memo` (explicit `""` clears), `--status` (`cleared`/`uncleared`;
       `reconciled` rejected with a pointer to `tmoney reconcile`).
@@ -57,15 +57,21 @@ delete to `Service.Delete` (`:211`).
       (→ TUI, until Phase 4), void and reconciled rows. Payee
       auto-creates via `payeeSvc.GetOrCreate` (same as `transaction add`);
       category must exist (same as `transaction add`).
-- [ ] `internal/cli/transaction/delete.go`: `transaction delete <txn-id>`
+      Implementation notes: `--payee ""`/`--category ""` also clear
+      (symmetric with `--memo ""`); status changes route through the
+      narrow `ClearTransaction`/`MarkTransactionUncleared` status-only
+      update (migration-030 rule) rather than a full-row `Update`; the
+      category-name resolver is shared with `transaction add`
+      (`resolveCategoryByName`).
+- [x] `internal/cli/transaction/delete.go`: `transaction delete <txn-id>`
       (positional, matching `transaction void <id>`). Refuse transfer
       legs (→ `transfer delete`), split parents (until Phase 4), and
       reconciled rows. Print what was deleted.
-- [ ] Register both in `internal/cli/transaction/transaction.go`.
-- [ ] Tests: flag validation, each editable field, clears-vs-unset memo,
+- [x] Register both in `internal/cli/transaction/transaction.go`.
+- [x] Tests: flag validation, each editable field, clears-vs-unset memo,
       refusal cases (transfer leg, split parent, reconciled, void),
       delete happy path + refusals, account balance reflects both.
-- [ ] Docs: `specs/cli.md` sections (alphabetical: delete before list,
+- [x] Docs: `specs/cli.md` sections (alphabetical: delete before list,
       edit after delete), README register-scripting examples,
       `specs/transaction-status.md` note about the new `--status` flag
       (replaces the "no CLI toggle" caveat added in `c8666c9`).
@@ -220,3 +226,7 @@ statement.
 ## Done
 
 (move phases here as they complete, with commit hashes)
+
+- Phase 1: `transaction edit` + `transaction delete` — shipped 2026-07-21
+  (code + tests + docs in one commit; see the commit introducing
+  `internal/cli/transaction/edit.go`).

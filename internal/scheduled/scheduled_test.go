@@ -1164,7 +1164,6 @@ func TestTransactionValidation(t *testing.T) {
 		}
 	})
 
-
 	t.Run("Zero amount_estimate_count fails validation", func(t *testing.T) {
 		st := validTransaction()
 		st.AmountEstimateCount = types.NullableInt{Int64: 0, Valid: true}

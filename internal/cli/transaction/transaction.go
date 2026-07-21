@@ -10,8 +10,8 @@ func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "transaction",
 		Short: "Manage TMoney transactions",
-		Long: "Subcommands for adding, listing, voiding, and " +
-			"searching transactions on an account.",
+		Long: "Subcommands for adding, editing, deleting, listing, " +
+			"voiding, and searching transactions on an account.",
 		Example: "  tmoney transaction add --account Checking --amount -50.00 --payee \"Coffee Shop\"",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -20,6 +20,8 @@ func NewCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newTransactionAddCmd())
+	cmd.AddCommand(newTransactionDeleteCmd())
+	cmd.AddCommand(newTransactionEditCmd())
 	cmd.AddCommand(newTransactionListCmd())
 	cmd.AddCommand(newTransactionVoidCmd())
 	cmd.AddCommand(newTransactionSearchCmd())
