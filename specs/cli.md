@@ -371,6 +371,37 @@ Deposit cash into an investment account. Cash is credited; share counts are unch
 tmoney investment deposit --account Brokerage --amount 5000 --memo "Initial funding"
 ```
 
+### `investment disable-lots`
+
+`Use: investment disable-lots` · `Args: NoArgs`
+
+Disable lot tracking on an existing lot-tracked investment (or HSA)
+account and revert it to average cost: the account's lots and
+lot-junction rows are deleted and its positions are recomputed from the
+transaction ledger. This is the inverse of
+[`investment enable-lots`](#investment-enable-lots). By default the
+command prints the plan and makes no changes; pass `--confirm` to
+execute. Run `db backup` first.
+
+The command refuses when the target account is not lot-tracked. A held
+security with a recorded stock split is fine — the split replays into
+the average cost — but a held merger or spin-off is refused, since
+those holdings exist only in lots and their average cost cannot be
+rebuilt from the ledger.
+
+**Optional flags:**
+- `--account string` — Lot-tracked investment/HSA account to disable (required unless `--all`)
+- `--all` — Disable lots on every lot-tracked investment/HSA account
+- `--confirm` — Execute the change (default prints the plan only)
+
+Exactly one of `--account` or `--all` is required.
+
+```bash
+tmoney -f personal.tdb investment disable-lots --account "Fidelity 401k"
+tmoney -f personal.tdb investment disable-lots --account "Fidelity 401k" --confirm
+tmoney -f personal.tdb investment disable-lots --all --confirm
+```
+
 ### `investment dividend`
 
 `Use: investment dividend` · `Args: NoArgs`
@@ -478,6 +509,38 @@ Record a fee in an investment account. Cash is debited; share counts are unchang
 
 ```bash
 tmoney investment fee --account Brokerage --amount 25 --memo "Annual fee"
+```
+
+### `investment fee-liquidation`
+
+`Use: investment fee-liquidation` · `Args: NoArgs`
+
+Record a fee paid by liquidating shares of a security: shares are sold
+and the proceeds pay the fee, so there is **no net cash effect** — the
+share count drops and cash is unchanged. This is how some retirement
+plans (e.g. a 401k's recordkeeping fee) charge against a fund instead
+of a cash balance.
+
+Supply either `--amount` (the fee total) or `--price-per-share`, or
+both; the third value is derived. For lot-tracked accounts pass
+`--lot` to allocate against a specific open lot.
+
+**Required flags:** `--account`, `--shares`, and a security selector
+(`--ticker`, `--isin`, or `--name`)
+
+**Optional flags:**
+- `--amount string` — Fee total (alternative or in addition to `--price-per-share`)
+- `--price-per-share string` — Price per share
+- `--commission string` — Commission amount (default `0`)
+- `--date string` — Transaction date `YYYY-MM-DD` (default today)
+- `--memo string` — Free-form memo
+- `--lot string` — Lot ID to allocate against (lot-tracked accounts)
+
+```bash
+tmoney investment fee-liquidation --account "Fidelity 401k" --ticker FXAIX \
+  --shares 0.123 --amount 5.00
+tmoney investment fee-liquidation --account "Fidelity 401k" --ticker FXAIX \
+  --shares 0.123 --price-per-share 40.65 --memo "Q2 recordkeeping fee"
 ```
 
 ### `investment list`
