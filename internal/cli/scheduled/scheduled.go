@@ -20,6 +20,8 @@ func NewCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newScheduledAddCmd())
+	cmd.AddCommand(newScheduledDeleteCmd())
+	cmd.AddCommand(newScheduledEditCmd())
 	cmd.AddCommand(newScheduledListCmd())
 	cmd.AddCommand(newScheduledPostCmd())
 	cmd.AddCommand(newScheduledSkipCmd())

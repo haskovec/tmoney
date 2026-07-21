@@ -1137,6 +1137,7 @@ Create a new scheduled transaction. Frequencies: `daily`, `weekly`, `fortnightly
 - `--amount string` — Scheduled amount; omit for a variable-amount schedule
 - `--payee string` — Payee name (auto-created if it doesn't exist)
 - `--category string` — Category (`Parent` or `Parent:Subcategory`)
+- `--transfer-to string` — Destination account name; makes this a scheduled transfer. Mutually exclusive with `--payee`. `--category` is allowed as an optional non-system label. `--amount` is stored as the negative signed effect on the source account (enter a positive magnitude). Posting the schedule creates a linked transfer pair.
 - `--date string` — Start date `YYYY-MM-DD` (default today)
 - `--memo string` — Free-form memo
 - `--day int` — Day of month (1–31, or `-1` for last day of month)
@@ -1151,6 +1152,42 @@ tmoney scheduled add --account Checking --frequency monthly \
 tmoney scheduled add --account Checking --frequency monthly --payee "Electric Co"
 tmoney scheduled add --account Checking --frequency monthly --amount -150 \
   --payee Insurance --auto-post --lead-days 3
+tmoney scheduled add --account Checking --frequency monthly --amount 250 \
+  --transfer-to Savings --category "Savings Goal"
+```
+
+### `scheduled delete`
+
+`Use: scheduled delete <id>` · `Args: ExactArgs(1)`
+
+Permanently delete a scheduled transaction template identified by its UUID (find it with `scheduled list --show-ids`). This removes the template only — any transactions already posted from it remain untouched. Multi-line (split/paycheck) templates are deleted here too; their child lines are removed with the template.
+
+```bash
+tmoney scheduled delete 0d9f7c2a-…
+```
+
+### `scheduled edit`
+
+`Use: scheduled edit` · `Args: NoArgs`
+
+Edit a single-line scheduled transaction identified by its UUID (find it with `scheduled list --show-ids`). Only the supplied flags take effect; at least one editable flag is required. Multi-line (split/paycheck) templates are edited in the TUI.
+
+**Required flags:** `--id`
+
+**Optional flags (at least one required):**
+- `--amount string` — New amount; pass an empty string (`--amount ""`) to clear it (variable-amount schedule)
+- `--payee string` — New payee name, auto-created if it doesn't exist; `""` clears it. Refused on a transfer schedule (a transfer has no payee).
+- `--category string` — New category (`Parent` or `Parent:Subcategory`); `""` clears it. On a transfer schedule it must be a non-system label.
+- `--frequency string` — New frequency (`daily`, `weekly`, `fortnightly`, `semimonthly`, `monthly`, `quarterly`, `yearly`)
+- `--next-date string` — New next occurrence date `YYYY-MM-DD`
+- `--account string` — Move the schedule to a different account (by name)
+- `--memo string` — New memo; `""` clears it
+- `--auto-post` — Post automatically when due (`--auto-post=false` disables)
+
+```bash
+tmoney scheduled edit --id <uuid> --amount -1600
+tmoney scheduled edit --id <uuid> --frequency weekly --auto-post
+tmoney scheduled edit --id <uuid> --payee "" --memo "paused"
 ```
 
 ### `scheduled list`
@@ -1162,11 +1199,13 @@ List scheduled transactions on the database.
 **Optional flags:**
 - `--account string` — Filter by account name
 - `--due` — Only show occurrences due today or earlier
+- `--show-ids` — Show each row's full UUID (for use with `scheduled edit`/`scheduled delete`)
 
 ```bash
 tmoney scheduled list
 tmoney scheduled list --account Checking
 tmoney scheduled list --due
+tmoney scheduled list --show-ids
 ```
 
 ```

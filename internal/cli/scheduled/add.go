@@ -5,9 +5,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	scheduleddom "github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -20,6 +20,7 @@ type scheduledAddOptions struct {
 	amount      string
 	payee       string
 	category    string
+	transferTo  string
 	date        string
 	memo        string
 	day         int
@@ -54,6 +55,8 @@ func newScheduledAddCmd() *cobra.Command {
 		"Scheduled amount; omit for a variable-amount schedule")
 	cmd.Flags().StringVar(&opts.payee, "payee", "", "Payee name (auto-created if it doesn't exist)")
 	cmd.Flags().StringVar(&opts.category, "category", "", "Category name (Parent or Parent:Subcategory)")
+	cmd.Flags().StringVar(&opts.transferTo, "transfer-to", "",
+		"Destination account name to make this a scheduled transfer (mutually exclusive with --payee; --category is allowed as a non-system label)")
 	cmd.Flags().StringVar(&opts.date, "date", "", "Start date YYYY-MM-DD (default today)")
 	cmd.Flags().StringVar(&opts.memo, "memo", "", "Free-form memo")
 	cmd.Flags().IntVar(&opts.day, "day", 0, "Day of month (1-31, or -1 for last day of month)")
@@ -70,6 +73,10 @@ func newScheduledAddCmd() *cobra.Command {
 func runScheduledAdd(cmd *cobra.Command, opts *scheduledAddOptions, w io.Writer) error {
 	if err := cmdutil.RequireFile(opts.file); err != nil {
 		return err
+	}
+
+	if opts.transferTo != "" && opts.payee != "" {
+		return fmt.Errorf("--transfer-to and --payee are mutually exclusive; a transfer schedule has no payee")
 	}
 
 	frequency, err := scheduleddom.ParseFrequency(opts.frequency)
@@ -113,10 +120,31 @@ func runScheduledAdd(cmd *cobra.Command, opts *scheduledAddOptions, w io.Writer)
 
 	st := scheduleddom.NewTransaction(acct.ID, frequency, startDate)
 
+	// Resolve the transfer destination first so amount-sign handling knows
+	// whether this is a transfer schedule.
+	var transferToName string
+	if opts.transferTo != "" {
+		dest, err := svc.Account.GetByName(opts.transferTo)
+		if err != nil {
+			return fmt.Errorf("transfer destination account %q not found", opts.transferTo)
+		}
+		if dest.ID == acct.ID {
+			return fmt.Errorf("cannot transfer to the same account (%s); pick a different --transfer-to", acct.Name)
+		}
+		st.SetTransfer(dest.ID)
+		transferToName = dest.Name
+	}
+
 	if opts.amount != "" {
 		amount, err := types.NewMoney(opts.amount)
 		if err != nil {
 			return fmt.Errorf("invalid --amount: %w", err)
+		}
+		// A transfer schedule stores the amount as the negative signed effect
+		// on the source account (the TUI enters a positive magnitude and
+		// stores its negation).
+		if st.IsTransfer() {
+			amount = amount.Abs().Neg()
 		}
 		st.SetAmount(amount)
 	}
@@ -133,23 +161,15 @@ func runScheduledAdd(cmd *cobra.Command, opts *scheduledAddOptions, w io.Writer)
 
 	var categoryName string
 	if opts.category != "" {
-		cat, err := svc.CategoryRepo.GetByName(opts.category, nil)
+		cat, err := resolveScheduledCategory(svc, opts.category)
 		if err != nil {
-			categories, listErr := svc.CategoryRepo.List()
-			if listErr != nil {
-				return fmt.Errorf("category %q not found", opts.category)
+			return err
+		}
+		// A transfer schedule may only carry a non-system category label.
+		if st.IsTransfer() {
+			if err := transaction.ValidateTransferCategory(cat); err != nil {
+				return err
 			}
-			var found *category.Category
-			for _, c := range categories {
-				if c.Name == opts.category {
-					found = c
-					break
-				}
-			}
-			if found == nil {
-				return fmt.Errorf("category %q not found", opts.category)
-			}
-			cat = found
 		}
 		st.SetCategory(cat.ID)
 		categoryName = cat.Name
@@ -195,6 +215,9 @@ func runScheduledAdd(cmd *cobra.Command, opts *scheduledAddOptions, w io.Writer)
 		fmt.Fprintf(w, "  Amount:    %s\n", cmdutil.FormatMoney(st.Amount.Money, acct.Currency))
 	} else {
 		fmt.Fprintf(w, "  Amount:    Variable\n")
+	}
+	if transferToName != "" {
+		fmt.Fprintf(w, "  Transfer to: %s\n", transferToName)
 	}
 	if payeeName != "" {
 		fmt.Fprintf(w, "  Payee:     %s\n", payeeName)

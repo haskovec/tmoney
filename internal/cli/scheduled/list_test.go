@@ -344,6 +344,32 @@ func TestScheduledList_AccountNotFound(t *testing.T) {
 	}
 }
 
+func TestScheduledList_ShowIDs(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("failed to create test account: %v", err)
+	}
+
+	stRepo := scheduleddom.NewRepository(database)
+	st := scheduleddom.NewTransactionWithAmount(acct.ID, scheduleddom.FrequencyMonthly, types.Today(), types.MustNewMoney("-15.99"))
+	if err := stRepo.Create(st); err != nil {
+		t.Fatalf("failed to create scheduled transaction: %v", err)
+	}
+	fullID := st.ID.String()
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := cli.ExecuteWith([]string{"scheduled", "list", "--show-ids", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("cli.ExecuteWith(scheduled list --show-ids): %v\nstderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout.String(), fullID) {
+		t.Errorf("expected full UUID %q in --show-ids output, got:\n%s", fullID, stdout.String())
+	}
+}
+
 func TestScheduledCmd_HelpListsList(t *testing.T) {
 	restore := cli.SwapTUILauncher(func(string) error { return nil })
 	defer restore()

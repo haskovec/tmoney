@@ -96,29 +96,45 @@ is scriptable.
       default carry-over still works.
 - [x] Docs: `specs/cli.md` `investment edit` editable-flags list, README.
 
-## Phase 3: `scheduled edit` + `scheduled delete` + scheduled transfers — [ ]
+## Phase 3: `scheduled edit` + `scheduled delete` + scheduled transfers — [x]
 
 `scheduled.Service.Update` (`internal/scheduled/scheduled_service.go:143`),
 `Delete` (`:178`), and `Transaction.SetTransfer`
 (`internal/scheduled/scheduled.go:225`) all exist.
 
-- [ ] `internal/cli/scheduled/edit.go`: `scheduled edit --id <uuid>` with
-      delta flags `--name`, `--amount`, `--payee`, `--category`,
+- [x] `internal/cli/scheduled/edit.go`: `scheduled edit --id <uuid>` with
+      delta flags `--amount`, `--payee`, `--category`,
       `--frequency`, `--next-date`, `--account`, `--memo`, `--auto-post`.
       Refuse multi-line (split/paycheck) templates with a pointer to the
       TUI (their line editing is Phase 4+ scope at the earliest).
-- [ ] `internal/cli/scheduled/delete.go`: `scheduled delete <id>`
-      (positional). Template only — posted history stays.
-- [ ] `internal/cli/scheduled/add.go`: add `--transfer-to <account>`
-      (mutually exclusive with `--payee`/`--category` per
-      `SetTransfer`'s single-line constraint) so scheduled transfers can
+      Implementation notes: the planned `--name` flag was dropped —
+      `scheduled.Transaction` has no name field; `--lead-days` stays
+      TUI-only (its add-path coupling to `--auto-post` made it
+      non-trivial and it wasn't in scope). `--amount ""` clears to a
+      variable-amount schedule (symmetric with the ""-clears
+      convention); `--payee` is refused on transfer schedules; a
+      transfer schedule's amount is normalized to `-abs()` matching the
+      TUI; `--account` refuses closed accounts (Service.Update doesn't
+      re-run Create's closed-account check) and self-transfer moves.
+- [x] `internal/cli/scheduled/delete.go`: `scheduled delete <id>`
+      (positional). Template only — posted history stays. Multi-line
+      templates are deletable (children cascade with the template).
+- [x] `internal/cli/scheduled/add.go`: add `--transfer-to <account>`
+      (mutually exclusive with `--payee`) so scheduled transfers can
       be created from the CLI.
-- [ ] `scheduled list`: add `--show-ids` for discovery (matching the
+      Deviation from the plan text: `--category` IS allowed alongside
+      `--transfer-to` — the domain (`SetTransfer` doc), the TUI
+      scheduled-transfer dialog, and the shipped transfer-categories
+      feature all support an optional non-system category label on a
+      transfer schedule; enforced non-system via
+      `transaction.ValidateTransferCategory` at the CLI layer (the
+      scheduled service does not enforce it for single-line transfers).
+- [x] `scheduled list`: add `--show-ids` for discovery (matching the
       other list commands).
-- [ ] Tests: edit each field, frequency validation reuses the existing
+- [x] Tests: edit each field, frequency validation reuses the existing
       parser, delete, transfer creation + posting produces a linked
-      pair, multi-line refusal.
-- [ ] Docs: `specs/cli.md` (edit/delete sections + add's new flag +
+      pair, multi-line refusal, closed-account refusal.
+- [x] Docs: `specs/cli.md` (edit/delete sections + add's new flag +
       list's `--show-ids`), README, `specs/scheduled-transactions.md`
       CLI notes.
 
@@ -238,3 +254,7 @@ statement.
 - Phase 2: `investment edit --status` — shipped 2026-07-21 (code +
   tests + docs in one commit; see the commit adding `--status` to
   `internal/cli/investment/edit.go`).
+- Phase 3: `scheduled edit`/`delete`, `scheduled add --transfer-to`,
+  `scheduled list --show-ids` — shipped 2026-07-21 (code + tests + docs
+  in one commit; see the commit introducing
+  `internal/cli/scheduled/edit.go`).

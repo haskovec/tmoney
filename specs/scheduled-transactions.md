@@ -152,8 +152,11 @@ sweep, a loan payment.
   transaction (whose transfer lines route to `investment_transactions`). See
   [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md).
 
-The CLI does not yet support creating transfer schedules (`scheduled add` is
-category-only); this is a TUI-only feature in v1.
+The CLI creates transfer schedules with `scheduled add --transfer-to <account>`
+(mutually exclusive with `--payee`; `--category` is allowed as the optional
+non-system label). `--amount` is entered as a positive magnitude and stored as
+the negative signed effect on the source account, matching the TUI dialog. See
+[`specs/cli.md`](cli.md).
 
 ## Multi-Line Schedules
 
@@ -285,18 +288,33 @@ category: "Income:Salary"
 
 The CLI uses Cobra noun-verb subcommands. Multi-line schedule creation
 and the paycheck wizard are TUI-only in v1 (see `specs/multiline-
-splits-and-paycheck.md`); single-line schedule creation, listing,
-posting, and skipping are supported on the CLI.
+splits-and-paycheck.md`); single-line schedule creation (including
+transfers), editing, deletion, listing, posting, and skipping are
+supported on the CLI. Editing a multi-line template is TUI-only —
+`scheduled edit` refuses it with a pointer to the TUI.
 
 ```bash
 # Add a scheduled transaction (fixed or variable amount; see README for flags)
 tmoney scheduled add --account Checking --frequency monthly \
     --amount -1500 --payee Landlord --day 1
 
-# List scheduled transactions (--due for only those past next_date)
+# Add a scheduled transfer (see the transfer note above)
+tmoney scheduled add --account Checking --frequency monthly \
+    --amount 250 --transfer-to Savings --category "Savings Goal"
+
+# List scheduled transactions (--due for only those past next_date;
+# --show-ids for the full UUIDs needed by edit/delete)
 tmoney scheduled list
 tmoney scheduled list --due
 tmoney scheduled list --account Checking
+tmoney scheduled list --show-ids
+
+# Edit a single-line schedule (only supplied flags take effect; "" clears
+# --amount/--payee/--category/--memo). Multi-line templates are TUI-only.
+tmoney scheduled edit --id <id> --amount -1600 --frequency weekly
+
+# Delete a schedule template by ID (posted history is kept)
+tmoney scheduled delete <id>
 
 # Post a due occurrence (works on multi-line schedules too: lines are
 # posted verbatim from the template — no per-line overrides via the

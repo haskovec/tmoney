@@ -10,8 +10,11 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// printScheduledTransactionsTable prints scheduled transactions in a formatted table.
-func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*scheduleddom.Transaction, dueOnly bool, accountNames map[types.ID]string, accountCurrencies map[types.ID]string, payeeNames map[types.ID]string, categoryNames map[types.ID]string) {
+// printScheduledTransactionsTable prints scheduled transactions in a formatted
+// table. When showIDs is true the ID column carries each row's full UUID (for
+// use with `scheduled edit`/`scheduled delete`); otherwise it is truncated to
+// the first 8 characters.
+func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*scheduleddom.Transaction, dueOnly, showIDs bool, accountNames map[types.ID]string, accountCurrencies map[types.ID]string, payeeNames map[types.ID]string, categoryNames map[types.ID]string) {
 	if dueOnly {
 		fmt.Fprintln(w, "DUE SCHEDULED TRANSACTIONS")
 		fmt.Fprintln(w, "==========================")
@@ -34,9 +37,9 @@ func printScheduledTransactionsTable(w io.Writer, scheduledTxns []*scheduleddom.
 	fmt.Fprintln(tw, "--------\t-------\t---------\t-----\t------\t---------\t----")
 
 	for _, st := range scheduledTxns {
-		// Truncate ID for display
+		// Show the full UUID with --show-ids; otherwise truncate for display.
 		idStr := st.ID.String()
-		if len(idStr) > 8 {
+		if !showIDs && len(idStr) > 8 {
 			idStr = idStr[:8]
 		}
 

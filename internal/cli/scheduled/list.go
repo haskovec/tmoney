@@ -15,6 +15,7 @@ type scheduledListOptions struct {
 	file    string
 	account string
 	due     bool
+	showIDs bool
 }
 
 // newScheduledListCmd registers `tmoney scheduled list`. The database
@@ -41,6 +42,7 @@ func newScheduledListCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&opts.account, "account", "", "Filter by account name")
 	cmd.Flags().BoolVar(&opts.due, "due", false, "Only show scheduled transactions due today or earlier")
+	cmd.Flags().BoolVar(&opts.showIDs, "show-ids", false, "Show each scheduled transaction's full UUID (for use with `scheduled edit`/`scheduled delete`)")
 	return cmd
 }
 
@@ -102,7 +104,7 @@ func runScheduledList(opts *scheduledListOptions, w io.Writer) error {
 		accountCurrencies[a.ID] = a.Currency
 	}
 
-	printScheduledTransactionsTable(w, scheduledTxns, opts.due, accountNames, accountCurrencies, payeeNames, categoryNames)
+	printScheduledTransactionsTable(w, scheduledTxns, opts.due, opts.showIDs, accountNames, accountCurrencies, payeeNames, categoryNames)
 
 	return nil
 }

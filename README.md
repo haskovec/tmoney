@@ -655,12 +655,31 @@ tmoney scheduled add --account Checking --frequency monthly --payee "Electric Co
 tmoney scheduled add --account Checking --frequency monthly --amount -150 \
   --payee Insurance --auto-post --lead-days 3
 
+# Scheduled transfer between accounts (mutually exclusive with --payee;
+# --category is allowed as an optional non-system label). Posting it
+# creates a linked transfer pair. Enter --amount as a positive magnitude.
+tmoney scheduled add --account Checking --frequency monthly --amount 250 \
+  --transfer-to Savings --category "Savings Goal"
+
 # List all scheduled transactions
 tmoney scheduled list
 tmoney scheduled list --account Checking
 
 # List only due scheduled transactions
 tmoney scheduled list --due
+
+# Show full UUIDs (needed for `scheduled edit`/`scheduled delete`)
+tmoney scheduled list --show-ids
+
+# Edit a scheduled transaction by UUID. Only supplied flags take effect;
+# "" clears --amount (variable)/--payee/--category/--memo. Multi-line
+# (split/paycheck) templates are edited in the TUI.
+tmoney scheduled edit --id <id> --amount -1600
+tmoney scheduled edit --id <id> --frequency weekly --auto-post
+tmoney scheduled edit --id <id> --account Savings --next-date 2024-06-15
+
+# Delete a scheduled transaction template by ID (posted history is kept)
+tmoney scheduled delete <id>
 
 # Post a scheduled transaction (create real transaction from it)
 tmoney scheduled post <id>
