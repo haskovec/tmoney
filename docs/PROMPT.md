@@ -1,6 +1,5 @@
 study README.md
-study specs/transfer-categories.md
-study specs/implementation-plan-transfer-categories.md and pick the most important thing to do
+study specs/implementation-plan-tui-cli-parity.md and pick the most important thing to do
 
 IMPORTANT:
 - author property based tests or unit tests (whichever is best)
@@ -11,4 +10,4 @@ IMPORTANT:
 - always run go fmt before committing files
 - lint the code with golangci-lint
 - when tests pass commit the changes and push
-- update the specs/implementation-plan-transfer-categories.md file marking the task as done
+- update the specs/implementation-plan-tui-cli-parity.md file marking the task as done
