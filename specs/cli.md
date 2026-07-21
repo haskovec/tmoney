@@ -385,6 +385,60 @@ Record a cash dividend received for a security. Cash is credited; share count is
 tmoney investment dividend --account Brokerage --ticker AAPL --amount 125.50
 ```
 
+### `investment edit`
+
+`Use: investment edit` · `Args: NoArgs`
+
+Edit an existing investment transaction identified by its UUID
+(`--txn-id`). Use [`investment list`](#investment-list) with
+`--show-ids` to find the ID. Only the supplied flags take effect
+(matching `transfer edit` / `security edit`); at least one editable
+flag is required. The account and security are not editable — delete
+and re-enter to move a transaction.
+
+Editing dispatches on the stored transaction type to the same
+`Update*` service methods the TUI edit dialogs use: share-bearing
+types (buy, sell, reinvest, fee-liquidation) reverse the old
+position/lot effect, delete the record, and re-create it with the
+merged values; cash types (dividend, deposit, withdrawal, fee,
+interest) are a simple delete + re-create. The re-created row gets a
+**new UUID** (printed on success). A cleared status is carried over;
+a reconciled transaction is refused (unreconcile first — reconciling
+is owned by `tmoney reconcile`). Transfer legs are refused with a
+pointer to [`transfer edit`](#transfer-edit) (cash) or the TUI (share
+transfers); `exchange` rows come from corporate actions and are not
+editable.
+
+Amount/price interplay for share-bearing types follows the add
+commands' smart compute: supplying only `--amount` (or neither)
+keeps the total and re-derives the price; supplying only
+`--price-per-share` re-derives the total from shares × price.
+
+**Required flags:** `--txn-id`
+
+**Editable flags (at least one required):**
+- `--date string` — New transaction date `YYYY-MM-DD`
+- `--shares string` — New share count (share-bearing types only)
+- `--amount string` — New total amount (positive magnitude, like the add commands)
+- `--price-per-share string` — New price per share (share-bearing types only)
+- `--commission string` — New commission (buy, sell, fee-liquidation only)
+- `--memo string` — New memo (explicit `--memo ""` clears it)
+
+**Optional flags:**
+- `--lot string` — Lot ID to allocate a sell/fee-liquidation against; required
+  when editing those types on a lot-tracked account
+
+```bash
+# Fix a fat-fingered share count, keeping the dollar amount (price re-derives)
+tmoney -f personal.tdb investment edit --txn-id <uuid> --shares 1.587
+
+# Move a buy to the right date and annotate it
+tmoney -f personal.tdb investment edit --txn-id <uuid> --date 2024-01-16 --memo "fixed date"
+
+# Reprice a sell on a lot-tracked account
+tmoney -f personal.tdb investment edit --txn-id <uuid> --price-per-share 160 --lot <lot-uuid>
+```
+
 ### `investment enable-lots`
 
 `Use: investment enable-lots` · `Args: NoArgs`
@@ -424,6 +478,43 @@ Record a fee in an investment account. Cash is debited; share counts are unchang
 
 ```bash
 tmoney investment fee --account Brokerage --amount 25 --memo "Annual fee"
+```
+
+### `investment list`
+
+`Use: investment list` · `Args: NoArgs`
+
+List the investment register for an account (the investment-side
+counterpart of [`transaction list`](#transaction-list), which only
+reads the regular-transaction table). Rows print newest-first: date,
+type, security, shares, price, amount, and status.
+
+**Required flags:** `--account`
+
+**Optional flags:**
+- `--ticker string` — Filter by security ticker
+- `--type string` — Filter by transaction type (`buy`, `sell`, `dividend`,
+  `reinvest_dividend`, `fee`, `fee_liquidation`, `deposit`, `withdrawal`,
+  `interest`, `transfer_cash`, `transfer_shares`, `exchange`)
+- `--from string` — Earliest date (`YYYY-MM-DD`)
+- `--to string` — Latest date (`YYYY-MM-DD`)
+- `--limit int` — Maximum number of rows (`0` = no limit)
+- `--show-ids` — Prefix each row with the transaction's UUID, for scripting
+  [`investment edit`](#investment-edit)
+
+```bash
+tmoney -f personal.tdb investment list --account Brokerage
+tmoney -f personal.tdb investment list --account Brokerage --ticker AAPL --from 2024-01-01
+tmoney -f personal.tdb investment list --account Brokerage --show-ids
+```
+
+```
+INVESTMENT TRANSACTIONS: Brokerage
+==================================
+Date        Type      Security  Shares  Price    Amount     Status
+2024-02-20  Dividend  AAPL                       $25.50     pending
+2024-01-15  Buy       AAPL      10      $150.00  -$1500.00  pending
+2024-01-01  Deposit                              $50000.00  pending
 ```
 
 ### `investment merge`

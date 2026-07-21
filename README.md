@@ -947,6 +947,41 @@ accounts, pass `--lot <id>` to allocate the sell against a specific
 open lot.
 
 ```bash
+# List the investment register (newest first)
+tmoney -f personal.tdb investment list --account Brokerage
+
+# Filter by security, type, or date range; print UUIDs for scripting
+tmoney -f personal.tdb investment list --account Brokerage --ticker AAPL \
+  --from 2024-01-01 --show-ids
+```
+
+`investment list` requires `--account` and prints the account's
+investment transactions — date, type, security, shares, price, amount,
+and status. Optional filters: `--ticker`, `--type`, `--from`/`--to`, and
+`--limit`. Pass `--show-ids` to prefix each row with the transaction's
+UUID for use with `investment edit`.
+
+```bash
+# Fix a fat-fingered share count, keeping the dollar amount (price re-derives)
+tmoney -f personal.tdb investment edit --txn-id <uuid> --shares 1.587
+
+# Move a buy to the right date and annotate it
+tmoney -f personal.tdb investment edit --txn-id <uuid> --date 2024-01-16 \
+  --memo "fixed date"
+```
+
+`investment edit` requires `--txn-id` (find it with `investment list
+--show-ids`) plus at least one editable flag: `--date`, `--shares`,
+`--amount`, `--price-per-share`, `--commission`, or `--memo`. Only the
+supplied flags take effect; the account and security are not editable.
+It routes through the same update paths as the TUI's edit dialogs, so
+positions and lots are reversed and re-applied — the re-created row gets
+a new UUID. Cleared status carries over; reconciled transactions and
+transfer legs are refused (use `tmoney reconcile` / `transfer edit`).
+For lot-tracked accounts, pass `--lot <id>` when editing a sell or
+fee-liquidation.
+
+```bash
 # Record a cash dividend (cash credited to the account, share count unchanged)
 tmoney -f personal.tdb investment dividend --account Brokerage --ticker AAPL \
   --amount 125.50
