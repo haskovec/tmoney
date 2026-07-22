@@ -166,7 +166,9 @@ func runTransactionSearch(opts *transactionSearchOptions, w io.Writer) error {
 		accountCurrencies[a.ID] = a.Currency
 	}
 
-	printSearchResults(w, opts.term, transactions, accountNames, accountCurrencies, payeeNames, categoryNames, opts.showIDs)
+	splitCounts := buildSplitCounts(svc, transactions)
+
+	printSearchResults(w, opts.term, transactions, accountNames, accountCurrencies, payeeNames, categoryNames, splitCounts, opts.showIDs)
 
 	return nil
 }

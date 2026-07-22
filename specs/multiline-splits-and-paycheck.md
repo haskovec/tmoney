@@ -39,6 +39,17 @@
 > posting template values verbatim. The affected claims below are annotated
 > with this exception; the paycheck wizard and generic multi-line
 > creation/edit remain TUI-only.
+>
+> **Update (2026-07-21):** one-off split transactions are now creatable
+> from the CLI via `tmoney transaction add --split "Category=amount[:memo]"`
+> (repeatable; a `Transfer:<Account>=amount` line is a transfer line). See
+> [`specs/cli.md`](cli.md#transaction-add). This covers a single dated
+> split transaction only. Editing or deleting individual split lines
+> remains **TUI-only**. There is **no** `scheduled add --split`: multi-line
+> *scheduled* templates are still created in the TUI (a paycheck-shaped
+> recurring schedule is expressible through the TUI paycheck wizard or the
+> generic multi-line scheduled dialog). `transaction list` / `transaction
+> search` mark a split parent with `[N splits]` in the Category column.
 
 ## Overview
 

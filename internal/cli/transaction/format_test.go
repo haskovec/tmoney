@@ -44,6 +44,7 @@ func TestPrintTransactionsTable_CategorizedTransferShowsCategory(t *testing.T) {
 		[]*transactiondom.Transaction{txn},
 		map[types.ID]string{},
 		map[types.ID]string{catID: "Credit Card"},
+		nil,
 		false,
 	)
 
@@ -65,6 +66,7 @@ func TestPrintTransactionsTable_UncategorizedTransferHidesCategory(t *testing.T)
 		[]*transactiondom.Transaction{txn},
 		map[types.ID]string{},
 		map[types.ID]string{catID: "Credit Card"},
+		nil,
 		false,
 	)
 
@@ -89,11 +91,52 @@ func TestPrintSearchResults_CategorizedTransferShowsCategory(t *testing.T) {
 		map[types.ID]string{checking.ID: "USD"},
 		map[types.ID]string{},
 		map[types.ID]string{catID: "Credit Card"},
+		nil,
 		false,
 	)
 
 	line := transferLine(t, buf.String())
 	if !strings.Contains(line, "Credit Card") {
 		t.Errorf("categorized transfer search row should show its category, got: %q", line)
+	}
+}
+
+func TestPrintTransactionsTable_SplitParentShowsMarker(t *testing.T) {
+	checking, _ := transferAccounts(t)
+
+	txn := transactiondom.NewTransaction(checking.ID, types.NewDate(2024, time.January, 15), types.MustNewMoney("-100.00"))
+
+	var buf bytes.Buffer
+	printTransactionsTable(&buf, checking,
+		[]*transactiondom.Transaction{txn},
+		map[types.ID]string{},
+		map[types.ID]string{},
+		map[types.ID]int{txn.ID: 3},
+		false,
+	)
+
+	if !strings.Contains(buf.String(), "[3 splits]") {
+		t.Errorf("split parent row should show the split marker, got:\n%s", buf.String())
+	}
+}
+
+func TestPrintSearchResults_SplitParentShowsMarker(t *testing.T) {
+	checking, _ := transferAccounts(t)
+
+	txn := transactiondom.NewTransaction(checking.ID, types.NewDate(2024, time.January, 15), types.MustNewMoney("-100.00"))
+
+	var buf bytes.Buffer
+	printSearchResults(&buf, "x",
+		[]*transactiondom.Transaction{txn},
+		map[types.ID]string{checking.ID: "Checking"},
+		map[types.ID]string{checking.ID: "USD"},
+		map[types.ID]string{},
+		map[types.ID]string{},
+		map[types.ID]int{txn.ID: 2},
+		false,
+	)
+
+	if !strings.Contains(buf.String(), "[2 splits]") {
+		t.Errorf("split parent search row should show the split marker, got:\n%s", buf.String())
 	}
 }

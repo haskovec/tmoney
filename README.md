@@ -597,6 +597,17 @@ tmoney transaction add --account Checking --amount -120.00 \
 tmoney transaction add --account Checking --amount 3500.00 \
   --payee "Employer Inc" --category "Income:Salary"
 
+# Add a split transaction: repeat --split "Category=amount[:memo]".
+# --category is refused with --split; --amount is optional (derived from
+# the line sum when omitted, or checked against it when given). A line
+# named Transfer:<Account>=amount moves money to another account. Split
+# lines are edited in the TUI; list/search mark the parent as [N splits].
+tmoney transaction add --account Checking --payee "Costco" \
+  --split "Food:Groceries=-80.00:weekly shop" \
+  --split "Household=-20.00:paper towels"
+tmoney transaction add --account Checking --amount -100.00 \
+  --split "Food=-60.00" --split "Transfer:Savings=-40.00"
+
 # Edit a transaction by UUID (find IDs with `transaction list --show-ids`).
 # Only supplied flags take effect; "" clears --payee/--category/--memo.
 # --status cleared|uncleared is the scriptable register `c` key.

@@ -133,7 +133,9 @@ func runTransactionList(opts *transactionListOptions, w io.Writer) error {
 		categoryNames[c.ID] = c.Name
 	}
 
-	printTransactionsTable(w, acct, transactions, payeeNames, categoryNames, opts.showIDs)
+	splitCounts := buildSplitCounts(svc, transactions)
+
+	printTransactionsTable(w, acct, transactions, payeeNames, categoryNames, splitCounts, opts.showIDs)
 
 	return nil
 }

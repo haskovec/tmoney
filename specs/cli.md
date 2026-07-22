@@ -1384,19 +1384,53 @@ Per-account transaction management.
 
 Create a new transaction. Use a negative amount for an expense, positive for income.
 
-**Required flags:** `--account`, `--amount`
+**Required flags:** `--account`; `--amount` (required unless `--split` is used)
 
 **Optional flags:**
 - `--payee string` — Payee name (auto-created if it doesn't exist)
-- `--category string` — Category (`Parent` or `Parent:Subcategory`)
+- `--category string` — Category (`Parent` or `Parent:Subcategory`).
+  Not allowed with `--split` — split lines carry the categories.
 - `--date string` — Transaction date `YYYY-MM-DD` (default today)
 - `--memo string` — Free-form memo
+- `--split string` — Repeatable. Adds a split line and makes the
+  transaction a split (multi-line) transaction. See below.
+
+**Splits (`--split`):** each `--split` flag is one line in the form
+`Category=amount[:memo]`:
+
+- The name runs up to the first `=`; the amount runs up to the first `:`;
+  anything after that first `:` is the line memo (it may itself contain
+  `:`). Whitespace around each part is trimmed.
+- Amounts are signed and parsed like `--amount`; a zero amount is rejected.
+- A line named `Transfer:<Account>=amount[:memo]` is a **transfer line**:
+  the amount moves to `<Account>` and a linked counterpart with the negated
+  amount is created there. Transferring to the transaction's own account is
+  refused.
+- Otherwise the name is a category, which must already exist.
+- When one or more `--split` flags are given, `--category` is refused and
+  `--amount` becomes optional: if given, the signed line sum must equal it
+  (a mismatch is an error showing both numbers); if omitted, the parent
+  amount is derived from the line sum.
+
+Split parents are shown with a `[N splits]` marker in the Category column of
+[`transaction list`](#transaction-list) and
+[`transaction search`](#transaction-search). Editing or deleting individual
+split lines is done in the TUI.
 
 ```bash
 tmoney transaction add --account Checking --amount -50.00 --payee "Coffee Shop"
 tmoney transaction add --account Checking --amount -120.00 \
   --payee "Electric Co" --category "Bills:Utilities" \
   --date 2024-03-15 --memo "March electric bill"
+
+# Split a grocery run across two categories (parent amount derived from lines):
+tmoney transaction add --account Checking --payee "Costco" \
+  --split "Food:Groceries=-80.00:weekly shop" \
+  --split "Household=-20.00:paper towels"
+
+# Split with a transfer line: $60 expense + $40 moved to Savings:
+tmoney transaction add --account Checking --amount -100.00 \
+  --split "Food=-60.00" --split "Transfer:Savings=-40.00"
 ```
 
 ### `transaction delete`
@@ -1487,7 +1521,9 @@ Date        Payee              Category            Amount      Balance
 
 A transfer leg shows `[Transfer]` in the Payee column; when the transfer carries a
 category (see [`transfer-categories.md`](transfer-categories.md)), that category is
-also shown in the Category column rather than being discarded.
+also shown in the Category column rather than being discarded. A split
+(multi-line) transaction shows `[N splits]` in the Category column, where `N`
+is the number of split lines.
 
 ### `transaction search`
 
@@ -1521,7 +1557,8 @@ Visa Card        2023-12-28  Amazon   Shopping:General  -$156.78
 ```
 
 As in `transaction list`, a categorized transfer keeps `[Transfer]` in the Payee
-column while its category is shown in the Category column.
+column while its category is shown in the Category column, and a split
+(multi-line) transaction shows `[N splits]` in the Category column.
 
 ### `transaction void`
 

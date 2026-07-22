@@ -166,8 +166,8 @@ func parseEditStatus(opts *transactionEditOptions) (transactiondom.Status, error
 
 // guardTransactionEditable rejects transactions this command must not
 // touch: transfer legs (owned by `transfer edit`/`transfer delete`),
-// split parents (TUI-only until split editing lands in the CLI), and
-// void or reconciled rows. verb is "edited" or "deleted" for the message.
+// split parents (split-line editing is TUI-only), and void or reconciled
+// rows. verb is "edited" or "deleted" for the message.
 func guardTransactionEditable(svc *app.Services, txn *transactiondom.Transaction, verb string) error {
 	if txn.IsTransfer() {
 		if verb == "deleted" {
@@ -180,7 +180,7 @@ func guardTransactionEditable(svc *app.Services, txn *transactiondom.Transaction
 		return fmt.Errorf("failed to check for splits: %w", err)
 	}
 	if len(splits) > 0 {
-		return fmt.Errorf("transaction is a split transaction (%d lines); split transactions can only be %s in the TUI", len(splits), verb)
+		return fmt.Errorf("transaction is a split transaction (%d lines); split lines can only be %s in the TUI", len(splits), verb)
 	}
 	if txn.IsVoid() {
 		return fmt.Errorf("transaction is void and cannot be %s", verb)

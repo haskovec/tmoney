@@ -141,32 +141,46 @@ is scriptable.
       list's `--show-ids`), README, `specs/scheduled-transactions.md`
       CLI notes.
 
-## Phase 4: Split transactions from the CLI — [ ]
+## Phase 4: Split transactions from the CLI — [x]
 
 New surface. Entry: repeated `--split "Category=amount[:memo]"` flags on
 `transaction add`; editing/deleting split lines stays TUI-only this
 phase (the `ReplaceSplits` calling convention is dialog-shaped), but the
 refusals from Phase 1 get pointers here.
 
-- [ ] `internal/cli/transaction/add.go`: repeated `--split` flag
+- [x] `internal/cli/transaction/add.go`: repeated `--split` flag
       (parse `Category=amount` with optional `:memo`; amounts must sum
       to `--amount`, or `--amount` may be omitted and derived). Transfer
       lines (`Transfer:<Account>=amount`) follow the split dialog's
-      semantics via the transfer-aware `ReplaceSplits` path.
-- [ ] `transaction list`/`search`: render split parents with their line
-      count (e.g. `[3 splits]`) so scripted output shows them.
-- [ ] Decision (record here before implementing): whether a
-      `transaction edit --split` replace-all-lines mode is worth it in
-      the same phase, or whether split editing stays TUI-only. Default:
-      TUI-only; revisit after real usage.
-- [ ] Paycheck wizard: **out of CLI scope** — it is a guided template
-      builder over the same split machinery. Once `--split` lands, a
-      paycheck schedule is expressible via `scheduled add --split …` if
-      Phase 3+4 are both done; note that in the docs instead of building
-      a wizard.
-- [ ] Tests: sum validation, derived total, transfer line, list
-      rendering, posting a scheduled split unchanged.
-- [ ] Docs: `specs/cli.md` `transaction add`, README,
+      semantics — creation goes through the transfer-aware
+      `CreateWithSplits` path (the create-time analog of
+      `ReplaceSplits`; both mint transfer counterparts identically).
+      Implementation notes: `--split` is a `StringArray` flag (memos may
+      contain commas); the name runs to the first `=`, the amount to the
+      first `:` after it, the rest is the line memo; line amounts are
+      signed and taken verbatim (TUI convention); `--category` is
+      refused alongside `--split`; transfer lines accept an optional
+      `:memo` and carry no category (matching the TUI's generic split
+      dialog for fresh rows).
+- [x] `transaction list`/`search`: render split parents with their line
+      count (e.g. `[3 splits]`) in the Category column so scripted
+      output shows them.
+- [x] Decision: split editing stays **TUI-only** — no
+      `transaction edit --split` replace-all-lines mode this phase; the
+      Phase 1 refusal wording was tidied to say so (revisit after real
+      usage).
+- [x] Paycheck wizard: **out of CLI scope** — it is a guided template
+      builder over the same split machinery. `scheduled add --split`
+      was NOT built (Phase 3 shipped without it), so multi-line
+      scheduled templates remain TUI-only; documented in
+      `specs/multiline-splits-and-paycheck.md` instead of building a
+      wizard.
+- [x] Tests: sum validation, derived total, transfer line (+ negated
+      counterpart), self-transfer/unknown-category/unknown-account/
+      malformed refusals, list + search rendering; scheduled split
+      posting is unchanged (`CreateWithSplits` untouched, existing
+      multi-line posting tests still pass).
+- [x] Docs: `specs/cli.md` `transaction add`, README,
       `specs/multiline-splits-and-paycheck.md` CLI notes.
 
 ## Phase 5: `category` noun — [ ]
@@ -261,3 +275,7 @@ statement.
   `scheduled list --show-ids` — shipped 2026-07-21 (code + tests + docs
   in one commit; see the commit introducing
   `internal/cli/scheduled/edit.go`).
+- Phase 4: `transaction add --split` (incl. transfer lines) +
+  `[N splits]` markers in `transaction list`/`search` — shipped
+  2026-07-21 (code + tests + docs in one commit; see the commit
+  introducing `internal/cli/transaction/add_split_test.go`).
