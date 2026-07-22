@@ -226,13 +226,13 @@ UUID, a `Parent:Child` path, an exact top-level name, or a bare name
 matching exactly one category anywhere — a bare name matching several
 is an explicit ambiguity error pointing at `Parent:Child` / `--id`.
 
-## Phase 6: `account edit` + `account delete` — [ ]
+## Phase 6: `account edit` + `account delete` — [x]
 
 `account.Service.Update` (`internal/account/account_service.go:50`) and
 `Delete` (`:58`) exist; the TUI account dialog and
 `MenuActionDeleteAccount` already use them.
 
-- [ ] `internal/cli/account/edit.go`: `account edit --name X` plus delta
+- [x] `internal/cli/account/edit.go`: `account edit --name X` plus delta
       flags `--new-name`, `--interest-rate`, `--opening-balance`,
       `--opening-date`, `--memo`… (match the TUI dialog's editable
       field set exactly — enumerate from `account_dialog.go` when
@@ -240,13 +240,39 @@ is an explicit ambiguity error pointing at `Parent:Child` / `--id`.
       where the dialog allows it; lot-tracking stays with
       `investment enable-lots`/`disable-lots` per the existing spec
       note at `specs/cli.md` account section).
-- [ ] `internal/cli/account/delete.go`: `account delete --name X`
-      with an explicit `--confirm` (it cascades transactions — mirror
-      whatever confirmation the TUI shows). Suggest `account close` in
-      the help text as the usually-better option.
-- [ ] Tests: rename reflected in `account list`/`GetByName`, guard
-      cases, delete with/without `--confirm`.
-- [ ] Docs: `specs/cli.md` (edit after close, delete after…
+      Implementation notes: the flag set is the dialog's field set —
+      `--new-name`, `--type`, `--currency`, `--opening-balance`,
+      `--opening-date`, `--institution`, `--account-number`, `--notes`
+      (named after the domain field / `account add`, not the plan's
+      `--memo`), `--credit-limit`, `--interest-rate`. The dialog allows
+      type changes freely, so `--type` does too; on a type change the
+      fields the new type doesn't show are cleared (credit limit outside
+      credit_card; interest rate outside checking/savings/credit_card/
+      investment/hsa/loan — the dialog's set, broader than `add`'s
+      loan-only gate; track-lots outside investment/hsa). Opening
+      balance/date are refused while the account is closed (the dialog's
+      "locked while closed" rule). `""` clears the five nullable flags.
+- [x] `internal/cli/account/delete.go`: `account delete <name>`
+      (positional, matching `close`/`reopen`) with an explicit
+      `--confirm`; without it, a dry-run preview prints (name, type,
+      balance, blockers) — the `price cleanup` pattern. `account close`
+      is suggested in the help text as the usually-better option.
+      Correction to the plan text: delete does NOT cascade — the repo
+      refuses when any transactions exist (`HasDependentsError`), and
+      the TUI shows no confirmation (its safety IS that refusal).
+      Follow-up hardening: the repo guard was extended to also refuse
+      when scheduled transactions reference the account (source,
+      single-line transfer destination, or transfer-line split target —
+      mirroring `scheduled.Service.ListReferencing`), since a delete
+      would orphan those templates; this protects the TUI path too
+      (Phase 5 delete-guard precedent). The CLI additionally pre-checks
+      via `ListReferencing` for a friendlier message with redirect/
+      remove hints.
+- [x] Tests: rename reflected in `account list`/`GetByName`, guard
+      cases, delete with/without `--confirm` (CLI: `edit_test.go` +
+      `delete_test.go`; domain: scheduled-reference guard subtests in
+      `account_service_test.go` covering all three reference roles).
+- [x] Docs: `specs/cli.md` (edit after close, delete after…
       alphabetical: add/balance/close/delete/edit/list/reopen/show),
       README, `specs/accounts.md` CLI notes.
 
@@ -302,3 +328,7 @@ statement.
   delete guard for split lines and scheduled transactions — shipped
   2026-07-21 (code + tests + docs in one commit; see the commit
   introducing `internal/cli/category/`).
+- Phase 6: `account edit` + `account delete` (dry-run/`--confirm`) +
+  repo-layer scheduled-reference delete guard — shipped 2026-07-21
+  (code + tests + docs in one commit; see the commit introducing
+  `internal/cli/account/edit.go`).

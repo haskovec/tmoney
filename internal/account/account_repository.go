@@ -310,7 +310,10 @@ func (r *Repository) Update(account *Account) error {
 }
 
 // Delete removes an account from the database.
-// This will fail if the account has any transactions.
+// This will fail if the account has any transactions, or if any scheduled
+// transaction references it (as its source account, its single-line transfer
+// destination, or a transfer-line split target) — deleting would orphan those
+// schedules.
 func (r *Repository) Delete(id types.ID) error {
 	// Check for transactions first
 	var count int
@@ -325,6 +328,30 @@ func (r *Repository) Delete(id types.ID) error {
 			Entity:     "account",
 			ID:         id.String(),
 			Dependents: "transactions",
+			Count:      count,
+		}
+	}
+
+	// Then for scheduled transactions referencing the account in any role
+	// (mirrors scheduled.Service.ListReferencing).
+	err = r.db.Conn().QueryRow(`
+		SELECT COUNT(*) FROM scheduled_transactions st
+		WHERE CAST(st.account_id AS VARCHAR) = ?
+		   OR CAST(st.transfer_account_id AS VARCHAR) = ?
+		   OR EXISTS (
+				SELECT 1 FROM scheduled_split_items si
+				WHERE si.scheduled_transaction_id = st.id
+				  AND CAST(si.transfer_account_id AS VARCHAR) = ?
+		   )
+	`, id.String(), id.String(), id.String()).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("failed to check scheduled transactions: %w", err)
+	}
+	if count > 0 {
+		return &dberrors.HasDependentsError{
+			Entity:     "account",
+			ID:         id.String(),
+			Dependents: "scheduled transactions",
 			Count:      count,
 		}
 	}

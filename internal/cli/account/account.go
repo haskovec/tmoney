@@ -1,5 +1,5 @@
-// Package account holds the `tmoney account` command group (add, list,
-// show, balance, close, reopen). It is one of the per-noun CLI subpackages
+// Package account holds the `tmoney account` command group (add, balance,
+// close, delete, edit, list, reopen, show). It is one of the per-noun CLI subpackages
 // carved out of internal/cli; it depends only on the shared cmdutil hub, the
 // account domain package (imported as accountdom to avoid the name collision),
 // and types — never on a sibling noun package or on internal/cli itself.
@@ -10,8 +10,8 @@ import (
 )
 
 // NewCmd returns the `account` parent command. Child verbs
-// (`add`, `list`, `show`, `balance`, `close`, `reopen`) are registered
-// as they migrate from the legacy `--flag` dispatcher.
+// (`add`, `balance`, `close`, `delete`, `edit`, `list`, `reopen`, `show`) are
+// registered as they migrate from the legacy `--flag` dispatcher.
 func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "account",
@@ -26,10 +26,12 @@ func NewCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 	cmd.AddCommand(newAccountAddCmd())
-	cmd.AddCommand(newAccountListCmd())
-	cmd.AddCommand(newAccountShowCmd())
 	cmd.AddCommand(newAccountBalanceCmd())
 	cmd.AddCommand(newAccountCloseCmd())
+	cmd.AddCommand(newAccountDeleteCmd())
+	cmd.AddCommand(newAccountEditCmd())
+	cmd.AddCommand(newAccountListCmd())
 	cmd.AddCommand(newAccountReopenCmd())
+	cmd.AddCommand(newAccountShowCmd())
 	return cmd
 }

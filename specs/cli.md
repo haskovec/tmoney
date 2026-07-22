@@ -98,6 +98,8 @@ Account created successfully!
   Notes:           Primary checking account
 ```
 
+---
+
 ### `account balance`
 
 `Use: account balance` · `Args: NoArgs`
@@ -118,61 +120,6 @@ Investment:        $45,678.90
 ------------------------
 Net Worth:         $61,678.90
 ```
-
-### `account list`
-
-`Use: account list` · `Args: NoArgs`
-
-List accounts. By default only active accounts are shown.
-
-**Optional flags:**
-- `--include-closed` — Include closed accounts in the listing. Closed rows are
-  annotated with their close date (e.g. `Old Savings (closed 2024-03-14)`, or
-  `(closed)` when the date is unknown).
-
-```bash
-tmoney account list
-tmoney account list --include-closed
-```
-
-```
-ACCOUNTS
-========
-Name                          Type          Balance      Currency
-Chase Checking                checking      $5,234.56    USD
-Savings                       savings       $12,000.00   USD
-Visa Card                     credit_card   -$1,234.56   USD
-Investment                    investment    $45,678.90   USD
-Old Savings (closed 2024-03-14)  savings    $0.00        USD
-```
-
-### `account show`
-
-`Use: account show <name>` · `Args: ExactArgs(1)`
-
-Show full details and current balance for the named account.
-
-```bash
-tmoney account show "Chase Checking"
-```
-
-```
-ACCOUNT: Chase Checking
-=======================
-Type:            checking
-Currency:        USD
-Institution:     Chase Bank
-Account Number:  ****1234
-Opening Date:    2020-01-15
-Opening Balance: $1,000.00
-Current Balance: $5,234.56
-Cleared Balance: $5,134.56
-Status:          Active
-```
-
-For a closed account the `Status` line shows the close date, e.g.
-`Status:          Closed (2024-03-14)`. An account closed before the close-date
-column existed shows `Status:          Closed (date unknown)`.
 
 ---
 
@@ -201,6 +148,104 @@ transactions still reference the account, the command prints a warning and
 proceeds (those schedules are skipped on auto-post and refused on manual post
 until redirected or deleted).
 
+---
+
+### `account delete`
+
+`Use: account delete <name>` · `Args: ExactArgs(1)`
+
+Permanently delete an account. Prints a dry-run preview by default (name, type,
+current balance, and any scheduled-reference warning); pass `--confirm` to
+actually delete.
+
+**Flags**
+
+- `--confirm` — Actually delete the account (default: dry-run preview only)
+
+```bash
+tmoney account delete "Old Savings"
+tmoney account delete "Old Savings" --confirm
+```
+
+Delete only works on an account with **no transactions** and **no scheduled
+transactions** referencing it. An account with transactions is refused with a
+hint to use `account close` instead (which freezes the account while preserving
+its history); an account referenced by a scheduled transaction is refused with a
+hint to redirect (`scheduled edit --account`) or remove (`scheduled delete`) the
+schedule first. For most accounts with history, **`account close` is the better
+option**.
+
+---
+
+### `account edit`
+
+`Use: account edit` · `Args: NoArgs`
+
+Edit an existing account selected by `--name`. Only the supplied flags take
+effect (delta semantics); at least one editable flag is required.
+
+**Required flags:** `--name`
+
+**Optional flags:**
+- `--new-name string` — Rename the account (cannot be empty; a name collision is a hard error)
+- `--type string` — New account type
+- `--currency string` — New currency code (cannot be empty)
+- `--opening-balance string` — New opening balance
+- `--opening-date string` — New opening date `YYYY-MM-DD`
+- `--institution string` — Institution name (pass an empty string to clear)
+- `--account-number string` — Account number (pass an empty string to clear)
+- `--notes string` — Free-form notes (pass an empty string to clear)
+- `--credit-limit string` — Credit limit, `credit_card` only (pass an empty string to clear)
+- `--interest-rate string` — Interest rate / APR (pass an empty string to clear)
+
+```bash
+tmoney account edit --name "Chase Checking" --new-name "Main Checking"
+tmoney account edit --name "Chase Checking" --institution "Acme Bank" --notes ""
+```
+
+Passing an empty string to `--institution`, `--account-number`, `--notes`,
+`--credit-limit`, or `--interest-rate` **clears** that field. Opening balance and
+opening date are **locked while the account is closed** — reopen it first
+(`account reopen`); metadata edits are still allowed on a closed account.
+Changing `--type` clears fields the new type doesn't support: credit limit
+outside `credit_card`; interest rate outside
+`checking`/`savings`/`credit_card`/`investment`/`hsa`/`loan`; and lot tracking
+outside `investment`/`hsa`. Supplying `--credit-limit` or `--interest-rate` with
+a value for a final type that doesn't support it is a hard error. **Lot tracking
+is not editable here** — use `investment enable-lots` / `disable-lots` (which
+also backfill the historical lots).
+
+---
+
+### `account list`
+
+`Use: account list` · `Args: NoArgs`
+
+List accounts. By default only active accounts are shown.
+
+**Optional flags:**
+- `--include-closed` — Include closed accounts in the listing. Closed rows are
+  annotated with their close date (e.g. `Old Savings (closed 2024-03-14)`, or
+  `(closed)` when the date is unknown).
+
+```bash
+tmoney account list
+tmoney account list --include-closed
+```
+
+```
+ACCOUNTS
+========
+Name                          Type          Balance      Currency
+Chase Checking                checking      $5,234.56    USD
+Savings                       savings       $12,000.00   USD
+Visa Card                     credit_card   -$1,234.56   USD
+Investment                    investment    $45,678.90   USD
+Old Savings (closed 2024-03-14)  savings    $0.00        USD
+```
+
+---
+
 ### `account reopen`
 
 `Use: account reopen <name>` · `Args: ExactArgs(1)`
@@ -211,6 +256,36 @@ again.
 ```bash
 tmoney account reopen "Old Savings"
 ```
+
+---
+
+### `account show`
+
+`Use: account show <name>` · `Args: ExactArgs(1)`
+
+Show full details and current balance for the named account.
+
+```bash
+tmoney account show "Chase Checking"
+```
+
+```
+ACCOUNT: Chase Checking
+=======================
+Type:            checking
+Currency:        USD
+Institution:     Chase Bank
+Account Number:  ****1234
+Opening Date:    2020-01-15
+Opening Balance: $1,000.00
+Current Balance: $5,234.56
+Cleared Balance: $5,134.56
+Status:          Active
+```
+
+For a closed account the `Status` line shows the close date, e.g.
+`Status:          Closed (2024-03-14)`. An account closed before the close-date
+column existed shows `Status:          Closed (date unknown)`.
 
 ---
 

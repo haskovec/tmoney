@@ -129,6 +129,13 @@ of a frozen account off zero. Reopen the account to change those.
 
 Changing `opening_balance` or `opening_date` affects the calculated current balance.
 
+Available in the TUI (Edit Account dialog) and on the CLI via `tmoney account
+edit --name <name>` with per-field delta flags — only the supplied flags take
+effect, and passing an empty string to a nullable field clears it. Changing the
+type clears fields the new type doesn't support (credit limit, interest rate,
+lot tracking), matching the dialog. Lot tracking is **not** editable here; use
+`investment enable-lots` / `disable-lots`.
+
 ### Close Account
 
 Closing sets `active = false` and records `closed_date`. The close date defaults
@@ -170,7 +177,11 @@ Available via the Accounts menu (**Reopen Account**) in the TUI and
 
 ### Delete Account
 
-Only allowed if account has no transactions. Otherwise, close it instead.
+Only allowed if account has no transactions **and** no scheduled transactions
+reference it (deleting would orphan those schedules). Otherwise, close it
+instead. Available in the TUI (Accounts menu) and on the CLI via `tmoney account
+delete <name>`, which prints a dry-run preview by default and requires
+`--confirm` to actually delete.
 
 ## v1.5 Features (Not in v1)
 

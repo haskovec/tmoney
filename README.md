@@ -554,6 +554,16 @@ tmoney account close "Old Savings" --date 2024-03-14
 
 # Reopen a closed account (clears the close date)
 tmoney account reopen "Old Savings"
+
+# Edit an account (only the supplied flags change; empty string clears a
+# nullable field). Opening balance/date are locked while the account is closed.
+tmoney account edit --name "Checking" --new-name "Main Checking"
+tmoney account edit --name "Checking" --institution "Acme Bank" --notes ""
+
+# Delete an account (dry-run preview by default; --confirm to delete). Only
+# works with no transactions and no scheduled references — otherwise close it.
+tmoney account delete "Old Savings"
+tmoney account delete "Old Savings" --confirm
 ```
 
 Closing an account **freezes** it: no new transactions, edits, deletes, status

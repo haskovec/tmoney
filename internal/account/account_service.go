@@ -54,7 +54,8 @@ func (s *Service) Update(account *Account) error {
 	return s.repo.Update(account)
 }
 
-// Delete removes an account. The account must have no transactions.
+// Delete removes an account. The account must have no transactions and no
+// scheduled transactions referencing it.
 func (s *Service) Delete(id types.ID) error {
 	return s.repo.Delete(id)
 }

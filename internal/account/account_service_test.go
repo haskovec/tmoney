@@ -1,9 +1,11 @@
 package account
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -288,6 +290,96 @@ func TestService_Delete(t *testing.T) {
 		if err == nil {
 			t.Error("GetByID() expected error after delete")
 		}
+	})
+
+	// The scheduled-reference guard mirrors scheduled.Service.ListReferencing:
+	// source account, single-line transfer destination, and transfer-line split
+	// target all block a delete. Rows are seeded with raw SQL because the
+	// scheduled package cannot be imported from an in-package account test.
+	seedSchedule := func(t *testing.T, database *db.DB, accountID, transferAccountID string, withSplitTo string) {
+		t.Helper()
+		var transfer any
+		if transferAccountID != "" {
+			transfer = transferAccountID
+		}
+		row := database.Conn().QueryRow(`
+			INSERT INTO scheduled_transactions
+				(account_id, amount, frequency, start_date, next_date, transfer_account_id)
+			VALUES (?, -10, 'monthly', DATE '2024-01-01', DATE '2024-01-01', ?)
+			RETURNING CAST(id AS VARCHAR)
+		`, accountID, transfer)
+		var stID string
+		if err := row.Scan(&stID); err != nil {
+			t.Fatalf("failed to seed scheduled transaction: %v", err)
+		}
+		if withSplitTo != "" {
+			_, err := database.Conn().Exec(`
+				INSERT INTO scheduled_split_items
+					(scheduled_transaction_id, transfer_account_id, amount)
+				VALUES (?, ?, -10)
+			`, stID, withSplitTo)
+			if err != nil {
+				t.Fatalf("failed to seed scheduled split item: %v", err)
+			}
+		}
+	}
+
+	assertScheduledDependents := func(t *testing.T, svc *Service, id types.ID) {
+		t.Helper()
+		err := svc.Delete(id)
+		var depErr *dberrors.HasDependentsError
+		if !errors.As(err, &depErr) {
+			t.Fatalf("Delete() error = %v, want HasDependentsError", err)
+		}
+		if depErr.Dependents != "scheduled transactions" || depErr.Count != 1 {
+			t.Errorf("Delete() dependents = %q count = %d, want 1 scheduled transactions",
+				depErr.Dependents, depErr.Count)
+		}
+	}
+
+	t.Run("refuses delete when a schedule uses the account as source", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database)
+
+		account := NewAccount("Sched Source", TypeChecking, "USD", types.ZeroMoney, types.Today())
+		if err := svc.Create(account); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		seedSchedule(t, database, account.ID.String(), "", "")
+		assertScheduledDependents(t, svc, account.ID)
+	})
+
+	t.Run("refuses delete when a schedule transfers into the account", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database)
+
+		source := NewAccount("Sched From", TypeChecking, "USD", types.ZeroMoney, types.Today())
+		dest := NewAccount("Sched To", TypeSavings, "USD", types.ZeroMoney, types.Today())
+		for _, a := range []*Account{source, dest} {
+			if err := svc.Create(a); err != nil {
+				t.Fatalf("Create() error = %v", err)
+			}
+		}
+		seedSchedule(t, database, source.ID.String(), dest.ID.String(), "")
+		assertScheduledDependents(t, svc, dest.ID)
+	})
+
+	t.Run("refuses delete when a schedule split line transfers into the account", func(t *testing.T) {
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database)
+
+		source := NewAccount("Split From", TypeChecking, "USD", types.ZeroMoney, types.Today())
+		dest := NewAccount("Split To", TypeSavings, "USD", types.ZeroMoney, types.Today())
+		for _, a := range []*Account{source, dest} {
+			if err := svc.Create(a); err != nil {
+				t.Fatalf("Create() error = %v", err)
+			}
+		}
+		seedSchedule(t, database, source.ID.String(), "", dest.ID.String())
+		assertScheduledDependents(t, svc, dest.ID)
 	})
 }
 
