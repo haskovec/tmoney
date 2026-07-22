@@ -93,7 +93,7 @@ func New(t *testing.T) *db.DB {
 	if err != nil {
 		t.Fatalf("dbtest: open test db: %v", err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	return database
 }
 
