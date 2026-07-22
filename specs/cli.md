@@ -9,6 +9,15 @@ TMoney supports two interface modes:
 
 This document specifies the CLI mode. The migration from the original flag-style CLI to Cobra noun-verb subcommands is complete; see [`cli-router.md`](cli-router.md) for the router's design and historical migration plan.
 
+## Deliberately TUI-only
+
+A few interactive features have no CLI counterpart by design — parity audits should not re-flag them:
+
+- **Undo/redo** — session-based TUI safety net; CLI operations are final and do not participate in the undo stack ([`undo-redo.md`](undo-redo.md)).
+- **Price chart** — a passive visual aid on the TUI Prices view; `price list` is the CLI's view of the same data ([`prices-chart.md`](prices-chart.md)).
+- **Paycheck wizard** — a guided template builder over the split machinery; multi-line scheduled templates remain TUI-only ([`multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md)).
+- **Split-line editing** — `transaction add --split` creates split transactions, but editing or deleting individual split lines stays in the TUI split dialog (revisit after real usage).
+
 ## Invocation
 
 ```bash

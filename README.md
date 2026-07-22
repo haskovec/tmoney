@@ -481,6 +481,8 @@ click as you'd expect.
 
 The CLI provides full access to all features for scripting and automation.
 
+A few interactive features are deliberately TUI-only: undo/redo (CLI operations are final), the price history chart (`price list` shows the same data), the paycheck wizard, and editing individual split lines (creation via `transaction add --split` is supported).
+
 ### Global Options
 
 ```

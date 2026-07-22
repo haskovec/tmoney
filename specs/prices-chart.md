@@ -6,6 +6,8 @@ The prices list view (`5`) currently shows a table of every non-hidden security 
 
 The chart is a passive read-only visual aid for browsing — it has no focus, no cursor, and no interactive controls. Moving the cursor on the list re-renders the chart for the new ticker.
 
+The chart is deliberately TUI-only — there is no CLI counterpart; `price list` is the CLI's view of the same data.
+
 ## Goals
 
 - Give the user a visual sense of a security's price trajectory while scanning the prices list.

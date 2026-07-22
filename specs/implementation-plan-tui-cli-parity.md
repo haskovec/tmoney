@@ -304,19 +304,20 @@ for the existing mutating commands.
 - [x] Docs: `specs/cli.md` (alphabetical: actions right after the
       `investment` intro, before buy), README.
 
-## Phase 8: Document the by-design exclusions — [ ]
+## Phase 8: Document the by-design exclusions — [x]
 
 Docs-only. Undo/redo is already spec'd as TUI-only
 (`specs/undo-redo.md`: "No CLI undo"); the price chart has no such
 statement.
 
-- [ ] `specs/cli.md`: short "Deliberately TUI-only" note near the top
+- [x] `specs/cli.md`: short "Deliberately TUI-only" note near the top
       (undo/redo, price chart, paycheck wizard, split-line editing —
-      whichever of the Phase 4 decisions stand) so future parity audits
+      all four Phase 4 decisions stood) so future parity audits
       don't re-flag them.
-- [ ] `specs/prices-chart.md`: one line stating the chart is TUI-only;
+- [x] `specs/prices-chart.md`: one line stating the chart is TUI-only;
       `price list` is the CLI's view of the same data.
-- [ ] README: mirror the note where the TUI/CLI split is introduced.
+- [x] README: mirror the note at the top of the CLI Reference section
+      (where the CLI's "full access" claim is made).
 
 ## Done
 
@@ -348,3 +349,7 @@ statement.
   listing with `--ticker`/`--isin`/`--name`, `--type`, `--show-ids`) —
   shipped 2026-07-21 (code + tests + docs in one commit; see the
   commit introducing `internal/cli/investment/actions.go`).
+- Phase 8: by-design TUI-only exclusions documented (undo/redo, price
+  chart, paycheck wizard, split-line editing) in `specs/cli.md`,
+  `specs/prices-chart.md`, and the README — shipped 2026-07-22
+  (docs-only commit). Plan complete.
