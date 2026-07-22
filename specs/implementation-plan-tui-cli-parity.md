@@ -276,20 +276,32 @@ is an explicit ambiguity error pointing at `Parent:Child` / `--id`.
       alphabetical: add/balance/close/delete/edit/list/reopen/show),
       README, `specs/accounts.md` CLI notes.
 
-## Phase 7: `investment actions` (corporate-action history) — [ ]
+## Phase 7: `investment actions` (corporate-action history) — [x]
 
 Read-only listing of recorded splits/mergers/spin-offs — the CLI
 counterpart of the TUI's corporate-action history view
 (`internal/tui/corporate_action_history.go`), and the discovery surface
 for the existing mutating commands.
 
-- [ ] `internal/cli/investment/actions.go`: `investment actions`
+- [x] `internal/cli/investment/actions.go`: `investment actions`
       `[--ticker X] [--type split|merger|spin_off] [--show-ids]`,
       newest-first, columns matching the TUI view (date, type,
       securities, ratio/terms).
-- [ ] Register in `internal/cli/investment/investment.go`.
-- [ ] Tests: seeded split + merger listed, filters, empty case.
-- [ ] Docs: `specs/cli.md` (alphabetical: actions right after the
+      Implementation notes: the security selector follows the house
+      `--ticker`/`--isin`/`--name` convention (at most one, via
+      `cmdutil.AddSecuritySelectorFlags` + `Security.Resolve`) so
+      tickerless securities work; it routes through
+      `CorporateAction.ListBySecurity`, which matches the security as
+      subject *or* target. `--type` also accepts `reverse_split` (the
+      fourth domain type the plan text omitted); filtering is
+      client-side. Columns are `Date · Ticker · Type · Details`, with
+      Details mirroring the TUI's `formatCorporateActionDetails`
+      strings verbatim.
+- [x] Register in `internal/cli/investment/investment.go`.
+- [x] Tests: seeded split + merger listed newest-first, ticker filter
+      (incl. merger-target match), type filter + invalid-type error,
+      `--show-ids`, empty case (`actions_test.go`).
+- [x] Docs: `specs/cli.md` (alphabetical: actions right after the
       `investment` intro, before buy), README.
 
 ## Phase 8: Document the by-design exclusions — [ ]
@@ -332,3 +344,7 @@ statement.
   repo-layer scheduled-reference delete guard — shipped 2026-07-21
   (code + tests + docs in one commit; see the commit introducing
   `internal/cli/account/edit.go`).
+- Phase 7: `investment actions` (read-only corporate-action history
+  listing with `--ticker`/`--isin`/`--name`, `--type`, `--show-ids`) —
+  shipped 2026-07-21 (code + tests + docs in one commit; see the
+  commit introducing `internal/cli/investment/actions.go`).

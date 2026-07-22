@@ -974,6 +974,23 @@ The command prints a per-ticker table followed by a summary like `4 updated, 1 u
 ### Investment
 
 ```bash
+# List recorded corporate actions (splits, mergers, spin-offs), newest first
+tmoney -f personal.tdb investment actions
+
+# Filter to one security (matched as subject or target) or one action type
+tmoney -f personal.tdb investment actions --ticker AAPL
+tmoney -f personal.tdb investment actions --type merger --show-ids
+```
+
+`investment actions` is a read-only view of the recorded corporate
+actions — the CLI counterpart of the TUI's corporate-action history.
+It takes no required flags; list everything, or narrow with `--ticker`
+/ `--isin` / `--name` (matched as the action's subject *or* target) and
+`--type` (`split`, `reverse_split`, `merger`, `spin_off`). Pass
+`--show-ids` to print each action's UUID. Record actions with
+`investment split`, `investment merge`, and `investment spin-off`.
+
+```bash
 # Buy shares with a total amount (cash debited from the account)
 tmoney -f personal.tdb investment buy --account Brokerage --ticker AAPL \
   --shares 10 --amount 1500

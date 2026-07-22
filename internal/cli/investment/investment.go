@@ -30,6 +30,7 @@ func NewCmd() *cobra.Command {
 	cmd.AddCommand(newInvestmentSellCmd())
 	cmd.AddCommand(newInvestmentEditCmd())
 	cmd.AddCommand(newInvestmentListCmd())
+	cmd.AddCommand(newInvestmentActionsCmd())
 	cmd.AddCommand(newInvestmentDividendCmd())
 	cmd.AddCommand(newInvestmentReinvestCmd())
 	cmd.AddCommand(newInvestmentFeeCmd())

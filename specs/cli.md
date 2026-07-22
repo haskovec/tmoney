@@ -553,6 +553,48 @@ Investment-account operations: trades, cash flow, corporate actions, and portfol
 > The existing `investment transfer` (no `-cash` suffix) moves
 > **shares** between two investment accounts, not cash.
 
+### `investment actions`
+
+`Use: investment actions` · `Args: NoArgs`
+
+List recorded corporate actions (stock splits, reverse splits, mergers,
+and spin-offs), newest first — the CLI counterpart of the TUI's
+corporate-action history view. This is a **read-only** view; record
+actions with [`investment split`](#investment-split),
+[`investment merge`](#investment-merge), and
+[`investment spin-off`](#investment-spin-off).
+
+**Required flags:** none
+
+**Optional flags:**
+- `--ticker string` — Filter to one security by ticker (or use `--isin` /
+  `--name`). Matches the security as the action's subject *or* target
+  (e.g. a merger's target security).
+- `--isin string` — Identify the security by ISIN instead of ticker
+- `--name string` — Identify the security by exact name instead of ticker
+- `--type string` — Filter by action type (`split`, `reverse_split`,
+  `merger`, `spin_off`)
+- `--show-ids` — Prefix each row with the action's UUID
+
+The `Details` column summarizes each action's parameters: `Ratio N:D` for
+splits, `→ TARGET, ratio R` (plus `, cash $X/sh` when there is cash
+consideration) for mergers, and `→ TARGET, ratio R, parent P%` for
+spin-offs.
+
+```bash
+tmoney -f personal.tdb investment actions
+tmoney -f personal.tdb investment actions --ticker AAPL
+tmoney -f personal.tdb investment actions --type merger --show-ids
+```
+
+```
+CORPORATE ACTIONS
+=================
+Date        Ticker  Type         Details
+2024-06-01  AAPL    Merger       → GOOG, ratio 0.50
+2024-01-15  AAPL    Stock Split  Ratio 4:1
+```
+
 ### `investment buy`
 
 `Use: investment buy` · `Args: NoArgs`
