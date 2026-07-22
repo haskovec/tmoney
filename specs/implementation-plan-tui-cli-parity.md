@@ -127,8 +127,11 @@ is scriptable.
       scheduled-transfer dialog, and the shipped transfer-categories
       feature all support an optional non-system category label on a
       transfer schedule; enforced non-system via
-      `transaction.ValidateTransferCategory` at the CLI layer (the
-      scheduled service does not enforce it for single-line transfers).
+      `transaction.ValidateTransferCategory` at the CLI layer, and (as a
+      follow-up) in `scheduled.Service.Create/Update` for
+      defense-in-depth — the service check mirrors
+      `transaction.Service.validateTransferCategory`, making
+      `Transaction.Validate`'s "service layer" deferral comment true.
 - [x] `scheduled list`: add `--show-ids` for discovery (matching the
       other list commands).
 - [x] Tests: edit each field, frequency validation reuses the existing

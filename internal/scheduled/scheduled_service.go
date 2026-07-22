@@ -1,12 +1,15 @@
 package scheduled
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -110,6 +113,9 @@ func (s *Service) Create(st *Transaction) error {
 	if err := s.validateScheduledSplits(st); err != nil {
 		return err
 	}
+	if err := s.validateTransferCategory(st); err != nil {
+		return err
+	}
 	if err := s.ensureNoClosedAccounts(st); err != nil {
 		return err
 	}
@@ -145,6 +151,9 @@ func (s *Service) Update(st *Transaction) error {
 		return err
 	}
 	if err := s.validateScheduledSplits(st); err != nil {
+		return err
+	}
+	if err := s.validateTransferCategory(st); err != nil {
 		return err
 	}
 	// NextDate is the date of the next pending occurrence; it must never
@@ -935,6 +944,33 @@ func (s *Service) validateScheduledTransaction(st *Transaction) error {
 		return &types.ServiceValidationError{Errors: errors}
 	}
 	return nil
+}
+
+// validateTransferCategory checks that a single-line transfer schedule's
+// optional category label exists and is non-system (Transaction.Validate
+// defers this rule to the service layer). Mirrors
+// transaction.Service.validateTransferCategory — a raw lookup against the
+// categories table via the service's db handle, delegating the rule itself to
+// the shared transaction.ValidateTransferCategory guard so there is a single
+// source of truth. Nil-tolerant for fixtures constructed without a db handle;
+// production always wires one.
+func (s *Service) validateTransferCategory(st *Transaction) error {
+	if !st.IsTransfer() || !st.HasCategory() || s.db == nil {
+		return nil
+	}
+	var name string
+	var isSystem bool
+	err := s.db.Conn().QueryRow(
+		`SELECT name, system_category FROM categories WHERE CAST(id AS VARCHAR) = ?`,
+		st.CategoryID.ID.String(),
+	).Scan(&name, &isSystem)
+	if errors.Is(err, sql.ErrNoRows) {
+		return &dberrors.NotFoundError{Entity: "category", ID: st.CategoryID.ID.String()}
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check transfer category: %w", err)
+	}
+	return transaction.ValidateTransferCategory(&category.Category{Name: name, IsSystem: isSystem})
 }
 
 // validateScheduledSplits validates a scheduled transaction's child splits

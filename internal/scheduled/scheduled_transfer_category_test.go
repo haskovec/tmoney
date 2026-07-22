@@ -1,9 +1,11 @@
 package scheduled
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -196,5 +198,72 @@ func TestService_BuildMultiLineTransaction_CarriesTransferLineCategory(t *testin
 	}
 	if !paired[0].HasCategory() || paired[0].CategoryID.ID != principal.ID {
 		t.Errorf("counterpart category = %+v, want %s", paired[0].CategoryID, principal.ID)
+	}
+}
+
+// systemCategory creates and persists a system category (like Transfer /
+// Value Adjustment) so tests can assert the non-system transfer-label guard.
+func (e *transferTestEnv) systemCategory(t *testing.T, name string) *category.Category {
+	t.Helper()
+	cat := category.NewSystemCategory(name, category.TypeExpense)
+	if err := e.categoryRepo.Create(cat); err != nil {
+		t.Fatalf("create system category %q: %v", name, err)
+	}
+	return cat
+}
+
+// TestService_Create_TransferSystemCategoryRejected verifies the service layer
+// refuses a system category as a transfer schedule's label (defense-in-depth
+// behind the CLI/TUI guards; Transaction.Validate defers this rule here).
+func TestService_Create_TransferSystemCategoryRejected(t *testing.T) {
+	env := newTransferTestEnv(t)
+	checking := env.account(t, "Checking", account.TypeChecking)
+	savings := env.account(t, "Savings", account.TypeSavings)
+	sys := env.systemCategory(t, "Transfer")
+
+	st := newTransferSchedule(checking.ID, savings.ID, "100.00")
+	st.SetCategory(sys.ID)
+	err := env.svc.Create(st)
+	if err == nil {
+		t.Fatal("Create with a system transfer category should be rejected")
+	}
+	var sysErr *transaction.SystemCategoryTransferError
+	if !errors.As(err, &sysErr) {
+		t.Errorf("error = %v, want *transaction.SystemCategoryTransferError", err)
+	}
+}
+
+// TestService_Update_TransferSystemCategoryRejected verifies the same guard on
+// the update path: a valid transfer schedule cannot be relabeled with a system
+// category, and the persisted template keeps its original label.
+func TestService_Update_TransferSystemCategoryRejected(t *testing.T) {
+	env := newTransferTestEnv(t)
+	checking := env.account(t, "Checking", account.TypeChecking)
+	savings := env.account(t, "Savings", account.TypeSavings)
+	sweep := env.category(t, "Savings Sweep")
+	sys := env.systemCategory(t, "Transfer")
+
+	st := newTransferSchedule(checking.ID, savings.ID, "100.00")
+	st.SetCategory(sweep.ID)
+	if err := env.svc.Create(st); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	st.SetCategory(sys.ID)
+	err := env.svc.Update(st)
+	if err == nil {
+		t.Fatal("Update to a system transfer category should be rejected")
+	}
+	var sysErr *transaction.SystemCategoryTransferError
+	if !errors.As(err, &sysErr) {
+		t.Errorf("error = %v, want *transaction.SystemCategoryTransferError", err)
+	}
+
+	reloaded, err := env.svc.GetByID(st.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if !reloaded.HasCategory() || reloaded.CategoryID.ID != sweep.ID {
+		t.Errorf("template category = %+v, want unchanged %s", reloaded.CategoryID, sweep.ID)
 	}
 }
