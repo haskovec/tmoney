@@ -119,34 +119,58 @@ The application ships with default categories. Users can modify these.
 1. `name` must be unique within the same parent (or among top-level if no parent)
 2. `name` cannot be empty
 3. `type` must match parent's type (for subcategories)
-4. Cannot delete category with existing transactions (reassign first)
+4. Cannot delete a category still referenced by transactions, split lines, or scheduled transactions (merge into another category first)
 5. Cannot delete parent with existing children
 
 ## Operations
+
+Category management (rename, delete, merge) is exposed through the
+[`category` CLI noun](cli.md#category): `category add`, `category list`,
+`category rename`, `category delete`, and `category merge`. The TUI remains
+**create-only inline** — new categories can be created on the fly from the
+category picker while entering a transaction, but rename/delete/merge are CLI
+operations.
 
 ### Create Category
 
 Required: name, type
 Optional: parent_id
 
-If parent_id provided, type is inherited from parent.
+If parent_id provided, type is inherited from parent (a `--type` that disagrees
+with the parent is refused). Without a parent, `type` defaults to `expense` at
+the CLI. Surfaces: TUI category picker (inline create) and `category add`.
 
 ### Edit Category
 
-- `name` can be changed
-- `type` can only be changed if no transactions use this category
-- `parent_id` can be changed (move category) if depth rules are satisfied
+- `name` can be changed (`category rename`, identifying the category by `--id`
+  or `--name`).
+- `parent_id` moves (re-parenting a category) have **no implementing surface
+  yet** — neither the TUI nor the CLI exposes them; use `category merge` into a
+  category created under the desired parent instead.
+- System categories cannot be renamed.
 
 ### Delete Category
 
-1. Check for transactions using this category
-2. If transactions exist, prompt user to reassign to another category
-3. If parent, must delete or reassign children first
-4. System categories (Transfer) cannot be deleted
+`category delete <id-or-name>` deletes a category, refusing when:
+
+1. It is a system category (`Transfer`, `Value Adjustment`).
+2. It has subcategories (delete or merge those first).
+3. It is still referenced by transactions, transaction split lines, or scheduled
+   transactions.
+
+There is **no interactive reassignment prompt**. When references block the
+delete, the CLI surfaces the dependency and suggests reassigning the references
+onto another category with `category merge`, then deleting the (now-empty)
+source.
 
 ### Merge Categories
 
-Reassign all transactions from one category to another, then delete the source.
+`category merge --from X --to Y` reassigns every transaction, transaction split
+line, payee default, and scheduled transaction from the source category to the
+target, moves any subcategories of the source under the target, then deletes the
+source. Both categories must be the same type (income/expense); system
+categories cannot be merged. This is the supported path to retire a category
+that still has references blocking `category delete`.
 
 ## Usage in Transactions
 

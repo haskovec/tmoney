@@ -214,6 +214,147 @@ tmoney account reopen "Old Savings"
 
 ---
 
+## `category`
+
+Manage categories. Category types: `income`, `expense`. Categories form a
+two-level tree (top-level categories with optional subcategories). System
+categories (`Transfer`, `Value Adjustment`) are engine-managed: they appear in
+listings tagged `[system]` but cannot be renamed, deleted, or merged.
+
+A category may be referenced by UUID, by exact name, or by a `Parent:Child`
+path. A bare name is resolved to an exact top-level match first; failing that,
+it must match exactly one category anywhere in the tree — an ambiguous bare name
+is an error that asks you to use `Parent:Child` or `--id` (find IDs with
+`category list --show-ids`).
+
+### `category add`
+
+`Use: category add` · `Args: NoArgs`
+
+Create a new category. `--name` is required. With `--parent` the new category is
+a subcategory of an existing top-level category and inherits its parent's type
+unless `--type` is given (a `--type` that disagrees with the parent is refused).
+Without `--parent`, `--type` defaults to `expense`.
+
+**Required flags:** `--name`
+
+**Optional flags:**
+- `--parent string` — Parent category name, id, or `Parent:Child` path (creates a subcategory; must be a non-system top-level category)
+- `--type string` — Category type: `income` or `expense` (default `expense`; inherited from `--parent` when omitted)
+
+```bash
+tmoney category add --name "Side Gig" --type income
+tmoney category add --name Groceries --parent Food
+```
+
+```
+Category created successfully!
+  Name: Groceries
+  Type: Expense
+  Parent: Food
+```
+
+---
+
+### `category delete`
+
+`Use: category delete <id-or-name>` · `Args: ExactArgs(1)`
+
+Delete a category identified by its UUID, exact name, or `Parent:Child` path.
+The deletion is refused when the category is a system category, has
+subcategories, or is still referenced by transactions, split lines, or scheduled
+transactions. When references (transactions/splits/scheduled) block the delete,
+the error suggests reassigning them first with `category merge`.
+
+```bash
+tmoney category delete Groceries
+tmoney category delete Food:Snacks
+tmoney category delete 0d9f7c2a-1b3e-7a9c-8d4f-2e6b1a5c9f70
+```
+
+```
+Deleted category "Groceries"
+```
+
+---
+
+### `category list`
+
+`Use: category list` · `Args: NoArgs`
+
+List categories as an indented tree: top-level categories alphabetically, each
+followed by its subcategories indented two spaces (also alphabetical). Unlike
+the TUI picker this is a management listing, so system categories are included
+and tagged `[system]`.
+
+**Optional flags:**
+- `--type string` — Filter by type: `income` or `expense`
+- `--show-ids` — Prefix each row with the category's full UUID (for use with `category rename --id` / `category delete`)
+
+```bash
+tmoney category list
+tmoney category list --type income
+tmoney category list --show-ids
+```
+
+```
+CATEGORIES
+==========
+Name                       Type
+----                       ----
+Food                       Expense
+  Dining Out               Expense
+  Groceries                Expense
+Value Adjustment [system]  Expense
+
+Showing 4 categories
+```
+
+---
+
+### `category merge`
+
+`Use: category merge` · `Args: NoArgs`
+
+Reassign every transaction, split line, payee default, and scheduled transaction
+from the `--from` category to the `--to` category, move any subcategories of
+`--from` under `--to`, then delete `--from`. Both categories must be the same
+type; system categories cannot be merged. This is the way to retire a category
+that still has references blocking `category delete`.
+
+**Required flags:** `--from`, `--to`
+
+```bash
+tmoney category merge --from Dining --to "Dining Out"
+tmoney category merge --from Food:Snacks --to Food:Groceries
+```
+
+```
+Merged category "Dining" into "Dining Out"
+```
+
+---
+
+### `category rename`
+
+`Use: category rename` · `Args: NoArgs`
+
+Rename a category identified by exactly one of `--id` or `--name`, setting its
+name to `--to`. System categories cannot be renamed.
+
+**Required flags:** exactly one of `--id` / `--name`, plus `--to`
+
+```bash
+tmoney category rename --name Groceries --to "Food & Groceries"
+tmoney category rename --id 0d9f7c2a-1b3e-7a9c-8d4f-2e6b1a5c9f70 --to Utilities
+```
+
+```
+Renamed category "Groceries" to "Food & Groceries"
+```
+
+---
+
 ## `db`
 
 Database file management.

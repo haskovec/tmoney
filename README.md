@@ -652,6 +652,39 @@ tmoney transaction search "restaurant" --account Visa --min 20 --max 100
 tmoney transaction search "transfer" --category "Transfer"
 ```
 
+### Categories
+
+```bash
+# List the category tree (system categories are tagged [system])
+tmoney category list
+tmoney category list --type income
+tmoney category list --show-ids
+
+# Add a top-level category (defaults to expense) or a subcategory
+# (a subcategory inherits its parent's type)
+tmoney category add --name "Side Gig" --type income
+tmoney category add --name Groceries --parent Food
+
+# Rename by name or by id
+tmoney category rename --name Groceries --to "Food & Groceries"
+tmoney category rename --id <id> --to Utilities
+
+# Delete by id, exact name, or Parent:Child path
+tmoney category delete Food:Snacks
+
+# Merge one category into another (reassigns everything, then deletes the source)
+tmoney category merge --from Dining --to "Dining Out"
+```
+
+Categories form a two-level tree; a reference may be a UUID, an exact name, or a
+`Parent:Child` path (an ambiguous bare name is rejected — disambiguate with
+`Parent:Child` or `--id`). System categories (`Transfer`, `Value Adjustment`)
+are shown in `category list` but cannot be renamed, deleted, or merged.
+`category delete` refuses a category that has subcategories or is still
+referenced by transactions, split lines, or scheduled transactions; when
+references block it, use `category merge` to reassign them onto another category
+first.
+
 ### Scheduled Transactions
 
 ```bash

@@ -314,7 +314,8 @@ func (r *Repository) Update(category *Category) error {
 }
 
 // Delete removes a category from the database.
-// This will fail if the category has any subcategories or transactions.
+// This will fail if the category has any subcategories, transactions,
+// transaction split lines, or scheduled transactions referencing it.
 func (r *Repository) Delete(id types.ID) error {
 	// Check for subcategories
 	var childCount int
@@ -347,6 +348,40 @@ func (r *Repository) Delete(id types.ID) error {
 			ID:         id.String(),
 			Dependents: "transactions",
 			Count:      txnCount,
+		}
+	}
+
+	// Check for transaction split lines
+	var splitCount int
+	err = r.db.Conn().QueryRow(`
+		SELECT COUNT(*) FROM transaction_splits WHERE CAST(category_id AS VARCHAR) = ?
+	`, id.String()).Scan(&splitCount)
+	if err != nil {
+		return fmt.Errorf("failed to check split lines: %w", err)
+	}
+	if splitCount > 0 {
+		return &dberrors.HasDependentsError{
+			Entity:     "category",
+			ID:         id.String(),
+			Dependents: "split lines",
+			Count:      splitCount,
+		}
+	}
+
+	// Check for scheduled transactions
+	var scheduledCount int
+	err = r.db.Conn().QueryRow(`
+		SELECT COUNT(*) FROM scheduled_transactions WHERE CAST(category_id AS VARCHAR) = ?
+	`, id.String()).Scan(&scheduledCount)
+	if err != nil {
+		return fmt.Errorf("failed to check scheduled transactions: %w", err)
+	}
+	if scheduledCount > 0 {
+		return &dberrors.HasDependentsError{
+			Entity:     "category",
+			ID:         id.String(),
+			Dependents: "scheduled transactions",
+			Count:      scheduledCount,
 		}
 	}
 

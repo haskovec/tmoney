@@ -183,29 +183,48 @@ refusals from Phase 1 get pointers here.
 - [x] Docs: `specs/cli.md` `transaction add`, README,
       `specs/multiline-splits-and-paycheck.md` CLI notes.
 
-## Phase 5: `category` noun — [ ]
+## Phase 5: `category` noun — [x]
 
 No `category` command exists at all today
 (`internal/cli/root.go` registers no category noun). Service support:
 `Create`/`Update`/`Delete`/`MergeCategories`/`List*`
 (`internal/category/category_service.go`).
 
-- [ ] New package `internal/cli/category/` with:
-  - [ ] `category add --name X [--parent Y] [--type income|expense]`
-  - [ ] `category list [--type …] [--show-ids]` (tree-indented like the
+- [x] New package `internal/cli/category/` with:
+  - [x] `category add --name X [--parent Y] [--type income|expense]`
+        (type defaults to `expense`, or inherits the parent's type when
+        `--parent` is given; an explicit mismatching `--type` is
+        rejected up front)
+  - [x] `category list [--type …] [--show-ids]` (tree-indented like the
         TUI combo box)
-  - [ ] `category rename --id/--name … --to …` (via `Service.Update`)
-  - [ ] `category delete <id-or-name>` — refuse when transactions
+        Implementation note: the TUI combo box is actually a flat
+        alphabetical `Parent > Child` list; `category list` renders a
+        real indented tree instead (sorted parents, two-space-indented
+        sorted children) and — being a management listing, not a
+        picker — includes system categories with a `[system]` marker.
+  - [x] `category rename --id/--name … --to …` (via `Service.Update`)
+  - [x] `category delete <id-or-name>` — refuse when transactions
         reference it, matching `Service.Delete`'s guard; suggest merge
-  - [ ] `category merge --from X --to Y` (via `MergeCategories`)
-- [ ] Register the noun in `internal/cli/root.go`.
-- [ ] System categories (transfer categories etc.) are refused for
+        Implementation note: the repo guard only checked
+        `transactions`, so it was extended to also refuse when
+        `transaction_splits` or `scheduled_transactions` reference the
+        category (same `HasDependentsError` shape); the merge hint is
+        appended for every dependent kind except subcategories.
+  - [x] `category merge --from X --to Y` (via `MergeCategories`)
+- [x] Register the noun in `internal/cli/root.go`.
+- [x] System categories (transfer categories etc.) are refused for
       rename/delete/merge — reuse the existing system-category guard.
-- [ ] Tests per subcommand incl. guards.
-- [ ] Docs: new `## category` section in `specs/cli.md` (alphabetical,
+- [x] Tests per subcommand incl. guards (plus domain-layer tests for
+      the extended delete guard).
+- [x] Docs: new `## category` section in `specs/cli.md` (alphabetical,
       after `account`), README, and update `specs/categories.md` —
       its Edit/Delete/Merge operations section finally has an
       implementing surface; note TUI remains create-only inline.
+
+Shared name resolution (`internal/cli/category/resolve.go`): a raw
+UUID, a `Parent:Child` path, an exact top-level name, or a bare name
+matching exactly one category anywhere — a bare name matching several
+is an explicit ambiguity error pointing at `Parent:Child` / `--id`.
 
 ## Phase 6: `account edit` + `account delete` — [ ]
 
@@ -279,3 +298,7 @@ statement.
   `[N splits]` markers in `transaction list`/`search` — shipped
   2026-07-21 (code + tests + docs in one commit; see the commit
   introducing `internal/cli/transaction/add_split_test.go`).
+- Phase 5: `category` noun (add/list/rename/delete/merge) + extended
+  delete guard for split lines and scheduled transactions — shipped
+  2026-07-21 (code + tests + docs in one commit; see the commit
+  introducing `internal/cli/category/`).
