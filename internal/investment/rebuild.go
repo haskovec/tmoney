@@ -28,6 +28,23 @@ type RebuildResult struct {
 // positions/lots outside the transaction ledger and a naive replay would
 // produce incorrect cost bases.
 func (s *Service) RebuildPositions(accountID types.ID) (*RebuildResult, error) {
+	// One account's rebuild is all-or-nothing: the persist loop, orphan-position
+	// deletes, and lot updates commit together. runInTx opens its own tx when the
+	// service is unbound (the normal case) or joins a caller's if somehow bound.
+	var result *RebuildResult
+	if err := s.runInTx(func(b *Service) error {
+		var err error
+		result, err = b.rebuildPositionsInTx(accountID)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// rebuildPositionsInTx is the tx-bound body of RebuildPositions: it recomputes
+// and persists one account's positions/lots on the service's bound repos.
+func (s *Service) rebuildPositionsInTx(accountID types.ID) (*RebuildResult, error) {
 	acct, err := s.getInvestmentAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -38,8 +55,11 @@ func (s *Service) RebuildPositions(accountID types.ID) (*RebuildResult, error) {
 	// corrupt cost basis); every other security is replayed normally. This is
 	// per-security rather than all-or-nothing, so a clean security heals even on
 	// a database that holds corporate-action history.
-	caRepo := NewCorporateActionRepository(s.db)
-	involved, err := caRepo.InvolvedSecurityIDs()
+	//
+	// Read corporate-action state through the service's (bindable) repo, not a
+	// freshly built s.db one: inside the rebuild tx a fresh unbound repo would
+	// query the pool while the tx pins the single connection — a deadlock.
+	involved, err := s.corporateActionRepo.InvolvedSecurityIDs()
 	if err != nil {
 		return nil, fmt.Errorf("RebuildPositions: %w", err)
 	}

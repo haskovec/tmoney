@@ -87,7 +87,7 @@ func (s *Service) runInTx(fn func(b *Service) error) error {
 // fails, and it keeps the trade tx small.
 //
 // When the service is already tx-bound (a trade invoked from update_edit's
-// reverse/reapply flow), the re-heal is skipped: the outermost entry point
+// reverse/re-create flow), the re-heal is skipped: the outermost entry point
 // healed before opening the main tx, and the in-tx state is being mutated
 // deliberately.
 func (s *Service) healInOwnTx(accountID, securityID types.ID) error {

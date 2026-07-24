@@ -412,7 +412,8 @@ func TestUpdateFeeLiquidation_LotTracking(t *testing.T) {
 			t.Fatalf("UpdateFeeLiquidation() error = %v", err)
 		}
 
-		// Lot restored to 5 on reverse, reduced by 2 on reapply → 3 open shares.
+		// Lot restored to 5 on reverse, reduced by 2 by the re-created
+		// fee-liquidation → 3 open shares.
 		updatedLot, err := env.lotRepo.GetByID(lotID)
 		if err != nil {
 			t.Fatalf("GetByID(lot) error = %v", err)

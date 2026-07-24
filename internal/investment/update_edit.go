@@ -213,73 +213,6 @@ func (s *Service) reverseTransferShares(txn *Transaction) error {
 	return nil
 }
 
-// reapplyTxnEffects re-applies a transaction's effect on positions/lots.
-// Used to roll back when an Update fails after reverseTxnEffects has run.
-// The transaction record itself has already been deleted by the time this
-// is called, so we recreate it too.
-func (s *Service) reapplyTxnEffects(txn *Transaction) error {
-	if err := s.repo.Create(txn); err != nil {
-		return fmt.Errorf("reapplyTxnEffects: %w", err)
-	}
-
-	switch txn.Type {
-	case TransactionTypeBuy, TransactionTypeReinvestDividend:
-		return s.reapplyShareAddition(txn)
-	case TransactionTypeSell, TransactionTypeFeeLiquidation:
-		// Sell/fee-liquidation rollback is best-effort: we re-deduct shares
-		// at the position level. Lot-tracked accounts lose their original
-		// junction allocations, which is an acceptable degradation given
-		// the alternative (data loss).
-		return s.reapplyShareRemoval(txn)
-	case TransactionTypeTransferShares:
-		if txn.TotalAmount.IsNegative() {
-			return s.reapplyShareRemoval(txn)
-		}
-		return s.reapplyShareAddition(txn)
-	default:
-		return nil
-	}
-}
-
-// reapplyShareAddition re-applies a buy/reinvest after a failed update.
-// Best-effort: for lot-tracked accounts we recreate the lot from the txn.
-func (s *Service) reapplyShareAddition(txn *Transaction) error {
-	if !txn.SecurityID.Valid || !txn.Shares.Valid || !txn.PricePerShare.Valid {
-		return fmt.Errorf("reapplyShareAddition: missing fields on txn %s", txn.ID)
-	}
-	acct, err := s.getInvestmentAccount(txn.AccountID)
-	if err != nil {
-		return err
-	}
-	if acct.TrackLots {
-		lot := NewLot(txn.AccountID, txn.SecurityID.ID, txn.Shares.Quantity, txn.PricePerShare.Money, txn.Date, txn.ID)
-		return s.lotRepo.Create(&lot)
-	}
-	pos, err := s.positionRepo.GetByAccountAndSecurity(txn.AccountID, txn.SecurityID.ID)
-	if err != nil {
-		return err
-	}
-	if err := pos.AddShares(txn.Shares.Quantity, txn.PricePerShare.Money); err != nil {
-		return err
-	}
-	return s.positionRepo.CreateOrUpdate(pos)
-}
-
-// reapplyShareRemoval re-applies a sell/fee-liquidation after a failed update.
-func (s *Service) reapplyShareRemoval(txn *Transaction) error {
-	if !txn.SecurityID.Valid || !txn.Shares.Valid {
-		return fmt.Errorf("reapplyShareRemoval: missing fields on txn %s", txn.ID)
-	}
-	pos, err := s.positionRepo.GetByAccountAndSecurity(txn.AccountID, txn.SecurityID.ID)
-	if err != nil {
-		return err
-	}
-	if err := pos.RemoveShares(txn.Shares.Quantity); err != nil {
-		return err
-	}
-	return s.positionRepo.CreateOrUpdate(pos)
-}
-
 // loadAndReverseForEdit fetches the existing transaction, reverses its
 // position/lot effects, and deletes the record. On any failure it leaves the
 // original state intact and returns the error.
@@ -316,8 +249,9 @@ func (s *Service) guardEditByOldID(oldID types.ID) error {
 
 // UpdateBuy edits an existing buy transaction by reversing its
 // position/lot effect, deleting the old record, and creating a new one
-// with the supplied parameters. If the new buy fails, a best-effort
-// rollback recreates the old record.
+// with the supplied parameters. The reverse, delete, and re-create run in one
+// transaction, so the edit either fully lands or the original is left intact —
+// there is no partial "reversed but not reapplied" state to compensate for.
 func (s *Service) UpdateBuy(
 	oldID types.ID,
 	accountID, securityID types.ID,
@@ -328,26 +262,35 @@ func (s *Service) UpdateBuy(
 	commission types.Money,
 	memo string,
 ) (*Transaction, error) {
-	old, err := s.loadAndReverseForEdit(oldID)
-	if err != nil {
+	// Heal stored position/lot state for the target (account, security) in its
+	// own committed tx before the edit tx, mirroring what Buy does when called
+	// standalone. The bound Buy inside the tx skips its own re-heal.
+	if err := s.healInOwnTx(accountID, securityID); err != nil {
 		return nil, err
 	}
-	newTxn, err := s.Buy(accountID, securityID, date, shares, totalAmount, pricePerShare, commission, memo)
-	if err != nil {
-		if rerr := s.reapplyTxnEffects(old); rerr != nil {
-			return nil, fmt.Errorf("%w (and rollback failed: %v)", err, rerr)
+	var old, newTxn *Transaction
+	if err := s.runInTx(func(b *Service) error {
+		var err error
+		if old, err = b.loadAndReverseForEdit(oldID); err != nil {
+			return err
 		}
+		newTxn, err = b.Buy(accountID, securityID, date, shares, totalAmount, pricePerShare, commission, memo)
+		return err
+	}); err != nil {
 		return nil, err
 	}
 	// Reconcile the auto-price at the old (security, date): drop it if this edit
-	// orphaned it, or re-point it to a surviving same-day transaction.
+	// orphaned it, or re-point it to a surviving same-day transaction. Best-effort
+	// cosmetic cleanup, deliberately outside the edit tx.
 	if old.SecurityID.Valid {
 		s.cleanupAutoPrice(old.SecurityID.ID, old.Date)
 	}
 	return newTxn, nil
 }
 
-// UpdateSell edits an existing sell transaction.
+// UpdateSell edits an existing sell transaction. The reverse, delete, and
+// re-create run in one transaction — the edit fully lands or the original is
+// left intact.
 func (s *Service) UpdateSell(
 	oldID types.ID,
 	accountID, securityID types.ID,
@@ -359,15 +302,18 @@ func (s *Service) UpdateSell(
 	memo string,
 	lotAllocations []SellLotAllocation,
 ) (*Transaction, error) {
-	old, err := s.loadAndReverseForEdit(oldID)
-	if err != nil {
+	if err := s.healInOwnTx(accountID, securityID); err != nil {
 		return nil, err
 	}
-	newTxn, err := s.Sell(accountID, securityID, date, shares, totalAmount, pricePerShare, commission, memo, lotAllocations)
-	if err != nil {
-		if rerr := s.reapplyTxnEffects(old); rerr != nil {
-			return nil, fmt.Errorf("%w (and rollback failed: %v)", err, rerr)
+	var old, newTxn *Transaction
+	if err := s.runInTx(func(b *Service) error {
+		var err error
+		if old, err = b.loadAndReverseForEdit(oldID); err != nil {
+			return err
 		}
+		newTxn, err = b.Sell(accountID, securityID, date, shares, totalAmount, pricePerShare, commission, memo, lotAllocations)
+		return err
+	}); err != nil {
 		return nil, err
 	}
 	if old.SecurityID.Valid {
@@ -380,9 +326,13 @@ func (s *Service) UpdateSell(
 // reversing its share/lot effect, deleting the old record, and re-creating it
 // with the supplied parameters. fee_liquidation has no net cash effect (the
 // whole total_amount is the fee), so only share counts/lots are reversed —
-// reverseTxnEffects/reapplyTxnEffects already route fee_liquidation through the
-// same share-removal arms as sell, so this mirrors UpdateSell exactly. On create
-// failure a best-effort rollback recreates the old record.
+// reverseTxnEffects routes fee_liquidation through the same share-removal arm as
+// sell, so this mirrors UpdateSell exactly. The reverse, delete, and re-create
+// run in one transaction — the edit fully lands or the original is left intact.
+//
+// FeeLiquidation computes its FIFO lot allocation from the post-reverse lot
+// state: called on the bound service below, its lookups see the uncommitted
+// reverse, so growing the share count past the pre-reverse remaining works.
 func (s *Service) UpdateFeeLiquidation(
 	oldID types.ID,
 	accountID, securityID types.ID,
@@ -394,15 +344,18 @@ func (s *Service) UpdateFeeLiquidation(
 	memo string,
 	lotAllocations []SellLotAllocation,
 ) (*Transaction, error) {
-	old, err := s.loadAndReverseForEdit(oldID)
-	if err != nil {
+	if err := s.healInOwnTx(accountID, securityID); err != nil {
 		return nil, err
 	}
-	newTxn, err := s.FeeLiquidation(accountID, securityID, date, shares, totalAmount, pricePerShare, commission, memo, lotAllocations)
-	if err != nil {
-		if rerr := s.reapplyTxnEffects(old); rerr != nil {
-			return nil, fmt.Errorf("%w (and rollback failed: %v)", err, rerr)
+	var old, newTxn *Transaction
+	if err := s.runInTx(func(b *Service) error {
+		var err error
+		if old, err = b.loadAndReverseForEdit(oldID); err != nil {
+			return err
 		}
+		newTxn, err = b.FeeLiquidation(accountID, securityID, date, shares, totalAmount, pricePerShare, commission, memo, lotAllocations)
+		return err
+	}); err != nil {
 		return nil, err
 	}
 	if old.SecurityID.Valid {
@@ -411,7 +364,9 @@ func (s *Service) UpdateFeeLiquidation(
 	return newTxn, nil
 }
 
-// UpdateReinvestDividend edits an existing reinvest-dividend transaction.
+// UpdateReinvestDividend edits an existing reinvest-dividend transaction. The
+// reverse, delete, and re-create run in one transaction — the edit fully lands
+// or the original is left intact.
 func (s *Service) UpdateReinvestDividend(
 	oldID types.ID,
 	accountID, securityID types.ID,
@@ -421,15 +376,18 @@ func (s *Service) UpdateReinvestDividend(
 	pricePerShare *types.Money,
 	memo string,
 ) (*Transaction, error) {
-	old, err := s.loadAndReverseForEdit(oldID)
-	if err != nil {
+	if err := s.healInOwnTx(accountID, securityID); err != nil {
 		return nil, err
 	}
-	newTxn, err := s.ReinvestDividend(accountID, securityID, date, shares, totalAmount, pricePerShare, memo)
-	if err != nil {
-		if rerr := s.reapplyTxnEffects(old); rerr != nil {
-			return nil, fmt.Errorf("%w (and rollback failed: %v)", err, rerr)
+	var old, newTxn *Transaction
+	if err := s.runInTx(func(b *Service) error {
+		var err error
+		if old, err = b.loadAndReverseForEdit(oldID); err != nil {
+			return err
 		}
+		newTxn, err = b.ReinvestDividend(accountID, securityID, date, shares, totalAmount, pricePerShare, memo)
+		return err
+	}); err != nil {
 		return nil, err
 	}
 	if old.SecurityID.Valid {
@@ -438,9 +396,9 @@ func (s *Service) UpdateReinvestDividend(
 	return newTxn, nil
 }
 
-// UpdateDividend edits an existing cash dividend transaction.
-// Dividends have no position/lot effect so the flow is simply
-// delete + create with no rollback risk.
+// UpdateDividend edits an existing cash dividend transaction. Dividends have no
+// position/lot effect, so the flow is delete-old + create-new; both writes run
+// in one transaction so a create failure leaves the original row intact.
 func (s *Service) UpdateDividend(
 	oldID types.ID,
 	accountID, securityID types.ID,
@@ -451,54 +409,98 @@ func (s *Service) UpdateDividend(
 	if err := s.guardEditByOldID(oldID); err != nil {
 		return nil, err
 	}
-	if err := s.repo.Delete(oldID); err != nil {
-		return nil, fmt.Errorf("failed to delete transaction for edit: %w", err)
+	var newTxn *Transaction
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.repo.Delete(oldID); err != nil {
+			return fmt.Errorf("failed to delete transaction for edit: %w", err)
+		}
+		var err error
+		newTxn, err = b.Dividend(accountID, securityID, date, amount, memo)
+		return err
+	}); err != nil {
+		return nil, err
 	}
-	return s.Dividend(accountID, securityID, date, amount, memo)
+	return newTxn, nil
 }
 
-// UpdateDeposit edits an existing deposit transaction.
+// UpdateDeposit edits an existing deposit transaction. Delete-old + create-new
+// commit in one transaction.
 func (s *Service) UpdateDeposit(oldID types.ID, accountID types.ID, date types.Date, amount types.Money, memo string) (*Transaction, error) {
 	if err := s.guardEditByOldID(oldID); err != nil {
 		return nil, err
 	}
-	if err := s.repo.Delete(oldID); err != nil {
-		return nil, fmt.Errorf("failed to delete transaction for edit: %w", err)
+	var newTxn *Transaction
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.repo.Delete(oldID); err != nil {
+			return fmt.Errorf("failed to delete transaction for edit: %w", err)
+		}
+		var err error
+		newTxn, err = b.Deposit(accountID, date, amount, memo)
+		return err
+	}); err != nil {
+		return nil, err
 	}
-	return s.Deposit(accountID, date, amount, memo)
+	return newTxn, nil
 }
 
-// UpdateWithdrawal edits an existing withdrawal transaction.
+// UpdateWithdrawal edits an existing withdrawal transaction. Delete-old +
+// create-new commit in one transaction.
 func (s *Service) UpdateWithdrawal(oldID types.ID, accountID types.ID, date types.Date, amount types.Money, memo string) (*Transaction, error) {
 	if err := s.guardEditByOldID(oldID); err != nil {
 		return nil, err
 	}
-	if err := s.repo.Delete(oldID); err != nil {
-		return nil, fmt.Errorf("failed to delete transaction for edit: %w", err)
+	var newTxn *Transaction
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.repo.Delete(oldID); err != nil {
+			return fmt.Errorf("failed to delete transaction for edit: %w", err)
+		}
+		var err error
+		newTxn, err = b.Withdrawal(accountID, date, amount, memo)
+		return err
+	}); err != nil {
+		return nil, err
 	}
-	return s.Withdrawal(accountID, date, amount, memo)
+	return newTxn, nil
 }
 
-// UpdateFee edits an existing fee transaction.
+// UpdateFee edits an existing fee transaction. Delete-old + create-new commit in
+// one transaction.
 func (s *Service) UpdateFee(oldID types.ID, accountID types.ID, date types.Date, amount types.Money, memo string) (*Transaction, error) {
 	if err := s.guardEditByOldID(oldID); err != nil {
 		return nil, err
 	}
-	if err := s.repo.Delete(oldID); err != nil {
-		return nil, fmt.Errorf("failed to delete transaction for edit: %w", err)
+	var newTxn *Transaction
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.repo.Delete(oldID); err != nil {
+			return fmt.Errorf("failed to delete transaction for edit: %w", err)
+		}
+		var err error
+		newTxn, err = b.Fee(accountID, date, amount, memo)
+		return err
+	}); err != nil {
+		return nil, err
 	}
-	return s.Fee(accountID, date, amount, memo)
+	return newTxn, nil
 }
 
-// UpdateInterest edits an existing interest transaction.
+// UpdateInterest edits an existing interest transaction. Delete-old + create-new
+// commit in one transaction.
 func (s *Service) UpdateInterest(oldID types.ID, accountID types.ID, date types.Date, amount types.Money, memo string) (*Transaction, error) {
 	if err := s.guardEditByOldID(oldID); err != nil {
 		return nil, err
 	}
-	if err := s.repo.Delete(oldID); err != nil {
-		return nil, fmt.Errorf("failed to delete transaction for edit: %w", err)
+	var newTxn *Transaction
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.repo.Delete(oldID); err != nil {
+			return fmt.Errorf("failed to delete transaction for edit: %w", err)
+		}
+		var err error
+		newTxn, err = b.Interest(accountID, date, amount, memo)
+		return err
+	}); err != nil {
+		return nil, err
 	}
-	return s.Interest(accountID, date, amount, memo)
+	return newTxn, nil
 }
 
 // UpdateTransferCash edits an existing cash transfer. Both sides of the
@@ -556,85 +558,95 @@ func (s *Service) UpdateTransferCash(
 	if err := s.ensureAccountOpen(regularAccountID); err != nil {
 		return nil, err
 	}
-	if old.TransferID.Valid {
-		// Regular-side counterpart (inv↔reg original).
-		if s.txnRepo != nil {
-			if regList, lerr := s.txnRepo.ListByTransferID(old.TransferID.ID); lerr == nil {
-				for _, r := range regList {
-					_ = s.txnRepo.Delete(r.ID)
-				}
-			}
-		}
-		// Investment-side counterpart (inv↔inv original): lives in the
-		// other investment account, identified by transfer_account_id.
-		if old.TransferAccountID.Valid {
-			if others, lerr := s.repo.ListByAccount(old.TransferAccountID.ID, TransactionFilter{}); lerr == nil {
-				for _, o := range others {
-					if o.TransferID.Valid && o.TransferID.ID == old.TransferID.ID && o.ID != old.ID {
-						_ = s.repo.Delete(o.ID)
-					}
-				}
-			}
-		}
-	}
-	if err := s.repo.Delete(oldInvestmentTxnID); err != nil {
-		return nil, fmt.Errorf("failed to delete transfer for edit: %w", err)
-	}
 
-	// Validate direction up front so the inv↔inv branch and the inv↔reg branch
-	// share one error site.
+	// Validate direction up front — before any destructive write — so the inv↔inv
+	// branch and the inv↔reg branch share one error site.
 	if direction != "in" && direction != "out" {
 		return nil, fmt.Errorf("UpdateTransferCash: invalid direction %q (want 'in' or 'out')", direction)
 	}
 
-	// Dispatch on the second account's type.
+	// Dispatch on the second account's type (a read, safe outside the tx).
 	otherAcct, err := s.accountRepo.GetByID(regularAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load destination account: %w", err)
 	}
-	if otherAcct.Type.IsInvestmentType() {
-		// inv↔inv: route to TransferCashBetweenInvestments.
-		var srcID, dstID types.ID
+
+	// The old-counterpart reaping, the old-row delete, the new pair, and the
+	// status writes all commit in one transaction: the edit fully lands or the
+	// original transfer is left intact — no orphaned counterpart to compensate.
+	var result *CashTransferResult
+	if err := s.runInTx(func(b *Service) error {
+		if old.TransferID.Valid {
+			// Regular-side counterpart (inv↔reg original).
+			if b.txnRepo != nil {
+				if regList, lerr := b.txnRepo.ListByTransferID(old.TransferID.ID); lerr == nil {
+					for _, r := range regList {
+						if derr := b.txnRepo.Delete(r.ID); derr != nil {
+							return fmt.Errorf("failed to delete regular-side counterpart: %w", derr)
+						}
+					}
+				}
+			}
+			// Investment-side counterpart (inv↔inv original): lives in the
+			// other investment account, identified by transfer_account_id.
+			if old.TransferAccountID.Valid {
+				if others, lerr := b.repo.ListByAccount(old.TransferAccountID.ID, TransactionFilter{}); lerr == nil {
+					for _, o := range others {
+						if o.TransferID.Valid && o.TransferID.ID == old.TransferID.ID && o.ID != old.ID {
+							if derr := b.repo.Delete(o.ID); derr != nil {
+								return fmt.Errorf("failed to delete investment-side counterpart: %w", derr)
+							}
+						}
+					}
+				}
+			}
+		}
+		if derr := b.repo.Delete(oldInvestmentTxnID); derr != nil {
+			return fmt.Errorf("failed to delete transfer for edit: %w", derr)
+		}
+
+		if otherAcct.Type.IsInvestmentType() {
+			// inv↔inv: route to TransferCashBetweenInvestments.
+			var srcID, dstID types.ID
+			switch direction {
+			case "out":
+				srcID, dstID = investmentAccountID, regularAccountID
+			case "in":
+				srcID, dstID = regularAccountID, investmentAccountID
+			}
+			invResult, ierr := b.TransferCashBetweenInvestments(srcID, dstID, date, amount, memo)
+			if ierr != nil {
+				return ierr
+			}
+			if serr := b.applyInvestmentStatus(invResult.SourceTransaction, status); serr != nil {
+				return serr
+			}
+			if serr := b.applyInvestmentStatus(invResult.DestinationTransaction, status); serr != nil {
+				return serr
+			}
+			result = &CashTransferResult{
+				InvestmentTransaction:            invResult.SourceTransaction,
+				CounterpartInvestmentTransaction: invResult.DestinationTransaction,
+				TransferID:                       invResult.TransferID,
+			}
+			return nil
+		}
+
+		var rerr error
 		switch direction {
 		case "out":
-			srcID, dstID = investmentAccountID, regularAccountID
+			result, rerr = b.TransferCash(investmentAccountID, regularAccountID, date, amount, memo, categoryID)
 		case "in":
-			srcID, dstID = regularAccountID, investmentAccountID
+			result, rerr = b.DepositFromAccount(investmentAccountID, regularAccountID, date, amount, memo, categoryID)
 		}
-		invResult, err := s.TransferCashBetweenInvestments(srcID, dstID, date, amount, memo)
-		if err != nil {
-			return nil, err
+		if rerr != nil {
+			return rerr
 		}
-		if err := s.applyInvestmentStatus(invResult.SourceTransaction, status); err != nil {
-			return nil, err
+		if serr := b.applyInvestmentStatus(result.InvestmentTransaction, status); serr != nil {
+			return serr
 		}
-		if err := s.applyInvestmentStatus(invResult.DestinationTransaction, status); err != nil {
-			return nil, err
-		}
-		return &CashTransferResult{
-			InvestmentTransaction:            invResult.SourceTransaction,
-			CounterpartInvestmentTransaction: invResult.DestinationTransaction,
-			TransferID:                       invResult.TransferID,
-		}, nil
-	}
-
-	var result *CashTransferResult
-	switch direction {
-	case "out":
-		result, err = s.TransferCash(investmentAccountID, regularAccountID, date, amount, memo, categoryID)
-	case "in":
-		result, err = s.DepositFromAccount(investmentAccountID, regularAccountID, date, amount, memo, categoryID)
-	default:
-		// Unreachable: direction was validated above.
-		return nil, fmt.Errorf("UpdateTransferCash: invalid direction %q (want 'in' or 'out')", direction)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := s.applyInvestmentStatus(result.InvestmentTransaction, status); err != nil {
-		return nil, err
-	}
-	if err := s.applyRegularStatus(result.RegularTransaction, status); err != nil {
+		return b.applyRegularStatus(result.RegularTransaction, status)
+	}); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -729,18 +741,39 @@ func (s *Service) UpdateTransferShares(
 		}
 	}
 
-	if err := s.reverseTxnEffects(srcOld); err != nil {
+	// Heal both legs' stored state in their own committed txs before the edit tx,
+	// mirroring what TransferShares does when called standalone. The bound
+	// TransferShares inside the tx skips its own re-heal.
+	if err := s.healInOwnTx(sourceAccountID, securityID); err != nil {
 		return nil, err
 	}
-	if dstOld != nil {
-		if err := s.reverseTxnEffects(dstOld); err != nil {
-			return nil, err
-		}
-		_ = s.repo.Delete(dstOld.ID)
-	}
-	if err := s.repo.Delete(oldSourceTxnID); err != nil {
-		return nil, fmt.Errorf("failed to delete source transfer for edit: %w", err)
+	if err := s.healInOwnTx(destAccountID, securityID); err != nil {
+		return nil, err
 	}
 
-	return s.TransferShares(sourceAccountID, destAccountID, securityID, date, shares, memo, lotAllocations)
+	// Reverse both legs, delete both old rows, and create the new pair in one
+	// transaction — the edit fully lands or the original pair is left intact.
+	var result *ShareTransferResult
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.reverseTxnEffects(srcOld); err != nil {
+			return err
+		}
+		if dstOld != nil {
+			if err := b.reverseTxnEffects(dstOld); err != nil {
+				return err
+			}
+			if err := b.repo.Delete(dstOld.ID); err != nil {
+				return fmt.Errorf("failed to delete destination transfer for edit: %w", err)
+			}
+		}
+		if err := b.repo.Delete(oldSourceTxnID); err != nil {
+			return fmt.Errorf("failed to delete source transfer for edit: %w", err)
+		}
+		var terr error
+		result, terr = b.TransferShares(sourceAccountID, destAccountID, securityID, date, shares, memo, lotAllocations)
+		return terr
+	}); err != nil {
+		return nil, err
+	}
+	return result, nil
 }

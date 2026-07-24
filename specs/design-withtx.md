@@ -2,7 +2,14 @@
 
 **Date:** 2026-07-24 (v2 — revised after design review; v1 missed the
 scheduled-service flows, both merges, void/undo, and cross-service nesting)
-**Status:** Draft for review (no code yet)
+**Status:** IMPLEMENTED (2026-07-24) — all 8 phases shipped: 17b6d4c (primitive),
+84e2bac (repo sweep), 3adf074 (transfers), aae5991+3289dd1 (investment trades
++ heal-deadlock hotfix), c022ea8 (splits/adapter/void), d4ccd57 (scheduled),
+deef994 (merges/undo), and the edits/corporate-actions/rebuild phase.
+Implementation notes are folded into §4.6; one rule learned in the field:
+with SetMaxOpenConns(1), ANY pool access (db.Conn(), an unbound or freshly
+constructed repo) inside an open tx deadlocks — everything reachable in a
+closure must be tx-bound.
 **Addresses:** `specs/code-quality-review.md` item 1 (no domain SQL transactions — compensate-and-pray)
 
 ---

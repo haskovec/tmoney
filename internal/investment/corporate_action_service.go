@@ -21,6 +21,7 @@ type CorporateActionService struct {
 	invRepo      *Repository
 	secRepo      *security.Repository
 	db           *db.DB
+	tx           db.Queryer // nil outside a transaction
 }
 
 // NewCorporateActionService creates a new CorporateActionService.
@@ -44,6 +45,35 @@ func NewCorporateActionService(
 	}
 }
 
+// InTx returns a copy of the service bound to tx, with every repository field
+// rebound to the same transaction so an action's whole write-set joins one
+// atomic unit. The original service is unchanged and remains safe for
+// non-transactional use.
+func (s *CorporateActionService) InTx(tx db.Queryer) *CorporateActionService {
+	c := *s
+	c.tx = tx
+	c.caRepo = s.caRepo.WithTx(tx)
+	c.lotRepo = s.lotRepo.WithTx(tx)
+	c.positionRepo = s.positionRepo.WithTx(tx)
+	c.priceRepo = s.priceRepo.WithTx(tx)
+	c.invRepo = s.invRepo.WithTx(tx)
+	c.secRepo = s.secRepo.WithTx(tx)
+	return &c
+}
+
+// runInTx begins a new transaction if the service is unbound, or joins the
+// already-bound transaction. A corporate action's full write-set — the biggest
+// in the app (loops over lots/positions/prices plus minted rows) — commits once
+// or not at all.
+func (s *CorporateActionService) runInTx(fn func(b *CorporateActionService) error) error {
+	if s.tx != nil {
+		return fn(s) // already bound — join the caller's tx
+	}
+	return s.db.WithTx(func(tx db.Queryer) error {
+		return fn(s.InTx(tx))
+	})
+}
+
 // Split applies a stock split (or reverse split) to a security.
 // It adjusts all open lots, non-zero positions, and historical prices on or before the split date.
 // A corporate action audit record is created.
@@ -55,23 +85,6 @@ func (s *CorporateActionService) Split(securityID types.ID, splitDate types.Date
 
 	ratio := alpacadecimal.NewFromFloat(params.Ratio())
 	inverseRatio := alpacadecimal.NewFromFloat(1.0 / params.Ratio())
-
-	// Adjust open lots purchased on or before the split date. Shares acquired
-	// after the split were already recorded at post-split quantities, so they
-	// must NOT be re-split.
-	if err := s.adjustLots(securityID, splitDate, ratio, inverseRatio); err != nil {
-		return nil, fmt.Errorf("failed to adjust lots: %w", err)
-	}
-
-	// Bring positions in line with the shares actually held as of the split date.
-	if err := s.adjustPositions(securityID, splitDate, ratio, false); err != nil {
-		return nil, fmt.Errorf("failed to adjust positions: %w", err)
-	}
-
-	// Adjust price history on or before split date
-	if err := s.adjustPrices(securityID, splitDate, inverseRatio); err != nil {
-		return nil, fmt.Errorf("failed to adjust prices: %w", err)
-	}
 
 	// Create audit record
 	actionType := ActionTypeSplit
@@ -85,8 +98,33 @@ func (s *CorporateActionService) Split(securityID types.ID, splitDate types.Date
 	}
 
 	ca := NewCorporateAction(actionType, securityID, splitDate, paramsJSON)
-	if err := s.caRepo.Create(ca); err != nil {
-		return nil, fmt.Errorf("failed to create corporate action record: %w", err)
+
+	// The lot/position/price adjustments plus the audit row commit atomically:
+	// a split either fully lands or not at all.
+	if err := s.runInTx(func(b *CorporateActionService) error {
+		// Adjust open lots purchased on or before the split date. Shares acquired
+		// after the split were already recorded at post-split quantities, so they
+		// must NOT be re-split.
+		if err := b.adjustLots(securityID, splitDate, ratio, inverseRatio); err != nil {
+			return fmt.Errorf("failed to adjust lots: %w", err)
+		}
+
+		// Bring positions in line with the shares actually held as of the split date.
+		if err := b.adjustPositions(securityID, splitDate, ratio, false); err != nil {
+			return fmt.Errorf("failed to adjust positions: %w", err)
+		}
+
+		// Adjust price history on or before split date
+		if err := b.adjustPrices(securityID, splitDate, inverseRatio); err != nil {
+			return fmt.Errorf("failed to adjust prices: %w", err)
+		}
+
+		if err := b.caRepo.Create(ca); err != nil {
+			return fmt.Errorf("failed to create corporate action record: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return ca, nil
@@ -261,11 +299,14 @@ func (s *CorporateActionService) SplitLot(lotID types.ID, params SplitParams) (*
 	lot.Shares = lot.Shares.Mul(ratio)
 	lot.OriginalShares = lot.OriginalShares.Mul(ratio)
 	lot.CostPerShare = lot.CostPerShare.Mul(inverseRatio)
-	if err := s.lotRepo.Update(lot); err != nil {
-		return nil, fmt.Errorf("failed to update lot %s: %w", lotID, err)
-	}
 
-	if err := s.rebuildPositionFromLots(lot.AccountID, lot.SecurityID); err != nil {
+	// The lot scale plus the derived-position recompute commit atomically.
+	if err := s.runInTx(func(b *CorporateActionService) error {
+		if err := b.lotRepo.Update(lot); err != nil {
+			return fmt.Errorf("failed to update lot %s: %w", lotID, err)
+		}
+		return b.rebuildPositionFromLots(lot.AccountID, lot.SecurityID)
+	}); err != nil {
 		return nil, err
 	}
 	return lot, nil
@@ -382,21 +423,6 @@ func (s *CorporateActionService) Merger(sourceSecurityID, targetSecurityID types
 	exchangeRatio := alpacadecimal.NewFromFloat(params.ExchangeRatio)
 	inverseRatio := alpacadecimal.NewFromFloat(1.0 / params.ExchangeRatio)
 
-	// Process lot-tracking accounts
-	if err := s.mergerProcessLots(sourceSecurityID, targetSecurityID, mergerDate, exchangeRatio, inverseRatio, params); err != nil {
-		return nil, fmt.Errorf("failed to process lots for merger: %w", err)
-	}
-
-	// Process non-lot-tracking accounts (positions)
-	if err := s.mergerProcessPositions(sourceSecurityID, targetSecurityID, mergerDate, exchangeRatio, inverseRatio, params); err != nil {
-		return nil, fmt.Errorf("failed to process positions for merger: %w", err)
-	}
-
-	// Hide source security
-	if err := s.mergerHideSource(sourceSecurityID); err != nil {
-		return nil, fmt.Errorf("failed to hide source security: %w", err)
-	}
-
 	// Create audit record
 	paramsJSON, err := params.ToJSON()
 	if err != nil {
@@ -405,8 +431,32 @@ func (s *CorporateActionService) Merger(sourceSecurityID, targetSecurityID types
 
 	ca := NewCorporateAction(ActionTypeMerger, sourceSecurityID, mergerDate, paramsJSON)
 	ca.SetTargetSecurity(targetSecurityID)
-	if err := s.caRepo.Create(ca); err != nil {
-		return nil, fmt.Errorf("failed to create corporate action record: %w", err)
+
+	// The entire merger — exchanged lots/positions, minted exchange and cash
+	// consideration rows, source-security hide, and the audit row — commits
+	// atomically.
+	if err := s.runInTx(func(b *CorporateActionService) error {
+		// Process lot-tracking accounts
+		if err := b.mergerProcessLots(sourceSecurityID, targetSecurityID, mergerDate, exchangeRatio, inverseRatio, params); err != nil {
+			return fmt.Errorf("failed to process lots for merger: %w", err)
+		}
+
+		// Process non-lot-tracking accounts (positions)
+		if err := b.mergerProcessPositions(sourceSecurityID, targetSecurityID, mergerDate, exchangeRatio, inverseRatio, params); err != nil {
+			return fmt.Errorf("failed to process positions for merger: %w", err)
+		}
+
+		// Hide source security
+		if err := b.mergerHideSource(sourceSecurityID); err != nil {
+			return fmt.Errorf("failed to hide source security: %w", err)
+		}
+
+		if err := b.caRepo.Create(ca); err != nil {
+			return fmt.Errorf("failed to create corporate action record: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return ca, nil
@@ -562,22 +612,6 @@ func (s *CorporateActionService) SpinOff(parentSecurityID, spinOffSecurityID typ
 	spinOffAllocPct := alpacadecimal.NewFromFloat(params.SpinOffAllocationPct()).Div(alpacadecimal.NewFromInt(100))
 	shareRatio := alpacadecimal.NewFromFloat(params.ShareRatio)
 
-	// Process lot-tracking accounts
-	if err := s.spinOffProcessLots(parentSecurityID, spinOffSecurityID, spinOffDate, parentAllocPct, spinOffAllocPct, shareRatio, spinOffPrice); err != nil {
-		return nil, fmt.Errorf("failed to process lots for spin-off: %w", err)
-	}
-
-	// Process non-lot-tracking accounts (positions)
-	if err := s.spinOffProcessPositions(parentSecurityID, spinOffSecurityID, spinOffDate, parentAllocPct, spinOffAllocPct, shareRatio, spinOffPrice); err != nil {
-		return nil, fmt.Errorf("failed to process positions for spin-off: %w", err)
-	}
-
-	// Create price record for spin-off security
-	newPrice := price.NewPrice(spinOffSecurityID, spinOffDate, spinOffPrice, price.SourceTransaction)
-	if err := s.priceRepo.CreateOrUpdate(newPrice); err != nil {
-		return nil, fmt.Errorf("failed to create spin-off price record: %w", err)
-	}
-
 	// Create audit record
 	paramsJSON, err := params.ToJSON()
 	if err != nil {
@@ -586,8 +620,33 @@ func (s *CorporateActionService) SpinOff(parentSecurityID, spinOffSecurityID typ
 
 	ca := NewCorporateAction(ActionTypeSpinOff, parentSecurityID, spinOffDate, paramsJSON)
 	ca.SetTargetSecurity(spinOffSecurityID)
-	if err := s.caRepo.Create(ca); err != nil {
-		return nil, fmt.Errorf("failed to create corporate action record: %w", err)
+
+	// The entire spin-off — reallocated parent lots/positions, minted child
+	// lots/positions/exchange rows, cash-in-lieu, the seeded child price, and the
+	// audit row — commits atomically.
+	if err := s.runInTx(func(b *CorporateActionService) error {
+		// Process lot-tracking accounts
+		if err := b.spinOffProcessLots(parentSecurityID, spinOffSecurityID, spinOffDate, parentAllocPct, spinOffAllocPct, shareRatio, spinOffPrice); err != nil {
+			return fmt.Errorf("failed to process lots for spin-off: %w", err)
+		}
+
+		// Process non-lot-tracking accounts (positions)
+		if err := b.spinOffProcessPositions(parentSecurityID, spinOffSecurityID, spinOffDate, parentAllocPct, spinOffAllocPct, shareRatio, spinOffPrice); err != nil {
+			return fmt.Errorf("failed to process positions for spin-off: %w", err)
+		}
+
+		// Create price record for spin-off security
+		newPrice := price.NewPrice(spinOffSecurityID, spinOffDate, spinOffPrice, price.SourceTransaction)
+		if err := b.priceRepo.CreateOrUpdate(newPrice); err != nil {
+			return fmt.Errorf("failed to create spin-off price record: %w", err)
+		}
+
+		if err := b.caRepo.Create(ca); err != nil {
+			return fmt.Errorf("failed to create corporate action record: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return ca, nil
@@ -777,9 +836,19 @@ func (s *CorporateActionService) DeleteAction(actionID types.ID) error {
 		if err := s.checkNoDownstreamEvents(ca); err != nil {
 			return err
 		}
-		return s.reverseSplit(ca)
+		// The inverse lot/position/price adjustments plus the audit-row delete
+		// commit atomically.
+		return s.runInTx(func(b *CorporateActionService) error {
+			return b.reverseSplit(ca)
+		})
 	case ActionTypeSpinOff:
-		return s.reverseSpinOff(ca)
+		// The whole reversal — restored parent basis, deleted child
+		// lots/positions/transactions/cash-in-lieu/price, and the audit-row
+		// delete — commits atomically. The downstream-event guards live inside
+		// reverseSpinOff and short-circuit before any write.
+		return s.runInTx(func(b *CorporateActionService) error {
+			return b.reverseSpinOff(ca)
+		})
 	case ActionTypeMerger:
 		return &UnsupportedReversalError{ActionType: ca.ActionType}
 	}
