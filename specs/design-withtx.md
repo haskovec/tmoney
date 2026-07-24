@@ -390,11 +390,21 @@ return s.db.WithTx(func(tx db.Queryer) error {
   reassignment loop + delete, today "best-effort" behind a comment wrongly
   claiming DuckDB doesn't support transactions. One `runInTx`; delete the
   false comment.
-- **`payee.Service.MergePayees`** (:257): multi-write, but built on
-  `CREATE TEMPORARY TABLE` / `DROP` — DDL that may abort inside a DuckDB tx
-  like the documented `CREATE INDEX` case. **Prep step first:** rewrite the
-  temp-table dance as plain UPDATEs (or empirically verify temp-table DDL
-  inside a tx on the pinned duckdb-go version); only then wrap.
+- **`payee.Service.MergePayees`** (:257): multi-write, built on
+  `CREATE TEMPORARY TABLE` / `DROP`. **Spike result (phase 7):** temp-table
+  DDL + DML + DROP all work inside an explicit tx on the pinned duckdb-go
+  version, and rollback after temp-table DDL is clean — so the temp-table
+  pattern is wrapped as-is, no rewrite.
+- **Implementation finding (phase 7):** DuckDB refuses to DELETE an
+  FK-referenced key in the same transaction that earlier moved the
+  references off it (`Violates foreign key constraint ... still
+  referenced`), for every update form tried (bulk UPDATE, DELETE+INSERT,
+  temp-table reinsert). So both merges wrap the **full reassignment
+  write-set** in one tx (the real integrity hazard) and run the source
+  DELETE as a separate trailing autocommit statement. If that trailing
+  delete fails, the source survives as a zero-reference orphan and a re-run
+  of the merge is idempotent. Full single-tx merge would require the
+  drop-child-FKs schema path — out of scope.
 
 ### 4.7 Undo commands (missed by v1)
 

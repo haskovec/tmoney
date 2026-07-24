@@ -189,17 +189,9 @@ func (c *VoidTransactionCommand) Execute() error {
 }
 
 func (c *VoidTransactionCommand) Undo() error {
-	// Use RestoreVoidedTransaction which bypasses the void check in Update
-	if err := c.svc.RestoreVoidedTransaction(c.id, c.beforeAmount, c.beforeMemo, c.beforeStatus); err != nil {
-		return err
-	}
-
-	// Restore splits if any were removed
-	if len(c.beforeSplits) > 0 {
-		return c.svc.ReplaceSplits(c.id, c.beforeSplits)
-	}
-
-	return nil
+	// Restore the row (bypassing the void check in Update) and its removed splits
+	// in one transaction so the undo can't leave the row restored but split-less.
+	return c.svc.RestoreVoidedTransactionWithSplits(c.id, c.beforeAmount, c.beforeMemo, c.beforeStatus, c.beforeSplits)
 }
 
 func (c *VoidTransactionCommand) Description() string {
@@ -292,16 +284,9 @@ func (c *DeleteTransferCommand) Execute() error {
 }
 
 func (c *DeleteTransferCommand) Undo() error {
-	// Recreate both sides
-	if err := c.svc.Create(c.before.FromTransaction); err != nil {
-		return err
-	}
-	if err := c.svc.Create(c.before.ToTransaction); err != nil {
-		// Best effort rollback
-		_ = c.svc.Delete(c.before.FromTransaction.ID)
-		return err
-	}
-	return nil
+	// Recreate both sides atomically — either both legs land or neither, so a
+	// failure on the second leg can never orphan the first.
+	return c.svc.RecreateTransferPair(c.before.FromTransaction, c.before.ToTransaction)
 }
 
 func (c *DeleteTransferCommand) Description() string {
@@ -498,15 +483,12 @@ func (c *EditTransactionWithSplitsCommand) Execute() error {
 	c.beforeSplits = beforeSplits
 
 	// Update the parent first, then let ReplaceSplits reconcile the splits
-	// against the current set. Migration 026 dropped transaction_splits'
-	// inbound FK, so updating a parent that still has split children no longer
-	// trips DuckDB's FK-on-rewrite error — and keeping the old rows in place
-	// lets ReplaceSplits preserve each retained transfer line's counterpart
-	// instead of churning it through a clear-then-recreate cycle.
-	if err := c.svc.Update(c.after); err != nil {
-		return err
-	}
-	return c.svc.ReplaceSplits(c.after.ID, c.afterSplits)
+	// against the current set — both in one transaction. Migration 026 dropped
+	// transaction_splits' inbound FK, so updating a parent that still has split
+	// children no longer trips DuckDB's FK-on-rewrite error — and keeping the old
+	// rows in place lets ReplaceSplits preserve each retained transfer line's
+	// counterpart instead of churning it through a clear-then-recreate cycle.
+	return c.svc.UpdateWithSplits(c.after, c.afterSplits)
 }
 
 func (c *EditTransactionWithSplitsCommand) Undo() error {
@@ -515,11 +497,8 @@ func (c *EditTransactionWithSplitsCommand) Undo() error {
 	}
 	// Mirror the Execute ordering: restore the parent, then let ReplaceSplits
 	// reconcile the current (after) split set back to the original one,
-	// re-linking each restored transfer line to its counterpart.
-	if err := c.svc.Update(c.before); err != nil {
-		return err
-	}
-	return c.svc.ReplaceSplits(c.before.ID, c.beforeSplits)
+	// re-linking each restored transfer line to its counterpart — atomically.
+	return c.svc.UpdateWithSplits(c.before, c.beforeSplits)
 }
 
 func (c *EditTransactionWithSplitsCommand) Description() string {

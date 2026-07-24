@@ -192,6 +192,7 @@ var PaycheckCategories = []PaycheckCategory{
 type Service struct {
 	repo *Repository
 	db   *db.DB
+	tx   db.Queryer // nil outside a transaction
 }
 
 // NewService creates a new Service.
@@ -200,6 +201,40 @@ func NewService(repo *Repository, database *db.DB) *Service {
 		repo: repo,
 		db:   database,
 	}
+}
+
+// InTx returns a copy of the service bound to tx, with its repository rebound to
+// the same transaction so all writes join one atomic unit. The original service
+// is unchanged and remains safe for non-transactional use.
+func (s *Service) InTx(tx db.Queryer) *Service {
+	c := *s
+	c.tx = tx
+	c.repo = s.repo.WithTx(tx)
+	return &c
+}
+
+// q returns the active Queryer for ad-hoc service-level SQL: the bound
+// transaction if any, else the live connection. A bound service must not query
+// the pool directly — the transaction pins the single connection
+// (SetMaxOpenConns(1)), so a pool read inside a tx deadlocks.
+func (s *Service) q() db.Queryer {
+	if s.tx != nil {
+		return s.tx
+	}
+	return s.db.Conn()
+}
+
+// runInTx begins a new transaction if the service is unbound, or joins the
+// already-bound transaction. This is what makes service methods composable
+// without savepoints: an outer flow binds once, inner calls join. A bound
+// service must never reach db.WithTx (nesting would deadlock the mutex).
+func (s *Service) runInTx(fn func(b *Service) error) error {
+	if s.tx != nil {
+		return fn(s) // already bound — join the caller's tx
+	}
+	return s.db.WithTx(func(tx db.Queryer) error {
+		return fn(s.InTx(tx))
+	})
 }
 
 // SeedDefaultCategories creates all default categories in the database.
@@ -554,62 +589,77 @@ func (s *Service) MergeCategories(sourceID, targetID types.ID) error {
 		}
 	}
 
-	// Update all references to use target category
-	// Note: DuckDB doesn't support transactions, so we do best-effort updates
-
-	// Update transactions
-	_, err = s.db.Conn().Exec(`
-		UPDATE transactions
-		SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
-		WHERE CAST(category_id AS VARCHAR) = ?
-	`, targetID.String(), sourceID.String())
-	if err != nil {
-		return fmt.Errorf("failed to update transactions: %w", err)
-	}
-
-	// Update transaction splits
-	_, err = s.db.Conn().Exec(`
-		UPDATE transaction_splits
-		SET category_id = CAST(? AS UUID)
-		WHERE CAST(category_id AS VARCHAR) = ?
-	`, targetID.String(), sourceID.String())
-	if err != nil {
-		return fmt.Errorf("failed to update transaction splits: %w", err)
-	}
-
-	// Update payee defaults
-	_, err = s.db.Conn().Exec(`
-		UPDATE payees
-		SET default_category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
-		WHERE CAST(default_category_id AS VARCHAR) = ?
-	`, targetID.String(), sourceID.String())
-	if err != nil {
-		return fmt.Errorf("failed to update payee defaults: %w", err)
-	}
-
-	// Update scheduled transactions
-	_, err = s.db.Conn().Exec(`
-		UPDATE scheduled_transactions
-		SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
-		WHERE CAST(category_id AS VARCHAR) = ?
-	`, targetID.String(), sourceID.String())
-	if err != nil {
-		return fmt.Errorf("failed to update scheduled transactions: %w", err)
-	}
-
-	// If source has children, reassign them to target
-	children, err := s.repo.ListChildren(sourceID)
-	if err != nil {
-		return fmt.Errorf("failed to list source children: %w", err)
-	}
-	for _, child := range children {
-		child.SetParent(targetID)
-		if err := s.repo.Update(child); err != nil {
-			return fmt.Errorf("failed to reassign child category %s: %w", child.Name, err)
+	// Reassign every reference from source to target in ONE transaction: a
+	// mid-reassignment failure rolls the whole set back, so references can never
+	// be left split between source and target (the "best-effort" hazard this
+	// replaces).
+	//
+	// The source delete is deliberately NOT inside this transaction. DuckDB
+	// forbids deleting a key in the same transaction that earlier dereferenced
+	// it: moving every reference off source and then deleting source in one tx
+	// fails with "Violates foreign key constraint because key ... is still
+	// referenced" — verified against the pinned duckdb-go version for every
+	// update form (bulk UPDATE, the repo's DELETE+INSERT, and temp-table
+	// DELETE+reinsert). So the delete runs as a separate trailing statement. The
+	// residual non-atomicity is benign and self-consistent: if the delete fails
+	// after the reassignment commits, source is left as an orphan category with
+	// zero references, which a re-run of the merge cleans up idempotently.
+	if err := s.runInTx(func(b *Service) error {
+		// Update transactions
+		if _, err := b.q().Exec(`
+			UPDATE transactions
+			SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+			WHERE CAST(category_id AS VARCHAR) = ?
+		`, targetID.String(), sourceID.String()); err != nil {
+			return fmt.Errorf("failed to update transactions: %w", err)
 		}
+
+		// Update transaction splits
+		if _, err := b.q().Exec(`
+			UPDATE transaction_splits
+			SET category_id = CAST(? AS UUID)
+			WHERE CAST(category_id AS VARCHAR) = ?
+		`, targetID.String(), sourceID.String()); err != nil {
+			return fmt.Errorf("failed to update transaction splits: %w", err)
+		}
+
+		// Update payee defaults
+		if _, err := b.q().Exec(`
+			UPDATE payees
+			SET default_category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+			WHERE CAST(default_category_id AS VARCHAR) = ?
+		`, targetID.String(), sourceID.String()); err != nil {
+			return fmt.Errorf("failed to update payee defaults: %w", err)
+		}
+
+		// Update scheduled transactions
+		if _, err := b.q().Exec(`
+			UPDATE scheduled_transactions
+			SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+			WHERE CAST(category_id AS VARCHAR) = ?
+		`, targetID.String(), sourceID.String()); err != nil {
+			return fmt.Errorf("failed to update scheduled transactions: %w", err)
+		}
+
+		// If source has children, reassign them to target
+		children, err := b.repo.ListChildren(sourceID)
+		if err != nil {
+			return fmt.Errorf("failed to list source children: %w", err)
+		}
+		for _, child := range children {
+			child.SetParent(targetID)
+			if err := b.repo.Update(child); err != nil {
+				return fmt.Errorf("failed to reassign child category %s: %w", child.Name, err)
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return err
 	}
 
-	// Delete the source category (should now have no references)
+	// Delete the source category — now dereferenced — in its own statement (see
+	// the transaction comment above for why it cannot join the reassignment tx).
 	if err := s.repo.Delete(sourceID); err != nil {
 		return fmt.Errorf("failed to delete source category: %w", err)
 	}

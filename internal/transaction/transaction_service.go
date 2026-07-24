@@ -1034,6 +1034,21 @@ func (s *Service) ReplaceSplits(transactionID types.ID, splits []*Split) error {
 	})
 }
 
+// UpdateWithSplits updates a transaction's parent fields and replaces its splits
+// as one atomic unit. It is the composed method the edit-with-splits undo command
+// uses (for both Execute and Undo) so the parent update and the split rewrite
+// commit together; the two bound calls join the single tx opened here. Update and
+// ReplaceSplits are each individually transactional, but wrapping them here makes
+// the pair atomic — a failure in the split rewrite rolls the parent update back.
+func (s *Service) UpdateWithSplits(transaction *Transaction, splits []*Split) error {
+	return s.runInTx(func(b *Service) error {
+		if err := b.Update(transaction); err != nil {
+			return err
+		}
+		return b.ReplaceSplits(transaction.ID, splits)
+	})
+}
+
 // retainedTransferChange records a transfer line kept across a ReplaceSplits
 // whose amount or category changed, so its counterpart can be re-synced.
 // amountChanged distinguishes a category-only change (which never touches an
@@ -1272,6 +1287,22 @@ func (s *Service) CreateTransfer(fromAccountID, toAccountID types.ID, date types
 	}
 
 	return pair, nil
+}
+
+// RecreateTransferPair recreates both legs of a previously deleted transfer as
+// one atomic unit. It is the composed method the void/delete undo path uses:
+// the two legs carry their original IDs, transfer_id, status, and dates (Create
+// persists the passed struct's ID verbatim), so restoration is exact. Both
+// inserts join one transaction — a failure on the second leg rolls the first
+// back, so undo can never leave a lone orphan leg (the old best-effort
+// compensation delete is deleted).
+func (s *Service) RecreateTransferPair(from, to *Transaction) error {
+	return s.runInTx(func(b *Service) error {
+		if err := b.Create(from); err != nil {
+			return err
+		}
+		return b.Create(to)
+	})
 }
 
 // GetTransferPair retrieves both sides of a transfer by the transfer ID.
@@ -1733,6 +1764,24 @@ func (s *Service) RestoreVoidedTransaction(id types.ID, amount types.Money, memo
 	// InTx, and a bound service joins that tx rather than opening its own.
 	return s.runInTx(func(b *Service) error {
 		return b.txnRepo.Update(txn)
+	})
+}
+
+// RestoreVoidedTransactionWithSplits restores a voided transaction and, when the
+// transaction had splits removed by the void, restores those splits too — all in
+// one transaction. It is the composed method the void-undo command uses so the
+// row restore and the split restore commit together (or not at all); the two
+// bound calls join the single tx opened here. When splits is empty only the row
+// is restored (matching a void of a plain, split-free transaction).
+func (s *Service) RestoreVoidedTransactionWithSplits(id types.ID, amount types.Money, memo types.NullableString, status Status, splits []*Split) error {
+	return s.runInTx(func(b *Service) error {
+		if err := b.RestoreVoidedTransaction(id, amount, memo, status); err != nil {
+			return err
+		}
+		if len(splits) > 0 {
+			return b.ReplaceSplits(id, splits)
+		}
+		return nil
 	})
 }
 
