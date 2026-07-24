@@ -21,8 +21,9 @@ type splitEvent struct {
 // (they transform shares across securities or reallocate cost basis, which a
 // per-security chronological replay cannot reconstruct).
 func (s *Service) splitEventsForSecurity(securityID types.ID) ([]splitEvent, error) {
-	caRepo := NewCorporateActionRepository(s.db)
-	actions, err := caRepo.ListBySecurity(securityID)
+	// Bindable repo, not a fresh s.db one: syncPositionAndLots (which calls this)
+	// runs inside a tx during heal-before-trade, where a pool read would deadlock.
+	actions, err := s.corporateActionRepo.ListBySecurity(securityID)
 	if err != nil {
 		return nil, fmt.Errorf("splitEventsForSecurity: %w", err)
 	}
@@ -52,8 +53,9 @@ func (s *Service) splitEventsForSecurity(securityID types.ID) ([]splitEvent, err
 // reconstructed by a per-security chronological replay, so callers must keep
 // gating them.
 func (s *Service) securityHasNonSplitAction(securityID types.ID) (bool, error) {
-	caRepo := NewCorporateActionRepository(s.db)
-	actions, err := caRepo.ListBySecurity(securityID)
+	// Bindable repo, not a fresh s.db one: syncPositionAndLots (which calls this)
+	// runs inside a tx during heal-before-trade, where a pool read would deadlock.
+	actions, err := s.corporateActionRepo.ListBySecurity(securityID)
 	if err != nil {
 		return false, fmt.Errorf("securityHasNonSplitAction: %w", err)
 	}
