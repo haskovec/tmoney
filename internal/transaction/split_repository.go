@@ -13,11 +13,29 @@ import (
 // SplitRepository provides database operations for transaction splits.
 type SplitRepository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewSplitRepository creates a new SplitRepository.
 func NewSplitRepository(database *db.DB) *SplitRepository {
 	return &SplitRepository{db: database}
+}
+
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *SplitRepository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *SplitRepository) WithTx(tx db.Queryer) *SplitRepository {
+	c := *r
+	c.tx = tx
+	return &c
 }
 
 // splitColumns lists every column the repository reads/writes, in scan order.
@@ -40,7 +58,7 @@ func categoryArg(split *Split) any {
 func (r *SplitRepository) verifyReferences(split *Split) error {
 	if split.TransferAccountID.Valid {
 		var exists bool
-		err := r.db.Conn().QueryRow(
+		err := r.q().QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM accounts WHERE CAST(id AS VARCHAR) = ?)`,
 			split.TransferAccountID.ID.String(),
 		).Scan(&exists)
@@ -59,7 +77,7 @@ func (r *SplitRepository) verifyReferences(split *Split) error {
 	}
 
 	var exists bool
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM categories WHERE CAST(id AS VARCHAR) = ?)`,
 		split.CategoryID.String(),
 	).Scan(&exists)
@@ -76,7 +94,7 @@ func (r *SplitRepository) verifyReferences(split *Split) error {
 func (r *SplitRepository) Create(split *Split) error {
 	// Verify transaction exists
 	var txnExists bool
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM transactions WHERE CAST(id AS VARCHAR) = ?)`,
 		split.TransactionID.String(),
 	).Scan(&txnExists)
@@ -98,7 +116,7 @@ func (r *SplitRepository) Create(split *Split) error {
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err = r.db.Conn().Exec(query,
+	_, err = r.q().Exec(query,
 		split.ID,
 		split.TransactionID,
 		categoryArg(split),
@@ -124,7 +142,7 @@ func (r *SplitRepository) GetByID(id types.ID) (*Split, error) {
 		WHERE CAST(id AS VARCHAR) = ?
 	`
 
-	rows, err := r.db.Conn().Query(query, id.String())
+	rows, err := r.q().Query(query, id.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get split: %w", err)
 	}
@@ -152,7 +170,7 @@ func (r *SplitRepository) GetByTransferID(transferID types.ID) (*Split, error) {
 		WHERE CAST(transfer_id AS VARCHAR) = ?
 	`
 
-	rows, err := r.db.Conn().Query(query, transferID.String())
+	rows, err := r.q().Query(query, transferID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query split by transfer_id: %w", err)
 	}
@@ -183,7 +201,7 @@ func (r *SplitRepository) ListByTransaction(transactionID types.ID) ([]*Split, e
 // Update updates an existing split in the database.
 func (r *SplitRepository) Update(split *Split) error {
 	var txnExists bool
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM transactions WHERE CAST(id AS VARCHAR) = ?)`,
 		split.TransactionID.String(),
 	).Scan(&txnExists)
@@ -220,7 +238,7 @@ func (r *SplitRepository) Update(split *Split) error {
 		WHERE CAST(id AS VARCHAR) = ?
 	`, catCast, xferAcctCast, xferIDCast)
 
-	result, err := r.db.Conn().Exec(query,
+	result, err := r.q().Exec(query,
 		split.TransactionID.String(),
 		categoryStringArg(split),
 		dbutil.NullID(split.TransferAccountID),
@@ -256,7 +274,7 @@ func categoryStringArg(split *Split) any {
 
 // Delete removes a split from the database.
 func (r *SplitRepository) Delete(id types.ID) error {
-	result, err := r.db.Conn().Exec(
+	result, err := r.q().Exec(
 		`DELETE FROM transaction_splits WHERE CAST(id AS VARCHAR) = ?`,
 		id.String(),
 	)
@@ -277,7 +295,7 @@ func (r *SplitRepository) Delete(id types.ID) error {
 
 // DeleteByTransaction removes all splits for a transaction.
 func (r *SplitRepository) DeleteByTransaction(transactionID types.ID) (int, error) {
-	result, err := r.db.Conn().Exec(
+	result, err := r.q().Exec(
 		`DELETE FROM transaction_splits WHERE CAST(transaction_id AS VARCHAR) = ?`,
 		transactionID.String(),
 	)
@@ -296,7 +314,7 @@ func (r *SplitRepository) DeleteByTransaction(transactionID types.ID) (int, erro
 // CountByTransaction returns the number of splits for a transaction.
 func (r *SplitRepository) CountByTransaction(transactionID types.ID) (int, error) {
 	var count int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM transaction_splits WHERE CAST(transaction_id AS VARCHAR) = ?
 	`, transactionID.String()).Scan(&count)
 	if err != nil {
@@ -308,7 +326,7 @@ func (r *SplitRepository) CountByTransaction(transactionID types.ID) (int, error
 // CountByCategory returns the number of splits for a category.
 func (r *SplitRepository) CountByCategory(categoryID types.ID) (int, error) {
 	var count int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM transaction_splits WHERE CAST(category_id AS VARCHAR) = ?
 	`, categoryID.String()).Scan(&count)
 	if err != nil {
@@ -320,7 +338,7 @@ func (r *SplitRepository) CountByCategory(categoryID types.ID) (int, error) {
 // GetTotalByTransaction returns the sum of all split amounts for a transaction.
 func (r *SplitRepository) GetTotalByTransaction(transactionID types.ID) (types.Money, error) {
 	var totalStr sql.NullString
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT CAST(SUM(amount) AS VARCHAR) FROM transaction_splits WHERE CAST(transaction_id AS VARCHAR) = ?
 	`, transactionID.String()).Scan(&totalStr)
 	if err != nil {
@@ -344,7 +362,7 @@ func (r *SplitRepository) GetTotalByTransaction(transactionID types.ID) (types.M
 func (r *SplitRepository) ValidateSplitsAgainstTransaction(transactionID types.ID) (bool, error) {
 	// Get the transaction amount
 	var txnAmountStr string
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT CAST(amount AS VARCHAR) FROM transactions WHERE CAST(id AS VARCHAR) = ?
 	`, transactionID.String()).Scan(&txnAmountStr)
 	if err == sql.ErrNoRows {
@@ -371,7 +389,7 @@ func (r *SplitRepository) ValidateSplitsAgainstTransaction(transactionID types.I
 
 // querySplitsWithArgs executes a query with arguments and returns a slice of splits.
 func (r *SplitRepository) querySplitsWithArgs(query string, args ...any) ([]*Split, error) {
-	rows, err := r.db.Conn().Query(query, args...)
+	rows, err := r.q().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query splits: %w", err)
 	}

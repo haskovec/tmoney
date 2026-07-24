@@ -14,6 +14,7 @@ import (
 // Repository provides database operations for transactions.
 type Repository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewRepository creates a new Repository.
@@ -21,11 +22,28 @@ func NewRepository(database *db.DB) *Repository {
 	return &Repository{db: database}
 }
 
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *Repository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *Repository) WithTx(tx db.Queryer) *Repository {
+	c := *r
+	c.tx = tx
+	return &c
+}
+
 // Create inserts a new transaction into the database.
 func (r *Repository) Create(transaction *Transaction) error {
 	// Verify account exists
 	var accountExists bool
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM accounts WHERE CAST(id AS VARCHAR) = ?)`,
 		transaction.AccountID.String(),
 	).Scan(&accountExists)
@@ -39,7 +57,7 @@ func (r *Repository) Create(transaction *Transaction) error {
 	// Verify payee exists if specified
 	if transaction.PayeeID.Valid {
 		var payeeExists bool
-		err := r.db.Conn().QueryRow(
+		err := r.q().QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM payees WHERE CAST(id AS VARCHAR) = ?)`,
 			transaction.PayeeID.ID.String(),
 		).Scan(&payeeExists)
@@ -54,7 +72,7 @@ func (r *Repository) Create(transaction *Transaction) error {
 	// Verify category exists if specified
 	if transaction.CategoryID.Valid {
 		var categoryExists bool
-		err := r.db.Conn().QueryRow(
+		err := r.q().QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM categories WHERE CAST(id AS VARCHAR) = ?)`,
 			transaction.CategoryID.ID.String(),
 		).Scan(&categoryExists)
@@ -69,7 +87,7 @@ func (r *Repository) Create(transaction *Transaction) error {
 	// Verify transfer account exists if specified
 	if transaction.TransferAccountID.Valid {
 		var transferAccountExists bool
-		err := r.db.Conn().QueryRow(
+		err := r.q().QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM accounts WHERE CAST(id AS VARCHAR) = ?)`,
 			transaction.TransferAccountID.ID.String(),
 		).Scan(&transferAccountExists)
@@ -89,7 +107,7 @@ func (r *Repository) Create(transaction *Transaction) error {
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err = r.db.Conn().Exec(query,
+	_, err = r.q().Exec(query,
 		transaction.ID,
 		transaction.AccountID,
 		transaction.Date,
@@ -123,7 +141,7 @@ func (r *Repository) GetByID(id types.ID) (*Transaction, error) {
 	`
 
 	transaction := &Transaction{}
-	err := r.db.Conn().QueryRow(query, id.String()).Scan(
+	err := r.q().QueryRow(query, id.String()).Scan(
 		&transaction.ID,
 		&transaction.AccountID,
 		&transaction.Date,
@@ -227,7 +245,7 @@ func (r *Repository) Update(transaction *Transaction) error {
 
 	// Check if transaction exists
 	var count int
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT COUNT(*) FROM transactions WHERE CAST(id AS VARCHAR) = ?`,
 		transaction.ID.String(),
 	).Scan(&count)
@@ -240,7 +258,7 @@ func (r *Repository) Update(transaction *Transaction) error {
 
 	// Verify account exists
 	var accountExists bool
-	err = r.db.Conn().QueryRow(
+	err = r.q().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM accounts WHERE CAST(id AS VARCHAR) = ?)`,
 		transaction.AccountID.String(),
 	).Scan(&accountExists)
@@ -254,7 +272,7 @@ func (r *Repository) Update(transaction *Transaction) error {
 	// Verify payee exists if specified
 	if transaction.PayeeID.Valid {
 		var payeeExists bool
-		err := r.db.Conn().QueryRow(
+		err := r.q().QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM payees WHERE CAST(id AS VARCHAR) = ?)`,
 			transaction.PayeeID.ID.String(),
 		).Scan(&payeeExists)
@@ -269,7 +287,7 @@ func (r *Repository) Update(transaction *Transaction) error {
 	// Verify category exists if specified
 	if transaction.CategoryID.Valid {
 		var categoryExists bool
-		err := r.db.Conn().QueryRow(
+		err := r.q().QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM categories WHERE CAST(id AS VARCHAR) = ?)`,
 			transaction.CategoryID.ID.String(),
 		).Scan(&categoryExists)
@@ -284,7 +302,7 @@ func (r *Repository) Update(transaction *Transaction) error {
 	// Verify transfer account exists if specified
 	if transaction.TransferAccountID.Valid {
 		var transferAccountExists bool
-		err := r.db.Conn().QueryRow(
+		err := r.q().QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM accounts WHERE CAST(id AS VARCHAR) = ?)`,
 			transaction.TransferAccountID.ID.String(),
 		).Scan(&transferAccountExists)
@@ -305,7 +323,7 @@ func (r *Repository) Update(transaction *Transaction) error {
 	// and split-transaction header edits. Migration 026 drops that inbound FK
 	// (app-level code maintains split integrity), so the row can be rewritten
 	// safely; the in-place UPDATE also avoids needlessly rewriting created_at.
-	result, err := r.db.Conn().Exec(`
+	result, err := r.q().Exec(`
 		UPDATE transactions SET
 			account_id = CAST(? AS UUID), date = ?, amount = ?, payee_id = ?,
 			category_id = ?, memo = ?, check_number = ?, status = ?,
@@ -356,7 +374,7 @@ func (r *Repository) Update(transaction *Transaction) error {
 // it never rewrites the row and is immune to a desynced index on any other
 // column. (The full-row Update stays for header/amount/transfer edits.)
 func (r *Repository) UpdateStatus(id types.ID, status Status) error {
-	result, err := r.db.Conn().Exec(`
+	result, err := r.q().Exec(`
 		UPDATE transactions SET status = ?, updated_at = ?
 		WHERE CAST(id AS VARCHAR) = ?
 	`, status.String(), types.Now().Time(), id.String())
@@ -378,7 +396,7 @@ func (r *Repository) UpdateStatus(id types.ID, status Status) error {
 func (r *Repository) Delete(id types.ID) error {
 	// Check for splits
 	var splitCount int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM transaction_splits WHERE CAST(transaction_id AS VARCHAR) = ?
 	`, id.String()).Scan(&splitCount)
 	if err != nil {
@@ -393,7 +411,7 @@ func (r *Repository) Delete(id types.ID) error {
 		}
 	}
 
-	result, err := r.db.Conn().Exec(
+	result, err := r.q().Exec(
 		`DELETE FROM transactions WHERE CAST(id AS VARCHAR) = ?`,
 		id.String(),
 	)
@@ -415,7 +433,7 @@ func (r *Repository) Delete(id types.ID) error {
 // CountByAccount returns the number of transactions for an account.
 func (r *Repository) CountByAccount(accountID types.ID) (int, error) {
 	var count int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM transactions WHERE CAST(account_id AS VARCHAR) = ?
 	`, accountID.String()).Scan(&count)
 	if err != nil {
@@ -427,7 +445,7 @@ func (r *Repository) CountByAccount(accountID types.ID) (int, error) {
 // CountByCategory returns the number of transactions for a category.
 func (r *Repository) CountByCategory(categoryID types.ID) (int, error) {
 	var count int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM transactions WHERE CAST(category_id AS VARCHAR) = ?
 	`, categoryID.String()).Scan(&count)
 	if err != nil {
@@ -439,7 +457,7 @@ func (r *Repository) CountByCategory(categoryID types.ID) (int, error) {
 // CountByPayee returns the number of transactions for a payee.
 func (r *Repository) CountByPayee(payeeID types.ID) (int, error) {
 	var count int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM transactions WHERE CAST(payee_id AS VARCHAR) = ?
 	`, payeeID.String()).Scan(&count)
 	if err != nil {
@@ -459,7 +477,7 @@ func (r *Repository) GetByBankReferenceID(accountID types.ID, bankRefID string) 
 	`
 
 	transaction := &Transaction{}
-	err := r.db.Conn().QueryRow(query, accountID.String(), bankRefID).Scan(
+	err := r.q().QueryRow(query, accountID.String(), bankRefID).Scan(
 		&transaction.ID,
 		&transaction.AccountID,
 		&transaction.Date,
@@ -484,7 +502,7 @@ func (r *Repository) GetByBankReferenceID(accountID types.ID, bankRefID string) 
 
 // queryTransactions executes a query and returns a slice of transactions.
 func (r *Repository) queryTransactions(query string) ([]*Transaction, error) {
-	rows, err := r.db.Conn().Query(query)
+	rows, err := r.q().Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transactions: %w", err)
 	}
@@ -495,7 +513,7 @@ func (r *Repository) queryTransactions(query string) ([]*Transaction, error) {
 
 // queryTransactionsWithArgs executes a query with arguments and returns a slice of transactions.
 func (r *Repository) queryTransactionsWithArgs(query string, args ...any) ([]*Transaction, error) {
-	rows, err := r.db.Conn().Query(query, args...)
+	rows, err := r.q().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transactions: %w", err)
 	}

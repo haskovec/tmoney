@@ -21,11 +21,29 @@ type TransactionFilter struct {
 // Repository provides database operations for investment transactions.
 type Repository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewRepository creates a new Repository.
 func NewRepository(database *db.DB) *Repository {
 	return &Repository{db: database}
+}
+
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *Repository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *Repository) WithTx(tx db.Queryer) *Repository {
+	c := *r
+	c.tx = tx
+	return &c
 }
 
 // investmentTransactionColumns is the standard column list for investment transactions.
@@ -69,7 +87,7 @@ func (r *Repository) Create(txn *Transaction) error {
 			?, ?)
 	`
 
-	_, err := r.db.Conn().Exec(query,
+	_, err := r.q().Exec(query,
 		txn.ID,
 		txn.AccountID.String(),
 		txn.Date.Time(),
@@ -101,7 +119,7 @@ func (r *Repository) GetByID(id types.ID) (*Transaction, error) {
 		WHERE CAST(id AS VARCHAR) = ?
 	`
 
-	t, err := scanTransaction(r.db.Conn().QueryRow(query, id.String()))
+	t, err := scanTransaction(r.q().QueryRow(query, id.String()))
 	if err == sql.ErrNoRows {
 		return nil, &dberrors.NotFoundError{Entity: "investment_transaction", ID: id.String()}
 	}
@@ -140,7 +158,7 @@ func (r *Repository) ListByAccount(accountID types.ID, filter TransactionFilter)
 
 	query += " ORDER BY date DESC, created_at DESC"
 
-	rows, err := r.db.Conn().Query(query, args...)
+	rows, err := r.q().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list investment transactions: %w", err)
 	}
@@ -175,7 +193,7 @@ func (r *Repository) ListByTransferID(transferID types.ID) ([]*Transaction, erro
 		ORDER BY created_at ASC
 	`
 
-	rows, err := r.db.Conn().Query(query, transferID.String())
+	rows, err := r.q().Query(query, transferID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list investment transactions by transfer_id: %w", err)
 	}
@@ -210,7 +228,7 @@ func (r *Repository) EarliestSinceDate(securityID types.ID, since types.Date) (*
 		ORDER BY date ASC, created_at ASC
 		LIMIT 1
 	`
-	row := r.db.Conn().QueryRow(query, securityID.String(), since.Time())
+	row := r.q().QueryRow(query, securityID.String(), since.Time())
 	t, err := scanTransaction(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -231,7 +249,7 @@ func (r *Repository) ListBySecurity(securityID types.ID) ([]*Transaction, error)
 		WHERE CAST(security_id AS VARCHAR) = ?
 		ORDER BY date ASC, created_at ASC
 	`
-	rows, err := r.db.Conn().Query(query, securityID.String())
+	rows, err := r.q().Query(query, securityID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list investment transactions by security: %w", err)
 	}
@@ -273,7 +291,7 @@ func (r *Repository) Update(txn *Transaction) error {
 		WHERE CAST(id AS VARCHAR) = ?
 	`
 
-	result, err := r.db.Conn().Exec(query,
+	result, err := r.q().Exec(query,
 		txn.AccountID.String(),
 		txn.Date.Time(),
 		txn.Type.String(),
@@ -308,7 +326,7 @@ func (r *Repository) Update(txn *Transaction) error {
 // Must manually delete from investment_transaction_lots first (DuckDB does not support ON DELETE CASCADE).
 func (r *Repository) Delete(id types.ID) error {
 	// Delete junction records first
-	_, err := r.db.Conn().Exec(
+	_, err := r.q().Exec(
 		`DELETE FROM investment_transaction_lots WHERE CAST(transaction_id AS VARCHAR) = ?`,
 		id.String(),
 	)
@@ -317,7 +335,7 @@ func (r *Repository) Delete(id types.ID) error {
 	}
 
 	// Delete the transaction
-	result, err := r.db.Conn().Exec(
+	result, err := r.q().Exec(
 		`DELETE FROM investment_transactions WHERE CAST(id AS VARCHAR) = ?`,
 		id.String(),
 	)

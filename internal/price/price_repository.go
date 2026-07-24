@@ -19,6 +19,7 @@ type BulkImportResult struct {
 // Repository provides database operations for security prices.
 type Repository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewRepository creates a new Repository.
@@ -26,11 +27,28 @@ func NewRepository(database *db.DB) *Repository {
 	return &Repository{db: database}
 }
 
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *Repository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *Repository) WithTx(tx db.Queryer) *Repository {
+	c := *r
+	c.tx = tx
+	return &c
+}
+
 // Create inserts a new security price into the database.
 func (r *Repository) Create(price *Price) error {
 	// Check for duplicate security_id+date
 	var exists bool
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM security_prices WHERE CAST(security_id AS VARCHAR) = ? AND date = ?)`,
 		price.SecurityID.String(), price.Date.Time(),
 	).Scan(&exists)
@@ -46,7 +64,7 @@ func (r *Repository) Create(price *Price) error {
 		VALUES (?, CAST(? AS UUID), ?, ?, ?, ?)
 	`
 
-	_, err = r.db.Conn().Exec(query,
+	_, err = r.q().Exec(query,
 		price.ID,
 		price.SecurityID.String(),
 		price.Date.Time(),
@@ -64,7 +82,7 @@ func (r *Repository) Create(price *Price) error {
 // CreateOrUpdate inserts a new price or updates an existing one for the same security+date.
 func (r *Repository) CreateOrUpdate(price *Price) error {
 	var existingID string
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT CAST(id AS VARCHAR) FROM security_prices WHERE CAST(security_id AS VARCHAR) = ? AND date = ?`,
 		price.SecurityID.String(), price.Date.Time(),
 	).Scan(&existingID)
@@ -76,7 +94,7 @@ func (r *Repository) CreateOrUpdate(price *Price) error {
 		return fmt.Errorf("failed to check existing price: %w", err)
 	}
 
-	_, err = r.db.Conn().Exec(`
+	_, err = r.q().Exec(`
 		UPDATE security_prices SET
 			price = ?,
 			source = ?
@@ -102,7 +120,7 @@ func (r *Repository) GetBySecurityAndDate(securityID types.ID, date types.Date) 
 	`
 
 	p := &Price{}
-	err := r.db.Conn().QueryRow(query, securityID.String(), date.Time()).Scan(
+	err := r.q().QueryRow(query, securityID.String(), date.Time()).Scan(
 		&p.ID,
 		&p.SecurityID,
 		&p.Date,
@@ -131,7 +149,7 @@ func (r *Repository) GetCurrentPrice(securityID types.ID, asOf types.Date) (*Pri
 	`
 
 	p := &Price{}
-	err := r.db.Conn().QueryRow(query, securityID.String(), asOf.Time()).Scan(
+	err := r.q().QueryRow(query, securityID.String(), asOf.Time()).Scan(
 		&p.ID,
 		&p.SecurityID,
 		&p.Date,
@@ -170,7 +188,7 @@ func (r *Repository) GetPriceHistory(securityID types.ID, from *types.Date, to *
 
 	query += " ORDER BY date DESC"
 
-	rows, err := r.db.Conn().Query(query, args...)
+	rows, err := r.q().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get price history: %w", err)
 	}
@@ -217,7 +235,7 @@ func (r *Repository) GetLatestPrices() ([]*LatestPrice, error) {
 		ORDER BY s.ticker
 	`
 
-	rows, err := r.db.Conn().Query(query)
+	rows, err := r.q().Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query latest prices: %w", err)
 	}
@@ -239,7 +257,7 @@ func (r *Repository) GetLatestPrices() ([]*LatestPrice, error) {
 
 // Delete removes a security price by its ID.
 func (r *Repository) Delete(id types.ID) error {
-	result, err := r.db.Conn().Exec(
+	result, err := r.q().Exec(
 		`DELETE FROM security_prices WHERE CAST(id AS VARCHAR) = ?`, id.String(),
 	)
 	if err != nil {

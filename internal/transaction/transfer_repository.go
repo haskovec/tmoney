@@ -12,6 +12,7 @@ import (
 // TransferRepository provides database operations for linked transfer transactions.
 type TransferRepository struct {
 	db      *db.DB
+	tx      db.Queryer // nil outside a transaction
 	txnRepo *Repository
 }
 
@@ -21,6 +22,22 @@ func NewTransferRepository(database *db.DB, txnRepo *Repository) *TransferReposi
 		db:      database,
 		txnRepo: txnRepo,
 	}
+}
+
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *TransferRepository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use. The child txnRepo
+// is rebound to the same tx so both stay in the same transaction.
+func (r *TransferRepository) WithTx(tx db.Queryer) *TransferRepository {
+	return &TransferRepository{db: r.db, tx: tx, txnRepo: r.txnRepo.WithTx(tx)}
 }
 
 // Create creates both sides of a transfer pair in the database.
@@ -57,7 +74,7 @@ func (r *TransferRepository) GetByTransferID(transferID types.ID) (*TransferPair
 		ORDER BY amount ASC
 	`
 
-	rows, err := r.db.Conn().Query(query, transferID.String())
+	rows, err := r.q().Query(query, transferID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transfer transactions: %w", err)
 	}
@@ -131,7 +148,7 @@ func (r *TransferRepository) GetOtherSide(transactionID types.ID) (*Transaction,
 	`
 
 	other := &Transaction{}
-	err = r.db.Conn().QueryRow(query, txn.TransferID.ID.String(), transactionID.String()).Scan(
+	err = r.q().QueryRow(query, txn.TransferID.ID.String(), transactionID.String()).Scan(
 		&other.ID,
 		&other.AccountID,
 		&other.Date,
@@ -296,7 +313,7 @@ func (r *TransferRepository) ListByAccount(accountID types.ID) ([]*Transaction, 
 		ORDER BY date DESC, created_at DESC
 	`
 
-	rows, err := r.db.Conn().Query(query, accountID.String())
+	rows, err := r.q().Query(query, accountID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transfer transactions: %w", err)
 	}
@@ -337,7 +354,7 @@ func (r *TransferRepository) ListByAccount(accountID types.ID) ([]*Transaction, 
 // CountByAccount returns the number of transfer transactions for an account.
 func (r *TransferRepository) CountByAccount(accountID types.ID) (int, error) {
 	var count int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM transactions
 		WHERE CAST(account_id AS VARCHAR) = ? AND transfer_id IS NOT NULL
 	`, accountID.String()).Scan(&count)

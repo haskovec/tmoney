@@ -13,6 +13,7 @@ import (
 // Repository provides database operations for reconciliation sessions.
 type Repository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewRepository creates a new Repository.
@@ -20,11 +21,28 @@ func NewRepository(database *db.DB) *Repository {
 	return &Repository{db: database}
 }
 
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *Repository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *Repository) WithTx(tx db.Queryer) *Repository {
+	c := *r
+	c.tx = tx
+	return &c
+}
+
 // Create inserts a new reconciliation session into the database.
 func (r *Repository) Create(session *Session) error {
 	// Verify account exists
 	var accountExists bool
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM accounts WHERE CAST(id AS VARCHAR) = ?)`,
 		session.AccountID.String(),
 	).Scan(&accountExists)
@@ -42,7 +60,7 @@ func (r *Repository) Create(session *Session) error {
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err = r.db.Conn().Exec(query,
+	_, err = r.q().Exec(query,
 		session.ID,
 		session.AccountID,
 		session.StatementDate,
@@ -69,7 +87,7 @@ func (r *Repository) GetByID(id types.ID) (*Session, error) {
 	`
 
 	session := &Session{}
-	err := r.db.Conn().QueryRow(query, id.String()).Scan(
+	err := r.q().QueryRow(query, id.String()).Scan(
 		&session.ID,
 		&session.AccountID,
 		&session.StatementDate,
@@ -100,7 +118,7 @@ func (r *Repository) GetActiveByAccountID(accountID types.ID) (*Session, error) 
 	`
 
 	session := &Session{}
-	err := r.db.Conn().QueryRow(query, accountID.String()).Scan(
+	err := r.q().QueryRow(query, accountID.String()).Scan(
 		&session.ID,
 		&session.AccountID,
 		&session.StatementDate,
@@ -133,7 +151,7 @@ func (r *Repository) GetLastCompletedByAccountID(accountID types.ID) (*Session, 
 	`
 
 	session := &Session{}
-	err := r.db.Conn().QueryRow(query, accountID.String()).Scan(
+	err := r.q().QueryRow(query, accountID.String()).Scan(
 		&session.ID,
 		&session.AccountID,
 		&session.StatementDate,
@@ -163,7 +181,7 @@ func (r *Repository) ListByAccountID(accountID types.ID) ([]*Session, error) {
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Conn().Query(query, accountID.String())
+	rows, err := r.q().Query(query, accountID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list reconciliation sessions: %w", err)
 	}
@@ -206,7 +224,7 @@ func (r *Repository) ListByAccountID(accountID types.ID) ([]*Session, error) {
 func (r *Repository) Update(session *Session) error {
 	session.Touch()
 
-	result, err := r.db.Conn().Exec(`
+	result, err := r.q().Exec(`
 		UPDATE reconciliation_sessions SET
 			account_id = CAST(? AS UUID),
 			statement_date = ?,
@@ -250,7 +268,7 @@ func (r *Repository) Update(session *Session) error {
 // narrow UPDATE touches no index: it is a genuine in-place update, immune to a
 // desynced index on any column.
 func (r *Repository) UpdateStatus(id types.ID, status SessionStatus, completedAt types.NullableTimestamp) error {
-	result, err := r.db.Conn().Exec(`
+	result, err := r.q().Exec(`
 		UPDATE reconciliation_sessions SET status = ?, completed_at = ?, updated_at = ?
 		WHERE CAST(id AS VARCHAR) = ?
 	`,
@@ -274,7 +292,7 @@ func (r *Repository) UpdateStatus(id types.ID, status SessionStatus, completedAt
 
 // Delete removes a reconciliation session from the database.
 func (r *Repository) Delete(id types.ID) error {
-	result, err := r.db.Conn().Exec(
+	result, err := r.q().Exec(
 		`DELETE FROM reconciliation_sessions WHERE CAST(id AS VARCHAR) = ?`,
 		id.String(),
 	)
@@ -295,7 +313,7 @@ func (r *Repository) Delete(id types.ID) error {
 
 // DeleteByAccountID removes all reconciliation sessions for an account.
 func (r *Repository) DeleteByAccountID(accountID types.ID) (int64, error) {
-	result, err := r.db.Conn().Exec(
+	result, err := r.q().Exec(
 		`DELETE FROM reconciliation_sessions WHERE CAST(account_id AS VARCHAR) = ?`,
 		accountID.String(),
 	)

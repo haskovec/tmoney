@@ -12,11 +12,29 @@ import (
 // PositionRepository provides database operations for investment positions.
 type PositionRepository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewPositionRepository creates a new PositionRepository.
 func NewPositionRepository(database *db.DB) *PositionRepository {
 	return &PositionRepository{db: database}
+}
+
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *PositionRepository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *PositionRepository) WithTx(tx db.Queryer) *PositionRepository {
+	c := *r
+	c.tx = tx
+	return &c
 }
 
 const positionColumns = `id, account_id, security_id, shares, average_cost_per_share, created_at, updated_at`
@@ -32,7 +50,7 @@ func (r *PositionRepository) CreateOrUpdate(position *Position) error {
 	position.Touch()
 
 	var count int
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT COUNT(*) FROM investment_positions WHERE CAST(account_id AS VARCHAR) = ? AND CAST(security_id AS VARCHAR) = ?`,
 		position.AccountID.String(), position.SecurityID.String(),
 	).Scan(&count)
@@ -41,7 +59,7 @@ func (r *PositionRepository) CreateOrUpdate(position *Position) error {
 	}
 
 	if count > 0 {
-		_, err = r.db.Conn().Exec(
+		_, err = r.q().Exec(
 			`DELETE FROM investment_positions WHERE CAST(account_id AS VARCHAR) = ? AND CAST(security_id AS VARCHAR) = ?`,
 			position.AccountID.String(), position.SecurityID.String(),
 		)
@@ -55,7 +73,7 @@ func (r *PositionRepository) CreateOrUpdate(position *Position) error {
 			id, account_id, security_id, shares, average_cost_per_share, created_at, updated_at
 		) VALUES (?, CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?, ?)
 	`
-	_, err = r.db.Conn().Exec(query,
+	_, err = r.q().Exec(query,
 		position.ID, position.AccountID.String(), position.SecurityID.String(),
 		position.Shares.String(), position.AverageCostPerShare.String(),
 		position.CreatedAt, position.UpdatedAt,
@@ -69,7 +87,7 @@ func (r *PositionRepository) CreateOrUpdate(position *Position) error {
 // GetByAccountAndSecurity retrieves a position for a specific account and security.
 func (r *PositionRepository) GetByAccountAndSecurity(accountID, securityID types.ID) (*Position, error) {
 	query := `SELECT ` + positionColumns + ` FROM investment_positions WHERE CAST(account_id AS VARCHAR) = ? AND CAST(security_id AS VARCHAR) = ?`
-	p, err := scanPosition(r.db.Conn().QueryRow(query, accountID.String(), securityID.String()))
+	p, err := scanPosition(r.q().QueryRow(query, accountID.String(), securityID.String()))
 	if err == sql.ErrNoRows {
 		zeroPos := NewPosition(accountID, securityID)
 		return &zeroPos, nil
@@ -89,7 +107,7 @@ func (r *PositionRepository) ListByAccount(accountID types.ID, excludeZeroShares
 	}
 	query += " ORDER BY created_at ASC"
 
-	rows, err := r.db.Conn().Query(query, args...)
+	rows, err := r.q().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list positions: %w", err)
 	}
@@ -112,7 +130,7 @@ func (r *PositionRepository) ListByAccount(accountID types.ID, excludeZeroShares
 // HasOpenPositions returns true if any account holds non-zero shares of the given security.
 func (r *PositionRepository) HasOpenPositions(securityID types.ID) (bool, error) {
 	var count int
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT COUNT(*) FROM investment_positions WHERE CAST(security_id AS VARCHAR) = ? AND shares > 0`,
 		securityID.String(),
 	).Scan(&count)
@@ -125,7 +143,7 @@ func (r *PositionRepository) HasOpenPositions(securityID types.ID) (bool, error)
 // GetPositionsBySecurity returns all positions with non-zero shares across all accounts for a given security.
 func (r *PositionRepository) GetPositionsBySecurity(securityID types.ID) ([]*Position, error) {
 	query := `SELECT ` + positionColumns + ` FROM investment_positions WHERE CAST(security_id AS VARCHAR) = ? AND shares > 0 ORDER BY created_at ASC`
-	rows, err := r.db.Conn().Query(query, securityID.String())
+	rows, err := r.q().Query(query, securityID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get positions by security: %w", err)
 	}
@@ -148,7 +166,7 @@ func (r *PositionRepository) GetPositionsBySecurity(securityID types.ID) ([]*Pos
 // Delete removes a position for a given account and security.
 func (r *PositionRepository) Delete(accountID, securityID types.ID) error {
 	var count int
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT COUNT(*) FROM investment_positions WHERE CAST(account_id AS VARCHAR) = ? AND CAST(security_id AS VARCHAR) = ?`,
 		accountID.String(), securityID.String(),
 	).Scan(&count)
@@ -159,7 +177,7 @@ func (r *PositionRepository) Delete(accountID, securityID types.ID) error {
 		return &dberrors.NotFoundError{Entity: "position", ID: accountID.String() + "+" + securityID.String()}
 	}
 
-	_, err = r.db.Conn().Exec(
+	_, err = r.q().Exec(
 		`DELETE FROM investment_positions WHERE CAST(account_id AS VARCHAR) = ? AND CAST(security_id AS VARCHAR) = ?`,
 		accountID.String(), securityID.String(),
 	)

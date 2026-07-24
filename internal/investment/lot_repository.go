@@ -12,11 +12,29 @@ import (
 // LotRepository provides database operations for investment lots.
 type LotRepository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewLotRepository creates a new LotRepository.
 func NewLotRepository(database *db.DB) *LotRepository {
 	return &LotRepository{db: database}
+}
+
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *LotRepository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *LotRepository) WithTx(tx db.Queryer) *LotRepository {
+	c := *r
+	c.tx = tx
+	return &c
 }
 
 // lotColumns is the standard column list for investment lots.
@@ -42,7 +60,7 @@ func (r *LotRepository) Create(lot *Lot) error {
 			purchase_date, source_transaction_id, closed, created_at, updated_at
 		) VALUES (?, CAST(? AS UUID), CAST(? AS UUID), ?, ?, ?, ?, CAST(? AS UUID), ?, ?, ?)
 	`
-	_, err := r.db.Conn().Exec(query,
+	_, err := r.q().Exec(query,
 		lot.ID, lot.AccountID.String(), lot.SecurityID.String(),
 		lot.Shares.String(), lot.OriginalShares.String(), lot.CostPerShare.String(),
 		lot.PurchaseDate.Time(), lot.SourceTransactionID.String(),
@@ -57,7 +75,7 @@ func (r *LotRepository) Create(lot *Lot) error {
 // GetByID retrieves a lot by its ID.
 func (r *LotRepository) GetByID(id types.ID) (*Lot, error) {
 	query := `SELECT ` + lotColumns + ` FROM investment_lots WHERE CAST(id AS VARCHAR) = ?`
-	l, err := scanLot(r.db.Conn().QueryRow(query, id.String()))
+	l, err := scanLot(r.q().QueryRow(query, id.String()))
 	if err == sql.ErrNoRows {
 		return nil, &dberrors.NotFoundError{Entity: "lot", ID: id.String()}
 	}
@@ -80,7 +98,7 @@ func (r *LotRepository) ListByAccountAndSecurity(accountID, securityID types.ID,
 	}
 	query += " ORDER BY purchase_date ASC"
 
-	rows, err := r.db.Conn().Query(query, args...)
+	rows, err := r.q().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list lots: %w", err)
 	}
@@ -104,7 +122,7 @@ func (r *LotRepository) ListByAccountAndSecurity(accountID, securityID types.ID,
 func (r *LotRepository) Update(lot *Lot) error {
 	lot.Touch()
 
-	result, err := r.db.Conn().Exec(`
+	result, err := r.q().Exec(`
 		UPDATE investment_lots SET
 			account_id = CAST(? AS UUID),
 			security_id = CAST(? AS UUID),
@@ -141,7 +159,7 @@ func (r *LotRepository) Update(lot *Lot) error {
 // existing lot. Narrow-write helper used by sell/edit and the rebuild
 // tool to avoid a read-modify-write round trip through Update.
 func (r *LotRepository) UpdateSharesAndClosed(id types.ID, shares types.Quantity, closed bool) error {
-	res, err := r.db.Conn().Exec(
+	res, err := r.q().Exec(
 		`UPDATE investment_lots SET shares = ?, closed = ?, updated_at = ? WHERE CAST(id AS VARCHAR) = ?`,
 		shares.String(), closed, types.Now().Time(), id.String(),
 	)
@@ -162,7 +180,7 @@ func (r *LotRepository) UpdateSharesAndClosed(id types.ID, shares types.Quantity
 // Returns NotFoundError when no lot references the transaction.
 func (r *LotRepository) GetBySourceTransaction(txnID types.ID) (*Lot, error) {
 	query := `SELECT ` + lotColumns + ` FROM investment_lots WHERE CAST(source_transaction_id AS VARCHAR) = ?`
-	l, err := scanLot(r.db.Conn().QueryRow(query, txnID.String()))
+	l, err := scanLot(r.q().QueryRow(query, txnID.String()))
 	if err == sql.ErrNoRows {
 		return nil, &dberrors.NotFoundError{Entity: "lot", ID: txnID.String()}
 	}
@@ -176,7 +194,7 @@ func (r *LotRepository) GetBySourceTransaction(txnID types.ID) (*Lot, error) {
 // touched — callers must ensure no junctions reference the lot before deleting
 // (otherwise foreign-key style consistency is violated).
 func (r *LotRepository) Delete(id types.ID) error {
-	res, err := r.db.Conn().Exec(`DELETE FROM investment_lots WHERE CAST(id AS VARCHAR) = ?`, id.String())
+	res, err := r.q().Exec(`DELETE FROM investment_lots WHERE CAST(id AS VARCHAR) = ?`, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete lot: %w", err)
 	}
@@ -195,7 +213,7 @@ func (r *LotRepository) Delete(id types.ID) error {
 // NOT touch the junction rows — the caller (disable-lots) removes those first.
 // Unlike Delete it does not error when the account has no lots; it returns 0.
 func (r *LotRepository) DeleteByAccount(accountID types.ID) (int, error) {
-	res, err := r.db.Conn().Exec(
+	res, err := r.q().Exec(
 		`DELETE FROM investment_lots WHERE CAST(account_id AS VARCHAR) = ?`, accountID.String())
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete lots for account: %w", err)
@@ -212,7 +230,7 @@ func (r *LotRepository) DeleteByAccount(accountID types.ID) (int, error) {
 // shares/closed from junction records.
 func (r *LotRepository) ListAllByAccount(accountID types.ID) ([]*Lot, error) {
 	query := `SELECT ` + lotColumns + ` FROM investment_lots WHERE CAST(account_id AS VARCHAR) = ? ORDER BY purchase_date ASC, created_at ASC`
-	rows, err := r.db.Conn().Query(query, accountID.String())
+	rows, err := r.q().Query(query, accountID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list lots: %w", err)
 	}
@@ -235,7 +253,7 @@ func (r *LotRepository) ListAllByAccount(accountID types.ID) ([]*Lot, error) {
 // HasOpenLots returns true if any account holds open lots for the given security.
 func (r *LotRepository) HasOpenLots(securityID types.ID) (bool, error) {
 	var count int
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT COUNT(*) FROM investment_lots WHERE CAST(security_id AS VARCHAR) = ? AND closed = false`,
 		securityID.String(),
 	).Scan(&count)
@@ -253,7 +271,7 @@ func (r *LotRepository) GetOpenLotsBySecurity(securityID types.ID) ([]*Lot, erro
 		WHERE CAST(security_id AS VARCHAR) = ? AND closed = false
 		ORDER BY purchase_date ASC
 	`
-	rows, err := r.db.Conn().Query(query, securityID.String())
+	rows, err := r.q().Query(query, securityID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get open lots by security: %w", err)
 	}

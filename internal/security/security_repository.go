@@ -21,11 +21,29 @@ type Filter struct {
 // Repository provides database operations for securities.
 type Repository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewRepository creates a new Repository.
 func NewRepository(database *db.DB) *Repository {
 	return &Repository{db: database}
+}
+
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *Repository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *Repository) WithTx(tx db.Queryer) *Repository {
+	c := *r
+	c.tx = tx
+	return &c
 }
 
 // securityColumns is the shared SELECT column list (and its Scan order) for a
@@ -71,7 +89,7 @@ func (r *Repository) Create(security *Security) error {
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := r.db.Conn().Exec(query,
+	_, err := r.q().Exec(query,
 		security.ID,
 		security.Ticker,
 		security.Name,
@@ -101,7 +119,7 @@ func (r *Repository) Create(security *Security) error {
 //     against entering the same un-tickered fund twice).
 //   - isin must be globally unique (case-insensitive) when present.
 func (r *Repository) ensureUnique(s *Security) error {
-	conn := r.db.Conn()
+	conn := r.q()
 	id := s.ID.String()
 
 	if s.Ticker != "" {
@@ -148,7 +166,7 @@ func (r *Repository) ensureUnique(s *Security) error {
 func (r *Repository) GetByID(id types.ID) (*Security, error) {
 	query := `SELECT ` + securityColumns + ` FROM securities WHERE CAST(id AS VARCHAR) = ?`
 
-	sec, err := scanSecurity(r.db.Conn().QueryRow(query, id.String()).Scan)
+	sec, err := scanSecurity(r.q().QueryRow(query, id.String()).Scan)
 	if err == sql.ErrNoRows {
 		return nil, &dberrors.NotFoundError{Entity: "security", ID: id.String()}
 	}
@@ -170,7 +188,7 @@ func (r *Repository) GetByTicker(ticker string, currency string) (*Security, err
 		args = append(args, currency)
 	}
 
-	sec, err := scanSecurity(r.db.Conn().QueryRow(query, args...).Scan)
+	sec, err := scanSecurity(r.q().QueryRow(query, args...).Scan)
 	if err == sql.ErrNoRows {
 		return nil, &dberrors.NotFoundError{Entity: "security", ID: ticker}
 	}
@@ -191,7 +209,7 @@ func (r *Repository) GetByISIN(isin string) (*Security, error) {
 
 	query := `SELECT ` + securityColumns + ` FROM securities WHERE COALESCE(isin, '') != '' AND UPPER(isin) = ?`
 
-	sec, err := scanSecurity(r.db.Conn().QueryRow(query, norm).Scan)
+	sec, err := scanSecurity(r.q().QueryRow(query, norm).Scan)
 	if err == sql.ErrNoRows {
 		return nil, &dberrors.NotFoundError{Entity: "security", ID: isin}
 	}
@@ -209,7 +227,7 @@ func (r *Repository) FindByName(name string) ([]*Security, error) {
 	trimmed := strings.TrimSpace(name)
 	query := `SELECT ` + securityColumns + ` FROM securities WHERE LOWER(name) = LOWER(?) ORDER BY ticker, isin`
 
-	rows, err := r.db.Conn().Query(query, trimmed)
+	rows, err := r.q().Query(query, trimmed)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find securities by name: %w", err)
 	}
@@ -237,7 +255,7 @@ func (r *Repository) List(filter Filter) ([]*Security, error) {
 
 	query += " ORDER BY ticker"
 
-	rows, err := r.db.Conn().Query(query, args...)
+	rows, err := r.q().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list securities: %w", err)
 	}
@@ -270,7 +288,7 @@ func (r *Repository) Update(security *Security) error {
 		return err
 	}
 
-	result, err := r.db.Conn().Exec(`
+	result, err := r.q().Exec(`
 		UPDATE securities SET
 			ticker = ?,
 			name = ?,
@@ -314,7 +332,7 @@ func (r *Repository) Update(security *Security) error {
 func (r *Repository) Delete(id types.ID) error {
 	// Check for price dependents
 	var priceCount int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM security_prices WHERE CAST(security_id AS VARCHAR) = ?
 	`, id.String()).Scan(&priceCount)
 	if err != nil {
@@ -329,7 +347,7 @@ func (r *Repository) Delete(id types.ID) error {
 		}
 	}
 
-	result, err := r.db.Conn().Exec(`DELETE FROM securities WHERE CAST(id AS VARCHAR) = ?`, id.String())
+	result, err := r.q().Exec(`DELETE FROM securities WHERE CAST(id AS VARCHAR) = ?`, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete security: %w", err)
 	}

@@ -21,11 +21,29 @@ type ViewHolding struct {
 // HoldingsRepository queries the portfolio_holdings database view.
 type HoldingsRepository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewHoldingsRepository creates a new HoldingsRepository.
 func NewHoldingsRepository(database *db.DB) *HoldingsRepository {
 	return &HoldingsRepository{db: database}
+}
+
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *HoldingsRepository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *HoldingsRepository) WithTx(tx db.Queryer) *HoldingsRepository {
+	c := *r
+	c.tx = tx
+	return &c
 }
 
 // ListByAccount returns all holdings with non-zero shares for a given account.
@@ -36,7 +54,7 @@ func (r *HoldingsRepository) ListByAccount(accountID types.ID) ([]ViewHolding, e
 		WHERE CAST(account_id AS VARCHAR) = ? AND total_shares > 0
 		ORDER BY ticker ASC
 	`
-	rows, err := r.db.Conn().Query(query, accountID.String())
+	rows, err := r.q().Query(query, accountID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query portfolio_holdings view: %w", err)
 	}

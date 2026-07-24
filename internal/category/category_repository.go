@@ -13,6 +13,7 @@ import (
 // Repository provides database operations for categories.
 type Repository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewRepository creates a new Repository.
@@ -20,12 +21,29 @@ func NewRepository(database *db.DB) *Repository {
 	return &Repository{db: database}
 }
 
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *Repository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *Repository) WithTx(tx db.Queryer) *Repository {
+	c := *r
+	c.tx = tx
+	return &c
+}
+
 // Create inserts a new category into the database.
 func (r *Repository) Create(category *Category) error {
 	// Check for duplicate name within the same parent
 	var exists bool
 	if category.ParentID.Valid {
-		err := r.db.Conn().QueryRow(
+		err := r.q().QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM categories WHERE name = ? AND CAST(parent_id AS VARCHAR) = ?)`,
 			category.Name, category.ParentID.ID.String(),
 		).Scan(&exists)
@@ -33,7 +51,7 @@ func (r *Repository) Create(category *Category) error {
 			return fmt.Errorf("failed to check category name uniqueness: %w", err)
 		}
 	} else {
-		err := r.db.Conn().QueryRow(
+		err := r.q().QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM categories WHERE name = ? AND parent_id IS NULL)`,
 			category.Name,
 		).Scan(&exists)
@@ -69,7 +87,7 @@ func (r *Repository) Create(category *Category) error {
 		) VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := r.db.Conn().Exec(query,
+	_, err := r.q().Exec(query,
 		category.ID,
 		category.Name,
 		dbutil.NullID(category.ParentID),
@@ -95,7 +113,7 @@ func (r *Repository) GetByID(id types.ID) (*Category, error) {
 	`
 
 	category := &Category{}
-	err := r.db.Conn().QueryRow(query, id.String()).Scan(
+	err := r.q().QueryRow(query, id.String()).Scan(
 		&category.ID,
 		&category.Name,
 		&category.ParentID,
@@ -139,7 +157,7 @@ func (r *Repository) GetByName(name string, parentID *types.ID) (*Category, erro
 	}
 
 	category := &Category{}
-	err := r.db.Conn().QueryRow(query, args...).Scan(
+	err := r.q().QueryRow(query, args...).Scan(
 		&category.ID,
 		&category.Name,
 		&category.ParentID,
@@ -237,7 +255,7 @@ func (r *Repository) Update(category *Category) error {
 	// Check for duplicate name within the same parent (excluding current category)
 	var exists bool
 	if category.ParentID.Valid {
-		err := r.db.Conn().QueryRow(
+		err := r.q().QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM categories WHERE name = ? AND CAST(parent_id AS VARCHAR) = ? AND CAST(id AS VARCHAR) != ?)`,
 			category.Name, category.ParentID.ID.String(), category.ID.String(),
 		).Scan(&exists)
@@ -245,7 +263,7 @@ func (r *Repository) Update(category *Category) error {
 			return fmt.Errorf("failed to check category name uniqueness: %w", err)
 		}
 	} else {
-		err := r.db.Conn().QueryRow(
+		err := r.q().QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM categories WHERE name = ? AND parent_id IS NULL AND CAST(id AS VARCHAR) != ?)`,
 			category.Name, category.ID.String(),
 		).Scan(&exists)
@@ -259,7 +277,7 @@ func (r *Repository) Update(category *Category) error {
 
 	// Check if category exists
 	var count int
-	err := r.db.Conn().QueryRow(`SELECT COUNT(*) FROM categories WHERE CAST(id AS VARCHAR) = ?`, category.ID.String()).Scan(&count)
+	err := r.q().QueryRow(`SELECT COUNT(*) FROM categories WHERE CAST(id AS VARCHAR) = ?`, category.ID.String()).Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to check category exists: %w", err)
 	}
@@ -285,7 +303,7 @@ func (r *Repository) Update(category *Category) error {
 	}
 
 	// Delete the existing record
-	_, err = r.db.Conn().Exec(`DELETE FROM categories WHERE CAST(id AS VARCHAR) = ?`, category.ID.String())
+	_, err = r.q().Exec(`DELETE FROM categories WHERE CAST(id AS VARCHAR) = ?`, category.ID.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete for update: %w", err)
 	}
@@ -297,7 +315,7 @@ func (r *Repository) Update(category *Category) error {
 			created_at, updated_at
 		) VALUES (CAST(? AS UUID), ?, ?, ?, ?, ?, ?)
 	`
-	_, err = r.db.Conn().Exec(insertQuery,
+	_, err = r.q().Exec(insertQuery,
 		category.ID.String(),
 		category.Name,
 		dbutil.NullID(category.ParentID),
@@ -319,7 +337,7 @@ func (r *Repository) Update(category *Category) error {
 func (r *Repository) Delete(id types.ID) error {
 	// Check for subcategories
 	var childCount int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM categories WHERE CAST(parent_id AS VARCHAR) = ?
 	`, id.String()).Scan(&childCount)
 	if err != nil {
@@ -336,7 +354,7 @@ func (r *Repository) Delete(id types.ID) error {
 
 	// Check for transactions
 	var txnCount int
-	err = r.db.Conn().QueryRow(`
+	err = r.q().QueryRow(`
 		SELECT COUNT(*) FROM transactions WHERE CAST(category_id AS VARCHAR) = ?
 	`, id.String()).Scan(&txnCount)
 	if err != nil {
@@ -353,7 +371,7 @@ func (r *Repository) Delete(id types.ID) error {
 
 	// Check for transaction split lines
 	var splitCount int
-	err = r.db.Conn().QueryRow(`
+	err = r.q().QueryRow(`
 		SELECT COUNT(*) FROM transaction_splits WHERE CAST(category_id AS VARCHAR) = ?
 	`, id.String()).Scan(&splitCount)
 	if err != nil {
@@ -370,7 +388,7 @@ func (r *Repository) Delete(id types.ID) error {
 
 	// Check for scheduled transactions
 	var scheduledCount int
-	err = r.db.Conn().QueryRow(`
+	err = r.q().QueryRow(`
 		SELECT COUNT(*) FROM scheduled_transactions WHERE CAST(category_id AS VARCHAR) = ?
 	`, id.String()).Scan(&scheduledCount)
 	if err != nil {
@@ -385,7 +403,7 @@ func (r *Repository) Delete(id types.ID) error {
 		}
 	}
 
-	result, err := r.db.Conn().Exec(`DELETE FROM categories WHERE CAST(id AS VARCHAR) = ?`, id.String())
+	result, err := r.q().Exec(`DELETE FROM categories WHERE CAST(id AS VARCHAR) = ?`, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete category: %w", err)
 	}
@@ -403,7 +421,7 @@ func (r *Repository) Delete(id types.ID) error {
 
 // queryCategories executes a query and returns a slice of categories.
 func (r *Repository) queryCategories(query string) ([]*Category, error) {
-	rows, err := r.db.Conn().Query(query)
+	rows, err := r.q().Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query categories: %w", err)
 	}
@@ -414,7 +432,7 @@ func (r *Repository) queryCategories(query string) ([]*Category, error) {
 
 // queryCategoriesWithArgs executes a query with arguments and returns a slice of categories.
 func (r *Repository) queryCategoriesWithArgs(query string, args ...any) ([]*Category, error) {
-	rows, err := r.db.Conn().Query(query, args...)
+	rows, err := r.q().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query categories: %w", err)
 	}

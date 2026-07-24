@@ -13,6 +13,7 @@ import (
 // Repository provides database operations for accounts.
 type Repository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewRepository creates a new Repository.
@@ -20,11 +21,28 @@ func NewRepository(database *db.DB) *Repository {
 	return &Repository{db: database}
 }
 
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *Repository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *Repository) WithTx(tx db.Queryer) *Repository {
+	c := *r
+	c.tx = tx
+	return &c
+}
+
 // Create inserts a new account into the database.
 func (r *Repository) Create(account *Account) error {
 	// Check for duplicate name
 	var exists bool
-	err := r.db.Conn().QueryRow(`SELECT EXISTS(SELECT 1 FROM accounts WHERE name = ?)`, account.Name).Scan(&exists)
+	err := r.q().QueryRow(`SELECT EXISTS(SELECT 1 FROM accounts WHERE name = ?)`, account.Name).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("failed to check account name uniqueness: %w", err)
 	}
@@ -40,7 +58,7 @@ func (r *Repository) Create(account *Account) error {
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err = r.db.Conn().Exec(query,
+	_, err = r.q().Exec(query,
 		account.ID,
 		account.Name,
 		account.Type,
@@ -76,7 +94,7 @@ func (r *Repository) GetByID(id types.ID) (*Account, error) {
 	`
 
 	account := &Account{}
-	err := r.db.Conn().QueryRow(query, id.String()).Scan(
+	err := r.q().QueryRow(query, id.String()).Scan(
 		&account.ID,
 		&account.Name,
 		&account.Type,
@@ -115,7 +133,7 @@ func (r *Repository) GetByName(name string) (*Account, error) {
 	`
 
 	account := &Account{}
-	err := r.db.Conn().QueryRow(query, name).Scan(
+	err := r.q().QueryRow(query, name).Scan(
 		&account.ID,
 		&account.Name,
 		&account.Type,
@@ -166,7 +184,7 @@ func (r *Repository) BalanceAsOf(id types.ID, asOf types.Date) (types.Money, err
 		WHERE CAST(a.id AS VARCHAR) = ?
 	`
 	var balance types.Money
-	err := r.db.Conn().QueryRow(query, asOf.Time(), id.String()).Scan(&balance)
+	err := r.q().QueryRow(query, asOf.Time(), id.String()).Scan(&balance)
 	if err == sql.ErrNoRows {
 		return types.ZeroMoney, &dberrors.NotFoundError{Entity: "account", ID: id.String()}
 	}
@@ -192,7 +210,7 @@ func (r *Repository) Balance(id types.ID) (types.Money, error) {
 		WHERE CAST(a.id AS VARCHAR) = ?
 	`
 	var balance types.Money
-	err := r.db.Conn().QueryRow(query, id.String()).Scan(&balance)
+	err := r.q().QueryRow(query, id.String()).Scan(&balance)
 	if err == sql.ErrNoRows {
 		return types.ZeroMoney, &dberrors.NotFoundError{Entity: "account", ID: id.String()}
 	}
@@ -215,7 +233,7 @@ func (r *Repository) List(activeOnly bool) ([]*Account, error) {
 	}
 	query += " ORDER BY name"
 
-	rows, err := r.db.Conn().Query(query)
+	rows, err := r.q().Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list accounts: %w", err)
 	}
@@ -260,7 +278,7 @@ func (r *Repository) Update(account *Account) error {
 	account.Touch()
 
 	var exists bool
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM accounts WHERE name = ? AND CAST(id AS VARCHAR) != ?)`,
 		account.Name, account.ID.String(),
 	).Scan(&exists)
@@ -271,7 +289,7 @@ func (r *Repository) Update(account *Account) error {
 		return &dberrors.DuplicateError{Entity: "account", Field: "name", Value: account.Name}
 	}
 
-	result, err := r.db.Conn().Exec(`
+	result, err := r.q().Exec(`
 		UPDATE accounts SET
 			name = ?, type = ?, currency = ?, institution = ?, account_number = ?,
 			opening_balance = ?, opening_date = ?, credit_limit = ?, interest_rate = ?,
@@ -317,7 +335,7 @@ func (r *Repository) Update(account *Account) error {
 func (r *Repository) Delete(id types.ID) error {
 	// Check for transactions first
 	var count int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM transactions WHERE CAST(account_id AS VARCHAR) = ?
 	`, id.String()).Scan(&count)
 	if err != nil {
@@ -334,7 +352,7 @@ func (r *Repository) Delete(id types.ID) error {
 
 	// Then for scheduled transactions referencing the account in any role
 	// (mirrors scheduled.Service.ListReferencing).
-	err = r.db.Conn().QueryRow(`
+	err = r.q().QueryRow(`
 		SELECT COUNT(*) FROM scheduled_transactions st
 		WHERE CAST(st.account_id AS VARCHAR) = ?
 		   OR CAST(st.transfer_account_id AS VARCHAR) = ?
@@ -356,7 +374,7 @@ func (r *Repository) Delete(id types.ID) error {
 		}
 	}
 
-	result, err := r.db.Conn().Exec(`DELETE FROM accounts WHERE CAST(id AS VARCHAR) = ?`, id.String())
+	result, err := r.q().Exec(`DELETE FROM accounts WHERE CAST(id AS VARCHAR) = ?`, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete account: %w", err)
 	}

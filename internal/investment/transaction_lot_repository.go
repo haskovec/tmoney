@@ -11,11 +11,29 @@ import (
 // TransactionLotRepository provides database operations for investment transaction-lot junctions.
 type TransactionLotRepository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewTransactionLotRepository creates a new TransactionLotRepository.
 func NewTransactionLotRepository(database *db.DB) *TransactionLotRepository {
 	return &TransactionLotRepository{db: database}
+}
+
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *TransactionLotRepository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *TransactionLotRepository) WithTx(tx db.Queryer) *TransactionLotRepository {
+	c := *r
+	c.tx = tx
+	return &c
 }
 
 const transactionLotColumns = `id, transaction_id, lot_id, shares, created_at`
@@ -33,7 +51,7 @@ func (r *TransactionLotRepository) Create(tl *TransactionLot) error {
 			id, transaction_id, lot_id, shares, created_at
 		) VALUES (?, CAST(? AS UUID), CAST(? AS UUID), ?, ?)
 	`
-	_, err := r.db.Conn().Exec(query,
+	_, err := r.q().Exec(query,
 		tl.ID, tl.TransactionID.String(), tl.LotID.String(),
 		tl.Shares.String(), tl.CreatedAt.Time(),
 	)
@@ -66,7 +84,7 @@ func (r *TransactionLotRepository) SumSharesByLot(lotIDs []types.ID) (map[types.
 	}
 
 	query := `SELECT CAST(lot_id AS VARCHAR), shares FROM investment_transaction_lots WHERE CAST(lot_id AS VARCHAR) IN (` + sb.String() + `)`
-	rows, err := r.db.Conn().Query(query, args...)
+	rows, err := r.q().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query junctions: %w", err)
 	}
@@ -97,7 +115,7 @@ func (r *TransactionLotRepository) SumSharesByLot(lotIDs []types.ID) (map[types.
 // would remove before --confirm.
 func (r *TransactionLotRepository) CountByAccount(accountID types.ID) (int, error) {
 	var count int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM investment_transaction_lots
 		WHERE CAST(lot_id AS VARCHAR) IN (
 			SELECT CAST(id AS VARCHAR) FROM investment_lots WHERE CAST(account_id AS VARCHAR) = ?
@@ -113,7 +131,7 @@ func (r *TransactionLotRepository) CountByAccount(accountID types.ID) (int, erro
 // lot_id, it deletes via a subquery against investment_lots, so it MUST run
 // while the account's lots still exist (before LotRepository.DeleteByAccount).
 func (r *TransactionLotRepository) DeleteByAccount(accountID types.ID) (int, error) {
-	res, err := r.db.Conn().Exec(`
+	res, err := r.q().Exec(`
 		DELETE FROM investment_transaction_lots
 		WHERE CAST(lot_id AS VARCHAR) IN (
 			SELECT CAST(id AS VARCHAR) FROM investment_lots WHERE CAST(account_id AS VARCHAR) = ?
@@ -136,7 +154,7 @@ func (r *TransactionLotRepository) GetByTransaction(transactionID types.ID) ([]*
 		WHERE CAST(transaction_id AS VARCHAR) = ?
 		ORDER BY created_at ASC
 	`
-	rows, err := r.db.Conn().Query(query, transactionID.String())
+	rows, err := r.q().Query(query, transactionID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction lots: %w", err)
 	}

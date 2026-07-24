@@ -13,11 +13,29 @@ import (
 // CorporateActionRepository provides database operations for corporate actions.
 type CorporateActionRepository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewCorporateActionRepository creates a new CorporateActionRepository.
 func NewCorporateActionRepository(database *db.DB) *CorporateActionRepository {
 	return &CorporateActionRepository{db: database}
+}
+
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *CorporateActionRepository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *CorporateActionRepository) WithTx(tx db.Queryer) *CorporateActionRepository {
+	c := *r
+	c.tx = tx
+	return &c
 }
 
 const corporateActionColumns = `id, action_type, security_id, target_security_id, action_date, parameters, created_at`
@@ -44,7 +62,7 @@ func (r *CorporateActionRepository) Create(ca *CorporateAction) error {
 			id, action_type, security_id, target_security_id, action_date, parameters, created_at
 		) VALUES (?, ?, CAST(? AS UUID), ` + dbutil.NullUUIDCast(ca.TargetSecurityID) + `, ?, ?, ?)
 	`
-	_, err := r.db.Conn().Exec(query,
+	_, err := r.q().Exec(query,
 		ca.ID,
 		ca.ActionType.String(),
 		ca.SecurityID.String(),
@@ -62,7 +80,7 @@ func (r *CorporateActionRepository) Create(ca *CorporateAction) error {
 // GetByID retrieves a corporate action by its ID.
 func (r *CorporateActionRepository) GetByID(id types.ID) (*CorporateAction, error) {
 	query := `SELECT ` + corporateActionColumns + ` FROM corporate_actions WHERE CAST(id AS VARCHAR) = ?`
-	ca, err := scanCorporateAction(r.db.Conn().QueryRow(query, id.String()))
+	ca, err := scanCorporateAction(r.q().QueryRow(query, id.String()))
 	if err == sql.ErrNoRows {
 		return nil, &dberrors.NotFoundError{Entity: "corporate_action", ID: id.String()}
 	}
@@ -77,7 +95,7 @@ func (r *CorporateActionRepository) GetByID(id types.ID) (*CorporateAction, erro
 // actions are present and may interfere with naive position reconstruction.
 func (r *CorporateActionRepository) CountAll() (int, error) {
 	var n int
-	if err := r.db.Conn().QueryRow(`SELECT COUNT(*) FROM corporate_actions`).Scan(&n); err != nil {
+	if err := r.q().QueryRow(`SELECT COUNT(*) FROM corporate_actions`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("failed to count corporate actions: %w", err)
 	}
 	return n, nil
@@ -92,7 +110,7 @@ func (r *CorporateActionRepository) CountAll() (int, error) {
 // securities have corporate actions, which is what lets per-security healing
 // run on a database that contains corporate-action history.
 func (r *CorporateActionRepository) InvolvedSecurityIDs() (map[types.ID]bool, error) {
-	rows, err := r.db.Conn().Query(`
+	rows, err := r.q().Query(`
 		SELECT security_id FROM corporate_actions
 		UNION
 		SELECT target_security_id FROM corporate_actions WHERE target_security_id IS NOT NULL
@@ -125,7 +143,7 @@ func (r *CorporateActionRepository) ListAll() ([]*CorporateAction, error) {
 		FROM corporate_actions
 		ORDER BY action_date DESC, created_at DESC
 	`
-	rows, err := r.db.Conn().Query(query)
+	rows, err := r.q().Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list all corporate actions: %w", err)
 	}
@@ -148,7 +166,7 @@ func (r *CorporateActionRepository) ListAll() ([]*CorporateAction, error) {
 // Delete removes a corporate action by its ID. The caller is responsible
 // for first reversing the action's effects on lots/positions/prices.
 func (r *CorporateActionRepository) Delete(id types.ID) error {
-	res, err := r.db.Conn().Exec(`DELETE FROM corporate_actions WHERE CAST(id AS VARCHAR) = ?`, id.String())
+	res, err := r.q().Exec(`DELETE FROM corporate_actions WHERE CAST(id AS VARCHAR) = ?`, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete corporate action: %w", err)
 	}
@@ -171,7 +189,7 @@ func (r *CorporateActionRepository) ListBySecurity(securityID types.ID) ([]*Corp
 		WHERE CAST(security_id AS VARCHAR) = ? OR CAST(target_security_id AS VARCHAR) = ?
 		ORDER BY action_date ASC, created_at ASC
 	`
-	rows, err := r.db.Conn().Query(query, securityID.String(), securityID.String())
+	rows, err := r.q().Query(query, securityID.String(), securityID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list corporate actions by security: %w", err)
 	}

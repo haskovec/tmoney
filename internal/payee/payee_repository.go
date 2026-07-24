@@ -13,11 +13,29 @@ import (
 // Repository provides database operations for payees and aliases.
 type Repository struct {
 	db *db.DB
+	tx db.Queryer // nil outside a transaction
 }
 
 // NewRepository creates a new Repository.
 func NewRepository(database *db.DB) *Repository {
 	return &Repository{db: database}
+}
+
+// q returns the active Queryer: the bound transaction if any, else the
+// live connection. All SQL in this repo goes through q().
+func (r *Repository) q() db.Queryer {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db.Conn()
+}
+
+// WithTx returns a copy of the repository bound to tx. The original is
+// unchanged and remains safe for non-transactional use.
+func (r *Repository) WithTx(tx db.Queryer) *Repository {
+	c := *r
+	c.tx = tx
+	return &c
 }
 
 // =============================================================================
@@ -28,7 +46,7 @@ func NewRepository(database *db.DB) *Repository {
 func (r *Repository) Create(payee *Payee) error {
 	// Check for duplicate name
 	var exists bool
-	err := r.db.Conn().QueryRow(`SELECT EXISTS(SELECT 1 FROM payees WHERE name = ?)`, payee.Name).Scan(&exists)
+	err := r.q().QueryRow(`SELECT EXISTS(SELECT 1 FROM payees WHERE name = ?)`, payee.Name).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("failed to check payee name uniqueness: %w", err)
 	}
@@ -43,7 +61,7 @@ func (r *Repository) Create(payee *Payee) error {
 		) VALUES (?, ?, ?, ?, ?, ?)
 	`
 
-	_, err = r.db.Conn().Exec(query,
+	_, err = r.q().Exec(query,
 		payee.ID,
 		payee.Name,
 		dbutil.NullID(payee.DefaultCategoryID),
@@ -68,7 +86,7 @@ func (r *Repository) GetByID(id types.ID) (*Payee, error) {
 	`
 
 	payee := &Payee{}
-	err := r.db.Conn().QueryRow(query, id.String()).Scan(
+	err := r.q().QueryRow(query, id.String()).Scan(
 		&payee.ID,
 		&payee.Name,
 		&payee.DefaultCategoryID,
@@ -96,7 +114,7 @@ func (r *Repository) GetByName(name string) (*Payee, error) {
 	`
 
 	payee := &Payee{}
-	err := r.db.Conn().QueryRow(query, name).Scan(
+	err := r.q().QueryRow(query, name).Scan(
 		&payee.ID,
 		&payee.Name,
 		&payee.DefaultCategoryID,
@@ -133,7 +151,7 @@ func (r *Repository) Update(payee *Payee) error {
 
 	// Check for duplicate name (excluding current payee)
 	var exists bool
-	err := r.db.Conn().QueryRow(
+	err := r.q().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM payees WHERE name = ? AND CAST(id AS VARCHAR) != ?)`,
 		payee.Name, payee.ID.String(),
 	).Scan(&exists)
@@ -146,7 +164,7 @@ func (r *Repository) Update(payee *Payee) error {
 
 	// Check if payee exists
 	var count int
-	err = r.db.Conn().QueryRow(`SELECT COUNT(*) FROM payees WHERE CAST(id AS VARCHAR) = ?`, payee.ID.String()).Scan(&count)
+	err = r.q().QueryRow(`SELECT COUNT(*) FROM payees WHERE CAST(id AS VARCHAR) = ?`, payee.ID.String()).Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to check payee exists: %w", err)
 	}
@@ -155,7 +173,7 @@ func (r *Repository) Update(payee *Payee) error {
 	}
 
 	// Delete the existing record
-	_, err = r.db.Conn().Exec(`DELETE FROM payees WHERE CAST(id AS VARCHAR) = ?`, payee.ID.String())
+	_, err = r.q().Exec(`DELETE FROM payees WHERE CAST(id AS VARCHAR) = ?`, payee.ID.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete for update: %w", err)
 	}
@@ -167,7 +185,7 @@ func (r *Repository) Update(payee *Payee) error {
 			created_at, updated_at
 		) VALUES (CAST(? AS UUID), ?, ?, ?, ?, ?)
 	`
-	_, err = r.db.Conn().Exec(insertQuery,
+	_, err = r.q().Exec(insertQuery,
 		payee.ID.String(),
 		payee.Name,
 		dbutil.NullID(payee.DefaultCategoryID),
@@ -187,7 +205,7 @@ func (r *Repository) Update(payee *Payee) error {
 func (r *Repository) Delete(id types.ID) error {
 	// Check for transactions
 	var txnCount int
-	err := r.db.Conn().QueryRow(`
+	err := r.q().QueryRow(`
 		SELECT COUNT(*) FROM transactions WHERE CAST(payee_id AS VARCHAR) = ?
 	`, id.String()).Scan(&txnCount)
 	if err != nil {
@@ -203,13 +221,13 @@ func (r *Repository) Delete(id types.ID) error {
 	}
 
 	// Delete associated aliases first
-	_, err = r.db.Conn().Exec(`DELETE FROM payee_aliases WHERE CAST(payee_id AS VARCHAR) = ?`, id.String())
+	_, err = r.q().Exec(`DELETE FROM payee_aliases WHERE CAST(payee_id AS VARCHAR) = ?`, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete payee aliases: %w", err)
 	}
 
 	// Delete the payee
-	result, err := r.db.Conn().Exec(`DELETE FROM payees WHERE CAST(id AS VARCHAR) = ?`, id.String())
+	result, err := r.q().Exec(`DELETE FROM payees WHERE CAST(id AS VARCHAR) = ?`, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete payee: %w", err)
 	}
@@ -233,7 +251,7 @@ func (r *Repository) Delete(id types.ID) error {
 func (r *Repository) CreateAlias(alias *Alias) error {
 	// Verify payee exists
 	var exists bool
-	err := r.db.Conn().QueryRow(`SELECT EXISTS(SELECT 1 FROM payees WHERE CAST(id AS VARCHAR) = ?)`, alias.PayeeID.String()).Scan(&exists)
+	err := r.q().QueryRow(`SELECT EXISTS(SELECT 1 FROM payees WHERE CAST(id AS VARCHAR) = ?)`, alias.PayeeID.String()).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("failed to check payee exists: %w", err)
 	}
@@ -242,7 +260,7 @@ func (r *Repository) CreateAlias(alias *Alias) error {
 	}
 
 	// Check for duplicate pattern
-	err = r.db.Conn().QueryRow(`SELECT EXISTS(SELECT 1 FROM payee_aliases WHERE pattern = ?)`, alias.Pattern).Scan(&exists)
+	err = r.q().QueryRow(`SELECT EXISTS(SELECT 1 FROM payee_aliases WHERE pattern = ?)`, alias.Pattern).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("failed to check alias pattern uniqueness: %w", err)
 	}
@@ -256,7 +274,7 @@ func (r *Repository) CreateAlias(alias *Alias) error {
 		) VALUES (?, ?, ?, ?, ?)
 	`
 
-	_, err = r.db.Conn().Exec(query,
+	_, err = r.q().Exec(query,
 		alias.ID,
 		alias.PayeeID,
 		alias.Pattern,
@@ -279,7 +297,7 @@ func (r *Repository) GetAliasByID(id types.ID) (*Alias, error) {
 	`
 
 	alias := &Alias{}
-	err := r.db.Conn().QueryRow(query, id.String()).Scan(
+	err := r.q().QueryRow(query, id.String()).Scan(
 		&alias.ID,
 		&alias.PayeeID,
 		&alias.Pattern,
@@ -311,7 +329,7 @@ func (r *Repository) GetAliasesByPayee(payeeID types.ID) ([]*Alias, error) {
 // UpdateAlias updates an existing alias in the database.
 func (r *Repository) UpdateAlias(alias *Alias) error {
 	var exists bool
-	err := r.db.Conn().QueryRow(`SELECT EXISTS(SELECT 1 FROM payees WHERE CAST(id AS VARCHAR) = ?)`, alias.PayeeID.String()).Scan(&exists)
+	err := r.q().QueryRow(`SELECT EXISTS(SELECT 1 FROM payees WHERE CAST(id AS VARCHAR) = ?)`, alias.PayeeID.String()).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("failed to check payee exists: %w", err)
 	}
@@ -319,7 +337,7 @@ func (r *Repository) UpdateAlias(alias *Alias) error {
 		return &dberrors.NotFoundError{Entity: "payee", ID: alias.PayeeID.String()}
 	}
 
-	err = r.db.Conn().QueryRow(
+	err = r.q().QueryRow(
 		`SELECT EXISTS(SELECT 1 FROM payee_aliases WHERE pattern = ? AND CAST(id AS VARCHAR) != ?)`,
 		alias.Pattern, alias.ID.String(),
 	).Scan(&exists)
@@ -330,7 +348,7 @@ func (r *Repository) UpdateAlias(alias *Alias) error {
 		return &dberrors.DuplicateError{Entity: "alias", Field: "pattern", Value: alias.Pattern}
 	}
 
-	result, err := r.db.Conn().Exec(`
+	result, err := r.q().Exec(`
 		UPDATE payee_aliases SET
 			payee_id = CAST(? AS UUID),
 			pattern = ?,
@@ -359,7 +377,7 @@ func (r *Repository) UpdateAlias(alias *Alias) error {
 
 // DeleteAlias removes an alias from the database.
 func (r *Repository) DeleteAlias(id types.ID) error {
-	result, err := r.db.Conn().Exec(`DELETE FROM payee_aliases WHERE CAST(id AS VARCHAR) = ?`, id.String())
+	result, err := r.q().Exec(`DELETE FROM payee_aliases WHERE CAST(id AS VARCHAR) = ?`, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete alias: %w", err)
 	}
@@ -425,7 +443,7 @@ func (r *Repository) FindAliasMatch(input string) (*Alias, error) {
 
 // queryPayees executes a query and returns a slice of payees.
 func (r *Repository) queryPayees(query string) ([]*Payee, error) {
-	rows, err := r.db.Conn().Query(query)
+	rows, err := r.q().Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query payees: %w", err)
 	}
@@ -468,7 +486,7 @@ func (r *Repository) listAllAliases() ([]*Alias, error) {
 		ORDER BY pattern
 	`
 
-	rows, err := r.db.Conn().Query(query)
+	rows, err := r.q().Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query aliases: %w", err)
 	}
@@ -479,7 +497,7 @@ func (r *Repository) listAllAliases() ([]*Alias, error) {
 
 // queryAliasesWithArgs executes a query with arguments and returns a slice of aliases.
 func (r *Repository) queryAliasesWithArgs(query string, args ...any) ([]*Alias, error) {
-	rows, err := r.db.Conn().Query(query, args...)
+	rows, err := r.q().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query aliases: %w", err)
 	}
