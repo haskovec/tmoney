@@ -61,6 +61,7 @@ type Service struct {
 	accountRepo           *account.Repository
 	investmentCounterpart InvestmentCashCounterpartAdapter
 	db                    *db.DB
+	tx                    db.Queryer // nil outside a transaction
 }
 
 // NewService creates a new Service.
@@ -90,6 +91,41 @@ func NewService(
 // investment accounts will be rejected with NotRegularAccountError).
 func (s *Service) SetInvestmentCounterpart(a InvestmentCashCounterpartAdapter) {
 	s.investmentCounterpart = a
+}
+
+// InTx returns a copy of the service bound to tx, with every repository
+// field rebound to the same transaction so all writes join one atomic unit.
+// The original service is unchanged and remains safe for non-transactional use.
+//
+// investmentCounterpart is deliberately left un-rebound: the adapter gains its
+// own InTx in a later phase. Until then a bound service's counterpart writes
+// still go through the adapter's default (non-tx) path.
+func (s *Service) InTx(tx db.Queryer) *Service {
+	c := *s
+	c.tx = tx
+	c.txnRepo = s.txnRepo.WithTx(tx)
+	c.splitRepo = s.splitRepo.WithTx(tx)
+	c.transferRepo = s.transferRepo.WithTx(tx)
+	if s.payeeRepo != nil {
+		c.payeeRepo = s.payeeRepo.WithTx(tx)
+	}
+	if s.accountRepo != nil {
+		c.accountRepo = s.accountRepo.WithTx(tx)
+	}
+	return &c
+}
+
+// runInTx begins a new transaction if the service is unbound, or joins the
+// already-bound transaction. This is what makes service methods composable
+// without savepoints: an outer flow binds once, inner calls join. A bound
+// service must never reach db.WithTx (nesting would deadlock the mutex).
+func (s *Service) runInTx(fn func(b *Service) error) error {
+	if s.tx != nil {
+		return fn(s) // already bound — join the caller's tx
+	}
+	return s.db.WithTx(func(tx db.Queryer) error {
+		return fn(s.InTx(tx))
+	})
 }
 
 // =============================================================================
@@ -259,7 +295,9 @@ func (s *Service) Delete(id types.ID) error {
 		if err := s.ensureAccountOpen(pair.ToTransaction.AccountID); err != nil {
 			return err
 		}
-		return s.transferRepo.Delete(txn.TransferID.ID)
+		return s.runInTx(func(b *Service) error {
+			return b.transferRepo.Delete(txn.TransferID.ID)
+		})
 	}
 
 	// Cascade to paired counter-transactions of any transfer-typed split-
@@ -1227,8 +1265,10 @@ func (s *Service) CreateTransfer(fromAccountID, toAccountID types.ID, date types
 		return nil, &types.ServiceValidationError{Errors: errors}
 	}
 
-	// Create both transactions
-	if err := s.transferRepo.Create(pair); err != nil {
+	// Create both transactions atomically — either both legs land or neither.
+	if err := s.runInTx(func(b *Service) error {
+		return b.transferRepo.Create(pair)
+	}); err != nil {
 		return nil, err
 	}
 
@@ -1327,7 +1367,9 @@ func (s *Service) UpdateTransfer(transferID types.ID, date types.Date, amount ty
 		pair.ToTransaction.ClearCategory()
 	}
 
-	return s.transferRepo.Update(pair)
+	return s.runInTx(func(b *Service) error {
+		return b.transferRepo.Update(pair)
+	})
 }
 
 // validateTransferCategory checks that a category assigned to a transfer exists
@@ -1367,7 +1409,9 @@ func (s *Service) UpdateTransferAmount(transferID types.ID, newAmount types.Mone
 		return err
 	}
 
-	return s.transferRepo.UpdateAmount(transferID, newAmount)
+	return s.runInTx(func(b *Service) error {
+		return b.transferRepo.UpdateAmount(transferID, newAmount)
+	})
 }
 
 // UpdateTransferDate updates the date on both sides of a transfer.
@@ -1385,7 +1429,9 @@ func (s *Service) UpdateTransferDate(transferID types.ID, newDate types.Date) er
 		return err
 	}
 
-	return s.transferRepo.UpdateDate(transferID, newDate)
+	return s.runInTx(func(b *Service) error {
+		return b.transferRepo.UpdateDate(transferID, newDate)
+	})
 }
 
 // guardTransferDate rejects a transfer whose date precedes the opening date of
@@ -1427,7 +1473,9 @@ func (s *Service) ensureAccountOpen(id types.ID) error {
 
 // UpdateTransferStatus updates the status on both sides of a transfer.
 func (s *Service) UpdateTransferStatus(transferID types.ID, status Status) error {
-	return s.transferRepo.UpdateStatus(transferID, status)
+	return s.runInTx(func(b *Service) error {
+		return b.transferRepo.UpdateStatus(transferID, status)
+	})
 }
 
 // DeleteTransfer removes both sides of a transfer.
@@ -1437,7 +1485,9 @@ func (s *Service) DeleteTransfer(transferID types.ID) error {
 		return err
 	}
 
-	return s.transferRepo.Delete(transferID)
+	return s.runInTx(func(b *Service) error {
+		return b.transferRepo.Delete(transferID)
+	})
 }
 
 // checkTransferEditable checks if a transfer can be edited/deleted.
@@ -1658,7 +1708,9 @@ func (s *Service) voidTransfer(transferID types.ID) error {
 	pair.ToTransaction.SetMemo("**VOID**")
 	pair.ToTransaction.Void()
 
-	return s.transferRepo.Update(pair)
+	return s.runInTx(func(b *Service) error {
+		return b.transferRepo.Update(pair)
+	})
 }
 
 // RestoreVoidedTransaction restores a voided transaction to its original state.
@@ -1704,7 +1756,9 @@ func (s *Service) RestoreVoidedTransfer(transferID types.ID, fromAmount types.Mo
 	pair.ToTransaction.Memo = toMemo
 	pair.ToTransaction.SetStatus(toStatus)
 
-	return s.transferRepo.Update(pair)
+	return s.runInTx(func(b *Service) error {
+		return b.transferRepo.Update(pair)
+	})
 }
 
 // =============================================================================

@@ -34,7 +34,7 @@ func newLinkFixture(t *testing.T) (*linkFixture, func()) {
 	splitRepo := transaction.NewSplitRepository(database)
 	xferRepo := transaction.NewTransferRepository(database, txnRepo)
 
-	svc := transferlink.NewService(txnRepo, xferRepo, splitRepo, accountRepo)
+	svc := transferlink.NewService(txnRepo, xferRepo, splitRepo, accountRepo, database)
 
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD",
 		types.MustNewMoney("0"), types.NewDate(2024, 1, 1))

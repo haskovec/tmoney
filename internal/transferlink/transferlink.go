@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -57,6 +58,7 @@ type Service struct {
 	transferRepo *transaction.TransferRepository
 	splitRepo    *transaction.SplitRepository
 	accountRepo  *account.Repository
+	db           *db.DB
 }
 
 // NewService wires up the transferlink service.
@@ -65,12 +67,14 @@ func NewService(
 	transferRepo *transaction.TransferRepository,
 	splitRepo *transaction.SplitRepository,
 	accountRepo *account.Repository,
+	database *db.DB,
 ) *Service {
 	return &Service{
 		txnRepo:      txnRepo,
 		transferRepo: transferRepo,
 		splitRepo:    splitRepo,
 		accountRepo:  accountRepo,
+		db:           database,
 	}
 }
 
@@ -219,8 +223,13 @@ func (s *Service) linkOne(c *Candidate) error {
 		c.To.SetCategory(c.From.CategoryID.ID)
 	}
 
+	// transferRepo.Update rewrites both legs; wrap it in a transaction so the
+	// pair is linked atomically (the repo is a pure participant — it never opens
+	// its own tx).
 	pair := &transaction.TransferPair{FromTransaction: c.From, ToTransaction: c.To}
-	if err := s.transferRepo.Update(pair); err != nil {
+	if err := s.db.WithTx(func(tx db.Queryer) error {
+		return s.transferRepo.WithTx(tx).Update(pair)
+	}); err != nil {
 		// Roll back the in-memory link and categories so a partial failure
 		// doesn't leave the caller's structs in an invalid state if they retry.
 		c.From.ClearTransfer()

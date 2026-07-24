@@ -31,7 +31,7 @@ func newLinkTestEnv(t *testing.T) *linkTestEnv {
 	accountRepo := account.NewRepository(database)
 	catRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, transferRepo, splitRepo, accountRepo)
+	svc := NewService(txnRepo, transferRepo, splitRepo, accountRepo, database)
 
 	openDate := types.NewDate(2000, time.January, 1)
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, openDate)

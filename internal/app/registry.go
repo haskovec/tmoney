@@ -117,7 +117,7 @@ func NewServices(database *db.DB) *Services {
 	_, _ = investmentSvc.HealAllAccounts()
 	reportSvc := report.NewService(accountRepo, database, report.WithInvestmentValuer(&investmentValuerAdapter{svc: investmentSvc}))
 	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, investmentRepo, securityRepo, database)
-	transferLinkSvc := transferlink.NewService(txnRepo, transferRepo, splitRepo, accountRepo)
+	transferLinkSvc := transferlink.NewService(txnRepo, transferRepo, splitRepo, accountRepo, database)
 
 	return &Services{
 		Account:         accountSvc,

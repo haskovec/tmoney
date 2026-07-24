@@ -40,7 +40,9 @@ func (r *TransferRepository) WithTx(tx db.Queryer) *TransferRepository {
 	return &TransferRepository{db: r.db, tx: tx, txnRepo: r.txnRepo.WithTx(tx)}
 }
 
-// Create creates both sides of a transfer pair in the database.
+// Create creates both sides of a transfer pair in the database. It is a pure
+// participant: callers wrap it in a transaction (transaction.Service.runInTx)
+// so both inserts land atomically.
 func (r *TransferRepository) Create(pair *TransferPair) error {
 	// Validate the transfer pair
 	if errors := pair.Validate(); errors.HasErrors() {
@@ -52,11 +54,8 @@ func (r *TransferRepository) Create(pair *TransferPair) error {
 		return fmt.Errorf("failed to create from transaction: %w", err)
 	}
 
-	// Create the to transaction. If this fails, manually unwind the from
-	// transaction — the two Create calls are not wrapped in a SQL transaction,
-	// so partial state is otherwise possible.
+	// Create the to transaction
 	if err := r.txnRepo.Create(pair.ToTransaction); err != nil {
-		_ = r.txnRepo.Delete(pair.FromTransaction.ID)
 		return fmt.Errorf("failed to create to transaction: %w", err)
 	}
 
