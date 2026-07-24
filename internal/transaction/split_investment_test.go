@@ -6,6 +6,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -77,6 +78,13 @@ func (f *fakeInvCounterpart) DeleteTransferCashCounterpart(rowID types.ID) error
 	}
 	delete(f.rows, rowID)
 	return nil
+}
+
+// CounterpartInTx satisfies the InvestmentCashCounterpartAdapter interface.
+// The fake records calls in-memory (no real transaction), so a tx-bound copy
+// is just the fake itself.
+func (f *fakeInvCounterpart) CounterpartInTx(db.Queryer) InvestmentCashCounterpartAdapter {
+	return f
 }
 
 func (f *fakeInvCounterpart) UpdateTransferCashCounterpartAmount(rowID types.ID, newAmount types.Money) error {

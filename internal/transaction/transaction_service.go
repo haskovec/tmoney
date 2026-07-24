@@ -50,6 +50,18 @@ type InvestmentCashCounterpartAdapter interface {
 	// edit onto the investment row. newAmount is in the destination
 	// frame (same convention as CreateTransferCashCounterpart).
 	UpdateTransferCashCounterpartAmount(rowID types.ID, newAmount types.Money) error
+
+	// CounterpartInTx returns a copy of the adapter whose writes run on tx,
+	// so counterpart mints/edits/deletes join the transaction service's
+	// atomic unit (splits + parent + counterparts commit together).
+	//
+	// It is deliberately NOT named InTx: investment.Service — the concrete
+	// implementer — already has InTx(tx) *Service from its own phase, and Go
+	// forbids two methods sharing a name with differing signatures. The
+	// implementer satisfies this by returning s.InTx(tx). db.Queryer is the
+	// only vocabulary shared across the package boundary, which is why it
+	// lives in internal/db.
+	CounterpartInTx(tx db.Queryer) InvestmentCashCounterpartAdapter
 }
 
 // Service provides business logic for transaction operations.
@@ -93,13 +105,10 @@ func (s *Service) SetInvestmentCounterpart(a InvestmentCashCounterpartAdapter) {
 	s.investmentCounterpart = a
 }
 
-// InTx returns a copy of the service bound to tx, with every repository
-// field rebound to the same transaction so all writes join one atomic unit.
-// The original service is unchanged and remains safe for non-transactional use.
-//
-// investmentCounterpart is deliberately left un-rebound: the adapter gains its
-// own InTx in a later phase. Until then a bound service's counterpart writes
-// still go through the adapter's default (non-tx) path.
+// InTx returns a copy of the service bound to tx, with every repository field
+// and the investment-counterpart adapter rebound to the same transaction so all
+// writes join one atomic unit. The original service is unchanged and remains
+// safe for non-transactional use.
 func (s *Service) InTx(tx db.Queryer) *Service {
 	c := *s
 	c.tx = tx
@@ -112,7 +121,21 @@ func (s *Service) InTx(tx db.Queryer) *Service {
 	if s.accountRepo != nil {
 		c.accountRepo = s.accountRepo.WithTx(tx)
 	}
+	if s.investmentCounterpart != nil {
+		c.investmentCounterpart = s.investmentCounterpart.CounterpartInTx(tx)
+	}
 	return &c
+}
+
+// q returns the active Queryer for ad-hoc service-level SQL: the bound
+// transaction if any, else the live connection. A bound service must not
+// query the pool directly — the transaction pins the single connection
+// (SetMaxOpenConns(1)), so a pool read inside a tx deadlocks.
+func (s *Service) q() db.Queryer {
+	if s.tx != nil {
+		return s.tx
+	}
+	return s.db.Conn()
 }
 
 // runInTx begins a new transaction if the service is unbound, or joins the
@@ -278,7 +301,9 @@ func (s *Service) Delete(id types.ID) error {
 			return err
 		}
 		if parentSplit != nil {
-			return s.deletePairedSideOfMultiLine(txn, parentSplit)
+			return s.runInTx(func(b *Service) error {
+				return b.deletePairedSideOfMultiLine(txn, parentSplit)
+			})
 		}
 
 		pair, err := s.transferRepo.GetByTransferID(txn.TransferID.ID)
@@ -301,19 +326,20 @@ func (s *Service) Delete(id types.ID) error {
 	}
 
 	// Cascade to paired counter-transactions of any transfer-typed split-
-	// lines before removing the parent. The parent itself is not marked as a
-	// transfer (only the split-item carries the linkage), so the legacy
-	// transfer branch above does not run.
-	if err := s.deleteTransferLinePairs(id); err != nil {
-		return err
-	}
-
-	// Delete any splits first
-	if _, err := s.splitRepo.DeleteByTransaction(id); err != nil {
-		return fmt.Errorf("failed to delete splits: %w", err)
-	}
-
-	return s.txnRepo.Delete(id)
+	// lines before removing the parent, then drop the splits and the parent —
+	// all in one transaction so a mid-cascade failure leaves the whole
+	// transaction (parent, splits, counterparts) intact. The parent itself is
+	// not marked as a transfer (only the split-item carries the linkage), so
+	// the legacy transfer branch above does not run.
+	return s.runInTx(func(b *Service) error {
+		if err := b.deleteTransferLinePairs(id); err != nil {
+			return err
+		}
+		if _, err := b.splitRepo.DeleteByTransaction(id); err != nil {
+			return fmt.Errorf("failed to delete splits: %w", err)
+		}
+		return b.txnRepo.Delete(id)
+	})
 }
 
 // deletePairedSideOfMultiLine reverse-cascades a paired-side delete back to
@@ -473,42 +499,31 @@ func (s *Service) CreateWithSplits(transaction *Transaction, splits []*Split) er
 		}
 	}
 
-	if err := s.txnRepo.Create(transaction); err != nil {
-		return fmt.Errorf("failed to create transaction: %w", err)
-	}
-
-	// Track paired-counter-transactions so we can roll them back on a later
-	// failure. Investment-side counterparts are tracked separately so the
-	// rollback routes through the right repository.
-	createdPairs := make([]transferLinePair, 0, len(splits))
-
-	for _, split := range splits {
-		split.TransactionID = transaction.ID
-		if err := s.splitRepo.Create(split); err != nil {
-			s.rollbackCreateWithSplits(transaction.ID, createdPairs)
-			return fmt.Errorf("failed to create split: %w", err)
+	// Persist the parent, its split rows, and every transfer-line counterpart
+	// in one transaction: a mid-flow failure rolls the whole thing back, so a
+	// parent never lands without its splits (or with only some counterparts).
+	return s.runInTx(func(b *Service) error {
+		if err := b.txnRepo.Create(transaction); err != nil {
+			return fmt.Errorf("failed to create transaction: %w", err)
 		}
 
-		if !split.TransferAccountID.Valid {
-			continue
+		for _, split := range splits {
+			split.TransactionID = transaction.ID
+			if err := b.splitRepo.Create(split); err != nil {
+				return fmt.Errorf("failed to create split: %w", err)
+			}
+
+			if !split.TransferAccountID.Valid {
+				continue
+			}
+
+			if err := b.createTransferLineCounterpart(transaction.AccountID, transaction.Date, split); err != nil {
+				return err
+			}
 		}
 
-		pair, err := s.createTransferLineCounterpart(transaction.AccountID, transaction.Date, split)
-		if err != nil {
-			s.rollbackCreateWithSplits(transaction.ID, createdPairs)
-			return err
-		}
-		createdPairs = append(createdPairs, pair)
-	}
-
-	return nil
-}
-
-// transferLinePair identifies a counterpart row created for a transfer-
-// line split. isInvestment routes cleanup to the right repository.
-type transferLinePair struct {
-	rowID        types.ID
-	isInvestment bool
+		return nil
+	})
 }
 
 // createTransferLineCounterpart mints the paired counter-transaction for
@@ -528,7 +543,7 @@ func (s *Service) createTransferLineCounterpart(
 	parentAcctID types.ID,
 	parentDate types.Date,
 	split *Split,
-) (transferLinePair, error) {
+) error {
 	targetAcctID := split.TransferAccountID.ID
 	counterAmount := split.Amount.Neg()
 	transferID := split.TransferID.ID
@@ -538,17 +553,16 @@ func (s *Service) createTransferLineCounterpart(
 	// moveTransferLine (which re-targets a split), and ReplaceSplits.
 	isInv, err := s.ensureTransferTargetRoutable(targetAcctID)
 	if err != nil {
-		return transferLinePair{}, err
+		return err
 	}
 
 	if isInv {
-		rowID, err := s.investmentCounterpart.CreateTransferCashCounterpart(
+		if _, err := s.investmentCounterpart.CreateTransferCashCounterpart(
 			targetAcctID, parentAcctID, parentDate, counterAmount, "", transferID,
-		)
-		if err != nil {
-			return transferLinePair{}, fmt.Errorf("failed to create investment-side paired transfer transaction: %w", err)
+		); err != nil {
+			return fmt.Errorf("failed to create investment-side paired transfer transaction: %w", err)
 		}
-		return transferLinePair{rowID: rowID, isInvestment: true}, nil
+		return nil
 	}
 
 	paired := NewTransaction(targetAcctID, parentDate, counterAmount)
@@ -557,9 +571,9 @@ func (s *Service) createTransferLineCounterpart(
 		paired.SetCategory(split.CategoryID)
 	}
 	if err := s.txnRepo.Create(paired); err != nil {
-		return transferLinePair{}, fmt.Errorf("failed to create paired transfer transaction: %w", err)
+		return fmt.Errorf("failed to create paired transfer transaction: %w", err)
 	}
-	return transferLinePair{rowID: paired.ID, isInvestment: false}, nil
+	return nil
 }
 
 // targetIsInvestment reports whether the given account is an investment-
@@ -598,31 +612,6 @@ func (s *Service) ensureTransferTargetRoutable(targetAcctID types.ID) (bool, err
 		)
 	}
 	return isInv, nil
-}
-
-// rollbackCreateWithSplits best-effort removes paired counter-transactions
-// and the parent transaction (which cascades its splits) after a partial
-// CreateWithSplits failure. Investment-side counterparts are routed
-// through the adapter so they don't leak.
-func (s *Service) rollbackCreateWithSplits(parentID types.ID, pairs []transferLinePair) {
-	s.rollbackTransferLinePairs(pairs)
-	_, _ = s.splitRepo.DeleteByTransaction(parentID)
-	_ = s.txnRepo.Delete(parentID)
-}
-
-// rollbackTransferLinePairs best-effort removes the given counter-transactions,
-// routing each to the repository that created it. Used to unwind counterparts
-// minted partway through CreateWithSplits or ReplaceSplits before an error.
-func (s *Service) rollbackTransferLinePairs(pairs []transferLinePair) {
-	for _, p := range pairs {
-		if p.isInvestment {
-			if s.investmentCounterpart != nil {
-				_ = s.investmentCounterpart.DeleteTransferCashCounterpart(p.rowID)
-			}
-			continue
-		}
-		_ = s.txnRepo.Delete(p.rowID)
-	}
 }
 
 // GetSplits returns all splits for a transaction.
@@ -755,13 +744,17 @@ func (s *Service) UpdateSplit(split *Split) error {
 				return err
 			}
 		}
-		if err := s.splitRepo.Update(split); err != nil {
-			return err
-		}
-		if cascade {
-			return s.mirrorToPairedCounterpart(existing.TransferID.ID, split.Amount.Neg(), splitCategoryNullable(split), amountChanged)
-		}
-		return nil
+		// Persist the split row and mirror onto its counterpart atomically so a
+		// failed mirror can't leave the split and counterpart out of sync.
+		return s.runInTx(func(b *Service) error {
+			if err := b.splitRepo.Update(split); err != nil {
+				return err
+			}
+			if cascade {
+				return b.mirrorToPairedCounterpart(existing.TransferID.ID, split.Amount.Neg(), splitCategoryNullable(split), amountChanged)
+			}
+			return nil
+		})
 	}
 
 	return s.splitRepo.Update(split)
@@ -774,21 +767,22 @@ func (s *Service) UpdateSplit(split *Split) error {
 // target is an investment account, and carries the split's category onto a
 // regular-side counterpart (via createTransferLineCounterpart).
 func (s *Service) moveTransferLine(parent *Transaction, existing, split *Split) error {
-	if existing.TransferID.Valid {
-		if err := s.deletePairedCounterTransaction(existing.TransferID.ID); err != nil {
+	split.TransferID = types.NullableID{ID: types.NewID(), Valid: true}
+
+	// Delete the old counterpart, rewrite the split row, and mint the new
+	// counterpart in one transaction: a failure at any step leaves the original
+	// split and counterpart untouched.
+	return s.runInTx(func(b *Service) error {
+		if existing.TransferID.Valid {
+			if err := b.deletePairedCounterTransaction(existing.TransferID.ID); err != nil {
+				return err
+			}
+		}
+		if err := b.splitRepo.Update(split); err != nil {
 			return err
 		}
-	}
-
-	split.TransferID = types.NullableID{ID: types.NewID(), Valid: true}
-	if err := s.splitRepo.Update(split); err != nil {
-		return err
-	}
-
-	if _, err := s.createTransferLineCounterpart(parent.AccountID, parent.Date, split); err != nil {
-		return err
-	}
-	return nil
+		return b.createTransferLineCounterpart(parent.AccountID, parent.Date, split)
+	})
 }
 
 // findPairedByTransferID returns the paired single-line counter-transaction
@@ -923,13 +917,16 @@ func (s *Service) DeleteSplit(splitID types.ID) error {
 		return err
 	}
 
-	if split.TransferAccountID.Valid && split.TransferID.Valid {
-		if err := s.deletePairedCounterTransaction(split.TransferID.ID); err != nil {
-			return err
+	// Delete the counterpart and the split row atomically so a mid-cascade
+	// failure leaves both the split and its counterpart intact.
+	return s.runInTx(func(b *Service) error {
+		if split.TransferAccountID.Valid && split.TransferID.Valid {
+			if err := b.deletePairedCounterTransaction(split.TransferID.ID); err != nil {
+				return err
+			}
 		}
-	}
-
-	return s.splitRepo.Delete(splitID)
+		return b.splitRepo.Delete(splitID)
+	})
 }
 
 // ReplaceSplits replaces all splits for a transaction with new ones.
@@ -996,43 +993,45 @@ func (s *Service) ReplaceSplits(transactionID types.ID, splits []*Split) error {
 		return err
 	}
 
-	// Reconcile counterparts of removed and retained-changed transfer lines.
-	for _, transferID := range plan.removedTransferIDs {
-		if err := s.deletePairedCounterTransaction(transferID); err != nil {
-			return err
+	// Execute the whole plan — delete removed counterparts, re-sync retained
+	// ones, rebuild the split rows, and mint counterparts for added lines — in
+	// one transaction. A failure at any step rolls the entire rewrite back, so
+	// the original splits and counterparts survive intact.
+	return s.runInTx(func(b *Service) error {
+		// Reconcile counterparts of removed and retained-changed transfer lines.
+		for _, transferID := range plan.removedTransferIDs {
+			if err := b.deletePairedCounterTransaction(transferID); err != nil {
+				return err
+			}
 		}
-	}
-	for _, change := range plan.retainedChanged {
-		if err := s.mirrorToPairedCounterpart(change.transferID, change.newAmount.Neg(), change.newCategory, change.amountChanged); err != nil {
-			return err
+		for _, change := range plan.retainedChanged {
+			if err := b.mirrorToPairedCounterpart(change.transferID, change.newAmount.Neg(), change.newCategory, change.amountChanged); err != nil {
+				return err
+			}
 		}
-	}
 
-	// Rebuild the split rows. Retained transfer lines already carry their
-	// original transfer_id (linking them to the still-live counterpart), so a
-	// plain drop-and-recreate is safe.
-	if _, err := s.splitRepo.DeleteByTransaction(transactionID); err != nil {
-		return fmt.Errorf("failed to delete existing splits: %w", err)
-	}
-	for _, split := range splits {
-		split.TransactionID = transactionID
-		if err := s.splitRepo.Create(split); err != nil {
-			return fmt.Errorf("failed to create split: %w", err)
+		// Rebuild the split rows. Retained transfer lines already carry their
+		// original transfer_id (linking them to the still-live counterpart), so a
+		// plain drop-and-recreate is safe.
+		if _, err := b.splitRepo.DeleteByTransaction(transactionID); err != nil {
+			return fmt.Errorf("failed to delete existing splits: %w", err)
 		}
-	}
-
-	// Mint counterparts for the added transfer lines.
-	createdPairs := make([]transferLinePair, 0, len(plan.addedSplits))
-	for _, split := range plan.addedSplits {
-		pair, err := s.createTransferLineCounterpart(txn.AccountID, txn.Date, split)
-		if err != nil {
-			s.rollbackTransferLinePairs(createdPairs)
-			return err
+		for _, split := range splits {
+			split.TransactionID = transactionID
+			if err := b.splitRepo.Create(split); err != nil {
+				return fmt.Errorf("failed to create split: %w", err)
+			}
 		}
-		createdPairs = append(createdPairs, pair)
-	}
 
-	return nil
+		// Mint counterparts for the added transfer lines.
+		for _, split := range plan.addedSplits {
+			if err := b.createTransferLineCounterpart(txn.AccountID, txn.Date, split); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 // retainedTransferChange records a transfer line kept across a ReplaceSplits
@@ -1385,7 +1384,7 @@ func (s *Service) validateTransferCategory(categoryID types.NullableID) error {
 	}
 	var name string
 	var isSystem bool
-	err := s.db.Conn().QueryRow(
+	err := s.q().QueryRow(
 		`SELECT name, system_category FROM categories WHERE CAST(id AS VARCHAR) = ?`,
 		categoryID.ID.String(),
 	).Scan(&name, &isSystem)
@@ -1656,24 +1655,23 @@ func (s *Service) VoidTransaction(id types.ID) error {
 		return s.voidTransfer(txn.TransferID.ID)
 	}
 
-	// Cascade to paired counter-transactions of any transfer-typed split-
-	// lines before deleting the splits — otherwise the counterparts (bank
-	// or investment) are orphaned with a dangling transfer_id.
-	if err := s.deleteTransferLinePairs(id); err != nil {
-		return err
-	}
-
-	// Delete splits if any
-	if _, err := s.splitRepo.DeleteByTransaction(id); err != nil {
-		return fmt.Errorf("failed to delete splits for void: %w", err)
-	}
-
 	// Void the transaction
 	txn.Amount = types.ZeroMoney
 	txn.SetMemo("**VOID**")
 	txn.Void()
 
-	return s.txnRepo.Update(txn)
+	// Cascade to paired counter-transactions, drop the splits, and void the
+	// parent in one transaction — otherwise a mid-cascade failure could orphan
+	// a counterpart (dangling transfer_id) or leave the parent un-voided.
+	return s.runInTx(func(b *Service) error {
+		if err := b.deleteTransferLinePairs(id); err != nil {
+			return err
+		}
+		if _, err := b.splitRepo.DeleteByTransaction(id); err != nil {
+			return fmt.Errorf("failed to delete splits for void: %w", err)
+		}
+		return b.txnRepo.Update(txn)
+	})
 }
 
 // voidTransfer voids both sides of a transfer atomically.
@@ -1730,7 +1728,12 @@ func (s *Service) RestoreVoidedTransaction(id types.ID, amount types.Money, memo
 	txn.Memo = memo
 	txn.SetStatus(status)
 
-	return s.txnRepo.Update(txn)
+	// A single write today, but wrapped so it composes: phase 7's void-undo
+	// command chains this with ReplaceSplits under one caller-supplied tx via
+	// InTx, and a bound service joins that tx rather than opening its own.
+	return s.runInTx(func(b *Service) error {
+		return b.txnRepo.Update(txn)
+	})
 }
 
 // RestoreVoidedTransfer restores both sides of a voided transfer to their original state.

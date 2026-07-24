@@ -58,6 +58,16 @@ func (s *Service) InTx(tx db.Queryer) *Service {
 	return &c
 }
 
+// CounterpartInTx returns a tx-bound copy of the service typed as a
+// transaction.InvestmentCashCounterpartAdapter, so the transaction service's
+// split/void flows mint, edit, and delete investment-side counterparts inside
+// their own transaction. It is a thin alias for InTx: the interface method
+// cannot be named InTx (that name is already taken by InTx(tx) *Service, whose
+// signature differs), so the adapter contract spells it CounterpartInTx.
+func (s *Service) CounterpartInTx(tx db.Queryer) transaction.InvestmentCashCounterpartAdapter {
+	return s.InTx(tx)
+}
+
 // runInTx begins a new transaction if the service is unbound, or joins the
 // already-bound transaction. This is what makes service methods composable
 // without savepoints: an outer flow binds once, inner calls join. A bound
