@@ -21,6 +21,7 @@ type Service struct {
 	txnSvc      *transaction.Service
 	accountRepo *account.Repository
 	db          *db.DB
+	tx          db.Queryer // nil outside a transaction
 }
 
 // NewService creates a new Service.
@@ -45,6 +46,56 @@ func NewService(
 		accountRepo: accountRepo,
 		db:          database,
 	}
+}
+
+// InTx returns a copy of the service bound to tx, with every repository field
+// and the collaborating transaction service rebound to the same transaction so
+// all writes join one atomic unit. Posting a scheduled transaction commits the
+// posted rows and the schedule advance together; the transaction service's own
+// CreateTransfer/CreateWithSplits/Create join this tx via txnSvc.InTx(tx).
+// The original service is unchanged and remains safe for non-transactional use.
+//
+// Optional collaborators (txnRepo, txnSvc, accountRepo) are nil-guarded to match
+// test fixtures that construct a partial service; the production wiring always
+// sets them.
+func (s *Service) InTx(tx db.Queryer) *Service {
+	c := *s
+	c.tx = tx
+	c.repo = s.repo.WithTx(tx)
+	if s.txnRepo != nil {
+		c.txnRepo = s.txnRepo.WithTx(tx)
+	}
+	if s.txnSvc != nil {
+		c.txnSvc = s.txnSvc.InTx(tx)
+	}
+	if s.accountRepo != nil {
+		c.accountRepo = s.accountRepo.WithTx(tx)
+	}
+	return &c
+}
+
+// q returns the active Queryer for ad-hoc service-level SQL: the bound
+// transaction if any, else the live connection. A bound service must not query
+// the pool directly — the transaction pins the single connection
+// (SetMaxOpenConns(1)), so a pool read inside a tx deadlocks.
+func (s *Service) q() db.Queryer {
+	if s.tx != nil {
+		return s.tx
+	}
+	return s.db.Conn()
+}
+
+// runInTx begins a new transaction if the service is unbound, or joins the
+// already-bound transaction. This is what makes service methods composable
+// without savepoints: an outer flow binds once, inner calls join. A bound
+// service must never reach db.WithTx (nesting would deadlock the mutex).
+func (s *Service) runInTx(fn func(b *Service) error) error {
+	if s.tx != nil {
+		return fn(s) // already bound — join the caller's tx
+	}
+	return s.db.WithTx(func(tx db.Queryer) error {
+		return fn(s.InTx(tx))
+	})
 }
 
 // referencedAccountIDs returns every account a schedule touches: its source
@@ -119,23 +170,21 @@ func (s *Service) Create(st *Transaction) error {
 	if err := s.ensureNoClosedAccounts(st); err != nil {
 		return err
 	}
-	if err := s.repo.Create(st); err != nil {
-		return err
-	}
-	if len(st.Splits) == 0 {
-		return nil
-	}
-	for _, split := range st.Splits {
-		split.ScheduledTransactionID = st.ID
-		if err := s.repo.SplitRepo().Create(split); err != nil {
-			// Best-effort rollback: remove the parent (cascades any
-			// already-inserted children) so a failed multi-line create
-			// leaves no partial state behind.
-			_ = s.repo.Delete(st.ID)
-			return fmt.Errorf("failed to create scheduled split: %w", err)
+	// Persist the parent and all child splits in one transaction: a mid-flow
+	// failure rolls the whole thing back, so a parent never lands without its
+	// splits and no compensation delete is needed.
+	return s.runInTx(func(b *Service) error {
+		if err := b.repo.Create(st); err != nil {
+			return err
 		}
-	}
-	return nil
+		for _, split := range st.Splits {
+			split.ScheduledTransactionID = st.ID
+			if err := b.repo.SplitRepo().Create(split); err != nil {
+				return fmt.Errorf("failed to create scheduled split: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 // GetByID retrieves a scheduled transaction by its ID.
@@ -165,22 +214,26 @@ func (s *Service) Update(st *Transaction) error {
 	if st.NextDate.Before(st.StartDate) {
 		st.NextDate = st.StartDate
 	}
-	// Clear existing children first: the parent's DELETE+INSERT (under the
-	// hood of repo.Update) would otherwise trip the FK from
+	// Replace children and the parent in one transaction so a failure mid-way
+	// can't leave the template with its old splits deleted but the new ones only
+	// half-inserted. Clear existing children first: the parent's DELETE+INSERT
+	// (under the hood of repo.Update) would otherwise trip the FK from
 	// scheduled_split_items.
-	if _, err := s.repo.SplitRepo().DeleteByScheduledTransaction(st.ID); err != nil {
-		return fmt.Errorf("failed to clear existing scheduled splits: %w", err)
-	}
-	if err := s.repo.Update(st); err != nil {
-		return err
-	}
-	for _, split := range st.Splits {
-		split.ScheduledTransactionID = st.ID
-		if err := s.repo.SplitRepo().Create(split); err != nil {
-			return fmt.Errorf("failed to insert updated scheduled split: %w", err)
+	return s.runInTx(func(b *Service) error {
+		if _, err := b.repo.SplitRepo().DeleteByScheduledTransaction(st.ID); err != nil {
+			return fmt.Errorf("failed to clear existing scheduled splits: %w", err)
 		}
-	}
-	return nil
+		if err := b.repo.Update(st); err != nil {
+			return err
+		}
+		for _, split := range st.Splits {
+			split.ScheduledTransactionID = st.ID
+			if err := b.repo.SplitRepo().Create(split); err != nil {
+				return fmt.Errorf("failed to insert updated scheduled split: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 // Delete removes a scheduled transaction.
@@ -260,7 +313,8 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 		result.BeforeSchedule = &beforeSchedule
 
 		// Skip — don't error the batch — a schedule that references a closed
-		// account; it is left due and unadvanced (decision 8).
+		// account; it is left due and unadvanced (decision 8). This is a read,
+		// so it runs outside the per-candidate tx.
 		if cerr := s.ensureNoClosedAccounts(st); cerr != nil {
 			var closedErr *ClosedAccountError
 			if !errors.As(cerr, &closedErr) {
@@ -270,110 +324,127 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 			result.SkipReason = "references a closed account"
 		}
 
-		// Post all overdue occurrences for this scheduled transaction
-		for !result.Skipped && !st.IsCompleted() && s.isAutoPostDue(st, today) {
-			var txn *transaction.Transaction
-			if st.IsTransfer() {
-				// Single-line transfer: post template values exactly as a clean
-				// linked transfer pair.
-				if s.txnSvc == nil {
-					return nil, fmt.Errorf("transfer auto-post requires a transaction service; scheduled.NewService was called with txnSvc=nil")
-				}
-				magnitude := st.Amount.Money.Abs()
-				// CreateTransfer stamps the schedule's memo and optional
-				// category onto both legs directly.
-				memo := ""
-				if st.Memo.Valid {
-					memo = st.Memo.String
-				}
-				pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, st.NextDate, magnitude, memo, st.CategoryID)
-				if err != nil {
-					return nil, fmt.Errorf("failed to create transfer auto-post transaction: %w", err)
-				}
-				txn = pair.FromTransaction
-			} else if len(st.Splits) > 0 {
-				// Multi-line schedule: delegate to the multi-line create path
-				// so transfer-line counterparts are minted and persisted.
-				if s.txnSvc == nil {
-					return nil, fmt.Errorf("multi-line auto-post requires a transaction service; scheduled.NewService was called with txnSvc=nil")
-				}
-				built, err := s.buildMultiLineTransaction(st, st.NextDate)
-				if err != nil {
-					// A loan-recompute failure (paid off, negative-am, missing
-					// APR, missing interest line) skips this schedule with a
-					// reason — it must never abort the rest of the batch.
-					if isLoanComputationError(err) {
-						result.Skipped = true
-						result.SkipReason = loanSkipReason(err)
-						// A paid-off loan is terminal: mark it completed so it
-						// stops surfacing as due.
-						if errors.Is(err, ErrLoanPaidOff) {
-							st.MarkCompleted()
+		// One transaction per candidate: every overdue occurrence's posted rows
+		// AND the schedule's next_date advance commit together, so a failure
+		// mid-candidate rolls back only this schedule — the other candidates'
+		// already-committed posts are untouched. Everything reachable inside the
+		// closure runs on the tx-bound copy b: b.txnSvc (its
+		// CreateTransfer/CreateWithSplits join this tx), b.txnRepo,
+		// b.buildMultiLineTransaction / b.finalizeLoanPayoff (loan balance reads
+		// on the bound accountRepo see prior in-tx occurrences), and
+		// b.estimateAmountForSchedule (routes through b.q()). The skip-with-reason
+		// paths break the loop and return nil so the tx still commits the
+		// completion mark; only hard errors roll back and abort the batch.
+		postErr := s.runInTx(func(b *Service) error {
+			// Post all overdue occurrences for this scheduled transaction
+			for !result.Skipped && !st.IsCompleted() && b.isAutoPostDue(st, today) {
+				var txn *transaction.Transaction
+				if st.IsTransfer() {
+					// Single-line transfer: post template values exactly as a clean
+					// linked transfer pair.
+					if b.txnSvc == nil {
+						return fmt.Errorf("transfer auto-post requires a transaction service; scheduled.NewService was called with txnSvc=nil")
+					}
+					magnitude := st.Amount.Money.Abs()
+					// CreateTransfer stamps the schedule's memo and optional
+					// category onto both legs directly.
+					memo := ""
+					if st.Memo.Valid {
+						memo = st.Memo.String
+					}
+					pair, err := b.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, st.NextDate, magnitude, memo, st.CategoryID)
+					if err != nil {
+						return fmt.Errorf("failed to create transfer auto-post transaction: %w", err)
+					}
+					txn = pair.FromTransaction
+				} else if len(st.Splits) > 0 {
+					// Multi-line schedule: delegate to the multi-line create path
+					// so transfer-line counterparts are minted and persisted.
+					if b.txnSvc == nil {
+						return fmt.Errorf("multi-line auto-post requires a transaction service; scheduled.NewService was called with txnSvc=nil")
+					}
+					built, err := b.buildMultiLineTransaction(st, st.NextDate)
+					if err != nil {
+						// A loan-recompute failure (paid off, negative-am, missing
+						// APR, missing interest line) skips this schedule with a
+						// reason — it must never abort the rest of the batch.
+						if isLoanComputationError(err) {
+							result.Skipped = true
+							result.SkipReason = loanSkipReason(err)
+							// A paid-off loan is terminal: mark it completed so it
+							// stops surfacing as due.
+							if errors.Is(err, ErrLoanPaidOff) {
+								st.MarkCompleted()
+							}
+							break
 						}
-						break
+						return fmt.Errorf("failed to build multi-line auto-post transaction: %w", err)
 					}
-					return nil, fmt.Errorf("failed to build multi-line auto-post transaction: %w", err)
-				}
-				if err := s.txnSvc.CreateWithSplits(built.parent, built.splits); err != nil {
-					return nil, fmt.Errorf("failed to create multi-line auto-post transaction: %w", err)
-				}
-				txn = built.parent
-			} else {
-				// Determine the amount to use
-				var txnAmount types.Money
-				if st.HasAmount() {
-					txnAmount = st.Amount.Money
+					if err := b.txnSvc.CreateWithSplits(built.parent, built.splits); err != nil {
+						return fmt.Errorf("failed to create multi-line auto-post transaction: %w", err)
+					}
+					txn = built.parent
 				} else {
-					// Variable amount - try to estimate
-					estimated, estErr := s.estimateAmountForSchedule(st)
-					if estErr != nil || estimated == nil {
-						result.Skipped = true
-						result.SkipReason = "variable amount with no estimate available"
-						break
+					// Determine the amount to use
+					var txnAmount types.Money
+					if st.HasAmount() {
+						txnAmount = st.Amount.Money
+					} else {
+						// Variable amount - try to estimate
+						estimated, estErr := b.estimateAmountForSchedule(st)
+						if estErr != nil || estimated == nil {
+							result.Skipped = true
+							result.SkipReason = "variable amount with no estimate available"
+							break
+						}
+						txnAmount = *estimated
 					}
-					txnAmount = *estimated
+
+					// Create the transaction with the scheduled date (not today)
+					txn = transaction.NewTransaction(st.AccountID, st.NextDate, txnAmount)
+
+					// Copy optional fields
+					if st.HasPayee() {
+						txn.SetPayee(st.PayeeID.ID)
+					}
+					if st.HasCategory() {
+						txn.SetCategory(st.CategoryID.ID)
+					}
+					if st.Memo.Valid && st.Memo.String != "" {
+						txn.SetMemo(st.Memo.String)
+					}
+
+					if err := b.txnRepo.Create(txn); err != nil {
+						return fmt.Errorf("failed to create auto-post transaction: %w", err)
+					}
 				}
 
-				// Create the transaction with the scheduled date (not today)
-				txn = transaction.NewTransaction(st.AccountID, st.NextDate, txnAmount)
+				result.Transactions = append(result.Transactions, txn)
+				summary.PostedCount++
 
-				// Copy optional fields
-				if st.HasPayee() {
-					txn.SetPayee(st.PayeeID.ID)
-				}
-				if st.HasCategory() {
-					txn.SetCategory(st.CategoryID.ID)
-				}
-				if st.Memo.Valid && st.Memo.String != "" {
-					txn.SetMemo(st.Memo.String)
-				}
-
-				if err := s.txnRepo.Create(txn); err != nil {
-					return nil, fmt.Errorf("failed to create auto-post transaction: %w", err)
+				// Advance the schedule
+				st.AdvanceSchedule()
+				// Payoff completion: a loan-shaped schedule whose balance reached
+				// zero (e.g. a clamped final payment) is marked completed, which
+				// also stops the loop.
+				if err := b.finalizeLoanPayoff(st); err != nil {
+					return fmt.Errorf("auto-post created transaction but failed to finalize loan payoff: %w", err)
 				}
 			}
 
-			result.Transactions = append(result.Transactions, txn)
-			summary.PostedCount++
-
-			// Advance the schedule
-			st.AdvanceSchedule()
-			// Payoff completion: a loan-shaped schedule whose balance reached
-			// zero (e.g. a clamped final payment) is marked completed, which
-			// also stops the loop.
-			if err := s.finalizeLoanPayoff(st); err != nil {
-				return nil, fmt.Errorf("auto-post created transaction but failed to finalize loan payoff: %w", err)
+			// Persist schedule mutations. A posted occurrence advanced the schedule;
+			// a paid-off skip marked it completed. Other skips (closed account,
+			// no-estimate, non-terminal loan errors) leave the schedule untouched
+			// and due, so they are not persisted.
+			if len(result.Transactions) > 0 || (result.Skipped && st.IsCompleted()) {
+				if err := b.repo.Update(st); err != nil {
+					return fmt.Errorf("failed to update schedule after auto-post: %w", err)
+				}
 			}
-		}
-
-		// Persist schedule mutations. A posted occurrence advanced the schedule;
-		// a paid-off skip marked it completed. Other skips (closed account,
-		// no-estimate, non-terminal loan errors) leave the schedule untouched
-		// and due, so they are not persisted.
-		if len(result.Transactions) > 0 || (result.Skipped && st.IsCompleted()) {
-			if err := s.repo.Update(st); err != nil {
-				return nil, fmt.Errorf("failed to update schedule after auto-post: %w", err)
-			}
+			return nil
+		})
+		if postErr != nil {
+			return nil, postErr
 		}
 
 		if result.Skipped {
@@ -550,18 +621,19 @@ func (s *Service) postSingleLine(st *Transaction, date types.Date, amount *types
 		txn.SetMemo(st.Memo.String)
 	}
 
-	if err := s.txnRepo.Create(txn); err != nil {
-		return nil, fmt.Errorf("failed to create transaction: %w", err)
-	}
-
-	// Advance the schedule. If AdvanceSchedule returns false the series is
-	// complete; either way we persist the updated state below.
-	st.AdvanceSchedule()
-
-	if err := s.repo.Update(st); err != nil {
-		// Transaction was created but schedule update failed
-		// This is a partial success - log the error but return the transaction
-		return txn, fmt.Errorf("transaction created but failed to update schedule: %w", err)
+	// Create the transaction and advance the schedule in one transaction: the
+	// posted row and the next_date advance commit together, so a failure to
+	// advance rolls back the post too (no double-post window).
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.txnRepo.Create(txn); err != nil {
+			return fmt.Errorf("failed to create transaction: %w", err)
+		}
+		// Advance the schedule. If AdvanceSchedule returns false the series is
+		// complete; either way we persist the updated state below.
+		st.AdvanceSchedule()
+		return b.repo.Update(st)
+	}); err != nil {
+		return nil, err
 	}
 
 	return txn, nil
@@ -598,14 +670,21 @@ func (s *Service) postSingleLineTransfer(st *Transaction, date types.Date, amoun
 	if st.Memo.Valid {
 		memo = st.Memo.String
 	}
-	pair, err := s.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, date, magnitude, memo, st.CategoryID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create scheduled transfer: %w", err)
-	}
 
-	st.AdvanceSchedule()
-	if err := s.repo.Update(st); err != nil {
-		return pair.FromTransaction, fmt.Errorf("transfer created but failed to update schedule: %w", err)
+	// Create the transfer pair and advance the schedule in one transaction: the
+	// posted legs and the next_date advance commit together (b.txnSvc is bound,
+	// so its CreateTransfer joins this tx), closing the double-post window.
+	var pair *transaction.TransferPair
+	if err := s.runInTx(func(b *Service) error {
+		p, err := b.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, date, magnitude, memo, st.CategoryID)
+		if err != nil {
+			return fmt.Errorf("failed to create scheduled transfer: %w", err)
+		}
+		pair = p
+		st.AdvanceSchedule()
+		return b.repo.Update(st)
+	}); err != nil {
+		return nil, err
 	}
 
 	return pair.FromTransaction, nil
@@ -633,16 +712,22 @@ func (s *Service) postMultiLine(st *Transaction, date types.Date) (*transaction.
 		return nil, nil, err
 	}
 
-	if err := s.txnSvc.CreateWithSplits(built.parent, built.splits); err != nil {
-		return nil, nil, fmt.Errorf("failed to create multi-line transaction: %w", err)
-	}
-
-	st.AdvanceSchedule()
-	if err := s.finalizeLoanPayoff(st); err != nil {
-		return built.parent, built.splits, fmt.Errorf("transaction created but failed to finalize loan payoff: %w", err)
-	}
-	if err := s.repo.Update(st); err != nil {
-		return built.parent, built.splits, fmt.Errorf("transaction created but failed to update schedule: %w", err)
+	// Create the transaction, run payoff completion, and advance the schedule in
+	// one transaction: the posted rows and the next_date advance commit together
+	// (b.txnSvc is bound, so CreateWithSplits joins this tx). finalizeLoanPayoff
+	// reads the loan balance through the bound accountRepo so it sees the
+	// just-posted principal counterpart before deciding whether the loan is done.
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.txnSvc.CreateWithSplits(built.parent, built.splits); err != nil {
+			return fmt.Errorf("failed to create multi-line transaction: %w", err)
+		}
+		st.AdvanceSchedule()
+		if err := b.finalizeLoanPayoff(st); err != nil {
+			return fmt.Errorf("failed to finalize loan payoff: %w", err)
+		}
+		return b.repo.Update(st)
+	}); err != nil {
+		return nil, nil, err
 	}
 	return built.parent, built.splits, nil
 }
@@ -746,35 +831,43 @@ func (s *Service) PostWithEdits(id types.ID, txn *transaction.Transaction, split
 		return nil, err
 	}
 
-	if len(splits) > 0 {
-		// Stamp the parent transaction's ID onto every split. Callers
-		// (e.g. the TUI preview dialog) typically build splits via
-		// SplitDialog.buildSplits, which leaves TransactionID zero
-		// because the parent isn't constructed at that point; the
-		// transaction service's validation requires it.
-		for _, sp := range splits {
-			if sp != nil {
-				sp.TransactionID = txn.ID
-			}
-		}
-		if err := s.txnSvc.CreateWithSplits(txn, splits); err != nil {
-			return nil, fmt.Errorf("failed to create transaction: %w", err)
-		}
-	} else {
-		if err := s.txnSvc.Create(txn); err != nil {
-			return nil, fmt.Errorf("failed to create transaction: %w", err)
+	// Stamp the parent transaction's ID onto every split. Callers
+	// (e.g. the TUI preview dialog) typically build splits via
+	// SplitDialog.buildSplits, which leaves TransactionID zero
+	// because the parent isn't constructed at that point; the
+	// transaction service's validation requires it.
+	for _, sp := range splits {
+		if sp != nil {
+			sp.TransactionID = txn.ID
 		}
 	}
 
-	st.AdvanceSchedule()
-	// Payoff completion applies on every posting path, including this flagship
-	// manual-preview flow: a penny-tweaked edit that brings the loan to (or
-	// past) zero marks the schedule completed.
-	if err := s.finalizeLoanPayoff(st); err != nil {
-		return txn, fmt.Errorf("transaction created but failed to finalize loan payoff: %w", err)
-	}
-	if err := s.repo.Update(st); err != nil {
-		return txn, fmt.Errorf("transaction created but failed to update schedule: %w", err)
+	// Post the (possibly edited) transaction and advance the schedule in one
+	// transaction: the posted rows and the next_date advance commit together
+	// (b.txnSvc is bound, so its Create/CreateWithSplits join this tx), closing
+	// the double-post window. finalizeLoanPayoff reads the loan balance through
+	// the bound accountRepo so it sees the just-posted principal counterpart.
+	if err := s.runInTx(func(b *Service) error {
+		if len(splits) > 0 {
+			if err := b.txnSvc.CreateWithSplits(txn, splits); err != nil {
+				return fmt.Errorf("failed to create transaction: %w", err)
+			}
+		} else {
+			if err := b.txnSvc.Create(txn); err != nil {
+				return fmt.Errorf("failed to create transaction: %w", err)
+			}
+		}
+
+		st.AdvanceSchedule()
+		// Payoff completion applies on every posting path, including this
+		// flagship manual-preview flow: a penny-tweaked edit that brings the
+		// loan to (or past) zero marks the schedule completed.
+		if err := b.finalizeLoanPayoff(st); err != nil {
+			return fmt.Errorf("failed to finalize loan payoff: %w", err)
+		}
+		return b.repo.Update(st)
+	}); err != nil {
+		return nil, err
 	}
 	return txn, nil
 }
@@ -860,7 +953,7 @@ func (s *Service) getRecentTransactionsByPayee(accountID, payeeID types.ID, limi
 		LIMIT ?
 	`
 
-	rows, err := s.db.Conn().Query(query, accountID.String(), payeeID.String(), limit)
+	rows, err := s.q().Query(query, accountID.String(), payeeID.String(), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -960,7 +1053,7 @@ func (s *Service) validateTransferCategory(st *Transaction) error {
 	}
 	var name string
 	var isSystem bool
-	err := s.db.Conn().QueryRow(
+	err := s.q().QueryRow(
 		`SELECT name, system_category FROM categories WHERE CAST(id AS VARCHAR) = ?`,
 		st.CategoryID.ID.String(),
 	).Scan(&name, &isSystem)
