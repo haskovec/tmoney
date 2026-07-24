@@ -25,6 +25,68 @@ type Service struct {
 	corporateActionRepo *CorporateActionRepository
 	holdingsRepo        *HoldingsRepository
 	db                  *db.DB
+	tx                  db.Queryer // nil outside a transaction
+}
+
+// InTx returns a copy of the service bound to tx, with every repository field
+// rebound to the same transaction so all writes join one atomic unit. The
+// original service is unchanged and remains safe for non-transactional use.
+//
+// Optional repos (priceRepo, txnRepo, corporateActionRepo, holdingsRepo) are
+// nil-guarded to match test fixtures that construct a partial service; the
+// production wiring always sets them.
+func (s *Service) InTx(tx db.Queryer) *Service {
+	c := *s
+	c.tx = tx
+	c.repo = s.repo.WithTx(tx)
+	c.accountRepo = s.accountRepo.WithTx(tx)
+	c.positionRepo = s.positionRepo.WithTx(tx)
+	c.lotRepo = s.lotRepo.WithTx(tx)
+	c.transactionLotRepo = s.transactionLotRepo.WithTx(tx)
+	if s.priceRepo != nil {
+		c.priceRepo = s.priceRepo.WithTx(tx)
+	}
+	if s.txnRepo != nil {
+		c.txnRepo = s.txnRepo.WithTx(tx)
+	}
+	if s.corporateActionRepo != nil {
+		c.corporateActionRepo = s.corporateActionRepo.WithTx(tx)
+	}
+	if s.holdingsRepo != nil {
+		c.holdingsRepo = s.holdingsRepo.WithTx(tx)
+	}
+	return &c
+}
+
+// runInTx begins a new transaction if the service is unbound, or joins the
+// already-bound transaction. This is what makes service methods composable
+// without savepoints: an outer flow binds once, inner calls join. A bound
+// service must never reach db.WithTx (nesting would deadlock the mutex).
+func (s *Service) runInTx(fn func(b *Service) error) error {
+	if s.tx != nil {
+		return fn(s) // already bound — join the caller's tx
+	}
+	return s.db.WithTx(func(tx db.Queryer) error {
+		return fn(s.InTx(tx))
+	})
+}
+
+// healInOwnTx runs syncPositionAndLots for (accountID, securityID) in its own
+// committed transaction, before a trade's transaction is opened. The heal is
+// idempotent repair — committing it is desirable even when the trade then
+// fails, and it keeps the trade tx small.
+//
+// When the service is already tx-bound (a trade invoked from update_edit's
+// reverse/reapply flow), the re-heal is skipped: the outermost entry point
+// healed before opening the main tx, and the in-tx state is being mutated
+// deliberately.
+func (s *Service) healInOwnTx(accountID, securityID types.ID) error {
+	if s.tx != nil {
+		return nil // bound — the outermost entry point already healed
+	}
+	return s.db.WithTx(func(tx db.Queryer) error {
+		return s.InTx(tx).syncPositionAndLots(accountID, securityID)
+	})
 }
 
 // NewService creates a new Service.
@@ -191,8 +253,9 @@ func (s *Service) Buy(
 	}
 
 	// Heal any stale stored position/lot state for this (account, security)
-	// before we read it (no-op when corporate actions are present).
-	if err := s.syncPositionAndLots(accountID, securityID); err != nil {
+	// before we read it (no-op when corporate actions are present). The heal
+	// commits in its own tx before the trade tx; a bound service skips it.
+	if err := s.healInOwnTx(accountID, securityID); err != nil {
 		return nil, err
 	}
 
@@ -221,31 +284,38 @@ func (s *Service) Buy(
 		return nil, err
 	}
 
-	if err := s.repo.Create(txn); err != nil {
-		return nil, fmt.Errorf("failed to create buy transaction: %w", err)
-	}
+	// Persist the row, the lot/position, and the auto-price atomically: a buy
+	// either fully lands or not at all (no orphan transaction on a lot failure).
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.repo.Create(txn); err != nil {
+			return fmt.Errorf("failed to create buy transaction: %w", err)
+		}
 
-	// Update position or create lot based on account tracking mode
-	if acct.TrackLots {
-		lot := NewLot(accountID, securityID, shares, computed.PricePerShare, date, txn.ID)
-		if err := s.lotRepo.Create(&lot); err != nil {
-			return nil, fmt.Errorf("failed to create lot: %w", err)
+		// Update position or create lot based on account tracking mode
+		if acct.TrackLots {
+			lot := NewLot(accountID, securityID, shares, computed.PricePerShare, date, txn.ID)
+			if err := b.lotRepo.Create(&lot); err != nil {
+				return fmt.Errorf("failed to create lot: %w", err)
+			}
+		} else {
+			pos, err := b.positionRepo.GetByAccountAndSecurity(accountID, securityID)
+			if err != nil {
+				return fmt.Errorf("failed to get position: %w", err)
+			}
+			if err := pos.AddShares(shares, computed.PricePerShare); err != nil {
+				return fmt.Errorf("failed to update position: %w", err)
+			}
+			if err := b.positionRepo.CreateOrUpdate(pos); err != nil {
+				return fmt.Errorf("failed to save position: %w", err)
+			}
 		}
-	} else {
-		pos, err := s.positionRepo.GetByAccountAndSecurity(accountID, securityID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get position: %w", err)
-		}
-		if err := pos.AddShares(shares, computed.PricePerShare); err != nil {
-			return nil, fmt.Errorf("failed to update position: %w", err)
-		}
-		if err := s.positionRepo.CreateOrUpdate(pos); err != nil {
-			return nil, fmt.Errorf("failed to save position: %w", err)
-		}
-	}
 
-	// Auto-create price record from transaction
-	s.autoCreatePrice(securityID, date, computed.PricePerShare)
+		// Auto-create price record from transaction
+		b.autoCreatePrice(securityID, date, computed.PricePerShare)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
 
 	return txn, nil
 }
@@ -279,8 +349,9 @@ func (s *Service) Sell(
 		return nil, &account.AccountClosedError{ID: accountID.String()}
 	}
 
-	// Heal any stale stored position/lot state before validating.
-	if err := s.syncPositionAndLots(accountID, securityID); err != nil {
+	// Heal any stale stored position/lot state before validating. The heal
+	// commits in its own tx before the trade tx; a bound service skips it.
+	if err := s.healInOwnTx(accountID, securityID); err != nil {
 		return nil, err
 	}
 
@@ -304,18 +375,24 @@ func (s *Service) Sell(
 		return nil, err
 	}
 
-	if acct.TrackLots {
-		if err := s.sellWithLots(txn, accountID, securityID, shares, lotAllocations); err != nil {
-			return nil, err
+	// Persist the row, the lot/position changes, and the auto-price atomically.
+	if err := s.runInTx(func(b *Service) error {
+		if acct.TrackLots {
+			if err := b.sellWithLots(txn, accountID, securityID, shares, lotAllocations); err != nil {
+				return err
+			}
+		} else {
+			if err := b.sellWithPosition(txn, accountID, securityID, shares); err != nil {
+				return err
+			}
 		}
-	} else {
-		if err := s.sellWithPosition(txn, accountID, securityID, shares); err != nil {
-			return nil, err
-		}
-	}
 
-	// Auto-create price record from transaction
-	s.autoCreatePrice(securityID, date, computed.PricePerShare)
+		// Auto-create price record from transaction
+		b.autoCreatePrice(securityID, date, computed.PricePerShare)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
 
 	return txn, nil
 }
@@ -696,7 +773,8 @@ func (s *Service) ReinvestDividend(
 		return nil, &account.AccountClosedError{ID: accountID.String()}
 	}
 
-	if err := s.syncPositionAndLots(accountID, securityID); err != nil {
+	// Heal in its own committed tx before the trade tx; a bound service skips it.
+	if err := s.healInOwnTx(accountID, securityID); err != nil {
 		return nil, err
 	}
 
@@ -717,27 +795,33 @@ func (s *Service) ReinvestDividend(
 		return nil, err
 	}
 
-	if err := s.repo.Create(txn); err != nil {
-		return nil, fmt.Errorf("failed to create reinvest dividend transaction: %w", err)
-	}
+	// Persist the row and the lot/position atomically.
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.repo.Create(txn); err != nil {
+			return fmt.Errorf("failed to create reinvest dividend transaction: %w", err)
+		}
 
-	// Update position or create lot based on account tracking mode
-	if acct.TrackLots {
-		lot := NewLot(accountID, securityID, shares, computed.PricePerShare, date, txn.ID)
-		if err := s.lotRepo.Create(&lot); err != nil {
-			return nil, fmt.Errorf("failed to create lot: %w", err)
+		// Update position or create lot based on account tracking mode
+		if acct.TrackLots {
+			lot := NewLot(accountID, securityID, shares, computed.PricePerShare, date, txn.ID)
+			if err := b.lotRepo.Create(&lot); err != nil {
+				return fmt.Errorf("failed to create lot: %w", err)
+			}
+		} else {
+			pos, err := b.positionRepo.GetByAccountAndSecurity(accountID, securityID)
+			if err != nil {
+				return fmt.Errorf("failed to get position: %w", err)
+			}
+			if err := pos.AddShares(shares, computed.PricePerShare); err != nil {
+				return fmt.Errorf("failed to update position: %w", err)
+			}
+			if err := b.positionRepo.CreateOrUpdate(pos); err != nil {
+				return fmt.Errorf("failed to save position: %w", err)
+			}
 		}
-	} else {
-		pos, err := s.positionRepo.GetByAccountAndSecurity(accountID, securityID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get position: %w", err)
-		}
-		if err := pos.AddShares(shares, computed.PricePerShare); err != nil {
-			return nil, fmt.Errorf("failed to update position: %w", err)
-		}
-		if err := s.positionRepo.CreateOrUpdate(pos); err != nil {
-			return nil, fmt.Errorf("failed to save position: %w", err)
-		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	// Reinvested dividends do NOT auto-create a price (see CreatesAutoPrice):
@@ -770,7 +854,8 @@ func (s *Service) FeeLiquidation(
 		return nil, &account.AccountClosedError{ID: accountID.String()}
 	}
 
-	if err := s.syncPositionAndLots(accountID, securityID); err != nil {
+	// Heal in its own committed tx before the trade tx; a bound service skips it.
+	if err := s.healInOwnTx(accountID, securityID); err != nil {
 		return nil, err
 	}
 
@@ -812,14 +897,14 @@ func (s *Service) FeeLiquidation(
 		}
 	}
 
-	if acct.TrackLots {
-		if err := s.feeLiquidationWithLots(txn, accountID, securityID, shares, lotAllocations); err != nil {
-			return nil, err
+	// Persist the row and the lot/position changes atomically.
+	if err := s.runInTx(func(b *Service) error {
+		if acct.TrackLots {
+			return b.feeLiquidationWithLots(txn, accountID, securityID, shares, lotAllocations)
 		}
-	} else {
-		if err := s.feeLiquidationWithPosition(txn, accountID, securityID, shares); err != nil {
-			return nil, err
-		}
+		return b.feeLiquidationWithPosition(txn, accountID, securityID, shares)
+	}); err != nil {
+		return nil, err
 	}
 
 	// Fee liquidations do NOT auto-create a price (see CreatesAutoPrice): the
@@ -1037,10 +1122,6 @@ func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, d
 		return nil, err
 	}
 
-	if err := s.repo.Create(invTxn); err != nil {
-		return nil, fmt.Errorf("failed to create investment transfer transaction: %w", err)
-	}
-
 	// Create regular transaction (deposit — positive amount). An optional
 	// category labels the regular-side leg only (investment_transactions has no
 	// category column); the caller is responsible for rejecting system
@@ -1054,10 +1135,17 @@ func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, d
 		regTxn.SetCategory(categoryID.ID)
 	}
 
-	if err := s.txnRepo.Create(regTxn); err != nil {
-		// Cleanup investment side on failure
-		_ = s.repo.Delete(invTxn.ID)
-		return nil, fmt.Errorf("failed to create regular transfer transaction: %w", err)
+	// Both legs commit atomically — either both land or neither does.
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.repo.Create(invTxn); err != nil {
+			return fmt.Errorf("failed to create investment transfer transaction: %w", err)
+		}
+		if err := b.txnRepo.Create(regTxn); err != nil {
+			return fmt.Errorf("failed to create regular transfer transaction: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return &CashTransferResult{
@@ -1123,10 +1211,6 @@ func (s *Service) DepositFromAccount(investmentAccountID, regularAccountID types
 		return nil, err
 	}
 
-	if err := s.repo.Create(invTxn); err != nil {
-		return nil, fmt.Errorf("failed to create investment transfer transaction: %w", err)
-	}
-
 	// Create regular transaction (withdrawal — negative amount). An optional
 	// category labels the regular-side leg only (investment_transactions has no
 	// category column); the caller is responsible for rejecting system
@@ -1141,10 +1225,17 @@ func (s *Service) DepositFromAccount(investmentAccountID, regularAccountID types
 		regTxn.SetCategory(categoryID.ID)
 	}
 
-	if err := s.txnRepo.Create(regTxn); err != nil {
-		// Cleanup investment side on failure
-		_ = s.repo.Delete(invTxn.ID)
-		return nil, fmt.Errorf("failed to create regular transfer transaction: %w", err)
+	// Both legs commit atomically — either both land or neither does.
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.repo.Create(invTxn); err != nil {
+			return fmt.Errorf("failed to create investment transfer transaction: %w", err)
+		}
+		if err := b.txnRepo.Create(regTxn); err != nil {
+			return fmt.Errorf("failed to create regular transfer transaction: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return &CashTransferResult{
@@ -1213,12 +1304,17 @@ func (s *Service) TransferCashBetweenInvestments(
 		return nil, err
 	}
 
-	if err := s.repo.Create(srcTxn); err != nil {
-		return nil, fmt.Errorf("failed to create source transfer transaction: %w", err)
-	}
-	if err := s.repo.Create(dstTxn); err != nil {
-		_ = s.repo.Delete(srcTxn.ID)
-		return nil, fmt.Errorf("failed to create destination transfer transaction: %w", err)
+	// Both legs commit atomically — either both land or neither does.
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.repo.Create(srcTxn); err != nil {
+			return fmt.Errorf("failed to create source transfer transaction: %w", err)
+		}
+		if err := b.repo.Create(dstTxn); err != nil {
+			return fmt.Errorf("failed to create destination transfer transaction: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return &InvestmentCashTransferResult{
@@ -1342,10 +1438,10 @@ func (s *Service) TransferShares(
 		return nil, fmt.Errorf("shares must be positive, got %s", shares)
 	}
 
-	if err := s.syncPositionAndLots(sourceAccountID, securityID); err != nil {
+	if err := s.healInOwnTx(sourceAccountID, securityID); err != nil {
 		return nil, err
 	}
-	if err := s.syncPositionAndLots(destAccountID, securityID); err != nil {
+	if err := s.healInOwnTx(destAccountID, securityID); err != nil {
 		return nil, err
 	}
 
@@ -1469,86 +1565,91 @@ func (s *Service) TransferShares(
 		return nil, err
 	}
 
-	// Persist source transaction
-	if err := s.repo.Create(srcTxn); err != nil {
-		return nil, fmt.Errorf("failed to create source transfer transaction: %w", err)
-	}
-
-	// Persist destination transaction
-	if err := s.repo.Create(dstTxn); err != nil {
-		_ = s.repo.Delete(srcTxn.ID)
-		return nil, fmt.Errorf("failed to create destination transfer transaction: %w", err)
-	}
-
-	// Update source side
-	if srcAcct.TrackLots {
-		// Reduce source lots and create junction records
-		for i, alloc := range lotAllocations {
-			lot := srcLots[i]
-			if err := lot.Reduce(alloc.Shares); err != nil {
-				return nil, fmt.Errorf("failed to reduce lot: %w", err)
-			}
-			if err := s.lotRepo.Update(lot); err != nil {
-				return nil, fmt.Errorf("failed to update lot: %w", err)
-			}
-
-			tl := NewTransactionLot(srcTxn.ID, lot.ID, alloc.Shares)
-			if err := s.transactionLotRepo.Create(&tl); err != nil {
-				return nil, fmt.Errorf("failed to create transaction lot: %w", err)
-			}
-		}
-	} else {
-		// Non-lot-tracking source: reduce position
-		srcPos, err := s.positionRepo.GetByAccountAndSecurity(sourceAccountID, securityID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get source position: %w", err)
+	// Persist both transactions and the lot/position changes on each side
+	// atomically — either the whole transfer lands or none of it does.
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.repo.Create(srcTxn); err != nil {
+			return fmt.Errorf("failed to create source transfer transaction: %w", err)
 		}
 
-		if err := srcPos.RemoveShares(shares); err != nil {
-			return nil, fmt.Errorf("failed to reduce source position: %w", err)
+		if err := b.repo.Create(dstTxn); err != nil {
+			return fmt.Errorf("failed to create destination transfer transaction: %w", err)
 		}
 
-		if srcPos.Shares.IsZero() {
-			if err := s.positionRepo.Delete(sourceAccountID, securityID); err != nil {
-				return nil, fmt.Errorf("failed to delete zero source position: %w", err)
+		// Update source side
+		if srcAcct.TrackLots {
+			// Reduce source lots and create junction records
+			for i, alloc := range lotAllocations {
+				lot := srcLots[i]
+				if err := lot.Reduce(alloc.Shares); err != nil {
+					return fmt.Errorf("failed to reduce lot: %w", err)
+				}
+				if err := b.lotRepo.Update(lot); err != nil {
+					return fmt.Errorf("failed to update lot: %w", err)
+				}
+
+				tl := NewTransactionLot(srcTxn.ID, lot.ID, alloc.Shares)
+				if err := b.transactionLotRepo.Create(&tl); err != nil {
+					return fmt.Errorf("failed to create transaction lot: %w", err)
+				}
 			}
 		} else {
-			if err := s.positionRepo.CreateOrUpdate(srcPos); err != nil {
-				return nil, fmt.Errorf("failed to save source position: %w", err)
+			// Non-lot-tracking source: reduce position
+			srcPos, err := b.positionRepo.GetByAccountAndSecurity(sourceAccountID, securityID)
+			if err != nil {
+				return fmt.Errorf("failed to get source position: %w", err)
+			}
+
+			if err := srcPos.RemoveShares(shares); err != nil {
+				return fmt.Errorf("failed to reduce source position: %w", err)
+			}
+
+			if srcPos.Shares.IsZero() {
+				if err := b.positionRepo.Delete(sourceAccountID, securityID); err != nil {
+					return fmt.Errorf("failed to delete zero source position: %w", err)
+				}
+			} else {
+				if err := b.positionRepo.CreateOrUpdate(srcPos); err != nil {
+					return fmt.Errorf("failed to save source position: %w", err)
+				}
 			}
 		}
-	}
 
-	// Update destination side
-	if dstAcct.TrackLots {
-		// Create new lots in destination preserving original purchase_date and cost_per_share
-		for i, alloc := range lotAllocations {
-			srcLot := srcLots[i]
-			newLot := NewLot(destAccountID, securityID, alloc.Shares, srcLot.CostPerShare, srcLot.PurchaseDate, dstTxn.ID)
-			if err := s.lotRepo.Create(&newLot); err != nil {
-				return nil, fmt.Errorf("failed to create destination lot: %w", err)
+		// Update destination side
+		if dstAcct.TrackLots {
+			// Create new lots in destination preserving original purchase_date and cost_per_share
+			for i, alloc := range lotAllocations {
+				srcLot := srcLots[i]
+				newLot := NewLot(destAccountID, securityID, alloc.Shares, srcLot.CostPerShare, srcLot.PurchaseDate, dstTxn.ID)
+				if err := b.lotRepo.Create(&newLot); err != nil {
+					return fmt.Errorf("failed to create destination lot: %w", err)
+				}
+			}
+		} else {
+			// Non-lot-tracking destination: update position
+			dstPos, err := b.positionRepo.GetByAccountAndSecurity(destAccountID, securityID)
+			if err != nil {
+				return fmt.Errorf("failed to get destination position: %w", err)
+			}
+
+			if srcAcct.TrackLots {
+				// Cost per share is the weighted average from lot allocations
+				reciprocal := alpacadecimal.NewFromInt(1).Div(shares.Decimal())
+				costPerShare = totalCostBasis.Mul(reciprocal)
+			}
+
+			if err := dstPos.AddShares(shares, costPerShare); err != nil {
+				return fmt.Errorf("failed to update destination position: %w", err)
+			}
+
+			if err := b.positionRepo.CreateOrUpdate(dstPos); err != nil {
+				return fmt.Errorf("failed to save destination position: %w", err)
 			}
 		}
-	} else {
-		// Non-lot-tracking destination: update position
-		dstPos, err := s.positionRepo.GetByAccountAndSecurity(destAccountID, securityID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get destination position: %w", err)
-		}
 
-		if srcAcct.TrackLots {
-			// Cost per share is the weighted average from lot allocations
-			reciprocal := alpacadecimal.NewFromInt(1).Div(shares.Decimal())
-			costPerShare = totalCostBasis.Mul(reciprocal)
-		}
-
-		if err := dstPos.AddShares(shares, costPerShare); err != nil {
-			return nil, fmt.Errorf("failed to update destination position: %w", err)
-		}
-
-		if err := s.positionRepo.CreateOrUpdate(dstPos); err != nil {
-			return nil, fmt.Errorf("failed to save destination position: %w", err)
-		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return &ShareTransferResult{
@@ -1602,72 +1703,76 @@ func (s *Service) DeleteTransaction(id types.ID) error {
 	// reverseTxnEffects' contract). This mirrors the reverse-then-apply the
 	// Update* methods use — it restores a deleted sell's consumed lots, removes
 	// the orphan lot a deleted buy/reinvest opened, and reverses non-lot
-	// positions. Cash-only types reverse to a no-op.
-	if err := s.reverseTxnEffects(txn); err != nil {
-		return fmt.Errorf("failed to reverse transaction effects before delete: %w", err)
-	}
+	// positions. Cash-only types reverse to a no-op. The reversal, the
+	// counterpart cascade, and the row delete commit atomically.
+	return s.runInTx(func(b *Service) error {
+		if err := b.reverseTxnEffects(txn); err != nil {
+			return fmt.Errorf("failed to reverse transaction effects before delete: %w", err)
+		}
 
-	if txn.TransferID.Valid {
-		switch txn.Type {
-		case TransactionTypeTransferCash:
-			if s.txnRepo != nil {
-				regs, lerr := s.txnRepo.ListByTransferID(txn.TransferID.ID)
-				if lerr != nil {
-					return fmt.Errorf("failed to find regular-side transfer rows: %w", lerr)
-				}
-				for _, r := range regs {
-					if err := s.txnRepo.Delete(r.ID); err != nil {
-						return fmt.Errorf("failed to delete regular-side transfer row: %w", err)
+		if txn.TransferID.Valid {
+			switch txn.Type {
+			case TransactionTypeTransferCash:
+				if b.txnRepo != nil {
+					regs, lerr := b.txnRepo.ListByTransferID(txn.TransferID.ID)
+					if lerr != nil {
+						return fmt.Errorf("failed to find regular-side transfer rows: %w", lerr)
+					}
+					for _, r := range regs {
+						if err := b.txnRepo.Delete(r.ID); err != nil {
+							return fmt.Errorf("failed to delete regular-side transfer row: %w", err)
+						}
 					}
 				}
-			}
-			// inv↔inv cash transfers store the counterpart in the OTHER
-			// investment account (no regular-side row exists). Cascade in the
-			// investment repo the same way TransferShares does.
-			if txn.TransferAccountID.Valid {
-				others, lerr := s.repo.ListByAccount(txn.TransferAccountID.ID, TransactionFilter{})
+				// inv↔inv cash transfers store the counterpart in the OTHER
+				// investment account (no regular-side row exists). Cascade in the
+				// investment repo the same way TransferShares does.
+				if txn.TransferAccountID.Valid {
+					others, lerr := b.repo.ListByAccount(txn.TransferAccountID.ID, TransactionFilter{})
+					if lerr != nil {
+						return fmt.Errorf("failed to list destination-account transfers: %w", lerr)
+					}
+					for _, o := range others {
+						if o.TransferID.Valid && o.TransferID.ID == txn.TransferID.ID && o.ID != txn.ID {
+							if err := b.repo.Delete(o.ID); err != nil {
+								return fmt.Errorf("failed to delete paired investment cash-transfer row: %w", err)
+							}
+						}
+					}
+				}
+			case TransactionTypeTransferShares:
+				// The counterpart lives in the other investment account; find by transfer_id.
+				others, lerr := b.repo.ListByAccount(txn.TransferAccountID.ID, TransactionFilter{})
 				if lerr != nil {
 					return fmt.Errorf("failed to list destination-account transfers: %w", lerr)
 				}
 				for _, o := range others {
 					if o.TransferID.Valid && o.TransferID.ID == txn.TransferID.ID && o.ID != txn.ID {
-						if err := s.repo.Delete(o.ID); err != nil {
-							return fmt.Errorf("failed to delete paired investment cash-transfer row: %w", err)
+						// Reverse the counterpart's share effect (restore source
+						// lots / remove the dest lot) before its row + junctions are
+						// cascaded away.
+						if err := b.reverseTxnEffects(o); err != nil {
+							return fmt.Errorf("failed to reverse paired share-transfer effects: %w", err)
+						}
+						if err := b.repo.Delete(o.ID); err != nil {
+							return fmt.Errorf("failed to delete paired share-transfer row: %w", err)
 						}
 					}
 				}
 			}
-		case TransactionTypeTransferShares:
-			// The counterpart lives in the other investment account; find by transfer_id.
-			others, lerr := s.repo.ListByAccount(txn.TransferAccountID.ID, TransactionFilter{})
-			if lerr != nil {
-				return fmt.Errorf("failed to list destination-account transfers: %w", lerr)
-			}
-			for _, o := range others {
-				if o.TransferID.Valid && o.TransferID.ID == txn.TransferID.ID && o.ID != txn.ID {
-					// Reverse the counterpart's share effect (restore source
-					// lots / remove the dest lot) before its row + junctions are
-					// cascaded away.
-					if err := s.reverseTxnEffects(o); err != nil {
-						return fmt.Errorf("failed to reverse paired share-transfer effects: %w", err)
-					}
-					if err := s.repo.Delete(o.ID); err != nil {
-						return fmt.Errorf("failed to delete paired share-transfer row: %w", err)
-					}
-				}
-			}
 		}
-	}
 
-	if err := s.repo.Delete(id); err != nil {
-		return fmt.Errorf("failed to delete investment transaction: %w", err)
-	}
-	// Reconcile the auto-price this transaction may have seeded: drop it if the
-	// delete orphaned it, or re-point it to a surviving same-day transaction.
-	if txn.SecurityID.Valid && txn.Type.CreatesAutoPrice() {
-		s.cleanupAutoPrice(txn.SecurityID.ID, txn.Date)
-	}
-	return nil
+		if err := b.repo.Delete(id); err != nil {
+			return fmt.Errorf("failed to delete investment transaction: %w", err)
+		}
+		// Reconcile the auto-price this transaction may have seeded: drop it if
+		// the delete orphaned it, or re-point it to a surviving same-day
+		// transaction.
+		if txn.SecurityID.Valid && txn.Type.CreatesAutoPrice() {
+			b.cleanupAutoPrice(txn.SecurityID.ID, txn.Date)
+		}
+		return nil
+	})
 }
 
 // AccountShares is a per-account share total for a security, used by
