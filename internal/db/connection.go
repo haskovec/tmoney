@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	_ "github.com/duckdb/duckdb-go/v2"
 )
@@ -21,6 +22,7 @@ const AppIdentifier = "tmoney"
 type DB struct {
 	conn *sql.DB
 	path string
+	txMu sync.Mutex // serializes WithTx: single-writer discipline
 }
 
 // Open opens an existing TMoney database file.
@@ -37,6 +39,9 @@ func Open(path string) (*DB, error) {
 	if err != nil {
 		return nil, &DatabaseError{Op: "open", Err: err}
 	}
+
+	// Single process, single writer: never let the pool interleave connections.
+	conn.SetMaxOpenConns(1)
 
 	// Verify connection works
 	if err := conn.Ping(); err != nil {
@@ -93,6 +98,9 @@ func Create(path string) (*DB, error) {
 	if err != nil {
 		return nil, &DatabaseError{Op: "create", Err: err}
 	}
+
+	// Single process, single writer: never let the pool interleave connections.
+	conn.SetMaxOpenConns(1)
 
 	// Verify connection works
 	if err := conn.Ping(); err != nil {
@@ -153,6 +161,9 @@ func (db *DB) reconnect() error {
 	if err != nil {
 		return &DatabaseError{Op: "reconnect", Err: err}
 	}
+
+	// Single process, single writer: never let the pool interleave connections.
+	conn.SetMaxOpenConns(1)
 
 	if err := conn.Ping(); err != nil {
 		_ = conn.Close()
