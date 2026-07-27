@@ -73,14 +73,10 @@ func (c *FinishReconciliationCommand) Execute() error {
 }
 
 func (c *FinishReconciliationCommand) Undo() error {
-	// Restore transaction statuses to their pre-reconciliation state
-	if err := c.reconSvc.RestoreTransactionStatuses(c.previousStatuses); err != nil {
-		return fmt.Errorf("failed to restore transaction statuses: %w", err)
-	}
-
-	// Reopen the reconciliation session (completed → in_progress)
-	if err := c.reconSvc.ReopenSession(c.sessionID); err != nil {
-		return fmt.Errorf("failed to reopen reconciliation session: %w", err)
+	// Restore transaction statuses and reopen the session atomically — one
+	// service call, one transaction (mirrors the atomic FinishReconciliation).
+	if err := c.reconSvc.UndoFinish(c.sessionID, c.previousStatuses); err != nil {
+		return fmt.Errorf("failed to undo reconciliation finish: %w", err)
 	}
 
 	return nil

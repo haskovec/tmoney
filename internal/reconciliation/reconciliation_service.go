@@ -23,6 +23,45 @@ type Service struct {
 	txnRepo     *transaction.Repository
 	accountRepo *account.Repository
 	db          *db.DB
+	tx          db.Queryer // nil outside a transaction
+}
+
+// InTx returns a copy of the service bound to tx, with every repository field
+// rebound to the same transaction so all writes join one atomic unit. The
+// original service is unchanged and remains safe for non-transactional use.
+func (s *Service) InTx(tx db.Queryer) *Service {
+	c := *s
+	c.tx = tx
+	c.reconRepo = s.reconRepo.WithTx(tx)
+	c.txnRepo = s.txnRepo.WithTx(tx)
+	if s.accountRepo != nil {
+		c.accountRepo = s.accountRepo.WithTx(tx)
+	}
+	return &c
+}
+
+// q returns the active Queryer for ad-hoc service-level SQL: the bound
+// transaction if any, else the live connection. A bound service must not
+// query the pool directly — the transaction pins the single connection
+// (SetMaxOpenConns(1)), so a pool read inside a tx deadlocks.
+func (s *Service) q() db.Queryer {
+	if s.tx != nil {
+		return s.tx
+	}
+	return s.db.Conn()
+}
+
+// runInTx begins a new transaction if the service is unbound, or joins the
+// already-bound transaction. This is what makes service methods composable
+// without savepoints: an outer flow binds once, inner calls join. A bound
+// service must never reach db.WithTx (nesting would deadlock the mutex).
+func (s *Service) runInTx(fn func(b *Service) error) error {
+	if s.tx != nil {
+		return fn(s) // already bound — join the caller's tx
+	}
+	return s.db.WithTx(func(tx db.Queryer) error {
+		return fn(s.InTx(tx))
+	})
 }
 
 // NewService creates a new Service.
@@ -99,7 +138,7 @@ func (s *Service) GetCandidateTransactions(accountID types.ID, statementDate typ
 		ORDER BY date ASC, created_at ASC
 	`
 
-	rows, err := s.db.Conn().Query(query, accountID.String(), statementDate.Time())
+	rows, err := s.q().Query(query, accountID.String(), statementDate.Time())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query candidate transactions: %w", err)
 	}
@@ -142,7 +181,7 @@ func (s *Service) GetCandidateTransactions(accountID types.ID, statementDate typ
 func (s *Service) CalculateClearedTotal(accountID types.ID, checkedIDs []types.ID) (types.Money, error) {
 	// Get opening balance
 	var openingBalance types.Money
-	err := s.db.Conn().QueryRow(
+	err := s.q().QueryRow(
 		`SELECT opening_balance FROM accounts WHERE CAST(id AS VARCHAR) = ?`,
 		accountID.String(),
 	).Scan(&openingBalance)
@@ -152,7 +191,7 @@ func (s *Service) CalculateClearedTotal(accountID types.ID, checkedIDs []types.I
 
 	// Get sum of reconciled transactions
 	var reconciledSum types.Money
-	err = s.db.Conn().QueryRow(
+	err = s.q().QueryRow(
 		`SELECT COALESCE(SUM(amount), 0) FROM transactions
 		 WHERE CAST(account_id AS VARCHAR) = ? AND status = 'reconciled'`,
 		accountID.String(),
@@ -177,7 +216,7 @@ func (s *Service) CalculateClearedTotal(accountID types.ID, checkedIDs []types.I
 			strings.Join(placeholders, ", "),
 		)
 
-		err = s.db.Conn().QueryRow(query, args...).Scan(&checkedSum)
+		err = s.q().QueryRow(query, args...).Scan(&checkedSum)
 		if err != nil {
 			return types.ZeroMoney, fmt.Errorf("failed to sum checked transactions: %w", err)
 		}
@@ -213,44 +252,48 @@ func (s *Service) FinishReconciliation(accountID types.ID, transactionIDs []type
 		return &DifferenceError{Difference: difference}
 	}
 
-	// Mark all checked transactions as reconciled
-	for _, txnID := range transactionIDs {
-		txn, err := s.txnRepo.GetByID(txnID)
-		if err != nil {
-			return fmt.Errorf("failed to get transaction %s: %w", txnID.String(), err)
+	// Mark all checked transactions reconciled and complete the session in one
+	// transaction — a mid-loop failure cannot leave some transactions
+	// reconciled with the session still open.
+	return s.runInTx(func(b *Service) error {
+		for _, txnID := range transactionIDs {
+			txn, err := b.txnRepo.GetByID(txnID)
+			if err != nil {
+				return fmt.Errorf("failed to get transaction %s: %w", txnID.String(), err)
+			}
+
+			// Skip if already reconciled
+			if txn.IsReconciled() {
+				continue
+			}
+
+			// Cannot reconcile void transactions
+			if txn.IsVoid() {
+				return &transaction.IsVoidError{ID: txnID.String()}
+			}
+
+			// Status-only change: use the narrow in-place UpdateStatus so DuckDB
+			// does not rewrite the row. The full-row Update turns into an internal
+			// DELETE+INSERT (an indexed/FK column is in the SET) which aborts if any
+			// secondary ART index for the row is desynced on disk — the DuckDB
+			// storage bug that broke reconcile-finish on a transfer whose transfer_id
+			// index entry could not be deleted. See transaction.Repository.UpdateStatus
+			// and migration 030.
+			if err := b.txnRepo.UpdateStatus(txnID, transaction.StatusReconciled); err != nil {
+				return fmt.Errorf("failed to reconcile transaction %s: %w", txnID.String(), err)
+			}
 		}
 
-		// Skip if already reconciled
-		if txn.IsReconciled() {
-			continue
+		// Complete the session with a narrow in-place status update (see the
+		// UpdateStatus calls above) so the session row is not rewritten either —
+		// reconciliation_sessions carries the same desync-prone indexes.
+		completedAt := types.NullableTimestamp{Timestamp: types.Now(), Valid: true}
+		if err := b.reconRepo.UpdateStatus(session.ID, SessionStatusCompleted, completedAt); err != nil {
+			return fmt.Errorf("failed to complete reconciliation session: %w", err)
 		}
 
-		// Cannot reconcile void transactions
-		if txn.IsVoid() {
-			return &transaction.IsVoidError{ID: txnID.String()}
-		}
-
-		// Status-only change: use the narrow in-place UpdateStatus so DuckDB
-		// does not rewrite the row. The full-row Update turns into an internal
-		// DELETE+INSERT (an indexed/FK column is in the SET) which aborts if any
-		// secondary ART index for the row is desynced on disk — the DuckDB
-		// storage bug that broke reconcile-finish on a transfer whose transfer_id
-		// index entry could not be deleted. See transaction.Repository.UpdateStatus
-		// and migration 030.
-		if err := s.txnRepo.UpdateStatus(txnID, transaction.StatusReconciled); err != nil {
-			return fmt.Errorf("failed to reconcile transaction %s: %w", txnID.String(), err)
-		}
-	}
-
-	// Complete the session with a narrow in-place status update (see the
-	// UpdateStatus calls above) so the session row is not rewritten either —
-	// reconciliation_sessions carries the same desync-prone indexes.
-	completedAt := types.NullableTimestamp{Timestamp: types.Now(), Valid: true}
-	if err := s.reconRepo.UpdateStatus(session.ID, SessionStatusCompleted, completedAt); err != nil {
-		return fmt.Errorf("failed to complete reconciliation session: %w", err)
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // CancelReconciliation cancels the active reconciliation session for an account.
@@ -330,23 +373,40 @@ func (s *Service) ReopenSession(sessionID types.ID) error {
 
 // RestoreTransactionStatuses restores transactions to their previous statuses.
 // Used by the undo system to reverse transaction status changes from reconciliation.
-// Only reconciled transactions can be restored.
+// Only reconciled transactions can be restored. The whole restore commits in
+// one transaction (joining the caller's when bound, as in UndoFinish).
 func (s *Service) RestoreTransactionStatuses(statuses map[types.ID]transaction.Status) error {
-	for txnID, prevStatus := range statuses {
-		txn, err := s.txnRepo.GetByID(txnID)
-		if err != nil {
-			return fmt.Errorf("failed to get transaction %s: %w", txnID.String(), err)
+	return s.runInTx(func(b *Service) error {
+		for txnID, prevStatus := range statuses {
+			txn, err := b.txnRepo.GetByID(txnID)
+			if err != nil {
+				return fmt.Errorf("failed to get transaction %s: %w", txnID.String(), err)
+			}
+
+			if !txn.IsReconciled() {
+				continue
+			}
+
+			// Status-only change: narrow in-place update (see FinishReconciliation).
+			if err := b.txnRepo.UpdateStatus(txnID, prevStatus); err != nil {
+				return fmt.Errorf("failed to restore transaction %s status: %w", txnID.String(), err)
+			}
 		}
 
-		if !txn.IsReconciled() {
-			continue
-		}
+		return nil
+	})
+}
 
-		// Status-only change: narrow in-place update (see FinishReconciliation).
-		if err := s.txnRepo.UpdateStatus(txnID, prevStatus); err != nil {
-			return fmt.Errorf("failed to restore transaction %s status: %w", txnID.String(), err)
+// UndoFinish reverses a completed FinishReconciliation atomically: the
+// transactions' previous statuses and the session reopen commit in one
+// transaction, so a mid-failure cannot leave statuses restored while the
+// session stays completed (or vice versa). Counterpart of the atomic
+// FinishReconciliation; used by the undo system.
+func (s *Service) UndoFinish(sessionID types.ID, statuses map[types.ID]transaction.Status) error {
+	return s.runInTx(func(b *Service) error {
+		if err := b.RestoreTransactionStatuses(statuses); err != nil {
+			return err
 		}
-	}
-
-	return nil
+		return b.ReopenSession(sessionID)
+	})
 }

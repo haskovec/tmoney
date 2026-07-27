@@ -1898,19 +1898,24 @@ func (s *Service) Duplicate(transactionID types.ID) (*Transaction, error) {
 	duplicate.CheckNumber = original.CheckNumber
 	// Status is always uncleared for duplicates (set by NewTransaction)
 
-	if err := s.txnRepo.Create(duplicate); err != nil {
-		return nil, err
-	}
-
-	// Duplicate splits if any (guaranteed transfer-free by the guard above).
-	for _, split := range splits {
-		newSplit := NewSplit(duplicate.ID, split.CategoryID, split.Amount)
-		newSplit.Memo = split.Memo
-		if err := s.splitRepo.Create(newSplit); err != nil {
-			// Best effort cleanup
-			_ = s.txnRepo.Delete(duplicate.ID)
-			return nil, fmt.Errorf("failed to duplicate split: %w", err)
+	// The parent and its split copies commit atomically — a split failure
+	// rolls back the parent instead of best-effort cleanup.
+	if err := s.runInTx(func(b *Service) error {
+		if err := b.txnRepo.Create(duplicate); err != nil {
+			return err
 		}
+
+		// Duplicate splits if any (guaranteed transfer-free by the guard above).
+		for _, split := range splits {
+			newSplit := NewSplit(duplicate.ID, split.CategoryID, split.Amount)
+			newSplit.Memo = split.Memo
+			if err := b.splitRepo.Create(newSplit); err != nil {
+				return fmt.Errorf("failed to duplicate split: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return duplicate, nil
