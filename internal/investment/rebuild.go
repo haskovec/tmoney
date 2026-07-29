@@ -58,7 +58,7 @@ func (s *Service) rebuildPositionsInTx(accountID types.ID) (*RebuildResult, erro
 	//
 	// Read corporate-action state through the service's (bindable) repo, not a
 	// freshly built s.db one: inside the rebuild tx a fresh unbound repo would
-	// query the pool while the tx pins the single connection — a deadlock.
+	// read the pool and miss the transaction's own uncommitted writes.
 	involved, err := s.corporateActionRepo.InvolvedSecurityIDs()
 	if err != nil {
 		return nil, fmt.Errorf("RebuildPositions: %w", err)
@@ -224,7 +224,7 @@ func (s *Service) syncPositionAndLots(accountID, securityID types.ID) error {
 	// Read corporate-action state through the service's (bindable) repo, not a
 	// freshly built s.db one: when the service is tx-bound (heal-before-trade,
 	// which runs syncPositionAndLots inside db.WithTx), a fresh unbound repo
-	// would query the pool while the tx pins the single connection — a deadlock.
+	// would read the pool and miss the transaction's own uncommitted writes.
 	involved, err := s.corporateActionRepo.InvolvedSecurityIDs()
 	if err != nil {
 		return fmt.Errorf("syncPositionAndLots: %w", err)

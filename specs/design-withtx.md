@@ -7,9 +7,16 @@ scheduled-service flows, both merges, void/undo, and cross-service nesting)
 + heal-deadlock hotfix), c022ea8 (splits/adapter/void), d4ccd57 (scheduled),
 deef994 (merges/undo), and the edits/corporate-actions/rebuild phase.
 Implementation notes are folded into §4.6; one rule learned in the field:
-with SetMaxOpenConns(1), ANY pool access (db.Conn(), an unbound or freshly
-constructed repo) inside an open tx deadlocks — everything reachable in a
-closure must be tx-bound.
+ANY pool access (db.Conn(), an unbound or freshly constructed repo) inside
+an open tx is a bug — everything reachable in a closure must be tx-bound.
+POST-SHIP CORRECTION (2026-07-28): SetMaxOpenConns(1) was REMOVED. It turned
+legitimate nested reads into deadlocks — NetWorth calls the investment valuer
+inside its balance-row iteration, which needs a second pooled connection, so
+the TUI dashboard hung forever on real data (report tests use a mock valuer
+and never saw it). Write serialization comes from the WithTx mutex alone; a
+pool access inside a tx now silently misses in-tx writes instead of
+deadlocking, so the q()/bound-repo discipline is enforced by review and the
+per-flow fault-injection tests, not by a runtime tripwire.
 **Addresses:** `specs/code-quality-review.md` item 1 (no domain SQL transactions — compensate-and-pray)
 
 ---
@@ -119,9 +126,10 @@ Notes:
   domain tx is in flight, so no race in practice.
 - A failed `Rollback` is joined onto the domain error, not swallowed — the
   review's "rollbacks swallow errors" complaint dies here too.
-- `Open`/`Create` additionally call `conn.SetMaxOpenConns(1)`: single
-  process, single writer, no reason to let the pool interleave connections.
-  Belt and suspenders with the mutex.
+- ~~`Open`/`Create` additionally call `conn.SetMaxOpenConns(1)`~~ — shipped,
+  then REVERTED (see Status header): the 1-conn pool deadlocked read paths
+  that legitimately query while iterating another query's rows (net-worth
+  valuation). The mutex alone serializes writers; the pool stays unbounded.
 
 ---
 
@@ -474,7 +482,7 @@ Decisions:
 | UPDATE on indexed/FK columns = internal DELETE+INSERT; can abort on ART index desync (reindex.go, migration 026 notes) | Unchanged risk, better outcome: mid-tx abort now rolls back cleanly instead of leaving half a flow. Keep the narrow-UPDATE discipline (`UpdateStatus`-style) inside transactions. |
 | `reconnect()` swaps `db.conn` after migrations (connection.go) | `WithTx` reads `db.conn` at call time; reconnect only happens at open, never mid-flow. |
 | No savepoints | No nested transactions. Join-if-bound (§3) makes nesting structurally impossible; the `WithTx` mutex turns violations into immediate deadlocks caught by tests. |
-| database/sql pool may hold >1 conn; a tx pins one | `SetMaxOpenConns(1)` at open + the `WithTx` mutex: single-writer discipline, concurrent TUI-goroutine calls queue briefly instead of racing. |
+| database/sql pool may hold >1 conn; a tx pins one | The `WithTx` mutex alone gives single-writer discipline (concurrent TUI-goroutine calls queue briefly). `SetMaxOpenConns(1)` was tried and reverted — it deadlocked nested read iteration (see Status header). Reads concurrent with a tx see the pre-tx snapshot, which is correct. |
 
 ---
 

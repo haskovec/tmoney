@@ -76,8 +76,8 @@ func (s *Service) InTx(tx db.Queryer) *Service {
 
 // q returns the active Queryer for ad-hoc service-level SQL: the bound
 // transaction if any, else the live connection. A bound service must not query
-// the pool directly — the transaction pins the single connection
-// (SetMaxOpenConns(1)), so a pool read inside a tx deadlocks.
+// the pool directly — a pool read would miss the transaction's own
+// uncommitted writes, and a pool write would escape its atomicity.
 func (s *Service) q() db.Queryer {
 	if s.tx != nil {
 		return s.tx

@@ -22,7 +22,7 @@ type splitEvent struct {
 // per-security chronological replay cannot reconstruct).
 func (s *Service) splitEventsForSecurity(securityID types.ID) ([]splitEvent, error) {
 	// Bindable repo, not a fresh s.db one: syncPositionAndLots (which calls this)
-	// runs inside a tx during heal-before-trade, where a pool read would deadlock.
+	// runs inside a tx during heal-before-trade and must see in-tx writes.
 	actions, err := s.corporateActionRepo.ListBySecurity(securityID)
 	if err != nil {
 		return nil, fmt.Errorf("splitEventsForSecurity: %w", err)
@@ -54,7 +54,7 @@ func (s *Service) splitEventsForSecurity(securityID types.ID) ([]splitEvent, err
 // gating them.
 func (s *Service) securityHasNonSplitAction(securityID types.ID) (bool, error) {
 	// Bindable repo, not a fresh s.db one: syncPositionAndLots (which calls this)
-	// runs inside a tx during heal-before-trade, where a pool read would deadlock.
+	// runs inside a tx during heal-before-trade and must see in-tx writes.
 	actions, err := s.corporateActionRepo.ListBySecurity(securityID)
 	if err != nil {
 		return false, fmt.Errorf("securityHasNonSplitAction: %w", err)
