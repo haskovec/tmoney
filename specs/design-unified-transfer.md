@@ -1,14 +1,35 @@
 # Design sketch: `internal/transfer` — one ledger-agnostic transfer owner
 
 **Date:** 2026-08-02
-**Status:** IN PROGRESS — phase 1 shipped. v3 folds in what implementing it
-taught: `Get` must decide Shape BEFORE asserting leg arity, because a split
-transfer-line is one ledger row plus a `transaction_splits` row, not two ledger
-rows (§2.6); `transaction/dispatch.go` cannot be moved in phase 1 without leaving
-the tree red, so it dies in phase 3 with its last caller; `Transfer` carries the
-loaded `FromAccount`/`ToAccount` since reads must load them anyway and phase 2's
-guards need them. Phase 1's actual test churn was much smaller than predicted —
-see its Test churn note.
+**Status:** IN PROGRESS — **phases 1–4 shipped** (`ed367c3`, `45e8a2d`,
+`7c01a03`+`1a63d43`, `f8d0c6e`). Phases 5–6 remain.
+
+v4 folds in what implementing them taught. Four design defects surfaced, each
+found by the compiler or a test rather than by review:
+
+1. **`Get` must decide Shape BEFORE asserting leg arity** (§2.6). A transfer LINE
+   inside a split is one ledger row plus a `transaction_splits` row, not two
+   ledger rows, so a flat two-row assertion reports every split line as
+   malformed. v2 specified both the flat assertion and "a split line resolves
+   successfully", which cannot both hold. Fixed with `LedgerSplit`.
+2. **`transaction/dispatch.go` cannot move in phase 1** without leaving the tree
+   red — its five presentation callers survive until phase 3. It died in phase 3
+   with the last of them.
+3. **The register's cleared toggle needed re-pointing** (phase 3), or phase 5's
+   `Update` refusal silently breaks Space-to-clear. Caught by the adversarial
+   review, not by v1/v2.
+4. **`scheduled` cannot import `transfer` at all** (phase 4). `transfer` imports
+   `investment`, and `investment`'s in-package test file
+   `split_counterpart_test.go` imports `scheduled`, so the direct import is an
+   `import cycle not allowed in test`. The review checked whether *flipping* the
+   `transaction`↔`investment` edge would break that same test file and correctly
+   found it would; nobody checked this second route to the same place. Fixed with
+   `scheduled.TransferPort`, the same consumer-declared-port idiom §5.2 already
+   chose for the counterpart port.
+
+Also: `Transfer` carries the loaded `FromAccount`/`ToAccount`, since reads must
+load them to classify Kind and the guards need them anyway. Phase 1's actual test
+churn was far smaller than predicted — see its Test churn note.
 
 **Status history:** PROPOSED (v2 — revised after an independent adversarial review that
 checked every load-bearing claim against the tree). Three defects were found and
@@ -1397,11 +1418,30 @@ kinds, and inv↔reg system-category input is newly rejected.
 ### Phase 4 — domain composers (risk: medium)
 
 The `InTx` phase, split out of phase 3 so the blast radius is bounded to
-non-user-facing call sites. Point `scheduled.postSingleLineTransfer` (`:679`) and
-`AutoPost`'s transfer branch (`:355`) at `transferSvc.InTx(tx).Create`. Re-point
+non-user-facing call sites.
+
+**v4 correction — `scheduled` cannot import `transfer`.** `transfer` imports
+`investment`, and `investment`'s in-package test file
+`split_counterpart_test.go` imports `scheduled`, so a direct
+`scheduled → transfer` import is an `import cycle not allowed in test`. Posting
+goes through `scheduled.TransferPort`, a consumer-declared interface satisfied by
+`*transfer.Service.CreateTransfer` with only `db.Queryer` and `internal/types`
+crossing the boundary — the same idiom §5.2 chose for the counterpart port, and
+the same reason `Queryer` lives in `internal/db`. It takes the tx per call rather
+than returning a bound copy, so no method names a foreign type.
+
+Point `scheduled.postSingleLineTransfer` (`:679`) and
+`AutoPost`'s transfer branch (`:355`) at the port. Re-point
 `undo/scheduled_transaction.go:284`/`:293` and `undo/auto_post.go:53`. Point
-`transferlink.linkOne` at `LinkExisting`. Delete `scheduled`'s
-`validateTransferCategory` copy (`:1050`).
+`transferlink.linkOne` at `LinkExisting`, via a narrow `transferlink.Linker`
+interface; `LinkExisting` gains a `categoryID` parameter because deciding WHICH
+category a linked pair shares is a matching concern that stays in `transferlink`.
+
+**v4 correction — `scheduled`'s `validateTransferCategory` is KEPT**, not deleted
+as §11 assumed. It guards schedule CREATION; the transfer owner guards POSTING.
+Deleting it would push a create-time error out to post time. It already delegates
+the rule itself to `transaction.ValidateTransferCategory`, so the rule has one
+owner — only the lookup is local. §11's −17 lines does not materialize.
 
 **One return-shape adjustment.** `postSingleLineTransfer` returns
 `pair.FromTransaction` — a `*transaction.Transaction` that feeds
