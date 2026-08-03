@@ -119,8 +119,8 @@ type App struct {
 	// transferSvc owns whole-transaction cash transfers across both ledgers.
 	// Reads and writes of transfers go through it rather than branching between
 	// transactionSvc and investmentSvc on account type.
-	transferSvc    *transfer.Service
-	categorySvc    *category.Service
+	transferSvc       *transfer.Service
+	categorySvc       *category.Service
 	payeeSvc          *payee.Service
 	scheduledTxnSvc   *scheduled.Service
 	reportSvc         *report.Service

@@ -5,9 +5,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/transaction"
+	xfer "github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -104,7 +104,7 @@ func runTransferEdit(opts *transferEditOptions, w io.Writer) error {
 	// (neither leg lives in the transactions table). Reject a supplied one up
 	// front — matching `transfer add` — rather than silently dropping it in
 	// UpdateTransferCash's inv↔inv branch and falsely reporting success.
-	if strings.TrimSpace(opts.category) != "" && res.kind == transaction.DispatchInvToInv {
+	if strings.TrimSpace(opts.category) != "" && !res.kind.StoresCategory() {
 		return fmt.Errorf("--category is not supported for investment-to-investment transfers")
 	}
 
@@ -152,7 +152,17 @@ func runTransferEdit(opts *transferEditOptions, w io.Writer) error {
 		}
 	}
 
-	if err := dispatchTransferEdit(svc, res, date, amount, memo, status, categoryID); err != nil {
+	// One call for every shape. dispatchTransferEdit -- with its
+	// investment-account/direction-string derivation and its two service methods
+	// -- is gone, and with it the delete-and-recreate that UpdateTransferCash
+	// performed: the edit is now in place, so the transfer keeps its identity.
+	if _, err := svc.Transfer.Update(res.transferID, xfer.Edit{
+		Date:       date,
+		Amount:     amount,
+		Memo:       memo,
+		CategoryID: categoryID,
+		Status:     status,
+	}); err != nil {
 		return fmt.Errorf("failed to update transfer: %w", err)
 	}
 
@@ -190,42 +200,4 @@ func parseEditStatus(s string) (transaction.Status, error) {
 	default:
 		return "", fmt.Errorf("invalid --status %q: want cleared or uncleared", s)
 	}
-}
-
-// dispatchTransferEdit applies the update through the right service method for
-// the resolved transfer's dispatch kind. categoryID is the post-edit transfer
-// label (the existing one when --category was not supplied); it is mirrored to
-// both legs for reg↔reg and applied to the regular-side leg for inv↔reg.
-func dispatchTransferEdit(svc *app.Services, res *resolvedTransfer, date types.Date, amount types.Money, memo string, status transaction.Status, categoryID types.NullableID) error {
-	if res.kind == transaction.DispatchRegToReg {
-		return svc.Transaction.UpdateTransfer(res.transferID, date, amount, memo, status, categoryID)
-	}
-
-	// Inv-involving: UpdateTransferCash takes the investment-side leg plus the
-	// investment account and a direction ("out" = cash leaves the investment
-	// account, "in" = cash arrives at it).
-	var investmentAccountID, otherAccountID types.ID
-	var direction string
-	if res.fromAccount.Type.IsInvestmentType() {
-		investmentAccountID = res.fromAccount.ID
-		otherAccountID = res.toAccount.ID
-		direction = "out"
-	} else {
-		investmentAccountID = res.toAccount.ID
-		otherAccountID = res.fromAccount.ID
-		direction = "in"
-	}
-
-	_, err := svc.Investment.UpdateTransferCash(
-		res.investmentTxnID,
-		investmentAccountID,
-		otherAccountID,
-		date,
-		amount,
-		memo,
-		categoryID,
-		direction,
-		status,
-	)
-	return err
 }

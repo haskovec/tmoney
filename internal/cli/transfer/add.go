@@ -5,10 +5,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/haskovec/tmoney/internal/account"
-	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
-	"github.com/haskovec/tmoney/internal/transaction"
+	xfer "github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -55,18 +53,9 @@ func newTransferAddCmd() *cobra.Command {
 	return cmd
 }
 
-// transferAddResult is the format-agnostic result of any dispatched
-// transfer create: the shared transfer_id and the two leg transaction IDs,
-// laid out as "from" and "to" matching the user's --from / --to flags.
-type transferAddResult struct {
-	TransferID types.ID
-	FromTxnID  types.ID
-	ToTxnID    types.ID
-}
-
-// runTransferAdd creates a transfer between two accounts. The (from, to)
-// account types pick one of four service methods (see
-// transaction.ChooseTransferDispatch).
+// runTransferAdd creates a transfer between two accounts. Every (from, to)
+// combination goes through the one transfer service, which derives each leg's
+// sign from its side and each leg's table from its own account type.
 func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 	if err := cmdutil.RequireFile(opts.file); err != nil {
 		return err
@@ -105,12 +94,14 @@ func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 		return fmt.Errorf("destination account %q not found", opts.toAccount)
 	}
 
-	// A category label is unsupported for investment→investment transfers
-	// (neither leg lives in the transactions table, so there is nowhere to
-	// store it). Reject it up front, before resolving the path, so the error
+	// Reject an unstorable category before resolving the name, so the error
 	// names the real limitation rather than an incidental "category not found".
+	//
+	// This CALLS the domain predicate (Kind.StoresCategory) rather than
+	// restating the rule, so there is one implementation. transfer.Service
+	// refuses independently with *transfer.CategoryNotSupportedError.
 	if strings.TrimSpace(opts.category) != "" &&
-		transaction.ChooseTransferDispatch(fromAcct.Type, toAcct.Type) == transaction.DispatchInvToInv {
+		!xfer.ClassifyKind(fromAcct.Type, toAcct.Type).StoresCategory() {
 		return fmt.Errorf("--category is not supported for investment-to-investment transfers")
 	}
 
@@ -119,15 +110,26 @@ func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 		return err
 	}
 
-	result, err := dispatchTransferAdd(svc, fromAcct, toAcct, date, amount, opts.memo, categoryID)
+	// One call for every (From, To) combination. The 60-line dispatchTransferAdd
+	// switch that used to be here -- four service methods, three result shapes,
+	// and an argument flip for DepositFromAccount's reversed parameter order --
+	// is gone.
+	result, err := svc.Transfer.Create(xfer.Spec{
+		FromAccountID: fromAcct.ID,
+		ToAccountID:   toAcct.ID,
+		Date:          date,
+		Amount:        amount,
+		Memo:          opts.memo,
+		CategoryID:    categoryID,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create transfer: %w", err)
 	}
 
 	fmt.Fprintln(w, "Transfer created successfully!")
 	fmt.Fprintf(w, "  Transfer ID:           %s\n", result.TransferID)
-	fmt.Fprintf(w, "  From transaction ID:   %s\n", result.FromTxnID)
-	fmt.Fprintf(w, "  To transaction ID:     %s\n", result.ToTxnID)
+	fmt.Fprintf(w, "  From transaction ID:   %s\n", result.From.RowID)
+	fmt.Fprintf(w, "  To transaction ID:     %s\n", result.To.RowID)
 	fmt.Fprintf(w, "  From:                  %s\n", fromAcct.Name)
 	fmt.Fprintf(w, "  To:                    %s\n", toAcct.Name)
 	fmt.Fprintf(w, "  Date:                  %s\n", date.String())
@@ -141,69 +143,4 @@ func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 
 	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
-}
-
-// dispatchTransferAdd picks the right service method for the
-// (from.Type, to.Type) combination and returns the leg IDs in
-// caller-supplied (from, to) order. categoryID is the optional transfer label;
-// for reg→inv / inv→reg it is applied to the regular-side leg only.
-func dispatchTransferAdd(svc *app.Services, from, to *account.Account, date types.Date, amount types.Money, memo string, categoryID types.NullableID) (*transferAddResult, error) {
-	switch transaction.ChooseTransferDispatch(from.Type, to.Type) {
-	case transaction.DispatchRegToReg:
-		// CreateTransfer stamps the memo and category onto both legs directly;
-		// an empty categoryID means no category.
-		pair, err := svc.Transaction.CreateTransfer(from.ID, to.ID, date, amount, memo, categoryID)
-		if err != nil {
-			return nil, err
-		}
-		return &transferAddResult{
-			TransferID: pair.FromTransaction.TransferID.ID,
-			FromTxnID:  pair.FromTransaction.ID,
-			ToTxnID:    pair.ToTransaction.ID,
-		}, nil
-	case transaction.DispatchRegToInv:
-		// DepositFromAccount signature: (investmentID, regularID, date, amount, memo, categoryID).
-		// "From" is the regular account; "To" is the investment account. The
-		// category labels the regular-side leg only.
-		res, err := svc.Investment.DepositFromAccount(to.ID, from.ID, date, amount, memo, categoryID)
-		if err != nil {
-			return nil, err
-		}
-		return &transferAddResult{
-			TransferID: res.TransferID,
-			FromTxnID:  res.RegularTransaction.ID,
-			ToTxnID:    res.InvestmentTransaction.ID,
-		}, nil
-	case transaction.DispatchInvToReg:
-		// TransferCash signature: (investmentID, regularID, date, amount, memo, categoryID).
-		// "From" is the investment account; "To" is the regular account. The
-		// category labels the regular-side leg only.
-		res, err := svc.Investment.TransferCash(from.ID, to.ID, date, amount, memo, categoryID)
-		if err != nil {
-			return nil, err
-		}
-		return &transferAddResult{
-			TransferID: res.TransferID,
-			FromTxnID:  res.InvestmentTransaction.ID,
-			ToTxnID:    res.RegularTransaction.ID,
-		}, nil
-	case transaction.DispatchInvToInv:
-		// TransferCashBetweenInvestments stores neither leg in the transactions
-		// table, so it cannot carry a category. runTransferAdd rejects a
-		// supplied --category before we get here; this guards other callers.
-		if categoryID.Valid {
-			return nil, fmt.Errorf("--category is not supported for investment-to-investment transfers")
-		}
-		res, err := svc.Investment.TransferCashBetweenInvestments(from.ID, to.ID, date, amount, memo)
-		if err != nil {
-			return nil, err
-		}
-		return &transferAddResult{
-			TransferID: res.TransferID,
-			FromTxnID:  res.SourceTransaction.ID,
-			ToTxnID:    res.DestinationTransaction.ID,
-		}, nil
-	default:
-		return nil, fmt.Errorf("unknown transfer dispatch kind")
-	}
 }

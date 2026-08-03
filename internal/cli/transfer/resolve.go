@@ -19,7 +19,7 @@ import (
 // specs/design-unified-transfer.md rewrites those commands against
 // xfer.Transfer directly and deletes this type.
 type resolvedTransfer struct {
-	kind        transaction.TransferDispatchKind
+	kind        xfer.Kind
 	transferID  types.ID
 	fromAccount *account.Account
 	toAccount   *account.Account
@@ -83,7 +83,7 @@ func resolveTransferPair(svc *app.Services, legID types.ID) (*resolvedTransfer, 
 	}
 
 	res := &resolvedTransfer{
-		kind:        dispatchKindFor(t.Kind),
+		kind:        t.Kind,
 		transferID:  t.TransferID,
 		fromAccount: t.FromAccount,
 		toAccount:   t.ToAccount,
@@ -102,20 +102,4 @@ func resolveTransferPair(svc *app.Services, legID types.ID) (*resolvedTransfer, 
 	}
 
 	return res, nil
-}
-
-// dispatchKindFor maps the transfer package's Kind onto the legacy
-// transaction.TransferDispatchKind the command bodies still switch on. Deleted
-// in phase 3 along with the switches themselves.
-func dispatchKindFor(k xfer.Kind) transaction.TransferDispatchKind {
-	switch k {
-	case xfer.KindInvToReg:
-		return transaction.DispatchInvToReg
-	case xfer.KindRegToInv:
-		return transaction.DispatchRegToInv
-	case xfer.KindInvToInv:
-		return transaction.DispatchInvToInv
-	default:
-		return transaction.DispatchRegToReg
-	}
 }

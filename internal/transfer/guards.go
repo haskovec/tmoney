@@ -32,15 +32,15 @@ func (s *Service) resolveAccounts(fromID, toID types.ID) (from, to *account.Acco
 // the three investment paths raise a bare "cannot transfer between the same
 // account" — and each checks the rules in a different sequence.
 //
-//	1. amount strictly positive     -> *InvalidAmountError
-//	2. from != to                   -> *SameAccountError
-//	3. both accounts exist          -> dberrors.NotFoundError (via resolveAccounts)
-//	4. neither account closed       -> account.AccountClosedError
-//	5. date >= both opening dates   -> account.ValidateTransactionDate's error
-//	6. category exists + non-system -> dberrors.NotFoundError /
-//	                                   *transaction.SystemCategoryTransferError
-//	7. category storable for Kind   -> *CategoryNotSupportedError
-//	8. status valid                 -> error naming the invalid status
+//  1. amount strictly positive     -> *InvalidAmountError
+//  2. from != to                   -> *SameAccountError
+//  3. both accounts exist          -> dberrors.NotFoundError (via resolveAccounts)
+//  4. neither account closed       -> account.AccountClosedError
+//  5. date >= both opening dates   -> account.ValidateTransactionDate's error
+//  6. category exists + non-system -> dberrors.NotFoundError /
+//     *transaction.SystemCategoryTransferError
+//  7. category storable for Kind   -> *CategoryNotSupportedError
+//  8. status valid                 -> error naming the invalid status
 //
 // Steps 6 and 7 are NEW ENFORCEMENT for the three investment paths:
 // internal/investment performs no category validation whatsoever, and its

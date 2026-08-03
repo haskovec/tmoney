@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
@@ -69,7 +68,11 @@ func runTransferDelete(opts *transferDeleteOptions, w io.Writer) error {
 		return fmt.Errorf("transfer is reconciled and cannot be deleted; unreconcile it first")
 	}
 
-	if err := dispatchTransferDelete(svc, res); err != nil {
+	// One call for every shape. dispatchTransferDelete used to send reg↔reg to
+	// transaction.DeleteTransfer and every inv-involving kind to
+	// investment.DeleteTransaction, relying on that method's transfer_cash
+	// cascade to reach the counterpart.
+	if _, err := svc.Transfer.Delete(res.transferID); err != nil {
 		return fmt.Errorf("failed to delete transfer: %w", err)
 	}
 
@@ -82,14 +85,4 @@ func runTransferDelete(opts *transferDeleteOptions, w io.Writer) error {
 
 	cmdutil.AutoBackupAfterModification(opts.file)
 	return nil
-}
-
-// dispatchTransferDelete deletes both legs of the resolved transfer. reg↔reg
-// goes through transaction.Service.DeleteTransfer; every inv-involving kind
-// deletes the investment-side leg, whose service cascades to the counterpart.
-func dispatchTransferDelete(svc *app.Services, res *resolvedTransfer) error {
-	if res.kind == transaction.DispatchRegToReg {
-		return svc.Transaction.DeleteTransfer(res.transferID)
-	}
-	return svc.Investment.DeleteTransaction(res.investmentTxnID)
 }

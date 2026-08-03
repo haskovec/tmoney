@@ -7,6 +7,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/transaction"
+	xfer "github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -57,8 +58,8 @@ func TestResolveTransferPair_RegToReg(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveTransferPair(%s): %v", legID, err)
 		}
-		if res.kind != transaction.DispatchRegToReg {
-			t.Errorf("kind = %v, want DispatchRegToReg", res.kind)
+		if res.kind != xfer.KindRegToReg {
+			t.Errorf("kind = %v, want KindRegToReg", res.kind)
 		}
 		if res.fromAccount.ID != checking.ID || res.toAccount.ID != savings.ID {
 			t.Errorf("from/to = %s/%s, want %s/%s", res.fromAccount.Name, res.toAccount.Name, checking.Name, savings.Name)
@@ -87,8 +88,8 @@ func TestResolveTransferPair_RegToInv(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveTransferPair(%s): %v", legID, err)
 		}
-		if got.kind != transaction.DispatchRegToInv {
-			t.Errorf("kind = %v, want DispatchRegToInv", got.kind)
+		if got.kind != xfer.KindRegToInv {
+			t.Errorf("kind = %v, want KindRegToInv", got.kind)
 		}
 		if got.fromAccount.ID != checking.ID || got.toAccount.ID != brokerage.ID {
 			t.Errorf("from/to = %s/%s, want Checking/Brokerage", got.fromAccount.Name, got.toAccount.Name)
@@ -116,8 +117,8 @@ func TestResolveTransferPair_InvToReg(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveTransferPair(%s): %v", legID, err)
 		}
-		if got.kind != transaction.DispatchInvToReg {
-			t.Errorf("kind = %v, want DispatchInvToReg", got.kind)
+		if got.kind != xfer.KindInvToReg {
+			t.Errorf("kind = %v, want KindInvToReg", got.kind)
 		}
 		if got.fromAccount.ID != brokerage.ID || got.toAccount.ID != checking.ID {
 			t.Errorf("from/to = %s/%s, want Brokerage/Checking", got.fromAccount.Name, got.toAccount.Name)
@@ -142,8 +143,8 @@ func TestResolveTransferPair_InvToInv(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveTransferPair(%s): %v", legID, err)
 		}
-		if got.kind != transaction.DispatchInvToInv {
-			t.Errorf("kind = %v, want DispatchInvToInv", got.kind)
+		if got.kind != xfer.KindInvToInv {
+			t.Errorf("kind = %v, want KindInvToInv", got.kind)
 		}
 		if got.fromAccount.ID != brokerage.ID || got.toAccount.ID != ira.ID {
 			t.Errorf("from/to = %s/%s, want Brokerage/Rollover IRA", got.fromAccount.Name, got.toAccount.Name)

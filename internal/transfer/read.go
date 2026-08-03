@@ -329,7 +329,7 @@ func (s *Service) assembleWhole(transferID types.ID, legs []Leg) (*Transfer, err
 		ToAccount:   toAcct,
 		Amount:      to.Amount.Abs(),
 		Date:        from.Date,
-		Memo:       from.Memo,
+		Memo:        from.Memo,
 		// Legs can disagree when only one side has been reconciled; the
 		// transfer-level Status reports the From leg and the mutation guards
 		// inspect BOTH legs, so a half-reconciled pair is still refused.

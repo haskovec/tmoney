@@ -9,65 +9,21 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 // =============================================================================
-// Dispatcher Tests (P1-006)
+// Classifier
 //
-// The dispatcher itself was lifted to internal/transaction/dispatch.go in
-// P-A1-002 and is exhaustively tested there
-// (TestChooseTransferDispatch_AllFourCombinations). The TUI-side tests below
-// keep a thin smoke check that the TUI still pins the right dispatch result
-// for each of the four kinds — the assertions also document which
-// transaction.Dispatch* constant maps to which input shape.
+// The classifier now lives in internal/transfer as transfer.ClassifyKind and is
+// exhaustively tested there (TestClassifyKind_AllFourCombinations, plus the HSA
+// and unknown-type cases). The TUI smoke copies that used to sit here tested
+// transaction.ChooseTransferDispatch, which no longer exists — the TUI does not
+// classify at all now, it just hands (From, To) to the transfer service.
 // =============================================================================
-
-func TestChooseTransferDispatch_RegToReg(t *testing.T) {
-	got := transaction.ChooseTransferDispatch(account.TypeChecking, account.TypeSavings)
-	if got != transaction.DispatchRegToReg {
-		t.Errorf("checking→savings dispatch = %v, want regToReg", got)
-	}
-}
-
-func TestChooseTransferDispatch_InvToReg(t *testing.T) {
-	got := transaction.ChooseTransferDispatch(account.TypeInvestment, account.TypeChecking)
-	if got != transaction.DispatchInvToReg {
-		t.Errorf("investment→checking dispatch = %v, want invToReg", got)
-	}
-}
-
-func TestChooseTransferDispatch_RegToInv(t *testing.T) {
-	got := transaction.ChooseTransferDispatch(account.TypeChecking, account.TypeInvestment)
-	if got != transaction.DispatchRegToInv {
-		t.Errorf("checking→investment dispatch = %v, want regToInv", got)
-	}
-}
-
-func TestChooseTransferDispatch_InvToInv(t *testing.T) {
-	got := transaction.ChooseTransferDispatch(account.TypeInvestment, account.TypeInvestment)
-	if got != transaction.DispatchInvToInv {
-		t.Errorf("investment→investment dispatch = %v, want invToInv", got)
-	}
-}
-
-// HSA counts as an investment-type account (per account.Type.IsInvestmentType),
-// so it must take the investment-side dispatch paths on both ends — otherwise
-// an HSA → checking sweep would create a malformed regular transaction in the
-// HSA register.
-func TestChooseTransferDispatch_HSATreatedAsInvestment(t *testing.T) {
-	if got := transaction.ChooseTransferDispatch(account.TypeHSA, account.TypeChecking); got != transaction.DispatchInvToReg {
-		t.Errorf("HSA→checking dispatch = %v, want invToReg", got)
-	}
-	if got := transaction.ChooseTransferDispatch(account.TypeChecking, account.TypeHSA); got != transaction.DispatchRegToInv {
-		t.Errorf("checking→HSA dispatch = %v, want regToInv", got)
-	}
-	if got := transaction.ChooseTransferDispatch(account.TypeHSA, account.TypeInvestment); got != transaction.DispatchInvToInv {
-		t.Errorf("HSA→investment dispatch = %v, want invToInv", got)
-	}
-}
 
 func TestAccountTypeByID_Found(t *testing.T) {
 	id := types.NewID()
@@ -88,10 +44,10 @@ func TestAccountTypeByID_NotFound(t *testing.T) {
 	if got != "" {
 		t.Errorf("accountTypeByID for missing ID = %q, want empty (so dispatcher falls through to reg/reg)", got)
 	}
-	// Empty type must dispatch to reg/reg so callers don't accidentally route
-	// to an investment path with an unknown account.
-	if transaction.ChooseTransferDispatch(got, account.TypeChecking) != transaction.DispatchRegToReg {
-		t.Error("unknown account type should dispatch to regToReg")
+	// An empty type must classify as non-investment, so a missing account cannot
+	// accidentally route a transfer down an investment path.
+	if transfer.ClassifyKind(got, account.TypeChecking) != transfer.KindRegToReg {
+		t.Error("unknown account type should classify as bank↔bank")
 	}
 }
 
