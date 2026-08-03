@@ -6,9 +6,11 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -20,6 +22,7 @@ import (
 type scheduledTestEnv struct {
 	scheduledSvc *scheduled.Service
 	txnSvc       *transaction.Service
+	transferSvc  *transfer.Service
 	accountRepo  *account.Repository
 	payeeRepo    *payee.Repository
 	categoryRepo *category.Repository
@@ -37,10 +40,14 @@ func createScheduledTestEnv(t *testing.T) *scheduledTestEnv {
 
 	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database, accountRepo)
+	transferSvc := transfer.NewService(txnRepo, investment.NewRepository(database),
+		splitRepo, accountRepo, categoryRepo, database)
+	scheduledSvc.SetTransferPort(transferSvc)
 
 	return &scheduledTestEnv{
 		scheduledSvc: scheduledSvc,
 		txnSvc:       txnSvc,
+		transferSvc:  transferSvc,
 		accountRepo:  accountRepo,
 		payeeRepo:    payeeRepo,
 		categoryRepo: categoryRepo,

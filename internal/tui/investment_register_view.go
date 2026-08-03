@@ -10,9 +10,11 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // investmentRegisterData holds the loaded data for the investment account register view.
@@ -630,12 +632,38 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 			if txn.TransferID.Valid {
 				prompt = fmt.Sprintf("Delete this %s transaction? Both sides will be removed.", txn.Type.DisplayName())
 			}
+			// Classified here, synchronously: the confirm callback runs on a
+			// separate goroutine and must not re-read register state.
+			isTransferLeg := isCashTransferLeg(txn)
+			var transferID types.ID
+			if isTransferLeg {
+				transferID = txn.TransferID.ID
+			}
 			a.showConfirmDialog(
 				"Delete Transaction",
 				prompt,
 				func() tea.Msg {
 					if a.investmentSvc == nil {
 						return errMsg{err: fmt.Errorf("investment service not available")}
+					}
+					// A cash-transfer row is one LEG of a pair whose counterpart may
+					// live in the other ledger, so the transfer owner deletes it —
+					// investment.Service.DeleteTransaction refuses it outright, and
+					// deleting the leg alone would orphan the counterpart. Routing it
+					// through undo also makes it Ctrl+Z-able, which it never was.
+					//
+					// Share transfers stay on DeleteTransaction: both their legs are
+					// investment rows owned by this package, and their cascade also
+					// reverses lot and position effects.
+					if isTransferLeg {
+						if a.transferSvc == nil || a.undoManager == nil {
+							return errMsg{err: fmt.Errorf("transfer service not available")}
+						}
+						cmd := undo.NewDeleteTransferCommand(a.transferSvc, transferID)
+						if err := a.undoManager.Execute(cmd); err != nil {
+							return errMsg{err: err}
+						}
+						return investmentTransactionDeletedMsg{}
 					}
 					if err := a.investmentSvc.DeleteTransaction(txnID); err != nil {
 						return errMsg{err: err}
@@ -732,6 +760,8 @@ func (a *App) toggleInvestmentTransactionStatus() (tea.Model, tea.Cmd) {
 
 	txnID := txn.ID
 	currentStatus := txn.Status
+	// Classified synchronously — the closure below runs on another goroutine.
+	isTransferLeg := isCashTransferLeg(txn)
 
 	return a, func() tea.Msg {
 		if a.investmentSvc == nil {
@@ -748,12 +778,55 @@ func (a *App) toggleInvestmentTransactionStatus() (tea.Model, tea.Cmd) {
 			return nil
 		}
 
+		// A cash-transfer leg's status belongs to the transfer owner, exactly as in
+		// the regular register. Three reasons this is not just symmetry:
+		// SetClearedStatus is a second write path onto a transfer leg; it is not
+		// undoable; and it rewrites the whole row where SetLegStatus writes only the
+		// status column, which matters on DuckDB where an UPDATE touching indexed
+		// or FK columns is internally a DELETE+INSERT.
+		//
+		// Only this leg moves — clearing your side of a transfer says your
+		// institution posted it, independent of the other account.
+		if isTransferLeg {
+			if a.transferSvc == nil || a.undoManager == nil {
+				return errMsg{err: fmt.Errorf("transfer service not available")}
+			}
+			status := transaction.StatusCleared
+			if !cleared {
+				status = transaction.StatusUncleared
+			}
+			cmd := undo.NewSetTransferLegStatusCommand(a.transferSvc, txnID, status)
+			if err := a.undoManager.Execute(cmd); err != nil {
+				return errMsg{err: err}
+			}
+			return investmentTransactionClearedMsg{}
+		}
+
 		// Route through the service so the closed-account freeze gate applies.
 		if err := a.investmentSvc.SetClearedStatus(txnID, cleared); err != nil {
 			return errMsg{err: err}
 		}
 		return investmentTransactionClearedMsg{}
 	}
+}
+
+// isCashTransferLeg reports whether an investment row is one leg of a
+// whole-transaction cash transfer, and therefore owned by transfer.Service
+// rather than investment.Service.
+//
+// This is the routing decision that the investment register's delete and clear
+// keys both turn on, and getting it wrong is not a cosmetic error:
+// investment.Service.DeleteTransaction REFUSES such a leg (deleting it alone
+// would orphan a counterpart that may live in the other ledger), and
+// SetClearedStatus would quietly become a second write path onto a transfer leg.
+//
+// Share transfers deliberately return false: both their legs are investment rows
+// owned by internal/investment, and their delete cascade also reverses lot and
+// position effects, which the transfer owner does not do.
+func isCashTransferLeg(txn *investment.Transaction) bool {
+	return txn != nil &&
+		txn.TransferID.Valid &&
+		txn.Type == investment.TransactionTypeTransferCash
 }
 
 // investmentTransactionDeletedMsg is sent when an investment transaction has been deleted.

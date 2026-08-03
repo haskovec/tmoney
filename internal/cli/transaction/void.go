@@ -67,7 +67,23 @@ func runTransactionVoid(opts *transactionVoidOptions, w io.Writer) error {
 
 	originalAmount := txn.Amount
 
-	if err := svc.Transaction.VoidTransaction(txnID); err != nil {
+	// A whole-transaction transfer leg is voided through the transfer owner, which
+	// zeroes BOTH legs wherever they live. transaction.Service.VoidTransaction
+	// refuses one outright — it writes a single row, and a transfer's counterpart
+	// may be in investment_transactions.
+	//
+	// Resolve first, so an investment-involving transfer reports
+	// *transfer.VoidNotSupportedError by name (the investment ledger has no void
+	// status) rather than a generic failure.
+	if txn.IsTransfer() {
+		resolved, rerr := svc.Transfer.Resolve(txnID)
+		if rerr != nil {
+			return fmt.Errorf("failed to resolve transfer: %w", rerr)
+		}
+		if _, verr := svc.Transfer.Void(resolved.TransferID); verr != nil {
+			return fmt.Errorf("failed to void transfer: %w", verr)
+		}
+	} else if err := svc.Transaction.VoidTransaction(txnID); err != nil {
 		return fmt.Errorf("failed to void transaction: %w", err)
 	}
 

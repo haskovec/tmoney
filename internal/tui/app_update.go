@@ -653,7 +653,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.statusbar.AddNotification(text, widget.NotificationInfo)
 			// Register auto-post as a single undo step
 			if a.undoManager != nil && a.transactionSvc != nil && a.scheduledTxnSvc != nil {
-				cmd := undo.NewAutoPostCommand(a.transactionSvc, a.scheduledTxnSvc, msg.summary)
+				cmd := undo.NewAutoPostCommand(a.transactionSvc, a.transferSvc, a.scheduledTxnSvc, msg.summary)
 				a.undoManager.Push(cmd)
 			}
 			// Reload data since auto-posting created transactions

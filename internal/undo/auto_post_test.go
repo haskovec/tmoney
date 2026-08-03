@@ -15,7 +15,7 @@ import (
 
 func TestAutoPostCommand_Description(t *testing.T) {
 	summary := &scheduled.AutoPostSummary{PostedCount: 3}
-	cmd := undo.NewAutoPostCommand(nil, nil, summary)
+	cmd := undo.NewAutoPostCommand(nil, nil, nil, summary)
 	want := "Auto-post 3 scheduled transaction(s)"
 	if cmd.Description() != want {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), want)
@@ -24,7 +24,7 @@ func TestAutoPostCommand_Description(t *testing.T) {
 
 func TestAutoPostCommand_DescriptionSingle(t *testing.T) {
 	summary := &scheduled.AutoPostSummary{PostedCount: 1}
-	cmd := undo.NewAutoPostCommand(nil, nil, summary)
+	cmd := undo.NewAutoPostCommand(nil, nil, nil, summary)
 	want := "Auto-post 1 scheduled transaction(s)"
 	if cmd.Description() != want {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), want)
@@ -33,7 +33,7 @@ func TestAutoPostCommand_DescriptionSingle(t *testing.T) {
 
 func TestAutoPostCommand_ExecuteIsNoop(t *testing.T) {
 	summary := &scheduled.AutoPostSummary{PostedCount: 0}
-	cmd := undo.NewAutoPostCommand(nil, nil, summary)
+	cmd := undo.NewAutoPostCommand(nil, nil, nil, summary)
 	if err := cmd.Execute(); err != nil {
 		t.Errorf("Execute() should be no-op, got error = %v", err)
 	}
@@ -78,7 +78,7 @@ func TestAutoPostCommand_UndoDeletesTransactionsAndRestoresSchedule(t *testing.T
 		}
 
 		// Create the undo command and undo
-		cmd := undo.NewAutoPostCommand(env.txnSvc, env.scheduledSvc, summary)
+		cmd := undo.NewAutoPostCommand(env.txnSvc, env.transferSvc, env.scheduledSvc, summary)
 		if err := cmd.Undo(); err != nil {
 			t.Fatalf("Undo() error = %v", err)
 		}
@@ -144,7 +144,7 @@ func TestAutoPostCommand_UndoMultipleOverdueOccurrences(t *testing.T) {
 		}
 
 		// Undo the entire auto-post session
-		cmd := undo.NewAutoPostCommand(env.txnSvc, env.scheduledSvc, summary)
+		cmd := undo.NewAutoPostCommand(env.txnSvc, env.transferSvc, env.scheduledSvc, summary)
 		if err := cmd.Undo(); err != nil {
 			t.Fatalf("Undo() error = %v", err)
 		}
@@ -202,7 +202,7 @@ func TestAutoPostCommand_UndoMultipleScheduledTransactions(t *testing.T) {
 		}
 
 		// Undo
-		cmd := undo.NewAutoPostCommand(env.txnSvc, env.scheduledSvc, summary)
+		cmd := undo.NewAutoPostCommand(env.txnSvc, env.transferSvc, env.scheduledSvc, summary)
 		if err := cmd.Undo(); err != nil {
 			t.Fatalf("Undo() error = %v", err)
 		}
@@ -254,7 +254,7 @@ func TestAutoPostCommand_WithManagerPush(t *testing.T) {
 
 		// Push to manager (not Execute, since auto-post already ran)
 		mgr := undo.NewManager()
-		cmd := undo.NewAutoPostCommand(env.txnSvc, env.scheduledSvc, summary)
+		cmd := undo.NewAutoPostCommand(env.txnSvc, env.transferSvc, env.scheduledSvc, summary)
 		mgr.Push(cmd)
 
 		if !mgr.CanUndo() {
@@ -306,7 +306,7 @@ func TestAutoPostCommand_SkippedResultsNotUndone(t *testing.T) {
 		}
 
 		// Create undo command (should handle gracefully even with no transactions)
-		cmd := undo.NewAutoPostCommand(env.txnSvc, env.scheduledSvc, summary)
+		cmd := undo.NewAutoPostCommand(env.txnSvc, env.transferSvc, env.scheduledSvc, summary)
 		if err := cmd.Undo(); err != nil {
 			t.Fatalf("Undo() should succeed even with only skipped results, got error = %v", err)
 		}

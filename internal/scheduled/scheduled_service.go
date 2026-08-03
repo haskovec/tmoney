@@ -286,10 +286,18 @@ func (s *Service) ListUpcoming(days int) ([]*Transaction, error) {
 // AutoPostResult describes the outcome of an auto-post operation for a single scheduled transaction.
 type AutoPostResult struct {
 	ScheduledTransactionID types.ID
-	Transactions           []*transaction.Transaction
-	BeforeSchedule         *Transaction // Schedule state before auto-posting (for undo)
-	Skipped                bool         // True if skipped due to variable amount with no estimate
-	SkipReason             string       // Reason for skipping
+	// Transactions holds the posted REGULAR-ledger rows. It never contains nil:
+	// an investment↔investment transfer occurrence has no regular row at all, and
+	// appending nil for it used to make undo panic on a nil dereference.
+	Transactions []*transaction.Transaction
+	// TransferIDs holds the transfer_id of each transfer occurrence posted, so
+	// undo can address the PAIR rather than a single leg. Deleting one leg through
+	// transaction.Service is refused outright, and would orphan the counterpart
+	// even if it were not.
+	TransferIDs    []types.ID
+	BeforeSchedule *Transaction // Schedule state before auto-posting (for undo)
+	Skipped        bool         // True if skipped due to variable amount with no estimate
+	SkipReason     string       // Reason for skipping
 }
 
 // AutoPostSummary contains the results of running auto-post on file open.
@@ -362,12 +370,16 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 					if st.Memo.Valid {
 						memo = st.Memo.String
 					}
-					_, regularLegID, err := b.transferPort.CreateTransfer(
+					transferID, regularLegID, err := b.transferPort.CreateTransfer(
 						b.q(), st.AccountID, st.TransferAccountID.ID, st.NextDate, magnitude, memo, st.CategoryID,
 					)
 					if err != nil {
 						return fmt.Errorf("failed to create transfer auto-post transaction: %w", err)
 					}
+					// Record the transfer_id so undo removes the PAIR. Undoing a
+					// leg-at-a-time is refused by transaction.Service and would
+					// orphan the counterpart regardless.
+					result.TransferIDs = append(result.TransferIDs, transferID)
 					// An inv↔inv occurrence has no regular-ledger leg to report.
 					if !regularLegID.IsNil() && b.txnRepo != nil {
 						if posted, gerr := b.txnRepo.GetByID(regularLegID); gerr == nil {
@@ -436,7 +448,12 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 					}
 				}
 
-				result.Transactions = append(result.Transactions, txn)
+				// txn is nil only for an inv↔inv transfer occurrence, which has no
+				// regular-ledger row. Its transfer_id is already recorded above, so
+				// undo can still reach it; appending nil here would make undo panic.
+				if txn != nil {
+					result.Transactions = append(result.Transactions, txn)
+				}
 				summary.PostedCount++
 
 				// Advance the schedule
