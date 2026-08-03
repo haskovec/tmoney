@@ -8,7 +8,9 @@ import (
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dbtest"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -27,11 +29,13 @@ func newLinkTestEnv(t *testing.T) *linkTestEnv {
 	database := dbtest.New(t)
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	accountRepo := account.NewRepository(database)
 	catRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, transferRepo, splitRepo, accountRepo, database)
+	// The transfer owner performs the link; transferlink decides what to link.
+	linker := transfer.NewService(txnRepo, investment.NewRepository(database),
+		splitRepo, accountRepo, catRepo, database)
+	svc := NewService(txnRepo, linker, splitRepo, accountRepo, database)
 
 	openDate := types.NewDate(2000, time.January, 1)
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, openDate)

@@ -54,27 +54,40 @@ type Result struct {
 
 // Service finds and links transfer candidates.
 type Service struct {
-	txnRepo      *transaction.Repository
-	transferRepo *transaction.TransferRepository
-	splitRepo    *transaction.SplitRepository
-	accountRepo  *account.Repository
-	db           *db.DB
+	txnRepo     *transaction.Repository
+	linker      Linker
+	splitRepo   *transaction.SplitRepository
+	accountRepo *account.Repository
+	db          *db.DB
+}
+
+// Linker performs the actual pair write. It is satisfied by
+// *transfer.Service.LinkExisting -- transferlink decides WHAT to link, the
+// transfer owner performs the link, so there is one place that stamps a
+// transfer_id and mutual transfer_account_ids.
+//
+// Deliberately NOT the full guard preamble: transferlink links rows that are
+// already reconciled and rows dated before their account's opening date, and it
+// succeeds at both today. Routing through Create-style guards would be a silent
+// capability reduction dressed up as a refactor.
+type Linker interface {
+	LinkExisting(fromRowID, toRowID types.ID, categoryID types.NullableID) (types.ID, error)
 }
 
 // NewService wires up the transferlink service.
 func NewService(
 	txnRepo *transaction.Repository,
-	transferRepo *transaction.TransferRepository,
+	linker Linker,
 	splitRepo *transaction.SplitRepository,
 	accountRepo *account.Repository,
 	database *db.DB,
 ) *Service {
 	return &Service{
-		txnRepo:      txnRepo,
-		transferRepo: transferRepo,
-		splitRepo:    splitRepo,
-		accountRepo:  accountRepo,
-		db:           database,
+		txnRepo:     txnRepo,
+		linker:      linker,
+		splitRepo:   splitRepo,
+		accountRepo: accountRepo,
+		db:          database,
 	}
 }
 
@@ -201,42 +214,41 @@ func (s *Service) linkOne(c *Candidate) error {
 		return fmt.Errorf("amounts do not net to zero")
 	}
 
-	transferID := types.NewID()
-	c.From.SetTransfer(transferID, c.To.AccountID)
-	c.To.SetTransfer(transferID, c.From.AccountID)
-
-	// A transfer carries at most one shared category. Normalize the two legs to
-	// a single value before writing them back:
+	// A transfer carries at most one shared category. Decide the single shared
+	// value before writing:
 	//   - exactly one leg categorized → mirror it onto the other;
 	//   - both categorized and different → the outflow (From) leg wins;
-	//   - both the same or both empty → leave them untouched.
+	//   - both the same or both empty → leave them untouched (zero shared value).
 	// Capture the originals so the error rollback can restore them alongside the
 	// transfer fields (importing separately may have left the rows categorized).
 	origFromCat := c.From.CategoryID
 	origToCat := c.To.CategoryID
+	var shared types.NullableID
 	switch {
 	case c.From.HasCategory() && !c.To.HasCategory():
-		c.To.SetCategory(c.From.CategoryID.ID)
+		shared = c.From.CategoryID
 	case !c.From.HasCategory() && c.To.HasCategory():
-		c.From.SetCategory(c.To.CategoryID.ID)
+		shared = c.To.CategoryID
 	case c.From.HasCategory() && c.To.HasCategory() && c.From.CategoryID.ID != c.To.CategoryID.ID:
-		c.To.SetCategory(c.From.CategoryID.ID)
+		shared = c.From.CategoryID
 	}
 
-	// transferRepo.Update rewrites both legs; wrap it in a transaction so the
-	// pair is linked atomically (the repo is a pure participant — it never opens
-	// its own tx).
-	pair := &transaction.TransferPair{FromTransaction: c.From, ToTransaction: c.To}
-	if err := s.db.WithTx(func(tx db.Queryer) error {
-		return s.transferRepo.WithTx(tx).Update(pair)
-	}); err != nil {
-		// Roll back the in-memory link and categories so a partial failure
-		// doesn't leave the caller's structs in an invalid state if they retry.
-		c.From.ClearTransfer()
-		c.To.ClearTransfer()
+	// The transfer owner stamps the transfer_id and both transfer_account_ids
+	// and writes the shared category, atomically.
+	transferID, err := s.linker.LinkExisting(c.From.ID, c.To.ID, shared)
+	if err != nil {
+		// Leave the caller's in-memory structs untouched so a retry starts clean.
 		c.From.CategoryID = origFromCat
 		c.To.CategoryID = origToCat
 		return err
+	}
+
+	// Reflect the committed state onto the caller's structs.
+	c.From.SetTransfer(transferID, c.To.AccountID)
+	c.To.SetTransfer(transferID, c.From.AccountID)
+	if shared.Valid {
+		c.From.SetCategory(shared.ID)
+		c.To.SetCategory(shared.ID)
 	}
 	return nil
 }

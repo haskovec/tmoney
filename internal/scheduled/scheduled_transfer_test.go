@@ -5,8 +5,10 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -32,6 +34,10 @@ func newTransferTestEnv(t *testing.T) *transferTestEnv {
 	categoryRepo := category.NewRepository(database)
 	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	svc := NewService(stRepo, txnRepo, txnSvc, database, accountRepo)
+	// Transfer occurrences post through the transfer owner; production wires this
+	// in app.NewServices for the import-cycle reason in transfer_port.go.
+	svc.SetTransferPort(transfer.NewService(txnRepo, investment.NewRepository(database),
+		splitRepo, accountRepo, categoryRepo, database))
 	return &transferTestEnv{
 		svc:          svc,
 		txnRepo:      txnRepo,

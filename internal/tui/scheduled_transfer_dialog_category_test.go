@@ -6,9 +6,11 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -45,6 +47,11 @@ func newSchedTransferCategoryEnv(t *testing.T) *schedTransferCategoryEnv {
 
 	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database, accountRepo)
+	// Transfer occurrences post through the transfer owner; production wires
+	// this in app.NewServices (see scheduled/transfer_port.go).
+	schedSvc.SetTransferPort(transfer.NewService(txnRepo,
+		investment.NewRepository(database), splitRepo, accountRepo,
+		category.NewRepository(database), database))
 	accountSvc := account.NewService(accountRepo, database)
 	payeeSvc := payee.NewService(payeeRepo, database)
 	categorySvc := category.NewService(categoryRepo, database)

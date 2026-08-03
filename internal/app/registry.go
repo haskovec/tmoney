@@ -125,8 +125,15 @@ func NewServices(database *db.DB) *Services {
 	_, _ = investmentSvc.HealAllAccounts()
 	reportSvc := report.NewService(accountRepo, database, report.WithInvestmentValuer(&investmentValuerAdapter{svc: investmentSvc}))
 	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, investmentRepo, securityRepo, database)
-	transferLinkSvc := transferlink.NewService(txnRepo, transferRepo, splitRepo, accountRepo, database)
 	transferSvc := transfer.NewService(txnRepo, investmentRepo, splitRepo, accountRepo, categoryRepo, database)
+	// transferlink decides what to link; the transfer owner performs the link,
+	// so there is one place that stamps a transfer_id and mutual
+	// transfer_account_ids.
+	transferLinkSvc := transferlink.NewService(txnRepo, transferSvc, splitRepo, accountRepo, database)
+	// Scheduled posting routes transfer occurrences through the transfer owner.
+	// Injected after construction because a direct scheduled → transfer import is
+	// an "import cycle not allowed in test" (see scheduled/transfer_port.go).
+	scheduledSvc.SetTransferPort(transferSvc)
 
 	return &Services{
 		Account:         accountSvc,

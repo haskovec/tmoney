@@ -20,9 +20,19 @@ type Service struct {
 	txnRepo     *transaction.Repository
 	txnSvc      *transaction.Service
 	accountRepo *account.Repository
-	db          *db.DB
-	tx          db.Queryer // nil outside a transaction
+	// transferPort posts transfer occurrences through the one transfer owner.
+	// It is an interface rather than a *transfer.Service because a direct
+	// scheduled → transfer import is an "import cycle not allowed in test"
+	// (see transfer_port.go). Injected post-construction, like
+	// transaction.Service's counterpart port.
+	transferPort TransferPort
+	db           *db.DB
+	tx           db.Queryer // nil outside a transaction
 }
+
+// SetTransferPort wires the transfer owner used to post transfer occurrences.
+// Set after both services exist, for the cycle reason in transfer_port.go.
+func (s *Service) SetTransferPort(p TransferPort) { s.transferPort = p }
 
 // NewService creates a new Service.
 //
@@ -342,21 +352,28 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 				if st.IsTransfer() {
 					// Single-line transfer: post template values exactly as a clean
 					// linked transfer pair.
-					if b.txnSvc == nil {
-						return fmt.Errorf("transfer auto-post requires a transaction service; scheduled.NewService was called with txnSvc=nil")
+					if b.transferPort == nil {
+						return fmt.Errorf("transfer auto-post requires the transfer service; scheduled.SetTransferPort was never called")
 					}
 					magnitude := st.Amount.Money.Abs()
-					// CreateTransfer stamps the schedule's memo and optional
-					// category onto both legs directly.
+					// The transfer owner stamps the schedule's memo and optional
+					// category onto whichever legs can hold them.
 					memo := ""
 					if st.Memo.Valid {
 						memo = st.Memo.String
 					}
-					pair, err := b.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, st.NextDate, magnitude, memo, st.CategoryID)
+					_, regularLegID, err := b.transferPort.CreateTransfer(
+						b.q(), st.AccountID, st.TransferAccountID.ID, st.NextDate, magnitude, memo, st.CategoryID,
+					)
 					if err != nil {
 						return fmt.Errorf("failed to create transfer auto-post transaction: %w", err)
 					}
-					txn = pair.FromTransaction
+					// An inv↔inv occurrence has no regular-ledger leg to report.
+					if !regularLegID.IsNil() && b.txnRepo != nil {
+						if posted, gerr := b.txnRepo.GetByID(regularLegID); gerr == nil {
+							txn = posted
+						}
+					}
 				} else if len(st.Splits) > 0 {
 					// Multi-line schedule: delegate to the multi-line create path
 					// so transfer-line counterparts are minted and persisted.
@@ -647,8 +664,11 @@ func (s *Service) postSingleLine(st *Transaction, date types.Date, amount *types
 // (the post-time preview's edited amount) replaces the stored estimate for
 // this one occurrence without changing the template.
 func (s *Service) postSingleLineTransfer(st *Transaction, date types.Date, amount *types.Money) (*transaction.Transaction, error) {
-	if s.txnSvc == nil {
-		return nil, fmt.Errorf("posting a transfer schedule requires a transaction service; scheduled.NewService was called with txnSvc=nil")
+	if s.transferPort == nil {
+		return nil, fmt.Errorf("posting a transfer schedule requires the transfer service; scheduled.SetTransferPort was never called")
+	}
+	if s.txnRepo == nil {
+		return nil, fmt.Errorf("posting a transfer schedule requires a transaction repository; scheduled.NewService was called with txnRepo=nil")
 	}
 
 	var magnitude types.Money
@@ -672,22 +692,36 @@ func (s *Service) postSingleLineTransfer(st *Transaction, date types.Date, amoun
 	}
 
 	// Create the transfer pair and advance the schedule in one transaction: the
-	// posted legs and the next_date advance commit together (b.txnSvc is bound,
-	// so its CreateTransfer joins this tx), closing the double-post window.
-	var pair *transaction.TransferPair
+	// posted legs and the next_date advance commit together (the port receives
+	// this tx and binds to it), closing the double-post window.
+	//
+	// Routing through the transfer owner is what makes a schedule whose target is
+	// an investment account POSTABLE. It could be created but never posted
+	// before: transaction.CreateTransfer rejected the investment leg with
+	// NotRegularAccountError, which in AutoPost is neither a closed-account nor a
+	// loan error and therefore aborted the entire batch.
+	var regularLegID types.ID
 	if err := s.runInTx(func(b *Service) error {
-		p, err := b.txnSvc.CreateTransfer(st.AccountID, st.TransferAccountID.ID, date, magnitude, memo, st.CategoryID)
+		_, legID, err := b.transferPort.CreateTransfer(
+			b.q(), st.AccountID, st.TransferAccountID.ID, date, magnitude, memo, st.CategoryID,
+		)
 		if err != nil {
 			return fmt.Errorf("failed to create scheduled transfer: %w", err)
 		}
-		pair = p
+		regularLegID = legID
 		st.AdvanceSchedule()
 		return b.repo.Update(st)
 	}); err != nil {
 		return nil, err
 	}
 
-	return pair.FromTransaction, nil
+	// The posted row this returns is the regular-ledger leg. An inv↔inv transfer
+	// has none, so it reports no transaction — callers tolerate nil (PostResult
+	// carries the schedule outcome regardless).
+	if regularLegID.IsNil() {
+		return nil, nil
+	}
+	return s.txnRepo.GetByID(regularLegID)
 }
 
 // postMultiLine creates a multi-line real transaction from a multi-line

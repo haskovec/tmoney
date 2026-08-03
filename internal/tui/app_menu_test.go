@@ -7,9 +7,11 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -329,6 +331,11 @@ func TestTransactionsMenu_NewPaycheckSchedule_Item(t *testing.T) {
 
 	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, accountRepo, database)
 	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database, accountRepo)
+	// Transfer occurrences post through the transfer owner; production wires
+	// this in app.NewServices (see scheduled/transfer_port.go).
+	schedSvc.SetTransferPort(transfer.NewService(txnRepo,
+		investment.NewRepository(database), transaction.NewSplitRepository(database), accountRepo,
+		category.NewRepository(database), database))
 	accountSvc := account.NewService(accountRepo, database)
 	categorySvc := category.NewService(categoryRepo, database)
 

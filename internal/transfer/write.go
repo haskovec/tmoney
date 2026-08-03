@@ -408,7 +408,10 @@ func (s *Service) Recreate(transferID types.ID, spec Spec) (*Result, error) {
 // before their account's opening date, and today it succeeds at both. Adding the
 // guards here would be a silent capability reduction dressed as a refactor.
 // LinkExisting changes who performs the write, not what may be linked.
-func (s *Service) LinkExisting(fromRowID, toRowID types.ID) (types.ID, error) {
+// categoryID, when valid, is written to BOTH legs, which is how transferlink
+// reconciles a pair where only one side was categorized (or the two disagreed).
+// A zero categoryID leaves each leg's existing category untouched.
+func (s *Service) LinkExisting(fromRowID, toRowID types.ID, categoryID types.NullableID) (types.ID, error) {
 	if fromRowID == toRowID {
 		return types.NilID, fmt.Errorf("cannot link a transaction to itself")
 	}
@@ -429,6 +432,10 @@ func (s *Service) LinkExisting(fromRowID, toRowID types.ID) (types.ID, error) {
 
 		fromRow.SetTransfer(transferID, toRow.AccountID)
 		toRow.SetTransfer(transferID, fromRow.AccountID)
+		if categoryID.Valid {
+			fromRow.SetCategory(categoryID.ID)
+			toRow.SetCategory(categoryID.ID)
+		}
 
 		if err := b.txnRepo.Update(fromRow); err != nil {
 			return fmt.Errorf("failed to link transaction %s: %w", fromRowID.String(), err)

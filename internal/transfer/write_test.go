@@ -687,7 +687,7 @@ func TestLinkExisting_LinksTwoUnrelatedRows(t *testing.T) {
 		t.Fatalf("create in row: %v", err)
 	}
 
-	transferID, err := h.svc.LinkExisting(out.ID, in.ID)
+	transferID, err := h.svc.LinkExisting(out.ID, in.ID, types.NullableID{})
 	if err != nil {
 		t.Fatalf("LinkExisting: %v", err)
 	}
@@ -716,7 +716,7 @@ func TestLinkExisting_KeepsTodaysPermissiveSemantics(t *testing.T) {
 		t.Fatalf("create reconciled in row: %v", err)
 	}
 
-	if _, err := h.svc.LinkExisting(out.ID, in.ID); err != nil {
+	if _, err := h.svc.LinkExisting(out.ID, in.ID, types.NullableID{}); err != nil {
 		t.Fatalf("LinkExisting refused reconciled rows: %v (transferlink links them today)", err)
 	}
 }
@@ -732,10 +732,10 @@ func TestLinkExisting_RefusesSameAccountAndSelf(t *testing.T) {
 		t.Fatalf("create b: %v", err)
 	}
 
-	if _, err := h.svc.LinkExisting(a.ID, a.ID); err == nil {
+	if _, err := h.svc.LinkExisting(a.ID, a.ID, types.NullableID{}); err == nil {
 		t.Error("linking a row to itself should fail")
 	}
-	_, err := h.svc.LinkExisting(a.ID, b.ID)
+	_, err := h.svc.LinkExisting(a.ID, b.ID, types.NullableID{})
 	var target *SameAccountError
 	if !errors.As(err, &target) {
 		t.Errorf("same-account link error = %T (%v), want *SameAccountError", err, err)

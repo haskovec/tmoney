@@ -7,7 +7,9 @@ import (
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dbtest"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -34,7 +36,9 @@ func newLinkFixture(t *testing.T) (*linkFixture, func()) {
 	splitRepo := transaction.NewSplitRepository(database)
 	xferRepo := transaction.NewTransferRepository(database, txnRepo)
 
-	svc := transferlink.NewService(txnRepo, xferRepo, splitRepo, accountRepo, database)
+	linker := transfer.NewService(txnRepo, investment.NewRepository(database),
+		splitRepo, accountRepo, category.NewRepository(database), database)
+	svc := transferlink.NewService(txnRepo, linker, splitRepo, accountRepo, database)
 
 	checking := account.NewAccount("Checking", account.TypeChecking, "USD",
 		types.MustNewMoney("0"), types.NewDate(2024, 1, 1))
