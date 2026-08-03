@@ -322,6 +322,32 @@ func (r *Repository) Update(txn *Transaction) error {
 	return nil
 }
 
+// UpdateStatus updates only the status column of an investment transaction.
+//
+// It is the narrow counterpart of transaction.Repository.UpdateStatus and exists
+// so a transfer's status can be changed without rewriting every column of the
+// row. That matters beyond tidiness: on DuckDB an UPDATE touching indexed or
+// FK columns is internally a DELETE+INSERT and can abort on ART index desync
+// (see internal/db/reindex.go and migration 026's notes), so status-only edits
+// deliberately keep their write set to one unindexed column.
+func (r *Repository) UpdateStatus(id types.ID, status TransactionStatus) error {
+	result, err := r.q().Exec(`
+		UPDATE investment_transactions SET status = ?, updated_at = ?
+		WHERE CAST(id AS VARCHAR) = ?
+	`, status.String(), types.Now().Time(), id.String())
+	if err != nil {
+		return fmt.Errorf("failed to update investment transaction status: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "investment_transaction", ID: id.String()}
+	}
+	return nil
+}
+
 // Delete removes an investment transaction from the database.
 // Must manually delete from investment_transaction_lots first (DuckDB does not support ON DELETE CASCADE).
 func (r *Repository) Delete(id types.ID) error {
