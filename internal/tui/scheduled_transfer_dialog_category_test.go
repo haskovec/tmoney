@@ -44,7 +44,7 @@ func newSchedTransferCategoryEnv(t *testing.T) *schedTransferCategoryEnv {
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database, accountRepo)
 	// Transfer occurrences post through the transfer owner; production wires
 	// this in app.NewServices (see scheduled/transfer_port.go).

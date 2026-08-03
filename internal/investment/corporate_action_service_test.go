@@ -39,7 +39,7 @@ func createCATestEnv(t *testing.T) *testCAServiceEnv {
 	caRepo := NewCorporateActionRepository(database)
 	invRepo := NewRepository(database)
 
-	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, nil, caRepo, database)
+	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, caRepo, database)
 	caSvc := NewCorporateActionService(caRepo, lotRepo, positionRepo, priceRepo, invRepo, secRepo, database)
 
 	return &testCAServiceEnv{

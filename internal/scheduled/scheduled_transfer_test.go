@@ -31,7 +31,7 @@ func newTransferTestEnv(t *testing.T) *transferTestEnv {
 	accountRepo := account.NewRepository(database)
 	payeeRepo := payee.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
-	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 	svc := NewService(stRepo, txnRepo, txnSvc, database, accountRepo)
 	// Transfer occurrences post through the transfer owner; production wires this
 	// in app.NewServices for the import-cycle reason in transfer_port.go.

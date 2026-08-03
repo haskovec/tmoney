@@ -81,36 +81,6 @@ func TestInvestmentService_SecurityOps_RejectedOnClosedAccount(t *testing.T) {
 	})
 }
 
-func TestInvestmentService_Transfers_RejectedWhenLegClosed(t *testing.T) {
-	svc, accountRepo := createTestService(t)
-	inv := createInvAccount(t, accountRepo, "Brokerage")
-	reg := createCheckAccount(t, accountRepo, "Checking")
-	date := types.NewDate(2000, time.March, 1)
-	amount := types.MustNewMoney("100.00")
-
-	closedReg := createCheckAccount(t, accountRepo, "ClosedChecking")
-	closeInvAccount(t, accountRepo, closedReg)
-	closedInv := createInvAccount(t, accountRepo, "ClosedBrokerage")
-	closeInvAccount(t, accountRepo, closedInv)
-
-	t.Run("TransferCash regular leg closed", func(t *testing.T) {
-		_, err := svc.TransferCash(inv.ID, closedReg.ID, date, amount, "", types.NullableID{})
-		assertInvClosed(t, err)
-	})
-	t.Run("DepositFromAccount regular leg closed", func(t *testing.T) {
-		_, err := svc.DepositFromAccount(inv.ID, closedReg.ID, date, amount, "", types.NullableID{})
-		assertInvClosed(t, err)
-	})
-	t.Run("TransferCash investment leg closed", func(t *testing.T) {
-		_, err := svc.TransferCash(closedInv.ID, reg.ID, date, amount, "", types.NullableID{})
-		assertInvClosed(t, err)
-	})
-	t.Run("TransferCashBetweenInvestments dest closed", func(t *testing.T) {
-		_, err := svc.TransferCashBetweenInvestments(inv.ID, closedInv.ID, date, amount, "")
-		assertInvClosed(t, err)
-	})
-}
-
 func TestInvestmentService_DeleteAndClearedToggle_RejectedOnClosedAccount(t *testing.T) {
 	svc, accountRepo := createTestService(t)
 	acct := createInvAccount(t, accountRepo, "Brokerage")

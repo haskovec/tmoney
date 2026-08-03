@@ -35,7 +35,7 @@ func createScheduledTestEnv(t *testing.T) *scheduledTestEnv {
 	categoryRepo := category.NewRepository(database)
 	scheduledRepo := scheduled.NewRepository(database)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database, accountRepo)
 
 	return &scheduledTestEnv{

@@ -7,7 +7,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
-	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -701,49 +700,6 @@ func TestApp_Update_TransferDialogSavedMsg_NilLegSelectsNothing(t *testing.T) {
 
 	if !updated.pendingRegisterSelectID.IsNil() || !updated.pendingInvestmentSelectID.IsNil() {
 		t.Error("a NilID savedID should leave both pending selections unset")
-	}
-}
-
-func TestTransferLegForAccount(t *testing.T) {
-	acctA, acctB := types.NewID(), types.NewID()
-	fromID, toID := types.NewID(), types.NewID()
-	from := &transaction.Transaction{BaseModel: types.BaseModel{ID: fromID}, AccountID: acctA}
-	to := &transaction.Transaction{BaseModel: types.BaseModel{ID: toID}, AccountID: acctB}
-
-	if got := transferLegForAccount(acctA, from, to); got != fromID {
-		t.Errorf("acctA leg = %v, want from leg %v", got, fromID)
-	}
-	if got := transferLegForAccount(acctB, from, to); got != toID {
-		t.Errorf("acctB leg = %v, want to leg %v", got, toID)
-	}
-	if got := transferLegForAccount(types.NewID(), from, to); !got.IsNil() {
-		t.Errorf("unrelated account leg = %v, want NilID", got)
-	}
-	// nil legs must not panic.
-	if got := transferLegForAccount(acctA, nil, nil); !got.IsNil() {
-		t.Errorf("nil legs = %v, want NilID", got)
-	}
-}
-
-func TestCashTransferLegForAccount(t *testing.T) {
-	regAcct, invAcct := types.NewID(), types.NewID()
-	regID, invID := types.NewID(), types.NewID()
-	res := &investment.CashTransferResult{
-		RegularTransaction:    &transaction.Transaction{BaseModel: types.BaseModel{ID: regID}, AccountID: regAcct},
-		InvestmentTransaction: &investment.Transaction{BaseModel: types.BaseModel{ID: invID}, AccountID: invAcct},
-	}
-
-	if id, isInv := cashTransferLegForAccount(regAcct, res); id != regID || isInv {
-		t.Errorf("regular account leg = (%v, %v), want (%v, false)", id, isInv, regID)
-	}
-	if id, isInv := cashTransferLegForAccount(invAcct, res); id != invID || !isInv {
-		t.Errorf("investment account leg = (%v, %v), want (%v, true)", id, isInv, invID)
-	}
-	if id, isInv := cashTransferLegForAccount(types.NewID(), res); !id.IsNil() || isInv {
-		t.Errorf("unrelated account = (%v, %v), want (NilID, false)", id, isInv)
-	}
-	if id, isInv := cashTransferLegForAccount(regAcct, nil); !id.IsNil() || isInv {
-		t.Errorf("nil result = (%v, %v), want (NilID, false)", id, isInv)
 	}
 }
 

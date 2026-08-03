@@ -270,7 +270,7 @@ func newSchedulePreviewTestEnv(t *testing.T) *schedulePreviewTestEnv {
 	txnRepo := transaction.NewRepository(database)
 	splitTxnRepo := transaction.NewSplitRepository(database)
 
-	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, payeeRepo, accountRepo, nil, database)
 	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database, accountRepo)
 	// Transfer occurrences post through the transfer owner; production wires
 	// this in app.NewServices (see scheduled/transfer_port.go).
@@ -623,7 +623,7 @@ func newSchedulePreviewMultiLineEnv(t *testing.T) *schedulePreviewMultiLineEnv {
 	txnRepo := transaction.NewRepository(database)
 	splitTxnRepo := transaction.NewSplitRepository(database)
 
-	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, payeeRepo, accountRepo, nil, database)
 	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database, accountRepo)
 	// Transfer occurrences post through the transfer owner; production wires
 	// this in app.NewServices (see scheduled/transfer_port.go).

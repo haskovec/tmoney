@@ -68,13 +68,12 @@ func newHarness(t *testing.T) *harness {
 	priceRepo := price.NewRepository(database)
 	corporateActionRepo := investment.NewCorporateActionRepository(database)
 
-	h.txnSvc = transaction.NewService(h.txnRepo, h.splitRepo, payeeRepo, h.accountRepo, database)
-	h.invSvc = investment.NewService(h.invRepo, h.accountRepo, positionRepo, lotRepo,
-		transactionLotRepo, priceRepo, h.txnRepo, corporateActionRepo, database)
-	// The transaction service mints investment-side counterparts for transfer
-	// LINES inside splits through this port; without it a transfer line
+	// Investment first, then transaction with investment as its counterpart port
+	// — the same order app.NewServices now uses. Without the port a transfer LINE
 	// targeting an investment account is refused.
-	h.txnSvc.SetInvestmentCounterpart(h.invSvc)
+	h.invSvc = investment.NewService(h.invRepo, h.accountRepo, positionRepo, lotRepo,
+		transactionLotRepo, priceRepo, corporateActionRepo, database)
+	h.txnSvc = transaction.NewService(h.txnRepo, h.splitRepo, payeeRepo, h.accountRepo, h.invSvc, database)
 
 	h.svc = NewService(h.txnRepo, h.invRepo, h.splitRepo, h.accountRepo, h.categoryRepo, database)
 

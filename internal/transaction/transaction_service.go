@@ -10,23 +10,43 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// InvestmentCashCounterpartAdapter lets the transaction service create,
-// inspect, and clean up an investment.Transaction row that serves as the
-// paired counterpart of a transfer-line split whose target is an
-// investment account (e.g. a paycheck → 401k contribution line, an
+// InvestmentCounterpartPort is how transaction.Service mints, finds, deletes and
+// amends the investment_transactions row that is the counterpart of a transfer
+// LINE inside a multi-line split (e.g. a paycheck → 401k contribution line, an
 // auto-deposit to a brokerage).
 //
-// The transaction package cannot import investment (investment already
-// imports transaction). Wiring an adapter at app-construction time
-// breaks the cycle. When the adapter is nil, transfer-line splits to
-// investment accounts are rejected at the service layer rather than
-// silently creating a malformed regular-table row.
-type InvestmentCashCounterpartAdapter interface {
-	// CreateTransferCashCounterpart mints the investment-side row.
-	// amount carries the sign in the destination frame (positive = cash
-	// arriving, negative = cash leaving); the caller provides the
-	// shared transferID. Returns the new row's ID for rollback.
-	CreateTransferCashCounterpart(
+// Whole-transaction transfers do NOT come through here — internal/transfer owns
+// those and writes both ledgers directly. This port exists only because the
+// split lifecycle stays in this package, and a split's counterpart must commit
+// in the same transaction as the split row itself.
+//
+// It replaces InvestmentCashCounterpartAdapter. Two changes:
+//
+//  1. The transaction is an explicit db.Queryer PARAMETER, not a bound-copy
+//     return. The old CounterpartInTx had to name
+//     transaction.InvestmentCashCounterpartAdapter as its return type, and that
+//     single reference is what forced internal/investment to import
+//     internal/transaction. Passing the Queryer per call removes the last
+//     cross-package type reference — and with it the CounterpartInTx naming
+//     hack, which existed only because investment.Service already had an
+//     InTx(tx) *Service and Go forbids two methods sharing a name.
+//  2. It is injected at construction, not set afterwards. Once
+//     investment.NewService no longer takes a *transaction.Repository, the
+//     construction order inverts freely: build investmentSvc, then txnSvc with
+//     the port. SetInvestmentCounterpart is gone.
+//
+// db.Queryer remains the only vocabulary shared across the boundary, which is
+// exactly why it lives in internal/db.
+//
+// A nil port means transfer LINES targeting an investment account are refused
+// (ensureTransferTargetRoutable) rather than written as a malformed regular row.
+type InvestmentCounterpartPort interface {
+	// CreateCounterpart mints the investment-side row on q. amount carries the
+	// sign in the destination frame (positive = cash arriving, negative = cash
+	// leaving); the caller provides the shared transferID. Returns the new row's
+	// ID.
+	CreateCounterpart(
+		q db.Queryer,
 		invAcctID, otherAcctID types.ID,
 		date types.Date,
 		amount types.Money,
@@ -34,31 +54,17 @@ type InvestmentCashCounterpartAdapter interface {
 		transferID types.ID,
 	) (types.ID, error)
 
-	// FindTransferCashCounterpart returns the investment row linked to
-	// the given transferID. found=false means no investment-side row
-	// exists for this transferID (the counterpart may live on the
-	// regular table, or no counterpart was ever minted).
-	FindTransferCashCounterpart(transferID types.ID) (rowID types.ID, reconciled bool, found bool, err error)
+	// FindCounterpart returns the investment row linked to transferID.
+	// found=false means no investment-side row exists for it (the counterpart
+	// may be on the regular table, or none was ever minted).
+	FindCounterpart(q db.Queryer, transferID types.ID) (rowID types.ID, reconciled bool, found bool, err error)
 
-	// DeleteTransferCashCounterpart removes the investment row by ID.
-	DeleteTransferCashCounterpart(rowID types.ID) error
+	// DeleteCounterpart removes the investment row by ID.
+	DeleteCounterpart(q db.Queryer, rowID types.ID) error
 
-	// UpdateTransferCashCounterpartAmount mirrors a transfer-line amount
-	// edit onto the investment row. newAmount is in the destination
-	// frame (same convention as CreateTransferCashCounterpart).
-	UpdateTransferCashCounterpartAmount(rowID types.ID, newAmount types.Money) error
-
-	// CounterpartInTx returns a copy of the adapter whose writes run on tx,
-	// so counterpart mints/edits/deletes join the transaction service's
-	// atomic unit (splits + parent + counterparts commit together).
-	//
-	// It is deliberately NOT named InTx: investment.Service — the concrete
-	// implementer — already has InTx(tx) *Service from its own phase, and Go
-	// forbids two methods sharing a name with differing signatures. The
-	// implementer satisfies this by returning s.InTx(tx). db.Queryer is the
-	// only vocabulary shared across the package boundary, which is why it
-	// lives in internal/db.
-	CounterpartInTx(tx db.Queryer) InvestmentCashCounterpartAdapter
+	// UpdateCounterpartAmount mirrors a transfer-line amount edit onto the
+	// investment row. newAmount is in the destination frame.
+	UpdateCounterpartAmount(q db.Queryer, rowID types.ID, newAmount types.Money) error
 }
 
 // Service provides business logic for transaction operations.
@@ -67,7 +73,7 @@ type Service struct {
 	splitRepo             *SplitRepository
 	payeeRepo             *payee.Repository
 	accountRepo           *account.Repository
-	investmentCounterpart InvestmentCashCounterpartAdapter
+	investmentCounterpart InvestmentCounterpartPort
 	db                    *db.DB
 	tx                    db.Queryer // nil outside a transaction
 }
@@ -78,25 +84,17 @@ func NewService(
 	splitRepo *SplitRepository,
 	payeeRepo *payee.Repository,
 	accountRepo *account.Repository,
+	investmentCounterpart InvestmentCounterpartPort,
 	database *db.DB,
 ) *Service {
 	return &Service{
-		txnRepo:     txnRepo,
-		splitRepo:   splitRepo,
-		payeeRepo:   payeeRepo,
-		accountRepo: accountRepo,
-		db:          database,
+		txnRepo:               txnRepo,
+		splitRepo:             splitRepo,
+		payeeRepo:             payeeRepo,
+		accountRepo:           accountRepo,
+		investmentCounterpart: investmentCounterpart,
+		db:                    database,
 	}
-}
-
-// SetInvestmentCounterpart wires an adapter for routing transfer-line
-// splits whose target is an investment account through the investment
-// service. Wired after construction so transaction.NewService can be
-// called before investment.NewService (which depends on transaction).
-// Calling with nil disables the dispatch (transfer-line splits to
-// investment accounts will be rejected with NotRegularAccountError).
-func (s *Service) SetInvestmentCounterpart(a InvestmentCashCounterpartAdapter) {
-	s.investmentCounterpart = a
 }
 
 // InTx returns a copy of the service bound to tx, with every repository field
@@ -113,9 +111,6 @@ func (s *Service) InTx(tx db.Queryer) *Service {
 	}
 	if s.accountRepo != nil {
 		c.accountRepo = s.accountRepo.WithTx(tx)
-	}
-	if s.investmentCounterpart != nil {
-		c.investmentCounterpart = s.investmentCounterpart.CounterpartInTx(tx)
 	}
 	return &c
 }
@@ -403,7 +398,7 @@ func (s *Service) deletePairedCounterTransaction(transferID types.ID) error {
 	if s.investmentCounterpart == nil {
 		return nil
 	}
-	rowID, reconciled, found, err := s.investmentCounterpart.FindTransferCashCounterpart(transferID)
+	rowID, reconciled, found, err := s.investmentCounterpart.FindCounterpart(s.q(), transferID)
 	if err != nil {
 		return err
 	}
@@ -413,7 +408,7 @@ func (s *Service) deletePairedCounterTransaction(transferID types.ID) error {
 	if reconciled {
 		return &IsReconciledError{ID: rowID.String()}
 	}
-	if err := s.investmentCounterpart.DeleteTransferCashCounterpart(rowID); err != nil {
+	if err := s.investmentCounterpart.DeleteCounterpart(s.q(), rowID); err != nil {
 		return fmt.Errorf("failed to delete investment-side paired transfer transaction: %w", err)
 	}
 	return nil
@@ -524,7 +519,7 @@ func (s *Service) CreateWithSplits(transaction *Transaction, splits []*Split) er
 // createTransferLineCounterpart mints the paired counter-transaction for
 // a transfer-line split. If the target account is investment-type, the
 // row is created on the investment_transactions table via the configured
-// InvestmentCashCounterpartAdapter; otherwise a regular transaction is
+// InvestmentCounterpartPort; otherwise a regular transaction is
 // created on the transactions table.
 //
 // A category on the split (a "categorized transfer", e.g. a loan payment's
@@ -552,7 +547,8 @@ func (s *Service) createTransferLineCounterpart(
 	}
 
 	if isInv {
-		if _, err := s.investmentCounterpart.CreateTransferCashCounterpart(
+		if _, err := s.investmentCounterpart.CreateCounterpart(
+			s.q(),
 			targetAcctID, parentAcctID, parentDate, counterAmount, "", transferID,
 		); err != nil {
 			return fmt.Errorf("failed to create investment-side paired transfer transaction: %w", err)
@@ -824,7 +820,7 @@ func (s *Service) mirrorToPairedCounterpart(transferID types.ID, newAmount types
 	if !amountChanged || s.investmentCounterpart == nil {
 		return nil
 	}
-	rowID, reconciled, found, err := s.investmentCounterpart.FindTransferCashCounterpart(transferID)
+	rowID, reconciled, found, err := s.investmentCounterpart.FindCounterpart(s.q(), transferID)
 	if err != nil {
 		return err
 	}
@@ -834,7 +830,7 @@ func (s *Service) mirrorToPairedCounterpart(transferID types.ID, newAmount types
 	if reconciled {
 		return &IsReconciledError{ID: rowID.String()}
 	}
-	return s.investmentCounterpart.UpdateTransferCashCounterpartAmount(rowID, newAmount)
+	return s.investmentCounterpart.UpdateCounterpartAmount(s.q(), rowID, newAmount)
 }
 
 // ensureRetainedCounterpartMutable verifies a retained transfer line's
@@ -858,7 +854,7 @@ func (s *Service) ensureRetainedCounterpartMutable(transferID types.ID, amountCh
 	if !amountChanged || s.investmentCounterpart == nil {
 		return nil
 	}
-	rowID, reconciled, found, err := s.investmentCounterpart.FindTransferCashCounterpart(transferID)
+	rowID, reconciled, found, err := s.investmentCounterpart.FindCounterpart(s.q(), transferID)
 	if err != nil {
 		return err
 	}
@@ -1189,7 +1185,7 @@ func (s *Service) ensureCounterpartNotReconciled(transferID types.ID) error {
 	if s.investmentCounterpart == nil {
 		return nil
 	}
-	rowID, reconciled, found, err := s.investmentCounterpart.FindTransferCashCounterpart(transferID)
+	rowID, reconciled, found, err := s.investmentCounterpart.FindCounterpart(s.q(), transferID)
 	if err != nil {
 		return err
 	}

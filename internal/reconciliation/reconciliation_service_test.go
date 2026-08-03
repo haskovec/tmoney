@@ -20,7 +20,7 @@ func createTestReconciliationService(t *testing.T) (*Service, *transaction.Servi
 	accountRepo := account.NewRepository(database)
 
 	reconSvc := NewService(reconRepo, txnRepo, accountRepo, database)
-	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 	return reconSvc, txnSvc, accountRepo
 }
 
@@ -383,7 +383,7 @@ func TestService_FinishReconciliation_SplitTransaction(t *testing.T) {
 	categoryRepo := category.NewRepository(database)
 
 	svc := NewService(reconRepo, txnRepo, accountRepo, database)
-	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 
 	acct := createTestCheckingAccount(t, accountRepo, "Wealthfront Checking", "1000.00")
 

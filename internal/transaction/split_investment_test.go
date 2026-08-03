@@ -11,7 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// fakeInvCounterpart is a stub InvestmentCashCounterpartAdapter used by
+// fakeInvCounterpart is a stub InvestmentCounterpartPort used by
 // tests in the transaction package. The transaction package cannot
 // import investment (cycle), so we record calls in-memory and check
 // them via the captured fields below.
@@ -39,7 +39,8 @@ func newFakeInvCounterpart() *fakeInvCounterpart {
 	return &fakeInvCounterpart{rows: map[types.ID]*fakeInvRow{}}
 }
 
-func (f *fakeInvCounterpart) CreateTransferCashCounterpart(
+func (f *fakeInvCounterpart) CreateCounterpart(
+	_ db.Queryer,
 	invAcctID, otherAcctID types.ID,
 	date types.Date,
 	amount types.Money,
@@ -63,7 +64,7 @@ func (f *fakeInvCounterpart) CreateTransferCashCounterpart(
 	return id, nil
 }
 
-func (f *fakeInvCounterpart) FindTransferCashCounterpart(transferID types.ID) (types.ID, bool, bool, error) {
+func (f *fakeInvCounterpart) FindCounterpart(_ db.Queryer, transferID types.ID) (types.ID, bool, bool, error) {
 	for _, r := range f.rows {
 		if r.transferID == transferID {
 			return r.id, r.reconciled, true, nil
@@ -72,7 +73,7 @@ func (f *fakeInvCounterpart) FindTransferCashCounterpart(transferID types.ID) (t
 	return types.ID{}, false, false, nil
 }
 
-func (f *fakeInvCounterpart) DeleteTransferCashCounterpart(rowID types.ID) error {
+func (f *fakeInvCounterpart) DeleteCounterpart(_ db.Queryer, rowID types.ID) error {
 	if f.deleteErr != nil {
 		return f.deleteErr
 	}
@@ -80,14 +81,7 @@ func (f *fakeInvCounterpart) DeleteTransferCashCounterpart(rowID types.ID) error
 	return nil
 }
 
-// CounterpartInTx satisfies the InvestmentCashCounterpartAdapter interface.
-// The fake records calls in-memory (no real transaction), so a tx-bound copy
-// is just the fake itself.
-func (f *fakeInvCounterpart) CounterpartInTx(db.Queryer) InvestmentCashCounterpartAdapter {
-	return f
-}
-
-func (f *fakeInvCounterpart) UpdateTransferCashCounterpartAmount(rowID types.ID, newAmount types.Money) error {
+func (f *fakeInvCounterpart) UpdateCounterpartAmount(_ db.Queryer, rowID types.ID, newAmount types.Money) error {
 	if f.updateErr != nil {
 		return f.updateErr
 	}
@@ -121,9 +115,8 @@ func createTestServiceWithAdapter(t *testing.T) (*Service, *account.Repository, 
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	adapter := newFakeInvCounterpart()
-	svc.SetInvestmentCounterpart(adapter)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, adapter, database)
 	return svc, accountRepo, adapter, categoryRepo
 }
 

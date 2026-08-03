@@ -102,25 +102,33 @@ func NewServices(database *db.DB) *Services {
 		security.WithPositionChecker(positionRepo),
 	)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
-	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database, accountRepo)
-	// Heal any schedule rows poisoned by older binaries that updated
-	// StartDate without syncing NextDate. Best-effort, mirrors the
-	// HealAllAccounts precedent below.
-	_, _ = scheduledSvc.HealNextDates()
-	reconciliationSvc := reconciliation.NewService(reconciliationRepo, txnRepo, accountRepo, database)
+	// Construction order now runs investment FIRST, then transaction.
+	//
+	// It used to be the other way round, with txnSvc.SetInvestmentCounterpart
+	// patching the dependency in afterwards, because investment.NewService needed
+	// a *transaction.Repository. It no longer does — the whole-transfer surface
+	// that wanted it moved to internal/transfer — so investment.Service can be
+	// built first and passed to transaction.NewService as its counterpart port.
+	// The post-construction setter is gone, and with it the window in which a
+	// transaction service existed with a nil counterpart.
 	priceSvc := price.NewService(priceRepo, securityRepo, database)
-	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, txnRepo, corporateActionRepo, database)
-	// Wire investment.Service as the adapter that the transaction
-	// service uses to mint and clean up the investment-side counterpart
-	// of transfer-line splits (e.g. paycheck → 401k contribution lines).
-	// Set after both services exist to break the transaction↔investment
-	// import cycle.
-	txnSvc.SetInvestmentCounterpart(investmentSvc)
+	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, corporateActionRepo, database)
 	// Silently heal any desynced positions/lots so the user doesn't have to
 	// run rebuild-positions manually after upgrading. This is a no-op on
 	// databases that contain corporate-action records.
 	_, _ = investmentSvc.HealAllAccounts()
+
+	// investmentSvc is the counterpart port: it mints and cleans up the
+	// investment-side row of a transfer LINE inside a split (e.g. a
+	// paycheck → 401k contribution line). Whole-transaction transfers do not go
+	// through it — internal/transfer owns those.
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, investmentSvc, database)
+	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database, accountRepo)
+	// Heal any schedule rows poisoned by older binaries that updated
+	// StartDate without syncing NextDate. Best-effort, mirrors the
+	// HealAllAccounts precedent above.
+	_, _ = scheduledSvc.HealNextDates()
+	reconciliationSvc := reconciliation.NewService(reconciliationRepo, txnRepo, accountRepo, database)
 	reportSvc := report.NewService(accountRepo, database, report.WithInvestmentValuer(&investmentValuerAdapter{svc: investmentSvc}))
 	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, investmentRepo, securityRepo, database)
 	transferSvc := transfer.NewService(txnRepo, investmentRepo, splitRepo, accountRepo, categoryRepo, database)

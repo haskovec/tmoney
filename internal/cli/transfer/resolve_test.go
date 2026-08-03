@@ -7,7 +7,6 @@ import (
 
 	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/transaction"
-	xfer "github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -40,88 +39,6 @@ func TestResolveTransferPair_NonTransfer(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not a transfer") {
 		t.Errorf("expected 'not a transfer', got: %v", err)
-	}
-}
-
-func TestResolveTransferPair_RegToInv(t *testing.T) {
-	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
-	svc := clitest.OpenSvc(t, dbPath)
-
-	res, err := svc.Investment.DepositFromAccount(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("500.00"), "fund", types.NullableID{})
-	if err != nil {
-		t.Fatalf("DepositFromAccount: %v", err)
-	}
-
-	// Resolve from the regular leg and from the investment leg.
-	for _, legID := range []types.ID{res.RegularTransaction.ID, res.InvestmentTransaction.ID} {
-		got, err := resolveTransferPair(svc, legID)
-		if err != nil {
-			t.Fatalf("resolveTransferPair(%s): %v", legID, err)
-		}
-		if got.kind != xfer.KindRegToInv {
-			t.Errorf("kind = %v, want KindRegToInv", got.kind)
-		}
-		if got.fromAccount.ID != checking.ID || got.toAccount.ID != brokerage.ID {
-			t.Errorf("from/to = %s/%s, want Checking/Brokerage", got.fromAccount.Name, got.toAccount.Name)
-		}
-		if got.investmentTxnID != res.InvestmentTransaction.ID {
-			t.Errorf("investmentTxnID = %s, want %s", got.investmentTxnID, res.InvestmentTransaction.ID)
-		}
-		if !got.amount.Equal(types.MustNewMoney("500.00")) {
-			t.Errorf("amount = %s, want 500.00", got.amount)
-		}
-	}
-}
-
-func TestResolveTransferPair_InvToReg(t *testing.T) {
-	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
-	svc := clitest.OpenSvc(t, dbPath)
-
-	res, err := svc.Investment.TransferCash(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("250.00"), "draw", types.NullableID{})
-	if err != nil {
-		t.Fatalf("TransferCash: %v", err)
-	}
-
-	for _, legID := range []types.ID{res.RegularTransaction.ID, res.InvestmentTransaction.ID} {
-		got, err := resolveTransferPair(svc, legID)
-		if err != nil {
-			t.Fatalf("resolveTransferPair(%s): %v", legID, err)
-		}
-		if got.kind != xfer.KindInvToReg {
-			t.Errorf("kind = %v, want KindInvToReg", got.kind)
-		}
-		if got.fromAccount.ID != brokerage.ID || got.toAccount.ID != checking.ID {
-			t.Errorf("from/to = %s/%s, want Brokerage/Checking", got.fromAccount.Name, got.toAccount.Name)
-		}
-		if got.investmentTxnID != res.InvestmentTransaction.ID {
-			t.Errorf("investmentTxnID = %s, want %s", got.investmentTxnID, res.InvestmentTransaction.ID)
-		}
-	}
-}
-
-func TestResolveTransferPair_InvToInv(t *testing.T) {
-	dbPath, _, brokerage, ira, _ := clitest.SetupTransferDispatchAccounts(t)
-	svc := clitest.OpenSvc(t, dbPath)
-
-	res, err := svc.Investment.TransferCashBetweenInvestments(brokerage.ID, ira.ID, types.Today(), types.MustNewMoney("1000.00"), "rollover")
-	if err != nil {
-		t.Fatalf("TransferCashBetweenInvestments: %v", err)
-	}
-
-	for _, legID := range []types.ID{res.SourceTransaction.ID, res.DestinationTransaction.ID} {
-		got, err := resolveTransferPair(svc, legID)
-		if err != nil {
-			t.Fatalf("resolveTransferPair(%s): %v", legID, err)
-		}
-		if got.kind != xfer.KindInvToInv {
-			t.Errorf("kind = %v, want KindInvToInv", got.kind)
-		}
-		if got.fromAccount.ID != brokerage.ID || got.toAccount.ID != ira.ID {
-			t.Errorf("from/to = %s/%s, want Brokerage/Rollover IRA", got.fromAccount.Name, got.toAccount.Name)
-		}
-		if got.investmentTxnID.IsNil() {
-			t.Errorf("investmentTxnID should be set for inv↔inv")
-		}
 	}
 }
 

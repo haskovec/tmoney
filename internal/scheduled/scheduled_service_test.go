@@ -22,7 +22,7 @@ func createTestScheduledTransactionService(t *testing.T) (*Service, *account.Rep
 	accountRepo := account.NewRepository(database)
 	payeeRepo := payee.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
-	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 
 	svc := NewService(stRepo, txnRepo, txnSvc, database, accountRepo)
 	// Transfer occurrences post through the transfer owner; production wires this
@@ -639,7 +639,7 @@ func TestService_EstimateAmount(t *testing.T) {
 		splitRepo := transaction.NewSplitRepository(database)
 		accountRepo := account.NewRepository(database)
 		payeeRepo := payee.NewRepository(database)
-		txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
+		txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 
 		svc := NewService(stRepo, txnRepo, txnSvc, database, accountRepo)
 		// Transfer occurrences post through the transfer owner; production wires this

@@ -9,7 +9,6 @@ import (
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/price"
-	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -21,7 +20,6 @@ type Service struct {
 	lotRepo             *LotRepository
 	transactionLotRepo  *TransactionLotRepository
 	priceRepo           *price.Repository
-	txnRepo             *transaction.Repository
 	corporateActionRepo *CorporateActionRepository
 	holdingsRepo        *HoldingsRepository
 	db                  *db.DB
@@ -46,9 +44,6 @@ func (s *Service) InTx(tx db.Queryer) *Service {
 	if s.priceRepo != nil {
 		c.priceRepo = s.priceRepo.WithTx(tx)
 	}
-	if s.txnRepo != nil {
-		c.txnRepo = s.txnRepo.WithTx(tx)
-	}
 	if s.corporateActionRepo != nil {
 		c.corporateActionRepo = s.corporateActionRepo.WithTx(tx)
 	}
@@ -56,16 +51,6 @@ func (s *Service) InTx(tx db.Queryer) *Service {
 		c.holdingsRepo = s.holdingsRepo.WithTx(tx)
 	}
 	return &c
-}
-
-// CounterpartInTx returns a tx-bound copy of the service typed as a
-// transaction.InvestmentCashCounterpartAdapter, so the transaction service's
-// split/void flows mint, edit, and delete investment-side counterparts inside
-// their own transaction. It is a thin alias for InTx: the interface method
-// cannot be named InTx (that name is already taken by InTx(tx) *Service, whose
-// signature differs), so the adapter contract spells it CounterpartInTx.
-func (s *Service) CounterpartInTx(tx db.Queryer) transaction.InvestmentCashCounterpartAdapter {
-	return s.InTx(tx)
 }
 
 // runInTx begins a new transaction if the service is unbound, or joins the
@@ -107,7 +92,6 @@ func NewService(
 	lotRepo *LotRepository,
 	transactionLotRepo *TransactionLotRepository,
 	priceRepo *price.Repository,
-	txnRepo *transaction.Repository,
 	corporateActionRepo *CorporateActionRepository,
 	database *db.DB,
 ) *Service {
@@ -118,7 +102,6 @@ func NewService(
 		lotRepo:             lotRepo,
 		transactionLotRepo:  transactionLotRepo,
 		priceRepo:           priceRepo,
-		txnRepo:             txnRepo,
 		corporateActionRepo: corporateActionRepo,
 		holdingsRepo:        NewHoldingsRepository(database),
 		db:                  database,
@@ -1059,300 +1042,29 @@ func fifoLotAllocations(securityID types.ID, openLots []*Lot, shares types.Quant
 	return allocations, nil
 }
 
-// CashTransferResult contains both sides of a cash transfer between
-// an investment account and a regular account. For an inv↔inv transfer
-// surfaced through UpdateTransferCash's dispatch, RegularTransaction is nil
-// and CounterpartInvestmentTransaction carries the destination-side investment
-// row instead.
-type CashTransferResult struct {
-	InvestmentTransaction            *Transaction
-	RegularTransaction               *transaction.Transaction
-	CounterpartInvestmentTransaction *Transaction
-	TransferID                       types.ID
-}
-
-// TransferCash creates a cash transfer between an investment account and a regular (non-investment) account.
-// When direction is "in" (deposit to investment), the regular account is debited and the investment account is credited.
-// When direction is "out" (withdrawal from investment), the investment account is debited and the regular account is credited.
-// Both transactions are linked by a shared transfer_id.
-func (s *Service) TransferCash(investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string, categoryID types.NullableID) (*CashTransferResult, error) {
-	if s.txnRepo == nil {
-		return nil, fmt.Errorf("transaction repository not configured")
-	}
-
-	if !amount.IsPositive() {
-		return nil, &InvalidTransferAmountError{Amount: amount}
-	}
-
-	// Validate investment account
-	if err := s.requireInvestmentAccount(investmentAccountID); err != nil {
-		return nil, err
-	}
-
-	// Validate regular account exists and is not an investment account
-	regularAcct, err := s.accountRepo.GetByID(regularAccountID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get regular account: %w", err)
-	}
-	if regularAcct.Type.IsInvestmentType() {
-		return nil, &NotRegularAccountError{
-			AccountID: regularAccountID.String(),
-			Type:      string(regularAcct.Type),
-		}
-	}
-	// The regular leg of the transfer is frozen if its account is closed.
-	if regularAcct.IsClosed() {
-		return nil, &account.AccountClosedError{ID: regularAccountID.String()}
-	}
-
-	// Check that the two accounts are different
-	if investmentAccountID == regularAccountID {
-		return nil, fmt.Errorf("cannot transfer between the same account")
-	}
-
-	// The investment-side row is date-checked by validateTransaction; guard
-	// the regular-side account's opening date here (it goes through txnRepo).
-	if err := regularAcct.ValidateTransactionDate(date); err != nil {
-		return nil, err
-	}
-
-	// Cash balance is allowed to go negative — see Withdrawal for rationale.
-
-	transferID := types.NewID()
-
-	// Create investment transaction (withdrawal — negative amount)
-	negAmount := amount.Neg()
-	invTxn := NewTransaction(investmentAccountID, date, TransactionTypeTransferCash, negAmount)
-	invTxn.SetTransfer(transferID, regularAccountID)
-	if memo != "" {
-		invTxn.SetMemo(memo)
-	}
-
-	if err := s.validateTransaction(invTxn); err != nil {
-		return nil, err
-	}
-
-	// Create regular transaction (deposit — positive amount). An optional
-	// category labels the regular-side leg only (investment_transactions has no
-	// category column); the caller is responsible for rejecting system
-	// categories before calling.
-	regTxn := transaction.NewTransaction(regularAccountID, date, amount)
-	regTxn.SetTransfer(transferID, investmentAccountID)
-	if memo != "" {
-		regTxn.SetMemo(memo)
-	}
-	if categoryID.Valid {
-		regTxn.SetCategory(categoryID.ID)
-	}
-
-	// Both legs commit atomically — either both land or neither does.
-	if err := s.runInTx(func(b *Service) error {
-		if err := b.repo.Create(invTxn); err != nil {
-			return fmt.Errorf("failed to create investment transfer transaction: %w", err)
-		}
-		if err := b.txnRepo.Create(regTxn); err != nil {
-			return fmt.Errorf("failed to create regular transfer transaction: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-
-	return &CashTransferResult{
-		InvestmentTransaction: invTxn,
-		RegularTransaction:    regTxn,
-		TransferID:            transferID,
-	}, nil
-}
-
-// DepositFromAccount transfers cash from a regular account into an investment account.
-// This creates a deposit in the investment account and a withdrawal in the regular account.
-func (s *Service) DepositFromAccount(investmentAccountID, regularAccountID types.ID, date types.Date, amount types.Money, memo string, categoryID types.NullableID) (*CashTransferResult, error) {
-	if s.txnRepo == nil {
-		return nil, fmt.Errorf("transaction repository not configured")
-	}
-
-	if !amount.IsPositive() {
-		return nil, &InvalidTransferAmountError{Amount: amount}
-	}
-
-	// Validate investment account
-	if err := s.requireInvestmentAccount(investmentAccountID); err != nil {
-		return nil, err
-	}
-
-	// Validate regular account exists and is not an investment account
-	regularAcct, err := s.accountRepo.GetByID(regularAccountID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get regular account: %w", err)
-	}
-	if regularAcct.Type.IsInvestmentType() {
-		return nil, &NotRegularAccountError{
-			AccountID: regularAccountID.String(),
-			Type:      string(regularAcct.Type),
-		}
-	}
-	// The regular leg of the transfer is frozen if its account is closed.
-	if regularAcct.IsClosed() {
-		return nil, &account.AccountClosedError{ID: regularAccountID.String()}
-	}
-
-	// Check that the two accounts are different
-	if investmentAccountID == regularAccountID {
-		return nil, fmt.Errorf("cannot transfer between the same account")
-	}
-
-	// The investment-side row is date-checked by validateTransaction; guard
-	// the regular-side account's opening date here (it goes through txnRepo).
-	if err := regularAcct.ValidateTransactionDate(date); err != nil {
-		return nil, err
-	}
-
-	transferID := types.NewID()
-
-	// Create investment transaction (deposit — positive amount)
-	invTxn := NewTransaction(investmentAccountID, date, TransactionTypeTransferCash, amount)
-	invTxn.SetTransfer(transferID, regularAccountID)
-	if memo != "" {
-		invTxn.SetMemo(memo)
-	}
-
-	if err := s.validateTransaction(invTxn); err != nil {
-		return nil, err
-	}
-
-	// Create regular transaction (withdrawal — negative amount). An optional
-	// category labels the regular-side leg only (investment_transactions has no
-	// category column); the caller is responsible for rejecting system
-	// categories before calling.
-	negAmount := amount.Neg()
-	regTxn := transaction.NewTransaction(regularAccountID, date, negAmount)
-	regTxn.SetTransfer(transferID, investmentAccountID)
-	if memo != "" {
-		regTxn.SetMemo(memo)
-	}
-	if categoryID.Valid {
-		regTxn.SetCategory(categoryID.ID)
-	}
-
-	// Both legs commit atomically — either both land or neither does.
-	if err := s.runInTx(func(b *Service) error {
-		if err := b.repo.Create(invTxn); err != nil {
-			return fmt.Errorf("failed to create investment transfer transaction: %w", err)
-		}
-		if err := b.txnRepo.Create(regTxn); err != nil {
-			return fmt.Errorf("failed to create regular transfer transaction: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-
-	return &CashTransferResult{
-		InvestmentTransaction: invTxn,
-		RegularTransaction:    regTxn,
-		TransferID:            transferID,
-	}, nil
-}
-
-// InvestmentCashTransferResult contains both sides of a cash transfer between
-// two investment accounts (e.g. an IRA-to-IRA rollover). Parallel in shape to
-// ShareTransferResult, but no security is involved.
-type InvestmentCashTransferResult struct {
-	SourceTransaction      *Transaction
-	DestinationTransaction *Transaction
-	TransferID             types.ID
-}
-
-// TransferCashBetweenInvestments creates a cash transfer between two investment
-// accounts. The source account is debited and the destination credited; no
-// regular-account row is involved. Both legs are linked by a shared transfer_id
-// and typed TransferCash. Mirrors the TransferShares pattern.
-func (s *Service) TransferCashBetweenInvestments(
-	sourceAccountID, destAccountID types.ID,
-	date types.Date,
-	amount types.Money,
-	memo string,
-) (*InvestmentCashTransferResult, error) {
-	if !amount.IsPositive() {
-		return nil, &InvalidTransferAmountError{Amount: amount}
-	}
-
-	if sourceAccountID == destAccountID {
-		return nil, fmt.Errorf("cannot transfer between the same account")
-	}
-
-	if err := s.requireInvestmentAccount(sourceAccountID); err != nil {
-		return nil, err
-	}
-	if err := s.requireInvestmentAccount(destAccountID); err != nil {
-		return nil, err
-	}
-
-	// Cash balance is allowed to go negative — see Withdrawal for rationale.
-
-	transferID := types.NewID()
-
-	// Source row: negative amount (cash leaving the source account).
-	negAmount := amount.Neg()
-	srcTxn := NewTransaction(sourceAccountID, date, TransactionTypeTransferCash, negAmount)
-	srcTxn.SetTransfer(transferID, destAccountID)
-	if memo != "" {
-		srcTxn.SetMemo(memo)
-	}
-	if err := s.validateTransaction(srcTxn); err != nil {
-		return nil, err
-	}
-
-	// Destination row: positive amount (cash arriving at the destination).
-	dstTxn := NewTransaction(destAccountID, date, TransactionTypeTransferCash, amount)
-	dstTxn.SetTransfer(transferID, sourceAccountID)
-	if memo != "" {
-		dstTxn.SetMemo(memo)
-	}
-	if err := s.validateTransaction(dstTxn); err != nil {
-		return nil, err
-	}
-
-	// Both legs commit atomically — either both land or neither does.
-	if err := s.runInTx(func(b *Service) error {
-		if err := b.repo.Create(srcTxn); err != nil {
-			return fmt.Errorf("failed to create source transfer transaction: %w", err)
-		}
-		if err := b.repo.Create(dstTxn); err != nil {
-			return fmt.Errorf("failed to create destination transfer transaction: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-
-	return &InvestmentCashTransferResult{
-		SourceTransaction:      srcTxn,
-		DestinationTransaction: dstTxn,
-		TransferID:             transferID,
-	}, nil
-}
-
 // CreateTransferCashCounterpart mints a one-sided investment.Transaction
 // of type TransferCash on invAcctID, linked by the caller-supplied
 // transferID to otherAcctID. The signed amount controls direction
 // (positive = cash arriving, negative = cash leaving), matching the sign
 // of the destination leg of TransferCash / DepositFromAccount.
 //
-// Used by transaction.Service to mint the investment-side counterpart
-// of a transfer-line split (e.g. a paycheck → 401k contribution line)
-// whose target is an investment account, replacing the malformed regular
-// counterpart that older code produced. Satisfies the
-// transaction.InvestmentCashCounterpartAdapter contract.
-func (s *Service) CreateTransferCashCounterpart(
+// Used by transaction.Service to mint the investment-side counterpart of a
+// transfer-LINE split (e.g. a paycheck → 401k contribution line) whose target is
+// an investment account. Satisfies transaction.InvestmentCounterpartPort.
+//
+// Every write runs on q, the caller's transaction, so the counterpart commits
+// with the split row that owns it. Reads go through the bound service too: an
+// unbound read would miss the caller's own uncommitted writes.
+func (s *Service) CreateCounterpart(
+	q db.Queryer,
 	invAcctID, otherAcctID types.ID,
 	date types.Date,
 	amount types.Money,
 	memo string,
 	transferID types.ID,
 ) (types.ID, error) {
-	if err := s.requireInvestmentAccount(invAcctID); err != nil {
+	b := s.InTx(q)
+	if err := b.requireInvestmentAccount(invAcctID); err != nil {
 		return types.ID{}, err
 	}
 
@@ -1362,23 +1074,23 @@ func (s *Service) CreateTransferCashCounterpart(
 		txn.SetMemo(memo)
 	}
 
-	if err := s.validateTransaction(txn); err != nil {
+	if err := b.validateTransaction(txn); err != nil {
 		return types.ID{}, err
 	}
 
-	if err := s.repo.Create(txn); err != nil {
+	if err := b.repo.Create(txn); err != nil {
 		return types.ID{}, fmt.Errorf("failed to create investment-side counterpart: %w", err)
 	}
 
 	return txn.ID, nil
 }
 
-// FindTransferCashCounterpart returns the investment row linked to the
-// given transferID. Returns found=false (no error) if no investment-side
-// row exists. reconciled reports whether the row is fully reconciled,
-// which callers use to block cascading deletes/edits.
-func (s *Service) FindTransferCashCounterpart(transferID types.ID) (rowID types.ID, reconciled bool, found bool, err error) {
-	rows, err := s.repo.ListByTransferID(transferID)
+// FindCounterpart returns the investment row linked to the given transferID,
+// reading on q so it sees the caller's uncommitted writes. Returns found=false
+// (no error) if no investment-side row exists. reconciled reports whether the row
+// is fully reconciled, which callers use to block cascading deletes/edits.
+func (s *Service) FindCounterpart(q db.Queryer, transferID types.ID) (rowID types.ID, reconciled bool, found bool, err error) {
+	rows, err := s.InTx(q).repo.ListByTransferID(transferID)
 	if err != nil {
 		return types.ID{}, false, false, fmt.Errorf("failed to look up investment-side counterpart: %w", err)
 	}
@@ -1389,11 +1101,11 @@ func (s *Service) FindTransferCashCounterpart(transferID types.ID) (rowID types.
 	return row.ID, row.IsReconciled(), true, nil
 }
 
-// DeleteTransferCashCounterpart removes the investment row identified by
-// rowID. The caller is responsible for the regular-side parent or
-// counterpart cleanup; no cascade is performed here.
-func (s *Service) DeleteTransferCashCounterpart(rowID types.ID) error {
-	if err := s.repo.Delete(rowID); err != nil {
+// DeleteCounterpart removes the investment row identified by rowID, on q. The
+// caller is responsible for the regular-side parent or counterpart cleanup; no
+// cascade is performed here.
+func (s *Service) DeleteCounterpart(q db.Queryer, rowID types.ID) error {
+	if err := s.InTx(q).repo.Delete(rowID); err != nil {
 		return fmt.Errorf("failed to delete investment-side counterpart: %w", err)
 	}
 	return nil
@@ -1405,11 +1117,12 @@ func (s *Service) DeleteTransferCashCounterpart(rowID types.ID) error {
 // arriving, negative = cash leaving) — i.e. the inverse of the parent
 // split's amount.
 //
-// The caller is responsible for checking that the row is not reconciled
-// before invoking this (use FindTransferCashCounterpart's reconciled
-// return). A no-op if the new amount already matches.
-func (s *Service) UpdateTransferCashCounterpartAmount(rowID types.ID, newAmount types.Money) error {
-	row, err := s.repo.GetByID(rowID)
+// The caller is responsible for checking that the row is not reconciled before
+// invoking this (use FindCounterpart's reconciled return). A no-op if the new
+// amount already matches.
+func (s *Service) UpdateCounterpartAmount(q db.Queryer, rowID types.ID, newAmount types.Money) error {
+	b := s.InTx(q)
+	row, err := b.repo.GetByID(rowID)
 	if err != nil {
 		return fmt.Errorf("failed to load investment-side counterpart: %w", err)
 	}
@@ -1417,7 +1130,7 @@ func (s *Service) UpdateTransferCashCounterpartAmount(rowID types.ID, newAmount 
 		return nil
 	}
 	row.TotalAmount = newAmount
-	if err := s.repo.Update(row); err != nil {
+	if err := b.repo.Update(row); err != nil {
 		return fmt.Errorf("failed to update investment-side counterpart amount: %w", err)
 	}
 	return nil
@@ -1707,6 +1420,21 @@ func (s *Service) DeleteTransaction(id types.ID) error {
 		}
 	}
 
+	// A transfer_cash row is a LEG of a transfer, and its counterpart may be in
+	// the other ledger. Refuse it here: transfer.Service owns the pair and
+	// deletes both legs in one transaction, wherever they live.
+	//
+	// This replaces a cascade that reached into transaction.Repository to find
+	// and delete the regular-side rows — the last thing in this package that
+	// needed to know the other ledger exists, and the reason internal/investment
+	// imported internal/transaction at all.
+	//
+	// Share transfers are NOT refused: they are owned here, and their cascade
+	// below is unchanged.
+	if txn.TransferID.Valid && txn.Type == TransactionTypeTransferCash {
+		return &IsCashTransferLegError{ID: id.String(), TransferID: txn.TransferID.ID.String()}
+	}
+
 	// Reverse this transaction's effect on positions and lots BEFORE deleting
 	// any rows: Repository.Delete cascades the junction rows that
 	// reverseShareRemoval reads, so the reversal must run first (see
@@ -1722,34 +1450,6 @@ func (s *Service) DeleteTransaction(id types.ID) error {
 
 		if txn.TransferID.Valid {
 			switch txn.Type {
-			case TransactionTypeTransferCash:
-				if b.txnRepo != nil {
-					regs, lerr := b.txnRepo.ListByTransferID(txn.TransferID.ID)
-					if lerr != nil {
-						return fmt.Errorf("failed to find regular-side transfer rows: %w", lerr)
-					}
-					for _, r := range regs {
-						if err := b.txnRepo.Delete(r.ID); err != nil {
-							return fmt.Errorf("failed to delete regular-side transfer row: %w", err)
-						}
-					}
-				}
-				// inv↔inv cash transfers store the counterpart in the OTHER
-				// investment account (no regular-side row exists). Cascade in the
-				// investment repo the same way TransferShares does.
-				if txn.TransferAccountID.Valid {
-					others, lerr := b.repo.ListByAccount(txn.TransferAccountID.ID, TransactionFilter{})
-					if lerr != nil {
-						return fmt.Errorf("failed to list destination-account transfers: %w", lerr)
-					}
-					for _, o := range others {
-						if o.TransferID.Valid && o.TransferID.ID == txn.TransferID.ID && o.ID != txn.ID {
-							if err := b.repo.Delete(o.ID); err != nil {
-								return fmt.Errorf("failed to delete paired investment cash-transfer row: %w", err)
-							}
-						}
-					}
-				}
 			case TransactionTypeTransferShares:
 				// The counterpart lives in the other investment account; find by transfer_id.
 				others, lerr := b.repo.ListByAccount(txn.TransferAccountID.ID, TransactionFilter{})
@@ -1951,4 +1651,24 @@ type NotRegularAccountError struct {
 
 func (e *NotRegularAccountError) Error() string {
 	return fmt.Sprintf("account %s is not a regular account (type: %s); use transfer between investment accounts instead", e.AccountID, e.Type)
+}
+
+// IsCashTransferLegError is returned when a cash-transfer LEG is handed to a
+// verb that acts on one investment row.
+//
+// A transfer_cash row is half of a pair whose counterpart may live in
+// `transactions`, so acting on it here would silently orphan the other side.
+// transfer.Service owns the pair.
+//
+// Share transfers are not covered: those are owned by this package.
+type IsCashTransferLegError struct {
+	ID         string
+	TransferID string
+}
+
+func (e *IsCashTransferLegError) Error() string {
+	return fmt.Sprintf(
+		"investment transaction %s is a leg of cash transfer %s; edit or delete the transfer itself",
+		e.ID, e.TransferID,
+	)
 }

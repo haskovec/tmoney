@@ -26,67 +26,6 @@ func TestTransferDelete_MissingTxnID(t *testing.T) {
 	}
 }
 
-func TestTransferDelete_DispatchRegToInv(t *testing.T) {
-	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
-
-	var legID types.ID
-	func() {
-		svc := clitest.OpenSvc(t, dbPath)
-		res, err := svc.Investment.DepositFromAccount(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("500.00"), "fund", types.NullableID{})
-		if err != nil {
-			t.Fatalf("DepositFromAccount: %v", err)
-		}
-		legID = res.RegularTransaction.ID
-	}()
-
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := cli.ExecuteWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr); err != nil {
-		t.Fatalf("transfer delete reg→inv: %v\nstderr=%s", err, stderr)
-	}
-	assertTransferGone(t, dbPath, checking, []*account.Account{brokerage})
-}
-
-func TestTransferDelete_DispatchInvToReg(t *testing.T) {
-	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
-
-	var legID types.ID
-	func() {
-		svc := clitest.OpenSvc(t, dbPath)
-		res, err := svc.Investment.TransferCash(brokerage.ID, checking.ID, types.Today(), types.MustNewMoney("250.00"), "draw", types.NullableID{})
-		if err != nil {
-			t.Fatalf("TransferCash: %v", err)
-		}
-		// Use the investment-side leg to exercise the inv-table lookup path.
-		legID = res.InvestmentTransaction.ID
-	}()
-
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := cli.ExecuteWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr); err != nil {
-		t.Fatalf("transfer delete inv→reg: %v\nstderr=%s", err, stderr)
-	}
-	assertTransferGone(t, dbPath, checking, []*account.Account{brokerage})
-}
-
-func TestTransferDelete_DispatchInvToInv(t *testing.T) {
-	dbPath, _, brokerage, ira, _ := clitest.SetupTransferDispatchAccounts(t)
-
-	var legID types.ID
-	func() {
-		svc := clitest.OpenSvc(t, dbPath)
-		res, err := svc.Investment.TransferCashBetweenInvestments(brokerage.ID, ira.ID, types.Today(), types.MustNewMoney("1000.00"), "rollover")
-		if err != nil {
-			t.Fatalf("TransferCashBetweenInvestments: %v", err)
-		}
-		legID = res.SourceTransaction.ID
-	}()
-
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	if err := cli.ExecuteWith([]string{"transfer", "delete", "--file", dbPath, "--txn-id", legID.String()}, stdout, stderr); err != nil {
-		t.Fatalf("transfer delete inv→inv: %v\nstderr=%s", err, stderr)
-	}
-	assertTransferGone(t, dbPath, nil, []*account.Account{brokerage, ira})
-}
-
 func TestTransferDelete_RefusesTransferLineSplit(t *testing.T) {
 	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
 

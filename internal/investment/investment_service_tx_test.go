@@ -85,44 +85,6 @@ func TestService_Buy_LotFaultRollsBack(t *testing.T) {
 	}
 }
 
-// TestService_TransferCash_FaultRollsBack forces the regular-side (second) leg
-// insert to fail and asserts neither the investment row nor the bank row
-// survives — no orphaned investment counterpart, which the old compensation
-// branch tried (and could fail) to clean up.
-func TestService_TransferCash_FaultRollsBack(t *testing.T) {
-	env := createFullTestService(t)
-	invAcct := createInvAccount(t, env.accountRepo, "Brokerage")
-	bankAcct := createCheckAccount(t, env.accountRepo, "Checking")
-	date := types.NewDate(2024, time.March, 15)
-	amount := types.MustNewMoney("500.00")
-
-	err := env.db.WithTx(func(tx db.Queryer) error {
-		// Fail the second Exec: the investment leg lands, the regular leg errors,
-		// so the whole tx must roll back.
-		fw := &failingQueryer{inner: tx, failOn: 2}
-		_, e := env.svc.InTx(fw).TransferCash(invAcct.ID, bankAcct.ID, date, amount, "", types.NullableID{})
-		return e
-	})
-	if err == nil {
-		t.Fatal("expected injected fault error, got nil")
-	}
-
-	invTxns, err := env.invRepo.ListByAccount(invAcct.ID, TransactionFilter{})
-	if err != nil {
-		t.Fatalf("ListByAccount(inv) error = %v", err)
-	}
-	if len(invTxns) != 0 {
-		t.Fatalf("expected no investment rows after rollback, got %d", len(invTxns))
-	}
-	bankTxns, err := env.svc.txnRepo.ListByAccount(bankAcct.ID)
-	if err != nil {
-		t.Fatalf("ListByAccount(bank) error = %v", err)
-	}
-	if len(bankTxns) != 0 {
-		t.Fatalf("expected no bank rows after rollback, got %d", len(bankTxns))
-	}
-}
-
 // TestService_Buy_HappyPathAtomic exercises the new runInTx path with no
 // injected fault: the unbound service opens and commits its own transaction, and
 // the buy fully lands — transaction row plus lot (lot-tracking) or position

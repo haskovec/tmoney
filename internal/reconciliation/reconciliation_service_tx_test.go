@@ -50,7 +50,7 @@ func setupFinishFixture(t *testing.T) (*db.DB, *Service, *Session, []types.ID) {
 	accountRepo := account.NewRepository(database)
 
 	svc := NewService(reconRepo, txnRepo, accountRepo, database)
-	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 
 	acct := createTestCheckingAccount(t, accountRepo, "TxChecking", "1000.00")
 

@@ -7,7 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -625,34 +624,12 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	}
 }
 
-// transferLegForAccount returns the ID of whichever regular transfer leg belongs
-// to acct, or NilID if neither does (e.g. the transfer was entered from a view
-// that isn't one of its two accounts' registers).
-func transferLegForAccount(acct types.ID, from, to *transaction.Transaction) types.ID {
-	if from != nil && from.AccountID == acct {
-		return from.ID
-	}
-	if to != nil && to.AccountID == acct {
-		return to.ID
-	}
-	return types.NilID
-}
-
-// cashTransferLegForAccount returns the ID of whichever leg of an investment↔bank
-// cash transfer belongs to acct, plus whether that leg is the investment-side
-// transaction. Returns (NilID, false) when neither leg belongs to acct.
-func cashTransferLegForAccount(acct types.ID, res *investment.CashTransferResult) (types.ID, bool) {
-	if res == nil {
-		return types.NilID, false
-	}
-	if res.RegularTransaction != nil && res.RegularTransaction.AccountID == acct {
-		return res.RegularTransaction.ID, false
-	}
-	if res.InvestmentTransaction != nil && res.InvestmentTransaction.AccountID == acct {
-		return res.InvestmentTransaction.ID, true
-	}
-	return types.NilID, false
-}
+// transferLegForAccount and cashTransferLegForAccount lived here: one to pick a
+// leg out of a *transaction.TransferPair, the other out of an
+// *investment.CashTransferResult. Both are gone with those two result types.
+// transfer.Result.LegForAccount does the job for every shape, and returns the
+// leg's ledger rather than a bool, so the caller does not have to know which
+// result shape it was handed.
 
 // submitEditTransferDialog validates the edit-mode transfer dialog and applies
 // the edit. Edit-mode field layout is Amount(0), Date(1), Memo(2), [Category(3)],

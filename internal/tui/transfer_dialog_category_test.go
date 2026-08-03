@@ -187,7 +187,7 @@ func newTransferCategoryTestApp(t *testing.T) (*App, *transaction.Service, *acco
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 	accountSvc := account.NewService(accountRepo, database)
 	categorySvc := category.NewService(categoryRepo, database)
 	// The edit-transfer loaders resolve through the transfer service, which
