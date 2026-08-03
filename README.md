@@ -13,15 +13,43 @@ A personal finance management application that runs in the terminal. Terminal Mo
 
 ### Build from Source
 
-Requires Go 1.26 or later.
+Requires Go 1.26 or later, plus a C compiler — the DuckDB bindings use cgo.
 
 ```bash
 git clone https://github.com/haskovec/tmoney.git
 cd tmoney
-go build -o tmoney .
+make install
 ```
 
 The resulting `tmoney` binary is self-contained with no runtime dependencies.
+
+To build without installing, `make build` leaves a `tmoney` binary in the
+checkout.
+
+### Where `make install` puts the binary
+
+| Platform | Destination |
+| --- | --- |
+| macOS / Linux | `/usr/local/bin/tmoney` |
+| Windows | `%GOBIN%\tmoney.exe`, or `%USERPROFILE%\go\bin\tmoney.exe` when `GOBIN` is unset |
+
+On macOS and Linux the destination is controlled by the usual GNU variables:
+
+```bash
+make install PREFIX=$HOME/.local   # user-local install, no sudo required
+make install BINDIR=/opt/bin       # choose the bin directory outright
+make install DESTDIR=/tmp/stage    # staged install, for building packages
+sudo make install                  # system-wide, if /usr/local/bin isn't yours
+```
+
+`make uninstall` removes the binary again, and honors the same variables — pass
+whichever ones you installed with.
+
+Windows has no `/usr/local`, so `make install` there runs `go install`, which
+places the binary in the Go bin directory. That avoids a `Program Files`
+location needing administrator elevation, and the official Go installer already
+adds `%USERPROFILE%\go\bin` to your user `PATH`. If the `tmoney` command isn't
+found afterwards, add that directory to your `PATH` and open a new terminal.
 
 ## Quick Start
 
