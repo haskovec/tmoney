@@ -1420,22 +1420,11 @@ func TestApp_Update_TransferDialogDataMsg_EditMode(t *testing.T) {
 // P1-009: Investment-edit dispatch through the unified Transfer dialog
 // =============================================================================
 
-func TestStatusToRegular_Mapping(t *testing.T) {
-	cases := []struct {
-		in   investment.TransactionStatus
-		want transaction.Status
-	}{
-		{investment.TransactionStatusPending, transaction.StatusUncleared},
-		{investment.TransactionStatusCleared, transaction.StatusCleared},
-		{investment.TransactionStatusReconciled, transaction.StatusReconciled},
-	}
-	for _, c := range cases {
-		got := statusToRegular(c.in)
-		if got != c.want {
-			t.Errorf("statusToRegular(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
+// The investment→regular status mapping this file used to own (statusToRegular)
+// was one of three divergent copies; it now lives in internal/transfer as
+// transfer.StatusToRegular and is covered there by TestStatusRoundTrip, which
+// also pins the reverse direction and the void case the TUI copy silently got
+// wrong.
 
 // TestTransferAccountNames_InvestmentEdit verifies the read-only "From → To"
 // banner shows the right account names when the edit payload is the

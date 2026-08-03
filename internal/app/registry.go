@@ -12,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -32,6 +33,13 @@ type Services struct {
 	Investment      *investment.Service
 	CorporateAction *investment.CorporateActionService
 	TransferLink    *transferlink.Service
+
+	// Transfer owns whole-transaction cash transfers across both ledgers —
+	// bank↔bank, bank↔investment and investment↔investment alike. It is the
+	// single door for creating, editing, voiding and deleting them; callers
+	// must not reach past it into transaction.Service or investment.Service
+	// for transfer work.
+	Transfer *transfer.Service
 
 	// Repositories (exposed for direct use by CLI/TUI when needed)
 	AccountRepo         *account.Repository
@@ -118,6 +126,7 @@ func NewServices(database *db.DB) *Services {
 	reportSvc := report.NewService(accountRepo, database, report.WithInvestmentValuer(&investmentValuerAdapter{svc: investmentSvc}))
 	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, investmentRepo, securityRepo, database)
 	transferLinkSvc := transferlink.NewService(txnRepo, transferRepo, splitRepo, accountRepo, database)
+	transferSvc := transfer.NewService(txnRepo, investmentRepo, splitRepo, accountRepo, categoryRepo, database)
 
 	return &Services{
 		Account:         accountSvc,
@@ -132,6 +141,7 @@ func NewServices(database *db.DB) *Services {
 		Investment:      investmentSvc,
 		CorporateAction: corporateActionSvc,
 		TransferLink:    transferLinkSvc,
+		Transfer:        transferSvc,
 
 		AccountRepo:         accountRepo,
 		TransactionRepo:     txnRepo,

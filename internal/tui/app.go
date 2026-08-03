@@ -19,6 +19,7 @@ import (
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/theme"
@@ -113,9 +114,13 @@ type App struct {
 	statusbar *widget.StatusBar
 
 	// Services (initialized on start)
-	accountSvc        *account.Service
-	transactionSvc    *transaction.Service
-	categorySvc       *category.Service
+	accountSvc     *account.Service
+	transactionSvc *transaction.Service
+	// transferSvc owns whole-transaction cash transfers across both ledgers.
+	// Reads and writes of transfers go through it rather than branching between
+	// transactionSvc and investmentSvc on account type.
+	transferSvc    *transfer.Service
+	categorySvc    *category.Service
 	payeeSvc          *payee.Service
 	scheduledTxnSvc   *scheduled.Service
 	reportSvc         *report.Service
@@ -445,6 +450,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		keys:                      defaultKeyMap(),
 		accountSvc:                svc.Account,
 		transactionSvc:            svc.Transaction,
+		transferSvc:               svc.Transfer,
 		categorySvc:               svc.Category,
 		payeeSvc:                  svc.Payee,
 		scheduledTxnSvc:           svc.Scheduled,

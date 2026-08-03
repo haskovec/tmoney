@@ -7,8 +7,10 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -265,6 +267,10 @@ func newTransferCategoryTestApp(t *testing.T) (*App, *transaction.Service, *acco
 	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	accountSvc := account.NewService(accountRepo, database)
 	categorySvc := category.NewService(categoryRepo, database)
+	// The edit-transfer loaders resolve through the transfer service, which
+	// reads both ledgers, so it has to be wired even for a bank↔bank fixture.
+	transferSvc := transfer.NewService(txnRepo, investment.NewRepository(database),
+		splitRepo, accountRepo, categoryRepo, database)
 
 	from := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
 	if err := accountRepo.Create(from); err != nil {
@@ -288,6 +294,7 @@ func newTransferCategoryTestApp(t *testing.T) (*App, *transaction.Service, *acco
 		accountSvc:     accountSvc,
 		categorySvc:    categorySvc,
 		transactionSvc: txnSvc,
+		transferSvc:    transferSvc,
 		undoManager:    undo.NewManager(),
 	}
 	return app, txnSvc, from, to, bills

@@ -1,7 +1,16 @@
 # Design sketch: `internal/transfer` — one ledger-agnostic transfer owner
 
 **Date:** 2026-08-02
-**Status:** PROPOSED (v2 — revised after an independent adversarial review that
+**Status:** IN PROGRESS — phase 1 shipped. v3 folds in what implementing it
+taught: `Get` must decide Shape BEFORE asserting leg arity, because a split
+transfer-line is one ledger row plus a `transaction_splits` row, not two ledger
+rows (§2.6); `transaction/dispatch.go` cannot be moved in phase 1 without leaving
+the tree red, so it dies in phase 3 with its last caller; `Transfer` carries the
+loaded `FromAccount`/`ToAccount` since reads must load them anyway and phase 2's
+guards need them. Phase 1's actual test churn was much smaller than predicted —
+see its Test churn note.
+
+**Status history:** PROPOSED (v2 — revised after an independent adversarial review that
 checked every load-bearing claim against the tree). Three defects were found and
 fixed here: (1) v1 homed the exported status mapping in
 `internal/investment/status.go`, but those functions are typed on
@@ -536,8 +545,23 @@ WHERE i.transfer_id IS NOT NULL
 
 // Get loads a transfer by its transfer_id, reading both ledgers. Unlike
 // TransferRepository.GetByTransferID it does not assert two rows on the regular
-// table; it asserts two rows ACROSS both, and returns *MalformedPairError
-// otherwise (naming the per-table counts).
+// table; it asserts the arity appropriate to the SHAPE, and returns
+// *MalformedPairError otherwise (naming the per-table counts).
+//
+// Shape must be decided BEFORE the arity check, because the two shapes have
+// different arities:
+//
+//   - ShapeWhole is two ledger rows, one per leg.
+//   - ShapeSplitLine is ONE ledger row — the counterpart minted in the target
+//     account — plus the transaction_splits row that IS the other side. A split
+//     line has no second transaction row, so asserting two ledger rows first
+//     reports every split line as malformed.
+//
+// (v3 correction: v2 specified a flat two-rows-across-both-ledgers assertion
+// alongside "a split line resolves successfully". Those are incompatible;
+// implementing phase 1 surfaced it as a hard test failure. The split row's side
+// is surfaced as a Leg with Ledger == LedgerSplit — see kind.go — so the read
+// model can describe it without inventing a fake transaction row.)
 func (s *Service) Get(transferID types.ID) (*Transfer, error)
 
 // Resolve loads the whole transfer from ANY leg's row ID, probing the regular
@@ -1231,9 +1255,15 @@ single-file change per caller. Nothing is deleted until phase 5.
 ### Phase 1 — read model and `Resolve` (risk: low)
 
 Create `internal/transfer` with `kind.go`, `transfer.go`, `errors.go`,
-`service.go`, `read.go` and the read half of `rows.go`. Move
-`internal/transaction/dispatch.go` and `dispatch_test.go` into the package
-(preserving the unknown-type → `KindRegToReg` case). Move the status mapping out
+`service.go`, `read.go` and the read half of `rows.go`. Re-home the classifier as
+`transfer.ClassifyKind` with `dispatch_test.go`'s truth table (preserving the
+unknown-type → `KindRegToReg` case, and HSA-as-investment).
+`internal/transaction/dispatch.go` itself is **not deleted here** — its five
+presentation callers still switch on `TransferDispatchKind` until phase 3, and
+phases 1–4 are additive by construction. It dies in phase 3 with the last
+switch. (v3 correction: v2's phase 1 said "move", which contradicts the same
+section's "nothing is deleted until phase 5" and would have left phase 1 red.)
+Move the status mapping out
 of `internal/investment` into a new `internal/transfer/status.go` as
 `StatusToRegular` / `StatusFromRegular` — **not** into an `internal/investment`
 file: the functions are typed on `transaction.Status`, so any home inside
@@ -1245,22 +1275,33 @@ through an edit comes back Uncleared). Wire
 `Services.Transfer`. Re-point `cli/transfer/resolve.go` and both TUI edit loaders
 at `Resolve`; delete `tui.statusToRegular` and `cli.investmentStatusToRegular`.
 
-**Exit criteria.** `go build ./... && go test ./...` green.
-A **differential test** runs the old `resolveTransferPair` and the new `Resolve`
-against every fixture in `clitest.SetupTransferDispatchAccounts` and asserts
-identical From/To/amount/date/memo/status/categoryID for all four kinds; it is
-deleted in phase 3. New coverage: inv↔reg from either leg, inv↔inv from either
-leg, a `transfer_shares` pair (`Movement == MovementShares`), a split
-transfer-line (`Shape == ShapeSplitLine`), a non-transfer row, a missing row, a
-deliberately orphaned single leg (`*MalformedPairError`), and a voided reg↔reg
-pair resolving with stable From/To.
+Two behaviour improvements land in the TUI loader here rather than waiting for
+phase 3, because both replace an outcome that is already wrong and neither can
+regress anything: a split transfer-line and a share transfer are refused with a
+typed message instead of (respectively) erroring with "expected 2 transactions"
+on the bank side and silently corrupting on the investment side.
 
-**Test churn, honestly.** `cli/transfer/resolve_test.go` (184 lines) is a
-white-box suite calling `resolveTransferPair` directly and reading `res.kind`
-(`:60`) and `res.transferID` (`:69`) — it is rewritten, not merely retargeted.
-19 references across `tui/transfer_dialog_test.go` and
-`transfer_dialog_category_test.go` touch `statusToRegular`,
-`investmentTransferEdit`, `transferLegForAccount` and `cashTransferLegForAccount`.
+**Exit criteria.** `go build ./... && go test ./...` green.
+The existing `cli/transfer` suite passing unmodified against the new resolver IS
+the differential test — `resolveTransferPair` becomes a thin projection of
+`Resolve`, so its 184-line white-box suite exercises both. New coverage in
+`internal/transfer`: inv↔reg from either leg, reg↔inv from either leg, inv↔inv
+from either leg, a `transfer_shares` pair (`Movement == MovementShares`), a split
+transfer-line (`Shape == ShapeSplitLine`, with the parent named), a non-transfer
+row (`*transaction.IsNotTransferError`), a missing row
+(`*dberrors.NotFoundError`), a deliberately orphaned single leg
+(`*MalformedPairError` with per-table counts), a voided reg↔reg pair resolving
+with STABLE From/To across repeated reads, cross-ledger status normalization, and
+the category being found from either leg of an inv↔reg pair.
+
+**Test churn, actual (measured after implementing).** Far less than v2
+predicted, because `resolvedTransfer` was kept as a projection rather than
+deleted: `cli/transfer/resolve_test.go` passes unmodified. In the TUI only
+`TestStatusToRegular_Mapping` is deleted (its coverage moved to
+`transfer.TestStatusRoundTrip`, which additionally pins the reverse direction and
+the void case the TUI copy got wrong), and `newTransferCategoryTestApp` gains a
+`transferSvc` field. `investmentTransferEdit`, `transferLegForAccount` and
+`cashTransferLegForAccount` are untouched until phase 3.
 
 ### Phase 2 — the signed write path (risk: medium)
 

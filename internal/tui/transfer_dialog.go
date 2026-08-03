@@ -9,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -296,110 +297,34 @@ func (a *App) loadTransferDialogData() tea.Cmd {
 // register), the loader builds an existingInvestment payload instead, so
 // the unified dialog's edit submit routes through the investment service.
 func (a *App) loadEditTransferDialogData(transactionID types.ID) tea.Cmd {
-	return func() tea.Msg {
-		data := &transferDialogData{
-			mode: transferDialogModeEdit,
-		}
-
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
-			if err != nil {
-				return errMsg{err: err}
-			}
-			data.accounts = accounts
-		}
-		if a.categorySvc != nil {
-			categories, err := a.categorySvc.List()
-			if err != nil {
-				return errMsg{err: err}
-			}
-			data.categories = categories
-		}
-		_, ids := buildAccountOptions(data.accounts)
-		data.accountIDs = ids
-
-		if a.transactionSvc == nil {
-			return transferDialogDataMsg{data: data}
-		}
-
-		txn, err := a.transactionSvc.GetByID(transactionID)
-		if err != nil {
-			return errMsg{err: err}
-		}
-		if !txn.IsTransfer() {
-			return errMsg{err: fmt.Errorf("transaction %s is not a transfer", transactionID.String())}
-		}
-
-		counterpartType := accountTypeByID(data.accounts, txn.TransferAccountID.ID)
-		if counterpartType.IsInvestmentType() {
-			if a.investmentRepo == nil {
-				return errMsg{err: fmt.Errorf("investment repository not available")}
-			}
-			invLegs, err := a.investmentRepo.ListByAccount(txn.TransferAccountID.ID, investment.TransactionFilter{})
-			if err != nil {
-				return errMsg{err: err}
-			}
-			var invLeg *investment.Transaction
-			for _, l := range invLegs {
-				if l.TransferID.Valid && l.TransferID.ID == txn.TransferID.ID {
-					invLeg = l
-					break
-				}
-			}
-			if invLeg == nil {
-				return errMsg{err: fmt.Errorf("investment counterpart for transfer %s not found", txn.TransferID.ID.String())}
-			}
-
-			var fromAccountID, toAccountID types.ID
-			amount := txn.Amount
-			if amount.IsNegative() {
-				fromAccountID = txn.AccountID
-				toAccountID = txn.TransferAccountID.ID
-				amount = amount.Neg()
-			} else {
-				fromAccountID = txn.TransferAccountID.ID
-				toAccountID = txn.AccountID
-			}
-
-			memo := ""
-			if txn.Memo.Valid {
-				memo = txn.Memo.String
-			}
-			data.existingInvestment = &investmentTransferEdit{
-				fromAccountID: fromAccountID,
-				toAccountID:   toAccountID,
-				amount:        amount,
-				date:          txn.Date,
-				memo:          memo,
-				status:        txn.Status,
-				// txn is the regular-side (bank) leg the user opened, so its
-				// category is the transfer's category (the investment leg
-				// cannot store one).
-				categoryID:      txn.CategoryID,
-				investmentTxnID: invLeg.ID,
-			}
-			return transferDialogDataMsg{data: data}
-		}
-
-		pair, err := a.transactionSvc.GetTransferPair(txn.TransferID.ID)
-		if err != nil {
-			return errMsg{err: err}
-		}
-		data.existing = pair
-		return transferDialogDataMsg{data: data}
-	}
+	return a.loadEditTransferFromAnyLeg(transactionID)
 }
 
-// loadEditInvestmentTransferDialogData returns a command that loads accounts
-// plus the existing inv-involving transfer pair anchored at invTxnID, then
-// emits a transferDialogDataMsg in edit mode so the unified Transfer dialog
-// opens pre-filled. The counterpart leg is resolved from the investment-side
-// row's TransferAccountID/TransferID — when the counterpart account is also
-// investment-typed the data comes from the investment repo, otherwise from
-// the regular-transaction repo. From/To orientation is derived from the sign
-// of the investment-side TotalAmount so the dialog's read-only "From → To"
-// banner matches the cash-flow direction.
+// loadEditInvestmentTransferDialogData loads the transfer anchored at an
+// investment-ledger row. It is the same operation as
+// loadEditTransferDialogData — transfer.Resolve does not care which table the
+// named leg lives in — and both entry points are kept only because the two
+// registers call them by different names.
 func (a *App) loadEditInvestmentTransferDialogData(invTxnID types.ID) tea.Cmd {
+	return a.loadEditTransferFromAnyLeg(invTxnID)
+}
+
+// loadEditTransferFromAnyLeg loads accounts and categories for the dialog, then
+// resolves the whole transfer that legRowID belongs to and emits a
+// transferDialogDataMsg in edit mode.
+//
+// This replaces the two hand-rolled cross-table loaders (94 + 81 lines) that
+// each probed one table, guessed the counterpart's ledger from the dialog's
+// loaded account list, and hunted the counterpart leg by scanning the target
+// account's whole transaction history. Both are now one transfer.Resolve call.
+//
+// It also fixes a real bug in the process. The old bank-side loader decided
+// which ledger the counterpart lived in via accountTypeByID(data.accounts, ...),
+// and data.accounts comes from accountSvc.List(true) — ACTIVE ONLY. accountTypeByID
+// returns "" for an account it cannot find, which reads as non-investment, so an
+// inv↔reg transfer whose investment counterpart had been closed was misrouted to
+// GetTransferPair and failed. transfer.Resolve reads account rows directly.
+func (a *App) loadEditTransferFromAnyLeg(legRowID types.ID) tea.Cmd {
 	return func() tea.Msg {
 		data := &transferDialogData{mode: transferDialogModeEdit}
 
@@ -420,78 +345,66 @@ func (a *App) loadEditInvestmentTransferDialogData(invTxnID types.ID) tea.Cmd {
 		_, ids := buildAccountOptions(data.accounts)
 		data.accountIDs = ids
 
-		if a.investmentRepo == nil {
-			return errMsg{err: fmt.Errorf("investment repository not available")}
+		if a.transferSvc == nil {
+			return transferDialogDataMsg{data: data}
 		}
-		invTxn, err := a.investmentRepo.GetByID(invTxnID)
+
+		t, err := a.transferSvc.Resolve(legRowID)
 		if err != nil {
 			return errMsg{err: err}
 		}
-		if !invTxn.TransferID.Valid || !invTxn.TransferAccountID.Valid {
-			return errMsg{err: fmt.Errorf("investment txn %s is not a linked transfer", invTxnID.String())}
+
+		// A transfer LINE inside a multi-line split is owned by the parent
+		// transaction's split lifecycle. Refuse it here rather than editing it
+		// as a standalone transfer: doing that on the investment side deletes
+		// both legs and recreates them under a brand-new transfer_id, which
+		// permanently orphans the split line AND mints a second regular-side
+		// leg in the bank account.
+		if t.Shape == transfer.ShapeSplitLine {
+			return errMsg{err: fmt.Errorf(
+				"this transfer is a line inside a multi-line split; edit it from the parent transaction's splits (parent %s)",
+				t.ParentTransactionID.String(),
+			)}
+		}
+		// Share transfers are owned by the investment share-transfer dialog.
+		if t.Movement == transfer.MovementShares {
+			return errMsg{err: fmt.Errorf("this is a share transfer; edit it with the Transfer Shares dialog")}
 		}
 
-		var fromAccountID, toAccountID types.ID
-		amount := invTxn.TotalAmount
-		if amount.IsNegative() {
-			fromAccountID = invTxn.AccountID
-			toAccountID = invTxn.TransferAccountID.ID
-			amount = amount.Neg()
-		} else {
-			fromAccountID = invTxn.TransferAccountID.ID
-			toAccountID = invTxn.AccountID
+		// A bank↔bank transfer keeps feeding the dialog a transaction.TransferPair
+		// and an inv-involving one an investmentTransferEdit, because the submit
+		// path still branches on which is set. Phase 3 collapses both into the
+		// resolved transfer and this fork disappears.
+		if t.Kind == transfer.KindRegToReg {
+			if a.transactionSvc == nil {
+				return errMsg{err: fmt.Errorf("transaction service not available")}
+			}
+			pair, err := a.transactionSvc.GetTransferPair(t.TransferID)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.existing = pair
+			return transferDialogDataMsg{data: data}
 		}
 
-		memo := ""
-		if invTxn.Memo.Valid {
-			memo = invTxn.Memo.String
+		edit := &investmentTransferEdit{
+			fromAccountID: t.From.AccountID,
+			toAccountID:   t.To.AccountID,
+			amount:        t.Amount,
+			date:          t.Date,
+			memo:          t.Memo,
+			status:        t.Status,
+			categoryID:    t.CategoryID,
 		}
-
-		// For an inv↔reg transfer the category lives on the regular-side
-		// counterpart leg (the investment row on screen has none). Resolve it
-		// so the dialog seeds — and preserves — the existing label; without
-		// this an edit would recreate the regular leg categoryless. inv↔inv
-		// transfers have no regular leg, so the category stays zero (and the
-		// dialog omits the field entirely).
-		var categoryID types.NullableID
-		if a.transactionSvc != nil &&
-			!accountTypeByID(data.accounts, invTxn.TransferAccountID.ID).IsInvestmentType() {
-			if legs, lerr := a.transactionSvc.ListByTransferID(invTxn.TransferID.ID); lerr == nil {
-				for _, l := range legs {
-					if l.CategoryID.Valid {
-						categoryID = l.CategoryID
-						break
-					}
-				}
+		for _, leg := range t.Legs() {
+			if leg.Ledger == transfer.LedgerInvestment {
+				edit.investmentTxnID = leg.RowID
+				break
 			}
 		}
-
-		data.existingInvestment = &investmentTransferEdit{
-			fromAccountID:   fromAccountID,
-			toAccountID:     toAccountID,
-			amount:          amount,
-			date:            invTxn.Date,
-			memo:            memo,
-			status:          statusToRegular(invTxn.Status),
-			categoryID:      categoryID,
-			investmentTxnID: invTxnID,
-		}
+		data.existingInvestment = edit
 
 		return transferDialogDataMsg{data: data}
-	}
-}
-
-// statusToRegular maps an investment.TransactionStatus back to the bank-side
-// transaction.Status the unified Edit Transfer dialog displays. Inverse of
-// the investment-package statusFromRegular helper.
-func statusToRegular(s investment.TransactionStatus) transaction.Status {
-	switch s {
-	case investment.TransactionStatusCleared:
-		return transaction.StatusCleared
-	case investment.TransactionStatusReconciled:
-		return transaction.StatusReconciled
-	default:
-		return transaction.StatusUncleared
 	}
 }
 

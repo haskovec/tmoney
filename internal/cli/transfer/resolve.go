@@ -1,20 +1,23 @@
 package transfer
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
-	"github.com/haskovec/tmoney/internal/dberrors"
-	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
+	xfer "github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 // resolvedTransfer is the format-agnostic view of a whole-transaction transfer
-// that the `transfer edit` and `transfer delete` commands operate on. It is
-// produced by resolveTransferPair from a single leg's transaction ID.
+// that the `transfer edit` and `transfer delete` commands operate on.
+//
+// It is now a thin projection of xfer.Transfer, kept only so the command bodies
+// in add.go / edit.go / delete.go do not have to change in the same commit that
+// replaced the resolver underneath them. Phase 3 of
+// specs/design-unified-transfer.md rewrites those commands against
+// xfer.Transfer directly and deletes this type.
 type resolvedTransfer struct {
 	kind        transaction.TransferDispatchKind
 	transferID  types.ID
@@ -25,11 +28,9 @@ type resolvedTransfer struct {
 	memo        string
 	status      transaction.Status
 
-	// categoryID is the transfer's category, read from the loaded leg. For a
-	// mirrored pair either leg carries it; for an inv-involving transfer it
-	// lives on the regular-side leg (so it is empty when the investment leg was
-	// the one loaded). Threaded back through the edit so an edit that does not
-	// touch the category preserves it.
+	// categoryID is the transfer's category, read from whichever leg carries
+	// one. Threaded back through the edit so an edit that does not touch the
+	// category preserves it.
 	categoryID types.NullableID
 
 	// investmentTxnID is the ID of an investment-side leg of the transfer,
@@ -55,214 +56,66 @@ func (e *errTransferLineSplit) Error() string {
 }
 
 // resolveTransferPair loads the whole-transaction transfer that the given leg
-// belongs to and returns a format-agnostic view plus the dispatch kind. The
-// leg ID may name either a regular transaction or an investment transaction.
+// belongs to. The leg ID may name either a regular transaction or an investment
+// transaction.
 //
-// It refuses (returns *errTransferLineSplit) when the leg's transfer_id is
-// owned by a multi-line split, per plan decision D10. It errors when the leg
-// is not found or is not part of a transfer.
+// It now delegates entirely to transfer.Service.Resolve, which reads both
+// ledgers in one query. The 268 lines of hand-rolled cross-table plumbing this
+// replaced — resolveFromRegularLeg, resolveFromInvestmentLeg, findRegularLeg,
+// findInvestmentLeg, refuseIfMultiLineSplit and investmentStatusToRegular —
+// were one of three divergent copies of that logic (the TUI had the other two).
+//
+// Behavior is preserved exactly, including refusing split lines with
+// *errTransferLineSplit: transfer.Resolve deliberately SUCCEEDS on a split line
+// so callers can explain the refusal, and translating that into the CLI's
+// existing error keeps the user-facing message identical.
 func resolveTransferPair(svc *app.Services, legID types.ID) (*resolvedTransfer, error) {
-	// Try the regular-transaction table first.
-	if txn, err := svc.TransactionRepo.GetByID(legID); err == nil {
-		return resolveFromRegularLeg(svc, txn)
-	} else if !isNotFound(err) {
-		return nil, err
-	}
-
-	// Fall back to the investment-transaction table.
-	if invTxn, err := svc.InvestmentRepo.GetByID(legID); err == nil {
-		return resolveFromInvestmentLeg(svc, invTxn)
-	} else if !isNotFound(err) {
-		return nil, err
-	}
-
-	return nil, fmt.Errorf("transaction %s not found", legID.String())
-}
-
-// resolveFromRegularLeg builds a resolvedTransfer when the supplied leg is a
-// row in the regular `transactions` table. The counterpart may be regular
-// (reg↔reg) or investment (reg↔inv / inv↔reg).
-func resolveFromRegularLeg(svc *app.Services, txn *transaction.Transaction) (*resolvedTransfer, error) {
-	if !txn.IsTransfer() {
-		return nil, fmt.Errorf("transaction %s is not a transfer", txn.ID.String())
-	}
-	transferID := txn.TransferID.ID
-
-	if err := refuseIfMultiLineSplit(svc, txn.ID.String(), transferID); err != nil {
-		return nil, err
-	}
-
-	thisAcct, err := svc.AccountRepo.GetByID(txn.AccountID)
+	t, err := svc.Transfer.Resolve(legID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load account for leg %s: %w", txn.ID.String(), err)
-	}
-	otherAcct, err := svc.AccountRepo.GetByID(txn.TransferAccountID.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load counterpart account for leg %s: %w", txn.ID.String(), err)
+		return nil, err
 	}
 
-	// The negative-amount leg is the "from" side (money leaving).
-	var fromAcct, toAcct *account.Account
-	amount := txn.Amount
-	if txn.Amount.IsNegative() {
-		fromAcct, toAcct = thisAcct, otherAcct
-		amount = amount.Neg()
-	} else {
-		fromAcct, toAcct = otherAcct, thisAcct
-	}
-
-	memo := ""
-	if txn.Memo.Valid {
-		memo = txn.Memo.String
+	if t.Shape == xfer.ShapeSplitLine {
+		return nil, &errTransferLineSplit{
+			transactionID: legID.String(),
+			parentID:      t.ParentTransactionID.String(),
+		}
 	}
 
 	res := &resolvedTransfer{
-		kind:        transaction.ChooseTransferDispatch(fromAcct.Type, toAcct.Type),
-		transferID:  transferID,
-		fromAccount: fromAcct,
-		toAccount:   toAcct,
-		amount:      amount,
-		date:        txn.Date,
-		memo:        memo,
-		status:      txn.Status,
-		categoryID:  txn.CategoryID,
+		kind:        dispatchKindFor(t.Kind),
+		transferID:  t.TransferID,
+		fromAccount: t.FromAccount,
+		toAccount:   t.ToAccount,
+		amount:      t.Amount,
+		date:        t.Date,
+		memo:        t.Memo,
+		status:      t.Status,
+		categoryID:  t.CategoryID,
 	}
 
-	// For inv-involving kinds, the investment-side leg lives in a different
-	// table; find it so the investment-service dispatch has its handle.
-	if res.kind != transaction.DispatchRegToReg {
-		invLeg, err := findInvestmentLeg(svc, transferID)
-		if err != nil {
-			return nil, err
+	for _, leg := range t.Legs() {
+		if leg.Ledger == xfer.LedgerInvestment {
+			res.investmentTxnID = leg.RowID
+			break
 		}
-		res.investmentTxnID = invLeg.ID
 	}
 
 	return res, nil
 }
 
-// resolveFromInvestmentLeg builds a resolvedTransfer when the supplied leg is a
-// row in the `investment_transactions` table. This is always an inv-involving
-// transfer (reg↔inv or inv↔inv).
-func resolveFromInvestmentLeg(svc *app.Services, invTxn *investment.Transaction) (*resolvedTransfer, error) {
-	if !invTxn.TransferID.Valid || !invTxn.TransferAccountID.Valid {
-		return nil, fmt.Errorf("investment transaction %s is not a transfer", invTxn.ID.String())
-	}
-	transferID := invTxn.TransferID.ID
-
-	if err := refuseIfMultiLineSplit(svc, invTxn.ID.String(), transferID); err != nil {
-		return nil, err
-	}
-
-	thisAcct, err := svc.AccountRepo.GetByID(invTxn.AccountID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load account for leg %s: %w", invTxn.ID.String(), err)
-	}
-	otherAcct, err := svc.AccountRepo.GetByID(invTxn.TransferAccountID.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load counterpart account for leg %s: %w", invTxn.ID.String(), err)
-	}
-
-	var fromAcct, toAcct *account.Account
-	amount := invTxn.TotalAmount
-	if invTxn.TotalAmount.IsNegative() {
-		fromAcct, toAcct = thisAcct, otherAcct
-		amount = amount.Neg()
-	} else {
-		fromAcct, toAcct = otherAcct, thisAcct
-	}
-
-	memo := ""
-	if invTxn.Memo.Valid {
-		memo = invTxn.Memo.String
-	}
-
-	res := &resolvedTransfer{
-		kind:            transaction.ChooseTransferDispatch(fromAcct.Type, toAcct.Type),
-		transferID:      transferID,
-		fromAccount:     fromAcct,
-		toAccount:       toAcct,
-		amount:          amount,
-		date:            invTxn.Date,
-		memo:            memo,
-		status:          investmentStatusToRegular(invTxn.Status),
-		investmentTxnID: invTxn.ID,
-	}
-
-	// For an inv↔reg transfer the category lives on the regular-side leg, which
-	// is in a different table than the investment leg we loaded. Read it so an
-	// edit that does not touch --category preserves the label instead of
-	// wiping it on the delete+recreate UpdateTransferCash does. An inv↔inv
-	// transfer has no regular leg and no category, so leave categoryID empty.
-	if res.kind != transaction.DispatchInvToInv {
-		regLeg, err := findRegularLeg(svc, transferID)
-		if err != nil {
-			return nil, err
-		}
-		res.categoryID = regLeg.CategoryID
-	}
-
-	return res, nil
-}
-
-// findRegularLeg returns the regular-table (transactions) leg of an inv↔reg
-// transfer identified by its shared transfer_id. Exactly one regular leg
-// exists for such a transfer; it carries the transfer's category.
-func findRegularLeg(svc *app.Services, transferID types.ID) (*transaction.Transaction, error) {
-	legs, err := svc.TransactionRepo.ListByTransferID(transferID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load regular-side transfer leg: %w", err)
-	}
-	if len(legs) == 0 {
-		return nil, fmt.Errorf("regular-side leg for transfer %s not found", transferID.String())
-	}
-	return legs[0], nil
-}
-
-// findInvestmentLeg returns the investment-table leg of a transfer identified
-// by its shared transfer_id.
-func findInvestmentLeg(svc *app.Services, transferID types.ID) (*investment.Transaction, error) {
-	legs, err := svc.InvestmentRepo.ListByTransferID(transferID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load investment-side transfer leg: %w", err)
-	}
-	if len(legs) == 0 {
-		return nil, fmt.Errorf("investment-side leg for transfer %s not found", transferID.String())
-	}
-	return legs[0], nil
-}
-
-// refuseIfMultiLineSplit returns *errTransferLineSplit when the transfer_id is
-// owned by a multi-line split's transfer-line item (plan D10).
-func refuseIfMultiLineSplit(svc *app.Services, legID string, transferID types.ID) error {
-	split, err := svc.SplitRepo.GetByTransferID(transferID)
-	if err != nil {
-		return fmt.Errorf("failed to check for multi-line split: %w", err)
-	}
-	if split != nil {
-		return &errTransferLineSplit{
-			transactionID: legID,
-			parentID:      split.TransactionID.String(),
-		}
-	}
-	return nil
-}
-
-// investmentStatusToRegular maps an investment transaction status back to the
-// canonical regular transaction.Status used by the CLI's transfer commands.
-func investmentStatusToRegular(s investment.TransactionStatus) transaction.Status {
-	switch s {
-	case investment.TransactionStatusCleared:
-		return transaction.StatusCleared
-	case investment.TransactionStatusReconciled:
-		return transaction.StatusReconciled
+// dispatchKindFor maps the transfer package's Kind onto the legacy
+// transaction.TransferDispatchKind the command bodies still switch on. Deleted
+// in phase 3 along with the switches themselves.
+func dispatchKindFor(k xfer.Kind) transaction.TransferDispatchKind {
+	switch k {
+	case xfer.KindInvToReg:
+		return transaction.DispatchInvToReg
+	case xfer.KindRegToInv:
+		return transaction.DispatchRegToInv
+	case xfer.KindInvToInv:
+		return transaction.DispatchInvToInv
 	default:
-		return transaction.StatusUncleared
+		return transaction.DispatchRegToReg
 	}
-}
-
-// isNotFound reports whether err is (or wraps) a dberrors.NotFoundError.
-func isNotFound(err error) bool {
-	var nf *dberrors.NotFoundError
-	return errors.As(err, &nf)
 }
