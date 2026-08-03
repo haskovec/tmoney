@@ -17,7 +17,7 @@ Transactions represent the movement of money into, out of, or between accounts. 
 | `payee_id` | UUID | No | Reference to payee |
 | `memo` | string | No | User notes/description |
 | `check_number` | string | No | Check number if applicable |
-| `status` | enum | Yes | cleared, pending, reconciled |
+| `status` | enum | Yes | uncleared, cleared, reconciled, void |
 | `created_at` | timestamp | Yes | When record was created |
 | `updated_at` | timestamp | Yes | When record was last updated |
 
@@ -48,9 +48,17 @@ LIABILITIES headings.
 
 | Status | Description |
 |--------|-------------|
-| `pending` | Entered but not yet cleared at bank |
+| `uncleared` | Entered but not yet cleared at bank |
 | `cleared` | Confirmed cleared at bank |
 | `reconciled` | Matched during reconciliation (v1.5) |
+| `void` | Zeroed but retained for the audit trail |
+
+(The `investment_transactions` table uses its own three-value enum —
+`pending`, `cleared`, `reconciled` — with no `void`. `pending` there means the
+same thing `uncleared` means here; `transfer.StatusToRegular` /
+`StatusFromRegular` are the single mapping between them, and the absence of
+`void` on the investment side is why an investment-involving transfer cannot be
+voided.)
 
 ## Split Transactions
 
@@ -161,35 +169,58 @@ labeled transfer stores the same shared category on both legs (see
 3. Deleting one side removes both sides as a pair (the TUI prompts for confirmation; the CLI's `transfer delete` deletes both without prompting)
 4. Editing amount on one side updates the other
 
-### Investment-Account Transfers
+### One transfer owner
 
-A whole-transaction transfer where at least one leg is an investment
-account dispatches to a different service method based on the
-`(from.type, to.type)` combination. The dialog and CLI behavior:
+Every whole-transaction cash transfer — bank↔bank, bank↔investment and
+investment↔investment alike — goes through `transfer.Service`
+(`internal/transfer`), reached as `Services.Transfer`:
 
-| From → To | Service method | Notes |
-|---|---|---|
-| reg → reg | `transaction.Service.CreateTransfer` | Legacy bank↔bank; both rows in `transactions` table. |
-| reg → inv | `investment.Service.DepositFromAccount` | Deposit into investment; investment-side row is `transfer_cash` in `investment_transactions`. |
-| inv → reg | `investment.Service.TransferCash` | Withdraw from investment; investment-side row is `transfer_cash` in `investment_transactions`. |
-| inv → inv | `investment.Service.TransferCashBetweenInvestments` | Both rows in `investment_transactions`, type `transfer_cash`, signed opposite. |
+```go
+res, err := svc.Transfer.Create(transfer.Spec{
+    FromAccountID: from.ID, ToAccountID: to.ID,
+    Date: date, Amount: amount, Memo: memo, CategoryID: categoryID,
+})
+```
 
-The shared dispatch helper `transaction.ChooseTransferDispatch`
-(in `internal/transaction/dispatch.go`) is the single source of
-truth used by both the unified TUI Transfer dialog
-(`transfer_dialog.go`) and the `tmoney transfer add` CLI command.
-Each path in the TUI integrates with the undo manager via a
-dedicated undo command in `internal/undo/`. The CLI dispatches
-directly with no undo (CLI processes are one-shot); recovery from a
-mistaken transfer goes through `transfer delete` / `transfer edit`.
+There is no dispatch. `planLegs` signs the From leg negative and the To leg
+positive, and each leg's table comes from its own account type, so 2 signs ×
+2 ledgers reproduces all four shapes as a property of the data:
 
-**Hardening invariant**: `transaction.Service.CreateTransfer` and
-`UpdateTransfer` reject any account whose type satisfies
-`Type.IsInvestmentType()`. Callers wanting to move cash to/from an
-investment account must use the `investment.Service` family. This
-closes a data-integrity hole where the legacy `CreateTransfer` would
-silently create a regular `transaction.Transaction` row in an
-investment account's ledger.
+| From → To | Where the legs land |
+|---|---|
+| reg → reg | both rows in `transactions` |
+| reg → inv | regular row in `transactions`, `transfer_cash` row in `investment_transactions` |
+| inv → reg | mirror of the above |
+| inv → inv | both rows in `investment_transactions`, type `transfer_cash`, signed opposite |
+
+The verbs are `Create`, `Get`, `Resolve` (from any leg's row ID), `Update`,
+`Reverse`, `SetStatus`, `SetLegStatus`, `Void`, `Restore`, `Delete`, `Recreate`
+and `LinkExisting`. `Update` edits both legs IN PLACE, so a transfer keeps its
+`transfer_id` and row identities across an edit.
+
+Accounts are immutable on `Update`: delete and recreate to re-account a
+transfer. Reads (`Resolve`) succeed for a transfer LINE inside a multi-line
+split so callers can explain the refusal; every verb refuses it, along with
+share transfers and reconciled legs.
+
+This replaced four service methods, two edit methods, five hand-written 4-arm
+switches in the TUI and CLI, three cross-table leg resolvers, three result
+shapes and seven undo commands. See
+[`specs/design-unified-transfer.md`](design-unified-transfer.md) for the design
+and its phase history; `transaction.ChooseTransferDispatch` is now
+`transfer.ClassifyKind`, and is a LABEL for errors and the category rule rather
+than a routing decision.
+
+**Category rule**: a transfer may carry one optional non-system category,
+mirrored onto every leg that can store one. An investment↔investment transfer
+cannot carry one at all — `investment_transactions` has no `category_id` column —
+and `transfer.Kind.StoresCategory()` is the single predicate for that, called by
+the domain guard and by the front ends for inline field errors.
+
+**Transfer LINES inside splits** stay in `transaction.Service`: a split line's
+counterpart must commit with the split row that owns it. When the line's target
+is an investment account, the counterpart is minted through
+`transaction.InvestmentCounterpartPort`, satisfied by `investment.Service`.
 
 **Unified TUI dialog**: a single Transfer dialog handles all four
 combinations. Field order is `From`, `To`, `Amount`, `Date`, `Memo`,
@@ -302,7 +333,7 @@ clears the category on both legs, and inv↔inv edits reject `--category`.
 
 ### Duplicate Transaction
 
-Create a copy with today's date, status = pending.
+Create a copy with today's date, status = uncleared.
 
 ## Search
 
@@ -322,8 +353,11 @@ For investment accounts, additional transaction types:
 | `buy` | Purchase securities (creates lot) |
 | `sell` | Sell securities (reduces lot) |
 | `dividend` | Dividend income |
-| `transfer_in` | Securities transferred in |
-| `transfer_out` | Securities transferred out |
+| `transfer_shares` | Securities moved between investment accounts (a linked pair) |
+| `transfer_cash` | Cash moved into or out of an investment account (one leg of a transfer) |
+
+The full set is in `investment.AllTransactionTypes()`; `transfer_in` and
+`transfer_out` were never in the DB CHECK constraint and are not real types.
 
 ### Buy Transaction Additional Fields
 

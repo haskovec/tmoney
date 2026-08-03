@@ -48,24 +48,24 @@ func (e *InvalidCloseDateError) Error() string {
 		e.Date.String(), e.Earliest.String(), e.Today.String())
 }
 
-// AccountClosedError is returned when a transaction mutation is attempted on a
-// closed account. A closed account is frozen: no new transactions, edits,
-// deletes, or status toggles, and a transfer is blocked if either leg is closed.
+// AccountClosedError is returned when any mutation is attempted on a closed
+// account. A closed account is frozen: no new transactions, edits, deletes,
+// status toggles or reconciliation, and a transfer is blocked if either leg is
+// closed.
+//
+// This is the ONE closed-account error. account.IsClosedError used to sit beside
+// it, differing only in message ("cannot reconcile closed account"), so a caller
+// that wanted to know "is this account frozen?" had to match two types and could
+// not do it with a single errors.As. Reconciliation now returns this one; the
+// scheduled package keeps its own ClosedAccountError, which reports a different
+// fact (a SCHEDULE references a closed account — a template problem, not a
+// rejected mutation).
 type AccountClosedError struct {
 	ID string
 }
 
 func (e *AccountClosedError) Error() string {
 	return fmt.Sprintf("cannot modify transactions on closed account %s", e.ID)
-}
-
-// IsClosedError is returned when trying to reconcile a closed account.
-type IsClosedError struct {
-	ID string
-}
-
-func (e *IsClosedError) Error() string {
-	return fmt.Sprintf("cannot reconcile closed account %s", e.ID)
 }
 
 // NotInvestmentError is returned when an investment operation is attempted on a non-investment account.

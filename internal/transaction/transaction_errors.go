@@ -56,14 +56,10 @@ func (e *SplitTotalMismatchError) Error() string {
 		e.SplitTotal.String(), e.TransactionAmount.String(), e.TransactionID)
 }
 
-// InvalidTransferAmountError is returned when a transfer amount is invalid (not positive).
-type InvalidTransferAmountError struct {
-	Amount types.Money
-}
-
-func (e *InvalidTransferAmountError) Error() string {
-	return fmt.Sprintf("transfer amount must be positive, got %s", e.Amount.String())
-}
+// InvalidTransferAmountError lived here. Its twin lived in internal/investment,
+// so no caller could match "this transfer amount is invalid" with one errors.As.
+// transfer.InvalidAmountError is now the single owner; this package no longer
+// creates transfers, so it no longer needs the type.
 
 // CannotDuplicateTransferError is returned when trying to duplicate a transfer.
 type CannotDuplicateTransferError struct {

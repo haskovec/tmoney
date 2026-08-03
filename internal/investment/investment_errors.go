@@ -6,17 +6,10 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// InsufficientCashError is returned when an investment account has insufficient cash for an operation.
-type InsufficientCashError struct {
-	AccountID string
-	Available types.Money
-	Requested types.Money
-}
-
-func (e *InsufficientCashError) Error() string {
-	return fmt.Sprintf("insufficient cash in account %s: available %s, requested %s",
-		e.AccountID, e.Available.String(), e.Requested.String())
-}
+// InsufficientCashError lived here. Its last producer was cash_position.go's
+// balance precheck, deleted in phase 5 — cash balances are deliberately allowed
+// to go negative so historical data entry is not ordering-sensitive, so nothing
+// ever raised it again.
 
 // InsufficientSharesError is returned when a sell exceeds the available shares.
 type InsufficientSharesError struct {

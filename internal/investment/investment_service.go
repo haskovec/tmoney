@@ -115,7 +115,7 @@ func (s *Service) Deposit(accountID types.ID, date types.Date, amount types.Mone
 	}
 
 	if !amount.IsPositive() {
-		return nil, &InvalidTransferAmountError{Amount: amount}
+		return nil, &NonPositiveAmountError{Amount: amount}
 	}
 
 	txn := NewTransaction(accountID, date, TransactionTypeDeposit, amount)
@@ -141,7 +141,7 @@ func (s *Service) Withdrawal(accountID types.ID, date types.Date, amount types.M
 	}
 
 	if !amount.IsPositive() {
-		return nil, &InvalidTransferAmountError{Amount: amount}
+		return nil, &NonPositiveAmountError{Amount: amount}
 	}
 
 	// Cash balance is allowed to go negative — withdrawals never block on
@@ -173,7 +173,7 @@ func (s *Service) Interest(accountID types.ID, date types.Date, amount types.Mon
 	}
 
 	if !amount.IsPositive() {
-		return nil, &InvalidTransferAmountError{Amount: amount}
+		return nil, &NonPositiveAmountError{Amount: amount}
 	}
 
 	txn := NewTransaction(accountID, date, TransactionTypeInterest, amount)
@@ -199,7 +199,7 @@ func (s *Service) Fee(accountID types.ID, date types.Date, amount types.Money, m
 	}
 
 	if !amount.IsPositive() {
-		return nil, &InvalidTransferAmountError{Amount: amount}
+		return nil, &NonPositiveAmountError{Amount: amount}
 	}
 
 	// Cash balance is allowed to go negative — see Withdrawal for rationale.
@@ -725,7 +725,7 @@ func (s *Service) Dividend(accountID types.ID, securityID types.ID, date types.D
 	}
 
 	if !amount.IsPositive() {
-		return nil, &InvalidTransferAmountError{Amount: amount}
+		return nil, &NonPositiveAmountError{Amount: amount}
 	}
 
 	txn := NewTransaction(accountID, date, TransactionTypeDividend, amount)
@@ -1634,23 +1634,22 @@ func netSharesHeldAsOf(repo *Repository, accountID, securityID types.ID, asOf ty
 	return net, nil
 }
 
-// InvalidTransferAmountError is returned when a transfer amount is invalid (not positive).
-type InvalidTransferAmountError struct {
+// NonPositiveAmountError is returned when a cash operation's amount is not
+// strictly positive — Deposit, Withdrawal, Interest, Dividend and Fee all take a
+// magnitude and derive their own sign.
+//
+// It was called InvalidTransferAmountError, which named a rule it no longer
+// guards: transfers moved to internal/transfer, which owns
+// transfer.InvalidAmountError. The old name additionally collided with an
+// identical transaction.InvalidTransferAmountError, so no caller could match the
+// transfer case with one errors.As. Both of those are gone; this one is renamed
+// to what it actually checks.
+type NonPositiveAmountError struct {
 	Amount types.Money
 }
 
-func (e *InvalidTransferAmountError) Error() string {
+func (e *NonPositiveAmountError) Error() string {
 	return fmt.Sprintf("transfer amount must be positive, got %s", e.Amount.String())
-}
-
-// NotRegularAccountError is returned when a cash transfer targets an investment account instead of a regular one.
-type NotRegularAccountError struct {
-	AccountID string
-	Type      string
-}
-
-func (e *NotRegularAccountError) Error() string {
-	return fmt.Sprintf("account %s is not a regular account (type: %s); use transfer between investment accounts instead", e.AccountID, e.Type)
 }
 
 // IsCashTransferLegError is returned when a cash-transfer LEG is handed to a

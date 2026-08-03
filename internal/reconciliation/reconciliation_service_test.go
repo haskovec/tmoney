@@ -123,8 +123,8 @@ func TestService_StartReconciliation(t *testing.T) {
 		if err == nil {
 			t.Fatal("StartReconciliation() should return error for closed account")
 		}
-		if _, ok := err.(*account.IsClosedError); !ok {
-			t.Errorf("Expected IsClosedError, got %T: %v", err, err)
+		if _, ok := err.(*account.AccountClosedError); !ok {
+			t.Errorf("Expected AccountClosedError, got %T: %v", err, err)
 		}
 	})
 

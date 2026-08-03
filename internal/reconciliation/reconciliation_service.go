@@ -91,7 +91,7 @@ func (s *Service) StartReconciliation(accountID types.ID, statementDate types.Da
 
 	// Cannot reconcile a closed account
 	if !acct.Active {
-		return nil, &account.IsClosedError{ID: accountID.String()}
+		return nil, &account.AccountClosedError{ID: accountID.String()}
 	}
 
 	// Statement date must not be in the future

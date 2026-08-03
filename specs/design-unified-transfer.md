@@ -1,8 +1,14 @@
 # Design sketch: `internal/transfer` — one ledger-agnostic transfer owner
 
 **Date:** 2026-08-02
-**Status:** IN PROGRESS — **phases 1–4 shipped** (`ed367c3`, `45e8a2d`,
-`7c01a03`+`1a63d43`, `f8d0c6e`). Phases 5–6 remain.
+**Status:** IMPLEMENTED — **phases 1–6 shipped** (`ed367c3`, `45e8a2d`,
+`7c01a03`+`1a63d43`, `f8d0c6e`, `927c501`+`2724371`, and this phase). Phase 7
+(migration 032) is deliberately NOT shipped — see §13 Q3.
+
+The load-bearing outcome, verified by `internal/transfer/arch_test.go`:
+
+    $ go list -deps ./internal/investment | grep internal/transaction
+    (nothing)
 
 v4 folds in what implementing them taught. Four design defects surfaced, each
 found by the compiler or a test rather than by review:
