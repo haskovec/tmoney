@@ -6,13 +6,24 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// IsTransferError is returned when trying to update a transfer as a regular transaction.
+// IsTransferError is returned when a whole-transaction transfer leg is handed to
+// a plain-transaction verb (Update, Delete, VoidTransaction).
+//
+// Those verbs address ONE row. A transfer is two rows, and its counterpart may
+// live in investment_transactions, so acting on one leg here would silently
+// orphan the other. transfer.Service owns the pair.
+//
+// A transfer LINE's counterpart inside a multi-line split is NOT this error: the
+// split lifecycle owns those, and they keep their reverse-cascade path.
 type IsTransferError struct {
 	ID string
 }
 
 func (e *IsTransferError) Error() string {
-	return fmt.Sprintf("transaction %s is a transfer; use UpdateTransfer instead", e.ID)
+	return fmt.Sprintf(
+		"transaction %s is a leg of a transfer; edit, void or delete the transfer itself",
+		e.ID,
+	)
 }
 
 // HasSplitsError is returned when a transaction with splits has a category set.

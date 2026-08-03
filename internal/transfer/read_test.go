@@ -102,7 +102,7 @@ func TestResolve_InvToReg_FromEitherLeg(t *testing.T) {
 // investment leg is the positive one.
 func TestResolve_RegToInv_FromEitherLeg(t *testing.T) {
 	h := newHarness(t)
-	_, invLeg, regLeg := h.seedRegToInv("750.00", types.NullableID{})
+	_, regLeg, invLeg := h.seedRegToInv("750.00", types.NullableID{})
 
 	for name, legID := range map[string]types.ID{"investment leg": invLeg, "regular leg": regLeg} {
 		t.Run(name, func(t *testing.T) {
@@ -311,10 +311,12 @@ func TestGet_UnknownTransferIDReturnsNotFound(t *testing.T) {
 // make a voided transfer render differently on each refresh.
 func TestResolve_VoidedPairIsStable(t *testing.T) {
 	h := newHarness(t)
-	transferID, fromLeg, _ := h.seedRegToReg("400.00", types.NullableID{})
+	transferID, _, _ := h.seedRegToReg("400.00", types.NullableID{})
 
-	if err := h.txnSvc.VoidTransaction(fromLeg); err != nil {
-		t.Fatalf("VoidTransaction: %v", err)
+	// Voided through the owner. transaction.Service.VoidTransaction now refuses a
+	// whole-transfer leg outright — it writes one row, and a transfer is two.
+	if _, err := h.svc.Void(transferID); err != nil {
+		t.Fatalf("Void: %v", err)
 	}
 
 	first, err := h.svc.Get(transferID)

@@ -62,14 +62,13 @@ func newHarness(t *testing.T) *harness {
 	}
 
 	payeeRepo := payee.NewRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, h.txnRepo)
 	positionRepo := investment.NewPositionRepository(database)
 	lotRepo := investment.NewLotRepository(database)
 	transactionLotRepo := investment.NewTransactionLotRepository(database)
 	priceRepo := price.NewRepository(database)
 	corporateActionRepo := investment.NewCorporateActionRepository(database)
 
-	h.txnSvc = transaction.NewService(h.txnRepo, h.splitRepo, transferRepo, payeeRepo, h.accountRepo, database)
+	h.txnSvc = transaction.NewService(h.txnRepo, h.splitRepo, payeeRepo, h.accountRepo, database)
 	h.invSvc = investment.NewService(h.invRepo, h.accountRepo, positionRepo, lotRepo,
 		transactionLotRepo, priceRepo, h.txnRepo, corporateActionRepo, database)
 	// The transaction service mints investment-side counterparts for transfer
@@ -110,60 +109,54 @@ func (h *harness) newCategory(name string, t category.Type) *category.Category {
 // testDate is a fixed date inside every fixture account's open window.
 func testDate() types.Date { return types.NewDate(2024, time.June, 15) }
 
-// seedRegToReg creates a bank↔bank transfer via the legacy path and returns its
-// transfer_id plus both leg row IDs.
+// seed creates a transfer through the service under test and returns its
+// transfer_id plus both leg row IDs in (From, To) order.
+//
+// These used to call four different methods across two services — CreateTransfer,
+// TransferCash, DepositFromAccount, TransferCashBetweenInvestments — each with a
+// different argument order and result shape. That is the duplication this package
+// exists to delete, so the fixtures go through the one door too.
+func (h *harness) seed(from, to *account.Account, amount string, memo string, categoryID types.NullableID) (types.ID, types.ID, types.ID) {
+	h.t.Helper()
+	res, err := h.svc.Create(Spec{
+		FromAccountID: from.ID,
+		ToAccountID:   to.ID,
+		Date:          testDate(),
+		Amount:        types.MustNewMoney(amount),
+		Memo:          memo,
+		CategoryID:    categoryID,
+	})
+	if err != nil {
+		h.t.Fatalf("seed transfer %s→%s: %v", from.Name, to.Name, err)
+	}
+	return res.TransferID, res.From.RowID, res.To.RowID
+}
+
+// seedRegToReg creates a bank↔bank transfer (Checking → Savings).
 func (h *harness) seedRegToReg(amount string, categoryID types.NullableID) (types.ID, types.ID, types.ID) {
 	h.t.Helper()
-	pair, err := h.txnSvc.CreateTransfer(
-		h.checking.ID, h.savings.ID, testDate(),
-		types.MustNewMoney(amount), "rent reserve", categoryID,
-	)
-	if err != nil {
-		h.t.Fatalf("seed reg↔reg: %v", err)
-	}
-	return pair.FromTransaction.TransferID.ID, pair.FromTransaction.ID, pair.ToTransaction.ID
+	return h.seed(h.checking, h.savings, amount, "rent reserve", categoryID)
 }
 
-// seedInvToReg creates a brokerage→checking cash transfer (investment leg
-// negative) and returns transfer_id, investment leg ID, regular leg ID.
+// seedInvToReg creates a brokerage→checking cash transfer and returns
+// transfer_id, investment leg ID, regular leg ID.
 func (h *harness) seedInvToReg(amount string, categoryID types.NullableID) (types.ID, types.ID, types.ID) {
 	h.t.Helper()
-	res, err := h.invSvc.TransferCash(
-		h.brokerage.ID, h.checking.ID, testDate(),
-		types.MustNewMoney(amount), "cash sweep out", categoryID,
-	)
-	if err != nil {
-		h.t.Fatalf("seed inv↔reg: %v", err)
-	}
-	return res.TransferID, res.InvestmentTransaction.ID, res.RegularTransaction.ID
+	return h.seed(h.brokerage, h.checking, amount, "cash sweep out", categoryID)
 }
 
-// seedRegToInv creates a checking→brokerage cash transfer (investment leg
-// positive) and returns transfer_id, investment leg ID, regular leg ID.
+// seedRegToInv creates a checking→brokerage cash transfer and returns
+// transfer_id, regular leg ID, investment leg ID.
 func (h *harness) seedRegToInv(amount string, categoryID types.NullableID) (types.ID, types.ID, types.ID) {
 	h.t.Helper()
-	res, err := h.invSvc.DepositFromAccount(
-		h.brokerage.ID, h.checking.ID, testDate(),
-		types.MustNewMoney(amount), "monthly contribution", categoryID,
-	)
-	if err != nil {
-		h.t.Fatalf("seed reg↔inv: %v", err)
-	}
-	return res.TransferID, res.InvestmentTransaction.ID, res.RegularTransaction.ID
+	return h.seed(h.checking, h.brokerage, amount, "monthly contribution", categoryID)
 }
 
 // seedInvToInv creates a brokerage→IRA cash transfer and returns transfer_id,
 // source leg ID, destination leg ID.
 func (h *harness) seedInvToInv(amount string) (types.ID, types.ID, types.ID) {
 	h.t.Helper()
-	res, err := h.invSvc.TransferCashBetweenInvestments(
-		h.brokerage.ID, h.ira.ID, testDate(),
-		types.MustNewMoney(amount), "IRA rollover",
-	)
-	if err != nil {
-		h.t.Fatalf("seed inv↔inv: %v", err)
-	}
-	return res.TransferID, res.SourceTransaction.ID, res.DestinationTransaction.ID
+	return h.seed(h.brokerage, h.ira, amount, "IRA rollover", types.NullableID{})
 }
 
 // seedShareTransferPair writes a transfer_shares pair straight through the

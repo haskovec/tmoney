@@ -22,11 +22,10 @@ func createTestTransactionService(t *testing.T) (*Service, *account.Repository) 
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	return svc, accountRepo
 }
 
@@ -95,12 +94,11 @@ func TestTransactionService_Create(t *testing.T) {
 		database := createTestDB(t)
 		txnRepo := NewRepository(database)
 		splitRepo := NewSplitRepository(database)
-		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+		svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 		// Create account, category, and payee with default category
 		acct := createTestAccount(t, accountRepo, "Checking")
@@ -203,12 +201,11 @@ func TestTransactionService_Delete(t *testing.T) {
 		database := createTestDB(t)
 		txnRepo := NewRepository(database)
 		splitRepo := NewSplitRepository(database)
-		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+		svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -296,12 +293,11 @@ func TestTransactionService_CreateWithSplits(t *testing.T) {
 		database := createTestDB(t)
 		txnRepo := NewRepository(database)
 		splitRepo := NewSplitRepository(database)
-		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+		svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -343,12 +339,11 @@ func TestTransactionService_CreateWithSplits(t *testing.T) {
 		database := createTestDB(t)
 		txnRepo := NewRepository(database)
 		splitRepo := NewSplitRepository(database)
-		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+		svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -376,12 +371,11 @@ func TestTransactionService_CreateWithSplits(t *testing.T) {
 		database := createTestDB(t)
 		txnRepo := NewRepository(database)
 		splitRepo := NewSplitRepository(database)
-		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+		svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -417,12 +411,11 @@ func TestTransactionService_MixedSignSplit_Allowed(t *testing.T) {
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 	acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -470,12 +463,11 @@ func TestTransactionService_LegacySameSignSplit_StillWorks(t *testing.T) {
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 	acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -520,12 +512,11 @@ func TestTransactionService_TransferLine_CreatesPair(t *testing.T) {
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -655,12 +646,11 @@ func TestTransactionService_EditTransferLineAmount_UpdatesPair(t *testing.T) {
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -768,12 +758,11 @@ func TestTransactionService_EditTransferLineTarget_MovesPair(t *testing.T) {
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -885,12 +874,11 @@ func TestTransactionService_DeleteTransferLine_DeletesPair(t *testing.T) {
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -974,12 +962,11 @@ func TestTransactionService_DeleteParent_DeletesAllPairs(t *testing.T) {
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -1060,12 +1047,11 @@ func TestTransactionService_DeletePairedSide_RemovesParentLine(t *testing.T) {
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -1159,12 +1145,11 @@ func TestTransactionService_EditPairedSideAmount_UpdatesParentLine(t *testing.T)
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 	checking := createTestAccount(t, accountRepo, "Checking")
 	savings := createTestAccount(t, accountRepo, "Savings")
@@ -1270,12 +1255,11 @@ func TestTransactionService_ValidateSplitTotals(t *testing.T) {
 		database := createTestDB(t)
 		txnRepo := NewRepository(database)
 		splitRepo := NewSplitRepository(database)
-		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+		svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -1302,240 +1286,6 @@ func TestTransactionService_ValidateSplitTotals(t *testing.T) {
 		}
 		if !valid {
 			t.Error("ValidateSplitTotals() should return true when splits match")
-		}
-	})
-}
-
-func TestTransactionService_CreateTransfer(t *testing.T) {
-	t.Run("creates transfer between accounts", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		if pair.FromTransaction == nil || pair.ToTransaction == nil {
-			t.Fatal("CreateTransfer() should return both transactions")
-		}
-
-		// Verify from transaction
-		if !pair.FromTransaction.Amount.IsNegative() {
-			t.Error("From transaction should have negative amount")
-		}
-		if pair.FromTransaction.AccountID != checking.ID {
-			t.Error("From transaction should be in checking account")
-		}
-
-		// Verify to transaction
-		if !pair.ToTransaction.Amount.IsPositive() {
-			t.Error("To transaction should have positive amount")
-		}
-		if pair.ToTransaction.AccountID != savings.ID {
-			t.Error("To transaction should be in savings account")
-		}
-
-		// Verify transfer link
-		if !pair.FromTransaction.IsTransfer() {
-			t.Error("From transaction should be marked as transfer")
-		}
-		if !pair.ToTransaction.IsTransfer() {
-			t.Error("To transaction should be marked as transfer")
-		}
-	})
-
-	t.Run("rejects negative transfer amount", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("-500.00")
-		_, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err == nil {
-			t.Error("CreateTransfer() expected error for negative amount")
-		}
-		if _, ok := err.(*InvalidTransferAmountError); !ok {
-			t.Errorf("Expected InvalidTransferAmountError, got %T: %v", err, err)
-		}
-	})
-
-	t.Run("rejects transfer to same account", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-
-		amount, _ := types.NewMoney("500.00")
-		_, err := svc.CreateTransfer(checking.ID, checking.ID, types.Today(), amount, "", types.NullableID{})
-		if err == nil {
-			t.Error("CreateTransfer() expected error for same account")
-		}
-	})
-}
-
-func TestTransactionService_DeleteTransfer(t *testing.T) {
-	t.Run("deletes both sides of transfer", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		// Delete the transfer
-		if err := svc.DeleteTransfer(pair.FromTransaction.TransferID.ID); err != nil {
-			t.Fatalf("DeleteTransfer() error = %v", err)
-		}
-
-		// Both sides should be gone
-		_, err = svc.GetByID(pair.FromTransaction.ID)
-		if err == nil {
-			t.Error("From transaction should be deleted")
-		}
-		_, err = svc.GetByID(pair.ToTransaction.ID)
-		if err == nil {
-			t.Error("To transaction should be deleted")
-		}
-	})
-
-	t.Run("delete via Delete also deletes both sides", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		// Delete via regular Delete (should detect transfer and delete both)
-		if err := svc.Delete(pair.FromTransaction.ID); err != nil {
-			t.Fatalf("Delete() error = %v", err)
-		}
-
-		// Both sides should be gone
-		_, err = svc.GetByID(pair.FromTransaction.ID)
-		if err == nil {
-			t.Error("From transaction should be deleted")
-		}
-		_, err = svc.GetByID(pair.ToTransaction.ID)
-		if err == nil {
-			t.Error("To transaction should be deleted")
-		}
-	})
-}
-
-func TestTransactionService_UpdateTransfer(t *testing.T) {
-	t.Run("updates both sides of transfer", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		// Update the transfer
-		newAmount, _ := types.NewMoney("750.00")
-		newDate, _ := types.ParseDate("2024-06-15")
-		err = svc.UpdateTransfer(pair.FromTransaction.TransferID.ID, newDate, newAmount, "Savings transfer", StatusCleared, types.NullableID{})
-		if err != nil {
-			t.Fatalf("UpdateTransfer() error = %v", err)
-		}
-
-		// Verify both sides updated
-		updatedPair, _ := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
-		if !updatedPair.FromTransaction.Amount.Neg().Equal(newAmount) {
-			t.Errorf("From amount should be -%s, got %s", newAmount.String(), updatedPair.FromTransaction.Amount.String())
-		}
-		if !updatedPair.ToTransaction.Amount.Equal(newAmount) {
-			t.Errorf("To amount should be %s, got %s", newAmount.String(), updatedPair.ToTransaction.Amount.String())
-		}
-		if updatedPair.FromTransaction.Status != StatusCleared {
-			t.Error("From status should be cleared")
-		}
-		if updatedPair.ToTransaction.Status != StatusCleared {
-			t.Error("To status should be cleared")
-		}
-	})
-}
-
-func TestTransactionService_GetTransferCounterpart(t *testing.T) {
-	t.Run("returns other side of transfer", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		// Get counterpart from from-side
-		other, err := svc.GetTransferCounterpart(pair.FromTransaction.ID)
-		if err != nil {
-			t.Fatalf("GetTransferCounterpart() error = %v", err)
-		}
-		if other.ID != pair.ToTransaction.ID {
-			t.Error("GetTransferCounterpart() should return to-transaction")
-		}
-
-		// Get counterpart from to-side
-		other, err = svc.GetTransferCounterpart(pair.ToTransaction.ID)
-		if err != nil {
-			t.Fatalf("GetTransferCounterpart() error = %v", err)
-		}
-		if other.ID != pair.FromTransaction.ID {
-			t.Error("GetTransferCounterpart() should return from-transaction")
-		}
-	})
-}
-
-func TestTransactionService_IsTransfer(t *testing.T) {
-	t.Run("returns true for transfer transactions", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		isTransfer, err := svc.IsTransfer(pair.FromTransaction.ID)
-		if err != nil {
-			t.Fatalf("IsTransfer() error = %v", err)
-		}
-		if !isTransfer {
-			t.Error("IsTransfer() should return true for transfer")
-		}
-	})
-
-	t.Run("returns false for regular transactions", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		acct := createTestAccount(t, accountRepo, "Checking")
-
-		amount, _ := types.NewMoney("-50.00")
-		txn := NewTransaction(acct.ID, types.Today(), amount)
-		if err := svc.Create(txn); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-
-		isTransfer, err := svc.IsTransfer(txn.ID)
-		if err != nil {
-			t.Fatalf("IsTransfer() error = %v", err)
-		}
-		if isTransfer {
-			t.Error("IsTransfer() should return false for regular transaction")
 		}
 	})
 }
@@ -1608,208 +1358,6 @@ func TestTransactionService_StatusOperations(t *testing.T) {
 	})
 }
 
-func TestTransactionService_Duplicate(t *testing.T) {
-	t.Run("duplicates transaction with today's date", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		acct := createTestAccount(t, accountRepo, "Checking")
-
-		oldDate, _ := types.ParseDate("2024-01-15")
-		amount, _ := types.NewMoney("-50.00")
-		original := NewTransaction(acct.ID, oldDate, amount)
-		original.SetMemo("Original memo")
-		if err := svc.Create(original); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-
-		// Clear the original
-		if err := svc.ClearTransaction(original.ID); err != nil {
-			t.Fatalf("ClearTransaction() error = %v", err)
-		}
-
-		duplicate, err := svc.Duplicate(original.ID)
-		if err != nil {
-			t.Fatalf("Duplicate() error = %v", err)
-		}
-
-		if duplicate.ID == original.ID {
-			t.Error("Duplicate should have new ID")
-		}
-		if !duplicate.Amount.Equal(original.Amount) {
-			t.Error("Duplicate should have same amount")
-		}
-		if duplicate.Date == oldDate {
-			t.Error("Duplicate should have today's date, not original date")
-		}
-		if duplicate.Status != StatusUncleared {
-			t.Error("Duplicate should have uncleared status")
-		}
-	})
-
-	t.Run("duplicates transaction with splits", func(t *testing.T) {
-		database := createTestDB(t)
-		txnRepo := NewRepository(database)
-		splitRepo := NewSplitRepository(database)
-		transferRepo := NewTransferRepository(database, txnRepo)
-		payeeRepo := payee.NewRepository(database)
-		accountRepo := account.NewRepository(database)
-		categoryRepo := category.NewRepository(database)
-
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
-
-		acct := createTestAccount(t, accountRepo, "Checking")
-
-		cat := category.NewCategory("Food", category.TypeExpense)
-		if err := categoryRepo.Create(cat); err != nil {
-			t.Fatalf("Failed to create category: %v", err)
-		}
-
-		amount, _ := types.NewMoney("-100.00")
-		original := NewTransaction(acct.ID, types.Today(), amount)
-
-		splitAmount, _ := types.NewMoney("-100.00")
-		splits := []*Split{
-			NewSplit(original.ID, cat.ID, splitAmount),
-		}
-
-		if err := svc.CreateWithSplits(original, splits); err != nil {
-			t.Fatalf("CreateWithSplits() error = %v", err)
-		}
-
-		duplicate, err := svc.Duplicate(original.ID)
-		if err != nil {
-			t.Fatalf("Duplicate() error = %v", err)
-		}
-
-		// Verify splits were duplicated
-		dupSplits, err := svc.GetSplits(duplicate.ID)
-		if err != nil {
-			t.Fatalf("GetSplits() error = %v", err)
-		}
-		if len(dupSplits) != 1 {
-			t.Errorf("Expected 1 split in duplicate, got %d", len(dupSplits))
-		}
-	})
-
-	t.Run("rejects duplicating transfer", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		_, err = svc.Duplicate(pair.FromTransaction.ID)
-		if err == nil {
-			t.Error("Duplicate() expected error for transfer")
-		}
-		if _, ok := err.(*CannotDuplicateTransferError); !ok {
-			t.Errorf("Expected CannotDuplicateTransferError, got %T: %v", err, err)
-		}
-	})
-}
-
-func TestTransactionService_GetBalanceImpact(t *testing.T) {
-	t.Run("returns single impact for regular transaction", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		acct := createTestAccount(t, accountRepo, "Checking")
-
-		amount, _ := types.NewMoney("-50.00")
-		txn := NewTransaction(acct.ID, types.Today(), amount)
-		if err := svc.Create(txn); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-
-		impacts, err := svc.GetBalanceImpact(txn.ID)
-		if err != nil {
-			t.Fatalf("GetBalanceImpact() error = %v", err)
-		}
-		if len(impacts) != 1 {
-			t.Errorf("Expected 1 impact, got %d", len(impacts))
-		}
-		if !impacts[0].Amount.Equal(amount) {
-			t.Errorf("Expected amount %s, got %s", amount.String(), impacts[0].Amount.String())
-		}
-	})
-
-	t.Run("returns two impacts for transfer", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		impacts, err := svc.GetBalanceImpact(pair.FromTransaction.ID)
-		if err != nil {
-			t.Fatalf("GetBalanceImpact() error = %v", err)
-		}
-		if len(impacts) != 2 {
-			t.Errorf("Expected 2 impacts for transfer, got %d", len(impacts))
-		}
-
-		// One should be from (negative), one should be to (positive)
-		hasFrom := false
-		hasTo := false
-		for _, impact := range impacts {
-			if impact.IsTransferFrom {
-				hasFrom = true
-			}
-			if impact.IsTransferTo {
-				hasTo = true
-			}
-		}
-		if !hasFrom || !hasTo {
-			t.Error("Transfer should have both from and to impacts")
-		}
-	})
-}
-
-func TestTransactionService_AddSplit_TransferError(t *testing.T) {
-	t.Run("rejects adding split to transfer", func(t *testing.T) {
-		database := createTestDB(t)
-		txnRepo := NewRepository(database)
-		splitRepo := NewSplitRepository(database)
-		transferRepo := NewTransferRepository(database, txnRepo)
-		payeeRepo := payee.NewRepository(database)
-		accountRepo := account.NewRepository(database)
-		categoryRepo := category.NewRepository(database)
-
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
-
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		cat := category.NewCategory("Transfer", category.TypeExpense)
-		if err := categoryRepo.Create(cat); err != nil {
-			t.Fatalf("Failed to create category: %v", err)
-		}
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		// Try to add a split to the transfer
-		splitAmount, _ := types.NewMoney("-500.00")
-		split := NewSplit(pair.FromTransaction.ID, cat.ID, splitAmount)
-
-		err = svc.AddSplit(split)
-		if err == nil {
-			t.Error("AddSplit() expected error for transfer")
-		}
-		if _, ok := err.(*TransferCannotHaveSplitsError); !ok {
-			t.Errorf("Expected TransferCannotHaveSplitsError, got %T: %v", err, err)
-		}
-	})
-}
-
 // =============================================================================
 // Search Tests
 // =============================================================================
@@ -1826,12 +1374,11 @@ func createTestTransactionServiceWithCategories(t *testing.T) (
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	return svc, accountRepo, categoryRepo, payeeRepo
 }
 
@@ -2511,430 +2058,9 @@ func TestTransactionService_ReplaceSplits(t *testing.T) {
 // Transfer Update Tests
 // =============================================================================
 
-func TestTransactionService_UpdateTransferAmount(t *testing.T) {
-	t.Run("updates amount on both sides", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		newAmount, _ := types.NewMoney("750.00")
-		if err := svc.UpdateTransferAmount(pair.FromTransaction.TransferID.ID, newAmount); err != nil {
-			t.Fatalf("UpdateTransferAmount() error = %v", err)
-		}
-
-		// Verify both sides updated
-		updatedPair, err := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
-		if err != nil {
-			t.Fatalf("GetTransferPair() error = %v", err)
-		}
-
-		if !updatedPair.FromTransaction.Amount.Neg().Equal(newAmount) {
-			t.Errorf("From amount should be -%s, got %s", newAmount.String(), updatedPair.FromTransaction.Amount.String())
-		}
-		if !updatedPair.ToTransaction.Amount.Equal(newAmount) {
-			t.Errorf("To amount should be %s, got %s", newAmount.String(), updatedPair.ToTransaction.Amount.String())
-		}
-	})
-
-	t.Run("rejects negative amount", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		negAmount, _ := types.NewMoney("-100.00")
-		err = svc.UpdateTransferAmount(pair.FromTransaction.TransferID.ID, negAmount)
-		if err == nil {
-			t.Error("UpdateTransferAmount() expected error for negative amount")
-		}
-		if _, ok := err.(*InvalidTransferAmountError); !ok {
-			t.Errorf("Expected InvalidTransferAmountError, got %T: %v", err, err)
-		}
-	})
-
-	t.Run("rejects zero amount", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		err = svc.UpdateTransferAmount(pair.FromTransaction.TransferID.ID, types.ZeroMoney)
-		if err == nil {
-			t.Error("UpdateTransferAmount() expected error for zero amount")
-		}
-	})
-}
-
-func TestTransactionService_UpdateTransferDate(t *testing.T) {
-	t.Run("updates date on both sides", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		newDate, _ := types.ParseDate("2024-06-15")
-		if err := svc.UpdateTransferDate(pair.FromTransaction.TransferID.ID, newDate); err != nil {
-			t.Fatalf("UpdateTransferDate() error = %v", err)
-		}
-
-		updatedPair, err := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
-		if err != nil {
-			t.Fatalf("GetTransferPair() error = %v", err)
-		}
-
-		if updatedPair.FromTransaction.Date != newDate {
-			t.Errorf("From date should be %s, got %s", newDate, updatedPair.FromTransaction.Date)
-		}
-		if updatedPair.ToTransaction.Date != newDate {
-			t.Errorf("To date should be %s, got %s", newDate, updatedPair.ToTransaction.Date)
-		}
-	})
-}
-
-func TestTransactionService_UpdateTransferStatus(t *testing.T) {
-	t.Run("updates status on both sides", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, StatusCleared); err != nil {
-			t.Fatalf("UpdateTransferStatus() error = %v", err)
-		}
-
-		updatedPair, err := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
-		if err != nil {
-			t.Fatalf("GetTransferPair() error = %v", err)
-		}
-
-		if updatedPair.FromTransaction.Status != StatusCleared {
-			t.Errorf("From status should be cleared, got %s", updatedPair.FromTransaction.Status)
-		}
-		if updatedPair.ToTransaction.Status != StatusCleared {
-			t.Errorf("To status should be cleared, got %s", updatedPair.ToTransaction.Status)
-		}
-	})
-
-	t.Run("updates to reconciled", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, StatusReconciled); err != nil {
-			t.Fatalf("UpdateTransferStatus() error = %v", err)
-		}
-
-		updatedPair, err := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
-		if err != nil {
-			t.Fatalf("GetTransferPair() error = %v", err)
-		}
-
-		if updatedPair.FromTransaction.Status != StatusReconciled {
-			t.Errorf("From status should be reconciled, got %s", updatedPair.FromTransaction.Status)
-		}
-		if updatedPair.ToTransaction.Status != StatusReconciled {
-			t.Errorf("To status should be reconciled, got %s", updatedPair.ToTransaction.Status)
-		}
-	})
-}
-
 // =============================================================================
 // Void Transaction Tests
 // =============================================================================
-
-func TestTransactionService_VoidTransaction(t *testing.T) {
-	t.Run("voids a regular transaction", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		acct := createTestAccount(t, accountRepo, "Checking")
-
-		amount, _ := types.NewMoney("-50.00")
-		txn := NewTransaction(acct.ID, types.Today(), amount)
-		txn.SetMemo("Original memo")
-		if err := svc.Create(txn); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-
-		if err := svc.VoidTransaction(txn.ID); err != nil {
-			t.Fatalf("VoidTransaction() error = %v", err)
-		}
-
-		retrieved, err := svc.GetByID(txn.ID)
-		if err != nil {
-			t.Fatalf("GetByID() error = %v", err)
-		}
-
-		if retrieved.Status != StatusVoid {
-			t.Errorf("Expected status void, got %s", retrieved.Status)
-		}
-		if !retrieved.Amount.IsZero() {
-			t.Errorf("Expected amount 0, got %s", retrieved.Amount.String())
-		}
-		if !retrieved.Memo.Valid || retrieved.Memo.String != "**VOID**" {
-			t.Errorf("Expected memo '**VOID**', got %q", retrieved.Memo.String)
-		}
-	})
-
-	t.Run("voids a cleared transaction", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		acct := createTestAccount(t, accountRepo, "Checking")
-
-		amount, _ := types.NewMoney("-75.00")
-		txn := NewTransaction(acct.ID, types.Today(), amount)
-		if err := svc.Create(txn); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-		if err := svc.ClearTransaction(txn.ID); err != nil {
-			t.Fatalf("ClearTransaction() error = %v", err)
-		}
-
-		if err := svc.VoidTransaction(txn.ID); err != nil {
-			t.Fatalf("VoidTransaction() error = %v", err)
-		}
-
-		retrieved, _ := svc.GetByID(txn.ID)
-		if retrieved.Status != StatusVoid {
-			t.Errorf("Expected status void, got %s", retrieved.Status)
-		}
-	})
-
-	t.Run("rejects voiding a void transaction", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		acct := createTestAccount(t, accountRepo, "Checking")
-
-		amount, _ := types.NewMoney("-50.00")
-		txn := NewTransaction(acct.ID, types.Today(), amount)
-		if err := svc.Create(txn); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-
-		if err := svc.VoidTransaction(txn.ID); err != nil {
-			t.Fatalf("VoidTransaction() error = %v", err)
-		}
-
-		// Voiding again should fail
-		err := svc.VoidTransaction(txn.ID)
-		if err == nil {
-			t.Error("VoidTransaction() expected error for already void transaction")
-		}
-		if _, ok := err.(*IsVoidError); !ok {
-			t.Errorf("Expected TransactionIsVoidError, got %T: %v", err, err)
-		}
-	})
-
-	t.Run("rejects voiding a reconciled transaction", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		acct := createTestAccount(t, accountRepo, "Checking")
-
-		amount, _ := types.NewMoney("-50.00")
-		txn := NewTransaction(acct.ID, types.Today(), amount)
-		if err := svc.Create(txn); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-		if err := svc.ReconcileTransaction(txn.ID); err != nil {
-			t.Fatalf("ReconcileTransaction() error = %v", err)
-		}
-
-		err := svc.VoidTransaction(txn.ID)
-		if err == nil {
-			t.Error("VoidTransaction() expected error for reconciled transaction")
-		}
-		if _, ok := err.(*IsReconciledError); !ok {
-			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
-		}
-	})
-
-	t.Run("voids a split transaction and removes splits", func(t *testing.T) {
-		database := createTestDB(t)
-		txnRepo := NewRepository(database)
-		splitRepo := NewSplitRepository(database)
-		transferRepo := NewTransferRepository(database, txnRepo)
-		payeeRepo := payee.NewRepository(database)
-		accountRepo := account.NewRepository(database)
-		categoryRepo := category.NewRepository(database)
-
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
-
-		acct := createTestAccount(t, accountRepo, "Checking")
-
-		cat1 := category.NewCategory("Food", category.TypeExpense)
-		cat2 := category.NewCategory("Household", category.TypeExpense)
-		if err := categoryRepo.Create(cat1); err != nil {
-			t.Fatalf("Failed to create category: %v", err)
-		}
-		if err := categoryRepo.Create(cat2); err != nil {
-			t.Fatalf("Failed to create category: %v", err)
-		}
-
-		amount, _ := types.NewMoney("-100.00")
-		txn := NewTransaction(acct.ID, types.Today(), amount)
-
-		split1Amount, _ := types.NewMoney("-60.00")
-		split2Amount, _ := types.NewMoney("-40.00")
-		splits := []*Split{
-			NewSplit(txn.ID, cat1.ID, split1Amount),
-			NewSplit(txn.ID, cat2.ID, split2Amount),
-		}
-
-		if err := svc.CreateWithSplits(txn, splits); err != nil {
-			t.Fatalf("CreateWithSplits() error = %v", err)
-		}
-
-		// Void the split transaction
-		if err := svc.VoidTransaction(txn.ID); err != nil {
-			t.Fatalf("VoidTransaction() error = %v", err)
-		}
-
-		// Verify transaction is voided
-		retrieved, _ := svc.GetByID(txn.ID)
-		if retrieved.Status != StatusVoid {
-			t.Errorf("Expected status void, got %s", retrieved.Status)
-		}
-		if !retrieved.Amount.IsZero() {
-			t.Errorf("Expected amount 0, got %s", retrieved.Amount.String())
-		}
-
-		// Verify splits are removed
-		remainingSplits, err := svc.GetSplits(txn.ID)
-		if err != nil {
-			t.Fatalf("GetSplits() error = %v", err)
-		}
-		if len(remainingSplits) != 0 {
-			t.Errorf("Expected 0 splits after void, got %d", len(remainingSplits))
-		}
-	})
-
-	t.Run("voids a transfer (both sides)", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		// Void via the from-side
-		if err := svc.VoidTransaction(pair.FromTransaction.ID); err != nil {
-			t.Fatalf("VoidTransaction() error = %v", err)
-		}
-
-		// Both sides should be void
-		fromTxn, err := svc.GetByID(pair.FromTransaction.ID)
-		if err != nil {
-			t.Fatalf("GetByID() error = %v", err)
-		}
-		if fromTxn.Status != StatusVoid {
-			t.Errorf("From transaction should be void, got %s", fromTxn.Status)
-		}
-		if !fromTxn.Amount.IsZero() {
-			t.Errorf("From amount should be 0, got %s", fromTxn.Amount.String())
-		}
-		if !fromTxn.Memo.Valid || fromTxn.Memo.String != "**VOID**" {
-			t.Errorf("From memo should be '**VOID**', got %q", fromTxn.Memo.String)
-		}
-
-		toTxn, err := svc.GetByID(pair.ToTransaction.ID)
-		if err != nil {
-			t.Fatalf("GetByID() error = %v", err)
-		}
-		if toTxn.Status != StatusVoid {
-			t.Errorf("To transaction should be void, got %s", toTxn.Status)
-		}
-		if !toTxn.Amount.IsZero() {
-			t.Errorf("To amount should be 0, got %s", toTxn.Amount.String())
-		}
-		if !toTxn.Memo.Valid || toTxn.Memo.String != "**VOID**" {
-			t.Errorf("To memo should be '**VOID**', got %q", toTxn.Memo.String)
-		}
-	})
-
-	t.Run("voids transfer via to-side", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("300.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		// Void via the to-side
-		if err := svc.VoidTransaction(pair.ToTransaction.ID); err != nil {
-			t.Fatalf("VoidTransaction() error = %v", err)
-		}
-
-		// Both sides should be void
-		fromTxn, _ := svc.GetByID(pair.FromTransaction.ID)
-		if fromTxn.Status != StatusVoid {
-			t.Errorf("From transaction should be void, got %s", fromTxn.Status)
-		}
-
-		toTxn, _ := svc.GetByID(pair.ToTransaction.ID)
-		if toTxn.Status != StatusVoid {
-			t.Errorf("To transaction should be void, got %s", toTxn.Status)
-		}
-	})
-
-	t.Run("rejects voiding transfer when one side is reconciled", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		// Reconcile both sides (transfer status updates both)
-		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, StatusReconciled); err != nil {
-			t.Fatalf("UpdateTransferStatus() error = %v", err)
-		}
-
-		// Voiding should fail
-		err = svc.VoidTransaction(pair.FromTransaction.ID)
-		if err == nil {
-			t.Error("VoidTransaction() expected error for reconciled transfer")
-		}
-		if _, ok := err.(*IsReconciledError); !ok {
-			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
-		}
-	})
-}
 
 func TestTransactionService_Update_VoidGuard(t *testing.T) {
 	t.Run("rejects editing a void transaction", func(t *testing.T) {
@@ -2998,78 +2124,6 @@ func TestTransactionService_Update_VoidGuard(t *testing.T) {
 // =============================================================================
 // Reconciled Transaction Locking Tests
 // =============================================================================
-
-func TestTransactionService_Delete_ReconciledGuard(t *testing.T) {
-	t.Run("rejects deleting a reconciled transaction", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		acct := createTestAccount(t, accountRepo, "Checking")
-
-		amount, _ := types.NewMoney("-50.00")
-		txn := NewTransaction(acct.ID, types.Today(), amount)
-		if err := svc.Create(txn); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-
-		if err := svc.ReconcileTransaction(txn.ID); err != nil {
-			t.Fatalf("ReconcileTransaction() error = %v", err)
-		}
-
-		err := svc.Delete(txn.ID)
-		if err == nil {
-			t.Error("Delete() expected error for reconciled transaction")
-		}
-		if _, ok := err.(*IsReconciledError); !ok {
-			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
-		}
-	})
-
-	t.Run("rejects deleting a void transaction", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		acct := createTestAccount(t, accountRepo, "Checking")
-
-		amount, _ := types.NewMoney("-50.00")
-		txn := NewTransaction(acct.ID, types.Today(), amount)
-		if err := svc.Create(txn); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-
-		if err := svc.VoidTransaction(txn.ID); err != nil {
-			t.Fatalf("VoidTransaction() error = %v", err)
-		}
-
-		err := svc.Delete(txn.ID)
-		if err == nil {
-			t.Error("Delete() expected error for void transaction")
-		}
-		if _, ok := err.(*IsVoidError); !ok {
-			t.Errorf("Expected TransactionIsVoidError, got %T: %v", err, err)
-		}
-	})
-
-	t.Run("rejects deleting a reconciled transfer", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, StatusReconciled); err != nil {
-			t.Fatalf("UpdateTransferStatus() error = %v", err)
-		}
-
-		err = svc.Delete(pair.FromTransaction.ID)
-		if err == nil {
-			t.Error("Delete() expected error for reconciled transfer")
-		}
-		if _, ok := err.(*IsReconciledError); !ok {
-			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
-		}
-	})
-}
 
 func TestTransactionService_UnReconcileTransaction(t *testing.T) {
 	t.Run("un-reconciles a reconciled transaction to cleared", func(t *testing.T) {
@@ -3341,12 +2395,11 @@ func TestTransactionService_SplitOperations_ReconciledGuard(t *testing.T) {
 		database := createTestDB(t)
 		txnRepo := NewRepository(database)
 		splitRepo := NewSplitRepository(database)
-		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+		svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -3395,12 +2448,11 @@ func TestTransactionService_SplitOperations_ReconciledGuard(t *testing.T) {
 		database := createTestDB(t)
 		txnRepo := NewRepository(database)
 		splitRepo := NewSplitRepository(database)
-		transferRepo := NewTransferRepository(database, txnRepo)
 		payeeRepo := payee.NewRepository(database)
 		accountRepo := account.NewRepository(database)
 		categoryRepo := category.NewRepository(database)
 
-		svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+		svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 		acct := createTestAccount(t, accountRepo, "Checking")
 
@@ -3479,182 +2531,4 @@ func TestTransactionService_SplitOperations_ReconciledGuard(t *testing.T) {
 			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
 		}
 	})
-}
-
-func TestTransactionService_TransferOperations_ReconciledGuard(t *testing.T) {
-	t.Run("rejects UpdateTransfer on reconciled transfer", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, StatusReconciled); err != nil {
-			t.Fatalf("UpdateTransferStatus() error = %v", err)
-		}
-
-		newAmount, _ := types.NewMoney("750.00")
-		newDate, _ := types.ParseDate("2024-06-15")
-		err = svc.UpdateTransfer(pair.FromTransaction.TransferID.ID, newDate, newAmount, "Updated", StatusCleared, types.NullableID{})
-		if err == nil {
-			t.Error("UpdateTransfer() expected error for reconciled transfer")
-		}
-		if _, ok := err.(*IsReconciledError); !ok {
-			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
-		}
-	})
-
-	t.Run("rejects UpdateTransferAmount on reconciled transfer", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, StatusReconciled); err != nil {
-			t.Fatalf("UpdateTransferStatus() error = %v", err)
-		}
-
-		newAmount, _ := types.NewMoney("750.00")
-		err = svc.UpdateTransferAmount(pair.FromTransaction.TransferID.ID, newAmount)
-		if err == nil {
-			t.Error("UpdateTransferAmount() expected error for reconciled transfer")
-		}
-		if _, ok := err.(*IsReconciledError); !ok {
-			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
-		}
-	})
-
-	t.Run("rejects UpdateTransferDate on reconciled transfer", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, StatusReconciled); err != nil {
-			t.Fatalf("UpdateTransferStatus() error = %v", err)
-		}
-
-		newDate, _ := types.ParseDate("2024-06-15")
-		err = svc.UpdateTransferDate(pair.FromTransaction.TransferID.ID, newDate)
-		if err == nil {
-			t.Error("UpdateTransferDate() expected error for reconciled transfer")
-		}
-		if _, ok := err.(*IsReconciledError); !ok {
-			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
-		}
-	})
-
-	t.Run("rejects DeleteTransfer on reconciled transfer", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, StatusReconciled); err != nil {
-			t.Fatalf("UpdateTransferStatus() error = %v", err)
-		}
-
-		err = svc.DeleteTransfer(pair.FromTransaction.TransferID.ID)
-		if err == nil {
-			t.Error("DeleteTransfer() expected error for reconciled transfer")
-		}
-		if _, ok := err.(*IsReconciledError); !ok {
-			t.Errorf("Expected TransactionIsReconciledError, got %T: %v", err, err)
-		}
-	})
-
-	t.Run("allows UpdateTransferStatus on non-reconciled transfer", func(t *testing.T) {
-		svc, accountRepo := createTestTransactionService(t)
-		checking := createTestAccount(t, accountRepo, "Checking")
-		savings := createTestAccount(t, accountRepo, "Savings")
-
-		amount, _ := types.NewMoney("500.00")
-		pair, err := svc.CreateTransfer(checking.ID, savings.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-
-		// UpdateTransferStatus should still work (it's how reconciliation happens)
-		if err := svc.UpdateTransferStatus(pair.FromTransaction.TransferID.ID, StatusReconciled); err != nil {
-			t.Fatalf("UpdateTransferStatus() error = %v", err)
-		}
-
-		updatedPair, _ := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
-		if updatedPair.FromTransaction.Status != StatusReconciled {
-			t.Errorf("Expected reconciled status, got %s", updatedPair.FromTransaction.Status)
-		}
-	})
-}
-
-func TestCreateTransfer_RejectsInvestmentSource(t *testing.T) {
-	svc, accountRepo := createTestTransactionService(t)
-	ira := createTestAccountOfType(t, accountRepo, "Rollover IRA", account.TypeInvestment)
-	checking := createTestAccountOfType(t, accountRepo, "Checking", account.TypeChecking)
-
-	amount, _ := types.NewMoney("500.00")
-	_, err := svc.CreateTransfer(ira.ID, checking.ID, types.Today(), amount, "", types.NullableID{})
-	if err == nil {
-		t.Fatal("CreateTransfer() expected error when source is an investment account")
-	}
-	if _, ok := err.(*NotRegularAccountError); !ok {
-		t.Errorf("Expected *NotRegularAccountError, got %T: %v", err, err)
-	}
-}
-
-func TestCreateTransfer_RejectsInvestmentDest(t *testing.T) {
-	svc, accountRepo := createTestTransactionService(t)
-	checking := createTestAccountOfType(t, accountRepo, "Checking", account.TypeChecking)
-	hsa := createTestAccountOfType(t, accountRepo, "HSA", account.TypeHSA)
-
-	amount, _ := types.NewMoney("500.00")
-	_, err := svc.CreateTransfer(checking.ID, hsa.ID, types.Today(), amount, "", types.NullableID{})
-	if err == nil {
-		t.Fatal("CreateTransfer() expected error when destination is an investment account")
-	}
-	if _, ok := err.(*NotRegularAccountError); !ok {
-		t.Errorf("Expected *NotRegularAccountError, got %T: %v", err, err)
-	}
-}
-
-func TestUpdateTransfer_RejectsInvestmentAccounts(t *testing.T) {
-	// To exercise the UpdateTransfer guard, we plant a transfer pair whose
-	// "from" account is an investment account via the repository (bypassing
-	// the now-hardened CreateTransfer), then attempt UpdateTransfer.
-	svc, accountRepo := createTestTransactionService(t)
-	ira := createTestAccountOfType(t, accountRepo, "Rollover IRA", account.TypeInvestment)
-	checking := createTestAccountOfType(t, accountRepo, "Checking", account.TypeChecking)
-
-	amount, _ := types.NewMoney("500.00")
-	pair := NewTransferPair(ira.ID, checking.ID, types.Today(), amount)
-	if err := svc.transferRepo.Create(pair); err != nil {
-		t.Fatalf("seed transfer pair via repo: %v", err)
-	}
-
-	newAmount, _ := types.NewMoney("750.00")
-	err := svc.UpdateTransfer(pair.FromTransaction.TransferID.ID, types.Today(), newAmount, "memo", StatusUncleared, types.NullableID{})
-	if err == nil {
-		t.Fatal("UpdateTransfer() expected error when a leg is an investment account")
-	}
-	if _, ok := err.(*NotRegularAccountError); !ok {
-		t.Errorf("Expected *NotRegularAccountError, got %T: %v", err, err)
-	}
 }

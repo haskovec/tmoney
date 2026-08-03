@@ -20,51 +20,6 @@ import (
 // Phase 5: Transfer-dialog category combo + inline creation
 // =============================================================================
 
-// TestEditTransferIncludesCategory pins which edit-mode shapes carry a Category
-// combo: every transfer with a regular-side leg (bank↔bank, inv↔reg) does;
-// inv↔inv (neither leg storable) does not; nil data does not.
-func TestEditTransferIncludesCategory(t *testing.T) {
-	bankID := types.NewID()
-	invID := types.NewID()
-	inv2ID := types.NewID()
-	accts := []*account.Account{
-		{BaseModel: types.BaseModel{ID: bankID}, Type: account.TypeChecking},
-		{BaseModel: types.BaseModel{ID: invID}, Type: account.TypeInvestment},
-		{BaseModel: types.BaseModel{ID: inv2ID}, Type: account.TypeInvestment},
-	}
-
-	tests := []struct {
-		name string
-		data *transferDialogData
-		want bool
-	}{
-		{"nil", nil, false},
-		{"bank↔bank", &transferDialogData{accounts: accts, existing: &transaction.TransferPair{}}, true},
-		{
-			"inv→reg (bank leg storable)",
-			&transferDialogData{accounts: accts, existingInvestment: &investmentTransferEdit{fromAccountID: invID, toAccountID: bankID}},
-			true,
-		},
-		{
-			"reg→inv (bank leg storable)",
-			&transferDialogData{accounts: accts, existingInvestment: &investmentTransferEdit{fromAccountID: bankID, toAccountID: invID}},
-			true,
-		},
-		{
-			"inv↔inv (neither storable)",
-			&transferDialogData{accounts: accts, existingInvestment: &investmentTransferEdit{fromAccountID: invID, toAccountID: inv2ID}},
-			false,
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := editTransferIncludesCategory(tc.data); got != tc.want {
-				t.Errorf("editTransferIncludesCategory = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestCategoryComboIndex(t *testing.T) {
 	a := types.NewID()
 	b := types.NewID()
@@ -78,37 +33,6 @@ func TestCategoryComboIndex(t *testing.T) {
 	}
 	if got := categoryComboIndex(ids, types.NullableID{ID: types.NewID(), Valid: true}); got != 0 {
 		t.Errorf("unknown category → index %d, want 0 (falls back to None)", got)
-	}
-}
-
-func TestTransferCategoryFieldIndex(t *testing.T) {
-	createApp := &App{transferDialogData: &transferDialogData{mode: transferDialogModeNew}}
-	if got := createApp.transferCategoryFieldIndex(); got != 5 {
-		t.Errorf("create-mode category field index = %d, want 5", got)
-	}
-
-	// bank↔bank edit carries a Category combo at index 3.
-	bankEdit := &App{transferDialogData: &transferDialogData{
-		mode:     transferDialogModeEdit,
-		existing: &transaction.TransferPair{},
-	}}
-	if got := bankEdit.transferCategoryFieldIndex(); got != 3 {
-		t.Errorf("bank↔bank edit category field index = %d, want 3", got)
-	}
-
-	// inv↔inv edit has no Category field → -1 (never points at the Status radio).
-	invID := types.NewID()
-	inv2ID := types.NewID()
-	invInvEdit := &App{transferDialogData: &transferDialogData{
-		mode: transferDialogModeEdit,
-		accounts: []*account.Account{
-			{BaseModel: types.BaseModel{ID: invID}, Type: account.TypeInvestment},
-			{BaseModel: types.BaseModel{ID: inv2ID}, Type: account.TypeInvestment},
-		},
-		existingInvestment: &investmentTransferEdit{fromAccountID: invID, toAccountID: inv2ID},
-	}}
-	if got := invInvEdit.transferCategoryFieldIndex(); got != -1 {
-		t.Errorf("inv↔inv edit category field index = %d, want -1 (no combo)", got)
 	}
 }
 
@@ -262,9 +186,8 @@ func newTransferCategoryTestApp(t *testing.T) (*App, *transaction.Service, *acco
 	categoryRepo := category.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	accountSvc := account.NewService(accountRepo, database)
 	categorySvc := category.NewService(categoryRepo, database)
 	// The edit-transfer loaders resolve through the transfer service, which
@@ -298,157 +221,6 @@ func newTransferCategoryTestApp(t *testing.T) (*App, *transaction.Service, *acco
 		undoManager:    undo.NewManager(),
 	}
 	return app, txnSvc, from, to, bills
-}
-
-// TestApp_SubmitTransferDialog_RegToReg_ThreadsCategory drives the create
-// dialog end-to-end and asserts the selected category lands on both legs of
-// the resulting transfer pair.
-func TestApp_SubmitTransferDialog_RegToReg_ThreadsCategory(t *testing.T) {
-	app, txnSvc, from, to, bills := newTransferCategoryTestApp(t)
-
-	data := &transferDialogData{
-		accounts:   []*account.Account{from, to},
-		accountIDs: []types.ID{from.ID, to.ID},
-		categories: []*category.Category{bills},
-	}
-	model, _ := app.Update(transferDialogDataMsg{data: data})
-	app = model.(*App)
-
-	catIdx := categoryComboIndex(app.transferDialogCategoryIDs, types.NullableID{ID: bills.ID, Valid: true})
-	if catIdx == 0 {
-		t.Fatal("Bills category should resolve to a non-zero combo index")
-	}
-
-	fields := app.transferDialog.Fields()
-	fields[0].SelectedIndex = 0 // From = Checking
-	fields[1].SelectedIndex = 1 // To = Savings
-	fields[2].Value = "500.00"
-	fields[3].Value = types.Today().Time().Format("01/02/2006")
-	fields[4].Value = "cc payment"
-	fields[5].SelectedIndex = catIdx
-
-	model, cmd := app.submitTransferDialog()
-	app = model.(*App)
-	if cmd == nil {
-		t.Fatal("submit should return a non-nil cmd")
-	}
-	if app.transferDialog != nil {
-		t.Error("dialog should close after a valid submit")
-	}
-	if msg := cmd(); isErrMsg(msg) {
-		t.Fatalf("create cmd returned an error: %+v", msg)
-	}
-
-	legs, err := txnSvc.ListByAccount(from.ID)
-	if err != nil {
-		t.Fatalf("list from-account transactions: %v", err)
-	}
-	var transferID types.ID
-	for _, l := range legs {
-		if l.TransferID.Valid {
-			transferID = l.TransferID.ID
-			break
-		}
-	}
-	if transferID.IsNil() {
-		t.Fatal("no transfer leg found in the From account")
-	}
-
-	pair, err := txnSvc.GetTransferPair(transferID)
-	if err != nil {
-		t.Fatalf("GetTransferPair: %v", err)
-	}
-	if !pair.FromTransaction.CategoryID.Valid || pair.FromTransaction.CategoryID.ID != bills.ID {
-		t.Errorf("From leg category = %+v, want Bills", pair.FromTransaction.CategoryID)
-	}
-	if !pair.ToTransaction.CategoryID.Valid || pair.ToTransaction.CategoryID.ID != bills.ID {
-		t.Errorf("To leg category = %+v, want Bills", pair.ToTransaction.CategoryID)
-	}
-}
-
-// TestApp_SubmitEditTransferDialog_RegToReg_SetsThenClearsCategory drives the
-// edit dialog end-to-end: first assigning a category to an uncategorized
-// transfer, then clearing it back to none. Both legs mirror each change.
-func TestApp_SubmitEditTransferDialog_RegToReg_SetsThenClearsCategory(t *testing.T) {
-	app, txnSvc, from, to, bills := newTransferCategoryTestApp(t)
-
-	pair, err := txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), types.MustNewMoney("500.00"), "", types.NullableID{})
-	if err != nil {
-		t.Fatalf("seed transfer: %v", err)
-	}
-	transferID := pair.FromTransaction.TransferID.ID
-	fromLegID := pair.FromTransaction.ID
-
-	// --- Phase 1: assign the Bills category through the edit dialog. ---
-	editMsg := app.loadEditTransferDialogData(fromLegID)()
-	if isErrMsg(editMsg) {
-		t.Fatalf("load edit dialog: %+v", editMsg)
-	}
-	model, _ := app.Update(editMsg)
-	app = model.(*App)
-
-	fields := app.transferDialog.Fields()
-	if len(fields) != 5 {
-		t.Fatalf("edit dialog fields = %d, want 5 (Amount, Date, Memo, Category, Status)", len(fields))
-	}
-	catIdx := categoryComboIndex(app.transferDialogCategoryIDs, types.NullableID{ID: bills.ID, Valid: true})
-	if catIdx == 0 {
-		t.Fatal("Bills should resolve to a non-zero combo index")
-	}
-	fields[3].SelectedIndex = catIdx // Category
-
-	model, cmd := app.submitTransferDialog()
-	app = model.(*App)
-	if cmd == nil {
-		t.Fatal("edit submit should return a non-nil cmd")
-	}
-	if msg := cmd(); isErrMsg(msg) {
-		t.Fatalf("edit cmd returned an error: %+v", msg)
-	}
-
-	got, err := txnSvc.GetTransferPair(transferID)
-	if err != nil {
-		t.Fatalf("GetTransferPair after set: %v", err)
-	}
-	if !got.FromTransaction.CategoryID.Valid || got.FromTransaction.CategoryID.ID != bills.ID {
-		t.Errorf("From leg category after set = %+v, want Bills", got.FromTransaction.CategoryID)
-	}
-	if !got.ToTransaction.CategoryID.Valid || got.ToTransaction.CategoryID.ID != bills.ID {
-		t.Errorf("To leg category after set = %+v, want Bills", got.ToTransaction.CategoryID)
-	}
-
-	// --- Phase 2: clear the category back to "(None)". ---
-	editMsg = app.loadEditTransferDialogData(fromLegID)()
-	if isErrMsg(editMsg) {
-		t.Fatalf("reload edit dialog: %+v", editMsg)
-	}
-	model, _ = app.Update(editMsg)
-	app = model.(*App)
-
-	// The dialog should seed the combo at the Bills index; clear it to 0.
-	if seeded := app.transferDialog.Fields()[3].SelectedIndex; seeded != catIdx {
-		t.Errorf("edit dialog should seed the existing category (index %d), got %d", catIdx, seeded)
-	}
-	app.transferDialog.Fields()[3].SelectedIndex = 0 // (None)
-
-	_, cmd = app.submitTransferDialog()
-	if cmd == nil {
-		t.Fatal("clear submit should return a non-nil cmd")
-	}
-	if msg := cmd(); isErrMsg(msg) {
-		t.Fatalf("clear cmd returned an error: %+v", msg)
-	}
-
-	got, err = txnSvc.GetTransferPair(transferID)
-	if err != nil {
-		t.Fatalf("GetTransferPair after clear: %v", err)
-	}
-	if got.FromTransaction.CategoryID.Valid {
-		t.Errorf("From leg category after clear = %+v, want cleared", got.FromTransaction.CategoryID)
-	}
-	if got.ToTransaction.CategoryID.Valid {
-		t.Errorf("To leg category after clear = %+v, want cleared", got.ToTransaction.CategoryID)
-	}
 }
 
 // TestApp_TransferDialog_AddNew_OpensCreateCategoryDialog: activating the

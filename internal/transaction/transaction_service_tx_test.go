@@ -38,78 +38,6 @@ func (f *failingQueryer) QueryRow(query string, args ...any) *sql.Row {
 	return f.inner.QueryRow(query, args...)
 }
 
-// TestTransactionService_CreateTransfer_FaultRollsBack forces the second Exec
-// (the to-leg insert) to fail and asserts the flow errors and leaves no rows
-// for either leg — no orphaned from-leg.
-func TestTransactionService_CreateTransfer_FaultRollsBack(t *testing.T) {
-	svc, accountRepo := createTestTransactionService(t)
-	from := createTestAccount(t, accountRepo, "Checking")
-	to := createTestAccount(t, accountRepo, "Savings")
-
-	amount, _ := types.NewMoney("100.00")
-	date := types.NewDate(2020, time.January, 1)
-
-	err := svc.db.WithTx(func(tx db.Queryer) error {
-		// Fail the second Exec: the from-leg insert lands, the to-leg insert
-		// errors, so the whole tx must roll back.
-		fw := &failingQueryer{inner: tx, failOn: 2}
-		_, e := svc.InTx(fw).CreateTransfer(from.ID, to.ID, date, amount, "", types.NullableID{})
-		return e
-	})
-	if err == nil {
-		t.Fatal("expected injected fault error, got nil")
-	}
-
-	fromTxns, err := svc.ListByAccount(from.ID)
-	if err != nil {
-		t.Fatalf("ListByAccount(from) error = %v", err)
-	}
-	toTxns, err := svc.ListByAccount(to.ID)
-	if err != nil {
-		t.Fatalf("ListByAccount(to) error = %v", err)
-	}
-	if len(fromTxns) != 0 || len(toTxns) != 0 {
-		t.Fatalf("expected no rows after rollback, got from=%d to=%d", len(fromTxns), len(toTxns))
-	}
-}
-
-// TestTransactionService_CreateTransfer_HappyPath exercises the new runInTx
-// path with no injected fault: the unbound service opens and commits its own
-// transaction, and both legs land linked by a shared transfer_id.
-func TestTransactionService_CreateTransfer_HappyPath(t *testing.T) {
-	svc, accountRepo := createTestTransactionService(t)
-	from := createTestAccount(t, accountRepo, "Checking")
-	to := createTestAccount(t, accountRepo, "Savings")
-
-	amount, _ := types.NewMoney("100.00")
-	date := types.NewDate(2020, time.January, 1)
-
-	pair, err := svc.CreateTransfer(from.ID, to.ID, date, amount, "", types.NullableID{})
-	if err != nil {
-		t.Fatalf("CreateTransfer() error = %v", err)
-	}
-
-	if !pair.FromTransaction.TransferID.Valid {
-		t.Fatal("expected from leg to carry a transfer_id")
-	}
-
-	got, err := svc.GetTransferPair(pair.FromTransaction.TransferID.ID)
-	if err != nil {
-		t.Fatalf("GetTransferPair() error = %v", err)
-	}
-	if got.FromTransaction == nil || got.ToTransaction == nil {
-		t.Fatal("expected both legs present after commit")
-	}
-	if got.FromTransaction.TransferID.ID != got.ToTransaction.TransferID.ID {
-		t.Fatalf("legs not linked: from transfer_id=%s to transfer_id=%s",
-			got.FromTransaction.TransferID.ID, got.ToTransaction.TransferID.ID)
-	}
-	if !got.FromTransaction.Amount.Neg().Equal(got.ToTransaction.Amount) {
-		t.Fatalf("legs not equal-and-opposite: from=%s to=%s",
-			got.FromTransaction.Amount, got.ToTransaction.Amount)
-	}
-}
-
 // TestCreateWithSplits_FaultRollsBack forces the second split insert to fail
 // during a two-split CreateWithSplits and asserts the whole flow rolls back:
 // no parent row and no split rows survive. Before phase 5 the parent + first
@@ -276,86 +204,6 @@ func TestCreateWithSplits_HappyPath_RegularTransferLine(t *testing.T) {
 	}
 	if !paired.Amount.Equal(types.MustNewMoney("200.00")) {
 		t.Errorf("counterpart amount = %s, want 200.00", paired.Amount.String())
-	}
-}
-
-// TestRecreateTransferPair_HappyPath deletes a transfer then recreates both legs
-// via the composed undo method, asserting both legs land again linked by their
-// original shared transfer_id.
-func TestRecreateTransferPair_HappyPath(t *testing.T) {
-	svc, accountRepo := createTestTransactionService(t)
-	from := createTestAccount(t, accountRepo, "Checking")
-	to := createTestAccount(t, accountRepo, "Savings")
-
-	amount, _ := types.NewMoney("100.00")
-	date := types.NewDate(2020, time.January, 1)
-
-	pair, err := svc.CreateTransfer(from.ID, to.ID, date, amount, "", types.NullableID{})
-	if err != nil {
-		t.Fatalf("CreateTransfer() error = %v", err)
-	}
-	transferID := pair.FromTransaction.TransferID.ID
-
-	if err := svc.DeleteTransfer(transferID); err != nil {
-		t.Fatalf("DeleteTransfer() error = %v", err)
-	}
-
-	if err := svc.RecreateTransferPair(pair.FromTransaction, pair.ToTransaction); err != nil {
-		t.Fatalf("RecreateTransferPair() error = %v", err)
-	}
-
-	got, err := svc.GetTransferPair(transferID)
-	if err != nil {
-		t.Fatalf("GetTransferPair() error = %v", err)
-	}
-	if got.FromTransaction == nil || got.ToTransaction == nil {
-		t.Fatal("expected both legs present after recreate")
-	}
-	if got.FromTransaction.ID != pair.FromTransaction.ID || got.ToTransaction.ID != pair.ToTransaction.ID {
-		t.Error("recreated legs did not preserve their original IDs")
-	}
-}
-
-// TestRecreateTransferPair_FaultRollsBack forces the second leg's insert to fail
-// and asserts neither leg is recreated — no orphaned from-leg (the behavior the
-// old best-effort compensation delete used to approximate).
-func TestRecreateTransferPair_FaultRollsBack(t *testing.T) {
-	svc, accountRepo := createTestTransactionService(t)
-	from := createTestAccount(t, accountRepo, "Checking")
-	to := createTestAccount(t, accountRepo, "Savings")
-
-	amount, _ := types.NewMoney("100.00")
-	date := types.NewDate(2020, time.January, 1)
-
-	pair, err := svc.CreateTransfer(from.ID, to.ID, date, amount, "", types.NullableID{})
-	if err != nil {
-		t.Fatalf("CreateTransfer() error = %v", err)
-	}
-	transferID := pair.FromTransaction.TransferID.ID
-	if err := svc.DeleteTransfer(transferID); err != nil {
-		t.Fatalf("DeleteTransfer() error = %v", err)
-	}
-
-	err = svc.db.WithTx(func(tx db.Queryer) error {
-		// Exec order: from-leg insert (#1), to-leg insert (#2). Fail #2 so the
-		// from-leg must roll back with it.
-		fw := &failingQueryer{inner: tx, failOn: 2}
-		return svc.InTx(fw).RecreateTransferPair(pair.FromTransaction, pair.ToTransaction)
-	})
-	if err == nil {
-		t.Fatal("expected injected fault error, got nil")
-	}
-
-	fromTxns, err := svc.ListByAccount(from.ID)
-	if err != nil {
-		t.Fatalf("ListByAccount(from) error = %v", err)
-	}
-	toTxns, err := svc.ListByAccount(to.ID)
-	if err != nil {
-		t.Fatalf("ListByAccount(to) error = %v", err)
-	}
-	if len(fromTxns) != 0 || len(toTxns) != 0 {
-		t.Fatalf("expected no rows after rollback, got from=%d to=%d", len(fromTxns), len(toTxns))
 	}
 }
 
@@ -563,3 +411,9 @@ func TestDuplicate_HappyPathAtomic(t *testing.T) {
 		t.Fatalf("duplicate has %d splits, want 2", len(splits))
 	}
 }
+
+// The whole-transfer atomicity tests that used to live here — CreateTransfer and
+// RecreateTransferPair, happy path and fault-injected — moved with their subject.
+// internal/transfer's TestCreate_FaultRollsBackBothLegs runs the same injection
+// across ALL FOUR shapes and additionally asserts that no write escaped the
+// transaction into either ledger, which the bank-only versions could not.

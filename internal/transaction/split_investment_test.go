@@ -117,12 +117,11 @@ func createTestServiceWithAdapter(t *testing.T) (*Service, *account.Repository, 
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
-	svc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	svc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	adapter := newFakeInvCounterpart()
 	svc.SetInvestmentCounterpart(adapter)
 	return svc, accountRepo, adapter, categoryRepo

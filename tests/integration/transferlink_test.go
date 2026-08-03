@@ -19,7 +19,7 @@ type linkFixture struct {
 	accountRepo *account.Repository
 	txnRepo     *transaction.Repository
 	splitRepo   *transaction.SplitRepository
-	xferRepo    *transaction.TransferRepository
+	linker      *transfer.Service
 	svc         *transferlink.Service
 	checking    *account.Account
 	savings     *account.Account
@@ -34,7 +34,6 @@ func newLinkFixture(t *testing.T) (*linkFixture, func()) {
 	accountRepo := account.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	xferRepo := transaction.NewTransferRepository(database, txnRepo)
 
 	linker := transfer.NewService(txnRepo, investment.NewRepository(database),
 		splitRepo, accountRepo, category.NewRepository(database), database)
@@ -57,7 +56,7 @@ func newLinkFixture(t *testing.T) (*linkFixture, func()) {
 		accountRepo: accountRepo,
 		txnRepo:     txnRepo,
 		splitRepo:   splitRepo,
-		xferRepo:    xferRepo,
+		linker:      linker,
 		svc:         svc,
 		checking:    checking,
 		savings:     savings,
@@ -178,14 +177,9 @@ func TestTransferLink_SkipsAlreadyLinked(t *testing.T) {
 	out := f.addTxn(t, f.checking.ID, types.NewDate(2024, 1, 10), "-50.00")
 	in := f.addTxn(t, f.savings.ID, types.NewDate(2024, 1, 10), "50.00")
 
-	// Pre-link them.
-	transferID := types.NewID()
-	out.SetTransfer(transferID, f.savings.ID)
-	in.SetTransfer(transferID, f.checking.ID)
-	if err := f.xferRepo.Update(&transaction.TransferPair{
-		FromTransaction: out,
-		ToTransaction:   in,
-	}); err != nil {
+	// Pre-link them through the transfer owner, which is now the only thing that
+	// stamps a transfer_id and mutual transfer_account_ids.
+	if _, err := f.linker.LinkExisting(out.ID, in.ID, types.NullableID{}); err != nil {
 		t.Fatalf("pre-link: %v", err)
 	}
 

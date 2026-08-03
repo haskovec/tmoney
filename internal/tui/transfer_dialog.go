@@ -66,33 +66,15 @@ type transferDialogData struct {
 	accountIDs []types.ID // parallel to account dropdown options
 	categories []*category.Category
 
-	// Edit-mode-only fields. Zero in new mode. Exactly one of existing /
-	// existingInvestment is set in edit mode: existing for bank↔bank
-	// transfers, existingInvestment whenever at least one leg lives in an
-	// investment account (inv↔reg, reg↔inv, inv↔inv).
-	mode               transferDialogMode
-	existing           *transaction.TransferPair
-	existingInvestment *investmentTransferEdit
-}
-
-// investmentTransferEdit is the edit-mode snapshot the unified Transfer
-// dialog uses when one or both legs of the original transfer live in an
-// investment account. The dialog only needs the human-visible fields plus
-// the investment-side transaction ID that UpdateTransferCash takes as its
-// first argument.
-type investmentTransferEdit struct {
-	fromAccountID types.ID
-	toAccountID   types.ID
-	amount        types.Money // positive
-	date          types.Date
-	memo          string
-	status        transaction.Status
-	categoryID    types.NullableID // regular-side leg's category (inv↔reg); zero for inv↔inv
-	// transferID identifies the whole transfer, which is what the edit is
-	// addressed by now. investmentTxnID is retained only so the register can put
-	// the cursor back on the investment-side row.
-	transferID      types.ID
-	investmentTxnID types.ID
+	// Edit-mode-only. Zero in new mode.
+	//
+	// One payload for every shape. There used to be two — a
+	// *transaction.TransferPair for bank↔bank and an investmentTransferEdit
+	// whenever a leg lived in an investment account — because the two submit
+	// paths took different services with different argument orders. With one
+	// service there is one payload, and it is the read model itself.
+	mode     transferDialogMode
+	existing *transfer.Transfer
 }
 
 // transferDialogDataMsg is sent when transfer dialog data has been loaded.
@@ -215,21 +197,14 @@ func buildEditTransferDialog(fromName, toName string, amount types.Money, date t
 // is omitted there. Both the dialog builder and the submit handler consult
 // this so field indices agree.
 func editTransferIncludesCategory(data *transferDialogData) bool {
-	if data == nil {
+	if data == nil || data.existing == nil {
 		return false
 	}
-	switch {
-	case data.existing != nil:
-		return true
-	case data.existingInvestment != nil:
-		e := data.existingInvestment
-		fromInv := accountTypeByID(data.accounts, e.fromAccountID).IsInvestmentType()
-		toInv := accountTypeByID(data.accounts, e.toAccountID).IsInvestmentType()
-		// inv↔inv (both legs investment) has no regular-side leg to store a
-		// category; any other inv-involving shape (inv↔reg) has exactly one.
-		return !fromInv || !toInv
-	}
-	return false
+	// The domain predicate, not a re-derivation from the dialog's account list.
+	// The old version inferred both legs' types via accountTypeByID, which
+	// returns "" for an account missing from the ACTIVE-only list — so a
+	// transfer with a closed leg could get the wrong answer.
+	return data.existing.Kind.StoresCategory()
 }
 
 // categoryComboIndex resolves the combo SelectedIndex for catID against the
@@ -375,40 +350,7 @@ func (a *App) loadEditTransferFromAnyLeg(legRowID types.ID) tea.Cmd {
 			return errMsg{err: fmt.Errorf("this is a share transfer; edit it with the Transfer Shares dialog")}
 		}
 
-		// A bank↔bank transfer keeps feeding the dialog a transaction.TransferPair
-		// and an inv-involving one an investmentTransferEdit, because the submit
-		// path still branches on which is set. Phase 3 collapses both into the
-		// resolved transfer and this fork disappears.
-		if t.Kind == transfer.KindRegToReg {
-			if a.transactionSvc == nil {
-				return errMsg{err: fmt.Errorf("transaction service not available")}
-			}
-			pair, err := a.transactionSvc.GetTransferPair(t.TransferID)
-			if err != nil {
-				return errMsg{err: err}
-			}
-			data.existing = pair
-			return transferDialogDataMsg{data: data}
-		}
-
-		edit := &investmentTransferEdit{
-			fromAccountID: t.From.AccountID,
-			toAccountID:   t.To.AccountID,
-			amount:        t.Amount,
-			date:          t.Date,
-			memo:          t.Memo,
-			status:        t.Status,
-			categoryID:    t.CategoryID,
-			transferID:    t.TransferID,
-		}
-		for _, leg := range t.Legs() {
-			if leg.Ledger == transfer.LedgerInvestment {
-				edit.investmentTxnID = leg.RowID
-				break
-			}
-		}
-		data.existingInvestment = edit
-
+		data.existing = t
 		return transferDialogDataMsg{data: data}
 	}
 }
@@ -423,28 +365,18 @@ func transferAccountNames(data *transferDialogData) (fromName, toName string) {
 	if data == nil {
 		return
 	}
-	var fromID, toID types.ID
-	switch {
-	case data.existing != nil:
-		if data.existing.FromTransaction != nil {
-			fromID = data.existing.FromTransaction.AccountID
-		}
-		if data.existing.ToTransaction != nil {
-			toID = data.existing.ToTransaction.AccountID
-		}
-	case data.existingInvestment != nil:
-		fromID = data.existingInvestment.fromAccountID
-		toID = data.existingInvestment.toAccountID
-	default:
+	if data.existing == nil {
 		return
 	}
-	for _, acct := range data.accounts {
-		if acct.ID == fromID {
-			fromName = acct.Name
-		}
-		if acct.ID == toID {
-			toName = acct.Name
-		}
+	// The resolved transfer carries its own loaded accounts, so a leg in a
+	// CLOSED account still renders its real name rather than "(unknown)" —
+	// data.accounts is the active-only list, which is what the old lookup
+	// scanned.
+	if data.existing.FromAccount != nil {
+		fromName = data.existing.FromAccount.Name
+	}
+	if data.existing.ToAccount != nil {
+		toName = data.existing.ToAccount.Name
 	}
 	return
 }
@@ -722,19 +654,13 @@ func cashTransferLegForAccount(acct types.ID, res *investment.CashTransferResult
 	return types.NilID, false
 }
 
-// submitEditTransferDialog validates the edit-mode transfer dialog and
-// dispatches the appropriate Update path. Edit-mode field layout is
-// Amount(0), Date(1), Memo(2), Status(3). For bank↔bank pairs the existing
-// EditTransferCommand fires; for any pair with an investment leg the
-// investment service's UpdateTransferCash handles both same-type and
-// cross-type combinations.
+// submitEditTransferDialog validates the edit-mode transfer dialog and applies
+// the edit. Edit-mode field layout is Amount(0), Date(1), Memo(2), [Category(3)],
+// Status(3|4). One path for every shape: the transfer service addresses the edit
+// by transfer_id and rewrites both legs in place, wherever they live.
 func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
-	regularPair := a.transferDialogData.existing
-	invEdit := a.transferDialogData.existingInvestment
-	if regularPair == nil && invEdit == nil {
-		return a, nil
-	}
-	if regularPair != nil && regularPair.FromTransaction == nil {
+	existing := a.transferDialogData.existing
+	if existing == nil {
 		return a, nil
 	}
 
@@ -775,19 +701,12 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 		fields[1].Error = "Invalid date (MM/DD/YYYY)"
 		hasErrors = true
 	} else {
-		var ids []types.ID
-		switch {
-		case invEdit != nil:
-			ids = append(ids, invEdit.fromAccountID, invEdit.toAccountID)
-		case regularPair != nil:
-			if regularPair.FromTransaction != nil {
-				ids = append(ids, regularPair.FromTransaction.AccountID)
-			}
-			if regularPair.ToTransaction != nil {
-				ids = append(ids, regularPair.ToTransaction.AccountID)
-			}
-		}
-		if msg := transferOpeningDateError(a.transferDialogData.accounts, date, ids...); msg != "" {
+		// Inline opening-date feedback for both legs. The domain guards this
+		// too; this only places the message on the Date field.
+		if msg := openingDateFieldError(existing.FromAccount, date); msg != "" {
+			fields[1].Error = msg
+			hasErrors = true
+		} else if msg := openingDateFieldError(existing.ToAccount, date); msg != "" {
 			fields[1].Error = msg
 			hasErrors = true
 		}
@@ -818,15 +737,7 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 	// direction-string derivation are gone: the transfer service addresses an
 	// edit by transfer_id and edits both legs in place, so there is nothing left
 	// to dispatch on.
-	var transferID types.ID
-	switch {
-	case invEdit != nil:
-		transferID = invEdit.transferID
-	case regularPair != nil && regularPair.FromTransaction != nil:
-		transferID = regularPair.FromTransaction.TransferID.ID
-	default:
-		return a, nil
-	}
+	transferID := existing.TransferID
 
 	currentAcct := a.currentRegisterAccountID()
 	a.closeTransferDialog()

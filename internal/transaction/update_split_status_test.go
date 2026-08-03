@@ -25,11 +25,10 @@ func TestRepositoryUpdate_SplitTransactionStatusChange(t *testing.T) {
 	database := createTestDB(t)
 	txnRepo := NewRepository(database)
 	splitRepo := NewSplitRepository(database)
-	transferRepo := NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := accountpkg.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
-	txnSvc := NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	accountSvc := accountpkg.NewService(accountpkg.NewRepository(database), database)
 
 	account := accountpkg.NewAccount("Wealthfront Checking", accountpkg.TypeChecking, "USD",

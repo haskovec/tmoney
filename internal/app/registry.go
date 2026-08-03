@@ -45,7 +45,6 @@ type Services struct {
 	AccountRepo         *account.Repository
 	TransactionRepo     *transaction.Repository
 	SplitRepo           *transaction.SplitRepository
-	TransferRepo        *transaction.TransferRepository
 	CategoryRepo        *category.Repository
 	PayeeRepo           *payee.Repository
 	ScheduledTxnRepo    *scheduled.Repository
@@ -76,7 +75,6 @@ func NewServices(database *db.DB) *Services {
 
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 
 	scheduledRepo := scheduled.NewRepository(database)
 	reconciliationRepo := reconciliation.NewRepository(database)
@@ -104,7 +102,7 @@ func NewServices(database *db.DB) *Services {
 		security.WithPositionChecker(positionRepo),
 	)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database, accountRepo)
 	// Heal any schedule rows poisoned by older binaries that updated
 	// StartDate without syncing NextDate. Best-effort, mirrors the
@@ -153,7 +151,6 @@ func NewServices(database *db.DB) *Services {
 		AccountRepo:         accountRepo,
 		TransactionRepo:     txnRepo,
 		SplitRepo:           splitRepo,
-		TransferRepo:        transferRepo,
 		CategoryRepo:        categoryRepo,
 		PayeeRepo:           payeeRepo,
 		ScheduledTxnRepo:    scheduledRepo,

@@ -43,36 +43,6 @@ func TestResolveTransferPair_NonTransfer(t *testing.T) {
 	}
 }
 
-func TestResolveTransferPair_RegToReg(t *testing.T) {
-	dbPath, checking, savings := clitest.SetupTransferAccounts(t)
-	svc := clitest.OpenSvc(t, dbPath)
-
-	pair, err := svc.Transaction.CreateTransfer(checking.ID, savings.ID, types.Today(), types.MustNewMoney("75.00"), "", types.NullableID{})
-	if err != nil {
-		t.Fatalf("CreateTransfer: %v", err)
-	}
-
-	// Resolving from either leg yields the same pair.
-	for _, legID := range []types.ID{pair.FromTransaction.ID, pair.ToTransaction.ID} {
-		res, err := resolveTransferPair(svc, legID)
-		if err != nil {
-			t.Fatalf("resolveTransferPair(%s): %v", legID, err)
-		}
-		if res.kind != xfer.KindRegToReg {
-			t.Errorf("kind = %v, want KindRegToReg", res.kind)
-		}
-		if res.fromAccount.ID != checking.ID || res.toAccount.ID != savings.ID {
-			t.Errorf("from/to = %s/%s, want %s/%s", res.fromAccount.Name, res.toAccount.Name, checking.Name, savings.Name)
-		}
-		if !res.amount.Equal(types.MustNewMoney("75.00")) {
-			t.Errorf("amount = %s, want 75.00", res.amount)
-		}
-		if res.transferID != pair.FromTransaction.TransferID.ID {
-			t.Errorf("transferID mismatch")
-		}
-	}
-}
-
 func TestResolveTransferPair_RegToInv(t *testing.T) {
 	dbPath, checking, brokerage, _, _ := clitest.SetupTransferDispatchAccounts(t)
 	svc := clitest.OpenSvc(t, dbPath)

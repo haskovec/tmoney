@@ -49,17 +49,8 @@ func TestTransactionService_Create_AllowsDateOnOpeningDate(t *testing.T) {
 	}
 }
 
-func TestTransactionService_CreateTransfer_RejectsDateBeforeOpening(t *testing.T) {
-	svc, accountRepo := createTestTransactionService(t)
-	from := createTestAccount(t, accountRepo, "Checking")
-	to := createTestAccount(t, accountRepo, "Savings")
-
-	_, err := svc.CreateTransfer(from.ID, to.ID, types.NewDate(1999, time.December, 31), types.MustNewMoney("100.00"), "", types.NullableID{})
-	if err == nil {
-		t.Fatal("expected CreateTransfer to reject a date before an account's opening date")
-	}
-	var derr *account.DateBeforeOpeningError
-	if !errors.As(err, &derr) {
-		t.Fatalf("expected *account.DateBeforeOpeningError, got %T: %v", err, err)
-	}
-}
+// The whole-transfer opening-date case moved with its subject: transfer.Service
+// now guards BOTH legs against their own account's opening date, which this test
+// could not check (it only had bank↔bank). See
+// TestCreate_GuardMatrix/date_before_opening_date_either_side in
+// internal/transfer, which runs all four shapes.

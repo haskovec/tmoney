@@ -928,76 +928,101 @@ func TestCreate_FaultRollsBackBothLegs(t *testing.T) {
 }
 
 // =============================================================================
-// Differential: the new path against the one it replaces
+// Differential: retired
+// =============================================================================
+//
+// TestCreate_MatchesLegacyCreateTransfer compared this package's Create against
+// transaction.Service.CreateTransfer column by column while both wrote reg↔reg
+// pairs. That coexistence window closed when phase 5 deleted CreateTransfer, so
+// the test has served its purpose and is gone. What it was guarding — the sign
+// convention, the transfer_id and mutual transfer_account_id linkage, the memo
+// and category placement — is asserted directly by TestCreate_AllFourShapes and
+// assertTransfer.
+
+// =============================================================================
+// Category placement across both legs
 // =============================================================================
 
-// TestCreate_MatchesLegacyCreateTransfer is the differential test the design
-// calls for. Both implementations write reg↔reg pairs until phase 5, and they
-// must produce identical rows MODULO the freshly minted id, transfer_id and
-// timestamps, which can never match across two invocations.
-func TestCreate_MatchesLegacyCreateTransfer(t *testing.T) {
+// TestCreate_MirrorsCategoryToBothRegularLegs ports an assertion from the
+// deleted transaction/transfer_category_service_test.go: for a bank↔bank
+// transfer BOTH rows carry the category, not just the one the read model
+// happens to report.
+func TestCreate_MirrorsCategoryToBothRegularLegs(t *testing.T) {
 	h := newHarness(t)
 	cat := h.newCategory("Bills", category.TypeExpense)
-	catID := types.NullableID{ID: cat.ID, Valid: true}
-	amount := types.MustNewMoney("212.34")
-
-	legacyPair, err := h.txnSvc.CreateTransfer(h.checking.ID, h.savings.ID, testDate(), amount, "same memo", catID)
-	if err != nil {
-		t.Fatalf("legacy CreateTransfer: %v", err)
-	}
 
 	res, err := h.svc.Create(Spec{
 		FromAccountID: h.checking.ID,
 		ToAccountID:   h.savings.ID,
 		Date:          testDate(),
-		Amount:        amount,
-		Memo:          "same memo",
-		CategoryID:    catID,
+		Amount:        types.MustNewMoney("110.00"),
+		CategoryID:    types.NullableID{ID: cat.ID, Valid: true},
 	})
 	if err != nil {
-		t.Fatalf("transfer.Create: %v", err)
+		t.Fatalf("Create: %v", err)
 	}
 
-	newFrom, err := h.txnRepo.GetByID(res.From.RowID)
+	for label, rowID := range map[string]types.ID{"from": res.From.RowID, "to": res.To.RowID} {
+		row, err := h.txnRepo.GetByID(rowID)
+		if err != nil {
+			t.Fatalf("load %s leg: %v", label, err)
+		}
+		if !row.CategoryID.Valid || row.CategoryID.ID != cat.ID {
+			t.Errorf("%s leg category = %+v, want %s", label, row.CategoryID, cat.ID)
+		}
+	}
+}
+
+// TestUpdate_HealsDivergentLegCategories ports the other assertion from that
+// file. A pair whose two legs somehow hold DIFFERENT categories — reachable via
+// transferlink's older behaviour, or by importing each side separately — must
+// converge on one value after an edit rather than staying split.
+//
+// Under the new write path this holds by construction: planLegs puts the same
+// categoryID on every leg that can store one. The test pins it so a future
+// change cannot quietly reintroduce per-leg divergence.
+func TestUpdate_HealsDivergentLegCategories(t *testing.T) {
+	h := newHarness(t)
+	catA := h.newCategory("Bills", category.TypeExpense)
+	catB := h.newCategory("Groceries", category.TypeExpense)
+
+	res, err := h.svc.Create(Spec{
+		FromAccountID: h.checking.ID,
+		ToAccountID:   h.savings.ID,
+		Date:          testDate(),
+		Amount:        types.MustNewMoney("64.00"),
+		CategoryID:    types.NullableID{ID: catA.ID, Valid: true},
+	})
 	if err != nil {
-		t.Fatalf("load new from-leg: %v", err)
+		t.Fatalf("Create: %v", err)
 	}
-	newTo, err := h.txnRepo.GetByID(res.To.RowID)
+
+	// Force divergence behind the service's back: give the To leg catB.
+	toRow, err := h.txnRepo.GetByID(res.To.RowID)
 	if err != nil {
-		t.Fatalf("load new to-leg: %v", err)
+		t.Fatalf("load to leg: %v", err)
+	}
+	toRow.SetCategory(catB.ID)
+	if err := h.txnRepo.Update(toRow); err != nil {
+		t.Fatalf("force divergence: %v", err)
 	}
 
-	compare := func(side string, legacy, fresh *transaction.Transaction) {
-		t.Helper()
-		if legacy.AccountID != fresh.AccountID {
-			t.Errorf("%s account_id: legacy %s, new %s", side, legacy.AccountID, fresh.AccountID)
-		}
-		if !legacy.Amount.Equal(fresh.Amount) {
-			t.Errorf("%s amount: legacy %s, new %s", side, legacy.Amount, fresh.Amount)
-		}
-		if legacy.Date != fresh.Date {
-			t.Errorf("%s date: legacy %v, new %v", side, legacy.Date, fresh.Date)
-		}
-		if legacy.Status != fresh.Status {
-			t.Errorf("%s status: legacy %q, new %q", side, legacy.Status, fresh.Status)
-		}
-		if legacy.Memo != fresh.Memo {
-			t.Errorf("%s memo: legacy %+v, new %+v", side, legacy.Memo, fresh.Memo)
-		}
-		if legacy.CategoryID != fresh.CategoryID {
-			t.Errorf("%s category_id: legacy %+v, new %+v", side, legacy.CategoryID, fresh.CategoryID)
-		}
-		if legacy.TransferAccountID != fresh.TransferAccountID {
-			t.Errorf("%s transfer_account_id: legacy %+v, new %+v", side, legacy.TransferAccountID, fresh.TransferAccountID)
-		}
-		if legacy.PayeeID != fresh.PayeeID {
-			t.Errorf("%s payee_id: legacy %+v, new %+v", side, legacy.PayeeID, fresh.PayeeID)
-		}
-		if legacy.CheckNumber != fresh.CheckNumber {
-			t.Errorf("%s check_number: legacy %+v, new %+v", side, legacy.CheckNumber, fresh.CheckNumber)
-		}
+	// Any edit converges both legs onto the supplied category.
+	if _, err := h.svc.Update(res.TransferID, Edit{
+		Date:       testDate(),
+		Amount:     types.MustNewMoney("64.00"),
+		CategoryID: types.NullableID{ID: catA.ID, Valid: true},
+	}); err != nil {
+		t.Fatalf("Update: %v", err)
 	}
 
-	compare("from", legacyPair.FromTransaction, newFrom)
-	compare("to", legacyPair.ToTransaction, newTo)
+	for label, rowID := range map[string]types.ID{"from": res.From.RowID, "to": res.To.RowID} {
+		row, err := h.txnRepo.GetByID(rowID)
+		if err != nil {
+			t.Fatalf("reload %s leg: %v", label, err)
+		}
+		if !row.CategoryID.Valid || row.CategoryID.ID != catA.ID {
+			t.Errorf("%s leg category = %+v, want %s (both legs must converge)", label, row.CategoryID, catA.ID)
+		}
+	}
 }

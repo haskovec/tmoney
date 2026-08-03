@@ -16,12 +16,11 @@ func createTestReconciliationService(t *testing.T) (*Service, *transaction.Servi
 	reconRepo := NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 
 	reconSvc := NewService(reconRepo, txnRepo, accountRepo, database)
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	return reconSvc, txnSvc, accountRepo
 }
 
@@ -379,13 +378,12 @@ func TestService_FinishReconciliation_SplitTransaction(t *testing.T) {
 	reconRepo := NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
 
 	svc := NewService(reconRepo, txnRepo, accountRepo, database)
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 
 	acct := createTestCheckingAccount(t, accountRepo, "Wealthfront Checking", "1000.00")
 

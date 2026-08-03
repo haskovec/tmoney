@@ -23,7 +23,6 @@ func TestSplitCounterpart_PaycheckToIRA_CreatesInvestmentTransferCashRow(t *test
 	// Wire repos.
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
@@ -35,7 +34,7 @@ func TestSplitCounterpart_PaycheckToIRA_CreatesInvestmentTransferCashRow(t *test
 	caRepo := NewCorporateActionRepository(database)
 
 	// Build services in real wiring order.
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, nil, txnRepo, caRepo, database)
 	txnSvc.SetInvestmentCounterpart(invSvc)
 
@@ -125,7 +124,6 @@ func TestSplitCounterpart_DeleteParent_CascadesToInvestmentRow(t *testing.T) {
 
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
@@ -136,7 +134,7 @@ func TestSplitCounterpart_DeleteParent_CascadesToInvestmentRow(t *testing.T) {
 	transactionLotRepo := NewTransactionLotRepository(database)
 	caRepo := NewCorporateActionRepository(database)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, nil, txnRepo, caRepo, database)
 	txnSvc.SetInvestmentCounterpart(invSvc)
 
@@ -188,7 +186,6 @@ func TestSplitCounterpart_ScheduledPaycheckPosting_LandsInvestmentRow(t *testing
 
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
@@ -200,7 +197,7 @@ func TestSplitCounterpart_ScheduledPaycheckPosting_LandsInvestmentRow(t *testing
 	transactionLotRepo := NewTransactionLotRepository(database)
 	caRepo := NewCorporateActionRepository(database)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, nil, txnRepo, caRepo, database)
 	txnSvc.SetInvestmentCounterpart(invSvc)
 	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database, accountRepo)
@@ -279,7 +276,6 @@ func TestSplitCounterpart_FutureDatedPaycheckPosting_LandsInvestmentRows(t *test
 
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
@@ -291,7 +287,7 @@ func TestSplitCounterpart_FutureDatedPaycheckPosting_LandsInvestmentRows(t *test
 	transactionLotRepo := NewTransactionLotRepository(database)
 	caRepo := NewCorporateActionRepository(database)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, nil, txnRepo, caRepo, database)
 	txnSvc.SetInvestmentCounterpart(invSvc)
 	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database, accountRepo)
@@ -384,7 +380,6 @@ func TestSplitCounterpart_VoidParent_CascadesToInvestmentRow(t *testing.T) {
 
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
@@ -395,7 +390,7 @@ func TestSplitCounterpart_VoidParent_CascadesToInvestmentRow(t *testing.T) {
 	transactionLotRepo := NewTransactionLotRepository(database)
 	caRepo := NewCorporateActionRepository(database)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, nil, txnRepo, caRepo, database)
 	txnSvc.SetInvestmentCounterpart(invSvc)
 
@@ -454,7 +449,6 @@ func TestSplitCounterpart_UpdateSplitAmount_PropagatesToInvestmentRow(t *testing
 
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 	payeeRepo := payee.NewRepository(database)
 	accountRepo := account.NewRepository(database)
 	categoryRepo := category.NewRepository(database)
@@ -465,7 +459,7 @@ func TestSplitCounterpart_UpdateSplitAmount_PropagatesToInvestmentRow(t *testing
 	transactionLotRepo := NewTransactionLotRepository(database)
 	caRepo := NewCorporateActionRepository(database)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	invSvc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, nil, txnRepo, caRepo, database)
 	txnSvc.SetInvestmentCounterpart(invSvc)
 

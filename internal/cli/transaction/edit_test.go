@@ -13,6 +13,7 @@ import (
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
 	transactiondom "github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -372,9 +373,9 @@ func TestTransactionEdit_Help(t *testing.T) {
 	}
 }
 
-// transferLegFixture creates a database with two checking accounts and a
-// linked transfer between them, returning the db path and the ID of the
-// from-side leg.
+// transferLegFixture creates a database with a bank↔bank transfer and returns
+// the db path plus one leg's transaction ID, for tests that assert the plain
+// transaction verbs refuse a transfer leg.
 func transferLegFixture(t *testing.T) (string, types.ID) {
 	t.Helper()
 	database, dbPath := dbtest.NewFile(t, "test.tdb")
@@ -390,12 +391,16 @@ func transferLegFixture(t *testing.T) (string, types.ID) {
 	}
 
 	svc := app.NewServices(database)
-	pair, err := svc.Transaction.CreateTransfer(from.ID, to.ID, types.Today(),
-		types.MustNewMoney("100.00"), "", types.NullableID{})
+	res, err := svc.Transfer.Create(transfer.Spec{
+		FromAccountID: from.ID,
+		ToAccountID:   to.ID,
+		Date:          types.Today(),
+		Amount:        types.MustNewMoney("100.00"),
+	})
 	if err != nil {
 		t.Fatalf("failed to create transfer: %v", err)
 	}
-	return dbPath, pair.FromTransaction.ID
+	return dbPath, res.From.RowID
 }
 
 // splitParentFixture creates a database with a checking account and a

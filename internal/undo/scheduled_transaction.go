@@ -3,6 +3,7 @@ package undo
 import (
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -221,15 +222,25 @@ func (c *PostScheduledTransactionCommand) CreatedTransaction() *transaction.Tran
 // pair (deleting either leg cascades to its counterpart) and restores the
 // schedule to its previous state.
 type PostScheduledTransferCommand struct {
-	svc        *scheduled.Service
-	txnSvc     *transaction.Service
-	id         types.ID
-	date       types.Date
-	amount     types.Money
-	memo       string
-	cleared    bool
-	category   types.NullableID
-	beforeST   *scheduled.Transaction
+	svc *scheduled.Service
+	// transferSvc owns the posted transfer. Both the preview-override apply and
+	// the undo delete address it by transfer_id, so this works whichever ledgers
+	// the occurrence's legs landed in — including an inv↔inv occurrence, which
+	// has no regular-table row to address at all.
+	transferSvc *transfer.Service
+	id          types.ID
+	date        types.Date
+	amount      types.Money
+	memo        string
+	cleared     bool
+	category    types.NullableID
+	beforeST    *scheduled.Transaction
+	// postedTransferID is the transfer created by Execute, captured for Undo.
+	// Undo addresses the transfer, not a leg, so it works for every shape.
+	postedTransferID types.ID
+	// createdTxn is the posted regular-ledger leg, exposed for the register's
+	// cursor restore. It is nil for an inv↔inv occurrence, which has no
+	// regular-table row.
 	createdTxn *transaction.Transaction
 }
 
@@ -239,7 +250,7 @@ type PostScheduledTransferCommand struct {
 // categoryID leaves the posted transfer uncategorized).
 func NewPostScheduledTransferCommand(
 	svc *scheduled.Service,
-	txnSvc *transaction.Service,
+	transferSvc *transfer.Service,
 	id types.ID,
 	date types.Date,
 	amount types.Money,
@@ -248,14 +259,14 @@ func NewPostScheduledTransferCommand(
 	category types.NullableID,
 ) *PostScheduledTransferCommand {
 	return &PostScheduledTransferCommand{
-		svc:      svc,
-		txnSvc:   txnSvc,
-		id:       id,
-		date:     date,
-		amount:   amount,
-		memo:     memo,
-		cleared:  cleared,
-		category: category,
+		svc:         svc,
+		transferSvc: transferSvc,
+		id:          id,
+		date:        date,
+		amount:      amount,
+		memo:        memo,
+		cleared:     cleared,
+		category:    category,
 	}
 }
 
@@ -271,26 +282,44 @@ func (c *PostScheduledTransferCommand) Execute() error {
 	if err != nil {
 		return err
 	}
+	// txn is the regular-ledger leg, and is nil for an inv↔inv occurrence whose
+	// two legs both live in investment_transactions.
 	c.createdTxn = txn
+	if txn == nil || !txn.TransferID.Valid {
+		return nil
+	}
+	c.postedTransferID = txn.TransferID.ID
 
-	// Apply the preview's edited memo + status to both legs. PostWithDate
-	// posts using the template memo and uncleared status; this overwrites
-	// them with the user's one-off edits.
+	// Apply the preview's edited memo + status to both legs. PostWithDate posts
+	// using the template memo and uncleared status; this overwrites them with the
+	// user's one-off edits.
+	//
+	// This is still a SECOND write after the posting transaction committed: if it
+	// fails, the pair exists with template values and the schedule has already
+	// advanced. Closing that needs the overrides threaded into PostWithDate so
+	// one tx covers both — a pre-existing scheduled defect, tracked as design
+	// section 13 open question 1, deliberately not folded in here.
 	status := transaction.StatusUncleared
 	if c.cleared {
 		status = transaction.StatusCleared
 	}
-	if txn.TransferID.Valid {
-		if err := c.txnSvc.UpdateTransfer(txn.TransferID.ID, c.date, c.amount, c.memo, status, c.category); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err = c.transferSvc.Update(c.postedTransferID, transfer.Edit{
+		Date:       c.date,
+		Amount:     c.amount,
+		Memo:       c.memo,
+		CategoryID: c.category,
+		Status:     status,
+	})
+	return err
 }
 
 func (c *PostScheduledTransferCommand) Undo() error {
-	if c.createdTxn != nil {
-		if err := c.txnSvc.Delete(c.createdTxn.ID); err != nil {
+	// Deleting by transfer_id removes BOTH legs wherever they live. Deleting the
+	// regular leg through transaction.Service (what this did before) is now
+	// refused outright, and would have left the counterpart behind even when it
+	// worked.
+	if !c.postedTransferID.IsNil() {
+		if _, err := c.transferSvc.Delete(c.postedTransferID); err != nil {
 			return err
 		}
 	}
@@ -304,7 +333,8 @@ func (c *PostScheduledTransferCommand) Description() string {
 	return "Post scheduled transfer"
 }
 
-// CreatedTransaction returns the From-leg transaction created by Execute.
+// CreatedTransaction returns the posted regular-ledger leg, or nil — either
+// before Execute, or for an inv↔inv occurrence that has no regular-table row.
 func (c *PostScheduledTransferCommand) CreatedTransaction() *transaction.Transaction {
 	return c.createdTxn
 }

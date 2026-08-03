@@ -710,9 +710,8 @@ func TestPaycheckWizard_Save_CreatesMultiLineSchedule(t *testing.T) {
 	schedRepo := scheduled.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
 	splitTxnRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 
-	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, payeeRepo, accountRepo, database)
 	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database, accountRepo)
 	// Transfer occurrences post through the transfer owner; production wires
 	// this in app.NewServices (see scheduled/transfer_port.go).

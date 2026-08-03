@@ -91,40 +91,11 @@ func TestTransactionService_MutationsRejectedOnClosedAccount(t *testing.T) {
 	})
 }
 
-func TestTransactionService_Transfer_RejectedWhenEitherLegClosed(t *testing.T) {
-	svc, accountRepo := createTestTransactionService(t)
-	open := createTestAccount(t, accountRepo, "Checking")
-	closed := createTestAccount(t, accountRepo, "Savings")
-	closeTestAccount(t, accountRepo, closed)
-
-	date := types.NewDate(2000, time.March, 1)
-
-	t.Run("CreateTransfer to closed leg", func(t *testing.T) {
-		_, err := svc.CreateTransfer(open.ID, closed.ID, date, types.MustNewMoney("100.00"), "", types.NullableID{})
-		assertAccountClosed(t, err)
-	})
-	t.Run("CreateTransfer from closed leg", func(t *testing.T) {
-		_, err := svc.CreateTransfer(closed.ID, open.ID, date, types.MustNewMoney("100.00"), "", types.NullableID{})
-		assertAccountClosed(t, err)
-	})
-
-	// Build a real transfer between two open accounts, then close one leg and
-	// confirm edit/delete of the existing transfer is refused.
-	other := createTestAccount(t, accountRepo, "Savings2")
-	pair, err := svc.CreateTransfer(open.ID, other.ID, date, types.MustNewMoney("100.00"), "", types.NullableID{})
-	if err != nil {
-		t.Fatalf("CreateTransfer (open) error = %v", err)
-	}
-	closeTestAccount(t, accountRepo, other)
-
-	transferID := pair.FromTransaction.TransferID.ID
-	t.Run("UpdateTransferAmount with closed leg", func(t *testing.T) {
-		assertAccountClosed(t, svc.UpdateTransferAmount(transferID, types.MustNewMoney("120.00")))
-	})
-	t.Run("DeleteTransfer with closed leg", func(t *testing.T) {
-		assertAccountClosed(t, svc.DeleteTransfer(transferID))
-	})
-}
+// The whole-transfer closed-account cases that used to live here moved with
+// their subject. transfer.Service owns the guard now and applies it uniformly to
+// BOTH legs of every shape, which the old tests could not check — they only had
+// bank↔bank. See TestCreate_GuardMatrix/closed_account_either_side in
+// internal/transfer, which runs all four shapes × both sides.
 
 func TestTransactionService_Create_AllowsOpenAccountWhenAnotherClosed(t *testing.T) {
 	svc, accountRepo := createTestTransactionService(t)

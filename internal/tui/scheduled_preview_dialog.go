@@ -362,7 +362,7 @@ func (a *App) submitSchedulePreviewTransfer(template *scheduled.Transaction, hea
 		}
 		cmd := undo.NewPostScheduledTransferCommand(
 			a.scheduledTxnSvc,
-			a.transactionSvc,
+			a.transferSvc,
 			templateID,
 			date,
 			magnitude,

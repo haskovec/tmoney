@@ -1,12 +1,9 @@
 package transaction
 
 import (
-	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/haskovec/tmoney/internal/account"
-	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/payee"
@@ -68,7 +65,6 @@ type InvestmentCashCounterpartAdapter interface {
 type Service struct {
 	txnRepo               *Repository
 	splitRepo             *SplitRepository
-	transferRepo          *TransferRepository
 	payeeRepo             *payee.Repository
 	accountRepo           *account.Repository
 	investmentCounterpart InvestmentCashCounterpartAdapter
@@ -80,18 +76,16 @@ type Service struct {
 func NewService(
 	txnRepo *Repository,
 	splitRepo *SplitRepository,
-	transferRepo *TransferRepository,
 	payeeRepo *payee.Repository,
 	accountRepo *account.Repository,
 	database *db.DB,
 ) *Service {
 	return &Service{
-		txnRepo:      txnRepo,
-		splitRepo:    splitRepo,
-		transferRepo: transferRepo,
-		payeeRepo:    payeeRepo,
-		accountRepo:  accountRepo,
-		db:           database,
+		txnRepo:     txnRepo,
+		splitRepo:   splitRepo,
+		payeeRepo:   payeeRepo,
+		accountRepo: accountRepo,
+		db:          database,
 	}
 }
 
@@ -114,7 +108,6 @@ func (s *Service) InTx(tx db.Queryer) *Service {
 	c.tx = tx
 	c.txnRepo = s.txnRepo.WithTx(tx)
 	c.splitRepo = s.splitRepo.WithTx(tx)
-	c.transferRepo = s.transferRepo.WithTx(tx)
 	if s.payeeRepo != nil {
 		c.payeeRepo = s.payeeRepo.WithTx(tx)
 	}
@@ -211,9 +204,23 @@ func (s *Service) Update(transaction *Transaction) error {
 		return &IsReconciledError{ID: transaction.ID.String()}
 	}
 
-	// Check if this is a transfer - caller should use UpdateTransfer
-	if existing.IsTransfer() && !transaction.IsTransfer() {
-		return &IsTransferError{ID: transaction.ID.String()}
+	// A whole-transaction transfer leg is not editable through here: this method
+	// writes ONE row, and a transfer's counterpart may live in
+	// investment_transactions. transfer.Service owns the pair — including
+	// status-only changes, which go through transfer.SetLegStatus (that is what
+	// the register's cleared toggle uses).
+	//
+	// The probe distinguishes the two kinds of transfer-linked row: a split
+	// line's counterpart is owned by the split lifecycle and still edits here,
+	// via the reverse cascade below.
+	if existing.IsTransfer() && existing.TransferID.Valid {
+		parentSplit, err := s.splitRepo.GetByTransferID(existing.TransferID.ID)
+		if err != nil {
+			return err
+		}
+		if parentSplit == nil {
+			return &IsTransferError{ID: transaction.ID.String()}
+		}
 	}
 
 	// A closed account is frozen — block edits (incl. the cleared toggle,
@@ -288,14 +295,13 @@ func (s *Service) Delete(id types.ID) error {
 		return err
 	}
 
-	// If this is a transfer, check both sides and delete
+	// A transfer-linked row is one of two things, and only one of them belongs
+	// to this service.
 	if txn.IsTransfer() {
-		// Reverse cascade: if this transaction is the paired side of a
-		// multi-line split (its transfer_id matches a split-item's
-		// transfer_id), remove the parent's transfer-line split-item and
-		// then delete the paired transaction. Skip the legacy two-side
-		// transfer path, which assumes both legs live on the transactions
-		// table.
+		// (a) The counterpart of a transfer LINE inside a multi-line split
+		// (e.g. a paycheck's 401k contribution line). The split lifecycle owns
+		// those, so the reverse cascade stays here: remove the parent's
+		// transfer-line split-item, then the paired row.
 		parentSplit, err := s.splitRepo.GetByTransferID(txn.TransferID.ID)
 		if err != nil {
 			return err
@@ -306,23 +312,12 @@ func (s *Service) Delete(id types.ID) error {
 			})
 		}
 
-		pair, err := s.transferRepo.GetByTransferID(txn.TransferID.ID)
-		if err != nil {
-			return err
-		}
-		if pair.FromTransaction.IsReconciled() {
-			return &IsReconciledError{ID: pair.FromTransaction.ID.String()}
-		}
-		if pair.ToTransaction.IsReconciled() {
-			return &IsReconciledError{ID: pair.ToTransaction.ID.String()}
-		}
-		// Block the delete if either leg lives on a closed account.
-		if err := s.ensureAccountOpen(pair.ToTransaction.AccountID); err != nil {
-			return err
-		}
-		return s.runInTx(func(b *Service) error {
-			return b.transferRepo.Delete(txn.TransferID.ID)
-		})
+		// (b) A leg of a whole-transaction transfer, owned by
+		// transfer.Service. Deleting one leg here would leave the counterpart
+		// orphaned whenever it lives in investment_transactions — which the old
+		// two-leg branch could not even see, since it read the pair through a
+		// repository that assumed both legs were on `transactions`.
+		return &IsTransferError{ID: id.String()}
 	}
 
 	// Cascade to paired counter-transactions of any transfer-typed split-
@@ -1230,258 +1225,6 @@ func (s *Service) rejectInvestmentAccount(accountID types.ID) error {
 	return nil
 }
 
-// CreateTransfer creates a linked transfer between two accounts.
-// This creates two transactions: one debit in the from account, one credit in the to account.
-//
-// memo and categoryID are optional labels stamped on both legs at construction.
-// A transfer is never required to carry a category; an assigned one must exist
-// and be non-system (Transfer / Value Adjustment are rejected). The category is
-// mirrored onto both legs so either side reads the same value.
-//
-// Investment-type accounts are rejected on either leg: linked cash transfers
-// involving an investment account must go through investment.Service so the
-// investment-side row is created as an investment.Transaction.
-func (s *Service) CreateTransfer(fromAccountID, toAccountID types.ID, date types.Date, amount types.Money, memo string, categoryID types.NullableID) (*TransferPair, error) {
-	// Validate amount is positive
-	if !amount.IsPositive() {
-		return nil, &InvalidTransferAmountError{Amount: amount}
-	}
-
-	if err := s.rejectInvestmentAccount(fromAccountID); err != nil {
-		return nil, err
-	}
-	if err := s.rejectInvestmentAccount(toAccountID); err != nil {
-		return nil, err
-	}
-
-	if err := s.guardTransferDate(fromAccountID, toAccountID, date); err != nil {
-		return nil, err
-	}
-
-	if err := s.validateTransferCategory(categoryID); err != nil {
-		return nil, err
-	}
-
-	// Create the transfer pair, stamping the optional memo and category onto
-	// both legs before validation/persistence.
-	pair := NewTransferPair(fromAccountID, toAccountID, date, amount)
-	if memo != "" {
-		pair.FromTransaction.SetMemo(memo)
-		pair.ToTransaction.SetMemo(memo)
-	}
-	if categoryID.Valid {
-		pair.FromTransaction.SetCategory(categoryID.ID)
-		pair.ToTransaction.SetCategory(categoryID.ID)
-	}
-
-	// Validate the pair
-	if errors := pair.Validate(); errors.HasErrors() {
-		return nil, &types.ServiceValidationError{Errors: errors}
-	}
-
-	// Create both transactions atomically — either both legs land or neither.
-	if err := s.runInTx(func(b *Service) error {
-		return b.transferRepo.Create(pair)
-	}); err != nil {
-		return nil, err
-	}
-
-	return pair, nil
-}
-
-// RecreateTransferPair recreates both legs of a previously deleted transfer as
-// one atomic unit. It is the composed method the void/delete undo path uses:
-// the two legs carry their original IDs, transfer_id, status, and dates (Create
-// persists the passed struct's ID verbatim), so restoration is exact. Both
-// inserts join one transaction — a failure on the second leg rolls the first
-// back, so undo can never leave a lone orphan leg (the old best-effort
-// compensation delete is deleted).
-func (s *Service) RecreateTransferPair(from, to *Transaction) error {
-	return s.runInTx(func(b *Service) error {
-		if err := b.Create(from); err != nil {
-			return err
-		}
-		return b.Create(to)
-	})
-}
-
-// GetTransferPair retrieves both sides of a transfer by the transfer ID.
-func (s *Service) GetTransferPair(transferID types.ID) (*TransferPair, error) {
-	return s.transferRepo.GetByTransferID(transferID)
-}
-
-// GetTransferCounterpart retrieves the other transaction in a transfer pair.
-func (s *Service) GetTransferCounterpart(transactionID types.ID) (*Transaction, error) {
-	return s.transferRepo.GetOtherSide(transactionID)
-}
-
-// ListByTransferID returns every regular-side transaction sharing the given
-// transfer_id. For a bank↔bank transfer that is both legs; for an inv↔reg
-// transfer only the single regular leg lives in the transactions table (the
-// investment leg is in investment_transactions), which is exactly the leg
-// that can carry a transfer category. The TUI uses this to seed the Edit
-// Transfer dialog's category when an inv↔reg transfer is opened from the
-// investment register (where the on-screen row has no category of its own).
-func (s *Service) ListByTransferID(transferID types.ID) ([]*Transaction, error) {
-	return s.txnRepo.ListByTransferID(transferID)
-}
-
-// UpdateTransfer updates both sides of a transfer.
-// Only amount, date, memo, status, and category can be updated.
-// Reconciled transfers cannot be edited.
-//
-// categoryID is mirrored onto both legs; an invalid (unset) categoryID clears
-// the category on both legs. An assigned category must exist and be non-system.
-// This is also the healing path for legacy divergent pairs (pre-feature
-// transfer link output): both legs are rewritten to the single supplied value.
-//
-// Investment-type accounts are rejected on either leg: linked cash transfers
-// involving an investment account must go through investment.Service so the
-// investment-side row is updated as an investment.Transaction.
-func (s *Service) UpdateTransfer(transferID types.ID, date types.Date, amount types.Money, memo string, status Status, categoryID types.NullableID) error {
-	pair, err := s.transferRepo.GetByTransferID(transferID)
-	if err != nil {
-		return err
-	}
-
-	if err := s.rejectInvestmentAccount(pair.FromTransaction.AccountID); err != nil {
-		return err
-	}
-	if err := s.rejectInvestmentAccount(pair.ToTransaction.AccountID); err != nil {
-		return err
-	}
-
-	if err := s.guardTransferDate(pair.FromTransaction.AccountID, pair.ToTransaction.AccountID, date); err != nil {
-		return err
-	}
-
-	if err := s.validateTransferCategory(categoryID); err != nil {
-		return err
-	}
-
-	// Prevent editing reconciled transfers
-	if pair.FromTransaction.IsReconciled() {
-		return &IsReconciledError{ID: pair.FromTransaction.ID.String()}
-	}
-	if pair.ToTransaction.IsReconciled() {
-		return &IsReconciledError{ID: pair.ToTransaction.ID.String()}
-	}
-
-	// Prevent editing void transfers
-	if pair.FromTransaction.IsVoid() {
-		return &IsVoidError{ID: pair.FromTransaction.ID.String()}
-	}
-	if pair.ToTransaction.IsVoid() {
-		return &IsVoidError{ID: pair.ToTransaction.ID.String()}
-	}
-
-	// Update common fields on both sides
-	pair.FromTransaction.Date = date
-	pair.ToTransaction.Date = date
-
-	pair.FromTransaction.Amount = amount.Neg()
-	pair.ToTransaction.Amount = amount.Abs()
-
-	pair.FromTransaction.SetMemo(memo)
-	pair.ToTransaction.SetMemo(memo)
-
-	pair.FromTransaction.SetStatus(status)
-	pair.ToTransaction.SetStatus(status)
-
-	// Mirror the category onto both legs; an invalid categoryID clears both.
-	if categoryID.Valid {
-		pair.FromTransaction.SetCategory(categoryID.ID)
-		pair.ToTransaction.SetCategory(categoryID.ID)
-	} else {
-		pair.FromTransaction.ClearCategory()
-		pair.ToTransaction.ClearCategory()
-	}
-
-	return s.runInTx(func(b *Service) error {
-		return b.transferRepo.Update(pair)
-	})
-}
-
-// validateTransferCategory checks that a category assigned to a transfer exists
-// and is non-system. An invalid (unset) categoryID is a no-op — a transfer is
-// never required to carry a category. It follows the split repository's
-// verifyReferences pattern (a raw lookup against the categories table via the
-// service's db handle) rather than taking a category-service dependency, and
-// delegates the non-system rule to the shared ValidateTransferCategory guard so
-// there is a single source of truth for it.
-func (s *Service) validateTransferCategory(categoryID types.NullableID) error {
-	if !categoryID.Valid {
-		return nil
-	}
-	var name string
-	var isSystem bool
-	err := s.q().QueryRow(
-		`SELECT name, system_category FROM categories WHERE CAST(id AS VARCHAR) = ?`,
-		categoryID.ID.String(),
-	).Scan(&name, &isSystem)
-	if errors.Is(err, sql.ErrNoRows) {
-		return &dberrors.NotFoundError{Entity: "category", ID: categoryID.ID.String()}
-	}
-	if err != nil {
-		return fmt.Errorf("failed to check transfer category: %w", err)
-	}
-	return ValidateTransferCategory(&category.Category{Name: name, IsSystem: isSystem})
-}
-
-// UpdateTransferAmount updates the amount on both sides of a transfer.
-// Reconciled transfers cannot be edited.
-func (s *Service) UpdateTransferAmount(transferID types.ID, newAmount types.Money) error {
-	if !newAmount.IsPositive() {
-		return &InvalidTransferAmountError{Amount: newAmount}
-	}
-
-	if err := s.checkTransferEditable(transferID); err != nil {
-		return err
-	}
-
-	return s.runInTx(func(b *Service) error {
-		return b.transferRepo.UpdateAmount(transferID, newAmount)
-	})
-}
-
-// UpdateTransferDate updates the date on both sides of a transfer.
-// Reconciled transfers cannot be edited.
-func (s *Service) UpdateTransferDate(transferID types.ID, newDate types.Date) error {
-	if err := s.checkTransferEditable(transferID); err != nil {
-		return err
-	}
-
-	pair, err := s.transferRepo.GetByTransferID(transferID)
-	if err != nil {
-		return err
-	}
-	if err := s.guardTransferDate(pair.FromTransaction.AccountID, pair.ToTransaction.AccountID, newDate); err != nil {
-		return err
-	}
-
-	return s.runInTx(func(b *Service) error {
-		return b.transferRepo.UpdateDate(transferID, newDate)
-	})
-}
-
-// guardTransferDate rejects a transfer whose date precedes the opening date of
-// either account it touches, or whose either leg is a closed account.
-func (s *Service) guardTransferDate(fromAccountID, toAccountID types.ID, date types.Date) error {
-	for _, id := range []types.ID{fromAccountID, toAccountID} {
-		acct, err := s.accountRepo.GetByID(id)
-		if err != nil {
-			return fmt.Errorf("failed to load account for date validation: %w", err)
-		}
-		if acct.IsClosed() {
-			return &account.AccountClosedError{ID: id.String()}
-		}
-		if err := acct.ValidateTransactionDate(date); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // ensureAccountOpen returns an AccountClosedError when the account is closed.
 // A closed account is frozen: no new transactions, edits, deletes, or status
 // toggles. It is nil-tolerant for test fixtures constructed without an
@@ -1499,62 +1242,6 @@ func (s *Service) ensureAccountOpen(id types.ID) error {
 		return &account.AccountClosedError{ID: id.String()}
 	}
 	return nil
-}
-
-// UpdateTransferStatus updates the status on both sides of a transfer.
-func (s *Service) UpdateTransferStatus(transferID types.ID, status Status) error {
-	return s.runInTx(func(b *Service) error {
-		return b.transferRepo.UpdateStatus(transferID, status)
-	})
-}
-
-// DeleteTransfer removes both sides of a transfer.
-// Reconciled transfers cannot be deleted.
-func (s *Service) DeleteTransfer(transferID types.ID) error {
-	if err := s.checkTransferEditable(transferID); err != nil {
-		return err
-	}
-
-	return s.runInTx(func(b *Service) error {
-		return b.transferRepo.Delete(transferID)
-	})
-}
-
-// checkTransferEditable checks if a transfer can be edited/deleted.
-// Returns an error if either side is reconciled or void.
-func (s *Service) checkTransferEditable(transferID types.ID) error {
-	pair, err := s.transferRepo.GetByTransferID(transferID)
-	if err != nil {
-		return err
-	}
-
-	if pair.FromTransaction.IsReconciled() {
-		return &IsReconciledError{ID: pair.FromTransaction.ID.String()}
-	}
-	if pair.ToTransaction.IsReconciled() {
-		return &IsReconciledError{ID: pair.ToTransaction.ID.String()}
-	}
-	if pair.FromTransaction.IsVoid() {
-		return &IsVoidError{ID: pair.FromTransaction.ID.String()}
-	}
-	if pair.ToTransaction.IsVoid() {
-		return &IsVoidError{ID: pair.ToTransaction.ID.String()}
-	}
-
-	// A transfer is frozen if either leg lives on a closed account.
-	if err := s.ensureAccountOpen(pair.FromTransaction.AccountID); err != nil {
-		return err
-	}
-	if err := s.ensureAccountOpen(pair.ToTransaction.AccountID); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// IsTransfer checks if a transaction is part of a transfer.
-func (s *Service) IsTransfer(transactionID types.ID) (bool, error) {
-	return s.transferRepo.IsTransfer(transactionID)
 }
 
 // =============================================================================
@@ -1681,9 +1368,18 @@ func (s *Service) VoidTransaction(id types.ID) error {
 		return err
 	}
 
-	// If this is a transfer, void both sides
+	// A whole-transaction transfer is voided through transfer.Service, which
+	// zeroes both legs wherever they live and refuses by name when a leg is on
+	// the investment ledger (which has no void status). A split-line counterpart
+	// falls through to the cascade below, as before.
 	if txn.IsTransfer() {
-		return s.voidTransfer(txn.TransferID.ID)
+		parentSplit, err := s.splitRepo.GetByTransferID(txn.TransferID.ID)
+		if err != nil {
+			return err
+		}
+		if parentSplit == nil {
+			return &IsTransferError{ID: id.String()}
+		}
 	}
 
 	// Void the transaction
@@ -1702,43 +1398,6 @@ func (s *Service) VoidTransaction(id types.ID) error {
 			return fmt.Errorf("failed to delete splits for void: %w", err)
 		}
 		return b.txnRepo.Update(txn)
-	})
-}
-
-// voidTransfer voids both sides of a transfer atomically.
-func (s *Service) voidTransfer(transferID types.ID) error {
-	pair, err := s.transferRepo.GetByTransferID(transferID)
-	if err != nil {
-		return err
-	}
-
-	// Check if either side is reconciled
-	if pair.FromTransaction.IsReconciled() {
-		return &IsReconciledError{ID: pair.FromTransaction.ID.String()}
-	}
-	if pair.ToTransaction.IsReconciled() {
-		return &IsReconciledError{ID: pair.ToTransaction.ID.String()}
-	}
-
-	// Block the void if either leg lives on a closed account.
-	if err := s.ensureAccountOpen(pair.FromTransaction.AccountID); err != nil {
-		return err
-	}
-	if err := s.ensureAccountOpen(pair.ToTransaction.AccountID); err != nil {
-		return err
-	}
-
-	// Void both sides
-	pair.FromTransaction.Amount = types.ZeroMoney
-	pair.FromTransaction.SetMemo("**VOID**")
-	pair.FromTransaction.Void()
-
-	pair.ToTransaction.Amount = types.ZeroMoney
-	pair.ToTransaction.SetMemo("**VOID**")
-	pair.ToTransaction.Void()
-
-	return s.runInTx(func(b *Service) error {
-		return b.transferRepo.Update(pair)
 	})
 }
 
@@ -1785,34 +1444,6 @@ func (s *Service) RestoreVoidedTransactionWithSplits(id types.ID, amount types.M
 	})
 }
 
-// RestoreVoidedTransfer restores both sides of a voided transfer to their original state.
-// This is used by the undo system to reverse a void transfer operation.
-func (s *Service) RestoreVoidedTransfer(transferID types.ID, fromAmount types.Money, fromMemo types.NullableString, fromStatus Status, toAmount types.Money, toMemo types.NullableString, toStatus Status) error {
-	pair, err := s.transferRepo.GetByTransferID(transferID)
-	if err != nil {
-		return err
-	}
-
-	if !pair.FromTransaction.IsVoid() {
-		return fmt.Errorf("transfer from-side %s is not void; cannot restore", pair.FromTransaction.ID.String())
-	}
-	if !pair.ToTransaction.IsVoid() {
-		return fmt.Errorf("transfer to-side %s is not void; cannot restore", pair.ToTransaction.ID.String())
-	}
-
-	pair.FromTransaction.Amount = fromAmount
-	pair.FromTransaction.Memo = fromMemo
-	pair.FromTransaction.SetStatus(fromStatus)
-
-	pair.ToTransaction.Amount = toAmount
-	pair.ToTransaction.Memo = toMemo
-	pair.ToTransaction.SetStatus(toStatus)
-
-	return s.runInTx(func(b *Service) error {
-		return b.transferRepo.Update(pair)
-	})
-}
-
 // =============================================================================
 // Balance Impact Operations
 // =============================================================================
@@ -1823,40 +1454,6 @@ type BalanceImpact struct {
 	Amount         types.Money
 	IsTransferFrom bool
 	IsTransferTo   bool
-}
-
-// GetBalanceImpact calculates the balance impact of a transaction.
-// For transfers, returns impacts for both accounts.
-func (s *Service) GetBalanceImpact(transactionID types.ID) ([]BalanceImpact, error) {
-	txn, err := s.txnRepo.GetByID(transactionID)
-	if err != nil {
-		return nil, err
-	}
-
-	impacts := []BalanceImpact{
-		{
-			AccountID:      txn.AccountID,
-			Amount:         txn.Amount,
-			IsTransferFrom: txn.IsTransfer() && txn.Amount.IsNegative(),
-			IsTransferTo:   txn.IsTransfer() && txn.Amount.IsPositive(),
-		},
-	}
-
-	// For transfers, include the other side
-	if txn.IsTransfer() {
-		other, err := s.transferRepo.GetOtherSide(transactionID)
-		if err != nil {
-			return nil, err
-		}
-		impacts = append(impacts, BalanceImpact{
-			AccountID:      other.AccountID,
-			Amount:         other.Amount,
-			IsTransferFrom: other.Amount.IsNegative(),
-			IsTransferTo:   other.Amount.IsPositive(),
-		})
-	}
-
-	return impacts, nil
 }
 
 // =============================================================================

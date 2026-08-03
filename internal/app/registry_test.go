@@ -60,8 +60,11 @@ func TestNewServices(t *testing.T) {
 		if svc.SplitRepo == nil {
 			t.Error("SplitRepo should not be nil")
 		}
-		if svc.TransferRepo == nil {
-			t.Error("TransferRepo should not be nil")
+		if svc.Transfer == nil {
+			t.Error("Transfer service should not be nil")
+		}
+		if svc.Transfer == nil {
+			t.Error("Transfer service should not be nil")
 		}
 		if svc.CategoryRepo == nil {
 			t.Error("CategoryRepo should not be nil")

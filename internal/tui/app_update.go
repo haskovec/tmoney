@@ -7,7 +7,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -463,33 +462,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.data.mode == transferDialogModeEdit {
 			fromName, toName := transferAccountNames(msg.data)
 			includeCategory := editTransferIncludesCategory(msg.data)
-			switch {
-			case msg.data.existingInvestment != nil:
-				e := msg.data.existingInvestment
-				catIdx := categoryComboIndex(categoryIDs, e.categoryID)
-				a.transferDialog = buildEditTransferDialog(fromName, toName, e.amount, e.date, e.memo, e.status, includeCategory, categoryOptions, catIdx)
-			case msg.data.existing != nil:
-				pair := msg.data.existing
-				amount := types.MustNewMoney("0")
-				if pair.ToTransaction != nil {
-					amount = pair.ToTransaction.Amount
-				}
-				date := types.Today()
-				memo := ""
-				status := transaction.StatusUncleared
-				var seedCat types.NullableID
-				if pair.FromTransaction != nil {
-					date = pair.FromTransaction.Date
-					if pair.FromTransaction.Memo.Valid {
-						memo = pair.FromTransaction.Memo.String
-					}
-					status = pair.FromTransaction.Status
-					// The From (outflow) leg is canonical for a mirrored pair
-					// and holds the display category for a legacy divergent one.
-					seedCat = pair.FromTransaction.CategoryID
-				}
-				catIdx := categoryComboIndex(categoryIDs, seedCat)
-				a.transferDialog = buildEditTransferDialog(fromName, toName, amount, date, memo, status, includeCategory, categoryOptions, catIdx)
+			// One payload for every shape. There used to be two switch arms here,
+			// pulling the same five display values out of two different structs —
+			// and the bank↔bank arm had to defensively nil-check both legs of a
+			// TransferPair and fall back to zero values.
+			if t := msg.data.existing; t != nil {
+				catIdx := categoryComboIndex(categoryIDs, t.CategoryID)
+				a.transferDialog = buildEditTransferDialog(
+					fromName, toName, t.Amount, t.Date, t.Memo, t.Status,
+					includeCategory, categoryOptions, catIdx)
 			}
 			return a, nil
 		}

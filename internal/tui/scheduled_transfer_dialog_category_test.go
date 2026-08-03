@@ -43,15 +43,15 @@ func newSchedTransferCategoryEnv(t *testing.T) *schedTransferCategoryEnv {
 	schedRepo := scheduled.NewRepository(database)
 	txnRepo := transaction.NewRepository(database)
 	splitRepo := transaction.NewSplitRepository(database)
-	transferRepo := transaction.NewTransferRepository(database, txnRepo)
 
-	txnSvc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, database)
 	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database, accountRepo)
 	// Transfer occurrences post through the transfer owner; production wires
 	// this in app.NewServices (see scheduled/transfer_port.go).
-	schedSvc.SetTransferPort(transfer.NewService(txnRepo,
+	transferSvc := transfer.NewService(txnRepo,
 		investment.NewRepository(database), splitRepo, accountRepo,
-		category.NewRepository(database), database))
+		category.NewRepository(database), database)
+	schedSvc.SetTransferPort(transferSvc)
 	accountSvc := account.NewService(accountRepo, database)
 	payeeSvc := payee.NewService(payeeRepo, database)
 	categorySvc := category.NewService(categoryRepo, database)
@@ -83,6 +83,7 @@ func newSchedTransferCategoryEnv(t *testing.T) *schedTransferCategoryEnv {
 		payeeSvc:        payeeSvc,
 		categorySvc:     categorySvc,
 		transactionSvc:  txnSvc,
+		transferSvc:     transferSvc,
 		scheduledTxnSvc: schedSvc,
 		undoManager:     undo.NewManager(),
 	}
