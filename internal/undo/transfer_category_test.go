@@ -5,6 +5,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -37,32 +38,41 @@ func TestCreateTransferCommand_RoundTripsCategory(t *testing.T) {
 	to := createTestAccount(t, env.accountRepo, "Savings")
 	bills := newUndoCategory(t, env, "Bills")
 
-	cmd := undo.NewCreateTransferCommand(env.txnSvc, from.ID, to.ID, types.Today(),
-		types.MustNewMoney("100.00"), "rent", types.NullableID{ID: bills.ID, Valid: true})
+	cmd := undo.NewCreateTransferCommand(env.transferSvc, transfer.Spec{
+		FromAccountID: from.ID,
+		ToAccountID:   to.ID,
+		Date:          types.Today(),
+		Amount:        types.MustNewMoney("100.00"),
+		Memo:          "rent",
+		CategoryID:    types.NullableID{ID: bills.ID, Valid: true},
+	})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	pair := cmd.Pair()
-	if pair == nil {
-		t.Fatalf("Pair() nil after Execute")
+	res := cmd.Result()
+	if res == nil {
+		t.Fatalf("Result() nil after Execute")
 	}
 	want := types.NullableID{ID: bills.ID, Valid: true}
-	reloaded, err := env.txnSvc.GetTransferPair(pair.FromTransaction.TransferID.ID)
-	if err != nil {
-		t.Fatalf("GetTransferPair: %v", err)
+
+	// Both legs of a bank↔bank pair carry the category.
+	for label, rowID := range map[string]types.ID{"from": res.From.RowID, "to": res.To.RowID} {
+		leg, err := env.txnSvc.GetByID(rowID)
+		if err != nil {
+			t.Fatalf("GetByID(%s leg): %v", label, err)
+		}
+		wantLegCategory(t, leg, want, label)
 	}
-	wantLegCategory(t, reloaded.FromTransaction, want, "from")
-	wantLegCategory(t, reloaded.ToTransaction, want, "to")
 
 	// Undo deletes both legs.
 	if err := cmd.Undo(); err != nil {
 		t.Fatalf("Undo: %v", err)
 	}
-	if _, err := env.txnSvc.GetByID(pair.FromTransaction.ID); err == nil {
+	if _, err := env.txnSvc.GetByID(res.From.RowID); err == nil {
 		t.Error("from leg should be gone after undo")
 	}
-	if _, err := env.txnSvc.GetByID(pair.ToTransaction.ID); err == nil {
+	if _, err := env.txnSvc.GetByID(res.To.RowID); err == nil {
 		t.Error("to leg should be gone after undo")
 	}
 }
@@ -75,36 +85,104 @@ func TestEditTransferCommand_RoundTripsCategory(t *testing.T) {
 	catB := newUndoCategory(t, env, "Groceries")
 
 	// Create with category A.
-	pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(),
-		types.MustNewMoney("100.00"), "", types.NullableID{ID: catA.ID, Valid: true})
+	created, err := env.transferSvc.Create(transfer.Spec{
+		FromAccountID: from.ID,
+		ToAccountID:   to.ID,
+		Date:          types.Today(),
+		Amount:        types.MustNewMoney("100.00"),
+		CategoryID:    types.NullableID{ID: catA.ID, Valid: true},
+	})
 	if err != nil {
-		t.Fatalf("CreateTransfer: %v", err)
+		t.Fatalf("Create: %v", err)
 	}
-	transferID := pair.FromTransaction.TransferID.ID
+	transferID := created.TransferID
 
-	// Edit to category B; command captures beforeCategory = A.
-	cmd := undo.NewEditTransferCommand(env.txnSvc, transferID, types.Today(),
-		types.MustNewMoney("100.00"), "", transaction.StatusUncleared, types.NullableID{ID: catB.ID, Valid: true})
+	// Edit to category B. The command captures the pre-edit state from the
+	// service's own Result.Before, inside the same transaction as the write.
+	cmd := undo.NewEditTransferCommand(env.transferSvc, transferID, transfer.Edit{
+		Date:       types.Today(),
+		Amount:     types.MustNewMoney("100.00"),
+		Status:     transaction.StatusUncleared,
+		CategoryID: types.NullableID{ID: catB.ID, Valid: true},
+	})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	afterEdit, err := env.txnSvc.GetTransferPair(transferID)
-	if err != nil {
-		t.Fatalf("GetTransferPair after edit: %v", err)
-	}
+
 	wantB := types.NullableID{ID: catB.ID, Valid: true}
-	wantLegCategory(t, afterEdit.FromTransaction, wantB, "from after edit")
-	wantLegCategory(t, afterEdit.ToTransaction, wantB, "to after edit")
+	afterEdit, err := env.transferSvc.Get(transferID)
+	if err != nil {
+		t.Fatalf("Get after edit: %v", err)
+	}
+	if afterEdit.CategoryID != wantB {
+		t.Errorf("transfer category after edit = %+v, want %+v", afterEdit.CategoryID, wantB)
+	}
+	for label, rowID := range map[string]types.ID{"from": created.From.RowID, "to": created.To.RowID} {
+		leg, err := env.txnSvc.GetByID(rowID)
+		if err != nil {
+			t.Fatalf("GetByID(%s leg) after edit: %v", label, err)
+		}
+		wantLegCategory(t, leg, wantB, label+" after edit")
+	}
 
 	// Undo restores category A on both legs.
 	if err := cmd.Undo(); err != nil {
 		t.Fatalf("Undo: %v", err)
 	}
-	afterUndo, err := env.txnSvc.GetTransferPair(transferID)
-	if err != nil {
-		t.Fatalf("GetTransferPair after undo: %v", err)
-	}
 	wantA := types.NullableID{ID: catA.ID, Valid: true}
-	wantLegCategory(t, afterUndo.FromTransaction, wantA, "from after undo")
-	wantLegCategory(t, afterUndo.ToTransaction, wantA, "to after undo")
+	for label, rowID := range map[string]types.ID{"from": created.From.RowID, "to": created.To.RowID} {
+		leg, err := env.txnSvc.GetByID(rowID)
+		if err != nil {
+			t.Fatalf("GetByID(%s leg) after undo: %v", label, err)
+		}
+		wantLegCategory(t, leg, wantA, label+" after undo")
+	}
+}
+
+// TestEditTransferCommand_UndoRestoresClearedCategory pins the direction the old
+// command could get wrong: clearing a category and then undoing must put it
+// back, not leave it cleared.
+func TestEditTransferCommand_UndoRestoresClearedCategory(t *testing.T) {
+	env := createTestEnv(t)
+	from := createTestAccount(t, env.accountRepo, "Checking")
+	to := createTestAccount(t, env.accountRepo, "Savings")
+	bills := newUndoCategory(t, env, "Bills")
+
+	created, err := env.transferSvc.Create(transfer.Spec{
+		FromAccountID: from.ID,
+		ToAccountID:   to.ID,
+		Date:          types.Today(),
+		Amount:        types.MustNewMoney("40.00"),
+		CategoryID:    types.NullableID{ID: bills.ID, Valid: true},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	cmd := undo.NewEditTransferCommand(env.transferSvc, created.TransferID, transfer.Edit{
+		Date:   types.Today(),
+		Amount: types.MustNewMoney("40.00"),
+		// CategoryID left zero: clear the label.
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	cleared, err := env.transferSvc.Get(created.TransferID)
+	if err != nil {
+		t.Fatalf("Get after clear: %v", err)
+	}
+	if cleared.CategoryID.Valid {
+		t.Fatalf("category should be cleared, got %s", cleared.CategoryID.ID)
+	}
+
+	if err := cmd.Undo(); err != nil {
+		t.Fatalf("Undo: %v", err)
+	}
+	restored, err := env.transferSvc.Get(created.TransferID)
+	if err != nil {
+		t.Fatalf("Get after undo: %v", err)
+	}
+	if !restored.CategoryID.Valid || restored.CategoryID.ID != bills.ID {
+		t.Errorf("category after undo = %+v, want %s", restored.CategoryID, bills.ID)
+	}
 }

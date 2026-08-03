@@ -8,8 +8,10 @@ import (
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dbtest"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -25,6 +27,7 @@ func createTestDB(t *testing.T) *db.DB {
 
 type testEnv struct {
 	txnSvc       *transaction.Service
+	transferSvc  *transfer.Service
 	accountRepo  *account.Repository
 	categoryRepo *category.Repository
 }
@@ -41,15 +44,44 @@ func createTestEnv(t *testing.T) *testEnv {
 
 	svc := transaction.NewService(txnRepo, splitRepo, transferRepo, payeeRepo, accountRepo, database)
 	return &testEnv{
-		txnSvc:       svc,
+		txnSvc: svc,
+		transferSvc: transfer.NewService(txnRepo, investment.NewRepository(database),
+			splitRepo, accountRepo, categoryRepo, database),
 		accountRepo:  accountRepo,
 		categoryRepo: categoryRepo,
 	}
 }
 
+// seedTransfer creates a bank↔bank transfer through the transfer service and
+// returns its transfer_id plus both leg row IDs.
+func seedTransfer(t *testing.T, env *testEnv, from, to *account.Account, amount types.Money) (types.ID, types.ID, types.ID) {
+	t.Helper()
+	res, err := env.transferSvc.Create(transfer.Spec{
+		FromAccountID: from.ID,
+		ToAccountID:   to.ID,
+		Date:          types.Today(),
+		Amount:        amount,
+	})
+	if err != nil {
+		t.Fatalf("seed transfer: %v", err)
+	}
+	return res.TransferID, res.From.RowID, res.To.RowID
+}
+
 func createTestAccount(t *testing.T, repo *account.Repository, name string) *account.Account {
 	t.Helper()
 	acct := account.NewAccount(name, account.TypeChecking, "USD", types.ZeroMoney, types.NewDate(2000, time.January, 1))
+	if err := repo.Create(acct); err != nil {
+		t.Fatalf("Failed to create test account: %v", err)
+	}
+	return acct
+}
+
+// createTestAccountOfType creates an account of an arbitrary type, so the
+// transfer command tests can drive all four (From, To) ledger combinations.
+func createTestAccountOfType(t *testing.T, repo *account.Repository, name string, at account.Type) *account.Account {
+	t.Helper()
+	acct := account.NewAccount(name, at, "USD", types.ZeroMoney, types.NewDate(2000, time.January, 1))
 	if err := repo.Create(acct); err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
@@ -525,8 +557,12 @@ func TestVoidTransactionCommand_Description(t *testing.T) {
 }
 
 // =============================================================================
-// CreateTransferCommand Tests
+// Transfer command tests
 // =============================================================================
+//
+// One set of tests for one set of commands. Before, the same four scenarios were
+// covered separately for bank↔bank here and for the three investment shapes in
+// investment_transfer_test.go, because there were seven commands for one concept.
 
 func TestCreateTransferCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("creates transfer and deletes both sides on undo", func(t *testing.T) {
@@ -535,19 +571,23 @@ func TestCreateTransferCommand_ExecuteAndUndo(t *testing.T) {
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
 		amount := types.MustNewMoney("500.00")
-		cmd := undo.NewCreateTransferCommand(env.txnSvc, from.ID, to.ID, types.Today(), amount, "", types.NullableID{})
+		cmd := undo.NewCreateTransferCommand(env.transferSvc, transfer.Spec{
+			FromAccountID: from.ID,
+			ToAccountID:   to.ID,
+			Date:          types.Today(),
+			Amount:        amount,
+		})
 
-		// Execute: transfer should exist
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute() error = %v", err)
 		}
 
-		pair := cmd.Pair()
-		if pair == nil {
-			t.Fatal("Pair() should not be nil after Execute")
+		res := cmd.Result()
+		if res == nil {
+			t.Fatal("Result() should not be nil after Execute")
 		}
 
-		fromTxn, err := env.txnSvc.GetByID(pair.FromTransaction.ID)
+		fromTxn, err := env.txnSvc.GetByID(res.From.RowID)
 		if err != nil {
 			t.Fatalf("GetByID(from) error = %v", err)
 		}
@@ -555,7 +595,7 @@ func TestCreateTransferCommand_ExecuteAndUndo(t *testing.T) {
 			t.Errorf("from amount = %s, want %s", fromTxn.Amount.String(), amount.Neg().String())
 		}
 
-		toTxn, err := env.txnSvc.GetByID(pair.ToTransaction.ID)
+		toTxn, err := env.txnSvc.GetByID(res.To.RowID)
 		if err != nil {
 			t.Fatalf("GetByID(to) error = %v", err)
 		}
@@ -563,39 +603,35 @@ func TestCreateTransferCommand_ExecuteAndUndo(t *testing.T) {
 			t.Errorf("to amount = %s, want %s", toTxn.Amount.String(), amount.String())
 		}
 
-		// Undo: both sides should be gone
 		if err := cmd.Undo(); err != nil {
 			t.Fatalf("Undo() error = %v", err)
 		}
 
-		_, err = env.txnSvc.GetByID(pair.FromTransaction.ID)
-		if err == nil {
+		if _, err := env.txnSvc.GetByID(res.From.RowID); err == nil {
 			t.Error("from transaction should not exist after undo")
 		}
-		_, err = env.txnSvc.GetByID(pair.ToTransaction.ID)
-		if err == nil {
+		if _, err := env.txnSvc.GetByID(res.To.RowID); err == nil {
 			t.Error("to transaction should not exist after undo")
 		}
 	})
 }
 
 func TestCreateTransferCommand_Description(t *testing.T) {
-	cmd := undo.NewCreateTransferCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney, "", types.NullableID{})
+	cmd := undo.NewCreateTransferCommand(nil, transfer.Spec{})
 	if cmd.Description() != "Create transfer" {
 		t.Errorf("Description() = %q, want %q", cmd.Description(), "Create transfer")
 	}
 }
 
-func TestCreateTransferCommand_PairNilBeforeExecute(t *testing.T) {
-	cmd := undo.NewCreateTransferCommand(nil, types.NewID(), types.NewID(), types.Today(), types.ZeroMoney, "", types.NullableID{})
-	if cmd.Pair() != nil {
-		t.Error("Pair() should be nil before Execute")
+func TestCreateTransferCommand_ResultNilBeforeExecute(t *testing.T) {
+	cmd := undo.NewCreateTransferCommand(nil, transfer.Spec{})
+	if cmd.Result() != nil {
+		t.Error("Result() should be nil before Execute")
+	}
+	if err := cmd.Undo(); err == nil {
+		t.Error("Undo() before Execute should error rather than panic")
 	}
 }
-
-// =============================================================================
-// DeleteTransferCommand Tests
-// =============================================================================
 
 func TestDeleteTransferCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("deletes transfer and recreates both sides on undo", func(t *testing.T) {
@@ -604,47 +640,36 @@ func TestDeleteTransferCommand_ExecuteAndUndo(t *testing.T) {
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
 		amount := types.MustNewMoney("200.00")
-		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
+		transferID, fromLeg, toLeg := seedTransfer(t, env, from, to, amount)
 
-		transferID := pair.FromTransaction.TransferID.ID
-		cmd := undo.NewDeleteTransferCommand(env.txnSvc, transferID)
+		cmd := undo.NewDeleteTransferCommand(env.transferSvc, transferID)
 
-		// Execute: both sides should be gone
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute() error = %v", err)
 		}
-
-		_, err = env.txnSvc.GetByID(pair.FromTransaction.ID)
-		if err == nil {
+		if _, err := env.txnSvc.GetByID(fromLeg); err == nil {
 			t.Error("from transaction should not exist after delete")
 		}
-		_, err = env.txnSvc.GetByID(pair.ToTransaction.ID)
-		if err == nil {
+		if _, err := env.txnSvc.GetByID(toLeg); err == nil {
 			t.Error("to transaction should not exist after delete")
 		}
 
-		// Undo: both sides should be back
 		if err := cmd.Undo(); err != nil {
 			t.Fatalf("Undo() error = %v", err)
 		}
 
-		restoredFrom, err := env.txnSvc.GetByID(pair.FromTransaction.ID)
+		// The recreated pair reuses the ORIGINAL transfer_id, so a second undo
+		// step still addresses the same transfer. The rows themselves are new.
+		restored, err := env.transferSvc.Get(transferID)
 		if err != nil {
-			t.Fatalf("GetByID(from) after undo error = %v", err)
+			t.Fatalf("Get after undo error = %v", err)
 		}
-		if !restoredFrom.Amount.Equal(amount.Neg()) {
-			t.Errorf("from amount after undo = %s, want %s", restoredFrom.Amount.String(), amount.Neg().String())
+		if !restored.Amount.Equal(amount) {
+			t.Errorf("amount after undo = %s, want %s", restored.Amount, amount)
 		}
-
-		restoredTo, err := env.txnSvc.GetByID(pair.ToTransaction.ID)
-		if err != nil {
-			t.Fatalf("GetByID(to) after undo error = %v", err)
-		}
-		if !restoredTo.Amount.Equal(amount) {
-			t.Errorf("to amount after undo = %s, want %s", restoredTo.Amount.String(), amount.String())
+		if restored.From.AccountID != from.ID || restored.To.AccountID != to.ID {
+			t.Errorf("direction after undo = %s→%s, want %s→%s",
+				restored.From.AccountID, restored.To.AccountID, from.ID, to.ID)
 		}
 	})
 }
@@ -656,10 +681,6 @@ func TestDeleteTransferCommand_Description(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// VoidTransferCommand Tests
-// =============================================================================
-
 func TestVoidTransferCommand_ExecuteAndUndo(t *testing.T) {
 	t.Run("voids transfer and restores both sides on undo", func(t *testing.T) {
 		env := createTestEnv(t)
@@ -667,19 +688,15 @@ func TestVoidTransferCommand_ExecuteAndUndo(t *testing.T) {
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
 		amount := types.MustNewMoney("300.00")
-		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
+		transferID, fromLeg, toLeg := seedTransfer(t, env, from, to, amount)
 
-		cmd := undo.NewVoidTransferCommand(env.txnSvc, pair.FromTransaction.ID)
+		cmd := undo.NewVoidTransferCommand(env.transferSvc, transferID)
 
-		// Execute: both sides should be void
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("Execute() error = %v", err)
 		}
 
-		voidedFrom, err := env.txnSvc.GetByID(pair.FromTransaction.ID)
+		voidedFrom, err := env.txnSvc.GetByID(fromLeg)
 		if err != nil {
 			t.Fatalf("GetByID(from) after void error = %v", err)
 		}
@@ -690,7 +707,7 @@ func TestVoidTransferCommand_ExecuteAndUndo(t *testing.T) {
 			t.Errorf("from amount should be zero, got %s", voidedFrom.Amount.String())
 		}
 
-		voidedTo, err := env.txnSvc.GetByID(pair.ToTransaction.ID)
+		voidedTo, err := env.txnSvc.GetByID(toLeg)
 		if err != nil {
 			t.Fatalf("GetByID(to) after void error = %v", err)
 		}
@@ -698,12 +715,11 @@ func TestVoidTransferCommand_ExecuteAndUndo(t *testing.T) {
 			t.Error("to transaction should be void")
 		}
 
-		// Undo: both sides should be restored
 		if err := cmd.Undo(); err != nil {
 			t.Fatalf("Undo() error = %v", err)
 		}
 
-		restoredFrom, err := env.txnSvc.GetByID(pair.FromTransaction.ID)
+		restoredFrom, err := env.txnSvc.GetByID(fromLeg)
 		if err != nil {
 			t.Fatalf("GetByID(from) after undo error = %v", err)
 		}
@@ -714,7 +730,7 @@ func TestVoidTransferCommand_ExecuteAndUndo(t *testing.T) {
 			t.Errorf("from amount after undo = %s, want %s", restoredFrom.Amount.String(), amount.Neg().String())
 		}
 
-		restoredTo, err := env.txnSvc.GetByID(pair.ToTransaction.ID)
+		restoredTo, err := env.txnSvc.GetByID(toLeg)
 		if err != nil {
 			t.Fatalf("GetByID(to) after undo error = %v", err)
 		}
@@ -728,20 +744,18 @@ func TestVoidTransferCommand_ExecuteAndUndo(t *testing.T) {
 }
 
 func TestVoidTransferCommand_NotATransfer(t *testing.T) {
-	t.Run("returns error when transaction is not a transfer", func(t *testing.T) {
+	t.Run("returns error when the id is not a transfer", func(t *testing.T) {
 		env := createTestEnv(t)
 		acct := createTestAccount(t, env.accountRepo, "Checking")
 
-		amount := types.MustNewMoney("-50.00")
-		txn := transaction.NewTransaction(acct.ID, types.Today(), amount)
+		txn := transaction.NewTransaction(acct.ID, types.Today(), types.MustNewMoney("-50.00"))
 		if err := env.txnSvc.Create(txn); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
 
-		cmd := undo.NewVoidTransferCommand(env.txnSvc, txn.ID)
-		err := cmd.Execute()
-		if err == nil {
-			t.Error("Execute() should return error for non-transfer transaction")
+		cmd := undo.NewVoidTransferCommand(env.transferSvc, txn.ID)
+		if err := cmd.Execute(); err == nil {
+			t.Error("Execute() should return error for a non-transfer id")
 		}
 	})
 }
@@ -753,8 +767,86 @@ func TestVoidTransferCommand_Description(t *testing.T) {
 	}
 }
 
+func TestEditTransferCommand_ExecuteAndUndo(t *testing.T) {
+	t.Run("edits both sides and restores prior values on undo", func(t *testing.T) {
+		env := createTestEnv(t)
+		from := createTestAccount(t, env.accountRepo, "Checking")
+		to := createTestAccount(t, env.accountRepo, "Savings")
+
+		original := types.MustNewMoney("100.00")
+		transferID, fromLeg, toLeg := seedTransfer(t, env, from, to, original)
+
+		newAmount := types.MustNewMoney("250.00")
+		newDate := types.NewDate(2024, time.March, 15)
+		cmd := undo.NewEditTransferCommand(env.transferSvc, transferID, transfer.Edit{
+			Date:   newDate,
+			Amount: newAmount,
+			Memo:   "updated",
+			Status: transaction.StatusCleared,
+		})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+
+		edited, err := env.transferSvc.Get(transferID)
+		if err != nil {
+			t.Fatalf("Get after edit error = %v", err)
+		}
+		if !edited.Amount.Equal(newAmount) {
+			t.Errorf("amount = %s, want %s", edited.Amount, newAmount)
+		}
+		if edited.Date != newDate {
+			t.Errorf("date = %v, want %v", edited.Date, newDate)
+		}
+		if edited.Memo != "updated" {
+			t.Errorf("memo = %q, want %q", edited.Memo, "updated")
+		}
+		if edited.Status != transaction.StatusCleared {
+			t.Errorf("status = %q, want cleared", edited.Status)
+		}
+		// The edit is in place: the same two rows still hold the transfer.
+		if edited.From.RowID != fromLeg || edited.To.RowID != toLeg {
+			t.Errorf("edit replaced rows: (%s,%s) -> (%s,%s)",
+				fromLeg, toLeg, edited.From.RowID, edited.To.RowID)
+		}
+
+		if err := cmd.Undo(); err != nil {
+			t.Fatalf("Undo() error = %v", err)
+		}
+
+		reverted, err := env.transferSvc.Get(transferID)
+		if err != nil {
+			t.Fatalf("Get after undo error = %v", err)
+		}
+		if !reverted.Amount.Equal(original) {
+			t.Errorf("amount after undo = %s, want %s", reverted.Amount, original)
+		}
+		if reverted.Memo != "" {
+			t.Errorf("memo after undo = %q, want empty", reverted.Memo)
+		}
+		if reverted.Status != transaction.StatusUncleared {
+			t.Errorf("status after undo = %q, want uncleared", reverted.Status)
+		}
+	})
+}
+
+func TestEditTransferCommand_UndoBeforeExecute(t *testing.T) {
+	cmd := undo.NewEditTransferCommand(nil, types.NewID(), transfer.Edit{})
+	if err := cmd.Undo(); err == nil {
+		t.Error("Undo() before Execute should error rather than panic")
+	}
+}
+
+func TestEditTransferCommand_Description(t *testing.T) {
+	cmd := undo.NewEditTransferCommand(nil, types.NewID(), transfer.Edit{})
+	if cmd.Description() != "Edit transfer" {
+		t.Errorf("Description() = %q, want %q", cmd.Description(), "Edit transfer")
+	}
+}
+
 // =============================================================================
-// Integration: compound commands with manager
+// Integration: transfer commands through the manager
 // =============================================================================
 
 func TestCompoundCommand_VoidTransferWithManager(t *testing.T) {
@@ -763,26 +855,19 @@ func TestCompoundCommand_VoidTransferWithManager(t *testing.T) {
 		from := createTestAccount(t, env.accountRepo, "Checking")
 		to := createTestAccount(t, env.accountRepo, "Savings")
 
-		amount := types.MustNewMoney("150.00")
-		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, types.Today(), amount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
+		transferID, fromLeg, _ := seedTransfer(t, env, from, to, types.MustNewMoney("150.00"))
 
 		mgr := undo.NewManager()
-		cmd := undo.NewVoidTransferCommand(env.txnSvc, pair.FromTransaction.ID)
+		cmd := undo.NewVoidTransferCommand(env.transferSvc, transferID)
 
 		if err := mgr.Execute(cmd); err != nil {
 			t.Fatalf("Manager.Execute() error = %v", err)
 		}
-
-		// Verify void
-		fromTxn, _ := env.txnSvc.GetByID(pair.FromTransaction.ID)
+		fromTxn, _ := env.txnSvc.GetByID(fromLeg)
 		if !fromTxn.IsVoid() {
 			t.Error("from should be void after execute")
 		}
 
-		// Undo
 		desc, err := mgr.Undo()
 		if err != nil {
 			t.Fatalf("Manager.Undo() error = %v", err)
@@ -790,13 +875,11 @@ func TestCompoundCommand_VoidTransferWithManager(t *testing.T) {
 		if desc != "Void transfer" {
 			t.Errorf("undo desc = %q, want %q", desc, "Void transfer")
 		}
-
-		fromTxn, _ = env.txnSvc.GetByID(pair.FromTransaction.ID)
+		fromTxn, _ = env.txnSvc.GetByID(fromLeg)
 		if fromTxn.IsVoid() {
 			t.Error("from should not be void after undo")
 		}
 
-		// Redo
 		desc, err = mgr.Redo()
 		if err != nil {
 			t.Fatalf("Manager.Redo() error = %v", err)
@@ -804,101 +887,84 @@ func TestCompoundCommand_VoidTransferWithManager(t *testing.T) {
 		if desc != "Void transfer" {
 			t.Errorf("redo desc = %q, want %q", desc, "Void transfer")
 		}
-
-		fromTxn, _ = env.txnSvc.GetByID(pair.FromTransaction.ID)
+		fromTxn, _ = env.txnSvc.GetByID(fromLeg)
 		if !fromTxn.IsVoid() {
 			t.Error("from should be void after redo")
 		}
 	})
 }
 
-// =============================================================================
-// EditTransferCommand Tests
-// =============================================================================
+// TestTransferCommands_AllFourShapes is what collapsing seven commands to four
+// buys: the same undo/redo cycle, asserted once, across every shape — including
+// the three investment shapes that used to need their own commands and their own
+// test file.
+func TestTransferCommands_AllFourShapes(t *testing.T) {
+	shapes := []struct {
+		name     string
+		fromType account.Type
+		toType   account.Type
+	}{
+		{"reg→reg", account.TypeChecking, account.TypeSavings},
+		{"inv→reg", account.TypeInvestment, account.TypeChecking},
+		{"reg→inv", account.TypeChecking, account.TypeInvestment},
+		{"inv→inv", account.TypeInvestment, account.TypeInvestment},
+	}
 
-func TestEditTransferCommand_ExecuteAndUndo(t *testing.T) {
-	t.Run("edits both sides and restores them on undo", func(t *testing.T) {
-		env := createTestEnv(t)
-		from := createTestAccount(t, env.accountRepo, "Checking")
-		to := createTestAccount(t, env.accountRepo, "Savings")
+	for _, sh := range shapes {
+		t.Run(sh.name, func(t *testing.T) {
+			env := createTestEnv(t)
+			from := createTestAccountOfType(t, env.accountRepo, "From "+sh.name, sh.fromType)
+			to := createTestAccountOfType(t, env.accountRepo, "To "+sh.name, sh.toType)
 
-		origAmount := types.MustNewMoney("100.00")
-		origDate := types.NewDate(2024, 1, 15)
-		pair, err := env.txnSvc.CreateTransfer(from.ID, to.ID, origDate, origAmount, "", types.NullableID{})
-		if err != nil {
-			t.Fatalf("CreateTransfer() error = %v", err)
-		}
-		transferID := pair.FromTransaction.TransferID.ID
+			amount := types.MustNewMoney("175.00")
+			mgr := undo.NewManager()
 
-		newAmount := types.MustNewMoney("250.00")
-		newDate := types.NewDate(2024, 2, 20)
-		newMemo := "rent split"
-		newStatus := transaction.StatusCleared
+			create := undo.NewCreateTransferCommand(env.transferSvc, transfer.Spec{
+				FromAccountID: from.ID, ToAccountID: to.ID,
+				Date: types.Today(), Amount: amount,
+			})
+			if err := mgr.Execute(create); err != nil {
+				t.Fatalf("create: %v", err)
+			}
+			transferID := create.Result().TransferID
 
-		cmd := undo.NewEditTransferCommand(env.txnSvc, transferID, newDate, newAmount, newMemo, newStatus, types.NullableID{})
+			if _, err := env.transferSvc.Get(transferID); err != nil {
+				t.Fatalf("transfer missing after create: %v", err)
+			}
 
-		// Execute: both sides updated
-		if err := cmd.Execute(); err != nil {
-			t.Fatalf("Execute() error = %v", err)
-		}
+			// Edit, then undo the edit.
+			edit := undo.NewEditTransferCommand(env.transferSvc, transferID, transfer.Edit{
+				Date: types.Today(), Amount: types.MustNewMoney("225.00"), Memo: "edited",
+			})
+			if err := mgr.Execute(edit); err != nil {
+				t.Fatalf("edit: %v", err)
+			}
+			if _, err := mgr.Undo(); err != nil {
+				t.Fatalf("undo edit: %v", err)
+			}
+			afterUndo, err := env.transferSvc.Get(transferID)
+			if err != nil {
+				t.Fatalf("get after undo edit: %v", err)
+			}
+			if !afterUndo.Amount.Equal(amount) {
+				t.Errorf("amount after undoing edit = %s, want %s", afterUndo.Amount, amount)
+			}
 
-		updated, err := env.txnSvc.GetTransferPair(transferID)
-		if err != nil {
-			t.Fatalf("GetTransferPair() error = %v", err)
-		}
-		if !updated.FromTransaction.Amount.Equal(newAmount.Neg()) {
-			t.Errorf("from amount after edit = %s, want %s",
-				updated.FromTransaction.Amount.String(), newAmount.Neg().String())
-		}
-		if !updated.ToTransaction.Amount.Equal(newAmount) {
-			t.Errorf("to amount after edit = %s, want %s",
-				updated.ToTransaction.Amount.String(), newAmount.String())
-		}
-		if !updated.FromTransaction.Date.Equal(newDate) {
-			t.Errorf("from date after edit = %s, want %s",
-				updated.FromTransaction.Date, newDate)
-		}
-		if updated.FromTransaction.Memo.String != newMemo {
-			t.Errorf("from memo after edit = %q, want %q",
-				updated.FromTransaction.Memo.String, newMemo)
-		}
-		if updated.FromTransaction.Status != newStatus {
-			t.Errorf("from status after edit = %v, want %v",
-				updated.FromTransaction.Status, newStatus)
-		}
-
-		// Undo: both sides restored to original
-		if err := cmd.Undo(); err != nil {
-			t.Fatalf("Undo() error = %v", err)
-		}
-
-		restored, err := env.txnSvc.GetTransferPair(transferID)
-		if err != nil {
-			t.Fatalf("GetTransferPair() after undo error = %v", err)
-		}
-		if !restored.FromTransaction.Amount.Equal(origAmount.Neg()) {
-			t.Errorf("from amount after undo = %s, want %s",
-				restored.FromTransaction.Amount.String(), origAmount.Neg().String())
-		}
-		if !restored.FromTransaction.Date.Equal(origDate) {
-			t.Errorf("from date after undo = %s, want %s",
-				restored.FromTransaction.Date, origDate)
-		}
-		if restored.FromTransaction.Memo.Valid {
-			t.Errorf("from memo after undo should be empty, got %q",
-				restored.FromTransaction.Memo.String)
-		}
-		if restored.FromTransaction.Status != transaction.StatusUncleared {
-			t.Errorf("from status after undo = %v, want Uncleared",
-				restored.FromTransaction.Status)
-		}
-	})
-}
-
-func TestEditTransferCommand_Description(t *testing.T) {
-	cmd := undo.NewEditTransferCommand(nil, types.NewID(), types.Today(), types.ZeroMoney, "", transaction.StatusUncleared, types.NullableID{})
-	if cmd.Description() != "Edit transfer" {
-		t.Errorf("Description() = %q, want %q", cmd.Description(), "Edit transfer")
+			// Delete, then undo the delete.
+			del := undo.NewDeleteTransferCommand(env.transferSvc, transferID)
+			if err := mgr.Execute(del); err != nil {
+				t.Fatalf("delete: %v", err)
+			}
+			if _, err := env.transferSvc.Get(transferID); err == nil {
+				t.Error("transfer should be gone after delete")
+			}
+			if _, err := mgr.Undo(); err != nil {
+				t.Fatalf("undo delete: %v", err)
+			}
+			if _, err := env.transferSvc.Get(transferID); err != nil {
+				t.Errorf("transfer should be back after undoing delete: %v", err)
+			}
+		})
 	}
 }
 

@@ -81,14 +81,18 @@ type transferDialogData struct {
 // the investment-side transaction ID that UpdateTransferCash takes as its
 // first argument.
 type investmentTransferEdit struct {
-	fromAccountID   types.ID
-	toAccountID     types.ID
-	amount          types.Money // positive
-	date            types.Date
-	memo            string
-	status          transaction.Status
-	categoryID      types.NullableID // regular-side leg's category (inv↔reg); zero for inv↔inv
-	investmentTxnID types.ID         // ID of the investment-side row, fed to UpdateTransferCash
+	fromAccountID types.ID
+	toAccountID   types.ID
+	amount        types.Money // positive
+	date          types.Date
+	memo          string
+	status        transaction.Status
+	categoryID    types.NullableID // regular-side leg's category (inv↔reg); zero for inv↔inv
+	// transferID identifies the whole transfer, which is what the edit is
+	// addressed by now. investmentTxnID is retained only so the register can put
+	// the cursor back on the investment-side row.
+	transferID      types.ID
+	investmentTxnID types.ID
 }
 
 // transferDialogDataMsg is sent when transfer dialog data has been loaded.
@@ -395,6 +399,7 @@ func (a *App) loadEditTransferFromAnyLeg(legRowID types.ID) tea.Cmd {
 			memo:          t.Memo,
 			status:        t.Status,
 			categoryID:    t.CategoryID,
+			transferID:    t.TransferID,
 		}
 		for _, leg := range t.Legs() {
 			if leg.Ledger == transfer.LedgerInvestment {
@@ -618,21 +623,22 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Dispatch on the (From, To) account types so each combination posts via
-	// the right service. Account types come from the loaded accounts list,
-	// which the dialog data populates from accountSvc.List(true).
-	fromType := accountTypeByID(a.transferDialogData.accounts, fromAccountID)
-	toType := accountTypeByID(a.transferDialogData.accounts, toAccountID)
-	kind := transaction.ChooseTransferDispatch(fromType, toType)
-
-	// inv→inv transfers store neither leg in the transactions table, so there
-	// is nowhere to hold a category (v1 non-goal). Refuse a set category here
-	// rather than silently dropping it.
-	if kind == transaction.DispatchInvToInv && categoryID.Valid {
-		if len(fields) > catFieldIdx {
+	// Inline field error for a category the transfer cannot store, so the user
+	// sees it on the Category field with the dialog still open rather than as a
+	// notification after the dialog closes.
+	//
+	// This CALLS the domain predicate rather than restating the rule — Kind.
+	// StoresCategory is the same function transfer.Service's guard uses, so
+	// there is one implementation, not two. The domain still refuses
+	// independently (*transfer.CategoryNotSupportedError); this is a fast path
+	// to a better-placed message, not the authority.
+	if categoryID.Valid && len(fields) > catFieldIdx {
+		fromType := accountTypeByID(a.transferDialogData.accounts, fromAccountID)
+		toType := accountTypeByID(a.transferDialogData.accounts, toAccountID)
+		if !transfer.ClassifyKind(fromType, toType).StoresCategory() {
 			fields[catFieldIdx].Error = "Categories aren't supported on investment-to-investment transfers"
+			return a, nil
 		}
-		return a, nil
 	}
 
 	// The leg living in the register the user is currently viewing should be
@@ -644,66 +650,42 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async save for responsive UI
 	a.closeTransferDialog()
 
+	// No dispatch. One service call handles every (From, To) combination: the
+	// transfer service derives each leg's sign from its side and each leg's
+	// table from its own account type. The 4-arm switch that used to live here —
+	// with its four undo command types, three result shapes, and the argument
+	// flip DepositFromAccount's (investment, regular) parameter order forced —
+	// is gone.
+	//
+	// The inv↔inv category refusal that used to be re-implemented here is also
+	// gone: the domain returns *transfer.CategoryNotSupportedError, and the
+	// error surface below maps it back onto the Category field.
 	return a, func() tea.Msg {
 		if a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
+		if a.transferSvc == nil {
+			return errMsg{err: fmt.Errorf("transfer service not available")}
+		}
+
+		cmd := undo.NewCreateTransferCommand(a.transferSvc, transfer.Spec{
+			FromAccountID: fromAccountID,
+			ToAccountID:   toAccountID,
+			Date:          date,
+			Amount:        amount,
+			Memo:          memo,
+			CategoryID:    categoryID,
+		})
+		if err := a.undoManager.Execute(cmd); err != nil {
+			return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
+		}
 
 		var savedID types.ID
 		var savedIsInvestment bool
-
-		switch kind {
-		case transaction.DispatchRegToReg:
-			if a.transactionSvc == nil {
-				return errMsg{err: fmt.Errorf("transaction service not available")}
-			}
-			// CreateTransfer stamps memo and category on both legs at
-			// construction. categoryID is the dialog's Category combo selection
-			// (unset NullableID when "(None)").
-			cmd := undo.NewCreateTransferCommand(a.transactionSvc, fromAccountID, toAccountID, date, amount, memo, categoryID)
-			if err := a.undoManager.Execute(cmd); err != nil {
-				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
-			}
-			if pair := cmd.Pair(); pair != nil {
-				savedID = transferLegForAccount(currentAcct, pair.FromTransaction, pair.ToTransaction)
-			}
-		case transaction.DispatchInvToReg:
-			if a.investmentSvc == nil {
-				return errMsg{err: fmt.Errorf("investment service not available")}
-			}
-			// The category lands on the regular-side (bank) leg only.
-			cmd := undo.NewCreateInvestmentTransferCashCommand(a.investmentSvc, fromAccountID, toAccountID, date, amount, memo, categoryID)
-			if err := a.undoManager.Execute(cmd); err != nil {
-				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
-			}
-			savedID, savedIsInvestment = cashTransferLegForAccount(currentAcct, cmd.Result())
-		case transaction.DispatchRegToInv:
-			if a.investmentSvc == nil {
-				return errMsg{err: fmt.Errorf("investment service not available")}
-			}
-			// DepositFromAccount expects (investmentAccountID, regularAccountID);
-			// here the investment account is the destination. The category lands
-			// on the regular-side (bank) leg only.
-			cmd := undo.NewCreateInvestmentDepositCommand(a.investmentSvc, toAccountID, fromAccountID, date, amount, memo, categoryID)
-			if err := a.undoManager.Execute(cmd); err != nil {
-				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
-			}
-			savedID, savedIsInvestment = cashTransferLegForAccount(currentAcct, cmd.Result())
-		case transaction.DispatchInvToInv:
-			if a.investmentSvc == nil {
-				return errMsg{err: fmt.Errorf("investment service not available")}
-			}
-			cmd := undo.NewCreateInvestmentToInvestmentTransferCommand(a.investmentSvc, fromAccountID, toAccountID, date, amount, memo)
-			if err := a.undoManager.Execute(cmd); err != nil {
-				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
-			}
-			if res := cmd.Result(); res != nil {
-				// Both legs are investment transactions.
-				if res.SourceTransaction != nil && res.SourceTransaction.AccountID == currentAcct {
-					savedID, savedIsInvestment = res.SourceTransaction.ID, true
-				} else if res.DestinationTransaction != nil && res.DestinationTransaction.AccountID == currentAcct {
-					savedID, savedIsInvestment = res.DestinationTransaction.ID, true
-				}
+		if res := cmd.Result(); res != nil {
+			if leg, ok := res.LegForAccount(currentAcct); ok {
+				savedID = leg.RowID
+				savedIsInvestment = leg.Ledger == transfer.LedgerInvestment
 			}
 		}
 
@@ -832,81 +814,52 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 		status = transaction.StatusCleared
 	}
 
-	if invEdit != nil {
-		fromType := accountTypeByID(a.transferDialogData.accounts, invEdit.fromAccountID)
-		a.closeTransferDialog()
-		return a, a.dispatchInvestmentEditTransfer(invEdit, fromType, date, amount, memo, categoryID, status)
+	// One edit path for every shape. dispatchInvestmentEditTransfer and its
+	// direction-string derivation are gone: the transfer service addresses an
+	// edit by transfer_id and edits both legs in place, so there is nothing left
+	// to dispatch on.
+	var transferID types.ID
+	switch {
+	case invEdit != nil:
+		transferID = invEdit.transferID
+	case regularPair != nil && regularPair.FromTransaction != nil:
+		transferID = regularPair.FromTransaction.TransferID.ID
+	default:
+		return a, nil
 	}
 
-	transferID := regularPair.FromTransaction.TransferID.ID
-	// Keep the cursor on the edited row. An edit can change the date and so
-	// re-sort the leg; selecting by ID lands on it wherever it moves. The leg's
-	// ID is unchanged by an edit, so the existing pair already names it.
-	savedID := transferLegForAccount(a.currentRegisterAccountID(), regularPair.FromTransaction, regularPair.ToTransaction)
+	currentAcct := a.currentRegisterAccountID()
 	a.closeTransferDialog()
+
 	return a, func() tea.Msg {
-		if a.transactionSvc == nil || a.undoManager == nil {
-			return errMsg{err: fmt.Errorf("transaction service not available")}
+		if a.transferSvc == nil || a.undoManager == nil {
+			return errMsg{err: fmt.Errorf("transfer service not available")}
 		}
-		// UpdateTransfer mirrors the category to both legs (and clears both when
-		// categoryID is unset), which doubles as the healing path for a legacy
-		// divergent transfer-link pair.
-		cmd := undo.NewEditTransferCommand(a.transactionSvc, transferID, date, amount, memo, status, categoryID)
+
+		cmd := undo.NewEditTransferCommand(a.transferSvc, transferID, transfer.Edit{
+			Date:       date,
+			Amount:     amount,
+			Memo:       memo,
+			CategoryID: categoryID,
+			Status:     status,
+		})
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to update transfer: %w", err)}
 		}
-		return transferDialogSavedMsg{savedDate: date, savedID: savedID}
-	}
-}
 
-// dispatchInvestmentEditTransfer routes the edit-mode submit to
-// investment.Service.UpdateTransferCash with parameters derived from the
-// dialog's From/To orientation. Direction is "out" when From is the
-// investment account, "in" when To is — matching UpdateTransferCash's
-// "in" = cash arrives at investmentAccountID convention.
-func (a *App) dispatchInvestmentEditTransfer(edit *investmentTransferEdit, fromType account.Type, date types.Date, amount types.Money, memo string, categoryID types.NullableID, status transaction.Status) tea.Cmd {
-	var investmentAccountID, otherAccountID types.ID
-	var direction string
-	if fromType.IsInvestmentType() {
-		investmentAccountID = edit.fromAccountID
-		otherAccountID = edit.toAccountID
-		direction = "out"
-	} else {
-		investmentAccountID = edit.toAccountID
-		otherAccountID = edit.fromAccountID
-		direction = "in"
-	}
-
-	investmentTxnID := edit.investmentTxnID
-
-	// Keep the cursor on the edited row when viewing the investment side. The
-	// investment leg's ID is unchanged by the edit, so we can select it after
-	// the reload. Only do so when the investment account is the one on screen —
-	// the regular leg's ID isn't available on this path, so an edit viewed from
-	// the bank register simply leaves the cursor put rather than stashing an ID
-	// that would later jump the wrong register.
-	var savedID types.ID
-	if a.currentRegisterAccountID() == investmentAccountID {
-		savedID = investmentTxnID
-	}
-
-	return func() tea.Msg {
-		if a.investmentSvc == nil {
-			return errMsg{err: fmt.Errorf("investment service not available")}
+		// Keep the cursor on the edited row. An edit can change the date and so
+		// re-sort the leg; selecting by ID lands on it wherever it moves. Because
+		// the edit is now in place, the leg IDs are the SAME after the write —
+		// previously the investment path stashed an ID that UpdateTransferCash
+		// had just deleted, so the cursor jumped or vanished.
+		var savedID types.ID
+		var savedIsInvestment bool
+		if res := cmd.Result(); res != nil {
+			if leg, ok := res.LegForAccount(currentAcct); ok {
+				savedID = leg.RowID
+				savedIsInvestment = leg.Ledger == transfer.LedgerInvestment
+			}
 		}
-		if _, err := a.investmentSvc.UpdateTransferCash(
-			investmentTxnID,
-			investmentAccountID,
-			otherAccountID,
-			date,
-			amount,
-			memo,
-			categoryID, // applies to the regular-side leg (inv↔reg); ignored for inv↔inv
-			direction,
-			status,
-		); err != nil {
-			return errMsg{err: fmt.Errorf("failed to update transfer: %w", err)}
-		}
-		return transferDialogSavedMsg{savedDate: date, savedID: savedID, savedIsInvestment: !savedID.IsNil()}
+		return transferDialogSavedMsg{savedDate: date, savedID: savedID, savedIsInvestment: savedIsInvestment}
 	}
 }

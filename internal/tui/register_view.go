@@ -236,27 +236,47 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 	accountID := a.sidebar.SelectedAccountID()
 	txnID := txn.ID
 	currentStatus := txn.Status
+	isTransfer := txn.IsTransfer()
+
+	// The toggled-to status, computed the same way for both paths.
+	nextStatus := transaction.StatusCleared
+	if currentStatus == transaction.StatusCleared {
+		nextStatus = transaction.StatusUncleared
+	}
 
 	return a, func() tea.Msg {
 		if a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 
-		// Get current state from DB for the edit command
-		current, err := a.transactionSvc.GetByID(txnID)
-		if err != nil {
-			return errMsg{err: err}
-		}
-
-		// Build updated copy with toggled status
-		updated := *current
-		if currentStatus == transaction.StatusCleared {
-			updated.MarkUncleared()
+		var cmd undo.Command
+		if isTransfer {
+			// A transfer leg's status is owned by the transfer service, which
+			// writes only the status column of the one leg. Clearing your side
+			// says your bank posted it, which is independent of the other
+			// account's side, so the sibling leg is deliberately untouched.
+			//
+			// This used to go through EditTransactionCommand →
+			// transaction.Service.Update, which rewrites the whole row and has
+			// no transfer-aware path at all.
+			if a.transferSvc == nil {
+				return errMsg{err: fmt.Errorf("transfer service not available")}
+			}
+			cmd = undo.NewSetTransferLegStatusCommand(a.transferSvc, txnID, nextStatus)
 		} else {
-			updated.Clear()
+			current, err := a.transactionSvc.GetByID(txnID)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			updated := *current
+			if currentStatus == transaction.StatusCleared {
+				updated.MarkUncleared()
+			} else {
+				updated.Clear()
+			}
+			cmd = undo.NewEditTransactionCommand(a.transactionSvc, &updated)
 		}
 
-		cmd := undo.NewEditTransactionCommand(a.transactionSvc, &updated)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
@@ -301,6 +321,10 @@ func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
 	txnID := txn.ID
 
 	isTransfer := txn.IsTransfer()
+	var transferID types.ID
+	if isTransfer {
+		transferID = txn.TransferID.ID
+	}
 
 	a.showConfirmDialog("Void Transaction", msg, func() tea.Msg {
 		if a.undoManager == nil {
@@ -309,7 +333,10 @@ func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
 
 		var cmd undo.Command
 		if isTransfer {
-			cmd = undo.NewVoidTransferCommand(a.transactionSvc, txnID)
+			// Addressed by transfer_id rather than by a leg's row id: the void
+			// applies to the whole transfer, and an investment-involving one is
+			// refused by name instead of failing with "expected 2 transactions".
+			cmd = undo.NewVoidTransferCommand(a.transferSvc, transferID)
 		} else {
 			cmd = undo.NewVoidTransactionCommand(a.transactionSvc, txnID)
 		}
@@ -367,7 +394,7 @@ func (a *App) showDeleteConfirmation() (tea.Model, tea.Cmd) {
 
 		var cmd undo.Command
 		if isTransfer {
-			cmd = undo.NewDeleteTransferCommand(a.transactionSvc, txn.TransferID.ID)
+			cmd = undo.NewDeleteTransferCommand(a.transferSvc, txn.TransferID.ID)
 		} else {
 			cmd = undo.NewDeleteTransactionCommand(a.transactionSvc, txnID)
 		}
