@@ -277,7 +277,12 @@ func TestSplitReplaceSplits(t *testing.T) {
 	})
 }
 
-func TestSplitValidateSplitTotals(t *testing.T) {
+// TestSplitTotalsMatchAfterCreateWithSplits reads the persisted split totals back
+// through the repository the service itself uses (Service.AddSplit is the live
+// caller). Service.ValidateSplitTotals was a one-line passthrough and is gone; the
+// round trip this test covers — validate AFTER the service's transactional write —
+// is not reachable from split_repository_test.go, which persists splits directly.
+func TestSplitTotalsMatchAfterCreateWithSplits(t *testing.T) {
 	svc, database, cleanup := createSplitTestService(t)
 	defer cleanup()
 
@@ -293,7 +298,8 @@ func TestSplitValidateSplitTotals(t *testing.T) {
 			t.Fatalf("Failed to create: %v", err)
 		}
 
-		valid, err := svc.ValidateSplitTotals(txn.ID)
+		splitRepo := transaction.NewSplitRepository(database)
+		valid, err := splitRepo.ValidateSplitsAgainstTransaction(txn.ID)
 		if err != nil {
 			t.Fatalf("Failed to validate: %v", err)
 		}

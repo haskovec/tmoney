@@ -29,7 +29,6 @@ type catXferFixture struct {
 	accountRepo   *account.Repository
 	categoryRepo  *category.Repository
 	parentID      types.ID
-	checkingID    types.ID
 	savingsID     types.ID
 	foodID        types.ID
 	billsID       types.ID
@@ -84,7 +83,6 @@ func setupCatBankXfer(t *testing.T) catXferFixture {
 		accountRepo:   accountRepo,
 		categoryRepo:  categoryRepo,
 		parentID:      parent.ID,
-		checkingID:    checking.ID,
 		savingsID:     savings.ID,
 		foodID:        foodID,
 		billsID:       billsID,
@@ -345,23 +343,6 @@ func TestCreateWithSplits_CategorizedInvestmentTransferLine_LineHoldsCategory(t 
 	}
 }
 
-func TestDuplicate_SplitWithTransferLine_Refused(t *testing.T) {
-	f := setupCatBankXfer(t)
-
-	_, err := f.svc.Duplicate(f.parentID)
-	var dupErr *CannotDuplicateSplitTransferError
-	if !errors.As(err, &dupErr) {
-		t.Fatalf("expected CannotDuplicateSplitTransferError, got %v", err)
-	}
-	// The guard must refuse before creating anything: Checking (the parent's
-	// account) still holds exactly the original parent, no orphaned duplicate.
-	// Asserting on Checking — not Savings — is what actually catches a guard
-	// that runs after txnRepo.Create (Duplicate never mints a Savings row).
-	if n := accountTxnCount(t, f.svc, f.checkingID); n != 1 {
-		t.Errorf("checking transaction count = %d, want 1 (no partial duplicate)", n)
-	}
-}
-
 type catInvXferFixture struct {
 	svc          *Service
 	adapter      *fakeInvCounterpart
@@ -496,38 +477,5 @@ func TestUpdateSplit_CategoryChange_ReconciledRegularCounterpart_NoPartialWrite(
 	got := transferLineOf(t, f.svc, f.parentID)
 	if got == nil || got.CategoryID != f.billsID {
 		t.Errorf("split line mutated despite block (partial write): got %+v, want Bills", got)
-	}
-}
-
-func TestDuplicate_PlainSplit_StillWorks(t *testing.T) {
-	svc, accountRepo, _, categoryRepo := createTestServiceWithAdapter(t)
-	checking := createTestAccount(t, accountRepo, "Checking")
-	food := category.NewCategory("Food", category.TypeExpense)
-	if err := categoryRepo.Create(food); err != nil {
-		t.Fatalf("create category: %v", err)
-	}
-	rent := category.NewCategory("Rent", category.TypeExpense)
-	if err := categoryRepo.Create(rent); err != nil {
-		t.Fatalf("create category: %v", err)
-	}
-
-	parent := NewTransaction(checking.ID, types.Today(), types.MustNewMoney("-100.00"))
-	if err := svc.CreateWithSplits(parent, []*Split{
-		NewSplit(parent.ID, food.ID, types.MustNewMoney("-60.00")),
-		NewSplit(parent.ID, rent.ID, types.MustNewMoney("-40.00")),
-	}); err != nil {
-		t.Fatalf("CreateWithSplits: %v", err)
-	}
-
-	dup, err := svc.Duplicate(parent.ID)
-	if err != nil {
-		t.Fatalf("Duplicate of a plain split parent should succeed: %v", err)
-	}
-	dupSplits, err := svc.GetSplits(dup.ID)
-	if err != nil {
-		t.Fatalf("GetSplits: %v", err)
-	}
-	if len(dupSplits) != 2 {
-		t.Errorf("duplicate has %d splits, want 2", len(dupSplits))
 	}
 }

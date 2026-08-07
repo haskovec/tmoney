@@ -15,6 +15,7 @@ import (
 type reconTestEnv struct {
 	reconSvc    *reconciliation.Service
 	txnSvc      *transaction.Service
+	txnRepo     *transaction.Repository
 	accountRepo *account.Repository
 }
 
@@ -34,6 +35,7 @@ func createReconTestEnv(t *testing.T) *reconTestEnv {
 	return &reconTestEnv{
 		reconSvc:    reconSvc,
 		txnSvc:      txnSvc,
+		txnRepo:     txnRepo,
 		accountRepo: accountRepo,
 	}
 }
@@ -277,7 +279,7 @@ func TestFinishReconciliationCommand_ExecuteAndUndo(t *testing.T) {
 		if err := env.txnSvc.Create(txnRecon); err != nil {
 			t.Fatalf("Create txnRecon: %v", err)
 		}
-		if err := env.txnSvc.ReconcileTransaction(txnRecon.ID); err != nil {
+		if err := env.txnRepo.UpdateStatus(txnRecon.ID, transaction.StatusReconciled); err != nil {
 			t.Fatalf("Reconcile txnRecon: %v", err)
 		}
 

@@ -61,27 +61,9 @@ func (e *SplitTotalMismatchError) Error() string {
 // transfer.InvalidAmountError is now the single owner; this package no longer
 // creates transfers, so it no longer needs the type.
 
-// CannotDuplicateTransferError is returned when trying to duplicate a transfer.
-type CannotDuplicateTransferError struct {
-	ID string
-}
-
-func (e *CannotDuplicateTransferError) Error() string {
-	return fmt.Sprintf("cannot duplicate transfer transaction %s; use CreateTransfer instead", e.ID)
-}
-
-// CannotDuplicateSplitTransferError is returned when trying to duplicate a
-// split transaction that contains a transfer line. The split-copy path can't
-// reconstruct the paired counter-transaction, so duplication is refused rather
-// than silently producing an orphaned (and, after migration 029, categorized)
-// split with no counterpart.
-type CannotDuplicateSplitTransferError struct {
-	ID string
-}
-
-func (e *CannotDuplicateSplitTransferError) Error() string {
-	return fmt.Sprintf("cannot duplicate transaction %s: it contains a transfer line", e.ID)
-}
+// CannotDuplicateTransferError and CannotDuplicateSplitTransferError lived here.
+// Both were built only by Service.Duplicate, which no surface ever wired up. The
+// method and its two guards went with the tier-2 dead surface.
 
 // IsVoidError is returned when trying to edit or void a void transaction.
 type IsVoidError struct {
@@ -101,14 +83,9 @@ func (e *IsReconciledError) Error() string {
 	return fmt.Sprintf("transaction %s is reconciled; un-reconcile it first", e.ID)
 }
 
-// NotReconciledError is returned when trying to un-reconcile a non-reconciled transaction.
-type NotReconciledError struct {
-	ID string
-}
-
-func (e *NotReconciledError) Error() string {
-	return fmt.Sprintf("transaction %s is not reconciled", e.ID)
-}
+// NotReconciledError lived here. Only Service.UnReconcileTransaction built it,
+// and reconciliation.Service un-reconciles through Repository.UpdateStatus
+// instead, so the guard it reported never ran in production.
 
 // IsNotTransferError is returned when a transfer operation is attempted on a non-transfer transaction.
 type IsNotTransferError struct {

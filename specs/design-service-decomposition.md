@@ -1,13 +1,15 @@
 # Design sketch: service decomposition — god files, god types, and one deleted engine
 
 **Date:** 2026-08-07
-**Status:** PROPOSED. Phase 0 (free deletions) SHIPPED 2026-08-07 (`828e0b5`) —
+**Status:** IN PROGRESS. Phase 0 (free deletions) SHIPPED 2026-08-07 (`828e0b5`) —
 11 dead symbols removed from `internal/transaction` (−522/+14 lines), full suite
 green. §1.4's open question resolved 2026-08-07: delete the four orphans, hold
 the three split methods. Measuring that decision's real test churn (33 sites, most
 of them fixtures for live behavior) split phase 1 into 1a (deletions) and 1b
-(pure file motion) — see §1.4's cost correction. Phases 1–4 not started. Phase 5
-is a recorded non-goal, not work.
+(pure file motion) — see §1.4's cost correction. Phase 1a SHIPPED 2026-08-07
+(−137/+8 production lines, all 33 test sites reviewed individually) — see §1.5 for
+what the site-by-site review changed about the plan. Phases 1b–4 not started.
+Phase 5 is a recorded non-goal, not work.
 **Addresses:** `specs/code-quality-review.md` item 3 (god services: domain logic
 past healthy file size)
 
@@ -190,6 +192,38 @@ One site is cross-package: `internal/undo/reconciliation_test.go:280` uses
 `env.txnSvc.ReconcileTransaction` and cannot reach the private `txnRepo`, so
 `createReconTestEnv` (`:25-32`, which already constructs one) gains a `txnRepo`
 field.
+
+### 1.5 What the site-by-site review changed — phase 1a, shipped
+
+Reviewing all 33 sites individually (§8's requirement) found a **second**
+cross-package site the tally above missed, and corrected the fixture/subject split
+in three places. Shipped shape, versus §1.4's plan:
+
+| Plan said | Shipped | Why |
+|---|---|---|
+| 21 fixture rewires | 12 | Four "fixture" sites were subject legs inside surviving tests, so they were trimmed, not rewired |
+| `tests/integration/split_test.go` untracked | **rewired, not deleted** | Its `ValidateSplitTotals` call is the only test that validates split totals *after* `CreateWithSplits`' transactional write; `split_repository_test.go` persists splits directly and cannot reach that path. Re-pointed onto `splitRepo.ValidateSplitsAgainstTransaction` and renamed, following phase 0's own precedent (§1.3) |
+| three error types unmentioned | **deleted** | `NotReconciledError`, `CannotDuplicateTransferError`, `CannotDuplicateSplitTransferError` had zero references left. Go does not fail a build on an unreferenced exported type, so nothing would have surfaced them |
+| `TestStatusLifecycle_FullCycle` keeps its name | **renamed** | After losing the reconcile legs it walks three of six states; `_UnclearedToClearedToVoid` is what it now does |
+| `TestTransactionService_UnReconcileTransaction` trims to one subtest | **deleted, one subtest rehomed** | The surviving subtest's setup was inert after rewiring — it asserted only that `Update` works on a cleared row. Rebuilt as `Update_VoidGuard/"allows editing once a reconciled transaction returns to cleared"`, which writes reconciled, asserts `Update` is refused, writes cleared, then asserts it succeeds. Now neither write can be dropped without a failure |
+
+Two coverage facts worth recording, because a later reader will otherwise
+re-derive them:
+
+- **`splitRepo.ValidateSplitsAgainstTransaction` is not dead.** It looks like an
+  orphan once the service passthrough goes, but `AddSplit`
+  (`transaction_service.go:621`) is a live second caller feeding
+  `SplitTotalMismatchError`. Keep it.
+- **One composite path is no longer exercised:** reconciled → un-reconciled →
+  void, which only `TestStatusLifecycle_FullCycle` walked. This is acceptable
+  because `VoidTransaction` inspects only the row's *current* status
+  (`:1307`), so prior status cannot influence it. No guard that production can
+  reach lost coverage.
+
+Test-side outcome: 6 test functions deleted whole, 3 trimmed in place, 7 subtests
+deleted, 12 sites rewired onto `UpdateStatus`, 1 test-env struct given a
+`txnRepo` field, 1 dead fixture field removed. Full suite green, unmodified
+elsewhere.
 
 ---
 

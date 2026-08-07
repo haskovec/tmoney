@@ -1164,11 +1164,6 @@ func (s *Service) ensureCounterpartNotReconciled(transferID types.ID) error {
 	return nil
 }
 
-// ValidateSplitTotals checks if the splits for a transaction sum to the transaction amount.
-func (s *Service) ValidateSplitTotals(transactionID types.ID) (bool, error) {
-	return s.splitRepo.ValidateSplitsAgainstTransaction(transactionID)
-}
-
 // ensureAccountOpen returns an AccountClosedError when the account is closed.
 // A closed account is frozen: no new transactions, edits, deletes, or status
 // toggles. It is nil-tolerant for test fixtures constructed without an
@@ -1218,29 +1213,10 @@ func (s *Service) ClearTransaction(id types.ID) error {
 	return s.txnRepo.UpdateStatus(id, StatusCleared)
 }
 
-// ReconcileTransaction marks a transaction as reconciled.
-// Void transactions cannot be reconciled.
-func (s *Service) ReconcileTransaction(id types.ID) error {
-	txn, err := s.txnRepo.GetByID(id)
-	if err != nil {
-		return err
-	}
-
-	if txn.IsVoid() {
-		return &IsVoidError{ID: id.String()}
-	}
-
-	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
-		return err
-	}
-
-	// Status-only change: narrow in-place update (see ClearTransaction).
-	return s.txnRepo.UpdateStatus(id, StatusReconciled)
-}
-
 // MarkTransactionUncleared marks a transaction as uncleared.
 // Void and reconciled transactions cannot be marked uncleared directly.
-// Use UnReconcileTransaction to move from reconciled to cleared.
+// A reconciled transaction is unlocked by reconciliation.Service, which writes
+// the prior status back through Repository.UpdateStatus, not by this package.
 func (s *Service) MarkTransactionUncleared(id types.ID) error {
 	txn, err := s.txnRepo.GetByID(id)
 	if err != nil {
@@ -1261,26 +1237,6 @@ func (s *Service) MarkTransactionUncleared(id types.ID) error {
 
 	// Status-only change: narrow in-place update (see ClearTransaction).
 	return s.txnRepo.UpdateStatus(id, StatusUncleared)
-}
-
-// UnReconcileTransaction moves a reconciled transaction back to cleared status.
-// Only reconciled transactions can be un-reconciled.
-func (s *Service) UnReconcileTransaction(id types.ID) error {
-	txn, err := s.txnRepo.GetByID(id)
-	if err != nil {
-		return err
-	}
-
-	if !txn.IsReconciled() {
-		return &NotReconciledError{ID: id.String()}
-	}
-
-	if err := s.ensureAccountOpen(txn.AccountID); err != nil {
-		return err
-	}
-
-	// Status-only change: narrow in-place update (see ClearTransaction).
-	return s.txnRepo.UpdateStatus(id, StatusCleared)
 }
 
 // VoidTransaction voids a transaction by setting its amount to 0, memo to **VOID**,
@@ -1398,68 +1354,6 @@ type BalanceImpact struct {
 	Amount         types.Money
 	IsTransferFrom bool
 	IsTransferTo   bool
-}
-
-// =============================================================================
-// Duplicate Operations
-// =============================================================================
-
-// Duplicate creates a copy of a transaction with today's date and uncleared status.
-func (s *Service) Duplicate(transactionID types.ID) (*Transaction, error) {
-	original, err := s.txnRepo.GetByID(transactionID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Cannot duplicate transfers (they need special handling)
-	if original.IsTransfer() {
-		return nil, &CannotDuplicateTransferError{ID: transactionID.String()}
-	}
-
-	// A split parent containing a transfer line can't be duplicated: the
-	// split-copy loop below drops transfer linkage, and after migration 029
-	// relaxed the transaction_splits CHECK a categorized transfer line would
-	// degrade silently into a plain categorized split with no counterpart.
-	// Refuse up front, before creating anything.
-	splits, err := s.splitRepo.ListByTransaction(transactionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get splits: %w", err)
-	}
-	for _, split := range splits {
-		if split.TransferAccountID.Valid {
-			return nil, &CannotDuplicateSplitTransferError{ID: transactionID.String()}
-		}
-	}
-
-	// Create a new transaction with same properties
-	duplicate := NewTransaction(original.AccountID, types.Today(), original.Amount)
-	duplicate.PayeeID = original.PayeeID
-	duplicate.CategoryID = original.CategoryID
-	duplicate.Memo = original.Memo
-	duplicate.CheckNumber = original.CheckNumber
-	// Status is always uncleared for duplicates (set by NewTransaction)
-
-	// The parent and its split copies commit atomically — a split failure
-	// rolls back the parent instead of best-effort cleanup.
-	if err := s.runInTx(func(b *Service) error {
-		if err := b.txnRepo.Create(duplicate); err != nil {
-			return err
-		}
-
-		// Duplicate splits if any (guaranteed transfer-free by the guard above).
-		for _, split := range splits {
-			newSplit := NewSplit(duplicate.ID, split.CategoryID, split.Amount)
-			newSplit.Memo = split.Memo
-			if err := b.splitRepo.Create(newSplit); err != nil {
-				return fmt.Errorf("failed to duplicate split: %w", err)
-			}
-		}
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-
-	return duplicate, nil
 }
 
 // =============================================================================

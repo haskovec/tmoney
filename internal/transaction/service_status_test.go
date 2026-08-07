@@ -105,8 +105,8 @@ func TestBalanceCalculation_ClearedBalanceIncludesOnlyClearedAndReconciled(t *te
 		if err := txnSvc.Create(txn3); err != nil {
 			t.Fatalf("Create txn3 error = %v", err)
 		}
-		if err := txnSvc.ReconcileTransaction(txn3.ID); err != nil {
-			t.Fatalf("ReconcileTransaction() error = %v", err)
+		if err := txnRepo.UpdateStatus(txn3.ID, StatusReconciled); err != nil {
+			t.Fatalf("UpdateStatus(reconciled) error = %v", err)
 		}
 
 		// txn4: -400, void (NOT in any balance)
@@ -202,8 +202,8 @@ func TestBalanceCalculation_ReconciledInClearedBalance(t *testing.T) {
 		if err := txnSvc.Create(txn); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
-		if err := txnSvc.ReconcileTransaction(txn.ID); err != nil {
-			t.Fatalf("ReconcileTransaction() error = %v", err)
+		if err := txnRepo.UpdateStatus(txn.ID, StatusReconciled); err != nil {
+			t.Fatalf("UpdateStatus(reconciled) error = %v", err)
 		}
 
 		balance, _ := accountSvc.GetBalance(account.ID)
@@ -240,12 +240,14 @@ func TestBalanceCalculation_UnReconciledRemainsInClearedBalance(t *testing.T) {
 			t.Fatalf("Create() error = %v", err)
 		}
 
-		// Reconcile then un-reconcile -> cleared
-		if err := txnSvc.ReconcileTransaction(txn.ID); err != nil {
-			t.Fatalf("ReconcileTransaction() error = %v", err)
+		// Reconcile then un-reconcile -> cleared, written the way production writes
+		// it: reconciliation.Service marks reconciled (reconciliation_service.go:282)
+		// and UndoFinish restores the prior status (:391), both through UpdateStatus.
+		if err := txnRepo.UpdateStatus(txn.ID, StatusReconciled); err != nil {
+			t.Fatalf("UpdateStatus(reconciled) error = %v", err)
 		}
-		if err := txnSvc.UnReconcileTransaction(txn.ID); err != nil {
-			t.Fatalf("UnReconcileTransaction() error = %v", err)
+		if err := txnRepo.UpdateStatus(txn.ID, StatusCleared); err != nil {
+			t.Fatalf("UpdateStatus(cleared) error = %v", err)
 		}
 
 		balance, _ := accountSvc.GetBalance(account.ID)
@@ -270,8 +272,8 @@ func TestBalanceCalculation_UnReconciledRemainsInClearedBalance(t *testing.T) {
 // verifying the full state machine works end-to-end.
 // =============================================================================
 
-func TestStatusLifecycle_FullCycle(t *testing.T) {
-	t.Run("uncleared -> cleared -> reconciled -> un-reconcile -> cleared -> void", func(t *testing.T) {
+func TestStatusLifecycle_UnclearedToClearedToVoid(t *testing.T) {
+	t.Run("uncleared -> cleared -> void", func(t *testing.T) {
 		svc, accountRepo := createTestTransactionService(t)
 		account := createTestAccount(t, accountRepo, "Checking")
 
@@ -295,34 +297,16 @@ func TestStatusLifecycle_FullCycle(t *testing.T) {
 			t.Errorf("Step 2: expected cleared, got %s", retrieved.Status)
 		}
 
-		// 3. Reconcile
-		if err := svc.ReconcileTransaction(txn.ID); err != nil {
-			t.Fatalf("ReconcileTransaction() error = %v", err)
-		}
-		retrieved, _ = svc.GetByID(txn.ID)
-		if retrieved.Status != StatusReconciled {
-			t.Errorf("Step 3: expected reconciled, got %s", retrieved.Status)
-		}
-
-		// 4. Un-reconcile -> cleared
-		if err := svc.UnReconcileTransaction(txn.ID); err != nil {
-			t.Fatalf("UnReconcileTransaction() error = %v", err)
-		}
-		retrieved, _ = svc.GetByID(txn.ID)
-		if retrieved.Status != StatusCleared {
-			t.Errorf("Step 4: expected cleared, got %s", retrieved.Status)
-		}
-
-		// 5. Void from cleared state
+		// 3. Void from cleared state
 		if err := svc.VoidTransaction(txn.ID); err != nil {
 			t.Fatalf("VoidTransaction() error = %v", err)
 		}
 		retrieved, _ = svc.GetByID(txn.ID)
 		if retrieved.Status != StatusVoid {
-			t.Errorf("Step 5: expected void, got %s", retrieved.Status)
+			t.Errorf("Step 3: expected void, got %s", retrieved.Status)
 		}
 		if !retrieved.Amount.IsZero() {
-			t.Errorf("Step 5: expected amount 0, got %s", retrieved.Amount.String())
+			t.Errorf("Step 3: expected amount 0, got %s", retrieved.Amount.String())
 		}
 	})
 }
@@ -344,17 +328,11 @@ func TestStatusLifecycle_VoidIsTerminal(t *testing.T) {
 		if err := svc.ClearTransaction(txn.ID); err == nil {
 			t.Error("ClearTransaction on void should fail")
 		}
-		if err := svc.ReconcileTransaction(txn.ID); err == nil {
-			t.Error("ReconcileTransaction on void should fail")
-		}
 		if err := svc.MarkTransactionUncleared(txn.ID); err == nil {
 			t.Error("MarkTransactionUncleared on void should fail")
 		}
 		if err := svc.VoidTransaction(txn.ID); err == nil {
 			t.Error("VoidTransaction on void should fail")
-		}
-		if err := svc.UnReconcileTransaction(txn.ID); err == nil {
-			t.Error("UnReconcileTransaction on void should fail")
 		}
 
 		// Edit and delete should also fail
@@ -378,11 +356,13 @@ func TestStatusLifecycle_ReconciledIsLocked(t *testing.T) {
 		if err := svc.Create(txn); err != nil {
 			t.Fatalf("Create() error = %v", err)
 		}
-		if err := svc.ReconcileTransaction(txn.ID); err != nil {
-			t.Fatalf("ReconcileTransaction() error = %v", err)
+		// Reconciled is reached the way production reaches it: reconciliation.Service
+		// writes the status column directly (reconciliation_service.go:282).
+		if err := svc.txnRepo.UpdateStatus(txn.ID, StatusReconciled); err != nil {
+			t.Fatalf("UpdateStatus(reconciled) error = %v", err)
 		}
 
-		// Status transitions (except un-reconcile) should fail
+		// Status transitions should fail
 		if err := svc.ClearTransaction(txn.ID); err == nil {
 			t.Error("ClearTransaction on reconciled should fail")
 		}
@@ -401,11 +381,6 @@ func TestStatusLifecycle_ReconciledIsLocked(t *testing.T) {
 		}
 		if err := svc.Delete(txn.ID); err == nil {
 			t.Error("Delete on reconciled should fail")
-		}
-
-		// But un-reconcile should succeed
-		if err := svc.UnReconcileTransaction(txn.ID); err != nil {
-			t.Errorf("UnReconcileTransaction should succeed, got error: %v", err)
 		}
 	})
 }
