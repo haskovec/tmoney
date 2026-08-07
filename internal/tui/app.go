@@ -285,6 +285,8 @@ type App struct {
 	// investmentValuationSvc is the read-only half: holdings, valuation and
 	// total return. Views take it instead of the full service.
 	investmentValuationSvc *investment.ValuationService
+	// investmentEditSvc owns the ten edit entry points.
+	investmentEditSvc      *investment.EditService
 	investmentRepo         *investment.Repository
 	investmentTypeSelector *dialog.Dialog
 	investmentEditTxnID    types.ID // set when editing an existing transaction
@@ -463,6 +465,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		priceSvc:                  svc.Price,
 		investmentSvc:             svc.Investment,
 		investmentValuationSvc:    svc.InvestmentValuation,
+		investmentEditSvc:         svc.InvestmentEdit,
 		investmentRepo:            svc.InvestmentRepo,
 		dashboardExpandedAccounts: make(map[types.ID]bool),
 		lotRepo:                   svc.LotRepo,

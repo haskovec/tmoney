@@ -130,7 +130,7 @@ func TestInvestmentService_UpdateTransferShares_RejectsClosedOldDestination(t *t
 
 	// Re-targeting the still-open source transfer to a new open account must be
 	// refused because the OLD destination leg lives on a closed account.
-	_, err = env.svc.UpdateTransferShares(res.SourceTransaction.ID, src.ID, dstC.ID, date, sec.ID, types.MustNewQuantity("5"), "", nil)
+	_, err = env.editSvc.UpdateTransferShares(res.SourceTransaction.ID, src.ID, dstC.ID, date, sec.ID, types.MustNewQuantity("5"), "", nil)
 	assertInvClosed(t, err)
 
 	// The old destination's leg must NOT have been reversed/deleted.

@@ -275,7 +275,7 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.investmentSvc.UpdateDividend(editTxnID, accountID, securityID, date, *amount, memo)
+			saved, err = a.investmentEditSvc.UpdateDividend(editTxnID, accountID, securityID, date, *amount, memo)
 		} else {
 			saved, err = a.investmentSvc.Dividend(accountID, securityID, date, *amount, memo)
 		}
@@ -379,7 +379,7 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.investmentSvc.UpdateReinvestDividend(
+			saved, err = a.investmentEditSvc.UpdateReinvestDividend(
 				editTxnID,
 				accountID,
 				securityID,

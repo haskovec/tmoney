@@ -341,7 +341,7 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 		var result *investment.ShareTransferResult
 		var txnErr error
 		if editTxnID != types.NilID {
-			result, txnErr = a.investmentSvc.UpdateTransferShares(
+			result, txnErr = a.investmentEditSvc.UpdateTransferShares(
 				editTxnID,
 				sourceAccountID,
 				destAccountID,

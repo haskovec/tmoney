@@ -50,7 +50,7 @@ func TestUpdateSell_NonLotTracking(t *testing.T) {
 
 		// Edit the second sell to the correct price ($55.00) — same shares
 		newPrice := types.MustNewMoney("55.00")
-		_, err = env.svc.UpdateSell(sell2.ID, acct.ID, sec.ID, date, sellShares2, nil, &newPrice, types.ZeroMoney, "", nil)
+		_, err = env.editSvc.UpdateSell(sell2.ID, acct.ID, sec.ID, date, sellShares2, nil, &newPrice, types.ZeroMoney, "", nil)
 		if err != nil {
 			t.Fatalf("UpdateSell() unexpected error: %v", err)
 		}
@@ -86,7 +86,7 @@ func TestUpdateSell_NonLotTracking(t *testing.T) {
 
 		// Edit sell down to 3 shares
 		newSellShares := types.MustNewQuantity("3")
-		_, err = env.svc.UpdateSell(sellTxn.ID, acct.ID, sec.ID, date, newSellShares, nil, &sellPrice, types.ZeroMoney, "", nil)
+		_, err = env.editSvc.UpdateSell(sellTxn.ID, acct.ID, sec.ID, date, newSellShares, nil, &sellPrice, types.ZeroMoney, "", nil)
 		if err != nil {
 			t.Fatalf("UpdateSell() error = %v", err)
 		}
@@ -115,7 +115,7 @@ func TestUpdateSell_NonLotTracking(t *testing.T) {
 
 		// Edit the sell up to 7 shares (well within remaining position)
 		newSellShares := types.MustNewQuantity("7")
-		_, err := env.svc.UpdateSell(sellTxn.ID, acct.ID, sec.ID, date, newSellShares, nil, &sellPrice, types.ZeroMoney, "", nil)
+		_, err := env.editSvc.UpdateSell(sellTxn.ID, acct.ID, sec.ID, date, newSellShares, nil, &sellPrice, types.ZeroMoney, "", nil)
 		if err != nil {
 			t.Fatalf("UpdateSell() error = %v", err)
 		}
@@ -143,7 +143,7 @@ func TestUpdateSell_NonLotTracking(t *testing.T) {
 
 		// Try to edit the sell to 10 shares (only 3 ever held)
 		newSellShares := types.MustNewQuantity("10")
-		_, err := env.svc.UpdateSell(sellTxn.ID, acct.ID, sec.ID, date, newSellShares, nil, &sellPrice, types.ZeroMoney, "", nil)
+		_, err := env.editSvc.UpdateSell(sellTxn.ID, acct.ID, sec.ID, date, newSellShares, nil, &sellPrice, types.ZeroMoney, "", nil)
 		if err == nil {
 			t.Fatal("UpdateSell() expected error for shares exceeding holdings")
 		}
@@ -186,7 +186,7 @@ func TestUpdateBuy_NonLotTracking(t *testing.T) {
 		// Edit Buy 1: 1 share at $40 → 1 share at $45
 		// Expected new avg = ((45 * 1) + (55 * 2)) / 3 = 155 / 3 ≈ 51.6667
 		newPrice := types.MustNewMoney("45.00")
-		_, err = env.svc.UpdateBuy(buy1.ID, acct.ID, sec.ID, date, shares1, nil, &newPrice, types.ZeroMoney, "")
+		_, err = env.editSvc.UpdateBuy(buy1.ID, acct.ID, sec.ID, date, shares1, nil, &newPrice, types.ZeroMoney, "")
 		if err != nil {
 			t.Fatalf("UpdateBuy() error = %v", err)
 		}
@@ -222,7 +222,7 @@ func TestUpdateBuy_LotTracking(t *testing.T) {
 
 		// Edit the buy to 5 shares at $105
 		newPrice := types.MustNewMoney("105.00")
-		_, err := env.svc.UpdateBuy(buyTxn.ID, acct.ID, sec.ID, date, shares, nil, &newPrice, types.ZeroMoney, "")
+		_, err := env.editSvc.UpdateBuy(buyTxn.ID, acct.ID, sec.ID, date, shares, nil, &newPrice, types.ZeroMoney, "")
 		if err != nil {
 			t.Fatalf("UpdateBuy() error = %v", err)
 		}
@@ -269,7 +269,7 @@ func TestUpdateSell_LotTracking(t *testing.T) {
 
 		// Edit the sell to use a different price
 		newPrice := types.MustNewMoney("115.00")
-		_, err = env.svc.UpdateSell(sellTxn.ID, acct.ID, sec.ID, date, sellShares, nil, &newPrice, types.ZeroMoney, "", allocations)
+		_, err = env.editSvc.UpdateSell(sellTxn.ID, acct.ID, sec.ID, date, sellShares, nil, &newPrice, types.ZeroMoney, "", allocations)
 		if err != nil {
 			t.Fatalf("UpdateSell() error = %v", err)
 		}
@@ -297,7 +297,7 @@ func TestUpdateDividend_NoSideEffects(t *testing.T) {
 			t.Fatalf("Dividend() error = %v", err)
 		}
 
-		_, err = env.svc.UpdateDividend(divTxn.ID, acct.ID, sec.ID, date, types.MustNewMoney("150.00"), "Q1 corrected")
+		_, err = env.editSvc.UpdateDividend(divTxn.ID, acct.ID, sec.ID, date, types.MustNewMoney("150.00"), "Q1 corrected")
 		if err != nil {
 			t.Fatalf("UpdateDividend() error = %v", err)
 		}
@@ -318,7 +318,7 @@ func TestUpdateFee_AllowsNegativeBalance(t *testing.T) {
 		_, _ = svc.Deposit(acct.ID, date, types.MustNewMoney("100.00"), "")
 		feeTxn, _ := svc.Fee(acct.ID, date, types.MustNewMoney("25.00"), "")
 
-		_, err := svc.UpdateFee(feeTxn.ID, acct.ID, date, types.MustNewMoney("200.00"), "")
+		_, err := NewEditService(svc).UpdateFee(feeTxn.ID, acct.ID, date, types.MustNewMoney("200.00"), "")
 		if err != nil {
 			t.Fatalf("UpdateFee() error = %v", err)
 		}
@@ -350,7 +350,7 @@ func TestUpdateFeeLiquidation_NonLotTracking(t *testing.T) {
 		}
 
 		newShares := types.MustNewQuantity("3")
-		_, err = env.svc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, newShares, nil, &flPrice, types.ZeroMoney, "", nil)
+		_, err = env.editSvc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, newShares, nil, &flPrice, types.ZeroMoney, "", nil)
 		if err != nil {
 			t.Fatalf("UpdateFeeLiquidation() error = %v", err)
 		}
@@ -373,7 +373,7 @@ func TestUpdateFeeLiquidation_NonLotTracking(t *testing.T) {
 		flPrice := types.MustNewMoney("110.00")
 		flTxn, _ := env.svc.FeeLiquidation(acct.ID, sec.ID, date, types.MustNewQuantity("1"), nil, &flPrice, types.ZeroMoney, "", nil)
 
-		_, err := env.svc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, types.MustNewQuantity("10"), nil, &flPrice, types.ZeroMoney, "", nil)
+		_, err := env.editSvc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, types.MustNewQuantity("10"), nil, &flPrice, types.ZeroMoney, "", nil)
 		if err == nil {
 			t.Fatal("UpdateFeeLiquidation() expected error for shares exceeding holdings")
 		}
@@ -407,7 +407,7 @@ func TestUpdateFeeLiquidation_LotTracking(t *testing.T) {
 		}
 
 		newPrice := types.MustNewMoney("115.00")
-		_, err = env.svc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, flShares, nil, &newPrice, types.ZeroMoney, "", alloc)
+		_, err = env.editSvc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, flShares, nil, &newPrice, types.ZeroMoney, "", alloc)
 		if err != nil {
 			t.Fatalf("UpdateFeeLiquidation() error = %v", err)
 		}
@@ -449,7 +449,7 @@ func TestUpdateFeeLiquidation_LotTracking(t *testing.T) {
 
 		// Edit UP to 9 shares. 9 > the 7 remaining pre-reverse, but the reverse
 		// restores the lot to 10 first, so 9 is valid and must succeed.
-		if _, err := env.svc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, types.MustNewQuantity("9"), nil, &flPrice, types.ZeroMoney, "", nil); err != nil {
+		if _, err := env.editSvc.UpdateFeeLiquidation(flTxn.ID, acct.ID, sec.ID, date, types.MustNewQuantity("9"), nil, &flPrice, types.ZeroMoney, "", nil); err != nil {
 			t.Fatalf("UpdateFeeLiquidation() grow-shares error = %v", err)
 		}
 		updatedLot, _ := env.lotRepo.GetByID(lotID)

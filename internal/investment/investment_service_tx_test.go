@@ -168,14 +168,17 @@ func TestService_UpdateBuy_ReapplyFaultLeavesOriginalIntact(t *testing.T) {
 		t.Fatalf("Buy() error = %v", err)
 	}
 
-	// Edit on a bound service so the whole reverse/delete/re-create runs inside
+	// Edit on a BOUND EditService: InTx rebinds the core, so the core.runInTx
+	// inside every Update* joins this transaction instead of opening a second one
+	// (which would deadlock db.WithTx.s mutex). The whole reverse/delete/re-create
+	// therefore runs inside
 	// one failing tx. Fault the recreate: the INSERT into investment_transactions
 	// is the first (and only) such insert in the edit tx — the reverse/delete
 	// phase issues DELETEs only.
 	newPrice := types.MustNewMoney("105.00")
 	err = env.db.WithTx(func(tx db.Queryer) error {
 		fw := &failingQueryer{inner: tx, failSubstr: "INSERT INTO investment_transactions"}
-		_, e := env.svc.InTx(fw).UpdateBuy(orig.ID, acct.ID, sec.ID, date, shares, nil, &newPrice, types.ZeroMoney, "")
+		_, e := env.editSvc.InTx(fw).UpdateBuy(orig.ID, acct.ID, sec.ID, date, shares, nil, &newPrice, types.ZeroMoney, "")
 		return e
 	})
 	if err == nil {

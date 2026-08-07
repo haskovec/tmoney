@@ -18,6 +18,7 @@ type testCAServiceEnv struct {
 	caSvc        *CorporateActionService
 	invSvc       *Service
 	valSvc       *ValuationService
+	editSvc      *EditService
 	accountRepo  *account.Repository
 	secRepo      *security.Repository
 	priceRepo    *price.Repository
@@ -48,6 +49,7 @@ func createCATestEnv(t *testing.T) *testCAServiceEnv {
 		caSvc:        caSvc,
 		invSvc:       invSvc,
 		valSvc:       valSvc,
+		editSvc:      NewEditService(invSvc),
 		accountRepo:  accountRepo,
 		secRepo:      secRepo,
 		priceRepo:    priceRepo,

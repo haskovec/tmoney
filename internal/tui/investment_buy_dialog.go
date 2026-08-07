@@ -326,7 +326,7 @@ func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.investmentSvc.UpdateBuy(
+			saved, err = a.investmentEditSvc.UpdateBuy(
 				editTxnID,
 				accountID,
 				securityID,

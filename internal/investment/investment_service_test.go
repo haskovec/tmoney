@@ -51,6 +51,7 @@ func createCheckAccount(t *testing.T, repo *account.Repository, name string) *ac
 type testServiceEnv struct {
 	svc                *Service
 	valSvc             *ValuationService
+	editSvc            *EditService
 	invRepo            *Repository
 	accountRepo        *account.Repository
 	secRepo            *security.Repository
@@ -78,6 +79,7 @@ func createFullTestService(t *testing.T) *testServiceEnv {
 	return &testServiceEnv{
 		svc:                svc,
 		valSvc:             valSvc,
+		editSvc:            NewEditService(svc),
 		invRepo:            invRepo,
 		accountRepo:        accountRepo,
 		secRepo:            secRepo,

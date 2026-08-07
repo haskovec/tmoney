@@ -43,7 +43,7 @@ func TestAutoPriceCleanup_EditBuyDate_MovesPrice(t *testing.T) {
 		t.Fatalf("expected auto-price at original date after Buy: %v", err)
 	}
 
-	if _, err := env.svc.UpdateBuy(buy.ID, acct.ID, sec.ID, editedDate, shares, nil, &buyPrice, types.ZeroMoney, ""); err != nil {
+	if _, err := env.editSvc.UpdateBuy(buy.ID, acct.ID, sec.ID, editedDate, shares, nil, &buyPrice, types.ZeroMoney, ""); err != nil {
 		t.Fatalf("UpdateBuy() error = %v", err)
 	}
 
@@ -85,7 +85,7 @@ func TestAutoPriceCleanup_SharedDateAcrossAccounts_PriceSurvives(t *testing.T) {
 	}
 
 	// Move A's buy off the shared date.
-	if _, err := env.svc.UpdateBuy(buyA.ID, acctA.ID, sec.ID, otherDate, shares, nil, &pA, types.ZeroMoney, ""); err != nil {
+	if _, err := env.editSvc.UpdateBuy(buyA.ID, acctA.ID, sec.ID, otherDate, shares, nil, &pA, types.ZeroMoney, ""); err != nil {
 		t.Fatalf("UpdateBuy() error = %v", err)
 	}
 
@@ -126,7 +126,7 @@ func TestAutoPriceCleanup_TwoSameDayLots_DifferentPrices(t *testing.T) {
 	}
 
 	// Edit lot 1's date.
-	if _, err := env.svc.UpdateBuy(buy1.ID, acct.ID, sec.ID, otherDate, shares, nil, &p1, types.ZeroMoney, ""); err != nil {
+	if _, err := env.editSvc.UpdateBuy(buy1.ID, acct.ID, sec.ID, otherDate, shares, nil, &p1, types.ZeroMoney, ""); err != nil {
 		t.Fatalf("UpdateBuy() error = %v", err)
 	}
 
@@ -168,7 +168,7 @@ func TestAutoPriceCleanup_ManualPriceUntouched(t *testing.T) {
 	}
 
 	// Move the buy off the date — the manual price must be left completely alone.
-	if _, err := env.svc.UpdateBuy(buy.ID, acct.ID, sec.ID, otherDate, shares, nil, &buyPrice, types.ZeroMoney, ""); err != nil {
+	if _, err := env.editSvc.UpdateBuy(buy.ID, acct.ID, sec.ID, otherDate, shares, nil, &buyPrice, types.ZeroMoney, ""); err != nil {
 		t.Fatalf("UpdateBuy() error = %v", err)
 	}
 
@@ -199,7 +199,7 @@ func TestAutoPriceCleanup_SameDatePriceEdit_RefreshesDailyPrice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Buy() error = %v", err)
 	}
-	if _, err := env.svc.UpdateBuy(buy.ID, acct.ID, sec.ID, date, shares, nil, &p2, types.ZeroMoney, ""); err != nil {
+	if _, err := env.editSvc.UpdateBuy(buy.ID, acct.ID, sec.ID, date, shares, nil, &p2, types.ZeroMoney, ""); err != nil {
 		t.Fatalf("UpdateBuy() error = %v", err)
 	}
 	got, err := env.priceRepo.GetBySecurityAndDate(sec.ID, date)

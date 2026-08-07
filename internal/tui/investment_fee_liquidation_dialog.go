@@ -239,7 +239,7 @@ func (a *App) submitFeeLiquidationDialog() (tea.Model, tea.Cmd) {
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.investmentSvc.UpdateFeeLiquidation(
+			saved, err = a.investmentEditSvc.UpdateFeeLiquidation(
 				editTxnID, accountID, securityID, date, shares,
 				totalAmount, pricePerShare, commission, memo, nil,
 			)

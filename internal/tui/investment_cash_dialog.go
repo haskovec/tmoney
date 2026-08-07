@@ -146,13 +146,13 @@ func (a *App) submitCashOperationDialog() (tea.Model, tea.Cmd) {
 		if editTxnID != types.NilID {
 			switch txnType {
 			case investment.TransactionTypeDeposit:
-				saved, txnErr = a.investmentSvc.UpdateDeposit(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentEditSvc.UpdateDeposit(editTxnID, accountID, date, amountVal, memo)
 			case investment.TransactionTypeWithdrawal:
-				saved, txnErr = a.investmentSvc.UpdateWithdrawal(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentEditSvc.UpdateWithdrawal(editTxnID, accountID, date, amountVal, memo)
 			case investment.TransactionTypeFee:
-				saved, txnErr = a.investmentSvc.UpdateFee(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentEditSvc.UpdateFee(editTxnID, accountID, date, amountVal, memo)
 			case investment.TransactionTypeInterest:
-				saved, txnErr = a.investmentSvc.UpdateInterest(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = a.investmentEditSvc.UpdateInterest(editTxnID, accountID, date, amountVal, memo)
 			default:
 				return errMsg{err: fmt.Errorf("unsupported cash operation type: %s", txnType)}
 			}

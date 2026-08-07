@@ -151,7 +151,7 @@ func runInvestmentEdit(opts *investmentEditOptions, w io.Writer) error {
 			}
 		}
 
-		newTxn, err = dispatchUpdate(svc.Investment, old, vals)
+		newTxn, err = dispatchUpdate(svc.InvestmentEdit, old, vals)
 		if err != nil {
 			return fmt.Errorf("failed to update %s transaction: %w", old.Type.DisplayName(), err)
 		}
@@ -335,7 +335,7 @@ func mergeEditValues(old *investmentdom.Transaction, opts *investmentEditOptions
 // dispatchUpdate routes the merged values to the Service.Update* method
 // matching the stored transaction type — the same methods the TUI edit
 // dialogs call.
-func dispatchUpdate(svc *investmentdom.Service, old *investmentdom.Transaction, vals *editedValues) (*investmentdom.Transaction, error) {
+func dispatchUpdate(svc *investmentdom.EditService, old *investmentdom.Transaction, vals *editedValues) (*investmentdom.Transaction, error) {
 	securityID := types.NilID
 	if old.SecurityID.Valid {
 		securityID = old.SecurityID.ID

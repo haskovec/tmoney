@@ -685,7 +685,35 @@ same amounts before and after the collapse (this is divergence (1)); and
 returns nothing.
 
 **Phase 4 — investment type extractions, in ascending risk (risk: medium→high).**
-Three separate commits, in this order, each independently revertable:
+SHIPPED 2026-08-07, all three. Three separate commits, in this order, each
+independently revertable:
+
+*What the three turned out to have in common,* which §6 did not predict: each new
+type is defined by something it **cannot** do, and in each case the guarantee is
+enforced by what the struct omits rather than by a convention.
+`CounterpartService` holds two repositories and no `*db.DB`, so it cannot open a
+transaction — only join the one it is handed. `ValuationService` holds eight and
+no `*db.DB`, so it cannot write at all. `EditService` holds exactly one field,
+the core, so "InTx rebinds every field" is checkable in three lines.
+
+*A correction to §6.1.* It described the valuation cluster as using "read-side
+repos only", which reads like a small dependency set. It is eight of the ten
+struct fields — everything except `db` and `tx`. The extraction is still right,
+but for a different reason than the field count: the cluster is a **leaf**, with
+no inbound call from any write path in the package, and every production caller
+is a view, a CLI command or a report. That is what makes it safe to give a type
+with no transaction plumbing at all.
+
+*No guard was duplicated to get any of this.* Seven helpers became package-level
+functions taking the repository the caller is bound to —
+`requireOpenInvestmentAccount`, `requireOpenAccount`, `loadInvestmentAccount`,
+`validateInvestmentTransaction` (guards.go), plus `cashBalanceOf`,
+`splitEventsFor` and `securityHasNonSplitActionIn`. `Service`'s methods delegate
+to them and keep their existing callers.
+
+*`Service` sheds 36 methods and keeps all ten fields.* That is the honest
+outcome: `runInTx`/`healInOwnTx` still need the whole struct (§6.1), so the win
+is ownership and testability, not a smaller core.
 1. **Counterpart** (`CounterpartService`, 4 methods) — proves the pattern against
    the smallest surface; one-line consumer change.
 2. **Valuation** (`ValuationService`, valuation + total_return) — read-only, so

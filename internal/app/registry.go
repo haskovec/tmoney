@@ -34,8 +34,12 @@ type Services struct {
 	// InvestmentValuation is the read-only half: holdings, valuation and total
 	// return. It writes nothing and opens no transaction.
 	InvestmentValuation *investment.ValuationService
-	CorporateAction     *investment.CorporateActionService
-	TransferLink        *transferlink.Service
+	// InvestmentEdit owns the ten edit entry points. It holds the core service
+	// and rebinds it, so an edit joins a caller's transaction rather than
+	// opening a second one.
+	InvestmentEdit  *investment.EditService
+	CorporateAction *investment.CorporateActionService
+	TransferLink    *transferlink.Service
 
 	// Transfer owns whole-transaction cash transfers across both ledgers —
 	// bank↔bank, bank↔investment and investment↔investment alike. It is the
@@ -120,6 +124,7 @@ func NewServices(database *db.DB) *Services {
 	// database handle, so it can only read committed state. Views, reports and CLI
 	// commands take this rather than the full service.
 	investmentValuationSvc := investment.NewValuationService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, corporateActionRepo, database)
+	investmentEditSvc := investment.NewEditService(investmentSvc)
 	// Silently heal any desynced positions/lots so the user doesn't have to
 	// run rebuild-positions manually after upgrading. This is a no-op on
 	// databases that contain corporate-action records.
@@ -166,6 +171,7 @@ func NewServices(database *db.DB) *Services {
 		Price:               priceSvc,
 		Investment:          investmentSvc,
 		InvestmentValuation: investmentValuationSvc,
+		InvestmentEdit:      investmentEditSvc,
 		CorporateAction:     corporateActionSvc,
 		TransferLink:        transferLinkSvc,
 		Transfer:            transferSvc,
