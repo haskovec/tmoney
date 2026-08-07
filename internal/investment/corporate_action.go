@@ -309,3 +309,36 @@ func ParseSpinOffParams(jsonStr string) (*SpinOffParams, error) {
 	}
 	return &sp, nil
 }
+
+// DownstreamEventsError is returned when a reversal is blocked by a
+// later investment transaction on the affected security.
+type DownstreamEventsError struct {
+	ActionDate     types.Date
+	BlockerTicker  string
+	BlockerDate    types.Date
+	BlockerTxnType string
+}
+
+func (e *DownstreamEventsError) Error() string {
+	ticker := e.BlockerTicker
+	if ticker == "" {
+		ticker = "the affected security"
+	}
+	return fmt.Sprintf(
+		"cannot reverse: %s has a %s transaction on %s (action dated %s). Remove or re-date later transactions first.",
+		ticker, e.BlockerTxnType, e.BlockerDate.String(), e.ActionDate.String(),
+	)
+}
+
+// UnsupportedReversalError is returned when the user tries to reverse
+// a corporate-action type for which reversal is not yet implemented.
+type UnsupportedReversalError struct {
+	ActionType ActionType
+}
+
+func (e *UnsupportedReversalError) Error() string {
+	return fmt.Sprintf(
+		"reversing %s corporate actions is not yet supported — only splits and reverse splits can be undone in this version",
+		e.ActionType.DisplayName(),
+	)
+}

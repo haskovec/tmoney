@@ -560,10 +560,29 @@ turns a real guard test into a tautology. `grep -rn 'ReconcileTransaction\|UnRec
 returns nothing.
 
 **Phase 1b — `transaction` + `corporate_action` file splits (risk: low).**
-§3 and §4. Pure `git mv`-style motion within each package.
-*Exit criteria:* build + full suite green with **zero test-file edits**. No file
-in either package over 450 non-test lines. `git log --stat` shows only moves —
-any behavioral diff in this phase is a bug.
+SHIPPED 2026-08-07. §3 and §4. Pure `git mv`-style motion within each package.
+*Exit criteria:* build + full suite green with **zero test-file edits**. No
+**service** file in either package over 450 non-test lines. `git log --stat`
+shows only moves — any behavioral diff in this phase is a bug.
+
+*Scope correction, made when the criterion was checked.* An earlier draft said
+"no file in either package over 450 non-test lines". §3 and §4's tables cannot
+deliver that, and never could: they cover only `transaction_service.go` and
+`corporate_action_service.go`. What stays over 450 after this phase is
+`transaction_repository.go` (627), `transaction.go` (519),
+`investment/update_edit.go` (574), `backfill.go` (562), `valuation_service.go`
+(530) and `investment.go` (503) — repositories and domain models, none of them
+a god service, and repository-boundary work is an explicit non-goal (§10).
+`investment_service.go` (1,673) is phase 2's job. The criterion is therefore
+about service files, which all now land between 102 and 381 lines.
+
+*How pure motion was proved,* rather than asserted: every top-level declaration
+was sliced from the original source **bytes** — doc comment included — instead of
+being re-printed, then the before and after sets were dumped, sorted by
+declaration name and diffed. Both packages came back byte-identical across all
+80 declarations. The only text that did not survive is five section-banner
+comment blocks in `transaction_service.go`, each of which is now the file-level
+doc comment of the file named after it.
 
 **Phase 2 — `investment` + `scheduled` file splits (risk: low).**
 §5.3 table and §6.4. Same discipline. Explicitly **not** loan extraction, **not**
