@@ -31,6 +31,11 @@ go.work.sum
 .idea/
 .vscode/
 
+# Claude Code local state: settings.local.json, scheduled-task locks and saved
+# plans are per-machine. To share project-level config later, commit
+# .claude/settings.json with an explicit `!.claude/settings.json` un-ignore.
+.claude/
+
 # macOS
 .DS_Store
 
