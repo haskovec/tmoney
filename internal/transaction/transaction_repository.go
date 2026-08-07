@@ -194,20 +194,6 @@ func (r *Repository) ListByAccount(accountID types.ID) ([]*Transaction, error) {
 	return r.queryTransactionsWithArgs(query, accountID.String())
 }
 
-// ListByDateRange retrieves all transactions within a date range.
-func (r *Repository) ListByDateRange(startDate, endDate types.Date) ([]*Transaction, error) {
-	query := `
-		SELECT id, account_id, date, amount, payee_id, category_id,
-			memo, check_number, status, transfer_id, transfer_account_id,
-			bank_reference_id, created_at, updated_at
-		FROM transactions
-		WHERE date >= ? AND date <= ?
-		ORDER BY date DESC, created_at DESC
-	`
-
-	return r.queryTransactionsWithArgs(query, startDate.Time(), endDate.Time())
-}
-
 // ListByTransferID retrieves all transactions sharing a transfer_id.
 // Used to find both sides of a transfer pair.
 func (r *Repository) ListByTransferID(transferID types.ID) ([]*Transaction, error) {
@@ -638,19 +624,4 @@ func (r *Repository) Search(criteria SearchCriteria) ([]*Transaction, error) {
 	query.WriteString(" ORDER BY t.date DESC, t.created_at DESC")
 
 	return r.queryTransactionsWithArgs(query.String(), args...)
-}
-
-// SearchByPayee finds transactions by partial payee name match (case-insensitive).
-func (r *Repository) SearchByPayee(payeeName string) ([]*Transaction, error) {
-	return r.Search(SearchCriteria{PayeeName: payeeName})
-}
-
-// SearchByMemo finds transactions by partial memo match (case-insensitive).
-func (r *Repository) SearchByMemo(memo string) ([]*Transaction, error) {
-	return r.Search(SearchCriteria{Memo: memo})
-}
-
-// SearchByCategory finds transactions by partial category name match (case-insensitive).
-func (r *Repository) SearchByCategory(categoryName string) ([]*Transaction, error) {
-	return r.Search(SearchCriteria{CategoryName: categoryName})
 }

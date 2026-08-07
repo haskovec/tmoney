@@ -414,45 +414,14 @@ func (s *Service) deletePairedCounterTransaction(transferID types.ID) error {
 	return nil
 }
 
-// List returns all transactions ordered by date descending.
-func (s *Service) List() ([]*Transaction, error) {
-	return s.txnRepo.List()
-}
-
 // ListByAccount returns all transactions for an account.
 func (s *Service) ListByAccount(accountID types.ID) ([]*Transaction, error) {
 	return s.txnRepo.ListByAccount(accountID)
 }
 
-// ListByDateRange returns all transactions within a date range.
-func (s *Service) ListByDateRange(startDate, endDate types.Date) ([]*Transaction, error) {
-	return s.txnRepo.ListByDateRange(startDate, endDate)
-}
-
 // ListByAccountAndDateRange returns transactions for an account within a date range.
 func (s *Service) ListByAccountAndDateRange(accountID types.ID, startDate, endDate types.Date) ([]*Transaction, error) {
 	return s.txnRepo.ListByAccountAndDateRange(accountID, startDate, endDate)
-}
-
-// Search finds transactions matching the given criteria.
-// Multiple criteria are combined with AND logic.
-func (s *Service) Search(criteria SearchCriteria) ([]*Transaction, error) {
-	return s.txnRepo.Search(criteria)
-}
-
-// SearchByPayee finds transactions by partial payee name match (case-insensitive).
-func (s *Service) SearchByPayee(payeeName string) ([]*Transaction, error) {
-	return s.txnRepo.SearchByPayee(payeeName)
-}
-
-// SearchByMemo finds transactions by partial memo match (case-insensitive).
-func (s *Service) SearchByMemo(memo string) ([]*Transaction, error) {
-	return s.txnRepo.SearchByMemo(memo)
-}
-
-// SearchByCategory finds transactions by partial category name match (case-insensitive).
-func (s *Service) SearchByCategory(categoryName string) ([]*Transaction, error) {
-	return s.txnRepo.SearchByCategory(categoryName)
 }
 
 // =============================================================================
@@ -1200,32 +1169,11 @@ func (s *Service) ValidateSplitTotals(transactionID types.ID) (bool, error) {
 	return s.splitRepo.ValidateSplitsAgainstTransaction(transactionID)
 }
 
-// =============================================================================
-// Transfer Operations
-// =============================================================================
-
-// rejectInvestmentAccount returns a NotRegularAccountError if the given
-// account is investment-type. Used to keep linked cash transfers involving
-// an investment account out of the regular transaction.Transaction ledger.
-func (s *Service) rejectInvestmentAccount(accountID types.ID) error {
-	if s.accountRepo == nil {
-		return nil
-	}
-	acct, err := s.accountRepo.GetByID(accountID)
-	if err != nil {
-		return err
-	}
-	if acct.Type.IsInvestmentType() {
-		return &NotRegularAccountError{AccountID: accountID.String(), Type: acct.Type.String()}
-	}
-	return nil
-}
-
 // ensureAccountOpen returns an AccountClosedError when the account is closed.
 // A closed account is frozen: no new transactions, edits, deletes, or status
 // toggles. It is nil-tolerant for test fixtures constructed without an
-// accountRepo (matching targetIsInvestment / rejectInvestmentAccount); the
-// production wiring always passes a real repository.
+// accountRepo (matching targetIsInvestment); the production wiring always
+// passes a real repository.
 func (s *Service) ensureAccountOpen(id types.ID) error {
 	if s.accountRepo == nil {
 		return nil

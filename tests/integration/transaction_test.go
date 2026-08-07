@@ -183,59 +183,6 @@ func TestTransactionListByAccount(t *testing.T) {
 	}
 }
 
-// TestTransactionListByDateRange tests listing transactions by date range.
-func TestTransactionListByDateRange(t *testing.T) {
-	database := dbtest.New(t)
-
-	accountRepo := account.NewRepository(database)
-	txnRepo := transaction.NewRepository(database)
-
-	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
-	if err := accountRepo.Create(acct); err != nil {
-		t.Fatalf("Failed to create account: %v", err)
-	}
-
-	// Create transactions on different dates
-	dates := []types.Date{
-		types.NewDate(2024, 1, 5),
-		types.NewDate(2024, 1, 15),
-		types.NewDate(2024, 1, 25),
-		types.NewDate(2024, 2, 5),
-	}
-
-	for i, date := range dates {
-		txn := transaction.NewTransaction(acct.ID, date, types.MustNewMoney("-10.00"))
-		txn.SetMemo("Transaction " + string(rune('A'+i)))
-		if err := txnRepo.Create(txn); err != nil {
-			t.Fatalf("Failed to create transaction: %v", err)
-		}
-	}
-
-	// Query for January only
-	janTxns, err := txnRepo.ListByDateRange(
-		types.NewDate(2024, 1, 1),
-		types.NewDate(2024, 1, 31),
-	)
-	if err != nil {
-		t.Fatalf("Failed to list January transactions: %v", err)
-	}
-	if len(janTxns) != 3 {
-		t.Errorf("Expected 3 January transactions, got %d", len(janTxns))
-	}
-
-	// Query for mid-January
-	midJanTxns, err := txnRepo.ListByDateRange(
-		types.NewDate(2024, 1, 10),
-		types.NewDate(2024, 1, 20),
-	)
-	if err != nil {
-		t.Fatalf("Failed to list mid-January transactions: %v", err)
-	}
-	if len(midJanTxns) != 1 {
-		t.Errorf("Expected 1 mid-January transaction, got %d", len(midJanTxns))
-	}
-}
-
 // TestTransactionNotFound tests error handling for non-existent transactions.
 func TestTransactionNotFound(t *testing.T) {
 	database := dbtest.New(t)
@@ -455,7 +402,7 @@ func TestTransactionSearchByPayee(t *testing.T) {
 	}
 
 	t.Run("Search by exact payee name", func(t *testing.T) {
-		results, err := txnRepo.SearchByPayee("Coffee Shop")
+		results, err := txnRepo.Search(transaction.SearchCriteria{PayeeName: "Coffee Shop"})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}
@@ -465,7 +412,7 @@ func TestTransactionSearchByPayee(t *testing.T) {
 	})
 
 	t.Run("Search by partial payee name", func(t *testing.T) {
-		results, err := txnRepo.SearchByPayee("shop")
+		results, err := txnRepo.Search(transaction.SearchCriteria{PayeeName: "shop"})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}
@@ -475,7 +422,7 @@ func TestTransactionSearchByPayee(t *testing.T) {
 	})
 
 	t.Run("Search is case-insensitive", func(t *testing.T) {
-		results, err := txnRepo.SearchByPayee("COFFEE")
+		results, err := txnRepo.Search(transaction.SearchCriteria{PayeeName: "COFFEE"})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}
@@ -485,7 +432,7 @@ func TestTransactionSearchByPayee(t *testing.T) {
 	})
 
 	t.Run("Search with no matches", func(t *testing.T) {
-		results, err := txnRepo.SearchByPayee("Restaurant")
+		results, err := txnRepo.Search(transaction.SearchCriteria{PayeeName: "Restaurant"})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}
@@ -495,7 +442,7 @@ func TestTransactionSearchByPayee(t *testing.T) {
 	})
 
 	t.Run("Search matches multiple payees", func(t *testing.T) {
-		results, err := txnRepo.SearchByPayee("store")
+		results, err := txnRepo.Search(transaction.SearchCriteria{PayeeName: "store"})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}
@@ -535,7 +482,7 @@ func TestTransactionSearchByMemo(t *testing.T) {
 	}
 
 	t.Run("Search by memo keyword", func(t *testing.T) {
-		results, err := txnRepo.SearchByMemo("coffee")
+		results, err := txnRepo.Search(transaction.SearchCriteria{Memo: "coffee"})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}
@@ -545,7 +492,7 @@ func TestTransactionSearchByMemo(t *testing.T) {
 	})
 
 	t.Run("Search is case-insensitive", func(t *testing.T) {
-		results, err := txnRepo.SearchByMemo("WEEKLY")
+		results, err := txnRepo.Search(transaction.SearchCriteria{Memo: "WEEKLY"})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}
@@ -555,7 +502,7 @@ func TestTransactionSearchByMemo(t *testing.T) {
 	})
 
 	t.Run("Search with no matches", func(t *testing.T) {
-		results, err := txnRepo.SearchByMemo("dinner")
+		results, err := txnRepo.Search(transaction.SearchCriteria{Memo: "dinner"})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}
@@ -607,7 +554,7 @@ func TestTransactionSearchByCategory(t *testing.T) {
 	}
 
 	t.Run("Search by category name", func(t *testing.T) {
-		results, err := txnRepo.SearchByCategory("Food")
+		results, err := txnRepo.Search(transaction.SearchCriteria{CategoryName: "Food"})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}
@@ -617,7 +564,7 @@ func TestTransactionSearchByCategory(t *testing.T) {
 	})
 
 	t.Run("Search is case-insensitive", func(t *testing.T) {
-		results, err := txnRepo.SearchByCategory("transportation")
+		results, err := txnRepo.Search(transaction.SearchCriteria{CategoryName: "transportation"})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}
@@ -627,7 +574,7 @@ func TestTransactionSearchByCategory(t *testing.T) {
 	})
 
 	t.Run("Search by partial category name", func(t *testing.T) {
-		results, err := txnRepo.SearchByCategory("util")
+		results, err := txnRepo.Search(transaction.SearchCriteria{CategoryName: "util"})
 		if err != nil {
 			t.Fatalf("Failed to search: %v", err)
 		}
