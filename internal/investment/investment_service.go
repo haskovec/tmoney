@@ -1,8 +1,6 @@
 package investment
 
 import (
-	"fmt"
-
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/price"
@@ -114,73 +112,29 @@ func (s *Service) healInOwnTx(accountID, securityID types.ID) error {
 	})
 }
 
+// The four guards below delegate to the package-level forms in guards.go, which
+// CounterpartService shares. Each passes THIS service's account repository, so a
+// guard called on a tx-bound service reads that transaction's view.
+
 // requireInvestmentAccount verifies that the given account exists, is an
-// investment account, and is not closed. It is a write-path guard — only
-// mutation methods call it, so the closed check belongs here (read and
-// maintenance paths use getInvestmentAccount directly and stay ungated).
+// investment account, and is not closed.
 func (s *Service) requireInvestmentAccount(accountID types.ID) error {
-	acct, err := s.getInvestmentAccount(accountID)
-	if err != nil {
-		return err
-	}
-	if acct.IsClosed() {
-		return &account.AccountClosedError{ID: accountID.String()}
-	}
-	return nil
+	return requireOpenInvestmentAccount(s.accountRepo, accountID)
 }
 
 // ensureAccountOpen returns an AccountClosedError when the account is closed.
-// Used by mutation paths that hold only an account ID (e.g. DeleteTransaction);
-// it deliberately does NOT funnel through getInvestmentAccount so read and
-// maintenance paths remain ungated.
 func (s *Service) ensureAccountOpen(accountID types.ID) error {
-	acct, err := s.accountRepo.GetByID(accountID)
-	if err != nil {
-		return fmt.Errorf("failed to load account for closed check: %w", err)
-	}
-	if acct.IsClosed() {
-		return &account.AccountClosedError{ID: accountID.String()}
-	}
-	return nil
+	return requireOpenAccount(s.accountRepo, accountID)
 }
 
 // getInvestmentAccount retrieves and validates that the account is an investment account.
 func (s *Service) getInvestmentAccount(accountID types.ID) (*account.Account, error) {
-	acct, err := s.accountRepo.GetByID(accountID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get account: %w", err)
-	}
-
-	if !acct.Type.IsInvestmentType() {
-		return nil, &account.NotInvestmentError{
-			AccountID: accountID.String(),
-			Type:      string(acct.Type),
-		}
-	}
-
-	return acct, nil
+	return loadInvestmentAccount(s.accountRepo, accountID)
 }
 
 // validateTransaction validates an investment transaction and returns any validation errors.
 func (s *Service) validateTransaction(txn *Transaction) error {
-	errors := txn.Validate()
-	if errors.HasErrors() {
-		return &types.ServiceValidationError{Errors: errors}
-	}
-	// Reject activity dated before the account opened (catches mistyped years
-	// such as "0018" for "2018"). Corporate-action Exchange rows carry the
-	// action date and are written via the repository, not this path, so they
-	// are never seen here; the type guard is belt-and-suspenders.
-	if txn.Type != TransactionTypeExchange {
-		acct, err := s.accountRepo.GetByID(txn.AccountID)
-		if err != nil {
-			return fmt.Errorf("failed to load account for date validation: %w", err)
-		}
-		if err := acct.ValidateTransactionDate(txn.Date); err != nil {
-			return err
-		}
-	}
-	return nil
+	return validateInvestmentTransaction(s.accountRepo, txn)
 }
 
 // SetClearedStatus marks an investment transaction cleared or pending. It is the

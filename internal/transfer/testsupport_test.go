@@ -73,7 +73,8 @@ func newHarness(t *testing.T) *harness {
 	// targeting an investment account is refused.
 	h.invSvc = investment.NewService(h.invRepo, h.accountRepo, positionRepo, lotRepo,
 		transactionLotRepo, priceRepo, corporateActionRepo, database)
-	h.txnSvc = transaction.NewService(h.txnRepo, h.splitRepo, payeeRepo, h.accountRepo, h.invSvc, database)
+	h.txnSvc = transaction.NewService(h.txnRepo, h.splitRepo, payeeRepo, h.accountRepo,
+		investment.NewCounterpartService(h.invRepo, h.accountRepo), database)
 
 	h.svc = NewService(h.txnRepo, h.invRepo, h.splitRepo, h.accountRepo, h.categoryRepo, database)
 

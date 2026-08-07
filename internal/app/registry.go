@@ -118,11 +118,17 @@ func NewServices(database *db.DB) *Services {
 	// databases that contain corporate-action records.
 	_, _ = investmentSvc.HealAllAccounts()
 
-	// investmentSvc is the counterpart port: it mints and cleans up the
-	// investment-side row of a transfer LINE inside a split (e.g. a
-	// paycheck → 401k contribution line). Whole-transaction transfers do not go
-	// through it — internal/transfer owns those.
-	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, investmentSvc, database)
+	// The counterpart port mints and cleans up the investment-side row of a
+	// transfer LINE inside a split (e.g. a paycheck → 401k contribution line).
+	// Whole-transaction transfers do not go through it — internal/transfer owns
+	// those.
+	//
+	// It is its own small type rather than investmentSvc, which used to satisfy
+	// this interface. CounterpartService holds only the two repositories these
+	// four methods need, and holds no *db.DB at all, so it cannot open a
+	// transaction — it can only join the one transaction.Service hands it.
+	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo,
+		investment.NewCounterpartService(investmentRepo, accountRepo), database)
 	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database, accountRepo)
 	// Heal any schedule rows poisoned by older binaries that updated
 	// StartDate without syncing NextDate. Best-effort, mirrors the
