@@ -11,12 +11,21 @@ import (
 // Catch-up posting: find every schedule that has come due since it was last
 // posted and post each missed occurrence.
 //
-// AutoPost differs from posting.go in three ways that are deliberate, not
-// accidental: it estimates a variable amount against the in-memory schedule that
-// prior loop iterations already advanced rather than re-reading the row; a skip is
-// not an error, so the transaction still commits the completion mark; and it
-// advances per occurrence but persists the schedule ONCE after the loop, and only
-// conditionally. Any collapse of the duplication must preserve all three.
+// AutoPost is an ENTRY POINT onto the same participants the manual paths use
+// (post_occurrence.go). It differs from posting.go only in its envelope, and the
+// three differences are deliberate:
+//
+//   - it prices a variable amount against the IN-MEMORY schedule that earlier
+//     occurrences of this catch-up already advanced, and against the rows they
+//     just posted, rather than re-reading the stored row;
+//   - a skip is not an error: the loop breaks and returns nil so the transaction
+//     still commits any completion mark, instead of rolling the candidate back;
+//   - it advances per occurrence but persists the schedule ONCE after the loop,
+//     and only conditionally.
+//
+// All three now live here, in the envelope, which is exactly why the shared
+// participants can be shared: they take the amount as a parameter, classify no
+// skip, and persist no schedule.
 
 // AutoPostResult describes the outcome of an auto-post operation for a single scheduled transaction.
 type AutoPostResult struct {
@@ -91,103 +100,46 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 		postErr := s.runInTx(func(b *Service) error {
 			// Post all overdue occurrences for this scheduled transaction
 			for !result.Skipped && !st.IsCompleted() && b.isAutoPostDue(st, today) {
-				var txn *transaction.Transaction
-				if st.IsTransfer() {
-					// Single-line transfer: post template values exactly as a clean
-					// linked transfer pair.
-					if b.transferPort == nil {
-						return fmt.Errorf("transfer auto-post requires the transfer service; scheduled.SetTransferPort was never called")
-					}
-					magnitude := st.Amount.Money.Abs()
-					// The transfer owner stamps the schedule's memo and optional
-					// category onto whichever legs can hold them.
-					memo := ""
-					if st.Memo.Valid {
-						memo = st.Memo.String
-					}
-					transferID, regularLegID, err := b.transferPort.CreateTransfer(
-						b.q(), st.AccountID, st.TransferAccountID.ID, st.NextDate, magnitude, memo, st.CategoryID,
-					)
-					if err != nil {
-						return fmt.Errorf("failed to create transfer auto-post transaction: %w", err)
-					}
-					// Record the transfer_id so undo removes the PAIR. Undoing a
-					// leg-at-a-time is refused by transaction.Service and would
-					// orphan the counterpart regardless.
-					result.TransferIDs = append(result.TransferIDs, transferID)
-					// An inv↔inv occurrence has no regular-ledger leg to report.
-					if !regularLegID.IsNil() && b.txnRepo != nil {
-						if posted, gerr := b.txnRepo.GetByID(regularLegID); gerr == nil {
-							txn = posted
-						}
-					}
-				} else if len(st.Splits) > 0 {
-					// Multi-line schedule: delegate to the multi-line create path
-					// so transfer-line counterparts are minted and persisted.
-					if b.txnSvc == nil {
-						return fmt.Errorf("multi-line auto-post requires a transaction service; scheduled.NewService was called with txnSvc=nil")
-					}
-					built, err := b.buildMultiLineTransaction(st, st.NextDate)
-					if err != nil {
-						// A loan-recompute failure (paid off, negative-am, missing
-						// APR, missing interest line) skips this schedule with a
-						// reason — it must never abort the rest of the batch.
-						if isLoanComputationError(err) {
-							result.Skipped = true
-							result.SkipReason = loanSkipReason(err)
-							// A paid-off loan is terminal: mark it completed so it
-							// stops surfacing as due.
-							if errors.Is(err, ErrLoanPaidOff) {
-								st.MarkCompleted()
-							}
-							break
-						}
-						return fmt.Errorf("failed to build multi-line auto-post transaction: %w", err)
-					}
-					if err := b.txnSvc.CreateWithSplits(built.parent, built.splits); err != nil {
-						return fmt.Errorf("failed to create multi-line auto-post transaction: %w", err)
-					}
-					txn = built.parent
-				} else {
-					// Determine the amount to use
-					var txnAmount types.Money
-					if st.HasAmount() {
-						txnAmount = st.Amount.Money
-					} else {
-						// Variable amount - try to estimate
-						estimated, estErr := b.estimateAmountForSchedule(st)
-						if estErr != nil || estimated == nil {
-							result.Skipped = true
-							result.SkipReason = "variable amount with no estimate available"
-							break
-						}
-						txnAmount = *estimated
-					}
-
-					// Create the transaction with the scheduled date (not today)
-					txn = transaction.NewTransaction(st.AccountID, st.NextDate, txnAmount)
-
-					// Copy optional fields
-					if st.HasPayee() {
-						txn.SetPayee(st.PayeeID.ID)
-					}
-					if st.HasCategory() {
-						txn.SetCategory(st.CategoryID.ID)
-					}
-					if st.Memo.Valid && st.Memo.String != "" {
-						txn.SetMemo(st.Memo.String)
-					}
-
-					if err := b.txnRepo.Create(txn); err != nil {
-						return fmt.Errorf("failed to create auto-post transaction: %w", err)
-					}
+				// Price this occurrence before writing anything: a variable-amount
+				// schedule with no usable estimate is a skip, not a failure, and a
+				// skip must not roll the candidate back.
+				amount, priced := b.autoPostAmount(st)
+				if !priced {
+					result.Skipped = true
+					result.SkipReason = "variable amount with no estimate available"
+					break
 				}
 
-				// txn is nil only for an inv↔inv transfer occurrence, which has no
-				// regular-ledger row. Its transfer_id is already recorded above, so
-				// undo can still reach it; appending nil here would make undo panic.
-				if txn != nil {
-					result.Transactions = append(result.Transactions, txn)
+				posted, err := b.postOccurrence(st, st.NextDate, amount)
+				if err != nil {
+					// A loan-recompute failure (paid off, negative-am, missing APR,
+					// missing interest line) skips this schedule with a reason — it
+					// must never abort the rest of the batch.
+					if isLoanComputationError(err) {
+						result.Skipped = true
+						result.SkipReason = loanSkipReason(err)
+						// A paid-off loan is terminal: mark it completed so it stops
+						// surfacing as due.
+						if errors.Is(err, ErrLoanPaidOff) {
+							st.MarkCompleted()
+						}
+						break
+					}
+					return err
+				}
+
+				// Record the transfer_id so undo removes the PAIR. Undoing a
+				// leg-at-a-time is refused by transaction.Service and would orphan
+				// the counterpart regardless.
+				if !posted.transferID.IsNil() {
+					result.TransferIDs = append(result.TransferIDs, posted.transferID)
+				}
+				// posted.txn is nil only for an inv↔inv transfer occurrence, which
+				// has no regular-ledger row. Its transfer_id is already recorded
+				// above, so undo can still reach it; appending nil would make undo
+				// panic on a nil dereference.
+				if posted.txn != nil {
+					result.Transactions = append(result.Transactions, posted.txn)
 				}
 				summary.PostedCount++
 
@@ -226,6 +178,30 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 	}
 
 	return summary, nil
+}
+
+// autoPostAmount decides what one AUTO-POSTED occurrence should pay, and reports
+// whether it could be priced at all.
+//
+// It is the auto-post twin of manualAmount, and differs from it in exactly the
+// two ways the two engines are allowed to differ. It estimates against the
+// IN-MEMORY schedule — which earlier occurrences of this catch-up have already
+// advanced — and through the bound receiver, so the estimate sees the rows those
+// occurrences just posted; a manual post re-reads the stored row instead. And an
+// unpriceable schedule reports false rather than raising AmountRequiredError,
+// because a batch skips what it cannot post and keeps going.
+//
+// A nil amount means "use the template's own", which is the answer for every
+// shape that is not a variable-amount single-line schedule.
+func (b *Service) autoPostAmount(st *Transaction) (*types.Money, bool) {
+	if st.IsTransfer() || len(st.Splits) > 0 || st.HasAmount() {
+		return nil, true
+	}
+	estimated, err := b.estimateAmountForSchedule(st)
+	if err != nil || estimated == nil {
+		return nil, false
+	}
+	return estimated, true
 }
 
 // isAutoPostDue checks if a scheduled transaction should be auto-posted based on lead days.

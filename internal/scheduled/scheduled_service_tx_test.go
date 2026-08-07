@@ -62,7 +62,7 @@ func TestPost_DoublePostRegression(t *testing.T) {
 	}
 	origNextDate := before.NextDate
 
-	// Exec order inside postSingleLine's tx: transaction INSERT (#1), then the
+	// Exec order inside postManually's tx: transaction INSERT (#1), then the
 	// schedule-advance UPDATE (#2). Fail #2 so the posted row must roll back too.
 	err = svc.db.WithTx(func(tx db.Queryer) error {
 		fw := &failingQueryer{inner: tx, failOn: 2}
@@ -137,7 +137,7 @@ func TestCreate_MultiLineFaultRollsBack(t *testing.T) {
 	}
 }
 
-// TestPost_HappyPath exercises the converted postSingleLine path with no
+// TestPost_HappyPath exercises the single-line posting path with no
 // injected fault: the unbound service opens and commits its own transaction, so
 // the transaction is posted AND next_date advances by one cadence.
 func TestPost_HappyPath(t *testing.T) {

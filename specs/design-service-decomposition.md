@@ -446,6 +446,73 @@ estimate, so the "re-read vs in-memory" question stops existing. Divergences (2)
 and (3) are resolved by construction: participants do not persist and do not
 classify skips, so both semantics live only in entry points.
 
+### 5.4 Two divergences §5.2 did not name — found by the differential
+
+Building the differential inventory before writing the collapse turned up two
+more shape-level divergences. Both are now resolved in the shipped code:
+
+1. **Dispatch order was inverted.** The manual path tested `len(st.Splits) > 0`
+   first; `AutoPost` tested `st.IsTransfer()` first. Unreachable, and provably
+   so: `Transaction.Validate` (`scheduled.go:693`) refuses a transfer schedule
+   that also carries split lines, and `Repository.Create`/`Update` are called
+   only from the two service methods that run it. The participant dispatches
+   transfer-first and says why.
+2. **`finalizeLoanPayoff` ran on some paths and not others.** `postMultiLine`,
+   `PostWithEdits` and `AutoPost` called it; `postSingleLine` and
+   `postSingleLineTransfer` did not. Calling it uniformly from the entry point is
+   a provable no-op for the two paths that lacked it, because `IsLoanShaped`
+   short-circuits on `len(st.Splits) == 0` (`loan_shape.go:98`) before touching
+   the database. That is what lets one envelope serve all three shapes.
+
+Two deliberate behavior changes, neither pinned by any test:
+
+- **The transfer leg's `GetByID` error is now propagated on both paths.**
+  `AutoPost` used to discard it (`gerr == nil` guard), which left the occurrence
+  unrecorded, which made the persist gate false, which committed the transfer
+  legs while leaving `next_date` unadvanced — a silent duplicate-post on the next
+  open. Propagating rolls the candidate back instead.
+- **Error wrap text is unified** on the manual path's wording. `errors.Is`/`As`
+  are unaffected; no test asserted the strings. Note that the *blast radius*
+  behind those strings still differs by design — a manual post fails alone, an
+  auto-post failure aborts the batch.
+
+### 5.5 Three live bugs found while collapsing — deliberately NOT fixed here
+
+The differential surfaced these. Each predates this work, none is caused by the
+collapse, and each deserves its own commit and its own test rather than being
+smuggled into a behavior-preserving refactor.
+
+1. **`AutoPost` hangs on an end-date-bounded schedule.** When the next occurrence
+   would fall past `end_date`, `AdvanceSchedule` returns false **without
+   assigning `st.NextDate`** (`scheduled.go:428-432`; the assignment is at
+   `:434`, after the early return). `IsCompleted` then tests the *unadvanced*
+   `NextDate` against `end_date` and returns false (`:378-386`), and
+   `isAutoPostDue` still returns true — so `AutoPost`'s loop condition can never
+   go false. It spins inside one open transaction, inserting rows that never
+   commit, until memory or disk runs out. The user sees a hang on file open.
+   Schedules bounded by `occurrences` instead are fine: `OccurrencesRemaining`
+   reaching 0 makes `IsCompleted` true. Fixing it means assigning `NextDate`
+   before the end-date check, or having `IsCompleted` consult
+   `CalculateNextDate`.
+2. **An investment↔investment transfer schedule re-posts on every open.** Such an
+   occurrence has no regular-ledger leg, so `result.Transactions` stays empty, so
+   the persist gate `len(result.Transactions) > 0 || (result.Skipped &&
+   st.IsCompleted())` is false, so the advance made in memory is never written.
+   `PostedCount` is still incremented, so the TUI reports success and pushes an
+   undo entry that iterates an empty `Results` slice, restores nothing, and
+   returns nil. Fixing it means gating the persist and the `summary.Results`
+   admission on an occurrence count rather than on the posted-row count.
+3. **`tmoney scheduled post <id>` panics on an inv↔inv transfer schedule.**
+   `cli/scheduled/post.go` dereferences `txn.Amount` and `txn.Date` after
+   checking only `err`, and the manual path legitimately returns a nil
+   transaction for an occurrence with no regular-ledger leg.
+
+Bugs 2 and 3 are the same root cause seen from two sides: a posted occurrence
+that produces no regular-ledger row is indistinguishable from no occurrence at
+all. Any fix should make "an occurrence happened" a first-class signal rather
+than inferring it from a possibly-nil transaction — which is why the participant
+already returns a struct carrying `transferID` alongside `txn`.
+
 File split for the package (phase 2, before the collapse):
 
 | New file | Contents | Lines |
@@ -600,8 +667,11 @@ file landed well inside: `investment` 94–317 across nine files,
 and is phase 3's subject anyway.
 
 **Phase 3 — collapse the second posting engine (risk: medium).**
-§5.3. Extract `postOccurrence*` participants; re-point `Post*`/`Skip`/`AutoPost`
-onto them as entry points; delete the 124-line inlined engine.
+SHIPPED 2026-08-07. §5.3. Extract `postOccurrence*` participants; re-point
+`Post*`/`Skip`/`AutoPost` onto them as entry points; delete the 124-line inlined
+engine. Measured, comments excluded: 417 → 381 lines, and one engine where there
+were two. See §5.4 for the two divergences §5.2 did not name, and §5.5 for three
+live bugs the differential turned up that are **not** fixed here.
 *Exit criteria:* build + full suite green **unmodified** — the existing
 `scheduled_service_test.go` (1,616 ln) and `scheduled_transfer_*_test.go` are the
 differential test, since the observable behavior of both engines must be
