@@ -72,7 +72,7 @@ func TestValuation_NewFieldsZeroValue_BackCompat(t *testing.T) {
 		// without a contributing transaction (no sells, no dividends, no
 		// interest, no commissions/fees) stay zero. The legacy
 		// TotalGainLoss / TotalGainPct still mean unrealized only.
-		val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetAccountValuation() error = %v", err)
 		}
@@ -125,7 +125,7 @@ func TestValuation_NewFieldsZeroValue_BackCompat(t *testing.T) {
 		// holdings that have a buy now carry non-zero TotalCostDeployed /
 		// TotalReturn / TotalReturnPct. Components without a contributing
 		// transaction (no sells, no dividends, no commissions) stay zero.
-		holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		holdings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() error = %v", err)
 		}
@@ -195,7 +195,7 @@ func TestSumDividendsForSecurity_HappyPath(t *testing.T) {
 		t.Fatalf("Dividend() error = %v", err)
 	}
 
-	got, err := env.svc.sumDividendsForSecurity(acct.ID, sec.ID)
+	got, err := env.valSvc.sumDividendsForSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("sumDividendsForSecurity() error = %v", err)
 	}
@@ -204,7 +204,7 @@ func TestSumDividendsForSecurity_HappyPath(t *testing.T) {
 	}
 
 	other := createSec(t, env.secRepo, "MSFT")
-	got, err = env.svc.sumDividendsForSecurity(acct.ID, other.ID)
+	got, err = env.valSvc.sumDividendsForSecurity(acct.ID, other.ID)
 	if err != nil {
 		t.Fatalf("sumDividendsForSecurity() error = %v", err)
 	}
@@ -237,7 +237,7 @@ func TestSumDividendsForSecurity_IncludesReinvest(t *testing.T) {
 	// A reinvested dividend is income (the fund paid it; you plowed it back),
 	// so it counts toward dividends received alongside the cash dividend:
 	// 50 cash + 110 reinvest = 160.
-	got, err := env.svc.sumDividendsForSecurity(acct.ID, sec.ID)
+	got, err := env.valSvc.sumDividendsForSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("sumDividendsForSecurity() error = %v", err)
 	}
@@ -260,7 +260,7 @@ func TestSumDividendsForSecurity_IgnoresOtherSecurities(t *testing.T) {
 		t.Fatalf("Dividend() error = %v", err)
 	}
 
-	got, err := env.svc.sumDividendsForSecurity(acct.ID, aapl.ID)
+	got, err := env.valSvc.sumDividendsForSecurity(acct.ID, aapl.ID)
 	if err != nil {
 		t.Fatalf("sumDividendsForSecurity() error = %v", err)
 	}
@@ -288,7 +288,7 @@ func TestSumInterestForAccount_HappyPath(t *testing.T) {
 		t.Fatalf("Interest() error = %v", err)
 	}
 
-	got, err := env.svc.sumInterestForAccount(acct.ID)
+	got, err := env.valSvc.sumInterestForAccount(acct.ID)
 	if err != nil {
 		t.Fatalf("sumInterestForAccount() error = %v", err)
 	}
@@ -297,7 +297,7 @@ func TestSumInterestForAccount_HappyPath(t *testing.T) {
 	}
 
 	empty := createInvAccount(t, env.accountRepo, "Empty")
-	got, err = env.svc.sumInterestForAccount(empty.ID)
+	got, err = env.valSvc.sumInterestForAccount(empty.ID)
 	if err != nil {
 		t.Fatalf("sumInterestForAccount() error = %v", err)
 	}
@@ -319,7 +319,7 @@ func TestSumInterestForAccount_OtherAccountIgnored(t *testing.T) {
 		t.Fatalf("Interest() error = %v", err)
 	}
 
-	got, err := env.svc.sumInterestForAccount(a.ID)
+	got, err := env.valSvc.sumInterestForAccount(a.ID)
 	if err != nil {
 		t.Fatalf("sumInterestForAccount() error = %v", err)
 	}
@@ -376,7 +376,7 @@ func TestSumFeesForSecurity_HappyPath(t *testing.T) {
 		t.Fatalf("FeeLiquidation() error = %v", err)
 	}
 
-	got, err := env.svc.sumFeesForSecurity(acct.ID, sec.ID)
+	got, err := env.valSvc.sumFeesForSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("sumFeesForSecurity() error = %v", err)
 	}
@@ -406,7 +406,7 @@ func TestSumFeesForSecurity_NoCommissionField(t *testing.T) {
 		t.Fatalf("Sell() error = %v", err)
 	}
 
-	got, err := env.svc.sumFeesForSecurity(acct.ID, sec.ID)
+	got, err := env.valSvc.sumFeesForSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("sumFeesForSecurity() error = %v", err)
 	}
@@ -433,7 +433,7 @@ func TestSumFeesForSecurity_AccountLevelFeeIgnored(t *testing.T) {
 		t.Fatalf("Buy() error = %v", err)
 	}
 
-	got, err := env.svc.sumFeesForSecurity(acct.ID, sec.ID)
+	got, err := env.valSvc.sumFeesForSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("sumFeesForSecurity() error = %v", err)
 	}
@@ -494,7 +494,7 @@ func TestSumFeesForAccount_AccumulatesPerSecurityAndAccount(t *testing.T) {
 		t.Fatalf("Fee() error = %v", err)
 	}
 
-	got, err := env.svc.sumFeesForAccount(acct.ID)
+	got, err := env.valSvc.sumFeesForAccount(acct.ID)
 	if err != nil {
 		t.Fatalf("sumFeesForAccount() error = %v", err)
 	}
@@ -519,7 +519,7 @@ func TestSumFeesForAccount_OnlyAccountLevelFees(t *testing.T) {
 		t.Fatalf("Fee() error = %v", err)
 	}
 
-	got, err := env.svc.sumFeesForAccount(acct.ID)
+	got, err := env.valSvc.sumFeesForAccount(acct.ID)
 	if err != nil {
 		t.Fatalf("sumFeesForAccount() error = %v", err)
 	}
@@ -528,7 +528,7 @@ func TestSumFeesForAccount_OnlyAccountLevelFees(t *testing.T) {
 	}
 
 	empty := createInvAccount(t, env.accountRepo, "Empty")
-	got, err = env.svc.sumFeesForAccount(empty.ID)
+	got, err = env.valSvc.sumFeesForAccount(empty.ID)
 	if err != nil {
 		t.Fatalf("sumFeesForAccount(empty) error = %v", err)
 	}
@@ -573,7 +573,7 @@ func TestRealizedGainLotTracked_SingleSell_AtGain(t *testing.T) {
 		t.Fatalf("Sell() error = %v", err)
 	}
 
-	got, err := env.svc.realizedGainLotTracked(acct.ID, sec.ID)
+	got, err := env.valSvc.realizedGainLotTracked(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("realizedGainLotTracked() error = %v", err)
 	}
@@ -610,7 +610,7 @@ func TestRealizedGainLotTracked_SingleSell_AtLoss(t *testing.T) {
 		t.Fatalf("Sell() error = %v", err)
 	}
 
-	got, err := env.svc.realizedGainLotTracked(acct.ID, sec.ID)
+	got, err := env.valSvc.realizedGainLotTracked(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("realizedGainLotTracked() error = %v", err)
 	}
@@ -662,7 +662,7 @@ func TestRealizedGainLotTracked_MultipleSells_AcrossLots(t *testing.T) {
 		t.Fatalf("Sell() error = %v", err)
 	}
 
-	got, err := env.svc.realizedGainLotTracked(acct.ID, sec.ID)
+	got, err := env.valSvc.realizedGainLotTracked(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("realizedGainLotTracked() error = %v", err)
 	}
@@ -700,7 +700,7 @@ func TestRealizedGainLotTracked_FeeLiquidation(t *testing.T) {
 		t.Fatalf("FeeLiquidation() error = %v", err)
 	}
 
-	got, err := env.svc.realizedGainLotTracked(acct.ID, sec.ID)
+	got, err := env.valSvc.realizedGainLotTracked(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("realizedGainLotTracked() error = %v", err)
 	}
@@ -725,7 +725,7 @@ func TestRealizedGainLotTracked_NoSells_ReturnsZero(t *testing.T) {
 		t.Fatalf("Buy() error = %v", err)
 	}
 
-	got, err := env.svc.realizedGainLotTracked(acct.ID, sec.ID)
+	got, err := env.valSvc.realizedGainLotTracked(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("realizedGainLotTracked() error = %v", err)
 	}
@@ -779,7 +779,7 @@ func TestReplayRealizedGain_HappyPath(t *testing.T) {
 	}
 
 	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
-	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
+	got, err := env.valSvc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
 	if err != nil {
 		t.Fatalf("replayRealizedGain() error = %v", err)
 	}
@@ -828,7 +828,7 @@ func TestReplayRealizedGain_LossThenGain(t *testing.T) {
 	}
 
 	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
-	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
+	got, err := env.valSvc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
 	if err != nil {
 		t.Fatalf("replayRealizedGain() error = %v", err)
 	}
@@ -873,7 +873,7 @@ func TestReplayRealizedGain_SameDateOrdering(t *testing.T) {
 	}
 
 	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
-	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
+	got, err := env.valSvc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
 	if err != nil {
 		t.Fatalf("replayRealizedGain() error = %v", err)
 	}
@@ -925,7 +925,7 @@ func TestReplayRealizedGain_ReinvestRaisesAvgCost(t *testing.T) {
 	}
 
 	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
-	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
+	got, err := env.valSvc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
 	if err != nil {
 		t.Fatalf("replayRealizedGain() error = %v", err)
 	}
@@ -965,7 +965,7 @@ func TestReplayRealizedGain_FeeLiquidation(t *testing.T) {
 	}
 
 	txns := loadAndSortTxnsForSecurity(t, env, acct.ID, sec.ID)
-	got, err := env.svc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
+	got, err := env.valSvc.replayRealizedGain(acct.ID, sec.ID, txns, nil)
 	if err != nil {
 		t.Fatalf("replayRealizedGain() error = %v", err)
 	}
@@ -1016,7 +1016,7 @@ func TestRealizedGainNonLot_DelegatesToReplay(t *testing.T) {
 		t.Fatalf("Sell(2) error = %v", err)
 	}
 
-	got, err := env.svc.realizedGainNonLot(acct.ID, sec.ID)
+	got, err := env.valSvc.realizedGainNonLot(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("realizedGainNonLot() error = %v", err)
 	}
@@ -1068,7 +1068,7 @@ func TestRealizedGain_NonLot_WithCorporateActions_Unavailable(t *testing.T) {
 		t.Fatalf("Sell() error = %v", err)
 	}
 
-	got, unavailable, err := env.svc.realizedGain(acct.ID, sec.ID, false)
+	got, unavailable, err := env.valSvc.realizedGain(acct.ID, sec.ID, false)
 	if err != nil {
 		t.Fatalf("realizedGain() error = %v", err)
 	}
@@ -1080,14 +1080,14 @@ func TestRealizedGain_NonLot_WithCorporateActions_Unavailable(t *testing.T) {
 	}
 
 	// Dividends and fees must still be computable.
-	div, err := env.svc.sumDividendsForSecurity(acct.ID, sec.ID)
+	div, err := env.valSvc.sumDividendsForSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("sumDividendsForSecurity() error = %v", err)
 	}
 	if div.String() != "50" {
 		t.Errorf("Expected dividends '50', got %q", div.String())
 	}
-	fees, err := env.svc.sumFeesForSecurity(acct.ID, sec.ID)
+	fees, err := env.valSvc.sumFeesForSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("sumFeesForSecurity() error = %v", err)
 	}
@@ -1141,7 +1141,7 @@ func TestRealizedGain_LotTracked_WithCorporateActions_StillComputed(t *testing.T
 		t.Fatalf("Sell() error = %v", err)
 	}
 
-	got, unavailable, err := env.svc.realizedGain(acct.ID, sec.ID, true)
+	got, unavailable, err := env.valSvc.realizedGain(acct.ID, sec.ID, true)
 	if err != nil {
 		t.Fatalf("realizedGain() error = %v", err)
 	}
@@ -1181,7 +1181,7 @@ func TestTotalCostDeployed_BuyOnly(t *testing.T) {
 		t.Fatalf("Buy(2) error = %v", err)
 	}
 
-	got, err := env.svc.totalCostDeployedForSecurity(acct.ID, sec.ID)
+	got, err := env.valSvc.totalCostDeployedForSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("totalCostDeployedForSecurity() error = %v", err)
 	}
@@ -1213,7 +1213,7 @@ func TestTotalCostDeployed_ExcludesReinvest(t *testing.T) {
 
 	// A reinvested dividend is income, not capital you deployed, so it is
 	// excluded from the percent denominator: only the 1000 buy counts.
-	got, err := env.svc.totalCostDeployedForSecurity(acct.ID, sec.ID)
+	got, err := env.valSvc.totalCostDeployedForSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("totalCostDeployedForSecurity() error = %v", err)
 	}
@@ -1246,7 +1246,7 @@ func TestTotalCostDeployed_TransferOnly_Zero(t *testing.T) {
 		t.Fatalf("TransferShares() error = %v", err)
 	}
 
-	got, err := env.svc.totalCostDeployedForSecurity(dst.ID, sec.ID)
+	got, err := env.valSvc.totalCostDeployedForSecurity(dst.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("totalCostDeployedForSecurity() error = %v", err)
 	}
@@ -1297,7 +1297,7 @@ func TestTotalCostDeployedForAccount_SumsAcrossSecurities(t *testing.T) {
 		t.Fatalf("Buy(MSFT) error = %v", err)
 	}
 
-	got, err := env.svc.totalCostDeployedForAccount(acct.ID)
+	got, err := env.valSvc.totalCostDeployedForAccount(acct.ID)
 	if err != nil {
 		t.Fatalf("totalCostDeployedForAccount() error = %v", err)
 	}
@@ -1367,7 +1367,7 @@ func TestGetHoldings_PopulatesTotalReturn(t *testing.T) {
 		t.Fatalf("Create price error = %v", err)
 	}
 
-	holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+	holdings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 	if err != nil {
 		t.Fatalf("GetHoldings() error = %v", err)
 	}
@@ -1450,7 +1450,7 @@ func TestGetHoldings_ReinvestDividendCountsAsIncome(t *testing.T) {
 		t.Fatalf("Create price error = %v", err)
 	}
 
-	holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+	holdings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 	if err != nil {
 		t.Fatalf("GetHoldings() error = %v", err)
 	}
@@ -1508,7 +1508,7 @@ func TestGetHoldings_ReinvestOnlyPositionPercentUndefined(t *testing.T) {
 		t.Fatalf("Create price error = %v", err)
 	}
 
-	holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+	holdings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 	if err != nil {
 		t.Fatalf("GetHoldings() error = %v", err)
 	}
@@ -1554,7 +1554,7 @@ func TestGetHoldings_TotalReturnPctNilWhenNoBuys(t *testing.T) {
 		t.Fatalf("Create price error = %v", err)
 	}
 
-	holdings, err := env.svc.GetHoldings(dst.ID, asOf, ValuationOptions{})
+	holdings, err := env.valSvc.GetHoldings(dst.ID, asOf, ValuationOptions{})
 	if err != nil {
 		t.Fatalf("GetHoldings() error = %v", err)
 	}
@@ -1665,7 +1665,7 @@ func TestGetAccountValuation_PopulatesAccountTotals(t *testing.T) {
 		t.Fatalf("Create MSFT price error = %v", err)
 	}
 
-	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 	if err != nil {
 		t.Fatalf("GetAccountValuation() error = %v", err)
 	}
@@ -1784,7 +1784,7 @@ func TestGetAccountValuation_LegacyFieldsUnchanged(t *testing.T) {
 		t.Fatalf("Create MSFT price error = %v", err)
 	}
 
-	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 	if err != nil {
 		t.Fatalf("GetAccountValuation() error = %v", err)
 	}
@@ -1851,7 +1851,7 @@ func TestListEverHeldSecurities(t *testing.T) {
 			t.Fatalf("Sell(MSFT) error = %v", err)
 		}
 
-		got, err := env.svc.listEverHeldSecurities(acct.ID)
+		got, err := env.valSvc.listEverHeldSecurities(acct.ID)
 		if err != nil {
 			t.Fatalf("listEverHeldSecurities() error = %v", err)
 		}
@@ -1874,7 +1874,7 @@ func TestListEverHeldSecurities(t *testing.T) {
 		env := createFullTestService(t)
 		acct := createInvAccount(t, env.accountRepo, "Empty")
 
-		got, err := env.svc.listEverHeldSecurities(acct.ID)
+		got, err := env.valSvc.listEverHeldSecurities(acct.ID)
 		if err != nil {
 			t.Fatalf("listEverHeldSecurities() error = %v", err)
 		}
@@ -1904,7 +1904,7 @@ func TestListEverHeldSecurities(t *testing.T) {
 			t.Fatalf("Fee() error = %v", err)
 		}
 
-		got, err := env.svc.listEverHeldSecurities(acct.ID)
+		got, err := env.valSvc.listEverHeldSecurities(acct.ID)
 		if err != nil {
 			t.Fatalf("listEverHeldSecurities() error = %v", err)
 		}
@@ -1934,7 +1934,7 @@ func TestListEverHeldSecurities(t *testing.T) {
 			t.Fatalf("TransferShares() error = %v", err)
 		}
 
-		got, err := env.svc.listEverHeldSecurities(dst.ID)
+		got, err := env.valSvc.listEverHeldSecurities(dst.ID)
 		if err != nil {
 			t.Fatalf("listEverHeldSecurities() error = %v", err)
 		}
@@ -1959,7 +1959,7 @@ func TestListEverHeldSecurities(t *testing.T) {
 			t.Fatalf("Buy() error = %v", err)
 		}
 
-		got, err := env.svc.listEverHeldSecurities(a.ID)
+		got, err := env.valSvc.listEverHeldSecurities(a.ID)
 		if err != nil {
 			t.Fatalf("listEverHeldSecurities() error = %v", err)
 		}
@@ -2026,7 +2026,7 @@ func TestGetHoldings_IncludeClosed_AddsClosedRows(t *testing.T) {
 	}
 
 	t.Run("default ValuationOptions only returns open holdings", func(t *testing.T) {
-		holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		holdings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings(default) error = %v", err)
 		}
@@ -2042,7 +2042,7 @@ func TestGetHoldings_IncludeClosed_AddsClosedRows(t *testing.T) {
 	})
 
 	t.Run("IncludeClosed=true appends a synthesized closed row", func(t *testing.T) {
-		holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{IncludeClosed: true})
+		holdings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{IncludeClosed: true})
 		if err != nil {
 			t.Fatalf("GetHoldings(IncludeClosed) error = %v", err)
 		}
@@ -2170,7 +2170,7 @@ func TestGetHoldings_IncludeClosed_NotDoubleCountingOpen(t *testing.T) {
 		t.Fatalf("Create price MSFT error = %v", err)
 	}
 
-	holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{IncludeClosed: true})
+	holdings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{IncludeClosed: true})
 	if err != nil {
 		t.Fatalf("GetHoldings(IncludeClosed) error = %v", err)
 	}
@@ -2249,7 +2249,7 @@ func TestAccountValuation_HasClosedPositionsFlag(t *testing.T) {
 		}
 
 		t.Run("IncludeClosed=false", func(t *testing.T) {
-			val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+			val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 			if err != nil {
 				t.Fatalf("GetAccountValuation() error = %v", err)
 			}
@@ -2259,7 +2259,7 @@ func TestAccountValuation_HasClosedPositionsFlag(t *testing.T) {
 		})
 
 		t.Run("IncludeClosed=true", func(t *testing.T) {
-			val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{IncludeClosed: true})
+			val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{IncludeClosed: true})
 			if err != nil {
 				t.Fatalf("GetAccountValuation() error = %v", err)
 			}
@@ -2285,7 +2285,7 @@ func TestAccountValuation_HasClosedPositionsFlag(t *testing.T) {
 			t.Fatalf("Buy(AAPL) error = %v", err)
 		}
 
-		val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetAccountValuation() error = %v", err)
 		}
@@ -2330,7 +2330,7 @@ func TestGetAccountValuation_ClosedPositionsContributeToTotals(t *testing.T) {
 
 	check := func(t *testing.T, opts ValuationOptions, label string) {
 		t.Helper()
-		val, err := env.svc.GetAccountValuation(acct.ID, asOf, opts)
+		val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, opts)
 		if err != nil {
 			t.Fatalf("[%s] GetAccountValuation() error = %v", label, err)
 		}
@@ -2398,7 +2398,7 @@ func TestGetAccountValuation_FullyClosedLotTrackedPosition_RealizesLoss(t *testi
 		t.Fatalf("Sell(SCHF) error = %v", err)
 	}
 
-	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 	if err != nil {
 		t.Fatalf("GetAccountValuation() error = %v", err)
 	}
@@ -2444,7 +2444,7 @@ func TestRealizedGain_NonLot_CorporateActionOnUnrelatedSecurity_StillComputed(t 
 		t.Fatalf("Split(AAPL) error = %v", err)
 	}
 
-	got, unavailable, err := env.svc.realizedGain(acct.ID, schf.ID, false)
+	got, unavailable, err := env.valSvc.realizedGain(acct.ID, schf.ID, false)
 	if err != nil {
 		t.Fatalf("realizedGain(SCHF) error = %v", err)
 	}
@@ -2504,7 +2504,7 @@ func TestGetAccountValuation_PartialRealized_WhenAnyHoldingUnavailable(t *testin
 		t.Fatalf("Sell(AAPL) error = %v", err)
 	}
 
-	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 	if err != nil {
 		t.Fatalf("GetAccountValuation() error = %v", err)
 	}
@@ -2542,7 +2542,7 @@ func TestGetAccountValuation_AnyRealizedUnavailable_FalseWhenAllAvailable(t *tes
 		t.Fatalf("Sell(SCHF) error = %v", err)
 	}
 
-	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 	if err != nil {
 		t.Fatalf("GetAccountValuation() error = %v", err)
 	}
@@ -2582,7 +2582,7 @@ func TestGetAccountValuation_FullyClosedNonLotPosition_RealizesLoss(t *testing.T
 		t.Fatalf("Sell(SCHF) error = %v", err)
 	}
 
-	val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+	val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 	if err != nil {
 		t.Fatalf("GetAccountValuation() error = %v", err)
 	}

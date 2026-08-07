@@ -74,7 +74,7 @@ func TestRealizedGain_SplitAware_NonLotAvailableAcrossSplit(t *testing.T) {
 		t.Fatalf("Sell() error = %v", err)
 	}
 
-	gain, unavailable, err := env.invSvc.realizedGain(acct.ID, sec.ID, false)
+	gain, unavailable, err := env.valSvc.realizedGain(acct.ID, sec.ID, false)
 	if err != nil {
 		t.Fatalf("realizedGain() error = %v", err)
 	}
@@ -105,7 +105,7 @@ func TestRealizedGain_SpinOffKeepsNonLotUnavailable(t *testing.T) {
 		t.Fatalf("SpinOff() error = %v", err)
 	}
 
-	_, unavailable, err := env.invSvc.realizedGain(acct.ID, parent.ID, false)
+	_, unavailable, err := env.valSvc.realizedGain(acct.ID, parent.ID, false)
 	if err != nil {
 		t.Fatalf("realizedGain() error = %v", err)
 	}

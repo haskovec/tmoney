@@ -12,7 +12,13 @@ import (
 // GetCashBalance computes the cash balance for an investment account by summing
 // all cash-affecting transactions.
 func (s *Service) GetCashBalance(accountID types.ID) (types.Money, error) {
-	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{})
+	return cashBalanceOf(s.repo, accountID)
+}
+
+// cashBalanceOf is the shared body: ValuationService needs the same figure to
+// value an account, and neither type should own the other.
+func cashBalanceOf(repo *Repository, accountID types.ID) (types.Money, error) {
+	txns, err := repo.ListByAccount(accountID, TransactionFilter{})
 	if err != nil {
 		return types.ZeroMoney, fmt.Errorf("failed to list transactions: %w", err)
 	}

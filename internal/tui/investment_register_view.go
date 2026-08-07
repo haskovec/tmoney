@@ -70,7 +70,7 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 			}
 			data.cashBalance = cash
 
-			val, err := a.investmentSvc.GetAccountValuation(accountID, types.Today(), a.valuationOptions())
+			val, err := a.investmentValuationSvc.GetAccountValuation(accountID, types.Today(), a.valuationOptions())
 			if err != nil {
 				return errMsg{err: err}
 			}

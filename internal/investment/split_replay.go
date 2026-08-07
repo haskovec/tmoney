@@ -23,7 +23,14 @@ type splitEvent struct {
 func (s *Service) splitEventsForSecurity(securityID types.ID) ([]splitEvent, error) {
 	// Bindable repo, not a fresh s.db one: syncPositionAndLots (which calls this)
 	// runs inside a tx during heal-before-trade and must see in-tx writes.
-	actions, err := s.corporateActionRepo.ListBySecurity(securityID)
+	return splitEventsFor(s.corporateActionRepo, securityID)
+}
+
+// splitEventsFor is the shared body. ValuationService replays splits too, to
+// price a realized gain against the share counts that were current at the time,
+// and takes the repository it is bound to rather than borrowing a Service.
+func splitEventsFor(corporateActionRepo *CorporateActionRepository, securityID types.ID) ([]splitEvent, error) {
+	actions, err := corporateActionRepo.ListBySecurity(securityID)
 	if err != nil {
 		return nil, fmt.Errorf("splitEventsForSecurity: %w", err)
 	}
@@ -55,7 +62,12 @@ func (s *Service) splitEventsForSecurity(securityID types.ID) ([]splitEvent, err
 func (s *Service) securityHasNonSplitAction(securityID types.ID) (bool, error) {
 	// Bindable repo, not a fresh s.db one: syncPositionAndLots (which calls this)
 	// runs inside a tx during heal-before-trade and must see in-tx writes.
-	actions, err := s.corporateActionRepo.ListBySecurity(securityID)
+	return securityHasNonSplitActionIn(s.corporateActionRepo, securityID)
+}
+
+// securityHasNonSplitActionIn is the shared body — see splitEventsFor.
+func securityHasNonSplitActionIn(corporateActionRepo *CorporateActionRepository, securityID types.ID) (bool, error) {
+	actions, err := corporateActionRepo.ListBySecurity(securityID)
 	if err != nil {
 		return false, fmt.Errorf("securityHasNonSplitAction: %w", err)
 	}

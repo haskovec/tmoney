@@ -135,7 +135,7 @@ func printPortfolioWithLots(w io.Writer, acct *account.Account, valuation *inves
 			)
 
 			// Get lot details
-			lots, err := svc.Investment.GetLotDetail(acct.ID, h.SecurityID, asOf)
+			lots, err := svc.InvestmentValuation.GetLotDetail(acct.ID, h.SecurityID, asOf)
 			if err != nil {
 				fmt.Fprintf(w, "  (could not retrieve lot details: %v)\n", err)
 			} else if len(lots) == 0 {

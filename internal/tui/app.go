@@ -279,9 +279,12 @@ type App struct {
 	refreshNotifID   int
 
 	// Investment register state
-	investmentRegister     *investmentRegisterData
-	investmentTable        *widget.Table
-	investmentSvc          *investment.Service
+	investmentRegister *investmentRegisterData
+	investmentTable    *widget.Table
+	investmentSvc      *investment.Service
+	// investmentValuationSvc is the read-only half: holdings, valuation and
+	// total return. Views take it instead of the full service.
+	investmentValuationSvc *investment.ValuationService
 	investmentRepo         *investment.Repository
 	investmentTypeSelector *dialog.Dialog
 	investmentEditTxnID    types.ID // set when editing an existing transaction
@@ -459,6 +462,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		securitySvc:               svc.Security,
 		priceSvc:                  svc.Price,
 		investmentSvc:             svc.Investment,
+		investmentValuationSvc:    svc.InvestmentValuation,
 		investmentRepo:            svc.InvestmentRepo,
 		dashboardExpandedAccounts: make(map[types.ID]bool),
 		lotRepo:                   svc.LotRepo,

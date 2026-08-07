@@ -50,6 +50,7 @@ func createCheckAccount(t *testing.T, repo *account.Repository, name string) *ac
 // testServiceEnv holds all repos/services needed for buy/sell tests.
 type testServiceEnv struct {
 	svc                *Service
+	valSvc             *ValuationService
 	invRepo            *Repository
 	accountRepo        *account.Repository
 	secRepo            *security.Repository
@@ -73,8 +74,10 @@ func createFullTestService(t *testing.T) *testServiceEnv {
 	transactionLotRepo := NewTransactionLotRepository(database)
 	caRepo := NewCorporateActionRepository(database)
 	svc := NewService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, caRepo, database)
+	valSvc := NewValuationService(invRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, caRepo, database)
 	return &testServiceEnv{
 		svc:                svc,
+		valSvc:             valSvc,
 		invRepo:            invRepo,
 		accountRepo:        accountRepo,
 		secRepo:            secRepo,

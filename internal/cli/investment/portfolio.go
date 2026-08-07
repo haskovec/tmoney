@@ -81,7 +81,7 @@ func runInvestmentPortfolio(opts *investmentPortfolioOptions, w io.Writer) error
 		return fmt.Errorf("account %q not found", opts.account)
 	}
 
-	valuation, err := svc.Investment.GetAccountValuation(acct.ID, asOf, investmentdom.ValuationOptions{IncludeClosed: opts.includeClosed})
+	valuation, err := svc.InvestmentValuation.GetAccountValuation(acct.ID, asOf, investmentdom.ValuationOptions{IncludeClosed: opts.includeClosed})
 	if err != nil {
 		return fmt.Errorf("failed to get portfolio valuation: %w", err)
 	}

@@ -155,7 +155,7 @@ func TestInvestmentService_ReadsAllowedOnClosedAccount(t *testing.T) {
 	}
 	closeInvAccount(t, env.accountRepo, acct)
 
-	if _, err := env.svc.GetAccountValuation(acct.ID, types.Today(), ValuationOptions{}); err != nil {
+	if _, err := env.valSvc.GetAccountValuation(acct.ID, types.Today(), ValuationOptions{}); err != nil {
 		t.Fatalf("GetAccountValuation on a closed account should succeed, got %v", err)
 	}
 	if _, err := env.svc.GetCashBalance(acct.ID); err != nil {

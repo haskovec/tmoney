@@ -21,18 +21,21 @@ import (
 // This is the single source of truth for wiring up the application layer.
 type Services struct {
 	// Services
-	Account         *account.Service
-	Transaction     *transaction.Service
-	Category        *category.Service
-	Payee           *payee.Service
-	Scheduled       *scheduled.Service
-	Report          *report.Service
-	Reconciliation  *reconciliation.Service
-	Security        *security.Service
-	Price           *price.Service
-	Investment      *investment.Service
-	CorporateAction *investment.CorporateActionService
-	TransferLink    *transferlink.Service
+	Account        *account.Service
+	Transaction    *transaction.Service
+	Category       *category.Service
+	Payee          *payee.Service
+	Scheduled      *scheduled.Service
+	Report         *report.Service
+	Reconciliation *reconciliation.Service
+	Security       *security.Service
+	Price          *price.Service
+	Investment     *investment.Service
+	// InvestmentValuation is the read-only half: holdings, valuation and total
+	// return. It writes nothing and opens no transaction.
+	InvestmentValuation *investment.ValuationService
+	CorporateAction     *investment.CorporateActionService
+	TransferLink        *transferlink.Service
 
 	// Transfer owns whole-transaction cash transfers across both ledgers —
 	// bank↔bank, bank↔investment and investment↔investment alike. It is the
@@ -113,6 +116,10 @@ func NewServices(database *db.DB) *Services {
 	// transaction service existed with a nil counterpart.
 	priceSvc := price.NewService(priceRepo, securityRepo, database)
 	investmentSvc := investment.NewService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, corporateActionRepo, database)
+	// The read model is its own type: it holds the same eight repositories but no
+	// database handle, so it can only read committed state. Views, reports and CLI
+	// commands take this rather than the full service.
+	investmentValuationSvc := investment.NewValuationService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, corporateActionRepo, database)
 	// Silently heal any desynced positions/lots so the user doesn't have to
 	// run rebuild-positions manually after upgrading. This is a no-op on
 	// databases that contain corporate-action records.
@@ -135,7 +142,7 @@ func NewServices(database *db.DB) *Services {
 	// HealAllAccounts precedent above.
 	_, _ = scheduledSvc.HealNextDates()
 	reconciliationSvc := reconciliation.NewService(reconciliationRepo, txnRepo, accountRepo, database)
-	reportSvc := report.NewService(accountRepo, database, report.WithInvestmentValuer(&investmentValuerAdapter{svc: investmentSvc}))
+	reportSvc := report.NewService(accountRepo, database, report.WithInvestmentValuer(&investmentValuerAdapter{svc: investmentValuationSvc}))
 	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, investmentRepo, securityRepo, database)
 	transferSvc := transfer.NewService(txnRepo, investmentRepo, splitRepo, accountRepo, categoryRepo, database)
 	// transferlink decides what to link; the transfer owner performs the link,
@@ -148,19 +155,20 @@ func NewServices(database *db.DB) *Services {
 	scheduledSvc.SetTransferPort(transferSvc)
 
 	return &Services{
-		Account:         accountSvc,
-		Transaction:     txnSvc,
-		Category:        categorySvc,
-		Payee:           payeeSvc,
-		Scheduled:       scheduledSvc,
-		Report:          reportSvc,
-		Reconciliation:  reconciliationSvc,
-		Security:        securitySvc,
-		Price:           priceSvc,
-		Investment:      investmentSvc,
-		CorporateAction: corporateActionSvc,
-		TransferLink:    transferLinkSvc,
-		Transfer:        transferSvc,
+		Account:             accountSvc,
+		Transaction:         txnSvc,
+		Category:            categorySvc,
+		Payee:               payeeSvc,
+		Scheduled:           scheduledSvc,
+		Report:              reportSvc,
+		Reconciliation:      reconciliationSvc,
+		Security:            securitySvc,
+		Price:               priceSvc,
+		Investment:          investmentSvc,
+		InvestmentValuation: investmentValuationSvc,
+		CorporateAction:     corporateActionSvc,
+		TransferLink:        transferLinkSvc,
+		Transfer:            transferSvc,
 
 		AccountRepo:         accountRepo,
 		TransactionRepo:     txnRepo,
@@ -181,9 +189,10 @@ func NewServices(database *db.DB) *Services {
 	}
 }
 
-// investmentValuerAdapter adapts *investment.Service to report.InvestmentValuer.
+// investmentValuerAdapter adapts *investment.ValuationService to
+// report.InvestmentValuer.
 type investmentValuerAdapter struct {
-	svc *investment.Service
+	svc *investment.ValuationService
 }
 
 func (a *investmentValuerAdapter) GetAccountValuation(accountID types.ID, asOf types.Date) (*report.ValuationResult, error) {

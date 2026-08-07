@@ -62,7 +62,7 @@ func (a *App) loadPortfolioData(accountID types.ID) tea.Cmd {
 		// Load account valuation
 		if a.investmentSvc != nil {
 			asOf := types.Today()
-			val, err := a.investmentSvc.GetAccountValuation(accountID, asOf, a.valuationOptions())
+			val, err := a.investmentValuationSvc.GetAccountValuation(accountID, asOf, a.valuationOptions())
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -91,7 +91,7 @@ func (a *App) loadLotDetail(accountID, securityID types.ID) tea.Cmd {
 		}
 
 		asOf := types.Today()
-		lots, err := a.investmentSvc.GetLotDetail(accountID, securityID, asOf)
+		lots, err := a.investmentValuationSvc.GetLotDetail(accountID, securityID, asOf)
 		if err != nil {
 			return errMsg{err: err}
 		}

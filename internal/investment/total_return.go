@@ -19,7 +19,7 @@ import (
 // Reinvested dividends are NOT counted as capital deployed (see
 // totalCostDeployedForSecurity), so the total-return percent measures earnings
 // against your own contributions.
-func (s *Service) sumDividendsForSecurity(accountID, securityID types.ID) (types.Money, error) {
+func (s *ValuationService) sumDividendsForSecurity(accountID, securityID types.ID) (types.Money, error) {
 	filter := TransactionFilter{
 		SecurityID: &securityID,
 	}
@@ -42,7 +42,7 @@ func (s *Service) sumDividendsForSecurity(accountID, securityID types.ID) (types
 // sumInterestForAccount returns the total interest received on the cash
 // sweep of an investment account. Interest is not tied to a specific
 // security, so there is no security filter.
-func (s *Service) sumInterestForAccount(accountID types.ID) (types.Money, error) {
+func (s *ValuationService) sumInterestForAccount(accountID types.ID) (types.Money, error) {
 	intType := TransactionTypeInterest
 	filter := TransactionFilter{
 		Type: &intType,
@@ -67,7 +67,7 @@ func (s *Service) sumInterestForAccount(accountID types.ID) (types.Money, error)
 // whole transaction is the fee paid in shares). Account-level `fee`
 // transactions (no security_id) are summed separately by
 // sumFeesForAccount.
-func (s *Service) sumFeesForSecurity(accountID, securityID types.ID) (types.Money, error) {
+func (s *ValuationService) sumFeesForSecurity(accountID, securityID types.ID) (types.Money, error) {
 	filter := TransactionFilter{
 		SecurityID: &securityID,
 	}
@@ -97,7 +97,7 @@ func (s *Service) sumFeesForSecurity(accountID, securityID types.ID) (types.Mone
 // and sums (txn.price_per_share − lot.cost_per_share) × junction.shares.
 // `txn.price_per_share` is already net of commission per ComputePricePerShare;
 // commission is counted separately as a fee, not subtracted twice here.
-func (s *Service) realizedGainLotTracked(accountID, securityID types.ID) (types.Money, error) {
+func (s *ValuationService) realizedGainLotTracked(accountID, securityID types.ID) (types.Money, error) {
 	filter := TransactionFilter{
 		SecurityID: &securityID,
 	}
@@ -148,7 +148,7 @@ func (s *Service) realizedGainLotTracked(accountID, securityID types.ID) (types.
 // txns must be sorted by date ascending, then created_at ascending — the
 // same canonical order replayPosition expects. The TR-008 service wrapper
 // loads and sorts the slice before delegating here.
-func (s *Service) replayRealizedGain(accountID, securityID types.ID, txns []*Transaction, splits []splitEvent) (types.Money, error) {
+func (s *ValuationService) replayRealizedGain(accountID, securityID types.ID, txns []*Transaction, splits []splitEvent) (types.Money, error) {
 	pos := NewPosition(accountID, securityID)
 	total := types.ZeroMoney
 	si := 0
@@ -249,7 +249,7 @@ func (s *Service) replayRealizedGain(accountID, securityID types.ID, txns []*Tra
 // corporate-action service mutates lots in place and transaction_lots
 // junction rows reference post-action lots, so junction-based math
 // remains correct.
-func (s *Service) realizedGain(accountID, securityID types.ID, trackLots bool) (types.Money, bool, error) {
+func (s *ValuationService) realizedGain(accountID, securityID types.ID, trackLots bool) (types.Money, bool, error) {
 	if trackLots {
 		gain, err := s.realizedGainLotTracked(accountID, securityID)
 		return gain, false, err
@@ -257,7 +257,7 @@ func (s *Service) realizedGain(accountID, securityID types.ID, trackLots bool) (
 	// Splits are a dated ratio transform the non-lot replay can reconstruct;
 	// mergers and spin-offs (cross-security, cost-basis reallocation) still
 	// cannot, so they remain "unavailable".
-	hasNonSplit, err := s.securityHasNonSplitAction(securityID)
+	hasNonSplit, err := securityHasNonSplitActionIn(s.corporateActionRepo, securityID)
 	if err != nil {
 		return types.ZeroMoney, false, fmt.Errorf("failed to inspect corporate actions for security: %w", err)
 	}
@@ -272,7 +272,7 @@ func (s *Service) realizedGain(accountID, securityID types.ID, trackLots bool) (
 // non-lot-tracking (account, security) pair. It loads every transaction
 // for the pair, sorts them by (date asc, created_at asc) — the canonical
 // order replayPosition expects — and delegates to replayRealizedGain.
-func (s *Service) realizedGainNonLot(accountID, securityID types.ID) (types.Money, error) {
+func (s *ValuationService) realizedGainNonLot(accountID, securityID types.ID) (types.Money, error) {
 	secFilter := securityID
 	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{SecurityID: &secFilter})
 	if err != nil {
@@ -284,7 +284,7 @@ func (s *Service) realizedGainNonLot(accountID, securityID types.ID) (types.Mone
 		}
 		return txns[i].Date.Time().Before(txns[j].Date.Time())
 	})
-	splits, err := s.splitEventsForSecurity(securityID)
+	splits, err := splitEventsFor(s.corporateActionRepo, securityID)
 	if err != nil {
 		return types.ZeroMoney, err
 	}
@@ -301,7 +301,7 @@ func (s *Service) realizedGainNonLot(accountID, securityID types.ID) (types.Mone
 // debit, so the magnitude is taken via Abs(). A position built without any buy
 // (e.g. transfer-in only, or reinvested-dividends only) returns zero, which the
 // caller renders as "—" for the percent.
-func (s *Service) totalCostDeployedForSecurity(accountID, securityID types.ID) (types.Money, error) {
+func (s *ValuationService) totalCostDeployedForSecurity(accountID, securityID types.ID) (types.Money, error) {
 	filter := TransactionFilter{
 		SecurityID: &securityID,
 	}
@@ -326,7 +326,7 @@ func (s *Service) totalCostDeployedForSecurity(accountID, securityID types.ID) (
 // carry their basis with them and `reinvest_dividend` is income (counted in the
 // numerator as a dividend), so both are excluded. The result is a positive
 // magnitude.
-func (s *Service) totalCostDeployedForAccount(accountID types.ID) (types.Money, error) {
+func (s *ValuationService) totalCostDeployedForAccount(accountID types.ID) (types.Money, error) {
 	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{})
 	if err != nil {
 		return types.ZeroMoney, fmt.Errorf("failed to list transactions for account total cost deployed: %w", err)
@@ -354,7 +354,7 @@ func (s *Service) totalCostDeployedForAccount(accountID types.ID) (types.Money, 
 //
 // The returned slice is in stable order (security ID ascending as a string)
 // so callers can iterate it deterministically.
-func (s *Service) listEverHeldSecurities(accountID types.ID) ([]types.ID, error) {
+func (s *ValuationService) listEverHeldSecurities(accountID types.ID) ([]types.ID, error) {
 	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list transactions for ever-held securities: %w", err)
@@ -388,7 +388,7 @@ func (s *Service) listEverHeldSecurities(accountID types.ID) ([]types.ID, error)
 // the account plus any account-level `fee` transactions (which carry no
 // security_id). The result is a positive magnitude — the spec's
 // fees_paid[account] from the total-return formula.
-func (s *Service) sumFeesForAccount(accountID types.ID) (types.Money, error) {
+func (s *ValuationService) sumFeesForAccount(accountID types.ID) (types.Money, error) {
 	txns, err := s.repo.ListByAccount(accountID, TransactionFilter{})
 	if err != nil {
 		return types.ZeroMoney, fmt.Errorf("failed to list transactions for account fees: %w", err)

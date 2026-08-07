@@ -5,7 +5,9 @@ import (
 
 	"github.com/alpacahq/alpacadecimal"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -35,13 +37,65 @@ import (
 // HasClosedPositions is set whenever the account has at least one
 // fully-sold security, regardless of opts.IncludeClosed — it advises the
 // caller that there are closed positions to display.
-func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts ValuationOptions) (*AccountValuation, error) {
-	acct, err := s.getInvestmentAccount(accountID)
+// ValuationService is the read model for an investment account: what is held,
+// what it is worth, and what it has returned.
+//
+// It is the second type extracted out of investment.Service, and the property
+// that makes it worth having is not its size — it is what it CANNOT do. It holds
+// eight repositories and no *db.DB and no bound-tx field, exactly like
+// CounterpartService, but for a different reason: CounterpartService cannot open
+// a transaction because it always joins the caller's, while ValuationService
+// cannot open one because it never writes at all. Every method here reads.
+//
+// It also has no InTx, and that is deliberate rather than an omission. The
+// cluster is a leaf: nothing on the write side of this package calls into it,
+// and every production caller is a view, a CLI command or a report
+// (registry.go's report adapter, portfolio/dashboard/register views,
+// cli/investment). None of them is inside a transaction, so there is no
+// caller's transaction to join and reads correctly see committed state. If a
+// future caller does need these figures mid-transaction, it needs an InTx that
+// rebinds all eight fields — and a binding test, per design section 8.
+type ValuationService struct {
+	repo                *Repository
+	accountRepo         *account.Repository
+	positionRepo        *PositionRepository
+	lotRepo             *LotRepository
+	transactionLotRepo  *TransactionLotRepository
+	priceRepo           *price.Repository
+	corporateActionRepo *CorporateActionRepository
+	holdingsRepo        *HoldingsRepository
+}
+
+// NewValuationService creates the investment read model.
+func NewValuationService(
+	repo *Repository,
+	accountRepo *account.Repository,
+	positionRepo *PositionRepository,
+	lotRepo *LotRepository,
+	transactionLotRepo *TransactionLotRepository,
+	priceRepo *price.Repository,
+	corporateActionRepo *CorporateActionRepository,
+	database *db.DB,
+) *ValuationService {
+	return &ValuationService{
+		repo:                repo,
+		accountRepo:         accountRepo,
+		positionRepo:        positionRepo,
+		lotRepo:             lotRepo,
+		transactionLotRepo:  transactionLotRepo,
+		priceRepo:           priceRepo,
+		corporateActionRepo: corporateActionRepo,
+		holdingsRepo:        NewHoldingsRepository(database),
+	}
+}
+
+func (s *ValuationService) GetAccountValuation(accountID types.ID, asOf types.Date, opts ValuationOptions) (*AccountValuation, error) {
+	acct, err := loadInvestmentAccount(s.accountRepo, accountID)
 	if err != nil {
 		return nil, err
 	}
 
-	cashBalance, err := s.GetCashBalance(accountID)
+	cashBalance, err := cashBalanceOf(s.repo, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cash balance: %w", err)
 	}
@@ -156,8 +210,8 @@ func (s *Service) GetAccountValuation(accountID types.ID, asOf types.Date, opts 
 // synthesized rows (Shares == 0, IsClosed = true) for securities the
 // account has ever held but no longer holds, with total-return components
 // populated from the ledger. Otherwise only open positions are returned.
-func (s *Service) GetHoldings(accountID types.ID, asOf types.Date, opts ValuationOptions) ([]Holding, error) {
-	acct, err := s.getInvestmentAccount(accountID)
+func (s *ValuationService) GetHoldings(accountID types.ID, asOf types.Date, opts ValuationOptions) ([]Holding, error) {
+	acct, err := loadInvestmentAccount(s.accountRepo, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -166,8 +220,8 @@ func (s *Service) GetHoldings(accountID types.ID, asOf types.Date, opts Valuatio
 }
 
 // GetLotDetail returns lot-level detail for a specific security in a lot-tracking account.
-func (s *Service) GetLotDetail(accountID types.ID, securityID types.ID, asOf types.Date) ([]LotDetail, error) {
-	acct, err := s.getInvestmentAccount(accountID)
+func (s *ValuationService) GetLotDetail(accountID types.ID, securityID types.ID, asOf types.Date) ([]LotDetail, error) {
+	acct, err := loadInvestmentAccount(s.accountRepo, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +273,7 @@ func (s *Service) GetLotDetail(accountID types.ID, securityID types.ID, asOf typ
 // the function appends one synthesized Holding per ever-held security that
 // is no longer held (Shares == 0, IsClosed = true, total-return components
 // enriched from the ledger).
-func (s *Service) getHoldings(acct *account.Account, asOf types.Date, opts ValuationOptions) ([]Holding, error) {
+func (s *ValuationService) getHoldings(acct *account.Account, asOf types.Date, opts ValuationOptions) ([]Holding, error) {
 	var (
 		holdings []Holding
 		err      error
@@ -247,7 +301,7 @@ func (s *Service) getHoldings(acct *account.Account, asOf types.Date, opts Valua
 // basis / market value but their total-return components are populated by
 // the same enrichment helper used for open positions, so they show
 // realized gain, dividends received, fees paid, and total cost deployed.
-func (s *Service) appendClosedHoldings(acct *account.Account, open []Holding) ([]Holding, error) {
+func (s *ValuationService) appendClosedHoldings(acct *account.Account, open []Holding) ([]Holding, error) {
 	everHeld, err := s.listEverHeldSecurities(acct.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list ever-held securities: %w", err)
@@ -280,7 +334,7 @@ func (s *Service) appendClosedHoldings(acct *account.Account, open []Holding) ([
 // getHoldingsFromView builds holdings using the portfolio_holdings database view.
 // The view handles both lot-tracking and non-lot-tracking accounts, returning
 // pre-aggregated shares and cost basis. Pricing is enriched on top.
-func (s *Service) getHoldingsFromView(acct *account.Account, asOf types.Date) ([]Holding, error) {
+func (s *ValuationService) getHoldingsFromView(acct *account.Account, asOf types.Date) ([]Holding, error) {
 	viewHoldings, err := s.holdingsRepo.ListByAccount(acct.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query holdings view: %w", err)
@@ -328,7 +382,7 @@ func (s *Service) getHoldingsFromView(acct *account.Account, asOf types.Date) ([
 }
 
 // getHoldingsFromPositions builds holdings from positions (non-lot-tracking).
-func (s *Service) getHoldingsFromPositions(acct *account.Account, asOf types.Date) ([]Holding, error) {
+func (s *ValuationService) getHoldingsFromPositions(acct *account.Account, asOf types.Date) ([]Holding, error) {
 	positions, err := s.positionRepo.ListByAccount(acct.ID, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list positions: %w", err)
@@ -372,7 +426,7 @@ func (s *Service) getHoldingsFromPositions(acct *account.Account, asOf types.Dat
 }
 
 // getHoldingsFromLots builds holdings aggregated from lots (lot-tracking).
-func (s *Service) getHoldingsFromLots(acct *account.Account, asOf types.Date) ([]Holding, error) {
+func (s *ValuationService) getHoldingsFromLots(acct *account.Account, asOf types.Date) ([]Holding, error) {
 	// Get all open lots for this account, grouped by security
 	// We need to find which securities have lots, then aggregate
 	// Use the position repo isn't available for lot-tracking, so we query lots directly
@@ -454,7 +508,7 @@ func (s *Service) getHoldingsFromLots(acct *account.Account, asOf types.Date) ([
 
 // getCurrentPrice returns the most recent price for a security on or before the given date.
 // Returns the price and true if found, or ZeroMoney and false if not found.
-func (s *Service) getCurrentPrice(securityID types.ID, asOf types.Date) (types.Money, bool) {
+func (s *ValuationService) getCurrentPrice(securityID types.ID, asOf types.Date) (types.Money, bool) {
 	if s.priceRepo == nil {
 		return types.ZeroMoney, false
 	}
@@ -471,7 +525,7 @@ func (s *Service) getCurrentPrice(securityID types.ID, asOf types.Date) (types.M
 }
 
 // getPriceDate returns the date of the most recent price for a security on or before asOf.
-func (s *Service) getPriceDate(securityID types.ID, asOf types.Date) types.Date {
+func (s *ValuationService) getPriceDate(securityID types.ID, asOf types.Date) types.Date {
 	if s.priceRepo == nil {
 		return types.Date{}
 	}
@@ -497,7 +551,7 @@ func (s *Service) getPriceDate(securityID types.ID, asOf types.Date) types.Date 
 // acct.TrackLots. When the non-lot path is gated by corporate actions, the
 // dispatcher returns (zero, unavailable=true) and the flag is forwarded onto
 // the holding so the UI can render `(unavailable)`.
-func (s *Service) enrichHoldingTotalReturn(h *Holding, acct *account.Account) error {
+func (s *ValuationService) enrichHoldingTotalReturn(h *Holding, acct *account.Account) error {
 	realized, unavailable, err := s.realizedGain(acct.ID, h.SecurityID, acct.TrackLots)
 	if err != nil {
 		return fmt.Errorf("realized gain for %s: %w", h.SecurityID, err)

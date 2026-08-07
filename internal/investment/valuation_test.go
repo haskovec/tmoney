@@ -40,7 +40,7 @@ func TestService_GetAccountValuation(t *testing.T) {
 		}
 
 		asOf := types.NewDate(2024, time.March, 20)
-		val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetAccountValuation() error = %v", err)
 		}
@@ -97,7 +97,7 @@ func TestService_GetAccountValuation(t *testing.T) {
 		// Use a date before any transaction-created price to test fallback
 		// Actually, the buy auto-creates a price. Let's query as-of a date before the buy.
 		asOf := types.NewDate(2024, time.March, 14)
-		val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetAccountValuation() error = %v", err)
 		}
@@ -124,7 +124,7 @@ func TestService_GetAccountValuation(t *testing.T) {
 		acct := createInvAccount(t, env.accountRepo, "Empty")
 
 		asOf := types.NewDate(2024, time.March, 15)
-		val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetAccountValuation() error = %v", err)
 		}
@@ -176,7 +176,7 @@ func TestService_GetAccountValuation(t *testing.T) {
 		}
 
 		asOf := types.NewDate(2024, time.March, 20)
-		val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetAccountValuation() error = %v", err)
 		}
@@ -232,7 +232,7 @@ func TestService_GetAccountValuation(t *testing.T) {
 		}
 
 		asOf := types.NewDate(2024, time.March, 20)
-		val, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		val, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetAccountValuation() error = %v", err)
 		}
@@ -264,7 +264,7 @@ func TestService_GetAccountValuation(t *testing.T) {
 		acct := createCheckAccount(t, env.accountRepo, "Checking")
 
 		asOf := types.NewDate(2024, time.March, 15)
-		_, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		_, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 		if err == nil {
 			t.Fatal("Expected error for non-investment account")
 		}
@@ -301,7 +301,7 @@ func TestService_GetHoldings(t *testing.T) {
 		}
 
 		asOf := types.NewDate(2024, time.March, 20)
-		holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		holdings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() error = %v", err)
 		}
@@ -373,7 +373,7 @@ func TestService_GetHoldings(t *testing.T) {
 		}
 
 		asOf := types.NewDate(2024, time.March, 20)
-		holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		holdings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() error = %v", err)
 		}
@@ -418,7 +418,7 @@ func TestService_GetHoldings(t *testing.T) {
 		acct := createInvAccount(t, env.accountRepo, "Empty")
 
 		asOf := types.NewDate(2024, time.March, 15)
-		holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		holdings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() error = %v", err)
 		}
@@ -433,7 +433,7 @@ func TestService_GetHoldings(t *testing.T) {
 		acct := createCheckAccount(t, env.accountRepo, "Checking")
 
 		asOf := types.NewDate(2024, time.March, 15)
-		_, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		_, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err == nil {
 			t.Fatal("Expected error for non-investment account")
 		}
@@ -484,14 +484,14 @@ func TestService_GetHoldingsViewMatchesManual(t *testing.T) {
 		asOf := types.NewDate(2024, time.March, 20)
 
 		// Get holdings via view (default path since holdingsRepo is wired)
-		viewHoldings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		viewHoldings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() (view) error = %v", err)
 		}
 
 		// Get holdings via manual path by temporarily disabling the view
 		env.svc.holdingsRepo = nil
-		manualHoldings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		manualHoldings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() (manual) error = %v", err)
 		}
@@ -572,14 +572,14 @@ func TestService_GetHoldingsViewMatchesManual(t *testing.T) {
 		asOf := types.NewDate(2024, time.March, 20)
 
 		// Get holdings via view
-		viewHoldings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		viewHoldings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() (view) error = %v", err)
 		}
 
 		// Get holdings via manual path
 		env.svc.holdingsRepo = nil
-		manualHoldings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		manualHoldings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() (manual) error = %v", err)
 		}
@@ -653,13 +653,13 @@ func TestService_GetHoldingsViewMatchesManual(t *testing.T) {
 		// Query as-of date before buy to avoid transaction-created price
 		asOf := types.NewDate(2024, time.March, 14)
 
-		viewHoldings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		viewHoldings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() (view) error = %v", err)
 		}
 
 		env.svc.holdingsRepo = nil
-		manualHoldings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		manualHoldings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() (manual) error = %v", err)
 		}
@@ -683,7 +683,7 @@ func TestService_GetHoldingsViewMatchesManual(t *testing.T) {
 		acct := createInvAccount(t, env.accountRepo, "EmptyView")
 
 		asOf := types.NewDate(2024, time.March, 15)
-		holdings, err := env.svc.GetHoldings(acct.ID, asOf, ValuationOptions{})
+		holdings, err := env.valSvc.GetHoldings(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetHoldings() error = %v", err)
 		}
@@ -718,14 +718,14 @@ func TestService_GetHoldingsViewMatchesManual(t *testing.T) {
 		asOf := types.NewDate(2024, time.March, 20)
 
 		// View-based valuation
-		viewVal, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		viewVal, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetAccountValuation() (view) error = %v", err)
 		}
 
 		// Manual-based valuation
 		env.svc.holdingsRepo = nil
-		manualVal, err := env.svc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
+		manualVal, err := env.valSvc.GetAccountValuation(acct.ID, asOf, ValuationOptions{})
 		if err != nil {
 			t.Fatalf("GetAccountValuation() (manual) error = %v", err)
 		}
@@ -789,7 +789,7 @@ func TestService_GetLotDetail(t *testing.T) {
 		}
 
 		asOf := types.NewDate(2024, time.March, 20)
-		details, err := env.svc.GetLotDetail(acct.ID, sec.ID, asOf)
+		details, err := env.valSvc.GetLotDetail(acct.ID, sec.ID, asOf)
 		if err != nil {
 			t.Fatalf("GetLotDetail() error = %v", err)
 		}
@@ -891,7 +891,7 @@ func TestService_GetLotDetail(t *testing.T) {
 		}
 
 		asOf := types.NewDate(2024, time.March, 20)
-		details, err := env.svc.GetLotDetail(acct.ID, sec.ID, asOf)
+		details, err := env.valSvc.GetLotDetail(acct.ID, sec.ID, asOf)
 		if err != nil {
 			t.Fatalf("GetLotDetail() error = %v", err)
 		}
@@ -911,7 +911,7 @@ func TestService_GetLotDetail(t *testing.T) {
 		sec := createSec(t, env.secRepo, "NVDA")
 
 		asOf := types.NewDate(2024, time.March, 15)
-		_, err := env.svc.GetLotDetail(acct.ID, sec.ID, asOf)
+		_, err := env.valSvc.GetLotDetail(acct.ID, sec.ID, asOf)
 		if err == nil {
 			t.Fatal("Expected error for non-investment account")
 		}
@@ -923,7 +923,7 @@ func TestService_GetLotDetail(t *testing.T) {
 		sec := createSec(t, env.secRepo, "AMD")
 
 		asOf := types.NewDate(2024, time.March, 15)
-		_, err := env.svc.GetLotDetail(acct.ID, sec.ID, asOf)
+		_, err := env.valSvc.GetLotDetail(acct.ID, sec.ID, asOf)
 		if err == nil {
 			t.Fatal("Expected error for non-lot-tracking account")
 		}
