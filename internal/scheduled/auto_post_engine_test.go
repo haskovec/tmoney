@@ -267,3 +267,31 @@ func TestAutoPost_EarlierCandidateStaysCommittedWhenALaterOneFails(t *testing.T)
 		t.Errorf("failing candidate advanced: got %s, want %s", xferAfter.NextDate, xferNextDate)
 	}
 }
+
+// TestPost_AmountOverrideBeatsTheTemplateAmount pins a precedence the suite did
+// not cover and the collapse could have inverted for free.
+//
+// postOccurrenceSingle reads `if amount != nil` BEFORE falling back to
+// st.Amount.Money. Reversing those two — the natural tidy-up when merging an
+// if/else chain into a switch — would silently make `tmoney scheduled post <id>
+// --amount ...` ignore the override on any schedule that already carries a fixed
+// amount, and no other test would notice.
+func TestPost_AmountOverrideBeatsTheTemplateAmount(t *testing.T) {
+	svc, accountRepo, _, _ := createTestScheduledTransactionService(t)
+	acct := createTestAccountForScheduled(t, accountRepo, "Checking")
+
+	st := NewTransactionWithAmount(acct.ID, FrequencyMonthly,
+		types.NewDate(2024, time.June, 1), types.MustNewMoney("-50.00"))
+	if err := svc.Create(st); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	override := types.MustNewMoney("-125.00")
+	txn, err := svc.Post(st.ID, &override)
+	if err != nil {
+		t.Fatalf("Post() error = %v", err)
+	}
+	if !txn.Amount.Equal(override) {
+		t.Errorf("posted amount = %s, want the override %s (the template's -50.00 won)", txn.Amount, override)
+	}
+}
