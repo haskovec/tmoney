@@ -585,10 +585,19 @@ comment blocks in `transaction_service.go`, each of which is now the file-level
 doc comment of the file named after it.
 
 **Phase 2 — `investment` + `scheduled` file splits (risk: low).**
-§5.3 table and §6.4. Same discipline. Explicitly **not** loan extraction, **not**
-the AutoPost collapse.
+SHIPPED 2026-08-07. §5.3 table and §6.4. Same discipline, same byte-identity
+proof. Explicitly **not** loan extraction, **not** the AutoPost collapse.
 *Exit criteria:* as phase 1b. `investment_service.go` under 200 lines;
 `scheduled_service.go` under 350.
+
+*Result:* `scheduled_service.go` 315 ✓. `investment_service.go` **203**, three
+over. The 200 came from §6.4's ~197 content estimate, which budgeted no
+file-level doc comment; the file carries an eight-line one recording why
+`runInTx`/`healInOwnTx` need all ten fields, since that is the measurement
+phase 4 turns on. Keeping the comment was judged worth three lines. Every other
+file landed well inside: `investment` 94–317 across nine files,
+`scheduled` 100–427 across five. `scheduled/posting.go` at 427 is the largest
+and is phase 3's subject anyway.
 
 **Phase 3 — collapse the second posting engine (risk: medium).**
 §5.3. Extract `postOccurrence*` participants; re-point `Post*`/`Skip`/`AutoPost`
