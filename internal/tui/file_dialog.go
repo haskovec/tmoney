@@ -238,8 +238,11 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	a.securitySvc = svc.Security
 	a.priceSvc = svc.Price
 	a.investmentSvc = svc.Investment
+	a.investmentValuationSvc = svc.InvestmentValuation
+	a.investmentEditSvc = svc.InvestmentEdit
 	a.investmentRepo = svc.InvestmentRepo
 	a.corporateActionSvc = svc.CorporateAction
+	a.transferSvc = svc.Transfer
 	a.lotRepo = svc.LotRepo
 	a.positionRepo = svc.PositionRepo
 
