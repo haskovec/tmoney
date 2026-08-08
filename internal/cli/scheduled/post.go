@@ -117,13 +117,56 @@ func runScheduledPost(opts *scheduledPostOptions, w io.Writer) error {
 		}
 	}
 
+	// A posted occurrence does not always produce a regular-ledger row. An
+	// investment-to-investment transfer writes BOTH its legs to
+	// investment_transactions, so the post path correctly reports no
+	// transaction — there is none to report. The occurrence still happened, so
+	// fall back to what the schedule was asked to post rather than dereferencing
+	// a nil result.
+	postedAmount := types.ZeroMoney
+	if st.Amount.Valid {
+		postedAmount = st.Amount.Money
+	}
+	if amount != nil {
+		postedAmount = *amount
+		// A transfer schedule stores its amount as the signed effect on the
+		// SOURCE account, and posting takes the magnitude of whatever override is
+		// given. Normalise so the summary reads the way the schedule and the
+		// register do, whichever sign the user typed.
+		if st.IsTransfer() {
+			postedAmount = amount.Abs().Neg()
+		}
+	}
+	postedDate := oldNextDate
+	if date != nil {
+		postedDate = *date
+	}
+	if txn != nil {
+		postedDate = txn.Date
+		// For a transfer, the returned row is whichever leg landed on the REGULAR
+		// ledger, which is the destination when the source is an investment
+		// account — so its sign belongs to a different account than the one named
+		// above. The schedule's own signed amount is the honest figure here.
+		if !st.IsTransfer() {
+			postedAmount = txn.Amount
+		}
+	}
+
 	fmt.Fprintln(w, "Scheduled transaction posted successfully!")
 	fmt.Fprintf(w, "  Account:     %s\n", accountName)
 	if payeeName != "-" {
 		fmt.Fprintf(w, "  Payee:       %s\n", payeeName)
 	}
-	fmt.Fprintf(w, "  Amount:      %s\n", cmdutil.FormatMoney(txn.Amount, currency))
-	fmt.Fprintf(w, "  Date:        %s\n", txn.Date.String())
+	fmt.Fprintf(w, "  Amount:      %s\n", cmdutil.FormatMoney(postedAmount, currency))
+	fmt.Fprintf(w, "  Date:        %s\n", postedDate.String())
+	// State the direction rather than leaving it to be inferred from a sign.
+	if st.IsTransfer() {
+		destName := "Unknown"
+		if dest, derr := svc.AccountRepo.GetByID(st.TransferAccountID.ID); derr == nil && dest != nil {
+			destName = dest.Name
+		}
+		fmt.Fprintf(w, "  Transfer to: %s\n", destName)
+	}
 	fmt.Fprintf(w, "  Frequency:   %s\n", st.Frequency.DisplayName())
 	fmt.Fprintf(w, "  Previous:    %s\n", oldNextDate.String())
 	if stUpdated != nil && !stUpdated.IsCompleted() {

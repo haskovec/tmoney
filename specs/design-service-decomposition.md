@@ -476,11 +476,22 @@ Two deliberate behavior changes, neither pinned by any test:
   behind those strings still differs by design — a manual post fails alone, an
   auto-post failure aborts the batch.
 
-### 5.5 Three live bugs found while collapsing — deliberately NOT fixed here
+### 5.5 Three live bugs found while collapsing — FIXED 2026-08-07, separately
 
-The differential surfaced these. Each predates this work, none is caused by the
-collapse, and each deserves its own commit and its own test rather than being
-smuggled into a behavior-preserving refactor.
+The differential surfaced these. Each predates this work and none is caused by
+the collapse, so each was kept out of the behavior-preserving refactor and fixed
+afterwards, in its own commit, with a failing test written first.
+
+**The root cause behind all three is one idea, stated two ways.** Bugs 2 and 3
+are the same mistake seen from either side: *a posted occurrence that produces no
+regular-ledger row is indistinguishable from no occurrence at all*. Bug 1 is its
+sibling in the date domain: *a schedule that has run out is indistinguishable
+from one that is merely due*, because the terminal state the type describes was
+unreachable. Both are cases of an inferred signal standing in for a real one.
+
+The fixes replace the inference with the signal in each case: `AutoPost` counts
+occurrences instead of counting posted rows, and `AdvanceSchedule` reports
+"that was the last one" instead of leaving callers to deduce it.
 
 1. **`AutoPost` hangs on an end-date-bounded schedule.** When the next occurrence
    would fall past `end_date`, `AdvanceSchedule` returns false **without
@@ -507,11 +518,68 @@ smuggled into a behavior-preserving refactor.
    checking only `err`, and the manual path legitimately returns a nil
    transaction for an occurrence with no regular-ledger leg.
 
-Bugs 2 and 3 are the same root cause seen from two sides: a posted occurrence
-that produces no regular-ledger row is indistinguishable from no occurrence at
-all. Any fix should make "an occurrence happened" a first-class signal rather
-than inferring it from a possibly-nil transaction — which is why the participant
-already returns a struct carrying `transferID` alongside `txn`.
+**What the fixes were.**
+
+1. `AdvanceSchedule` now assigns `next_date` unconditionally, *including* past
+   `end_date`, and returns whether the schedule can still run. That makes the
+   terminal state `IsCompleted` already tested for actually reachable. Two other
+   pieces of the codebase turn out to have been written expecting exactly this
+   and were dead alongside it: `IsCompleted`'s end-date branch
+   (`scheduled.go:382`) and `ListDue`'s `next_date <= end_date` SQL predicate
+   (`scheduled_repository.go:258`). Validation permits the new state — the only
+   `end_date` rule is that it follow `start_date`. `AutoPost` additionally
+   **honours the return value**, which no caller previously did, so its loop now
+   has two independent reasons to stop; if `IsCompleted` and `AdvanceSchedule`
+   ever disagree again the loop terminates instead of spinning.
+2. `AutoPost` counts **occurrences**, and that count gates both the schedule
+   persist and the `summary.Results` admission. `len(result.Transactions)` was
+   never the right question.
+3. The CLI falls back to the schedule's own amount and the posted date when
+   there is no regular-ledger row, and says so in its output.
+   `PostScheduledTransactionCommand.Undo` gained the matching nil guard.
+
+**An adversarial review of those three fixes found four more, and one of them
+showed the first attempt was incomplete.** All are now fixed:
+
+4. **The same bug survived at the manual door.**
+   `PostScheduledTransferCommand` learned the posted transfer's id by reading it
+   *off* the regular-ledger leg — so for an investment↔investment occurrence it
+   got nothing, `Undo` skipped its delete, and the schedule was rewound anyway.
+   The undo reported success while leaving both legs in the ledger, so the next
+   post duplicated the transfer. The command's own doc comment claimed "Undo
+   addresses the transfer, not a leg, so it works for every shape"; the code took
+   it from a leg. Fixed by surfacing `transferID` out of the posting path
+   (`PostWithDateReturningTransfer`), which is where `postOccurrence` already had
+   it. This also stops the preview's one-off memo and status being silently
+   dropped for that shape.
+5. **Fixing bug 1 moved a phantom rather than removing it.** With `next_date`
+   now landing past `end_date`, a completed schedule left `ListDue` — which
+   already excluded it — and appeared in `ListUpcoming`, which carried no
+   completion predicate at all. Its `next_date` is frozen while every live
+   schedule's keeps moving, so it migrated to the front of an ascending sort and
+   held a slot in the dashboard's upcoming panel permanently. `ListAutoPostDue`
+   had the same gap. Both now carry `ListDue`'s two clauses, so all three
+   predicates agree with `IsCompleted`.
+6. **`AdvanceSchedule`'s *other* terminal route had the same shape.** The
+   occurrences branch also reported terminality by withholding the advance, so
+   re-arming a finished schedule through the TUI's Occurrences field re-posted the
+   occurrence it had already posted. Both routes now advance and merely *report*
+   terminality.
+7. **The CLI printed a transfer's amount from the wrong frame.** The returned row
+   is whichever leg landed on the regular ledger — the *destination* when the
+   source is an investment account — so its sign belonged to a different account
+   than the one named above it. Transfers now display the schedule's own signed
+   amount, and the summary states the destination instead of leaving direction to
+   be inferred from a sign.
+
+**Still open, recorded not taken.** `PostScheduledTransactionCommand` has no
+production caller (the TUI uses `PostScheduledTransferCommand`); under the
+dead-code policy it is a deletion candidate, but that is a decision about undo's
+surface. An inv↔inv transfer schedule that carries a category can never post and
+aborts the whole auto-post batch — `scheduled add --transfer-to` does not check
+`Kind.StoresCategory()`. And the TUI's transfer dialog builds its account
+pickers from non-investment accounts only, so opening a CLI-created inv↔inv
+schedule silently re-points its endpoints.
 
 File split for the package (phase 2, before the collapse):
 

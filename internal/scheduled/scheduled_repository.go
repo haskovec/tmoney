@@ -275,6 +275,8 @@ func (r *Repository) ListUpcoming(days int) ([]*Transaction, error) {
 			created_at, updated_at
 		FROM scheduled_transactions
 		WHERE next_date <= ?
+		  AND (occurrences_remaining IS NULL OR occurrences_remaining > 0)
+		  AND (end_date IS NULL OR next_date <= end_date)
 		ORDER BY next_date ASC, created_at ASC
 	`
 
@@ -295,6 +297,8 @@ func (r *Repository) ListAutoPostDue() ([]*Transaction, error) {
 		FROM scheduled_transactions
 		WHERE auto_post = TRUE
 			AND next_date - INTERVAL (post_lead_days) DAY <= ?
+			AND (occurrences_remaining IS NULL OR occurrences_remaining > 0)
+			AND (end_date IS NULL OR next_date <= end_date)
 		ORDER BY next_date ASC, created_at ASC
 	`
 

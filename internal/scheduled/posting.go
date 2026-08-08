@@ -40,14 +40,30 @@ func (s *Service) Post(id types.ID, amount *types.Money) (*transaction.Transacti
 // redo that re-ran Post would produce different rows. Store-and-replay keeps
 // redo deterministic.
 func (s *Service) PostReturningSplits(id types.ID, amount *types.Money) (*transaction.Transaction, []*transaction.Split, error) {
-	return s.postManually(id, nil, amount)
+	out, err := s.postManually(id, nil, amount)
+	return out.txn, out.splits, err
 }
 
 // PostWithDate creates a transaction from a scheduled transaction with a specific date.
 // Useful when posting a due transaction on a date other than the scheduled next_date.
 func (s *Service) PostWithDate(id types.ID, date types.Date, amount *types.Money) (*transaction.Transaction, error) {
-	txn, _, err := s.postManually(id, &date, amount)
-	return txn, err
+	out, err := s.postManually(id, &date, amount)
+	return out.txn, err
+}
+
+// PostWithDateReturningTransfer behaves exactly like PostWithDate but also
+// returns the transfer_id of the pair it posted, or a zero ID when the
+// occurrence was not a transfer.
+//
+// Undo needs the id ITSELF, not a leg to read it off. An
+// investment↔investment occurrence puts both legs on the investment ledger and
+// so reports no transaction at all — so a caller that recovered the transfer_id
+// from the returned row got nothing, skipped its delete, and still rewound the
+// schedule. That is a silent double-post, and it is the manual-door twin of the
+// auto-post bug fixed alongside this.
+func (s *Service) PostWithDateReturningTransfer(id types.ID, date types.Date, amount *types.Money) (*transaction.Transaction, types.ID, error) {
+	out, err := s.postManually(id, &date, amount)
+	return out.txn, out.transferID, err
 }
 
 // postManually is the shared envelope of Post, PostReturningSplits and
@@ -59,26 +75,28 @@ func (s *Service) PostWithDate(id types.ID, date types.Date, amount *types.Money
 // the next run.
 //
 // date is nil for the schedule's own next_date, or the caller's chosen date.
-func (s *Service) postManually(id types.ID, date *types.Date, amount *types.Money) (*transaction.Transaction, []*transaction.Split, error) {
+func (s *Service) postManually(id types.ID, date *types.Date, amount *types.Money) (postedOccurrence, error) {
+	var none postedOccurrence
+
 	st, err := s.repo.GetByID(id)
 	if err != nil {
-		return nil, nil, err
+		return none, err
 	}
 	if st.IsCompleted() {
-		return nil, nil, &CompletedError{ID: id.String()}
+		return none, &CompletedError{ID: id.String()}
 	}
 
 	// A schedule may not post into a closed account (manual post refuses with a
 	// clear error and the schedule stays due).
 	if err := s.ensureNoClosedAccounts(st); err != nil {
-		return nil, nil, err
+		return none, err
 	}
 
 	if len(st.Splits) > 0 && amount != nil {
-		return nil, nil, fmt.Errorf("amount override is not supported on multi-line scheduled transactions; use the preview dialog to edit per-instance amounts")
+		return none, fmt.Errorf("amount override is not supported on multi-line scheduled transactions; use the preview dialog to edit per-instance amounts")
 	}
 	if st.IsTransfer() && s.txnRepo == nil {
-		return nil, nil, fmt.Errorf("posting a transfer schedule requires a transaction repository; scheduled.NewService was called with txnRepo=nil")
+		return none, fmt.Errorf("posting a transfer schedule requires a transaction repository; scheduled.NewService was called with txnRepo=nil")
 	}
 
 	occurrenceDate := st.NextDate
@@ -87,7 +105,7 @@ func (s *Service) postManually(id types.ID, date *types.Date, amount *types.Mone
 	}
 	resolved, err := s.manualAmount(st, amount)
 	if err != nil {
-		return nil, nil, err
+		return none, err
 	}
 
 	var out postedOccurrence
@@ -120,9 +138,9 @@ func (s *Service) postManually(id types.ID, date *types.Date, amount *types.Mone
 			st.MarkCompleted()
 			_ = s.repo.Update(st)
 		}
-		return nil, nil, err
+		return none, err
 	}
-	return out.txn, out.splits, nil
+	return out, nil
 }
 
 // manualAmount decides what a MANUAL post should pay for this occurrence.

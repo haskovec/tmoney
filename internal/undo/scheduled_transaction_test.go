@@ -6,6 +6,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
@@ -20,6 +21,7 @@ import (
 // =============================================================================
 
 type scheduledTestEnv struct {
+	database     *db.DB
 	scheduledSvc *scheduled.Service
 	txnSvc       *transaction.Service
 	transferSvc  *transfer.Service
@@ -45,6 +47,7 @@ func createScheduledTestEnv(t *testing.T) *scheduledTestEnv {
 	scheduledSvc.SetTransferPort(transferSvc)
 
 	return &scheduledTestEnv{
+		database:     database,
 		scheduledSvc: scheduledSvc,
 		txnSvc:       txnSvc,
 		transferSvc:  transferSvc,

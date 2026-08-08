@@ -192,9 +192,14 @@ func (c *PostScheduledTransactionCommand) Execute() error {
 }
 
 func (c *PostScheduledTransactionCommand) Undo() error {
-	// Delete the created transaction
-	if err := c.txnSvc.Delete(c.createdTxn.ID); err != nil {
-		return err
+	// Delete the created transaction. It is nil when the occurrence produced no
+	// regular-ledger row — an investment-to-investment transfer puts both legs in
+	// investment_transactions — in which case there is nothing here to delete and
+	// only the schedule needs restoring.
+	if c.createdTxn != nil {
+		if err := c.txnSvc.Delete(c.createdTxn.ID); err != nil {
+			return err
+		}
 	}
 
 	// Restore the scheduled transaction to its previous state
@@ -278,17 +283,24 @@ func (c *PostScheduledTransferCommand) Execute() error {
 	c.beforeST = before
 
 	amount := c.amount
-	txn, err := c.svc.PostWithDate(c.id, c.date, &amount)
+	txn, transferID, err := c.svc.PostWithDateReturningTransfer(c.id, c.date, &amount)
 	if err != nil {
 		return err
 	}
 	// txn is the regular-ledger leg, and is nil for an inv↔inv occurrence whose
 	// two legs both live in investment_transactions.
 	c.createdTxn = txn
-	if txn == nil || !txn.TransferID.Valid {
-		return nil
+
+	// Take the transfer id from the POSTING PATH, never off a leg. Reading it
+	// off txn.TransferID is what used to break Undo for an inv↔inv occurrence:
+	// there is no regular-ledger leg to read, so postedTransferID stayed zero,
+	// Undo's guard skipped the delete, and the schedule was rewound anyway —
+	// leaving both posted legs in the ledger and re-posting them next time. The
+	// undo reported success throughout.
+	c.postedTransferID = transferID
+	if c.postedTransferID.IsNil() {
+		return nil // not a transfer occurrence; nothing to amend
 	}
-	c.postedTransferID = txn.TransferID.ID
 
 	// Apply the preview's edited memo + status to both legs. PostWithDate posts
 	// using the template memo and uncleared status; this overwrites them with the
@@ -303,13 +315,21 @@ func (c *PostScheduledTransferCommand) Execute() error {
 	if c.cleared {
 		status = transaction.StatusCleared
 	}
-	_, err = c.transferSvc.Update(c.postedTransferID, transfer.Edit{
-		Date:       c.date,
-		Amount:     c.amount,
-		Memo:       c.memo,
-		CategoryID: c.category,
-		Status:     status,
-	})
+	edit := transfer.Edit{
+		Date:   c.date,
+		Amount: c.amount,
+		Memo:   c.memo,
+		Status: status,
+	}
+	// Only carry the one-off category when the pair can hold one.
+	// transfer.Kind.StoresCategory() is false for exactly KindInvToInv, and an
+	// inv↔inv pair is exactly the case with no regular-ledger leg — so a nil txn
+	// is a precise proxy, and passing a category anyway would have the transfer
+	// owner refuse the amendment of a post that already committed.
+	if txn != nil {
+		edit.CategoryID = c.category
+	}
+	_, err = c.transferSvc.Update(c.postedTransferID, edit)
 	return err
 }
 

@@ -97,6 +97,12 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 		// b.estimateAmountForSchedule (routes through b.q()). The skip-with-reason
 		// paths break the loop and return nil so the tx still commits the
 		// completion mark; only hard errors roll back and abort the batch.
+		// occurrences counts what this candidate actually posted. It is NOT
+		// len(result.Transactions): an occurrence can post real rows and still
+		// contribute nothing to that list. It is declared outside the closure
+		// because the persist gate and the reporting gate below both read it.
+		occurrences := 0
+
 		postErr := s.runInTx(func(b *Service) error {
 			// Post all overdue occurrences for this scheduled transaction
 			for !result.Skipped && !st.IsCompleted() && b.isAutoPostDue(st, today) {
@@ -141,15 +147,30 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 				if posted.txn != nil {
 					result.Transactions = append(result.Transactions, posted.txn)
 				}
+				// Count OCCURRENCES, not posted rows. An investment↔investment
+				// transfer occurrence writes both its legs to the investment ledger
+				// and so contributes no regular row at all; keying the persist
+				// below off result.Transactions meant its advance was never
+				// written, and the transfer re-posted on every file open.
+				occurrences++
 				summary.PostedCount++
 
-				// Advance the schedule
-				st.AdvanceSchedule()
+				// Advance the schedule. A false return means this occurrence was
+				// the last one the schedule allows.
+				advanced := st.AdvanceSchedule()
 				// Payoff completion: a loan-shaped schedule whose balance reached
 				// zero (e.g. a clamped final payment) is marked completed, which
 				// also stops the loop.
 				if err := b.finalizeLoanPayoff(st); err != nil {
 					return fmt.Errorf("auto-post created transaction but failed to finalize loan payoff: %w", err)
+				}
+				// Stop on the schedule's own terminal signal as well as on the loop
+				// condition above. The two are deliberately independent: the loop
+				// condition asks IsCompleted, and if that ever disagrees with
+				// AdvanceSchedule again this loop must still terminate rather than
+				// spin inside an open transaction.
+				if !advanced {
+					break
 				}
 			}
 
@@ -157,7 +178,7 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 			// a paid-off skip marked it completed. Other skips (closed account,
 			// no-estimate, non-terminal loan errors) leave the schedule untouched
 			// and due, so they are not persisted.
-			if len(result.Transactions) > 0 || (result.Skipped && st.IsCompleted()) {
+			if occurrences > 0 || (result.Skipped && st.IsCompleted()) {
 				if err := b.repo.Update(st); err != nil {
 					return fmt.Errorf("failed to update schedule after auto-post: %w", err)
 				}
@@ -172,7 +193,12 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 			summary.SkippedCount++
 		}
 
-		if len(result.Transactions) > 0 || result.Skipped {
+		// Report on the same occurrence count the persist used. Undo reaches a
+		// candidate's posted rows only through summary.Results, and it already
+		// looks at both Transactions and TransferIDs — so a candidate whose only
+		// output was an investment↔investment pair must appear here, or its undo
+		// entry silently has nothing to undo.
+		if occurrences > 0 || result.Skipped {
 			summary.Results = append(summary.Results, result)
 		}
 	}

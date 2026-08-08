@@ -411,29 +411,39 @@ func (st *Transaction) CalculateNextDate() types.Date {
 }
 
 // AdvanceSchedule advances the schedule to the next occurrence.
-// Returns false if the schedule is completed.
+// Returns false when the occurrence just consumed was the LAST one, i.e. the
+// schedule is now completed. Callers that loop must honour that return.
 func (st *Transaction) AdvanceSchedule() bool {
-	// Decrement remaining occurrences if applicable
+	// Decrement remaining occurrences if applicable. Note this only RECORDS
+	// terminality; it no longer withholds the advance below. Withholding it left
+	// next_date pointing at the occurrence just posted, so re-arming the schedule
+	// through the TUI's Occurrences field (SetOccurrences resets the counter)
+	// posted that same occurrence a second time.
+	exhausted := false
 	if st.OccurrencesRemaining.Valid {
 		st.OccurrencesRemaining.Int64--
-		if st.OccurrencesRemaining.Int64 <= 0 {
-			st.Touch()
-			return false
-		}
+		exhausted = st.OccurrencesRemaining.Int64 <= 0
 	}
 
-	// Calculate next date
-	nextDate := st.CalculateNextDate()
+	// Advance unconditionally, INCLUDING past an end date.
+	//
+	// This used to leave next_date alone when the next occurrence would fall
+	// past end_date, which stranded the schedule on its final occurrence: it
+	// stayed due forever, because IsCompleted's end-date branch asks the exact
+	// opposite question — "is next_date past end_date?" — and nothing else in
+	// the type moves next_date. That branch could therefore never fire, a manual
+	// post could repeat the last occurrence indefinitely, and AutoPost's loop
+	// condition could never go false at all (it spun inside one open
+	// transaction). Advancing past the end date is what makes the terminal state
+	// the type already describes actually reachable, and validation permits it:
+	// the only end_date rule is that it follow start_date.
+	st.NextDate = st.CalculateNextDate()
+	st.Touch()
 
-	// Check if past end date
-	if st.EndDate.Valid && nextDate.After(st.EndDate.Date) {
-		st.Touch()
+	if exhausted {
 		return false
 	}
-
-	st.NextDate = nextDate
-	st.Touch()
-	return true
+	return !st.EndDate.Valid || !st.NextDate.After(st.EndDate.Date)
 }
 
 // calculateNextDate calculates the next occurrence date based on frequency and settings.
