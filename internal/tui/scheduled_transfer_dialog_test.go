@@ -10,7 +10,14 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-func TestBuildNonInvestmentAccountOptions_ExcludesInvestment(t *testing.T) {
+// TestBuildTransferAccountOptions_IncludesInvestment replaces a test that
+// asserted the opposite. Excluding investment accounts made sense only while
+// scheduled transfers were regular-to-regular; posting now routes through the
+// transfer owner, which writes all four kinds. Worse, the exclusion corrupted
+// data: a CLI-created schedule targeting an investment account found neither
+// endpoint in the picker, both combos fell back to the first entry, and saving
+// silently re-pointed the transfer.
+func TestBuildTransferAccountOptions_IncludesInvestment(t *testing.T) {
 	accts := []*account.Account{
 		account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today()),
 		account.NewAccount("Visa", account.TypeCreditCard, "USD", types.ZeroMoney, types.Today()),
@@ -19,14 +26,57 @@ func TestBuildNonInvestmentAccountOptions_ExcludesInvestment(t *testing.T) {
 		account.NewAccount("Savings", account.TypeSavings, "USD", types.ZeroMoney, types.Today()),
 	}
 
-	options, ids := buildNonInvestmentAccountOptions(accts)
-	if len(options) != 3 || len(ids) != 3 {
-		t.Fatalf("expected 3 non-investment accounts, got options=%v", options)
+	options, ids := buildTransferAccountOptions(accts)
+	if len(options) != len(accts) || len(ids) != len(accts) {
+		t.Fatalf("expected all %d accounts, got options=%v", len(accts), options)
 	}
-	for _, name := range options {
-		if name == "401k" || name == "HSA" {
-			t.Errorf("investment account %q should be excluded", name)
+	for _, want := range []string{"401k", "HSA"} {
+		found := false
+		for _, name := range options {
+			if name == want {
+				found = true
+			}
 		}
+		if !found {
+			t.Errorf("investment account %q is missing; a schedule that uses it cannot be edited safely", want)
+		}
+	}
+}
+
+// TestIndexOfID_ReportsNotFound pins the other half. Returning 0 for an ID the
+// list does not hold is indistinguishable from the user picking the first entry,
+// which is exactly how the endpoints used to be re-pointed on save.
+func TestIndexOfID_ReportsNotFound(t *testing.T) {
+	ids := []types.ID{types.NewID(), types.NewID()}
+	if got := indexOfID(ids, ids[1]); got != 1 {
+		t.Errorf("indexOfID(present) = %d, want 1", got)
+	}
+	if got := indexOfID(ids, types.NewID()); got != -1 {
+		t.Errorf("indexOfID(absent) = %d, want -1 — 0 would silently select the first account", got)
+	}
+}
+
+// TestBuildEditScheduledTransferDialog_PreservesInvestmentEndpoints is the
+// regression itself: open a schedule whose endpoints are both investment
+// accounts and the pickers must point at THOSE accounts.
+func TestBuildEditScheduledTransferDialog_PreservesInvestmentEndpoints(t *testing.T) {
+	rollover := account.NewAccount("Rollover IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	roth := account.NewAccount("Roth IRA", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	accts := []*account.Account{checking, rollover, roth}
+	options, ids := buildTransferAccountOptions(accts)
+
+	st := scheduled.NewTransactionWithAmount(rollover.ID, scheduled.FrequencyMonthly,
+		types.Today(), types.MustNewMoney("-500.00"))
+	st.SetTransfer(roth.ID)
+
+	d := buildEditScheduledTransferDialog(st, options, []string{"(None)"}, ids, []types.ID{types.NilID})
+	fields := d.Fields()
+	if got := fields[schedXferFieldFrom].SelectedIndex; ids[got] != rollover.ID {
+		t.Errorf("From points at %q, want Rollover IRA — saving would re-point the transfer", options[got])
+	}
+	if got := fields[schedXferFieldTo].SelectedIndex; ids[got] != roth.ID {
+		t.Errorf("To points at %q, want Roth IRA — saving would re-point the transfer", options[got])
 	}
 }
 

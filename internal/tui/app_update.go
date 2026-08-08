@@ -516,7 +516,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Value Adjustment) — a transfer may be labeled with any non-system
 		// category.
 		if msg.data.isTransfer {
-			accountOptions, accountIDs := buildNonInvestmentAccountOptions(msg.data.accounts)
+			accountOptions, accountIDs := buildTransferAccountOptions(msg.data.accounts)
 			a.schedDialogAccountIDs = accountIDs
 
 			var transferCats []*category.Category

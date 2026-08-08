@@ -10,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -38,17 +39,20 @@ const (
 	schedXferFieldCount      = 13
 )
 
-// buildNonInvestmentAccountOptions builds parallel name/ID slices for the
-// transfer pickers, excluding investment-type accounts (investment, hsa).
-// Scheduled transfers are regular↔regular only; funding an investment account
-// on a schedule goes through the paycheck / multi-line flow.
-func buildNonInvestmentAccountOptions(accounts []*account.Account) ([]string, []types.ID) {
+// buildTransferAccountOptions builds parallel name/ID slices for the transfer
+// pickers, over EVERY account.
+//
+// It used to exclude investment-type accounts, on the premise that scheduled
+// transfers were regular↔regular only. That premise expired when posting moved
+// to the transfer owner, which writes all four kinds — and the exclusion was
+// actively harmful in the meantime: the CLI could create a schedule targeting an
+// investment account, and opening it here found neither endpoint in the list, so
+// both pickers silently defaulted to the first bank account and saving re-pointed
+// the transfer.
+func buildTransferAccountOptions(accounts []*account.Account) ([]string, []types.ID) {
 	options := make([]string, 0, len(accounts))
 	ids := make([]types.ID, 0, len(accounts))
 	for _, acct := range accounts {
-		if acct.Type.IsInvestmentType() {
-			continue
-		}
 		options = append(options, acct.Name)
 		ids = append(ids, acct.ID)
 	}
@@ -131,8 +135,12 @@ func buildEditScheduledTransferDialog(st *scheduled.Transaction, accountOptions,
 	d := dialog.NewDialog("Edit Scheduled Transfer")
 	d.SetWidth(62)
 
+	// An endpoint the list does not contain must not silently become the first
+	// account. The pickers now hold every account, so this can only mean the
+	// referenced account was deleted; the field is left unselected and the save
+	// path refuses it rather than re-pointing the transfer.
 	fromIdx := indexOfID(accountIDs, st.AccountID)
-	toIdx := 0
+	toIdx := -1
 	if st.TransferAccountID.Valid {
 		toIdx = indexOfID(accountIDs, st.TransferAccountID.ID)
 	}
@@ -146,10 +154,14 @@ func buildEditScheduledTransferDialog(st *scheduled.Transaction, accountOptions,
 	f := d.AddTextField("Amount", amountStr, "100.00", 12)
 	f.Required = true
 
-	// Category — seeded from the schedule's existing category (0 = "(None)").
+	// Category — seeded from the schedule's existing category. Index 0 is the
+	// "(None)" sentinel, which is also the right answer for a category that no
+	// longer exists, so an unknown ID falls back to it here.
 	catIdx := 0
 	if st.HasCategory() {
-		catIdx = indexOfID(categoryIDs, st.CategoryID.ID)
+		if i := indexOfID(categoryIDs, st.CategoryID.ID); i > 0 {
+			catIdx = i
+		}
 	}
 	catField := d.AddComboField("Category", categoryOptions, catIdx)
 	catField.AddNewLabel = "[+ Add new category…]"
@@ -177,14 +189,20 @@ func accountNameByID(accounts []*account.Account, id types.ID) string {
 	return ""
 }
 
-// indexOfID returns the position of id in ids, or 0 if not found.
+// indexOfID returns the position of id in ids, or -1 if not found.
+//
+// Reporting -1 rather than 0 is deliberate. A combo seeded with 0 for an ID it
+// could not find looks identical to one the user chose, so the dialog would
+// present the FIRST account as the schedule's endpoint and save it — silently
+// re-pointing the transfer. Callers must decide what an unknown ID means: for
+// the account pickers it is a refusal, for the category combo it is "(None)".
 func indexOfID(ids []types.ID, id types.ID) int {
 	for i, candidate := range ids {
 		if candidate == id {
 			return i
 		}
 	}
-	return 0
+	return -1
 }
 
 // loadNewScheduledTransferDialogData loads accounts for a new scheduled
@@ -261,6 +279,18 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 	catIdx := fields[schedXferFieldCategory].SelectedIndex
 	if catIdx > 0 && catIdx < len(a.schedDialogCategoryIDs) {
 		categoryID = a.schedDialogCategoryIDs[catIdx]
+	}
+	// An investment-to-investment pair keeps both legs in investment_transactions,
+	// which has no category column, so the transfer owner refuses one. Refusing it
+	// here — by CALLING the domain predicate rather than restating the rule — is
+	// what stops the dialog creating a schedule that can never post.
+	if !categoryID.IsNil() && !fromID.IsNil() && !toID.IsNil() && a.schedDialogData != nil {
+		fromType := accountTypeByID(a.schedDialogData.accounts, fromID)
+		toType := accountTypeByID(a.schedDialogData.accounts, toID)
+		if !transfer.ClassifyKind(fromType, toType).StoresCategory() {
+			fields[schedXferFieldCategory].Error = "Not supported between two investment accounts"
+			hasErrors = true
+		}
 	}
 
 	memo := strings.TrimSpace(fields[schedXferFieldMemo].Value)

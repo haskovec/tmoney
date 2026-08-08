@@ -572,14 +572,34 @@ showed the first attempt was incomplete.** All are now fixed:
    amount, and the summary states the destination instead of leaving direction to
    be inferred from a sign.
 
-**Still open, recorded not taken.** `PostScheduledTransactionCommand` has no
-production caller (the TUI uses `PostScheduledTransferCommand`); under the
-dead-code policy it is a deletion candidate, but that is a decision about undo's
-surface. An inv↔inv transfer schedule that carries a category can never post and
-aborts the whole auto-post batch — `scheduled add --transfer-to` does not check
-`Kind.StoresCategory()`. And the TUI's transfer dialog builds its account
-pickers from non-investment accounts only, so opening a CLI-created inv↔inv
-schedule silently re-points its endpoints.
+**The three items left open above are now closed, 2026-08-07.**
+
+8. **`PostScheduledTransactionCommand` deleted.** It had no production caller and
+   was superseded rather than forgotten: posting from the TUI always goes through
+   the preview dialog, which uses `PostScheduledTransferCommand` for a transfer
+   and `PostScheduledTransactionWithEditsCommand` for every other shape. That
+   distinction decided it — a command with no caller can mean forgotten wiring,
+   in which case the fix is to wire it up. Leaving it was not neutral: its `Undo`
+   deleted only the regular-ledger row, so the nil guard added in fix 4 was
+   standing in for a delete that should have happened.
+9. **An inv↔inv transfer schedule can no longer carry a category.** Refused at
+   creation and edit by calling `transfer.Kind.StoresCategory()` (the shape
+   `cli/transfer/add.go` already uses, so the rule keeps one implementation);
+   existing rows cleared by `HealTransferCategories` on file open, beside
+   `HealAllAccounts` and `HealNextDates`; and auto-post now skips such a schedule
+   with a reason instead of aborting the whole batch. The third is not redundant:
+   `account edit --type investment` can create a fresh one *after* the heal has
+   run. `internal/scheduled` cannot import `internal/transfer`, so the rule is
+   reached through `TransferPort`, which gains a `StoresCategory` method.
+10. **The TUI transfer schedule dialogs now offer every account.** The exclusion
+    of investment accounts made sense only while scheduled transfers were
+    regular↔regular; posting has routed through the transfer owner since phase 4
+    of the transfer design. It was also actively corrupting data: a CLI-created
+    inv↔inv schedule found neither endpoint in the picker, `indexOfID` returned 0
+    for both, and saving silently re-pointed the transfer to the first bank
+    account. `indexOfID` now reports −1, the account pickers treat that as a
+    refusal and the category combo as "(None)", and the save path refuses a
+    category on the one pair that cannot store it.
 
 File split for the package (phase 2, before the collapse):
 
