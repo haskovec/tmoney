@@ -142,3 +142,16 @@ const (
 	// ShapeSplitLine is a transfer_id owned by a multi-line split's line item.
 	ShapeSplitLine Shape = "split-line"
 )
+
+// StoresCategory reports whether a transfer between these two account types can
+// carry a category label. It is the method form of
+// ClassifyKind(from, to).StoresCategory(), exposed on the service so consumers
+// that must not import this package can still CALL the rule rather than restate
+// it.
+//
+// internal/scheduled is one such consumer: a direct scheduled → transfer import
+// closes a cycle (see scheduled/transfer_port.go), so it reaches the rule
+// through scheduled.TransferPort, which this satisfies.
+func (s *Service) StoresCategory(from, to account.Type) bool {
+	return ClassifyKind(from, to).StoresCategory()
+}

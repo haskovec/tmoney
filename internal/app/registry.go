@@ -158,6 +158,12 @@ func NewServices(database *db.DB) *Services {
 	// Injected after construction because a direct scheduled → transfer import is
 	// an "import cycle not allowed in test" (see scheduled/transfer_port.go).
 	scheduledSvc.SetTransferPort(transferSvc)
+	// Clear categories from transfer schedules whose pair cannot store one.
+	// Older binaries let the combination be created, and it is unpostable rather
+	// than merely mislabelled — the transfer owner refuses it, which used to
+	// abort the whole auto-post batch. Best-effort, and necessarily after the
+	// port is wired, since the rule lives behind it.
+	_, _ = scheduledSvc.HealTransferCategories()
 
 	return &Services{
 		Account:             accountSvc,

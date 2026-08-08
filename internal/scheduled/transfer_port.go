@@ -1,6 +1,7 @@
 package scheduled
 
 import (
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -45,4 +46,15 @@ type TransferPort interface {
 		memo string,
 		categoryID types.NullableID,
 	) (transferID types.ID, regularLegID types.ID, err error)
+
+	// StoresCategory reports whether a transfer between these two account types
+	// can carry a category label. It is false for exactly one pair,
+	// investment↔investment, whose legs both live in investment_transactions and
+	// have nowhere to put one.
+	//
+	// This package needs the answer in two places — healing rows that an older
+	// binary let through, and refusing to hand the port a category it will
+	// reject — and must not restate the rule, because internal/transfer owns it.
+	// Asking through the port is how it calls the rule without importing it.
+	StoresCategory(from, to account.Type) bool
 }

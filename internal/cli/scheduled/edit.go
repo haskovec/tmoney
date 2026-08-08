@@ -177,9 +177,13 @@ func applyScheduledEdits(svc *app.Services, st *scheduleddom.Transaction, opts *
 			if err != nil {
 				return err
 			}
-			// A transfer schedule may only carry a non-system category label.
+			// A transfer schedule may only carry a non-system category label, and
+			// only when its pair can store one at all.
 			if st.IsTransfer() {
 				if err := transaction.ValidateTransferCategory(cat); err != nil {
+					return err
+				}
+				if err := refuseUnsupportedTransferCategory(svc, st); err != nil {
 					return err
 				}
 			}

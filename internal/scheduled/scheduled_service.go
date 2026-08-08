@@ -240,6 +240,77 @@ func (s *Service) HealNextDates() (int, error) {
 	return s.repo.HealNextDates()
 }
 
+// HealTransferCategories clears the category from any transfer schedule whose
+// two endpoints cannot store one — in practice an investment↔investment pair,
+// whose legs both live in investment_transactions.
+//
+// Such a row is unpostable, not merely mislabelled: the transfer owner refuses
+// the category outright, so the schedule fails every time it comes due and, in a
+// batch, used to take every other schedule down with it. Older binaries let the
+// combination be created (`scheduled add --transfer-to` checked only that the
+// category was non-system), and `account edit --type investment` can still turn
+// a perfectly valid bank↔bank schedule into one.
+//
+// Clearing the label loses nothing that was ever stored on the posted rows.
+// Intended to run once on file open, alongside HealNextDates. Returns the count
+// of rows healed; a nil transfer port heals nothing.
+func (s *Service) HealTransferCategories() (int, error) {
+	if s.transferPort == nil || s.accountRepo == nil {
+		return 0, nil
+	}
+	all, err := s.repo.List()
+	if err != nil {
+		return 0, fmt.Errorf("failed to list schedules for category heal: %w", err)
+	}
+
+	healed := 0
+	for _, st := range all {
+		if !st.IsTransfer() || !st.HasCategory() {
+			continue
+		}
+		from, ferr := s.accountRepo.GetByID(st.AccountID)
+		if ferr != nil {
+			continue // a schedule pointing at a missing account is a different problem
+		}
+		to, terr := s.accountRepo.GetByID(st.TransferAccountID.ID)
+		if terr != nil {
+			continue
+		}
+		if s.transferPort.StoresCategory(from.Type, to.Type) {
+			continue
+		}
+		st.ClearCategory()
+		if uerr := s.repo.Update(st); uerr != nil {
+			return healed, fmt.Errorf("failed to clear unusable category on schedule %s: %w", st.ID, uerr)
+		}
+		healed++
+	}
+	return healed, nil
+}
+
+// transferCategoryUnsupported reports whether st is a transfer schedule carrying
+// a category its pair cannot store. Posting such a schedule can only fail, so
+// auto-post treats it as a skip rather than letting one bad row abort the batch
+// — which is what happened before, since the transfer owner's refusal is neither
+// a closed-account nor a loan error.
+//
+// HealTransferCategories removes the cause on file open; this guards the window
+// in which `account edit --type investment` creates a fresh one mid-session.
+func (s *Service) transferCategoryUnsupported(st *Transaction) bool {
+	if !st.IsTransfer() || !st.HasCategory() || s.transferPort == nil || s.accountRepo == nil {
+		return false
+	}
+	from, err := s.accountRepo.GetByID(st.AccountID)
+	if err != nil {
+		return false
+	}
+	to, err := s.accountRepo.GetByID(st.TransferAccountID.ID)
+	if err != nil {
+		return false
+	}
+	return !s.transferPort.StoresCategory(from.Type, to.Type)
+}
+
 // List returns all scheduled transactions ordered by next_date ascending.
 func (s *Service) List() ([]*Transaction, error) {
 	return s.repo.List()

@@ -86,6 +86,18 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 			result.SkipReason = "references a closed account"
 		}
 
+		// Skip — again, don't error the batch — a transfer schedule carrying a
+		// category its pair cannot store. Posting it can only fail at the transfer
+		// owner, and that refusal is neither a closed-account nor a loan error, so
+		// it used to abort the entire batch: one unpostable schedule stopped every
+		// other schedule from posting that day. HealTransferCategories clears the
+		// cause on file open; this guards the window in which changing an account's
+		// type creates a fresh one mid-session.
+		if !result.Skipped && s.transferCategoryUnsupported(st) {
+			result.Skipped = true
+			result.SkipReason = "investment-to-investment transfer cannot carry a category"
+		}
+
 		// One transaction per candidate: every overdue occurrence's posted rows
 		// AND the schedule's next_date advance commit together, so a failure
 		// mid-candidate rolls back only this schedule — the other candidates'
