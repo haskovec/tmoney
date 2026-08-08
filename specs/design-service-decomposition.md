@@ -1,15 +1,29 @@
 # Design sketch: service decomposition — god files, god types, and one deleted engine
 
 **Date:** 2026-08-07
-**Status:** IN PROGRESS. Phase 0 (free deletions) SHIPPED 2026-08-07 (`828e0b5`) —
-11 dead symbols removed from `internal/transaction` (−522/+14 lines), full suite
-green. §1.4's open question resolved 2026-08-07: delete the four orphans, hold
-the three split methods. Measuring that decision's real test churn (33 sites, most
-of them fixtures for live behavior) split phase 1 into 1a (deletions) and 1b
-(pure file motion) — see §1.4's cost correction. Phase 1a SHIPPED 2026-08-07
-(−137/+8 production lines, all 33 test sites reviewed individually) — see §1.5 for
-what the site-by-site review changed about the plan. Phases 1b–4 not started.
-Phase 5 is a recorded non-goal, not work.
+**Status:** COMPLETE, 2026-08-07. Every phase shipped; phase 5 was a recorded
+non-goal and stayed one. §11 records what the design got right and wrong,
+measured against what actually landed, and §10 now carries a decision for every
+item it deferred rather than a list of maybes.
+
+Reading order for anyone picking this up cold: §11 first for the outcome, then
+§10 for what was deliberately not done and why, then the numbered sections for
+the reasoning behind each phase.
+
+| Phase | Shipped | What it did |
+|---|---|---|
+| 0 | `828e0b5` | 11 dead symbols out of `internal/transaction` (−522/+14) |
+| 1a | `70babfd` | 4 dead methods + 3 orphaned error types (−137/+8); all 33 test sites reviewed individually (§1.5) |
+| 1b | `e1e47ed` | `transaction` + `corporate_action`: 2 files → 12, byte-identical motion |
+| 2 | `d430172` | `investment` + `scheduled`: 2 files → 14, byte-identical motion |
+| 3 | `071c27d`, `d6978cf` | the second posting engine deleted; 417 → 381 lines of code |
+| 4 | `3963b16`, `ba24049`, `8462935`, `259cf69` | `CounterpartService`, `ValuationService`, `EditService`; `Service` sheds 36 methods |
+
+Doing the work surfaced seven live bugs that predate it, fixed separately in
+`d728c45`, `3667a28`, `f8d616d` and `d7a64ef` — see §5.5. None was caused by the
+refactor; all were found by taking the two posting engines' differences
+seriously enough to enumerate them.
+
 **Addresses:** `specs/code-quality-review.md` item 3 (god services: domain logic
 past healthy file size)
 
@@ -859,6 +873,11 @@ independent by construction.
 
 Production, non-test. Function extents measured from the tree; ±10%.
 
+> **These estimates were wrong.** The actual figure for phases 1a–4 is +432
+> production lines, not +100, and §11.2 explains why: a third of everything added
+> is comments, which this table did not cost. Kept unedited as the record of what
+> was predicted.
+
 | Phase | Deleted | Added | Net |
 |---|---|---|---|
 | 0 (shipped) | 522 (incl. 356 test) | 14 | **−508** |
@@ -879,21 +898,54 @@ navigation and ownership win. The only genuine deletion is phase 3.
 
 - **Does not split `transaction.Service` by type** (§3) — measured as mutual
   coupling with no concept deleted.
-- **Does not build a shared unit-of-work.** Reconsider only if phase 4's second
-  extraction still feels like boilerplate; never before phase 4.
-- **Does not extract the loan methods** from `scheduled.Service`. The seam is
-  real (`accountRepo` + `ListReferencing` only) but it is type work, and phase 3
-  is the higher-value change in that package.
+- **Does not build a shared unit-of-work.** DECIDED after phase 4: not warranted,
+  and the reason is better than "it didn't hurt enough". The boilerplate never
+  materialised because each extracted type was defined by what it *cannot* do, so
+  none of them needed the full triad. `CounterpartService` holds two fields and
+  has no `runInTx` at all — it takes the caller's `db.Queryer` per call.
+  `ValuationService` has no `InTx` either, because it never writes.
+  `EditService` holds exactly one field. Total plumbing across all three: one
+  three-line `InTx`. A shared unit-of-work would have abstracted a cost that
+  never arrived, and §2.1's warning stands — inventing it early is how this
+  design would have grown a fifth god type.
+- **Does not extract the loan methods** from `scheduled.Service`. DECIDED after
+  phase 3, and the measurement reverses the original "the seam is real". It is
+  not: the dependency is **mutual**, which is the §3 pattern. The core calls the
+  loan cluster (`postManually` and `AutoPost` both call `finalizeLoanPayoff`, and
+  `buildMultiLineTransaction` calls `buildLoanTransaction`), and the loan cluster
+  calls the core (`FindLoanSchedule` → `ListReferencing` →
+  `repo.List`). Breaking the cycle means giving a `LoanService` its own `repo`
+  and its own copy of the referencing walk — duplicating a concept to extract a
+  type, which is the trade this design refuses everywhere else. The file boundary
+  already delivers the navigability: `loan_build.go`, `loan_posting.go`,
+  `loan_projection.go` and `loan_shape.go` are 8 methods across four named files,
+  and `scheduled_service.go` is 315 lines.
 - **Does not touch the trade/heal/rebuild core of `investment.Service`.**
   `runInTx`/`healInOwnTx` need all 10 fields; splitting them would mean sharing
   the whole struct through a port, which is the §3 mistake in a different
   package.
-- **Does not split `TransferShares`** (246 lines, one function) or
-  `reverseSpinOff` (119) — flagged, not scheduled.
-- **Does not collapse the duplicated position-rebuild concepts** between
+- **Does not split `TransferShares`** (238 lines, one function) or
+  `reverseSpinOff` (124) — still flagged, still not scheduled, and now with a
+  reason rather than a shrug. Each owns its own file at 261 and 258 lines, so
+  the navigability problem this design set out to solve is gone; what is left is
+  one long function each, and no defect found during any phase traced to either.
+  Splitting a 238-line function that nothing has gone wrong in is churn with a
+  risk budget and no return. Revisit if a bug lands in one.
+- **Does not collapse the position-rebuild concepts** between
   `CorporateActionService.rebuildPositionFromLots` and
-  `Service.syncPositionAndLots` (§4). That needs an owner decision for position
-  rebuilding, which phase 4 may or may not settle.
+  `Service.syncPositionAndLots` (§4) — because on inspection **they are not
+  duplicates**, and §4's "parallels" was wrong. `rebuildPositionFromLots` is 13
+  lines that sum the existing lots into a position.
+  `syncPositionAndLots` replays the *ledger* for an (account, security), gating
+  on corporate-action involvement and applying split events as it goes. They
+  answer different questions from different sources; the only thing they share is
+  writing a position at the end. No owner decision is needed, because there is
+  nothing to own jointly. This item is retired, not deferred.
+- **Did collapse one real duplication §4 flagged.**
+  `securityHasSplitAction` and `securityHasNonSplitAction` were the same query
+  and the same loop with opposite predicates — one question asked twice. Both now
+  delegate to `securityHasAction(repo, id, match)`, with `isSplitAction` naming
+  the predicate they disagreed about.
 - **Does not address review items 5 or 6** — repositories on `app.Services`, or
   the heal-on-open side effects in `NewServices`. Phase 4 touches `registry.go`
   and will be tempted; resist.
@@ -902,3 +954,77 @@ navigation and ownership win. The only genuine deletion is phase 3.
   Nothing mechanically enforces the 450-line ceiling this design proposes; it is
   a review convention, and stating that honestly is better than pretending a
   guard exists.
+
+---
+
+## 11. Outcome — what the design got right, and what it got wrong
+
+Written after every phase shipped, measured rather than remembered.
+
+### 11.1 The goals
+
+| Goal | Result |
+|---|---|
+| No **service** file over ~450 lines in the three packages | Met, with one exception named below |
+| `scheduled.Service` has one posting engine | Met — the inlined engine is gone |
+| `investment.Service` sheds the separable clusters | Met — three types, 36 methods |
+| The `transaction.Service` type split stays rejected in writing | Met — §3 stands, unamended |
+
+The exception is `investment/backfill.go` at 562 lines. It was never in §3's or
+§6.4's tables and was 562 lines before this work started; it is a service file
+over the ceiling, and saying so is better than quietly redefining the ceiling.
+
+Non-test file counts: `transaction` 6 → 12, `investment` 23 → 38, `scheduled`
+11 → 16.
+
+### 11.2 The line-count estimate was wrong, and instructively so
+
+§9 estimated **+100 production lines** across phases 1a–4. The actual figure is
+**+432**. The gap is almost entirely prose: of the 7,240 production lines added
+across those phases, **2,382 are comments or blanks** — a third. §9 costed file
+headers and forgot that a file split is mostly an opportunity to write down why
+each cluster is a cluster, and that a type extraction is mostly an opportunity to
+write down what the new type cannot do.
+
+That is not overrun to apologise for; it is the deliverable. But the honest
+lesson is that §9's framing — "decomposition is not a line-count win, it is a
+navigation and ownership win" — should have carried a line-count estimate that
+reflected its own claim.
+
+The one genuine deletion the design predicted did arrive: phase 3 took the
+posting engines from 417 to 381 lines of code, comments excluded, and left one
+engine where there were two.
+
+### 11.3 What the design did not predict
+
+- **Every extracted type turned out to be defined by what it cannot do.** §2.3
+  framed this as a discipline to apply (participants vs entry points); it turned
+  out to be a property to *discover*. `CounterpartService` cannot open a
+  transaction, `ValuationService` cannot write, `EditService` holds one field.
+  Each guarantee is enforced by what the struct omits, not by a convention, and
+  each made its test trivial to state. That is the reusable finding.
+- **Two of the three phase-4 exit criteria did not apply to `ValuationService`,**
+  because a type with no `InTx` and no writes has no field-rebinding to review
+  and no write path to fault-inject. The substitute — a mechanical proof that it
+  writes nothing, with an anti-vacuity check that the wrapper saw reads — is a
+  better test than either criterion would have produced.
+- **The differential inventory was worth more than the refactor.** Phase 3
+  required enumerating every way the two posting engines differed. That
+  enumeration found seven live bugs (§5.5), including one that hung the
+  application on file open and two that silently duplicated money. None was
+  caused by the refactor; all had been latent for as long as the duplication had.
+  The lesson generalises: *a duplicated concept is a place where two answers
+  disagree, and enumerating the disagreements finds bugs whether or not you then
+  delete one of them.*
+- **§4's "duplicated position-rebuild concepts" was a false positive**, and one
+  of its two claimed duplications was real (§10). Flagging suspected duplication
+  by name is cheap and useful; asserting it without reading both bodies is how a
+  design acquires a permanent, wrong TODO.
+
+### 11.4 What is left
+
+Nothing in this design. §10 now carries a decision for every item, and the three
+that were conditional on a phase completing — the unit of work, the loan
+extraction, the position-rebuild collapse — are decided against, with the
+measurement that decided them. Review items 5 and 6 remain untouched and remain
+somebody else's design.

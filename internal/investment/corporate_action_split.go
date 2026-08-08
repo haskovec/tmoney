@@ -322,16 +322,7 @@ func (s *CorporateActionService) CatchUpSplitsForTransaction(txnID types.ID) (in
 // securityHasSplitAction reports whether the security has any split or reverse
 // split corporate action on record.
 func (s *CorporateActionService) securityHasSplitAction(securityID types.ID) (bool, error) {
-	actions, err := s.caRepo.ListBySecurity(securityID)
-	if err != nil {
-		return false, err
-	}
-	for _, ca := range actions {
-		if ca.ActionType == ActionTypeSplit || ca.ActionType == ActionTypeReverseSplit {
-			return true, nil
-		}
-	}
-	return false, nil
+	return securityHasAction(s.caRepo, securityID, isSplitAction)
 }
 
 // rebuildPositionFromLots recomputes the aggregate (account, security) position

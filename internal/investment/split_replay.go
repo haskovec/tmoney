@@ -67,12 +67,40 @@ func (s *Service) securityHasNonSplitAction(securityID types.ID) (bool, error) {
 
 // securityHasNonSplitActionIn is the shared body — see splitEventsFor.
 func securityHasNonSplitActionIn(corporateActionRepo *CorporateActionRepository, securityID types.ID) (bool, error) {
-	actions, err := corporateActionRepo.ListBySecurity(securityID)
+	found, err := securityHasAction(corporateActionRepo, securityID, func(t ActionType) bool {
+		return !isSplitAction(t)
+	})
 	if err != nil {
 		return false, fmt.Errorf("securityHasNonSplitAction: %w", err)
 	}
+	return found, nil
+}
+
+// isSplitAction reports whether an action type is a share split. Splits are the
+// one corporate action a per-security chronological replay can reconstruct: they
+// are a dated ratio transform, where mergers and spin-offs move shares across
+// securities or reallocate cost basis.
+func isSplitAction(t ActionType) bool {
+	return t == ActionTypeSplit || t == ActionTypeReverseSplit
+}
+
+// securityHasAction reports whether the security participates in any corporate
+// action the predicate accepts.
+//
+// Two callers wanted this with opposite predicates — "has a split" gates the
+// catch-up replay, "has anything but a split" gates the heal — and each had its
+// own copy of the query and the loop. They are one question asked twice.
+func securityHasAction(
+	corporateActionRepo *CorporateActionRepository,
+	securityID types.ID,
+	match func(ActionType) bool,
+) (bool, error) {
+	actions, err := corporateActionRepo.ListBySecurity(securityID)
+	if err != nil {
+		return false, err
+	}
 	for _, ca := range actions {
-		if ca.ActionType != ActionTypeSplit && ca.ActionType != ActionTypeReverseSplit {
+		if match(ca.ActionType) {
 			return true, nil
 		}
 	}
