@@ -13,7 +13,9 @@ A personal finance management application that runs in the terminal. Terminal Mo
 
 ### Build from Source
 
-Requires Go 1.26 or later, plus a C compiler — the DuckDB bindings use cgo.
+Requires Go 1.27 or later, plus a C compiler — the DuckDB bindings use cgo.
+The Go 1.27 toolchain does not run on macOS 12 or earlier, so building on a
+Mac needs macOS 13 Ventura or later.
 
 ```bash
 git clone https://github.com/haskovec/tmoney.git
@@ -50,6 +52,32 @@ places the binary in the Go bin directory. That avoids a `Program Files`
 location needing administrator elevation, and the official Go installer already
 adds `%USERPROFILE%\go\bin` to your user `PATH`. If the `tmoney` command isn't
 found afterwards, add that directory to your `PATH` and open a new terminal.
+
+### Development toolchain
+
+[`mise`](https://mise.jdx.dev) pins the Go and golangci-lint versions this
+project builds and lints with, so a fresh checkout needs no version hunting:
+
+```bash
+mise trust     # mise refuses to read an untrusted config, so this is first
+mise install   # fetch the pinned Go and golangci-lint
+```
+
+`mise install` only downloads the tools; it does not put them on PATH. Activate
+mise in your shell profile with `eval "$(mise activate zsh)"`, or the bash/fish
+form. Without that, prefix each command with `mise exec --`, for example
+`mise exec -- make test`. Run `mise doctor` if a tool still does not appear.
+
+`mise.toml` is the single place those versions live — keep the `go` entry in
+step with the `go` directive in `go.mod` when either moves.
+
+mise does not supply the C compiler cgo needs. Install that from the platform:
+`xcode-select --install` on macOS, `build-essential` on Debian/Ubuntu, or the
+MSYS2 toolchain on Windows.
+
+mise is a convenience, not a dependency. Nothing in the build reads
+`mise.toml`, so installing Go and [golangci-lint](https://golangci-lint.run)
+by hand works just as well — check `mise.toml` for the versions to match.
 
 ## Quick Start
 

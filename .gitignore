@@ -31,6 +31,11 @@ go.work.sum
 .idea/
 .vscode/
 
+# mise per-machine overrides. The shared toolchain pins in mise.toml are
+# committed; these files let a developer deviate locally without touching them.
+mise.local.toml
+.mise.local.toml
+
 # Claude Code local state: settings.local.json, scheduled-task locks and saved
 # plans are per-machine. To share project-level config later, commit
 # .claude/settings.json with an explicit `!.claude/settings.json` un-ignore.

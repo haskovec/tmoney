@@ -1,0 +1,34 @@
+# Development toolchain for tmoney. On a fresh clone:
+#
+#   mise trust     # mise refuses to read an untrusted config, so this is first
+#   mise install   # fetch the pinned tools
+#
+# `mise install` only downloads the tools; it does not put them on PATH. Add
+# `eval "$(mise activate zsh)"` (or the bash/fish form) to your shell profile,
+# or prefix one-off commands with `mise exec --`. `mise doctor` diagnoses a
+# tool that still does not appear.
+#
+# mise does NOT provide the C compiler the DuckDB cgo bindings need. Install
+# that from the platform: Xcode command line tools on macOS
+# (`xcode-select --install`), build-essential on Debian/Ubuntu, or the MSYS2
+# toolchain on Windows.
+min_version = "2025.1.0"
+
+[tools]
+# Keep this major.minor in step with the `go` directive in go.mod. The prefix
+# picks up the newest 1.27.x patch, which only carries bug and security fixes.
+go = "1.27"
+
+# Pinned exactly rather than to the 2.13 series: golangci-lint bundles the
+# linters it runs, so even a patch release can add or retune a check and turn a
+# green checkout red with no code change. Move this deliberately, and fix the
+# fallout in the same commit.
+golangci-lint = "2.13.1"
+
+[env]
+# The DuckDB bindings are cgo, so cgo must stay on. Go enables it by default
+# for native builds, but only when it finds a C compiler — being explicit turns
+# a silent fallback to a pure-Go build into a loud compiler error. The Makefile
+# exports the same value for `make` recipes; this covers bare `go build` and
+# `go test` runs in this directory.
+CGO_ENABLED = "1"
