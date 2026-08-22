@@ -5,10 +5,10 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"time"
+	"uuid"
 
 	"github.com/alpacahq/alpacadecimal"
 	"github.com/duckdb/duckdb-go/v2"
-	"github.com/google/uuid"
 )
 
 // ID represents a unique identifier for model entities.
@@ -16,17 +16,12 @@ import (
 type ID uuid.UUID
 
 // NilID is the zero value ID (all zeros).
-var NilID = ID(uuid.Nil)
+var NilID = ID(uuid.Nil())
 
 // NewID generates a new time-ordered UUID v7.
 // UUID v7 provides better database index locality than random UUIDs.
 func NewID() ID {
-	id, err := uuid.NewV7()
-	if err != nil {
-		// Fallback to v4 if v7 fails (e.g., clock issues)
-		return ID(uuid.New())
-	}
-	return ID(id)
+	return ID(uuid.NewV7())
 }
 
 // ParseID parses a string into an ID.
@@ -55,7 +50,7 @@ func (id ID) String() string {
 
 // IsNil returns true if the ID is the zero value.
 func (id ID) IsNil() bool {
-	return uuid.UUID(id) == uuid.Nil
+	return uuid.UUID(id) == uuid.Nil()
 }
 
 // Value implements the driver.Valuer interface for database storage.
@@ -80,11 +75,7 @@ func (id *ID) Scan(value any) error {
 	case []byte:
 		// DuckDB returns UUIDs as raw 16-byte binary
 		if len(v) == 16 {
-			parsed, err := uuid.FromBytes(v)
-			if err != nil {
-				return fmt.Errorf("failed to parse ID from 16-byte UUID: %w", err)
-			}
-			*id = ID(parsed)
+			*id = ID(uuid.UUID(v))
 		} else {
 			// Try parsing as string representation
 			parsed, err := uuid.Parse(string(v))

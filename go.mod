@@ -11,7 +11,6 @@ require (
 	github.com/alpacahq/alpacadecimal v0.0.9
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/duckdb/duckdb-go/v2 v2.10505.0
-	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.10.2
 )
 
@@ -33,6 +32,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
