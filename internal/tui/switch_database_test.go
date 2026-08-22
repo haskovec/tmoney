@@ -36,7 +36,7 @@ func TestSwitchDatabase_RepointsEveryService(t *testing.T) {
 	serviceTypes := map[reflect.Type]bool{}
 	svcT := reflect.TypeOf(app.Services{})
 	for i := 0; i < svcT.NumField(); i++ {
-		if f := svcT.Field(i); f.Type.Kind() == reflect.Ptr {
+		if f := svcT.Field(i); f.Type.Kind() == reflect.Pointer {
 			serviceTypes[f.Type] = true
 		}
 	}

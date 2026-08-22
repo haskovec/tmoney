@@ -6,14 +6,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/dbtest"
-	"github.com/haskovec/tmoney/internal/investment"
-	"github.com/haskovec/tmoney/internal/payee"
-	"github.com/haskovec/tmoney/internal/transaction"
-	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
-	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // =============================================================================
@@ -173,56 +167,6 @@ func TestApp_SubmitTransferDialog_InvToInvAllowsNoCategory(t *testing.T) {
 	}
 }
 
-// newTransferCategoryTestApp builds a DuckDB-backed App wired with the account,
-// transaction, and category services plus an undo manager, seeded with two
-// checking accounts and one non-system expense category. Used for the
-// end-to-end category-threading tests.
-func newTransferCategoryTestApp(t *testing.T) (*App, *transaction.Service, *account.Account, *account.Account, *category.Category) {
-	t.Helper()
-	database := dbtest.New(t)
-
-	accountRepo := account.NewRepository(database)
-	payeeRepo := payee.NewRepository(database)
-	categoryRepo := category.NewRepository(database)
-	txnRepo := transaction.NewRepository(database)
-	splitRepo := transaction.NewSplitRepository(database)
-
-	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
-	accountSvc := account.NewService(accountRepo, database)
-	categorySvc := category.NewService(categoryRepo, database)
-	// The edit-transfer loaders resolve through the transfer service, which
-	// reads both ledgers, so it has to be wired even for a bank↔bank fixture.
-	transferSvc := transfer.NewService(txnRepo, investment.NewRepository(database),
-		splitRepo, accountRepo, categoryRepo, database)
-
-	from := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
-	if err := accountRepo.Create(from); err != nil {
-		t.Fatalf("create from account: %v", err)
-	}
-	to := account.NewAccount("Savings", account.TypeSavings, "USD", types.ZeroMoney, types.Today())
-	if err := accountRepo.Create(to); err != nil {
-		t.Fatalf("create to account: %v", err)
-	}
-	bills := category.NewCategory("Bills", category.TypeExpense)
-	if err := categoryRepo.Create(bills); err != nil {
-		t.Fatalf("create category: %v", err)
-	}
-
-	app := &App{
-		currentView:    ViewRegister,
-		keys:           defaultKeyMap(),
-		menubar:        widget.NewMenuBar(),
-		statusbar:      widget.NewStatusBar(),
-		sidebar:        NewSidebar(),
-		accountSvc:     accountSvc,
-		categorySvc:    categorySvc,
-		transactionSvc: txnSvc,
-		transferSvc:    transferSvc,
-		undoManager:    undo.NewManager(),
-	}
-	return app, txnSvc, from, to, bills
-}
-
 // TestApp_TransferDialog_AddNew_OpensCreateCategoryDialog: activating the
 // Category combo's [+ Add new category…] row diverts to the create-category
 // sub-dialog, keeps the transfer dialog alive but hidden, records the transfer
@@ -344,10 +288,4 @@ func newAppForTransferAddNew(t *testing.T, query string) *App {
 	cat.ComboHighlight = len(cat.FilteredIndices())
 	app.transferDialog = d
 	return app
-}
-
-// isErrMsg reports whether msg is the App's error message type.
-func isErrMsg(msg tea.Msg) bool {
-	_, ok := msg.(errMsg)
-	return ok
 }

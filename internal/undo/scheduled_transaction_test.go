@@ -66,24 +66,6 @@ func createScheduledTestAccount(t *testing.T, repo *account.Repository, name str
 	return acct
 }
 
-func createScheduledTestPayee(t *testing.T, repo *payee.Repository, name string) *payee.Payee {
-	t.Helper()
-	py := payee.NewPayee(name)
-	if err := repo.Create(py); err != nil {
-		t.Fatalf("Failed to create test payee: %v", err)
-	}
-	return py
-}
-
-func createScheduledTestCategory(t *testing.T, repo *category.Repository, name string) *category.Category {
-	t.Helper()
-	cat := category.NewCategory(name, category.TypeExpense)
-	if err := repo.Create(cat); err != nil {
-		t.Fatalf("Failed to create test category: %v", err)
-	}
-	return cat
-}
-
 // pastDate returns a date in the past so scheduled transactions are due.
 func pastDate() types.Date {
 	return types.NewDate(2024, time.January, 1)

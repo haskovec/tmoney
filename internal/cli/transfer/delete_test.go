@@ -5,10 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
-	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -48,34 +46,5 @@ func TestTransferDelete_RefusesTransferLineSplit(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "multi-line split") {
 		t.Errorf("expected 'multi-line split' refusal, got: %v", err)
-	}
-}
-
-// assertTransferGone opens the DB and asserts no transfer rows remain for the
-// regular account (if non-nil) or the listed investment accounts.
-func assertTransferGone(t *testing.T, dbPath string, regAcct *account.Account, invAccts []*account.Account) {
-	t.Helper()
-	svc := clitest.OpenSvc(t, dbPath)
-	if regAcct != nil {
-		txns, err := svc.TransactionRepo.ListByAccount(regAcct.ID)
-		if err != nil {
-			t.Fatalf("list %s: %v", regAcct.Name, err)
-		}
-		for _, txn := range txns {
-			if txn.IsTransfer() {
-				t.Errorf("expected no transfer rows in %s, found one", regAcct.Name)
-			}
-		}
-	}
-	for _, acct := range invAccts {
-		rows, err := svc.InvestmentRepo.ListByAccount(acct.ID, investment.TransactionFilter{})
-		if err != nil {
-			t.Fatalf("list inv %s: %v", acct.Name, err)
-		}
-		for _, r := range rows {
-			if r.IsTransfer() {
-				t.Errorf("expected no transfer rows in %s, found one", acct.Name)
-			}
-		}
 	}
 }
