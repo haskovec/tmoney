@@ -227,7 +227,7 @@ func ParseSplitRatio(ratio string) (*SplitParams, error) {
 // MergerParams holds the parameters for a merger/acquisition.
 type MergerParams struct {
 	ExchangeRatio float64 `json:"exchange_ratio"`
-	CashPerShare  float64 `json:"cash_per_share,omitempty"`
+	CashPerShare  float64 `json:"cash_per_share,omitzero"`
 }
 
 // Validate validates merger parameters.

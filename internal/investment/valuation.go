@@ -32,7 +32,7 @@ type AccountValuation struct {
 	FeesPaid            types.Money `json:"fees_paid"`
 	TotalCostDeployed   types.Money `json:"total_cost_deployed"`
 	TotalReturn         types.Money `json:"total_return"`
-	TotalReturnPct      *float64    `json:"total_return_pct,omitempty"`
+	TotalReturnPct      *float64    `json:"total_return_pct,omitzero"`
 	HasClosedPositions  bool        `json:"has_closed_positions"`
 	ClosedPositionCount int         `json:"closed_position_count"`
 
@@ -43,7 +43,7 @@ type AccountValuation struct {
 	// (and TotalReturn, which sums it) is a partial figure — the UI
 	// should mark it accordingly so the user knows the value is
 	// incomplete rather than a true zero.
-	AnyRealizedUnavailable bool `json:"any_realized_unavailable,omitempty"`
+	AnyRealizedUnavailable bool `json:"any_realized_unavailable,omitzero"`
 }
 
 // Holding represents a rolled-up holding of a single security in an account.
@@ -66,7 +66,7 @@ type Holding struct {
 	FeesPaid                types.Money `json:"fees_paid"`
 	TotalCostDeployed       types.Money `json:"total_cost_deployed"`
 	TotalReturn             types.Money `json:"total_return"`
-	TotalReturnPct          *float64    `json:"total_return_pct,omitempty"`
+	TotalReturnPct          *float64    `json:"total_return_pct,omitzero"`
 	IsClosed                bool        `json:"is_closed"`
 	RealizedGainUnavailable bool        `json:"realized_gain_unavailable"`
 }
