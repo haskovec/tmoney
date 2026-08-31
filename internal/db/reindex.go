@@ -11,21 +11,33 @@ package db
 //
 // It rebuilds ALL secondary indexes rather than one table's, because the desync
 // can affect any of them — the failure that surfaced during reconcile-finish hit
-// both transactions.transfer_id and reconciliation_sessions' indexes. The index
-// set is read from duckdb_indexes() so it always matches the live schema:
-// primary-key and FK-enforcement indexes have no CREATE statement (sql IS NULL)
-// and are skipped, and migration 030's deliberately dropped transactions(status)
-// index is absent from the catalog, so it stays dropped.
+// both transactions.transfer_id and reconciliation_sessions' indexes, and the one
+// that blocked a scheduled post hit both of scheduled_transactions' indexes at
+// once. The index set is read from duckdb_indexes() so it always matches the live
+// schema, which also means a deliberately dropped index stays dropped:
+// transactions(status) and reconciliation_sessions(status) from migration 030,
+// and scheduled_transactions(account_id) from migration 033, are absent from the
+// catalog and so are never recreated here.
 //
-// Each statement runs in autocommit: DuckDB 1.5.4 aborts a CREATE INDEX issued
-// inside an explicit transaction, so this cannot be a migration (they run inside
-// one). It returns the number of indexes rebuilt. The connection is then reset
-// so a later UPDATE does not run on the connection that just built the indexes —
-// the same reconnect the open path performs after migrations.
+// SCOPE LIMIT: duckdb_indexes() lists only indexes made by CREATE INDEX. On
+// DuckDB 1.5.5 the ARTs backing a PRIMARY KEY, FOREIGN KEY or UNIQUE constraint
+// do not appear in it at all — every row it returns has is_primary = false and a
+// non-NULL sql, so the filter below excludes nothing — and no SQL reaches them
+// (DROP INDEX gives a Catalog Error, ALTER TABLE ... DROP CONSTRAINT is not
+// implemented). They fail identically when desynced, because the abort comes from
+// generic per-index code. So a desync in a constraint-backed ART is beyond this
+// repair, and the file needs a table rebuild instead — the backup/drop/recreate
+// shape the migrations use. If a reindex does not clear the error, that is the
+// case you are in.
+//
+// Each statement runs in autocommit. It returns the number of indexes rebuilt.
+// The connection is then reset so a later UPDATE does not run on the connection
+// that just built the indexes — the same reconnect the open path performs after
+// migrations.
 func (db *DB) Reindex() (int, error) {
 	type indexDef struct{ name, sql string }
 
-	rows, err := db.conn.Query(`
+	rows, err := db.live().Query(`
 		SELECT index_name, sql FROM duckdb_indexes()
 		WHERE NOT is_primary AND sql IS NOT NULL
 		ORDER BY table_name, index_name
@@ -49,10 +61,10 @@ func (db *DB) Reindex() (int, error) {
 	_ = rows.Close()
 
 	for _, d := range indexes {
-		if _, err := db.conn.Exec("DROP INDEX IF EXISTS " + d.name); err != nil {
+		if _, err := db.live().Exec("DROP INDEX IF EXISTS " + d.name); err != nil {
 			return 0, &DatabaseError{Op: "drop index " + d.name, Err: err}
 		}
-		if _, err := db.conn.Exec(d.sql); err != nil {
+		if _, err := db.live().Exec(d.sql); err != nil {
 			return 0, &DatabaseError{Op: "create index " + d.name, Err: err}
 		}
 	}

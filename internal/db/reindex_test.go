@@ -35,11 +35,32 @@ func TestMigration030DropsStatusIndexes(t *testing.T) {
 	}
 }
 
+// TestMigration033DropsScheduledAccountIndex verifies migration 033 removed the
+// secondary index on scheduled_transactions(account_id), which the planner could
+// never use (both queries compare CAST(account_id AS VARCHAR)) and which was one
+// of the two ARTs whose desync blocked a scheduled post. idx_scheduled_next_date
+// is deliberately kept.
+func TestMigration033DropsScheduledAccountIndex(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.tdb")
+	database, err := Create(dbPath)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	defer database.Close()
+
+	if got := indexCount(t, database, "idx_scheduled_account"); got != 0 {
+		t.Errorf("idx_scheduled_account should be dropped by migration 033, still present (count=%d)", got)
+	}
+	if got := indexCount(t, database, "idx_scheduled_next_date"); got != 1 {
+		t.Errorf("idx_scheduled_next_date must be kept, got count=%d", got)
+	}
+}
+
 // TestReindex rebuilds every secondary index and confirms the full set is
 // present afterward, the deliberately-dropped status index stays dropped, and
-// tables remain queryable. (It cannot exercise the actual repair — a desynced
-// ART index is a DuckDB storage state not reproducible from the schema — but it
-// guards the rebuild's mechanics and that the count matches the catalog.)
+// tables remain queryable. It guards the rebuild's mechanics and that the count
+// matches the catalog; desync_test.go exercises the actual repair against a
+// genuinely desynced index.
 func TestReindex(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.tdb")
 	database, err := Create(dbPath)

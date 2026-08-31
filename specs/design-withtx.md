@@ -92,7 +92,7 @@ func (db *DB) WithTx(fn func(tx Queryer) error) error {
 
 	tx, err := db.conn.Begin() // reads the live conn — safe across reconnect()
 	if err != nil {
-		return &DatabaseError{Op: "begin transaction", Err: err}
+		return db.healAfterFatal(&DatabaseError{Op: "begin transaction", Err: err})
 	}
 
 	done := false
@@ -105,14 +105,14 @@ func (db *DB) WithTx(fn func(tx Queryer) error) error {
 	if err := fn(tx); err != nil {
 		done = true
 		if rbErr := tx.Rollback(); rbErr != nil {
-			return &DatabaseError{Op: "rollback", Err: errors.Join(err, rbErr)}
+			return db.healAfterFatal(&DatabaseError{Op: "rollback", Err: errors.Join(err, rbErr)})
 		}
 		return err
 	}
 
 	done = true
 	if err := tx.Commit(); err != nil {
-		return &DatabaseError{Op: "commit transaction", Err: err}
+		return db.healAfterFatal(&DatabaseError{Op: "commit transaction", Err: err})
 	}
 	return nil
 }
@@ -122,8 +122,16 @@ Notes:
 
 - Method on `*db.DB`, and it dereferences `db.conn` at call time — this
   composes with `reconnect()` (connection.go), which swaps `db.conn` after
-  migrations/reindex. Migrations/reindex only run at open time, never while a
-  domain tx is in flight, so no race in practice.
+  migrations/reindex and now also after a fatal error (below).
+- Wherever the DATABASE reports the failure — begin, rollback, commit — the error
+  passes through `healAfterFatal` first. A DuckDB fatal error invalidates the
+  whole instance, not just the failed statement, so without this one bad write
+  left the process unable to read or write anything until a restart. It probes
+  the handle with a real query (`sql.DB.Ping()` does **not** report the
+  invalidation) and reconnects only when the probe fails. It never retries the
+  caller's work: the original error still comes back, but the *next* attempt can
+  succeed. The plain `return err` from `fn` needs no handling — the rollback that
+  precedes it succeeded, which proves the handle works.
 - A failed `Rollback` is joined onto the domain error, not swallowed — the
   review's "rollbacks swallow errors" complaint dies here too.
 - ~~`Open`/`Create` additionally call `conn.SetMaxOpenConns(1)`~~ — shipped,
@@ -478,9 +486,9 @@ Decisions:
 
 | Constraint (already documented in-repo) | Consequence for WithTx |
 |---|---|
-| `CREATE INDEX` aborts inside an explicit tx (`internal/db/reindex.go`) | Money ops are DML only. Reindex/migrations stay outside `WithTx`. **Payee merge's temp-table DDL must be rewritten (or verified) before wrapping — §4.6.** |
-| UPDATE on indexed/FK columns = internal DELETE+INSERT; can abort on ART index desync (reindex.go, migration 026 notes) | Unchanged risk, better outcome: mid-tx abort now rolls back cleanly instead of leaving half a flow. Keep the narrow-UPDATE discipline (`UpdateStatus`-style) inside transactions. |
-| `reconnect()` swaps `db.conn` after migrations (connection.go) | `WithTx` reads `db.conn` at call time; reconnect only happens at open, never mid-flow. |
+| ~~`CREATE INDEX` aborts inside an explicit tx~~ — no longer true on DuckDB 1.5.5, where it commits normally (`internal/db/reindex.go`) | Money ops are DML only regardless. Reindex/migrations stay outside `WithTx` because reindex is an on-demand repair and migrations are a startup step, not because the DDL is refused. |
+| UPDATE on indexed/FK columns = internal DELETE+INSERT; can abort on ART index desync (reindex.go, migration 026/033 notes) | Unchanged risk, better outcome: the abort rolls back cleanly instead of leaving half a flow, and `healAfterFatal` keeps the session usable afterward. Note the abort lands on **commit**, not on the statement — DuckDB defers the index erase of a stored row to commit time. Keep the narrow-UPDATE discipline (`UpdateStatus`-style), and prefer dropping an unreachable index outright (migration 033). |
+| `reconnect()` swaps `db.conn` after migrations (connection.go) | `WithTx` reads `db.conn` at call time, so the swap is safe. It now also happens mid-flow, from `healAfterFatal` on a fatal error — under `txMu`, with no tx in flight. |
 | No savepoints | No nested transactions. Join-if-bound (§3) makes nesting structurally impossible; the `WithTx` mutex turns violations into immediate deadlocks caught by tests. |
 | database/sql pool may hold >1 conn; a tx pins one | The `WithTx` mutex alone gives single-writer discipline (concurrent TUI-goroutine calls queue briefly). `SetMaxOpenConns(1)` was tried and reverted — it deadlocked nested read iteration (see Status header). Reads concurrent with a tx see the pre-tx snapshot, which is correct. |
 
@@ -493,6 +501,8 @@ Each phase compiles, passes the full suite, and is a separate commit to main.
 1. **Primitive.** `db.Queryer`, `DB.WithTx` (mutex), `SetMaxOpenConns(1)`,
    unit tests: commit persists, error rolls back, panic rolls back and
    re-panics, rollback-failure joins errors, concurrent calls serialize.
+   Added later: `healAfterFatal` reconnects after a fatal commit error and
+   leaves a healthy handle alone (`internal/db/desync_test.go`).
 2. **Mechanical sweep, no behavior change.** Add `tx` field / `q()` /
    `WithTx` to all 17 repos; rewrite `r.db.Conn().X` → `r.q().X`. Pure
    refactor — nothing calls repo `WithTx` yet. (Scriptable; mind the

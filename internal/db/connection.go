@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	_ "github.com/duckdb/duckdb-go/v2"
 )
@@ -21,8 +22,29 @@ const AppIdentifier = "tmoney"
 // DB wraps a DuckDB connection with TMoney-specific functionality.
 type DB struct {
 	conn *sql.DB
-	path string
-	txMu sync.Mutex // serializes WithTx: single-writer discipline
+	// connMu guards conn, which reconnect() swaps for a new pool. The swap used
+	// to happen only at open time, before anything else could touch the field;
+	// healAfterFatal (tx.go) now does it mid-session, concurrently with TUI read
+	// goroutines, so the field needs a lock rather than a comment.
+	connMu sync.RWMutex
+	// healing single-flights the reconnect that healAfterFatal starts, so a
+	// second failure cannot open a second pool while the first attempt is still
+	// blocked on DuckDB's instance lock.
+	healing atomic.Bool
+	path    string
+	txMu    sync.Mutex // serializes WithTx: single-writer discipline
+}
+
+// live returns the current pool. Every read of db.conn goes through it.
+//
+// Take the pool fresh on each use and do not hold it across a statement that can
+// fail: a reconnect closes the previous pool, so a retained handle can report
+// "sql: database is closed" for one call afterwards. That is why Conn() is
+// documented as per-call.
+func (db *DB) live() *sql.DB {
+	db.connMu.RLock()
+	defer db.connMu.RUnlock()
+	return db.conn
 }
 
 // Open opens an existing TMoney database file.
@@ -135,6 +157,9 @@ func Create(path string) (*DB, error) {
 
 // Close closes the database connection.
 func (db *DB) Close() error {
+	db.connMu.Lock()
+	defer db.connMu.Unlock()
+
 	if db.conn == nil {
 		return nil
 	}
@@ -144,11 +169,36 @@ func (db *DB) Close() error {
 }
 
 // reconnect closes and reopens the database connection.
-// This is used as a workaround for DuckDB issues with UPDATE operations
-// on tables that have indexes created in the same connection session.
+//
+// Two callers need it. Reindex uses it because DuckDB mishandles an UPDATE on a
+// table whose indexes were created in the same connection session. healAfterFatal
+// (tx.go) uses it because a DuckDB fatal error invalidates the whole instance,
+// and DuckDB caches instances by path — so the poisoned one has to be CLOSED
+// before a reopen can hand back a fresh instance. Hence close-then-open, in that
+// order.
+//
+// It does NOT hold connMu across the reopen, and that is load-bearing. duckdb-go
+// implements driver.DriverContext, so sql.Open really opens the file, and DuckDB
+// blocks there on its instance lock until every connection of the OLD instance
+// has been released — which lasts as long as some reader holds an open
+// *sql.Rows. Holding connMu across that blocked call would park every reader on
+// the same lock and freeze the whole app. database/sql's Close, by contrast, is
+// prompt: it marks the pool closed and closes idle connections, leaving a
+// checked-out one to close when its caller returns it.
+//
+// On a failed reopen the previous pool stays published, closed. Callers then get
+// "sql: database is closed" — an error they can surface — instead of the nil
+// *sql.DB that every call site would dereference into a panic. It also means the
+// next attempt can retry the reopen.
 func (db *DB) reconnect() error {
-	if err := db.conn.Close(); err != nil {
-		return &DatabaseError{Op: "close for reconnect", Err: err}
+	db.connMu.Lock()
+	old := db.conn
+	db.connMu.Unlock()
+
+	if old != nil {
+		if err := old.Close(); err != nil {
+			return &DatabaseError{Op: "close for reconnect", Err: err}
+		}
 	}
 
 	conn, err := sql.Open("duckdb", db.path)
@@ -161,13 +211,20 @@ func (db *DB) reconnect() error {
 		return &DatabaseError{Op: "reconnect ping", Err: err}
 	}
 
+	db.connMu.Lock()
 	db.conn = conn
+	db.connMu.Unlock()
 	return nil
 }
 
 // Conn returns the underlying sql.DB connection for direct queries.
+//
+// Call it per statement rather than caching the result: a reconnect (see
+// reconnect) replaces the pool, and a cached handle from before the swap points
+// at a closed one. Repositories already follow this — their q() calls Conn()
+// on every statement.
 func (db *DB) Conn() *sql.DB {
-	return db.conn
+	return db.live()
 }
 
 // Path returns the file path of the database.
@@ -190,7 +247,7 @@ func DefaultDirectory() string {
 func (db *DB) validateTMoneyFile() error {
 	// Check if _metadata table exists
 	var tableName string
-	err := db.conn.QueryRow(`
+	err := db.live().QueryRow(`
 		SELECT table_name FROM information_schema.tables
 		WHERE table_name = '_metadata'
 	`).Scan(&tableName)
@@ -203,7 +260,7 @@ func (db *DB) validateTMoneyFile() error {
 
 	// Check app_identifier
 	var identifier string
-	err = db.conn.QueryRow(`
+	err = db.live().QueryRow(`
 		SELECT value FROM _metadata WHERE key = 'app_identifier'
 	`).Scan(&identifier)
 	if err == sql.ErrNoRows {
@@ -221,7 +278,7 @@ func (db *DB) validateTMoneyFile() error {
 
 // initializeMetadata creates the _metadata table and populates it with required entries.
 func (db *DB) initializeMetadata() error {
-	tx, err := db.conn.Begin()
+	tx, err := db.live().Begin()
 	if err != nil {
 		return &DatabaseError{Op: "begin transaction", Err: err}
 	}
@@ -261,7 +318,7 @@ func (db *DB) initializeMetadata() error {
 // GetMetadata retrieves a metadata value by key.
 func (db *DB) GetMetadata(key string) (string, error) {
 	var value string
-	err := db.conn.QueryRow(`SELECT value FROM _metadata WHERE key = ?`, key).Scan(&value)
+	err := db.live().QueryRow(`SELECT value FROM _metadata WHERE key = ?`, key).Scan(&value)
 	if err == sql.ErrNoRows {
 		return "", &MetadataNotFoundError{Key: key}
 	}
@@ -273,7 +330,7 @@ func (db *DB) GetMetadata(key string) (string, error) {
 
 // SetMetadata sets a metadata value.
 func (db *DB) SetMetadata(key, value string) error {
-	result, err := db.conn.Exec(`
+	result, err := db.live().Exec(`
 		UPDATE _metadata SET value = ? WHERE key = ?
 	`, value, key)
 	if err != nil {
@@ -287,7 +344,7 @@ func (db *DB) SetMetadata(key, value string) error {
 
 	if rowsAffected == 0 {
 		// Key doesn't exist, insert it
-		_, err = db.conn.Exec(`INSERT INTO _metadata (key, value) VALUES (?, ?)`, key, value)
+		_, err = db.live().Exec(`INSERT INTO _metadata (key, value) VALUES (?, ?)`, key, value)
 		if err != nil {
 			return &DatabaseError{Op: "insert metadata", Err: err}
 		}

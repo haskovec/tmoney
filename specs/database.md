@@ -260,7 +260,8 @@ CREATE TABLE scheduled_transactions (
     transfer_account_id UUID  -- no FK/index by design (see migration 022)
 );
 
-CREATE INDEX idx_scheduled_account ON scheduled_transactions(account_id);
+-- idx_scheduled_account was dropped by migration 033: both queries on that
+-- column compare CAST(account_id AS VARCHAR), so the index was unreachable.
 CREATE INDEX idx_scheduled_next_date ON scheduled_transactions(next_date);
 ```
 
@@ -354,22 +355,85 @@ FATAL Error: Invalid Input Error: Failed to delete all rows from index.
 Only deleted 0 out of 1 rows.
 ```
 
-`tmoney db reindex` repairs this. It reads every secondary index from
+The state is reproducible, and `internal/db/desync_test.go` pins it: write an
+index-backed row, shut down without the checkpoint that folds the WAL into the
+file, then reopen. The WAL replay restores the row to the table but not its key
+to the index. A tmoney process that dies without a clean `Close()` — a crash, an
+OOM kill, a closed terminal — leaves the same state behind.
+
+The abort lands on **commit**, not on the statement: DuckDB defers the index
+erase of an already-stored row to commit time, so the `UPDATE` reports success
+and a correct `RowsAffected`, and only `tx.Commit()` fails. That is why the
+user-visible text starts `database error during commit transaction`, from
+`db.WithTx`.
+
+`tmoney db reindex` repairs it. It reads every secondary index from
 `duckdb_indexes()` and, for each, runs `DROP INDEX` followed by the stored
 `CREATE INDEX`, rebuilding the ART from the table data. It changes no financial
-data. Primary-key and FK-enforcement indexes (which have no stored `CREATE`
-statement) are skipped. Each statement runs in **autocommit** — DuckDB aborts a
-`CREATE INDEX` issued inside an explicit transaction — so this cannot be a
-migration (migrations run inside a transaction); it lives in `db.Reindex()` and
-reconnects afterward.
+data. Each statement runs in **autocommit**, and `db.Reindex()` reconnects
+afterward so a later `UPDATE` does not run on the connection that just built the
+indexes. Close the TUI first: the repair opens the file itself, and DuckDB's
+per-process file lock refuses it while tmoney holds the file.
 
-Status-only writes avoid the bug without a reindex: migration 030 drops the
-low-value indexes on `transactions(status)` and `reconciliation_sessions(status)`
-so reconcile-finish, the cleared/uncleared toggle, and un-reconcile update
-`status` (and `updated_at`/`completed_at`) **in place** — no rewrite, no index
-maintenance — via `transaction.Repository.UpdateStatus` and
-`reconciliation.Repository.UpdateStatus`. Header/amount/transfer edits and voids
-still rewrite the row, so those are what need `db reindex` after a desync.
+**Scope limit.** `duckdb_indexes()` lists only indexes created by `CREATE INDEX`.
+On DuckDB 1.5.5 the ARTs backing a `PRIMARY KEY`, `FOREIGN KEY` or `UNIQUE`
+constraint are absent from it entirely, and no SQL reaches them. A desync in one
+of those fails the same way but is beyond `db reindex`; that file needs a
+backup/drop/recreate table rebuild. If a reindex does not clear the error, that
+is the case you are in.
+
+**A fatal error invalidates the whole instance,** not just the failed statement.
+Every later query then reports `database has been invalidated ... must be
+restarted`. `db.WithTx` handles that itself: on a failure reported by begin,
+rollback or commit it calls `healAfterFatal`, which probes the handle with a real
+query and reconnects when the probe fails. The probe must be a real query —
+`sql.DB.Ping()` returns nil against a poisoned handle and cannot be used to
+detect this.
+
+The coverage is exactly the writes that go through `WithTx`. An autocommit
+statement issued straight through `q()` / `Conn()` — `scheduled.Repository.
+HealNextDates` is the one such write on a desync-prone table — bypasses the heal,
+so a fatal there still leaves the session needing a restart.
+
+Two properties of the heal matter more than they look:
+
+- It **does not hold `connMu` across the reopen.** duckdb-go opens the file
+  inside `sql.Open`, and DuckDB blocks there on its instance lock until every
+  connection to the old instance is released — which lasts as long as a reader
+  holds an open `*sql.Rows`. Holding the lock across that parked every reader
+  too, hanging the app; an app that hangs is a worse failure than the one being
+  repaired.
+- The inline wait is **bounded** (`healReconnectTimeout`), and a timed-out
+  attempt keeps running in the background so it can still publish the new pool
+  once the reader lets go. On a failed reopen the previous pool stays published,
+  closed, so callers get `sql: database is closed` rather than a nil `*sql.DB`
+  they would dereference into a panic.
+
+### Avoiding the rewrite in the first place
+
+A low-value secondary index is worth dropping, because each one is another ART
+that can desync and block a write:
+
+- Migration 021 drops the `accounts` name/type/active indexes, so renaming an
+  account with transactions no longer trips FK enforcement.
+- Migration 030 drops `transactions(status)` and
+  `reconciliation_sessions(status)`, so reconcile-finish, the cleared/uncleared
+  toggle and un-reconcile update `status` (and `updated_at`/`completed_at`)
+  **in place** — no rewrite, no index maintenance — via
+  `transaction.Repository.UpdateStatus` and `reconciliation.Repository.UpdateStatus`.
+- Migration 033 drops `scheduled_transactions(account_id)`. Both queries on that
+  column compare `CAST(account_id AS VARCHAR)`, which hides the column from the
+  index, so it was never reachable and cost only risk.
+
+Narrowing an `UPDATE` only helps when the narrowed set excludes every indexed
+column. It does not help `scheduled_transactions`, because the advance writes
+`next_date` and `idx_scheduled_next_date` covers exactly that column. That index
+is kept anyway: `ListDue` (`next_date <= CURRENT_DATE`) and `ListUpcoming`
+(`next_date <= ?`) filter the bare column, so unlike `account_id` it is at least
+reachable. (`ListAutoPostDue` wraps it in arithmetic —
+`next_date - INTERVAL (post_lead_days) DAY <= ?` — so that one scans regardless.)
+Header/amount/transfer edits and voids still rewrite the row, so those are what
+need `db reindex` after a desync.
 
 ## Performance Considerations
 

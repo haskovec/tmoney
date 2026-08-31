@@ -1,0 +1,32 @@
+-- Migration 033: Drop the secondary index on scheduled_transactions(account_id).
+--
+-- The index has never been reachable by the planner. Both queries that filter on
+-- that column compare a cast — `WHERE CAST(account_id AS VARCHAR) = ?` in
+-- scheduled.Repository.ListByAccount and .CountByAccount. A cast on the indexed
+-- side hides the column from the index, so the ART is never scanned and those
+-- lookups already run as full scans. That costs nothing: scheduled_transactions
+-- holds a handful of rows in a personal-finance file.
+--
+-- The index is not free, though. DuckDB rewrites an UPDATE that touches an
+-- indexed or FK-backed column as an internal DELETE+INSERT and maintains every
+-- ART on the table. A secondary ART can fall out of sync with the table on disk
+-- — the row is present but its key is missing from the index — and the rewrite's
+-- index-delete then aborts the COMMIT with "Failed to delete all rows from
+-- index. Only deleted 0 out of 1 rows".
+--
+-- That is what blocked a manual scheduled post. The advance UPDATE in
+-- scheduled.Repository.Update rebinds account_id along with next_date, so
+-- idx_scheduled_account was one of the two secondary ARTs whose desync could
+-- stop the post. Dropping it removes one of the two failure surfaces at no
+-- query cost — migration 021's Path A (drop a low-value secondary index),
+-- applied to scheduled_transactions.
+--
+-- idx_scheduled_next_date is deliberately KEPT, and only that one is reachable:
+-- Repository.ListDue (`next_date <= CURRENT_DATE`) and Repository.ListUpcoming
+-- (`next_date <= ?`) filter the bare column. Repository.ListAutoPostDue wraps it
+-- in arithmetic (`next_date - INTERVAL (post_lead_days) DAY <= ?`), so that query
+-- scans regardless. `tmoney db reindex` repairs this index when it desyncs, which
+-- is why it can stay: unlike account_id, it earns its keep on two of three
+-- queries.
+
+DROP INDEX IF EXISTS idx_scheduled_account;
