@@ -928,8 +928,10 @@ func (a *App) handlePriceLookupResult(msg priceLookupResultMsg) (tea.Model, tea.
 	}
 	fields := a.priceDialog.Fields()
 	if len(fields) >= 2 {
+		// fields[0] is a masked FieldDate: it overwrites digits from the
+		// first one, so its cursor must stay at 0 — no prefillField here.
 		fields[0].Value = msg.date.Time().Format("2006-01-02")
-		fields[1].Value = fmt.Sprintf("%.2f", msg.price.Float64())
+		prefillField(fields[1], fmt.Sprintf("%.2f", msg.price.Float64()))
 	}
 	a.statusbar.AddNotification(
 		fmt.Sprintf("Fetched %.2f %s on %s", msg.price.Float64(), msg.currency, msg.date.String()),

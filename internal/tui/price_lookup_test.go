@@ -64,3 +64,32 @@ func TestPriceDialog_LookupErrorKeepsDialogOpen(t *testing.T) {
 		t.Error("dialog should remain open after a failed lookup")
 	}
 }
+
+// TestPriceDialog_LookupPrefill_AnchorsPriceCursor guards the cursor after a
+// quote lookup fills the Price field. The Date field beside it must stay at 0:
+// it is a masked date that overwrites digits from the first position.
+func TestPriceDialog_LookupPrefill_AnchorsPriceCursor(t *testing.T) {
+	app, fp, secs := setupRefreshTUITest(t, "GBTC")
+	fp.quotes["GBTC"] = &price.Quote{
+		Date:     types.NewDate(2024, time.July, 31),
+		Price:    types.MustNewMoney("52.07"),
+		Currency: "USD",
+	}
+	sec := secs[0]
+	app.priceView = &priceViewData{selectedSecurity: sec}
+	app.priceDialog = buildAddPriceDialog(sec)
+	app.priceDialog.Fields()[0].Value = "2024-08-03"
+
+	_, cmd := app.startPriceLookup()
+	msg, ok := cmd().(priceLookupResultMsg)
+	if !ok {
+		t.Fatal("expected priceLookupResultMsg")
+	}
+	app.handlePriceLookupResult(msg)
+
+	fields := app.priceDialog.Fields()
+	assertPrefillEditable(t, fields[1], "price")
+	if got := fields[0].CursorPos(); got != 0 {
+		t.Errorf("date field CursorPos() = %d, want 0 (the mask overwrites from the first digit)", got)
+	}
+}

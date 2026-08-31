@@ -1202,3 +1202,70 @@ func TestLoanWizard_CreatePrincipalCategoryFromPrincipalCombo(t *testing.T) {
 		t.Errorf("principal line category = %+v, want Debt:Principal %v", p, principalCat.ID)
 	}
 }
+
+// TestLoanWizard_EditPrefill_AnchorsCursor guards the pre-fill cursor on the
+// Edit-as-loan form. Before the anchor, Backspace was a dead key on every
+// pre-filled field and a typed character prepended, so the user could only
+// clear a field and retype it.
+func TestLoanWizard_EditPrefill_AnchorsCursor(t *testing.T) {
+	env := newLoanWizardEnv(t)
+
+	env.set(loanFieldName, "Mortgage")
+	env.set(loanFieldCurrentBalance, "380000")
+	env.set(loanFieldAPR, "6.5")
+	env.set(loanFieldPayment, "2401.86")
+	env.set(loanFieldNextPaymentDate, "08/01/2026")
+	env.set(loanFieldInstitution, "Big Bank")
+	env.selectOption(t, loanFieldFromAccount, "Checking")
+	env.selectOption(t, loanEscrowCatIndex(0), "Housing > Property Tax")
+	env.set(loanEscrowAmtIndex(0), "410.00")
+	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
+		t.Fatal("create failed")
+	}
+
+	st := env.findLoanSchedule(t)
+	loanAcct, err := env.accountSvc.GetByName("Mortgage")
+	if err != nil {
+		t.Fatalf("loan account: %v", err)
+	}
+	owed, _ := env.accountSvc.BalanceAsOf(loanAcct.ID, st.NextDate)
+
+	accounts, _ := env.accountSvc.List(true)
+	cats, _ := env.categorySvc.List()
+	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+
+	f := env.app.loanWizard.Fields()
+	assertPrefillEditable(t, f[loanFieldName], "loan name")
+	assertPrefillEditable(t, f[loanFieldInstitution], "institution")
+	assertPrefillEditable(t, f[loanFieldAPR], "APR")
+	assertPrefillEditable(t, f[loanFieldPayment], "P&I payment")
+	assertPrefillEditable(t, f[loanEscrowAmtIndex(0)], "escrow amount")
+}
+
+// TestLoanWizard_PaymentPrefill_AnchorsCursor covers the computed-payment
+// pre-fill on the new-loan form, and checks that anchoring the cursor did not
+// break the untouched-field sentinel that stops the refresh from overwriting a
+// payment the user typed.
+func TestLoanWizard_PaymentPrefill_AnchorsCursor(t *testing.T) {
+	env := newLoanWizardEnv(t)
+	// computeLoanPaymentPrefill reads the origination inputs, not the balance.
+	env.set(loanFieldOrigPrincipal, "380000")
+	env.set(loanFieldAPR, "6.5")
+	env.set(loanFieldTermMonths, "360")
+	env.app.refreshLoanWizardDerived()
+
+	payment := env.app.loanWizard.Fields()[loanFieldPayment]
+	if payment.Value == "" {
+		t.Skip("no computed payment prefill for this input")
+	}
+	assertPrefillEditable(t, payment, "computed payment")
+
+	// A user edit must survive the next refresh: the sentinel compares the
+	// field against the last computed string, and the anchor must not disturb it.
+	payment.DeleteBack()
+	edited := payment.Value
+	env.app.refreshLoanWizardDerived()
+	if got := env.app.loanWizard.Fields()[loanFieldPayment].Value; got != edited {
+		t.Errorf("refresh overwrote the edited payment: got %q, want %q", got, edited)
+	}
+}

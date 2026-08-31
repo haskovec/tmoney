@@ -2176,3 +2176,279 @@ func TestPaycheckWizard_EditAsPaycheck_RefusesClosedAccount(t *testing.T) {
 		t.Error("a closed deposit account should block Edit-as-paycheck")
 	}
 }
+
+// ===========================================================================
+// Edit Series round trip: paycheck_section tags must survive
+// ===========================================================================
+
+// openEditSeries wires the app as the generic Edit Series dialog would be, for a
+// schedule that already exists. The Split box comes pre-checked for any
+// multi-line schedule.
+func (env *paycheckEditEnv) openEditSeries(t *testing.T, st *scheduled.Transaction) *dialog.Dialog {
+	t.Helper()
+	payeeNames := make(map[types.ID]string, len(env.payees))
+	for _, p := range env.payees {
+		if p != nil {
+			payeeNames[p.ID] = p.Name
+		}
+	}
+	accountOptions, accountIDs := buildAccountOptions(env.accounts)
+	env.app.schedDialogAccountIDs = accountIDs
+	env.app.schedDialogCategoryIDs = env.categoryIDs
+	env.app.schedDialogCategoryOptions = env.categoryOptions
+	env.app.schedDialog = buildEditScheduledDialog(
+		st, accountOptions, accountIDs, env.categoryOptions, env.categoryIDs, payeeNames)
+	env.app.schedDialogData = &scheduledDialogData{
+		mode:      scheduledDialogModeEdit,
+		scheduled: st,
+		accounts:  env.accounts,
+		payees:    env.payees,
+		payeeMap:  map[string]*payee.Payee{},
+	}
+	return env.app.schedDialog
+}
+
+// sectionByTarget maps each split's category or transfer destination to its
+// paycheck_section tag, so a round trip can be compared without depending on
+// split ordering.
+func sectionByTarget(st *scheduled.Transaction) map[types.ID]string {
+	out := make(map[types.ID]string, len(st.Splits))
+	for _, sp := range st.Splits {
+		if sp == nil {
+			continue
+		}
+		key := types.NilID
+		switch {
+		case sp.TransferAccountID.Valid:
+			key = sp.TransferAccountID.ID
+		case sp.CategoryID.Valid:
+			key = sp.CategoryID.ID
+		}
+		out[key] = sp.PaycheckSection.String
+	}
+	return out
+}
+
+// TestScheduledDialog_EditSeriesRoundTrip_KeepsPaycheckTags is the regression
+// test for the silent demotion: a plain Save through Edit Series used to strip
+// every paycheck_section tag, because neither converter nor the split editor
+// carried the column. The paycheck then stopped being a paycheck.
+func TestScheduledDialog_EditSeriesRoundTrip_KeepsPaycheckTags(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	seeded := env.seed(t)
+	// The save mutates this record in place, so snapshot what to compare against.
+	wantSections := sectionByTarget(seeded)
+	seededID := seeded.ID
+	seededCount := len(seeded.Splits)
+	seededAmount := seeded.Amount.Money
+
+	env.openEditSeries(t, seeded)
+
+	// First Save opens the split editor (the Split box is pre-checked).
+	model, cmd := env.app.submitScheduledDialog()
+	env.app = model.(*App)
+	if cmd != nil {
+		t.Fatal("the first Save should open the split editor, not save")
+	}
+	if env.app.splitDialog == nil {
+		t.Fatal("split editor did not open")
+	}
+
+	// Second Save persists. Nothing was changed, so no confirmation is due.
+	model, cmd = env.app.submitScheduledSplitDialog()
+	env.app = model.(*App)
+	if env.app.confirmDialog != nil {
+		t.Fatal("a preserving save must not prompt for demotion")
+	}
+	if cmd == nil {
+		t.Fatal("the second Save returned no command")
+	}
+	if msg, ok := cmd().(errMsg); ok {
+		t.Fatalf("save returned error: %v", msg.err)
+	}
+
+	got := env.only(t)
+	if got.ID != seededID {
+		t.Errorf("schedule ID = %v, want %v", got.ID, seededID)
+	}
+	if len(got.Splits) != seededCount {
+		t.Fatalf("got %d splits, want %d", len(got.Splits), seededCount)
+	}
+	for _, sp := range got.Splits {
+		if !sp.PaycheckSection.Valid {
+			t.Errorf("split %v lost its paycheck_section tag", sp.ID)
+		}
+	}
+	if gotSections := sectionByTarget(got); !mapsEqual(gotSections, wantSections) {
+		t.Errorf("section tags = %v, want %v", gotSections, wantSections)
+	}
+	if !got.Amount.Money.Equal(seededAmount) {
+		t.Errorf("parent amount = %s, want %s", got.Amount.Money.String(), seededAmount.String())
+	}
+}
+
+func mapsEqual(a, b map[types.ID]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// TestScheduledDialog_EditSeriesRoundTrip_KeepsEditAsPaycheckButton is the
+// user-visible half: after a plain Edit Series save the schedule must still open
+// in the paycheck wizard. Before the fix the button was gone for good.
+func TestScheduledDialog_EditSeriesRoundTrip_KeepsEditAsPaycheckButton(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	seeded := env.seed(t)
+
+	env.openEditSeries(t, seeded)
+	model, _ := env.app.submitScheduledDialog()
+	env.app = model.(*App)
+	model, cmd := env.app.submitScheduledSplitDialog()
+	env.app = model.(*App)
+	if cmd != nil {
+		cmd()
+	}
+
+	got := env.only(t)
+	if !looksLikePaycheck(got) {
+		t.Fatal("the saved schedule no longer looks like a paycheck")
+	}
+	if !hasEditAsPaycheckButton(env.openEditSeries(t, got)) {
+		t.Error("the Edit as paycheck button is gone after an Edit Series save")
+	}
+}
+
+// TestScheduledDialog_EditSeriesAddsUntaggedRow_ConfirmsDemotion covers the
+// narrow case that genuinely loses the shape: a row added in the generic editor
+// has no section, so the schedule stops being fully tagged. That warns.
+func TestScheduledDialog_EditSeriesAddsUntaggedRow_ConfirmsDemotion(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	seeded := env.seed(t)
+	// The save mutates this record in place, so read the count now.
+	seededCount := len(seeded.Splits)
+
+	env.openEditSeries(t, seeded)
+	model, _ := env.app.submitScheduledDialog()
+	env.app = model.(*App)
+	sd := env.app.splitDialog
+	if sd == nil {
+		t.Fatal("split editor did not open")
+	}
+
+	// Add an untagged row and rebalance an existing one so the totals still add up.
+	sd.addRow()
+	added := &sd.rows[len(sd.rows)-1]
+	added.categoryIndex = indexOf(env.categoryOptions, "Insurance > Health")
+	if added.categoryIndex <= 0 {
+		t.Fatalf("health category missing: %v", env.categoryOptions)
+	}
+	added.amountField.Value = "-10.00"
+	for i := range sd.rows {
+		if sd.rows[i].seedPaycheckSection.String == "earnings" {
+			sd.rows[i].amountField.Value = "5010.00"
+			break
+		}
+	}
+
+	model, cmd := env.app.submitScheduledSplitDialog()
+	env.app = model.(*App)
+	if env.app.confirmDialog == nil {
+		t.Fatal("adding an untagged row should prompt before dropping the paycheck shape")
+	}
+	if cmd != nil {
+		t.Error("the save must wait for the confirmation")
+	}
+	// Until confirmed, the stored schedule is untouched.
+	if !looksLikePaycheck(env.only(t)) {
+		t.Error("the stored schedule changed before the confirmation was answered")
+	}
+
+	if env.app.confirmAction == nil {
+		t.Fatal("no confirm action recorded")
+	}
+	if msg, ok := env.app.confirmAction().(errMsg); ok {
+		t.Fatalf("confirmed save returned error: %v", msg.err)
+	}
+	after := env.only(t)
+	if len(after.Splits) != seededCount+1 {
+		t.Errorf("got %d splits, want %d", len(after.Splits), seededCount+1)
+	}
+	if looksLikePaycheck(after) {
+		t.Error("the schedule should have lost its paycheck shape after the confirmed save")
+	}
+}
+
+// TestScheduledDialog_UncheckSplitOnPaycheck_ConfirmsDemotion covers the harsher
+// path: un-checking Split deletes every line, tags and all.
+func TestScheduledDialog_UncheckSplitOnPaycheck_ConfirmsDemotion(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	seeded := env.seed(t)
+	// The save mutates this record in place, so read the count now.
+	seededCount := len(seeded.Splits)
+
+	d := env.openEditSeries(t, seeded)
+	d.Fields()[schedFieldSplit].Checked = false
+	d.Fields()[schedFieldAmount].Value = seeded.Amount.Money.String()
+
+	model, cmd := env.app.submitScheduledDialog()
+	env.app = model.(*App)
+	if env.app.confirmDialog == nil {
+		t.Fatal("unchecking Split on a paycheck should prompt first")
+	}
+	if cmd != nil {
+		t.Error("the save must wait for the confirmation")
+	}
+	if len(env.only(t).Splits) != seededCount {
+		t.Error("the stored schedule changed before the confirmation was answered")
+	}
+
+	if msg, ok := env.app.confirmAction().(errMsg); ok {
+		t.Fatalf("confirmed save returned error: %v", msg.err)
+	}
+	if got := env.only(t); len(got.Splits) != 0 {
+		t.Errorf("got %d splits after the confirmed save, want 0", len(got.Splits))
+	}
+}
+
+// TestScheduledDialog_DeclinedPaycheckDemotion_LeavesScheduleUntouched checks
+// that answering No writes nothing.
+func TestScheduledDialog_DeclinedPaycheckDemotion_LeavesScheduleUntouched(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	seeded := env.seed(t)
+	// The save mutates this record in place, so read the count now.
+	seededCount := len(seeded.Splits)
+
+	d := env.openEditSeries(t, seeded)
+	d.Fields()[schedFieldSplit].Checked = false
+	d.Fields()[schedFieldAmount].Value = seeded.Amount.Money.String()
+
+	model, _ := env.app.submitScheduledDialog()
+	env.app = model.(*App)
+	if env.app.confirmDialog == nil {
+		t.Fatal("expected a confirmation")
+	}
+
+	// Decline.
+	model, _ = env.app.handleConfirmDialogKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	env.app = model.(*App)
+	if env.app.confirmDialog != nil || env.app.confirmAction != nil {
+		t.Error("declining should clear the confirmation state")
+	}
+
+	got := env.only(t)
+	if len(got.Splits) != seededCount {
+		t.Fatalf("got %d splits, want the original %d", len(got.Splits), seededCount)
+	}
+	if !looksLikePaycheck(got) {
+		t.Error("a declined demotion must leave the paycheck shape intact")
+	}
+	if env.app.undoManager.UndoLen() != 0 {
+		t.Errorf("undo stack has %d entries, want 0", env.app.undoManager.UndoLen())
+	}
+}

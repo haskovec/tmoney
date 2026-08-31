@@ -201,12 +201,19 @@ func (f *Field) InsertChar(ch rune) {
 
 // DeleteBack deletes the character before the cursor.
 func (f *Field) DeleteBack() {
-	if f.Type != FieldText || f.cursorPos <= 0 {
+	if f.Type != FieldText {
 		return
 	}
 	runes := []rune(f.Value)
+	// Clamp before the emptiness check, the way DeleteForward does. A caller
+	// that assigns Value directly — account_dialog clears a hidden field this
+	// way — can leave the cursor past the end of a now-empty value, and
+	// len(runes)-1 as a slice capacity panics.
 	if f.cursorPos > len(runes) {
 		f.cursorPos = len(runes)
+	}
+	if f.cursorPos <= 0 {
+		return
 	}
 	result := make([]rune, 0, len(runes)-1)
 	result = append(result, runes[:f.cursorPos-1]...)

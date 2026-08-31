@@ -228,6 +228,15 @@ func NewSchedulePreviewDialog(
 		// or a hand-built multi-line schedule — posts its template lines.
 		parentAmount := template.Amount.Money
 		seedSplits := transactionSplitsFromScheduled(template)
+		// A posted occurrence carries no paycheck_section.
+		// transactionSplitsFromScheduled forwards the tag so the Edit Series
+		// round trip preserves it, but no posting path writes
+		// transaction_splits.paycheck_section (see migration 028's rationale),
+		// so drop it here to keep the preview, auto-post and `scheduled post`
+		// in agreement.
+		for _, sp := range seedSplits {
+			sp.PaycheckSection = types.NullableString{}
+		}
 		if loanSplits != nil {
 			p.loanShaped = true
 			p.loanSeedDate = template.NextDate

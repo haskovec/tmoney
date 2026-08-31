@@ -1725,3 +1725,99 @@ func TestApp_SplitDialog_AddNew_AppliesToCurrentRow(t *testing.T) {
 			sd.categoryOptions[otherCatIdx], preserveName)
 	}
 }
+
+// TestNewSplitDialogFromExisting_AnchorsRowCursors guards the pre-fill cursor on
+// every seeded row. This one constructor feeds three surfaces — Edit Series, the
+// register split editor, and the post-time preview — so an un-anchored cursor
+// made a seeded amount or memo impossible to adjust in all three.
+func TestNewSplitDialogFromExisting_AnchorsRowCursors(t *testing.T) {
+	catID := types.NewID()
+	options := []string{"(None)", "Groceries"}
+	ids := []types.ID{types.NilID, catID}
+
+	seed := []*transaction.Split{
+		transaction.NewSplitWithMemo(types.NilID, catID, types.MustNewMoney("-72.50"), "weekly shop"),
+	}
+	sd := NewSplitDialogFromExisting(types.MustNewMoney("-72.50"), options, ids, seed)
+
+	rows := sd.Rows()
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1", len(rows))
+	}
+	for _, col := range []struct {
+		label string
+		field *dialog.Field
+	}{
+		{"amount", &sd.rows[0].amountField},
+		{"memo", &sd.rows[0].memoField},
+	} {
+		assertPrefillEditable(t, col.field, col.label)
+	}
+
+	// End-to-end through the dialog's own key handling, not just the field API.
+	// Money.String() trims the trailing zero, so derive the expectation rather
+	// than hardcoding the seeded literal.
+	before := []rune(sd.rows[0].amountField.Value)
+	sd.fieldFocus = splitFieldAmount
+	sd.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if got, want := sd.rows[0].amountField.Value, string(before[:len(before)-1]); got != want {
+		t.Errorf("Backspace through HandleKey gave %q, want %q", got, want)
+	}
+}
+
+// TestSplitDialog_SeededPaycheckRow_CarriesSectionTag covers the hop the two
+// converters in scheduled_dialog.go cannot reach: buildSplits mints fresh rows,
+// so the paycheck_section tag has to ride on splitRow itself. Without this a
+// plain Edit Series save stripped every tag and the Edit-as-paycheck button
+// disappeared for good.
+func TestSplitDialog_SeededPaycheckRow_CarriesSectionTag(t *testing.T) {
+	salaryID := types.NewID()
+	retireID := types.NewID()
+	options := []string{"(None)", "Income > Salary"}
+	ids := []types.ID{types.NilID, salaryID}
+
+	earnings := transaction.NewSplit(types.NilID, salaryID, types.MustNewMoney("5000.00"))
+	earnings.PaycheckSection = types.NullableString{String: "earnings", Valid: true}
+	xfer := &transaction.Split{
+		BaseModel:         types.NewBaseModel(),
+		Amount:            types.MustNewMoney("-500.00"),
+		TransferAccountID: types.NullableID{ID: retireID, Valid: true},
+		PaycheckSection:   types.NullableString{String: "net_pay_destination", Valid: true},
+	}
+
+	sd := NewSplitDialogFromExisting(types.MustNewMoney("4500.00"), options, ids,
+		[]*transaction.Split{earnings, xfer})
+	sd.SetTransferTargets([]string{"401k"}, []types.ID{retireID}, types.NewID())
+
+	rows := sd.Rows()
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	if got := rows[0].seedPaycheckSection; !got.Valid || got.String != "earnings" {
+		t.Errorf("row 0 seedPaycheckSection = %+v, want earnings", got)
+	}
+	if got := rows[1].seedPaycheckSection; !got.Valid || got.String != "net_pay_destination" {
+		t.Errorf("row 1 seedPaycheckSection = %+v, want net_pay_destination", got)
+	}
+
+	built, err := sd.buildSplits()
+	if err != nil {
+		t.Fatalf("buildSplits: %v", err)
+	}
+	if len(built) != 2 {
+		t.Fatalf("built %d splits, want 2", len(built))
+	}
+	if got := built[0].PaycheckSection; !got.Valid || got.String != "earnings" {
+		t.Errorf("built[0].PaycheckSection = %+v, want earnings", got)
+	}
+	if got := built[1].PaycheckSection; !got.Valid || got.String != "net_pay_destination" {
+		t.Errorf("built[1].PaycheckSection = %+v, want net_pay_destination", got)
+	}
+
+	// A row added here has no section, which is the documented behaviour: it
+	// hides the Edit-as-paycheck affordance until the wizard saves again.
+	sd.addRow()
+	if got := sd.Rows()[2].seedPaycheckSection; got.Valid {
+		t.Errorf("a newly added row carries %+v, want an untagged row", got)
+	}
+}

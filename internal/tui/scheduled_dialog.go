@@ -42,7 +42,8 @@ type pendingSplitScheduled struct {
 // scheduled.Transaction into transaction.Split rows so the SplitDialog
 // can seed itself from a previously-saved multi-line template. The
 // returned rows carry only the fields the split editor uses
-// (category/transfer target, amount, memo).
+// (category/transfer target, amount, memo) plus paycheck_section, which the
+// editor does not expose but must not destroy — see scheduledSplitsFromTransaction.
 func transactionSplitsFromScheduled(st *scheduled.Transaction) []*transaction.Split {
 	if st == nil || len(st.Splits) == 0 {
 		return nil
@@ -62,6 +63,7 @@ func transactionSplitsFromScheduled(st *scheduled.Transaction) []*transaction.Sp
 		if sp.Memo.Valid {
 			t.SetMemo(sp.Memo.String)
 		}
+		t.PaycheckSection = sp.PaycheckSection
 		rows = append(rows, t)
 	}
 	return rows
@@ -72,7 +74,10 @@ func transactionSplitsFromScheduled(st *scheduled.Transaction) []*transaction.Sp
 // It is the inverse of transactionSplitsFromScheduled. A transfer line carries
 // its category through (carry-through) so an already-categorized template
 // transfer line survives an Edit Series round-trip; the split editor offers no
-// picker for it (v1 non-goal).
+// picker for it (v1 non-goal). paycheck_section rides through the same way, so
+// editing a line here no longer demotes a paycheck schedule to a generic one.
+// LoanSection is deliberately left unset: minting fresh children is what keeps
+// the "paycheck_section IS NULL OR loan_section IS NULL" CHECK unreachable.
 func scheduledSplitsFromTransaction(splits []*transaction.Split) scheduled.SplitCollection {
 	children := scheduled.SplitCollection{}
 	for _, ts := range splits {
@@ -92,6 +97,7 @@ func scheduledSplitsFromTransaction(splits []*transaction.Split) scheduled.Split
 		if ts.Memo.Valid {
 			child.SetMemo(ts.Memo.String)
 		}
+		child.PaycheckSection = ts.PaycheckSection
 		children = append(children, child)
 	}
 	return children
@@ -122,6 +128,14 @@ type scheduledDialogDataMsg struct {
 
 // scheduledDialogSavedMsg is sent when a scheduled transaction has been saved.
 type scheduledDialogSavedMsg struct{}
+
+// paycheckDemotionWarning is shown before a save that would drop a
+// paycheck-shaped schedule's paycheck_section tags. Nothing behavioural breaks
+// (no posting path reads the column), but the hand-entered section layout is
+// lost and only re-entering every line in the wizard brings it back. An edit
+// that preserves every tag saves silently — the generic editor is meant to be
+// usable on a paycheck.
+const paycheckDemotionWarning = "This drops the paycheck section tags — the schedule will no longer open in the paycheck wizard until you save it there again. Continue?"
 
 // Scheduled dialog field indices.
 const (
@@ -818,6 +832,13 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	demotesLoan := mode == scheduledDialogModeEdit && existingSched != nil &&
 		a.scheduledTxnSvc != nil && a.scheduledTxnSvc.IsLoanShaped(existingSched)
 
+	// Demotion guard: unchecking Split on a paycheck-shaped schedule clears
+	// its children (and their paycheck_section tags) too — the save closure
+	// below sets st.Splits = nil unconditionally, so "is paycheck-shaped" is
+	// the same thing as "will lose the tags" here.
+	demotesPaycheck := mode == scheduledDialogModeEdit && existingSched != nil &&
+		looksLikePaycheck(existingSched)
+
 	// Close dialog before async save for responsive UI
 	a.closeScheduledDialog()
 
@@ -931,8 +952,12 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 		return scheduledDialogSavedMsg{}
 	}
 
-	if demotesLoan {
+	switch {
+	case demotesLoan:
 		a.showConfirmDialog("Convert loan schedule?", loanDemotionWarning, save)
+		return a, nil
+	case demotesPaycheck:
+		a.showConfirmDialog("Drop paycheck sections?", paycheckDemotionWarning, save)
 		return a, nil
 	}
 	return a, save
@@ -955,11 +980,21 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 	}
 
 	pending := a.pendingSplitScheduled
+	children := scheduledSplitsFromTransaction(splits)
 	// Demotion guard: saving a loan-shaped schedule through the generic split
 	// editor strips its loan_section tags, silently converting it to a generic
 	// schedule that books stale template interest. Warn first.
 	demotesLoan := pending.mode == scheduledDialogModeEdit && pending.existing != nil &&
 		a.scheduledTxnSvc != nil && a.scheduledTxnSvc.IsLoanShaped(pending.existing)
+
+	// Demotion guard: paycheck_section rides through this editor, so a save
+	// loses the paycheck shape only when the resulting children are no longer
+	// fully tagged — a row added here, or the last earnings row deleted. Gate
+	// on that outcome, not on the shape: an edit that preserves every tag is
+	// the normal supported operation and must not prompt.
+	demotesPaycheck := pending.mode == scheduledDialogModeEdit && pending.existing != nil &&
+		looksLikePaycheck(pending.existing) &&
+		!looksLikePaycheck(&scheduled.Transaction{Splits: children})
 	a.closeSplitDialog()
 
 	save := func() tea.Msg {
@@ -975,8 +1010,6 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 		if a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
-
-		children := scheduledSplitsFromTransaction(splits)
 
 		applyScalars := func(st *scheduled.Transaction) {
 			st.AccountID = pending.accountID
@@ -1023,8 +1056,12 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 		return scheduledDialogSavedMsg{}
 	}
 
-	if demotesLoan {
+	switch {
+	case demotesLoan:
 		a.showConfirmDialog("Convert loan schedule?", loanDemotionWarning, save)
+		return a, nil
+	case demotesPaycheck:
+		a.showConfirmDialog("Drop paycheck sections?", paycheckDemotionWarning, save)
 		return a, nil
 	}
 	return a, save

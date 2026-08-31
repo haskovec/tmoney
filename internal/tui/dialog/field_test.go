@@ -1126,3 +1126,20 @@ func TestIsBlankDateInput_ISO(t *testing.T) {
 		})
 	}
 }
+
+// TestField_DeleteBack_StaleCursorOverEmptyValue guards the clamp order. A
+// caller that assigns Value directly can leave the cursor past the end of a
+// now-empty value (account_dialog clears a hidden field that way). Computing
+// len(runes)-1 as a slice capacity then panics with "makeslice: cap out of
+// range".
+func TestField_DeleteBack_StaleCursorOverEmptyValue(t *testing.T) {
+	f := &Field{Type: FieldText}
+	f.cursorPos = 7
+	f.DeleteBack()
+	if f.Value != "" {
+		t.Errorf("Value = %q, want empty", f.Value)
+	}
+	if got := f.CursorPos(); got != 0 {
+		t.Errorf("CursorPos() = %d, want 0", got)
+	}
+}

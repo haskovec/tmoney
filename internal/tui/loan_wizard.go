@@ -316,12 +316,12 @@ func buildEditLoanWizard(accounts []*account.Account, categories []*category.Cat
 		}
 	}
 	if state.loanAccount != nil {
-		fields[loanFieldName].Value = state.loanAccount.Name
+		prefillField(fields[loanFieldName], state.loanAccount.Name)
 		if state.loanAccount.Institution.Valid {
-			fields[loanFieldInstitution].Value = state.loanAccount.Institution.String
+			prefillField(fields[loanFieldInstitution], state.loanAccount.Institution.String)
 		}
 		if state.loanAccount.InterestRate.Valid {
-			fields[loanFieldAPR].Value = state.loanAccount.InterestRate.Money.String()
+			prefillField(fields[loanFieldAPR], state.loanAccount.InterestRate.Money.String())
 		}
 	}
 
@@ -376,11 +376,11 @@ func prefillLoanPaymentFields(fields []*dialog.Field, state *loanWizardData, st 
 		// Escrow line.
 		if escrowIdx < loanMaxEscrowLines && sp.CategoryID.Valid {
 			setSelectByID(fields[loanEscrowCatIndex(escrowIdx)], state.categoryIDs, sp.CategoryID.ID)
-			fields[loanEscrowAmtIndex(escrowIdx)].Value = sp.Amount.Abs().String()
+			prefillField(fields[loanEscrowAmtIndex(escrowIdx)], sp.Amount.Abs().String())
 			escrowIdx++
 		}
 	}
-	fields[loanFieldPayment].Value = principalAmt.Add(interestAmt).String()
+	prefillField(fields[loanFieldPayment], principalAmt.Add(interestAmt).String())
 	if !interestCatID.IsNil() {
 		setSelectByID(fields[loanFieldInterestCategory], state.interestIDs, interestCatID)
 	}
@@ -800,7 +800,7 @@ func (a *App) updateLoanPaymentPrefill() {
 	if !ok {
 		return
 	}
-	payment.Value = prefill
+	prefillField(payment, prefill)
 	st.lastComputedPayment = prefill
 }
 

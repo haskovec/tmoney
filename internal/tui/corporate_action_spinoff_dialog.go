@@ -184,7 +184,7 @@ func (a *App) handleSpinOffPriceLookupResult(msg spinOffPriceLookupMsg) (tea.Mod
 	}
 	fields := a.spinOffDialog.Fields()
 	if len(fields) >= 6 {
-		fields[5].Value = fmt.Sprintf("%.2f", msg.price.Float64())
+		prefillField(fields[5], fmt.Sprintf("%.2f", msg.price.Float64()))
 	}
 	a.statusbar.AddNotification(fmt.Sprintf("Fetched %.2f %s", msg.price.Float64(), msg.currency), widget.NotificationInfo)
 	return a, nil

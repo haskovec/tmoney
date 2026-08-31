@@ -74,6 +74,15 @@ type splitRow struct {
 	// so buildSplits re-emits it as-is; freshly-created transfer rows leave it
 	// NilID (no category).
 	seedTransferCategoryID types.ID
+
+	// seedPaycheckSection carries a wizard-tagged line's paycheck_section
+	// through this editor unchanged, so editing an amount here does not
+	// demote a paycheck schedule to a generic one. The dialog offers no
+	// picker for it; buildSplits re-emits it as-is. A row added here leaves
+	// it NULL, which hides the Edit-as-paycheck affordance until the
+	// schedule is saved through the wizard again — the behaviour
+	// specs/multiline-splits-and-paycheck.md specifies.
+	seedPaycheckSection types.NullableString
 }
 
 // pendingSplitTransaction holds the transaction data while the split editor is open.
@@ -160,17 +169,19 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 		if s.Memo.Valid {
 			memo = s.Memo.String
 		}
+		// prefillField, not a Value: field literal, so Backspace works and a
+		// typed character appends instead of prepending.
 		amountField := dialog.Field{
 			Type:        dialog.FieldText,
-			Value:       s.Amount.String(),
 			Placeholder: "0.00",
 			Width:       12,
 		}
+		prefillField(&amountField, s.Amount.String())
 		memoField := dialog.Field{
 			Type:        dialog.FieldText,
-			Value:       memo,
 			Placeholder: "Memo",
 		}
+		prefillField(&memoField, memo)
 
 		// A transfer-split (TransferAccountID set) seeds a transfer-mode row.
 		// The account list isn't known until SetTransferTargets, so stash the
@@ -181,6 +192,7 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 				transferMode:           true,
 				seedTransferAccountID:  s.TransferAccountID,
 				seedTransferCategoryID: s.CategoryID,
+				seedPaycheckSection:    s.PaycheckSection,
 				amountField:            amountField,
 				memoField:              memoField,
 			})
@@ -195,9 +207,10 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 			}
 		}
 		sd.rows = append(sd.rows, splitRow{
-			categoryIndex: catIdx,
-			amountField:   amountField,
-			memoField:     memoField,
+			categoryIndex:       catIdx,
+			seedPaycheckSection: s.PaycheckSection,
+			amountField:         amountField,
+			memoField:           memoField,
 		})
 	}
 	return sd
@@ -481,6 +494,9 @@ func (sd *SplitDialog) buildSplits() ([]*transaction.Split, error) {
 				split = transaction.NewSplit(types.NilID, categoryID, amount)
 			}
 		}
+		// Carry a seeded line's paycheck_section through unchanged; a row
+		// added in this dialog leaves it NULL.
+		split.PaycheckSection = row.seedPaycheckSection
 		splits = append(splits, split)
 	}
 
