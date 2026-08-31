@@ -2452,3 +2452,61 @@ func TestScheduledDialog_DeclinedPaycheckDemotion_LeavesScheduleUntouched(t *tes
 		t.Errorf("undo stack has %d entries, want 0", env.app.undoManager.UndoLen())
 	}
 }
+
+// TestScheduledDialog_EditSeries_MouseClickOnSave_Saves is the regression test
+// for the reported bug: editing a scheduled paycheck's date through Edit Series
+// opened the split editor, and then the Save button ignored the mouse — the
+// editor was reachable only from the keyboard.
+func TestScheduledDialog_EditSeries_MouseClickOnSave_Saves(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	seeded := env.seed(t)
+	seededID := seeded.ID
+	seededCount := len(seeded.Splits)
+
+	d := env.openEditSeries(t, seeded)
+	// The reported edit: change the date.
+	d.Fields()[schedFieldStartDate].Value = "07/17/2026"
+
+	model, cmd := env.app.submitScheduledDialog()
+	env.app = model.(*App)
+	if cmd != nil {
+		t.Fatal("the first Save should open the split editor")
+	}
+	sd := env.app.splitDialog
+	if sd == nil {
+		t.Fatal("split editor did not open")
+	}
+
+	// Give the app a real screen, then click Save where it actually renders.
+	env.app.width, env.app.height = 120, 40
+	env.app.styles = widget.NewStyles()
+	overlay := sd.Render(env.app.styles)
+	startCol, startRow := widget.OverlayTopLeft(overlay, env.app.width, env.app.height)
+	x, y := findRenderedText(t, overlay, "[ Save ]", startCol, startRow)
+
+	model, cmd = env.app.handleMouseEvent(tea.MouseClickMsg{X: x + 2, Y: y, Button: tea.MouseLeft})
+	env.app = model.(*App)
+
+	if env.app.splitDialog != nil {
+		t.Fatalf("the split editor is still open after clicking Save; errorMsg=%q", sd.errorMsg)
+	}
+	if cmd == nil {
+		t.Fatal("clicking Save produced no save command")
+	}
+	if msg, ok := cmd().(errMsg); ok {
+		t.Fatalf("save returned error: %v", msg.err)
+	}
+
+	got := env.only(t)
+	if got.ID != seededID {
+		t.Errorf("schedule ID = %v, want %v", got.ID, seededID)
+	}
+	if len(got.Splits) != seededCount {
+		t.Errorf("got %d splits, want %d", len(got.Splits), seededCount)
+	}
+	for _, sp := range got.Splits {
+		if !sp.PaycheckSection.Valid {
+			t.Errorf("split %v lost its paycheck_section tag", sp.ID)
+		}
+	}
+}

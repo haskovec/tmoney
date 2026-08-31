@@ -226,9 +226,10 @@ func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleDialogMouse routes mouse events to the currently visible dialog.
-// For non-dialog.Dialog overlays (SplitDialog, mergerConfirm, corporateActionHistory),
-// mouse events are blocked (returns no-op). The help overlay accepts a
-// click on its [x] close button.
+// For the remaining non-dialog.Dialog overlays (mergerConfirm,
+// corporateActionHistory), mouse events are blocked (returns no-op). The help
+// overlay accepts a click on its [x] close button, and the split editor routes
+// through handleSplitDialogMouse.
 func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.showHelp {
 		if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
@@ -243,7 +244,7 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	if a.splitDialog != nil && a.splitDialog.IsVisible() {
-		return a, nil
+		return a.handleSplitDialogMouse(msg)
 	}
 
 	// dialog.Dialog cascade (same order as handleKeyPress)

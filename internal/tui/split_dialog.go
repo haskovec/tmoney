@@ -1008,6 +1008,50 @@ func (a *App) handleSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+// handleSplitDialogMouse routes a mouse event through the split editor and
+// translates the resulting action, mirroring handleSplitDialogKey. Without this
+// the editor was keyboard-only: handleDialogMouse swallowed every click, so the
+// Save button did not respond to the mouse even though SplitDialog has hit
+// testing for it (HandleMouseLocal, written for the post-time preview).
+//
+// The coordinate transform reconstructs what app_view composites — the rendered
+// panel centred with widget.OverlayCenter — so a click maps to the same
+// content-local position the renderer drew.
+func (a *App) handleSplitDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if a.splitDialog == nil {
+		return a, nil
+	}
+	// Wheel events reach here too (handleMouseWheel routes through
+	// handleDialogMouse); the editor has no scroll surface, so ignore them.
+	click, ok := msg.(tea.MouseClickMsg)
+	if !ok || click.Button != tea.MouseLeft {
+		return a, nil
+	}
+
+	overlay := a.splitDialog.Render(a.styles)
+	startCol, startRow := widget.OverlayTopLeft(overlay, a.width, a.height)
+	m := msg.Mouse()
+	// Content-local offsets inside the panel: border (1) + h-padding (2) on X,
+	// border (1) + v-padding (1) on Y.
+	action := a.splitDialog.HandleMouseLocal(m.X-startCol-3, m.Y-startRow-2)
+
+	switch action {
+	case dialog.DialogActionSubmit:
+		// Same dispatch as the keyboard path: a schedule in flight saves the
+		// template, otherwise this is the register's split editor.
+		if a.pendingSplitScheduled != nil {
+			return a.submitScheduledSplitDialog()
+		}
+		return a.submitSplitDialog()
+	case dialog.DialogActionCancel:
+		a.closeSplitDialog()
+		return a, nil
+	case dialog.DialogActionAddNew:
+		return a.openCreateCategorySubDialogFromSplit()
+	}
+	return a, nil
+}
+
 // openCreateCategorySubDialogFromSplit hides the split dialog and opens the
 // inline create-category sub-dialog for the currently-focused row's
 // Category field. The split dialog's row state (other rows, amount fields,

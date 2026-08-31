@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
@@ -1819,5 +1820,129 @@ func TestSplitDialog_SeededPaycheckRow_CarriesSectionTag(t *testing.T) {
 	sd.addRow()
 	if got := sd.Rows()[2].seedPaycheckSection; got.Valid {
 		t.Errorf("a newly added row carries %+v, want an untagged row", got)
+	}
+}
+
+// findRenderedText locates needle inside a rendered overlay and returns the
+// screen coordinates of its first cell, given where the overlay is composited.
+// Deriving the click target from the real render is what makes the mouse tests
+// catch an off-by-one in the coordinate transform; computing it from the layout
+// would just repeat the transform's own assumptions.
+func findRenderedText(t *testing.T, overlay, needle string, startCol, startRow int) (x, y int) {
+	t.Helper()
+	for row, line := range strings.Split(overlay, "\n") {
+		plain := ansi.Strip(line)
+		col := strings.Index(plain, needle)
+		if col < 0 {
+			continue
+		}
+		return startCol + col, startRow + row
+	}
+	t.Fatalf("%q not found in the rendered overlay", needle)
+	return 0, 0
+}
+
+// splitDialogMouseEnv builds an app whose split editor is open over a real
+// screen, with the overlay positioned exactly as app_view composites it.
+func splitDialogMouseEnv(t *testing.T, sd *SplitDialog) (*App, string, int, int) {
+	t.Helper()
+	app := &App{
+		width:       120,
+		height:      40,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		styles:      widget.NewStyles(),
+		splitDialog: sd,
+	}
+	overlay := sd.Render(app.styles)
+	startCol, startRow := widget.OverlayTopLeft(overlay, app.width, app.height)
+	return app, overlay, startCol, startRow
+}
+
+// TestSplitDialog_MouseClickOnSave_Submits is the regression test for a split
+// editor that could only be driven from the keyboard: handleDialogMouse
+// swallowed every click, so clicking Save did nothing even though SplitDialog
+// already had hit testing for it.
+func TestSplitDialog_MouseClickOnSave_Submits(t *testing.T) {
+	catID := types.NewID()
+	sd := NewSplitDialogFromExisting(
+		types.MustNewMoney("-50.00"),
+		[]string{"(None)", "Groceries"},
+		[]types.ID{types.NilID, catID},
+		[]*transaction.Split{transaction.NewSplit(types.NilID, catID, types.MustNewMoney("-50.00"))},
+	)
+	app, overlay, startCol, startRow := splitDialogMouseEnv(t, sd)
+
+	x, y := findRenderedText(t, overlay, "[ Save ]", startCol, startRow)
+	app.handleMouseEvent(tea.MouseClickMsg{X: x + 2, Y: y, Button: tea.MouseLeft})
+
+	// This app has no pending transaction, so submitSplitDialog no-ops by
+	// design. What the click must prove is that it reached the Save dispatch:
+	// hitTestButtonRow moves focus to the Save button before returning Submit,
+	// and leaves no error behind.
+	if sd.focus != splitFocusSaveBtn {
+		t.Errorf("focus = %v, want the Save button — the click missed it", sd.focus)
+	}
+	if sd.errorMsg != "" {
+		t.Errorf("errorMsg = %q, want empty", sd.errorMsg)
+	}
+}
+
+// TestSplitDialog_MouseClickOnCancel_Closes is the same wiring in the other
+// direction, and pins that a click does not save by accident.
+func TestSplitDialog_MouseClickOnCancel_Closes(t *testing.T) {
+	catID := types.NewID()
+	sd := NewSplitDialogFromExisting(
+		types.MustNewMoney("-50.00"),
+		[]string{"(None)", "Groceries"},
+		[]types.ID{types.NilID, catID},
+		[]*transaction.Split{transaction.NewSplit(types.NilID, catID, types.MustNewMoney("-50.00"))},
+	)
+	app, overlay, startCol, startRow := splitDialogMouseEnv(t, sd)
+
+	x, y := findRenderedText(t, overlay, "[ Cancel ]", startCol, startRow)
+	model, cmd := app.handleMouseEvent(tea.MouseClickMsg{X: x + 2, Y: y, Button: tea.MouseLeft})
+	app = model.(*App)
+
+	if app.splitDialog != nil {
+		t.Error("clicking Cancel left the editor open")
+	}
+	if cmd != nil {
+		t.Error("Cancel should not return a save command")
+	}
+}
+
+// TestSplitDialog_MouseClickOnRow_FocusesField checks the transform on a body
+// row, not just the button row — an off-by-one in Y would land on the wrong row.
+func TestSplitDialog_MouseClickOnRow_FocusesField(t *testing.T) {
+	catID := types.NewID()
+	seed := []*transaction.Split{
+		transaction.NewSplitWithMemo(types.NilID, catID, types.MustNewMoney("-30.00"), "first"),
+		transaction.NewSplitWithMemo(types.NilID, catID, types.MustNewMoney("-20.00"), "second"),
+	}
+	sd := NewSplitDialogFromExisting(
+		types.MustNewMoney("-50.00"),
+		[]string{"(None)", "Groceries"},
+		[]types.ID{types.NilID, catID},
+		seed,
+	)
+	sd.rowIndex = 0
+	app, overlay, startCol, startRow := splitDialogMouseEnv(t, sd)
+
+	// Click the memo cell of the second row, located by its own text.
+	x, y := findRenderedText(t, overlay, "second", startCol, startRow)
+	model, _ := app.handleMouseEvent(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	app = model.(*App)
+
+	if app.splitDialog == nil {
+		t.Fatal("clicking a row should not close the editor")
+	}
+	if sd.rowIndex != 1 {
+		t.Errorf("rowIndex = %d, want 1 — the Y transform is off", sd.rowIndex)
+	}
+	if sd.fieldFocus != splitFieldMemo {
+		t.Errorf("fieldFocus = %v, want the memo column — the X transform is off", sd.fieldFocus)
 	}
 }
