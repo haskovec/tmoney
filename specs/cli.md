@@ -481,14 +481,20 @@ tmoney -f personal.tdb db list-backups
 
 `Use: db reindex` · `Args: NoArgs`
 
-Drop and recreate every secondary index in the database, rebuilding each from the table data. Use it when a reconcile, edit, or void fails with `FATAL Error: Invalid Input Error: Failed to delete all rows from index. Only deleted 0 out of 1 rows` — a DuckDB storage bug that can leave an index out of sync with its table on disk, so the next UPDATE that rewrites the affected row aborts. Reindexing repairs it and changes no financial data. Prints the number of indexes rebuilt. Run `tmoney db backup` first. (Status-only changes — reconcile, clear/unclear — already sidestep the bug with a narrow in-place update, so reconciling never needs a reindex; header/amount/transfer edits and voids do.)
+Drop and recreate every secondary index in the database, rebuilding each from the table data. Use it when an edit, a void, or posting a scheduled transaction fails with `FATAL Error: Invalid Input Error: Failed to delete all rows from index. Only deleted 0 out of 1 rows` — a DuckDB storage bug that can leave an index out of sync with its table on disk, so the next UPDATE that rewrites the affected row aborts at commit. Reindexing repairs it and changes no financial data. Prints the number of indexes rebuilt. Run `tmoney db backup` first.
+
+Close the TUI first: the command opens the file itself and DuckDB's file lock refuses it while tmoney holds the file. The failed operation wrote nothing, so retrying after the repair cannot duplicate it.
+
+It cannot repair a desync in an ART backing a `PRIMARY KEY`, `FOREIGN KEY` or `UNIQUE` constraint — those do not appear in `duckdb_indexes()` and no SQL reaches them. If the error survives a reindex, the file needs a table rebuild instead.
+
+(Status-only changes — reconcile, clear/unclear — sidestep the bug with a narrow in-place update, so reconciling never needs a reindex; header/amount/transfer edits, voids, and the schedule advance that follows a post do.)
 
 ```bash
 tmoney -f personal.tdb db reindex
 ```
 
 ```
-Rebuilt 36 database indexes.
+Rebuilt 35 database indexes.
 ```
 
 ### `db restore`

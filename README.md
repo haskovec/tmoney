@@ -568,15 +568,25 @@ tmoney -f ~/Documents/TMoney/finances.tdb db reindex
 ```
 
 `db reindex` drops and recreates every secondary index in the file, rebuilding
-each from the table data. Use it when a reconcile, edit, or void fails with
-**`FATAL Error: Invalid Input Error: Failed to delete all rows from index. Only
-deleted 0 out of 1 rows`** — a DuckDB storage bug that can leave an index out of
-sync with its table on disk. Any UPDATE that rewrites the affected row (DuckDB
-turns an UPDATE that touches an indexed or FK-backed column into an internal
-DELETE+INSERT) then aborts. Reindexing repairs it; it changes no financial data.
-Run `tmoney db backup` first. (Status-only changes — reconcile, clear/unclear —
-already sidestep the bug with a narrow in-place update, so reconciling never
-needs a reindex; header/amount/transfer edits and voids do.)
+each from the table data. Use it when an edit, a void, or posting a scheduled
+transaction fails with **`FATAL Error: Invalid Input Error: Failed to delete all
+rows from index. Only deleted 0 out of 1 rows`** — a DuckDB storage bug that can
+leave an index out of sync with its table on disk. Any UPDATE that rewrites the
+affected row (DuckDB turns an UPDATE that touches an indexed or FK-backed column
+into an internal DELETE+INSERT) then aborts. Reindexing repairs it; it changes no
+financial data. Run `tmoney db backup` first.
+
+**Close the TUI before you run it** — the repair opens the file itself, and
+DuckDB's file lock refuses it while tmoney holds the file.
+
+Nothing is written when the error appears: the whole transaction rolls back, so
+there is no half-posted entry and no risk of a duplicate when you retry. The
+error does invalidate the open database handle, so quit and restart tmoney rather
+than continuing in that session.
+
+(Status-only changes — reconcile, clear/unclear — sidestep the bug with a narrow
+in-place update, so reconciling never needs a reindex; header/amount/transfer
+edits, voids, and the schedule advance that follows a post do.)
 
 ### Accounts
 

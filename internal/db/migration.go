@@ -13,7 +13,7 @@ import (
 var migrationsFS embed.FS
 
 // CurrentSchemaVersion is the latest schema version supported by this app.
-const CurrentSchemaVersion = 32
+const CurrentSchemaVersion = 33
 
 // Migrate runs all pending migrations on the database.
 // It reads the current schema_version and applies any migrations with a higher version.
@@ -125,7 +125,7 @@ func parseMigrationFilename(filename string) (int, string, error) {
 
 // runMigration executes a single migration within a transaction.
 func (db *DB) runMigration(m Migration) error {
-	tx, err := db.conn.Begin()
+	tx, err := db.live().Begin()
 	if err != nil {
 		return &DatabaseError{Op: "begin migration transaction", Err: err}
 	}

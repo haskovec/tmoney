@@ -24,6 +24,15 @@
 -- `tmoney db reindex`, which rebuilds every secondary index in autocommit --
 -- DuckDB aborts a CREATE INDEX issued inside a transaction, and migrations run
 -- inside one, so the rebuild cannot live here.
+--
+-- SUPERSEDED (migration 033): the CREATE-INDEX-in-a-transaction claim above does
+-- NOT hold on DuckDB 1.5.5, where that statement commits normally (measured; no
+-- attempt was made to confirm whether it ever held on an earlier version, so
+-- treat the original claim as unverified rather than as once-true). `db reindex`
+-- still runs in autocommit, and still cannot be a migration -- but because it is
+-- an on-demand repair rather than a one-time schema step, not because the DDL is
+-- refused. See internal/db/reindex.go for the current reasoning and its scope
+-- limit.
 
 DROP INDEX IF EXISTS idx_transactions_status;
 DROP INDEX IF EXISTS idx_reconciliation_sessions_status;
