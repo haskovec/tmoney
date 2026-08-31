@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -226,25 +227,38 @@ func (a *App) renderCorporateActionView() string {
 		sections = append(sections, "", a.styles.Muted.Render("  No corporate actions"))
 	}
 
-	body := lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n"))
+	// The details modal is composited by renderLayout's overlay cascade, not
+	// here: inside this body the 1-row header shifted it down by one, a
+	// menubar dropdown painted through it, and a short terminal clipped its
+	// bottom border and the esc hint clean off the screen.
+	return lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n"))
+}
 
-	// Overlay the details modal when set
-	if a.corporateActionDetail != nil {
-		overlay := a.renderCorporateActionDetails()
-		body = widget.OverlayCenter(body, overlay, a.width, a.height)
-	}
-
-	return body
+// corporateActionDetailWidth is the details overlay's total width, border
+// included. The renderer and the hit test share it so the two cannot drift.
+func corporateActionDetailWidth(screenWidth int) int {
+	return max(min(screenWidth-8, 70), 30)
 }
 
 // renderCorporateActionDetails renders the read-only details overlay.
 func (a *App) renderCorporateActionDetails() string {
 	ca := a.corporateActionDetail
-	overlayWidth := max(min(a.width-8, 70), 30)
-	innerWidth := overlayWidth - 4
+	// This used to be guarded by its caller inside renderCorporateActionView.
+	// It is called from the app-level cascade now, so it carries its own: the
+	// ticker lookups below dereference a.corporateActionView.secMap.
+	if ca == nil || a.corporateActionView == nil {
+		return ""
+	}
+	overlayWidth := corporateActionDetailWidth(a.width)
+	// Border (1 each side) plus padding (2 each side) — see OverlayBox in
+	// widget/styles.go. The previous overlayWidth-4 wrapped the separator.
+	innerWidth := max(overlayWidth-dialog.DialogHorizontalOverhead, 10)
 
 	var lines []string
-	lines = append(lines, a.styles.Title.Render("Action Details"))
+	title := a.styles.Title.Render("Action Details")
+	closeBtn := a.styles.Muted.Render("[x]")
+	titleGap := max(innerWidth-lipgloss.Width(title)-lipgloss.Width(closeBtn), 1)
+	lines = append(lines, title+strings.Repeat(" ", titleGap)+closeBtn)
 	lines = append(lines, a.styles.Muted.Render(strings.Repeat("─", innerWidth)))
 
 	ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActionView.secMap)
@@ -364,4 +378,45 @@ func (a *App) confirmDeleteCorporateAction(ca *investment.CorporateAction) {
 			return corporateActionDeletedMsg{}
 		},
 	)
+}
+
+// corporateActionDetailMouseAction maps a screen click to the read-only
+// details overlay. Only the title row's [x] does anything; every other click,
+// inside the panel or outside it, is inert — so the register underneath cannot
+// move while the modal is up.
+//
+// renderLayout composites this overlay with widget.OverlayCenter at app level,
+// so the transform is the standard one: OverlayTopLeft gives the panel's
+// top-left corner, then border (1) + h-padding (2) on X and border (1) +
+// v-padding (1) on Y reach the content band. Nothing offsets Y — that is the
+// point of moving the render out of renderCorporateActionView, where the
+// 1-row header added a permanent +1.
+func (a *App) corporateActionDetailMouseAction(x, y int) dialog.DialogAction {
+	overlay := a.renderCorporateActionDetails()
+	if overlay == "" {
+		return dialog.DialogActionNone
+	}
+	startCol, startRow := widget.OverlayTopLeft(overlay, a.width, a.height)
+	localX, localY := x-startCol-3, y-startRow-2
+	innerWidth := max(corporateActionDetailWidth(a.width)-dialog.DialogHorizontalOverhead, 10)
+	if localY == 0 && localX >= innerWidth-3 && localX < innerWidth {
+		return dialog.DialogActionCancel
+	}
+	return dialog.DialogActionNone
+}
+
+// handleCorporateActionDetailMouse closes the details overlay on a click on
+// its [x]. Wheel events reach here too (handleMouseWheel routes through
+// handleDialogMouse) and are swallowed: the overlay has no scroll surface and
+// the register behind it must not move.
+func (a *App) handleCorporateActionDetailMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	click, ok := msg.(tea.MouseClickMsg)
+	if !ok || click.Button != tea.MouseLeft {
+		return a, nil
+	}
+	m := msg.Mouse()
+	if a.corporateActionDetailMouseAction(m.X, m.Y) == dialog.DialogActionCancel {
+		a.corporateActionDetail = nil
+	}
+	return a, nil
 }

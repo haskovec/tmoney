@@ -1046,8 +1046,6 @@ func (a *App) handleSplitDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case dialog.DialogActionCancel:
 		a.closeSplitDialog()
 		return a, nil
-	case dialog.DialogActionAddNew:
-		return a.openCreateCategorySubDialogFromSplit()
 	}
 	return a, nil
 }

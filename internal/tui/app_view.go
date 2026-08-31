@@ -207,6 +207,20 @@ func (a *App) renderLayout() string {
 		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
+	// Overlay the read-only corporate-action details modal if visible. It
+	// lives in this app-level cascade rather than inside
+	// renderCorporateActionView's body so its geometry matches every other
+	// centred modal (one mouse transform covers them all), so a menubar
+	// dropdown cannot paint through the inside of the panel, and so the view
+	// body's height cannot clip it on a short terminal. The view guard stops
+	// a stale detail — set on the register, then a digit key switched views —
+	// from painting over an unrelated view.
+	if a.corporateActionDetail != nil && a.corporateActionView != nil &&
+		a.currentView == ViewCorporateActions {
+		overlay := a.renderCorporateActionDetails()
+		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
+	}
+
 	// Overlay spin-off dialog if visible
 	if a.spinOffDialog != nil && a.spinOffDialog.IsVisible() {
 		layout = a.overlayDialog(layout, a.spinOffDialog)

@@ -6,7 +6,10 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -167,6 +170,96 @@ func (a *App) handleMergerConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+// mergerConfirmButtonLabels are the overlay's action buttons in render order.
+// Shared by renderMergerConfirmation and the hit test so the two cannot drift.
+var mergerConfirmButtonLabels = []string{"Cancel", "Merge"}
+
+// mergerConfirmMouseAction maps a screen click to the overlay's interactive
+// elements: the title row's [x] and the two-button row at the bottom.
+// Everything else — the summary body, the affected-account block, the
+// separators, the keyboard hint, the border and padding ring, the gaps between
+// buttons — and everything outside the panel is inert. That mirrors
+// Dialog.HandleMouse, which returns no action for an out-of-bounds click; no
+// dialog in this app dismisses on a click outside.
+//
+// The overlay is re-rendered to measure it, the way helpOverlayCloseHit does,
+// so the geometry is read off exactly what app_view composited.
+func (a *App) mergerConfirmMouseAction(x, y int) dialog.DialogAction {
+	if a.mergerConfirmData == nil {
+		return dialog.DialogActionNone
+	}
+	overlay := a.renderMergerConfirmation()
+	if overlay == "" {
+		return dialog.DialogActionNone
+	}
+	lines := strings.Split(overlay, "\n")
+	overlayWidth := 0
+	for _, ln := range lines {
+		if w := lipgloss.Width(ln); w > overlayWidth {
+			overlayWidth = w
+		}
+	}
+	if overlayWidth == 0 {
+		return dialog.DialogActionNone
+	}
+	startCol, startRow := widget.OverlayTopLeft(overlay, a.width, a.height)
+
+	// Content-local offsets inside the panel. OverlayBox is a rounded border
+	// plus Padding(1, 2), so border (1) + h-padding (2) on X and border (1) +
+	// v-padding (1) on Y.
+	localX := x - startCol - 3
+	localY := y - startRow - 2
+	contentWidth := max(overlayWidth-dialog.DialogHorizontalOverhead, 10)
+	if localX < 0 || localX >= contentWidth || localY < 0 {
+		return dialog.DialogActionNone
+	}
+
+	// Title row: the [x] occupies the last three content columns.
+	if localY == 0 {
+		if localX >= contentWidth-3 {
+			return dialog.DialogActionCancel
+		}
+		return dialog.DialogActionNone
+	}
+
+	// The button row is the last content line. A render is border,
+	// padding-top, content..., padding-bottom, border — so the final content
+	// row is content-local len(lines)-5.
+	if localY == len(lines)-5 {
+		switch dialog.ButtonRowHitTest(mergerConfirmButtonLabels, localX, contentWidth) {
+		case 0:
+			return dialog.DialogActionCancel
+		case 1:
+			return dialog.DialogActionSubmit
+		}
+	}
+
+	return dialog.DialogActionNone
+}
+
+// handleMergerConfirmMouse routes a mouse event through the merger
+// confirmation overlay, mirroring handleMergerConfirmKey: the [x] and Cancel
+// close it without touching data, Merge runs the merger. Wheel events reach
+// here too (handleMouseWheel routes through handleDialogMouse) and are
+// ignored — the overlay has no scroll surface.
+func (a *App) handleMergerConfirmMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if a.mergerConfirmData == nil {
+		return a, nil
+	}
+	click, ok := msg.(tea.MouseClickMsg)
+	if !ok || click.Button != tea.MouseLeft {
+		return a, nil
+	}
+	m := msg.Mouse()
+	switch a.mergerConfirmMouseAction(m.X, m.Y) {
+	case dialog.DialogActionSubmit:
+		return a.executeMerger()
+	case dialog.DialogActionCancel:
+		a.closeMergerConfirmation()
+	}
+	return a, nil
+}
+
 // executeMerger executes the merger using the stored confirmation parameters.
 func (a *App) executeMerger() (tea.Model, tea.Cmd) {
 	params := a.mergerConfirmParams
@@ -206,12 +299,20 @@ func (a *App) renderMergerConfirmation() string {
 
 	data := a.mergerConfirmData
 	overlayWidth := max(min(a.width-8, 70), 30)
-	innerWidth := overlayWidth - 4
+	// Content width inside OverlayBox's border (1 each side) and padding
+	// (2 each side) — the same overhead a dialog panel has. The previous
+	// overlayWidth-4 was two columns too wide, so every separator wrapped
+	// onto a stub second row.
+	innerWidth := max(overlayWidth-dialog.DialogHorizontalOverhead, 10)
 
 	var sections []string
 
-	// Title
-	sections = append(sections, a.styles.Title.Render("Confirm Merger"))
+	// Title row, with the [x] close button right-aligned — the same three
+	// lines the split editor and the help overlay use.
+	title := a.styles.Title.Render("Confirm Merger")
+	closeBtn := a.styles.Muted.Render("[x]")
+	titleGap := max(innerWidth-lipgloss.Width(title)-lipgloss.Width(closeBtn), 1)
+	sections = append(sections, title+strings.Repeat(" ", titleGap)+closeBtn)
 
 	// Separator
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", innerWidth)))
@@ -259,8 +360,23 @@ func (a *App) renderMergerConfirmation() string {
 	sections = append(sections, "")
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", innerWidth)))
 
-	// Hint
+	// Hint, then the action buttons. The hint stays: it is the only place
+	// the y accelerator and the esc path are documented, and buttons show
+	// neither. Cancel comes first and Merge second, mirroring the No/Yes
+	// order showConfirmDialog uses for a destructive choice.
+	//
+	// Neither button renders focused. This overlay keeps no focus state and
+	// Enter always confirms, so a highlighted Cancel would imply Enter
+	// activates it — an actively dangerous lie.
 	sections = append(sections, a.styles.Muted.Render("  enter/y confirm  esc cancel"))
+	// The button row must stay the LAST content line: the hit test locates it
+	// from the rendered height rather than by counting sections, because the
+	// body grows with the account and lot count, and on a narrow terminal the
+	// hint itself wraps to two rows.
+	sections = append(sections, dialog.RenderButtonRow(a.styles, []dialog.ButtonSpec{
+		{Label: "Cancel"},
+		{Label: "Merge"},
+	}, innerWidth))
 
 	content := strings.Join(sections, "\n")
 

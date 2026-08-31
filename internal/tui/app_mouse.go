@@ -225,11 +225,12 @@ func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return a, a.schedulePriceListChartFetchIfActive()
 }
 
-// handleDialogMouse routes mouse events to the currently visible dialog.
-// For the remaining non-dialog.Dialog overlays (mergerConfirm,
-// corporateActionHistory), mouse events are blocked (returns no-op). The help
-// overlay accepts a click on its [x] close button, and the split editor routes
-// through handleSplitDialogMouse.
+// handleDialogMouse routes mouse events to the currently visible dialog. Every
+// overlay hit-tests now: the help overlay accepts a click on its [x], the
+// merger confirmation goes through handleMergerConfirmMouse, the
+// corporate-action details overlay through handleCorporateActionDetailMouse,
+// the split editor through handleSplitDialogMouse, and everything else is a
+// dialog.Dialog served by the cascade below.
 func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if a.showHelp {
 		if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
@@ -240,8 +241,13 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	}
-	if a.mergerConfirmData != nil || a.corporateActionDetail != nil {
-		return a, nil
+	// Merger confirmation first, mirroring handleKeyPress where
+	// mergerConfirmData claims keys ahead of the merger dialog.
+	if a.mergerConfirmData != nil {
+		return a.handleMergerConfirmMouse(msg)
+	}
+	if a.corporateActionDetail != nil {
+		return a.handleCorporateActionDetailMouse(msg)
 	}
 	if a.splitDialog != nil && a.splitDialog.IsVisible() {
 		return a.handleSplitDialogMouse(msg)
