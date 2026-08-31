@@ -2,6 +2,7 @@ package tui
 
 import (
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
@@ -1641,5 +1642,537 @@ func TestPaycheckFrequencyOptions_IncludesYearly(t *testing.T) {
 	st := scheduled.NewTransaction(fx.checkingID, scheduled.FrequencyYearly, types.Today())
 	if got := paycheckFrequencyIndexFor(st); got != yearlyIdx {
 		t.Errorf("paycheckFrequencyIndexFor(yearly) = %d, want %d", got, yearlyIdx)
+	}
+}
+
+// ===========================================================================
+// Edit-as-paycheck save path
+// ===========================================================================
+
+// paycheckEditEnv is a DB-backed harness for the Edit-as-paycheck round trip.
+// Only a real DB can tell an update apart from a create, which is exactly what
+// the duplicate-save bug turned on.
+type paycheckEditEnv struct {
+	app        *App
+	schedSvc   *scheduled.Service
+	accountSvc *account.Service
+
+	checking *account.Account
+	retire   *account.Account
+
+	categoryOptions []string
+	categoryIDs     []types.ID
+	accounts        []*account.Account
+	payees          []*payee.Payee
+}
+
+func newPaycheckEditEnv(t *testing.T) *paycheckEditEnv {
+	t.Helper()
+	database := dbtest.New(t)
+
+	accountRepo := account.NewRepository(database)
+	categoryRepo := category.NewRepository(database)
+	payeeRepo := payee.NewRepository(database)
+	schedRepo := scheduled.NewRepository(database)
+	txnRepo := transaction.NewRepository(database)
+	splitTxnRepo := transaction.NewSplitRepository(database)
+
+	txnSvc := transaction.NewService(txnRepo, splitTxnRepo, payeeRepo, accountRepo, nil, database)
+	schedSvc := scheduled.NewService(schedRepo, txnRepo, txnSvc, database, accountRepo)
+	schedSvc.SetTransferPort(transfer.NewService(txnRepo,
+		investment.NewRepository(database), transaction.NewSplitRepository(database), accountRepo,
+		category.NewRepository(database), database))
+	accountSvc := account.NewService(accountRepo, database)
+	payeeSvc := payee.NewService(payeeRepo, database)
+	categorySvc := category.NewService(categoryRepo, database)
+
+	checking := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(checking); err != nil {
+		t.Fatalf("create checking: %v", err)
+	}
+	retire := account.NewAccount("401k", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
+	if err := accountRepo.Create(retire); err != nil {
+		t.Fatalf("create 401k: %v", err)
+	}
+	if err := categorySvc.EnsurePaycheckCategories(); err != nil {
+		t.Fatalf("EnsurePaycheckCategories: %v", err)
+	}
+
+	accounts, err := accountSvc.List(true)
+	if err != nil {
+		t.Fatalf("list accounts: %v", err)
+	}
+	cats, err := categorySvc.List()
+	if err != nil {
+		t.Fatalf("list categories: %v", err)
+	}
+	categoryOptions, categoryIDs := buildCategoryOptions(cats)
+	payees, err := payeeSvc.List()
+	if err != nil {
+		t.Fatalf("list payees: %v", err)
+	}
+
+	app := &App{
+		currentView:     ViewDashboard,
+		width:           120,
+		height:          40,
+		keys:            defaultKeyMap(),
+		menubar:         widget.NewMenuBar(),
+		statusbar:       widget.NewStatusBar(),
+		sidebar:         NewSidebar(),
+		styles:          widget.NewStyles(),
+		accountSvc:      accountSvc,
+		payeeSvc:        payeeSvc,
+		categorySvc:     categorySvc,
+		scheduledTxnSvc: schedSvc,
+		transactionSvc:  txnSvc,
+		undoManager:     undo.NewManager(),
+	}
+
+	return &paycheckEditEnv{
+		app:             app,
+		schedSvc:        schedSvc,
+		accountSvc:      accountSvc,
+		checking:        checking,
+		retire:          retire,
+		categoryOptions: categoryOptions,
+		categoryIDs:     categoryIDs,
+		accounts:        accounts,
+		payees:          payees,
+	}
+}
+
+func (env *paycheckEditEnv) categoryID(t *testing.T, display string) types.ID {
+	t.Helper()
+	idx := indexOf(env.categoryOptions, display)
+	if idx <= 0 {
+		t.Fatalf("category %q missing from options: %v", display, env.categoryOptions)
+	}
+	return env.categoryIDs[idx]
+}
+
+// pcMoney parses a money literal for the paycheck edit tests.
+func pcMoney(t *testing.T, s string) types.Money {
+	t.Helper()
+	m, err := types.NewMoney(s)
+	if err != nil {
+		t.Fatalf("NewMoney(%q): %v", s, err)
+	}
+	return m
+}
+
+// tagged builds one wizard-shaped split.
+func tagged(t *testing.T, section PaycheckSection, catID types.ID, amount string) *scheduled.Split {
+	t.Helper()
+	sp := &scheduled.Split{
+		BaseModel:       types.NewBaseModel(),
+		Amount:          pcMoney(t, amount),
+		PaycheckSection: types.NullableString{String: section.tagString(), Valid: true},
+	}
+	if !catID.IsNil() {
+		sp.CategoryID = types.NullableID{ID: catID, Valid: true}
+	}
+	return sp
+}
+
+// seed persists a paycheck-shaped schedule: gross salary less federal, social
+// security and medicare, with a 401(k) transfer line.
+func (env *paycheckEditEnv) seed(t *testing.T) *scheduled.Transaction {
+	t.Helper()
+	splits := []*scheduled.Split{
+		tagged(t, PaycheckEarnings, env.categoryID(t, "Income > Salary"), "5000.00"),
+		tagged(t, PaycheckTax, env.categoryID(t, "Tax > Federal"), "-800.00"),
+		tagged(t, PaycheckTax, env.categoryID(t, "Tax > Social Security"), "-310.00"),
+		tagged(t, PaycheckTax, env.categoryID(t, "Tax > Medicare"), "-72.50"),
+	}
+	xfer := &scheduled.Split{
+		BaseModel:         types.NewBaseModel(),
+		Amount:            pcMoney(t, "-500.00"),
+		TransferAccountID: types.NullableID{ID: env.retire.ID, Valid: true},
+		PaycheckSection:   types.NullableString{String: PaycheckNetPayDestination.tagString(), Valid: true},
+	}
+	splits = append(splits, xfer)
+
+	st := scheduled.NewTransaction(env.checking.ID, scheduled.FrequencyFortnightly, types.NewDate(2026, time.June, 5))
+	total := types.ZeroMoney
+	for _, sp := range splits {
+		total = total.Add(sp.Amount)
+	}
+	st.SetAmount(total)
+	st.ClearCategory()
+	st.Splits = scheduled.SplitCollection(splits)
+	if err := env.schedSvc.Create(st); err != nil {
+		t.Fatalf("seed schedule: %v", err)
+	}
+	// Read back so the wizard sees exactly what the Edit Series dialog would.
+	stored, err := env.schedSvc.GetByID(st.ID)
+	if err != nil {
+		t.Fatalf("reload seeded schedule: %v", err)
+	}
+	return stored
+}
+
+// openEditor pre-fills the wizard from st, as Edit-as-paycheck does.
+func (env *paycheckEditEnv) openEditor(st *scheduled.Transaction) *PaycheckWizard {
+	env.app.paycheckWizard = NewPaycheckWizardFromSchedule(
+		st, env.accounts, env.payees, env.categoryOptions, env.categoryIDs)
+	return env.app.paycheckWizard
+}
+
+// submit runs the save and fails on an errMsg or a wizard left open.
+func (env *paycheckEditEnv) submit(t *testing.T) {
+	t.Helper()
+	model, cmd := env.app.submitPaycheckWizard()
+	app := model.(*App)
+	if app.paycheckWizard != nil {
+		t.Fatalf("wizard left open after save; errorMsg=%q", app.paycheckWizard.errorMsg)
+	}
+	if cmd == nil {
+		t.Fatal("submitPaycheckWizard returned no command")
+	}
+	switch msg := cmd().(type) {
+	case errMsg:
+		t.Fatalf("save returned error: %v", msg.err)
+	case scheduledDialogSavedMsg:
+	case nil:
+	default:
+		t.Fatalf("save returned unexpected message %T", msg)
+	}
+}
+
+// lineFor returns the row in section whose select shows display.
+func lineFor(t *testing.T, w *PaycheckWizard, section PaycheckSection, display string) *PaycheckLine {
+	t.Helper()
+	for _, line := range w.Sections()[section] {
+		opts := line.SelectField().Options
+		idx := line.SelectField().SelectedIndex
+		if idx >= 0 && idx < len(opts) && opts[idx] == display {
+			return line
+		}
+	}
+	t.Fatalf("no %v row selecting %q", section, display)
+	return nil
+}
+
+func (env *paycheckEditEnv) only(t *testing.T) *scheduled.Transaction {
+	t.Helper()
+	all, err := env.schedSvc.List()
+	if err != nil {
+		t.Fatalf("list schedules: %v", err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("got %d schedules, want exactly 1 — a second one means the edit saved a copy", len(all))
+	}
+	return all[0]
+}
+
+// TestPaycheckWizard_EditSave_UpdatesInPlace is the regression test for the
+// reported bug: editing a scheduled paycheck through Edit-as-paycheck saved a
+// second schedule, leaving two paychecks pending. The one-penny Medicare drift
+// is the change under test because it is the reported trigger.
+func TestPaycheckWizard_EditSave_UpdatesInPlace(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	seeded := env.seed(t)
+
+	w := env.openEditor(seeded)
+	if w.editSchedule == nil || w.editSchedule.ID != seeded.ID {
+		t.Fatalf("wizard did not record the schedule it was opened from")
+	}
+
+	medicare := lineFor(t, w, PaycheckTax, "Tax > Medicare")
+	medicare.AmountField().Value = "-72.51"
+
+	env.submit(t)
+
+	got := env.only(t)
+	if got.ID != seeded.ID {
+		t.Errorf("schedule ID = %v, want the edited one %v", got.ID, seeded.ID)
+	}
+	if want := pcMoney(t, "3317.49"); !got.Amount.Money.Equal(want) {
+		t.Errorf("parent amount = %s, want %s", got.Amount.Money.String(), want.String())
+	}
+	if len(got.Splits) != 5 {
+		t.Fatalf("got %d splits, want 5", len(got.Splits))
+	}
+	medicareID := env.categoryID(t, "Tax > Medicare")
+	found := false
+	for _, sp := range got.Splits {
+		if sp.CategoryID.Valid && sp.CategoryID.ID == medicareID {
+			found = true
+			if want := pcMoney(t, "-72.51"); !sp.Amount.Equal(want) {
+				t.Errorf("medicare amount = %s, want %s", sp.Amount.String(), want.String())
+			}
+		}
+		if !sp.PaycheckSection.Valid {
+			t.Errorf("split %v lost its paycheck_section tag", sp.ID)
+		}
+	}
+	if !found {
+		t.Error("medicare split missing after the edit")
+	}
+
+	// Undo restores the old amount and still leaves one schedule. A Create
+	// command would instead have deleted the copy and left the original edited.
+	if desc, err := env.app.undoManager.Undo(); err != nil {
+		t.Fatalf("undo (%s): %v", desc, err)
+	}
+	restored := env.only(t)
+	if want := pcMoney(t, "3317.50"); !restored.Amount.Money.Equal(want) {
+		t.Errorf("after undo parent amount = %s, want %s", restored.Amount.Money.String(), want.String())
+	}
+}
+
+// TestPaycheckWizard_EditSave_PreservesUnexposedFields covers the fields the
+// wizard has no widget for. Rebuilding the record instead of mutating it would
+// silently reset every one of them.
+func TestPaycheckWizard_EditSave_PreservesUnexposedFields(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	seeded := env.seed(t)
+
+	seeded.Interval = 2
+	seeded.SetAutoPost(true)
+	seeded.SetPostLeadDays(3)
+	seeded.SetOccurrences(26)
+	seeded.SetAmountEstimateCount(4)
+	if err := env.schedSvc.Update(seeded); err != nil {
+		t.Fatalf("prime unexposed fields: %v", err)
+	}
+	seeded, err := env.schedSvc.GetByID(seeded.ID)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	wantStart := seeded.StartDate
+	wantRemaining := seeded.OccurrencesRemaining
+
+	w := env.openEditor(seeded)
+	lineFor(t, w, PaycheckTax, "Tax > Medicare").AmountField().Value = "-72.51"
+	env.submit(t)
+
+	got := env.only(t)
+	if got.Interval != 2 {
+		t.Errorf("Interval = %d, want 2", got.Interval)
+	}
+	if !got.AutoPost {
+		t.Error("AutoPost was reset to false")
+	}
+	if got.PostLeadDays != 3 {
+		t.Errorf("PostLeadDays = %d, want 3", got.PostLeadDays)
+	}
+	if !got.Occurrences.Valid || got.Occurrences.Int64 != 26 {
+		t.Errorf("Occurrences = %+v, want 26", got.Occurrences)
+	}
+	if got.OccurrencesRemaining != wantRemaining {
+		t.Errorf("OccurrencesRemaining = %+v, want %+v", got.OccurrencesRemaining, wantRemaining)
+	}
+	if !got.AmountEstimateCount.Valid || got.AmountEstimateCount.Int64 != 4 {
+		t.Errorf("AmountEstimateCount = %+v, want 4", got.AmountEstimateCount)
+	}
+	if got.StartDate != wantStart {
+		t.Errorf("StartDate = %v, want the stored anchor %v", got.StartDate, wantStart)
+	}
+}
+
+// TestPaycheckWizard_EditSave_FrequencyChangeClearsStaleDays covers the trap in
+// mutating a record in place: switching away from a semi-monthly preset must
+// drop its day pair, or calculateNextDate keeps pinning Monthly occurrences to
+// the old payday.
+func TestPaycheckWizard_EditSave_FrequencyChangeClearsStaleDays(t *testing.T) {
+	semiMonthlyIdx, fortnightlyIdx, monthlyIdx := -1, -1, -1
+	for i, opt := range paycheckFrequencyOptions {
+		switch {
+		case opt.frequency == scheduled.FrequencySemiMonthly && opt.dayOfMonth == 15:
+			semiMonthlyIdx = i
+		case opt.frequency == scheduled.FrequencyFortnightly:
+			fortnightlyIdx = i
+		case opt.frequency == scheduled.FrequencyMonthly:
+			monthlyIdx = i
+		}
+	}
+	if semiMonthlyIdx < 0 || fortnightlyIdx < 0 || monthlyIdx < 0 {
+		t.Fatalf("picker indices unresolved: semi=%d fortnightly=%d monthly=%d",
+			semiMonthlyIdx, fortnightlyIdx, monthlyIdx)
+	}
+
+	tests := []struct {
+		name          string
+		toIdx         int
+		wantFrequency scheduled.Frequency
+		wantDay       bool
+	}{
+		{"to fortnightly clears both days", fortnightlyIdx, scheduled.FrequencyFortnightly, false},
+		{"to monthly clears both days", monthlyIdx, scheduled.FrequencyMonthly, false},
+		{"staying semi-monthly keeps them", semiMonthlyIdx, scheduled.FrequencySemiMonthly, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newPaycheckEditEnv(t)
+			seeded := env.seed(t)
+
+			// Put the schedule on the 15th & last-day semi-monthly preset.
+			w := env.openEditor(seeded)
+			w.Frequency().SelectedIndex = semiMonthlyIdx
+			env.submit(t)
+			seeded = env.only(t)
+			if !seeded.DayOfMonth.Valid || !seeded.SecondaryDayOfMonth.Valid {
+				t.Fatalf("setup did not store the semi-monthly day pair: %+v / %+v",
+					seeded.DayOfMonth, seeded.SecondaryDayOfMonth)
+			}
+
+			w = env.openEditor(seeded)
+			w.Frequency().SelectedIndex = tc.toIdx
+			env.submit(t)
+
+			got := env.only(t)
+			if got.Frequency != tc.wantFrequency {
+				t.Errorf("Frequency = %s, want %s", got.Frequency, tc.wantFrequency)
+			}
+			if got.DayOfMonth.Valid != tc.wantDay {
+				t.Errorf("DayOfMonth.Valid = %v, want %v (value %+v)",
+					got.DayOfMonth.Valid, tc.wantDay, got.DayOfMonth)
+			}
+			if got.SecondaryDayOfMonth.Valid != tc.wantDay {
+				t.Errorf("SecondaryDayOfMonth.Valid = %v, want %v (value %+v)",
+					got.SecondaryDayOfMonth.Valid, tc.wantDay, got.SecondaryDayOfMonth)
+			}
+		})
+	}
+}
+
+// TestPaycheckWizard_EditSave_RoundTripsLinesAndMemos checks that an untouched
+// row survives the round trip: the transfer line keeps its destination, per-line
+// notes and the parent memo persist, and blanking the memo clears it.
+func TestPaycheckWizard_EditSave_RoundTripsLinesAndMemos(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	seeded := env.seed(t)
+	seeded.SetMemo("Semi-monthly pay")
+	if err := env.schedSvc.Update(seeded); err != nil {
+		t.Fatalf("set memo: %v", err)
+	}
+	seeded, err := env.schedSvc.GetByID(seeded.ID)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+
+	w := env.openEditor(seeded)
+	if got := w.Memo().Value; got != "Semi-monthly pay" {
+		t.Errorf("memo pre-fill = %q, want %q", got, "Semi-monthly pay")
+	}
+	xfer := w.AdditionalTransfers()
+	if len(xfer) != 1 {
+		t.Fatalf("got %d net-pay rows, want 1", len(xfer))
+	}
+	if !xfer[0].IsTransfer() {
+		t.Fatal("the 401k row did not round-trip as a transfer line")
+	}
+	xfer[0].NotesField().Value = "Employee deferral"
+	env.submit(t)
+
+	got := env.only(t)
+	if !got.Memo.Valid || got.Memo.String != "Semi-monthly pay" {
+		t.Errorf("parent memo = %+v, want it preserved", got.Memo)
+	}
+	var transferSplit *scheduled.Split
+	for _, sp := range got.Splits {
+		if sp.TransferAccountID.Valid {
+			transferSplit = sp
+		}
+	}
+	if transferSplit == nil {
+		t.Fatal("transfer split lost on save")
+	}
+	if transferSplit.TransferAccountID.ID != env.retire.ID {
+		t.Errorf("transfer destination = %v, want 401k %v", transferSplit.TransferAccountID.ID, env.retire.ID)
+	}
+	if !transferSplit.Memo.Valid || transferSplit.Memo.String != "Employee deferral" {
+		t.Errorf("transfer line memo = %+v, want %q", transferSplit.Memo, "Employee deferral")
+	}
+
+	// Blanking the parent memo must clear it, not be ignored.
+	w = env.openEditor(got)
+	w.Memo().Value = ""
+	env.submit(t)
+	if cleared := env.only(t); cleared.Memo.Valid {
+		t.Errorf("blanking the memo left %+v", cleared.Memo)
+	}
+}
+
+// TestPaycheckWizard_EditSave_NextPaydayWritesNextDate pins which date field the
+// wizard owns. The pre-fill seeds "Next payday" from NextDate, so a save must
+// write NextDate and leave the StartDate anchor alone.
+func TestPaycheckWizard_EditSave_NextPaydayWritesNextDate(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	seeded := env.seed(t)
+	wantStart := seeded.StartDate
+
+	w := env.openEditor(seeded)
+	if got, want := w.NextPayday().Value, seeded.NextDate.Time().Format("01/02/2006"); got != want {
+		t.Fatalf("next payday pre-fill = %q, want %q", got, want)
+	}
+	w.NextPayday().Value = "07/17/2026"
+	env.submit(t)
+
+	got := env.only(t)
+	if want := types.NewDate(2026, time.July, 17); got.NextDate != want {
+		t.Errorf("NextDate = %v, want %v", got.NextDate, want)
+	}
+	if got.StartDate != wantStart {
+		t.Errorf("StartDate = %v, want the untouched anchor %v", got.StartDate, wantStart)
+	}
+}
+
+// TestPaycheckWizard_Prefill_AnchorsCursor guards the pre-fill cursor. Assigning
+// Field.Value leaves the cursor at 0, which makes Backspace a dead key and makes
+// typed characters prepend — so a pre-filled row could not be edited at all.
+func TestPaycheckWizard_Prefill_AnchorsCursor(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	w := env.openEditor(env.seed(t))
+
+	medicare := lineFor(t, w, PaycheckTax, "Tax > Medicare")
+	prefilled := medicare.AmountField().Value
+	if prefilled == "" {
+		t.Fatal("medicare amount was not pre-filled")
+	}
+	if got, want := medicare.AmountField().CursorPos(), len([]rune(prefilled)); got != want {
+		t.Errorf("cursor at %d, want %d (end of %q)", got, want, prefilled)
+	}
+
+	// Backspace then type: the edit must land at the end, not the front.
+	medicare.AmountField().DeleteBack()
+	medicare.AmountField().InsertChar('1')
+	want := prefilled[:len(prefilled)-1] + "1"
+	if got := medicare.AmountField().Value; got != want {
+		t.Errorf("after backspace+type value = %q, want %q", got, want)
+	}
+}
+
+// TestPaycheckWizard_EditAsPaycheck_RefusesClosedAccount covers the guard: the
+// wizard's pickers only list active accounts, so a closed one would silently
+// re-point the schedule on save.
+func TestPaycheckWizard_EditAsPaycheck_RefusesClosedAccount(t *testing.T) {
+	env := newPaycheckEditEnv(t)
+	seeded := env.seed(t)
+
+	if missingAccountForPaycheckEdit(seeded, env.accounts) {
+		t.Fatal("a schedule on two active accounts should be editable")
+	}
+
+	// close closes the account the wizard would build its pickers from.
+	close := func(id types.ID, active bool) {
+		for _, acct := range env.accounts {
+			if acct != nil && acct.ID == id {
+				acct.Active = active
+			}
+		}
+	}
+
+	close(env.retire.ID, false)
+	if !missingAccountForPaycheckEdit(seeded, env.accounts) {
+		t.Error("a closed transfer destination should block Edit-as-paycheck")
+	}
+	close(env.retire.ID, true)
+
+	close(env.checking.ID, false)
+	if !missingAccountForPaycheckEdit(seeded, env.accounts) {
+		t.Error("a closed deposit account should block Edit-as-paycheck")
 	}
 }

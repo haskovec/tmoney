@@ -78,6 +78,14 @@ type PaycheckWizard struct {
 	// errorMsg surfaces validation failures inline.
 	errorMsg string
 
+	// editSchedule is the schedule this wizard was launched from via
+	// Edit-as-paycheck. nil means create mode. In edit mode the save path
+	// mutates this record in place and dispatches an Edit command, so the
+	// schedule keeps its identity and every field the wizard has no widget
+	// for (interval, end date, occurrences + remaining, auto-post, lead
+	// days, amount-estimate count) survives the save.
+	editSchedule *scheduled.Transaction
+
 	// hitZones records click targets in content-local coordinates,
 	// rebuilt on each Render so HandleMouse can dispatch clicks to
 	// the matching focusable.
@@ -335,6 +343,20 @@ func paycheckFrequencyIndexFor(st *scheduled.Transaction) int {
 		return i
 	}
 	return defaultPaycheckFrequencyIndex
+}
+
+// prefillField sets a field's text and anchors the cursor after it. Assigning
+// Field.Value directly leaves cursorPos at 0, which makes Backspace a dead key
+// (Field.DeleteBack returns early while cursorPos <= 0) and makes every typed
+// character prepend — so a pre-filled row could not be edited, only retyped.
+// MoveCursorEnd is a no-op on anything but a text field, which is right for the
+// masked date field: it overwrites digits from the first one.
+func prefillField(f *dialog.Field, value string) {
+	if f == nil {
+		return
+	}
+	f.Value = value
+	f.MoveCursorEnd()
 }
 
 // findCategoryOptionIndex returns the index of displayName in
@@ -807,7 +829,11 @@ func (w *PaycheckWizard) Render(styles widget.Styles) string {
 
 	// Title row with [x] close button on the right.
 	closeBtn := styles.Muted.Render("[x]")
-	titleText := styles.DialogTitle.Render("Paycheck Schedule")
+	title := "Paycheck Schedule"
+	if w.editSchedule != nil {
+		title = "Edit Paycheck Schedule"
+	}
+	titleText := styles.DialogTitle.Render(title)
 	titleGap := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(closeBtn), 1)
 	addLine(titleText + gap(titleGap) + closeBtn)
 	// Hit zone for [x]: same row as title, right edge.
@@ -1515,6 +1541,10 @@ func (a *App) handlePaycheckWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 
 // submitPaycheckWizard validates the wizard's state and persists the
 // schedule. Validation errors leave the wizard open with errorMsg set.
+//
+// A wizard opened by Edit-as-paycheck carries the schedule it came from, and
+// then this updates that record instead of creating a second one — which is
+// what "two paychecks pending after one edit" was.
 func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 	w := a.paycheckWizard
 	if w == nil {
@@ -1527,7 +1557,7 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	startDate, err := parseDateInput(w.nextPaydayField.Value)
+	nextDate, err := parseDateInput(w.nextPaydayField.Value)
 	if err != nil {
 		w.errorMsg = "Next payday: invalid date (MM/DD/YYYY)"
 		return a, nil
@@ -1551,10 +1581,16 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 
 	employer := strings.TrimSpace(w.employerField.Value)
 	memo := strings.TrimSpace(w.memoField.Value)
+	// Read the edit target before closing the wizard clears it.
+	existing := w.editSchedule
 
 	a.closePaycheckWizard()
 
 	return a, func() tea.Msg {
+		if a.undoManager == nil || a.scheduledTxnSvc == nil {
+			return errMsg{err: fmt.Errorf("services not available")}
+		}
+
 		var payeeID types.ID
 		if employer != "" && a.payeeSvc != nil {
 			py, _, err := a.payeeSvc.GetOrCreate(employer)
@@ -1564,27 +1600,69 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 			payeeID = py.ID
 		}
 
-		if a.undoManager == nil {
-			return errMsg{err: fmt.Errorf("undo manager not available")}
-		}
+		// applyWizard writes every field the wizard owns — in both directions —
+		// and nothing else. Both the create and the edit path run it, so the
+		// two cannot drift: on a fresh record each clear is a no-op, and on an
+		// existing one each clear is the whole point.
+		//
+		// It deliberately leaves Interval, EndDate, Occurrences,
+		// OccurrencesRemaining, AutoPost, PostLeadDays and AmountEstimateCount
+		// alone. The wizard has no widget for any of them, so an edit must
+		// preserve what is stored. Do not "reset them to be safe" either:
+		// SetEndDate clears Occurrences and SetOccurrences clears EndDate.
+		applyWizard := func(st *scheduled.Transaction) {
+			st.AccountID = accountID
+			st.Frequency = freqOpt.frequency
 
-		st := scheduled.NewTransaction(accountID, freqOpt.frequency, startDate)
-		if freqOpt.dayOfMonth != 0 {
-			st.DayOfMonth = types.NullableInt{Int64: int64(freqOpt.dayOfMonth), Valid: true}
-		}
-		if freqOpt.secondaryDayOfMonth != 0 {
-			st.SecondaryDayOfMonth = types.NullableInt{Int64: int64(freqOpt.secondaryDayOfMonth), Valid: true}
-		}
-		st.SetAmount(parentAmount)
-		if !payeeID.IsNil() {
-			st.SetPayee(payeeID)
-		}
-		st.ClearCategory()
-		if memo != "" {
+			// Set or clear, never just set: only the two semi-monthly presets
+			// carry days, so switching away from semi-monthly has to drop the
+			// stale pair. A leftover DayOfMonth would pin every future
+			// occurrence of a Monthly schedule to the old payday.
+			if freqOpt.dayOfMonth != 0 {
+				st.SetDayOfMonth(freqOpt.dayOfMonth)
+			} else {
+				st.ClearDayOfMonth()
+			}
+			// There is no SetSecondaryDayOfMonth/ClearSecondaryDayOfMonth helper.
+			st.SecondaryDayOfMonth = types.NullableInt{
+				Int64: int64(freqOpt.secondaryDayOfMonth),
+				Valid: freqOpt.secondaryDayOfMonth != 0,
+			}
+
+			// The field is labelled "Next payday" and is pre-filled from
+			// NextDate, so NextDate is what it writes. StartDate is the
+			// historical anchor and stays as loaded — except when the user
+			// moves the next payday behind it, which Service.Update would
+			// otherwise snap straight back and swallow the edit.
+			st.NextDate = nextDate
+			if st.NextDate.Before(st.StartDate) {
+				st.StartDate = st.NextDate
+			}
+
+			st.SetAmount(parentAmount)
+			if !payeeID.IsNil() {
+				st.SetPayee(payeeID)
+			} else {
+				st.ClearPayee()
+			}
+			// A multi-line parent carries no scalar category.
+			st.ClearCategory()
+			// SetMemo("") clears, so blanking the field is honoured.
 			st.SetMemo(memo)
+			st.Splits = scheduled.SplitCollection(splits)
 		}
-		st.Splits = scheduled.SplitCollection(splits)
 
+		if existing != nil {
+			applyWizard(existing)
+			cmd := undo.NewEditScheduledTransactionCommand(a.scheduledTxnSvc, existing)
+			if err := a.undoManager.Execute(cmd); err != nil {
+				return errMsg{err: fmt.Errorf("failed to update scheduled transaction: %w", err)}
+			}
+			return scheduledDialogSavedMsg{}
+		}
+
+		st := scheduled.NewTransaction(accountID, freqOpt.frequency, nextDate)
+		applyWizard(st)
 		cmd := undo.NewCreateScheduledTransactionCommand(a.scheduledTxnSvc, st)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}
@@ -1786,6 +1864,9 @@ func NewPaycheckWizardFromSchedule(
 	if st == nil {
 		return w
 	}
+	// Remember which schedule this is: the save path edits this record in
+	// place rather than creating a second one.
+	w.editSchedule = st
 
 	// Drop the v2 default-seeded rows — the schedule's tagged splits are
 	// the only content; defaults must not be appended on top.
@@ -1799,14 +1880,14 @@ func NewPaycheckWizardFromSchedule(
 				continue
 			}
 			if p.ID == st.PayeeID.ID {
-				w.employerField.Value = p.Name
+				prefillField(w.employerField, p.Name)
 				break
 			}
 		}
 	}
 
 	w.frequencyField.SelectedIndex = paycheckFrequencyIndexFor(st)
-	w.nextPaydayField.Value = st.NextDate.Time().Format("01/02/2006")
+	prefillField(w.nextPaydayField, st.NextDate.Time().Format("01/02/2006"))
 
 	for i := range w.accountField.Options {
 		if i >= len(w.accountIDs) {
@@ -1819,14 +1900,7 @@ func NewPaycheckWizardFromSchedule(
 	}
 
 	if st.Memo.Valid {
-		w.memoField.Value = st.Memo.String
-	}
-
-	categoryNameByID := make(map[types.ID]string, len(categoryIDs))
-	for i, id := range categoryIDs {
-		if i < len(categoryOptions) {
-			categoryNameByID[id] = categoryOptions[i]
-		}
+		prefillField(w.memoField, st.Memo.String)
 	}
 
 	for _, sp := range st.Splits {
@@ -1847,17 +1921,22 @@ func NewPaycheckWizardFromSchedule(
 				}
 			}
 		} else if sp.CategoryID.Valid {
-			name := categoryNameByID[sp.CategoryID.ID]
-			if idx := findCategoryOptionIndex(w.categoryOptions, name); idx > 0 {
-				selectIdx = idx
+			// Match on the ID, not the display name: two options can render
+			// the same name (a subcategory under a system parent is shown
+			// bare), and a name miss silently re-points the row at "(None)".
+			for i, id := range w.categoryIDs {
+				if id == sp.CategoryID.ID {
+					selectIdx = i
+					break
+				}
 			}
 		}
 
 		line := w.AddRow(section)
 		line.selectField.SelectedIndex = selectIdx
-		line.amountField.Value = sp.Amount.String()
+		prefillField(line.amountField, sp.Amount.String())
 		if sp.Memo.Valid {
-			line.notesField.Value = sp.Memo.String
+			prefillField(line.notesField, sp.Memo.String)
 		}
 	}
 
@@ -1879,7 +1958,49 @@ func (a *App) relaunchAsPaycheckWizard() (tea.Model, tea.Cmd) {
 	categoryOptions := a.schedDialogCategoryOptions
 	categoryIDs := a.schedDialogCategoryIDs
 
+	// Refuse rather than pre-fill wrong. The wizard's pickers only offer
+	// active accounts, so a closed deposit account would silently resolve to
+	// the first active one and a closed transfer destination to "(None)" —
+	// and saving now rewrites the live schedule rather than misfiling a
+	// duplicate.
+	if missingAccountForPaycheckEdit(st, accounts) {
+		if a.statusbar != nil {
+			a.statusbar.SetToast(
+				"This paycheck uses a closed account. Reopen the account to edit it as a paycheck.",
+				widget.NotificationAlert,
+			)
+		}
+		return a, widget.ClearToastCmd()
+	}
+
 	a.closeScheduledDialog()
 	a.paycheckWizard = NewPaycheckWizardFromSchedule(st, accounts, payees, categoryOptions, categoryIDs)
 	return a, nil
+}
+
+// missingAccountForPaycheckEdit reports whether st names an account the
+// paycheck wizard's pickers would not contain — its deposit account or any
+// transfer-line destination. The candidate set comes from the same helper the
+// wizard builds its pickers from, so the two cannot disagree.
+func missingAccountForPaycheckEdit(st *scheduled.Transaction, accounts []*account.Account) bool {
+	if st == nil {
+		return false
+	}
+	_, ids := buildSplitTransferAccountOptions(accounts)
+	offered := make(map[types.ID]bool, len(ids))
+	for _, id := range ids {
+		offered[id] = true
+	}
+	if !offered[st.AccountID] {
+		return true
+	}
+	for _, sp := range st.Splits {
+		if sp == nil || !sp.TransferAccountID.Valid {
+			continue
+		}
+		if !offered[sp.TransferAccountID.ID] {
+			return true
+		}
+	}
+	return false
 }
