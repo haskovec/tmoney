@@ -107,6 +107,84 @@ func TestParseCSV_SplitTransactions(t *testing.T) {
 	}
 }
 
+func TestParseCSV_SplitShapeWithoutMatchingSumStaysSeparate(t *testing.T) {
+	// Same date, account and payee, first row uncategorized — the exporter's
+	// shape — but -40 + -30 ≠ -50. These are three purchases, not one split.
+	input := `Date,Account,Payee,Category,Amount,Memo,Check Number,Status,Transfer Account
+2024-01-15,Checking,Amazon,,-50.00,,,C,
+2024-01-15,Checking,Amazon,Books,-40.00,,,C,
+2024-01-15,Checking,Amazon,Household,-30.00,,,C,
+2024-01-16,Checking,Kroger,Food,-20.00,,,C,
+`
+
+	result, err := ParseCSV(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseCSV() error = %v", err)
+	}
+	if result.HasErrors() {
+		t.Fatalf("ParseCSV() had errors: %v", result.Errors)
+	}
+
+	if len(result.Records) != 4 {
+		t.Fatalf("expected 4 separate records, got %d", len(result.Records))
+	}
+	for i, rec := range result.Records {
+		if rec.IsSplit() {
+			t.Errorf("record %d should not be a split", i)
+		}
+	}
+	// Order is preserved.
+	if result.Records[1].Category != "Books" || result.Records[3].Payee != "Kroger" {
+		t.Errorf("records out of order: %+v", result.Records)
+	}
+}
+
+func TestParseCSV_TwoUncategorizedRowsAreNotASplit(t *testing.T) {
+	// Two ATM withdrawals on one day: identical date, account and payee, both
+	// without a category. Neither is a split line of the other.
+	input := `Date,Account,Payee,Category,Amount,Memo,Check Number,Status,Transfer Account
+2024-01-15,Checking,ATM,,-100.00,,,C,
+2024-01-15,Checking,ATM,,-100.00,,,C,
+`
+
+	result, err := ParseCSV(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseCSV() error = %v", err)
+	}
+	if result.HasErrors() {
+		t.Fatalf("ParseCSV() had errors: %v", result.Errors)
+	}
+
+	if len(result.Records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(result.Records))
+	}
+	for i, rec := range result.Records {
+		if rec.IsSplit() {
+			t.Errorf("record %d should not be a split", i)
+		}
+	}
+}
+
+func TestParseCSV_UncategorizedLastRowIsKept(t *testing.T) {
+	// A trailing uncategorized row opens a split run that never gets lines; it
+	// must still be emitted at end of file.
+	input := `Date,Account,Payee,Category,Amount,Memo,Check Number,Status,Transfer Account
+2024-01-15,Checking,Kroger,Food,-20.00,,,C,
+2024-01-16,Checking,Unknown,,-5.00,,,C,
+`
+
+	result, err := ParseCSV(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseCSV() error = %v", err)
+	}
+	if len(result.Records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(result.Records))
+	}
+	if result.Records[1].Payee != "Unknown" {
+		t.Errorf("last record payee = %q, want Unknown", result.Records[1].Payee)
+	}
+}
+
 func TestParseCSV_CaseInsensitiveHeaders(t *testing.T) {
 	input := `date,account,payee,category,amount,memo,check number,status,transfer account
 2024-01-15,Checking,Kroger,Food,-50.00,,,,

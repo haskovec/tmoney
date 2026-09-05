@@ -658,8 +658,8 @@ func TestExportService_Export_QIF(t *testing.T) {
 	if !strings.Contains(output, "PCoffee Shop") {
 		t.Errorf("QIF output missing payee, got:\n%s", output)
 	}
-	if !strings.Contains(output, "CX") {
-		t.Errorf("QIF output missing cleared status, got:\n%s", output)
+	if !strings.Contains(output, "C*") {
+		t.Errorf("QIF output missing cleared status (Quicken writes * for cleared), got:\n%s", output)
 	}
 	if !strings.Contains(output, "^") {
 		t.Error("QIF output missing record separator")

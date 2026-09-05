@@ -72,25 +72,31 @@ func formatQIFDate(isoDate string) string {
 	return t.Format("01/02/2006")
 }
 
-// qifStatusToImport converts QIF cleared status to import status.
+// qifStatusToImport converts a QIF `C` field to an import status code.
+//
+// Quicken's convention: `*` or `c` marks a CLEARED transaction, `X` or `R` a
+// RECONCILED one. An earlier version of this table had the two swapped; export
+// and import agreed with each other, so round trips passed while every file
+// exchanged with Quicken, GnuCash or KMyMoney came in with the statuses inverted.
 func qifStatusToImport(s string) string {
 	switch strings.TrimSpace(s) {
-	case "X", "x":
+	case "*", "c":
 		return "C" // Cleared
-	case "*":
+	case "X", "x", "R", "r":
 		return "R" // Reconciled
 	default:
 		return "U" // Uncleared
 	}
 }
 
-// exportStatusToQIF converts export status to QIF cleared status.
+// exportStatusToQIF converts an export status code to a QIF `C` field value.
+// See qifStatusToImport for the convention.
 func exportStatusToQIF(s string) string {
 	switch s {
 	case "C":
-		return "X"
-	case "R":
 		return "*"
+	case "R":
+		return "X"
 	default:
 		return ""
 	}
