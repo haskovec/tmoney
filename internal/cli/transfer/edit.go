@@ -183,7 +183,7 @@ func runTransferEdit(opts *transferEditOptions, w io.Writer) error {
 		}
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
 

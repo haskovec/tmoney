@@ -141,6 +141,6 @@ func runTransferAdd(opts *transferAddOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Category:              %s\n", strings.TrimSpace(opts.category))
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

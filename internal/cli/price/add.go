@@ -126,6 +126,6 @@ func runPriceAdd(opts *priceAddOptions, w io.Writer) error {
 
 	fmt.Fprintf(w, "Price added for %s on %s: %s (source %s)\n", cmdutil.SecurityRef(sec.Ticker, sec.Name), priceDate.String(), cmdutil.FormatMoney(priceAmount, sec.Currency), source)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

@@ -156,6 +156,21 @@ func Create(path string) (*DB, error) {
 }
 
 // Close closes the database connection.
+//
+// Close is what makes a file-level backup of this database valid, and it is the
+// ONLY thing that does. DuckDB keeps committed writes in <path>.wal until a
+// checkpoint, and it checkpoints on its own only when the WAL passes a size
+// threshold or the database closes — so a copy of the file taken while it is
+// open silently misses everything still in the WAL. On Windows it does not even
+// get that far: DuckDB holds the file with a share mode that makes os.Open on it
+// fail with "being used by another process". Every backup path therefore closes
+// first, copies, and (where the app keeps running) reopens.
+//
+// The closed pool stays published rather than being replaced by nil. A caller
+// that still holds the *DB — a TUI tea.Cmd goroutine that started a read just
+// before a restore, backup or database switch closed it — then gets "sql:
+// database is closed" from its next statement instead of a nil-pointer panic.
+// sql.DB.Close is idempotent, so a second Close is harmless.
 func (db *DB) Close() error {
 	db.connMu.Lock()
 	defer db.connMu.Unlock()
@@ -163,9 +178,7 @@ func (db *DB) Close() error {
 	if db.conn == nil {
 		return nil
 	}
-	err := db.conn.Close()
-	db.conn = nil
-	return err
+	return db.conn.Close()
 }
 
 // reconnect closes and reopens the database connection.

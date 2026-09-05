@@ -175,7 +175,7 @@ func runImport(opts *importOptions, w io.Writer) error {
 	// Print execution summary
 	printImportResult(w, opts.importFile, opts.account, result)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
 

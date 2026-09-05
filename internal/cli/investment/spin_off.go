@@ -132,6 +132,6 @@ func runInvestmentSpinOff(opts *investmentSpinOffOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Spin-off Price: %s\n", cmdutil.FormatMoney(spinPrice, "USD"))
 	fmt.Fprintf(w, "  Action ID: %s\n", action.ID.String())
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

@@ -194,7 +194,7 @@ func runInvestmentEdit(opts *investmentEditOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  New ID:   %s\n", newTxn.ID.String())
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
 

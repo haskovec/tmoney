@@ -128,6 +128,6 @@ func runInvestmentTransfer(opts *investmentTransferOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
 	fmt.Fprintf(w, "  Shares:   %s\n", shares.String())
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

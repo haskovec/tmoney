@@ -123,33 +123,42 @@ func ListBackups(dbPath string) ([]BackupInfo, error) {
 }
 
 // Restore replaces the database file with the specified backup file using a
-// safe process: copy to temp, verify, swap, cleanup.
-// A safety backup of the current state is created first.
+// safe process: copy to temp, safety-backup the current state, swap, cleanup.
+//
+// The database at dbPath must be CLOSED when this runs. On Windows the rename of
+// an open file fails outright; on other platforms it succeeds, but DuckDB caches
+// instances by path, so a reopen would hand back the still-open OLD instance and
+// the restored file would never be read.
 func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	// Verify backup file exists
 	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("backup file not found: %s", backupPath)
 	}
 
-	// Create a safety backup of the current state
-	safetyPath, err := CreateAutoBackup(dbPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create safety backup before restore: %w", err)
-	}
-
 	// Safe restore process:
-	// 1. Copy backup to a temp file in the same directory
+	// 1. Copy backup to a temp file in the same directory. This runs BEFORE the
+	//    safety backup on purpose: the safety backup is an auto-backup, and
+	//    auto-backups enforce rolling retention. When the file being restored is
+	//    itself the oldest of a full set of auto-backups, retention deletes it —
+	//    so the copy has to be in hand before retention can run.
 	dir := filepath.Dir(dbPath)
 	tempFile, err := os.CreateTemp(dir, "tmoney-restore-*.tmp")
 	if err != nil {
-		return safetyPath, fmt.Errorf("failed to create temp file for restore: %w", err)
+		return "", fmt.Errorf("failed to create temp file for restore: %w", err)
 	}
 	tempPath := tempFile.Name()
 	_ = tempFile.Close()
 
 	if err := copyFile(backupPath, tempPath); err != nil {
 		_ = os.Remove(tempPath)
-		return safetyPath, fmt.Errorf("failed to copy backup to temp file: %w", err)
+		return "", fmt.Errorf("failed to copy backup to temp file: %w", err)
+	}
+
+	// Create a safety backup of the current state
+	safetyPath, err := CreateAutoBackup(dbPath)
+	if err != nil {
+		_ = os.Remove(tempPath)
+		return "", fmt.Errorf("failed to create safety backup before restore: %w", err)
 	}
 
 	// 2. Rename current database to .restoring

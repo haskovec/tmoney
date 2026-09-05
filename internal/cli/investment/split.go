@@ -96,6 +96,6 @@ func runInvestmentSplit(opts *investmentSplitOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Ratio:    %s\n", params.RatioString())
 	fmt.Fprintf(w, "  Action ID: %s\n", action.ID.String())
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

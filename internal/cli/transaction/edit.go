@@ -139,7 +139,7 @@ func runTransactionEdit(opts *transactionEditOptions, w io.Writer) error {
 
 	printTransactionSummary(w, svc, "Transaction updated successfully!", txn)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
 

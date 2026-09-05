@@ -91,7 +91,7 @@ func runTransferLink(opts *transferLinkOptions, w io.Writer) error {
 		return fmt.Errorf("%d link errors", len(errs))
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
 

@@ -123,6 +123,6 @@ func runSecurityEdit(opts *securityEditOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Asset Class: %s\n", sec.AssetClass.DisplayName())
 	fmt.Fprintf(w, "  Currency:    %s\n", sec.Currency)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

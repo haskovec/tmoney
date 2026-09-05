@@ -101,6 +101,6 @@ func runAccountClose(opts *accountCloseOptions, w io.Writer) error {
 			"redirected or deleted.\n", len(refs))
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

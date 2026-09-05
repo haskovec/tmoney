@@ -134,7 +134,7 @@ func runAccountEdit(opts *accountEditOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Name: %s\n", acct.Name)
 	fmt.Fprintf(w, "  Type: %s\n", acct.Type.DisplayName())
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
 

@@ -106,6 +106,6 @@ func runAccountDelete(opts *accountDeleteOptions, w io.Writer) error {
 
 	fmt.Fprintf(w, "Deleted account %q.\n", acct.Name)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

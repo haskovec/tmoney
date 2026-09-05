@@ -92,6 +92,6 @@ func runReconcileFinish(opts *reconcileFinishOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Transactions reconciled: %d\n", len(txnIDs))
 	fmt.Fprintf(w, "  Balance:                %s\n", cmdutil.FormatMoney(session.StatementBalance, account.Currency))
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

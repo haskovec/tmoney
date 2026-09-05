@@ -70,6 +70,6 @@ func runScheduledDelete(opts *scheduledDeleteOptions, w io.Writer) error {
 
 	printScheduledSummary(w, svc, "Scheduled transaction deleted successfully!", st)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

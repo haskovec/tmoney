@@ -332,7 +332,7 @@ func runLoanAdd(cmd *cobra.Command, opts *loanAddOptions, w io.Writer) error {
 	}
 
 	printLoanCreated(w, loanAcct, assetAcct, schedule, payment, computedPayment)
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
 

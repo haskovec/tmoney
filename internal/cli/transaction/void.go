@@ -96,6 +96,6 @@ func runTransactionVoid(opts *transactionVoidOptions, w io.Writer) error {
 		fmt.Fprintln(w, "  Note:     Transfer counterpart was also voided")
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

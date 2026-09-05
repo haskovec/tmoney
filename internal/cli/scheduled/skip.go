@@ -94,6 +94,6 @@ func runScheduledSkip(opts *scheduledSkipOptions, w io.Writer) error {
 		fmt.Fprintln(w, "  Status:      Completed (no more occurrences)")
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

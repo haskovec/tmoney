@@ -112,6 +112,6 @@ func runSecurityAdd(opts *securityAddOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Exchange:    %s\n", sec.Exchange.String)
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

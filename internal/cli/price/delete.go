@@ -87,6 +87,6 @@ func runPriceDelete(opts *priceDeleteOptions, w io.Writer) error {
 		cmdutil.SecurityRef(sec.Ticker, sec.Name), priceDate.String(),
 		cmdutil.FormatMoney(p.Price, sec.Currency), p.Source)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

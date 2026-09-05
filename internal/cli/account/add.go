@@ -187,6 +187,6 @@ func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Lot Tracking:    %s\n", state)
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

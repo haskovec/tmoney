@@ -313,6 +313,36 @@ func TestRestore(t *testing.T) {
 		}
 	})
 
+	t.Run("restoring the oldest of a full auto-backup set does not lose it to retention", func(t *testing.T) {
+		dir := t.TempDir()
+		dbPath := createTestDB(t, dir)
+
+		// Fill the retention window: MaxAutoBackups auto-backups already exist.
+		// The oldest one holds the content we want back.
+		baseTime := time.Date(2024, 3, 10, 10, 0, 0, 0, time.UTC)
+		oldest, err := createAutoBackupAt(dbPath, baseTime)
+		if err != nil {
+			t.Fatalf("createAutoBackupAt() error = %v", err)
+		}
+		os.WriteFile(dbPath, []byte("modified content"), 0644)
+		for i := 1; i < MaxAutoBackups; i++ {
+			if _, err := createAutoBackupAt(dbPath, baseTime.Add(time.Duration(i)*24*time.Hour)); err != nil {
+				t.Fatalf("createAutoBackupAt() error = %v", err)
+			}
+		}
+
+		// The safety backup Restore takes is the (MaxAutoBackups+1)th auto-backup,
+		// so retention deletes exactly one file: the oldest, i.e. our source.
+		if _, err := Restore(dbPath, oldest); err != nil {
+			t.Fatalf("Restore() error = %v", err)
+		}
+
+		content, _ := os.ReadFile(dbPath)
+		if string(content) != "test database content" {
+			t.Errorf("restored content = %q, want %q", string(content), "test database content")
+		}
+	})
+
 	t.Run("returns error for non-existent backup", func(t *testing.T) {
 		dir := t.TempDir()
 		dbPath := createTestDB(t, dir)

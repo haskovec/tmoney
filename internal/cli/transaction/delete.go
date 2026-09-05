@@ -74,6 +74,6 @@ func runTransactionDelete(opts *transactionDeleteOptions, w io.Writer) error {
 
 	printTransactionSummary(w, svc, "Transaction deleted successfully!", txn)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

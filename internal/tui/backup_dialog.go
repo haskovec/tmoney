@@ -10,15 +10,27 @@ import (
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 )
 
-// backupCreatedMsg is sent when a manual backup has been created.
+// backupCreatedMsg is sent when a manual backup has been created. It carries the
+// REOPENED database: taking the backup closed the live one (see
+// createManualBackupCmd), so the app must switch to this handle.
 type backupCreatedMsg struct {
 	path string
+	db   *db.DB
 }
 
 // restoreConfirmedMsg is sent when the restore+reopen is complete.
 type restoreConfirmedMsg struct {
 	db               *db.DB
 	safetyBackupPath string
+}
+
+// reopenedAfterFailureMsg is sent when a restore or a manual backup failed AFTER the
+// live database was closed, but the file could be reopened. The app must switch
+// to the reopened handle — the one it holds is closed — and then report the
+// error.
+type reopenedAfterFailureMsg struct {
+	db  *db.DB
+	err error
 }
 
 // buildRestoreBackupDialog creates a dialog for selecting a backup to restore from.
@@ -50,21 +62,41 @@ func buildRestoreBackupDialog(dbPath string) (*dialog.Dialog, []backup.BackupInf
 
 // createManualBackupCmd returns a command that creates a manual backup.
 func (a *App) createManualBackupCmd() tea.Cmd {
-	dbPath := a.db.Path()
+	current := a.db
 	return func() tea.Msg {
-		backupPath, err := backup.CreateManualBackup(dbPath)
-		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to create backup: %w", err)}
+		dbPath := current.Path()
+
+		// Close before copying. An open DuckDB file cannot be copied faithfully:
+		// committed writes may still be in its WAL, and on Windows the copy
+		// cannot open the file at all (see db.DB.Close). A goroutine still
+		// reading the old handle gets "database is closed", not a panic.
+		if err := current.Close(); err != nil {
+			return errMsg{err: fmt.Errorf("failed to close database before backup: %w", err)}
 		}
-		return backupCreatedMsg{path: backupPath}
+		backupPath, backupErr := backup.CreateManualBackup(dbPath)
+
+		// The app's handle is closed either way, so it must get a fresh one.
+		newDB, openErr := db.Open(dbPath)
+		if openErr != nil {
+			return errMsg{err: fmt.Errorf("failed to reopen database after backup: %w — restart tmoney", openErr)}
+		}
+		if backupErr != nil {
+			return reopenedAfterFailureMsg{db: newDB, err: fmt.Errorf("failed to create backup: %w", backupErr)}
+		}
+		return backupCreatedMsg{path: backupPath, db: newDB}
 	}
 }
 
-// createAutoBackupOnQuit creates an auto-backup before the TUI exits.
-// This is best-effort; errors are silently ignored because the TUI is
-// already tearing down and has no surface to report them on.
-func createAutoBackupOnQuit(dbPath string) {
-	_, _ = backup.CreateAutoBackup(dbPath)
+// createAutoBackupOnQuit creates an auto-backup as the TUI exits. It closes the
+// database first, because a copy of an open DuckDB file is incomplete (WAL) or
+// impossible (Windows); see db.DB.Close. The caller's later Close is a no-op.
+// This is best-effort; errors are silently ignored because the TUI is already
+// tearing down and has no surface to report them on.
+func createAutoBackupOnQuit(database *db.DB) {
+	if err := database.Close(); err != nil {
+		return
+	}
+	_, _ = backup.CreateAutoBackup(database.Path())
 }
 
 // backupDialogState holds the state for the restore backup dialog.
@@ -122,16 +154,36 @@ func (a *App) submitBackupDialog() (tea.Model, tea.Cmd) {
 	msg := fmt.Sprintf("Restore from backup dated %s?\nCurrent data will be overwritten.\nA backup of the current state will be created first.",
 		selectedBackup.Timestamp.Format("2006-01-02 15:04:05"))
 	backupPath := selectedBackup.Path
+	current := a.db
 	a.showConfirmDialog("Confirm Restore", msg, func() tea.Msg {
-		safetyPath, err := backup.Restore(a.db.Path(), backupPath)
-		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to restore: %w", err)}
+		dbPath := current.Path()
+
+		// Close the live database BEFORE touching the file. Restore renames the
+		// current file aside and moves the backup into its place; with the file
+		// still open that rename fails on Windows, and elsewhere DuckDB's
+		// per-path instance cache makes the later db.Open return the old,
+		// still-open instance instead of reading the restored file. Closing
+		// also makes the safety backup Restore takes complete (see db.DB.Close).
+		// A goroutine still reading the old handle gets "database is closed",
+		// not a panic.
+		if err := current.Close(); err != nil {
+			return errMsg{err: fmt.Errorf("failed to close database before restore: %w", err)}
 		}
 
-		dbPath := a.db.Path()
-		newDB, err := db.Open(dbPath)
-		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to reopen database after restore: %w", err)}
+		safetyPath, restoreErr := backup.Restore(dbPath, backupPath)
+
+		// Reopen whatever is now at dbPath: the restored file on success, the
+		// untouched original on failure (Restore rolls its own rename back).
+		// Either way the app's current handle is closed and must be replaced.
+		newDB, openErr := db.Open(dbPath)
+		if openErr != nil {
+			if restoreErr != nil {
+				return errMsg{err: fmt.Errorf("failed to restore: %w; and the database could not be reopened: %v — restart tmoney", restoreErr, openErr)}
+			}
+			return errMsg{err: fmt.Errorf("restored, but failed to reopen the database: %w — restart tmoney", openErr)}
+		}
+		if restoreErr != nil {
+			return reopenedAfterFailureMsg{db: newDB, err: fmt.Errorf("failed to restore: %w", restoreErr)}
 		}
 
 		return restoreConfirmedMsg{
