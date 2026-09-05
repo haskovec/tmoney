@@ -196,24 +196,28 @@ func TestWalToTheme_OutputParsesAsValidTheme(t *testing.T) {
 // package theme_test that holds the generate-from-wal command tests.
 
 func TestWalCachePath_HonorsXDGCacheHome(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", "/tmp/myxdgcache")
+	xdg := filepath.Join(t.TempDir(), "myxdgcache")
+	t.Setenv("XDG_CACHE_HOME", xdg)
 	got, err := walCachePath()
 	if err != nil {
 		t.Fatalf("walCachePath: %v", err)
 	}
-	if want := "/tmp/myxdgcache/wal/colors.json"; got != want {
+	if want := filepath.Join(xdg, "wal", "colors.json"); got != want {
 		t.Errorf("walCachePath = %q, want %q", got, want)
 	}
 }
 
 func TestWalCachePath_FallsBackToHome(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "fakehome")
 	t.Setenv("XDG_CACHE_HOME", "")
-	t.Setenv("HOME", "/tmp/fakehome")
+	// os.UserHomeDir reads HOME on Unix and USERPROFILE on Windows.
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	got, err := walCachePath()
 	if err != nil {
 		t.Fatalf("walCachePath: %v", err)
 	}
-	if want := "/tmp/fakehome/.cache/wal/colors.json"; got != want {
+	if want := filepath.Join(home, ".cache", "wal", "colors.json"); got != want {
 		t.Errorf("walCachePath = %q, want %q", got, want)
 	}
 }
