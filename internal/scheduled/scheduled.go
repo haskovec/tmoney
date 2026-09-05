@@ -407,7 +407,21 @@ func (st *Transaction) MarkCompleted() {
 
 // CalculateNextDate calculates the next occurrence date after the current next_date.
 func (st *Transaction) CalculateNextDate() types.Date {
-	return calculateNextDate(st.NextDate, st.Frequency, st.Interval, st.DayOfMonth, st.SecondaryDayOfMonth)
+	return calculateNextDate(st.NextDate, st.Frequency, st.Interval, st.DayOfMonth, st.SecondaryDayOfMonth, st.anchorDay())
+}
+
+// anchorDay is the day of month a month-based cadence snaps back to when the
+// schedule stores no explicit day_of_month: the start date's day. The TUI dialog
+// never sets day_of_month, so without an anchor a monthly schedule started on
+// Jan 31 walked Feb 29 → Mar 29 → Apr 29 (clamp, then drift) — or, through
+// Go's AddDate, Jan 31 → Mar 3 → Apr 3. Anchoring to the start date makes a
+// clamped month a one-off: Jan 31, Feb 29, Mar 31. Zero when the start date is
+// unset, which calculateNextDate treats as "no anchor".
+func (st *Transaction) anchorDay() int {
+	if st.StartDate.IsZero() {
+		return 0
+	}
+	return st.StartDate.Day()
 }
 
 // AdvanceSchedule advances the schedule to the next occurrence.
@@ -447,12 +461,28 @@ func (st *Transaction) AdvanceSchedule() bool {
 }
 
 // calculateNextDate calculates the next occurrence date based on frequency and settings.
-func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMonth, secondaryDayOfMonth types.NullableInt) types.Date {
+//
+// anchorDay (1-31, or 0 for none) stands in for dayOfMonth on the month-based
+// cadences — monthly, quarterly, yearly — when no explicit day is stored. It is
+// never applied to semimonthly, whose two-day logic has its own fallback.
+//
+// Every month-based cadence goes through addMonthsWithDayHandling, including
+// yearly. Go's AddDate normalises an overflowed day forward into the next month,
+// so Feb 29 + 1 year became Mar 1 and stayed there; clamping to the month's last
+// day keeps the anniversary in February and returns to the 29th on the next leap
+// year.
+func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMonth, secondaryDayOfMonth types.NullableInt, anchorDay int) types.Date {
 	if interval < 1 {
 		interval = 1
 	}
 
 	currentTime := current.Time()
+
+	// Month-based cadences snap to an explicit day, else to the anchor.
+	monthDay := dayOfMonth
+	if !monthDay.Valid && anchorDay >= 1 && anchorDay <= 31 {
+		monthDay = types.NullableInt{Int64: int64(anchorDay), Valid: true}
+	}
 
 	switch freq {
 	case FrequencyDaily:
@@ -462,19 +492,19 @@ func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMo
 		return types.Date(currentTime.AddDate(0, 0, interval*7))
 
 	case FrequencyFortnightly:
-		return types.Date(currentTime.AddDate(0, 0, 14))
+		return types.Date(currentTime.AddDate(0, 0, interval*14))
 
 	case FrequencySemiMonthly:
 		return addSemiMonthly(currentTime, dayOfMonth, secondaryDayOfMonth)
 
 	case FrequencyMonthly:
-		return addMonthsWithDayHandling(currentTime, interval, dayOfMonth)
+		return addMonthsWithDayHandling(currentTime, interval, monthDay)
 
 	case FrequencyQuarterly:
-		return addMonthsWithDayHandling(currentTime, 3, dayOfMonth)
+		return addMonthsWithDayHandling(currentTime, interval*3, monthDay)
 
 	case FrequencyYearly:
-		return types.Date(currentTime.AddDate(interval, 0, 0))
+		return addMonthsWithDayHandling(currentTime, interval*12, monthDay)
 
 	default:
 		// Fallback: add interval days
@@ -589,8 +619,10 @@ func addMonthsWithDayHandling(t time.Time, months int, dayOfMonth types.Nullable
 	}
 
 	if !dayOfMonth.Valid {
-		// No specific day set - use Go's AddDate and let it handle the day
-		return types.Date(t.AddDate(0, months, 0))
+		// No day at all (not even an anchor): keep the current day, clamped to
+		// the target month. Go's AddDate would instead spill a 31 into the next
+		// month (Jan 31 + 1 month = Mar 3) and shift the cadence for good.
+		return adjustDayOfMonth(time.Date(targetYear, time.Month(targetMonth), 1, 0, 0, 0, 0, time.UTC), t.Day())
 	}
 
 	day := int(dayOfMonth.Int64)

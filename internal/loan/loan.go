@@ -152,10 +152,10 @@ type Stats struct {
 //
 // Pass the loan schedule's stored day-of-month. Loan schedules always carry an
 // explicit one (the wizard seeds it from the first payment date), for which this
-// clamping matches the dates the scheduler posts. Project deliberately does not
-// reproduce the scheduler's legacy roll-forward for a schedule with no
-// day-of-month set (where Go's month arithmetic spills a 31 into the following
-// month), so callers must supply an explicit day-of-month.
+// clamping matches the dates the scheduler posts. The scheduler applies the same
+// clamping to a schedule with no day-of-month set, anchored to its start date,
+// so the two agree there too — but callers should still supply the explicit
+// day-of-month a loan schedule always has.
 //
 // Rows run until the balance reaches zero or the row cap (maxProjectionRows) is
 // hit, whichever comes first. A negative-amortization payment returns
