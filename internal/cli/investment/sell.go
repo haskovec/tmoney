@@ -163,6 +163,6 @@ func runInvestmentSell(opts *investmentSellOptions, w io.Writer) error {
 	}
 	fmt.Fprintf(w, "  Total:    %s\n", cmdutil.FormatMoney(txn.TotalAmount, acct.Currency))
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

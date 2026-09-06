@@ -93,6 +93,9 @@ func (db *DB) WithTx(fn func(tx Queryer) error) error {
 // it publishes the new pool when the reader finally lets go, so the session can
 // still recover a moment later without another write having to fail first.
 func (db *DB) healAfterFatal(cause error) error {
+	if db.isClosed() {
+		return cause // closed on purpose (backup, restore, quit); never reopen
+	}
 	var probe int
 	if err := db.live().QueryRow(`SELECT 1`).Scan(&probe); err == nil {
 		return cause // the handle still works; nothing to heal

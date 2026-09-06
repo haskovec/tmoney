@@ -8,6 +8,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	"github.com/haskovec/tmoney/internal/db"
 	transactiondom "github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
@@ -139,7 +140,7 @@ func runTransactionAdd(opts *transactionAddOptions, w io.Writer) error {
 	}
 
 	if hasSplits {
-		return addWithSplits(opts, w, svc, acct, date, payeeID, payeeName, payeeCreated)
+		return addWithSplits(opts, w, database, svc, acct, date, payeeID, payeeName, payeeCreated)
 	}
 
 	amount := singleAmount
@@ -192,7 +193,7 @@ func runTransactionAdd(opts *transactionAddOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Memo:     %s\n", opts.memo)
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
 
@@ -280,7 +281,7 @@ func resolveSplits(opts *transactionAddOptions, svc *app.Services, acct *account
 
 // addWithSplits builds and persists a split transaction via
 // CreateWithSplits, then prints a summary listing each line.
-func addWithSplits(opts *transactionAddOptions, w io.Writer, svc *app.Services, acct *account.Account, date types.Date, payeeID types.NullableID, payeeName string, payeeCreated bool) error {
+func addWithSplits(opts *transactionAddOptions, w io.Writer, database *db.DB, svc *app.Services, acct *account.Account, date types.Date, payeeID types.NullableID, payeeName string, payeeCreated bool) error {
 	parsed, lineSum, err := resolveSplits(opts, svc, acct)
 	if err != nil {
 		return err
@@ -340,6 +341,6 @@ func addWithSplits(opts *transactionAddOptions, w io.Writer, svc *app.Services, 
 		fmt.Fprintln(w, line)
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

@@ -73,6 +73,6 @@ func runCategoryMerge(opts *categoryMergeOptions, w io.Writer) error {
 
 	fmt.Fprintf(w, "Merged category %q into %q\n", source.Name, target.Name)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

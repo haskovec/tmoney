@@ -117,6 +117,6 @@ func runPriceImport(opts *priceImportOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Parse errors:   %d\n", len(parseResult.Errors))
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

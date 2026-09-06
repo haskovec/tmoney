@@ -46,21 +46,21 @@ type BackupInfo struct {
 // CreateAutoBackup creates an auto-backup of the given database file and
 // enforces rolling retention (keeping at most MaxAutoBackups auto-backups).
 func CreateAutoBackup(dbPath string) (string, error) {
-	return createAutoBackupAt(dbPath, time.Now())
+	return createAutoBackupAt(dbPath, time.Now(), "")
 }
 
-// createAutoBackupAt is the internal implementation that accepts a timestamp for testability.
-func createAutoBackupAt(dbPath string, now time.Time) (string, error) {
+// createAutoBackupAt is the internal implementation that accepts a timestamp for
+// testability. keep names an auto-backup that retention must not delete ("" for
+// none); Restore passes the backup it is restoring from.
+func createAutoBackupAt(dbPath string, now time.Time, keep string) (string, error) {
 	backupPath := autoBackupPath(dbPath, now)
 
 	if err := copyFile(dbPath, backupPath); err != nil {
 		return "", fmt.Errorf("failed to create backup: %w", err)
 	}
 
-	if err := enforceRetention(dbPath); err != nil {
-		// Non-fatal: backup was created, retention cleanup failed
-		return backupPath, nil
-	}
+	// Non-fatal: the backup exists even if retention cleanup fails.
+	_ = enforceRetention(dbPath, keep)
 
 	return backupPath, nil
 }
@@ -123,43 +123,48 @@ func ListBackups(dbPath string) ([]BackupInfo, error) {
 }
 
 // Restore replaces the database file with the specified backup file using a
-// safe process: copy to temp, verify, swap, cleanup.
-// A safety backup of the current state is created first.
+// safe process: copy to temp, safety-backup the current state, swap, cleanup.
+// The safety backup is an auto-backup, but its retention pass never deletes
+// backupPath, so the source of a restore survives whatever happens next.
+//
+// The database at dbPath must be closed while this runs (see db.DB.Close and
+// db.DB.WithFileClosed).
 func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	// Verify backup file exists
 	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("backup file not found: %s", backupPath)
 	}
 
-	// Create a safety backup of the current state
-	safetyPath, err := CreateAutoBackup(dbPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create safety backup before restore: %w", err)
-	}
-
-	// Safe restore process:
-	// 1. Copy backup to a temp file in the same directory
+	// 1. Copy backup to a temp file in the same directory, before anything can
+	//    touch the set of backups.
 	dir := filepath.Dir(dbPath)
 	tempFile, err := os.CreateTemp(dir, "tmoney-restore-*.tmp")
 	if err != nil {
-		return safetyPath, fmt.Errorf("failed to create temp file for restore: %w", err)
+		return "", fmt.Errorf("failed to create temp file for restore: %w", err)
 	}
 	tempPath := tempFile.Name()
 	_ = tempFile.Close()
 
 	if err := copyFile(backupPath, tempPath); err != nil {
 		_ = os.Remove(tempPath)
-		return safetyPath, fmt.Errorf("failed to copy backup to temp file: %w", err)
+		return "", fmt.Errorf("failed to copy backup to temp file: %w", err)
 	}
 
-	// 2. Rename current database to .restoring
+	// 2. Safety backup of the current state, keeping backupPath out of retention.
+	safetyPath, err := createAutoBackupAt(dbPath, time.Now(), backupPath)
+	if err != nil {
+		_ = os.Remove(tempPath)
+		return "", fmt.Errorf("failed to create safety backup before restore: %w", err)
+	}
+
+	// 3. Rename current database to .restoring
 	restoringPath := dbPath + restoringExtension
 	if err := os.Rename(dbPath, restoringPath); err != nil {
 		_ = os.Remove(tempPath)
 		return safetyPath, fmt.Errorf("failed to move current database aside: %w", err)
 	}
 
-	// 3. Rename temp file to database name
+	// 4. Rename temp file to database name
 	if err := os.Rename(tempPath, dbPath); err != nil {
 		// Roll back: restore the .restoring file. If the rollback itself
 		// fails the original database is still accessible at restoringPath;
@@ -171,7 +176,7 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 		return safetyPath, fmt.Errorf("failed to move restored file into place: %w", err)
 	}
 
-	// 4. Delete the .restoring file
+	// 5. Delete the .restoring file
 	_ = os.Remove(restoringPath)
 
 	return safetyPath, nil
@@ -215,8 +220,10 @@ func parseBackupFilename(dbBase, filename string) (BackupInfo, bool) {
 	return info, false
 }
 
-// enforceRetention deletes the oldest auto-backups if there are more than MaxAutoBackups.
-func enforceRetention(dbPath string) error {
+// enforceRetention deletes the oldest auto-backups if there are more than
+// MaxAutoBackups. The backup at keep (if any) is never deleted and does not
+// count toward the limit.
+func enforceRetention(dbPath, keep string) error {
 	backups, err := ListBackups(dbPath)
 	if err != nil {
 		return err
@@ -225,7 +232,7 @@ func enforceRetention(dbPath string) error {
 	// Filter to auto-backups only
 	var autoBackups []BackupInfo
 	for _, b := range backups {
-		if b.Type == BackupTypeAuto {
+		if b.Type == BackupTypeAuto && !samePath(b.Path, keep) {
 			autoBackups = append(autoBackups, b)
 		}
 	}
@@ -242,6 +249,20 @@ func enforceRetention(dbPath string) error {
 	}
 
 	return nil
+}
+
+// samePath reports whether a and b name the same file, tolerating a relative
+// spelling on one side. It is a cleaned-path comparison, not an inode check.
+func samePath(a, b string) bool {
+	if b == "" {
+		return false
+	}
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return absA == absB
 }
 
 // copyFile copies src to dst. If dst already exists it is overwritten.

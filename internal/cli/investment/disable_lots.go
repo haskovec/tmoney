@@ -120,7 +120,7 @@ func runInvestmentDisableLots(opts *investmentDisableLotsOptions, w io.Writer) e
 	}
 
 	if anyApplied {
-		cmdutil.AutoBackupAfterModification(opts.file)
+		cmdutil.AutoBackupAfterModification(database)
 	}
 	if failed {
 		return fmt.Errorf("one or more accounts could not be disabled (see above)")

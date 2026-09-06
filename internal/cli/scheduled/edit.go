@@ -127,7 +127,7 @@ func runScheduledEdit(opts *scheduledEditOptions, w io.Writer) error {
 
 	printScheduledSummary(w, svc, "Scheduled transaction updated successfully!", st)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
 

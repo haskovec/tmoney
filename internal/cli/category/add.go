@@ -112,6 +112,6 @@ func runCategoryAdd(opts *categoryAddOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Parent: %s\n", parent.Name)
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

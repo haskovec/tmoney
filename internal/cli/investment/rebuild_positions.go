@@ -68,7 +68,7 @@ func runInvestmentRebuildPositions(opts *investmentRebuildPositionsOptions, w io
 			return fmt.Errorf("rebuild failed: %w", err)
 		}
 		printRebuildResult(w, res)
-		cmdutil.AutoBackupAfterModification(opts.file)
+		cmdutil.AutoBackupAfterModification(database)
 		return nil
 	}
 
@@ -92,7 +92,7 @@ func runInvestmentRebuildPositions(opts *investmentRebuildPositionsOptions, w io
 		fmt.Fprintln(w, "No investment accounts found.")
 		return nil
 	}
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
 

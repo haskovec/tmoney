@@ -129,7 +129,7 @@ func runInvestmentEnableLots(opts *investmentEnableLotsOptions, w io.Writer) err
 	}
 
 	if anyApplied {
-		cmdutil.AutoBackupAfterModification(opts.file)
+		cmdutil.AutoBackupAfterModification(database)
 	}
 	if failed {
 		return fmt.Errorf("one or more accounts could not be enabled (see above)")

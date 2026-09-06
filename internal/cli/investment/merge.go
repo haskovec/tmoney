@@ -126,6 +126,6 @@ func runInvestmentMerge(opts *investmentMergeOptions, w io.Writer) error {
 	}
 	fmt.Fprintf(w, "  Action ID: %s\n", action.ID.String())
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

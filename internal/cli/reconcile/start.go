@@ -88,6 +88,6 @@ func runReconcileStart(opts *reconcileStartOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Statement balance: %s\n", cmdutil.FormatMoney(stmtBalance, account.Currency))
 	fmt.Fprintf(w, "  Unreconciled transactions: %d\n", len(candidates))
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

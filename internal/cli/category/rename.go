@@ -89,6 +89,6 @@ func runCategoryRename(opts *categoryRenameOptions, w io.Writer) error {
 
 	fmt.Fprintf(w, "Renamed category %q to %q\n", oldName, cat.Name)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

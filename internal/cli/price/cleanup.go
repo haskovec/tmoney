@@ -8,6 +8,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/investment"
 	pricedom "github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
@@ -113,7 +114,7 @@ func runPriceCleanup(opts *priceCleanupOptions, w io.Writer) error {
 		return nil
 	}
 
-	return applyCleanup(w, svc, opts, candidates)
+	return applyCleanup(w, database, svc, opts, candidates)
 }
 
 // printCleanupPlan writes the dry-run table describing what --confirm would do.
@@ -153,7 +154,7 @@ func plannedAction(c cleanupCandidate, refetch bool) string {
 }
 
 // applyCleanup executes the cleanup for every candidate and prints the outcome.
-func applyCleanup(w io.Writer, svc *app.Services, opts *priceCleanupOptions, candidates []cleanupCandidate) error {
+func applyCleanup(w io.Writer, database *db.DB, svc *app.Services, opts *priceCleanupOptions, candidates []cleanupCandidate) error {
 	var provider pricedom.Provider
 	if opts.refetch {
 		providerName := opts.provider
@@ -204,7 +205,7 @@ func applyCleanup(w io.Writer, svc *app.Services, opts *priceCleanupOptions, can
 	_ = tw.Flush()
 
 	fmt.Fprintf(w, "\n%d deleted, %d refetched, %d kept\n", deleted, refetched, kept)
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
 

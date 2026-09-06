@@ -82,7 +82,7 @@ func runPriceUpdate(opts *priceUpdateOptions, w io.Writer) error {
 	}
 
 	printRefreshResult(w, result)
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 
 	if result.HasFailures() {
 		return errors.New("one or more tickers failed to update")

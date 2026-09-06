@@ -75,6 +75,6 @@ func runCategoryDelete(opts *categoryDeleteOptions, w io.Writer) error {
 
 	fmt.Fprintf(w, "Deleted category %q\n", name)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

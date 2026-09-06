@@ -79,6 +79,6 @@ func runSecurityDelete(opts *securityDeleteOptions, w io.Writer) error {
 
 	fmt.Fprintf(w, "Security %s deleted successfully.\n", securityLabel(sec))
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

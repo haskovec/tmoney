@@ -174,6 +174,6 @@ func runInvestmentFeeLiquidation(opts *investmentFeeLiquidationOptions, w io.Wri
 		fmt.Fprintf(w, "  Memo:     %s\n", opts.memo)
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

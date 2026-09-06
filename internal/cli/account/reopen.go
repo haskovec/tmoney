@@ -63,6 +63,6 @@ func runAccountReopen(opts *accountReopenOptions, w io.Writer) error {
 	fmt.Fprintln(w, "Account reopened.")
 	fmt.Fprintf(w, "  Name: %s\n", acct.Name)
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

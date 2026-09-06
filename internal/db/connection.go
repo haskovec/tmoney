@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,9 +32,16 @@ type DB struct {
 	// second failure cannot open a second pool while the first attempt is still
 	// blocked on DuckDB's instance lock.
 	healing atomic.Bool
-	path    string
-	txMu    sync.Mutex // serializes WithTx: single-writer discipline
+	// closed records an intentional Close, guarded by connMu. reconnect refuses
+	// to reopen while it is set, so healAfterFatal cannot resurrect a handle
+	// that a backup or restore closed on purpose. WithFileClosed clears it.
+	closed bool
+	path   string
+	txMu   sync.Mutex // serializes WithTx: single-writer discipline
 }
+
+// ErrClosed is returned by operations on a DB after Close.
+var ErrClosed = errors.New("database is closed")
 
 // live returns the current pool. Every read of db.conn goes through it.
 //
@@ -156,16 +164,55 @@ func Create(path string) (*DB, error) {
 }
 
 // Close closes the database connection.
+//
+// Close is the only thing that makes a file copy of this database valid: DuckDB
+// keeps committed writes in <path>.wal until close or a size-triggered
+// checkpoint, and on Windows its open handle makes os.Open on the file fail.
+// Backups therefore close first (see WithFileClosed).
+//
+// The closed pool stays published so a late caller gets "sql: database is
+// closed" rather than a nil-pointer panic. Close is idempotent.
 func (db *DB) Close() error {
 	db.connMu.Lock()
 	defer db.connMu.Unlock()
 
+	db.closed = true
 	if db.conn == nil {
 		return nil
 	}
-	err := db.conn.Close()
-	db.conn = nil
-	return err
+	return db.conn.Close()
+}
+
+// isClosed reports whether Close was called and no reopen has followed.
+func (db *DB) isClosed() bool {
+	db.connMu.RLock()
+	defer db.connMu.RUnlock()
+	return db.closed
+}
+
+// WithFileClosed closes the database, runs fn against the file path, and
+// reopens the same handle. It is the way to copy or replace the database file
+// while the app keeps running: services, undo commands and views keep their
+// *DB, because repositories take the pool fresh from Conn() on every call.
+//
+// It holds the writer mutex for the whole span, so no WithTx can run — and so
+// trigger a reconnect through healAfterFatal — while the file is closed. A read
+// that races the window gets "sql: database is closed" and can be retried.
+//
+// fn's error is returned after the reopen. A failed reopen is joined onto it;
+// the handle then stays closed and callers should tell the user to restart.
+func (db *DB) WithFileClosed(fn func(path string) error) error {
+	db.txMu.Lock()
+	defer db.txMu.Unlock()
+
+	if err := db.Close(); err != nil {
+		return &DatabaseError{Op: "close for file operation", Err: err}
+	}
+	fnErr := fn(db.path)
+	if err := db.openPool(); err != nil {
+		return errors.Join(fnErr, err)
+	}
+	return fnErr
 }
 
 // reconnect closes and reopens the database connection.
@@ -190,17 +237,30 @@ func (db *DB) Close() error {
 // "sql: database is closed" — an error they can surface — instead of the nil
 // *sql.DB that every call site would dereference into a panic. It also means the
 // next attempt can retry the reopen.
+//
+// It refuses after an intentional Close: a backup or restore that closed the
+// handle must not have it reopened underneath the file copy by a concurrent
+// failure's heal. WithFileClosed reopens through openPool directly.
 func (db *DB) reconnect() error {
 	db.connMu.Lock()
-	old := db.conn
+	old, closed := db.conn, db.closed
 	db.connMu.Unlock()
 
+	if closed {
+		return ErrClosed
+	}
 	if old != nil {
 		if err := old.Close(); err != nil {
 			return &DatabaseError{Op: "close for reconnect", Err: err}
 		}
 	}
+	return db.openPool()
+}
 
+// openPool opens a fresh pool on db.path and publishes it, clearing closed.
+// The previous pool must already be closed. See reconnect for why connMu is not
+// held across the open.
+func (db *DB) openPool() error {
 	conn, err := sql.Open("duckdb", db.path)
 	if err != nil {
 		return &DatabaseError{Op: "reconnect", Err: err}
@@ -213,6 +273,7 @@ func (db *DB) reconnect() error {
 
 	db.connMu.Lock()
 	db.conn = conn
+	db.closed = false
 	db.connMu.Unlock()
 	return nil
 }

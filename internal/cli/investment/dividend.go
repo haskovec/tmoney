@@ -103,6 +103,6 @@ func runInvestmentDividend(opts *investmentDividendOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
 	fmt.Fprintf(w, "  Amount:   %s\n", cmdutil.FormatMoney(amount, acct.Currency))
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

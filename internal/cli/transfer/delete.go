@@ -83,6 +83,6 @@ func runTransferDelete(opts *transferDeleteOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Date:          %s\n", res.date.String())
 	fmt.Fprintf(w, "  Amount:        %s\n", cmdutil.FormatMoney(res.amount, res.fromAccount.Currency))
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

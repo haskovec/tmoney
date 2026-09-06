@@ -92,6 +92,6 @@ func runInvestmentWithdraw(opts *investmentWithdrawOptions, w io.Writer) error {
 		fmt.Fprintf(w, "  Memo:    %s\n", opts.memo)
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

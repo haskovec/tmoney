@@ -240,9 +240,15 @@ func TestClose(t *testing.T) {
 			t.Errorf("Close() error = %v", err)
 		}
 
-		// Verify connection is nil after close
-		if db.Conn() != nil {
-			t.Error("Conn() should be nil after Close()")
+		// The closed pool stays published so a late caller gets an error, not
+		// a nil-pointer panic.
+		conn := db.Conn()
+		if conn == nil {
+			t.Fatal("Conn() should stay non-nil after Close()")
+		}
+		var probe int
+		if err := conn.QueryRow(`SELECT 1`).Scan(&probe); err == nil {
+			t.Error("a query on a closed DB should fail")
 		}
 	})
 

@@ -693,8 +693,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case restoreConfirmedMsg:
-		// Switch to the reopened database
-		model, cmd := a.switchDatabase(msg.db)
+		model, cmd := a.reloadAfterRestore()
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Restored from backup (safety backup: %s)", backupFilename(msg.safetyBackupPath)),
 			widget.NotificationInfo,

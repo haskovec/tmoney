@@ -168,6 +168,6 @@ func runInvestmentBuy(opts *investmentBuyOptions, w io.Writer) error {
 		}
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

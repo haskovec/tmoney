@@ -240,6 +240,6 @@ func runScheduledAdd(cmd *cobra.Command, opts *scheduledAddOptions, w io.Writer)
 		}
 	}
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

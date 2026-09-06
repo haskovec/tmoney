@@ -36,10 +36,15 @@ func OpenServices(file string) (*db.DB, *app.Services, error) {
 	return database, svc, nil
 }
 
-// AutoBackupAfterModification creates an auto-backup after a data-modifying CLI command.
-func AutoBackupAfterModification(dbPath string) {
-	// Best-effort: don't fail the CLI command if backup fails
-	_, _ = backup.CreateAutoBackup(dbPath)
+// AutoBackupAfterModification creates an auto-backup after a data-modifying CLI
+// command. It closes the database first (see db.DB.Close), so call it as the
+// command's last database action; the deferred Close is then a no-op.
+func AutoBackupAfterModification(database *db.DB) {
+	// Best-effort: don't fail the CLI command if the close or backup fails
+	if err := database.Close(); err != nil {
+		return
+	}
+	_, _ = backup.CreateAutoBackup(database.Path())
 }
 
 // RequireFile returns the standard error when no database file was supplied via

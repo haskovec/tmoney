@@ -883,8 +883,9 @@ func Run(database *db.DB, cfg *config.Config) error {
 		_ = app.prevDB.Close()
 	}
 
-	// Auto-backup on quit (best-effort)
-	createAutoBackupOnQuit(database.Path())
+	// Auto-backup on quit (best-effort). Back up the database that is open NOW,
+	// which File → Open may have swapped in. This closes app.db.
+	createAutoBackupOnQuit(app.db)
 
 	return err
 }

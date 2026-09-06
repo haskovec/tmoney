@@ -83,6 +83,6 @@ func runInvestmentSplitLot(opts *investmentSplitLotOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Shares:     %s\n", lot.Shares.String())
 	fmt.Fprintf(w, "  Cost/share: %s\n", lot.CostPerShare.String())
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }

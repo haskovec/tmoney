@@ -67,6 +67,6 @@ func runSecurityHide(opts *securityHideOptions, w io.Writer) error {
 
 	fmt.Fprintf(w, "Security %s hidden successfully.\n", securityLabel(sec))
 
-	cmdutil.AutoBackupAfterModification(opts.file)
+	cmdutil.AutoBackupAfterModification(database)
 	return nil
 }
