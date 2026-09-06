@@ -893,16 +893,127 @@ func TestCalculateNextDate(t *testing.T) {
 		}
 	})
 
-	t.Run("Leap year Feb 29 to next year", func(t *testing.T) {
+	t.Run("Leap year Feb 29 clamps to Feb 28 and returns on the next leap year", func(t *testing.T) {
 		st := NewTransaction(types.NewID(), FrequencyYearly, types.NewDate(2024, time.February, 29))
 
+		// Feb 29 + 1 year: stay in February (Go's AddDate would give Mar 1 and
+		// the anniversary would never come back).
 		next := st.CalculateNextDate()
+		if expected := types.NewDate(2025, time.February, 28); !next.Equal(expected) {
+			t.Errorf("2025: expected %s, got %s", expected.String(), next.String())
+		}
 
-		// Go's AddDate handles leap year: Feb 29 + 1 year = Mar 1 (or Feb 28 depending on implementation)
-		// The standard behavior is March 1
-		expected := types.NewDate(2025, time.March, 1)
-		if !next.Equal(expected) {
-			t.Errorf("Expected %s, got %s", expected.String(), next.String())
+		// Three more years: the start-date anchor (29) is honoured again in 2028.
+		st.NextDate = next
+		for range 3 {
+			st.NextDate = st.CalculateNextDate()
+		}
+		if expected := types.NewDate(2028, time.February, 29); !st.NextDate.Equal(expected) {
+			t.Errorf("2028: expected %s, got %s", expected.String(), st.NextDate.String())
+		}
+	})
+
+	t.Run("Monthly with no day_of_month anchors to the start date and does not drift", func(t *testing.T) {
+		// The TUI dialog never sets day_of_month. Jan 31 used to become Mar 3
+		// (AddDate spill) and then stay on the 3rd forever.
+		st := NewTransaction(types.NewID(), FrequencyMonthly, types.NewDate(2024, time.January, 31))
+
+		want := []types.Date{
+			types.NewDate(2024, time.February, 29),
+			types.NewDate(2024, time.March, 31),
+			types.NewDate(2024, time.April, 30),
+			types.NewDate(2024, time.May, 31),
+		}
+		for i, expected := range want {
+			st.NextDate = st.CalculateNextDate()
+			if !st.NextDate.Equal(expected) {
+				t.Fatalf("step %d: expected %s, got %s", i+1, expected.String(), st.NextDate.String())
+			}
+		}
+	})
+
+	t.Run("Monthly with no day_of_month heals a next_date that already drifted", func(t *testing.T) {
+		// The old AddDate spill posted the March occurrence on Apr 3. The April
+		// occurrence is still owed, so the heal lands on Apr 30, then May 31.
+		st := NewTransaction(types.NewID(), FrequencyMonthly, types.NewDate(2024, time.January, 31))
+		st.NextDate = types.NewDate(2024, time.April, 3)
+
+		next := st.CalculateNextDate()
+		if expected := types.NewDate(2024, time.April, 30); !next.Equal(expected) {
+			t.Errorf("expected %s, got %s", expected.String(), next.String())
+		}
+		st.NextDate = next
+		if next, expected := st.CalculateNextDate(), types.NewDate(2024, time.May, 31); !next.Equal(expected) {
+			t.Errorf("expected %s, got %s", expected.String(), next.String())
+		}
+	})
+
+	t.Run("Yearly heals a leap-day next_date that already overflowed into March", func(t *testing.T) {
+		// Feb 29 2024 + 1 year under the old code was Mar 1 2025. The anniversary
+		// month comes from the start date, so the next advance returns to February.
+		st := NewTransaction(types.NewID(), FrequencyYearly, types.NewDate(2024, time.February, 29))
+		st.NextDate = types.NewDate(2025, time.March, 1)
+
+		next := st.CalculateNextDate()
+		if expected := types.NewDate(2026, time.February, 28); !next.Equal(expected) {
+			t.Fatalf("2026: expected %s, got %s", expected.String(), next.String())
+		}
+		st.NextDate = next
+		st.NextDate = st.CalculateNextDate() // 2027-02-28
+		if next, expected := st.CalculateNextDate(), types.NewDate(2028, time.February, 29); !next.Equal(expected) {
+			t.Errorf("2028: expected %s, got %s", expected.String(), next.String())
+		}
+	})
+
+	t.Run("Quarterly heals a next_date that overflowed into the wrong month", func(t *testing.T) {
+		// Jan 31 + 3 months under the old code was Apr 31 → May 1, which then
+		// shifted every later quarter by a month. The grid is Jan/Apr/Jul/Oct.
+		st := NewTransaction(types.NewID(), FrequencyQuarterly, types.NewDate(2024, time.January, 31))
+		st.NextDate = types.NewDate(2024, time.May, 1)
+
+		next := st.CalculateNextDate()
+		if expected := types.NewDate(2024, time.July, 31); !next.Equal(expected) {
+			t.Errorf("expected %s, got %s", expected.String(), next.String())
+		}
+	})
+
+	t.Run("Month grid falls back to stepping from next_date when start is unset", func(t *testing.T) {
+		st := &Transaction{Frequency: FrequencyMonthly, Interval: 1, NextDate: types.NewDate(2024, time.January, 31)}
+
+		next := st.CalculateNextDate()
+		if expected := types.NewDate(2024, time.February, 29); !next.Equal(expected) {
+			t.Errorf("expected %s, got %s", expected.String(), next.String())
+		}
+	})
+
+	t.Run("Fortnightly honours interval", func(t *testing.T) {
+		st := NewTransaction(types.NewID(), FrequencyFortnightly, types.NewDate(2024, time.January, 5))
+		st.Interval = 2
+
+		next := st.CalculateNextDate()
+		if expected := types.NewDate(2024, time.February, 2); !next.Equal(expected) {
+			t.Errorf("expected %s, got %s", expected.String(), next.String())
+		}
+	})
+
+	t.Run("Quarterly honours interval and day_of_month", func(t *testing.T) {
+		st := NewTransaction(types.NewID(), FrequencyQuarterly, types.NewDate(2024, time.January, 31))
+		st.Interval = 2
+		st.SetDayOfMonth(31)
+
+		next := st.CalculateNextDate()
+		if expected := types.NewDate(2024, time.July, 31); !next.Equal(expected) {
+			t.Errorf("expected %s, got %s", expected.String(), next.String())
+		}
+	})
+
+	t.Run("Yearly honours day_of_month -1", func(t *testing.T) {
+		st := NewTransaction(types.NewID(), FrequencyYearly, types.NewDate(2024, time.February, 29))
+		st.SetDayOfMonth(-1)
+
+		next := st.CalculateNextDate()
+		if expected := types.NewDate(2025, time.February, 28); !next.Equal(expected) {
+			t.Errorf("expected %s, got %s", expected.String(), next.String())
 		}
 	})
 

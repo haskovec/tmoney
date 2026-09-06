@@ -472,12 +472,15 @@ func (s *ImportService) calculateDateRange(result *ImportResult) {
 	}
 }
 
-// parseImportStatus converts a status code from an import file to a TransactionStatus.
+// parseImportStatus converts a status code from an import file to a
+// TransactionStatus. It accepts TMoney's own codes (C, R, U — what the QIF
+// parser and the CSV exporter emit) and Quicken's raw marks, where `*` is
+// cleared and `X` is reconciled (see qifStatusToImport).
 func parseImportStatus(status string) transaction.Status {
 	switch strings.ToUpper(strings.TrimSpace(status)) {
-	case "C", "X":
+	case "C", "*":
 		return transaction.StatusCleared
-	case "R", "*":
+	case "R", "X":
 		return transaction.StatusReconciled
 	default:
 		return transaction.StatusUncleared

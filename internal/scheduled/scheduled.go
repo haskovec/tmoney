@@ -407,7 +407,7 @@ func (st *Transaction) MarkCompleted() {
 
 // CalculateNextDate calculates the next occurrence date after the current next_date.
 func (st *Transaction) CalculateNextDate() types.Date {
-	return calculateNextDate(st.NextDate, st.Frequency, st.Interval, st.DayOfMonth, st.SecondaryDayOfMonth)
+	return calculateNextDate(st.NextDate, st.Frequency, st.Interval, st.DayOfMonth, st.SecondaryDayOfMonth, st.StartDate)
 }
 
 // AdvanceSchedule advances the schedule to the next occurrence.
@@ -447,7 +447,15 @@ func (st *Transaction) AdvanceSchedule() bool {
 }
 
 // calculateNextDate calculates the next occurrence date based on frequency and settings.
-func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMonth, secondaryDayOfMonth types.NullableInt) types.Date {
+//
+// The month-based cadences (monthly, quarterly, yearly) are anchored to start:
+// the result is the first occurrence strictly after current on the grid
+// start + n×period, with the day taken from dayOfMonth (else start's day) and
+// clamped to the target month. Anchoring both the month and the day is what lets
+// a next_date that already overflowed (Feb 29 → Mar 1, Jan 31 → May 1) fall back
+// onto the grid instead of carrying the wrong month forward. A zero start falls
+// back to stepping from current.
+func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMonth, secondaryDayOfMonth types.NullableInt, start types.Date) types.Date {
 	if interval < 1 {
 		interval = 1
 	}
@@ -462,23 +470,53 @@ func calculateNextDate(current types.Date, freq Frequency, interval int, dayOfMo
 		return types.Date(currentTime.AddDate(0, 0, interval*7))
 
 	case FrequencyFortnightly:
-		return types.Date(currentTime.AddDate(0, 0, 14))
+		return types.Date(currentTime.AddDate(0, 0, interval*14))
 
 	case FrequencySemiMonthly:
 		return addSemiMonthly(currentTime, dayOfMonth, secondaryDayOfMonth)
 
 	case FrequencyMonthly:
-		return addMonthsWithDayHandling(currentTime, interval, dayOfMonth)
+		return nextOnMonthGrid(current, start, interval, dayOfMonth)
 
 	case FrequencyQuarterly:
-		return addMonthsWithDayHandling(currentTime, 3, dayOfMonth)
+		return nextOnMonthGrid(current, start, interval*3, dayOfMonth)
 
 	case FrequencyYearly:
-		return types.Date(currentTime.AddDate(interval, 0, 0))
+		return nextOnMonthGrid(current, start, interval*12, dayOfMonth)
 
 	default:
 		// Fallback: add interval days
 		return types.Date(currentTime.AddDate(0, 0, interval))
+	}
+}
+
+// nextOnMonthGrid returns the first date strictly after current on the grid of
+// months start + n×periodMonths (n ≥ 0), with the day from dayOfMonth (1-31, -1
+// for last day) or, when unset, start's day, clamped to the month.
+func nextOnMonthGrid(current, start types.Date, periodMonths int, dayOfMonth types.NullableInt) types.Date {
+	if start.IsZero() {
+		// No anchor: step from current, keeping its day.
+		return addMonthsWithDayHandling(current.Time(), periodMonths, dayOfMonth)
+	}
+	day := dayOfMonth
+	if !day.Valid {
+		day = types.NullableInt{Int64: int64(start.Day()), Valid: true}
+	}
+
+	// Start at the grid point in or before current's month, then walk forward
+	// until the resolved date is after current (at most two steps).
+	elapsed := (current.Year()-start.Year())*12 + int(current.Month()) - int(start.Month())
+	n := 0
+	if elapsed > 0 {
+		n = elapsed / periodMonths
+	}
+	startOfMonth := time.Date(start.Year(), start.Month(), 1, 0, 0, 0, 0, time.UTC)
+	for {
+		candidate := addMonthsWithDayHandling(startOfMonth, n*periodMonths, day)
+		if candidate.After(current) {
+			return candidate
+		}
+		n++
 	}
 }
 
@@ -589,8 +627,8 @@ func addMonthsWithDayHandling(t time.Time, months int, dayOfMonth types.Nullable
 	}
 
 	if !dayOfMonth.Valid {
-		// No specific day set - use Go's AddDate and let it handle the day
-		return types.Date(t.AddDate(0, months, 0))
+		// Keep t's day, clamped to the target month (AddDate would spill it).
+		return adjustDayOfMonth(time.Date(targetYear, time.Month(targetMonth), 1, 0, 0, 0, 0, time.UTC), t.Day())
 	}
 
 	day := int(dayOfMonth.Int64)

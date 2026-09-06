@@ -85,6 +85,11 @@ func ParseCSV(r io.Reader) (*ParseResult, error) {
 		return nil, fmt.Errorf("CSV missing required column: %s", csvColAmount)
 	}
 
+	// Rows that may fold into one split transaction are held back in `pending`
+	// until the run ends, because the decision needs the whole run: see
+	// splitCandidate.flush.
+	var pending *splitCandidate
+
 	lineNum := 1 // Header is line 1
 	for {
 		lineNum++
@@ -106,24 +111,68 @@ func ParseCSV(r io.Reader) (*ParseResult, error) {
 			continue
 		}
 
-		// Check if this row is a split continuation of the previous record.
-		// Split rows share the same date, payee, and account as the parent,
-		// but the parent has an empty category and subsequent rows provide
-		// split categories and amounts.
-		if len(result.Records) > 0 && isSplitContinuation(result.Records[len(result.Records)-1], *record) {
-			parent := &result.Records[len(result.Records)-1]
-			parent.Splits = append(parent.Splits, ImportSplit{
-				Category: record.Category,
-				Amount:   record.Amount,
-				Memo:     record.Memo,
-			})
+		if pending != nil && isSplitContinuation(pending.parent, *record) {
+			pending.lines = append(pending.lines, *record)
 			continue
 		}
 
+		if pending != nil {
+			result.Records = pending.flush(result.Records)
+			pending = nil
+		}
+
+		// A row with no category is the only thing that can open a split run.
+		if record.Category == "" {
+			pending = &splitCandidate{parent: *record}
+			continue
+		}
 		result.Records = append(result.Records, *record)
 	}
 
+	if pending != nil {
+		result.Records = pending.flush(result.Records)
+	}
+
 	return result, nil
+}
+
+// splitCandidate is a run of rows that has the SHAPE the exporter writes for a
+// split transaction (WriteCSV): a parent row with a blank category, then one row
+// per split line repeating the parent's date, account and payee.
+type splitCandidate struct {
+	parent ImportRecord
+	lines  []ImportRecord
+}
+
+// flush appends the run to records: folded into one split transaction when it
+// has at least two lines whose amounts sum to the parent's amount, else as
+// independent records. Same date, account and payee alone are not evidence of a
+// split, and a single line equal to the parent is indistinguishable from a
+// second purchase of the same amount, so both are kept separate.
+func (c *splitCandidate) flush(records []ImportRecord) []ImportRecord {
+	if len(c.lines) == 0 {
+		return append(records, c.parent)
+	}
+
+	total := types.ZeroMoney
+	for _, line := range c.lines {
+		total = total.Add(line.Amount)
+	}
+	if len(c.lines) < 2 || !total.Equal(c.parent.Amount) {
+		records = append(records, c.parent)
+		return append(records, c.lines...)
+	}
+
+	parent := c.parent
+	parent.Splits = make([]ImportSplit, 0, len(c.lines))
+	for _, line := range c.lines {
+		parent.Splits = append(parent.Splits, ImportSplit{
+			Category: line.Category,
+			Amount:   line.Amount,
+			Memo:     line.Memo,
+		})
+	}
+	return append(records, parent)
 }
 
 // parseCSVRow parses a single CSV data row into an ImportRecord.
@@ -165,20 +214,20 @@ func parseCSVRow(cm columnMap, row []string, lineNum int) (*ImportRecord, *Parse
 	}, nil
 }
 
-// isSplitContinuation returns true if record looks like a split continuation
-// of prev: same date and payee, and prev has empty category (indicating it's
-// a split parent).
-func isSplitContinuation(prev ImportRecord, record ImportRecord) bool {
-	if prev.Category != "" {
+// isSplitContinuation returns true if record has the shape of a split line
+// under parent: the same date, account and payee, and a category of its own.
+// The count and sum checks run over the whole run in splitCandidate.flush.
+func isSplitContinuation(parent ImportRecord, record ImportRecord) bool {
+	if record.Category == "" {
 		return false
 	}
-	if !prev.Date.Equal(record.Date) {
+	if !parent.Date.Equal(record.Date) {
 		return false
 	}
-	if prev.Account != record.Account {
+	if parent.Account != record.Account {
 		return false
 	}
-	if prev.Payee != record.Payee {
+	if parent.Payee != record.Payee {
 		return false
 	}
 	return true

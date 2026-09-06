@@ -15,7 +15,7 @@ T-125.43
 PKroger
 LFood:Groceries
 MWeekly groceries
-CX
+C*
 ^
 D01/16/2024
 T3500.00
@@ -170,7 +170,7 @@ func TestParseQIF_ReconciledStatus(t *testing.T) {
 D01/15/2024
 T-50.00
 PKroger
-C*
+CX
 ^
 `
 
@@ -526,8 +526,8 @@ func TestWriteQIF_BasicTransactions(t *testing.T) {
 	if !strings.Contains(output, "MWeekly groceries") {
 		t.Error("expected output to contain MWeekly groceries")
 	}
-	if !strings.Contains(output, "CX") {
-		t.Error("expected output to contain CX (cleared status)")
+	if !strings.Contains(output, "C*") {
+		t.Error("expected output to contain C* (cleared status)")
 	}
 
 	// Records separated by ^
@@ -640,8 +640,8 @@ func TestWriteQIF_ReconciledStatus(t *testing.T) {
 
 	output := buf.String()
 
-	if !strings.Contains(output, "C*") {
-		t.Error("expected output to contain C* (reconciled status)")
+	if !strings.Contains(output, "CX") {
+		t.Error("expected output to contain CX (reconciled status)")
 	}
 }
 
@@ -930,26 +930,23 @@ func TestAccountTypeToQIF(t *testing.T) {
 }
 
 func TestQIFStatusConversions(t *testing.T) {
-	// qifStatusToImport
-	if qifStatusToImport("X") != "C" {
-		t.Error("X should map to C")
-	}
-	if qifStatusToImport("x") != "C" {
-		t.Error("x should map to C")
-	}
-	if qifStatusToImport("*") != "R" {
-		t.Error("* should map to R")
-	}
-	if qifStatusToImport("") != "U" {
-		t.Error("empty should map to U")
+	// qifStatusToImport follows Quicken: * / c = cleared, X / R = reconciled.
+	for in, want := range map[string]string{
+		"*": "C", "c": "C", "C": "C",
+		"X": "R", "x": "R", "R": "R", "r": "R",
+		"": "U", " ": "U",
+	} {
+		if got := qifStatusToImport(in); got != want {
+			t.Errorf("qifStatusToImport(%q) = %q, want %q", in, got, want)
+		}
 	}
 
 	// exportStatusToQIF
-	if exportStatusToQIF("C") != "X" {
-		t.Error("C should map to X")
+	if exportStatusToQIF("C") != "*" {
+		t.Error("C should map to *")
 	}
-	if exportStatusToQIF("R") != "*" {
-		t.Error("R should map to *")
+	if exportStatusToQIF("R") != "X" {
+		t.Error("R should map to X")
 	}
 	if exportStatusToQIF("U") != "" {
 		t.Error("U should map to empty")

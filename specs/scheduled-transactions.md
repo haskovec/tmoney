@@ -42,11 +42,11 @@ A scheduled transaction may be **single-line** (one account, one payee, one cate
 |-----------|-------------|------|
 | `daily` | Every N days | interval |
 | `weekly` | Every N weeks | interval |
-| `fortnightly` | Every 2 weeks | — |
+| `fortnightly` | Every N fortnights | interval |
 | `semimonthly` | Twice a month on two pay days | day_of_month, secondary_day_of_month |
 | `monthly` | Every N months | interval, day_of_month |
-| `quarterly` | Every 3 months | day_of_month |
-| `yearly` | Every N years | interval |
+| `quarterly` | Every N quarters | interval, day_of_month |
+| `yearly` | Every N years | interval, day_of_month |
 
 ### Special Day Handling
 
@@ -55,6 +55,11 @@ A scheduled transaction may be **single-line** (one account, one payee, one cate
 | 1-28 | That day of month |
 | 29-31 | That day, or last day if month is shorter |
 | -1 | Last day of month |
+| (unset) | The start date's day, with the same month-end clamping |
+
+A month-based cadence (monthly, quarterly, yearly) with no `day_of_month`
+anchors to the start date's day, so a clamped month is a one-off rather than a
+permanent shift: a schedule started on Jan 31 runs Jan 31, Feb 28/29, Mar 31.
 
 ## Duration Options
 
@@ -219,18 +224,25 @@ Given: current next_date, frequency, interval
 
 daily:     next_date + (interval days)
 weekly:    next_date + (interval * 7 days)
-fortnightly: next_date + 14 days
+fortnightly: next_date + (interval * 14 days)
 semimonthly: next of the two pay days (day_of_month / secondary_day_of_month)
 monthly:   next_date + (interval months), adjusted for day_of_month
-quarterly: next_date + 3 months, adjusted for day_of_month
-yearly:    next_date + (interval years)
+quarterly: next_date + (interval * 3 months), adjusted for day_of_month
+yearly:    next_date + (interval * 12 months), adjusted for day_of_month
 ```
 
 ### Month-End Handling
 
-If day_of_month > days in target month:
+Monthly, quarterly and yearly occurrences lie on the grid `start_date + n × period`.
+The next occurrence is the first grid point strictly after `next_date`, so a
+`next_date` that once overflowed into the wrong month (Feb 29 → Mar 1, Jan 31 →
+May 1) returns to the grid on its next advance. A `next_date` moved to another
+month by hand (CLI `scheduled edit`) also snaps back to the start date's phase.
+
+If day_of_month (or, when unset, the start date's day) > days in target month:
 - Use last day of month
 - Example: 31st monthly → Jan 31, Feb 28/29, Mar 31, Apr 30...
+- Example: yearly from Feb 29 → Feb 28, Feb 28, Feb 28, Feb 29 (never Mar 1)
 
 ## Examples
 

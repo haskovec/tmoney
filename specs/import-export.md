@@ -243,6 +243,19 @@ Split transactions are exported as multiple rows:
 - Subsequent rows have the split category, split amount, and split memo
 - Parent fields (date, payee, account) are repeated for each split row
 
+On import, a run of rows is folded back into one split transaction only when it
+has the exact shape the exporter writes: a parent row with a blank category,
+followed by **two or more** rows with the same date, account and payee that each
+carry a category, whose amounts sum to the parent's amount. A run that fails any
+of those checks is imported as separate transactions — two uncategorized ATM
+withdrawals on one day, or two same-payee purchases where the first lacks a
+category, must not be merged into one.
+
+Known limits of this shape-based detection: a one-line split exports as two rows
+and imports as two transactions, and an uncategorized purchase followed by two
+categorized same-payee purchases that happen to sum to it is folded. Both are
+rare; a dedicated split marker column would remove the guesswork.
+
 ### Import CSV Parsing
 
 When importing CSV:
@@ -264,7 +277,7 @@ T-125.43
 PKroger
 LFood:Groceries
 MWeekly groceries
-CX
+C*
 N1234
 ^
 ```
@@ -279,7 +292,7 @@ N1234
 | `P` | Payee |
 | `L` | Category (or transfer: `[Account Name]`) |
 | `M` | Memo |
-| `C` | Cleared status (`X` = cleared, `*` = reconciled) |
+| `C` | Cleared status, Quicken convention (`*` or `c` = cleared, `X` or `R` = reconciled) |
 | `N` | Check number |
 | `^` | End of record |
 

@@ -72,25 +72,27 @@ func formatQIFDate(isoDate string) string {
 	return t.Format("01/02/2006")
 }
 
-// qifStatusToImport converts QIF cleared status to import status.
+// qifStatusToImport converts a QIF `C` field to an import status code, following
+// Quicken: `*`, `c` or `C` is cleared; `X` or `R` is reconciled.
 func qifStatusToImport(s string) string {
 	switch strings.TrimSpace(s) {
-	case "X", "x":
+	case "*", "c", "C":
 		return "C" // Cleared
-	case "*":
+	case "X", "x", "R", "r":
 		return "R" // Reconciled
 	default:
 		return "U" // Uncleared
 	}
 }
 
-// exportStatusToQIF converts export status to QIF cleared status.
+// exportStatusToQIF converts an export status code to a QIF `C` field value.
+// See qifStatusToImport for the convention.
 func exportStatusToQIF(s string) string {
 	switch s {
 	case "C":
-		return "X"
-	case "R":
 		return "*"
+	case "R":
+		return "X"
 	default:
 		return ""
 	}
