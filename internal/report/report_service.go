@@ -71,6 +71,13 @@ func (s *Service) NetWorthAsOfIncludingClosed(asOf time.Time) (*NetWorth, error)
 // active now, or closed after asOf. A closed account with no closed_date
 // (closed before migration 025 recorded dates) is treated as always closed.
 func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, error) {
+	// Bind a calendar date, not the timestamp. transactions.date and
+	// accounts.closed_date are DATE columns holding the LOCAL calendar day
+	// (types.Today), while the driver binds a time.Time as a UTC instant; near
+	// midnight the two disagree by a day. Truncating with the local Y-M-D is what
+	// types.Today does, so the comparison is day-to-day in the same calendar.
+	asOfDate := types.NewDate(asOf.Year(), asOf.Month(), asOf.Day())
+
 	// Query to get account balances as of a specific date
 	// The balance is: opening_balance + sum(transactions where date <= asOf)
 	query := `
@@ -89,11 +96,11 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 		FROM accounts a
 		WHERE 1=1
 	`
-	args := []any{asOf}
+	args := []any{asOfDate}
 
 	if !includeClosed {
 		query += " AND (a.active = TRUE OR a.closed_date > ?)"
-		args = append(args, asOf)
+		args = append(args, asOfDate)
 	}
 
 	query += " ORDER BY a.type, a.name"
@@ -129,7 +136,6 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 		// For investment accounts, use the investment valuer to get total value
 		// (cash + holdings market value) instead of the raw transaction balance.
 		if accountType.IsInvestmentType() && s.investmentValue != nil {
-			asOfDate := types.NewDate(asOf.Year(), asOf.Month(), asOf.Day())
 			result, err := s.investmentValue.GetAccountValuation(accountID, asOfDate)
 			if err == nil {
 				accountBalance.Balance = result.TotalValue

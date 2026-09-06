@@ -30,19 +30,15 @@ func (db *DB) Migrate() error {
 		}
 	}
 
-	if currentVersion == CurrentSchemaVersion {
-		return nil // Already up to date
-	}
-
+	// The constant and the embedded files must agree, or Open would report a
+	// version the schema does not have (or run a migration the constant does not
+	// admit). This runs BEFORE the up-to-date early return so every Open and
+	// Create fails closed on a mismatch, not only the ones that have work to do.
+	// TestCurrentSchemaVersion catches the same thing in CI.
 	migrations, err := loadMigrations()
 	if err != nil {
 		return err
 	}
-
-	// The constant and the embedded files must agree, or Open would report a
-	// version the schema does not have (or run a migration the constant does not
-	// admit). TestCurrentSchemaVersion catches this in CI; this catches it in a
-	// binary built without running the tests.
 	if n := len(migrations); n == 0 || migrations[n-1].Version != CurrentSchemaVersion {
 		highest := 0
 		if n > 0 {
@@ -52,6 +48,10 @@ func (db *DB) Migrate() error {
 			Op:  "verify migrations",
 			Err: fmt.Errorf("CurrentSchemaVersion is %d but the highest embedded migration is %d", CurrentSchemaVersion, highest),
 		}
+	}
+
+	if currentVersion == CurrentSchemaVersion {
+		return nil // Already up to date
 	}
 
 	for _, m := range migrations {
