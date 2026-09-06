@@ -5,7 +5,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -64,195 +63,18 @@ func (a *App) renderLayout() string {
 		}
 	}
 
-	// Overlay transaction dialog if visible
-	if a.txnDialog != nil && a.txnDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.txnDialog)
-	}
-
-	// Overlay create-category sub-dialog if visible (sits on top of the
-	// hidden transaction dialog).
-	if a.createCatDialog != nil && a.createCatDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.createCatDialog)
-	}
-
-	// Overlay split dialog if visible
-	if a.splitDialog != nil && a.splitDialog.IsVisible() {
-		overlay := a.splitDialog.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
-	}
-
-	// Overlay transfer dialog if visible
-	if a.transferDialog != nil && a.transferDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.transferDialog)
-	}
-
-	// Overlay scheduled dialog if visible
-	if a.schedDialog != nil && a.schedDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.schedDialog)
-	}
-
-	// Overlay scheduled-preview dialog if visible. For multi-line
-	// previews the header dialog and the embedded split editor stack
-	// vertically; Tab transitions focus between the two surfaces
-	// (header → split editor, Shift+Tab from split editor → header).
-	if a.schedPreviewDialog != nil && a.schedPreviewDialog.IsVisible() {
-		overlay := a.schedPreviewDialog.HeaderDialog().Render(a.styles)
-		if a.schedPreviewDialog.IsMultiLine() {
-			if sd := a.schedPreviewDialog.SplitDialog(); sd != nil {
-				overlay = lipgloss.JoinVertical(lipgloss.Left, overlay, sd.Render(a.styles))
-			}
-		}
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
-	}
-
-	// Overlay paycheck wizard if visible.
-	if a.paycheckWizard != nil && a.paycheckWizard.IsVisible() {
-		overlay := a.paycheckWizard.Render(a.styles)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
-	}
-
-	// Overlay loan wizard if visible
-	if a.loanWizard != nil && a.loanWizard.IsVisible() {
-		layout = a.overlayDialog(layout, a.loanWizard)
-	}
-
-	// Overlay account dialog if visible
-	if a.acctDialog != nil && a.acctDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.acctDialog)
-	}
-
-	// Overlay backup dialog if visible
-	if a.backupDialog != nil && a.backupDialog.dialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.backupDialog.dialog)
-	}
-
-	// Overlay file dialog if visible
-	if a.fileDialog != nil && a.fileDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.fileDialog)
-	}
-
-	// Overlay import dialog if visible
-	if a.importDialog != nil && a.importDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.importDialog)
-	}
-
-	// Overlay link-transfers dialog if visible
-	if a.linkTransfersDialog != nil && a.linkTransfersDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.linkTransfersDialog)
-	}
-
-	// Overlay reconciliation start dialog if visible
-	if a.reconDialog != nil && a.reconDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.reconDialog)
-	}
-
-	// Overlay close-account dialog if visible
-	if a.closeAcctDialog != nil && a.closeAcctDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.closeAcctDialog)
-	}
-
-	// Overlay security dialog if visible
-	if a.securityDialog != nil && a.securityDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.securityDialog)
-	}
-
-	// Overlay price dialog if visible
-	if a.priceDialog != nil && a.priceDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.priceDialog)
-	}
-
-	// Overlay price import dialog if visible
-	if a.priceImportDialog != nil && a.priceImportDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.priceImportDialog)
-	}
-
-	// Overlay investment type selector dialog if visible
-	if a.investmentTypeSelector != nil && a.investmentTypeSelector.IsVisible() {
-		layout = a.overlayDialog(layout, a.investmentTypeSelector)
-	}
-
-	// Overlay buy dialog if visible
-	if a.buyDialog != nil && a.buyDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.buyDialog)
-	}
-
-	// Overlay sell dialog if visible
-	if a.sellDialog != nil && a.sellDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.sellDialog)
-	}
-
-	// Overlay fee-liquidation dialog if visible
-	if a.feeLiquidationDialog != nil && a.feeLiquidationDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.feeLiquidationDialog)
-	}
-
-	// Overlay dividend dialog if visible
-	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.dividendDialog)
-	}
-
-	// Overlay cash operation dialog if visible
-	if a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.cashOperationDialog)
-	}
-
-	// Overlay transfer shares dialog if visible
-	if a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.transferSharesDialog)
-	}
-
-	// Overlay stock split dialog if visible
-	if a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.stockSplitDialog)
-	}
-
-	// Overlay merger dialog if visible
-	if a.mergerDialog != nil && a.mergerDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.mergerDialog)
-	}
-
-	// Overlay merger confirmation if visible
-	if a.mergerConfirmData != nil {
-		overlay := a.renderMergerConfirmation()
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
-	}
-
-	// Overlay the read-only corporate-action details modal if visible. It
-	// lives in this app-level cascade rather than inside
-	// renderCorporateActionView's body so its geometry matches every other
-	// centred modal (one mouse transform covers them all), so a menubar
-	// dropdown cannot paint through the inside of the panel, and so the view
-	// body's height cannot clip it on a short terminal. The view guard stops
-	// a stale detail — set on the register, then a digit key switched views —
-	// from painting over an unrelated view.
+	// The read-only corporate-action details panel paints under every registry
+	// surface. It is not a registry modal: its keys belong to the corporate-
+	// action view handler and it can only exist while that view is active.
+	// While it is open the view swallows every key, so no registry surface can
+	// be raised over it, and the order between the two is unobservable.
 	if a.corporateActionDetail != nil && a.corporateActionView != nil &&
 		a.currentView == ViewCorporateActions {
 		overlay := a.renderCorporateActionDetails()
 		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
 	}
 
-	// Overlay spin-off dialog if visible
-	if a.spinOffDialog != nil && a.spinOffDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.spinOffDialog)
-	}
-
-	// Overlay confirmation dialog if visible
-	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.confirmDialog)
-	}
-
-	// Overlay About dialog if visible
-	if a.aboutDialog != nil && a.aboutDialog.IsVisible() {
-		layout = a.overlayDialog(layout, a.aboutDialog)
-	}
-
-	// Overlay help if visible
-	if a.showHelp {
-		overlay := renderHelpOverlay(a.styles, a.currentView, a.width, a.height)
-		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
-	}
-
-	return layout
+	return a.paintModals(layout)
 }
 
 // dialogMaxHeight is the height bound passed to base dialogs so a form taller
@@ -261,15 +83,6 @@ func (a *App) renderLayout() string {
 // dialog the full content area between them.
 func (a *App) dialogMaxHeight() int {
 	return max(a.height-2, 3)
-}
-
-// overlayDialog renders a base dialog bounded to dialogMaxHeight and overlays
-// it centered on the layout. Bounding makes a too-tall form (e.g. a Sell with
-// many lots) scroll within the screen rather than spilling over the status
-// bar; dialogs that already fit are unaffected.
-func (a *App) overlayDialog(layout string, d *dialog.Dialog) string {
-	d.SetMaxHeight(a.dialogMaxHeight())
-	return widget.OverlayCenter(layout, d.Render(a.styles), a.width, a.height)
 }
 
 // renderHeader renders the application header/menu bar.

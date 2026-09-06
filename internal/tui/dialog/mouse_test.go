@@ -480,7 +480,7 @@ func TestDialog_HandleMouse_ClickCancel_WhenScrolling(t *testing.T) {
 	d.SetVisible(true)
 
 	screenW, screenH := 80, 24
-	d.SetMaxHeight(screenH - 2) // what the app applies via overlayDialog
+	d.SetMaxHeight(screenH - 2) // what the app applies in its modal paint walk
 
 	if !d.isScrolling() {
 		t.Fatalf("expected the dialog to be scrolling with maxHeight=%d", screenH-2)

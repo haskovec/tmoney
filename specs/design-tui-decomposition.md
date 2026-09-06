@@ -32,8 +32,8 @@ names 4b and 4d with the measurement that sizes them.
 
 | Phase | Shipped | What it does |
 |---|---|---|
-| 0 | — | Render the two dialogs that no code paints today (a live bug, §1.3) |
-| 1 | — | Declare `Modal`; give three types the methods they lack; one registry replaces the key and paint cascades |
+| 0 | **yes** | Render the two dialogs that no code paints today (a live bug, §1.3) |
+| 1 | **yes** | Declare `Modal`; give three types the methods they lack; one registry replaces the key and paint cascades |
 | 2 | — | Move the mouse cascade onto the registry; close the mouse/keyboard gap that `specs/tui.md` forbids |
 | 3 | — | Group each surface's loose fields into one struct; `App` sheds ~65 fields |
 | 4 | — | Move `app_update.go`'s message bodies onto those structs — **off** `App`, not into another `App` method |
@@ -511,6 +511,101 @@ import right now. Painting them strictly reduces risk. The point is only that
 5. Record the §5.0 nil decision in writing, and land guard 1.
 
 `app_view.go` keeps its explicit `SetMaxHeight` call (§5.1).
+
+#### Built: the interface is narrower than §2.1, and the reason is measured
+
+§2.1 declares five methods. What shipped is two:
+
+```go
+type Modal interface {
+	IsVisible() bool
+	Render(styles widget.Styles) string
+}
+```
+
+`HandleMouse` is deferred to phase 2, which is the phase that calls it — and
+that is a better split than §1.4 implied, because `SplitDialog`'s missing
+`HandleMouse` is a *mouse* problem, blocked behind a mouse early return.
+
+`HandleKey` is the interesting one, and it is **not deferred — it is rejected**.
+Measured across the 31 key arms: **30 already call `X.HandleKey(msg)` exactly
+once.** So the method exists nearly everywhere and looks like an easy win. But
+what follows the call is a switch on the returned `DialogAction`, and *that* is
+what varies — four distinct action sets across the arms (`Submit`, `Cancel`,
+`AddNew`, `Alternate`) — and **every arm of every switch needs `*App`**: to call
+a service, to close a sibling surface, or to divert into create-category. A
+registry walk cannot dispatch it.
+
+Putting `HandleKey` in the interface would therefore add a member that 31 types
+satisfy and no walk calls, and it would force the one type that lacks it,
+`SchedulePreviewDialog`, into a restructure to produce a method nothing invokes.
+Its multi-line path interleaves `maybeReseedLoanPreview` and
+`freezeLoanSeedIfEdited` — both needing `a.scheduledTxnSvc` — between the inner
+`HandleKey` and the action switch, and §5.5 forbids a surface holding a service.
+
+So key dispatch is per-surface glue and lives on `modalEntry.onKey`, holding
+today's `handleXKey` method unchanged. That is what makes the collapse a pure
+routing change. `SetVisible` is out for the same class of reason: only the
+create-category divert calls it, and it calls it from the originating surface,
+never from the registry.
+
+**The rule this sets: add a member when a walk needs it, not before.** §2.3
+listed what the registry cannot do; this adds a fourth entry to that list — *the
+registry cannot own input dispatch*, because every dispatch needs `*App`. That
+is the same finding shape as §5.2 (it cannot route messages).
+
+Three surfaces have no modal-typed field and needed adapters: the help overlay
+(a bare `bool`), the merger confirmation (visibility is the presence of its
+data), and the backup dialog (its dialog is one level in). Each is named in the
+guard's `registryOnlySurfaces` with its reason, so a fourth cannot appear
+silently.
+
+#### Built: §1.5 verified by differential, and the paint order was wrong
+
+§1.5 argues the collapse is safe because the four lists agree on every pair
+that can co-occur. That argument was checked, not taken. With the old cascades
+kept alongside the new walks, a differential ran every surface and every pair:
+
+| Check | Result |
+|---|---|
+| `isDialogVisible`, per surface | identical |
+| Paint, single surface | identical |
+| **Key routing, all 496 pairs** | **identical** |
+| Paint, all 496 pairs | **352 change which surface ends up on top** |
+
+Key routing is identical by construction — the registry order is
+`handleKeyPress`'s order — and the differential proves it rather than assuming
+it. Paint is where the old lists disagreed, and 352 of 496 is far too large a
+number to wave through with "they cannot co-occur". So the differential was
+narrowed to the question that matters: **does any pair that can be visible at
+once change?**
+
+By §1.5's own classification the co-occurring set is small. Cases A and B are
+*swaps*, not stacks — all eight create-category originators hide themselves, and
+`submitMergerDialog` closes the merger dialog before its confirmation loads — so
+neither belongs in the set. Only Case C, `showConfirmDialog`, is a true stack.
+One correction to §1.5's supporting detail: `backup_dialog.go:118` nils
+`a.backupDialog` *before* calling `showConfirmDialog`, so restore-from-backup is
+a swap too, leaving confirm-over-scheduled and confirm-over-split.
+
+**Neither changed.** The 352 are all pairs that cannot co-occur.
+
+And the first pass got this wrong in an instructive way. A differential run
+against a 4-character base layout reported **0 of 992 pairs differing** — a
+false pass, because no overlay could be distinguished on a layout that small. A
+self-test asking "can this comparison see *any* difference?" caught it. A
+differential that cannot fail is worth less than no differential, because it
+reads as proof.
+
+**The new order also fixes a latent bug.** Five of the 352 are create-category
+against its originators, and there the *old* order was wrong: create-category
+was painted second from the bottom, so `transfer`, `scheduled`,
+`schedulePreview`, `paycheckWizard` and `loanWizard` all painted **over** the
+sub-dialog they had just opened. Invisible today only because each originator
+hides itself first. Deriving paint from key priority makes the surface that owns
+the keyboard also the surface on top — correct by construction rather than by
+eight cooperating call sites. `TestModals_CreateCategoryOutranksItsOriginators`
+pins it.
 
 **Phase 1 does not touch the mouse.** `handleDialogMouse` keeps its 30 hand-written
 entries until phase 2, so for one phase the registry is the source of truth for

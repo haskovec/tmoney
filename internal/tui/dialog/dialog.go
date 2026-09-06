@@ -87,8 +87,14 @@ func (d *Dialog) SetTitle(title string) {
 }
 
 // IsVisible returns whether the dialog is currently shown.
+//
+// Nil-safe on purpose. A nil *Dialog stored in an interface value is not a nil
+// interface, so the modal registry in package tui — which walks every surface
+// whether or not it has been built — would dereference a nil receiver here.
+// Guarding at the implementation rather than at each call site is what lets
+// that registry drop the 31 hand-written `X != nil && X.IsVisible()` gates.
 func (d *Dialog) IsVisible() bool {
-	return d.visible
+	return d != nil && d.visible
 }
 
 // SetVisible sets the dialog visibility.

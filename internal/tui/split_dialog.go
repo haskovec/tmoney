@@ -217,8 +217,10 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 }
 
 // IsVisible returns whether the split dialog is currently shown.
+// Nil-safe so the modal registry can walk an unbuilt surface — see the note on
+// dialog.Dialog.IsVisible.
 func (sd *SplitDialog) IsVisible() bool {
-	return sd.visible
+	return sd != nil && sd.visible
 }
 
 // SetVisible toggles the rendered state of the split dialog. Used when an

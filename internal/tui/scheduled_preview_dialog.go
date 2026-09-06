@@ -463,8 +463,34 @@ func (p *SchedulePreviewDialog) IsMultiLine() bool {
 }
 
 // IsVisible reports whether the preview dialog should currently render.
+//
+// It delegates to the header dialog, and that aliasing is load-bearing: the
+// create-category divert hides the header, which must take the whole preview
+// off screen. Nil-safe so the modal registry can walk an unbuilt surface — see
+// the note on dialog.Dialog.IsVisible.
 func (p *SchedulePreviewDialog) IsVisible() bool {
-	return p.headerDialog != nil && p.headerDialog.IsVisible()
+	return p != nil && p.headerDialog.IsVisible()
+}
+
+// Render draws the preview. For a multi-line preview the header dialog and the
+// embedded split editor stack vertically; Tab transitions focus between the two
+// surfaces (header → split editor, Shift+Tab from split editor → header).
+//
+// This was inline in renderLayout. It lives here so the preview is one modal
+// surface to the registry rather than the only entry needing bespoke paint
+// code. handleSchedulePreviewMouse rebuilds the same composite to map a click,
+// so the two must stay in step.
+func (p *SchedulePreviewDialog) Render(styles widget.Styles) string {
+	if p == nil {
+		return ""
+	}
+	out := p.headerDialog.Render(styles)
+	if p.IsMultiLine() {
+		if sd := p.SplitDialog(); sd != nil {
+			out = lipgloss.JoinVertical(lipgloss.Left, out, sd.Render(styles))
+		}
+	}
+	return out
 }
 
 // FocusOnSplits reports whether key events are currently routed to the
