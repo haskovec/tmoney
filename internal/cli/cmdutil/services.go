@@ -37,10 +37,8 @@ func OpenServices(file string) (*db.DB, *app.Services, error) {
 }
 
 // AutoBackupAfterModification creates an auto-backup after a data-modifying CLI
-// command. It CLOSES the database first: a copy of an open DuckDB file misses
-// the writes still in its WAL, and on Windows the copy cannot even open the
-// file (see db.DB.Close). Call it as the command's last database action; the
-// caller's deferred Close is then a harmless no-op.
+// command. It closes the database first (see db.DB.Close), so call it as the
+// command's last database action; the deferred Close is then a no-op.
 func AutoBackupAfterModification(database *db.DB) {
 	// Best-effort: don't fail the CLI command if the close or backup fails
 	if err := database.Close(); err != nil {

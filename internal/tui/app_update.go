@@ -686,28 +686,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.switchDatabase(msg.db)
 
 	case backupCreatedMsg:
-		// Taking the backup closed the live database; adopt the reopened one.
-		model, cmd := a.switchDatabase(msg.db)
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Backup created: %s", backupFilename(msg.path)),
 			widget.NotificationInfo,
 		)
-		return model, cmd
+		return a, nil
 
 	case restoreConfirmedMsg:
-		// Switch to the reopened database
-		model, cmd := a.switchDatabase(msg.db)
+		model, cmd := a.reloadAfterRestore()
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Restored from backup (safety backup: %s)", backupFilename(msg.safetyBackupPath)),
 			widget.NotificationInfo,
 		)
-		return model, cmd
-
-	case reopenedAfterFailureMsg:
-		// The old handle was closed for the restore attempt; adopt the reopened
-		// original so the app keeps working, then surface the failure.
-		model, cmd := a.switchDatabase(msg.db)
-		a.err = msg.err
 		return model, cmd
 
 	case reconciliationStartedMsg:
