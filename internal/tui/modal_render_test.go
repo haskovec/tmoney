@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -28,10 +29,9 @@ func newModalRenderTestApp() *App {
 	}
 }
 
-// The import and link-transfers dialogs were key-routed and mouse-armed but
-// appeared in neither renderLayout nor isDialogVisible, so File → Import and
-// Transactions → Link Transfers opened a form the user could type into and
-// could not see. These tests pin both halves of the fix.
+// A visible import or link-transfers dialog must appear in viewContent() and
+// be reported by isDialogVisible(). The second half is what lets a click reach
+// the dialog: handleMouseEvent gates on isDialogVisible.
 
 func TestRenderLayout_ImportDialogOptionsStepRenders(t *testing.T) {
 	app := newModalRenderTestApp()
@@ -52,6 +52,9 @@ func TestRenderLayout_ImportDialogSourcePickerStepRenders(t *testing.T) {
 	if got := app.viewContent(); !strings.Contains(got, "Pick Source Account") {
 		t.Error("renderLayout must paint the import dialog's source-picker step")
 	}
+	if !app.isDialogVisible() {
+		t.Error("isDialogVisible must report the import dialog as open")
+	}
 }
 
 func TestRenderLayout_LinkTransfersDialogRenders(t *testing.T) {
@@ -66,15 +69,15 @@ func TestRenderLayout_LinkTransfersDialogRenders(t *testing.T) {
 	}
 }
 
-// A dialog absent from isDialogVisible has dead mouse arms, because
-// handleMouseEvent gates on it before reaching handleDialogMouse. Assert the
-// gate lets a click through to the dialog rather than to the view underneath.
+// A click on a visible dialog's Cancel button must reach that dialog and close
+// it, rather than fall through to the view underneath.
 
 func TestMouseGate_ImportDialogCancelClosesIt(t *testing.T) {
 	app := newModalRenderTestApp()
 	app.importDialog, _ = buildImportOptionsDialog(makeTestAccounts(), types.ID{})
 	app.importDialogState = &importDialogState{}
 
+	// Preview on an empty state keeps the dialog open, so only Cancel closes it.
 	clickCancelButton(t, app, app.importDialog)
 
 	if app.importDialog != nil {
@@ -84,29 +87,66 @@ func TestMouseGate_ImportDialogCancelClosesIt(t *testing.T) {
 
 func TestMouseGate_LinkTransfersDialogCancelClosesIt(t *testing.T) {
 	app := newModalRenderTestApp()
-	app.linkTransfersDialog = buildLinkTransfersDialog(&transferlink.Result{Scanned: 3})
+	// One clean pair, and the result installed on the app: Submit would then
+	// close the dialog AND return the execute command, so a Cancel click is
+	// told apart from a Submit click by the absence of that command.
+	res := &transferlink.Result{Scanned: 2, Clean: []*transferlink.Candidate{{
+		From:        &transaction.Transaction{Date: types.NewDate(2024, 1, 15), Amount: types.MustNewMoney("-100.00")},
+		To:          &transaction.Transaction{Date: types.NewDate(2024, 1, 15), Amount: types.MustNewMoney("100.00")},
+		FromAccount: "Checking",
+		ToAccount:   "Savings",
+	}}}
+	app.linkTransfersResult = res
+	app.linkTransfersDialog = buildLinkTransfersDialog(res)
 
-	clickCancelButton(t, app, app.linkTransfersDialog)
+	cmd := clickCancelButton(t, app, app.linkTransfersDialog)
 
 	if app.linkTransfersDialog != nil {
 		t.Error("clicking Cancel must close the link-transfers dialog")
 	}
+	if cmd != nil {
+		t.Error("clicking Cancel must not start the link execute command; the click landed on Submit")
+	}
 }
 
-// clickCancelButton clicks the right-hand (Cancel) button of a two-button
-// dialog. Both dialogs here lay out [Primary] [Cancel] across the content
-// width, so a click in the right three-quarters lands on Cancel.
-func clickCancelButton(t *testing.T, app *App, d *dialog.Dialog) {
+// clickCancelButton clicks the button labelled "Cancel" on d, located by the
+// dialog's own hit test, and returns the command the click produced.
+func clickCancelButton(t *testing.T, app *App, d *dialog.Dialog) tea.Cmd {
 	t.Helper()
 	// overlayDialog calls SetMaxHeight as a side effect of painting, and
 	// DialogBounds reads that back through RenderedHeight. Render first so the
 	// geometry the click is computed against is the geometry the user sees.
 	_ = app.viewContent()
 
+	cancelIdx := -1
+	for i, b := range d.Buttons() {
+		if b.Label == "Cancel" {
+			cancelIdx = i
+		}
+	}
+	if cancelIdx < 0 {
+		t.Fatal("dialog has no Cancel button")
+	}
+
 	startCol, startRow, _, _ := d.DialogBounds(app.width, app.height)
 	contentWidth := d.Width() - dialog.DialogHorizontalOverhead
-	btnY := startRow + 2 + d.ContentHeight() - 1 // last content row
-	btnX := startCol + 3 + contentWidth*3/4
+	buttonRow := d.ContentHeight() - 1
+	cancelX := -1
+	for x := range contentWidth {
+		hit := d.HitTestContent(x, buttonRow, contentWidth)
+		if hit.Zone == dialog.DialogHitButton && hit.ButtonIndex == cancelIdx {
+			cancelX = x
+			break
+		}
+	}
+	if cancelX < 0 {
+		t.Fatal("could not locate the Cancel button by hit test")
+	}
 
-	app.Update(tea.MouseClickMsg{X: btnX, Y: btnY, Button: tea.MouseLeft})
+	_, cmd := app.Update(tea.MouseClickMsg{
+		X:      startCol + 3 + cancelX,
+		Y:      startRow + 2 + buttonRow,
+		Button: tea.MouseLeft,
+	})
+	return cmd
 }
