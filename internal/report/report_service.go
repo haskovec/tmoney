@@ -2,6 +2,7 @@ package report
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
@@ -65,7 +66,18 @@ func (s *Service) NetWorthAsOfIncludingClosed(asOf time.Time) (*NetWorth, error)
 }
 
 // netWorthAsOf generates a net worth report with options.
+//
+// Unless includeClosed is set, an account counts only if it was open on asOf:
+// active now, or closed after asOf. A closed account with no closed_date
+// (closed before migration 025 recorded dates) is treated as always closed.
 func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, error) {
+	// Bind a calendar date, not the timestamp. transactions.date and
+	// accounts.closed_date are DATE columns holding the LOCAL calendar day
+	// (types.Today), while the driver binds a time.Time as a UTC instant; near
+	// midnight the two disagree by a day. Truncating with the local Y-M-D is what
+	// types.Today does, so the comparison is day-to-day in the same calendar.
+	asOfDate := types.NewDate(asOf.Year(), asOf.Month(), asOf.Day())
+
 	// Query to get account balances as of a specific date
 	// The balance is: opening_balance + sum(transactions where date <= asOf)
 	query := `
@@ -84,10 +96,11 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 		FROM accounts a
 		WHERE 1=1
 	`
-	args := []any{asOf}
+	args := []any{asOfDate}
 
 	if !includeClosed {
-		query += " AND a.active = TRUE"
+		query += " AND (a.active = TRUE OR a.closed_date > ?)"
+		args = append(args, asOfDate)
 	}
 
 	query += " ORDER BY a.type, a.name"
@@ -123,7 +136,6 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 		// For investment accounts, use the investment valuer to get total value
 		// (cash + holdings market value) instead of the raw transaction balance.
 		if accountType.IsInvestmentType() && s.investmentValue != nil {
-			asOfDate := types.NewDate(asOf.Year(), asOf.Month(), asOf.Day())
 			result, err := s.investmentValue.GetAccountValuation(accountID, asOfDate)
 			if err == nil {
 				accountBalance.Balance = result.TotalValue
@@ -373,13 +385,13 @@ func (s *Service) spendingByCategory(period string, startDate, endDate time.Time
 	}, nil
 }
 
-// sortCategoriesByAmount sorts categories by amount in descending order.
+// sortCategoriesByAmount sorts categories by amount descending, then by name
+// so equal amounts have a stable order (the input comes from a map).
 func sortCategoriesByAmount(categories []CategorySpending) {
-	for i := 0; i < len(categories)-1; i++ {
-		for j := i + 1; j < len(categories); j++ {
-			if categories[j].Amount.Cmp(categories[i].Amount) > 0 {
-				categories[i], categories[j] = categories[j], categories[i]
-			}
+	sort.Slice(categories, func(i, j int) bool {
+		if c := categories[i].Amount.Cmp(categories[j].Amount); c != 0 {
+			return c > 0
 		}
-	}
+		return categories[i].Name < categories[j].Name
+	})
 }

@@ -186,10 +186,12 @@ func (m Money) Mul(multiplier alpacadecimal.Decimal) Money {
 	return Money{value: m.value.Mul(multiplier)}
 }
 
-// Div returns the quotient of Money and a divisor.
+// Div returns the quotient of Money and a divisor. A zero divisor panics, like
+// integer division: silently returning zero money turned a caller's bug (an
+// empty average, a missing count) into a wrong amount on the ledger.
 func (m Money) Div(divisor int64) Money {
 	if divisor == 0 {
-		return ZeroMoney
+		panic("types.Money.Div: division by zero")
 	}
 	return Money{value: m.value.Div(alpacadecimal.NewFromInt(divisor))}
 }
