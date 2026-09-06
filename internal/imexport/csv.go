@@ -144,16 +144,11 @@ type splitCandidate struct {
 	lines  []ImportRecord
 }
 
-// flush appends the run to records, folded into one split transaction only if
-// the split amounts sum to the parent's amount, else as independent records.
-//
-// The sum check is what stops two ordinary transactions from being merged. The
-// shape alone is not enough evidence: two uncategorized ATM withdrawals on one
-// day share date, account and payee, and so do a same-day uncategorized purchase
-// and a categorized one from the same shop. Both were folded into a bogus split
-// before, and the split then failed validation (or worse, passed with the
-// wrong total). A genuine export always sums exactly, so a mismatch means these
-// rows were never one transaction.
+// flush appends the run to records: folded into one split transaction when it
+// has at least two lines whose amounts sum to the parent's amount, else as
+// independent records. Same date, account and payee alone are not evidence of a
+// split, and a single line equal to the parent is indistinguishable from a
+// second purchase of the same amount, so both are kept separate.
 func (c *splitCandidate) flush(records []ImportRecord) []ImportRecord {
 	if len(c.lines) == 0 {
 		return append(records, c.parent)
@@ -163,7 +158,7 @@ func (c *splitCandidate) flush(records []ImportRecord) []ImportRecord {
 	for _, line := range c.lines {
 		total = total.Add(line.Amount)
 	}
-	if !total.Equal(c.parent.Amount) {
+	if len(c.lines) < 2 || !total.Equal(c.parent.Amount) {
 		records = append(records, c.parent)
 		return append(records, c.lines...)
 	}
@@ -220,10 +215,8 @@ func parseCSVRow(cm columnMap, row []string, lineNum int) (*ImportRecord, *Parse
 }
 
 // isSplitContinuation returns true if record has the shape of a split line
-// under parent: the same date, account and payee, and a category of its own. A
-// split line without a category is meaningless, so a second uncategorized row
-// is a new transaction, not a continuation. The amount check that completes the
-// decision runs over the whole run in splitCandidate.flush.
+// under parent: the same date, account and payee, and a category of its own.
+// The count and sum checks run over the whole run in splitCandidate.flush.
 func isSplitContinuation(parent ImportRecord, record ImportRecord) bool {
 	if record.Category == "" {
 		return false

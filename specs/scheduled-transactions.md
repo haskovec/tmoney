@@ -233,6 +233,12 @@ yearly:    next_date + (interval * 12 months), adjusted for day_of_month
 
 ### Month-End Handling
 
+Monthly, quarterly and yearly occurrences lie on the grid `start_date + n × period`.
+The next occurrence is the first grid point strictly after `next_date`, so a
+`next_date` that once overflowed into the wrong month (Feb 29 → Mar 1, Jan 31 →
+May 1) returns to the grid on its next advance. A `next_date` moved to another
+month by hand (CLI `scheduled edit`) also snaps back to the start date's phase.
+
 If day_of_month (or, when unset, the start date's day) > days in target month:
 - Use last day of month
 - Example: 31st monthly → Jan 31, Feb 28/29, Mar 31, Apr 30...

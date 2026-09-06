@@ -932,7 +932,7 @@ func TestAccountTypeToQIF(t *testing.T) {
 func TestQIFStatusConversions(t *testing.T) {
 	// qifStatusToImport follows Quicken: * / c = cleared, X / R = reconciled.
 	for in, want := range map[string]string{
-		"*": "C", "c": "C",
+		"*": "C", "c": "C", "C": "C",
 		"X": "R", "x": "R", "R": "R", "r": "R",
 		"": "U", " ": "U",
 	} {

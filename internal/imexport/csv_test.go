@@ -139,6 +139,28 @@ func TestParseCSV_SplitShapeWithoutMatchingSumStaysSeparate(t *testing.T) {
 	}
 }
 
+func TestParseCSV_SingleEqualAmountLineIsNotASplit(t *testing.T) {
+	// One continuation row whose amount equals the parent: two purchases of the
+	// same amount, not a one-line split. Folding it would drop -50 from the total.
+	input := `Date,Account,Payee,Category,Amount,Memo,Check Number,Status,Transfer Account
+2024-01-15,Checking,Amazon,,-50.00,,,C,
+2024-01-15,Checking,Amazon,Books,-50.00,,,C,
+`
+
+	result, err := ParseCSV(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseCSV() error = %v", err)
+	}
+	if len(result.Records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(result.Records))
+	}
+	for i, rec := range result.Records {
+		if rec.IsSplit() {
+			t.Errorf("record %d should not be a split", i)
+		}
+	}
+}
+
 func TestParseCSV_TwoUncategorizedRowsAreNotASplit(t *testing.T) {
 	// Two ATM withdrawals on one day: identical date, account and payee, both
 	// without a category. Neither is a split line of the other.
