@@ -21,7 +21,14 @@ func (a *App) showAboutDialog() {
 
 // handleAboutDialogKey handles key input for the About dialog.
 func (a *App) handleAboutDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	action := a.aboutDialog.HandleKey(msg)
+	return a.aboutDialogAction(a.aboutDialog.HandleKey(msg))
+}
+
+// aboutDialogAction dispatches a DialogAction for the about dialog. Both the keyboard
+// and the mouse path call it, so clicking a button is exactly equivalent to
+// the keyboard action -- the rule specs/tui.md states and the two hand-kept
+// switches used to break.
+func (a *App) aboutDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit, dialog.DialogActionCancel:
 		a.aboutDialog.SetVisible(false)

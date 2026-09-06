@@ -294,8 +294,14 @@ func (a *App) handleAccountDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.acctDialog == nil {
 		return a, nil
 	}
+	return a.accountDialogAction(a.acctDialog.HandleKey(msg))
+}
 
-	action := a.acctDialog.HandleKey(msg)
+// accountDialogAction dispatches a DialogAction for the account dialog. Both the keyboard
+// and the mouse path call it, so clicking a button is exactly equivalent to
+// the keyboard action -- the rule specs/tui.md states and the two hand-kept
+// switches used to break.
+func (a *App) accountDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitAccountDialog()

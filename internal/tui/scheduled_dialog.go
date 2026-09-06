@@ -497,8 +497,14 @@ func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	if a.schedDialog == nil {
 		return a, nil
 	}
+	return a.scheduledDialogAction(a.schedDialog.HandleKey(msg))
+}
 
-	action := a.schedDialog.HandleKey(msg)
+// scheduledDialogAction dispatches a DialogAction for the scheduled dialog. Both the keyboard
+// and the mouse path call it, so clicking a button is exactly equivalent to
+// the keyboard action -- the rule specs/tui.md states and the two hand-kept
+// switches used to break.
+func (a *App) scheduledDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		if a.schedDialogData != nil && a.schedDialogData.isTransfer {

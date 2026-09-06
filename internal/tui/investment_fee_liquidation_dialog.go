@@ -128,7 +128,14 @@ func (a *App) handleFeeLiquidationDialogKey(msg tea.KeyPressMsg) (tea.Model, tea
 	if a.feeLiquidationDialog == nil {
 		return a, nil
 	}
-	action := a.feeLiquidationDialog.HandleKey(msg)
+	return a.feeLiquidationDialogAction(a.feeLiquidationDialog.HandleKey(msg))
+}
+
+// feeLiquidationDialogAction dispatches a DialogAction for the fee liquidation dialog. Both the keyboard
+// and the mouse path call it, so clicking a button is exactly equivalent to
+// the keyboard action -- the rule specs/tui.md states and the two hand-kept
+// switches used to break.
+func (a *App) feeLiquidationDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitFeeLiquidationDialog()

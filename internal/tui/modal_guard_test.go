@@ -80,6 +80,9 @@ func TestGuard_RegistryReferencesNoUnknownField(t *testing.T) {
 		if _, exempt := registryOnlySurfaces[surface]; exempt {
 			continue
 		}
+		if field == "" {
+			continue // adapter type; the accounted-for guard demands its reason
+		}
 		if !onApp[field] {
 			t.Errorf("registry surface %q reads App.%s, which is not a modal-typed field; "+
 				"either give it a modal type or add it to registryOnlySurfaces with a reason",
@@ -101,7 +104,7 @@ func TestGuard_EveryRegistryEntryIsAccountedFor(t *testing.T) {
 		if _, exempt := registryOnlySurfaces[e.name]; exempt {
 			continue
 		}
-		if _, ok := byField[e.name]; !ok {
+		if field, ok := byField[e.name]; !ok || field == "" {
 			t.Errorf("registry surface %q has neither a modal-typed App field nor an "+
 				"entry in registryOnlySurfaces explaining why", e.name)
 		}
@@ -142,7 +145,9 @@ func registryFieldNames(t *testing.T) map[string]bool {
 	t.Helper()
 	out := make(map[string]bool)
 	for _, field := range registryNamesByField(t) {
-		out[field] = true
+		if field != "" {
+			out[field] = true
+		}
 	}
 	return out
 }
@@ -165,16 +170,38 @@ func registryNamesByField(t *testing.T) map[string]string {
 	out := make(map[string]string)
 	ast.Inspect(fn, func(n ast.Node) bool {
 		lit, ok := n.(*ast.CompositeLit)
-		if !ok || len(lit.Elts) != 3 {
+		if !ok {
 			return true
 		}
-		name, ok := lit.Elts[0].(*ast.BasicLit)
-		if !ok || name.Kind != token.STRING {
+		surface, modalExpr := "", ast.Expr(nil)
+		for _, elt := range lit.Elts {
+			kv, ok := elt.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			key, ok := kv.Key.(*ast.Ident)
+			if !ok {
+				continue
+			}
+			switch key.Name {
+			case "name":
+				if s, ok := kv.Value.(*ast.BasicLit); ok && s.Kind == token.STRING {
+					surface = strings.Trim(s.Value, `"`)
+				}
+			case "modal":
+				modalExpr = kv.Value
+			}
+		}
+		if surface == "" || modalExpr == nil {
 			return true
 		}
-		surface := strings.Trim(name.Value, `"`)
-		if field := appFieldOf(lit.Elts[1]); field != "" {
+		if field := appFieldOf(modalExpr); field != "" {
 			out[surface] = field
+		} else {
+			// An adapter type rather than a field. Record the surface with an
+			// empty field so the accounted-for guard can demand a stated
+			// reason instead of silently skipping it.
+			out[surface] = ""
 		}
 		return true
 	})

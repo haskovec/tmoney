@@ -34,7 +34,7 @@ names 4b and 4d with the measurement that sizes them.
 |---|---|---|
 | 0 | **yes** | Render the two dialogs that no code paints today (a live bug, §1.3) |
 | 1 | **yes** | Declare `Modal`; give three types the methods they lack; one registry replaces the key and paint cascades |
-| 2 | — | Move the mouse cascade onto the registry; close the mouse/keyboard gap that `specs/tui.md` forbids |
+| 2 | **yes** | Move the mouse cascade onto the registry; close the mouse/keyboard gap that `specs/tui.md` forbids |
 | 3 | — | Group each surface's loose fields into one struct; `App` sheds ~65 fields |
 | 4 | — | Move `app_update.go`'s message bodies onto those structs — **off** `App`, not into another `App` method |
 | 5 | — | One pilot controller: `open`/`submit`/`close` off `*App` for a single surface, proving 4c is reachable |
@@ -655,6 +655,107 @@ exception.
 today. Keep it as an explicit registry flag, or delete it and give the split
 dialog working mouse support as a separate, stated change. Do not let it
 disappear by accident.
+
+#### Built: the asymmetry is wider than Cancel, and the shape follows from it
+
+Before changing anything, each surface's keyboard switch was diffed against its
+mouse switch. The result decided the design:
+
+> **Every Submit, AddNew and Alternate body is byte-identical between the two
+> paths. Only Cancel differs — and four surfaces have a post-switch tail the
+> mouse path never had.**
+
+That rules out the shape phase 2 was sketched with (`onSubmit`/`onCancel` on the
+entry). If the two switches are already the same code written twice, the fix is
+not to lift two of its arms into the registry — it is to have **one dispatcher
+per surface that both paths call**. So each `handleXKey` was split in two:
+
+```go
+func (a *App) handleSellDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if a.sellDialog == nil {
+		return a, nil
+	}
+	return a.sellDialogAction(a.sellDialog.HandleKey(msg))
+}
+
+func (a *App) sellDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) { … }
+```
+
+29 surfaces, mechanically. `modalEntry` gains `onAction`, and the mouse walk is
+`e.onAction(a, HandleMouse(...))`. `specs/tui.md:687-695` stops being a rule
+somebody has to maintain and becomes a fact about the code.
+
+**The four tails, none of which the design predicted.** Each ran after the
+keyboard switch and nowhere on the mouse path, so the derived state went stale
+when the user clicked rather than typed:
+
+| Surface | Tail | Effect of clicking instead of typing |
+|---|---|---|
+| `txnDialog` | `checkPayeeAutoFill` | no category auto-fill from the payee |
+| `schedDialog` | `refreshSchedCategoryOptionsForAccount` | Value Adjustment does not appear/disappear when the account changes |
+| `acctDialog` | `updateAccountFieldVisibility` | fields do not follow the account type |
+| `stockSplitDialog` | `refreshStockSplitDialogMessage` | the ratio preview does not update |
+
+`loanWizard` was the near-miss that proves the reading: it has the same shape,
+and the mouse arm *did* carry it, as a `default:` case. One of five kept in
+step by hand.
+
+**One latent gap closed.** The paycheck wizard's mouse arm had no `AddNew` case
+at all. Unreachable today — `PaycheckWizard.HandleMouse` only ever returns
+`None`, `Submit` or `Cancel` — so it is not scored as a bug, but the moment the
+wizard grows a clickable "add new category" the old shape would have dropped it
+silently. The shared dispatcher cannot.
+
+**`HandleMouse` stays out of `Modal`.** The base dialog's hit-testing takes no
+styles and the paycheck wizard's does. Widening `dialog.Dialog.HandleMouse` to
+accept a parameter it ignores would churn **18 call sites in the dialog
+package's own tests** to satisfy an interface — the same trade phase 1 refused
+for `HandleKey`. The divergence is instead stated once, in `modalMouseAction`'s
+two-case type switch. Same rule as phase 1: **add a member when a walk needs it,
+and only if the surfaces agree on its signature.**
+
+**Every exception is named, not implied.** The original phase 2 marked the
+split dialog and the merger confirmation `mouseBlocked`. By the time it landed
+on `main`, both had gained real hit tests there (the split editor's
+`HandleMouseLocal`, the merger confirmation's `[x]`/Cancel/Merge row), so the
+flag was never needed: each is an `onMouse` override in the registry, stating
+why it is not the default `HandleMouse`-then-`onAction` shape. The split
+editor's override feeds its hit-test result through the same `splitDialogAction`
+the keyboard uses. The corporate-action details panel stays outside the
+registry and is reached by `handleDialogMouse`'s fallback when no registry
+surface is frontmost.
+
+#### Built: two tests that did not test anything, and how they were caught
+
+The pre-change audit the design asked for found **no test asserting on
+post-cancel leftovers** — 2 of 688 literals combine a mouse event with companion
+state, and both are the file dialog's double-click tracker. So the fix shipped
+with no existing coverage, and the new tests had to carry it. Two of them were
+worthless on the first attempt:
+
+1. **A tautology.** The first cancel-equivalence test called `onAction(Cancel)`
+   twice and compared the results — the same function against itself, which
+   passes whatever the code does. Rewritten to drive both real routes:
+   `handleKeyPress(Esc)` against `handleMouseEvent(click on the Cancel button)`.
+
+2. **A blind fixture.** Even then it passed against a deliberately reintroduced
+   partial cancel, because the fixtures set only the dialog handle. With nothing
+   in `sellDialogData`, `sellDialogSecurityIDs` or `sellDialogLots`, a close that
+   leaks all three is indistinguishable from a complete one. The fixtures now
+   populate companion state, and the mutation is caught:
+
+   ```
+   Esc cleared [sellDialog sellDialogLots sellDialogSecurityIDs sellDialogData],
+   clicking Cancel cleared [sellDialog]
+   ```
+
+Both were found by **mutating the code and checking the test fails** — the same
+discipline that caught phase 1's false 0-of-992 differential. The pattern is now
+three for three across phases 0–2: *a test written for a refactor is not
+evidence until it has been seen to fail.* Note also what caught the fixture bug
+and not the test itself — the assertion compares a **reflected snapshot of every
+pointer field on `App`**, not a hand-listed set per surface. A hand-listed set
+would have omitted exactly the fields the inlined arms omitted.
 
 ### Phase 3 — per-surface state structs
 

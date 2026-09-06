@@ -41,9 +41,20 @@ type modalEntry struct {
 	name  string
 	modal Modal
 	// onKey receives every key while this surface is the frontmost visible
-	// one. Through phase 2 these stay the existing handleXKey methods, which
-	// is what makes the cascade collapse a pure routing change.
+	// one. It is the existing handleXKey method, which calls the surface's
+	// HandleKey and hands the result to onAction.
 	onKey func(*App, tea.KeyPressMsg) (tea.Model, tea.Cmd)
+
+	// onAction dispatches a DialogAction, and BOTH input paths call it.
+	// specs/tui.md:687-695 requires that clicking a dialog button be exactly
+	// equivalent to the keyboard action; one dispatcher per surface makes that
+	// true by construction rather than by keeping two switches in step. The
+	// two switches had in fact drifted — see the phase 2 notes in the design.
+	onAction func(*App, dialog.DialogAction) (tea.Model, tea.Cmd)
+
+	// onMouse replaces the default "HandleMouse then onAction" walk. Only the
+	// surfaces that need it declare one, and each says why at its entry.
+	onMouse func(*App, tea.MouseMsg) (tea.Model, tea.Cmd)
 }
 
 // modals returns every modal surface in priority order: index 0 receives keys
@@ -64,45 +75,218 @@ type modalEntry struct {
 // not a modal. See isDialogVisible.
 func (a *App) modals() []modalEntry {
 	return []modalEntry{
-		{"help", helpOverlayModal{a}, (*App).handleHelpOverlayKey},
-		{"confirm", a.confirmDialog, (*App).handleConfirmDialogKey},
-		{"about", a.aboutDialog, (*App).handleAboutDialogKey},
-		{"backup", a.backupDialog.Dialog(), (*App).handleBackupDialogKey},
-		{"file", a.fileDialog, (*App).handleFileDialogKey},
-		{"import", a.importDialog, (*App).handleImportDialogKey},
-		{"linkTransfers", a.linkTransfersDialog, (*App).handleLinkTransfersDialogKey},
-		{"split", a.splitDialog, (*App).handleSplitDialogKey},
-		// createCat must outrank the eight surfaces it diverts from, so it
-		// takes keys and paints above them. Split is the exception: it
-		// outranks createCat, which is safe only because split hides itself
-		// before diverting (split_dialog.go).
-		{"createCategory", a.createCatDialog, (*App).handleCreateCatDialogKey},
-		{"transaction", a.txnDialog, (*App).handleTransactionDialogKey},
-		{"transfer", a.transferDialog, (*App).handleTransferDialogKey},
-		{"scheduled", a.schedDialog, (*App).handleScheduledDialogKey},
-		{"schedulePreview", a.schedPreviewDialog, (*App).handleSchedulePreviewDialogKey},
-		{"paycheckWizard", a.paycheckWizard, (*App).handlePaycheckWizardKey},
-		{"loanWizard", a.loanWizard, (*App).handleLoanWizardKey},
-		{"account", a.acctDialog, (*App).handleAccountDialogKey},
-		{"reconciliation", a.reconDialog, (*App).handleReconDialogKey},
-		{"closeAccount", a.closeAcctDialog, (*App).handleCloseAcctDialogKey},
-		{"security", a.securityDialog, (*App).handleSecurityDialogKey},
-		{"price", a.priceDialog, (*App).handlePriceDialogKey},
-		{"priceImport", a.priceImportDialog, (*App).handlePriceImportDialogKey},
-		{"buy", a.buyDialog, (*App).handleBuyDialogKey},
-		{"sell", a.sellDialog, (*App).handleSellDialogKey},
-		{"feeLiquidation", a.feeLiquidationDialog, (*App).handleFeeLiquidationDialogKey},
-		{"dividend", a.dividendDialog, (*App).handleDividendDialogKey},
-		{"transferShares", a.transferSharesDialog, (*App).handleTransferSharesDialogKey},
-		{"stockSplit", a.stockSplitDialog, (*App).handleStockSplitDialogKey},
+		// The help overlay has one clickable target, its [x] close box, so its
+		// mouse handling is a hit test rather than a DialogAction.
+		{
+			name:    "help",
+			modal:   helpOverlayModal{a},
+			onKey:   (*App).handleHelpOverlayKey,
+			onMouse: (*App).handleHelpOverlayMouse,
+		},
+		{
+			name:     "confirm",
+			modal:    a.confirmDialog,
+			onKey:    (*App).handleConfirmDialogKey,
+			onAction: (*App).confirmDialogAction,
+		},
+		{
+			name:     "about",
+			modal:    a.aboutDialog,
+			onKey:    (*App).handleAboutDialogKey,
+			onAction: (*App).aboutDialogAction,
+		},
+		{
+			name:     "backup",
+			modal:    a.backupDialog.Dialog(),
+			onKey:    (*App).handleBackupDialogKey,
+			onAction: (*App).backupDialogAction,
+		},
+		// The file dialog adds a double-click-to-activate step in browse mode
+		// before the ordinary action dispatch.
+		{
+			name:     "file",
+			modal:    a.fileDialog,
+			onKey:    (*App).handleFileDialogKey,
+			onAction: (*App).fileDialogAction,
+			onMouse:  (*App).handleFileDialogMouse,
+		},
+		{
+			name:     "import",
+			modal:    a.importDialog,
+			onKey:    (*App).handleImportDialogKey,
+			onAction: (*App).importDialogAction,
+		},
+		{
+			name:     "linkTransfers",
+			modal:    a.linkTransfersDialog,
+			onKey:    (*App).handleLinkTransfersDialogKey,
+			onAction: (*App).linkTransfersDialogAction,
+		},
+		// The split editor's rows are not dialog.Field rows, so DialogBounds cannot
+		// map a click to them. Its own hit test (HandleMouseLocal) does, and the
+		// override feeds the result through the same dispatcher the keyboard uses.
+		{
+			name:     "split",
+			modal:    a.splitDialog,
+			onKey:    (*App).handleSplitDialogKey,
+			onAction: (*App).splitDialogAction,
+			onMouse:  (*App).handleSplitDialogMouse,
+		},
+		// createCat must outrank the eight surfaces it diverts from, so it takes
+		// keys and paints above them. Split is the exception: it outranks
+		// createCat, which is safe only because split hides itself on divert.
+		{
+			name:     "createCategory",
+			modal:    a.createCatDialog,
+			onKey:    (*App).handleCreateCatDialogKey,
+			onAction: (*App).createCatDialogAction,
+		},
+		{
+			name:     "transaction",
+			modal:    a.txnDialog,
+			onKey:    (*App).handleTransactionDialogKey,
+			onAction: (*App).transactionDialogAction,
+		},
+		{
+			name:     "transfer",
+			modal:    a.transferDialog,
+			onKey:    (*App).handleTransferDialogKey,
+			onAction: (*App).transferDialogAction,
+		},
+		{
+			name:     "scheduled",
+			modal:    a.schedDialog,
+			onKey:    (*App).handleScheduledDialogKey,
+			onAction: (*App).scheduledDialogAction,
+		},
+		// The preview stacks a header dialog over an embedded split editor and
+		// routes to whichever the click lands in, so neither input path is a
+		// single HandleX plus a switch.
+		{
+			name:    "schedulePreview",
+			modal:   a.schedPreviewDialog,
+			onKey:   (*App).handleSchedulePreviewDialogKey,
+			onMouse: (*App).handleSchedulePreviewMouse,
+		},
+		{
+			name:     "paycheckWizard",
+			modal:    a.paycheckWizard,
+			onKey:    (*App).handlePaycheckWizardKey,
+			onAction: (*App).paycheckWizardAction,
+		},
+		{
+			name:     "loanWizard",
+			modal:    a.loanWizard,
+			onKey:    (*App).handleLoanWizardKey,
+			onAction: (*App).loanWizardAction,
+		},
+		{
+			name:     "account",
+			modal:    a.acctDialog,
+			onKey:    (*App).handleAccountDialogKey,
+			onAction: (*App).accountDialogAction,
+		},
+		{
+			name:     "reconciliation",
+			modal:    a.reconDialog,
+			onKey:    (*App).handleReconDialogKey,
+			onAction: (*App).reconDialogAction,
+		},
+		{
+			name:     "closeAccount",
+			modal:    a.closeAcctDialog,
+			onKey:    (*App).handleCloseAcctDialogKey,
+			onAction: (*App).closeAcctDialogAction,
+		},
+		{
+			name:     "security",
+			modal:    a.securityDialog,
+			onKey:    (*App).handleSecurityDialogKey,
+			onAction: (*App).securityDialogAction,
+		},
+		{
+			name:     "price",
+			modal:    a.priceDialog,
+			onKey:    (*App).handlePriceDialogKey,
+			onAction: (*App).priceDialogAction,
+		},
+		{
+			name:     "priceImport",
+			modal:    a.priceImportDialog,
+			onKey:    (*App).handlePriceImportDialogKey,
+			onAction: (*App).priceImportDialogAction,
+		},
+		{
+			name:     "buy",
+			modal:    a.buyDialog,
+			onKey:    (*App).handleBuyDialogKey,
+			onAction: (*App).buyDialogAction,
+		},
+		{
+			name:     "sell",
+			modal:    a.sellDialog,
+			onKey:    (*App).handleSellDialogKey,
+			onAction: (*App).sellDialogAction,
+		},
+		{
+			name:     "feeLiquidation",
+			modal:    a.feeLiquidationDialog,
+			onKey:    (*App).handleFeeLiquidationDialogKey,
+			onAction: (*App).feeLiquidationDialogAction,
+		},
+		{
+			name:     "dividend",
+			modal:    a.dividendDialog,
+			onKey:    (*App).handleDividendDialogKey,
+			onAction: (*App).dividendDialogAction,
+		},
+		{
+			name:     "transferShares",
+			modal:    a.transferSharesDialog,
+			onKey:    (*App).handleTransferSharesDialogKey,
+			onAction: (*App).transferSharesDialogAction,
+		},
+		{
+			name:     "stockSplit",
+			modal:    a.stockSplitDialog,
+			onKey:    (*App).handleStockSplitDialogKey,
+			onAction: (*App).stockSplitDialogAction,
+		},
 		// The merger confirmation outranks the merger dialog that produced it,
-		// which is safe either way: submitMergerDialog closes the dialog
-		// before loading the confirmation.
-		{"mergerConfirm", mergerConfirmModal{a}, (*App).handleMergerConfirmKey},
-		{"merger", a.mergerDialog, (*App).handleMergerDialogKey},
-		{"spinOff", a.spinOffDialog, (*App).handleSpinOffDialogKey},
-		{"cashOperation", a.cashOperationDialog, (*App).handleCashOperationDialogKey},
-		{"investmentTypeSelector", a.investmentTypeSelector, (*App).handleInvestmentTypeSelectorKey},
+		// which is safe either way: submitMergerDialog closes the dialog before
+		// loading the confirmation. It is a rendered y/n overlay rather than a
+		// dialog.Dialog, so its [x], Cancel and Merge targets are hit-tested by
+		// its own handler.
+		{
+			name:    "mergerConfirm",
+			modal:   mergerConfirmModal{a},
+			onKey:   (*App).handleMergerConfirmKey,
+			onMouse: (*App).handleMergerConfirmMouse,
+		},
+		{
+			name:     "merger",
+			modal:    a.mergerDialog,
+			onKey:    (*App).handleMergerDialogKey,
+			onAction: (*App).mergerDialogAction,
+		},
+		{
+			name:     "spinOff",
+			modal:    a.spinOffDialog,
+			onKey:    (*App).handleSpinOffDialogKey,
+			onAction: (*App).spinOffDialogAction,
+		},
+		{
+			name:     "cashOperation",
+			modal:    a.cashOperationDialog,
+			onKey:    (*App).handleCashOperationDialogKey,
+			onAction: (*App).cashOperationDialogAction,
+		},
+		{
+			name:     "investmentTypeSelector",
+			modal:    a.investmentTypeSelector,
+			onKey:    (*App).handleInvestmentTypeSelectorKey,
+			onAction: (*App).investmentTypeSelectorAction,
+		},
 	}
 }
 
@@ -155,6 +339,21 @@ func (h helpOverlayModal) Render(styles widget.Styles) string {
 // cascade that was not already a method.
 func (a *App) handleHelpOverlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if key.Matches(msg, a.keys.Help) || key.Matches(msg, a.keys.Escape) {
+		a.showHelp = false
+	}
+	return a, nil
+}
+
+// handleHelpOverlayMouse closes the overlay on a left click in its [x] box and
+// swallows every other click. The overlay is a rendered string, not a dialog,
+// so there is no DialogAction to dispatch.
+func (a *App) handleHelpOverlayMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	click, ok := msg.(tea.MouseClickMsg)
+	if !ok || click.Button != tea.MouseLeft {
+		return a, nil
+	}
+	m := msg.Mouse()
+	if helpOverlayCloseHit(a.styles, a.currentView, a.width, a.height, m.X, m.Y) {
 		a.showHelp = false
 	}
 	return a, nil

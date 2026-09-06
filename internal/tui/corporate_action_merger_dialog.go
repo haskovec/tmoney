@@ -95,8 +95,14 @@ func (a *App) handleMergerDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.mergerDialog == nil {
 		return a, nil
 	}
+	return a.mergerDialogAction(a.mergerDialog.HandleKey(msg))
+}
 
-	action := a.mergerDialog.HandleKey(msg)
+// mergerDialogAction dispatches a DialogAction for the merger dialog. Both the keyboard
+// and the mouse path call it, so clicking a button is exactly equivalent to
+// the keyboard action -- the rule specs/tui.md states and the two hand-kept
+// switches used to break.
+func (a *App) mergerDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitMergerDialog()

@@ -179,8 +179,14 @@ func (a *App) handleBuyDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.buyDialog == nil {
 		return a, nil
 	}
+	return a.buyDialogAction(a.buyDialog.HandleKey(msg))
+}
 
-	action := a.buyDialog.HandleKey(msg)
+// buyDialogAction dispatches a DialogAction for the buy dialog. Both the keyboard
+// and the mouse path call it, so clicking a button is exactly equivalent to
+// the keyboard action -- the rule specs/tui.md states and the two hand-kept
+// switches used to break.
+func (a *App) buyDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitBuyDialog()

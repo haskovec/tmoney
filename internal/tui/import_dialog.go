@@ -258,7 +258,14 @@ func (a *App) handleImportDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.importDialog == nil {
 		return a, nil
 	}
-	action := a.importDialog.HandleKey(msg)
+	return a.importDialogAction(a.importDialog.HandleKey(msg))
+}
+
+// importDialogAction dispatches a DialogAction for the import dialog. Both the keyboard
+// and the mouse path call it, so clicking a button is exactly equivalent to
+// the keyboard action -- the rule specs/tui.md states and the two hand-kept
+// switches used to break.
+func (a *App) importDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
 		a.closeImportDialog()

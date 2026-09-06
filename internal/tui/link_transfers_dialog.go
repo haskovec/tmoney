@@ -118,7 +118,14 @@ func (a *App) handleLinkTransfersDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.
 	if a.linkTransfersDialog == nil {
 		return a, nil
 	}
-	action := a.linkTransfersDialog.HandleKey(msg)
+	return a.linkTransfersDialogAction(a.linkTransfersDialog.HandleKey(msg))
+}
+
+// linkTransfersDialogAction dispatches a DialogAction for the link transfers dialog. Both the keyboard
+// and the mouse path call it, so clicking a button is exactly equivalent to
+// the keyboard action -- the rule specs/tui.md states and the two hand-kept
+// switches used to break.
+func (a *App) linkTransfersDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
 		a.closeLinkTransfersDialog()
