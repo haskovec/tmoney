@@ -132,6 +132,8 @@ func (a *App) isDialogVisible() bool {
 		(a.aboutDialog != nil && a.aboutDialog.IsVisible()) ||
 		(a.backupDialog != nil && a.backupDialog.dialog.IsVisible()) ||
 		(a.fileDialog != nil && a.fileDialog.IsVisible()) ||
+		(a.importDialog != nil && a.importDialog.IsVisible()) ||
+		(a.linkTransfersDialog != nil && a.linkTransfersDialog.IsVisible()) ||
 		(a.splitDialog != nil && a.splitDialog.IsVisible()) ||
 		(a.txnDialog != nil && a.txnDialog.IsVisible()) ||
 		(a.createCatDialog != nil && a.createCatDialog.IsVisible()) ||

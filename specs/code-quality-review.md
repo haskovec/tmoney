@@ -186,6 +186,38 @@ Opening a file for a read-only CLI command can still write. Errors are discarded
 
 **Push:** an explicit `OpenAndMigrate` / `HealOnOpen` step at the CLI/TUI entry points, with logging and optional dry-run — not silent work inside a DI factory. Constructors should construct.
 
+### 6a. Four TUI `tea.Cmd` goroutines call `NewServices` mid-session
+
+Filed with the fix that made the import and link-transfers dialogs visible
+(they were built and key-routed but never painted), which is what makes these
+paths reachable from the menu. Out of scope for that fix; they belong here.
+
+| Site | Call |
+|---|---|
+| `internal/tui/import_dialog.go:373` | `runImportPreview` |
+| `internal/tui/import_dialog.go:425` | `runImportExecute` |
+| `internal/tui/link_transfers_dialog.go:31` | `startLinkTransfers` |
+| `internal/tui/link_transfers_dialog.go:45` | `runLinkTransfersExecute` |
+
+Each builds a **second** service registry inside a command goroutine, so each
+re-runs the write side effects listed above — `EnsurePaycheckCategories`,
+`EnsureValueAdjustmentCategory`, `HealAllAccounts`, `HealNextDates`. **Opening
+the import preview silently heals scheduled dates and investment accounts.**
+The user asked to look at a file, not to mutate their book.
+
+Two further defects at the same four lines:
+
+- Each reads `a.db` at **goroutine time**, not capture time. `switchDatabase`
+  re-points `a.db` and closes the previous handle, so an in-flight import racing
+  a file-open reads a moving target.
+- Each bypasses `newTUIServices`, so none carries the Yahoo price provider.
+  Harmless today — neither import nor transfer-linking fetches prices — but it
+  means these registries are not the ones the rest of the TUI uses.
+
+The heal-on-open re-run and the `a.db` read are the real defects. Whoever
+centralises `HealOnOpen` should fix all four in the same pass, and the `a.db`
+read should become a synchronous capture regardless.
+
 ---
 
 ## 7. Secondary (still real) maintainability debt

@@ -131,6 +131,17 @@ func (a *App) renderLayout() string {
 		layout = a.overlayDialog(layout, a.fileDialog)
 	}
 
+	// Overlay import dialog if visible. Placed next to the file dialog to
+	// match the neighbourhood it occupies in handleKeyPress's cascade.
+	if a.importDialog != nil && a.importDialog.IsVisible() {
+		layout = a.overlayDialog(layout, a.importDialog)
+	}
+
+	// Overlay link-transfers dialog if visible
+	if a.linkTransfersDialog != nil && a.linkTransfersDialog.IsVisible() {
+		layout = a.overlayDialog(layout, a.linkTransfersDialog)
+	}
+
 	// Overlay reconciliation start dialog if visible
 	if a.reconDialog != nil && a.reconDialog.IsVisible() {
 		layout = a.overlayDialog(layout, a.reconDialog)
