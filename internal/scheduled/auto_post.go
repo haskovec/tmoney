@@ -70,8 +70,11 @@ func (s *Service) AutoPost() (*AutoPostSummary, error) {
 			ScheduledTransactionID: st.ID,
 		}
 
-		// Capture schedule state before any modifications (deep copy for undo)
+		// Capture schedule state before any modifications (deep copy for undo).
+		// Splits is a slice of pointers, so a struct copy alone would share the
+		// lines with the live schedule.
 		beforeSchedule := *st
+		beforeSchedule.Splits = st.Splits.Clone()
 		result.BeforeSchedule = &beforeSchedule
 
 		// Skip — don't error the batch — a schedule that references a closed

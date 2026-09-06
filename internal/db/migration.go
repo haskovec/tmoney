@@ -39,6 +39,21 @@ func (db *DB) Migrate() error {
 		return err
 	}
 
+	// The constant and the embedded files must agree, or Open would report a
+	// version the schema does not have (or run a migration the constant does not
+	// admit). TestCurrentSchemaVersion catches this in CI; this catches it in a
+	// binary built without running the tests.
+	if n := len(migrations); n == 0 || migrations[n-1].Version != CurrentSchemaVersion {
+		highest := 0
+		if n > 0 {
+			highest = migrations[n-1].Version
+		}
+		return &DatabaseError{
+			Op:  "verify migrations",
+			Err: fmt.Errorf("CurrentSchemaVersion is %d but the highest embedded migration is %d", CurrentSchemaVersion, highest),
+		}
+	}
+
 	for _, m := range migrations {
 		if m.Version <= currentVersion {
 			continue

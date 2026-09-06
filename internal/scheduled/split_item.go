@@ -127,6 +127,23 @@ func (s *Split) IsValid() bool {
 // SplitCollection represents a collection of scheduled splits for a template.
 type SplitCollection []*Split
 
+// Clone returns a deep copy: a new slice whose elements are copies of the
+// originals, so a snapshot (e.g. for undo) is not shared with the live schedule.
+func (sc SplitCollection) Clone() SplitCollection {
+	if sc == nil {
+		return nil
+	}
+	out := make(SplitCollection, len(sc))
+	for i, s := range sc {
+		if s == nil {
+			continue
+		}
+		c := *s
+		out[i] = &c
+	}
+	return out
+}
+
 // Total returns the signed sum of all split amounts.
 func (sc SplitCollection) Total() types.Money {
 	total := types.ZeroMoney
