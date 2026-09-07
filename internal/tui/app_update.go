@@ -9,10 +9,9 @@ import (
 
 // Update implements tea.Model.
 //
-// Every arm is a dispatch, not a body. Work that only touches one surface's
-// state lives on that surface struct; work that reaches past it — into the
-// status bar, a view reload, a service, or switchView — is an App method in
-// the feature's own file. An arm long enough to want a name has one.
+// A case body that mutates one surface belongs on that surface; anything
+// reaching past it — the status bar, a view reload, a service, switchView —
+// is an App method in the feature's own file.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -127,10 +126,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// not. The chart history cache is cheap to rebuild, so clear
 		// unconditionally rather than branching on the variant.
 		a.invalidatePriceHistoryCache()
-		return a, a.afterInvestmentSave(msg.savedDate, msg.savedID, a.dividend.savedNote())
+		return a, a.afterInvestmentSave(msg.savedDate, msg.savedID, msg.note)
 
 	case cashOperationDialogSavedMsg:
-		return a, a.afterInvestmentSave(msg.savedDate, msg.savedID, a.cashOperation.savedNote())
+		return a, a.afterInvestmentSave(msg.savedDate, msg.savedID, msg.note)
 
 	case transferSharesDialogDataMsg:
 		if seed, ok := a.takeInvestmentDialogSeed(); ok {

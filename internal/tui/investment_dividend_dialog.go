@@ -29,6 +29,10 @@ type dividendDialogSavedMsg struct {
 	// savedID is the ID of the saved transaction so the investment register
 	// can move the cursor onto its row after reload.
 	savedID types.ID
+	// note is the status-bar text. The two submit paths each know their own
+	// variant; the surface's reinvest flag is already cleared by the time
+	// this message arrives, so it cannot be consulted then.
+	note string
 }
 
 // buildDividendDialog creates a dialog.Dialog for entering a cash dividend transaction.
@@ -192,15 +196,6 @@ func (s *dividendSurface) applyData(data *dividendDialogData, seed investmentDia
 	}
 }
 
-// savedNote is the status-bar note for a completed save, which names the
-// variant the user actually used.
-func (s *dividendSurface) savedNote() string {
-	if s.reinvest {
-		return "Reinvest dividend transaction saved"
-	}
-	return "Dividend transaction saved"
-}
-
 // closeDividendDialog clears the dividend dialog state.
 func (a *App) closeDividendDialog() {
 	a.dividend = dividendSurface{}
@@ -321,7 +316,7 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save dividend transaction: %w", err)}
 		}
 
-		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID}
+		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID, note: "Dividend transaction saved"}
 	}
 }
 
@@ -442,6 +437,6 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save reinvest dividend transaction: %w", err)}
 		}
 
-		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID}
+		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID, note: "Reinvest dividend transaction saved"}
 	}
 }

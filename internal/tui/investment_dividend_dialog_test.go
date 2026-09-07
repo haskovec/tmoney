@@ -9,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -1003,5 +1004,17 @@ func TestDividendDialogMouse_CancelResetsState(t *testing.T) {
 	}
 	if updatedApp.dividend.data != nil || updatedApp.dividend.securityIDs != nil {
 		t.Error("dialog data should be cleared on mouse Cancel")
+	}
+}
+
+// closeDividendDialog clears reinvest before the async save runs, so the note
+// travels on the message. Reading the flag in the saved arm named every
+// reinvest "Dividend transaction saved".
+func TestDividendSavedMsg_NoteNamesTheVariant(t *testing.T) {
+	app := &App{statusbar: widget.NewStatusBar()}
+	app.Update(dividendDialogSavedMsg{note: "Reinvest dividend transaction saved"})
+	notes := app.statusbar.Notifications()
+	if len(notes) != 1 || notes[0].Text != "Reinvest dividend transaction saved" {
+		t.Errorf("status bar = %+v, want one \"Reinvest dividend transaction saved\"", notes)
 	}
 }

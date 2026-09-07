@@ -1023,6 +1023,22 @@ phase exists to avoid.
 had byte-identical bodies and are now one `case`. That is the only change to
 the arm set; the other 88 dispatch exactly what they dispatched before.
 
+**One behaviour change, found by the PR review, not by the move.** Extracting
+`savedNote()` onto the cash-operation and dividend surfaces made two dead
+branches look live: `submitCashOperationDialog` and `submitDividendDialog`
+both close the dialog *before* the async save, so the saved arm read an
+already-zeroed `opType` / `reinvest`. Every deposit, withdrawal, fee and
+interest notified "Cash operation transaction saved", and every reinvest
+notified "Dividend transaction saved". The old arms read the same zeroed
+fields, so this is pre-existing, but the extraction is what made it visible.
+The note now travels on the message, captured in submit before the close, and
+two tests pin it — both verified to fail against the old reads.
+
+This is the general hazard in a phase that moves `*SavedMsg` bodies onto
+surface structs: **a saved arm must not read its own surface**, because every
+submit path closes before it saves. The other saved arms take their note from
+a literal, so only these two were affected.
+
 **Two name collisions worth recording for phase 5.** `finishReconciliation`
 and `cancelReconciliation` were already taken — by the methods that *start*
 those operations from a keystroke. The message handlers are

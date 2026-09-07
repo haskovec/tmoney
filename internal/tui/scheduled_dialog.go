@@ -498,14 +498,12 @@ func (s *schedSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 // applyData builds whichever of the three scheduled forms data describes:
 // the transfer form, the regular edit form, or the regular new form.
 //
-// categories is the full category list. App fetches it, because the service
-// lives there: the transfer form offers every non-system category, while the
-// regular form additionally offers Value Adjustment when the initially
-// selected account is an asset.
+// categories is the full category list. The transfer form offers every
+// non-system category; the regular form additionally offers Value Adjustment
+// when the initially selected account is an asset.
 //
 // It reports whether the form built is the regular edit form, the only one
-// that can carry the "Edit as loan ->" button. App adds that button itself,
-// because deciding on it needs the scheduled service.
+// that can carry the "Edit as loan ->" button.
 func (s *schedSurface) applyData(data *scheduledDialogData, categories []*category.Category) bool {
 	s.data = data
 

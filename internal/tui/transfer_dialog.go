@@ -409,10 +409,6 @@ func (s *transferSurface) applyData(data *transferDialogData, selectedAccountID 
 	s.categoryIDs = categoryIDs
 
 	if data.mode == transferDialogModeEdit {
-		// One payload for every shape. There used to be two switch arms here,
-		// pulling the same five display values out of two different structs —
-		// and the bank<->bank arm had to defensively nil-check both legs of a
-		// TransferPair and fall back to zero values.
 		t := data.existing
 		if t == nil {
 			return
