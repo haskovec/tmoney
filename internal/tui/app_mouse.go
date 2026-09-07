@@ -225,415 +225,53 @@ func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return a, a.schedulePriceListChartFetchIfActive()
 }
 
-// handleDialogMouse routes mouse events to the currently visible dialog. Every
-// overlay hit-tests now: the help overlay accepts a click on its [x], the
-// merger confirmation goes through handleMergerConfirmMouse, the
-// corporate-action details overlay through handleCorporateActionDetailMouse,
-// the split editor through handleSplitDialogMouse, and everything else is a
-// dialog.Dialog served by the cascade below.
+// handleDialogMouse routes a mouse event to the frontmost visible modal.
+//
+// The default is "ask the surface for a DialogAction, then dispatch it through
+// the same onAction the keyboard uses". That is what closes the gap
+// specs/tui.md:687-695 forbids: clicking a dialog button is exactly equivalent
+// to the keyboard action, because it is now literally the same code. The old
+// cascade kept a second copy of every switch, and 11 of them had drifted --
+// their Cancel arms inlined `X.SetVisible(false); X = nil` and leaked whatever
+// else the surface owned, where Esc called the surface's close helper.
+//
+// Surfaces that are not that shape declare an onMouse override in the
+// registry, each with its reason.
 func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if a.showHelp {
-		if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
-			m := msg.Mouse()
-			if helpOverlayCloseHit(a.styles, a.currentView, a.width, a.height, m.X, m.Y) {
-				a.showHelp = false
-			}
+	e := a.frontmostModal()
+	if e == nil {
+		// Reached when a non-registry surface holds the gate open -- today only
+		// the corporate-action details panel, which has one clickable target,
+		// its [x], and otherwise swallows the click so the table it covers
+		// cannot move.
+		if a.corporateActionDetail != nil {
+			return a.handleCorporateActionDetailMouse(msg)
 		}
 		return a, nil
 	}
-	// Merger confirmation first, mirroring handleKeyPress where
-	// mergerConfirmData claims keys ahead of the merger dialog.
-	if a.mergerConfirmData != nil {
-		return a.handleMergerConfirmMouse(msg)
+	if e.onMouse != nil {
+		return e.onMouse(a, msg)
 	}
-	if a.corporateActionDetail != nil {
-		return a.handleCorporateActionDetailMouse(msg)
-	}
-	if a.splitDialog != nil && a.splitDialog.IsVisible() {
-		return a.handleSplitDialogMouse(msg)
-	}
-
-	// dialog.Dialog cascade (same order as handleKeyPress)
-	if a.confirmDialog != nil && a.confirmDialog.IsVisible() {
-		action := a.confirmDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			a.confirmDialog.SetVisible(false)
-			fn := a.confirmAction
-			a.confirmDialog = nil
-			a.confirmAction = nil
-			return a, func() tea.Msg { return fn() }
-		case dialog.DialogActionCancel:
-			a.confirmDialog.SetVisible(false)
-			a.confirmDialog = nil
-			a.confirmAction = nil
-		}
+	if e.onAction == nil {
 		return a, nil
 	}
+	return e.onAction(a, a.modalMouseAction(e.modal, msg))
+}
 
-	if a.aboutDialog != nil && a.aboutDialog.IsVisible() {
-		action := a.aboutDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit, dialog.DialogActionCancel:
-			a.aboutDialog.SetVisible(false)
-			a.aboutDialog = nil
-		}
-		return a, nil
+// modalMouseAction asks a surface to interpret a mouse event.
+//
+// The two cases are the whole reason HandleMouse is not a Modal method: the
+// base dialog's hit-testing needs no styles and the paycheck wizard's does.
+// Widening dialog.Dialog.HandleMouse to take a parameter it ignores would
+// churn 18 call sites in the dialog package's own tests to satisfy an
+// interface, so the divergence is stated here instead, in one place.
+func (a *App) modalMouseAction(m Modal, msg tea.MouseMsg) dialog.DialogAction {
+	switch s := m.(type) {
+	case *dialog.Dialog:
+		return s.HandleMouse(msg, a.width, a.height)
+	case *PaycheckWizard:
+		return s.HandleMouse(msg, a.styles, a.width, a.height)
+	default:
+		return dialog.DialogActionNone
 	}
-
-	if a.backupDialog != nil && a.backupDialog.dialog.IsVisible() {
-		action := a.backupDialog.dialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitBackupDialog()
-		case dialog.DialogActionCancel:
-			a.backupDialog.dialog.SetVisible(false)
-			a.backupDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.fileDialog != nil && a.fileDialog.IsVisible() {
-		// In browse mode, a double-click on a list row activates that entry
-		// (navigate into a directory or open a .tdb file) without requiring
-		// a separate Open button press.
-		listItemRow := -1
-		if click, ok := msg.(tea.MouseClickMsg); ok &&
-			a.fileDialogMode == fileDialogModeBrowse &&
-			click.Button == tea.MouseLeft {
-			listItemRow = a.browseDialogListHit(msg)
-		}
-
-		action := a.fileDialog.HandleMouse(msg, a.width, a.height)
-
-		if listItemRow >= 0 {
-			if a.browseDialogClicks == nil {
-				a.browseDialogClicks = widget.NewClickTracker(widget.DoubleClickThreshold)
-			}
-			if a.browseDialogClicks.Click(listItemRow) {
-				return a.submitFileDialog()
-			}
-		}
-
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitFileDialog()
-		case dialog.DialogActionCancel:
-			a.closeFileDialog()
-		}
-		return a, nil
-	}
-
-	if a.importDialog != nil && a.importDialog.IsVisible() {
-		action := a.importDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitImportDialog()
-		case dialog.DialogActionCancel:
-			a.closeImportDialog()
-		}
-		return a, nil
-	}
-
-	if a.linkTransfersDialog != nil && a.linkTransfersDialog.IsVisible() {
-		action := a.linkTransfersDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitLinkTransfersDialog()
-		case dialog.DialogActionCancel:
-			a.closeLinkTransfersDialog()
-		}
-		return a, nil
-	}
-
-	if a.createCatDialog != nil && a.createCatDialog.IsVisible() {
-		action := a.createCatDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitCreateCatDialog()
-		case dialog.DialogActionCancel:
-			a.cancelCreateCatDialog()
-		}
-		return a, nil
-	}
-
-	if a.txnDialog != nil && a.txnDialog.IsVisible() {
-		action := a.txnDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitTransactionDialog()
-		case dialog.DialogActionCancel:
-			a.txnDialog.SetVisible(false)
-			a.txnDialog = nil
-		case dialog.DialogActionAddNew:
-			return a.openCreateCategorySubDialog()
-		}
-		return a, nil
-	}
-
-	if a.transferDialog != nil && a.transferDialog.IsVisible() {
-		action := a.transferDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitTransferDialog()
-		case dialog.DialogActionCancel:
-			a.transferDialog.SetVisible(false)
-			a.transferDialog = nil
-		case dialog.DialogActionAddNew:
-			return a.openCreateCategorySubDialogForTransfer()
-		}
-		return a, nil
-	}
-
-	if a.schedDialog != nil && a.schedDialog.IsVisible() {
-		action := a.schedDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			if a.schedDialogData != nil && a.schedDialogData.isTransfer {
-				return a.submitScheduledTransferDialog()
-			}
-			return a.submitScheduledDialog()
-		case dialog.DialogActionCancel:
-			a.schedDialog.SetVisible(false)
-			a.schedDialog = nil
-		case dialog.DialogActionAlternate:
-			return a.relaunchScheduledAlternate()
-		case dialog.DialogActionAddNew:
-			if a.schedDialogData != nil && a.schedDialogData.isTransfer {
-				return a.openCreateCategorySubDialogFromSchedTransfer()
-			}
-			return a.openCreateCategorySubDialogFromSched()
-		}
-		return a, nil
-	}
-
-	if a.schedPreviewDialog != nil && a.schedPreviewDialog.IsVisible() {
-		return a.handleSchedulePreviewMouse(msg)
-	}
-
-	if a.paycheckWizard != nil && a.paycheckWizard.IsVisible() {
-		action := a.paycheckWizard.HandleMouse(msg, a.styles, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitPaycheckWizard()
-		case dialog.DialogActionCancel:
-			a.closePaycheckWizard()
-		}
-		return a, nil
-	}
-
-	if a.loanWizard != nil && a.loanWizard.IsVisible() {
-		action := a.loanWizard.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitLoanWizard()
-		case dialog.DialogActionCancel:
-			a.closeLoanWizard()
-		case dialog.DialogActionAddNew:
-			return a.openCreateCategorySubDialogFromLoan()
-		default:
-			a.refreshLoanWizardDerived()
-		}
-		return a, nil
-	}
-
-	if a.acctDialog != nil && a.acctDialog.IsVisible() {
-		action := a.acctDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitAccountDialog()
-		case dialog.DialogActionCancel:
-			a.acctDialog.SetVisible(false)
-			a.acctDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.reconDialog != nil && a.reconDialog.IsVisible() {
-		action := a.reconDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitStartReconciliation()
-		case dialog.DialogActionCancel:
-			a.reconDialog.SetVisible(false)
-			a.reconDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.closeAcctDialog != nil && a.closeAcctDialog.IsVisible() {
-		action := a.closeAcctDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitCloseAccountDialog()
-		case dialog.DialogActionCancel:
-			a.closeAcctDialog.SetVisible(false)
-			a.closeAcctDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.securityDialog != nil && a.securityDialog.IsVisible() {
-		action := a.securityDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitSecurityDialog()
-		case dialog.DialogActionCancel:
-			a.securityDialog.SetVisible(false)
-			a.securityDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.priceDialog != nil && a.priceDialog.IsVisible() {
-		action := a.priceDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitPriceDialog()
-		case dialog.DialogActionAlternate:
-			return a.startPriceLookup()
-		case dialog.DialogActionCancel:
-			a.priceDialog.SetVisible(false)
-			a.priceDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.priceImportDialog != nil && a.priceImportDialog.IsVisible() {
-		action := a.priceImportDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitImportPriceDialog()
-		case dialog.DialogActionCancel:
-			a.priceImportDialog.SetVisible(false)
-			a.priceImportDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.buyDialog != nil && a.buyDialog.IsVisible() {
-		action := a.buyDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitBuyDialog()
-		case dialog.DialogActionCancel:
-			a.buyDialog.SetVisible(false)
-			a.buyDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.sellDialog != nil && a.sellDialog.IsVisible() {
-		action := a.sellDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitSellDialog()
-		case dialog.DialogActionCancel:
-			a.sellDialog.SetVisible(false)
-			a.sellDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.feeLiquidationDialog != nil && a.feeLiquidationDialog.IsVisible() {
-		action := a.feeLiquidationDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitFeeLiquidationDialog()
-		case dialog.DialogActionCancel:
-			a.closeFeeLiquidationDialog()
-		}
-		return a, nil
-	}
-
-	if a.dividendDialog != nil && a.dividendDialog.IsVisible() {
-		action := a.dividendDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitActiveDividendDialog()
-		case dialog.DialogActionCancel:
-			a.closeDividendDialog()
-		}
-		return a, nil
-	}
-
-	if a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible() {
-		action := a.transferSharesDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitTransferSharesDialog()
-		case dialog.DialogActionCancel:
-			a.transferSharesDialog.SetVisible(false)
-			a.transferSharesDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible() {
-		action := a.stockSplitDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitStockSplitDialog()
-		case dialog.DialogActionCancel:
-			a.stockSplitDialog.SetVisible(false)
-			a.stockSplitDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.mergerDialog != nil && a.mergerDialog.IsVisible() {
-		action := a.mergerDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitMergerDialog()
-		case dialog.DialogActionCancel:
-			a.mergerDialog.SetVisible(false)
-			a.mergerDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.spinOffDialog != nil && a.spinOffDialog.IsVisible() {
-		action := a.spinOffDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitSpinOffDialog()
-		case dialog.DialogActionAlternate:
-			return a.startSpinOffPriceLookup()
-		case dialog.DialogActionCancel:
-			a.spinOffDialog.SetVisible(false)
-			a.spinOffDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible() {
-		action := a.cashOperationDialog.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			return a.submitCashOperationDialog()
-		case dialog.DialogActionCancel:
-			a.cashOperationDialog.SetVisible(false)
-			a.cashOperationDialog = nil
-		}
-		return a, nil
-	}
-
-	if a.investmentTypeSelector != nil && a.investmentTypeSelector.IsVisible() {
-		action := a.investmentTypeSelector.HandleMouse(msg, a.width, a.height)
-		switch action {
-		case dialog.DialogActionSubmit:
-			fields := a.investmentTypeSelector.Fields()
-			idx := fields[0].SelectedIndex
-			a.investmentTypeSelector.SetVisible(false)
-			a.investmentTypeSelector = nil
-			return a.dispatchInvestmentTypeSelection(idx)
-		case dialog.DialogActionCancel:
-			a.investmentTypeSelector.SetVisible(false)
-			a.investmentTypeSelector = nil
-		}
-		return a, nil
-	}
-
-	return a, nil
 }

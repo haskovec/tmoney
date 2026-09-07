@@ -32,9 +32,9 @@ names 4b and 4d with the measurement that sizes them.
 
 | Phase | Shipped | What it does |
 |---|---|---|
-| 0 | — | Render the two dialogs that no code paints today (a live bug, §1.3) |
-| 1 | — | Declare `Modal`; give three types the methods they lack; one registry replaces the key and paint cascades |
-| 2 | — | Move the mouse cascade onto the registry; close the mouse/keyboard gap that `specs/tui.md` forbids |
+| 0 | **yes** | Render the two dialogs that no code paints today (a live bug, §1.3) |
+| 1 | **yes** | Declare `Modal`; give three types the methods they lack; one registry replaces the key and paint cascades |
+| 2 | **yes** | Move the mouse cascade onto the registry; close the mouse/keyboard gap that `specs/tui.md` forbids |
 | 3 | — | Group each surface's loose fields into one struct; `App` sheds ~65 fields |
 | 4 | — | Move `app_update.go`'s message bodies onto those structs — **off** `App`, not into another `App` method |
 | 5 | — | One pilot controller: `open`/`submit`/`close` off `*App` for a single surface, proving 4c is reachable |
@@ -512,6 +512,101 @@ import right now. Painting them strictly reduces risk. The point is only that
 
 `app_view.go` keeps its explicit `SetMaxHeight` call (§5.1).
 
+#### Built: the interface is narrower than §2.1, and the reason is measured
+
+§2.1 declares five methods. What shipped is two:
+
+```go
+type Modal interface {
+	IsVisible() bool
+	Render(styles widget.Styles) string
+}
+```
+
+`HandleMouse` is deferred to phase 2, which is the phase that calls it — and
+that is a better split than §1.4 implied, because `SplitDialog`'s missing
+`HandleMouse` is a *mouse* problem, blocked behind a mouse early return.
+
+`HandleKey` is the interesting one, and it is **not deferred — it is rejected**.
+Measured across the 31 key arms: **30 already call `X.HandleKey(msg)` exactly
+once.** So the method exists nearly everywhere and looks like an easy win. But
+what follows the call is a switch on the returned `DialogAction`, and *that* is
+what varies — four distinct action sets across the arms (`Submit`, `Cancel`,
+`AddNew`, `Alternate`) — and **every arm of every switch needs `*App`**: to call
+a service, to close a sibling surface, or to divert into create-category. A
+registry walk cannot dispatch it.
+
+Putting `HandleKey` in the interface would therefore add a member that 31 types
+satisfy and no walk calls, and it would force the one type that lacks it,
+`SchedulePreviewDialog`, into a restructure to produce a method nothing invokes.
+Its multi-line path interleaves `maybeReseedLoanPreview` and
+`freezeLoanSeedIfEdited` — both needing `a.scheduledTxnSvc` — between the inner
+`HandleKey` and the action switch, and §5.5 forbids a surface holding a service.
+
+So key dispatch is per-surface glue and lives on `modalEntry.onKey`, holding
+today's `handleXKey` method unchanged. That is what makes the collapse a pure
+routing change. `SetVisible` is out for the same class of reason: only the
+create-category divert calls it, and it calls it from the originating surface,
+never from the registry.
+
+**The rule this sets: add a member when a walk needs it, not before.** §2.3
+listed what the registry cannot do; this adds a fourth entry to that list — *the
+registry cannot own input dispatch*, because every dispatch needs `*App`. That
+is the same finding shape as §5.2 (it cannot route messages).
+
+Three surfaces have no modal-typed field and needed adapters: the help overlay
+(a bare `bool`), the merger confirmation (visibility is the presence of its
+data), and the backup dialog (its dialog is one level in). Each is named in the
+guard's `registryOnlySurfaces` with its reason, so a fourth cannot appear
+silently.
+
+#### Built: §1.5 verified by differential, and the paint order was wrong
+
+§1.5 argues the collapse is safe because the four lists agree on every pair
+that can co-occur. That argument was checked, not taken. With the old cascades
+kept alongside the new walks, a differential ran every surface and every pair:
+
+| Check | Result |
+|---|---|
+| `isDialogVisible`, per surface | identical |
+| Paint, single surface | identical |
+| **Key routing, all 496 pairs** | **identical** |
+| Paint, all 496 pairs | **352 change which surface ends up on top** |
+
+Key routing is identical by construction — the registry order is
+`handleKeyPress`'s order — and the differential proves it rather than assuming
+it. Paint is where the old lists disagreed, and 352 of 496 is far too large a
+number to wave through with "they cannot co-occur". So the differential was
+narrowed to the question that matters: **does any pair that can be visible at
+once change?**
+
+By §1.5's own classification the co-occurring set is small. Cases A and B are
+*swaps*, not stacks — all eight create-category originators hide themselves, and
+`submitMergerDialog` closes the merger dialog before its confirmation loads — so
+neither belongs in the set. Only Case C, `showConfirmDialog`, is a true stack.
+One correction to §1.5's supporting detail: `backup_dialog.go:118` nils
+`a.backupDialog` *before* calling `showConfirmDialog`, so restore-from-backup is
+a swap too, leaving confirm-over-scheduled and confirm-over-split.
+
+**Neither changed.** The 352 are all pairs that cannot co-occur.
+
+And the first pass got this wrong in an instructive way. A differential run
+against a 4-character base layout reported **0 of 992 pairs differing** — a
+false pass, because no overlay could be distinguished on a layout that small. A
+self-test asking "can this comparison see *any* difference?" caught it. A
+differential that cannot fail is worth less than no differential, because it
+reads as proof.
+
+**The new order also fixes a latent bug.** Five of the 352 are create-category
+against its originators, and there the *old* order was wrong: create-category
+was painted second from the bottom, so `transfer`, `scheduled`,
+`schedulePreview`, `paycheckWizard` and `loanWizard` all painted **over** the
+sub-dialog they had just opened. Invisible today only because each originator
+hides itself first. Deriving paint from key priority makes the surface that owns
+the keyboard also the surface on top — correct by construction rather than by
+eight cooperating call sites. `TestModals_CreateCategoryOutranksItsOriginators`
+pins it.
+
 **Phase 1 does not touch the mouse.** `handleDialogMouse` keeps its 30 hand-written
 entries until phase 2, so for one phase the registry is the source of truth for
 two of the four lists and not the third. That is deliberate — the mouse path
@@ -560,6 +655,107 @@ exception.
 today. Keep it as an explicit registry flag, or delete it and give the split
 dialog working mouse support as a separate, stated change. Do not let it
 disappear by accident.
+
+#### Built: the asymmetry is wider than Cancel, and the shape follows from it
+
+Before changing anything, each surface's keyboard switch was diffed against its
+mouse switch. The result decided the design:
+
+> **Every Submit, AddNew and Alternate body is byte-identical between the two
+> paths. Only Cancel differs — and four surfaces have a post-switch tail the
+> mouse path never had.**
+
+That rules out the shape phase 2 was sketched with (`onSubmit`/`onCancel` on the
+entry). If the two switches are already the same code written twice, the fix is
+not to lift two of its arms into the registry — it is to have **one dispatcher
+per surface that both paths call**. So each `handleXKey` was split in two:
+
+```go
+func (a *App) handleSellDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if a.sellDialog == nil {
+		return a, nil
+	}
+	return a.sellDialogAction(a.sellDialog.HandleKey(msg))
+}
+
+func (a *App) sellDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) { … }
+```
+
+29 surfaces, mechanically. `modalEntry` gains `onAction`, and the mouse walk is
+`e.onAction(a, HandleMouse(...))`. `specs/tui.md:687-695` stops being a rule
+somebody has to maintain and becomes a fact about the code.
+
+**The four tails, none of which the design predicted.** Each ran after the
+keyboard switch and nowhere on the mouse path, so the derived state went stale
+when the user clicked rather than typed:
+
+| Surface | Tail | Effect of clicking instead of typing |
+|---|---|---|
+| `txnDialog` | `checkPayeeAutoFill` | no category auto-fill from the payee |
+| `schedDialog` | `refreshSchedCategoryOptionsForAccount` | Value Adjustment does not appear/disappear when the account changes |
+| `acctDialog` | `updateAccountFieldVisibility` | fields do not follow the account type |
+| `stockSplitDialog` | `refreshStockSplitDialogMessage` | the ratio preview does not update |
+
+`loanWizard` was the near-miss that proves the reading: it has the same shape,
+and the mouse arm *did* carry it, as a `default:` case. One of five kept in
+step by hand.
+
+**One latent gap closed.** The paycheck wizard's mouse arm had no `AddNew` case
+at all. Unreachable today — `PaycheckWizard.HandleMouse` only ever returns
+`None`, `Submit` or `Cancel` — so it is not scored as a bug, but the moment the
+wizard grows a clickable "add new category" the old shape would have dropped it
+silently. The shared dispatcher cannot.
+
+**`HandleMouse` stays out of `Modal`.** The base dialog's hit-testing takes no
+styles and the paycheck wizard's does. Widening `dialog.Dialog.HandleMouse` to
+accept a parameter it ignores would churn **18 call sites in the dialog
+package's own tests** to satisfy an interface — the same trade phase 1 refused
+for `HandleKey`. The divergence is instead stated once, in `modalMouseAction`'s
+two-case type switch. Same rule as phase 1: **add a member when a walk needs it,
+and only if the surfaces agree on its signature.**
+
+**Every exception is named, not implied.** The original phase 2 marked the
+split dialog and the merger confirmation `mouseBlocked`. By the time it landed
+on `main`, both had gained real hit tests there (the split editor's
+`HandleMouseLocal`, the merger confirmation's `[x]`/Cancel/Merge row), so the
+flag was never needed: each is an `onMouse` override in the registry, stating
+why it is not the default `HandleMouse`-then-`onAction` shape. The split
+editor's override feeds its hit-test result through the same `splitDialogAction`
+the keyboard uses. The corporate-action details panel stays outside the
+registry and is reached by `handleDialogMouse`'s fallback when no registry
+surface is frontmost.
+
+#### Built: two tests that did not test anything, and how they were caught
+
+The pre-change audit the design asked for found **no test asserting on
+post-cancel leftovers** — 2 of 688 literals combine a mouse event with companion
+state, and both are the file dialog's double-click tracker. So the fix shipped
+with no existing coverage, and the new tests had to carry it. Two of them were
+worthless on the first attempt:
+
+1. **A tautology.** The first cancel-equivalence test called `onAction(Cancel)`
+   twice and compared the results — the same function against itself, which
+   passes whatever the code does. Rewritten to drive both real routes:
+   `handleKeyPress(Esc)` against `handleMouseEvent(click on the Cancel button)`.
+
+2. **A blind fixture.** Even then it passed against a deliberately reintroduced
+   partial cancel, because the fixtures set only the dialog handle. With nothing
+   in `sellDialogData`, `sellDialogSecurityIDs` or `sellDialogLots`, a close that
+   leaks all three is indistinguishable from a complete one. The fixtures now
+   populate companion state, and the mutation is caught:
+
+   ```
+   Esc cleared [sellDialog sellDialogLots sellDialogSecurityIDs sellDialogData],
+   clicking Cancel cleared [sellDialog]
+   ```
+
+Both were found by **mutating the code and checking the test fails** — the same
+discipline that caught phase 1's false 0-of-992 differential. The pattern is now
+three for three across phases 0–2: *a test written for a refactor is not
+evidence until it has been seen to fail.* Note also what caught the fixture bug
+and not the test itself — the assertion compares a **reflected snapshot of every
+pointer field on `App`**, not a hand-listed set per surface. A hand-listed set
+would have omitted exactly the fields the inlined arms omitted.
 
 ### Phase 3 — per-surface state structs
 

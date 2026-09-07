@@ -176,8 +176,11 @@ func (a *App) handleDividendDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	if a.dividendDialog == nil {
 		return a, nil
 	}
+	return a.dividendDialogAction(a.dividendDialog.HandleKey(msg))
+}
 
-	action := a.dividendDialog.HandleKey(msg)
+// dividendDialogAction dispatches a DialogAction for the dividend dialog, from either input path.
+func (a *App) dividendDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitActiveDividendDialog()

@@ -31,8 +31,11 @@ func (a *App) showConfirmDialog(title, message string, action func() tea.Msg) {
 
 // handleConfirmDialogKey handles key input for the confirmation dialog.
 func (a *App) handleConfirmDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	action := a.confirmDialog.HandleKey(msg)
+	return a.confirmDialogAction(a.confirmDialog.HandleKey(msg))
+}
 
+// confirmDialogAction dispatches a DialogAction for the confirm dialog, from either input path.
+func (a *App) confirmDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		a.confirmDialog.SetVisible(false)

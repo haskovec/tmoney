@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 // fileDialogMode indicates which file dialog is active.
@@ -89,13 +90,41 @@ func (a *App) closeFileDialog() {
 	a.fileDialog = nil
 }
 
+// handleFileDialogMouse adds the browse-mode double-click before the ordinary
+// action dispatch: a double-click on a list row activates that entry (navigate
+// into a directory, or open a .tdb file) without a separate Open press.
+func (a *App) handleFileDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	listItemRow := -1
+	if click, ok := msg.(tea.MouseClickMsg); ok &&
+		a.fileDialogMode == fileDialogModeBrowse &&
+		click.Button == tea.MouseLeft {
+		listItemRow = a.browseDialogListHit(msg)
+	}
+
+	action := a.fileDialog.HandleMouse(msg, a.width, a.height)
+
+	if listItemRow >= 0 {
+		if a.browseDialogClicks == nil {
+			a.browseDialogClicks = widget.NewClickTracker(widget.DoubleClickThreshold)
+		}
+		if a.browseDialogClicks.Click(listItemRow) {
+			return a.submitFileDialog()
+		}
+	}
+
+	return a.fileDialogAction(action)
+}
+
 // handleFileDialogKey routes key events to the file dialog.
 func (a *App) handleFileDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.fileDialog == nil {
 		return a, nil
 	}
+	return a.fileDialogAction(a.fileDialog.HandleKey(msg))
+}
 
-	action := a.fileDialog.HandleKey(msg)
+// fileDialogAction dispatches a DialogAction for the file dialog, from either input path.
+func (a *App) fileDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitFileDialog()

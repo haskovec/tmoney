@@ -68,8 +68,11 @@ func (a *App) handleCashOperationDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.
 	if a.cashOperationDialog == nil {
 		return a, nil
 	}
+	return a.cashOperationDialogAction(a.cashOperationDialog.HandleKey(msg))
+}
 
-	action := a.cashOperationDialog.HandleKey(msg)
+// cashOperationDialogAction dispatches a DialogAction for the cash operation dialog, from either input path.
+func (a *App) cashOperationDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitCashOperationDialog()

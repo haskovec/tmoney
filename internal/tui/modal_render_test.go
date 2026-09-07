@@ -113,7 +113,7 @@ func TestMouseGate_LinkTransfersDialogCancelClosesIt(t *testing.T) {
 // dialog's own hit test, and returns the command the click produced.
 func clickCancelButton(t *testing.T, app *App, d *dialog.Dialog) tea.Cmd {
 	t.Helper()
-	// overlayDialog calls SetMaxHeight as a side effect of painting, and
+	// paintModals calls SetMaxHeight as a side effect of painting, and
 	// DialogBounds reads that back through RenderedHeight. Render first so the
 	// geometry the click is computed against is the geometry the user sees.
 	_ = app.viewContent()

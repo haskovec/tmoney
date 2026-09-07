@@ -171,8 +171,11 @@ func (a *App) handleSellDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.sellDialog == nil {
 		return a, nil
 	}
+	return a.sellDialogAction(a.sellDialog.HandleKey(msg))
+}
 
-	action := a.sellDialog.HandleKey(msg)
+// sellDialogAction dispatches a DialogAction for the sell dialog, from either input path.
+func (a *App) sellDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitSellDialog()

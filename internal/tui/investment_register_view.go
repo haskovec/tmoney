@@ -938,8 +938,11 @@ func (a *App) openInvestmentTypeSelector(editing bool) {
 
 // handleInvestmentTypeSelectorKey handles key presses in the investment type selector dialog.
 func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	action := a.investmentTypeSelector.HandleKey(msg)
+	return a.investmentTypeSelectorAction(a.investmentTypeSelector.HandleKey(msg))
+}
 
+// investmentTypeSelectorAction dispatches a DialogAction for the investment type selector, from either input path.
+func (a *App) investmentTypeSelectorAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		fields := a.investmentTypeSelector.Fields()

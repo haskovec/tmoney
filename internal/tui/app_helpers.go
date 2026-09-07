@@ -128,39 +128,12 @@ func (a *App) focusContent() {
 
 // isDialogVisible returns true if any modal dialog is currently visible.
 func (a *App) isDialogVisible() bool {
-	return (a.confirmDialog != nil && a.confirmDialog.IsVisible()) ||
-		(a.aboutDialog != nil && a.aboutDialog.IsVisible()) ||
-		(a.backupDialog != nil && a.backupDialog.dialog.IsVisible()) ||
-		(a.fileDialog != nil && a.fileDialog.IsVisible()) ||
-		(a.importDialog != nil && a.importDialog.IsVisible()) ||
-		(a.linkTransfersDialog != nil && a.linkTransfersDialog.IsVisible()) ||
-		(a.splitDialog != nil && a.splitDialog.IsVisible()) ||
-		(a.txnDialog != nil && a.txnDialog.IsVisible()) ||
-		(a.createCatDialog != nil && a.createCatDialog.IsVisible()) ||
-		(a.transferDialog != nil && a.transferDialog.IsVisible()) ||
-		(a.schedDialog != nil && a.schedDialog.IsVisible()) ||
-		(a.schedPreviewDialog != nil && a.schedPreviewDialog.IsVisible()) ||
-		(a.paycheckWizard != nil && a.paycheckWizard.IsVisible()) ||
-		(a.loanWizard != nil && a.loanWizard.IsVisible()) ||
-		(a.acctDialog != nil && a.acctDialog.IsVisible()) ||
-		(a.reconDialog != nil && a.reconDialog.IsVisible()) ||
-		(a.closeAcctDialog != nil && a.closeAcctDialog.IsVisible()) ||
-		(a.securityDialog != nil && a.securityDialog.IsVisible()) ||
-		(a.priceDialog != nil && a.priceDialog.IsVisible()) ||
-		(a.priceImportDialog != nil && a.priceImportDialog.IsVisible()) ||
-		(a.buyDialog != nil && a.buyDialog.IsVisible()) ||
-		(a.sellDialog != nil && a.sellDialog.IsVisible()) ||
-		(a.feeLiquidationDialog != nil && a.feeLiquidationDialog.IsVisible()) ||
-		(a.dividendDialog != nil && a.dividendDialog.IsVisible()) ||
-		(a.transferSharesDialog != nil && a.transferSharesDialog.IsVisible()) ||
-		(a.stockSplitDialog != nil && a.stockSplitDialog.IsVisible()) ||
-		(a.mergerDialog != nil && a.mergerDialog.IsVisible()) ||
-		(a.spinOffDialog != nil && a.spinOffDialog.IsVisible()) ||
-		(a.cashOperationDialog != nil && a.cashOperationDialog.IsVisible()) ||
-		(a.investmentTypeSelector != nil && a.investmentTypeSelector.IsVisible()) ||
-		a.mergerConfirmData != nil ||
-		a.corporateActionDetail != nil ||
-		a.showHelp
+	for _, e := range a.modals() {
+		if e.modal.IsVisible() {
+			return true
+		}
+	}
+	return a.corporateActionDetail != nil
 }
 
 // loadInvestmentEditTxn fetches the transaction currently being edited

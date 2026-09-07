@@ -68,7 +68,12 @@ func (a *App) showCloseAccountDialog() {
 
 // handleCloseAcctDialogKey routes keys for the Close Account dialog.
 func (a *App) handleCloseAcctDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch a.closeAcctDialog.HandleKey(msg) {
+	return a.closeAcctDialogAction(a.closeAcctDialog.HandleKey(msg))
+}
+
+// closeAcctDialogAction dispatches a DialogAction for the close acct dialog, from either input path.
+func (a *App) closeAcctDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
+	switch action {
 	case dialog.DialogActionCancel:
 		a.closeAcctDialog.SetVisible(false)
 		a.closeAcctDialog = nil

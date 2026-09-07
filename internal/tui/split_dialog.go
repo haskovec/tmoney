@@ -217,8 +217,10 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 }
 
 // IsVisible returns whether the split dialog is currently shown.
+// Nil-safe so the modal registry can walk an unbuilt surface — see the note on
+// dialog.Dialog.IsVisible.
 func (sd *SplitDialog) IsVisible() bool {
-	return sd.visible
+	return sd != nil && sd.visible
 }
 
 // SetVisible toggles the rendered state of the split dialog. Used when an
@@ -990,8 +992,14 @@ func (a *App) handleSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.splitDialog == nil {
 		return a, nil
 	}
+	return a.splitDialogAction(a.splitDialog.HandleKey(msg))
+}
 
-	action := a.splitDialog.HandleKey(msg)
+// splitDialogAction dispatches a DialogAction for the split dialog. Both the keyboard
+// and the mouse path call it, so clicking a button is exactly equivalent to
+// the keyboard action -- the rule specs/tui.md states and the two hand-kept
+// switches used to break.
+func (a *App) splitDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		if a.pendingSplitScheduled != nil {
@@ -1033,21 +1041,9 @@ func (a *App) handleSplitDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	m := msg.Mouse()
 	// Content-local offsets inside the panel: border (1) + h-padding (2) on X,
 	// border (1) + v-padding (1) on Y.
-	action := a.splitDialog.HandleMouseLocal(m.X-startCol-3, m.Y-startRow-2)
-
-	switch action {
-	case dialog.DialogActionSubmit:
-		// Same dispatch as the keyboard path: a schedule in flight saves the
-		// template, otherwise this is the register's split editor.
-		if a.pendingSplitScheduled != nil {
-			return a.submitScheduledSplitDialog()
-		}
-		return a.submitSplitDialog()
-	case dialog.DialogActionCancel:
-		a.closeSplitDialog()
-		return a, nil
-	}
-	return a, nil
+	// The same dispatcher the keyboard path uses, so a click and a keypress
+	// cannot drift apart.
+	return a.splitDialogAction(a.splitDialog.HandleMouseLocal(m.X-startCol-3, m.Y-startRow-2))
 }
 
 // openCreateCategorySubDialogFromSplit hides the split dialog and opens the

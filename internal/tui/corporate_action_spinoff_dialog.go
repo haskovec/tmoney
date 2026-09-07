@@ -105,8 +105,11 @@ func (a *App) handleSpinOffDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.spinOffDialog == nil {
 		return a, nil
 	}
+	return a.spinOffDialogAction(a.spinOffDialog.HandleKey(msg))
+}
 
-	action := a.spinOffDialog.HandleKey(msg)
+// spinOffDialogAction dispatches a DialogAction for the spin off dialog, from either input path.
+func (a *App) spinOffDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitSpinOffDialog()

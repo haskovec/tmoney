@@ -21,7 +21,11 @@ func (a *App) showAboutDialog() {
 
 // handleAboutDialogKey handles key input for the About dialog.
 func (a *App) handleAboutDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	action := a.aboutDialog.HandleKey(msg)
+	return a.aboutDialogAction(a.aboutDialog.HandleKey(msg))
+}
+
+// aboutDialogAction dispatches a DialogAction for the about dialog, from either input path.
+func (a *App) aboutDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit, dialog.DialogActionCancel:
 		a.aboutDialog.SetVisible(false)

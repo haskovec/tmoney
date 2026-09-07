@@ -118,7 +118,11 @@ func (a *App) handleLinkTransfersDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.
 	if a.linkTransfersDialog == nil {
 		return a, nil
 	}
-	action := a.linkTransfersDialog.HandleKey(msg)
+	return a.linkTransfersDialogAction(a.linkTransfersDialog.HandleKey(msg))
+}
+
+// linkTransfersDialogAction dispatches a DialogAction for the link transfers dialog, from either input path.
+func (a *App) linkTransfersDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
 		a.closeLinkTransfersDialog()

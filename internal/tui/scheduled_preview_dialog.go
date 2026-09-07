@@ -463,8 +463,34 @@ func (p *SchedulePreviewDialog) IsMultiLine() bool {
 }
 
 // IsVisible reports whether the preview dialog should currently render.
+//
+// It delegates to the header dialog, and that aliasing is load-bearing: the
+// create-category divert hides the header, which must take the whole preview
+// off screen. Nil-safe so the modal registry can walk an unbuilt surface — see
+// the note on dialog.Dialog.IsVisible.
 func (p *SchedulePreviewDialog) IsVisible() bool {
-	return p.headerDialog != nil && p.headerDialog.IsVisible()
+	return p != nil && p.headerDialog.IsVisible()
+}
+
+// Render draws the preview. For a multi-line preview the header dialog and the
+// embedded split editor stack vertically; Tab transitions focus between the two
+// surfaces (header → split editor, Shift+Tab from split editor → header).
+//
+// This was inline in renderLayout. It lives here so the preview is one modal
+// surface to the registry rather than the only entry needing bespoke paint
+// code. handleSchedulePreviewMouse maps a click against this same composite,
+// so hit-testing cannot drift from paint.
+func (p *SchedulePreviewDialog) Render(styles widget.Styles) string {
+	if p == nil {
+		return ""
+	}
+	out := p.headerDialog.Render(styles)
+	if p.IsMultiLine() {
+		if sd := p.SplitDialog(); sd != nil {
+			out = lipgloss.JoinVertical(lipgloss.Left, out, sd.Render(styles))
+		}
+	}
+	return out
 }
 
 // FocusOnSplits reports whether key events are currently routed to the
@@ -685,24 +711,14 @@ func (a *App) handleSchedulePreviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 	}
 
 	if !p.IsMultiLine() {
-		switch header.HandleMouse(msg, a.width, a.height) {
-		case dialog.DialogActionSubmit:
-			return a.submitSchedulePreviewDialog()
-		case dialog.DialogActionCancel:
-			a.closeSchedulePreviewDialog()
-		case dialog.DialogActionAddNew:
-			return a.openCreateCategorySubDialogFromSchedPreview()
-		}
-		return a, nil
+		return a.schedulePreviewAction(header.HandleMouse(msg, a.width, a.height))
 	}
 
-	// Reconstruct the composited overlay exactly as app_view builds it so
-	// the click maps to identical coordinates.
-	headerStr := header.Render(a.styles)
-	splitStr := p.SplitDialog().Render(a.styles)
-	overlay := lipgloss.JoinVertical(lipgloss.Left, headerStr, splitStr)
+	// Map the click against the same composite the paint walk draws (Render),
+	// so hit-testing cannot drift from what is on screen.
+	overlay := p.Render(a.styles)
 	startCol, startRow := widget.OverlayTopLeft(overlay, a.width, a.height)
-	headerLines := strings.Count(headerStr, "\n") + 1
+	headerLines := strings.Count(header.Render(a.styles), "\n") + 1
 
 	m := msg.Mouse()
 	relY := m.Y - startRow
@@ -713,26 +729,16 @@ func (a *App) handleSchedulePreviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 	// Content-local offsets within a panel: border (1) + h-pad (2) on X,
 	// border (1) + v-pad (1) on Y.
 	if relY < headerLines {
-		if header.HandleMouseLocal(m.X-startCol-3, relY-2) == dialog.DialogActionCancel {
-			a.closeSchedulePreviewDialog()
-			return a, nil
-		}
 		p.splitFocus = false
-		return a, nil
+		action := header.HandleMouseLocal(m.X-startCol-3, relY-2)
+		// Same tail as the keyboard path: a Date change by click reseeds a
+		// loan-shaped preview exactly as a typed one does.
+		a.maybeReseedLoanPreview()
+		return a.schedulePreviewAction(action)
 	}
 
-	sd := p.SplitDialog()
-	switch sd.HandleMouseLocal(m.X-startCol-3, relY-headerLines-2) {
-	case dialog.DialogActionSubmit:
-		return a.submitSchedulePreviewDialog()
-	case dialog.DialogActionCancel:
-		a.closeSchedulePreviewDialog()
-		return a, nil
-	}
-	// A mouse-added split row counts as a user edit — freeze loan reseeding.
-	a.freezeLoanSeedIfEdited()
 	p.splitFocus = true
-	return a, nil
+	return a.schedulePreviewSplitAction(p.SplitDialog().HandleMouseLocal(m.X-startCol-3, relY-headerLines-2))
 }
 
 // handleSchedulePreviewDialogKey routes keys to the preview dialog. Esc
@@ -758,7 +764,13 @@ func (a *App) handleSchedulePreviewDialogKey(msg tea.KeyPressMsg) (tea.Model, te
 		return a.handleSchedulePreviewMultiLineKey(msg)
 	}
 
-	action := a.schedPreviewDialog.HeaderDialog().HandleKey(msg)
+	return a.schedulePreviewAction(a.schedPreviewDialog.HeaderDialog().HandleKey(msg))
+}
+
+// schedulePreviewAction dispatches a DialogAction from the preview's header
+// dialog, from either input path and for both the single-line and the
+// multi-line shape.
+func (a *App) schedulePreviewAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
 		a.closeSchedulePreviewDialog()
@@ -767,6 +779,22 @@ func (a *App) handleSchedulePreviewDialogKey(msg tea.KeyPressMsg) (tea.Model, te
 		return a.submitSchedulePreviewDialog()
 	case dialog.DialogActionAddNew:
 		return a.openCreateCategorySubDialogFromSchedPreview()
+	}
+	return a, nil
+}
+
+// schedulePreviewSplitAction dispatches a DialogAction from the multi-line
+// preview's embedded split editor, from either input path. Any edit there
+// (including one that submits) counts as a user edit of the lines, which
+// freezes loan reseeding so the user's values win.
+func (a *App) schedulePreviewSplitAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
+	a.freezeLoanSeedIfEdited()
+	switch action {
+	case dialog.DialogActionCancel:
+		a.closeSchedulePreviewDialog()
+		return a, nil
+	case dialog.DialogActionSubmit:
+		return a.submitSchedulePreviewDialog()
 	}
 	return a, nil
 }
@@ -899,14 +927,7 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 		// A Date edit reseeds a loan-shaped preview's split from the balance
 		// as of the new date, until the user edits a line amount.
 		a.maybeReseedLoanPreview()
-		switch action {
-		case dialog.DialogActionCancel:
-			a.closeSchedulePreviewDialog()
-			return a, nil
-		case dialog.DialogActionSubmit:
-			return a.submitSchedulePreviewDialog()
-		}
-		return a, nil
+		return a.schedulePreviewAction(action)
 	}
 
 	// Shift+Tab from the split editor's first focus transitions back
@@ -917,17 +938,7 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 		return a, nil
 	}
 
-	action := splits.HandleKey(msg)
-	// A line-amount edit freezes loan reseeding (user values win).
-	a.freezeLoanSeedIfEdited()
-	switch action {
-	case dialog.DialogActionCancel:
-		a.closeSchedulePreviewDialog()
-		return a, nil
-	case dialog.DialogActionSubmit:
-		return a.submitSchedulePreviewDialog()
-	}
-	return a, nil
+	return a.schedulePreviewSplitAction(splits.HandleKey(msg))
 }
 
 // maybeReseedLoanPreview recomputes a loan-shaped preview's interest/principal

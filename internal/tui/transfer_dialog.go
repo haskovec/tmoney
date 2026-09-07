@@ -393,8 +393,11 @@ func (a *App) handleTransferDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	if a.transferDialog == nil {
 		return a, nil
 	}
+	return a.transferDialogAction(a.transferDialog.HandleKey(msg))
+}
 
-	action := a.transferDialog.HandleKey(msg)
+// transferDialogAction dispatches a DialogAction for the transfer dialog, from either input path.
+func (a *App) transferDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitTransferDialog()

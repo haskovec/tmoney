@@ -258,7 +258,11 @@ func (a *App) handleImportDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.importDialog == nil {
 		return a, nil
 	}
-	action := a.importDialog.HandleKey(msg)
+	return a.importDialogAction(a.importDialog.HandleKey(msg))
+}
+
+// importDialogAction dispatches a DialogAction for the import dialog, from either input path.
+func (a *App) importDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
 		a.closeImportDialog()

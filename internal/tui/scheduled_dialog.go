@@ -497,8 +497,11 @@ func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	if a.schedDialog == nil {
 		return a, nil
 	}
+	return a.scheduledDialogAction(a.schedDialog.HandleKey(msg))
+}
 
-	action := a.schedDialog.HandleKey(msg)
+// scheduledDialogAction dispatches a DialogAction for the scheduled dialog, from either input path.
+func (a *App) scheduledDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		if a.schedDialogData != nil && a.schedDialogData.isTransfer {

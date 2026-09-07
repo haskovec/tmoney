@@ -179,8 +179,11 @@ func (a *App) handleBuyDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.buyDialog == nil {
 		return a, nil
 	}
+	return a.buyDialogAction(a.buyDialog.HandleKey(msg))
+}
 
-	action := a.buyDialog.HandleKey(msg)
+// buyDialogAction dispatches a DialogAction for the buy dialog, from either input path.
+func (a *App) buyDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitBuyDialog()

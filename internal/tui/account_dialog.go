@@ -294,8 +294,11 @@ func (a *App) handleAccountDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.acctDialog == nil {
 		return a, nil
 	}
+	return a.accountDialogAction(a.acctDialog.HandleKey(msg))
+}
 
-	action := a.acctDialog.HandleKey(msg)
+// accountDialogAction dispatches a DialogAction for the account dialog, from either input path.
+func (a *App) accountDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitAccountDialog()

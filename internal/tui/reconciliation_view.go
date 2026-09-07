@@ -83,7 +83,11 @@ func (a *App) showStartReconciliationDialog() {
 
 // handleReconDialogKey handles key presses in the reconciliation start dialog.
 func (a *App) handleReconDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	action := a.reconDialog.HandleKey(msg)
+	return a.reconDialogAction(a.reconDialog.HandleKey(msg))
+}
+
+// reconDialogAction dispatches a DialogAction for the recon dialog, from either input path.
+func (a *App) reconDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
 		a.reconDialog.SetVisible(false)

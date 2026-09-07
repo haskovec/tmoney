@@ -528,7 +528,11 @@ func buildEditSecurityDialog(sec *security.Security) *dialog.Dialog {
 
 // handleSecurityDialogKey handles key presses in the security add/edit dialog.
 func (a *App) handleSecurityDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	action := a.securityDialog.HandleKey(msg)
+	return a.securityDialogAction(a.securityDialog.HandleKey(msg))
+}
+
+// securityDialogAction dispatches a DialogAction for the security dialog, from either input path.
+func (a *App) securityDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
 		a.securityDialog.SetVisible(false)

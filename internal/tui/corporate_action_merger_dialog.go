@@ -95,8 +95,11 @@ func (a *App) handleMergerDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.mergerDialog == nil {
 		return a, nil
 	}
+	return a.mergerDialogAction(a.mergerDialog.HandleKey(msg))
+}
 
-	action := a.mergerDialog.HandleKey(msg)
+// mergerDialogAction dispatches a DialogAction for the merger dialog, from either input path.
+func (a *App) mergerDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitMergerDialog()

@@ -191,8 +191,11 @@ func (a *App) handleTransferSharesDialogKey(msg tea.KeyPressMsg) (tea.Model, tea
 	if a.transferSharesDialog == nil {
 		return a, nil
 	}
+	return a.transferSharesDialogAction(a.transferSharesDialog.HandleKey(msg))
+}
 
-	action := a.transferSharesDialog.HandleKey(msg)
+// transferSharesDialogAction dispatches a DialogAction for the transfer shares dialog, from either input path.
+func (a *App) transferSharesDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitTransferSharesDialog()

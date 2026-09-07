@@ -88,8 +88,11 @@ func (a *App) handleBackupDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.backupDialog == nil {
 		return a, nil
 	}
+	return a.backupDialogAction(a.backupDialog.dialog.HandleKey(msg))
+}
 
-	action := a.backupDialog.dialog.HandleKey(msg)
+// backupDialogAction dispatches a DialogAction for the backup dialog, from either input path.
+func (a *App) backupDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitBackupDialog()
