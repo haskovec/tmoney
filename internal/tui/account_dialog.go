@@ -292,6 +292,17 @@ type acctSurface struct {
 
 func (s *acctSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData builds the edit form when data names an account to edit, and the
+// new-account form otherwise.
+func (s *acctSurface) applyData(data *accountDialogData) {
+	s.data = data
+	if data.mode == accountDialogModeEdit && data.account != nil {
+		s.dlg = buildEditAccountDialog(data.account)
+		return
+	}
+	s.dlg = buildNewAccountDialog()
+}
+
 // closeAccountDialog clears the account dialog state.
 func (a *App) closeAccountDialog() {
 	a.acct = acctSurface{}
@@ -482,4 +493,15 @@ func (a *App) deleteSelectedAccount() tea.Cmd {
 
 		return accountDeletedMsg{}
 	}
+}
+
+// afterAccountDialogSave reloads the sidebar and dashboard, plus the register
+// when one is on screen, because a rename or an opening-balance edit changes
+// every one of them.
+func (a *App) afterAccountDialogSave() tea.Cmd {
+	cmds := []tea.Cmd{a.loadSidebarData(), a.loadDashboardData()}
+	if a.currentView == ViewRegister {
+		cmds = append(cmds, a.loadRegisterData(a.sidebar.SelectedAccountID()))
+	}
+	return tea.Batch(cmds...)
 }

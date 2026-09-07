@@ -275,3 +275,18 @@ func (a *App) modalMouseAction(m Modal, msg tea.MouseMsg) dialog.DialogAction {
 		return dialog.DialogActionNone
 	}
 }
+
+// openAccountFromMouse switches to the view a clicked sidebar account opens
+// in — the portfolio for an investment account, the register otherwise — and
+// drops the stale data so the pane repaints from the fresh load.
+func (a *App) openAccountFromMouse(accountID types.ID) tea.Cmd {
+	acct := a.sidebar.SelectedAccount()
+	if acct != nil && acct.Type.IsInvestmentType() {
+		a.portfolioData = nil
+		a.switchView(ViewPortfolio)
+		return a.loadPortfolioData(accountID)
+	}
+	a.register = nil
+	a.switchView(ViewRegister)
+	return a.loadRegisterData(accountID)
+}

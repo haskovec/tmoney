@@ -229,3 +229,106 @@ func (a *App) refreshAfterCorporateAction() tea.Cmd {
 	}
 	return a.loadSecurityViewData()
 }
+
+// rememberSavedDate seeds the session sticky date from a save. A zero date
+// means the saver had none to offer, so the previous seed stands. See the
+// txnDialogLastSavedDate doc on App for which dialogs read it.
+func (a *App) rememberSavedDate(d types.Date) {
+	if !d.IsZero() {
+		a.txnDialogLastSavedDate = d
+	}
+}
+
+// investmentRegisterAccountID is the account whose investment register is
+// loaded, or NilID when no register is loaded.
+func (a *App) investmentRegisterAccountID() types.ID {
+	if a.investmentRegister == nil || a.investmentRegister.account == nil {
+		return types.NilID
+	}
+	return a.investmentRegister.account.ID
+}
+
+// reloadInvestmentRegisterCmd re-fetches the loaded investment register, or
+// returns nil when none is loaded. Every investment save ends this way.
+func (a *App) reloadInvestmentRegisterCmd() tea.Cmd {
+	id := a.investmentRegisterAccountID()
+	if id.IsNil() {
+		return nil
+	}
+	return a.loadInvestmentRegisterData(id)
+}
+
+// investmentDialogSeed is the App-owned context a security-bearing investment
+// dialog needs to build its form. The three values live on App because each
+// outlives any one dialog: editTxn is the row the register asked to edit,
+// stickyDate is the session seed, and preselect is the one-shot security
+// carried over from a locked register filter.
+type investmentDialogSeed struct {
+	// editTxn is the transaction being edited, or nil in new mode.
+	editTxn *investment.Transaction
+	// stickyDate seeds the Date field in new mode only.
+	stickyDate types.Date
+	// preselect is the security to pre-select in new mode, or NilID.
+	preselect types.ID
+}
+
+// takeInvestmentDialogSeed gathers the seed and consumes the one-shot
+// pre-selected security, so a later dialog does not inherit it. ok is false
+// when the edit lookup failed; the caller drops the message and a.err carries
+// the reason (see loadInvestmentEditTxn).
+func (a *App) takeInvestmentDialogSeed() (investmentDialogSeed, bool) {
+	editTxn, ok := a.loadInvestmentEditTxn()
+	if !ok {
+		return investmentDialogSeed{}, false
+	}
+	seed := investmentDialogSeed{
+		editTxn:    editTxn,
+		stickyDate: a.txnDialogLastSavedDate,
+		preselect:  a.investmentNewTxnSecurityID,
+	}
+	a.investmentNewTxnSecurityID = types.NilID
+	return seed, true
+}
+
+// afterInvestmentSave applies what every investment dialog's save shares: the
+// session sticky date, the end of any edit, the row to select once the reload
+// lands, and the status-bar note. It returns the register reload, or nil when
+// no investment register is open.
+func (a *App) afterInvestmentSave(savedDate types.Date, savedID types.ID, note string) tea.Cmd {
+	a.rememberSavedDate(savedDate)
+	a.investmentEditTxnID = types.NilID
+	a.pendingInvestmentSelectID = savedID
+	a.statusbar.AddNotification(note, widget.NotificationInfo)
+	return a.reloadInvestmentRegisterCmd()
+}
+
+// afterCorporateActionSaved applies what the three corporate-action dialogs
+// share once the action executes: the session sticky date, the status-bar
+// note, and the reload refreshAfterCorporateAction picks for the active view.
+func (a *App) afterCorporateActionSaved(savedDate types.Date, note string) tea.Cmd {
+	a.rememberSavedDate(savedDate)
+	a.statusbar.AddNotification(note, widget.NotificationInfo)
+	return a.refreshAfterCorporateAction()
+}
+
+// afterRegisterSave selects the saved row and reloads the register and the
+// sidebar. Shared by the transaction dialog and the split editor, which both
+// write into whichever register the sidebar has selected.
+func (a *App) afterRegisterSave(savedID types.ID) tea.Cmd {
+	a.pendingRegisterSelectID = savedID
+	return tea.Batch(
+		a.loadRegisterData(a.sidebar.SelectedAccountID()),
+		a.loadSidebarData(),
+	)
+}
+
+// reloadAfterBulkWrite reloads the sidebar, the dashboard and the register the
+// user is looking at. Shared by the two bulk writers — import and transfer
+// linking — which can change any account's balance at once.
+func (a *App) reloadAfterBulkWrite() tea.Cmd {
+	cmds := []tea.Cmd{a.loadSidebarData(), a.loadDashboardData()}
+	if a.currentView == ViewRegister && a.register != nil {
+		cmds = append(cmds, a.loadRegisterData(a.register.account.ID))
+	}
+	return tea.Batch(cmds...)
+}

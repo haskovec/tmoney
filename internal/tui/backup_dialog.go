@@ -8,6 +8,7 @@ import (
 	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 // backupCreatedMsg is sent when a manual backup has been created.
@@ -192,4 +193,15 @@ func (a *App) reloadAfterRestore() (tea.Model, tea.Cmd) {
 // backupFilename extracts just the filename from a backup path for display.
 func backupFilename(path string) string {
 	return filepath.Base(path)
+}
+
+// afterRestore rebuilds the app over the restored database and reports where
+// the pre-restore safety copy went.
+func (a *App) afterRestore(safetyBackupPath string) (tea.Model, tea.Cmd) {
+	model, cmd := a.reloadAfterRestore()
+	a.statusbar.AddNotification(
+		fmt.Sprintf("Restored from backup (safety backup: %s)", backupFilename(safetyBackupPath)),
+		widget.NotificationInfo,
+	)
+	return model, cmd
 }

@@ -66,6 +66,16 @@ type cashOperationSurface struct {
 
 func (s *cashOperationSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// savedNote is the status-bar note for a completed save. The dialog serves
+// four operation types, and opType is empty only when the surface was never
+// opened through one of them.
+func (s *cashOperationSurface) savedNote() string {
+	if s.opType == "" {
+		return "Cash operation transaction saved"
+	}
+	return s.opType.DisplayName() + " transaction saved"
+}
+
 // closeCashOperationDialog clears the cash operation dialog state.
 func (a *App) closeCashOperationDialog() {
 	a.cashOperation = cashOperationSurface{}

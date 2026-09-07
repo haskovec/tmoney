@@ -642,3 +642,10 @@ func (a *App) updateSecurity(id types.ID, ticker, name, isin string, secType sec
 		return securityUpdatedMsg{}
 	}
 }
+
+// afterSecurityChange notes the change and reloads the securities view. Every
+// security CRUD result ends this way; only the note differs.
+func (a *App) afterSecurityChange(note string) tea.Cmd {
+	a.statusbar.AddNotification(note, widget.NotificationInfo)
+	return a.loadSecurityViewData()
+}

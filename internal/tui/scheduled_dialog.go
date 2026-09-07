@@ -495,6 +495,87 @@ type schedSurface struct {
 
 func (s *schedSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData builds whichever of the three scheduled forms data describes:
+// the transfer form, the regular edit form, or the regular new form.
+//
+// categories is the full category list. App fetches it, because the service
+// lives there: the transfer form offers every non-system category, while the
+// regular form additionally offers Value Adjustment when the initially
+// selected account is an asset.
+//
+// It reports whether the form built is the regular edit form, the only one
+// that can carry the "Edit as loan ->" button. App adds that button itself,
+// because deciding on it needs the scheduled service.
+func (s *schedSurface) applyData(data *scheduledDialogData, categories []*category.Category) bool {
+	s.data = data
+
+	// Single-line transfer schedules use a distinct dialog whose From/To
+	// pickers exclude investment accounts (regular<->regular only). The
+	// optional Category combo excludes every system category (Transfer,
+	// Value Adjustment) — a transfer may be labeled with any non-system
+	// category.
+	if data.isTransfer {
+		accountOptions, accountIDs := buildTransferAccountOptions(data.accounts)
+		s.accountIDs = accountIDs
+		categoryOptions, categoryIDs := buildCategoryOptions(categories)
+		s.categoryIDs = categoryIDs
+		s.categoryOptions = categoryOptions
+
+		if data.mode == scheduledDialogModeEdit && data.scheduled != nil {
+			s.dlg = buildEditScheduledTransferDialog(data.scheduled, accountOptions, categoryOptions, accountIDs, categoryIDs)
+		} else {
+			s.dlg = buildNewScheduledTransferDialog(accountOptions, categoryOptions)
+		}
+		return false
+	}
+
+	accountOptions, accountIDs := buildAccountOptions(data.accounts)
+	s.accountIDs = accountIDs
+
+	// Surface the Value Adjustment category when the initially
+	// selected account is an asset account (edit: the schedule's
+	// account; new: the first account, which the picker defaults
+	// to). The picker tracks later account changes via
+	// refreshSchedCategoryOptionsForAccount.
+	initialAcctID := types.NilID
+	if data.mode == scheduledDialogModeEdit && data.scheduled != nil {
+		initialAcctID = data.scheduled.AccountID
+	} else if len(accountIDs) > 0 {
+		initialAcctID = accountIDs[0]
+	}
+	includeVA := accountIsAssetByID(data.accounts, initialAcctID)
+	categoryOptions, categoryIDs := buildCategoryOptionsFor(categories, includeVA)
+	s.categoryIDs = categoryIDs
+	s.categoryOptions = categoryOptions
+
+	if data.mode != scheduledDialogModeEdit || data.scheduled == nil {
+		s.dlg = buildNewScheduledDialog(accountOptions, categoryOptions)
+		return false
+	}
+
+	// Build payee name map for edit dialog
+	payeeNames := make(map[types.ID]string)
+	for _, p := range data.payees {
+		payeeNames[p.ID] = p.Name
+	}
+	s.dlg = buildEditScheduledDialog(data.scheduled, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
+	return true
+}
+
+// categoriesOrNil lists every category, or nil when the service is absent or
+// the lookup fails. A combo that has to be built now treats a failed lookup as
+// an empty list rather than as an error worth an error page.
+func (a *App) categoriesOrNil() []*category.Category {
+	if a.categorySvc == nil {
+		return nil
+	}
+	cats, err := a.categorySvc.List()
+	if err != nil {
+		return nil
+	}
+	return cats
+}
+
 // closeScheduledDialog clears the scheduled dialog state.
 func (a *App) closeScheduledDialog() {
 	a.sched = schedSurface{}

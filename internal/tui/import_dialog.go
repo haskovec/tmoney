@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/imexport"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -257,6 +258,38 @@ type importSurface struct {
 // the note on modalSurface.
 func (s *importSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// showOptions opens the workflow at its first step, the options form. Each of
+// the three steps replaces the whole surface rather than editing it in place,
+// so no field of the previous step can survive into the next one.
+func (s *importSurface) showOptions(accounts []*account.Account, defaultAccountID types.ID) {
+	d, ids := buildImportOptionsDialog(accounts, defaultAccountID)
+	*s = importSurface{
+		modalSurface: modalSurface{dlg: d},
+		state:        &importDialogState{step: importStepOptions, accountIDs: ids},
+	}
+}
+
+// showSourcePicker moves to the source picker, the step a multi-source file
+// inserts before the preview.
+func (s *importSurface) showSourcePicker(state *importDialogState, sources []string) {
+	state.step = importStepSourcePicker
+	state.sourceOptions = sources
+	*s = importSurface{
+		modalSurface: modalSurface{dlg: buildImportSourcePickerDialog(sources, state.accountName)},
+		state:        state,
+	}
+}
+
+// showConfirm moves to the final step, the preview of what the import will do.
+func (s *importSurface) showConfirm(state *importDialogState, result *imexport.ImportResult) {
+	state.preview = result
+	state.step = importStepConfirm
+	*s = importSurface{
+		modalSurface: modalSurface{dlg: buildImportConfirmDialog(state)},
+		state:        state,
+	}
+}
+
 // closeImportDialog clears the import dialog state.
 func (a *App) closeImportDialog() {
 	a.importer = importSurface{}
@@ -453,4 +486,20 @@ func (a *App) runImportExecute(state *importDialogState) tea.Cmd {
 			errors:  state.preview.Errors,
 		}
 	}
+}
+
+// applyImportResult reports what the import did and reloads the sidebar,
+// dashboard and open register, so the new transactions appear without the user
+// having to navigate away and back. Row-level failures are collected into
+// a.err; the rows that did import still count.
+func (a *App) applyImportResult(msg importCompletedMsg) tea.Cmd {
+	a.statusbar.AddNotification(
+		fmt.Sprintf("Imported: %d created, %d updated, %d skipped", msg.created, msg.updated, msg.skipped),
+		widget.NotificationInfo,
+	)
+	if len(msg.errors) > 0 {
+		a.err = fmt.Errorf("import completed with %d errors:\n%s",
+			len(msg.errors), strings.Join(msg.errors, "\n"))
+	}
+	return a.reloadAfterBulkWrite()
 }

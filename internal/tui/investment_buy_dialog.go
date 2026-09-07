@@ -178,6 +178,21 @@ type buySurface struct {
 // IsVisible is declared per surface; see modalSurface.
 func (s *buySurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData installs the loaded securities and builds the form over them. In
+// new mode the Date field takes the session sticky date and the Security combo
+// pre-selects the seed's one-shot security; in edit mode the transaction being
+// edited supplies both, so neither seed value is read.
+func (s *buySurface) applyData(data *buyDialogData, seed investmentDialogSeed) {
+	s.data = data
+	secOptions, secIDs := buildSecurityOptions(data.securities)
+	s.securityIDs = secIDs
+	s.dlg = buildBuyDialog(secOptions, seed.editTxn, secIDs)
+	if seed.editTxn == nil {
+		s.dlg.SeedDateField(seed.stickyDate)
+		preselectSecurityCombo(s.dlg, secIDs, seed.preselect)
+	}
+}
+
 // closeBuyDialog clears the buy dialog state.
 func (a *App) closeBuyDialog() {
 	a.buy = buySurface{}

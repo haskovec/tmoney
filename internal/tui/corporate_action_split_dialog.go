@@ -198,6 +198,18 @@ type stockSplitSurface struct {
 
 func (s *stockSplitSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData installs the loaded securities and builds the form over them,
+// seeding the Date field from the session sticky date. The one-shot
+// preSelectedID set by the opener is consumed here.
+func (s *stockSplitSurface) applyData(data *stockSplitDialogData, stickyDate types.Date) {
+	s.data = data
+	secOptions, secIDs := buildSecurityOptions(data.securities)
+	s.securityIDs = secIDs
+	s.dlg = buildStockSplitDialog(secOptions, secIDs, data.sharesMap, s.preSelectedID)
+	s.dlg.SeedDateField(stickyDate)
+	s.preSelectedID = nil
+}
+
 // closeStockSplitDialog clears the stock split dialog state.
 func (a *App) closeStockSplitDialog() {
 	a.stockSplit = stockSplitSurface{}

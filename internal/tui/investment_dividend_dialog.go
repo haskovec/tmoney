@@ -174,6 +174,33 @@ type dividendSurface struct {
 
 func (s *dividendSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData installs the loaded securities and builds whichever of the two
+// forms the open variant asked for. reinvest is set by the opener, before the
+// securities arrive, so it is read here rather than passed in.
+func (s *dividendSurface) applyData(data *dividendDialogData, seed investmentDialogSeed) {
+	s.data = data
+	secOptions, secIDs := buildSecurityOptions(data.securities)
+	s.securityIDs = secIDs
+	if s.reinvest {
+		s.dlg = buildReinvestDividendDialog(secOptions, seed.editTxn, secIDs)
+	} else {
+		s.dlg = buildDividendDialog(secOptions, seed.editTxn, secIDs)
+	}
+	if seed.editTxn == nil {
+		s.dlg.SeedDateField(seed.stickyDate)
+		preselectSecurityCombo(s.dlg, secIDs, seed.preselect)
+	}
+}
+
+// savedNote is the status-bar note for a completed save, which names the
+// variant the user actually used.
+func (s *dividendSurface) savedNote() string {
+	if s.reinvest {
+		return "Reinvest dividend transaction saved"
+	}
+	return "Dividend transaction saved"
+}
+
 // closeDividendDialog clears the dividend dialog state.
 func (a *App) closeDividendDialog() {
 	a.dividend = dividendSurface{}

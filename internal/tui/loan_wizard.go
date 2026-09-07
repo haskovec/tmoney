@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/loan"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -575,6 +576,21 @@ type loanSurface struct {
 // IsVisible must be declared here rather than promoted from modalSurface — see
 // the note on modalSurface.
 func (s *loanSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
+// applyData builds the wizard over the loaded accounts and categories: the
+// edit form when the message carries a schedule to adopt, the new-loan form
+// otherwise. Both builders return the derived-field state alongside the
+// dialog, so the surface is replaced whole.
+func (s *loanSurface) applyData(msg loanWizardDataMsg) {
+	var d *dialog.Dialog
+	var st *loanWizardData
+	if msg.editSchedule != nil {
+		d, st = buildEditLoanWizard(msg.accounts, msg.categories, msg.editSchedule, msg.editOwed)
+	} else {
+		d, st = buildNewLoanWizard(msg.accounts, msg.categories)
+	}
+	*s = loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
+}
 
 // closeLoanWizard clears the wizard state.
 func (a *App) closeLoanWizard() {
@@ -1312,4 +1328,19 @@ func loanOpeningDate(fields []*dialog.Field, owed types.Money) types.Date {
 		return types.Today()
 	}
 	return openDate
+}
+
+// afterLoanWizardSave toasts the creation and reloads every view the new loan
+// account and its schedule appear in.
+func (a *App) afterLoanWizardSave() tea.Cmd {
+	if a.statusbar != nil {
+		a.statusbar.SetToast("Loan created.", widget.NotificationInfo)
+	}
+	return tea.Batch(
+		a.loadSidebarData(),
+		a.loadDashboardData(),
+		a.loadScheduledViewData(),
+		a.loadScheduledDueCount(),
+		widget.ClearToastCmd(),
+	)
 }

@@ -1167,3 +1167,23 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 		return scheduledPostedMsg{loanPaidOff: paidOff}
 	}
 }
+
+// handleSchedulePreviewLoanBlocked reports a loan-shaped schedule that cannot
+// be previewed with correct numbers: paid off (already refused-and-completed
+// by the loader) or misconfigured. It toasts and refreshes the due list
+// instead of opening the preview over stale template values.
+func (a *App) handleSchedulePreviewLoanBlocked(paidOff bool, err error) tea.Cmd {
+	if a.statusbar != nil {
+		if paidOff {
+			a.statusbar.SetToast(loanPaidOffToast, widget.NotificationInfo)
+		} else {
+			a.statusbar.SetToast(fmt.Sprintf("Cannot post loan payment: %v", err), widget.NotificationAlert)
+		}
+	}
+	return tea.Batch(
+		a.loadScheduledViewData(),
+		a.loadSidebarData(),
+		a.loadScheduledDueCount(),
+		widget.ClearToastCmd(),
+	)
+}

@@ -94,6 +94,18 @@ type mergerSurface struct {
 
 func (s *mergerSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData installs the loaded securities and builds the form over them,
+// seeding the Date field from the session sticky date. The one-shot
+// preSelectedID set by the opener is consumed here.
+func (s *mergerSurface) applyData(data *mergerDialogData, stickyDate types.Date) {
+	s.data = data
+	secOptions, secIDs := buildSecurityOptions(data.securities)
+	s.securityIDs = secIDs
+	s.dlg = buildMergerDialog(secOptions, secIDs, s.preSelectedID)
+	s.dlg.SeedDateField(stickyDate)
+	s.preSelectedID = nil
+}
+
 // closeMergerDialog clears the merger dialog state.
 func (a *App) closeMergerDialog() {
 	a.merger = mergerSurface{}

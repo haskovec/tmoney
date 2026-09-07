@@ -540,3 +540,29 @@ func (a *App) cancelReconciliation() (tea.Model, tea.Cmd) {
 		return reconciliationCancelledMsg{}
 	}
 }
+
+// afterReconciliationFinished drops the session and returns to the register
+// the account was reconciled in, reloading it so the new cleared marks show.
+func (a *App) afterReconciliationFinished() tea.Cmd {
+	acctName := ""
+	if a.reconciliation != nil {
+		acctName = a.reconciliation.account.Name
+	}
+	a.reconciliation = nil
+	a.reconciliationTable = nil
+	a.switchView(ViewRegister)
+	a.statusbar.AddNotification(fmt.Sprintf("Reconciliation completed for %s", acctName), widget.NotificationInfo)
+	return tea.Batch(
+		a.loadRegisterData(a.sidebar.SelectedAccountID()),
+		a.loadSidebarData(),
+	)
+}
+
+// afterReconciliationCancelled drops the session and returns to the register.
+// Nothing is reloaded: a cancelled session wrote nothing.
+func (a *App) afterReconciliationCancelled() {
+	a.reconciliation = nil
+	a.reconciliationTable = nil
+	a.switchView(ViewRegister)
+	a.statusbar.AddNotification("Reconciliation cancelled", widget.NotificationInfo)
+}
