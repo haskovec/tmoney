@@ -35,7 +35,7 @@ names 4b and 4d with the measurement that sizes them.
 | 0 | **yes** | Render the two dialogs that no code paints today (a live bug, §1.3) |
 | 1 | **yes** | Declare `Modal`; give three types the methods they lack; one registry replaces the key and paint cascades |
 | 2 | **yes** | Move the mouse cascade onto the registry; close the mouse/keyboard gap that `specs/tui.md` forbids |
-| 3 | — | Group each surface's loose fields into one struct; `App` sheds ~65 fields |
+| 3 | **yes** | Group each surface's loose fields into one struct; `App` sheds ~65 fields |
 | 4 | — | Move `app_update.go`'s message bodies onto those structs — **off** `App`, not into another `App` method |
 | 5 | — | One pilot controller: `open`/`submit`/`close` off `*App` for a single surface, proving 4c is reachable |
 
@@ -821,7 +821,7 @@ This is the tangle item 4 named first ("category-create routing:
 because it touches eight surfaces (16 functions across 8 files, see the note below), not
 because it is optional.
 
-#### Built (instalment 1 of 3): the shape, and the nil trap one level down
+#### Built (instalment 1 of 2): the shape, and the nil trap one level down
 
 Six families converted: `closeAcct`, `security`, `price`, `loan`, `importer`,
 `linkTransfers`. `App` 160 → 152 fields.
@@ -868,6 +868,60 @@ pointers, and its self-test showed it reported "correct" for a type with no
 is simpler. That is the fourth time in phases 0–3 that mutating the code was the
 only thing that showed a new test was worthless.
 
+#### Built (instalment 2 of 2): the remaining 17 families, and surfaces became values
+
+All 23 surfaces are now one field each. `App` 152 → 107 fields, against the
+"under ~100" criterion; the remainder is services, views, tables and the
+per-view scratch that phases 4 and 5 own.
+
+**Surfaces are values, not pointers.** Instalment 1 built `a.loan *loanSurface`
+and closed with `a.loan = nil`. Two panics in the original phase 3 branch came
+from exactly that shape: a submit path read `a.security.mode` one line after
+`a.security = nil`, and an applier dereferenced a nil `a.loan`. A pointer
+surface adds a second "closed" state (`a.x == nil`) on top of the one the
+dialog already has (`a.x.dlg == nil`), and every reader must guard both. So
+every surface is a **value field whose zero value is closed**:
+
+```go
+sell sellSurface            // on App
+a.sell = sellSurface{}      // close: one assignment resets the whole family
+modal: &a.sell,             // registry holds the address, taken once per modals()
+```
+
+`IsVisible` keeps its `s != nil &&` clause. It costs nothing on a value and
+keeps the §5.0 guard honest for the pointer the registry still hands out. The
+six instalment-1 surfaces were converted to the same shape in one commit so
+the package has one style, and their fixtures shed their `&`.
+
+**Two surfaces do not embed `modalSurface`.** The split editor is a
+`*SplitDialog`, not a `*dialog.Dialog`, so `splitSurface` forwards `IsVisible`
+and `Render` to it and keeps the pending transaction and pending scheduled
+item beside it. The merger confirmation has no dialog at all; its
+`mergerConfirmSurface` is plain state and `mergerConfirmModal` still adapts it
+for the registry, as phase 1 left it.
+
+**`createCatOrigin` kept its sentinels.** The design sketched a nil pointer as
+"no sub-dialog in flight". The origin is a value inside the value surface, so
+the -1 / nil idle values stay, built by one `newCreateCatOrigin()` in `New` and
+in the split fixture, and each applier still resets only the slot it owns. The
+five scratch fields are gone from `App`; the invariant the design asked for
+("read a slot only through the switch on `surface`") is now visible in one
+struct instead of spread across five fields and four files.
+
+**The conversion was mechanical.** A throwaway go/ast rewriter did the
+selector renames and grouped `App{...}` literals in the tests; the hand edits
+per family were the struct declaration, the `App` field, the close helper and
+the registry entry. Two things it got wrong are worth recording for phase 4:
+
+- `SchedulePreviewDialog` has its own `splitDialog` field. A name-based
+  rewrite turned `p.splitDialog` into `p.split.editor`; the compiler caught it.
+  Any later rename of a surface field must check for same-named fields on
+  other types first.
+- `TestMouseOverride_CallsTheSharedDispatcher` scrapes method bodies by
+  finding the next `\n}\n`. A one-line close helper has no such terminator, so
+  the scraper swallowed the next method and reported it missing. The helpers
+  are three lines for that reason; the scraper should move to go/ast when
+  phase 4 touches that test.
 ### Phase 4 — messages onto the surfaces, off `App`
 
 `app_update.go` is 1,002 lines, 89 case arms, and it reads or writes 94 of the
@@ -1286,7 +1340,7 @@ Per phase, checkable:
 | 0 | Both dialogs render in a test; **manual smoke of File → Import and Transactions → Link Transfers end to end**; the four `NewServices`-in-a-goroutine sites filed against item 6; a recorded decision for `corporateActionDetail`; every modal name appears in all four lists |
 | 1 | `Modal` declared and the §5.0 nil decision recorded; `handleKeyPress` and `renderLayout` contain no per-dialog `if` — **the mouse cascade is untouched until phase 2**; the §1.5 co-occurrence tests pass; §6.1 guards 1–3 land with this phase; smoke checklist |
 | 2 | `handleDialogMouse` contains no per-dialog `if`; every mouse Cancel routes through the same `onCancel` as Esc; the pre-audited test assertions updated deliberately; visual smoke check |
-| 3 | `App` under ~100 fields; each surface's state is one field; **no surface struct holds a service pointer** (§5.5); every surface struct is nil-safe and guard 1 is re-run against the new registry (§5.0); guard 2's filter updated in the same commit as the first surface struct (§6.1); `createCatOrigin` replaces the five scratch fields |
+| 3 | **Met at 107 fields**: `App` under ~100 fields; each surface's state is one field; **no surface struct holds a service pointer** (§5.5); every surface struct is nil-safe and guard 1 is re-run against the new registry (§5.0); guard 2's filter updated in the same commit as the first surface struct (§6.1); `createCatOrigin` replaces the five scratch fields |
 | 4 | `app_update.go` under ~300 lines; `*App` gains **only the documented pinned arms (≤ 41), never the full 61** — landing near ~398, not ~418; each arm that stayed is listed with its reason |
 | 5 | The transfer surface owns `open`/`submit`/`close`; its registry entry is a thin wrapper, not a second implementation (§2.2); `App` supplies only services; the deps are a live indirection, not captured pointers; the inherited undo/DB mismatch is noted in the commit, not treated as a regression |
 

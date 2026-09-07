@@ -630,10 +630,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case loanWizardDataMsg:
 		if msg.editSchedule != nil {
 			d, st := buildEditLoanWizard(msg.accounts, msg.categories, msg.editSchedule, msg.editOwed)
-			a.loan = &loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
+			a.loan = loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
 		} else {
 			d, st := buildNewLoanWizard(msg.accounts, msg.categories)
-			a.loan = &loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
+			a.loan = loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
 		}
 		return a, nil
 
@@ -898,7 +898,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case importDialogOpenMsg:
 		d, ids := buildImportOptionsDialog(msg.accounts, msg.defaultAccountID)
-		a.importer = &importSurface{modalSurface: modalSurface{dlg: d}}
+		a.importer = importSurface{modalSurface: modalSurface{dlg: d}}
 		a.importer.state = &importDialogState{
 			step:       importStepOptions,
 			accountIDs: ids,
@@ -909,7 +909,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		state := msg.state
 		state.preview = msg.result
 		state.step = importStepConfirm
-		a.importer = &importSurface{
+		a.importer = importSurface{
 			modalSurface: modalSurface{dlg: buildImportConfirmDialog(state)},
 			state:        state,
 		}
@@ -919,7 +919,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		state := msg.state
 		state.step = importStepSourcePicker
 		state.sourceOptions = msg.sources
-		a.importer = &importSurface{
+		a.importer = importSurface{
 			modalSurface: modalSurface{dlg: buildImportSourcePickerDialog(msg.sources, state.accountName)},
 			state:        state,
 		}
@@ -944,7 +944,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(cmds...)
 
 	case linkTransfersPreviewedMsg:
-		a.linkTransfers = &linkTransfersSurface{
+		a.linkTransfers = linkTransfersSurface{
 			modalSurface: modalSurface{dlg: buildLinkTransfersDialog(msg.result)},
 			result:       msg.result,
 		}

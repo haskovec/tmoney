@@ -151,13 +151,13 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "import",
-			modal:    a.importer,
+			modal:    &a.importer,
 			onKey:    (*App).handleImportDialogKey,
 			onAction: (*App).importDialogAction,
 		},
 		{
 			name:     "linkTransfers",
-			modal:    a.linkTransfers,
+			modal:    &a.linkTransfers,
 			onKey:    (*App).handleLinkTransfersDialogKey,
 			onAction: (*App).linkTransfersDialogAction,
 		},
@@ -217,7 +217,7 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "loanWizard",
-			modal:    a.loan,
+			modal:    &a.loan,
 			onKey:    (*App).handleLoanWizardKey,
 			onAction: (*App).loanWizardAction,
 		},
@@ -235,19 +235,19 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "closeAccount",
-			modal:    a.closeAcct,
+			modal:    &a.closeAcct,
 			onKey:    (*App).handleCloseAcctDialogKey,
 			onAction: (*App).closeAcctDialogAction,
 		},
 		{
 			name:     "security",
-			modal:    a.security,
+			modal:    &a.security,
 			onKey:    (*App).handleSecurityDialogKey,
 			onAction: (*App).securityDialogAction,
 		},
 		{
 			name:     "price",
-			modal:    a.price,
+			modal:    &a.price,
 			onKey:    (*App).handlePriceDialogKey,
 			onAction: (*App).priceDialogAction,
 		},

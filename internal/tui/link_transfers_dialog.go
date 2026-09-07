@@ -120,12 +120,12 @@ func (s *linkTransfersSurface) IsVisible() bool { return s != nil && s.dlg.IsVis
 
 // closeLinkTransfersDialog clears the dialog state.
 func (a *App) closeLinkTransfersDialog() {
-	a.linkTransfers = nil
+	a.linkTransfers = linkTransfersSurface{}
 }
 
 // handleLinkTransfersDialogKey routes keys to the dialog.
 func (a *App) handleLinkTransfersDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.linkTransfers == nil {
+	if a.linkTransfers.dlg == nil {
 		return a, nil
 	}
 	return a.linkTransfersDialogAction(a.linkTransfers.dlg.HandleKey(msg))
@@ -146,7 +146,7 @@ func (a *App) linkTransfersDialogAction(action dialog.DialogAction) (tea.Model, 
 // submitLinkTransfersDialog runs the link execute command if there are
 // clean pairs to link, or simply closes the dialog otherwise.
 func (a *App) submitLinkTransfersDialog() (tea.Model, tea.Cmd) {
-	if a.linkTransfers == nil {
+	if a.linkTransfers.dlg == nil {
 		return a, nil
 	}
 	if a.linkTransfers.result == nil || len(a.linkTransfers.result.Clean) == 0 {

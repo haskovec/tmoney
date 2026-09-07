@@ -30,11 +30,11 @@ func TestSecurityEditSubmit_UsesTheCapturedEditID(t *testing.T) {
 	app := &App{statusbar: widget.NewStatusBar(), securitySvc: svc}
 	d := buildEditSecurityDialog(sec)
 	d.SetVisible(true)
-	app.security = &securitySurface{modalSurface: modalSurface{dlg: d}, mode: securityDialogModeEdit, editID: sec.ID}
+	app.security = securitySurface{modalSurface: modalSurface{dlg: d}, mode: securityDialogModeEdit, editID: sec.ID}
 	d.Fields()[1].Value = "Apple Incorporated"
 
 	_, cmd := app.submitSecurityDialog()
-	if app.security != nil {
+	if app.security.dlg != nil {
 		t.Fatal("submit must drop the surface")
 	}
 	if cmd == nil {
@@ -63,7 +63,7 @@ func TestApplyCreatedCategoryToLoan_ToleratesAClosedWizard(t *testing.T) {
 
 			modalSurface: modalSurface{dlg: buildCreateCategoryDialog("Escrow", "", nil, category.TypeExpense)}},
 	}
-	app.loan = nil
+	app.loan = loanSurface{}
 
 	newCat := category.NewCategory("Escrow", category.TypeExpense)
 	app.applyCreatedCategoryToLoan(newCat, []*category.Category{newCat})

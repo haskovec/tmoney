@@ -17,7 +17,7 @@ func TestPriceDialog_LookupFillsPriceAndResolvedDate(t *testing.T) {
 	}
 	sec := secs[0]
 	app.priceView = &priceViewData{selectedSecurity: sec}
-	app.price = &priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
+	app.price = priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
 	// A weekend date; the fake ignores it but the resolved quote date is 07-31.
 	app.price.dlg.Fields()[0].Value = "2024-08-03"
 
@@ -48,7 +48,7 @@ func TestPriceDialog_LookupErrorKeepsDialogOpen(t *testing.T) {
 	// No quote registered for GBTC → the fake returns an error.
 	sec := secs[0]
 	app.priceView = &priceViewData{selectedSecurity: sec}
-	app.price = &priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
+	app.price = priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
 	app.price.dlg.Fields()[0].Value = "2024-07-31"
 
 	_, cmd := app.startPriceLookup()
@@ -60,7 +60,7 @@ func TestPriceDialog_LookupErrorKeepsDialogOpen(t *testing.T) {
 		t.Fatal("expected an error for an unknown ticker")
 	}
 	app.handlePriceLookupResult(msg)
-	if app.price == nil {
+	if app.price.dlg == nil {
 		t.Error("dialog should remain open after a failed lookup")
 	}
 }
@@ -77,7 +77,7 @@ func TestPriceDialog_LookupPrefill_AnchorsPriceCursor(t *testing.T) {
 	}
 	sec := secs[0]
 	app.priceView = &priceViewData{selectedSecurity: sec}
-	app.price = &priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
+	app.price = priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
 	app.price.dlg.Fields()[0].Value = "2024-08-03"
 
 	_, cmd := app.startPriceLookup()

@@ -189,7 +189,7 @@ type App struct {
 	// generic dialog.Dialog form widget (see loan_wizard.go); creates a loan
 	// account, an optional asset account, and a monthly loan-shaped schedule
 	// as one atomic, single-undo operation.
-	loan *loanSurface
+	loan loanSurface
 
 	// Scheduled view state
 	scheduled      *scheduledViewData
@@ -210,12 +210,12 @@ type App struct {
 	reconDialogLastStatementDate types.Date
 
 	// Close-account dialog state.
-	closeAcct *closeAcctSurface
+	closeAcct closeAcctSurface
 
 	// Security view state
 	securityView  *securityViewData
 	securityTable *widget.Table
-	security      *securitySurface
+	security      securitySurface
 	securitySvc   *security.Service
 
 	// After adding a security, the table build step moves the cursor onto the
@@ -229,7 +229,7 @@ type App struct {
 	priceView         *priceViewData
 	priceTable        *widget.Table // detail-mode: history for one security
 	priceListTable    *widget.Table // list-mode: latest price per ticker
-	price             *priceSurface
+	price             priceSurface
 	priceImportDialog *dialog.Dialog
 	priceSvc          *price.Service
 
@@ -329,10 +329,10 @@ type App struct {
 	file fileSurface
 
 	// Import dialog state (transaction import via File → Import)
-	importer *importSurface
+	importer importSurface
 
 	// Link Transfers dialog state (Transactions → Link Transfers)
-	linkTransfers *linkTransfersSurface
+	linkTransfers linkTransfersSurface
 
 	// Confirmation dialog state
 	confirm confirmSurface

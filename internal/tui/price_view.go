@@ -703,7 +703,7 @@ func (a *App) handlePriceDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if a.priceView.selectedSecurity != nil {
 			d := buildAddPriceDialog(a.priceView.selectedSecurity)
 			d.SetVisible(true)
-			a.price = &priceSurface{modalSurface: modalSurface{dlg: d}, mode: priceDialogModeAdd}
+			a.price = priceSurface{modalSurface: modalSurface{dlg: d}, mode: priceDialogModeAdd}
 		}
 		return a, nil
 	case key.Matches(msg, a.keys.Enter):
@@ -711,7 +711,7 @@ func (a *App) handlePriceDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if p != nil && a.priceView.selectedSecurity != nil {
 			d := buildEditPriceDialog(a.priceView.selectedSecurity, p)
 			d.SetVisible(true)
-			a.price = &priceSurface{
+			a.price = priceSurface{
 				modalSurface: modalSurface{dlg: d},
 				mode:         priceDialogModeEdit,
 				editID:       p.ID,
@@ -879,7 +879,7 @@ func (a *App) handlePriceDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (a *App) priceDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
-		a.price = nil
+		a.price = priceSurface{}
 		return a, nil
 	case dialog.DialogActionSubmit:
 		return a.submitPriceDialog()
@@ -900,7 +900,7 @@ type priceLookupResultMsg struct {
 // startPriceLookup reads the dialog's current date + selected security and
 // kicks off an async provider fetch to fill the Price field.
 func (a *App) startPriceLookup() (tea.Model, tea.Cmd) {
-	if a.price == nil || a.priceView.selectedSecurity == nil {
+	if a.price.dlg == nil || a.priceView.selectedSecurity == nil {
 		return a, nil
 	}
 	fields := a.price.dlg.Fields()
@@ -937,7 +937,7 @@ func (a *App) lookupPriceCmd(ticker, dateStr string) tea.Cmd {
 // handlePriceLookupResult fills the Price (and resolved Date) fields from a
 // completed lookup, or surfaces the error on the still-open dialog.
 func (a *App) handlePriceLookupResult(msg priceLookupResultMsg) (tea.Model, tea.Cmd) {
-	if a.price == nil {
+	if a.price.dlg == nil {
 		return a, nil
 	}
 	if msg.err != nil {
@@ -995,7 +995,7 @@ func (a *App) submitPriceDialog() (tea.Model, tea.Cmd) {
 	mode := a.price.mode
 	editID := a.price.editID
 
-	a.price = nil
+	a.price = priceSurface{}
 
 	if mode == priceDialogModeAdd {
 		return a, a.createPrice(secID, date, amount)

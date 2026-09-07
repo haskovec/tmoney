@@ -286,7 +286,7 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Open add security dialog
 		d := buildAddSecurityDialog()
 		d.SetVisible(true)
-		a.security = &securitySurface{modalSurface: modalSurface{dlg: d}, mode: securityDialogModeAdd}
+		a.security = securitySurface{modalSurface: modalSurface{dlg: d}, mode: securityDialogModeAdd}
 		return a, nil
 	case key.Matches(msg, a.keys.Enter):
 		// Open edit dialog for selected security
@@ -294,7 +294,7 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if sec != nil {
 			d := buildEditSecurityDialog(sec)
 			d.SetVisible(true)
-			a.security = &securitySurface{
+			a.security = securitySurface{
 				modalSurface: modalSurface{dlg: d},
 				mode:         securityDialogModeEdit,
 				editID:       sec.ID,
@@ -550,7 +550,7 @@ func (a *App) handleSecurityDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 func (a *App) securityDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
-		a.security = nil
+		a.security = securitySurface{}
 		return a, nil
 	case dialog.DialogActionSubmit:
 		return a.submitSecurityDialog()
@@ -588,7 +588,7 @@ func (a *App) submitSecurityDialog() (tea.Model, tea.Cmd) {
 
 	// Read the surface's mode and target BEFORE dropping it.
 	mode, editID := a.security.mode, a.security.editID
-	a.security = nil
+	a.security = securitySurface{}
 
 	if mode == securityDialogModeAdd {
 		return a, a.createSecurity(ticker, name, isin, secType, assetClass, currency, exchange)

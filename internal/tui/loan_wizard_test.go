@@ -374,7 +374,7 @@ func TestLoanWizard_ValidationErrorsBlockSave(t *testing.T) {
 	if msg != nil {
 		t.Fatalf("submit returned a command despite validation errors: %T", msg)
 	}
-	if env.app.loan == nil {
+	if env.app.loan.dlg == nil {
 		t.Fatal("wizard should stay open on validation failure")
 	}
 	if env.app.loan.dlg.Fields()[loanFieldName].Error == "" {

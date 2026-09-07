@@ -594,7 +594,7 @@ func (a *App) cancelCreateCatDialog() {
 		}
 		a.createCat.origin.line = nil
 	case createCatSourceLoanWizard:
-		if a.loan != nil {
+		if a.loan.dlg != nil {
 			a.loan.dlg.SetVisible(true)
 		}
 		a.createCat.origin.loanField = -1

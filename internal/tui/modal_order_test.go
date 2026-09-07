@@ -44,12 +44,12 @@ func visibleDialog(title string) *dialog.Dialog {
 // newLoanSurface, newImportSurface and firstOf keep the many fixtures that
 // build a wizard or dialog to a single line now that the state lives in one
 // struct.
-func newLoanSurface(d *dialog.Dialog, st *loanWizardData) *loanSurface {
-	return &loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
+func newLoanSurface(d *dialog.Dialog, st *loanWizardData) loanSurface {
+	return loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
 }
 
-func newImportSurface(d *dialog.Dialog) *importSurface {
-	return &importSurface{modalSurface: modalSurface{dlg: d}, state: &importDialogState{}}
+func newImportSurface(d *dialog.Dialog) importSurface {
+	return importSurface{modalSurface: modalSurface{dlg: d}, state: &importDialogState{}}
 }
 
 func firstOf[T any, U any](t T, _ U) T { return t }
@@ -83,13 +83,13 @@ func surfaceSetters() map[string]func(*App) {
 		"backup": func(a *App) { a.backupDialog = &backupDialogState{dialog: visibleDialog("Backup")} },
 		"file":   func(a *App) { a.file.dlg = visibleDialog("File") },
 		"import": func(a *App) {
-			a.importer = &importSurface{
+			a.importer = importSurface{
 				modalSurface: visibleSurface("Import"),
 				state:        &importDialogState{},
 			}
 		},
 		"linkTransfers": func(a *App) {
-			a.linkTransfers = &linkTransfersSurface{
+			a.linkTransfers = linkTransfersSurface{
 				modalSurface: visibleSurface("Link"),
 				result:       &transferlink.Result{},
 			}
@@ -119,7 +119,7 @@ func surfaceSetters() map[string]func(*App) {
 		},
 		"paycheckWizard": func(a *App) { a.paycheckWizard = newVisiblePaycheckWizard() },
 		"loanWizard": func(a *App) {
-			a.loan = &loanSurface{
+			a.loan = loanSurface{
 				modalSurface: visibleSurface("Loan"),
 				state:        &loanWizardData{},
 			}
@@ -130,13 +130,13 @@ func surfaceSetters() map[string]func(*App) {
 		},
 		"reconciliation": func(a *App) { a.reconDialog = visibleDialog("Reconcile") },
 		"closeAccount": func(a *App) {
-			a.closeAcct = &closeAcctSurface{modalSurface: visibleSurface("Close Account")}
+			a.closeAcct = closeAcctSurface{modalSurface: visibleSurface("Close Account")}
 		},
 		"security": func(a *App) {
-			a.security = &securitySurface{modalSurface: visibleSurface("Security")}
+			a.security = securitySurface{modalSurface: visibleSurface("Security")}
 		},
 		"price": func(a *App) {
-			a.price = &priceSurface{modalSurface: visibleSurface("Price")}
+			a.price = priceSurface{modalSurface: visibleSurface("Price")}
 		},
 		"priceImport": func(a *App) { a.priceImportDialog = visibleDialog("Price Import") },
 		"buy": func(a *App) {
