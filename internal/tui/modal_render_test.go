@@ -35,7 +35,7 @@ func newModalRenderTestApp() *App {
 
 func TestRenderLayout_ImportDialogOptionsStepRenders(t *testing.T) {
 	app := newModalRenderTestApp()
-	app.importDialog, _ = buildImportOptionsDialog(makeTestAccounts(), types.ID{})
+	app.importer = newImportSurface(firstOf(buildImportOptionsDialog(makeTestAccounts(), types.ID{})))
 
 	if got := app.viewContent(); !strings.Contains(got, "Import Transactions") {
 		t.Error("renderLayout must paint the import dialog's options step")
@@ -47,7 +47,7 @@ func TestRenderLayout_ImportDialogOptionsStepRenders(t *testing.T) {
 
 func TestRenderLayout_ImportDialogSourcePickerStepRenders(t *testing.T) {
 	app := newModalRenderTestApp()
-	app.importDialog = buildImportSourcePickerDialog([]string{"Checking", "Visa"}, "tmoney Checking")
+	app.importer = newImportSurface(buildImportSourcePickerDialog([]string{"Checking", "Visa"}, "tmoney Checking"))
 
 	if got := app.viewContent(); !strings.Contains(got, "Pick Source Account") {
 		t.Error("renderLayout must paint the import dialog's source-picker step")
@@ -59,7 +59,7 @@ func TestRenderLayout_ImportDialogSourcePickerStepRenders(t *testing.T) {
 
 func TestRenderLayout_LinkTransfersDialogRenders(t *testing.T) {
 	app := newModalRenderTestApp()
-	app.linkTransfersDialog = buildLinkTransfersDialog(&transferlink.Result{Scanned: 3})
+	app.linkTransfers = &linkTransfersSurface{modalSurface: modalSurface{dlg: buildLinkTransfersDialog(&transferlink.Result{Scanned: 3})}}
 
 	if got := app.viewContent(); !strings.Contains(got, "Link Transfers") {
 		t.Error("renderLayout must paint the link-transfers dialog")
@@ -74,20 +74,19 @@ func TestRenderLayout_LinkTransfersDialogRenders(t *testing.T) {
 
 func TestMouseGate_ImportDialogCancelClosesIt(t *testing.T) {
 	app := newModalRenderTestApp()
-	app.importDialog, _ = buildImportOptionsDialog(makeTestAccounts(), types.ID{})
-	app.importDialogState = &importDialogState{}
+	app.importer = newImportSurface(firstOf(buildImportOptionsDialog(makeTestAccounts(), types.ID{})))
 
 	// Preview on an empty state keeps the dialog open, so only Cancel closes it.
-	clickCancelButton(t, app, app.importDialog)
+	clickCancelButton(t, app, app.importer.dlg)
 
-	if app.importDialog != nil {
+	if app.importer != nil {
 		t.Error("clicking Cancel must close the import dialog")
 	}
 }
 
 func TestMouseGate_LinkTransfersDialogCancelClosesIt(t *testing.T) {
 	app := newModalRenderTestApp()
-	// One clean pair, and the result installed on the app: Submit would then
+	// One clean pair, and the result installed on the surface: Submit would then
 	// close the dialog AND return the execute command, so a Cancel click is
 	// told apart from a Submit click by the absence of that command.
 	res := &transferlink.Result{Scanned: 2, Clean: []*transferlink.Candidate{{
@@ -96,12 +95,11 @@ func TestMouseGate_LinkTransfersDialogCancelClosesIt(t *testing.T) {
 		FromAccount: "Checking",
 		ToAccount:   "Savings",
 	}}}
-	app.linkTransfersResult = res
-	app.linkTransfersDialog = buildLinkTransfersDialog(res)
+	app.linkTransfers = &linkTransfersSurface{modalSurface: modalSurface{dlg: buildLinkTransfersDialog(res)}, result: res}
 
-	cmd := clickCancelButton(t, app, app.linkTransfersDialog)
+	cmd := clickCancelButton(t, app, app.linkTransfers.dlg)
 
-	if app.linkTransfersDialog != nil {
+	if app.linkTransfers != nil {
 		t.Error("clicking Cancel must close the link-transfers dialog")
 	}
 	if cmd != nil {

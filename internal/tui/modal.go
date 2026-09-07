@@ -36,6 +36,49 @@ type Modal interface {
 	Render(styles widget.Styles) string
 }
 
+// modalSurface is embedded by every per-surface state struct. It holds the
+// dialog handle and, with it, all of Modal except IsVisible, so a surface
+// declares only the form data it owns.
+//
+// IsVisible is deliberately NOT here, and every embedder must declare its own:
+//
+//	func (s *sellSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+//
+// A promoted method cannot guard its outer pointer. Calling one on a nil
+// *sellSurface panics before the body runs — verified, and true even with the
+// embedded field at offset 0, because the compiler nil-checks the selector
+// regardless of offset. That is the section 5.0 typed-nil trap in its phase 3
+// shape: the registry holds surfaces now, and App builds them lazily, so a
+// surface is nil far more often than it is not.
+//
+// The other methods are safe to promote because every walk gates on IsVisible
+// first, so they are only ever reached through a non-nil surface holding a
+// non-nil dialog. TestModals_WalkableOnAZeroApp catches a surface that forgets
+// to declare IsVisible — it is the reason that test exists.
+type modalSurface struct {
+	dlg *dialog.Dialog
+}
+
+func (m *modalSurface) Render(styles widget.Styles) string { return m.dlg.Render(styles) }
+
+func (m *modalSurface) SetMaxHeight(h int) { m.dlg.SetMaxHeight(h) }
+
+func (m *modalSurface) SetVisible(v bool) { m.dlg.SetVisible(v) }
+
+// Dialog returns the underlying base dialog. Tests use it to place a click.
+func (m *modalSurface) Dialog() *dialog.Dialog { return m.dlg }
+
+func (m *modalSurface) HandleMouse(msg tea.MouseMsg, w, h int) dialog.DialogAction {
+	return m.dlg.HandleMouse(msg, w, h)
+}
+
+// mouseTarget is a surface whose hit-testing needs only the screen size.
+// *dialog.Dialog and every embedder of modalSurface satisfy it; the paycheck
+// wizard does not, because its layout is style-dependent.
+type mouseTarget interface {
+	HandleMouse(msg tea.MouseMsg, screenWidth, screenHeight int) dialog.DialogAction
+}
+
 // modalEntry is one surface and the glue App supplies for it.
 type modalEntry struct {
 	// name identifies the surface in test failures and in the order assertion.
@@ -114,13 +157,13 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "import",
-			modal:    a.importDialog,
+			modal:    a.importer,
 			onKey:    (*App).handleImportDialogKey,
 			onAction: (*App).importDialogAction,
 		},
 		{
 			name:     "linkTransfers",
-			modal:    a.linkTransfersDialog,
+			modal:    a.linkTransfers,
 			onKey:    (*App).handleLinkTransfersDialogKey,
 			onAction: (*App).linkTransfersDialogAction,
 		},
@@ -180,7 +223,7 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "loanWizard",
-			modal:    a.loanWizard,
+			modal:    a.loan,
 			onKey:    (*App).handleLoanWizardKey,
 			onAction: (*App).loanWizardAction,
 		},
@@ -198,19 +241,19 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "closeAccount",
-			modal:    a.closeAcctDialog,
+			modal:    a.closeAcct,
 			onKey:    (*App).handleCloseAcctDialogKey,
 			onAction: (*App).closeAcctDialogAction,
 		},
 		{
 			name:     "security",
-			modal:    a.securityDialog,
+			modal:    a.security,
 			onKey:    (*App).handleSecurityDialogKey,
 			onAction: (*App).securityDialogAction,
 		},
 		{
 			name:     "price",
-			modal:    a.priceDialog,
+			modal:    a.price,
 			onKey:    (*App).handlePriceDialogKey,
 			onAction: (*App).priceDialogAction,
 		},

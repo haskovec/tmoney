@@ -17,9 +17,9 @@ func TestPriceDialog_LookupFillsPriceAndResolvedDate(t *testing.T) {
 	}
 	sec := secs[0]
 	app.priceView = &priceViewData{selectedSecurity: sec}
-	app.priceDialog = buildAddPriceDialog(sec)
+	app.price = &priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
 	// A weekend date; the fake ignores it but the resolved quote date is 07-31.
-	app.priceDialog.Fields()[0].Value = "2024-08-03"
+	app.price.dlg.Fields()[0].Value = "2024-08-03"
 
 	_, cmd := app.startPriceLookup()
 	if cmd == nil {
@@ -34,7 +34,7 @@ func TestPriceDialog_LookupFillsPriceAndResolvedDate(t *testing.T) {
 	}
 	app.handlePriceLookupResult(msg)
 
-	fields := app.priceDialog.Fields()
+	fields := app.price.dlg.Fields()
 	if fields[1].Value != "52.07" {
 		t.Errorf("Price field = %q, want 52.07", fields[1].Value)
 	}
@@ -48,8 +48,8 @@ func TestPriceDialog_LookupErrorKeepsDialogOpen(t *testing.T) {
 	// No quote registered for GBTC → the fake returns an error.
 	sec := secs[0]
 	app.priceView = &priceViewData{selectedSecurity: sec}
-	app.priceDialog = buildAddPriceDialog(sec)
-	app.priceDialog.Fields()[0].Value = "2024-07-31"
+	app.price = &priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
+	app.price.dlg.Fields()[0].Value = "2024-07-31"
 
 	_, cmd := app.startPriceLookup()
 	msg, ok := cmd().(priceLookupResultMsg)
@@ -60,7 +60,7 @@ func TestPriceDialog_LookupErrorKeepsDialogOpen(t *testing.T) {
 		t.Fatal("expected an error for an unknown ticker")
 	}
 	app.handlePriceLookupResult(msg)
-	if app.priceDialog == nil {
+	if app.price == nil {
 		t.Error("dialog should remain open after a failed lookup")
 	}
 }
@@ -77,8 +77,8 @@ func TestPriceDialog_LookupPrefill_AnchorsPriceCursor(t *testing.T) {
 	}
 	sec := secs[0]
 	app.priceView = &priceViewData{selectedSecurity: sec}
-	app.priceDialog = buildAddPriceDialog(sec)
-	app.priceDialog.Fields()[0].Value = "2024-08-03"
+	app.price = &priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
+	app.price.dlg.Fields()[0].Value = "2024-08-03"
 
 	_, cmd := app.startPriceLookup()
 	msg, ok := cmd().(priceLookupResultMsg)
@@ -87,7 +87,7 @@ func TestPriceDialog_LookupPrefill_AnchorsPriceCursor(t *testing.T) {
 	}
 	app.handlePriceLookupResult(msg)
 
-	fields := app.priceDialog.Fields()
+	fields := app.price.dlg.Fields()
 	assertPrefillEditable(t, fields[1], "price")
 	if got := fields[0].CursorPos(); got != 0 {
 		t.Errorf("date field CursorPos() = %d, want 0 (the mask overwrites from the first digit)", got)

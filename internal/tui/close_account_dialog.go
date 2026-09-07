@@ -61,22 +61,33 @@ func (a *App) showCloseAccountDialog() {
 		}
 	}
 
-	a.closeAcctTargetID = accountID
-	a.closeAcctDialog = buildCloseAccountDialog(acct, scheduledCount)
-	a.closeAcctDialog.SetVisible(true)
+	d := buildCloseAccountDialog(acct, scheduledCount)
+	d.SetVisible(true)
+	a.closeAcct = &closeAcctSurface{modalSurface: modalSurface{dlg: d}, targetID: accountID}
 }
+
+// closeAcctSurface is the Close Account dialog's state. targetID is captured at
+// open time so a sidebar reselection while the dialog is up cannot retarget the
+// close.
+type closeAcctSurface struct {
+	modalSurface
+	targetID types.ID
+}
+
+// IsVisible must be declared here rather than promoted from modalSurface — see
+// the note on modalSurface.
+func (s *closeAcctSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
 // handleCloseAcctDialogKey routes keys for the Close Account dialog.
 func (a *App) handleCloseAcctDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	return a.closeAcctDialogAction(a.closeAcctDialog.HandleKey(msg))
+	return a.closeAcctDialogAction(a.closeAcct.dlg.HandleKey(msg))
 }
 
 // closeAcctDialogAction dispatches a DialogAction for the close acct dialog, from either input path.
 func (a *App) closeAcctDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
-		a.closeAcctDialog.SetVisible(false)
-		a.closeAcctDialog = nil
+		a.closeAcct = nil
 		return a, nil
 	case dialog.DialogActionSubmit:
 		return a.submitCloseAccountDialog()
@@ -87,26 +98,25 @@ func (a *App) closeAcctDialogAction(action dialog.DialogAction) (tea.Model, tea.
 // submitCloseAccountDialog validates the close date and closes the account via
 // an undoable command, surfacing zero-balance / date-range errors in the dialog.
 func (a *App) submitCloseAccountDialog() (tea.Model, tea.Cmd) {
-	closeDate, err := parseDateInput(a.closeAcctDialog.Fields()[0].Value)
+	closeDate, err := parseDateInput(a.closeAcct.dlg.Fields()[0].Value)
 	if err != nil {
-		a.closeAcctDialog.SetErrorMsg("Invalid date format. Use MM/DD/YYYY.")
+		a.closeAcct.dlg.SetErrorMsg("Invalid date format. Use MM/DD/YYYY.")
 		return a, nil
 	}
 
-	accountID := a.closeAcctTargetID
+	accountID := a.closeAcct.targetID
 	if accountID == types.NilID || a.accountSvc == nil || a.undoManager == nil {
-		a.closeAcctDialog.SetErrorMsg("Account service not available.")
+		a.closeAcct.dlg.SetErrorMsg("Account service not available.")
 		return a, nil
 	}
 
 	cmd := undo.NewCloseAccountCommand(a.accountSvc, accountID, closeDate)
 	if err := a.undoManager.Execute(cmd); err != nil {
-		a.closeAcctDialog.SetErrorMsg(closeAccountErrorMessage(err))
+		a.closeAcct.dlg.SetErrorMsg(closeAccountErrorMessage(err))
 		return a, nil
 	}
 
-	a.closeAcctDialog.SetVisible(false)
-	a.closeAcctDialog = nil
+	a.closeAcct = nil
 	return a, func() tea.Msg { return accountClosedMsg{} }
 }
 

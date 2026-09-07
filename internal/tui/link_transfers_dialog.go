@@ -107,18 +107,28 @@ func candidatePreviewLines(cs []*transferlink.Candidate, maxN int) string {
 	return strings.Join(parts, "; ")
 }
 
+// linkTransfersSurface is the Link Transfers preview dialog's state: the dialog
+// and the scan result its confirm step re-checks.
+type linkTransfersSurface struct {
+	modalSurface
+	result *transferlink.Result
+}
+
+// IsVisible must be declared here rather than promoted from modalSurface — see
+// the note on modalSurface.
+func (s *linkTransfersSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 // closeLinkTransfersDialog clears the dialog state.
 func (a *App) closeLinkTransfersDialog() {
-	a.linkTransfersDialog = nil
-	a.linkTransfersResult = nil
+	a.linkTransfers = nil
 }
 
 // handleLinkTransfersDialogKey routes keys to the dialog.
 func (a *App) handleLinkTransfersDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.linkTransfersDialog == nil {
+	if a.linkTransfers == nil {
 		return a, nil
 	}
-	return a.linkTransfersDialogAction(a.linkTransfersDialog.HandleKey(msg))
+	return a.linkTransfersDialogAction(a.linkTransfers.dlg.HandleKey(msg))
 }
 
 // linkTransfersDialogAction dispatches a DialogAction for the link transfers dialog, from either input path.
@@ -136,7 +146,7 @@ func (a *App) linkTransfersDialogAction(action dialog.DialogAction) (tea.Model, 
 // submitLinkTransfersDialog runs the link execute command if there are
 // clean pairs to link, or simply closes the dialog otherwise.
 func (a *App) submitLinkTransfersDialog() (tea.Model, tea.Cmd) {
-	if a.linkTransfersResult == nil || len(a.linkTransfersResult.Clean) == 0 {
+	if a.linkTransfers.result == nil || len(a.linkTransfers.result.Clean) == 0 {
 		a.closeLinkTransfersDialog()
 		return a, nil
 	}
