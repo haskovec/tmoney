@@ -9,25 +9,11 @@ import (
 	"github.com/haskovec/tmoney/internal/app"
 )
 
-// Guard for section 5.5: a per-surface state struct holds form state, never a
-// service. App keeps the services and passes them in at call time.
-//
-// The rule is not stylistic. switchDatabase re-points 18 service fields when
-// the user opens another file and closes the previous *db.DB, so a surface that
-// captured a service pointer at open time would be a use-after-close — the
-// exact class commit 6dede4d fixed.
-//
-// AND THE EXISTING REGRESSION TEST CANNOT SEE IT. switch_database_test.go
-// reflects over App's TOP-LEVEL fields only; it does not recurse. The moment a
-// service pointer moves inside a surface struct it silently leaves that guard's
-// coverage and the test still passes. Its anti-vacuity check does not help
-// either: it proves *some* fields matched, not that the ones just moved are
-// still among them.
-//
-// The design offered two fixes — recurse one level in switch_database_test, or
-// forbid the field outright. This is the second, chosen because it is the
-// invariant the design actually wants and it cannot rot into a
-// partially-covering walk.
+// A per-surface state struct holds form state, never a service. switchDatabase
+// re-points every service field and closes the previous *db.DB, so a service
+// pointer captured on a surface would be a use-after-close. switch_database_test
+// walks App's top-level fields only and cannot see one that moved inside a
+// surface, hence this guard.
 func TestGuard_NoSurfaceStructHoldsAService(t *testing.T) {
 	serviceTypes := servicePointerTypes()
 	if len(serviceTypes) == 0 {
@@ -168,7 +154,12 @@ func TestGuard_SurfaceGuardSelfTest(t *testing.T) {
 			names = append(names, st.Name())
 		}
 		joined := strings.Join(names, ",")
-		for _, want := range []string{"securitySurface", "closeAcctSurface"} {
+		// All six current surfaces, so the nil-safety guard cannot go quiet on
+		// one the finder stopped seeing.
+		for _, want := range []string{
+			"closeAcctSurface", "securitySurface", "priceSurface",
+			"loanSurface", "importSurface", "linkTransfersSurface",
+		} {
 			if !strings.Contains(joined, want) {
 				t.Errorf("surfaceStructTypes missed %s (found %v)", want, names)
 			}

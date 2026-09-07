@@ -146,6 +146,9 @@ func (a *App) linkTransfersDialogAction(action dialog.DialogAction) (tea.Model, 
 // submitLinkTransfersDialog runs the link execute command if there are
 // clean pairs to link, or simply closes the dialog otherwise.
 func (a *App) submitLinkTransfersDialog() (tea.Model, tea.Cmd) {
+	if a.linkTransfers == nil {
+		return a, nil
+	}
 	if a.linkTransfers.result == nil || len(a.linkTransfers.result.Clean) == 0 {
 		a.closeLinkTransfersDialog()
 		return a, nil

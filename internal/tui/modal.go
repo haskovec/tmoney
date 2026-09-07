@@ -40,21 +40,15 @@ type Modal interface {
 // dialog handle and, with it, all of Modal except IsVisible, so a surface
 // declares only the form data it owns.
 //
-// IsVisible is deliberately NOT here, and every embedder must declare its own:
+// IsVisible is deliberately not here. A promoted method cannot nil-check the
+// outer pointer, and the registry holds nil surfaces most of the time, so every
+// embedder declares its own:
 //
 //	func (s *sellSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 //
-// A promoted method cannot guard its outer pointer. Calling one on a nil
-// *sellSurface panics before the body runs — verified, and true even with the
-// embedded field at offset 0, because the compiler nil-checks the selector
-// regardless of offset. That is the section 5.0 typed-nil trap in its phase 3
-// shape: the registry holds surfaces now, and App builds them lazily, so a
-// surface is nil far more often than it is not.
-//
-// The other methods are safe to promote because every walk gates on IsVisible
-// first, so they are only ever reached through a non-nil surface holding a
-// non-nil dialog. TestModals_WalkableOnAZeroApp catches a surface that forgets
-// to declare IsVisible — it is the reason that test exists.
+// Omitting it is a compile error (the type stops implementing Modal); omitting
+// the nil check inside it is caught by TestGuard_EverySurfaceIsVisibleIsNilSafe.
+// The other methods promote safely because every walk gates on IsVisible first.
 type modalSurface struct {
 	dlg *dialog.Dialog
 }

@@ -286,7 +286,7 @@ func (a *App) importDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd
 // submitImportDialog dispatches the right submit handler based on the
 // current step of the import workflow.
 func (a *App) submitImportDialog() (tea.Model, tea.Cmd) {
-	if a.importer.state == nil {
+	if a.importer == nil || a.importer.state == nil {
 		return a, nil
 	}
 	switch a.importer.state.step {
