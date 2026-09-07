@@ -83,9 +83,8 @@ func (a *App) loadMergerDialogData() tea.Cmd {
 	}
 }
 
-// closeMergerDialog clears the merger dialog state.
-// mergerSurface is the merger dialog and the state that belongs to it. The zero
-// value is closed.
+// mergerSurface is the Merger dialog together with the form state that
+// belongs to it. Its zero value is closed; closeMergerDialog resets it to that.
 type mergerSurface struct {
 	modalSurface
 	data          *mergerDialogData
@@ -95,6 +94,7 @@ type mergerSurface struct {
 
 func (s *mergerSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeMergerDialog clears the merger dialog state.
 func (a *App) closeMergerDialog() {
 	a.merger = mergerSurface{}
 }

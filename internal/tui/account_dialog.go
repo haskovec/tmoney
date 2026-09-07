@@ -283,9 +283,8 @@ func (a *App) loadEditAccountDialogData() tea.Cmd {
 	}
 }
 
-// closeAccountDialog clears the account dialog state.
-// acctSurface is the acct dialog and the state that belongs to it. The zero
-// value is closed.
+// acctSurface is the Account dialog together with the form state that
+// belongs to it. Its zero value is closed; closeAccountDialog resets it to that.
 type acctSurface struct {
 	modalSurface
 	data *accountDialogData
@@ -293,6 +292,7 @@ type acctSurface struct {
 
 func (s *acctSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeAccountDialog clears the account dialog state.
 func (a *App) closeAccountDialog() {
 	a.acct = acctSurface{}
 }

@@ -85,9 +85,8 @@ func buildOpenRecentDialog(recentFiles []string) *dialog.Dialog {
 	return d
 }
 
-// closeFileDialog clears the file dialog state.
-// fileSurface is the file dialog and the state that belongs to it. The zero
-// value is closed.
+// fileSurface is the Open / Save As / browse file dialog together with the form state that
+// belongs to it. Its zero value is closed; closeFileDialog resets it to that.
 type fileSurface struct {
 	modalSurface
 	mode      fileDialogMode
@@ -97,6 +96,7 @@ type fileSurface struct {
 
 func (s *fileSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeFileDialog clears the file dialog state.
 func (a *App) closeFileDialog() {
 	a.file = fileSurface{}
 }

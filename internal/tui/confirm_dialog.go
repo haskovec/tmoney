@@ -55,8 +55,8 @@ func (a *App) confirmDialogAction(action dialog.DialogAction) (tea.Model, tea.Cm
 	return a, nil
 }
 
-// confirmSurface is the confirm dialog and the state that belongs to it. The zero
-// value is closed.
+// confirmSurface is the confirmation dialog together with the action it runs on
+// Yes. Its zero value is closed; the dialog action clears it after either answer.
 type confirmSurface struct {
 	modalSurface
 	action func() tea.Msg

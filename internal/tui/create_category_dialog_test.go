@@ -708,7 +708,7 @@ func TestApplyCreatedCategory_UnknownSourceClearsDialog(t *testing.T) {
 	app := &App{
 		categorySvc: svc,
 		createCat: createCatSurface{modalSurface: modalSurface{dlg: buildCreateCategoryDialog("X", "", nil, category.TypeExpense)},
-			origin: createCatOrigin{surface: createCatSourceNone}},
+			origin: newCreateCatOrigin()},
 	}
 	if app.createCat.dlg == nil {
 		t.Fatal("test setup: createCatDialog should be non-nil")

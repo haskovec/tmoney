@@ -380,9 +380,8 @@ func transferAccountNames(data *transferDialogData) (fromName, toName string) {
 	return
 }
 
-// closeTransferDialog clears the transfer dialog state.
-// transferSurface is the transfer dialog and the state that belongs to it. The zero
-// value is closed.
+// transferSurface is the Transfer dialog together with the form state that
+// belongs to it. Its zero value is closed; closeTransferDialog resets it to that.
 type transferSurface struct {
 	modalSurface
 	data        *transferDialogData
@@ -392,6 +391,7 @@ type transferSurface struct {
 
 func (s *transferSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeTransferDialog clears the transfer dialog state.
 func (a *App) closeTransferDialog() {
 	a.transfer = transferSurface{}
 }

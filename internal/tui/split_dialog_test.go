@@ -1561,7 +1561,7 @@ func newAppForSplitAddNew(t *testing.T, categorySvc *category.Service, cats []*c
 				accountID: parentAcctID,
 				amount:    types.MustNewMoney("-100.00"),
 			}},
-		createCat: createCatSurface{origin: createCatOrigin{splitRow: -1}},
+		createCat: createCatSurface{origin: newCreateCatOrigin()},
 	}
 	return app
 }

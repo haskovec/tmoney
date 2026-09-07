@@ -93,9 +93,8 @@ func (a *App) loadSpinOffDialogData() tea.Cmd {
 	}
 }
 
-// closeSpinOffDialog clears the spin-off dialog state.
-// spinOffSurface is the spinOff dialog and the state that belongs to it. The zero
-// value is closed.
+// spinOffSurface is the Spin-Off dialog together with the form state that
+// belongs to it. Its zero value is closed; closeSpinOffDialog resets it to that.
 type spinOffSurface struct {
 	modalSurface
 	data          *spinOffDialogData
@@ -105,6 +104,7 @@ type spinOffSurface struct {
 
 func (s *spinOffSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeSpinOffDialog clears the spin-off dialog state.
 func (a *App) closeSpinOffDialog() {
 	a.spinOff = spinOffSurface{}
 }

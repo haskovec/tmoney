@@ -177,9 +177,8 @@ func (a *App) loadTransferSharesDialogData() tea.Cmd {
 	}
 }
 
-// closeTransferSharesDialog clears the share transfer dialog state.
-// transferSharesSurface is the transferShares dialog and the state that belongs to it. The zero
-// value is closed.
+// transferSharesSurface is the Transfer Shares dialog together with the form state that
+// belongs to it. Its zero value is closed; closeTransferSharesDialog resets it to that.
 type transferSharesSurface struct {
 	modalSurface
 	data        *transferSharesDialogData
@@ -190,6 +189,7 @@ type transferSharesSurface struct {
 
 func (s *transferSharesSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeTransferSharesDialog clears the share transfer dialog state.
 func (a *App) closeTransferSharesDialog() {
 	a.transferShares = transferSharesSurface{}
 }

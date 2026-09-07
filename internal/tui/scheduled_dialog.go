@@ -483,9 +483,8 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 	}
 }
 
-// closeScheduledDialog clears the scheduled dialog state.
-// schedSurface is the sched dialog and the state that belongs to it. The zero
-// value is closed.
+// schedSurface is the Scheduled Transaction dialog together with the form state that
+// belongs to it. Its zero value is closed; closeScheduledDialog resets it to that.
 type schedSurface struct {
 	modalSurface
 	data            *scheduledDialogData
@@ -496,6 +495,7 @@ type schedSurface struct {
 
 func (s *schedSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeScheduledDialog clears the scheduled dialog state.
 func (a *App) closeScheduledDialog() {
 	a.sched = schedSurface{}
 }

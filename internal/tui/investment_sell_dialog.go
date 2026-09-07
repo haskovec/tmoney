@@ -158,9 +158,8 @@ func (a *App) loadSellDialogData() tea.Cmd {
 	}
 }
 
-// closeSellDialog clears the sell dialog state.
-// sellSurface is the sell dialog and the state that belongs to it. The zero
-// value is closed.
+// sellSurface is the Sell dialog together with the form state that
+// belongs to it. Its zero value is closed; closeSellDialog resets it to that.
 type sellSurface struct {
 	modalSurface
 	data        *sellDialogData
@@ -170,6 +169,7 @@ type sellSurface struct {
 
 func (s *sellSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeSellDialog clears the sell dialog state.
 func (a *App) closeSellDialog() {
 	a.sell = sellSurface{}
 }

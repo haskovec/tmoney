@@ -146,15 +146,15 @@ func resolveAccountName(a *App, accountID types.ID) string {
 	return accountID.String()[:8] + "..."
 }
 
-// closeMergerConfirmation clears the merger confirmation state.
 // mergerConfirmSurface is the merger confirmation overlay's state. It has no
-// dialog.Dialog of its own: mergerConfirmModal adapts it for the registry. The
-// zero value is closed.
+// dialog.Dialog of its own: mergerConfirmModal adapts it for the registry. Its
+// zero value is closed; closeMergerConfirmation resets it to that.
 type mergerConfirmSurface struct {
 	data   *mergerConfirmData
 	params *mergerConfirmParams
 }
 
+// closeMergerConfirmation clears the merger confirmation state.
 func (a *App) closeMergerConfirmation() {
 	a.mergerConfirm = mergerConfirmSurface{}
 }

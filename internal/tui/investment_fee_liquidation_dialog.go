@@ -116,9 +116,8 @@ func (a *App) loadFeeLiquidationDialogData() tea.Cmd {
 	}
 }
 
-// closeFeeLiquidationDialog clears the fee-liquidation dialog state.
-// feeLiquidationSurface is the feeLiquidation dialog and the state that belongs to it. The zero
-// value is closed.
+// feeLiquidationSurface is the Fee via Liquidation dialog together with the form state that
+// belongs to it. Its zero value is closed; closeFeeLiquidationDialog resets it to that.
 type feeLiquidationSurface struct {
 	modalSurface
 	data        *feeLiquidationDialogData
@@ -127,6 +126,7 @@ type feeLiquidationSurface struct {
 
 func (s *feeLiquidationSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeFeeLiquidationDialog clears the fee-liquidation dialog state.
 func (a *App) closeFeeLiquidationDialog() {
 	a.feeLiquidation = feeLiquidationSurface{}
 }

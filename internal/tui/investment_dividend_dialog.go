@@ -163,9 +163,8 @@ func (a *App) loadDividendDialogData() tea.Cmd {
 	}
 }
 
-// closeDividendDialog clears the dividend dialog state.
-// dividendSurface is the dividend dialog and the state that belongs to it. The zero
-// value is closed.
+// dividendSurface is the Dividend and Reinvest Dividend dialog together with the form state that
+// belongs to it. Its zero value is closed; closeDividendDialog resets it to that.
 type dividendSurface struct {
 	modalSurface
 	data        *dividendDialogData
@@ -175,6 +174,7 @@ type dividendSurface struct {
 
 func (s *dividendSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeDividendDialog clears the dividend dialog state.
 func (a *App) closeDividendDialog() {
 	a.dividend = dividendSurface{}
 }

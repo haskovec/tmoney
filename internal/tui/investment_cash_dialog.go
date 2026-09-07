@@ -57,9 +57,8 @@ func buildCashOperationDialog(title string, editTxn *investment.Transaction) *di
 	return d
 }
 
-// closeCashOperationDialog clears the cash operation dialog state.
-// cashOperationSurface is the cashOperation dialog and the state that belongs to it. The zero
-// value is closed.
+// cashOperationSurface is the cash operation (deposit, withdrawal, fee, interest) dialog together with the form state that
+// belongs to it. Its zero value is closed; closeCashOperationDialog resets it to that.
 type cashOperationSurface struct {
 	modalSurface
 	opType investment.TransactionType
@@ -67,6 +66,7 @@ type cashOperationSurface struct {
 
 func (s *cashOperationSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeCashOperationDialog clears the cash operation dialog state.
 func (a *App) closeCashOperationDialog() {
 	a.cashOperation = cashOperationSurface{}
 }

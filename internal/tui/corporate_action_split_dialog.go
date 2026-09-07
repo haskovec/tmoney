@@ -187,9 +187,8 @@ func (a *App) loadStockSplitDialogData() tea.Cmd {
 	}
 }
 
-// closeStockSplitDialog clears the stock split dialog state.
-// stockSplitSurface is the stockSplit dialog and the state that belongs to it. The zero
-// value is closed.
+// stockSplitSurface is the Stock Split dialog together with the form state that
+// belongs to it. Its zero value is closed; closeStockSplitDialog resets it to that.
 type stockSplitSurface struct {
 	modalSurface
 	data          *stockSplitDialogData
@@ -199,6 +198,7 @@ type stockSplitSurface struct {
 
 func (s *stockSplitSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeStockSplitDialog clears the stock split dialog state.
 func (a *App) closeStockSplitDialog() {
 	a.stockSplit = stockSplitSurface{}
 }

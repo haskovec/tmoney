@@ -403,9 +403,8 @@ func (a *App) loadEditTransactionDialogData(txnID types.ID) tea.Cmd {
 	}
 }
 
-// closeTransactionDialog clears the transaction dialog state.
-// txnSurface is the txn dialog and the state that belongs to it. The zero
-// value is closed.
+// txnSurface is the Transaction dialog together with the form state that
+// belongs to it. Its zero value is closed; closeTransactionDialog resets it to that.
 type txnSurface struct {
 	modalSurface
 	data        *transactionDialogData
@@ -414,6 +413,7 @@ type txnSurface struct {
 
 func (s *txnSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// closeTransactionDialog clears the transaction dialog state.
 func (a *App) closeTransactionDialog() {
 	a.txn = txnSurface{}
 }
