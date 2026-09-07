@@ -25,32 +25,41 @@ func (a *App) showConfirmDialog(title, message string, action func() tea.Msg) {
 	d.SetMessage(lipgloss.NewStyle().Width(contentWidth).Render(message))
 	d.SetFocusIndex(len(d.Fields())) // Focus on first button (No)
 	d.SetVisible(true)
-	a.confirmDialog = d
-	a.confirmAction = action
+	a.confirm.dlg = d
+	a.confirm.action = action
 }
 
 // handleConfirmDialogKey handles key input for the confirmation dialog.
 func (a *App) handleConfirmDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	return a.confirmDialogAction(a.confirmDialog.HandleKey(msg))
+	return a.confirmDialogAction(a.confirm.dlg.HandleKey(msg))
 }
 
 // confirmDialogAction dispatches a DialogAction for the confirm dialog, from either input path.
 func (a *App) confirmDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
-		a.confirmDialog.SetVisible(false)
-		fn := a.confirmAction
-		a.confirmDialog = nil
-		a.confirmAction = nil
+		a.confirm.dlg.SetVisible(false)
+		fn := a.confirm.action
+		a.confirm.dlg = nil
+		a.confirm.action = nil
 		return a, func() tea.Msg {
 			return fn()
 		}
 	case dialog.DialogActionCancel:
-		a.confirmDialog.SetVisible(false)
-		a.confirmDialog = nil
-		a.confirmAction = nil
+		a.confirm.dlg.SetVisible(false)
+		a.confirm.dlg = nil
+		a.confirm.action = nil
 		return a, nil
 	}
 
 	return a, nil
 }
+
+// confirmSurface is the confirm dialog and the state that belongs to it. The zero
+// value is closed.
+type confirmSurface struct {
+	modalSurface
+	action func() tea.Msg
+}
+
+func (s *confirmSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }

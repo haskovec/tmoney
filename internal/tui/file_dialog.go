@@ -86,8 +86,19 @@ func buildOpenRecentDialog(recentFiles []string) *dialog.Dialog {
 }
 
 // closeFileDialog clears the file dialog state.
+// fileSurface is the file dialog and the state that belongs to it. The zero
+// value is closed.
+type fileSurface struct {
+	modalSurface
+	mode      fileDialogMode
+	browseDir string
+	clicks    *widget.ClickTracker // double-click tracker for the browse list
+}
+
+func (s *fileSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 func (a *App) closeFileDialog() {
-	a.fileDialog = nil
+	a.file = fileSurface{}
 }
 
 // handleFileDialogMouse adds the browse-mode double-click before the ordinary
@@ -96,18 +107,18 @@ func (a *App) closeFileDialog() {
 func (a *App) handleFileDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	listItemRow := -1
 	if click, ok := msg.(tea.MouseClickMsg); ok &&
-		a.fileDialogMode == fileDialogModeBrowse &&
+		a.file.mode == fileDialogModeBrowse &&
 		click.Button == tea.MouseLeft {
 		listItemRow = a.browseDialogListHit(msg)
 	}
 
-	action := a.fileDialog.HandleMouse(msg, a.width, a.height)
+	action := a.file.dlg.HandleMouse(msg, a.width, a.height)
 
 	if listItemRow >= 0 {
-		if a.browseDialogClicks == nil {
-			a.browseDialogClicks = widget.NewClickTracker(widget.DoubleClickThreshold)
+		if a.file.clicks == nil {
+			a.file.clicks = widget.NewClickTracker(widget.DoubleClickThreshold)
 		}
-		if a.browseDialogClicks.Click(listItemRow) {
+		if a.file.clicks.Click(listItemRow) {
 			return a.submitFileDialog()
 		}
 	}
@@ -117,10 +128,10 @@ func (a *App) handleFileDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 // handleFileDialogKey routes key events to the file dialog.
 func (a *App) handleFileDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.fileDialog == nil {
+	if a.file.dlg == nil {
 		return a, nil
 	}
-	return a.fileDialogAction(a.fileDialog.HandleKey(msg))
+	return a.fileDialogAction(a.file.dlg.HandleKey(msg))
 }
 
 // fileDialogAction dispatches a DialogAction for the file dialog, from either input path.
@@ -138,14 +149,14 @@ func (a *App) fileDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) 
 
 // submitFileDialog dispatches the appropriate submit handler based on dialog mode.
 func (a *App) submitFileDialog() (tea.Model, tea.Cmd) {
-	if a.fileDialog == nil {
+	if a.file.dlg == nil {
 		return a, nil
 	}
 
-	mode := a.fileDialogMode
-	fields := a.fileDialog.Fields()
+	mode := a.file.mode
+	fields := a.file.dlg.Fields()
 
-	a.fileDialog.ClearErrors()
+	a.file.dlg.ClearErrors()
 
 	switch mode {
 	case fileDialogModeNew:
@@ -193,18 +204,18 @@ func (a *App) submitFileDialog() (tea.Model, tea.Cmd) {
 		}
 		if selected == "../" {
 			// Navigate to parent directory
-			parent := filepath.Dir(a.browseDir)
+			parent := filepath.Dir(a.file.browseDir)
 			a.openBrowseDialog(parent)
 			return a, nil
 		}
 		if dirName, ok := strings.CutSuffix(selected, "/"); ok {
 			// Navigate into subdirectory
-			subdir := filepath.Join(a.browseDir, dirName)
+			subdir := filepath.Join(a.file.browseDir, dirName)
 			a.openBrowseDialog(subdir)
 			return a, nil
 		}
 		// It's a .tdb file — open it
-		fullPath := filepath.Join(a.browseDir, selected)
+		fullPath := filepath.Join(a.file.browseDir, selected)
 		a.closeFileDialog()
 		return a, a.submitOpenFile(fullPath)
 	}
@@ -373,10 +384,10 @@ func buildBrowseDialog(dir string, entries []string) *dialog.Dialog {
 // list (title, padding, buttons, etc.). Callers use this to drive double-click
 // activation on directory entries.
 func (a *App) browseDialogListHit(msg tea.MouseMsg) int {
-	if a.fileDialog == nil || !a.fileDialog.IsVisible() {
+	if a.file.dlg == nil || !a.file.dlg.IsVisible() {
 		return -1
 	}
-	d := a.fileDialog
+	d := a.file.dlg
 	startCol, startRow, endCol, endRow := d.DialogBounds(a.width, a.height)
 	m := msg.Mouse()
 	if m.X < startCol || m.X >= endCol || m.Y < startRow || m.Y >= endRow {
@@ -400,7 +411,7 @@ func (a *App) openBrowseDialog(dir string) {
 		return
 	}
 
-	a.browseDir = dir
-	a.fileDialogMode = fileDialogModeBrowse
-	a.fileDialog = buildBrowseDialog(dir, entries)
+	a.file.browseDir = dir
+	a.file.mode = fileDialogModeBrowse
+	a.file.dlg = buildBrowseDialog(dir, entries)
 }

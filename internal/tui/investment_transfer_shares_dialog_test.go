@@ -253,14 +253,16 @@ func TestSubmitTransferSharesDialog_ValidationErrors(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		transferSharesDialog: buildTransferSharesDialog(
+		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
 			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, nil,
-		),
-		transferSharesDialogData: &transferSharesDialogData{
-			investmentIDs: destAcctIDs,
-		},
-		transferSharesDialogAccountIDs:  destAcctIDs,
-		transferSharesDialogSecurityIDs: secIDs,
+		)},
+
+			data: &transferSharesDialogData{
+				investmentIDs: destAcctIDs,
+			},
+			accountIDs:  destAcctIDs,
+			securityIDs: secIDs},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -270,21 +272,21 @@ func TestSubmitTransferSharesDialog_ValidationErrors(t *testing.T) {
 	}
 
 	// Set invalid values
-	fields := app.transferSharesDialog.Fields()
+	fields := app.transferShares.dlg.Fields()
 	fields[0].Value = "not-a-date" // invalid date
 	fields[3].Value = ""           // empty shares
 
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.transferSharesDialog == nil {
+	if updatedApp.transferShares.dlg == nil {
 		t.Error("dialog should remain open on validation errors")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.transferSharesDialog.Fields()
+	fields = updatedApp.transferShares.dlg.Fields()
 	if fields[3].Error == "" {
 		t.Error("shares field should have error")
 	}
@@ -298,12 +300,14 @@ func TestSubmitTransferSharesDialog_NoAccounts(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		transferSharesDialog: buildTransferSharesDialog(
+		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
 			[]string{}, []string{"AAPL - Apple"}, nil, nil, secIDs, nil,
-		),
-		transferSharesDialogData:        &transferSharesDialogData{},
-		transferSharesDialogAccountIDs:  nil,
-		transferSharesDialogSecurityIDs: secIDs,
+		)},
+
+			data:        &transferSharesDialogData{},
+			accountIDs:  nil,
+			securityIDs: secIDs},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -312,14 +316,14 @@ func TestSubmitTransferSharesDialog_NoAccounts(t *testing.T) {
 		},
 	}
 
-	fields := app.transferSharesDialog.Fields()
+	fields := app.transferShares.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[3].Value = "10"
 
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.transferSharesDialog == nil {
+	if updatedApp.transferShares.dlg == nil {
 		t.Error("dialog should remain open when no accounts")
 	}
 	if cmd != nil {
@@ -332,14 +336,16 @@ func TestSubmitTransferSharesDialog_NoSecurities(t *testing.T) {
 	destAcctIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		transferSharesDialog: buildTransferSharesDialog(
+		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
 			[]string{"IRA"}, []string{}, nil, destAcctIDs, nil, nil,
-		),
-		transferSharesDialogData: &transferSharesDialogData{
-			investmentIDs: destAcctIDs,
-		},
-		transferSharesDialogAccountIDs:  destAcctIDs,
-		transferSharesDialogSecurityIDs: nil,
+		)},
+
+			data: &transferSharesDialogData{
+				investmentIDs: destAcctIDs,
+			},
+			accountIDs:  destAcctIDs,
+			securityIDs: nil},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -348,14 +354,14 @@ func TestSubmitTransferSharesDialog_NoSecurities(t *testing.T) {
 		},
 	}
 
-	fields := app.transferSharesDialog.Fields()
+	fields := app.transferShares.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[3].Value = "10"
 
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.transferSharesDialog == nil {
+	if updatedApp.transferShares.dlg == nil {
 		t.Error("dialog should remain open when no securities")
 	}
 	if cmd != nil {
@@ -369,14 +375,16 @@ func TestSubmitTransferSharesDialog_ValidTransfer(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		transferSharesDialog: buildTransferSharesDialog(
+		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
 			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, nil,
-		),
-		transferSharesDialogData: &transferSharesDialogData{
-			investmentIDs: destAcctIDs,
-		},
-		transferSharesDialogAccountIDs:  destAcctIDs,
-		transferSharesDialogSecurityIDs: secIDs,
+		)},
+
+			data: &transferSharesDialogData{
+				investmentIDs: destAcctIDs,
+			},
+			accountIDs:  destAcctIDs,
+			securityIDs: secIDs},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -385,14 +393,14 @@ func TestSubmitTransferSharesDialog_ValidTransfer(t *testing.T) {
 		},
 	}
 
-	fields := app.transferSharesDialog.Fields()
+	fields := app.transferShares.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[3].Value = "10"
 
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.transferSharesDialog != nil {
+	if updatedApp.transferShares.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -406,14 +414,16 @@ func TestSubmitTransferSharesDialog_ValidWithMemo(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		transferSharesDialog: buildTransferSharesDialog(
+		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
 			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, nil,
-		),
-		transferSharesDialogData: &transferSharesDialogData{
-			investmentIDs: destAcctIDs,
-		},
-		transferSharesDialogAccountIDs:  destAcctIDs,
-		transferSharesDialogSecurityIDs: secIDs,
+		)},
+
+			data: &transferSharesDialogData{
+				investmentIDs: destAcctIDs,
+			},
+			accountIDs:  destAcctIDs,
+			securityIDs: secIDs},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -422,7 +432,7 @@ func TestSubmitTransferSharesDialog_ValidWithMemo(t *testing.T) {
 		},
 	}
 
-	fields := app.transferSharesDialog.Fields()
+	fields := app.transferShares.dlg.Fields()
 	fields[0].Value = "06/01/2024"
 	fields[3].Value = "25"
 	fields[4].Value = "Move shares to IRA"
@@ -430,7 +440,7 @@ func TestSubmitTransferSharesDialog_ValidWithMemo(t *testing.T) {
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.transferSharesDialog != nil {
+	if updatedApp.transferShares.dlg != nil {
 		t.Error("dialog should close on valid submit with memo")
 	}
 	if cmd == nil {
@@ -458,16 +468,18 @@ func TestSubmitTransferSharesDialog_WithLotAllocations(t *testing.T) {
 	lots := []*investment.Lot{lot1, lot2}
 
 	app := &App{
-		transferSharesDialog: buildTransferSharesDialog(
+		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
 			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, lots,
-		),
-		transferSharesDialogData: &transferSharesDialogData{
-			investmentIDs: destAcctIDs,
-			lots:          lots,
-		},
-		transferSharesDialogAccountIDs:  destAcctIDs,
-		transferSharesDialogSecurityIDs: secIDs,
-		transferSharesDialogLots:        lots,
+		)},
+
+			data: &transferSharesDialogData{
+				investmentIDs: destAcctIDs,
+				lots:          lots,
+			},
+			accountIDs:  destAcctIDs,
+			securityIDs: secIDs,
+			lots:        lots},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -477,7 +489,7 @@ func TestSubmitTransferSharesDialog_WithLotAllocations(t *testing.T) {
 		},
 	}
 
-	fields := app.transferSharesDialog.Fields()
+	fields := app.transferShares.dlg.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[3].Value = "30"         // total shares
 	fields[4].Value = "20"         // 20 from lot 1
@@ -487,7 +499,7 @@ func TestSubmitTransferSharesDialog_WithLotAllocations(t *testing.T) {
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.transferSharesDialog != nil {
+	if updatedApp.transferShares.dlg != nil {
 		t.Error("dialog should be closed after valid lot allocation submit")
 	}
 	if cmd == nil {
@@ -509,16 +521,18 @@ func TestSubmitTransferSharesDialog_LotAllocationMismatch(t *testing.T) {
 	lots := []*investment.Lot{lot1}
 
 	app := &App{
-		transferSharesDialog: buildTransferSharesDialog(
+		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
 			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, lots,
-		),
-		transferSharesDialogData: &transferSharesDialogData{
-			investmentIDs: destAcctIDs,
-			lots:          lots,
-		},
-		transferSharesDialogAccountIDs:  destAcctIDs,
-		transferSharesDialogSecurityIDs: secIDs,
-		transferSharesDialogLots:        lots,
+		)},
+
+			data: &transferSharesDialogData{
+				investmentIDs: destAcctIDs,
+				lots:          lots,
+			},
+			accountIDs:  destAcctIDs,
+			securityIDs: secIDs,
+			lots:        lots},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -528,7 +542,7 @@ func TestSubmitTransferSharesDialog_LotAllocationMismatch(t *testing.T) {
 		},
 	}
 
-	fields := app.transferSharesDialog.Fields()
+	fields := app.transferShares.dlg.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[3].Value = "30"         // total shares = 30
 	fields[4].Value = "20"         // only 20 allocated from lot (mismatch!)
@@ -536,14 +550,14 @@ func TestSubmitTransferSharesDialog_LotAllocationMismatch(t *testing.T) {
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.transferSharesDialog == nil {
+	if updatedApp.transferShares.dlg == nil {
 		t.Error("dialog should remain open on lot allocation mismatch")
 	}
 	if cmd != nil {
 		t.Error("should not return command on lot allocation mismatch")
 	}
 
-	fields = updatedApp.transferSharesDialog.Fields()
+	fields = updatedApp.transferShares.dlg.Fields()
 	if fields[3].Error == "" {
 		t.Error("shares field should have allocation mismatch error")
 	}
@@ -563,16 +577,18 @@ func TestSubmitTransferSharesDialog_LotExceedsAvailable(t *testing.T) {
 	lots := []*investment.Lot{lot1}
 
 	app := &App{
-		transferSharesDialog: buildTransferSharesDialog(
+		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
 			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, lots,
-		),
-		transferSharesDialogData: &transferSharesDialogData{
-			investmentIDs: destAcctIDs,
-			lots:          lots,
-		},
-		transferSharesDialogAccountIDs:  destAcctIDs,
-		transferSharesDialogSecurityIDs: secIDs,
-		transferSharesDialogLots:        lots,
+		)},
+
+			data: &transferSharesDialogData{
+				investmentIDs: destAcctIDs,
+				lots:          lots,
+			},
+			accountIDs:  destAcctIDs,
+			securityIDs: secIDs,
+			lots:        lots},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -582,7 +598,7 @@ func TestSubmitTransferSharesDialog_LotExceedsAvailable(t *testing.T) {
 		},
 	}
 
-	fields := app.transferSharesDialog.Fields()
+	fields := app.transferShares.dlg.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[3].Value = "20"         // want 20 shares
 	fields[4].Value = "20"         // try 20 from lot that only has 10
@@ -590,14 +606,14 @@ func TestSubmitTransferSharesDialog_LotExceedsAvailable(t *testing.T) {
 	model, cmd := app.submitTransferSharesDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.transferSharesDialog == nil {
+	if updatedApp.transferShares.dlg == nil {
 		t.Error("dialog should remain open when lot exceeds available")
 	}
 	if cmd != nil {
 		t.Error("should not return command when lot exceeds available")
 	}
 
-	fields = updatedApp.transferSharesDialog.Fields()
+	fields = updatedApp.transferShares.dlg.Fields()
 	if fields[4].Error == "" {
 		t.Error("lot field should have error about insufficient shares")
 	}
@@ -607,16 +623,16 @@ func TestSubmitTransferSharesDialog_LotExceedsAvailable(t *testing.T) {
 
 func TestHandleTransferSharesDialogKey_Cancel(t *testing.T) {
 	app := &App{
-		transferSharesDialog: buildTransferSharesDialog(
+		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
 			[]string{"IRA"}, []string{"AAPL"}, nil, nil, nil, nil,
-		),
+		)}},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleTransferSharesDialogKey(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.transferSharesDialog != nil {
+	if updatedApp.transferShares.dlg != nil {
 		t.Error("dialog should be closed after Escape")
 	}
 }
@@ -654,30 +670,31 @@ func TestSubmitTransferSharesDialog_NilDialog(t *testing.T) {
 
 func TestCloseTransferSharesDialog(t *testing.T) {
 	app := &App{
-		transferSharesDialog: buildTransferSharesDialog(
+		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
 			[]string{"IRA"}, []string{"AAPL"}, nil, nil, nil, nil,
-		),
-		transferSharesDialogData:        &transferSharesDialogData{},
-		transferSharesDialogAccountIDs:  []types.ID{types.NewID()},
-		transferSharesDialogSecurityIDs: []types.ID{types.NewID()},
-		transferSharesDialogLots:        []*investment.Lot{},
+		)},
+
+			data:        &transferSharesDialogData{},
+			accountIDs:  []types.ID{types.NewID()},
+			securityIDs: []types.ID{types.NewID()},
+			lots:        []*investment.Lot{}},
 	}
 
 	app.closeTransferSharesDialog()
 
-	if app.transferSharesDialog != nil {
+	if app.transferShares.dlg != nil {
 		t.Error("transferSharesDialog should be nil after close")
 	}
-	if app.transferSharesDialogData != nil {
+	if app.transferShares.data != nil {
 		t.Error("transferSharesDialogData should be nil after close")
 	}
-	if app.transferSharesDialogAccountIDs != nil {
+	if app.transferShares.accountIDs != nil {
 		t.Error("transferSharesDialogAccountIDs should be nil after close")
 	}
-	if app.transferSharesDialogSecurityIDs != nil {
+	if app.transferShares.securityIDs != nil {
 		t.Error("transferSharesDialogSecurityIDs should be nil after close")
 	}
-	if app.transferSharesDialogLots != nil {
+	if app.transferShares.lots != nil {
 		t.Error("transferSharesDialogLots should be nil after close")
 	}
 }

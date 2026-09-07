@@ -149,22 +149,23 @@ func TestSubmitScheduledTransferDialog_SelfTransfer(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledTransferDialog([]string{"Checking", "Visa"}, []string{"(None)"})
 			d.Fields()[schedXferFieldFrom].SelectedIndex = 0
 			d.Fields()[schedXferFieldTo].SelectedIndex = 0 // same as From
 			d.Fields()[schedXferFieldAmount].Value = "200.00"
 			return d
-		}(),
-		schedDialogData:       &scheduledDialogData{mode: scheduledDialogModeNew, isTransfer: true},
-		schedDialogAccountIDs: []types.ID{id, types.NewID()},
+		}()},
+
+			data:       &scheduledDialogData{mode: scheduledDialogModeNew, isTransfer: true},
+			accountIDs: []types.ID{id, types.NewID()}},
 	}
 
 	_, cmd := app.submitScheduledTransferDialog()
 	if cmd != nil {
 		t.Error("self-transfer should not return a save cmd")
 	}
-	if app.schedDialog == nil {
+	if app.sched.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
 }
@@ -176,20 +177,21 @@ func TestSubmitScheduledTransferDialog_MissingAmount(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledTransferDialog([]string{"Checking", "Visa"}, []string{"(None)"})
 			d.Fields()[schedXferFieldAmount].Value = ""
 			return d
-		}(),
-		schedDialogData:       &scheduledDialogData{mode: scheduledDialogModeNew, isTransfer: true},
-		schedDialogAccountIDs: []types.ID{types.NewID(), types.NewID()},
+		}()},
+
+			data:       &scheduledDialogData{mode: scheduledDialogModeNew, isTransfer: true},
+			accountIDs: []types.ID{types.NewID(), types.NewID()}},
 	}
 
 	_, cmd := app.submitScheduledTransferDialog()
 	if cmd != nil {
 		t.Error("missing amount should not return a save cmd")
 	}
-	if app.schedDialog.Fields()[schedXferFieldAmount].Error == "" {
+	if app.sched.dlg.Fields()[schedXferFieldAmount].Error == "" {
 		t.Error("missing amount should set a field-level error")
 	}
 }

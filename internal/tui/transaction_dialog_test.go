@@ -503,16 +503,16 @@ func TestApp_Update_TransactionDialogDataMsg(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.txnDialog == nil {
+	if updatedApp.txn.dlg == nil {
 		t.Fatal("transaction dialog should be created")
 	}
-	if !updatedApp.txnDialog.IsVisible() {
+	if !updatedApp.txn.dlg.IsVisible() {
 		t.Error("transaction dialog should be visible")
 	}
-	if updatedApp.txnDialogData == nil {
+	if updatedApp.txn.data == nil {
 		t.Error("transaction dialog data should be set")
 	}
-	if updatedApp.txnDialogCategoryIDs == nil {
+	if updatedApp.txn.categoryIDs == nil {
 		t.Error("transaction dialog category IDs should be set")
 	}
 }
@@ -524,16 +524,17 @@ func TestApp_HandleTransactionDialogKey_Cancel(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*payee.Payee),
-		},
-		txnDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data: &transactionDialogData{
+				payeeMap: make(map[string]*payee.Payee),
+			},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	// Press Escape to cancel
@@ -541,7 +542,7 @@ func TestApp_HandleTransactionDialogKey_Cancel(t *testing.T) {
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.txnDialog != nil {
+	if updatedApp.txn.dlg != nil {
 		t.Error("transaction dialog should be nil after cancel")
 	}
 }
@@ -553,20 +554,21 @@ func TestApp_HandleTransactionDialogKey_TabCycles(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "", "Payee name", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*payee.Payee),
-		},
-		txnDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data: &transactionDialogData{
+				payeeMap: make(map[string]*payee.Payee),
+			},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
-	initialFocus := app.txnDialog.FocusIndex()
+	initialFocus := app.txn.dlg.FocusIndex()
 	if initialFocus != 0 {
 		t.Fatalf("initial focus = %d, want 0", initialFocus)
 	}
@@ -576,8 +578,8 @@ func TestApp_HandleTransactionDialogKey_TabCycles(t *testing.T) {
 	model, _ := app.Update(tabKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.txnDialog.FocusIndex() != 1 {
-		t.Errorf("focus after Tab = %d, want 1", updatedApp.txnDialog.FocusIndex())
+	if updatedApp.txn.dlg.FocusIndex() != 1 {
+		t.Errorf("focus after Tab = %d, want 1", updatedApp.txn.dlg.FocusIndex())
 	}
 }
 
@@ -644,10 +646,10 @@ func TestApp_Update_TransactionDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 	model, _ := app.Update(transactionDialogDataMsg{data: data})
 	updatedApp := model.(*App)
 
-	if updatedApp.txnDialog == nil {
+	if updatedApp.txn.dlg == nil {
 		t.Fatal("transaction dialog should be created")
 	}
-	dateValue := updatedApp.txnDialog.Fields()[0].Value
+	dateValue := updatedApp.txn.dlg.Fields()[0].Value
 	if dateValue != "01/15/2024" {
 		t.Errorf("date field = %q, want %q (seeded from sticky date)", dateValue, "01/15/2024")
 	}
@@ -672,7 +674,7 @@ func TestApp_Update_TransactionDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *
 	updatedApp := model.(*App)
 
 	today := time.Now().Format("01/02/2006")
-	dateValue := updatedApp.txnDialog.Fields()[0].Value
+	dateValue := updatedApp.txn.dlg.Fields()[0].Value
 	if dateValue != today {
 		t.Errorf("date field = %q, want %q (today)", dateValue, today)
 	}
@@ -687,17 +689,18 @@ func TestApp_TransactionDialogCancel_DoesNotUpdateStickyDate(t *testing.T) {
 		statusbar:              widget.NewStatusBar(),
 		sidebar:                NewSidebar(),
 		txnDialogLastSavedDate: initial,
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			// User typed a different date but cancels
 			d.AddDateField("Date", "02/01/2024")
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*payee.Payee),
-		},
-		txnDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data: &transactionDialogData{
+				payeeMap: make(map[string]*payee.Payee),
+			},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
@@ -718,7 +721,7 @@ func TestApp_SubmitTransactionDialog_PassesSavedDateInMessage(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Coffee Shop", "", 0)
@@ -729,11 +732,12 @@ func TestApp_SubmitTransactionDialog_PassesSavedDateInMessage(t *testing.T) {
 			d.AddCheckboxField("Split transaction", false)
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*payee.Payee),
-		},
-		txnDialogCategoryIDs: []types.ID{types.NilID, types.NewID()},
+		}()},
+
+			data: &transactionDialogData{
+				payeeMap: make(map[string]*payee.Payee),
+			},
+			categoryIDs: []types.ID{types.NilID, types.NewID()}},
 	}
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
@@ -781,9 +785,9 @@ func TestApp_SubmitThenSaved_UpdatesStickyDate_AcrossOpens(t *testing.T) {
 	data := &transactionDialogData{payeeMap: make(map[string]*payee.Payee)}
 	model, _ = app.Update(transactionDialogDataMsg{data: data})
 	app = model.(*App)
-	if app.txnDialog.Fields()[0].Value != "01/15/2024" {
+	if app.txn.dlg.Fields()[0].Value != "01/15/2024" {
 		t.Errorf("first reopen: date = %q, want %q",
-			app.txnDialog.Fields()[0].Value, "01/15/2024")
+			app.txn.dlg.Fields()[0].Value, "01/15/2024")
 	}
 
 	// A second save updates the sticky date.
@@ -798,9 +802,9 @@ func TestApp_SubmitThenSaved_UpdatesStickyDate_AcrossOpens(t *testing.T) {
 	app.closeTransactionDialog()
 	model, _ = app.Update(transactionDialogDataMsg{data: data})
 	app = model.(*App)
-	if app.txnDialog.Fields()[0].Value != "02/01/2024" {
+	if app.txn.dlg.Fields()[0].Value != "02/01/2024" {
 		t.Errorf("second reopen: date = %q, want %q",
-			app.txnDialog.Fields()[0].Value, "02/01/2024")
+			app.txn.dlg.Fields()[0].Value, "02/01/2024")
 	}
 }
 
@@ -814,7 +818,7 @@ func TestApp_CheckPayeeAutoFill(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "kroger", "Payee name", 0)
@@ -824,23 +828,24 @@ func TestApp_CheckPayeeAutoFill(t *testing.T) {
 			d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData: &transactionDialogData{
-			payeeMap: map[string]*payee.Payee{
-				"kroger": {
-					BaseModel:         types.BaseModel{ID: payeeID},
-					Name:              "Kroger",
-					DefaultCategoryID: types.NullableID{ID: categoryID, Valid: true},
+		}()},
+
+			data: &transactionDialogData{
+				payeeMap: map[string]*payee.Payee{
+					"kroger": {
+						BaseModel:         types.BaseModel{ID: payeeID},
+						Name:              "Kroger",
+						DefaultCategoryID: types.NullableID{ID: categoryID, Valid: true},
+					},
 				},
 			},
-		},
-		txnDialogCategoryIDs: []types.ID{types.NilID, categoryID},
+			categoryIDs: []types.ID{types.NilID, categoryID}},
 	}
 
 	app.checkPayeeAutoFill()
 
 	// Category should be auto-selected to index 1 (Groceries)
-	fields := app.txnDialog.Fields()
+	fields := app.txn.dlg.Fields()
 	if fields[2].SelectedIndex != 1 {
 		t.Errorf("category selectedIndex = %d, want 1", fields[2].SelectedIndex)
 	}
@@ -853,7 +858,7 @@ func TestApp_CheckPayeeAutoFill_NoMatch(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "unknown", "Payee name", 0)
@@ -863,17 +868,18 @@ func TestApp_CheckPayeeAutoFill_NoMatch(t *testing.T) {
 			d.AddRadioField("Status", []string{"Pending", "Cleared"}, 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*payee.Payee),
-		},
-		txnDialogCategoryIDs: []types.ID{types.NilID, types.NewID()},
+		}()},
+
+			data: &transactionDialogData{
+				payeeMap: make(map[string]*payee.Payee),
+			},
+			categoryIDs: []types.ID{types.NilID, types.NewID()}},
 	}
 
 	app.checkPayeeAutoFill()
 
 	// Category should remain at index 0 (None)
-	fields := app.txnDialog.Fields()
+	fields := app.txn.dlg.Fields()
 	if fields[2].SelectedIndex != 0 {
 		t.Errorf("category selectedIndex = %d, want 0", fields[2].SelectedIndex)
 	}
@@ -886,7 +892,7 @@ func TestApp_SubmitTransactionDialog_InvalidDate(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "13/45/2024")
 			d.AddTextField("Payee", "Test Payee", "", 0)
@@ -897,19 +903,20 @@ func TestApp_SubmitTransactionDialog_InvalidDate(t *testing.T) {
 			d.AddCheckboxField("Split transaction", false)
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
-		txnDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	_, cmd := app.submitTransactionDialog()
 	if cmd != nil {
 		t.Error("invalid date should not return a cmd")
 	}
-	if app.txnDialog == nil {
+	if app.txn.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.txnDialog.Fields()[0].Error == "" {
+	if app.txn.dlg.Fields()[0].Error == "" {
 		t.Error("date field should have error")
 	}
 }
@@ -921,7 +928,7 @@ func TestApp_SubmitTransactionDialog_InvalidAmount(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Test Payee", "", 0)
@@ -932,19 +939,20 @@ func TestApp_SubmitTransactionDialog_InvalidAmount(t *testing.T) {
 			d.AddCheckboxField("Split transaction", false)
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
-		txnDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	_, cmd := app.submitTransactionDialog()
 	if cmd != nil {
 		t.Error("invalid amount should not return a cmd")
 	}
-	if app.txnDialog == nil {
+	if app.txn.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.txnDialog.Fields()[3].Error == "" {
+	if app.txn.dlg.Fields()[3].Error == "" {
 		t.Error("amount field should have error")
 	}
 }
@@ -956,7 +964,7 @@ func TestApp_SubmitTransactionDialog_MultipleErrors(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "13/45/2024")
 			d.AddTextField("Payee", "", "", 0)
@@ -967,20 +975,21 @@ func TestApp_SubmitTransactionDialog_MultipleErrors(t *testing.T) {
 			d.AddCheckboxField("Split transaction", false)
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
-		txnDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	_, cmd := app.submitTransactionDialog()
 	if cmd != nil {
 		t.Error("should not return a cmd with multiple errors")
 	}
-	if app.txnDialog == nil {
+	if app.txn.dlg == nil {
 		t.Fatal("dialog should remain open")
 	}
 
-	fields := app.txnDialog.Fields()
+	fields := app.txn.dlg.Fields()
 	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
@@ -997,7 +1006,7 @@ func TestApp_SubmitTransactionDialog_ValidNonSplit(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
 			d.AddTextField("Payee", "Coffee Shop", "", 0)
@@ -1008,11 +1017,12 @@ func TestApp_SubmitTransactionDialog_ValidNonSplit(t *testing.T) {
 			d.AddCheckboxField("Split transaction", false)
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*payee.Payee),
-		},
-		txnDialogCategoryIDs: []types.ID{types.NilID, types.NewID()},
+		}()},
+
+			data: &transactionDialogData{
+				payeeMap: make(map[string]*payee.Payee),
+			},
+			categoryIDs: []types.ID{types.NilID, types.NewID()}},
 	}
 
 	app.sidebar.SetAccounts([]*account.Account{
@@ -1025,34 +1035,35 @@ func TestApp_SubmitTransactionDialog_ValidNonSplit(t *testing.T) {
 	if cmd == nil {
 		t.Error("valid transaction should return a non-nil cmd")
 	}
-	if updatedApp.txnDialog != nil {
+	if updatedApp.txn.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
-	if updatedApp.txnDialogData != nil {
+	if updatedApp.txn.data != nil {
 		t.Error("dialog data should be nil after submit")
 	}
 }
 
 func TestApp_CloseTransactionDialog(t *testing.T) {
 	app := &App{
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
-		txnDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &transactionDialogData{payeeMap: make(map[string]*payee.Payee)},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	app.closeTransactionDialog()
 
-	if app.txnDialog != nil {
+	if app.txn.dlg != nil {
 		t.Error("dialog should be nil after close")
 	}
-	if app.txnDialogData != nil {
+	if app.txn.data != nil {
 		t.Error("dialog data should be nil after close")
 	}
-	if app.txnDialogCategoryIDs != nil {
+	if app.txn.categoryIDs != nil {
 		t.Error("category IDs should be nil after close")
 	}
 }
@@ -1066,7 +1077,7 @@ func TestApp_CheckPayeeAutoFill_NilDialog(t *testing.T) {
 func TestApp_CheckPayeeAutoFill_EmptyPayee(t *testing.T) {
 	catID := types.NewID()
 	app := &App{
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.AddTextField("Payee", "", "", 0)
@@ -1077,24 +1088,25 @@ func TestApp_CheckPayeeAutoFill_EmptyPayee(t *testing.T) {
 			d.AddCheckboxField("Split transaction", false)
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData: &transactionDialogData{
-			payeeMap: map[string]*payee.Payee{
-				"coffee shop": {
-					BaseModel:         types.BaseModel{ID: types.NewID()},
-					Name:              "Coffee Shop",
-					DefaultCategoryID: types.NullableID{ID: catID, Valid: true},
+		}()},
+
+			data: &transactionDialogData{
+				payeeMap: map[string]*payee.Payee{
+					"coffee shop": {
+						BaseModel:         types.BaseModel{ID: types.NewID()},
+						Name:              "Coffee Shop",
+						DefaultCategoryID: types.NullableID{ID: catID, Valid: true},
+					},
 				},
 			},
-		},
-		txnDialogCategoryIDs: []types.ID{types.NilID, catID},
+			categoryIDs: []types.ID{types.NilID, catID}},
 	}
 
 	app.checkPayeeAutoFill()
 
 	// Category should remain at (None)
-	if app.txnDialog.Fields()[2].SelectedIndex != 0 {
-		t.Errorf("category should remain at 0, got %d", app.txnDialog.Fields()[2].SelectedIndex)
+	if app.txn.dlg.Fields()[2].SelectedIndex != 0 {
+		t.Errorf("category should remain at 0, got %d", app.txn.dlg.Fields()[2].SelectedIndex)
 	}
 }
 
@@ -1212,12 +1224,12 @@ func TestApp_RenderLayout_WithTransactionDialog(t *testing.T) {
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
 		},
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
 			d.SetVisible(true)
 			return d
-		}(),
+		}()}},
 	}
 
 	output := app.renderLayout()
@@ -1238,16 +1250,16 @@ func newAppForTxnAddNew(t *testing.T, query string, categorySvc *category.Servic
 	t.Helper()
 	options, ids := buildCategoryOptions(cats)
 	app := &App{
-		currentView:          ViewRegister,
-		keys:                 defaultKeyMap(),
-		menubar:              widget.NewMenuBar(),
-		statusbar:            widget.NewStatusBar(),
-		sidebar:              NewSidebar(),
-		categorySvc:          categorySvc,
-		txnDialogData:        &transactionDialogData{categories: cats, payeeMap: make(map[string]*payee.Payee)},
-		txnDialogCategoryIDs: ids,
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		categorySvc: categorySvc,
+		txn: txnSurface{data: &transactionDialogData{categories: cats, payeeMap: make(map[string]*payee.Payee)},
+			categoryIDs: ids},
 	}
-	d := buildTransactionDialog(app.txnDialogData, options, ids, types.ZeroDate)
+	d := buildTransactionDialog(app.txn.data, options, ids, types.ZeroDate)
 	// Capture distinctive state we expect to see preserved across the divert.
 	d.Fields()[0].Value = "03/15/2024"
 	d.Fields()[1].Value = "Coffee Shop"
@@ -1260,7 +1272,7 @@ func newAppForTxnAddNew(t *testing.T, query string, categorySvc *category.Servic
 	// the divert. The row sits at len(filteredIndices) — this is what the
 	// user reaches by pressing Down past the last filtered match.
 	cat.ComboHighlight = len(cat.FilteredIndices())
-	app.txnDialog = d
+	app.txn.dlg = d
 	return app
 }
 
@@ -1274,10 +1286,10 @@ func TestApp_TxnDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
 		t.Fatal("createCatDialog should be visible after [+ Add new] is activated")
 	}
-	if updated.txnDialog == nil {
+	if updated.txn.dlg == nil {
 		t.Fatal("txnDialog should be kept (hidden) so its state survives the divert")
 	}
-	if updated.txnDialog.IsVisible() {
+	if updated.txn.dlg.IsVisible() {
 		t.Error("txnDialog should be hidden while createCatDialog is shown")
 	}
 	// The pre-fill is wired in TD-009; for TD-008 we assert the dialog opened.
@@ -1289,8 +1301,8 @@ func TestApp_TxnDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 
 func TestApp_TxnDialog_AddNew_CancelRestoresState(t *testing.T) {
 	app := newAppForTxnAddNew(t, "", nil, nil)
-	prevCat := app.txnDialog.Fields()[2].SelectedIndex
-	prevFocus := app.txnDialog.FocusIndex()
+	prevCat := app.txn.dlg.Fields()[2].SelectedIndex
+	prevFocus := app.txn.dlg.FocusIndex()
 
 	// Open create-category dialog.
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
@@ -1305,12 +1317,12 @@ func TestApp_TxnDialog_AddNew_CancelRestoresState(t *testing.T) {
 	if app.createCatDialog != nil {
 		t.Error("createCatDialog should be cleared after cancel")
 	}
-	if app.txnDialog == nil || !app.txnDialog.IsVisible() {
+	if app.txn.dlg == nil || !app.txn.dlg.IsVisible() {
 		t.Fatal("txnDialog should be restored to visible after cancel")
 	}
 
 	// All previous field values preserved.
-	fields := app.txnDialog.Fields()
+	fields := app.txn.dlg.Fields()
 	if fields[0].Value != "03/15/2024" {
 		t.Errorf("Date preserved? got %q, want %q", fields[0].Value, "03/15/2024")
 	}
@@ -1327,9 +1339,9 @@ func TestApp_TxnDialog_AddNew_CancelRestoresState(t *testing.T) {
 		t.Errorf("Category SelectedIndex changed on cancel: got %d, want %d",
 			fields[2].SelectedIndex, prevCat)
 	}
-	if app.txnDialog.FocusIndex() != prevFocus {
+	if app.txn.dlg.FocusIndex() != prevFocus {
 		t.Errorf("FocusIndex changed on cancel: got %d, want %d (Category)",
-			app.txnDialog.FocusIndex(), prevFocus)
+			app.txn.dlg.FocusIndex(), prevFocus)
 	}
 }
 
@@ -1419,12 +1431,12 @@ func TestApp_TxnDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 	if app.createCatDialog != nil {
 		t.Error("createCatDialog should be cleared after submit")
 	}
-	if app.txnDialog == nil || !app.txnDialog.IsVisible() {
+	if app.txn.dlg == nil || !app.txn.dlg.IsVisible() {
 		t.Fatal("txnDialog should be visible again after submit")
 	}
 
 	// Other fields preserved.
-	fields := app.txnDialog.Fields()
+	fields := app.txn.dlg.Fields()
 	if fields[0].Value != "03/15/2024" {
 		t.Errorf("Date preserved? got %q", fields[0].Value)
 	}
@@ -1446,17 +1458,17 @@ func TestApp_TxnDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 			catField.Options[catField.SelectedIndex], wantDisplay)
 	}
 	// And the parallel ID slice resolves to the new category's ID.
-	if app.txnDialogCategoryIDs[catField.SelectedIndex] != found.ID {
+	if app.txn.categoryIDs[catField.SelectedIndex] != found.ID {
 		t.Errorf("txnDialogCategoryIDs[%d] = %s, want %s",
 			catField.SelectedIndex,
-			app.txnDialogCategoryIDs[catField.SelectedIndex],
+			app.txn.categoryIDs[catField.SelectedIndex],
 			found.ID)
 	}
 
 	// Focus advances to Amount (index 3).
-	if app.txnDialog.FocusIndex() != 3 {
+	if app.txn.dlg.FocusIndex() != 3 {
 		t.Errorf("FocusIndex after submit = %d, want 3 (Amount)",
-			app.txnDialog.FocusIndex())
+			app.txn.dlg.FocusIndex())
 	}
 }
 
@@ -1933,7 +1945,7 @@ func TestApp_HandleRegisterKeys_EnterOnVoidTransaction_NoOp(t *testing.T) {
 	if cmd != nil {
 		t.Error("Enter on a void transaction should not return a cmd")
 	}
-	if app.txnDialog != nil {
+	if app.txn.dlg != nil {
 		t.Error("Enter on a void transaction should not open the txn dialog")
 	}
 }
@@ -1982,7 +1994,7 @@ func TestApp_HandleRegisterKeys_EnterOnReconciledTransaction_NoOp(t *testing.T) 
 	if cmd != nil {
 		t.Error("Enter on a reconciled transaction should not return a cmd")
 	}
-	if app.txnDialog != nil {
+	if app.txn.dlg != nil {
 		t.Error("Enter on a reconciled transaction should not open the txn dialog")
 	}
 }
@@ -2029,14 +2041,14 @@ func TestApp_Update_TransactionDialogDataMsg_EditMode(t *testing.T) {
 	model, _ := app.Update(transactionDialogDataMsg{data: data})
 	updatedApp := model.(*App)
 
-	if updatedApp.txnDialog == nil {
+	if updatedApp.txn.dlg == nil {
 		t.Fatal("txnDialog should be set after edit-mode data msg")
 	}
-	if updatedApp.txnDialog.Title() != "Edit Transaction" {
-		t.Errorf("title = %q, want %q", updatedApp.txnDialog.Title(), "Edit Transaction")
+	if updatedApp.txn.dlg.Title() != "Edit Transaction" {
+		t.Errorf("title = %q, want %q", updatedApp.txn.dlg.Title(), "Edit Transaction")
 	}
 
-	fields := updatedApp.txnDialog.Fields()
+	fields := updatedApp.txn.dlg.Fields()
 	if fields[0].Value != "03/15/2024" {
 		t.Errorf("date = %q, want %q", fields[0].Value, "03/15/2024")
 	}

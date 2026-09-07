@@ -484,27 +484,35 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 }
 
 // closeScheduledDialog clears the scheduled dialog state.
+// schedSurface is the sched dialog and the state that belongs to it. The zero
+// value is closed.
+type schedSurface struct {
+	modalSurface
+	data            *scheduledDialogData
+	accountIDs      []types.ID
+	categoryIDs     []types.ID
+	categoryOptions []string
+}
+
+func (s *schedSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 func (a *App) closeScheduledDialog() {
-	a.schedDialog = nil
-	a.schedDialogData = nil
-	a.schedDialogAccountIDs = nil
-	a.schedDialogCategoryIDs = nil
-	a.schedDialogCategoryOptions = nil
+	a.sched = schedSurface{}
 }
 
 // handleScheduledDialogKey routes key events to the scheduled dialog.
 func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.schedDialog == nil {
+	if a.sched.dlg == nil {
 		return a, nil
 	}
-	return a.scheduledDialogAction(a.schedDialog.HandleKey(msg))
+	return a.scheduledDialogAction(a.sched.dlg.HandleKey(msg))
 }
 
 // scheduledDialogAction dispatches a DialogAction for the scheduled dialog, from either input path.
 func (a *App) scheduledDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
-		if a.schedDialogData != nil && a.schedDialogData.isTransfer {
+		if a.sched.data != nil && a.sched.data.isTransfer {
 			return a.submitScheduledTransferDialog()
 		}
 		return a.submitScheduledDialog()
@@ -514,7 +522,7 @@ func (a *App) scheduledDialogAction(action dialog.DialogAction) (tea.Model, tea.
 	case dialog.DialogActionAlternate:
 		return a.relaunchScheduledAlternate()
 	case dialog.DialogActionAddNew:
-		if a.schedDialogData != nil && a.schedDialogData.isTransfer {
+		if a.sched.data != nil && a.sched.data.isTransfer {
 			return a.openCreateCategorySubDialogFromSchedTransfer()
 		}
 		return a.openCreateCategorySubDialogFromSched()
@@ -525,7 +533,7 @@ func (a *App) scheduledDialogAction(action dialog.DialogAction) (tea.Model, tea.
 	// category options so Value Adjustment appears/disappears. No-op
 	// unless the asset-ness actually changed. Skipped for the transfer
 	// dialog, which has no category field.
-	if a.schedDialogData != nil && !a.schedDialogData.isTransfer {
+	if a.sched.data != nil && !a.sched.data.isTransfer {
 		a.refreshSchedCategoryOptionsForAccount()
 	}
 
@@ -537,18 +545,18 @@ func (a *App) scheduledDialogAction(action dialog.DialogAction) (tea.Model, tea.
 // whether the Value Adjustment category should be offered in its
 // category picker.
 func (a *App) schedDialogIncludeValueAdjustment() bool {
-	if a.schedDialog == nil || a.schedDialogData == nil {
+	if a.sched.dlg == nil || a.sched.data == nil {
 		return false
 	}
-	fields := a.schedDialog.Fields()
+	fields := a.sched.dlg.Fields()
 	if len(fields) <= schedFieldAccount {
 		return false
 	}
 	acctIdx := fields[schedFieldAccount].SelectedIndex
-	if acctIdx < 0 || acctIdx >= len(a.schedDialogAccountIDs) {
+	if acctIdx < 0 || acctIdx >= len(a.sched.accountIDs) {
 		return false
 	}
-	return accountIsAssetByID(a.schedDialogData.accounts, a.schedDialogAccountIDs[acctIdx])
+	return accountIsAssetByID(a.sched.data.accounts, a.sched.accountIDs[acctIdx])
 }
 
 // refreshSchedCategoryOptionsForAccount rebuilds the scheduled dialog's
@@ -558,24 +566,24 @@ func (a *App) schedDialogIncludeValueAdjustment() bool {
 // selection by ID and is a no-op when nothing changed (so it is cheap
 // to call on every keypress).
 func (a *App) refreshSchedCategoryOptionsForAccount() {
-	if a.schedDialog == nil || a.categorySvc == nil {
+	if a.sched.dlg == nil || a.categorySvc == nil {
 		return
 	}
-	fields := a.schedDialog.Fields()
+	fields := a.sched.dlg.Fields()
 	if len(fields) <= schedFieldCategory {
 		return
 	}
 
 	includeVA := a.schedDialogIncludeValueAdjustment()
-	hasVA := slices.Contains(a.schedDialogCategoryOptions, category.ValueAdjustmentCategoryName)
+	hasVA := slices.Contains(a.sched.categoryOptions, category.ValueAdjustmentCategoryName)
 	if hasVA == includeVA {
 		return
 	}
 
 	catField := fields[schedFieldCategory]
 	selectedID := types.NilID
-	if catField.SelectedIndex >= 0 && catField.SelectedIndex < len(a.schedDialogCategoryIDs) {
-		selectedID = a.schedDialogCategoryIDs[catField.SelectedIndex]
+	if catField.SelectedIndex >= 0 && catField.SelectedIndex < len(a.sched.categoryIDs) {
+		selectedID = a.sched.categoryIDs[catField.SelectedIndex]
 	}
 
 	cats, err := a.categorySvc.List()
@@ -583,8 +591,8 @@ func (a *App) refreshSchedCategoryOptionsForAccount() {
 		return
 	}
 	options, ids := buildCategoryOptionsFor(cats, includeVA)
-	a.schedDialogCategoryOptions = options
-	a.schedDialogCategoryIDs = ids
+	a.sched.categoryOptions = options
+	a.sched.categoryIDs = ids
 	catField.Options = options
 
 	newIdx := 0
@@ -604,10 +612,10 @@ func (a *App) refreshSchedCategoryOptionsForAccount() {
 // on cancel and post-create wiring happens through the createCatDialog
 // handlers.
 func (a *App) openCreateCategorySubDialogFromSched() (tea.Model, tea.Cmd) {
-	if a.schedDialog == nil {
+	if a.sched.dlg == nil {
 		return a, nil
 	}
-	fields := a.schedDialog.Fields()
+	fields := a.sched.dlg.Fields()
 	if len(fields) <= schedFieldCategory {
 		return a, nil
 	}
@@ -626,7 +634,7 @@ func (a *App) openCreateCategorySubDialogFromSched() (tea.Model, tea.Cmd) {
 		defaultType = inferCategoryTypeFromAmount(fields[schedFieldAmount].Value)
 	}
 	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, defaultType)
-	a.schedDialog.SetVisible(false)
+	a.sched.dlg.SetVisible(false)
 	return a, nil
 }
 
@@ -636,16 +644,16 @@ func (a *App) openCreateCategorySubDialogFromSched() (tea.Model, tea.Cmd) {
 // with newCat pre-selected on the Category combo, advances focus to Amount,
 // re-shows the scheduled dialog, and clears the create-category sub-dialog.
 func (a *App) applyCreatedCategoryToSched(newCat *category.Category, cats []*category.Category) {
-	if a.schedDialog == nil {
+	if a.sched.dlg == nil {
 		a.createCatDialog = nil
 		return
 	}
 	options, ids := buildCategoryOptionsFor(cats, a.schedDialogIncludeValueAdjustment())
-	a.schedDialogCategoryIDs = ids
-	a.schedDialogCategoryOptions = options
+	a.sched.categoryIDs = ids
+	a.sched.categoryOptions = options
 
-	if len(a.schedDialog.Fields()) > schedFieldCategory {
-		catField := a.schedDialog.Fields()[schedFieldCategory]
+	if len(a.sched.dlg.Fields()) > schedFieldCategory {
+		catField := a.sched.dlg.Fields()[schedFieldCategory]
 		catField.Options = options
 		newIdx := 0
 		for i, id := range ids {
@@ -656,35 +664,35 @@ func (a *App) applyCreatedCategoryToSched(newCat *category.Category, cats []*cat
 		}
 		catField.SelectedIndex = newIdx
 		// Focus advances to Amount so the user can keep typing.
-		a.schedDialog.SetFocusIndex(schedFieldAmount)
-		a.schedDialog.SetVisible(true)
+		a.sched.dlg.SetFocusIndex(schedFieldAmount)
+		a.sched.dlg.SetVisible(true)
 	}
 	a.createCatDialog = nil
 }
 
 // submitScheduledDialog parses dialog fields, validates, and saves the scheduled transaction.
 func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
-	if a.schedDialog == nil || a.schedDialogData == nil {
+	if a.sched.dlg == nil || a.sched.data == nil {
 		return a, nil
 	}
 
-	fields := a.schedDialog.Fields()
+	fields := a.sched.dlg.Fields()
 	if len(fields) < 14 {
 		return a, nil
 	}
 
-	a.schedDialog.ClearErrors()
+	a.sched.dlg.ClearErrors()
 	hasErrors := false
 
 	// Account
 	acctIdx := fields[schedFieldAccount].SelectedIndex
-	if acctIdx < 0 || acctIdx >= len(a.schedDialogAccountIDs) {
+	if acctIdx < 0 || acctIdx >= len(a.sched.accountIDs) {
 		fields[schedFieldAccount].Error = "Please select an account"
 		hasErrors = true
 	}
 	accountID := types.NilID
-	if acctIdx >= 0 && acctIdx < len(a.schedDialogAccountIDs) {
-		accountID = a.schedDialogAccountIDs[acctIdx]
+	if acctIdx >= 0 && acctIdx < len(a.sched.accountIDs) {
+		accountID = a.sched.accountIDs[acctIdx]
 	}
 
 	// Payee name
@@ -693,8 +701,8 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	// Category
 	catIdx := fields[schedFieldCategory].SelectedIndex
 	var categoryID types.ID
-	if catIdx > 0 && catIdx < len(a.schedDialogCategoryIDs) {
-		categoryID = a.schedDialogCategoryIDs[catIdx]
+	if catIdx > 0 && catIdx < len(a.sched.categoryIDs) {
+		categoryID = a.sched.categoryIDs[catIdx]
 	}
 
 	// Amount (empty = variable)
@@ -791,8 +799,8 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	mode := a.schedDialogData.mode
-	existingSched := a.schedDialogData.scheduled
+	mode := a.sched.data.mode
+	existingSched := a.sched.data.scheduled
 
 	if isSplit {
 		pending := &pendingSplitScheduled{
@@ -812,8 +820,8 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 		}
 
 		categoryOptions := fields[schedFieldCategory].Options
-		categoryIDs := a.schedDialogCategoryIDs
-		accountOptions, accountIDs := buildSplitTransferAccountOptions(a.schedDialogData.accounts)
+		categoryIDs := a.sched.categoryIDs
+		accountOptions, accountIDs := buildSplitTransferAccountOptions(a.sched.data.accounts)
 
 		// Seed the split dialog from existing children when editing a
 		// schedule that already carries a multi-line template.

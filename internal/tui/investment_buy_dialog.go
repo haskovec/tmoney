@@ -167,19 +167,28 @@ func (a *App) loadBuyDialogData() tea.Cmd {
 	}
 }
 
+// buySurface is the Buy dialog's state: the form, the loaded securities, and
+// the security IDs parallel to the Security combo's options.
+type buySurface struct {
+	modalSurface
+	data        *buyDialogData
+	securityIDs []types.ID
+}
+
+// IsVisible is declared per surface; see modalSurface.
+func (s *buySurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 // closeBuyDialog clears the buy dialog state.
 func (a *App) closeBuyDialog() {
-	a.buyDialog = nil
-	a.buyDialogData = nil
-	a.buyDialogSecurityIDs = nil
+	a.buy = buySurface{}
 }
 
 // handleBuyDialogKey routes key events to the buy dialog.
 func (a *App) handleBuyDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.buyDialog == nil {
+	if a.buy.dlg == nil {
 		return a, nil
 	}
-	return a.buyDialogAction(a.buyDialog.HandleKey(msg))
+	return a.buyDialogAction(a.buy.dlg.HandleKey(msg))
 }
 
 // buyDialogAction dispatches a DialogAction for the buy dialog, from either input path.
@@ -227,16 +236,16 @@ func parseOptionalMoneyInput(input string) (*types.Money, error) {
 
 // submitBuyDialog parses dialog fields, validates, and saves the buy transaction.
 func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
-	if a.buyDialog == nil || a.buyDialogData == nil {
+	if a.buy.dlg == nil || a.buy.data == nil {
 		return a, nil
 	}
 
-	fields := a.buyDialog.Fields()
+	fields := a.buy.dlg.Fields()
 	if len(fields) < 7 {
 		return a, nil
 	}
 
-	a.buyDialog.ClearErrors()
+	a.buy.dlg.ClearErrors()
 	hasErrors := false
 
 	// Date (index 0)
@@ -250,14 +259,14 @@ func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
 	}
 
 	// Security (index 1)
-	if len(a.buyDialogSecurityIDs) == 0 {
+	if len(a.buy.securityIDs) == 0 {
 		fields[1].Error = "No securities available"
 		hasErrors = true
 	}
 	secIdx := fields[1].SelectedIndex
 	var securityID types.ID
-	if secIdx >= 0 && secIdx < len(a.buyDialogSecurityIDs) {
-		securityID = a.buyDialogSecurityIDs[secIdx]
+	if secIdx >= 0 && secIdx < len(a.buy.securityIDs) {
+		securityID = a.buy.securityIDs[secIdx]
 	} else {
 		fields[1].Error = "Select a security"
 		hasErrors = true

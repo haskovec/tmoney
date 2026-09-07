@@ -228,8 +228,8 @@ func categoryComboIndex(ids []types.ID, catID types.NullableID) int {
 // Amount, Date, Memo, Category, Status (index 3); an inv↔inv edit omits the
 // combo entirely, so it reports -1 rather than pointing at the Status radio.
 func (a *App) transferCategoryFieldIndex() int {
-	if a.transferDialogData != nil && a.transferDialogData.mode == transferDialogModeEdit {
-		if !editTransferIncludesCategory(a.transferDialogData) {
+	if a.transfer.data != nil && a.transfer.data.mode == transferDialogModeEdit {
+		if !editTransferIncludesCategory(a.transfer.data) {
 			return -1
 		}
 		return 3
@@ -381,19 +381,27 @@ func transferAccountNames(data *transferDialogData) (fromName, toName string) {
 }
 
 // closeTransferDialog clears the transfer dialog state.
+// transferSurface is the transfer dialog and the state that belongs to it. The zero
+// value is closed.
+type transferSurface struct {
+	modalSurface
+	data        *transferDialogData
+	accountIDs  []types.ID
+	categoryIDs []types.ID // parallel to the Category combo options
+}
+
+func (s *transferSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 func (a *App) closeTransferDialog() {
-	a.transferDialog = nil
-	a.transferDialogData = nil
-	a.transferDialogAccountIDs = nil
-	a.transferDialogCategoryIDs = nil
+	a.transfer = transferSurface{}
 }
 
 // handleTransferDialogKey routes key events to the transfer dialog.
 func (a *App) handleTransferDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.transferDialog == nil {
+	if a.transfer.dlg == nil {
 		return a, nil
 	}
-	return a.transferDialogAction(a.transferDialog.HandleKey(msg))
+	return a.transferDialogAction(a.transfer.dlg.HandleKey(msg))
 }
 
 // transferDialogAction dispatches a DialogAction for the transfer dialog, from either input path.
@@ -420,10 +428,10 @@ func (a *App) transferDialogAction(action dialog.DialogAction) (tea.Model, tea.C
 // unlike the amount-bearing surfaces, a transfer's amount is always a positive
 // magnitude and carries no income/expense signal.
 func (a *App) openCreateCategorySubDialogForTransfer() (tea.Model, tea.Cmd) {
-	if a.transferDialog == nil {
+	if a.transfer.dlg == nil {
 		return a, nil
 	}
-	fields := a.transferDialog.Fields()
+	fields := a.transfer.dlg.Fields()
 	idx := a.transferCategoryFieldIndex()
 	if idx < 0 || idx >= len(fields) {
 		return a, nil
@@ -434,13 +442,13 @@ func (a *App) openCreateCategorySubDialogForTransfer() (tea.Model, tea.Cmd) {
 	catField.Query = ""
 
 	var parents []string
-	if a.transferDialogData != nil {
-		parents = topLevelParentNames(a.transferDialogData.categories)
+	if a.transfer.data != nil {
+		parents = topLevelParentNames(a.transfer.data.categories)
 	}
 	parent, name := splitCategoryQuery(query)
 	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
 	a.createCatSource = createCatSourceTransferDialog
-	a.transferDialog.SetVisible(false)
+	a.transfer.dlg.SetVisible(false)
 	return a, nil
 }
 
@@ -450,15 +458,15 @@ func (a *App) openCreateCategorySubDialogForTransfer() (tea.Model, tea.Cmd) {
 // Category combo and re-shows the transfer dialog. Persistence already happened
 // in persistCategory; the router passes the fresh category in.
 func (a *App) applyCreatedCategoryToTransfer(newCat *category.Category, cats []*category.Category) {
-	if a.transferDialogData != nil {
-		a.transferDialogData.categories = cats
+	if a.transfer.data != nil {
+		a.transfer.data.categories = cats
 	}
 	options, ids := buildCategoryOptions(cats)
-	a.transferDialogCategoryIDs = ids
+	a.transfer.categoryIDs = ids
 
 	idx := a.transferCategoryFieldIndex()
-	if a.transferDialog != nil && idx >= 0 && idx < len(a.transferDialog.Fields()) {
-		catField := a.transferDialog.Fields()[idx]
+	if a.transfer.dlg != nil && idx >= 0 && idx < len(a.transfer.dlg.Fields()) {
+		catField := a.transfer.dlg.Fields()[idx]
 		catField.Options = options
 		newIdx := 0
 		for i, id := range ids {
@@ -469,54 +477,54 @@ func (a *App) applyCreatedCategoryToTransfer(newCat *category.Category, cats []*
 		}
 		catField.SelectedIndex = newIdx
 		catField.ComboHighlight = newIdx
-		a.transferDialog.SetVisible(true)
+		a.transfer.dlg.SetVisible(true)
 	}
 	a.createCatDialog = nil
 }
 
 // submitTransferDialog parses dialog fields, validates, and saves the transfer.
 func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
-	if a.transferDialog == nil || a.transferDialogData == nil {
+	if a.transfer.dlg == nil || a.transfer.data == nil {
 		return a, nil
 	}
 
-	if a.transferDialogData.mode == transferDialogModeEdit {
+	if a.transfer.data.mode == transferDialogModeEdit {
 		return a.submitEditTransferDialog()
 	}
 
-	fields := a.transferDialog.Fields()
+	fields := a.transfer.dlg.Fields()
 	if len(fields) < 5 {
 		return a, nil
 	}
 
-	a.transferDialog.ClearErrors()
+	a.transfer.dlg.ClearErrors()
 	hasErrors := false
 
 	// From account
 	fromIdx := fields[0].SelectedIndex
-	if fromIdx < 0 || fromIdx >= len(a.transferDialogAccountIDs) {
+	if fromIdx < 0 || fromIdx >= len(a.transfer.accountIDs) {
 		fields[0].Error = "Please select a From account"
 		hasErrors = true
 	}
 	fromAccountID := types.NilID
-	if fromIdx >= 0 && fromIdx < len(a.transferDialogAccountIDs) {
-		fromAccountID = a.transferDialogAccountIDs[fromIdx]
+	if fromIdx >= 0 && fromIdx < len(a.transfer.accountIDs) {
+		fromAccountID = a.transfer.accountIDs[fromIdx]
 	}
 
 	// To account
 	toIdx := fields[1].SelectedIndex
-	if toIdx < 0 || toIdx >= len(a.transferDialogAccountIDs) {
+	if toIdx < 0 || toIdx >= len(a.transfer.accountIDs) {
 		fields[1].Error = "Please select a To account"
 		hasErrors = true
 	}
 	toAccountID := types.NilID
-	if toIdx >= 0 && toIdx < len(a.transferDialogAccountIDs) {
-		toAccountID = a.transferDialogAccountIDs[toIdx]
+	if toIdx >= 0 && toIdx < len(a.transfer.accountIDs) {
+		toAccountID = a.transfer.accountIDs[toIdx]
 	}
 
 	// Validate from != to
 	if !fromAccountID.IsNil() && !toAccountID.IsNil() && fromAccountID == toAccountID {
-		a.transferDialog.SetErrorMsg("From and To accounts must be different")
+		a.transfer.dlg.SetErrorMsg("From and To accounts must be different")
 		hasErrors = true
 	}
 
@@ -535,7 +543,7 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	if err != nil {
 		fields[3].Error = "Invalid date (MM/DD/YYYY)"
 		hasErrors = true
-	} else if msg := transferOpeningDateError(a.transferDialogData.accounts, date, fromAccountID, toAccountID); msg != "" {
+	} else if msg := transferOpeningDateError(a.transfer.data.accounts, date, fromAccountID, toAccountID); msg != "" {
 		fields[3].Error = msg
 		hasErrors = true
 	}
@@ -552,8 +560,8 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	var categoryID types.NullableID
 	const catFieldIdx = 5
 	if len(fields) > catFieldIdx {
-		if idx := fields[catFieldIdx].SelectedIndex; idx > 0 && idx < len(a.transferDialogCategoryIDs) {
-			categoryID = types.NullableID{ID: a.transferDialogCategoryIDs[idx], Valid: true}
+		if idx := fields[catFieldIdx].SelectedIndex; idx > 0 && idx < len(a.transfer.categoryIDs) {
+			categoryID = types.NullableID{ID: a.transfer.categoryIDs[idx], Valid: true}
 		}
 	}
 
@@ -567,8 +575,8 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	// independently (*transfer.CategoryNotSupportedError); this is a fast path
 	// to a better-placed message, not the authority.
 	if categoryID.Valid && len(fields) > catFieldIdx {
-		fromType := accountTypeByID(a.transferDialogData.accounts, fromAccountID)
-		toType := accountTypeByID(a.transferDialogData.accounts, toAccountID)
+		fromType := accountTypeByID(a.transfer.data.accounts, fromAccountID)
+		toType := accountTypeByID(a.transfer.data.accounts, toAccountID)
 		if !transfer.ClassifyKind(fromType, toType).StoresCategory() {
 			fields[catFieldIdx].Error = "Categories aren't supported on investment-to-investment transfers"
 			return a, nil
@@ -639,7 +647,7 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 // Status(3|4). One path for every shape: the transfer service addresses the edit
 // by transfer_id and rewrites both legs in place, wherever they live.
 func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
-	existing := a.transferDialogData.existing
+	existing := a.transfer.data.existing
 	if existing == nil {
 		return a, nil
 	}
@@ -649,7 +657,7 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 	//   Amount(0), Date(1), Memo(2), Category(3), Status(4)
 	// inv↔inv omits it:
 	//   Amount(0), Date(1), Memo(2), Status(3)
-	includeCategory := editTransferIncludesCategory(a.transferDialogData)
+	includeCategory := editTransferIncludesCategory(a.transfer.data)
 	minFields := 4
 	statusIdx := 3
 	catIdx := -1
@@ -659,12 +667,12 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 		statusIdx = 4
 	}
 
-	fields := a.transferDialog.Fields()
+	fields := a.transfer.dlg.Fields()
 	if len(fields) < minFields {
 		return a, nil
 	}
 
-	a.transferDialog.ClearErrors()
+	a.transfer.dlg.ClearErrors()
 	hasErrors := false
 
 	amount, err := parseAmountInput(fields[0].Value)
@@ -703,8 +711,8 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 	// both legs.
 	var categoryID types.NullableID
 	if catIdx >= 0 {
-		if idx := fields[catIdx].SelectedIndex; idx > 0 && idx < len(a.transferDialogCategoryIDs) {
-			categoryID = types.NullableID{ID: a.transferDialogCategoryIDs[idx], Valid: true}
+		if idx := fields[catIdx].SelectedIndex; idx > 0 && idx < len(a.transfer.categoryIDs) {
+			categoryID = types.NullableID{ID: a.transfer.categoryIDs[idx], Valid: true}
 		}
 	}
 

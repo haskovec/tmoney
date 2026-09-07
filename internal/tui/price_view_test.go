@@ -313,7 +313,7 @@ func TestHandlePriceViewKeys_DeleteShowsConfirm(t *testing.T) {
 	dKey := tea.KeyPressMsg{Code: 'd', Text: "d"}
 	app.handlePriceViewKeys(dKey)
 
-	if app.confirmDialog == nil {
+	if app.confirm.dlg == nil {
 		t.Error("confirm dialog should be set after pressing 'd'")
 	}
 }

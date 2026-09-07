@@ -117,18 +117,26 @@ func (a *App) loadFeeLiquidationDialogData() tea.Cmd {
 }
 
 // closeFeeLiquidationDialog clears the fee-liquidation dialog state.
+// feeLiquidationSurface is the feeLiquidation dialog and the state that belongs to it. The zero
+// value is closed.
+type feeLiquidationSurface struct {
+	modalSurface
+	data        *feeLiquidationDialogData
+	securityIDs []types.ID
+}
+
+func (s *feeLiquidationSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 func (a *App) closeFeeLiquidationDialog() {
-	a.feeLiquidationDialog = nil
-	a.feeLiquidationDialogData = nil
-	a.feeLiquidationDialogSecurityIDs = nil
+	a.feeLiquidation = feeLiquidationSurface{}
 }
 
 // handleFeeLiquidationDialogKey routes key events to the fee-liquidation dialog.
 func (a *App) handleFeeLiquidationDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.feeLiquidationDialog == nil {
+	if a.feeLiquidation.dlg == nil {
 		return a, nil
 	}
-	return a.feeLiquidationDialogAction(a.feeLiquidationDialog.HandleKey(msg))
+	return a.feeLiquidationDialogAction(a.feeLiquidation.dlg.HandleKey(msg))
 }
 
 // feeLiquidationDialogAction dispatches a DialogAction for the fee liquidation dialog, from either input path.
@@ -145,14 +153,14 @@ func (a *App) feeLiquidationDialogAction(action dialog.DialogAction) (tea.Model,
 
 // submitFeeLiquidationDialog parses fields, validates, and saves the fee-via-liquidation.
 func (a *App) submitFeeLiquidationDialog() (tea.Model, tea.Cmd) {
-	if a.feeLiquidationDialog == nil || a.feeLiquidationDialogData == nil {
+	if a.feeLiquidation.dlg == nil || a.feeLiquidation.data == nil {
 		return a, nil
 	}
-	fields := a.feeLiquidationDialog.Fields()
+	fields := a.feeLiquidation.dlg.Fields()
 	if len(fields) < 7 {
 		return a, nil
 	}
-	a.feeLiquidationDialog.ClearErrors()
+	a.feeLiquidation.dlg.ClearErrors()
 	hasErrors := false
 
 	// Date (index 0)
@@ -166,14 +174,14 @@ func (a *App) submitFeeLiquidationDialog() (tea.Model, tea.Cmd) {
 	}
 
 	// Security (index 1)
-	if len(a.feeLiquidationDialogSecurityIDs) == 0 {
+	if len(a.feeLiquidation.securityIDs) == 0 {
 		fields[1].Error = "No securities available"
 		hasErrors = true
 	}
 	secIdx := fields[1].SelectedIndex
 	var securityID types.ID
-	if secIdx >= 0 && secIdx < len(a.feeLiquidationDialogSecurityIDs) {
-		securityID = a.feeLiquidationDialogSecurityIDs[secIdx]
+	if secIdx >= 0 && secIdx < len(a.feeLiquidation.securityIDs) {
+		securityID = a.feeLiquidation.securityIDs[secIdx]
 	} else {
 		fields[1].Error = "Select a security"
 		hasErrors = true

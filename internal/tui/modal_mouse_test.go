@@ -29,17 +29,26 @@ import (
 // hand-listed set of fields per surface would miss exactly the fields the
 // inlined arms forgot.
 func modalStateSnapshot(a *App) map[string]bool {
-	v := reflect.ValueOf(a).Elem()
+	out := make(map[string]bool)
+	snapshotInto(out, "", reflect.ValueOf(a).Elem())
+	return out
+}
+
+// snapshotInto records the nil-ness of every pointer-like field under prefix,
+// descending into struct-typed fields so a per-surface struct's dialog handle,
+// data and ID slices are each visible as "surface.field".
+func snapshotInto(out map[string]bool, prefix string, v reflect.Value) {
 	t := v.Type()
-	out := make(map[string]bool, t.NumField())
 	for i := range t.NumField() {
 		f := v.Field(i)
+		name := prefix + t.Field(i).Name
 		switch f.Kind() {
 		case reflect.Ptr, reflect.Slice, reflect.Map, reflect.Interface, reflect.Func:
-			out[t.Field(i).Name] = f.IsNil()
+			out[name] = f.IsNil()
+		case reflect.Struct:
+			snapshotInto(out, name+".", f)
 		}
 	}
-	return out
 }
 
 func diffSnapshots(before, after map[string]bool) []string {

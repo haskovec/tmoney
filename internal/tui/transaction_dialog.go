@@ -404,21 +404,29 @@ func (a *App) loadEditTransactionDialogData(txnID types.ID) tea.Cmd {
 }
 
 // closeTransactionDialog clears the transaction dialog state.
+// txnSurface is the txn dialog and the state that belongs to it. The zero
+// value is closed.
+type txnSurface struct {
+	modalSurface
+	data        *transactionDialogData
+	categoryIDs []types.ID
+}
+
+func (s *txnSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 func (a *App) closeTransactionDialog() {
-	a.txnDialog = nil
-	a.txnDialogData = nil
-	a.txnDialogCategoryIDs = nil
+	a.txn = txnSurface{}
 }
 
 // checkPayeeAutoFill checks if the current payee field matches a known payee
 // and auto-fills the category dropdown if that payee has a default category.
 func (a *App) checkPayeeAutoFill() {
-	if a.txnDialog == nil || a.txnDialogData == nil {
+	if a.txn.dlg == nil || a.txn.data == nil {
 		return
 	}
 
 	// Get the payee field (index 1)
-	fields := a.txnDialog.Fields()
+	fields := a.txn.dlg.Fields()
 	if len(fields) < 2 {
 		return
 	}
@@ -428,14 +436,14 @@ func (a *App) checkPayeeAutoFill() {
 		return
 	}
 
-	py, ok := a.txnDialogData.payeeMap[payeeName]
+	py, ok := a.txn.data.payeeMap[payeeName]
 	if !ok || !py.HasDefaultCategory() {
 		return
 	}
 
 	// Find the category index
 	defaultCatID := py.DefaultCategoryID.ID
-	for i, catID := range a.txnDialogCategoryIDs {
+	for i, catID := range a.txn.categoryIDs {
 		if catID == defaultCatID {
 			// Category field is at index 2
 			if len(fields) > 2 {
@@ -451,10 +459,10 @@ func (a *App) checkPayeeAutoFill() {
 
 // handleTransactionDialogKey routes key events to the transaction dialog.
 func (a *App) handleTransactionDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.txnDialog == nil {
+	if a.txn.dlg == nil {
 		return a, nil
 	}
-	return a.transactionDialogAction(a.txnDialog.HandleKey(msg))
+	return a.transactionDialogAction(a.txn.dlg.HandleKey(msg))
 }
 
 // transactionDialogAction dispatches a DialogAction for the transaction dialog, from either input path.
@@ -470,7 +478,7 @@ func (a *App) transactionDialogAction(action dialog.DialogAction) (tea.Model, te
 	}
 
 	// Check for payee auto-fill after text input
-	if a.txnDialog.FocusIndex() == 1 {
+	if a.txn.dlg.FocusIndex() == 1 {
 		a.checkPayeeAutoFill()
 	}
 
@@ -484,10 +492,10 @@ func (a *App) transactionDialogAction(action dialog.DialogAction) (tea.Model, te
 // divert; restoration on cancel and post-create wiring happens through the
 // createCatDialog handlers.
 func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
-	if a.txnDialog == nil {
+	if a.txn.dlg == nil {
 		return a, nil
 	}
-	fields := a.txnDialog.Fields()
+	fields := a.txn.dlg.Fields()
 	if len(fields) < 3 {
 		return a, nil
 	}
@@ -500,8 +508,8 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 	catField.Query = ""
 
 	var parents []string
-	if a.txnDialogData != nil {
-		parents = topLevelParentNames(a.txnDialogData.categories)
+	if a.txn.data != nil {
+		parents = topLevelParentNames(a.txn.data.categories)
 	}
 	parent, name := splitCategoryQuery(query)
 	defaultType := category.TypeExpense
@@ -510,7 +518,7 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 	}
 	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, defaultType)
 	a.createCatSource = createCatSourceTxnDialog
-	a.txnDialog.SetVisible(false)
+	a.txn.dlg.SetVisible(false)
 	return a, nil
 }
 
@@ -562,12 +570,12 @@ func (a *App) cancelCreateCatDialog() {
 	a.createCatDialog = nil
 	switch a.createCatSource {
 	case createCatSourceTxnDialog:
-		if a.txnDialog != nil {
-			a.txnDialog.SetVisible(true)
+		if a.txn.dlg != nil {
+			a.txn.dlg.SetVisible(true)
 		}
 	case createCatSourceSchedDialog, createCatSourceSchedTransferDialog:
-		if a.schedDialog != nil {
-			a.schedDialog.SetVisible(true)
+		if a.sched.dlg != nil {
+			a.sched.dlg.SetVisible(true)
 		}
 	case createCatSourceSchedPreview:
 		if a.schedPreviewDialog != nil {
@@ -591,8 +599,8 @@ func (a *App) cancelCreateCatDialog() {
 		}
 		a.createCatLoanField = -1
 	case createCatSourceTransferDialog:
-		if a.transferDialog != nil {
-			a.transferDialog.SetVisible(true)
+		if a.transfer.dlg != nil {
+			a.transfer.dlg.SetVisible(true)
 		}
 	}
 	a.createCatSource = createCatSourceNone
@@ -623,12 +631,12 @@ func (a *App) submitCreateCatDialog() (tea.Model, tea.Cmd) {
 func (a *App) parentsForCreateCatDialog() []string {
 	switch a.createCatSource {
 	case createCatSourceTxnDialog:
-		if a.txnDialogData != nil {
-			return topLevelParentNames(a.txnDialogData.categories)
+		if a.txn.data != nil {
+			return topLevelParentNames(a.txn.data.categories)
 		}
 	case createCatSourceTransferDialog:
-		if a.transferDialogData != nil {
-			return topLevelParentNames(a.transferDialogData.categories)
+		if a.transfer.data != nil {
+			return topLevelParentNames(a.transfer.data.categories)
 		}
 	}
 	if a.categorySvc != nil {
@@ -647,14 +655,14 @@ func (a *App) parentsForCreateCatDialog() []string {
 // persistence happens in persistCategory; the router has already called it
 // and passes the freshly-created category in.
 func (a *App) applyCreatedCategoryToTxn(newCat *category.Category, cats []*category.Category) {
-	if a.txnDialogData != nil {
-		a.txnDialogData.categories = cats
+	if a.txn.data != nil {
+		a.txn.data.categories = cats
 	}
 	options, ids := buildCategoryOptionsForAccount(cats, a.sidebar.SelectedAccount())
-	a.txnDialogCategoryIDs = ids
+	a.txn.categoryIDs = ids
 
-	if a.txnDialog != nil && len(a.txnDialog.Fields()) >= 3 {
-		catField := a.txnDialog.Fields()[2]
+	if a.txn.dlg != nil && len(a.txn.dlg.Fields()) >= 3 {
+		catField := a.txn.dlg.Fields()[2]
 		catField.Options = options
 		newIdx := 0
 		for i, id := range ids {
@@ -665,24 +673,24 @@ func (a *App) applyCreatedCategoryToTxn(newCat *category.Category, cats []*categ
 		}
 		catField.SelectedIndex = newIdx
 		// Focus advances to Amount (field index 3).
-		a.txnDialog.SetFocusIndex(3)
-		a.txnDialog.SetVisible(true)
+		a.txn.dlg.SetFocusIndex(3)
+		a.txn.dlg.SetVisible(true)
 	}
 	a.createCatDialog = nil
 }
 
 // submitTransactionDialog parses dialog fields, validates, and saves the transaction.
 func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
-	if a.txnDialog == nil || a.txnDialogData == nil {
+	if a.txn.dlg == nil || a.txn.data == nil {
 		return a, nil
 	}
 
-	fields := a.txnDialog.Fields()
+	fields := a.txn.dlg.Fields()
 	if len(fields) < 7 {
 		return a, nil
 	}
 
-	a.txnDialog.ClearErrors()
+	a.txn.dlg.ClearErrors()
 	hasErrors := false
 
 	// Parse date
@@ -703,8 +711,8 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 	// Category
 	catIdx := fields[2].SelectedIndex
 	var categoryID types.ID
-	if catIdx > 0 && catIdx < len(a.txnDialogCategoryIDs) {
-		categoryID = a.txnDialogCategoryIDs[catIdx]
+	if catIdx > 0 && catIdx < len(a.txn.categoryIDs) {
+		categoryID = a.txn.categoryIDs[catIdx]
 	}
 
 	// Parse amount
@@ -733,12 +741,12 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 	// Get account ID from sidebar
 	accountID := a.sidebar.SelectedAccountID()
 
-	editing := a.txnDialogData.mode == transactionDialogModeEdit && a.txnDialogData.existing != nil
+	editing := a.txn.data.mode == transactionDialogModeEdit && a.txn.data.existing != nil
 	var existing *transaction.Transaction
 	hadSplits := false
 	if editing {
-		existing = a.txnDialogData.existing
-		hadSplits = len(a.txnDialogData.existingSplits) > 0
+		existing = a.txn.data.existing
+		hadSplits = len(a.txn.data.existingSplits) > 0
 	}
 
 	if isSplit {
@@ -757,9 +765,9 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		a.pendingSplitTxn = pending
 
 		// Build category options for the split dialog (reuse loaded data)
-		categoryOptions, categoryIDs := buildCategoryOptions(a.txnDialogData.categories)
-		seedSplits := a.txnDialogData.existingSplits
-		accountOptions, accountIDs := buildSplitTransferAccountOptions(a.txnDialogData.accounts)
+		categoryOptions, categoryIDs := buildCategoryOptions(a.txn.data.categories)
+		seedSplits := a.txn.data.existingSplits
+		accountOptions, accountIDs := buildSplitTransferAccountOptions(a.txn.data.accounts)
 
 		// Close the transaction dialog
 		a.closeTransactionDialog()

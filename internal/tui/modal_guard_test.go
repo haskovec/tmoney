@@ -121,7 +121,9 @@ func modalFieldsOnApp(t *testing.T) []string {
 	var out []string
 	for i := range appT.NumField() {
 		f := appT.Field(i)
-		if f.Type.Implements(modalT) {
+		// A pointer field implements Modal directly; a value-typed surface does
+		// so through its pointer, which is how the registry holds it (&a.sell).
+		if f.Type.Implements(modalT) || reflect.PointerTo(f.Type).Implements(modalT) {
 			out = append(out, f.Name)
 		}
 	}
@@ -203,6 +205,10 @@ func registryNamesByField(t *testing.T) map[string]string {
 // appFieldOf returns the App field name an entry's modal expression reads, or
 // "" for adapter types and multi-step expressions.
 func appFieldOf(e ast.Expr) string {
+	// &a.sell → the surface value's address; the field is a.sell.
+	if u, ok := e.(*ast.UnaryExpr); ok && u.Op == token.AND {
+		return appFieldOf(u.X)
+	}
 	// a.backupDialog.Dialog() → the receiver chain's first App field.
 	if call, ok := e.(*ast.CallExpr); ok {
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
@@ -240,6 +246,11 @@ func TestGuard_SelfTest(t *testing.T) {
 			t.Errorf("appFieldOf(a.sellDialog) = %q, want sellDialog", got)
 		}
 	})
+	t.Run("appFieldOf reads through an address-of", func(t *testing.T) {
+		if got := appFieldOf(mustParseExpr(t, "&a.sell")); got != "sell" {
+			t.Errorf("appFieldOf(&a.sell) = %q, want sell", got)
+		}
+	})
 	t.Run("appFieldOf reaches through a nil-safe accessor", func(t *testing.T) {
 		if got := appFieldOf(mustParseExpr(t, "a.backupDialog.Dialog()")); got != "backupDialog" {
 			t.Errorf("appFieldOf(a.backupDialog.Dialog()) = %q, want backupDialog", got)
@@ -252,7 +263,7 @@ func TestGuard_SelfTest(t *testing.T) {
 	})
 	t.Run("reflection finds both bare dialogs and surface structs", func(t *testing.T) {
 		fields := modalFieldsOnApp(t)
-		for _, want := range []string{"txnDialog", "splitDialog", "paycheckWizard",
+		for _, want := range []string{"txn", "buy", "splitDialog", "paycheckWizard",
 			"security", "closeAcct", "importer", "linkTransfers", "loan", "price"} {
 			if !slices.Contains(fields, want) {
 				t.Errorf("reflection missed the modal field %q", want)

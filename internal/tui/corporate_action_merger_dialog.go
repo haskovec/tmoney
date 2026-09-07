@@ -84,18 +84,27 @@ func (a *App) loadMergerDialogData() tea.Cmd {
 }
 
 // closeMergerDialog clears the merger dialog state.
+// mergerSurface is the merger dialog and the state that belongs to it. The zero
+// value is closed.
+type mergerSurface struct {
+	modalSurface
+	data          *mergerDialogData
+	securityIDs   []types.ID
+	preSelectedID *types.ID
+}
+
+func (s *mergerSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 func (a *App) closeMergerDialog() {
-	a.mergerDialog = nil
-	a.mergerDialogData = nil
-	a.mergerDialogSecurityIDs = nil
+	a.merger = mergerSurface{}
 }
 
 // handleMergerDialogKey routes key events to the merger dialog.
 func (a *App) handleMergerDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.mergerDialog == nil {
+	if a.merger.dlg == nil {
 		return a, nil
 	}
-	return a.mergerDialogAction(a.mergerDialog.HandleKey(msg))
+	return a.mergerDialogAction(a.merger.dlg.HandleKey(msg))
 }
 
 // mergerDialogAction dispatches a DialogAction for the merger dialog, from either input path.
@@ -113,27 +122,27 @@ func (a *App) mergerDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd
 
 // submitMergerDialog validates and executes the merger.
 func (a *App) submitMergerDialog() (tea.Model, tea.Cmd) {
-	if a.mergerDialog == nil || a.mergerDialogData == nil {
+	if a.merger.dlg == nil || a.merger.data == nil {
 		return a, nil
 	}
 
-	fields := a.mergerDialog.Fields()
+	fields := a.merger.dlg.Fields()
 	if len(fields) < 5 {
 		return a, nil
 	}
 
-	a.mergerDialog.ClearErrors()
+	a.merger.dlg.ClearErrors()
 	hasErrors := false
 
 	// Source Security (index 0)
-	if len(a.mergerDialogSecurityIDs) == 0 {
+	if len(a.merger.securityIDs) == 0 {
 		fields[0].Error = "No securities available"
 		hasErrors = true
 	}
 	sourceIdx := fields[0].SelectedIndex
 	var sourceSecurityID types.ID
-	if sourceIdx >= 0 && sourceIdx < len(a.mergerDialogSecurityIDs) {
-		sourceSecurityID = a.mergerDialogSecurityIDs[sourceIdx]
+	if sourceIdx >= 0 && sourceIdx < len(a.merger.securityIDs) {
+		sourceSecurityID = a.merger.securityIDs[sourceIdx]
 	} else {
 		fields[0].Error = "Select a source security"
 		hasErrors = true
@@ -142,8 +151,8 @@ func (a *App) submitMergerDialog() (tea.Model, tea.Cmd) {
 	// Target Security (index 1)
 	targetIdx := fields[1].SelectedIndex
 	var targetSecurityID types.ID
-	if targetIdx >= 0 && targetIdx < len(a.mergerDialogSecurityIDs) {
-		targetSecurityID = a.mergerDialogSecurityIDs[targetIdx]
+	if targetIdx >= 0 && targetIdx < len(a.merger.securityIDs) {
+		targetSecurityID = a.merger.securityIDs[targetIdx]
 	} else {
 		fields[1].Error = "Select a target security"
 		hasErrors = true
@@ -199,7 +208,7 @@ func (a *App) submitMergerDialog() (tea.Model, tea.Cmd) {
 	}
 
 	// Store parameters and transition to confirmation step
-	a.mergerConfirmParams = &mergerConfirmParams{
+	a.mergerConfirm.params = &mergerConfirmParams{
 		sourceSecurityID: sourceSecurityID,
 		targetSecurityID: targetSecurityID,
 		mergerDate:       mergerDate,

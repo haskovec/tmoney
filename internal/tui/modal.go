@@ -124,7 +124,7 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "confirm",
-			modal:    a.confirmDialog,
+			modal:    &a.confirm,
 			onKey:    (*App).handleConfirmDialogKey,
 			onAction: (*App).confirmDialogAction,
 		},
@@ -144,7 +144,7 @@ func (a *App) modals() []modalEntry {
 		// before the ordinary action dispatch.
 		{
 			name:     "file",
-			modal:    a.fileDialog,
+			modal:    &a.file,
 			onKey:    (*App).handleFileDialogKey,
 			onAction: (*App).fileDialogAction,
 			onMouse:  (*App).handleFileDialogMouse,
@@ -182,19 +182,19 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "transaction",
-			modal:    a.txnDialog,
+			modal:    &a.txn,
 			onKey:    (*App).handleTransactionDialogKey,
 			onAction: (*App).transactionDialogAction,
 		},
 		{
 			name:     "transfer",
-			modal:    a.transferDialog,
+			modal:    &a.transfer,
 			onKey:    (*App).handleTransferDialogKey,
 			onAction: (*App).transferDialogAction,
 		},
 		{
 			name:     "scheduled",
-			modal:    a.schedDialog,
+			modal:    &a.sched,
 			onKey:    (*App).handleScheduledDialogKey,
 			onAction: (*App).scheduledDialogAction,
 		},
@@ -223,7 +223,7 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "account",
-			modal:    a.acctDialog,
+			modal:    &a.acct,
 			onKey:    (*App).handleAccountDialogKey,
 			onAction: (*App).accountDialogAction,
 		},
@@ -259,37 +259,37 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "buy",
-			modal:    a.buyDialog,
+			modal:    &a.buy,
 			onKey:    (*App).handleBuyDialogKey,
 			onAction: (*App).buyDialogAction,
 		},
 		{
 			name:     "sell",
-			modal:    a.sellDialog,
+			modal:    &a.sell,
 			onKey:    (*App).handleSellDialogKey,
 			onAction: (*App).sellDialogAction,
 		},
 		{
 			name:     "feeLiquidation",
-			modal:    a.feeLiquidationDialog,
+			modal:    &a.feeLiquidation,
 			onKey:    (*App).handleFeeLiquidationDialogKey,
 			onAction: (*App).feeLiquidationDialogAction,
 		},
 		{
 			name:     "dividend",
-			modal:    a.dividendDialog,
+			modal:    &a.dividend,
 			onKey:    (*App).handleDividendDialogKey,
 			onAction: (*App).dividendDialogAction,
 		},
 		{
 			name:     "transferShares",
-			modal:    a.transferSharesDialog,
+			modal:    &a.transferShares,
 			onKey:    (*App).handleTransferSharesDialogKey,
 			onAction: (*App).transferSharesDialogAction,
 		},
 		{
 			name:     "stockSplit",
-			modal:    a.stockSplitDialog,
+			modal:    &a.stockSplit,
 			onKey:    (*App).handleStockSplitDialogKey,
 			onAction: (*App).stockSplitDialogAction,
 		},
@@ -306,19 +306,19 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "merger",
-			modal:    a.mergerDialog,
+			modal:    &a.merger,
 			onKey:    (*App).handleMergerDialogKey,
 			onAction: (*App).mergerDialogAction,
 		},
 		{
 			name:     "spinOff",
-			modal:    a.spinOffDialog,
+			modal:    &a.spinOff,
 			onKey:    (*App).handleSpinOffDialogKey,
 			onAction: (*App).spinOffDialogAction,
 		},
 		{
 			name:     "cashOperation",
-			modal:    a.cashOperationDialog,
+			modal:    &a.cashOperation,
 			onKey:    (*App).handleCashOperationDialogKey,
 			onAction: (*App).cashOperationDialogAction,
 		},
@@ -404,7 +404,7 @@ func (a *App) handleHelpOverlayMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // presence of its loaded data rather than a flag, to Modal.
 type mergerConfirmModal struct{ a *App }
 
-func (m mergerConfirmModal) IsVisible() bool { return m.a != nil && m.a.mergerConfirmData != nil }
+func (m mergerConfirmModal) IsVisible() bool { return m.a != nil && m.a.mergerConfirm.data != nil }
 
 func (m mergerConfirmModal) Render(styles widget.Styles) string {
 	return m.a.renderMergerConfirmation()

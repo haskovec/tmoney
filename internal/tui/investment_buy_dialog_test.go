@@ -490,11 +490,12 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		buyDialog: buildBuyDialog([]string{"AAPL - Apple Inc."}, nil, secIDs),
-		buyDialogData: &buyDialogData{
-			securities: []*security.Security{},
-		},
-		buyDialogSecurityIDs: secIDs,
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog([]string{"AAPL - Apple Inc."}, nil, secIDs)},
+			data: &buyDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -505,7 +506,7 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 	}
 
 	// Set invalid values
-	fields := app.buyDialog.Fields()
+	fields := app.buy.dlg.Fields()
 	fields[0].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty shares
 	fields[3].Value = ""           // no total
@@ -515,7 +516,7 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 	updatedApp := model.(*App)
 
 	// Should not close dialog when errors exist
-	if updatedApp.buyDialog == nil {
+	if updatedApp.buy.dlg == nil {
 		t.Error("dialog should remain open on validation errors")
 	}
 	if cmd != nil {
@@ -523,7 +524,7 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 	}
 
 	// Check field errors
-	fields = updatedApp.buyDialog.Fields()
+	fields = updatedApp.buy.dlg.Fields()
 	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
@@ -541,9 +542,10 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 func TestSubmitBuyDialog_RejectsDateBeforeAccountOpening(t *testing.T) {
 	secID := types.NewID()
 	app := &App{
-		buyDialog:            buildBuyDialog([]string{"AAPL - Apple Inc."}, nil, []types.ID{secID}),
-		buyDialogData:        &buyDialogData{securities: []*security.Security{}},
-		buyDialogSecurityIDs: []types.ID{secID},
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog([]string{"AAPL - Apple Inc."}, nil, []types.ID{secID})},
+			data:        &buyDialogData{securities: []*security.Security{}},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel:   types.NewBaseModel(),
@@ -554,7 +556,7 @@ func TestSubmitBuyDialog_RejectsDateBeforeAccountOpening(t *testing.T) {
 		},
 	}
 
-	fields := app.buyDialog.Fields()
+	fields := app.buy.dlg.Fields()
 	fields[0].Value = "06/15/2019" // parses fine, but precedes the opening date
 	fields[2].Value = "10"
 	fields[4].Value = "150.00"
@@ -565,10 +567,10 @@ func TestSubmitBuyDialog_RejectsDateBeforeAccountOpening(t *testing.T) {
 	if cmd != nil {
 		t.Error("submit must not proceed when the date precedes the account's opening date")
 	}
-	if updatedApp.buyDialog == nil {
+	if updatedApp.buy.dlg == nil {
 		t.Fatal("dialog should remain open so the user can fix the date")
 	}
-	got := updatedApp.buyDialog.Fields()[0].Error
+	got := updatedApp.buy.dlg.Fields()[0].Error
 	if got == "" || got == "Invalid date (MM/DD/YYYY)" {
 		t.Errorf("date field should carry the opening-date error, got %q", got)
 	}
@@ -601,15 +603,17 @@ func TestSubmitBuyDialog_ValidWithPricePerShare(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		buyDialog: buildBuyDialog(
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		buyDialogData: &buyDialogData{
-			securities: []*security.Security{},
-		},
-		buyDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data: &buyDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -619,7 +623,7 @@ func TestSubmitBuyDialog_ValidWithPricePerShare(t *testing.T) {
 		},
 	}
 
-	fields := app.buyDialog.Fields()
+	fields := app.buy.dlg.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "10"         // shares
 	fields[4].Value = "185.00"     // price per share
@@ -628,7 +632,7 @@ func TestSubmitBuyDialog_ValidWithPricePerShare(t *testing.T) {
 	updatedApp := model.(*App)
 
 	// Should close dialog on valid submit
-	if updatedApp.buyDialog != nil {
+	if updatedApp.buy.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -641,15 +645,17 @@ func TestSubmitBuyDialog_ValidWithTotal(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		buyDialog: buildBuyDialog(
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		buyDialogData: &buyDialogData{
-			securities: []*security.Security{},
-		},
-		buyDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data: &buyDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -659,7 +665,7 @@ func TestSubmitBuyDialog_ValidWithTotal(t *testing.T) {
 		},
 	}
 
-	fields := app.buyDialog.Fields()
+	fields := app.buy.dlg.Fields()
 	fields[0].Value = "06/01/2024" // date
 	fields[2].Value = "5"          // shares
 	fields[3].Value = "925.00"     // total amount
@@ -667,7 +673,7 @@ func TestSubmitBuyDialog_ValidWithTotal(t *testing.T) {
 	model, cmd := app.submitBuyDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.buyDialog != nil {
+	if updatedApp.buy.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -677,14 +683,14 @@ func TestSubmitBuyDialog_ValidWithTotal(t *testing.T) {
 
 func TestSubmitBuyDialog_NoSecurities(t *testing.T) {
 	app := &App{
-		buyDialog: buildBuyDialog([]string{}, nil, []types.ID{}),
-		buyDialogData: &buyDialogData{
-			securities: []*security.Security{},
-		},
-		buyDialogSecurityIDs: []types.ID{},
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog([]string{}, nil, []types.ID{})},
+			data: &buyDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{}},
 	}
 
-	fields := app.buyDialog.Fields()
+	fields := app.buy.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[4].Value = "185.00"
@@ -693,10 +699,10 @@ func TestSubmitBuyDialog_NoSecurities(t *testing.T) {
 	updatedApp := model.(*App)
 
 	// Should stay open with security error
-	if updatedApp.buyDialog == nil {
+	if updatedApp.buy.dlg == nil {
 		t.Error("dialog should remain open when no securities available")
 	}
-	fields = updatedApp.buyDialog.Fields()
+	fields = updatedApp.buy.dlg.Fields()
 	if fields[1].Error == "" {
 		t.Error("security field should have error when no securities available")
 	}
@@ -706,13 +712,15 @@ func TestSubmitBuyDialog_InvalidCommission(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		buyDialog: buildBuyDialog(
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		buyDialogData:        &buyDialogData{},
-		buyDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &buyDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -721,7 +729,7 @@ func TestSubmitBuyDialog_InvalidCommission(t *testing.T) {
 		},
 	}
 
-	fields := app.buyDialog.Fields()
+	fields := app.buy.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[4].Value = "185.00"
@@ -730,10 +738,10 @@ func TestSubmitBuyDialog_InvalidCommission(t *testing.T) {
 	model, _ := app.submitBuyDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.buyDialog == nil {
+	if updatedApp.buy.dlg == nil {
 		t.Error("dialog should remain open on commission error")
 	}
-	fields = updatedApp.buyDialog.Fields()
+	fields = updatedApp.buy.dlg.Fields()
 	if fields[5].Error == "" {
 		t.Error("commission field should have error")
 	}
@@ -743,26 +751,27 @@ func TestHandleBuyDialogKey_Cancel(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		buyDialog: buildBuyDialog(
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		buyDialogData:        &buyDialogData{},
-		buyDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &buyDialogData{},
+			securityIDs: []types.ID{secID}},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleBuyDialogKey(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.buyDialog != nil {
+	if updatedApp.buy.dlg != nil {
 		t.Error("dialog should be closed after Escape")
 	}
-	if updatedApp.buyDialogData != nil {
+	if updatedApp.buy.data != nil {
 		t.Error("dialog data should be cleared after cancel")
 	}
-	if updatedApp.buyDialogSecurityIDs != nil {
+	if updatedApp.buy.securityIDs != nil {
 		t.Error("dialog security IDs should be cleared after cancel")
 	}
 }
@@ -798,24 +807,25 @@ func TestCloseBuyDialog(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		buyDialog: buildBuyDialog(
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		buyDialogData:        &buyDialogData{},
-		buyDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &buyDialogData{},
+			securityIDs: []types.ID{secID}},
 	}
 
 	app.closeBuyDialog()
 
-	if app.buyDialog != nil {
+	if app.buy.dlg != nil {
 		t.Error("buyDialog should be nil after close")
 	}
-	if app.buyDialogData != nil {
+	if app.buy.data != nil {
 		t.Error("buyDialogData should be nil after close")
 	}
-	if app.buyDialogSecurityIDs != nil {
+	if app.buy.securityIDs != nil {
 		t.Error("buyDialogSecurityIDs should be nil after close")
 	}
 }
@@ -844,13 +854,15 @@ func TestSubmitBuyDialog_InvalidPrice(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		buyDialog: buildBuyDialog(
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		buyDialogData:        &buyDialogData{},
-		buyDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &buyDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -859,7 +871,7 @@ func TestSubmitBuyDialog_InvalidPrice(t *testing.T) {
 		},
 	}
 
-	fields := app.buyDialog.Fields()
+	fields := app.buy.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = ""
@@ -868,10 +880,10 @@ func TestSubmitBuyDialog_InvalidPrice(t *testing.T) {
 	model, _ := app.submitBuyDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.buyDialog == nil {
+	if updatedApp.buy.dlg == nil {
 		t.Error("dialog should remain open on price error")
 	}
-	fields = updatedApp.buyDialog.Fields()
+	fields = updatedApp.buy.dlg.Fields()
 	if fields[4].Error == "" {
 		t.Error("price field should have error")
 	}
@@ -881,13 +893,15 @@ func TestSubmitBuyDialog_InvalidTotal(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		buyDialog: buildBuyDialog(
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		buyDialogData:        &buyDialogData{},
-		buyDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &buyDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -896,7 +910,7 @@ func TestSubmitBuyDialog_InvalidTotal(t *testing.T) {
 		},
 	}
 
-	fields := app.buyDialog.Fields()
+	fields := app.buy.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "not-valid" // invalid total
@@ -905,10 +919,10 @@ func TestSubmitBuyDialog_InvalidTotal(t *testing.T) {
 	model, _ := app.submitBuyDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.buyDialog == nil {
+	if updatedApp.buy.dlg == nil {
 		t.Error("dialog should remain open on total error")
 	}
-	fields = updatedApp.buyDialog.Fields()
+	fields = updatedApp.buy.dlg.Fields()
 	if fields[3].Error == "" {
 		t.Error("total field should have error")
 	}
@@ -919,13 +933,15 @@ func TestSubmitBuyDialog_WithCommissionAndMemo(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		buyDialog: buildBuyDialog(
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		buyDialogData:        &buyDialogData{},
-		buyDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &buyDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -935,7 +951,7 @@ func TestSubmitBuyDialog_WithCommissionAndMemo(t *testing.T) {
 		},
 	}
 
-	fields := app.buyDialog.Fields()
+	fields := app.buy.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[4].Value = "185.00"
@@ -945,7 +961,7 @@ func TestSubmitBuyDialog_WithCommissionAndMemo(t *testing.T) {
 	model, cmd := app.submitBuyDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.buyDialog != nil {
+	if updatedApp.buy.dlg != nil {
 		t.Error("dialog should close on valid submit with commission and memo")
 	}
 	if cmd == nil {
@@ -958,13 +974,15 @@ func TestSubmitBuyDialog_DollarSignInCommission(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		buyDialog: buildBuyDialog(
+		buy: buySurface{modalSurface: modalSurface{dlg: buildBuyDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		buyDialogData:        &buyDialogData{},
-		buyDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &buyDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -973,7 +991,7 @@ func TestSubmitBuyDialog_DollarSignInCommission(t *testing.T) {
 		},
 	}
 
-	fields := app.buyDialog.Fields()
+	fields := app.buy.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[4].Value = "$185.00" // dollar sign in price
@@ -982,7 +1000,7 @@ func TestSubmitBuyDialog_DollarSignInCommission(t *testing.T) {
 	model, cmd := app.submitBuyDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.buyDialog != nil {
+	if updatedApp.buy.dlg != nil {
 		t.Error("dialog should close (dollar signs stripped)")
 	}
 	if cmd == nil {
@@ -1003,10 +1021,10 @@ func TestApp_Update_BuyDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 	model, _ := app.Update(buyDialogDataMsg{data: &buyDialogData{}})
 	updatedApp := model.(*App)
 
-	if updatedApp.buyDialog == nil {
+	if updatedApp.buy.dlg == nil {
 		t.Fatal("buy dialog should be created")
 	}
-	if got := updatedApp.buyDialog.Fields()[0].Value; got != "01/15/2024" {
+	if got := updatedApp.buy.dlg.Fields()[0].Value; got != "01/15/2024" {
 		t.Errorf("date field = %q, want %q (seeded from sticky date)", got, "01/15/2024")
 	}
 }
@@ -1024,7 +1042,7 @@ func TestApp_Update_BuyDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *testing.
 	updatedApp := model.(*App)
 
 	today := time.Now().Format("01/02/2006")
-	if got := updatedApp.buyDialog.Fields()[0].Value; got != today {
+	if got := updatedApp.buy.dlg.Fields()[0].Value; got != today {
 		t.Errorf("date field = %q, want %q (today)", got, today)
 	}
 }

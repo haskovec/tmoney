@@ -65,7 +65,7 @@ func TestApp_SubmitTransferDialog_DispatchesInvToInv(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"IRA A", "IRA B"}, 0)
 			d.AddSelectField("To", []string{"IRA A", "IRA B"}, 1)
@@ -74,14 +74,15 @@ func TestApp_SubmitTransferDialog_DispatchesInvToInv(t *testing.T) {
 			d.AddTextField("Memo", "rollover", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{
-				{BaseModel: types.BaseModel{ID: fromID}, Name: "IRA A", Type: account.TypeInvestment},
-				{BaseModel: types.BaseModel{ID: toID}, Name: "IRA B", Type: account.TypeInvestment},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{
+					{BaseModel: types.BaseModel{ID: fromID}, Name: "IRA A", Type: account.TypeInvestment},
+					{BaseModel: types.BaseModel{ID: toID}, Name: "IRA B", Type: account.TypeInvestment},
+				},
 			},
-		},
-		transferDialogAccountIDs: []types.ID{fromID, toID},
+			accountIDs: []types.ID{fromID, toID}},
 	}
 
 	model, cmd := app.submitTransferDialog()
@@ -90,7 +91,7 @@ func TestApp_SubmitTransferDialog_DispatchesInvToInv(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("inv↔inv transfer should return a non-nil cmd")
 	}
-	if updatedApp.transferDialog != nil {
+	if updatedApp.transfer.dlg != nil {
 		t.Error("transfer dialog should be closed after a valid submit")
 	}
 }
@@ -104,7 +105,7 @@ func TestApp_SubmitTransferDialog_DispatchesInvToReg(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Brokerage", "Checking"}, 0)
 			d.AddSelectField("To", []string{"Brokerage", "Checking"}, 1)
@@ -113,14 +114,15 @@ func TestApp_SubmitTransferDialog_DispatchesInvToReg(t *testing.T) {
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{
-				{BaseModel: types.BaseModel{ID: fromID}, Name: "Brokerage", Type: account.TypeInvestment},
-				{BaseModel: types.BaseModel{ID: toID}, Name: "Checking", Type: account.TypeChecking},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{
+					{BaseModel: types.BaseModel{ID: fromID}, Name: "Brokerage", Type: account.TypeInvestment},
+					{BaseModel: types.BaseModel{ID: toID}, Name: "Checking", Type: account.TypeChecking},
+				},
 			},
-		},
-		transferDialogAccountIDs: []types.ID{fromID, toID},
+			accountIDs: []types.ID{fromID, toID}},
 	}
 
 	model, cmd := app.submitTransferDialog()
@@ -129,7 +131,7 @@ func TestApp_SubmitTransferDialog_DispatchesInvToReg(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("inv→reg transfer should return a non-nil cmd")
 	}
-	if updatedApp.transferDialog != nil {
+	if updatedApp.transfer.dlg != nil {
 		t.Error("transfer dialog should be closed after a valid submit")
 	}
 }
@@ -143,7 +145,7 @@ func TestApp_SubmitTransferDialog_DispatchesRegToInv(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Brokerage"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Brokerage"}, 1)
@@ -152,14 +154,15 @@ func TestApp_SubmitTransferDialog_DispatchesRegToInv(t *testing.T) {
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{
-				{BaseModel: types.BaseModel{ID: fromID}, Name: "Checking", Type: account.TypeChecking},
-				{BaseModel: types.BaseModel{ID: toID}, Name: "Brokerage", Type: account.TypeInvestment},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{
+					{BaseModel: types.BaseModel{ID: fromID}, Name: "Checking", Type: account.TypeChecking},
+					{BaseModel: types.BaseModel{ID: toID}, Name: "Brokerage", Type: account.TypeInvestment},
+				},
 			},
-		},
-		transferDialogAccountIDs: []types.ID{fromID, toID},
+			accountIDs: []types.ID{fromID, toID}},
 	}
 
 	model, cmd := app.submitTransferDialog()
@@ -168,7 +171,7 @@ func TestApp_SubmitTransferDialog_DispatchesRegToInv(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("reg→inv transfer should return a non-nil cmd")
 	}
-	if updatedApp.transferDialog != nil {
+	if updatedApp.transfer.dlg != nil {
 		t.Error("transfer dialog should be closed after a valid submit")
 	}
 }
@@ -440,20 +443,20 @@ func TestApp_Update_TransferDialogDataMsg(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.transferDialog == nil {
+	if updatedApp.transfer.dlg == nil {
 		t.Fatal("transfer dialog should be created")
 	}
-	if !updatedApp.transferDialog.IsVisible() {
+	if !updatedApp.transfer.dlg.IsVisible() {
 		t.Error("transfer dialog should be visible")
 	}
-	if updatedApp.transferDialogData == nil {
+	if updatedApp.transfer.data == nil {
 		t.Error("transfer dialog data should be set")
 	}
-	if updatedApp.transferDialogAccountIDs == nil {
+	if updatedApp.transfer.accountIDs == nil {
 		t.Error("transfer dialog account IDs should be set")
 	}
-	if len(updatedApp.transferDialogAccountIDs) != 2 {
-		t.Errorf("expected 2 account IDs, got %d", len(updatedApp.transferDialogAccountIDs))
+	if len(updatedApp.transfer.accountIDs) != 2 {
+		t.Errorf("expected 2 account IDs, got %d", len(updatedApp.transfer.accountIDs))
 	}
 }
 
@@ -485,11 +488,11 @@ func TestApp_Update_TransferDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 	model, _ := app.Update(transferDialogDataMsg{data: data})
 	updatedApp := model.(*App)
 
-	if updatedApp.transferDialog == nil {
+	if updatedApp.transfer.dlg == nil {
 		t.Fatal("transfer dialog should be created")
 	}
 	// New-transfer field order: From(0), To(1), Amount(2), Date(3), Memo(4).
-	dateValue := updatedApp.transferDialog.Fields()[3].Value
+	dateValue := updatedApp.transfer.dlg.Fields()[3].Value
 	if dateValue != "01/15/2024" {
 		t.Errorf("date field = %q, want %q (seeded from sticky date)", dateValue, "01/15/2024")
 	}
@@ -504,7 +507,7 @@ func TestApp_SubmitTransferDialog_PassesSavedDateInMessage(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
@@ -513,11 +516,12 @@ func TestApp_SubmitTransferDialog_PassesSavedDateInMessage(t *testing.T) {
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{},
-		},
-		transferDialogAccountIDs: []types.ID{fromID, toID},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{},
+			},
+			accountIDs: []types.ID{fromID, toID}},
 	}
 
 	_, cmd := app.submitTransferDialog()
@@ -543,7 +547,7 @@ func TestApp_HandleTransferDialogKey_Cancel(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
@@ -552,11 +556,12 @@ func TestApp_HandleTransferDialogKey_Cancel(t *testing.T) {
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{},
-		},
-		transferDialogAccountIDs: []types.ID{types.NewID(), types.NewID()},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{},
+			},
+			accountIDs: []types.ID{types.NewID(), types.NewID()}},
 	}
 
 	// Press Escape to cancel
@@ -564,13 +569,13 @@ func TestApp_HandleTransferDialogKey_Cancel(t *testing.T) {
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.transferDialog != nil {
+	if updatedApp.transfer.dlg != nil {
 		t.Error("transfer dialog should be nil after cancel")
 	}
-	if updatedApp.transferDialogData != nil {
+	if updatedApp.transfer.data != nil {
 		t.Error("transfer dialog data should be nil after cancel")
 	}
-	if updatedApp.transferDialogAccountIDs != nil {
+	if updatedApp.transfer.accountIDs != nil {
 		t.Error("transfer dialog account IDs should be nil after cancel")
 	}
 }
@@ -582,7 +587,7 @@ func TestApp_HandleTransferDialogKey_TabCycles(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
@@ -591,14 +596,15 @@ func TestApp_HandleTransferDialogKey_TabCycles(t *testing.T) {
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{},
-		},
-		transferDialogAccountIDs: []types.ID{types.NewID(), types.NewID()},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{},
+			},
+			accountIDs: []types.ID{types.NewID(), types.NewID()}},
 	}
 
-	initialFocus := app.transferDialog.FocusIndex()
+	initialFocus := app.transfer.dlg.FocusIndex()
 	if initialFocus != 0 {
 		t.Fatalf("initial focus = %d, want 0", initialFocus)
 	}
@@ -608,8 +614,8 @@ func TestApp_HandleTransferDialogKey_TabCycles(t *testing.T) {
 	model, _ := app.Update(tabKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.transferDialog.FocusIndex() != 1 {
-		t.Errorf("focus after Tab = %d, want 1", updatedApp.transferDialog.FocusIndex())
+	if updatedApp.transfer.dlg.FocusIndex() != 1 {
+		t.Errorf("focus after Tab = %d, want 1", updatedApp.transfer.dlg.FocusIndex())
 	}
 }
 
@@ -737,7 +743,7 @@ func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking"}, 0)
 			d.AddSelectField("To", []string{"Checking"}, 0) // same account
@@ -746,11 +752,12 @@ func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{},
-		},
-		transferDialogAccountIDs: []types.ID{accountID},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{},
+			},
+			accountIDs: []types.ID{accountID}},
 	}
 
 	_, cmd := app.submitTransferDialog()
@@ -758,14 +765,14 @@ func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
 	if cmd != nil {
 		t.Error("same-account transfer should not return a cmd")
 	}
-	if app.transferDialog == nil {
+	if app.transfer.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.transferDialog.ErrorMsg() == "" {
+	if app.transfer.dlg.ErrorMsg() == "" {
 		t.Error("same-account transfer should set dialog-level error")
 	}
-	if !strings.Contains(app.transferDialog.ErrorMsg(), "different") {
-		t.Errorf("error = %q, should mention accounts must be different", app.transferDialog.ErrorMsg())
+	if !strings.Contains(app.transfer.dlg.ErrorMsg(), "different") {
+		t.Errorf("error = %q, should mention accounts must be different", app.transfer.dlg.ErrorMsg())
 	}
 }
 
@@ -778,7 +785,7 @@ func TestApp_SubmitTransferDialog_NegativeAmount(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
@@ -787,11 +794,12 @@ func TestApp_SubmitTransferDialog_NegativeAmount(t *testing.T) {
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{},
-		},
-		transferDialogAccountIDs: []types.ID{fromID, toID},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{},
+			},
+			accountIDs: []types.ID{fromID, toID}},
 	}
 
 	_, cmd := app.submitTransferDialog()
@@ -799,14 +807,14 @@ func TestApp_SubmitTransferDialog_NegativeAmount(t *testing.T) {
 	if cmd != nil {
 		t.Error("negative amount transfer should not return a cmd")
 	}
-	if app.transferDialog == nil {
+	if app.transfer.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.transferDialog.Fields()[2].Error == "" {
+	if app.transfer.dlg.Fields()[2].Error == "" {
 		t.Error("negative amount should set field-level error on amount")
 	}
-	if !strings.Contains(app.transferDialog.Fields()[2].Error, "positive") {
-		t.Errorf("error = %q, should mention amount must be positive", app.transferDialog.Fields()[2].Error)
+	if !strings.Contains(app.transfer.dlg.Fields()[2].Error, "positive") {
+		t.Errorf("error = %q, should mention amount must be positive", app.transfer.dlg.Fields()[2].Error)
 	}
 }
 
@@ -819,7 +827,7 @@ func TestApp_SubmitTransferDialog_InvalidDate(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
@@ -828,11 +836,12 @@ func TestApp_SubmitTransferDialog_InvalidDate(t *testing.T) {
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{},
-		},
-		transferDialogAccountIDs: []types.ID{fromID, toID},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{},
+			},
+			accountIDs: []types.ID{fromID, toID}},
 	}
 
 	_, cmd := app.submitTransferDialog()
@@ -840,10 +849,10 @@ func TestApp_SubmitTransferDialog_InvalidDate(t *testing.T) {
 	if cmd != nil {
 		t.Error("invalid date transfer should not return a cmd")
 	}
-	if app.transferDialog == nil {
+	if app.transfer.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.transferDialog.Fields()[3].Error == "" {
+	if app.transfer.dlg.Fields()[3].Error == "" {
 		t.Error("invalid date should set field-level error")
 	}
 }
@@ -857,7 +866,7 @@ func TestApp_SubmitTransferDialog_EmptyAmount(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
@@ -866,11 +875,12 @@ func TestApp_SubmitTransferDialog_EmptyAmount(t *testing.T) {
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{},
-		},
-		transferDialogAccountIDs: []types.ID{fromID, toID},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{},
+			},
+			accountIDs: []types.ID{fromID, toID}},
 	}
 
 	_, cmd := app.submitTransferDialog()
@@ -878,10 +888,10 @@ func TestApp_SubmitTransferDialog_EmptyAmount(t *testing.T) {
 	if cmd != nil {
 		t.Error("empty amount transfer should not return a cmd")
 	}
-	if app.transferDialog == nil {
+	if app.transfer.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.transferDialog.Fields()[2].Error == "" {
+	if app.transfer.dlg.Fields()[2].Error == "" {
 		t.Error("empty amount should set field-level error")
 	}
 }
@@ -895,7 +905,7 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
@@ -904,11 +914,12 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 			d.AddTextField("Memo", "Monthly savings", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{},
-		},
-		transferDialogAccountIDs: []types.ID{fromID, toID},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{},
+			},
+			accountIDs: []types.ID{fromID, toID}},
 	}
 
 	model, cmd := app.submitTransferDialog()
@@ -920,10 +931,10 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 	}
 
 	// dialog.Dialog should be closed
-	if updatedApp.transferDialog != nil {
+	if updatedApp.transfer.dlg != nil {
 		t.Error("transfer dialog should be nil after submit")
 	}
-	if updatedApp.transferDialogData != nil {
+	if updatedApp.transfer.data != nil {
 		t.Error("transfer dialog data should be nil after submit")
 	}
 
@@ -935,24 +946,25 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 
 func TestApp_CloseTransferDialog(t *testing.T) {
 	app := &App{
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData:       &transferDialogData{},
-		transferDialogAccountIDs: []types.ID{types.NewID()},
+		}()},
+
+			data:       &transferDialogData{},
+			accountIDs: []types.ID{types.NewID()}},
 	}
 
 	app.closeTransferDialog()
 
-	if app.transferDialog != nil {
+	if app.transfer.dlg != nil {
 		t.Error("transfer dialog should be nil after close")
 	}
-	if app.transferDialogData != nil {
+	if app.transfer.data != nil {
 		t.Error("transfer dialog data should be nil after close")
 	}
-	if app.transferDialogAccountIDs != nil {
+	if app.transfer.accountIDs != nil {
 		t.Error("transfer dialog account IDs should be nil after close")
 	}
 }
@@ -982,12 +994,12 @@ func TestApp_RenderLayout_WithTransferDialog(t *testing.T) {
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
 		},
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.SetVisible(true)
 			return d
-		}(),
+		}()}},
 	}
 
 	output := app.renderLayout()
@@ -1030,17 +1042,17 @@ func TestApp_TransferDialogDataMsg_PreSelectsFromAccount(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.transferDialog == nil {
+	if updatedApp.transfer.dlg == nil {
 		t.Fatal("transfer dialog should be created")
 	}
 
-	fields := updatedApp.transferDialog.Fields()
+	fields := updatedApp.transfer.dlg.Fields()
 
 	// The From account should be pre-selected to the sidebar's selected account
 	selectedID := app.sidebar.SelectedAccountID()
 	fromIdx := fields[0].SelectedIndex
-	if fromIdx >= 0 && fromIdx < len(updatedApp.transferDialogAccountIDs) {
-		if updatedApp.transferDialogAccountIDs[fromIdx] != selectedID {
+	if fromIdx >= 0 && fromIdx < len(updatedApp.transfer.accountIDs) {
+		if updatedApp.transfer.accountIDs[fromIdx] != selectedID {
 			t.Errorf("From account should be pre-selected to sidebar account %v, got index %d", selectedID, fromIdx)
 		}
 	}
@@ -1055,7 +1067,7 @@ func TestApp_SubmitTransferDialog_ZeroAmount(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		transferDialog: func() *dialog.Dialog {
+		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
 			d.AddSelectField("To", []string{"Checking", "Savings"}, 1)
@@ -1064,11 +1076,12 @@ func TestApp_SubmitTransferDialog_ZeroAmount(t *testing.T) {
 			d.AddTextField("Memo", "", "", 0)
 			d.SetVisible(true)
 			return d
-		}(),
-		transferDialogData: &transferDialogData{
-			accounts: []*account.Account{},
-		},
-		transferDialogAccountIDs: []types.ID{fromID, toID},
+		}()},
+
+			data: &transferDialogData{
+				accounts: []*account.Account{},
+			},
+			accountIDs: []types.ID{fromID, toID}},
 	}
 
 	_, cmd := app.submitTransferDialog()
@@ -1076,14 +1089,14 @@ func TestApp_SubmitTransferDialog_ZeroAmount(t *testing.T) {
 	if cmd != nil {
 		t.Error("zero amount transfer should not return a cmd")
 	}
-	if app.transferDialog == nil {
+	if app.transfer.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.transferDialog.Fields()[2].Error == "" {
+	if app.transfer.dlg.Fields()[2].Error == "" {
 		t.Error("zero amount should set field-level error")
 	}
-	if !strings.Contains(app.transferDialog.Fields()[2].Error, "positive") {
-		t.Errorf("error = %q, should mention amount must be positive", app.transferDialog.Fields()[2].Error)
+	if !strings.Contains(app.transfer.dlg.Fields()[2].Error, "positive") {
+		t.Errorf("error = %q, should mention amount must be positive", app.transfer.dlg.Fields()[2].Error)
 	}
 }
 

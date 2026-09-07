@@ -228,35 +228,35 @@ func (a *App) loadNewScheduledTransferDialogData() tea.Cmd {
 // submitScheduledTransferDialog parses the transfer dialog, validates, and
 // saves the transfer schedule.
 func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
-	if a.schedDialog == nil || a.schedDialogData == nil {
+	if a.sched.dlg == nil || a.sched.data == nil {
 		return a, nil
 	}
 
-	fields := a.schedDialog.Fields()
+	fields := a.sched.dlg.Fields()
 	if len(fields) < schedXferFieldCount {
 		return a, nil
 	}
 
-	a.schedDialog.ClearErrors()
+	a.sched.dlg.ClearErrors()
 	hasErrors := false
 
 	fromIdx := fields[schedXferFieldFrom].SelectedIndex
 	toIdx := fields[schedXferFieldTo].SelectedIndex
 	fromID, toID := types.NilID, types.NilID
-	if fromIdx >= 0 && fromIdx < len(a.schedDialogAccountIDs) {
-		fromID = a.schedDialogAccountIDs[fromIdx]
+	if fromIdx >= 0 && fromIdx < len(a.sched.accountIDs) {
+		fromID = a.sched.accountIDs[fromIdx]
 	} else {
 		fields[schedXferFieldFrom].Error = "Please select an account"
 		hasErrors = true
 	}
-	if toIdx >= 0 && toIdx < len(a.schedDialogAccountIDs) {
-		toID = a.schedDialogAccountIDs[toIdx]
+	if toIdx >= 0 && toIdx < len(a.sched.accountIDs) {
+		toID = a.sched.accountIDs[toIdx]
 	} else {
 		fields[schedXferFieldTo].Error = "Please select an account"
 		hasErrors = true
 	}
 	if !fromID.IsNil() && fromID == toID {
-		a.schedDialog.SetErrorMsg("From and To must be different accounts")
+		a.sched.dlg.SetErrorMsg("From and To must be different accounts")
 		hasErrors = true
 	}
 
@@ -277,16 +277,16 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 	// Category is optional; index 0 is the "(None)" sentinel (NilID).
 	categoryID := types.NilID
 	catIdx := fields[schedXferFieldCategory].SelectedIndex
-	if catIdx > 0 && catIdx < len(a.schedDialogCategoryIDs) {
-		categoryID = a.schedDialogCategoryIDs[catIdx]
+	if catIdx > 0 && catIdx < len(a.sched.categoryIDs) {
+		categoryID = a.sched.categoryIDs[catIdx]
 	}
 	// An investment-to-investment pair keeps both legs in investment_transactions,
 	// which has no category column, so the transfer owner refuses one. Refusing it
 	// here — by CALLING the domain predicate rather than restating the rule — is
 	// what stops the dialog creating a schedule that can never post.
-	if !categoryID.IsNil() && !fromID.IsNil() && !toID.IsNil() && a.schedDialogData != nil {
-		fromType := accountTypeByID(a.schedDialogData.accounts, fromID)
-		toType := accountTypeByID(a.schedDialogData.accounts, toID)
+	if !categoryID.IsNil() && !fromID.IsNil() && !toID.IsNil() && a.sched.data != nil {
+		fromType := accountTypeByID(a.sched.data.accounts, fromID)
+		toType := accountTypeByID(a.sched.data.accounts, toID)
 		if !transfer.ClassifyKind(fromType, toType).StoresCategory() {
 			fields[schedXferFieldCategory].Error = "Not supported between two investment accounts"
 			hasErrors = true
@@ -347,8 +347,8 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	mode := a.schedDialogData.mode
-	existing := a.schedDialogData.scheduled
+	mode := a.sched.data.mode
+	existing := a.sched.data.scheduled
 	signedAmount := magnitude.Neg()
 
 	a.closeScheduledDialog()
@@ -424,10 +424,10 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 // sub-dialog defaults to an Expense type (matching the register Transfer
 // dialog).
 func (a *App) openCreateCategorySubDialogFromSchedTransfer() (tea.Model, tea.Cmd) {
-	if a.schedDialog == nil {
+	if a.sched.dlg == nil {
 		return a, nil
 	}
-	fields := a.schedDialog.Fields()
+	fields := a.sched.dlg.Fields()
 	if len(fields) <= schedXferFieldCategory {
 		return a, nil
 	}
@@ -442,7 +442,7 @@ func (a *App) openCreateCategorySubDialogFromSchedTransfer() (tea.Model, tea.Cmd
 	parents := a.parentsForCreateCatDialog()
 	parent, name := splitCategoryQuery(query)
 	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
-	a.schedDialog.SetVisible(false)
+	a.sched.dlg.SetVisible(false)
 	return a, nil
 }
 
@@ -451,16 +451,16 @@ func (a *App) openCreateCategorySubDialogFromSchedTransfer() (tea.Model, tea.Cmd
 // transfer dialog. It reloads the Category combo with newCat pre-selected,
 // advances focus to Memo, re-shows the dialog, and clears the sub-dialog.
 func (a *App) applyCreatedCategoryToSchedTransfer(newCat *category.Category, cats []*category.Category) {
-	if a.schedDialog == nil {
+	if a.sched.dlg == nil {
 		a.createCatDialog = nil
 		return
 	}
 	options, ids := buildCategoryOptions(cats)
-	a.schedDialogCategoryIDs = ids
-	a.schedDialogCategoryOptions = options
+	a.sched.categoryIDs = ids
+	a.sched.categoryOptions = options
 
-	if len(a.schedDialog.Fields()) > schedXferFieldCategory {
-		catField := a.schedDialog.Fields()[schedXferFieldCategory]
+	if len(a.sched.dlg.Fields()) > schedXferFieldCategory {
+		catField := a.sched.dlg.Fields()[schedXferFieldCategory]
 		catField.Options = options
 		newIdx := 0
 		for i, id := range ids {
@@ -471,8 +471,8 @@ func (a *App) applyCreatedCategoryToSchedTransfer(newCat *category.Category, cat
 		}
 		catField.SelectedIndex = newIdx
 		// Focus advances to Memo so the user can keep typing.
-		a.schedDialog.SetFocusIndex(schedXferFieldMemo)
-		a.schedDialog.SetVisible(true)
+		a.sched.dlg.SetFocusIndex(schedXferFieldMemo)
+		a.sched.dlg.SetVisible(true)
 	}
 	a.createCatDialog = nil
 }

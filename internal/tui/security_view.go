@@ -335,7 +335,7 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		sec := a.selectedSecurity()
 		if sec != nil {
 			secID := sec.ID
-			a.stockSplitDialogPreSelectedID = &secID
+			a.stockSplit.preSelectedID = &secID
 		}
 		return a, a.loadStockSplitDialogData()
 	case msg.String() == "m":
@@ -343,7 +343,7 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		sec := a.selectedSecurity()
 		if sec != nil {
 			secID := sec.ID
-			a.mergerDialogPreSelectedID = &secID
+			a.merger.preSelectedID = &secID
 		}
 		return a, a.loadMergerDialogData()
 	case msg.String() == "o":
@@ -351,7 +351,7 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		sec := a.selectedSecurity()
 		if sec != nil {
 			secID := sec.ID
-			a.spinOffDialogPreSelectedID = &secID
+			a.spinOff.preSelectedID = &secID
 		}
 		return a, a.loadSpinOffDialogData()
 	case msg.String() == "p":

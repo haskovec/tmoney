@@ -170,18 +170,19 @@ func TestSubmitMergerDialog_ValidationErrors_AllEmpty(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
 	// Set invalid values
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[1].SelectedIndex = 1 // different target so no same-security error
 	fields[2].Value = "not-a-date"
 	fields[3].Value = ""
@@ -189,14 +190,14 @@ func TestSubmitMergerDialog_ValidationErrors_AllEmpty(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog == nil {
+	if updatedApp.merger.dlg == nil {
 		t.Error("dialog should remain open on validation errors")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.mergerDialog.Fields()
+	fields = updatedApp.merger.dlg.Fields()
 	if fields[2].Error == "" {
 		t.Error("date field should have error")
 	}
@@ -210,17 +211,18 @@ func TestSubmitMergerDialog_SameSourceAndTarget(t *testing.T) {
 	secIDs := []types.ID{secID}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc."},
 			secIDs, nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[0].SelectedIndex = 0 // source = AAPL
 	fields[1].SelectedIndex = 0 // target = AAPL (same!)
 	fields[2].Value = "03/15/2024"
@@ -229,14 +231,14 @@ func TestSubmitMergerDialog_SameSourceAndTarget(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog == nil {
+	if updatedApp.merger.dlg == nil {
 		t.Error("dialog should remain open when source == target")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.mergerDialog.Fields()
+	fields = updatedApp.merger.dlg.Fields()
 	if fields[1].Error == "" {
 		t.Error("target field should have error when same as source")
 	}
@@ -246,17 +248,18 @@ func TestSubmitMergerDialog_InvalidExchangeRatio(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "abc" // not a number
@@ -264,14 +267,14 @@ func TestSubmitMergerDialog_InvalidExchangeRatio(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog == nil {
+	if updatedApp.merger.dlg == nil {
 		t.Error("dialog should remain open on invalid ratio")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.mergerDialog.Fields()
+	fields = updatedApp.merger.dlg.Fields()
 	if fields[3].Error == "" {
 		t.Error("exchange ratio field should have error for invalid format")
 	}
@@ -281,17 +284,18 @@ func TestSubmitMergerDialog_ZeroExchangeRatio(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "0" // zero ratio
@@ -299,14 +303,14 @@ func TestSubmitMergerDialog_ZeroExchangeRatio(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog == nil {
+	if updatedApp.merger.dlg == nil {
 		t.Error("dialog should remain open on zero ratio")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.mergerDialog.Fields()
+	fields = updatedApp.merger.dlg.Fields()
 	if fields[3].Error == "" {
 		t.Error("exchange ratio field should have error for zero value")
 	}
@@ -316,17 +320,18 @@ func TestSubmitMergerDialog_NegativeExchangeRatio(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "-1.5" // negative
@@ -334,14 +339,14 @@ func TestSubmitMergerDialog_NegativeExchangeRatio(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog == nil {
+	if updatedApp.merger.dlg == nil {
 		t.Error("dialog should remain open on negative ratio")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.mergerDialog.Fields()
+	fields = updatedApp.merger.dlg.Fields()
 	if fields[3].Error == "" {
 		t.Error("exchange ratio field should have error for negative value")
 	}
@@ -351,17 +356,18 @@ func TestSubmitMergerDialog_NegativeCashPerShare(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "2.0"
@@ -370,14 +376,14 @@ func TestSubmitMergerDialog_NegativeCashPerShare(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog == nil {
+	if updatedApp.merger.dlg == nil {
 		t.Error("dialog should remain open on negative cash")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.mergerDialog.Fields()
+	fields = updatedApp.merger.dlg.Fields()
 	if fields[4].Error == "" {
 		t.Error("cash per share field should have error for negative value")
 	}
@@ -387,17 +393,18 @@ func TestSubmitMergerDialog_InvalidCashPerShare(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "2.0"
@@ -406,14 +413,14 @@ func TestSubmitMergerDialog_InvalidCashPerShare(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog == nil {
+	if updatedApp.merger.dlg == nil {
 		t.Error("dialog should remain open on invalid cash")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.mergerDialog.Fields()
+	fields = updatedApp.merger.dlg.Fields()
 	if fields[4].Error == "" {
 		t.Error("cash per share field should have error for invalid format")
 	}
@@ -421,24 +428,24 @@ func TestSubmitMergerDialog_InvalidCashPerShare(t *testing.T) {
 
 func TestSubmitMergerDialog_NoSecurities(t *testing.T) {
 	app := &App{
-		mergerDialog: buildMergerDialog([]string{}, []types.ID{}, nil),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: []types.ID{},
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog([]string{}, []types.ID{}, nil)},
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{}},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "2.0"
 
 	model, _ := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog == nil {
+	if updatedApp.merger.dlg == nil {
 		t.Error("dialog should remain open when no securities available")
 	}
-	fields = updatedApp.mergerDialog.Fields()
+	fields = updatedApp.merger.dlg.Fields()
 	if fields[0].Error == "" {
 		t.Error("source security field should have error when no securities available")
 	}
@@ -449,18 +456,19 @@ func TestSubmitMergerDialog_ValidSubmit(t *testing.T) {
 	targetID := types.NewID()
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			[]types.ID{sourceID, targetID},
 			nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: []types.ID{sourceID, targetID},
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{sourceID, targetID}},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[0].SelectedIndex = 0 // source = AAPL
 	fields[1].SelectedIndex = 1 // target = MSFT
 	fields[2].Value = "06/10/2024"
@@ -469,7 +477,7 @@ func TestSubmitMergerDialog_ValidSubmit(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog != nil {
+	if updatedApp.merger.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -482,18 +490,19 @@ func TestSubmitMergerDialog_ValidSubmitWithCash(t *testing.T) {
 	targetID := types.NewID()
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			[]types.ID{sourceID, targetID},
 			nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: []types.ID{sourceID, targetID},
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{sourceID, targetID}},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[0].SelectedIndex = 0
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "06/10/2024"
@@ -503,7 +512,7 @@ func TestSubmitMergerDialog_ValidSubmitWithCash(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog != nil {
+	if updatedApp.merger.dlg != nil {
 		t.Error("dialog should be closed after valid submit with cash")
 	}
 	if cmd == nil {
@@ -516,18 +525,19 @@ func TestSubmitMergerDialog_RatioWithSpaces(t *testing.T) {
 	targetID := types.NewID()
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			[]types.ID{sourceID, targetID},
 			nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: []types.ID{sourceID, targetID},
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{sourceID, targetID}},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[0].SelectedIndex = 0
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "06/10/2024"
@@ -536,7 +546,7 @@ func TestSubmitMergerDialog_RatioWithSpaces(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog != nil {
+	if updatedApp.merger.dlg != nil {
 		t.Error("dialog should be closed (spaces trimmed)")
 	}
 	if cmd == nil {
@@ -548,17 +558,18 @@ func TestSubmitMergerDialog_InvalidDate(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "13/45/2024" // invalid date
 	fields[3].Value = "2.0"
@@ -566,14 +577,14 @@ func TestSubmitMergerDialog_InvalidDate(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog == nil {
+	if updatedApp.merger.dlg == nil {
 		t.Error("dialog should remain open on invalid date")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.mergerDialog.Fields()
+	fields = updatedApp.merger.dlg.Fields()
 	if fields[2].Error == "" {
 		t.Error("date field should have error for invalid date")
 	}
@@ -583,27 +594,28 @@ func TestHandleMergerDialogKey_Cancel(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleMergerDialogKey(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog != nil {
+	if updatedApp.merger.dlg != nil {
 		t.Error("dialog should be closed after Escape")
 	}
-	if updatedApp.mergerDialogData != nil {
+	if updatedApp.merger.data != nil {
 		t.Error("dialog data should be cleared after cancel")
 	}
-	if updatedApp.mergerDialogSecurityIDs != nil {
+	if updatedApp.merger.securityIDs != nil {
 		t.Error("dialog security IDs should be cleared after cancel")
 	}
 }
@@ -639,23 +651,24 @@ func TestCloseMergerDialog(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		mergerDialogData:        &mergerDialogData{},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data:        &mergerDialogData{},
+			securityIDs: secIDs},
 	}
 
 	app.closeMergerDialog()
 
-	if app.mergerDialog != nil {
+	if app.merger.dlg != nil {
 		t.Error("mergerDialog should be nil after close")
 	}
-	if app.mergerDialogData != nil {
+	if app.merger.data != nil {
 		t.Error("mergerDialogData should be nil after close")
 	}
-	if app.mergerDialogSecurityIDs != nil {
+	if app.merger.securityIDs != nil {
 		t.Error("mergerDialogSecurityIDs should be nil after close")
 	}
 }
@@ -683,18 +696,19 @@ func TestSubmitMergerDialog_ClearsErrorsBeforeValidation(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
 	// Set a pre-existing error
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[0].Error = "old error"
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "not-a-date"
@@ -702,7 +716,7 @@ func TestSubmitMergerDialog_ClearsErrorsBeforeValidation(t *testing.T) {
 
 	app.submitMergerDialog()
 
-	fields = app.mergerDialog.Fields()
+	fields = app.merger.dlg.Fields()
 	// Old error on field 0 should be cleared
 	if fields[0].Error != "" {
 		t.Errorf("field 0 error should be cleared, got %q", fields[0].Error)
@@ -717,25 +731,26 @@ func TestHandleMergerDialogKey_TabNavigates(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: secIDs,
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	if app.mergerDialog.FocusIndex() != 0 {
-		t.Errorf("initial focus = %d, want 0", app.mergerDialog.FocusIndex())
+	if app.merger.dlg.FocusIndex() != 0 {
+		t.Errorf("initial focus = %d, want 0", app.merger.dlg.FocusIndex())
 	}
 
 	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	app.handleMergerDialogKey(tabKey)
 
-	if app.mergerDialog.FocusIndex() != 1 {
-		t.Errorf("focus after tab = %d, want 1", app.mergerDialog.FocusIndex())
+	if app.merger.dlg.FocusIndex() != 1 {
+		t.Errorf("focus after tab = %d, want 1", app.merger.dlg.FocusIndex())
 	}
 }
 
@@ -744,18 +759,19 @@ func TestSubmitMergerDialog_EmptyCashPerShareIsValid(t *testing.T) {
 	targetID := types.NewID()
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			[]types.ID{sourceID, targetID},
 			nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: []types.ID{sourceID, targetID},
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{sourceID, targetID}},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[0].SelectedIndex = 0
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "06/10/2024"
@@ -765,7 +781,7 @@ func TestSubmitMergerDialog_EmptyCashPerShareIsValid(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog != nil {
+	if updatedApp.merger.dlg != nil {
 		t.Error("dialog should be closed (empty cash is valid)")
 	}
 	if cmd == nil {

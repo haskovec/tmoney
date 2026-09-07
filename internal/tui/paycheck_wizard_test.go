@@ -2193,19 +2193,19 @@ func (env *paycheckEditEnv) openEditSeries(t *testing.T, st *scheduled.Transacti
 		}
 	}
 	accountOptions, accountIDs := buildAccountOptions(env.accounts)
-	env.app.schedDialogAccountIDs = accountIDs
-	env.app.schedDialogCategoryIDs = env.categoryIDs
-	env.app.schedDialogCategoryOptions = env.categoryOptions
-	env.app.schedDialog = buildEditScheduledDialog(
+	env.app.sched.accountIDs = accountIDs
+	env.app.sched.categoryIDs = env.categoryIDs
+	env.app.sched.categoryOptions = env.categoryOptions
+	env.app.sched.dlg = buildEditScheduledDialog(
 		st, accountOptions, accountIDs, env.categoryOptions, env.categoryIDs, payeeNames)
-	env.app.schedDialogData = &scheduledDialogData{
+	env.app.sched.data = &scheduledDialogData{
 		mode:      scheduledDialogModeEdit,
 		scheduled: st,
 		accounts:  env.accounts,
 		payees:    env.payees,
 		payeeMap:  map[string]*payee.Payee{},
 	}
-	return env.app.schedDialog
+	return env.app.sched.dlg
 }
 
 // sectionByTarget maps each split's category or transfer destination to its
@@ -2257,7 +2257,7 @@ func TestScheduledDialog_EditSeriesRoundTrip_KeepsPaycheckTags(t *testing.T) {
 	// Second Save persists. Nothing was changed, so no confirmation is due.
 	model, cmd = env.app.submitScheduledSplitDialog()
 	env.app = model.(*App)
-	if env.app.confirmDialog != nil {
+	if env.app.confirm.dlg != nil {
 		t.Fatal("a preserving save must not prompt for demotion")
 	}
 	if cmd == nil {
@@ -2358,7 +2358,7 @@ func TestScheduledDialog_EditSeriesAddsUntaggedRow_ConfirmsDemotion(t *testing.T
 
 	model, cmd := env.app.submitScheduledSplitDialog()
 	env.app = model.(*App)
-	if env.app.confirmDialog == nil {
+	if env.app.confirm.dlg == nil {
 		t.Fatal("adding an untagged row should prompt before dropping the paycheck shape")
 	}
 	if cmd != nil {
@@ -2369,10 +2369,10 @@ func TestScheduledDialog_EditSeriesAddsUntaggedRow_ConfirmsDemotion(t *testing.T
 		t.Error("the stored schedule changed before the confirmation was answered")
 	}
 
-	if env.app.confirmAction == nil {
+	if env.app.confirm.action == nil {
 		t.Fatal("no confirm action recorded")
 	}
-	if msg, ok := env.app.confirmAction().(errMsg); ok {
+	if msg, ok := env.app.confirm.action().(errMsg); ok {
 		t.Fatalf("confirmed save returned error: %v", msg.err)
 	}
 	after := env.only(t)
@@ -2398,7 +2398,7 @@ func TestScheduledDialog_UncheckSplitOnPaycheck_ConfirmsDemotion(t *testing.T) {
 
 	model, cmd := env.app.submitScheduledDialog()
 	env.app = model.(*App)
-	if env.app.confirmDialog == nil {
+	if env.app.confirm.dlg == nil {
 		t.Fatal("unchecking Split on a paycheck should prompt first")
 	}
 	if cmd != nil {
@@ -2408,7 +2408,7 @@ func TestScheduledDialog_UncheckSplitOnPaycheck_ConfirmsDemotion(t *testing.T) {
 		t.Error("the stored schedule changed before the confirmation was answered")
 	}
 
-	if msg, ok := env.app.confirmAction().(errMsg); ok {
+	if msg, ok := env.app.confirm.action().(errMsg); ok {
 		t.Fatalf("confirmed save returned error: %v", msg.err)
 	}
 	if got := env.only(t); len(got.Splits) != 0 {
@@ -2430,14 +2430,14 @@ func TestScheduledDialog_DeclinedPaycheckDemotion_LeavesScheduleUntouched(t *tes
 
 	model, _ := env.app.submitScheduledDialog()
 	env.app = model.(*App)
-	if env.app.confirmDialog == nil {
+	if env.app.confirm.dlg == nil {
 		t.Fatal("expected a confirmation")
 	}
 
 	// Decline.
 	model, _ = env.app.handleConfirmDialogKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	env.app = model.(*App)
-	if env.app.confirmDialog != nil || env.app.confirmAction != nil {
+	if env.app.confirm.dlg != nil || env.app.confirm.action != nil {
 		t.Error("declining should clear the confirmation state")
 	}
 

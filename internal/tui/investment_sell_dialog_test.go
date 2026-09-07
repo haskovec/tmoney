@@ -282,11 +282,12 @@ func TestSubmitSellDialog_ValidationErrors(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		sellDialog: buildSellDialog([]string{"AAPL - Apple Inc."}, nil, secIDs, nil),
-		sellDialogData: &sellDialogData{
-			securities: []*security.Security{},
-		},
-		sellDialogSecurityIDs: secIDs,
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog([]string{"AAPL - Apple Inc."}, nil, secIDs, nil)},
+			data: &sellDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -297,7 +298,7 @@ func TestSubmitSellDialog_ValidationErrors(t *testing.T) {
 	}
 
 	// Set invalid values
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty shares
 	fields[3].Value = ""           // no total
@@ -306,14 +307,14 @@ func TestSubmitSellDialog_ValidationErrors(t *testing.T) {
 	model, cmd := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog == nil {
+	if updatedApp.sell.dlg == nil {
 		t.Error("dialog should remain open on validation errors")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.sellDialog.Fields()
+	fields = updatedApp.sell.dlg.Fields()
 	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
@@ -330,14 +331,14 @@ func TestSubmitSellDialog_ValidationErrors(t *testing.T) {
 
 func TestSubmitSellDialog_NoSecurities(t *testing.T) {
 	app := &App{
-		sellDialog: buildSellDialog([]string{}, nil, []types.ID{}, nil),
-		sellDialogData: &sellDialogData{
-			securities: []*security.Security{},
-		},
-		sellDialogSecurityIDs: []types.ID{},
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog([]string{}, nil, []types.ID{}, nil)},
+			data: &sellDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{}},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[4].Value = "185.00"
@@ -345,10 +346,10 @@ func TestSubmitSellDialog_NoSecurities(t *testing.T) {
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog == nil {
+	if updatedApp.sell.dlg == nil {
 		t.Error("dialog should remain open when no securities available")
 	}
-	fields = updatedApp.sellDialog.Fields()
+	fields = updatedApp.sell.dlg.Fields()
 	if fields[1].Error == "" {
 		t.Error("security field should have error when no securities available")
 	}
@@ -359,16 +360,18 @@ func TestSubmitSellDialog_ValidWithPricePerShare(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			nil,
-		),
-		sellDialogData: &sellDialogData{
-			securities: []*security.Security{},
-		},
-		sellDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data: &sellDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -378,7 +381,7 @@ func TestSubmitSellDialog_ValidWithPricePerShare(t *testing.T) {
 		},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "10"         // shares
 	fields[4].Value = "185.00"     // price per share
@@ -386,7 +389,7 @@ func TestSubmitSellDialog_ValidWithPricePerShare(t *testing.T) {
 	model, cmd := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog != nil {
+	if updatedApp.sell.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -399,16 +402,18 @@ func TestSubmitSellDialog_ValidWithTotal(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			nil,
-		),
-		sellDialogData: &sellDialogData{
-			securities: []*security.Security{},
-		},
-		sellDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data: &sellDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -418,7 +423,7 @@ func TestSubmitSellDialog_ValidWithTotal(t *testing.T) {
 		},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "06/01/2024"
 	fields[2].Value = "5"
 	fields[3].Value = "925.00"
@@ -426,7 +431,7 @@ func TestSubmitSellDialog_ValidWithTotal(t *testing.T) {
 	model, cmd := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog != nil {
+	if updatedApp.sell.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -438,14 +443,16 @@ func TestSubmitSellDialog_InvalidCommission(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			nil,
-		),
-		sellDialogData:        &sellDialogData{},
-		sellDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &sellDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -454,7 +461,7 @@ func TestSubmitSellDialog_InvalidCommission(t *testing.T) {
 		},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[4].Value = "185.00"
@@ -463,10 +470,10 @@ func TestSubmitSellDialog_InvalidCommission(t *testing.T) {
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog == nil {
+	if updatedApp.sell.dlg == nil {
 		t.Error("dialog should remain open on commission error")
 	}
-	fields = updatedApp.sellDialog.Fields()
+	fields = updatedApp.sell.dlg.Fields()
 	if fields[5].Error == "" {
 		t.Error("commission field should have error")
 	}
@@ -476,14 +483,16 @@ func TestSubmitSellDialog_InvalidPrice(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			nil,
-		),
-		sellDialogData:        &sellDialogData{},
-		sellDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &sellDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -492,7 +501,7 @@ func TestSubmitSellDialog_InvalidPrice(t *testing.T) {
 		},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = ""
@@ -501,10 +510,10 @@ func TestSubmitSellDialog_InvalidPrice(t *testing.T) {
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog == nil {
+	if updatedApp.sell.dlg == nil {
 		t.Error("dialog should remain open on price error")
 	}
-	fields = updatedApp.sellDialog.Fields()
+	fields = updatedApp.sell.dlg.Fields()
 	if fields[4].Error == "" {
 		t.Error("price field should have error")
 	}
@@ -514,14 +523,16 @@ func TestSubmitSellDialog_InvalidTotal(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			nil,
-		),
-		sellDialogData:        &sellDialogData{},
-		sellDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &sellDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -530,7 +541,7 @@ func TestSubmitSellDialog_InvalidTotal(t *testing.T) {
 		},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "not-valid"
@@ -539,10 +550,10 @@ func TestSubmitSellDialog_InvalidTotal(t *testing.T) {
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog == nil {
+	if updatedApp.sell.dlg == nil {
 		t.Error("dialog should remain open on total error")
 	}
-	fields = updatedApp.sellDialog.Fields()
+	fields = updatedApp.sell.dlg.Fields()
 	if fields[3].Error == "" {
 		t.Error("total field should have error")
 	}
@@ -553,14 +564,16 @@ func TestSubmitSellDialog_WithCommissionAndMemo(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			nil,
-		),
-		sellDialogData:        &sellDialogData{},
-		sellDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &sellDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -570,7 +583,7 @@ func TestSubmitSellDialog_WithCommissionAndMemo(t *testing.T) {
 		},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[4].Value = "185.00"
@@ -580,7 +593,7 @@ func TestSubmitSellDialog_WithCommissionAndMemo(t *testing.T) {
 	model, cmd := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog != nil {
+	if updatedApp.sell.dlg != nil {
 		t.Error("dialog should close on valid submit with commission and memo")
 	}
 	if cmd == nil {
@@ -593,14 +606,16 @@ func TestSubmitSellDialog_DollarSignInCommission(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			nil,
-		),
-		sellDialogData:        &sellDialogData{},
-		sellDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &sellDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -609,7 +624,7 @@ func TestSubmitSellDialog_DollarSignInCommission(t *testing.T) {
 		},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[4].Value = "$185.00"
@@ -618,7 +633,7 @@ func TestSubmitSellDialog_DollarSignInCommission(t *testing.T) {
 	model, cmd := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog != nil {
+	if updatedApp.sell.dlg != nil {
 		t.Error("dialog should close (dollar signs stripped)")
 	}
 	if cmd == nil {
@@ -650,18 +665,20 @@ func TestSubmitSellDialog_WithLotAllocations(t *testing.T) {
 	lots := []*investment.Lot{lot1, lot2}
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			lots,
-		),
-		sellDialogData: &sellDialogData{
-			securities: []*security.Security{},
-			lots:       lots,
-		},
-		sellDialogSecurityIDs: []types.ID{secID},
-		sellDialogLots:        lots,
+		)},
+
+			data: &sellDialogData{
+				securities: []*security.Security{},
+				lots:       lots,
+			},
+			securityIDs: []types.ID{secID},
+			lots:        lots},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -672,7 +689,7 @@ func TestSubmitSellDialog_WithLotAllocations(t *testing.T) {
 		},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "30"         // total shares to sell
 	fields[3].Value = "20"         // lot 1: sell 20 shares
@@ -683,7 +700,7 @@ func TestSubmitSellDialog_WithLotAllocations(t *testing.T) {
 	model, cmd := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog != nil {
+	if updatedApp.sell.dlg != nil {
 		t.Error("dialog should be closed after valid submit with lot allocations")
 	}
 	if cmd == nil {
@@ -707,18 +724,20 @@ func TestSubmitSellDialog_LotAllocationMismatch(t *testing.T) {
 	lots := []*investment.Lot{lot1}
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			lots,
-		),
-		sellDialogData: &sellDialogData{
-			securities: []*security.Security{},
-			lots:       lots,
-		},
-		sellDialogSecurityIDs: []types.ID{secID},
-		sellDialogLots:        lots,
+		)},
+
+			data: &sellDialogData{
+				securities: []*security.Security{},
+				lots:       lots,
+			},
+			securityIDs: []types.ID{secID},
+			lots:        lots},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -729,7 +748,7 @@ func TestSubmitSellDialog_LotAllocationMismatch(t *testing.T) {
 		},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "30"     // selling 30 shares
 	fields[3].Value = "20"     // lot 1 only 20 (mismatch: 20 != 30)
@@ -739,7 +758,7 @@ func TestSubmitSellDialog_LotAllocationMismatch(t *testing.T) {
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog == nil {
+	if updatedApp.sell.dlg == nil {
 		t.Error("dialog should remain open when lot allocations don't match total shares")
 	}
 }
@@ -760,18 +779,20 @@ func TestSubmitSellDialog_LotAllocationExceedsAvailable(t *testing.T) {
 	lots := []*investment.Lot{lot1}
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			lots,
-		),
-		sellDialogData: &sellDialogData{
-			securities: []*security.Security{},
-			lots:       lots,
-		},
-		sellDialogSecurityIDs: []types.ID{secID},
-		sellDialogLots:        lots,
+		)},
+
+			data: &sellDialogData{
+				securities: []*security.Security{},
+				lots:       lots,
+			},
+			securityIDs: []types.ID{secID},
+			lots:        lots},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -782,7 +803,7 @@ func TestSubmitSellDialog_LotAllocationExceedsAvailable(t *testing.T) {
 		},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "20"     // selling 20 shares
 	fields[3].Value = "20"     // lot 1 only has 10 available
@@ -792,7 +813,7 @@ func TestSubmitSellDialog_LotAllocationExceedsAvailable(t *testing.T) {
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog == nil {
+	if updatedApp.sell.dlg == nil {
 		t.Error("dialog should remain open when lot allocation exceeds available shares")
 	}
 }
@@ -813,18 +834,20 @@ func TestSubmitSellDialog_InvalidLotAllocation(t *testing.T) {
 	lots := []*investment.Lot{lot1}
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			lots,
-		),
-		sellDialogData: &sellDialogData{
-			securities: []*security.Security{},
-			lots:       lots,
-		},
-		sellDialogSecurityIDs: []types.ID{secID},
-		sellDialogLots:        lots,
+		)},
+
+			data: &sellDialogData{
+				securities: []*security.Security{},
+				lots:       lots,
+			},
+			securityIDs: []types.ID{secID},
+			lots:        lots},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -835,7 +858,7 @@ func TestSubmitSellDialog_InvalidLotAllocation(t *testing.T) {
 		},
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "abc"    // invalid lot allocation
@@ -844,10 +867,10 @@ func TestSubmitSellDialog_InvalidLotAllocation(t *testing.T) {
 	model, _ := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog == nil {
+	if updatedApp.sell.dlg == nil {
 		t.Error("dialog should remain open on invalid lot allocation")
 	}
-	fields = updatedApp.sellDialog.Fields()
+	fields = updatedApp.sell.dlg.Fields()
 	if fields[3].Error == "" {
 		t.Error("lot allocation field should have error for invalid input")
 	}
@@ -857,30 +880,31 @@ func TestHandleSellDialogKey_Cancel(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			nil,
-		),
-		sellDialogData:        &sellDialogData{},
-		sellDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &sellDialogData{},
+			securityIDs: []types.ID{secID}},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleSellDialogKey(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog != nil {
+	if updatedApp.sell.dlg != nil {
 		t.Error("dialog should be closed after Escape")
 	}
-	if updatedApp.sellDialogData != nil {
+	if updatedApp.sell.data != nil {
 		t.Error("dialog data should be cleared after cancel")
 	}
-	if updatedApp.sellDialogSecurityIDs != nil {
+	if updatedApp.sell.securityIDs != nil {
 		t.Error("dialog security IDs should be cleared after cancel")
 	}
-	if updatedApp.sellDialogLots != nil {
+	if updatedApp.sell.lots != nil {
 		t.Error("dialog lots should be cleared after cancel")
 	}
 }
@@ -916,29 +940,30 @@ func TestCloseSellDialog(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
 			nil,
-		),
-		sellDialogData:        &sellDialogData{},
-		sellDialogSecurityIDs: []types.ID{secID},
-		sellDialogLots:        []*investment.Lot{},
+		)},
+
+			data:        &sellDialogData{},
+			securityIDs: []types.ID{secID},
+			lots:        []*investment.Lot{}},
 	}
 
 	app.closeSellDialog()
 
-	if app.sellDialog != nil {
+	if app.sell.dlg != nil {
 		t.Error("sellDialog should be nil after close")
 	}
-	if app.sellDialogData != nil {
+	if app.sell.data != nil {
 		t.Error("sellDialogData should be nil after close")
 	}
-	if app.sellDialogSecurityIDs != nil {
+	if app.sell.securityIDs != nil {
 		t.Error("sellDialogSecurityIDs should be nil after close")
 	}
-	if app.sellDialogLots != nil {
+	if app.sell.lots != nil {
 		t.Error("sellDialogLots should be nil after close")
 	}
 }
@@ -1023,16 +1048,18 @@ func TestSubmitSellDialog_NewSell_LotTracked_NoRepo_DoesNotPanic(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		sellDialog: buildSellDialog(
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog(
 			[]string{"ETH - Ethereum"},
 			nil,
 			[]types.ID{secID},
 			nil, // new sell: no lots -> no per-lot fields
-		),
-		sellDialogData: &sellDialogData{
-			securities: []*security.Security{},
-		},
-		sellDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data: &sellDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -1044,7 +1071,7 @@ func TestSubmitSellDialog_NewSell_LotTracked_NoRepo_DoesNotPanic(t *testing.T) {
 		lotRepo: nil, // guarded: with no repo wired, the FIFO branch is skipped
 	}
 
-	fields := app.sellDialog.Fields()
+	fields := app.sell.dlg.Fields()
 	fields[0].Value = "07/23/2024" // date
 	fields[2].Value = "138"        // shares
 	fields[4].Value = "2500.00"    // price per share (no per-lot fields, so price is index 4)
@@ -1052,7 +1079,7 @@ func TestSubmitSellDialog_NewSell_LotTracked_NoRepo_DoesNotPanic(t *testing.T) {
 	model, cmd := app.submitSellDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.sellDialog != nil {
+	if updatedApp.sell.dlg != nil {
 		t.Error("dialog should close on a valid new lot-tracked sell")
 	}
 	if cmd == nil {

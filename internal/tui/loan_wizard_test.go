@@ -687,9 +687,9 @@ func TestLoanWizard_EditAsLoanButtonAndDispatch(t *testing.T) {
 		t.Error("loan-shaped schedule should want a loan edit")
 	}
 
-	env.app.schedDialog = dialog.NewDialog("Edit Scheduled Transaction")
+	env.app.sched.dlg = dialog.NewDialog("Edit Scheduled Transaction")
 	env.app.maybeAddEditAsLoanButton(st)
-	if !hasEditAsLoanButton(env.app.schedDialog) {
+	if !hasEditAsLoanButton(env.app.sched.dlg) {
 		t.Error("Edit as loan → button was not added for a loan-shaped schedule")
 	}
 
@@ -730,7 +730,7 @@ func TestLoanWizard_DemotionGuardOnGenericSplitEdit(t *testing.T) {
 
 	// Save through the generic editor → the demotion guard fires; nothing saved.
 	_, cmd := env.app.submitScheduledSplitDialog()
-	if env.app.confirmDialog == nil {
+	if env.app.confirm.dlg == nil {
 		t.Fatal("demotion guard did not fire (no confirm dialog)")
 	}
 	if cmd != nil {
@@ -741,7 +741,7 @@ func TestLoanWizard_DemotionGuardOnGenericSplitEdit(t *testing.T) {
 	}
 
 	// Confirm → the deferred save runs and demotes the schedule.
-	fn := env.app.confirmAction
+	fn := env.app.confirm.action
 	if fn == nil {
 		t.Fatal("no confirm action captured")
 	}

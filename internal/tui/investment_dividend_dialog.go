@@ -164,19 +164,27 @@ func (a *App) loadDividendDialogData() tea.Cmd {
 }
 
 // closeDividendDialog clears the dividend dialog state.
+// dividendSurface is the dividend dialog and the state that belongs to it. The zero
+// value is closed.
+type dividendSurface struct {
+	modalSurface
+	data        *dividendDialogData
+	securityIDs []types.ID
+	reinvest    bool // true when the dialog is for a reinvested dividend
+}
+
+func (s *dividendSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 func (a *App) closeDividendDialog() {
-	a.dividendDialog = nil
-	a.dividendDialogData = nil
-	a.dividendDialogSecurityIDs = nil
-	a.dividendDialogReinvest = false
+	a.dividend = dividendSurface{}
 }
 
 // handleDividendDialogKey routes key events to the dividend dialog.
 func (a *App) handleDividendDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.dividendDialog == nil {
+	if a.dividend.dlg == nil {
 		return a, nil
 	}
-	return a.dividendDialogAction(a.dividendDialog.HandleKey(msg))
+	return a.dividendDialogAction(a.dividend.dlg.HandleKey(msg))
 }
 
 // dividendDialogAction dispatches a DialogAction for the dividend dialog, from either input path.
@@ -197,7 +205,7 @@ func (a *App) dividendDialogAction(action dialog.DialogAction) (tea.Model, tea.C
 // keyboard and mouse handlers must route through this so the two input paths
 // cannot disagree on the transaction type being saved.
 func (a *App) submitActiveDividendDialog() (tea.Model, tea.Cmd) {
-	if a.dividendDialogReinvest {
+	if a.dividend.reinvest {
 		return a.submitReinvestDividendDialog()
 	}
 	return a.submitDividendDialog()
@@ -205,16 +213,16 @@ func (a *App) submitActiveDividendDialog() (tea.Model, tea.Cmd) {
 
 // submitDividendDialog parses dialog fields, validates, and saves a cash dividend transaction.
 func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
-	if a.dividendDialog == nil || a.dividendDialogData == nil {
+	if a.dividend.dlg == nil || a.dividend.data == nil {
 		return a, nil
 	}
 
-	fields := a.dividendDialog.Fields()
+	fields := a.dividend.dlg.Fields()
 	if len(fields) < 4 {
 		return a, nil
 	}
 
-	a.dividendDialog.ClearErrors()
+	a.dividend.dlg.ClearErrors()
 	hasErrors := false
 
 	// Date (index 0)
@@ -228,14 +236,14 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 	}
 
 	// Security (index 1)
-	if len(a.dividendDialogSecurityIDs) == 0 {
+	if len(a.dividend.securityIDs) == 0 {
 		fields[1].Error = "No securities available"
 		hasErrors = true
 	}
 	secIdx := fields[1].SelectedIndex
 	var securityID types.ID
-	if secIdx >= 0 && secIdx < len(a.dividendDialogSecurityIDs) {
-		securityID = a.dividendDialogSecurityIDs[secIdx]
+	if secIdx >= 0 && secIdx < len(a.dividend.securityIDs) {
+		securityID = a.dividend.securityIDs[secIdx]
 	} else {
 		fields[1].Error = "Select a security"
 		hasErrors = true
@@ -292,16 +300,16 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 
 // submitReinvestDividendDialog parses dialog fields, validates, and saves a reinvest dividend transaction.
 func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
-	if a.dividendDialog == nil || a.dividendDialogData == nil {
+	if a.dividend.dlg == nil || a.dividend.data == nil {
 		return a, nil
 	}
 
-	fields := a.dividendDialog.Fields()
+	fields := a.dividend.dlg.Fields()
 	if len(fields) < 6 {
 		return a, nil
 	}
 
-	a.dividendDialog.ClearErrors()
+	a.dividend.dlg.ClearErrors()
 	hasErrors := false
 
 	// Date (index 0)
@@ -315,14 +323,14 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 	}
 
 	// Security (index 1)
-	if len(a.dividendDialogSecurityIDs) == 0 {
+	if len(a.dividend.securityIDs) == 0 {
 		fields[1].Error = "No securities available"
 		hasErrors = true
 	}
 	secIdx := fields[1].SelectedIndex
 	var securityID types.ID
-	if secIdx >= 0 && secIdx < len(a.dividendDialogSecurityIDs) {
-		securityID = a.dividendDialogSecurityIDs[secIdx]
+	if secIdx >= 0 && secIdx < len(a.dividend.securityIDs) {
+		securityID = a.dividend.securityIDs[secIdx]
 	} else {
 		fields[1].Error = "Select a security"
 		hasErrors = true

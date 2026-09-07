@@ -527,10 +527,10 @@ func (a *App) scheduleWantsLoanEdit(st *scheduled.Transaction) bool {
 // loan edit. Called after buildEditScheduledDialog, so it overrides that
 // function's default Save/Cancel set.
 func (a *App) maybeAddEditAsLoanButton(st *scheduled.Transaction) {
-	if a.schedDialog == nil || !a.scheduleWantsLoanEdit(st) {
+	if a.sched.dlg == nil || !a.scheduleWantsLoanEdit(st) {
 		return
 	}
-	a.schedDialog.SetButtons([]dialog.DialogButton{
+	a.sched.dlg.SetButtons([]dialog.DialogButton{
 		{Label: "Save", Primary: true},
 		{Label: "Cancel"},
 		{Label: "Edit as loan →", Action: dialog.DialogActionAlternate},
@@ -541,7 +541,7 @@ func (a *App) maybeAddEditAsLoanButton(st *scheduled.Transaction) {
 // action to the loan wizard for a loan-shaped / loan-adoptable schedule, else
 // to the paycheck wizard (its original owner).
 func (a *App) relaunchScheduledAlternate() (tea.Model, tea.Cmd) {
-	if a.schedDialogData != nil && a.scheduleWantsLoanEdit(a.schedDialogData.scheduled) {
+	if a.sched.data != nil && a.scheduleWantsLoanEdit(a.sched.data.scheduled) {
 		return a.relaunchAsLoanWizard()
 	}
 	return a.relaunchAsPaycheckWizard()
@@ -550,13 +550,13 @@ func (a *App) relaunchScheduledAlternate() (tea.Model, tea.Cmd) {
 // relaunchAsLoanWizard closes the scheduled-edit dialog and opens the loan
 // wizard prefilled from the in-flight loan-shaped / loan-adoptable schedule.
 func (a *App) relaunchAsLoanWizard() (tea.Model, tea.Cmd) {
-	if a.schedDialog == nil || a.schedDialogData == nil {
+	if a.sched.dlg == nil || a.sched.data == nil {
 		return a, nil
 	}
-	if a.schedDialogData.mode != scheduledDialogModeEdit || a.schedDialogData.scheduled == nil {
+	if a.sched.data.mode != scheduledDialogModeEdit || a.sched.data.scheduled == nil {
 		return a, nil
 	}
-	st := a.schedDialogData.scheduled
+	st := a.sched.data.scheduled
 	a.closeScheduledDialog()
 	return a, a.loadLoanWizardEditData(st)
 }

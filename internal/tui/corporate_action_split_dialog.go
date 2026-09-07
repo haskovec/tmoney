@@ -120,10 +120,10 @@ func renderSplitDialogMessage(secIDs []types.ID, sharesMap map[types.ID][]invest
 // refreshStockSplitDialogMessage updates the dialog's message body to
 // reflect the currently-selected security and typed ratio.
 func (a *App) refreshStockSplitDialogMessage() {
-	if a.stockSplitDialog == nil || a.stockSplitDialogData == nil {
+	if a.stockSplit.dlg == nil || a.stockSplit.data == nil {
 		return
 	}
-	fields := a.stockSplitDialog.Fields()
+	fields := a.stockSplit.dlg.Fields()
 	if len(fields) < 3 {
 		return
 	}
@@ -135,9 +135,9 @@ func (a *App) refreshStockSplitDialogMessage() {
 	// date — the only shares the split will adjust — so the projection reflects
 	// the date-scoped engine instead of naively scaling every holding.
 	affected := map[types.ID]types.Quantity{}
-	if a.investmentSvc != nil && secIdx >= 0 && secIdx < len(a.stockSplitDialogSecurityIDs) {
+	if a.investmentSvc != nil && secIdx >= 0 && secIdx < len(a.stockSplit.securityIDs) {
 		if d, err := parseDateInput(dateStr); err == nil {
-			if asOf, err := a.investmentSvc.SharesBySecurityAsOf(a.stockSplitDialogSecurityIDs[secIdx], d); err == nil {
+			if asOf, err := a.investmentSvc.SharesBySecurityAsOf(a.stockSplit.securityIDs[secIdx], d); err == nil {
 				for _, as := range asOf {
 					affected[as.AccountID] = as.Shares
 				}
@@ -145,9 +145,9 @@ func (a *App) refreshStockSplitDialogMessage() {
 		}
 	}
 
-	a.stockSplitDialog.SetMessage(renderSplitDialogMessage(
-		a.stockSplitDialogSecurityIDs,
-		a.stockSplitDialogData.sharesMap,
+	a.stockSplit.dlg.SetMessage(renderSplitDialogMessage(
+		a.stockSplit.securityIDs,
+		a.stockSplit.data.sharesMap,
 		secIdx,
 		ratioStr,
 		affected,
@@ -188,18 +188,27 @@ func (a *App) loadStockSplitDialogData() tea.Cmd {
 }
 
 // closeStockSplitDialog clears the stock split dialog state.
+// stockSplitSurface is the stockSplit dialog and the state that belongs to it. The zero
+// value is closed.
+type stockSplitSurface struct {
+	modalSurface
+	data          *stockSplitDialogData
+	securityIDs   []types.ID
+	preSelectedID *types.ID
+}
+
+func (s *stockSplitSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 func (a *App) closeStockSplitDialog() {
-	a.stockSplitDialog = nil
-	a.stockSplitDialogData = nil
-	a.stockSplitDialogSecurityIDs = nil
+	a.stockSplit = stockSplitSurface{}
 }
 
 // handleStockSplitDialogKey routes key events to the stock split dialog.
 func (a *App) handleStockSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.stockSplitDialog == nil {
+	if a.stockSplit.dlg == nil {
 		return a, nil
 	}
-	return a.stockSplitDialogAction(a.stockSplitDialog.HandleKey(msg))
+	return a.stockSplitDialogAction(a.stockSplit.dlg.HandleKey(msg))
 }
 
 // stockSplitDialogAction dispatches a DialogAction for the stock split dialog, from either input path.
@@ -218,27 +227,27 @@ func (a *App) stockSplitDialogAction(action dialog.DialogAction) (tea.Model, tea
 
 // submitStockSplitDialog validates and executes the stock split.
 func (a *App) submitStockSplitDialog() (tea.Model, tea.Cmd) {
-	if a.stockSplitDialog == nil || a.stockSplitDialogData == nil {
+	if a.stockSplit.dlg == nil || a.stockSplit.data == nil {
 		return a, nil
 	}
 
-	fields := a.stockSplitDialog.Fields()
+	fields := a.stockSplit.dlg.Fields()
 	if len(fields) < 3 {
 		return a, nil
 	}
 
-	a.stockSplitDialog.ClearErrors()
+	a.stockSplit.dlg.ClearErrors()
 	hasErrors := false
 
 	// Security (index 0)
-	if len(a.stockSplitDialogSecurityIDs) == 0 {
+	if len(a.stockSplit.securityIDs) == 0 {
 		fields[0].Error = "No securities available"
 		hasErrors = true
 	}
 	secIdx := fields[0].SelectedIndex
 	var securityID types.ID
-	if secIdx >= 0 && secIdx < len(a.stockSplitDialogSecurityIDs) {
-		securityID = a.stockSplitDialogSecurityIDs[secIdx]
+	if secIdx >= 0 && secIdx < len(a.stockSplit.securityIDs) {
+		securityID = a.stockSplit.securityIDs[secIdx]
 	} else {
 		fields[0].Error = "Select a security"
 		hasErrors = true

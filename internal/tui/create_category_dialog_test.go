@@ -496,7 +496,7 @@ func TestBuildCreateCategoryDialog_DefaultTypeExpense(t *testing.T) {
 // sub-dialog opens with Income preselected.
 func TestApp_TxnDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
 	app := newAppForTxnAddNew(t, "", nil, nil)
-	app.txnDialog.Fields()[3].Value = "100.00" // amount
+	app.txn.dlg.Fields()[3].Value = "100.00" // amount
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleTransactionDialogKey(enter)
@@ -513,7 +513,7 @@ func TestApp_TxnDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
 // negative, the create-category sub-dialog opens with Expense preselected.
 func TestApp_TxnDialog_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
 	app := newAppForTxnAddNew(t, "", nil, nil)
-	app.txnDialog.Fields()[3].Value = "-9.50"
+	app.txn.dlg.Fields()[3].Value = "-9.50"
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleTransactionDialogKey(enter)
@@ -527,7 +527,7 @@ func TestApp_TxnDialog_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
 // the New Scheduled dialog → Income default.
 func TestApp_SchedDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
 	app := newAppForSchedAddNew(t, "", nil, nil)
-	app.schedDialog.Fields()[schedFieldAmount].Value = "3500.00"
+	app.sched.dlg.Fields()[schedFieldAmount].Value = "3500.00"
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleScheduledDialogKey(enter)
@@ -545,7 +545,7 @@ func TestApp_SchedDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
 func TestApp_SchedDialog_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
 	app := newAppForSchedAddNew(t, "", nil, nil)
 	// Helper already seeds "-1500.00" but pin it.
-	app.schedDialog.Fields()[schedFieldAmount].Value = "-1500.00"
+	app.sched.dlg.Fields()[schedFieldAmount].Value = "-1500.00"
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleScheduledDialogKey(enter)

@@ -57,10 +57,10 @@ func TestApp_Update_TransferDialogDataMsg_BuildsCategoryCombo(t *testing.T) {
 	model, _ := app.Update(transferDialogDataMsg{data: data})
 	updated := model.(*App)
 
-	if updated.transferDialog == nil {
+	if updated.transfer.dlg == nil {
 		t.Fatal("transfer dialog should be built")
 	}
-	fields := updated.transferDialog.Fields()
+	fields := updated.transfer.dlg.Fields()
 	if len(fields) != 6 {
 		t.Fatalf("create dialog fields = %d, want 6 (incl Category)", len(fields))
 	}
@@ -68,13 +68,13 @@ func TestApp_Update_TransferDialogDataMsg_BuildsCategoryCombo(t *testing.T) {
 		t.Errorf("field[5] label = %q, want Category", fields[5].Label)
 	}
 	// "(None)" + "Bills"
-	if len(updated.transferDialogCategoryIDs) != 2 {
-		t.Fatalf("transferDialogCategoryIDs len = %d, want 2", len(updated.transferDialogCategoryIDs))
+	if len(updated.transfer.categoryIDs) != 2 {
+		t.Fatalf("transferDialogCategoryIDs len = %d, want 2", len(updated.transfer.categoryIDs))
 	}
-	if !updated.transferDialogCategoryIDs[0].IsNil() {
+	if !updated.transfer.categoryIDs[0].IsNil() {
 		t.Error("category index 0 should be the NilID (None) sentinel")
 	}
-	if updated.transferDialogCategoryIDs[1] != bills.ID {
+	if updated.transfer.categoryIDs[1] != bills.ID {
 		t.Error("category index 1 should be the Bills category ID")
 	}
 }
@@ -90,26 +90,26 @@ func TestApp_SubmitTransferDialog_InvToInvRejectsCategory(t *testing.T) {
 	accountOptions := []string{"IRA A", "IRA B"}
 	catOptions := []string{"(None)", "Bills"}
 	app := &App{
-		currentView:              ViewRegister,
-		keys:                     defaultKeyMap(),
-		menubar:                  widget.NewMenuBar(),
-		statusbar:                widget.NewStatusBar(),
-		sidebar:                  NewSidebar(),
-		transferDialog:           buildTransferDialog(accountOptions, catOptions, 0),
-		transferDialogAccountIDs: []types.ID{fromID, toID},
-		transferDialogCategoryIDs: []types.ID{
-			types.NilID,
-			catID,
-		},
-		transferDialogData: &transferDialogData{
-			mode: transferDialogModeNew,
-			accounts: []*account.Account{
-				{BaseModel: types.BaseModel{ID: fromID}, Name: "IRA A", Type: account.TypeInvestment},
-				{BaseModel: types.BaseModel{ID: toID}, Name: "IRA B", Type: account.TypeInvestment},
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		transfer: transferSurface{modalSurface: modalSurface{dlg: buildTransferDialog(accountOptions, catOptions, 0)},
+			accountIDs: []types.ID{fromID, toID},
+			categoryIDs: []types.ID{
+				types.NilID,
+				catID,
 			},
-		},
+			data: &transferDialogData{
+				mode: transferDialogModeNew,
+				accounts: []*account.Account{
+					{BaseModel: types.BaseModel{ID: fromID}, Name: "IRA A", Type: account.TypeInvestment},
+					{BaseModel: types.BaseModel{ID: toID}, Name: "IRA B", Type: account.TypeInvestment},
+				},
+			}},
 	}
-	fields := app.transferDialog.Fields()
+	fields := app.transfer.dlg.Fields()
 	fields[1].SelectedIndex = 1 // To = IRA B
 	fields[2].Value = "1000.00"
 	fields[3].Value = "01/15/2024"
@@ -121,10 +121,10 @@ func TestApp_SubmitTransferDialog_InvToInvRejectsCategory(t *testing.T) {
 	if cmd != nil {
 		t.Error("expected nil cmd: a categorized inv↔inv transfer must be refused")
 	}
-	if updated.transferDialog == nil {
+	if updated.transfer.dlg == nil {
 		t.Fatal("dialog should stay open on the validation error")
 	}
-	if updated.transferDialog.Fields()[5].Error == "" {
+	if updated.transfer.dlg.Fields()[5].Error == "" {
 		t.Error("Category field should carry the inv↔inv limitation error")
 	}
 }
@@ -139,23 +139,23 @@ func TestApp_SubmitTransferDialog_InvToInvAllowsNoCategory(t *testing.T) {
 	accountOptions := []string{"IRA A", "IRA B"}
 	catOptions := []string{"(None)", "Bills"}
 	app := &App{
-		currentView:               ViewRegister,
-		keys:                      defaultKeyMap(),
-		menubar:                   widget.NewMenuBar(),
-		statusbar:                 widget.NewStatusBar(),
-		sidebar:                   NewSidebar(),
-		transferDialog:            buildTransferDialog(accountOptions, catOptions, 0),
-		transferDialogAccountIDs:  []types.ID{fromID, toID},
-		transferDialogCategoryIDs: []types.ID{types.NilID, types.NewID()},
-		transferDialogData: &transferDialogData{
-			mode: transferDialogModeNew,
-			accounts: []*account.Account{
-				{BaseModel: types.BaseModel{ID: fromID}, Name: "IRA A", Type: account.TypeInvestment},
-				{BaseModel: types.BaseModel{ID: toID}, Name: "IRA B", Type: account.TypeInvestment},
-			},
-		},
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		transfer: transferSurface{modalSurface: modalSurface{dlg: buildTransferDialog(accountOptions, catOptions, 0)},
+			accountIDs:  []types.ID{fromID, toID},
+			categoryIDs: []types.ID{types.NilID, types.NewID()},
+			data: &transferDialogData{
+				mode: transferDialogModeNew,
+				accounts: []*account.Account{
+					{BaseModel: types.BaseModel{ID: fromID}, Name: "IRA A", Type: account.TypeInvestment},
+					{BaseModel: types.BaseModel{ID: toID}, Name: "IRA B", Type: account.TypeInvestment},
+				},
+			}},
 	}
-	fields := app.transferDialog.Fields()
+	fields := app.transfer.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "1000.00"
 	fields[3].Value = "01/15/2024"
@@ -185,7 +185,7 @@ func TestApp_TransferDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	if updated.createCatSource != createCatSourceTransferDialog {
 		t.Errorf("createCatSource = %v, want createCatSourceTransferDialog", updated.createCatSource)
 	}
-	if updated.transferDialog == nil || updated.transferDialog.IsVisible() {
+	if updated.transfer.dlg == nil || updated.transfer.dlg.IsVisible() {
 		t.Error("transfer dialog should be kept but hidden during the divert")
 	}
 	// Type radio: 0 = Expense.
@@ -214,7 +214,7 @@ func TestApp_TransferDialog_AddNew_CancelRestores(t *testing.T) {
 	if app.createCatDialog != nil {
 		t.Error("createCatDialog should be cleared after cancel")
 	}
-	if app.transferDialog == nil || !app.transferDialog.IsVisible() {
+	if app.transfer.dlg == nil || !app.transfer.dlg.IsVisible() {
 		t.Error("transfer dialog should be re-shown after cancel")
 	}
 	if app.createCatSource != createCatSourceNone {
@@ -233,22 +233,22 @@ func TestApp_ApplyCreatedCategoryToTransfer_SelectsNewCategory(t *testing.T) {
 	app = model.(*App)
 
 	donations := category.NewCategory("Donations", category.TypeExpense)
-	cats := append(app.transferDialogData.categories, donations)
+	cats := append(app.transfer.data.categories, donations)
 
 	app.applyCreatedCategoryToTransfer(donations, cats)
 
 	if app.createCatDialog != nil {
 		t.Error("createCatDialog should be cleared after applying the new category")
 	}
-	if app.transferDialog == nil || !app.transferDialog.IsVisible() {
+	if app.transfer.dlg == nil || !app.transfer.dlg.IsVisible() {
 		t.Fatal("transfer dialog should be re-shown after applying the new category")
 	}
-	catField := app.transferDialog.Fields()[5]
+	catField := app.transfer.dlg.Fields()[5]
 	sel := catField.SelectedIndex
-	if sel <= 0 || sel >= len(app.transferDialogCategoryIDs) {
+	if sel <= 0 || sel >= len(app.transfer.categoryIDs) {
 		t.Fatalf("Category SelectedIndex = %d, want it to point at the new category", sel)
 	}
-	if app.transferDialogCategoryIDs[sel] != donations.ID {
+	if app.transfer.categoryIDs[sel] != donations.ID {
 		t.Error("Category combo should select the freshly-created Donations category")
 	}
 }
@@ -265,27 +265,27 @@ func newAppForTransferAddNew(t *testing.T, query string) *App {
 	options, ids := buildCategoryOptions(cats)
 
 	app := &App{
-		currentView:               ViewRegister,
-		keys:                      defaultKeyMap(),
-		menubar:                   widget.NewMenuBar(),
-		statusbar:                 widget.NewStatusBar(),
-		sidebar:                   NewSidebar(),
-		transferDialogAccountIDs:  []types.ID{fromID, toID},
-		transferDialogCategoryIDs: ids,
-		transferDialogData: &transferDialogData{
-			mode:       transferDialogModeNew,
-			categories: cats,
-			accounts: []*account.Account{
-				{BaseModel: types.BaseModel{ID: fromID}, Name: "Checking", Type: account.TypeChecking},
-				{BaseModel: types.BaseModel{ID: toID}, Name: "Savings", Type: account.TypeSavings},
-			},
-		},
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		transfer: transferSurface{accountIDs: []types.ID{fromID, toID},
+			categoryIDs: ids,
+			data: &transferDialogData{
+				mode:       transferDialogModeNew,
+				categories: cats,
+				accounts: []*account.Account{
+					{BaseModel: types.BaseModel{ID: fromID}, Name: "Checking", Type: account.TypeChecking},
+					{BaseModel: types.BaseModel{ID: toID}, Name: "Savings", Type: account.TypeSavings},
+				},
+			}},
 	}
 	d := buildTransferDialog([]string{"Checking", "Savings"}, options, 0)
 	d.SetFocusIndex(5) // Category
 	cat := d.Fields()[5]
 	cat.Query = query
 	cat.ComboHighlight = len(cat.FilteredIndices())
-	app.transferDialog = d
+	app.transfer.dlg = d
 	return app
 }

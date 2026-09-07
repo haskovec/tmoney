@@ -1076,7 +1076,7 @@ func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddTextField("Date", "01/15/2024", "", 10)
 			d.AddTextField("Payee", "Grocery Store", "", 0)
@@ -1087,18 +1087,19 @@ func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
 			d.AddCheckboxField("Split transaction", true) // checked!
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*payee.Payee),
-			categories: []*category.Category{
-				{
-					BaseModel: types.BaseModel{ID: catID},
-					Name:      "Food",
-					Type:      category.TypeExpense,
+		}()},
+
+			data: &transactionDialogData{
+				payeeMap: make(map[string]*payee.Payee),
+				categories: []*category.Category{
+					{
+						BaseModel: types.BaseModel{ID: catID},
+						Name:      "Food",
+						Type:      category.TypeExpense,
+					},
 				},
 			},
-		},
-		txnDialogCategoryIDs: []types.ID{types.NilID, catID},
+			categoryIDs: []types.ID{types.NilID, catID}},
 	}
 
 	// Set up sidebar with a selected account
@@ -1107,14 +1108,14 @@ func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
 	}, nil)
 
 	// Submit the dialog (focus on Save button)
-	app.txnDialog.SetFocusIndex(len(app.txnDialog.Fields()))
-	app.txnDialog.FocusNext() // move to Save button
+	app.txn.dlg.SetFocusIndex(len(app.txn.dlg.Fields()))
+	app.txn.dlg.FocusNext() // move to Save button
 
 	model, cmd := app.submitTransactionDialog()
 	updatedApp := model.(*App)
 
 	// Transaction dialog should be closed
-	if updatedApp.txnDialog != nil {
+	if updatedApp.txn.dlg != nil {
 		t.Error("txnDialog should be nil after split submit")
 	}
 
