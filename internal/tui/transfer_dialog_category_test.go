@@ -179,21 +179,21 @@ func TestApp_TransferDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	model, _ := app.handleTransferDialogKey(enter)
 	updated := model.(*App)
 
-	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+	if updated.createCat.dlg == nil || !updated.createCat.dlg.IsVisible() {
 		t.Fatal("createCatDialog should be visible after [+ Add new] is activated")
 	}
-	if updated.createCatSource != createCatSourceTransferDialog {
-		t.Errorf("createCatSource = %v, want createCatSourceTransferDialog", updated.createCatSource)
+	if updated.createCat.origin.surface != createCatSourceTransferDialog {
+		t.Errorf("createCatSource = %v, want createCatSourceTransferDialog", updated.createCat.origin.surface)
 	}
 	if updated.transfer.dlg == nil || updated.transfer.dlg.IsVisible() {
 		t.Error("transfer dialog should be kept but hidden during the divert")
 	}
 	// Type radio: 0 = Expense.
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 0 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 0 {
 		t.Errorf("new-category Type = %d, want 0 (Expense default for transfers)", got)
 	}
 	// Name seeded from the typed query.
-	if got := updated.createCatDialog.Fields()[0].Value; got != "Donations" {
+	if got := updated.createCat.dlg.Fields()[0].Value; got != "Donations" {
 		t.Errorf("new-category Name seed = %q, want %q", got, "Donations")
 	}
 }
@@ -211,14 +211,14 @@ func TestApp_TransferDialog_AddNew_CancelRestores(t *testing.T) {
 	model, _ = app.handleCreateCatDialogKey(esc)
 	app = model.(*App)
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after cancel")
 	}
 	if app.transfer.dlg == nil || !app.transfer.dlg.IsVisible() {
 		t.Error("transfer dialog should be re-shown after cancel")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %v, want createCatSourceNone after cancel", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %v, want createCatSourceNone after cancel", app.createCat.origin.surface)
 	}
 }
 
@@ -237,7 +237,7 @@ func TestApp_ApplyCreatedCategoryToTransfer_SelectsNewCategory(t *testing.T) {
 
 	app.applyCreatedCategoryToTransfer(donations, cats)
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after applying the new category")
 	}
 	if app.transfer.dlg == nil || !app.transfer.dlg.IsVisible() {

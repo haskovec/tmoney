@@ -1283,7 +1283,7 @@ func TestApp_TxnDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	model, _ := app.handleTransactionDialogKey(enter)
 	updated := model.(*App)
 
-	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+	if updated.createCat.dlg == nil || !updated.createCat.dlg.IsVisible() {
 		t.Fatal("createCatDialog should be visible after [+ Add new] is activated")
 	}
 	if updated.txn.dlg == nil {
@@ -1293,9 +1293,9 @@ func TestApp_TxnDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 		t.Error("txnDialog should be hidden while createCatDialog is shown")
 	}
 	// The pre-fill is wired in TD-009; for TD-008 we assert the dialog opened.
-	if updated.createCatDialog.Title() != "New Category" {
+	if updated.createCat.dlg.Title() != "New Category" {
 		t.Errorf("createCatDialog title = %q, want %q",
-			updated.createCatDialog.Title(), "New Category")
+			updated.createCat.dlg.Title(), "New Category")
 	}
 }
 
@@ -1314,7 +1314,7 @@ func TestApp_TxnDialog_AddNew_CancelRestoresState(t *testing.T) {
 	model, _ = app.handleCreateCatDialogKey(esc)
 	app = model.(*App)
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after cancel")
 	}
 	if app.txn.dlg == nil || !app.txn.dlg.IsVisible() {
@@ -1376,12 +1376,12 @@ func TestApp_TxnDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleTransactionDialogKey(enter)
 	app = model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
 
 	// Fill out: Name=Sushi, Parent=Food (existing), Type=Expense.
-	cFields := app.createCatDialog.Fields()
+	cFields := app.createCat.dlg.Fields()
 	cFields[0].Value = "Sushi"
 	// Parent: locate "Food" in the Options.
 	parentField := cFields[1]
@@ -1428,7 +1428,7 @@ func TestApp_TxnDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 	}
 
 	// Sub-dialog closed; transaction dialog visible again.
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after submit")
 	}
 	if app.txn.dlg == nil || !app.txn.dlg.IsVisible() {
@@ -1488,7 +1488,7 @@ func TestApp_TxnDialog_AddNew_SubmitNewParentCreatesBoth(t *testing.T) {
 	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app = model.(*App)
 
-	cFields := app.createCatDialog.Fields()
+	cFields := app.createCat.dlg.Fields()
 	cFields[0].Value = "Endowment"
 	// Parent typed but not yet committed — Charity does not exist.
 	cFields[1].Query = "Charity"
@@ -1537,10 +1537,10 @@ func TestApp_TxnDialog_AddNew_SubmitInvalidLeavesDialogOpen(t *testing.T) {
 	if cmd != nil {
 		t.Error("invalid input should not produce a cmd")
 	}
-	if app.createCatDialog == nil || !app.createCatDialog.IsVisible() {
+	if app.createCat.dlg == nil || !app.createCat.dlg.IsVisible() {
 		t.Fatal("createCatDialog should remain open after validation failure")
 	}
-	if app.createCatDialog.Fields()[0].Error == "" {
+	if app.createCat.dlg.Fields()[0].Error == "" {
 		t.Error("Name field should have an inline error")
 	}
 }
@@ -1586,10 +1586,10 @@ func TestApp_TxnDialog_AddNew_PrefillsNameFromQuery(t *testing.T) {
 	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app = model.(*App)
 
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	fields := app.createCatDialog.Fields()
+	fields := app.createCat.dlg.Fields()
 	if fields[0].Value != "Donations" {
 		t.Errorf("Name = %q, want %q", fields[0].Value, "Donations")
 	}
@@ -1600,8 +1600,8 @@ func TestApp_TxnDialog_AddNew_PrefillsNameFromQuery(t *testing.T) {
 	if fields[1].SelectedIndex != 0 {
 		t.Errorf("Parent.SelectedIndex = %d, want 0 (top-level)", fields[1].SelectedIndex)
 	}
-	if app.createCatDialog.FocusIndex() != 1 {
-		t.Errorf("FocusIndex = %d, want 1 (Parent)", app.createCatDialog.FocusIndex())
+	if app.createCat.dlg.FocusIndex() != 1 {
+		t.Errorf("FocusIndex = %d, want 1 (Parent)", app.createCat.dlg.FocusIndex())
 	}
 }
 
@@ -1617,10 +1617,10 @@ func TestApp_TxnDialog_AddNew_PrefillsParentChildFromColonExisting(t *testing.T)
 	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app = model.(*App)
 
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	fields := app.createCatDialog.Fields()
+	fields := app.createCat.dlg.Fields()
 	if fields[0].Value != "Sushi" {
 		t.Errorf("Name = %q, want %q", fields[0].Value, "Sushi")
 	}
@@ -1654,10 +1654,10 @@ func TestApp_TxnDialog_AddNew_PrefillsParentChildFromColonNew(t *testing.T) {
 	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app = model.(*App)
 
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	fields := app.createCatDialog.Fields()
+	fields := app.createCat.dlg.Fields()
 	if fields[0].Value != "Endowment" {
 		t.Errorf("Name = %q, want %q", fields[0].Value, "Endowment")
 	}
@@ -1673,10 +1673,10 @@ func TestApp_TxnDialog_AddNew_PrefillsEmptyQuery(t *testing.T) {
 	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app = model.(*App)
 
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	fields := app.createCatDialog.Fields()
+	fields := app.createCat.dlg.Fields()
 	if fields[0].Value != "" {
 		t.Errorf("Name = %q, want empty", fields[0].Value)
 	}
@@ -1686,8 +1686,8 @@ func TestApp_TxnDialog_AddNew_PrefillsEmptyQuery(t *testing.T) {
 	if fields[1].SelectedIndex != 0 {
 		t.Errorf("Parent.SelectedIndex = %d, want 0", fields[1].SelectedIndex)
 	}
-	if app.createCatDialog.FocusIndex() != 0 {
-		t.Errorf("FocusIndex = %d, want 0 (Name)", app.createCatDialog.FocusIndex())
+	if app.createCat.dlg.FocusIndex() != 0 {
+		t.Errorf("FocusIndex = %d, want 0 (Name)", app.createCat.dlg.FocusIndex())
 	}
 }
 
@@ -1699,10 +1699,10 @@ func TestApp_TxnDialog_AddNew_PrefillsLeadingColon(t *testing.T) {
 	model, _ := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app = model.(*App)
 
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	fields := app.createCatDialog.Fields()
+	fields := app.createCat.dlg.Fields()
 	if fields[0].Value != "Groceries" {
 		t.Errorf("Name = %q, want %q", fields[0].Value, "Groceries")
 	}

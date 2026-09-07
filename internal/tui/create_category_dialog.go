@@ -29,6 +29,38 @@ const (
 	createCatSourceTransferDialog
 )
 
+// createCatSurface is the inline create-category sub-dialog and a record of
+// where it was opened from. The zero value is closed.
+type createCatSurface struct {
+	modalSurface
+	origin createCatOrigin
+}
+
+func (s *createCatSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
+// createCatOrigin says which surface diverted into the sub-dialog and, where
+// that surface has more than one category field, which one. Exactly one of
+// the positional fields is live at a time, chosen by surface; the others keep
+// their idle values (-1 for the indexes, nil for the line).
+type createCatOrigin struct {
+	surface createCategorySource
+	// splitRow is the split-editor row whose Category combo activated
+	// [+ Add new category…]. -1 when no split-sourced sub-dialog is in flight.
+	splitRow int
+	// line is the paycheck-wizard line whose select field activated
+	// [+ Add new category…]. nil when no paycheck-sourced sub-dialog is in flight.
+	line *PaycheckLine
+	// loanField is the loan-wizard dialog field index (interest or an escrow
+	// category combo) that activated [+ Add new category…]. -1 when no
+	// loan-sourced sub-dialog is in flight.
+	loanField int
+}
+
+// newCreateCatOrigin is the idle origin: no surface, both indexes at -1.
+func newCreateCatOrigin() createCatOrigin {
+	return createCatOrigin{surface: createCatSourceNone, splitRow: -1, loanField: -1}
+}
+
 // createCategoryRequest captures the user's intent to create a new category.
 // ParentName == "" means the new category is top-level. NewParent reports
 // whether ParentName names a parent that does not yet exist (and therefore
@@ -279,7 +311,7 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 		return fmt.Errorf("reload categories: %w", err)
 	}
 
-	switch a.createCatSource {
+	switch a.createCat.origin.surface {
 	case createCatSourceTxnDialog:
 		a.applyCreatedCategoryToTxn(newCat, cats)
 	case createCatSourceSchedDialog:
@@ -300,9 +332,9 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 		// No source recorded — surface plumbing not wired (or the source
 		// enum was reset before the router fired). Close the sub-dialog
 		// so the user isn't stuck on an inert overlay.
-		a.createCatDialog = nil
+		a.createCat.dlg = nil
 	}
 
-	a.createCatSource = createCatSourceNone
+	a.createCat.origin.surface = createCatSourceNone
 	return nil
 }

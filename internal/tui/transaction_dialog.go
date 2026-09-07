@@ -516,8 +516,8 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 	if len(fields) > 3 {
 		defaultType = inferCategoryTypeFromAmount(fields[3].Value)
 	}
-	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, defaultType)
-	a.createCatSource = createCatSourceTxnDialog
+	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, defaultType)
+	a.createCat.origin.surface = createCatSourceTxnDialog
 	a.txn.dlg.SetVisible(false)
 	return a, nil
 }
@@ -542,10 +542,10 @@ func topLevelParentNames(categories []*category.Category) []string {
 // with all field state preserved. Submit produces the
 // createCategoryRequestMsg that the App.Update path consumes.
 func (a *App) handleCreateCatDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.createCatDialog == nil {
+	if a.createCat.dlg == nil {
 		return a, nil
 	}
-	return a.createCatDialogAction(a.createCatDialog.HandleKey(msg))
+	return a.createCatDialogAction(a.createCat.dlg.HandleKey(msg))
 }
 
 // createCatDialogAction dispatches a DialogAction for the create cat dialog, from either input path.
@@ -567,8 +567,8 @@ func (a *App) createCatDialogAction(action dialog.DialogAction) (tea.Model, tea.
 // is reset so a future open from a different surface starts in a clean
 // state.
 func (a *App) cancelCreateCatDialog() {
-	a.createCatDialog = nil
-	switch a.createCatSource {
+	a.createCat.dlg = nil
+	switch a.createCat.origin.surface {
 	case createCatSourceTxnDialog:
 		if a.txn.dlg != nil {
 			a.txn.dlg.SetVisible(true)
@@ -584,26 +584,26 @@ func (a *App) cancelCreateCatDialog() {
 			}
 		}
 	case createCatSourceSplitDialog:
-		if a.splitDialog != nil {
-			a.splitDialog.SetVisible(true)
+		if a.split.editor != nil {
+			a.split.editor.SetVisible(true)
 		}
-		a.createCatSplitRow = -1
+		a.createCat.origin.splitRow = -1
 	case createCatSourcePaycheckWizard:
 		if a.paycheckWizard != nil {
 			a.paycheckWizard.SetVisible(true)
 		}
-		a.createCatPaycheckLine = nil
+		a.createCat.origin.line = nil
 	case createCatSourceLoanWizard:
 		if a.loan != nil {
 			a.loan.dlg.SetVisible(true)
 		}
-		a.createCatLoanField = -1
+		a.createCat.origin.loanField = -1
 	case createCatSourceTransferDialog:
 		if a.transfer.dlg != nil {
 			a.transfer.dlg.SetVisible(true)
 		}
 	}
-	a.createCatSource = createCatSourceNone
+	a.createCat.origin.surface = createCatSourceNone
 }
 
 // submitCreateCatDialog validates the sub-dialog and, on success, returns a
@@ -611,11 +611,11 @@ func (a *App) cancelCreateCatDialog() {
 // to persist the category and reopen the transaction dialog. Validation
 // failures keep the sub-dialog open with inline errors set.
 func (a *App) submitCreateCatDialog() (tea.Model, tea.Cmd) {
-	if a.createCatDialog == nil {
+	if a.createCat.dlg == nil {
 		return a, nil
 	}
 	parents := a.parentsForCreateCatDialog()
-	cmd := submitCreateCategoryDialog(a.createCatDialog, parents)
+	cmd := submitCreateCategoryDialog(a.createCat.dlg, parents)
 	if cmd == nil {
 		return a, nil
 	}
@@ -629,7 +629,7 @@ func (a *App) submitCreateCatDialog() (tea.Model, tea.Cmd) {
 // preview dialog) it falls back to a live categorySvc.List() call. An empty
 // slice is returned when no source matches and no service is available.
 func (a *App) parentsForCreateCatDialog() []string {
-	switch a.createCatSource {
+	switch a.createCat.origin.surface {
 	case createCatSourceTxnDialog:
 		if a.txn.data != nil {
 			return topLevelParentNames(a.txn.data.categories)
@@ -676,7 +676,7 @@ func (a *App) applyCreatedCategoryToTxn(newCat *category.Category, cats []*categ
 		a.txn.dlg.SetFocusIndex(3)
 		a.txn.dlg.SetVisible(true)
 	}
-	a.createCatDialog = nil
+	a.createCat.dlg = nil
 }
 
 // submitTransactionDialog parses dialog fields, validates, and saves the transaction.
@@ -762,7 +762,7 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		if editing {
 			pending.existing = existing
 		}
-		a.pendingSplitTxn = pending
+		a.split.pendingTxn = pending
 
 		// Build category options for the split dialog (reuse loaded data)
 		categoryOptions, categoryIDs := buildCategoryOptions(a.txn.data.categories)
@@ -775,11 +775,11 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		// Open split dialog — seeded with existing splits when editing a
 		// transaction that already had splits.
 		if editing && hadSplits {
-			a.splitDialog = NewSplitDialogFromExisting(amount, categoryOptions, categoryIDs, seedSplits)
+			a.split.editor = NewSplitDialogFromExisting(amount, categoryOptions, categoryIDs, seedSplits)
 		} else {
-			a.splitDialog = NewSplitDialog(amount, categoryOptions, categoryIDs)
+			a.split.editor = NewSplitDialog(amount, categoryOptions, categoryIDs)
 		}
-		a.splitDialog.SetTransferTargets(accountOptions, accountIDs, accountID)
+		a.split.editor.SetTransferTargets(accountOptions, accountIDs, accountID)
 
 		return a, nil
 	}

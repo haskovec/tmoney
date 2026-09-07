@@ -226,11 +226,11 @@ func TestApp_OpenCreateCategorySubDialogFromSchedTransfer(t *testing.T) {
 	model, _ := app.openCreateCategorySubDialogFromSchedTransfer()
 	updated := model.(*App)
 
-	if updated.createCatSource != createCatSourceSchedTransferDialog {
+	if updated.createCat.origin.surface != createCatSourceSchedTransferDialog {
 		t.Errorf("createCatSource = %d, want createCatSourceSchedTransferDialog (%d)",
-			updated.createCatSource, createCatSourceSchedTransferDialog)
+			updated.createCat.origin.surface, createCatSourceSchedTransferDialog)
 	}
-	if updated.createCatDialog == nil {
+	if updated.createCat.dlg == nil {
 		t.Fatal("create-category sub-dialog should be open")
 	}
 	if updated.sched.dlg.IsVisible() {
@@ -245,7 +245,7 @@ func TestApp_OpenCreateCategorySubDialogFromSchedTransfer(t *testing.T) {
 	if catField.Options[catField.SelectedIndex] != "Groceries" {
 		t.Errorf("selected category = %q, want Groceries", catField.Options[catField.SelectedIndex])
 	}
-	if updated.createCatDialog != nil {
+	if updated.createCat.dlg != nil {
 		t.Error("create-category sub-dialog should be cleared after apply")
 	}
 	if !updated.sched.dlg.IsVisible() {

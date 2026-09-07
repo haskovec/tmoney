@@ -94,8 +94,8 @@ func surfaceSetters() map[string]func(*App) {
 				result:       &transferlink.Result{},
 			}
 		},
-		"split":          func(a *App) { a.splitDialog = newVisibleSplitDialog() },
-		"createCategory": func(a *App) { a.createCatDialog = visibleDialog("Create Category") },
+		"split":          func(a *App) { a.split.editor = newVisibleSplitDialog() },
+		"createCategory": func(a *App) { a.createCat.dlg = visibleDialog("Create Category") },
 		"transaction": func(a *App) {
 			a.txn.dlg = visibleDialog("Transaction")
 			a.txn.data = &transactionDialogData{}
@@ -371,10 +371,10 @@ func TestModals_SplitHidesItselfOnCreateCategoryDivert(t *testing.T) {
 
 	_, _ = a.openCreateCategorySubDialogFromSplit()
 
-	if a.splitDialog == nil {
+	if a.split.editor == nil {
 		t.Fatal("the divert must keep the split editor alive (hidden), not drop it")
 	}
-	if a.splitDialog.IsVisible() {
+	if a.split.editor.IsVisible() {
 		t.Error("the split editor must hide itself when it opens create-category")
 	}
 	if front := a.frontmostModal(); front == nil || front.name != "createCategory" {

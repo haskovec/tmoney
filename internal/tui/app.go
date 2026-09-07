@@ -153,35 +153,16 @@ type App struct {
 	// it. Process-lifetime only — not persisted across restarts.
 	txnDialogLastSavedDate types.Date
 
-	// createCatDialog is the inline create-category sub-dialog opened from
-	// any of the transaction-entry surfaces via the [+ Add new category…]
-	// action row. While it is non-nil and visible, the originating dialog
-	// is hidden but kept alive so its field state survives the divert. The
-	// createCatSource field below records which surface opened it so the
-	// post-create router can dispatch back to the right applier.
-	createCatDialog *dialog.Dialog
-	createCatSource createCategorySource
-	// createCatSplitRow is the row index in splitDialog whose Category combo
-	// activated [+ Add new category…]. Used by applyCreatedCategoryToSplit to
-	// point the originating row at the freshly-created category after the
-	// sub-dialog returns. -1 when no split-sourced sub-dialog is in flight.
-	createCatSplitRow int
-	// createCatPaycheckLine is the paycheck-wizard line whose select field
-	// activated [+ Add new category…]. Used by applyCreatedCategoryToPaycheck
-	// to point the originating line at the freshly-created category after the
-	// sub-dialog returns. nil when no paycheck-sourced sub-dialog is in flight.
-	createCatPaycheckLine *PaycheckLine
-	// createCatLoanField is the loan-wizard dialog field index (interest or an
-	// escrow category combo) that activated [+ Add new category…]. Used by
-	// applyCreatedCategoryToLoan to point that field at the freshly-created
-	// category after the sub-dialog returns. -1 when no loan-sourced sub-dialog
-	// is in flight.
-	createCatLoanField int
+	// createCat is the inline create-category sub-dialog opened from any of
+	// the transaction-entry surfaces via the [+ Add new category…] action row.
+	// While it is open the originating dialog is hidden but kept alive so its
+	// field state survives the divert. Its origin records which surface opened
+	// it, and where in that surface, so the post-create router can dispatch
+	// back to the right applier.
+	createCat createCatSurface
 
 	// Split dialog state
-	splitDialog           *SplitDialog
-	pendingSplitTxn       *pendingSplitTransaction
-	pendingSplitScheduled *pendingSplitScheduled
+	split splitSurface
 
 	// Transfer dialog state
 	transfer transferSurface
@@ -423,8 +404,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		lotRepo:                   svc.LotRepo,
 		positionRepo:              svc.PositionRepo,
 		corporateActionSvc:        svc.CorporateAction,
-		createCatSplitRow:         -1,
-		createCatLoanField:        -1,
+		createCat:                 createCatSurface{origin: newCreateCatOrigin()},
 	}
 
 	a.menubar.SetMenuItemsBuilder(widget.ViewMenuIndex, func() []widget.MenuItem {

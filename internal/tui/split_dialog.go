@@ -989,10 +989,10 @@ func (sd *SplitDialog) renderTextField(styles widget.Styles, f *dialog.Field, fo
 
 // handleSplitDialogKey routes key events to the split dialog.
 func (a *App) handleSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.splitDialog == nil {
+	if a.split.editor == nil {
 		return a, nil
 	}
-	return a.splitDialogAction(a.splitDialog.HandleKey(msg))
+	return a.splitDialogAction(a.split.editor.HandleKey(msg))
 }
 
 // splitDialogAction dispatches a DialogAction for the split dialog. Both the keyboard
@@ -1002,7 +1002,7 @@ func (a *App) handleSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (a *App) splitDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
-		if a.pendingSplitScheduled != nil {
+		if a.split.pendingScheduled != nil {
 			return a.submitScheduledSplitDialog()
 		}
 		return a.submitSplitDialog()
@@ -1026,7 +1026,7 @@ func (a *App) splitDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd)
 // panel centred with widget.OverlayCenter — so a click maps to the same
 // content-local position the renderer drew.
 func (a *App) handleSplitDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if a.splitDialog == nil {
+	if a.split.editor == nil {
 		return a, nil
 	}
 	// Wheel events reach here too (handleMouseWheel routes through
@@ -1036,14 +1036,14 @@ func (a *App) handleSplitDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	overlay := a.splitDialog.Render(a.styles)
+	overlay := a.split.editor.Render(a.styles)
 	startCol, startRow := widget.OverlayTopLeft(overlay, a.width, a.height)
 	m := msg.Mouse()
 	// Content-local offsets inside the panel: border (1) + h-padding (2) on X,
 	// border (1) + v-padding (1) on Y.
 	// The same dispatcher the keyboard path uses, so a click and a keypress
 	// cannot drift apart.
-	return a.splitDialogAction(a.splitDialog.HandleMouseLocal(m.X-startCol-3, m.Y-startRow-2))
+	return a.splitDialogAction(a.split.editor.HandleMouseLocal(m.X-startCol-3, m.Y-startRow-2))
 }
 
 // openCreateCategorySubDialogFromSplit hides the split dialog and opens the
@@ -1056,19 +1056,19 @@ func (a *App) handleSplitDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // Unlike the typeahead-combo surfaces, the split dialog has no typed query
 // to harvest — the sub-dialog opens with empty Name and Parent fields.
 func (a *App) openCreateCategorySubDialogFromSplit() (tea.Model, tea.Cmd) {
-	if a.splitDialog == nil {
+	if a.split.editor == nil {
 		return a, nil
 	}
 
-	a.createCatSource = createCatSourceSplitDialog
-	a.createCatSplitRow = a.splitDialog.rowIndex
+	a.createCat.origin.surface = createCatSourceSplitDialog
+	a.createCat.origin.splitRow = a.split.editor.rowIndex
 	parents := a.parentsForCreateCatDialog()
 	defaultType := category.TypeExpense
-	if rowIdx := a.splitDialog.rowIndex; rowIdx >= 0 && rowIdx < len(a.splitDialog.rows) {
-		defaultType = inferCategoryTypeFromAmount(a.splitDialog.rows[rowIdx].amountField.Value)
+	if rowIdx := a.split.editor.rowIndex; rowIdx >= 0 && rowIdx < len(a.split.editor.rows) {
+		defaultType = inferCategoryTypeFromAmount(a.split.editor.rows[rowIdx].amountField.Value)
 	}
-	a.createCatDialog = buildCreateCategoryDialog("", "", parents, defaultType)
-	a.splitDialog.SetVisible(false)
+	a.createCat.dlg = buildCreateCategoryDialog("", "", parents, defaultType)
+	a.split.editor.SetVisible(false)
 	return a, nil
 }
 
@@ -1080,10 +1080,10 @@ func (a *App) openCreateCategorySubDialogFromSplit() (tea.Model, tea.Cmd) {
 // looking up their previously-selected category ID in the rebuilt slice.
 func (a *App) applyCreatedCategoryToSplit(newCat *category.Category, cats []*category.Category) {
 	defer func() {
-		a.createCatDialog = nil
-		a.createCatSplitRow = -1
+		a.createCat.dlg = nil
+		a.createCat.origin.splitRow = -1
 	}()
-	sd := a.splitDialog
+	sd := a.split.editor
 	if sd == nil {
 		return
 	}
@@ -1115,7 +1115,7 @@ func (a *App) applyCreatedCategoryToSplit(newCat *category.Category, cats []*cat
 
 	// Re-map non-originating rows to their preserved category by ID.
 	for i := range sd.rows {
-		if i == a.createCatSplitRow {
+		if i == a.createCat.origin.splitRow {
 			continue
 		}
 		if sd.rows[i].transferMode {
@@ -1129,7 +1129,7 @@ func (a *App) applyCreatedCategoryToSplit(newCat *category.Category, cats []*cat
 	}
 
 	// Point the originating row at the new category.
-	if a.createCatSplitRow >= 0 && a.createCatSplitRow < len(sd.rows) {
+	if a.createCat.origin.splitRow >= 0 && a.createCat.origin.splitRow < len(sd.rows) {
 		newIdx := 0
 		for i, id := range ids {
 			if id == newCat.ID {
@@ -1137,8 +1137,8 @@ func (a *App) applyCreatedCategoryToSplit(newCat *category.Category, cats []*cat
 				break
 			}
 		}
-		sd.rows[a.createCatSplitRow].transferMode = false
-		sd.rows[a.createCatSplitRow].categoryIndex = newIdx
+		sd.rows[a.createCat.origin.splitRow].transferMode = false
+		sd.rows[a.createCat.origin.splitRow].categoryIndex = newIdx
 	}
 
 	sd.SetVisible(true)
@@ -1149,17 +1149,17 @@ func (a *App) applyCreatedCategoryToSplit(newCat *category.Category, cats []*cat
 // flow dispatches EditTransactionWithSplitsCommand against that ID; otherwise
 // it dispatches CreateTransactionWithSplitsCommand for a new transaction.
 func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
-	if a.splitDialog == nil || a.pendingSplitTxn == nil {
+	if a.split.editor == nil || a.split.pendingTxn == nil {
 		return a, nil
 	}
 
-	splits, err := a.splitDialog.buildSplits()
+	splits, err := a.split.editor.buildSplits()
 	if err != nil {
-		a.splitDialog.errorMsg = err.Error()
+		a.split.editor.errorMsg = err.Error()
 		return a, nil
 	}
 
-	pending := a.pendingSplitTxn
+	pending := a.split.pendingTxn
 	a.closeSplitDialog()
 
 	return a, func() tea.Msg {
@@ -1217,9 +1217,25 @@ func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 	}
 }
 
+// splitSurface is the split editor and the transaction it is editing on
+// behalf of. The editor is not a dialog.Dialog, so the surface does not embed
+// modalSurface: it forwards Modal to the editor itself. The zero value is
+// closed.
+type splitSurface struct {
+	editor *SplitDialog
+	// pendingTxn is the transaction whose splits are being edited (nil when
+	// the editor belongs to a scheduled transaction instead).
+	pendingTxn *pendingSplitTransaction
+	// pendingScheduled is the scheduled transaction whose splits are being
+	// edited (nil when the editor belongs to a regular transaction instead).
+	pendingScheduled *pendingSplitScheduled
+}
+
+func (s *splitSurface) IsVisible() bool { return s != nil && s.editor.IsVisible() }
+
+func (s *splitSurface) Render(styles widget.Styles) string { return s.editor.Render(styles) }
+
 // closeSplitDialog clears the split dialog state.
 func (a *App) closeSplitDialog() {
-	a.splitDialog = nil
-	a.pendingSplitTxn = nil
-	a.pendingSplitScheduled = nil
+	a.split = splitSurface{}
 }

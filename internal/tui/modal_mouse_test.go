@@ -164,7 +164,7 @@ func clickLabel(t *testing.T, a *App, label string) {
 func TestMouseCancel_SplitEditorAgreesWithEsc(t *testing.T) {
 	show := func(a *App) {
 		surfaceSetters()["split"](a)
-		a.pendingSplitTxn = &pendingSplitTransaction{}
+		a.split.pendingTxn = &pendingSplitTransaction{}
 	}
 	assertEscAndClickCancelAgree(t, show, func(t *testing.T, a *App) { clickLabel(t, a, "Cancel") })
 }

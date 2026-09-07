@@ -716,7 +716,7 @@ func TestLoanWizard_DemotionGuardOnGenericSplitEdit(t *testing.T) {
 	accountOptions, accountIDs := buildSplitTransferAccountOptions(accounts)
 
 	// Simulate the generic split editor open on this loan-shaped schedule.
-	env.app.pendingSplitScheduled = &pendingSplitScheduled{
+	env.app.split.pendingScheduled = &pendingSplitScheduled{
 		mode:      scheduledDialogModeEdit,
 		existing:  st,
 		accountID: env.funding.ID,
@@ -725,8 +725,8 @@ func TestLoanWizard_DemotionGuardOnGenericSplitEdit(t *testing.T) {
 		interval:  1,
 		startDate: st.StartDate,
 	}
-	env.app.splitDialog = NewSplitDialogFromExisting(st.Amount.Money, catOptions, catIDs, transactionSplitsFromScheduled(st))
-	env.app.splitDialog.SetTransferTargets(accountOptions, accountIDs, env.funding.ID)
+	env.app.split.editor = NewSplitDialogFromExisting(st.Amount.Money, catOptions, catIDs, transactionSplitsFromScheduled(st))
+	env.app.split.editor.SetTransferTargets(accountOptions, accountIDs, env.funding.ID)
 
 	// Save through the generic editor → the demotion guard fires; nothing saved.
 	_, cmd := env.app.submitScheduledSplitDialog()
@@ -772,7 +772,7 @@ func (env *loanWizardEnv) openAddNewFromLoan(t *testing.T, fieldIdx int, query s
 	env.app.loan.dlg.Fields()[fieldIdx].Query = query
 	env.app.loan.dlg.SetFocusIndex(fieldIdx)
 	env.app.openCreateCategorySubDialogFromLoan()
-	if env.app.createCatDialog == nil {
+	if env.app.createCat.dlg == nil {
 		t.Fatal("create-category sub-dialog was not opened")
 	}
 }
@@ -796,17 +796,17 @@ func TestLoanWizard_OpenAddNewSeedsSubDialogAndHidesWizard(t *testing.T) {
 	env := newLoanWizardEnv(t)
 	env.openAddNewFromLoan(t, loanEscrowCatIndex(0), "Housing:PMI")
 
-	if env.app.createCatSource != createCatSourceLoanWizard {
-		t.Errorf("createCatSource = %v, want loan wizard", env.app.createCatSource)
+	if env.app.createCat.origin.surface != createCatSourceLoanWizard {
+		t.Errorf("createCatSource = %v, want loan wizard", env.app.createCat.origin.surface)
 	}
-	if env.app.createCatLoanField != loanEscrowCatIndex(0) {
-		t.Errorf("createCatLoanField = %d, want %d", env.app.createCatLoanField, loanEscrowCatIndex(0))
+	if env.app.createCat.origin.loanField != loanEscrowCatIndex(0) {
+		t.Errorf("createCatLoanField = %d, want %d", env.app.createCat.origin.loanField, loanEscrowCatIndex(0))
 	}
 	if env.app.loan.dlg.IsVisible() {
 		t.Error("loan wizard should be hidden while the sub-dialog is open")
 	}
 	// The sub-dialog is seeded from the typed "Parent:Name" query.
-	sub := env.app.createCatDialog.Fields()
+	sub := env.app.createCat.dlg.Fields()
 	if sub[0].Value != "PMI" {
 		t.Errorf("sub-dialog Name = %q, want PMI", sub[0].Value)
 	}
@@ -821,14 +821,14 @@ func TestLoanWizard_CancelAddNewRestoresWizard(t *testing.T) {
 	env.openAddNewFromLoan(t, loanFieldInterestCategory, "")
 	env.app.cancelCreateCatDialog()
 
-	if env.app.createCatDialog != nil {
+	if env.app.createCat.dlg != nil {
 		t.Error("sub-dialog should be cleared on cancel")
 	}
 	if !env.app.loan.dlg.IsVisible() {
 		t.Error("loan wizard should be re-shown on cancel")
 	}
-	if env.app.createCatLoanField != -1 {
-		t.Errorf("createCatLoanField = %d, want -1 after cancel", env.app.createCatLoanField)
+	if env.app.createCat.origin.loanField != -1 {
+		t.Errorf("createCatLoanField = %d, want -1 after cancel", env.app.createCat.origin.loanField)
 	}
 }
 
@@ -846,7 +846,7 @@ func TestLoanWizard_CreateCategoryFromEscrowSelectsAndReveals(t *testing.T) {
 	if !env.app.loan.dlg.IsVisible() {
 		t.Error("wizard should be re-shown after create")
 	}
-	if env.app.createCatDialog != nil || env.app.createCatLoanField != -1 {
+	if env.app.createCat.dlg != nil || env.app.createCat.origin.loanField != -1 {
 		t.Error("create-category scratch state should be reset")
 	}
 	// The escrow row now selects the freshly-created category.

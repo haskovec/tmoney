@@ -1614,21 +1614,21 @@ func TestScheduledDialog_SplitToggle_OpensMultiLineEditor(t *testing.T) {
 	if updatedApp.sched.dlg != nil {
 		t.Error("scheduled dialog should be closed once split editor opens")
 	}
-	if updatedApp.splitDialog == nil {
+	if updatedApp.split.editor == nil {
 		t.Fatal("split dialog should be opened by the Split toggle")
 	}
-	if updatedApp.pendingSplitScheduled == nil {
+	if updatedApp.split.pendingScheduled == nil {
 		t.Fatal("pendingSplitScheduled should be set so the split-save handler can finalize")
 	}
 
 	wantAmount, _ := types.NewMoney("4000.00")
-	if !updatedApp.splitDialog.totalAmount.Equal(wantAmount) {
+	if !updatedApp.split.editor.totalAmount.Equal(wantAmount) {
 		t.Errorf("split dialog totalAmount = %s, want %s",
-			updatedApp.splitDialog.totalAmount.String(), wantAmount.String())
+			updatedApp.split.editor.totalAmount.String(), wantAmount.String())
 	}
-	if updatedApp.pendingSplitScheduled.frequency != scheduled.FrequencyMonthly {
+	if updatedApp.split.pendingScheduled.frequency != scheduled.FrequencyMonthly {
 		t.Errorf("pendingSplitScheduled.frequency = %s, want monthly",
-			updatedApp.pendingSplitScheduled.frequency)
+			updatedApp.split.pendingScheduled.frequency)
 	}
 }
 
@@ -1706,7 +1706,7 @@ func TestScheduledDialog_MultiLineSave_PersistsChildren(t *testing.T) {
 	if cmd != nil {
 		t.Errorf("expected nil cmd when opening split editor, got non-nil")
 	}
-	if app2.splitDialog == nil {
+	if app2.split.editor == nil {
 		t.Fatal("split dialog should be open after Split toggle")
 	}
 
@@ -1724,7 +1724,7 @@ func TestScheduledDialog_MultiLineSave_PersistsChildren(t *testing.T) {
 		t.Fatalf("category indices unresolved: income=%d tax=%d", incomeIdx, taxIdx)
 	}
 
-	sd := app2.splitDialog
+	sd := app2.split.editor
 	sd.rows[0].categoryIndex = incomeIdx
 	sd.rows[0].amountField.Value = "1000.00"
 	sd.addRow()
@@ -1733,10 +1733,10 @@ func TestScheduledDialog_MultiLineSave_PersistsChildren(t *testing.T) {
 
 	model, saveCmd := app2.submitScheduledSplitDialog()
 	app3 := model.(*App)
-	if app3.splitDialog != nil {
+	if app3.split.editor != nil {
 		t.Error("split dialog should be cleared after a successful save")
 	}
-	if app3.pendingSplitScheduled != nil {
+	if app3.split.pendingScheduled != nil {
 		t.Error("pendingSplitScheduled should be cleared after a successful save")
 	}
 	if saveCmd == nil {
@@ -2145,12 +2145,12 @@ func TestApp_SchedDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	model, _ := app.handleScheduledDialogKey(enter)
 	updated := model.(*App)
 
-	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+	if updated.createCat.dlg == nil || !updated.createCat.dlg.IsVisible() {
 		t.Fatal("createCatDialog should be visible after [+ Add new] is activated")
 	}
-	if updated.createCatSource != createCatSourceSchedDialog {
+	if updated.createCat.origin.surface != createCatSourceSchedDialog {
 		t.Errorf("createCatSource = %d, want createCatSourceSchedDialog (%d)",
-			updated.createCatSource, createCatSourceSchedDialog)
+			updated.createCat.origin.surface, createCatSourceSchedDialog)
 	}
 	if updated.sched.dlg == nil {
 		t.Fatal("schedDialog should be kept (hidden) so its state survives the divert")
@@ -2158,12 +2158,12 @@ func TestApp_SchedDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	if updated.sched.dlg.IsVisible() {
 		t.Error("schedDialog should be hidden while createCatDialog is shown")
 	}
-	if updated.createCatDialog.Title() != "New Category" {
+	if updated.createCat.dlg.Title() != "New Category" {
 		t.Errorf("createCatDialog title = %q, want %q",
-			updated.createCatDialog.Title(), "New Category")
+			updated.createCat.dlg.Title(), "New Category")
 	}
 	// Typed query was "Donations" (no colon) so it seeds the Name field.
-	cFields := updated.createCatDialog.Fields()
+	cFields := updated.createCat.dlg.Fields()
 	if cFields[0].Value != "Donations" {
 		t.Errorf("Name field = %q, want %q (seeded from typed query)",
 			cFields[0].Value, "Donations")
@@ -2178,7 +2178,7 @@ func TestApp_SchedDialog_AddNew_CancelRestoresState(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleScheduledDialogKey(enter)
 	app = model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
 
@@ -2186,11 +2186,11 @@ func TestApp_SchedDialog_AddNew_CancelRestoresState(t *testing.T) {
 	model, _ = app.handleCreateCatDialogKey(esc)
 	app = model.(*App)
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after cancel")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %d, want None after cancel", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after cancel", app.createCat.origin.surface)
 	}
 	if app.sched.dlg == nil || !app.sched.dlg.IsVisible() {
 		t.Fatal("schedDialog should be restored to visible after cancel")
@@ -2238,12 +2238,12 @@ func TestApp_SchedDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleScheduledDialogKey(enter)
 	app = model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
 
 	// Fill: Name=Cleaning, Parent=(top-level), Type=Expense.
-	cFields := app.createCatDialog.Fields()
+	cFields := app.createCat.dlg.Fields()
 	cFields[0].Value = "Cleaning"
 	cFields[1].SelectedIndex = 0
 	cFields[2].SelectedIndex = 0
@@ -2273,11 +2273,11 @@ func TestApp_SchedDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 		t.Fatal("'Cleaning' should be persisted after submit")
 	}
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after submit")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %d, want None after submit", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after submit", app.createCat.origin.surface)
 	}
 	if app.sched.dlg == nil || !app.sched.dlg.IsVisible() {
 		t.Fatal("schedDialog should be visible again after submit")

@@ -1680,10 +1680,10 @@ func (a *App) openCreateCategorySubDialogFromPaycheck() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	a.createCatSource = createCatSourcePaycheckWizard
-	a.createCatPaycheckLine = line
+	a.createCat.origin.surface = createCatSourcePaycheckWizard
+	a.createCat.origin.line = line
 	parents := a.parentsForCreateCatDialog()
-	a.createCatDialog = buildCreateCategoryDialog("", "", parents, defaultTypeForPaycheckSection(line.Section))
+	a.createCat.dlg = buildCreateCategoryDialog("", "", parents, defaultTypeForPaycheckSection(line.Section))
 	w.SetVisible(false)
 	return a, nil
 }
@@ -1711,8 +1711,8 @@ func defaultTypeForPaycheckSection(s PaycheckSection) category.Type {
 // sub-dialog is cleared.
 func (a *App) applyCreatedCategoryToPaycheck(newCat *category.Category, cats []*category.Category) {
 	defer func() {
-		a.createCatDialog = nil
-		a.createCatPaycheckLine = nil
+		a.createCat.dlg = nil
+		a.createCat.origin.line = nil
 	}()
 	w := a.paycheckWizard
 	if w == nil {
@@ -1747,7 +1747,7 @@ func (a *App) applyCreatedCategoryToPaycheck(newCat *category.Category, cats []*
 		newCatIdx = idx
 	}
 
-	originating := a.createCatPaycheckLine
+	originating := a.createCat.origin.line
 	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
 		for _, line := range w.sections[s] {
 			// Lines were built with selectField.Options pointing at the prior

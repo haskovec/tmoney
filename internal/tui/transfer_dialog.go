@@ -446,8 +446,8 @@ func (a *App) openCreateCategorySubDialogForTransfer() (tea.Model, tea.Cmd) {
 		parents = topLevelParentNames(a.transfer.data.categories)
 	}
 	parent, name := splitCategoryQuery(query)
-	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
-	a.createCatSource = createCatSourceTransferDialog
+	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
+	a.createCat.origin.surface = createCatSourceTransferDialog
 	a.transfer.dlg.SetVisible(false)
 	return a, nil
 }
@@ -479,7 +479,7 @@ func (a *App) applyCreatedCategoryToTransfer(newCat *category.Category, cats []*
 		catField.ComboHighlight = newIdx
 		a.transfer.dlg.SetVisible(true)
 	}
-	a.createCatDialog = nil
+	a.createCat.dlg = nil
 }
 
 // submitTransferDialog parses dialog fields, validates, and saves the transfer.

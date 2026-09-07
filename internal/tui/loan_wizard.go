@@ -628,14 +628,14 @@ func (a *App) openCreateCategorySubDialogFromLoan() (tea.Model, tea.Cmd) {
 	catField.AddNewTriggered = false
 	catField.Query = ""
 
-	a.createCatLoanField = fieldIdx
+	a.createCat.origin.loanField = fieldIdx
 	// Set the source before parentsForCreateCatDialog so it resolves the right
 	// parents (falls back to a live category list for the loan wizard).
-	a.createCatSource = createCatSourceLoanWizard
+	a.createCat.origin.surface = createCatSourceLoanWizard
 	parents := a.parentsForCreateCatDialog()
 	parent, name := splitCategoryQuery(query)
 	// Loan interest and escrow lines are always expenses.
-	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
+	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
 	a.loan.dlg.SetVisible(false)
 	return a, nil
 }
@@ -654,8 +654,8 @@ func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*cate
 		d, st = a.loan.dlg, a.loan.state
 	}
 	if d == nil || st == nil || len(d.Fields()) < loanFieldFieldsCount {
-		a.createCatDialog = nil
-		a.createCatLoanField = -1
+		a.createCat.dlg = nil
+		a.createCat.origin.loanField = -1
 		return
 	}
 	fields := d.Fields()
@@ -727,7 +727,7 @@ func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*cate
 	}
 
 	// Point the originating field at the freshly-created category and focus it.
-	if fld := a.createCatLoanField; fld >= 0 && fld < len(fields) {
+	if fld := a.createCat.origin.loanField; fld >= 0 && fld < len(fields) {
 		switch fld {
 		case loanFieldInterestCategory:
 			fields[fld].SelectedIndex = indexOf(interestIDs, newCat.ID)
@@ -742,8 +742,8 @@ func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*cate
 
 	updateLoanWizardVisibility(d)
 	d.SetVisible(true)
-	a.createCatDialog = nil
-	a.createCatLoanField = -1
+	a.createCat.dlg = nil
+	a.createCat.origin.loanField = -1
 }
 
 // refreshLoanWizardDerived recomputes conditional field visibility and the

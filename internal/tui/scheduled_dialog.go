@@ -626,14 +626,14 @@ func (a *App) openCreateCategorySubDialogFromSched() (tea.Model, tea.Cmd) {
 
 	// createCatSource must be set before parentsForCreateCatDialog so the
 	// helper picks the right parents source.
-	a.createCatSource = createCatSourceSchedDialog
+	a.createCat.origin.surface = createCatSourceSchedDialog
 	parents := a.parentsForCreateCatDialog()
 	parent, name := splitCategoryQuery(query)
 	defaultType := category.TypeExpense
 	if len(fields) > schedFieldAmount {
 		defaultType = inferCategoryTypeFromAmount(fields[schedFieldAmount].Value)
 	}
-	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, defaultType)
+	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, defaultType)
 	a.sched.dlg.SetVisible(false)
 	return a, nil
 }
@@ -645,7 +645,7 @@ func (a *App) openCreateCategorySubDialogFromSched() (tea.Model, tea.Cmd) {
 // re-shows the scheduled dialog, and clears the create-category sub-dialog.
 func (a *App) applyCreatedCategoryToSched(newCat *category.Category, cats []*category.Category) {
 	if a.sched.dlg == nil {
-		a.createCatDialog = nil
+		a.createCat.dlg = nil
 		return
 	}
 	options, ids := buildCategoryOptionsFor(cats, a.schedDialogIncludeValueAdjustment())
@@ -667,7 +667,7 @@ func (a *App) applyCreatedCategoryToSched(newCat *category.Category, cats []*cat
 		a.sched.dlg.SetFocusIndex(schedFieldAmount)
 		a.sched.dlg.SetVisible(true)
 	}
-	a.createCatDialog = nil
+	a.createCat.dlg = nil
 }
 
 // submitScheduledDialog parses dialog fields, validates, and saves the scheduled transaction.
@@ -827,13 +827,13 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 		// schedule that already carries a multi-line template.
 		seedSplits := transactionSplitsFromScheduled(existingSched)
 		a.closeScheduledDialog()
-		a.pendingSplitScheduled = pending
+		a.split.pendingScheduled = pending
 		if mode == scheduledDialogModeEdit && len(seedSplits) > 0 {
-			a.splitDialog = NewSplitDialogFromExisting(amount.Money, categoryOptions, categoryIDs, seedSplits)
+			a.split.editor = NewSplitDialogFromExisting(amount.Money, categoryOptions, categoryIDs, seedSplits)
 		} else {
-			a.splitDialog = NewSplitDialog(amount.Money, categoryOptions, categoryIDs)
+			a.split.editor = NewSplitDialog(amount.Money, categoryOptions, categoryIDs)
 		}
-		a.splitDialog.SetTransferTargets(accountOptions, accountIDs, accountID)
+		a.split.editor.SetTransferTargets(accountOptions, accountIDs, accountID)
 		return a, nil
 	}
 
@@ -980,17 +980,17 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 // this handler translates them to scheduled.Split children and dispatches
 // the appropriate undo command.
 func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
-	if a.splitDialog == nil || a.pendingSplitScheduled == nil {
+	if a.split.editor == nil || a.split.pendingScheduled == nil {
 		return a, nil
 	}
 
-	splits, err := a.splitDialog.buildSplits()
+	splits, err := a.split.editor.buildSplits()
 	if err != nil {
-		a.splitDialog.errorMsg = err.Error()
+		a.split.editor.errorMsg = err.Error()
 		return a, nil
 	}
 
-	pending := a.pendingSplitScheduled
+	pending := a.split.pendingScheduled
 	children := scheduledSplitsFromTransaction(splits)
 	// Demotion guard: saving a loan-shaped schedule through the generic split
 	// editor strips its loan_section tags, silently converting it to a generic

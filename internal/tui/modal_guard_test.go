@@ -263,7 +263,7 @@ func TestGuard_SelfTest(t *testing.T) {
 	})
 	t.Run("reflection finds both bare dialogs and surface structs", func(t *testing.T) {
 		fields := modalFieldsOnApp(t)
-		for _, want := range []string{"txn", "buy", "splitDialog", "paycheckWizard",
+		for _, want := range []string{"txn", "buy", "split", "createCat", "paycheckWizard",
 			"security", "closeAcct", "importer", "linkTransfers", "loan", "price"} {
 			if !slices.Contains(fields, want) {
 				t.Errorf("reflection missed the modal field %q", want)

@@ -166,7 +166,7 @@ func (a *App) modals() []modalEntry {
 		// override feeds the result through the same dispatcher the keyboard uses.
 		{
 			name:     "split",
-			modal:    a.splitDialog,
+			modal:    &a.split,
 			onKey:    (*App).handleSplitDialogKey,
 			onAction: (*App).splitDialogAction,
 			onMouse:  (*App).handleSplitDialogMouse,
@@ -176,7 +176,7 @@ func (a *App) modals() []modalEntry {
 		// createCat, which is safe only because split hides itself on divert.
 		{
 			name:     "createCategory",
-			modal:    a.createCatDialog,
+			modal:    &a.createCat,
 			onKey:    (*App).handleCreateCatDialogKey,
 			onAction: (*App).createCatDialogAction,
 		},
