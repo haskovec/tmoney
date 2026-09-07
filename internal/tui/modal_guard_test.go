@@ -27,20 +27,12 @@ import (
 // inside the package. The restriction is on Set and Interface(), which panic
 // even in-package, so this must not try to populate an App reflectively.
 
-// modalFieldTypes are the App field types that denote a modal surface. Keep
-// this keyed to types, not names: a name list is the fifth list.
-//
-// PHASE 3 WILL BREAK THIS, DELIBERATELY. After the per-surface state structs
-// land, these fields move inside *sellSurface and friends, and a filter frozen
-// at this shape would match nothing and pass vacuously on day one. The
-// anti-vacuity check below is what makes that failure loud. Update this filter
-// in the same commit as the first surface struct.
-var modalFieldTypes = map[string]bool{
-	"*dialog.Dialog":             true,
-	"*tui.SplitDialog":           true,
-	"*tui.SchedulePreviewDialog": true,
-	"*tui.PaycheckWizard":        true,
-}
+// The filter is "the field's type implements Modal", which is section 6.1's
+// option 2 and needs no maintenance: it followed phase 3 automatically as
+// *dialog.Dialog fields became *sellSurface and friends. An earlier draft
+// listed the type names instead, and phase 3's first surface struct made it
+// match two fewer fields — caught by the anti-vacuity check below, which is
+// the whole reason that check exists.
 
 // registryOnlySurfaces are surfaces whose visibility is not a modal-typed
 // field on App, so reflection cannot find them. Each needs a stated reason.
@@ -53,9 +45,8 @@ var registryOnlySurfaces = map[string]string{
 func TestGuard_EveryModalFieldIsRegisteredExactlyOnce(t *testing.T) {
 	mustRegister := modalFieldsOnApp(t)
 	if len(mustRegister) == 0 {
-		t.Fatal("modalFieldTypes matched zero App fields, so this guard would pass " +
-			"vacuously. The field types moved — most likely into the phase 3 surface " +
-			"structs. Update modalFieldTypes in the same commit that moved them.")
+		t.Fatal("no App field implements Modal, so this guard would pass vacuously. " +
+			"Either the interface changed or the surfaces stopped satisfying it.")
 	}
 
 	registered := registryFieldNames(t)
@@ -122,14 +113,15 @@ func TestGuard_EveryRegistryEntryIsAccountedFor(t *testing.T) {
 	}
 }
 
-// modalFieldsOnApp returns App's field names whose type denotes a modal.
+// modalFieldsOnApp returns App's field names whose type implements Modal.
 func modalFieldsOnApp(t *testing.T) []string {
 	t.Helper()
+	modalT := reflect.TypeFor[Modal]()
 	appT := reflect.TypeFor[App]()
 	var out []string
 	for i := range appT.NumField() {
 		f := appT.Field(i)
-		if modalFieldTypes[f.Type.String()] {
+		if f.Type.Implements(modalT) {
 			out = append(out, f.Name)
 		}
 	}
@@ -258,9 +250,10 @@ func TestGuard_SelfTest(t *testing.T) {
 			t.Errorf("appFieldOf(helpOverlayModal{a}) = %q, want empty", got)
 		}
 	})
-	t.Run("reflection finds the modal field types", func(t *testing.T) {
+	t.Run("reflection finds both bare dialogs and surface structs", func(t *testing.T) {
 		fields := modalFieldsOnApp(t)
-		for _, want := range []string{"importDialog", "linkTransfersDialog", "splitDialog", "paycheckWizard"} {
+		for _, want := range []string{"txnDialog", "splitDialog", "paycheckWizard",
+			"security", "closeAcct", "importer", "linkTransfers", "loan", "price"} {
 			if !slices.Contains(fields, want) {
 				t.Errorf("reflection missed the modal field %q", want)
 			}

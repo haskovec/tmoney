@@ -586,8 +586,8 @@ func (a *App) cancelCreateCatDialog() {
 		}
 		a.createCatPaycheckLine = nil
 	case createCatSourceLoanWizard:
-		if a.loanWizard != nil {
-			a.loanWizard.SetVisible(true)
+		if a.loan != nil {
+			a.loan.dlg.SetVisible(true)
 		}
 		a.createCatLoanField = -1
 	case createCatSourceTransferDialog:

@@ -821,6 +821,53 @@ This is the tangle item 4 named first ("category-create routing:
 because it touches eight surfaces (16 functions across 8 files, see the note below), not
 because it is optional.
 
+#### Built (instalment 1 of 3): the shape, and the nil trap one level down
+
+Six families converted: `closeAcct`, `security`, `price`, `loan`, `importer`,
+`linkTransfers`. `App` 160 → 152 fields.
+
+Every surface embeds a shared `modalSurface`, which carries the dialog handle
+and with it all of `Modal` **except `IsVisible`**. That omission is the whole
+design, and the reason was measured, not assumed:
+
+```
+offset-0 embed on nil outer:         PANIC
+non-zero-offset embed on nil outer:  PANIC
+via interface holding nil *outer:    PANIC
+```
+
+A promoted method cannot guard its own outer pointer — Go nil-checks the
+selector regardless of the embedded field's offset. §5.0 warned this trap
+returns in phase 3, and it is *sharper* here than in phase 1: the registry now
+holds surfaces, and `App` builds them lazily, so a nil surface is the common
+case rather than the edge one. Each surface therefore declares its own
+`IsVisible` with the nil check, and the other methods promote safely because
+every walk gates on `IsVisible` first.
+
+Leaving `IsVisible` off the base has a second payoff the design did not
+anticipate: **presence becomes a compile error.** A surface that forgets it does
+not implement `Modal` and cannot enter the registry. Only the *content* of the
+guard needs a test.
+
+**Guard 2's filter was replaced, not patched.** §6.1 predicted phase 3 would
+break it and said to update it in the same commit as the first surface struct.
+It broke exactly there, and the anti-vacuity check is what reported it rather
+than a silent pass. The fix was not to extend the type-name list but to delete
+it: the filter is now *"the field's type implements `Modal`"*, which is §6.1's
+option 2, needs no maintenance, and followed the six conversions on its own.
+
+**Two new guards, both with self-tests that earned their keep.** The §5.5
+service-pointer guard is the important one, because `switch_database_test.go`
+provably cannot see the violation — it walks `App`'s top level and does not
+recurse. Of the design's two options it takes the second (forbid the field
+outright), for the stated reason: it cannot rot into a partially-covering walk.
+
+The nil-safety guard's first draft compared promoted-versus-declared method
+pointers, and its self-test showed it reported "correct" for a type with no
+`IsVisible` at all. Calling the method on a nil pointer is the honest check and
+is simpler. That is the fourth time in phases 0–3 that mutating the code was the
+only thing that showed a new test was worthless.
+
 ### Phase 4 — messages onto the surfaces, off `App`
 
 `app_update.go` is 1,002 lines, 89 case arms, and it reads or writes 94 of the
@@ -1392,6 +1439,12 @@ constraint on phase size.
   territory. Attractive, orthogonal, and not part of item 4 — but phase 5's
   deps design should be written so it does not have to change if item 5 later
   collapses those 17 fields into one.
-- **`themeReloadFailedMsg` is emitted (`app_theme.go:44`) with no case arm**, so
+- ~~**`themeReloadFailedMsg` is emitted (`app_theme.go:44`) with no case arm**, so
   the error is dropped. One-line fix; belongs with phase 3, which touches the
-  switch.
+  switch.~~ **Wrong — checked in phase 3, no change made.** The error is not
+  dropped. `reloadTheme` calls `surfaceThemeFailure`, which appends to the
+  applog and sets a status-bar toast naming the log path, and the type's own
+  doc comment says the message is emitted *in addition* so "downstream consumers
+  can ignore" it. `app_theme_test.go:96` asserts on it. Adding a case arm that
+  set `a.err` would double-report: a toast **and** a blocking full-screen error
+  page. Left alone.

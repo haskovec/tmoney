@@ -284,18 +284,21 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.securityView.searchQuery = ""
 	case key.Matches(msg, a.keys.New):
 		// Open add security dialog
-		a.securityDialog = buildAddSecurityDialog()
-		a.securityDialogMode = securityDialogModeAdd
-		a.securityDialog.SetVisible(true)
+		d := buildAddSecurityDialog()
+		d.SetVisible(true)
+		a.security = &securitySurface{modalSurface: modalSurface{dlg: d}, mode: securityDialogModeAdd}
 		return a, nil
 	case key.Matches(msg, a.keys.Enter):
 		// Open edit dialog for selected security
 		sec := a.selectedSecurity()
 		if sec != nil {
-			a.securityDialog = buildEditSecurityDialog(sec)
-			a.securityDialogMode = securityDialogModeEdit
-			a.securityDialogEditID = sec.ID
-			a.securityDialog.SetVisible(true)
+			d := buildEditSecurityDialog(sec)
+			d.SetVisible(true)
+			a.security = &securitySurface{
+				modalSurface: modalSurface{dlg: d},
+				mode:         securityDialogModeEdit,
+				editID:       sec.ID,
+			}
 		}
 		return a, nil
 	case msg.String() == "h":
@@ -421,6 +424,18 @@ func (a *App) toggleSecurityHidden(sec *security.Security) tea.Cmd {
 
 // Security dialog types and builders
 
+// securitySurface is the Security add/edit dialog's state. mode selects add vs
+// edit; editID is meaningful only when mode is securityDialogModeEdit.
+type securitySurface struct {
+	modalSurface
+	mode   securityDialogMode
+	editID types.ID
+}
+
+// IsVisible must be declared here rather than promoted from modalSurface — see
+// the note on modalSurface.
+func (s *securitySurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 type securityDialogMode int
 
 const (
@@ -528,15 +543,14 @@ func buildEditSecurityDialog(sec *security.Security) *dialog.Dialog {
 
 // handleSecurityDialogKey handles key presses in the security add/edit dialog.
 func (a *App) handleSecurityDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	return a.securityDialogAction(a.securityDialog.HandleKey(msg))
+	return a.securityDialogAction(a.security.dlg.HandleKey(msg))
 }
 
 // securityDialogAction dispatches a DialogAction for the security dialog, from either input path.
 func (a *App) securityDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
-		a.securityDialog.SetVisible(false)
-		a.securityDialog = nil
+		a.security = nil
 		return a, nil
 	case dialog.DialogActionSubmit:
 		return a.submitSecurityDialog()
@@ -546,18 +560,18 @@ func (a *App) securityDialogAction(action dialog.DialogAction) (tea.Model, tea.C
 
 // submitSecurityDialog processes the security dialog submission.
 func (a *App) submitSecurityDialog() (tea.Model, tea.Cmd) {
-	fields := a.securityDialog.Fields()
+	fields := a.security.dlg.Fields()
 
 	ticker := strings.TrimSpace(fields[0].Value)
 	name := strings.TrimSpace(fields[1].Value)
 	isin := strings.TrimSpace(fields[2].Value)
 
 	if name == "" {
-		a.securityDialog.SetErrorMsg("Name is required.")
+		a.security.dlg.SetErrorMsg("Name is required.")
 		return a, nil
 	}
 	if isin != "" && !security.IsValidISIN(isin) {
-		a.securityDialog.SetErrorMsg("ISIN is not a valid ISO 6166 identifier.")
+		a.security.dlg.SetErrorMsg("ISIN is not a valid ISO 6166 identifier.")
 		return a, nil
 	}
 
@@ -572,13 +586,14 @@ func (a *App) submitSecurityDialog() (tea.Model, tea.Cmd) {
 
 	exchange := strings.TrimSpace(fields[6].Value)
 
-	a.securityDialog.SetVisible(false)
-	a.securityDialog = nil
+	// Read the surface's mode and target BEFORE dropping it.
+	mode, editID := a.security.mode, a.security.editID
+	a.security = nil
 
-	if a.securityDialogMode == securityDialogModeAdd {
+	if mode == securityDialogModeAdd {
 		return a, a.createSecurity(ticker, name, isin, secType, assetClass, currency, exchange)
 	}
-	return a, a.updateSecurity(a.securityDialogEditID, ticker, name, isin, secType, assetClass, currency, exchange)
+	return a, a.updateSecurity(editID, ticker, name, isin, secType, assetClass, currency, exchange)
 }
 
 // createSecurity creates a new security via the service.

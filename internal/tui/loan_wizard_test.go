@@ -101,7 +101,7 @@ func newLoanWizardEnv(t *testing.T) *loanWizardEnv {
 	if err != nil {
 		t.Fatalf("list categories: %v", err)
 	}
-	app.loanWizard, app.loanWizardState = buildNewLoanWizard(accounts, cats)
+	app.loan = newLoanSurface(buildNewLoanWizard(accounts, cats))
 
 	return &loanWizardEnv{
 		app:         app,
@@ -117,13 +117,13 @@ func newLoanWizardEnv(t *testing.T) *loanWizardEnv {
 
 // set writes a text/date field's value.
 func (env *loanWizardEnv) set(idx int, value string) {
-	env.app.loanWizard.Fields()[idx].Value = value
+	env.app.loan.dlg.Fields()[idx].Value = value
 }
 
 // selectOption sets a select field to the option matching name.
 func (env *loanWizardEnv) selectOption(t *testing.T, idx int, name string) {
 	t.Helper()
-	f := env.app.loanWizard.Fields()[idx]
+	f := env.app.loan.dlg.Fields()[idx]
 	for i, opt := range f.Options {
 		if opt == name {
 			f.SelectedIndex = i
@@ -275,7 +275,7 @@ func TestLoanWizard_WithAssetAccount(t *testing.T) {
 	env.set(loanFieldPayment, "1800")
 	env.set(loanFieldNextPaymentDate, "09/15/2026")
 	env.selectOption(t, loanFieldFromAccount, "Checking")
-	env.app.loanWizard.Fields()[loanFieldTrackAsset].Checked = true
+	env.app.loan.dlg.Fields()[loanFieldTrackAsset].Checked = true
 	env.set(loanFieldAssetName, "123 Main St")
 	env.set(loanFieldAssetValue, "450000")
 
@@ -322,7 +322,7 @@ func TestLoanWizard_ZeroRateOmitsInterestLine(t *testing.T) {
 
 	// Interest category field is hidden at 0% APR.
 	env.app.refreshLoanWizardDerived()
-	if !env.app.loanWizard.Fields()[loanFieldInterestCategory].Hidden {
+	if !env.app.loan.dlg.Fields()[loanFieldInterestCategory].Hidden {
 		t.Error("interest category field should be hidden at 0% APR")
 	}
 
@@ -351,7 +351,7 @@ func TestLoanWizard_PaymentPrefill(t *testing.T) {
 	env.set(loanFieldTermMonths, "360")
 	env.app.refreshLoanWizardDerived()
 
-	payment := env.app.loanWizard.Fields()[loanFieldPayment]
+	payment := env.app.loan.dlg.Fields()[loanFieldPayment]
 	if payment.Value != "2401.86" {
 		t.Errorf("prefilled payment = %q, want 2401.86", payment.Value)
 	}
@@ -374,10 +374,10 @@ func TestLoanWizard_ValidationErrorsBlockSave(t *testing.T) {
 	if msg != nil {
 		t.Fatalf("submit returned a command despite validation errors: %T", msg)
 	}
-	if env.app.loanWizard == nil {
+	if env.app.loan == nil {
 		t.Fatal("wizard should stay open on validation failure")
 	}
-	if env.app.loanWizard.Fields()[loanFieldName].Error == "" {
+	if env.app.loan.dlg.Fields()[loanFieldName].Error == "" {
 		t.Error("expected a name-required error")
 	}
 	if env.app.undoManager.UndoLen() != 0 {
@@ -401,7 +401,7 @@ func TestLoanWizard_NegativeAmortizationBlocked(t *testing.T) {
 	if msg != nil {
 		t.Fatalf("submit should fail validation, got %T", msg)
 	}
-	if env.app.loanWizard.Fields()[loanFieldPayment].Error == "" {
+	if env.app.loan.dlg.Fields()[loanFieldPayment].Error == "" {
 		t.Error("expected a payment error for negative amortization")
 	}
 }
@@ -417,7 +417,7 @@ func TestLoanWizard_MidLifeOpeningDateIsToday(t *testing.T) {
 	env.set(loanFieldNextPaymentDate, "08/01/2026")
 	env.selectOption(t, loanFieldFromAccount, "Checking")
 	// clear the prefilled payment to a known editable value
-	env.app.loanWizard.Fields()[loanFieldPayment].Value = "2401.86"
+	env.app.loan.dlg.Fields()[loanFieldPayment].Value = "2401.86"
 
 	if _, ok := env.submit(t).(loanWizardSavedMsg); !ok {
 		t.Fatal("expected save")
@@ -472,7 +472,7 @@ func TestLoanWizard_AtomicRollbackOnAssetCollision(t *testing.T) {
 	env.set(loanFieldPayment, "1800")
 	env.set(loanFieldNextPaymentDate, "09/15/2026")
 	env.selectOption(t, loanFieldFromAccount, "Checking")
-	env.app.loanWizard.Fields()[loanFieldTrackAsset].Checked = true
+	env.app.loan.dlg.Fields()[loanFieldTrackAsset].Checked = true
 	env.set(loanFieldAssetName, "123 Main St")
 	env.set(loanFieldAssetValue, "450000")
 
@@ -572,10 +572,10 @@ func TestLoanWizard_EditRoundTrip(t *testing.T) {
 
 	accounts, _ := env.accountSvc.List(true)
 	cats, _ := env.categorySvc.List()
-	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+	env.app.loan = newLoanSurface(buildEditLoanWizard(accounts, cats, st, owed.Neg()))
 
 	// Prefill: name / APR / P&I; balance and next-date hidden in edit mode.
-	f := env.app.loanWizard.Fields()
+	f := env.app.loan.dlg.Fields()
 	if f[loanFieldName].Value != "Mortgage" {
 		t.Errorf("name prefill = %q", f[loanFieldName].Value)
 	}
@@ -655,10 +655,10 @@ func TestLoanWizard_EditAdoptionTagsUntaggedSchedule(t *testing.T) {
 	accounts, _ := env.accountSvc.List(true)
 	cats, _ := env.categorySvc.List()
 	owed, _ := env.accountSvc.BalanceAsOf(loanAcct.ID, st.NextDate)
-	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+	env.app.loan = newLoanSurface(buildEditLoanWizard(accounts, cats, st, owed.Neg()))
 
 	// P&I prefill = |principal| + |interest| = 343.53 + 2058.33 = 2401.86.
-	if got := env.app.loanWizard.Fields()[loanFieldPayment].Value; got != "2401.86" {
+	if got := env.app.loan.dlg.Fields()[loanFieldPayment].Value; got != "2401.86" {
 		t.Errorf("P&I prefill = %q, want 2401.86", got)
 	}
 
@@ -758,7 +758,7 @@ func TestLoanWizard_DemotionGuardOnGenericSplitEdit(t *testing.T) {
 
 // selectedLabel returns the currently-selected option label of a combo field.
 func (env *loanWizardEnv) selectedLabel(idx int) string {
-	f := env.app.loanWizard.Fields()[idx]
+	f := env.app.loan.dlg.Fields()[idx]
 	if f.SelectedIndex < 0 || f.SelectedIndex >= len(f.Options) {
 		return ""
 	}
@@ -769,8 +769,8 @@ func (env *loanWizardEnv) selectedLabel(idx int) string {
 // the create-category sub-dialog exactly as the DialogActionAddNew path does.
 func (env *loanWizardEnv) openAddNewFromLoan(t *testing.T, fieldIdx int, query string) {
 	t.Helper()
-	env.app.loanWizard.Fields()[fieldIdx].Query = query
-	env.app.loanWizard.SetFocusIndex(fieldIdx)
+	env.app.loan.dlg.Fields()[fieldIdx].Query = query
+	env.app.loan.dlg.SetFocusIndex(fieldIdx)
 	env.app.openCreateCategorySubDialogFromLoan()
 	if env.app.createCatDialog == nil {
 		t.Fatal("create-category sub-dialog was not opened")
@@ -779,7 +779,7 @@ func (env *loanWizardEnv) openAddNewFromLoan(t *testing.T, fieldIdx int, query s
 
 func TestLoanWizard_CategoryFieldsAreCombosWithAddNew(t *testing.T) {
 	env := newLoanWizardEnv(t)
-	fields := env.app.loanWizard.Fields()
+	fields := env.app.loan.dlg.Fields()
 
 	for _, idx := range []int{loanFieldInterestCategory, loanFieldPrincipalCategory, loanEscrowCatIndex(0), loanEscrowCatIndex(loanMaxEscrowLines - 1)} {
 		f := fields[idx]
@@ -802,7 +802,7 @@ func TestLoanWizard_OpenAddNewSeedsSubDialogAndHidesWizard(t *testing.T) {
 	if env.app.createCatLoanField != loanEscrowCatIndex(0) {
 		t.Errorf("createCatLoanField = %d, want %d", env.app.createCatLoanField, loanEscrowCatIndex(0))
 	}
-	if env.app.loanWizard.IsVisible() {
+	if env.app.loan.dlg.IsVisible() {
 		t.Error("loan wizard should be hidden while the sub-dialog is open")
 	}
 	// The sub-dialog is seeded from the typed "Parent:Name" query.
@@ -811,7 +811,7 @@ func TestLoanWizard_OpenAddNewSeedsSubDialogAndHidesWizard(t *testing.T) {
 		t.Errorf("sub-dialog Name = %q, want PMI", sub[0].Value)
 	}
 	// The originating combo's stale query was consumed.
-	if q := env.app.loanWizard.Fields()[loanEscrowCatIndex(0)].Query; q != "" {
+	if q := env.app.loan.dlg.Fields()[loanEscrowCatIndex(0)].Query; q != "" {
 		t.Errorf("originating combo Query = %q, want cleared", q)
 	}
 }
@@ -824,7 +824,7 @@ func TestLoanWizard_CancelAddNewRestoresWizard(t *testing.T) {
 	if env.app.createCatDialog != nil {
 		t.Error("sub-dialog should be cleared on cancel")
 	}
-	if !env.app.loanWizard.IsVisible() {
+	if !env.app.loan.dlg.IsVisible() {
 		t.Error("loan wizard should be re-shown on cancel")
 	}
 	if env.app.createCatLoanField != -1 {
@@ -843,7 +843,7 @@ func TestLoanWizard_CreateCategoryFromEscrowSelectsAndReveals(t *testing.T) {
 	}
 
 	// Wizard re-shown, sub-dialog cleared, source reset.
-	if !env.app.loanWizard.IsVisible() {
+	if !env.app.loan.dlg.IsVisible() {
 		t.Error("wizard should be re-shown after create")
 	}
 	if env.app.createCatDialog != nil || env.app.createCatLoanField != -1 {
@@ -858,7 +858,7 @@ func TestLoanWizard_CreateCategoryFromEscrowSelectsAndReveals(t *testing.T) {
 		t.Errorf("PMI category not persisted: %v", err)
 	}
 	// Selecting a category on escrow row 0 reveals row 1.
-	if env.app.loanWizard.Fields()[loanEscrowCatIndex(1)].Hidden {
+	if env.app.loan.dlg.Fields()[loanEscrowCatIndex(1)].Hidden {
 		t.Error("escrow row 1 should be revealed after row 0 has a category")
 	}
 }
@@ -966,9 +966,9 @@ func TestLoanWizard_EditPrefilledComboSurvivesTab(t *testing.T) {
 	owed, _ := env.accountSvc.BalanceAsOf(loanAcct.ID, st.NextDate)
 	accounts, _ := env.accountSvc.List(true)
 	cats, _ := env.categorySvc.List()
-	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+	env.app.loan = newLoanSurface(buildEditLoanWizard(accounts, cats, st, owed.Neg()))
 
-	interest := env.app.loanWizard.Fields()[loanFieldInterestCategory]
+	interest := env.app.loan.dlg.Fields()[loanFieldInterestCategory]
 	if env.selectedLabel(loanFieldInterestCategory) != loanInterestDefaultDisplay {
 		t.Fatalf("interest prefill = %q, want %q", env.selectedLabel(loanFieldInterestCategory), loanInterestDefaultDisplay)
 	}
@@ -978,8 +978,8 @@ func TestLoanWizard_EditPrefilledComboSurvivesTab(t *testing.T) {
 	}
 
 	// Tabbing over the prefilled combo must not reset it.
-	env.app.loanWizard.SetFocusIndex(loanFieldInterestCategory)
-	env.app.loanWizard.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	env.app.loan.dlg.SetFocusIndex(loanFieldInterestCategory)
+	env.app.loan.dlg.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	if got := env.selectedLabel(loanFieldInterestCategory); got != loanInterestDefaultDisplay {
 		t.Errorf("interest selection after Tab = %q, want %q (regression: prefilled combo reset)", got, loanInterestDefaultDisplay)
 	}
@@ -1015,8 +1015,8 @@ func TestLoanWizard_CreateLoanInterestFromEscrowKeepsDefault(t *testing.T) {
 	}
 	// The state ID list stays consistent with the field index (the save logic
 	// trusts state.interestIDs[SelectedIndex]).
-	idx := env.app.loanWizard.Fields()[loanFieldInterestCategory].SelectedIndex
-	st := env.app.loanWizardState
+	idx := env.app.loan.dlg.Fields()[loanFieldInterestCategory].SelectedIndex
+	st := env.app.loan.state
 	if idx < 0 || idx >= len(st.interestIDs) {
 		t.Fatalf("interest SelectedIndex %d out of range for interestIDs (len %d)", idx, len(st.interestIDs))
 	}
@@ -1116,7 +1116,7 @@ func TestLoanWizard_EditRoundTripsPrincipalCategory(t *testing.T) {
 	owed, _ := env.accountSvc.BalanceAsOf(loanAcct.ID, st.NextDate)
 	accounts, _ := env.accountSvc.List(true)
 	cats, _ := env.categorySvc.List()
-	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+	env.app.loan = newLoanSurface(buildEditLoanWizard(accounts, cats, st, owed.Neg()))
 
 	// The principal combo prefills to the real Loan > Principal category.
 	if got := env.selectedLabel(loanFieldPrincipalCategory); got != loanPrincipalDefaultDisplay {
@@ -1149,7 +1149,7 @@ func TestLoanWizard_EditUncategorizedPrincipalStaysUnlabeled(t *testing.T) {
 	accounts, _ := env.accountSvc.List(true)
 	cats, _ := env.categorySvc.List()
 	owed, _ := env.accountSvc.BalanceAsOf(loanAcct.ID, st.NextDate)
-	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+	env.app.loan = newLoanSurface(buildEditLoanWizard(accounts, cats, st, owed.Neg()))
 
 	if got := env.selectedLabel(loanFieldPrincipalCategory); got != "(None)" {
 		t.Errorf("principal prefill = %q, want (None) for an old-shape loan", got)
@@ -1232,9 +1232,9 @@ func TestLoanWizard_EditPrefill_AnchorsCursor(t *testing.T) {
 
 	accounts, _ := env.accountSvc.List(true)
 	cats, _ := env.categorySvc.List()
-	env.app.loanWizard, env.app.loanWizardState = buildEditLoanWizard(accounts, cats, st, owed.Neg())
+	env.app.loan = newLoanSurface(buildEditLoanWizard(accounts, cats, st, owed.Neg()))
 
-	f := env.app.loanWizard.Fields()
+	f := env.app.loan.dlg.Fields()
 	assertPrefillEditable(t, f[loanFieldName], "loan name")
 	assertPrefillEditable(t, f[loanFieldInstitution], "institution")
 	assertPrefillEditable(t, f[loanFieldAPR], "APR")
@@ -1254,7 +1254,7 @@ func TestLoanWizard_PaymentPrefill_AnchorsCursor(t *testing.T) {
 	env.set(loanFieldTermMonths, "360")
 	env.app.refreshLoanWizardDerived()
 
-	payment := env.app.loanWizard.Fields()[loanFieldPayment]
+	payment := env.app.loan.dlg.Fields()[loanFieldPayment]
 	if payment.Value == "" {
 		t.Skip("no computed payment prefill for this input")
 	}
@@ -1265,7 +1265,7 @@ func TestLoanWizard_PaymentPrefill_AnchorsCursor(t *testing.T) {
 	payment.DeleteBack()
 	edited := payment.Value
 	env.app.refreshLoanWizardDerived()
-	if got := env.app.loanWizard.Fields()[loanFieldPayment].Value; got != edited {
+	if got := env.app.loan.dlg.Fields()[loanFieldPayment].Value; got != edited {
 		t.Errorf("refresh overwrote the edited payment: got %q, want %q", got, edited)
 	}
 }

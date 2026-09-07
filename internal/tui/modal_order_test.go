@@ -41,6 +41,24 @@ func visibleDialog(title string) *dialog.Dialog {
 	return d
 }
 
+// newLoanSurface, newImportSurface and firstOf keep the many fixtures that
+// build a wizard or dialog to a single line now that the state lives in one
+// struct.
+func newLoanSurface(d *dialog.Dialog, st *loanWizardData) *loanSurface {
+	return &loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
+}
+
+func newImportSurface(d *dialog.Dialog) *importSurface {
+	return &importSurface{modalSurface: modalSurface{dlg: d}, state: &importDialogState{}}
+}
+
+func firstOf[T any, U any](t T, _ U) T { return t }
+
+// visibleSurface wraps an open dialog for embedding in a per-surface struct.
+func visibleSurface(title string) modalSurface {
+	return modalSurface{dlg: visibleDialog(title)}
+}
+
 // surfaceSetters makes the named registry surface visible on an App. The names
 // match modalEntry.name, and surfaceSetters is checked against modals() for
 // exact coverage by TestModals_EveryEntryHasATestSetter, so the order,
@@ -65,12 +83,16 @@ func surfaceSetters() map[string]func(*App) {
 		"backup": func(a *App) { a.backupDialog = &backupDialogState{dialog: visibleDialog("Backup")} },
 		"file":   func(a *App) { a.fileDialog = visibleDialog("File") },
 		"import": func(a *App) {
-			a.importDialog = visibleDialog("Import")
-			a.importDialogState = &importDialogState{}
+			a.importer = &importSurface{
+				modalSurface: visibleSurface("Import"),
+				state:        &importDialogState{},
+			}
 		},
 		"linkTransfers": func(a *App) {
-			a.linkTransfersDialog = visibleDialog("Link")
-			a.linkTransfersResult = &transferlink.Result{}
+			a.linkTransfers = &linkTransfersSurface{
+				modalSurface: visibleSurface("Link"),
+				result:       &transferlink.Result{},
+			}
 		},
 		"split":          func(a *App) { a.splitDialog = newVisibleSplitDialog() },
 		"createCategory": func(a *App) { a.createCatDialog = visibleDialog("Create Category") },
@@ -97,18 +119,26 @@ func surfaceSetters() map[string]func(*App) {
 		},
 		"paycheckWizard": func(a *App) { a.paycheckWizard = newVisiblePaycheckWizard() },
 		"loanWizard": func(a *App) {
-			a.loanWizard = visibleDialog("Loan")
-			a.loanWizardState = &loanWizardData{}
+			a.loan = &loanSurface{
+				modalSurface: visibleSurface("Loan"),
+				state:        &loanWizardData{},
+			}
 		},
 		"account": func(a *App) {
 			a.acctDialog = visibleDialog("Account")
 			a.acctDialogData = &accountDialogData{}
 		},
 		"reconciliation": func(a *App) { a.reconDialog = visibleDialog("Reconcile") },
-		"closeAccount":   func(a *App) { a.closeAcctDialog = visibleDialog("Close Account") },
-		"security":       func(a *App) { a.securityDialog = visibleDialog("Security") },
-		"price":          func(a *App) { a.priceDialog = visibleDialog("Price") },
-		"priceImport":    func(a *App) { a.priceImportDialog = visibleDialog("Price Import") },
+		"closeAccount": func(a *App) {
+			a.closeAcct = &closeAcctSurface{modalSurface: visibleSurface("Close Account")}
+		},
+		"security": func(a *App) {
+			a.security = &securitySurface{modalSurface: visibleSurface("Security")}
+		},
+		"price": func(a *App) {
+			a.price = &priceSurface{modalSurface: visibleSurface("Price")}
+		},
+		"priceImport": func(a *App) { a.priceImportDialog = visibleDialog("Price Import") },
 		"buy": func(a *App) {
 			a.buyDialog = visibleDialog("Buy")
 			a.buyDialogData = &buyDialogData{}

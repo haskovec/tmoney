@@ -629,9 +629,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case loanWizardDataMsg:
 		if msg.editSchedule != nil {
-			a.loanWizard, a.loanWizardState = buildEditLoanWizard(msg.accounts, msg.categories, msg.editSchedule, msg.editOwed)
+			d, st := buildEditLoanWizard(msg.accounts, msg.categories, msg.editSchedule, msg.editOwed)
+			a.loan = &loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
 		} else {
-			a.loanWizard, a.loanWizardState = buildNewLoanWizard(msg.accounts, msg.categories)
+			d, st := buildNewLoanWizard(msg.accounts, msg.categories)
+			a.loan = &loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
 		}
 		return a, nil
 
@@ -896,8 +898,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case importDialogOpenMsg:
 		d, ids := buildImportOptionsDialog(msg.accounts, msg.defaultAccountID)
-		a.importDialog = d
-		a.importDialogState = &importDialogState{
+		a.importer = &importSurface{modalSurface: modalSurface{dlg: d}}
+		a.importer.state = &importDialogState{
 			step:       importStepOptions,
 			accountIDs: ids,
 		}
@@ -907,16 +909,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		state := msg.state
 		state.preview = msg.result
 		state.step = importStepConfirm
-		a.importDialog = buildImportConfirmDialog(state)
-		a.importDialogState = state
+		a.importer = &importSurface{
+			modalSurface: modalSurface{dlg: buildImportConfirmDialog(state)},
+			state:        state,
+		}
 		return a, nil
 
 	case importNeedsSourceMsg:
 		state := msg.state
 		state.step = importStepSourcePicker
 		state.sourceOptions = msg.sources
-		a.importDialog = buildImportSourcePickerDialog(msg.sources, state.accountName)
-		a.importDialogState = state
+		a.importer = &importSurface{
+			modalSurface: modalSurface{dlg: buildImportSourcePickerDialog(msg.sources, state.accountName)},
+			state:        state,
+		}
 		return a, nil
 
 	case importCompletedMsg:
@@ -938,8 +944,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(cmds...)
 
 	case linkTransfersPreviewedMsg:
-		a.linkTransfersResult = msg.result
-		a.linkTransfersDialog = buildLinkTransfersDialog(msg.result)
+		a.linkTransfers = &linkTransfersSurface{
+			modalSurface: modalSurface{dlg: buildLinkTransfersDialog(msg.result)},
+			result:       msg.result,
+		}
 		return a, nil
 
 	case linkTransfersCompletedMsg:

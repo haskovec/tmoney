@@ -20,7 +20,6 @@ import (
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
-	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/theme"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -219,8 +218,7 @@ type App struct {
 	// generic dialog.Dialog form widget (see loan_wizard.go); creates a loan
 	// account, an optional asset account, and a monthly loan-shaped schedule
 	// as one atomic, single-undo operation.
-	loanWizard      *dialog.Dialog
-	loanWizardState *loanWizardData
+	loan *loanSurface
 
 	// Scheduled view state
 	scheduled      *scheduledViewData
@@ -240,18 +238,14 @@ type App struct {
 	// Cancel does not update it. Process-lifetime only — not persisted.
 	reconDialogLastStatementDate types.Date
 
-	// Close-account dialog state. closeAcctTargetID is captured at open time so
-	// a sidebar reselection while the dialog is up can't retarget the close.
-	closeAcctDialog   *dialog.Dialog
-	closeAcctTargetID types.ID
+	// Close-account dialog state.
+	closeAcct *closeAcctSurface
 
 	// Security view state
-	securityView         *securityViewData
-	securityTable        *widget.Table
-	securityDialog       *dialog.Dialog
-	securityDialogMode   securityDialogMode
-	securityDialogEditID types.ID
-	securitySvc          *security.Service
+	securityView  *securityViewData
+	securityTable *widget.Table
+	security      *securitySurface
+	securitySvc   *security.Service
 
 	// After adding a security, the table build step moves the cursor onto the
 	// row whose security ID matches, so a freshly added ticker scrolls into
@@ -264,9 +258,7 @@ type App struct {
 	priceView         *priceViewData
 	priceTable        *widget.Table // detail-mode: history for one security
 	priceListTable    *widget.Table // list-mode: latest price per ticker
-	priceDialog       *dialog.Dialog
-	priceDialogMode   priceDialogMode
-	priceDialogEditID types.ID
+	price             *priceSurface
 	priceImportDialog *dialog.Dialog
 	priceSvc          *price.Service
 
@@ -393,12 +385,10 @@ type App struct {
 	browseDir      string
 
 	// Import dialog state (transaction import via File → Import)
-	importDialog      *dialog.Dialog
-	importDialogState *importDialogState
+	importer *importSurface
 
 	// Link Transfers dialog state (Transactions → Link Transfers)
-	linkTransfersDialog *dialog.Dialog
-	linkTransfersResult *transferlink.Result
+	linkTransfers *linkTransfersSurface
 
 	// Confirmation dialog state
 	confirmDialog *dialog.Dialog
